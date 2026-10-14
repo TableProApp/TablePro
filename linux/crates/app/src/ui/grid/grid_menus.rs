@@ -5,12 +5,16 @@ use gtk4::{self as gtk, gio};
 
 use tablepro_core::column::ResultColumn;
 
-use super::context_menu::{CellContext, CellMenuTarget};
-use super::inline_edit::enter_edit_mode;
+use super::cell_edit::begin_edit;
+use super::cell_editor_kind::CellEditorKind;
+use super::cell_preset::cell_presets;
+use super::context_menu::CellContext;
 use super::menu_rows::menu_rows_of;
 use super::row_json_dialog::show_row_json_dialog;
 use super::selection::export_snapshot;
-use super::{CellPreset, DeleteAvailability, GridMsg, GridSink, RowObject, TabGridContext, delete_availability};
+use super::{
+    CellPreset, DeleteAvailability, GridCell, GridMsg, GridSink, RowObject, TabGridContext, delete_availability,
+};
 
 /// Enabled per right-clicked cell. `None` on a read-only grid, which
 /// registers none of them.
@@ -20,20 +24,40 @@ pub(super) struct CellActions {
     /// dead entry.
     edit: Option<gio::SimpleAction>,
     set_empty: Option<gio::SimpleAction>,
+    set_null: Option<gio::SimpleAction>,
+    set_default: Option<gio::SimpleAction>,
     /// Shown insensitive while disabled, since a menu item cannot carry
     /// a tooltip to say why.
     delete_row: Option<gio::SimpleAction>,
 }
 
 impl CellActions {
-    /// `rows` is what the menu acts on, read when it opens.
-    pub(super) fn arm(&self, target: &CellMenuTarget, rows: &[RowObject]) {
-        if let Some(edit) = &self.edit {
-            edit.set_enabled(target.text_editable);
-        }
-        if let Some(set_empty) = &self.set_empty {
-            set_empty.set_enabled(target.accepts_empty);
-        }
+    /// Set for `cell` and `rows`, what the menu acts on, as it opens.
+    pub(super) fn arm(&self, cell: &GridCell, rows: &[RowObject]) {
+        let column = cell.drawing().and_then(|drawing| drawing.catalog.clone());
+        let row = cell.row();
+        let editor = column
+            .as_ref()
+            .map(|column| CellEditorKind::for_cell(column, cell.lock().map_or(Ok(()), Err)));
+        let presets = column
+            .as_ref()
+            .zip(row.as_ref())
+            .map(|(column, row)| cell_presets(column, row.id()));
+        let enable = |action: &Option<gio::SimpleAction>, enabled: bool| {
+            if let Some(action) = action {
+                action.set_enabled(enabled);
+            }
+        };
+        enable(
+            &self.edit,
+            matches!(
+                editor,
+                Some(CellEditorKind::Inline { .. } | CellEditorKind::Multiline { .. } | CellEditorKind::Calendar)
+            ),
+        );
+        enable(&self.set_empty, presets.is_some_and(|presets| presets.empty));
+        enable(&self.set_null, presets.is_some_and(|presets| presets.null));
+        enable(&self.set_default, presets.is_some_and(|presets| presets.default));
         if let Some(delete_row) = &self.delete_row {
             let availability = delete_availability(rows.iter().map(RowObject::id), false);
             delete_row.set_enabled(availability == DeleteAvailability::Available);
@@ -76,11 +100,23 @@ impl MenuShape {
 
 fn build_cell_menu(shape: MenuShape) -> gio::Menu {
     let menu = gio::Menu::new();
+    let edit_section = gio::Menu::new();
+    let hidden_while_disabled = |label: String, action: &str| {
+        let item = gio::MenuItem::new(Some(&label), Some(action));
+        item.set_attribute_value("hidden-when", Some(&"action-disabled".to_variant()));
+        edit_section.append_item(&item);
+    };
     if shape.edit_cell {
-        let edit_section = gio::Menu::new();
-        let edit_item = gio::MenuItem::new(Some(&crate::i18n::gettext("Edit cell")), Some("cell.edit"));
-        edit_item.set_attribute_value("hidden-when", Some(&"action-disabled".to_variant()));
-        edit_section.append_item(&edit_item);
+        hidden_while_disabled(crate::i18n::gettext("Edit cell"), "cell.edit");
+    }
+    if shape.set_value {
+        // Each is offered only where the column can hold it, so a menu
+        // never offers a value the save would refuse.
+        hidden_while_disabled(crate::i18n::gettext("Set to Empty"), "cell.set-empty");
+        hidden_while_disabled(crate::i18n::gettext("Set to NULL"), "cell.set-null");
+        hidden_while_disabled(crate::i18n::gettext("Set to DEFAULT"), "cell.set-default");
+    }
+    if shape.edit_cell || shape.set_value {
         menu.append_section(None, &edit_section);
     }
 
@@ -123,17 +159,6 @@ fn build_cell_menu(shape: MenuShape) -> gio::Menu {
     menu.append_section(None, &json_section);
 
     let action_section = gio::Menu::new();
-    if shape.set_value {
-        let set_value = gio::Menu::new();
-        // Only a free-text column can hold an empty string: elsewhere
-        // "Empty" would either be rejected by the server or mean NULL,
-        // which the item below already says plainly.
-        let empty_item = gio::MenuItem::new(Some(&crate::i18n::gettext("Empty")), Some("cell.set-empty"));
-        empty_item.set_attribute_value("hidden-when", Some(&"action-disabled".to_variant()));
-        set_value.append_item(&empty_item);
-        set_value.append(Some("NULL"), Some("cell.set-null"));
-        action_section.append_submenu(Some(&crate::i18n::gettext("Set Value")), &set_value);
-    }
     action_section.append(Some(&crate::i18n::gettext("Export Results…")), Some("cell.export"));
     if shape.row_ops {
         action_section.append(Some(&crate::i18n::gettext("Insert row")), Some("cell.insert-row"));
@@ -226,7 +251,7 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         }};
     }
 
-    let edit_action = cell_action!("edit", |cell, _row| enter_edit_mode(cell));
+    let edit_action = cell_action!("edit", |cell, _row| begin_edit(cell));
     // Plain Copy reads the cell's value, never the widget's text: the
     // widget carries the display form, which is the `<NULL>` sentinel,
     // the `(auto)` placeholder, `<N bytes>` for a blob and a value cut
@@ -346,6 +371,11 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         column: cell.column(),
         preset: CellPreset::Null,
     });
+    let set_default_action = send_action!("set-default", |cell, row| GridMsg::SetCellValue {
+        row,
+        column: cell.column(),
+        preset: CellPreset::Default,
+    });
     let export_action = {
         let s = sink.clone();
         let view = view.clone();
@@ -394,6 +424,7 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
             edit_action,
             set_empty_action,
             set_null_action,
+            set_default_action,
             copy_row_insert_action,
             insert_row_action,
             delete_row_action,
@@ -406,6 +437,8 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
     let actions = CellActions {
         edit: editable.then(|| simple_action(&group, "edit")).flatten(),
         set_empty: editable.then(|| simple_action(&group, "set-empty")).flatten(),
+        set_null: editable.then(|| simple_action(&group, "set-null")).flatten(),
+        set_default: editable.then(|| simple_action(&group, "set-default")).flatten(),
         delete_row: editable.then(|| simple_action(&group, "delete-row")).flatten(),
     };
 

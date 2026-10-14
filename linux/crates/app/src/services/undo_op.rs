@@ -1,4 +1,4 @@
-use tablepro_core::Value;
+use tablepro_core::edit::CellInput;
 
 use super::change_tracker::{CellEdit, DeleteMark, DraftRow, RowKey};
 use super::column_relayout::ColumnRelayout;
@@ -21,8 +21,8 @@ pub enum UndoOp {
     DraftCell {
         draft_id: u64,
         col: usize,
-        before: Value,
-        after: Value,
+        before: CellInput,
+        after: CellInput,
         before_touch: Touch,
         after_touch: Touch,
     },
@@ -79,10 +79,10 @@ impl UndoOp {
                 before_touch,
                 after_touch,
             } => {
-                layout.cell(*col, before).ok()?;
+                layout.input_cell(*col, before).ok()?;
                 Some(UndoOp::DraftCell {
                     draft_id: *draft_id,
-                    col: layout.cell(*col, after).ok()?,
+                    col: layout.input_cell(*col, after).ok()?,
                     before: before.clone(),
                     after: after.clone(),
                     before_touch: *before_touch,
@@ -91,7 +91,7 @@ impl UndoOp {
             }
             UndoOp::Insert { draft } => Some(UndoOp::Insert {
                 draft: DraftRow {
-                    values: layout.row(&draft.values).ok()?,
+                    cells: layout.draft(&draft.cells).ok()?,
                     ..draft.clone()
                 },
             }),

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use gtk4::prelude::*;
 use tablepro_core::column::{ColumnDefault, ColumnType};
-use tablepro_core::edit::EditContext;
+use tablepro_core::edit::CellInput;
 use tablepro_core::filter::{FilterOp, FilterRule};
 use tablepro_core::meta::RowIdentity;
 use tablepro_core::{ColumnInfo, DriverError, FilterSet, LossPhase, QueryResult, Value};
@@ -12,10 +12,7 @@ use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeConnection, FakeReply};
 
 use super::row_deletion::RowDeletion;
-use super::{
-    BrowseTab, BrowseTabInit, BrowseTabInput, Effects, apply_draft_changes, format_thousands, parse_input_for_column,
-    persisted_key,
-};
+use super::{BrowseTab, BrowseTabInit, BrowseTabInput, Effects, apply_draft_changes, format_thousands, persisted_key};
 use crate::services::change_tracker::{RowKey, StatementSource};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
@@ -80,141 +77,6 @@ fn format_thousands_handles_edges() {
     assert_eq!(format_thousands(0), "0");
     assert_eq!(format_thousands(1), "1");
     assert_eq!(format_thousands(999), "999");
-}
-
-#[test]
-fn clearing_a_text_cell_stores_the_empty_string() {
-    let cleared =
-        parse_input_for_column("", Some(&col("text", true)), EditContext::UpdateRow).expect("an empty string");
-
-    assert_eq!(cleared, Value::Text(String::new()));
-}
-
-#[test]
-fn clearing_a_column_with_no_empty_value_yields_null() {
-    let cleared = parse_input_for_column("", Some(&col("timestamp", true)), EditContext::UpdateRow).expect("a null");
-
-    assert!(matches!(cleared, Value::Null));
-}
-
-#[test]
-fn empty_on_not_null_with_default_is_left_to_the_server_only_in_a_draft() {
-    let column = col_with_default("timestamp", "now()");
-
-    let draft = parse_input_for_column("", Some(&column), EditContext::InsertDraft).unwrap();
-    assert!(matches!(draft, Value::Null), "a draft leaves it to the default");
-
-    let existing = parse_input_for_column("", Some(&column), EditContext::UpdateRow);
-    assert!(existing.is_err(), "an UPDATE cannot ask for the default: {existing:?}");
-}
-
-#[test]
-fn empty_on_a_required_column_with_no_empty_value_is_rejected() {
-    let r = parse_input_for_column("", Some(&col("integer", false)), EditContext::UpdateRow);
-
-    assert!(r.is_err());
-    assert!(r.as_ref().is_err_and(|message| message.contains("required")), "{r:?}");
-}
-
-#[test]
-fn parses_int_decimal_float_bool() {
-    assert!(matches!(
-        parse_input_for_column("42", Some(&col("integer", false)), EditContext::UpdateRow).unwrap(),
-        Value::Int(42)
-    ));
-    assert!(matches!(
-        parse_input_for_column("3.14", Some(&col("real", false)), EditContext::UpdateRow).unwrap(),
-        Value::Float32(_)
-    ));
-    assert!(matches!(
-        parse_input_for_column("99.99", Some(&col("decimal(10,2)", false)), EditContext::UpdateRow).unwrap(),
-        Value::Decimal(_)
-    ));
-    assert!(matches!(
-        parse_input_for_column("yes", Some(&col("boolean", false)), EditContext::UpdateRow).unwrap(),
-        Value::Bool(true)
-    ));
-    // MySQL spells boolean as tinyint(1), so it parses as the integer it
-    // is and the grid renders 0 and 1.
-    assert!(matches!(
-        parse_input_for_column("0", Some(&col("tinyint(1)", false)), EditContext::UpdateRow).unwrap(),
-        Value::Int(0)
-    ));
-}
-
-#[test]
-fn parses_uuid_json_date_time_datetime_timestamptz() {
-    let uuid = parse_input_for_column(
-        "550e8400-e29b-41d4-a716-446655440000",
-        Some(&col("uuid", false)),
-        EditContext::UpdateRow,
-    )
-    .unwrap();
-    assert!(matches!(uuid, Value::Uuid(_)));
-
-    let json = parse_input_for_column(r#"{"a":1}"#, Some(&col("jsonb", false)), EditContext::UpdateRow).unwrap();
-    assert!(matches!(json, Value::Json(_)));
-
-    let date = parse_input_for_column("2024-01-15", Some(&col("date", false)), EditContext::UpdateRow).unwrap();
-    assert!(matches!(date, Value::Date(_)));
-
-    let time = parse_input_for_column("14:30:00", Some(&col("time", false)), EditContext::UpdateRow).unwrap();
-    assert!(matches!(time, Value::Time(_)));
-    let time_short = parse_input_for_column("14:30", Some(&col("time", false)), EditContext::UpdateRow).unwrap();
-    assert!(matches!(time_short, Value::Time(_)));
-
-    let datetime = parse_input_for_column(
-        "2024-01-15 14:30:00",
-        Some(&col("timestamp", false)),
-        EditContext::UpdateRow,
-    )
-    .unwrap();
-    assert!(matches!(datetime, Value::Timestamp(_)));
-    let datetime_t = parse_input_for_column(
-        "2024-01-15T14:30:00",
-        Some(&col("datetime", false)),
-        EditContext::UpdateRow,
-    )
-    .unwrap();
-    assert!(matches!(datetime_t, Value::Timestamp(_)));
-}
-
-#[test]
-fn rejects_invalid_type_specific_input() {
-    assert!(parse_input_for_column("not-a-number", Some(&col("integer", false)), EditContext::UpdateRow).is_err());
-    assert!(parse_input_for_column("not-a-uuid", Some(&col("uuid", false)), EditContext::UpdateRow).is_err());
-    assert!(parse_input_for_column("{not json", Some(&col("jsonb", false)), EditContext::UpdateRow).is_err());
-    assert!(parse_input_for_column("2024/01/15", Some(&col("date", false)), EditContext::UpdateRow).is_err());
-    assert!(parse_input_for_column("13:00:99", Some(&col("time", false)), EditContext::UpdateRow).is_err());
-    assert!(
-        parse_input_for_column("128", Some(&col("tinyint", false)), EditContext::UpdateRow).is_err(),
-        "a number past the column's range was accepted"
-    );
-    assert!(parse_input_for_column("not-a-date", Some(&col("timestamp", false)), EditContext::UpdateRow).is_err());
-    assert!(parse_input_for_column("maybe", Some(&col("boolean", false)), EditContext::UpdateRow).is_err());
-}
-
-#[test]
-fn unknown_type_falls_through_to_text() {
-    let r = parse_input_for_column(
-        "anything goes here",
-        Some(&col("varchar(255)", false)),
-        EditContext::UpdateRow,
-    )
-    .unwrap();
-    assert!(matches!(r, Value::Text(_)));
-}
-
-#[test]
-fn null_sentinel_typed_literally_is_text() {
-    // Only an actually-empty input becomes NULL. The grid clears the
-    // visual sentinel before an edit, so `<NULL>` here was typed on
-    // purpose.
-    let r = parse_input_for_column("<NULL>", Some(&col("text", true)), EditContext::UpdateRow).unwrap();
-    match r {
-        Value::Text(s) => assert_eq!(s, "<NULL>"),
-        other => panic!("expected Text(\"<NULL>\") got {other:?}"),
-    }
 }
 
 #[test]
@@ -914,23 +776,17 @@ fn duplicate_row_copies_pending_edits_of_persisted_row() {
     wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
     let ada = harness.grid_row(0);
 
-    harness.tab().send(BrowseTabInput::GridCellEdited {
-        row: ada.clone(),
-        column: 1,
-        input: "Ada Lovelace".to_owned(),
-    });
+    harness.tab().send(typed(&ada, 1, "Ada Lovelace"));
     harness.tab().send(BrowseTabInput::DuplicateRows(vec![ada]));
 
     let drafts = harness.tracker.drafts();
     assert_eq!(drafts.len(), 1, "{drafts:?}");
-    let texts: Vec<Option<String>> = drafts[0]
-        .values
-        .iter()
-        .map(tablepro_core::export::value_to_text)
-        .collect();
     assert_eq!(
-        texts,
-        vec![None, Some("Ada Lovelace".to_owned())],
+        drafts[0].cells,
+        vec![
+            CellInput::Value(Value::Null),
+            CellInput::Value(Value::Text("Ada Lovelace".to_owned()))
+        ],
         "the duplicate left out the row's pending edit"
     );
 }
@@ -979,9 +835,33 @@ fn grid_cell_of(tab: &BrowseTab, id: i64, column: usize) -> GridCell {
 }
 
 fn cell_text(cell: &GridCell) -> String {
-    cell.editor()
-        .map(|editor| editor.text().to_string())
+    cell.display()
+        .and_then(|display| display.text())
+        .map(|text| text.to_string())
         .unwrap_or_default()
+}
+
+/// What the grid sends once `text` is typed into `column` of a saved
+/// row and committed.
+fn typed(row: &RowObject, column: usize, text: &str) -> BrowseTabInput {
+    BrowseTabInput::GridEdit {
+        row: row.clone(),
+        column,
+        edit: TrackerEdit::Cell {
+            row_key: row.key().cloned().expect("a saved row"),
+            col: column,
+            original: row.cell(column).cloned().unwrap_or(Value::Null),
+            value: Value::Text(text.to_owned()),
+        },
+    }
+}
+
+/// Open the cell's one-line editor and type `text` over its value.
+fn type_into(cell: &GridCell, text: &str) -> gtk4::Text {
+    crate::ui::grid::begin_edit(cell);
+    let editor = cell.inline_text().expect("the cell did not open its one-line editor");
+    editor.set_text(text);
+    editor
 }
 
 fn has_class(cell: &GridCell, class: &str) -> bool {
@@ -1005,11 +885,9 @@ fn a_commit_is_tracked_at_once_and_leaves_its_cell_in_the_window() {
     wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
     let _shown = Shown::new(harness.tab());
     let cell = grid_cell_of(harness.tab(), 0, 1);
-    crate::ui::grid::enter_edit_mode(&cell);
-    let editor = cell.editor().expect("a text cell");
-    editor.entry().set_text("Ada Lovelace");
+    let editor = type_into(&cell, "Ada Lovelace");
 
-    editor.stop_editing(true);
+    editor.emit_activate();
 
     assert!(
         cell.root().is_some(),
@@ -1089,11 +967,9 @@ fn rejected_edit_restores_cell_display() {
     let toasts = toasts(harness.tab());
     let _shown = Shown::new(harness.tab());
     let cell = grid_cell_of(harness.tab(), 0, 1);
-    crate::ui::grid::enter_edit_mode(&cell);
-    let editor = cell.editor().expect("a text cell");
-    editor.entry().set_text("thirty-six");
+    let editor = type_into(&cell, "thirty-six");
 
-    editor.stop_editing(true);
+    editor.emit_activate();
 
     wait_until(WAIT, || cell_text(&cell) == "36").expect("the cell kept the text that was refused");
     assert_eq!(toasts.borrow().len(), 1, "{:?}", toasts.borrow());
@@ -1110,12 +986,17 @@ fn refused_edit_restores_cell_display() {
     // A saved row's key, which the tab refuses to change in place.
     let cell = grid_cell_of(harness.tab(), 0, 0);
     let row = cell.row().expect("a bound row");
-    cell.editor().expect("a text cell").set_text("7");
+    cell.display().expect("a text cell").set_text(Some("7"));
 
-    harness.tab().send(BrowseTabInput::GridCellEdited {
-        row,
+    harness.tab().send(BrowseTabInput::GridEdit {
+        row: row.clone(),
         column: 0,
-        input: "7".to_owned(),
+        edit: TrackerEdit::Cell {
+            row_key: key(0),
+            col: 0,
+            original: Value::Int(0),
+            value: Value::Int(7),
+        },
     });
 
     assert_eq!(cell_text(&cell), "0", "the cell kept the edit the tab refused");
@@ -1131,11 +1012,11 @@ fn undo_under_an_open_editor_leaves_nothing_pending() {
     let _shown = Shown::new(harness.tab());
     let cell = grid_cell_of(harness.tab(), 0, 1);
     harness.apply_delta(&harness.tracker.apply(rename(0, "Ada", "Ada Lovelace")));
-    crate::ui::grid::enter_edit_mode(&cell);
-    let editor = cell.editor().expect("a text cell");
+    crate::ui::grid::begin_edit(&cell);
+    assert!(cell.is_editing());
 
     harness.tab().send(BrowseTabInput::Undo);
-    editor.stop_editing(false);
+    cell.cancel_edit();
 
     assert_eq!(
         harness.tracker.pending_count(),
@@ -1205,10 +1086,14 @@ fn copy_row_as_insert_on_a_draft_leaves_what_the_server_fills_out() {
     harness.tab().send(BrowseTabInput::InsertRow);
     let draft = harness.grid_row(0);
     assert!(draft.draft_id().is_some(), "the new row goes on top");
-    harness.tab().send(BrowseTabInput::GridCellEdited {
+    harness.tab().send(BrowseTabInput::GridEdit {
         row: draft.clone(),
         column: 1,
-        input: "x".to_owned(),
+        edit: TrackerEdit::DraftCell {
+            draft_id: draft.draft_id().expect("a draft"),
+            col: 1,
+            input: CellInput::Value(Value::Text("x".into())),
+        },
     });
     harness.tab().send(BrowseTabInput::GridCopyRowsAsInsert(vec![draft]));
 
@@ -1281,11 +1166,7 @@ fn saved_cells(tracker: &TabTrackerHandle) -> Vec<(String, Option<String>)> {
 }
 
 fn edit_first_row(harness: &Harness, column: usize, input: &str) {
-    harness.tab().send(BrowseTabInput::GridCellEdited {
-        row: harness.grid_row(0),
-        column,
-        input: input.to_owned(),
-    });
+    harness.tab().send(typed(&harness.grid_row(0), column, input));
     assert_eq!(harness.tracker.pending_count(), 1);
 }
 
@@ -1358,11 +1239,7 @@ fn a_grid_built_for_columns_the_table_lost_takes_no_edits() {
     harness.tab().send(BrowseTabInput::SchemaChanged);
     wait_until(WAIT, || harness.tab().columns() == people(&["name", "email"])).expect("the new columns");
     // Column 2 was name in the grid the event came from, and is email now.
-    harness.tab().send(BrowseTabInput::GridCellEdited {
-        row,
-        column: 2,
-        input: "Grace".to_owned(),
-    });
+    harness.tab().send(typed(&row, 2, "Grace"));
 
     assert_eq!(
         harness.tracker.pending_count(),
@@ -1616,4 +1493,308 @@ fn delete_action_disabled_for_unkeyed_selection() {
         .expect("the menu's Delete");
     delete_rows(harness.tab());
     assert_eq!(harness.tracker.pending_count(), 0);
+}
+
+fn named_col(name: &str, data_type: &str, nullable: bool) -> ColumnInfo {
+    let mut column = col(data_type, nullable);
+    column.name = name.to_owned();
+    column
+}
+
+/// A table of an `id` key and `column`, with one row, id 0, holding
+/// `value`, drawn in a window.
+fn one_cell(column: ColumnInfo, value: Value) -> (Harness, Shown) {
+    let columns = vec![self::column("id", true), column];
+    let mut script = ConnectionScript::default();
+    script.fetch_columns.always(FakeReply::ok(columns.clone()));
+    script.row_identity.always(FakeReply::ok(RowIdentity::UniqueKey {
+        columns: vec!["id".to_owned()],
+    }));
+    script.count_rows.always(FakeReply::ok(1));
+    script.probe.always(FakeReply::ok(()));
+    script.query_bound.always(FakeReply::ok(QueryResult::new(
+        columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
+        vec![vec![Value::Int(0), value]],
+    )));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || {
+        harness.tab().snapshot().is_some_and(|page| page.rows.len() == 1)
+    })
+    .expect("the first page");
+    let shown = Shown::new(harness.tab());
+    (harness, shown)
+}
+
+/// The value the tracker holds for row 0's second cell.
+fn pending_value(harness: &Harness, fetched: &Value) -> Value {
+    harness.tracker.cell_overlay(&key(0), 1, fetched).value
+}
+
+/// Open the cell's one-line editor and paste `text` over its value
+/// through the clipboard, as Ctrl+V does.
+fn paste_into(cell: &GridCell, text: &str) -> gtk4::Text {
+    crate::ui::grid::begin_edit(cell);
+    let editor = cell.inline_text().expect("the cell did not open its one-line editor");
+    let opened = editor.text();
+    editor.clipboard().set_text(text);
+    editor.emit_paste_clipboard();
+    wait_until(WAIT, || editor.text() != opened).expect("the paste never landed");
+    editor
+}
+
+fn calendar_of(cell: &GridCell) -> Option<gtk4::Calendar> {
+    crate::test_support::first_descendant_of_type::<gtk4::Calendar>(cell)
+}
+
+#[gtk4::test]
+fn unchanged_40kb_multiline_text_records_no_edit() {
+    let long = "lorem ipsum ".repeat(3_500);
+    let (harness, _shown) = one_cell(named_col("note", "text", true), Value::Text(long.clone()));
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+
+    crate::ui::grid::begin_edit(&cell);
+
+    assert!(cell.inline_text().is_none(), "40 KB of text opened in a one-line field");
+    let view =
+        crate::test_support::first_descendant_of_type::<sourceview5::View>(&cell).expect("the multi-line editor");
+    let buffer = view.buffer();
+    assert_eq!(buffer.text(&buffer.start_iter(), &buffer.end_iter(), true), long);
+    crate::test_support::descendants(&cell)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk4::Button>().ok())
+        .find(|button| button.has_css_class("suggested-action"))
+        .expect("the Save button")
+        .emit_clicked();
+    assert_eq!(
+        harness.tracker.pending_count(),
+        0,
+        "saving the text as it was recorded an edit"
+    );
+    assert!(!cell.is_editing());
+}
+
+#[gtk4::test]
+fn bigint_edit_is_exact() {
+    let fetched = Value::Int(1_234_567_890_123_456_789);
+    let (harness, _shown) = one_cell(named_col("n", "bigint", false), fetched.clone());
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+
+    let editor = type_into(&cell, "1234567890123456790");
+    assert_eq!(
+        editor.input_purpose(),
+        gtk4::InputPurpose::Number,
+        "a signed integer field offers a number keypad"
+    );
+    editor.emit_activate();
+
+    assert_eq!(pending_value(&harness, &fetched), Value::Int(1_234_567_890_123_456_790));
+}
+
+#[gtk4::test]
+#[expect(
+    clippy::approx_constant,
+    reason = "a double with every digit it can hold, which is the point, not pi"
+)]
+fn pressing_enter_on_float_keeps_full_precision() {
+    let fetched = Value::Float64(3.141_592_653_589_79);
+    let (harness, _shown) = one_cell(named_col("x", "double precision", false), fetched);
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+
+    crate::ui::grid::begin_edit(&cell);
+    let editor = cell.inline_text().expect("a one-line field");
+    assert_eq!(editor.text(), "3.14159265358979");
+    editor.emit_activate();
+
+    assert_eq!(
+        harness.tracker.pending_count(),
+        0,
+        "Enter rounded the value it opened on"
+    );
+}
+
+#[gtk4::test]
+fn null_int_opens_empty_with_null_placeholder() {
+    let (harness, _shown) = one_cell(named_col("n", "integer", true), Value::Null);
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+
+    crate::ui::grid::begin_edit(&cell);
+
+    let editor = cell.inline_text().expect("a one-line field");
+    assert_eq!(editor.text(), "", "NULL opened as the text of its sentinel");
+    assert_eq!(editor.placeholder_text().as_deref(), Some("NULL"));
+}
+
+#[gtk4::test]
+fn clearing_not_null_int_without_default_shows_required_toast() {
+    let fetched = Value::Int(5);
+    let (harness, _shown) = one_cell(named_col("n", "integer", false), fetched.clone());
+    let toasts = toasts(harness.tab());
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+
+    let editor = type_into(&cell, "");
+    assert_eq!(editor.placeholder_text().as_deref(), Some("Required"));
+    editor.emit_activate();
+
+    assert_eq!(*toasts.borrow(), ["This column needs a value".to_owned()]);
+    assert_eq!(harness.tracker.pending_count(), 0);
+    assert_eq!(cell_text(&cell), "5");
+}
+
+#[gtk4::test]
+fn draft_not_null_with_default_placeholder_is_default() {
+    let mut level = col_with_default("integer", "0");
+    level.name = "level".to_owned();
+    let (harness, _shown) = one_cell(level, Value::Int(3));
+    harness.tab().send(BrowseTabInput::InsertRow);
+    let mut cell = None;
+    wait_until(WAIT, || {
+        cell = crate::test_support::descendants(harness.tab())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<GridCell>().ok())
+            .find(|cell| cell.column() == 1 && cell.row().is_some_and(|row| row.draft_id().is_some()));
+        cell.is_some()
+    })
+    .expect("the new row's cell is drawn");
+    let cell = cell.expect("a cell");
+    cell.cancel_edit();
+    assert_eq!(cell_text(&cell), "DEFAULT", "a cell left to the server read as NULL");
+
+    crate::ui::grid::begin_edit(&cell);
+
+    let editor = cell.inline_text().expect("a one-line field");
+    assert_eq!(editor.text(), "");
+    assert_eq!(editor.placeholder_text().as_deref(), Some("DEFAULT"));
+}
+
+#[gtk4::test]
+fn pasted_newlines_in_text_cell_are_kept() {
+    let fetched = Value::Text("a".into());
+    let (harness, _shown) = one_cell(named_col("note", "text", true), fetched.clone());
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+
+    let editor = paste_into(&cell, "first line\nsecond line");
+    editor.emit_activate();
+
+    assert_eq!(
+        pending_value(&harness, &fetched),
+        Value::Text("first line\nsecond line".into())
+    );
+}
+
+#[gtk4::test]
+fn a_line_break_pasted_into_a_number_keeps_the_first_line() {
+    let fetched = Value::Int(1);
+    let (harness, _shown) = one_cell(named_col("n", "integer", true), fetched.clone());
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+
+    let editor = paste_into(&cell, "42\n43");
+    assert_eq!(editor.text(), "42");
+    editor.emit_activate();
+
+    assert_eq!(pending_value(&harness, &fetched), Value::Int(42));
+}
+
+#[gtk4::test]
+fn tinyint1_value_2_renders_inconsistent_with_exact_tooltip() {
+    let mut flag = named_col("flag", "tinyint(1)", false);
+    flag.column_type.kind = tablepro_core::column::ColumnKind::Bool(tablepro_core::column::BoolStorage::Integer);
+    let (harness, _shown) = one_cell(flag, Value::Int(2));
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+
+    let check = cell.check_button().expect("a check button");
+
+    assert!(check.is_inconsistent(), "2 showed as true or false");
+    assert_eq!(check.tooltip_text().as_deref(), Some("2"));
+    check.set_active(true);
+    assert_eq!(pending_value(&harness, &Value::Int(2)), Value::Int(1));
+}
+
+fn a_date(year: i32, month: u32, day: u32) -> Value {
+    Value::Date(tablepro_core::value::Temporal::Finite(
+        chrono::NaiveDate::from_ymd_opt(year, month, day).expect("a date"),
+    ))
+}
+
+#[gtk4::test]
+fn calendar_preselects_date_value() {
+    let (harness, _shown) = one_cell(named_col("day", "date", true), a_date(2024, 2, 29));
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+
+    crate::ui::grid::begin_edit(&cell);
+
+    let calendar = calendar_of(&cell).expect("a date opened its calendar");
+    assert_eq!(calendar.date().ymd(), (2024, 2, 29));
+}
+
+#[gtk4::test]
+fn picking_a_day_commits_it() {
+    let fetched = a_date(2024, 2, 29);
+    let (harness, _shown) = one_cell(named_col("day", "date", true), fetched.clone());
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+    crate::ui::grid::begin_edit(&cell);
+    let calendar = calendar_of(&cell).expect("the calendar");
+
+    let picked = gtk4::glib::DateTime::from_utc(2024, 3, 1, 0, 0, 0.0).expect("a day");
+    calendar.set_date(&picked);
+
+    assert_eq!(pending_value(&harness, &fetched), a_date(2024, 3, 1));
+    assert!(!cell.is_editing());
+}
+
+#[gtk4::test]
+fn opening_calendar_on_existing_date_records_no_edit() {
+    let (harness, _shown) = one_cell(named_col("day", "date", true), a_date(2024, 2, 29));
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+    crate::ui::grid::begin_edit(&cell);
+    let popover = crate::test_support::first_descendant_of_type::<gtk4::Popover>(&cell).expect("the calendar popover");
+
+    popover.popdown();
+    wait_until(WAIT, || popover.parent().is_none()).expect("the popover closes");
+
+    assert_eq!(
+        harness.tracker.pending_count(),
+        0,
+        "opening the calendar recorded its own day"
+    );
+    assert!(!cell.is_editing());
+}
+
+#[gtk4::test]
+fn out_of_range_date_opens_inline_editor() {
+    let (harness, _shown) = one_cell(named_col("day", "date", true), a_date(12_000, 1, 1));
+    let cell = grid_cell_of(harness.tab(), 0, 1);
+
+    crate::ui::grid::begin_edit(&cell);
+
+    assert!(
+        calendar_of(&cell).is_none(),
+        "the calendar opened on a year it cannot show"
+    );
+    let editor = cell.inline_text().expect("a one-line field");
+    assert!(editor.text().contains("12000"), "{}", editor.text());
+}
+
+#[gtk4::test]
+fn read_only_cells_use_inscription_not_selectable_label() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
+    let _shown = Shown::new(harness.tab());
+    // A saved row's key, which the row is named by and cannot change.
+    let cell = grid_cell_of(harness.tab(), 0, 0);
+
+    assert!(cell.lock().is_some());
+    assert!(
+        cell.display().is_some(),
+        "a locked cell does not draw in an Inscription"
+    );
+    assert!(
+        crate::test_support::descendants(&cell)
+            .iter()
+            .all(|widget| !widget.is::<gtk4::Label>()),
+        "a locked cell carries a selectable label"
+    );
+    crate::ui::grid::begin_edit(&cell);
+    assert!(!cell.is_editing(), "a locked cell opened for editing");
 }

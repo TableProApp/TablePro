@@ -24,19 +24,7 @@ impl CellContext {
     }
 }
 
-/// What a column's cells offer in the menu while their row is unlocked.
-#[derive(Clone, Copy)]
-pub(super) struct CellMenuTarget {
-    pub(super) text_editable: bool,
-    pub(super) accepts_empty: bool,
-}
-
-pub(super) fn attach_cell_gesture(
-    cell: &GridCell,
-    column_view: &glib::WeakRef<gtk::ColumnView>,
-    target: CellMenuTarget,
-    menus: &GridMenus,
-) {
+pub(super) fn attach_cell_gesture(cell: &GridCell, column_view: &glib::WeakRef<gtk::ColumnView>, menus: &GridMenus) {
     // The cell's lock follows the row bound to it, so the menu is picked
     // when it opens.
     let prepare = {
@@ -46,7 +34,7 @@ pub(super) fn attach_cell_gesture(
             if let Some(position) = cell.position() {
                 select_row_for_menu(column_view, position);
             }
-            menus.actions.arm(&target, &menu_rows_of(column_view, cell));
+            menus.actions.arm(cell, &menu_rows_of(column_view, cell));
             match cell.lock() {
                 None => menus.editable_popover.clone(),
                 Some(_) => menus.readonly_popover.clone(),

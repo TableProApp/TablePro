@@ -4,11 +4,12 @@ use std::rc::Rc;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib};
+use tablepro_core::edit::CellInput;
 
 use super::cell_binding::CellBinding;
 use super::column_drawing::ColumnDrawing;
-use super::display_text::value_to_edit_text;
-use super::{CellEditor, CellLock, EditSnapshot, GridSink, RowObject};
+use super::inline_editor::InlineEditor;
+use super::{CellLock, EditSnapshot, GridSink, RowObject};
 
 mod imp {
     use super::*;
@@ -17,7 +18,11 @@ mod imp {
     pub struct GridCell {
         pub list_item: glib::WeakRef<gtk::ColumnViewCell>,
         pub column: Cell<usize>,
+        /// What the cell draws its value with: an Inscription, or a check
+        /// button for a boolean column.
         pub content: OnceCell<gtk::Widget>,
+        /// The one-line editor, laid over the hidden display while open.
+        pub inline: RefCell<Option<InlineEditor>>,
         /// An open editor popover. Unbind pops it down, or the recycled
         /// cell is finalized with a GtkPopover child still in it.
         pub popover: RefCell<Option<gtk::Popover>>,
@@ -25,18 +30,11 @@ mod imp {
         /// Set while the bind draws a check button, which would otherwise
         /// echo back as an edit of the value it just drew.
         pub suppress_toggle: Cell<bool>,
-        /// Set while an IME composition is in flight: focus moving to the
-        /// IME popover ends the edit, and committing then would send the
-        /// text from before the composition.
-        pub preedit_active: Cell<bool>,
         pub lock: Cell<Option<CellLock>>,
         pub drawing: OnceCell<Rc<ColumnDrawing>>,
-        /// Where an editor that opens in a popover sends its value.
+        /// Where the cell's editors send their edits.
         pub sink: OnceCell<GridSink>,
         pub binding: RefCell<Option<CellBinding>>,
-        /// The label cannot say what was drawn once an edit has cleared
-        /// a NULL sentinel from it.
-        pub drawn_text: RefCell<String>,
         #[cfg(test)]
         pub renders: Cell<u32>,
     }
@@ -56,6 +54,10 @@ mod imp {
     impl ObjectImpl for GridCell {
         fn dispose(&self) {
             self.binding.take();
+            self.edit.take();
+            if let Some(editor) = self.inline.take() {
+                editor.widget().unparent();
+            }
             if let Some(popover) = self.popover.take() {
                 popover.unparent();
             }
@@ -104,8 +106,22 @@ impl GridCell {
         self.imp().content.get()
     }
 
-    pub fn editor(&self) -> Option<CellEditor> {
+    /// The text display every cell but a check box draws with.
+    pub fn display(&self) -> Option<gtk::Inscription> {
         self.content()?.clone().downcast().ok()
+    }
+
+    pub fn check_button(&self) -> Option<gtk::CheckButton> {
+        self.content()?.clone().downcast().ok()
+    }
+
+    /// The one-line editor's text field while it is open.
+    pub fn inline_text(&self) -> Option<gtk::Text> {
+        self.imp()
+            .inline
+            .borrow()
+            .as_ref()
+            .map(|editor| editor.widget().clone())
     }
 
     pub fn row(&self) -> Option<RowObject> {
@@ -122,7 +138,8 @@ impl GridCell {
     }
 
     pub fn is_editing(&self) -> bool {
-        self.imp().edit.borrow().is_some() || self.imp().popover.borrow().is_some()
+        let imp = self.imp();
+        imp.edit.borrow().is_some() || imp.popover.borrow().is_some() || imp.inline.borrow().is_some()
     }
 
     /// The cell that holds the keyboard focus. A focused column view
@@ -143,26 +160,16 @@ impl GridCell {
         let _ = self.imp().drawing.set(drawing);
     }
 
+    pub(super) fn drawing(&self) -> Option<Rc<ColumnDrawing>> {
+        self.imp().drawing.get().cloned()
+    }
+
     pub(super) fn set_sink(&self, sink: GridSink) {
         let _ = self.imp().sink.set(sink);
     }
 
     pub(super) fn sink(&self) -> Option<GridSink> {
         self.imp().sink.get().cloned()
-    }
-
-    /// The whole value the cell draws, pending edit included, as an
-    /// editor starts from it. `None` with no row bound or no text form.
-    pub(super) fn edit_text(&self) -> Option<String> {
-        let row = self
-            .imp()
-            .binding
-            .borrow()
-            .as_ref()
-            .map(|binding| binding.row().clone())?;
-        let drawing = self.imp().drawing.get()?;
-        let (value, _) = drawing.tab_ctx.bind_state(&row, self.column());
-        value_to_edit_text(&value)
     }
 
     pub(super) fn bind(&self, row: &RowObject) {
@@ -182,27 +189,15 @@ impl GridCell {
         self.cancel_edit();
     }
 
-    /// The snapshot goes first, so the editor closing sends nothing.
-    pub(super) fn cancel_edit(&self) {
+    /// The snapshot goes first, so an editor closing sends nothing.
+    pub(crate) fn cancel_edit(&self) {
         self.take_edit();
-        if let Some(editor) = self.editor()
-            && editor.is_editing()
-        {
-            editor.stop_editing(false);
+        if let Some(editor) = self.take_inline() {
+            editor.close(self);
         }
         if let Some(popover) = self.take_popover() {
             popover.popdown();
         }
-    }
-
-    /// `true` when `text` differs from what the cell drew before it.
-    pub(super) fn record_drawn_text(&self, text: &str) -> bool {
-        let mut drawn = self.imp().drawn_text.borrow_mut();
-        if drawn.as_str() == text {
-            return false;
-        }
-        text.clone_into(&mut drawn);
-        true
     }
 
     pub(super) fn render(&self) {
@@ -214,7 +209,7 @@ impl GridCell {
             .borrow()
             .as_ref()
             .map(|binding| binding.row().clone());
-        let (Some(row), Some(drawing)) = (row, self.imp().drawing.get().cloned()) else {
+        let (Some(row), Some(drawing)) = (row, self.drawing()) else {
             return;
         };
         drawing.draw(self, &row);
@@ -233,10 +228,43 @@ impl GridCell {
         self.imp().edit.take()
     }
 
-    pub(super) fn set_popover(&self, popover: &gtk::Popover) {
+    /// The value the open edit started from.
+    pub(super) fn edit_original(&self) -> Option<CellInput> {
+        self.imp()
+            .edit
+            .borrow()
+            .as_ref()
+            .map(|snapshot| snapshot.original.clone())
+    }
+
+    pub(super) fn set_inline(&self, editor: InlineEditor) {
+        self.imp().inline.replace(Some(editor));
+    }
+
+    pub(super) fn take_inline(&self) -> Option<InlineEditor> {
+        self.imp().inline.take()
+    }
+
+    /// Parent `popover` to the cell and keep it there until it closes.
+    /// A popover the user closes ends its edit; one the editor took back
+    /// first has already dealt with it.
+    pub(super) fn present_popover(&self, popover: &gtk::Popover) {
+        popover.set_parent(self);
         if let Some(previous) = self.imp().popover.replace(Some(popover.clone())) {
             previous.popdown();
         }
+        // The cell holds the popover in its slot and as its child, so the
+        // popover holds the cell weakly and itself not at all.
+        let cell = self.downgrade();
+        popover.connect_closed(move |popover| {
+            popover.unparent();
+            if let Some(cell) = cell.upgrade()
+                && cell.release_popover(popover)
+            {
+                cell.take_edit();
+            }
+        });
+        popover.popup();
     }
 
     pub(super) fn take_popover(&self) -> Option<gtk::Popover> {
@@ -244,12 +272,14 @@ impl GridCell {
     }
 
     /// Forget `popover` if it is still this cell's, leaving a newer one
-    /// in place.
-    pub(super) fn release_popover(&self, popover: &gtk::Popover) {
+    /// in place. `true` when it was.
+    fn release_popover(&self, popover: &gtk::Popover) -> bool {
         let mut slot = self.imp().popover.borrow_mut();
         if slot.as_ref() == Some(popover) {
             slot.take();
+            return true;
         }
+        false
     }
 
     pub(super) fn toggle_suppressed(&self) -> bool {
@@ -259,14 +289,6 @@ impl GridCell {
     pub(super) fn suppress_toggle(&self, suppressed: bool) {
         self.imp().suppress_toggle.set(suppressed);
     }
-
-    pub(super) fn preedit_active(&self) -> bool {
-        self.imp().preedit_active.get()
-    }
-
-    pub(super) fn set_preedit_active(&self, active: bool) {
-        self.imp().preedit_active.set(active);
-    }
 }
 
 #[cfg(test)]
@@ -275,22 +297,22 @@ mod tests {
     use gtk4::prelude::*;
 
     use super::GridCell;
-    use crate::ui::grid::CellEditor;
 
     #[gtk4::test]
     fn from_focus_finds_the_cell_below_a_focused_cell_widget_or_above_its_editor() {
         let cell_widget = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         let cell = GridCell::new();
-        let editor = CellEditor::new();
-        cell.set_content(&editor);
+        let editor = gtk::Text::new();
+        editor.set_parent(&cell);
         cell_widget.append(&cell);
 
         let below = GridCell::from_focus(cell_widget.upcast_ref());
-        let above = GridCell::from_focus(editor.entry().upcast_ref());
+        let above = GridCell::from_focus(editor.upcast_ref());
 
         assert_eq!(below.as_ref(), Some(&cell));
         assert_eq!(above.as_ref(), Some(&cell));
         assert!(GridCell::from_focus(gtk::Label::new(None).upcast_ref()).is_none());
+        editor.unparent();
     }
 
     #[gtk4::test]

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use tablepro_core::Value;
+use tablepro_core::edit::CellInput;
 
 use super::change_tracker::RowKey;
 
@@ -16,10 +17,10 @@ pub enum TrackerEdit {
     DraftCell {
         draft_id: u64,
         col: usize,
-        value: Value,
+        input: CellInput,
     },
-    Insert {
-        values: Vec<Value>,
+    InsertDraft {
+        cells: Vec<CellInput>,
     },
     /// One Delete: the saved rows are marked, each with the row as it
     /// was read, and the drafts are dropped.
@@ -40,7 +41,7 @@ impl TrackerEdit {
                 .map(|(row_key, _)| row_key.clone())
                 .chain(drafts.iter().map(|draft_id| RowKey::Draft(*draft_id)))
                 .collect(),
-            Self::Insert { .. } => Vec::new(),
+            Self::InsertDraft { .. } => Vec::new(),
         }
     }
 }

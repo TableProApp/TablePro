@@ -56,7 +56,11 @@ impl TabTrackerHandle {
     }
 
     pub fn draft_values(&self, draft_id: u64) -> Option<Vec<Value>> {
-        self.0.borrow().draft_values(draft_id).map(<[Value]>::to_vec)
+        self.0.borrow().draft_values(draft_id)
+    }
+
+    pub fn draft_input(&self, draft_id: u64, col: usize) -> Option<CellInput> {
+        self.0.borrow().draft_input(draft_id, col)
     }
 
     pub fn draft_cells(&self, draft_id: u64, columns: &[ColumnInfo]) -> Option<Vec<CellInput>> {
@@ -191,8 +195,11 @@ mod tests {
     #[test]
     fn committed_clears_only_snapshot_edits() {
         let tracker = edited();
-        let _ = tracker.apply(TrackerEdit::Insert {
-            values: vec![Value::Int(9), Value::Int(9)],
+        let _ = tracker.apply(TrackerEdit::InsertDraft {
+            cells: vec![Value::Int(9), Value::Int(9)]
+                .into_iter()
+                .map(CellInput::Value)
+                .collect(),
         });
         let batch = tracker.begin_save().expect("a save").expect("changes to save");
         assert_eq!(batch.changes.changes.changes.len(), 2);
@@ -214,8 +221,11 @@ mod tests {
     #[test]
     fn an_insert_or_delete_in_flight_is_not_changed_until_it_settles() {
         let tracker = edited();
-        let inserted = tracker.apply(TrackerEdit::Insert {
-            values: vec![Value::Int(9), Value::Int(9)],
+        let inserted = tracker.apply(TrackerEdit::InsertDraft {
+            cells: vec![Value::Int(9), Value::Int(9)]
+                .into_iter()
+                .map(CellInput::Value)
+                .collect(),
         });
         let draft_id = match inserted.inserted_drafts.as_slice() {
             [draft_id] => *draft_id,
@@ -226,7 +236,7 @@ mod tests {
         let typed = TrackerEdit::DraftCell {
             draft_id,
             col: 1,
-            value: Value::Int(10),
+            input: CellInput::Value(Value::Int(10)),
         };
         assert!(tracker.refuses(&typed));
         let held = tracker.apply(typed);
@@ -243,7 +253,7 @@ mod tests {
         );
         assert!(held.inserted_drafts.is_empty() && held.removed_drafts.is_empty());
 
-        assert_eq!(tracker.drafts()[0].values[1], Value::Int(9));
+        assert_eq!(tracker.drafts()[0].cells[1], CellInput::Value(Value::Int(9)));
         let _ = tracker.settle_save(&rolled_back(), batch.snapshot);
         assert!(tracker.undo().is_some());
     }
@@ -258,8 +268,11 @@ mod tests {
             original: Value::Text("a".into()),
             value: Value::Text("b".into()),
         });
-        let inserted = tracker.apply(TrackerEdit::Insert {
-            values: vec![Value::Null, Value::Text("c".into())],
+        let inserted = tracker.apply(TrackerEdit::InsertDraft {
+            cells: vec![Value::Null, Value::Text("c".into())]
+                .into_iter()
+                .map(CellInput::Value)
+                .collect(),
         });
 
         assert_eq!(edited.changed, vec![row(1)]);

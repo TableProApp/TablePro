@@ -14,6 +14,7 @@ use secrecy::SecretString;
 use tablepro_app::change_tracker::{RowKey, pk_identity};
 use tablepro_app::tab_tracker_handle::TabTrackerHandle;
 use tablepro_app::tracker_edit::TrackerEdit;
+use tablepro_core::edit::CellInput;
 use tablepro_core::meta::TableRef;
 use tablepro_core::save::plan_save;
 use tablepro_core::statement::{GuardedStatement, Statement, StatementBuilder};
@@ -106,8 +107,11 @@ async fn replace_by_unique_key_saves() {
         )],
         drafts: Vec::new(),
     });
-    let _ = tracker.apply(TrackerEdit::Insert {
-        values: vec![Value::Int(2), Value::Text("a".to_owned())],
+    let _ = tracker.apply(TrackerEdit::InsertDraft {
+        cells: vec![Value::Int(2), Value::Text("a".to_owned())]
+            .into_iter()
+            .map(CellInput::Value)
+            .collect(),
     });
 
     let changes = tracker.change_set(&columns).expect("a change set");

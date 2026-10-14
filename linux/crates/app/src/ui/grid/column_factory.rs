@@ -3,16 +3,16 @@ use std::rc::Rc;
 use gtk4::prelude::*;
 use gtk4::{self as gtk, glib};
 
-use tablepro_core::column::ResultColumn;
+use tablepro_core::column::{ColumnKind, ResultColumn};
 use tablepro_core::{ColumnInfo, QueryResult};
 
+use super::cell_edit::install_edit_triggers;
 use super::cell_editability::column_takes_edits;
-use super::cell_editor_kind::{CellEditorKind, classify_editor_kind, is_bool_type};
 use super::column_drawing::ColumnDrawing;
-use super::context_menu::{CellMenuTarget, attach_cell_gesture};
+use super::context_menu::attach_cell_gesture;
 use super::grid_menus::{GridMenuInit, GridMenus, install_grid_context_menus};
-use super::inline_edit::{install_edit_commit_handler, install_edit_triggers};
-use super::{CellEditor, GridCell, GridMsg, GridSink, RowObject, TabGridContext};
+use super::toggle_cell::ToggleCell;
+use super::{GridCell, GridMsg, GridSink, RowObject, TabGridContext};
 
 const WIDE_TABLE_THRESHOLD: usize = 8;
 /// About 14 characters at the default font size.
@@ -116,13 +116,14 @@ pub fn build_column_view(
     (column_view, selection)
 }
 
-/// How a column's cells are built. A column no row can edit gets the
-/// plain label a read-only grid has.
+/// How a column's cells are built. Editors are made when an edit
+/// opens, so only the display is chosen here.
 #[derive(Clone, Copy)]
 enum CellKind {
+    /// Drawn and never edited, so it takes no edit triggers.
     ReadOnly,
     Toggle,
-    Text(CellEditorKind),
+    Text,
 }
 
 struct ColumnInit<'a> {
@@ -154,10 +155,9 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
 
     let kind = match catalog.as_ref() {
         Some(column) if tab_ctx.editable && column_takes_edits(column, &tab_ctx.identity, false) => {
-            if is_bool_type(&info.column_type.name) {
-                CellKind::Toggle
-            } else {
-                CellKind::Text(classify_editor_kind(&info.column_type.name))
+            match column.column_type.kind {
+                ColumnKind::Bool(_) => CellKind::Toggle,
+                _ => CellKind::Text,
             }
         }
         _ => CellKind::ReadOnly,
@@ -170,10 +170,6 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
         tab_ctx: tab_ctx.clone(),
         auto_filled,
     });
-    let target = CellMenuTarget {
-        text_editable: matches!(kind, CellKind::Text(_)),
-        accepts_empty: matches!(kind, CellKind::Text(_)) && info.column_type.kind.accepts_empty_string(),
-    };
 
     factory.connect_setup(move |_, item| {
         let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>() else {
@@ -182,12 +178,16 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
         let grid_cell = GridCell::new();
         grid_cell.attach(cell, idx);
         grid_cell.set_drawing(drawing.clone());
+        grid_cell.set_sink(sink.clone());
         match kind {
-            CellKind::ReadOnly => setup_readonly_cell(&grid_cell),
-            CellKind::Toggle => setup_toggle_cell(&grid_cell, sink.clone()),
-            CellKind::Text(editor_kind) => setup_editable_cell(&grid_cell, sink.clone(), editor_kind),
+            CellKind::ReadOnly => grid_cell.set_content(&text_display()),
+            CellKind::Toggle => ToggleCell::setup(&grid_cell),
+            CellKind::Text => {
+                grid_cell.set_content(&text_display());
+                install_edit_triggers(&grid_cell);
+            }
         }
-        attach_cell_gesture(&grid_cell, &column_view, target, &grid_menus);
+        attach_cell_gesture(&grid_cell, &column_view, &grid_menus);
         cell.set_child(Some(&grid_cell));
     });
 
@@ -240,56 +240,17 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
     column
 }
 
-fn setup_editable_cell(grid_cell: &GridCell, sink: GridSink, editor_kind: CellEditorKind) {
-    let editor = CellEditor::new();
-    editor.set_hexpand(true);
-    editor.set_margin_start(8);
-    editor.set_margin_end(8);
-    grid_cell.set_content(&editor);
-    grid_cell.set_sink(sink.clone());
-    install_edit_commit_handler(grid_cell, sink.clone());
-    install_edit_triggers(grid_cell, sink, editor_kind);
-}
-
-fn setup_toggle_cell(grid_cell: &GridCell, sink: GridSink) {
-    let checkbox = gtk::CheckButton::builder()
-        .halign(gtk::Align::Start)
-        .valign(gtk::Align::Center)
-        .margin_start(8)
-        .margin_end(8)
-        .build();
-    grid_cell.set_content(&checkbox);
-    // The cell owns the check button, so the handler finds the cell
-    // through its parent rather than holding it.
-    checkbox.connect_toggled(move |checkbox| {
-        let Some(grid_cell) = checkbox.parent().and_downcast::<GridCell>() else {
-            return;
-        };
-        if grid_cell.toggle_suppressed() || grid_cell.lock().is_some() {
-            return;
-        }
-        let Some(row) = grid_cell.row() else {
-            return;
-        };
-        let input = if checkbox.is_active() { "true" } else { "false" };
-        sink(GridMsg::CellEdited {
-            row,
-            column: grid_cell.column(),
-            input: input.to_owned(),
-        });
-    });
-}
-
-fn setup_readonly_cell(grid_cell: &GridCell) {
-    let label = gtk::Label::builder()
-        .xalign(0.0)
-        .hexpand(true)
-        .selectable(true)
-        .ellipsize(gtk::pango::EllipsizeMode::End)
-        .margin_start(8)
-        .margin_end(8)
-        .build();
-    grid_cell.set_content(&label);
+/// Every cell but a check box draws its value in an Inscription, which
+/// lays out only what fits and offers no text selection of its own.
+fn text_display() -> gtk::Inscription {
+    let display = gtk::Inscription::new(None);
+    display.set_xalign(0.0);
+    display.set_hexpand(true);
+    display.set_text_overflow(gtk::InscriptionOverflow::EllipsizeEnd);
+    display.set_margin_start(8);
+    display.set_margin_end(8);
+    display.add_css_class("tp-cell-text");
+    display
 }
 
 #[cfg(test)]
@@ -301,6 +262,7 @@ mod tests {
     use gtk4::prelude::*;
     use gtk4::{self as gtk, gio, glib};
 
+    use tablepro_core::edit::CellInput;
     use tablepro_core::meta::RowIdentity;
     use tablepro_core::{ColumnInfo, QueryResult, Value};
 
@@ -309,12 +271,11 @@ mod tests {
     use crate::services::tab_tracker_handle::TabTrackerHandle;
     use crate::services::tracker_delta::TrackerDelta;
     use crate::services::tracker_edit::TrackerEdit;
-    use crate::test_support::{descendants, drain_main_context, wait_until};
+    use crate::test_support::{descendants, drain_main_context, first_descendant_of_type, wait_until};
     use crate::ui::grid::cell_editability::column_takes_edits;
     use crate::ui::grid::display_text::editable_null_sentinel;
     use crate::ui::grid::{
-        CellEditor, CellPreset, ColumnWidthBinding, GridCell, GridMsg, GridSink, RowObject, TabGridContext,
-        enter_edit_mode,
+        CellPreset, ColumnWidthBinding, GridCell, GridMsg, GridSink, RowObject, TabGridContext, begin_edit,
     };
 
     const WAIT: Duration = Duration::from_secs(5);
@@ -449,8 +410,8 @@ mod tests {
         }
 
         fn insert_draft(&self) {
-            let delta = self.tracker.apply(TrackerEdit::Insert {
-                values: vec![Value::Null, Value::Null],
+            let delta = self.tracker.apply(TrackerEdit::InsertDraft {
+                cells: vec![CellInput::Value(Value::Null), CellInput::Value(Value::Null)],
             });
             let Some(draft_id) = delta.inserted_drafts.into_iter().next() else {
                 panic!("an insert adds a draft row");
@@ -500,22 +461,41 @@ mod tests {
         )
     }
 
-    fn type_into(cell: &GridCell, text: &str) -> CellEditor {
-        enter_edit_mode(cell);
-        let editor = cell.editor().expect("a text cell");
-        assert!(editor.is_editing(), "the cell did not open for editing");
-        editor.entry().set_text(text);
+    /// Open the cell's one-line editor and type `text` over its value.
+    fn type_into(cell: &GridCell, text: &str) -> gtk::Text {
+        begin_edit(cell);
+        let editor = cell.inline_text().expect("the cell did not open for editing");
+        editor.set_text(text);
         editor
     }
 
-    fn edited_rows(messages: &[GridMsg]) -> Vec<(Option<RowKey>, usize, String)> {
+    fn display_text(cell: &GridCell) -> String {
+        cell.display()
+            .and_then(|display| display.text())
+            .map(|text| text.to_string())
+            .unwrap_or_default()
+    }
+
+    /// Each edit the grid sent, as the row, the column and the value.
+    fn edited_rows(messages: &[GridMsg]) -> Vec<(Option<RowKey>, usize, CellInput)> {
         messages
             .iter()
             .filter_map(|msg| match msg {
-                GridMsg::CellEdited { row, column, input } => Some((row.key().cloned(), *column, input.clone())),
+                GridMsg::Edit { row, column, edit } => {
+                    let input = match edit {
+                        TrackerEdit::Cell { value, .. } => CellInput::Value(value.clone()),
+                        TrackerEdit::DraftCell { input, .. } => input.clone(),
+                        other => panic!("a cell commit made {other:?}"),
+                    };
+                    Some((row.key().cloned(), *column, input))
+                }
                 _ => None,
             })
             .collect()
+    }
+
+    fn text(value: &str) -> CellInput {
+        CellInput::Value(Value::Text(value.to_owned()))
     }
 
     /// Without focusable cells, which come with the grid's keyboard
@@ -536,11 +516,11 @@ mod tests {
         .expect("the focused editor resolves to its grid cell");
         let cell = focused.expect("a focused cell");
         assert_eq!(cell.row().and_then(|row| row.key().cloned()), Some(key(2)));
-        editor.stop_editing(true);
+        editor.emit_activate();
 
         assert_eq!(
             edited_rows(&grid.take_messages()),
-            vec![(Some(key(2)), 1, "renamed".to_owned())]
+            vec![(Some(key(2)), 1, text("renamed"))]
         );
     }
 
@@ -556,7 +536,7 @@ mod tests {
         drain_main_context();
         grid.view
             .activate_action("cell.set-null", None)
-            .expect("the menu's Set NULL");
+            .expect("the menu's Set to NULL");
 
         let set: Vec<(Option<RowKey>, usize, CellPreset)> = grid
             .take_messages()
@@ -576,11 +556,11 @@ mod tests {
         let editor = type_into(&cell, "renamed");
 
         grid.insert_draft();
-        editor.stop_editing(true);
+        editor.emit_activate();
 
         assert_eq!(
             edited_rows(&grid.take_messages()),
-            vec![(Some(key(2)), 1, "renamed".to_owned())]
+            vec![(Some(key(2)), 1, text("renamed"))]
         );
     }
 
@@ -594,17 +574,13 @@ mod tests {
             ],
         );
         grid.insert_draft();
-        let toggle = grid
-            .cell_of(2, 1)
-            .content()
-            .and_then(|content| content.downcast_ref::<gtk::CheckButton>().cloned())
-            .expect("a check button");
+        let toggle = grid.cell_of(2, 1).check_button().expect("a check button");
 
         toggle.set_active(true);
 
         assert_eq!(
             edited_rows(&grid.take_messages()),
-            vec![(Some(key(2)), 1, "true".to_owned())]
+            vec![(Some(key(2)), 1, CellInput::Value(Value::Bool(true)))]
         );
     }
 
@@ -625,33 +601,26 @@ mod tests {
         assert!(grid.cell_of(1, 1).lock().is_none());
         assert!(draft_key_cell.lock().is_none(), "a draft could not set its own key");
 
-        enter_edit_mode(&grid.cell_of(1, 0));
-        assert!(!grid.cell_of(1, 0).editor().expect("a text cell").is_editing());
-    }
-
-    fn label_of(cell: &GridCell) -> gtk::Label {
-        descendants(cell)
-            .into_iter()
-            .find_map(|widget| widget.downcast::<gtk::Label>().ok())
-            .expect("a cell draws its value in a label")
+        begin_edit(&grid.cell_of(1, 0));
+        assert!(!grid.cell_of(1, 0).is_editing());
+        begin_edit(&draft_key_cell);
+        assert!(draft_key_cell.inline_text().is_some());
     }
 
     #[gtk4::test]
-    fn a_locked_key_cell_keeps_its_text_selectable() {
+    fn locked_cells_draw_in_an_inscription_with_no_label() {
         let grid = two_text_rows();
-        grid.insert_draft();
-        let draft_key_cell = grid
-            .cells()
-            .into_iter()
-            .find(|cell| cell.column() == 0 && cell.row().is_some_and(|row| row.draft_id().is_some()))
-            .expect("the draft's key cell");
+        let locked = grid.cell_of(1, 0);
 
         assert!(
-            label_of(&grid.cell_of(1, 0)).is_selectable(),
-            "a saved row's key cannot be selected"
+            locked.display().is_some(),
+            "a locked cell does not draw in an Inscription"
         );
-        assert!(!label_of(&draft_key_cell).is_selectable());
-        assert!(!label_of(&grid.cell_of(1, 1)).is_selectable());
+        assert!(
+            descendants(&locked).iter().all(|widget| !widget.is::<gtk::Label>()),
+            "a locked cell carries a label, whose own menu takes Shift+F10"
+        );
+        assert_eq!(display_text(&locked), "1");
     }
 
     #[gtk4::test]
@@ -672,7 +641,7 @@ mod tests {
             .bump_revision();
 
         assert_eq!(delta.pending_count, 1);
-        assert_eq!(cell.editor().expect("a text cell").text(), "new");
+        assert_eq!(display_text(&cell), "new");
         assert!(
             cell.content()
                 .is_some_and(|content| content.has_css_class("tp-cell-modified"))
@@ -687,12 +656,12 @@ mod tests {
         let row = cell.row().expect("a bound row");
 
         row.bump_revision();
-        editor.stop_editing(false);
 
-        assert_eq!(editor.text(), "B", "Escape did not go back to the row's value");
-        type_into(&cell, "typed");
-        row.bump_revision();
-        assert_eq!(editor.entry().text(), "typed", "the redraw overwrote what was typed");
+        assert_eq!(editor.text(), "typed", "the redraw overwrote what was typed");
+        cell.cancel_edit();
+        assert_eq!(display_text(&cell), "B", "Escape did not go back to the row's value");
+        assert!(cell.inline_text().is_none());
+        assert_eq!(edited_rows(&grid.take_messages()), vec![]);
     }
 
     #[gtk4::test]
@@ -723,7 +692,7 @@ mod tests {
 
     /// Row 1's name edited from `from` to `to`, its editor opened on
     /// `to`, then the edit undone under the open editor.
-    fn undo_under_open_editor(from: Value, to: Value) -> (Grid, GridCell, CellEditor) {
+    fn undo_under_open_editor(from: Value, to: Value) -> (Grid, GridCell) {
         let grid = name_rows(from.clone());
         let cell = grid.cell_of(1, 1);
         grid.redraw(&grid.tracker.apply(TrackerEdit::Cell {
@@ -732,62 +701,66 @@ mod tests {
             original: from,
             value: to,
         }));
-        enter_edit_mode(&cell);
-        let editor = cell.editor().expect("a text cell");
-        assert!(editor.is_editing(), "the cell did not open for editing");
+        begin_edit(&cell);
+        assert!(cell.inline_text().is_some(), "the cell did not open for editing");
 
         grid.redraw(&grid.tracker.undo().expect("an edit to undo"));
 
-        (grid, cell, editor)
+        (grid, cell)
     }
 
     #[gtk4::test]
     fn escape_after_an_undo_under_the_editor_sends_nothing() {
-        let (grid, cell, editor) = undo_under_open_editor(Value::Text("A".into()), Value::Text("X".into()));
+        let (grid, cell) = undo_under_open_editor(Value::Text("A".into()), Value::Text("X".into()));
         assert!(
-            !editor.is_editing(),
+            !cell.is_editing(),
             "the editor stayed open on a value the row no longer has"
         );
 
-        editor.stop_editing(false);
+        cell.cancel_edit();
         cell.unbind();
 
         assert_eq!(edited_rows(&grid.take_messages()), vec![]);
-        assert_eq!(editor.text(), "A");
+        assert_eq!(display_text(&cell), "A");
         assert_eq!(grid.tracker.pending_count(), 0);
     }
 
     #[gtk4::test]
     fn escape_after_undoing_an_edit_of_null_sends_nothing() {
-        let (grid, _cell, editor) = undo_under_open_editor(Value::Null, Value::Text("hello".into()));
+        let (grid, cell) = undo_under_open_editor(Value::Null, Value::Text("hello".into()));
 
-        editor.stop_editing(false);
-
-        assert_eq!(edited_rows(&grid.take_messages()), vec![]);
-        assert_eq!(editor.text().as_str(), editable_null_sentinel());
-    }
-
-    #[gtk4::test]
-    fn enter_after_an_undo_under_the_editor_shows_the_undone_value() {
-        let (grid, _cell, editor) = undo_under_open_editor(Value::Text("A".into()), Value::Text("X".into()));
-
-        editor.stop_editing(true);
+        cell.cancel_edit();
 
         assert_eq!(edited_rows(&grid.take_messages()), vec![]);
-        assert_eq!(editor.text(), "A", "the cell shows an edit the tracker no longer has");
+        assert_eq!(display_text(&cell), editable_null_sentinel());
     }
 
     #[gtk4::test]
     fn escape_on_a_null_cell_drawn_again_under_its_editor_sends_nothing() {
         let grid = name_rows(Value::Null);
         let cell = grid.cell_of(1, 1);
-        enter_edit_mode(&cell);
-        let editor = cell.editor().expect("a text cell");
+        begin_edit(&cell);
 
         cell.row().expect("a bound row").bump_revision();
-        assert!(editor.is_editing(), "a redraw of the same value closed the editor");
-        editor.stop_editing(false);
+        assert!(cell.is_editing(), "a redraw of the same value closed the editor");
+        cell.cancel_edit();
 
+        assert_eq!(edited_rows(&grid.take_messages()), vec![]);
+    }
+
+    #[gtk4::test]
+    fn a_null_text_cell_left_as_it_opened_stays_null() {
+        let grid = name_rows(Value::Null);
+        let cell = grid.cell_of(1, 1);
+
+        let editor = type_into(&cell, "");
+
+        assert_eq!(
+            editor.placeholder_text().unwrap_or_default(),
+            "",
+            "a text column keeps the empty string, so empty means nothing more"
+        );
+        editor.emit_activate();
         assert_eq!(edited_rows(&grid.take_messages()), vec![]);
     }
 
@@ -796,16 +769,21 @@ mod tests {
         format!("tpyo{}", "x".repeat(60_000))
     }
 
-    /// The text of whichever editor the cell opened: its entry, or the
-    /// popover it opened instead.
-    fn opened_text(cell: &GridCell) -> Option<String> {
-        let editor = cell.editor()?;
-        if editor.is_editing() {
-            return Some(editor.entry().text().to_string());
-        }
-        let view = crate::test_support::first_descendant_of_type::<sourceview5::View>(cell)?;
+    fn source_view(cell: &GridCell) -> Option<sourceview5::View> {
+        first_descendant_of_type::<sourceview5::View>(cell)
+    }
+
+    fn buffer_text(view: &sourceview5::View) -> String {
         let buffer = view.buffer();
-        Some(buffer.text(&buffer.start_iter(), &buffer.end_iter(), true).to_string())
+        buffer.text(&buffer.start_iter(), &buffer.end_iter(), true).to_string()
+    }
+
+    fn save_button(cell: &GridCell) -> gtk::Button {
+        descendants(cell)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+            .find(|button| button.has_css_class("suggested-action"))
+            .expect("the Save button")
     }
 
     #[gtk4::test]
@@ -813,9 +791,10 @@ mod tests {
         let grid = name_rows(Value::Text(long_text()));
         let cell = grid.cell_of(1, 1);
 
-        enter_edit_mode(&cell);
+        begin_edit(&cell);
 
-        let opened = opened_text(&cell).expect("an editor opened");
+        assert!(cell.inline_text().is_none(), "a long text opened in a one-line field");
+        let opened = buffer_text(&source_view(&cell).expect("the multi-line editor"));
         assert_eq!(opened.len(), long_text().len(), "the editor opened on the cut text");
         assert_eq!(opened, long_text());
     }
@@ -824,23 +803,19 @@ mod tests {
     fn a_long_text_saved_from_its_editor_sends_the_whole_value() {
         let grid = name_rows(Value::Text(long_text()));
         let cell = grid.cell_of(1, 1);
-        enter_edit_mode(&cell);
+        begin_edit(&cell);
         let fixed = long_text().replacen("tpyo", "typo", 1);
-        let view = crate::test_support::first_descendant_of_type::<sourceview5::View>(&cell).expect("a text popover");
+        let view = source_view(&cell).expect("the multi-line editor");
 
         view.buffer().set_text(&fixed);
-        descendants(&cell)
-            .into_iter()
-            .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
-            .find(|button| button.has_css_class("suggested-action"))
-            .expect("the Save button")
-            .emit_clicked();
+        save_button(&cell).emit_clicked();
 
-        assert_eq!(edited_rows(&grid.take_messages()), vec![(Some(key(1)), 1, fixed)]);
-        assert!(
-            cell.editor().is_some_and(|editor| editor.text().len() < 20_000),
-            "the cell drew the whole value"
+        assert_eq!(
+            edited_rows(&grid.take_messages()),
+            vec![(Some(key(1)), 1, text(&fixed))]
         );
+        assert!(!cell.is_editing());
+        assert!(display_text(&cell).len() < 20_000, "the cell drew the whole value");
     }
 
     #[gtk4::test]
@@ -848,9 +823,14 @@ mod tests {
         let grid = name_rows(Value::Text(editable_null_sentinel()));
         let cell = grid.cell_of(1, 1);
 
-        enter_edit_mode(&cell);
+        let opened = cell_editor_text(&cell);
 
-        assert_eq!(opened_text(&cell), Some(editable_null_sentinel()));
+        assert_eq!(opened, Some(editable_null_sentinel()));
+    }
+
+    fn cell_editor_text(cell: &GridCell) -> Option<String> {
+        begin_edit(cell);
+        cell.inline_text().map(|editor| editor.text().to_string())
     }
 
     #[gtk4::test]
@@ -858,14 +838,53 @@ mod tests {
         let grid = name_rows(Value::Bytes(vec![1, 2, 3]));
         let cell = grid.cell_of(1, 1);
 
-        enter_edit_mode(&cell);
+        begin_edit(&cell);
 
-        assert_eq!(opened_text(&cell), None, "the editor opened on the size placeholder");
+        assert!(!cell.is_editing(), "the editor opened on the size placeholder");
         assert!(
             grid.take_messages()
                 .iter()
                 .any(|msg| matches!(msg, GridMsg::ShowToast(_))),
             "the cell did not say why it would not open"
+        );
+    }
+
+    /// A closed editor popover must leave nothing holding its cell.
+    #[gtk4::test]
+    fn a_closed_popover_editor_frees_its_cell() {
+        let grid = Grid::open(
+            vec![
+                named("id", "integer", true),
+                named("doc", "jsonb", false),
+                named("day", "date", false),
+            ],
+            vec![vec![
+                Value::Int(1),
+                Value::Json(tablepro_core::value::JsonText::parse("[1]".to_owned()).expect("json")),
+                Value::Date(tablepro_core::value::Temporal::Finite(
+                    chrono::NaiveDate::from_ymd_opt(2026, 9, 15).expect("a date"),
+                )),
+            ]],
+        );
+        for column in [1, 2] {
+            let cell = grid.cell_of(1, column);
+            begin_edit(&cell);
+            let popover = first_descendant_of_type::<gtk::Popover>(&cell).expect("the editor popover");
+            assert!(cell.is_editing());
+
+            popover.popdown();
+            wait_until(WAIT, || popover.parent().is_none()).expect("the popover closes");
+
+            assert!(!cell.is_editing(), "column {column} left its popover in the cell");
+        }
+        assert_eq!(edited_rows(&grid.take_messages()), vec![]);
+        let freed: Vec<glib::WeakRef<GridCell>> = grid.cells().iter().map(ObjectExt::downgrade).collect();
+
+        drop(grid);
+
+        assert!(
+            freed.iter().all(|cell| cell.upgrade().is_none()),
+            "an editor popover kept its cell alive"
         );
     }
 
@@ -959,11 +978,14 @@ mod tests {
                 .collect()
         };
         wait_until(WAIT, || cells().len() == 3).expect("the key, text and bool cells are drawn");
-        // A right-click is what fills the menu's target, so it has to be
-        // in the picture too.
+        // A right-click is what fills the menu's target, and an open
+        // editor is another hold on a cell, so both are in the picture.
         for cell in cells() {
             let gesture = menu_gesture(cell.upcast_ref()).expect("a cell answers a right-click");
             gesture.emit_by_name::<()>("pressed", &[&1i32, &1.0f64, &1.0f64]);
+        }
+        if let Some(name) = cells().into_iter().find(|cell| cell.column() == 1) {
+            begin_edit(&name);
         }
         let freed: Vec<glib::WeakRef<GridCell>> = cells().iter().map(ObjectExt::downgrade).collect();
 

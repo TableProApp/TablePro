@@ -26,7 +26,7 @@ use gtk4::{gdk, gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::dialect::SqlDialect;
-use tablepro_core::edit::{CellInput, EditContext, EditParseError};
+use tablepro_core::edit::{CellInput, EditParseError, parse_edit_text};
 use tablepro_core::export::RenderInsertError;
 use tablepro_core::meta::{RowIdentity, TableRef};
 use tablepro_core::{ColumnInfo, QueryResult, Value};
@@ -39,10 +39,10 @@ pub(crate) use self::page_reply::PageReply;
 use self::row_deletion::{RowDeletion, plan_row_deletion};
 use super::grid::{
     CellPreset, ColumnWidthBinding, DeleteAvailability, GridCell, GridMsg, GridRowId, GridRowIndex, GridSink,
-    RowObject, TabGridContext, build_column_view, cell_editability, delete_availability,
+    RowObject, TabGridContext, build_column_view, cell_editability, cell_presets, delete_availability, edit_context,
 };
 use crate::runtime::{FailedRequests, RequestSequencer};
-use crate::services::change_tracker::{RowKey, StatementSource, pk_identity};
+use crate::services::change_tracker::{RowKey, StatementSource, new_draft_cell, pk_identity};
 use crate::services::save_batch::SaveTarget;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
@@ -503,7 +503,7 @@ impl From<GridMsg> for BrowseTabInput {
     fn from(msg: GridMsg) -> Self {
         match msg {
             GridMsg::SortChanged(col_idx, ascending) => Self::SortChanged { col_idx, ascending },
-            GridMsg::CellEdited { row, column, input } => Self::GridCellEdited { row, column, input },
+            GridMsg::Edit { row, column, edit } => Self::GridEdit { row, column, edit },
             GridMsg::CopyToClipboard(text) => Self::GridCopyToClipboard(text),
             GridMsg::ShowToast(text) => Self::GridShowToast(text),
             GridMsg::CopyRowsAsInsert { rows } => Self::GridCopyRowsAsInsert(rows),
@@ -669,15 +669,15 @@ pub(crate) enum BrowseTabInput {
     FocusInsertedDraft,
     /// Delete over these rows, from the key, the button or the menu.
     DeleteRows(Vec<RowObject>),
-    GridCellEdited {
+    /// An edit the grid parsed for the column, which the tab checks
+    /// against the cell's lock before the tracker takes it.
+    GridEdit {
         row: RowObject,
         column: usize,
-        input: String,
+        edit: TrackerEdit,
     },
-    /// Cell context-menu "Set Value". The grid names the preset; the
-    /// tab resolves it against the column's declared type, because
-    /// only the tab holds the column metadata that says whether an
-    /// empty string is a value the column can hold.
+    /// A preset from a cell's menu or Ctrl+Shift+N. The tab resolves it
+    /// against the column, so both paths reach the same value.
     GridSetCellValue {
         row: RowObject,
         column: usize,
@@ -822,25 +822,22 @@ impl BrowseModel {
         ))
     }
 
-    /// Resolve a "Set Value" preset against the column it lands in.
-    /// The grid offers Empty only on free-text columns, so the
-    /// fallback here is for the keyboard and action-activation paths:
-    /// an empty string means NULL on a column that takes one, and is
-    /// refused on a column that does not, exactly as typing an empty
-    /// value into the cell would be.
-    fn resolve_cell_preset(&self, preset: CellPreset, col_index: usize, context: EditContext) -> Result<Value, String> {
+    /// Resolve a preset against the column it lands in. The menu offers
+    /// only the ones the cell can take; the keyboard's Set NULL reaches
+    /// here for any cell, and a column that refuses the value says why,
+    /// as committing an empty cell would.
+    fn resolve_cell_preset(&self, preset: CellPreset, row: &RowObject, col: usize) -> Result<CellInput, String> {
+        let Some(column) = self.current_columns.get(col) else {
+            return Err(crate::ui::error_text::edit_parse_message(&EditParseError::Required));
+        };
+        let presets = cell_presets(column, row.id());
         match preset {
-            CellPreset::Null => Ok(Value::Null),
-            CellPreset::Empty => parse_input_for_column("", self.current_columns.get(col_index), context),
-        }
-    }
-
-    /// Whether an edit lands in a draft row, which is the one place an
-    /// empty cell can mean the server's default.
-    fn edit_context_for(row: &RowObject) -> EditContext {
-        match row.id() {
-            GridRowId::Draft(_) => EditContext::InsertDraft,
-            GridRowId::Result | GridRowId::Unkeyed | GridRowId::Persisted(_) => EditContext::UpdateRow,
+            CellPreset::Empty => parse_edit_text("", column, edit_context(row.id()))
+                .map_err(|error| crate::ui::error_text::edit_parse_message(&error)),
+            CellPreset::Null if presets.null => Ok(CellInput::Value(Value::Null)),
+            CellPreset::Null => Err(crate::ui::error_text::edit_parse_message(&EditParseError::Required)),
+            CellPreset::Default if presets.default => Ok(CellInput::Default),
+            CellPreset::Default => Err(crate::i18n::gettext("This cell can't take the column's default")),
         }
     }
 
@@ -927,21 +924,21 @@ impl BrowseModel {
         self.apply_tracker_delta(&delta, fx);
     }
 
-    /// A typed or preset value for one cell, against the row the edit
-    /// was made on, wherever it sits now.
-    fn edit_cell(&mut self, row: &RowObject, col: usize, value: Value, fx: &mut Effects) {
-        match row.id() {
-            GridRowId::Draft(draft_id) => {
+    /// A preset value for one cell, against the row the edit was made
+    /// on, wherever it sits now.
+    fn edit_cell(&mut self, row: &RowObject, col: usize, input: CellInput, fx: &mut Effects) {
+        match (row.id(), input) {
+            (GridRowId::Draft(draft_id), input) => {
                 self.apply_edit(
                     TrackerEdit::DraftCell {
                         draft_id: *draft_id,
                         col,
-                        value,
+                        input,
                     },
                     fx,
                 );
             }
-            GridRowId::Persisted(row_key) => {
+            (GridRowId::Persisted(row_key), CellInput::Value(value)) => {
                 let Some(original) = row.cell(col).cloned() else {
                     return;
                 };
@@ -955,7 +952,7 @@ impl BrowseModel {
                     fx,
                 );
             }
-            GridRowId::Result | GridRowId::Unkeyed => {}
+            (GridRowId::Persisted(_), CellInput::Default) | (GridRowId::Result | GridRowId::Unkeyed, _) => {}
         }
     }
 
@@ -1082,7 +1079,7 @@ impl BrowseModel {
                 return;
             };
             if let Some(cell) = GridCell::from_focus(&focused) {
-                super::grid::enter_edit_mode(&cell);
+                super::grid::begin_edit(&cell);
             }
         });
     }
@@ -1581,19 +1578,19 @@ impl BrowseModel {
                     let source_cells = ctx.effective_cells(row);
                     // The duplicate is a new row, so values the database
                     // owns (key, identity, generated) are left to it.
-                    let values: Vec<Value> = self
+                    let cells: Vec<CellInput> = self
                         .current_columns
                         .iter()
                         .enumerate()
                         .map(|(i, col)| {
                             if col.primary_key || col.is_auto_increment || col.is_generated {
-                                Value::Null
+                                new_draft_cell(col)
                             } else {
-                                source_cells.get(i).cloned().unwrap_or(Value::Null)
+                                CellInput::Value(source_cells.get(i).cloned().unwrap_or(Value::Null))
                             }
                         })
                         .collect();
-                    self.apply_edit(TrackerEdit::Insert { values }, fx);
+                    self.apply_edit(TrackerEdit::InsertDraft { cells }, fx);
                 }
                 self.refresh_inner_stack_visibility();
                 fx.input(BrowseTabInput::FocusInsertedDraft);
@@ -1602,51 +1599,32 @@ impl BrowseModel {
                 if self.current_columns.is_empty() {
                     return;
                 }
-                let values: Vec<Value> = self.current_columns.iter().map(|_| Value::Null).collect();
-                self.apply_edit(TrackerEdit::Insert { values }, fx);
+                let cells = self.current_columns.iter().map(new_draft_cell).collect();
+                self.apply_edit(TrackerEdit::InsertDraft { cells }, fx);
                 self.refresh_inner_stack_visibility();
                 fx.input(BrowseTabInput::FocusInsertedDraft);
             }
             BrowseTabInput::DeleteRows(rows) => self.delete_rows(&rows, fx),
-            BrowseTabInput::GridCellEdited { row, column, input } => {
+            BrowseTabInput::GridEdit { row, column, edit } => {
                 // The cell shows what was typed until its row is drawn again.
                 if self.refuses_edit(&row, column) {
                     row.bump_revision();
                     return;
                 }
-                // A column that holds line breaks keeps them; everywhere
-                // else a pasted newline would reach the SQL layer.
-                let keeps_line_breaks = self
-                    .current_columns
-                    .get(column)
-                    .is_some_and(|c| c.column_type.kind.accepts_line_breaks());
-                let normalized = match keeps_line_breaks {
-                    true => input,
-                    false => normalize_single_line_input(&input),
-                };
-                let col = self.current_columns.get(column);
-                let new = match parse_input_for_column(&normalized, col, Self::edit_context_for(&row)) {
-                    Ok(v) => v,
-                    Err(message) => {
-                        fx.output(BrowseTabOutput::ShowToast(message));
-                        row.bump_revision();
-                        return;
-                    }
-                };
-                self.edit_cell(&row, column, new, fx);
+                self.apply_edit(edit, fx);
             }
             BrowseTabInput::GridSetCellValue { row, column, preset } => {
                 if self.refuses_edit(&row, column) {
                     return;
                 }
-                let value = match self.resolve_cell_preset(preset, column, Self::edit_context_for(&row)) {
-                    Ok(value) => value,
+                let input = match self.resolve_cell_preset(preset, &row, column) {
+                    Ok(input) => input,
                     Err(message) => {
                         fx.output(BrowseTabOutput::ShowToast(message));
                         return;
                     }
                 };
-                self.edit_cell(&row, column, value, fx);
+                self.edit_cell(&row, column, input, fx);
             }
             BrowseTabInput::GridShowToast(message) => {
                 fx.output(BrowseTabOutput::ShowToast(message));
@@ -1950,19 +1928,6 @@ fn clear_box(b: &gtk::Box) {
     }
 }
 
-/// Collapse newlines / carriage returns to spaces, then squash any
-/// resulting consecutive whitespace runs to a single space. Applied
-/// at cell-edit commit time for non-JSON columns so a multi-line
-/// clipboard paste into a single-line cell never reaches the SQL
-/// layer with embedded `\n`.
-fn normalize_single_line_input(text: &str) -> String {
-    let replaced: String = text
-        .chars()
-        .map(|c| if matches!(c, '\n' | '\r') { ' ' } else { c })
-        .collect();
-    replaced.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
 /// A fetched row's key from its primary key cells, in the table's
 /// column order. `None` when the table has no primary key or the row is
 /// too short to hold it.
@@ -1989,28 +1954,6 @@ fn update_selection_chrome(label: &gtk::Label, n: u32) {
         &[("n", &count)],
     ));
     label.set_visible(true);
-}
-
-/// The value the user typed, as the column's own type.
-///
-/// Parsing against the typed column rather than a type-name string is
-/// what makes an out-of-range number a message beside the cell instead
-/// of a failed transaction. What an empty cell means is core's rule:
-/// the empty string where the column holds one, the server's default
-/// in a draft row, NULL where the column takes it, and a refusal
-/// otherwise.
-fn parse_input_for_column(text: &str, col: Option<&ColumnInfo>, context: EditContext) -> Result<Value, String> {
-    let Some(col) = col else {
-        return Ok(Value::Text(text.to_string()));
-    };
-    match tablepro_core::edit::parse_edit_text(text, col, context) {
-        Ok(CellInput::Value(value)) => Ok(value),
-        // A draft holds NULL for a cell left to the server; the save
-        // leaves that column out of the INSERT.
-        Ok(CellInput::Default) => Ok(Value::Null),
-        Err(EditParseError::Required) => Err(crate::i18n::gettext("Field is required")),
-        Err(error) => Err(error.to_string()),
-    }
 }
 
 /// Format a positive integer with thousands separators (1000 → 1,000).

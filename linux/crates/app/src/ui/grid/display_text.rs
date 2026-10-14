@@ -41,24 +41,7 @@ pub(super) fn value_to_display_text(value: &Value) -> String {
     }
 }
 
-/// The whole value as an editor starts from it, which committed
-/// unchanged writes the value back. Never the display text, which is cut
-/// short or stands in for a value. `None` for a value with no text form.
-pub(super) fn value_to_edit_text(value: &Value) -> Option<String> {
-    match value {
-        Value::Null => Some(String::new()),
-        Value::Bytes(_) | Value::Undecodable(_) => None,
-        other => tablepro_core::export::value_to_text(other),
-    }
-}
-
-/// Whether the cell shows only the start of `s`. Such a text is too long
-/// for the one-line editor, which lays out all of it.
-pub(super) fn is_cut_for_display(s: &str) -> bool {
-    s.len() >= DISPLAY_TEXT_BYTES_THRESHOLD && s.chars().nth(DISPLAY_TEXT_MAX_CHARS).is_some()
-}
-
-pub(super) fn truncate_for_display(s: &str) -> String {
+fn truncate_for_display(s: &str) -> String {
     if s.len() < DISPLAY_TEXT_BYTES_THRESHOLD {
         return s.to_string();
     }
@@ -82,7 +65,7 @@ pub(super) fn truncate_for_display(s: &str) -> String {
 mod tests {
     use tablepro_core::Value;
 
-    use super::{is_cut_for_display, truncate_for_display, value_to_display_text, value_to_edit_text};
+    use super::{truncate_for_display, value_to_display_text};
 
     #[test]
     fn display_text_primitive_variants() {
@@ -152,44 +135,6 @@ mod tests {
 
         assert!(text.contains("geography"), "{text}");
         assert_ne!(text, "NULL", "an unreadable value looked like a missing one");
-    }
-
-    #[test]
-    fn edit_text_distinguishes_null_from_text_null() {
-        assert_eq!(value_to_edit_text(&Value::Null).as_deref(), Some(""));
-        assert_eq!(value_to_edit_text(&Value::Text("NULL".into())).as_deref(), Some("NULL"));
-        assert_eq!(value_to_edit_text(&Value::Int(0)).as_deref(), Some("0"));
-    }
-
-    #[test]
-    fn edit_text_keeps_extended_variants_visible() {
-        assert_eq!(
-            value_to_edit_text(&date_value(2026, 4, 26)).as_deref(),
-            Some("2026-04-26")
-        );
-
-        let id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
-        assert_eq!(
-            value_to_edit_text(&Value::Uuid(id)).as_deref(),
-            Some("550e8400-e29b-41d4-a716-446655440000")
-        );
-    }
-
-    #[test]
-    fn edit_text_is_the_whole_value_however_long() {
-        let huge = "x".repeat(1_000_000);
-
-        assert_eq!(value_to_edit_text(&Value::Text(huge.clone())), Some(huge.clone()));
-        assert!(is_cut_for_display(&huge));
-        assert!(!is_cut_for_display(&"x".repeat(39_999)));
-        // 40,000 bytes, but only 10,000 characters, which the cell shows
-        // whole.
-        assert!(!is_cut_for_display(&"🦀".repeat(10_000)));
-    }
-
-    #[test]
-    fn a_value_shown_by_a_stand_in_has_no_edit_text() {
-        assert_eq!(value_to_edit_text(&Value::Bytes(vec![0u8; 16])), None);
     }
 
     #[test]

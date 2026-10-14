@@ -1,4 +1,5 @@
 use tablepro_core::Value;
+use tablepro_core::edit::CellInput;
 use tablepro_core::meta::RowIdentity;
 
 use super::{ColumnWidthBinding, GridRowId, RowObject};
@@ -56,14 +57,26 @@ impl TabGridContext {
             .collect()
     }
 
-    pub(super) fn bind_state(&self, row: &RowObject, col: usize) -> (Value, Vec<&'static str>) {
+    /// What an editor opens on: a draft's cell as the tracker holds it,
+    /// a saved row's pending value, else the value as it was read.
+    pub(crate) fn edit_input(&self, row: &RowObject, col: usize) -> CellInput {
+        self.bind_state(row, col).0
+    }
+
+    pub(super) fn bind_state(&self, row: &RowObject, col: usize) -> (CellInput, Vec<&'static str>) {
         let raw = row.cell(col).cloned().unwrap_or(Value::Null);
         let Some((tracker, key)) = self.tracked_key(row) else {
-            return (raw, Vec::new());
+            return (CellInput::Value(raw), Vec::new());
         };
         let overlay = tracker.cell_overlay(&key, col, &raw);
         let classes = pending_classes(tracker.row_state(&key), &overlay, col);
-        (overlay.value, classes)
+        let input = match row.id() {
+            GridRowId::Draft(draft_id) => tracker
+                .draft_input(*draft_id, col)
+                .unwrap_or(CellInput::Value(overlay.value)),
+            GridRowId::Result | GridRowId::Unkeyed | GridRowId::Persisted(_) => CellInput::Value(overlay.value),
+        };
+        (input, classes)
     }
 }
 
@@ -84,6 +97,7 @@ fn pending_classes(row_state: RowState, overlay: &CellOverlay, col: usize) -> Ve
 #[cfg(test)]
 mod tests {
     use tablepro_core::Value;
+    use tablepro_core::edit::CellInput;
 
     use super::{RowObject, TabGridContext};
     use crate::services::change_tracker::RowKey;
@@ -98,7 +112,9 @@ mod tests {
     }
 
     fn insert_draft(tracker: &TabTrackerHandle, values: Vec<Value>) -> u64 {
-        let delta = tracker.apply(TrackerEdit::Insert { values });
+        let delta = tracker.apply(TrackerEdit::InsertDraft {
+            cells: values.into_iter().map(CellInput::Value).collect(),
+        });
         let Some(draft_id) = delta.inserted_drafts.into_iter().next() else {
             panic!("an insert adds a draft row");
         };
@@ -113,7 +129,11 @@ mod tests {
 
         let (value, classes) = context(&tracker).bind_state(&RowObject::draft(draft_id), 0);
 
-        assert_eq!(value, Value::Int(4), "a draft's cells are read from the tracker");
+        assert_eq!(
+            value,
+            CellInput::Value(Value::Int(4)),
+            "a draft's cells are read from the tracker"
+        );
         assert_eq!(classes, vec!["tp-row-pending-insert", "tp-row-leftmost-error-flash"]);
     }
 
@@ -123,7 +143,7 @@ mod tests {
 
         let (value, classes) = TabGridContext::default().bind_state(&row, 0);
 
-        assert_eq!(value, Value::Int(1));
+        assert_eq!(value, CellInput::Value(Value::Int(1)));
         assert!(classes.is_empty());
     }
 
@@ -147,6 +167,23 @@ mod tests {
         assert_eq!(
             context(&tracker).effective_cells(&RowObject::draft(draft_id)),
             vec![Value::Null, Value::Text("draft".into())]
+        );
+    }
+
+    #[test]
+    fn a_draft_cell_left_to_the_server_opens_as_the_default() {
+        let tracker = TabTrackerHandle::default();
+        let delta = tracker.apply(TrackerEdit::InsertDraft {
+            cells: vec![CellInput::Default, CellInput::Value(Value::Null)],
+        });
+        let draft = RowObject::draft(delta.inserted_drafts[0]);
+
+        assert_eq!(context(&tracker).edit_input(&draft, 0), CellInput::Default);
+        assert_eq!(context(&tracker).edit_input(&draft, 1), CellInput::Value(Value::Null));
+        assert_eq!(
+            context(&tracker).effective_cells(&draft),
+            vec![Value::Null, Value::Null],
+            "a copy has no value to give a default"
         );
     }
 }

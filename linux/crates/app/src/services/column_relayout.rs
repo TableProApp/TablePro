@@ -1,10 +1,10 @@
 use tablepro_core::column::ColumnType;
-use tablepro_core::edit::parse_literal_text;
+use tablepro_core::edit::{CellInput, parse_literal_text};
 use tablepro_core::export::value_text;
 use tablepro_core::value::same_value;
 use tablepro_core::{ColumnInfo, Value};
 
-use super::change_tracker::RowKey;
+use super::change_tracker::{RowKey, new_draft_cell};
 
 /// How the columns a tab's pending changes were made against line up
 /// with the columns it read since. Columns are matched by name: once a
@@ -87,23 +87,38 @@ impl<'a> ColumnRelayout<'a> {
         }
     }
 
-    /// A new row's values under the new columns. A value the user left
+    /// Where a draft cell's input in old column `col` belongs now. A
+    /// cell left to the server fits anywhere, as NULL does.
+    pub(crate) fn input_cell(&self, col: usize, input: &CellInput) -> Result<usize, Misfit> {
+        self.cell(col, input.value().unwrap_or(&Value::Null))
+    }
+
+    /// A new row's cells under the new columns. A value the user left
     /// in a column that is gone, or that no longer takes it, has no
-    /// place; an empty cell there is dropped.
-    pub(crate) fn row(&self, values: &[Value]) -> Result<Vec<Value>, Misfit> {
+    /// place; an empty cell there is dropped. A new column starts as a
+    /// new row's would.
+    pub(crate) fn draft(&self, cells: &[CellInput]) -> Result<Vec<CellInput>, Misfit> {
         let mut lost = Vec::new();
-        for (col, value) in values.iter().enumerate() {
-            if matches!(value, Value::Null) {
+        for (col, input) in cells.iter().enumerate() {
+            let Some(value) = input.value().filter(|value| !matches!(value, Value::Null)) else {
                 continue;
-            }
+            };
             if let Err(Misfit::Columns(columns)) = self.cell(col, value) {
                 lost.extend(columns);
             }
         }
-        match lost.is_empty() {
-            true => Ok(self.fetched(values)),
-            false => Err(Misfit::Columns(lost)),
+        if !lost.is_empty() {
+            return Err(Misfit::Columns(lost));
         }
+        Ok(self
+            .sources
+            .iter()
+            .zip(self.new)
+            .map(|(source, column)| match source.and_then(|col| cells.get(col)) {
+                Some(input) => input.clone(),
+                None => new_draft_cell(column),
+            })
+            .collect())
     }
 
     /// A row as read under the old columns, under the new ones. A new

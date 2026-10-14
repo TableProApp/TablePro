@@ -3,6 +3,7 @@ use std::rc::Rc;
 use tablepro_core::QueryResult;
 
 use super::{CellPreset, RowObject};
+use crate::services::tracker_edit::TrackerEdit;
 
 /// Where a grid sends its events. The owner holds the grid, so the
 /// closure holds the owner weakly.
@@ -13,19 +14,19 @@ pub enum GridMsg {
     /// The sorter's state after the click, not a toggle hint: a click on
     /// another column fires both sort notifies, and a hint would flip twice.
     SortChanged(usize, bool),
-    CellEdited {
+    /// An edit of `column` in `row`, already parsed for the column.
+    Edit {
         row: RowObject,
         column: usize,
-        input: String,
+        edit: TrackerEdit,
     },
     CopyToClipboard(String),
     ShowToast(String),
     CopyRowsAsInsert {
         rows: Vec<RowObject>,
     },
-    /// An intent, not a `Value`: the grid does not know the column's
-    /// declared type, and `Text("")` in an `int` or a `date` column is an
-    /// UPDATE the server rejects.
+    /// An intent the tab resolves against the column, so the keyboard
+    /// path and the menu reach the same value.
     SetCellValue {
         row: RowObject,
         column: usize,
