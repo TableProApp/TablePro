@@ -1,4 +1,43 @@
+use relm4::adw::prelude::*;
 use tablepro_core::AuthMode;
+use tablepro_core::{ConnectionFormDefaults, DatabaseDriver, connection_form_defaults};
+
+pub(super) fn apply_driver_values(
+    dialog: &mut super::ConnectDialog,
+    index: u32,
+) -> Option<std::sync::Arc<dyn DatabaseDriver>> {
+    let previous_index = dialog.applied_driver;
+    dialog.applied_driver = Some(index);
+    let entry = dialog.drivers.get(index as usize)?;
+    let driver = dialog.registry.get(&entry.id)?;
+    let defaults = connection_form_defaults(driver.as_ref());
+    let previous = previous_index
+        .and_then(|previous| dialog.drivers.get(previous as usize))
+        .and_then(|entry| dialog.registry.get(&entry.id))
+        .map(|driver| connection_form_defaults(driver.as_ref()));
+    apply_values(&dialog.port, &dialog.database, &dialog.username, previous, defaults);
+    Some(driver)
+}
+
+fn apply_values(
+    port: &relm4::gtk::SpinButton,
+    database: &relm4::adw::EntryRow,
+    username: &relm4::adw::EntryRow,
+    previous: Option<ConnectionFormDefaults>,
+    next: ConnectionFormDefaults,
+) {
+    port.set_value(next_driver_value(port.value() as u16, previous.map(|value| value.port), next.port) as f64);
+    database.set_text(&next_driver_text(
+        &database.text(),
+        previous.map(|value| value.database),
+        next.database,
+    ));
+    username.set_text(&next_driver_text(
+        &username.text(),
+        previous.map(|value| value.username),
+        next.username,
+    ));
+}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(super) struct AuthFormState {
@@ -86,9 +125,47 @@ pub(super) fn default_driver_row(drivers: &[super::DriverEntry]) -> u32 {
     drivers.iter().position(|d| d.id == "postgres").unwrap_or(0) as u32
 }
 
+pub(super) fn next_driver_value<T: PartialEq + Copy>(current: T, previous: Option<T>, next: T) -> T {
+    if previous.is_some_and(|previous| current != previous) {
+        current
+    } else {
+        next
+    }
+}
+
+pub(super) fn next_driver_text(current: &str, previous: Option<&str>, next: &str) -> String {
+    if previous.is_some_and(|previous| current != previous) {
+        current.to_owned()
+    } else {
+        next.to_owned()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn switching_drivers_updates_only_fields_still_at_the_previous_default() {
+        let port = next_driver_value(5432, Some(5432), 3306);
+        let custom_port = next_driver_value(55432, Some(5432), 3306);
+        let database = next_driver_text("postgres", Some("postgres"), "mysql");
+        let custom_database = next_driver_text("shop", Some("postgres"), "mysql");
+        let username = next_driver_text("postgres", Some("postgres"), "root");
+        let custom_username = next_driver_text("bookie", Some("postgres"), "root");
+
+        assert_eq!((port, database.as_str(), username.as_str()), (3306, "mysql", "root"));
+        assert_eq!(
+            (custom_port, custom_database.as_str(), custom_username.as_str()),
+            (55432, "shop", "bookie")
+        );
+    }
+
+    #[test]
+    fn the_first_driver_selection_applies_its_defaults() {
+        assert_eq!(next_driver_value(0, None, 3306), 3306);
+        assert_eq!(next_driver_text("", None, "mysql"), "mysql");
+    }
 
     #[test]
     fn auth_form_state_drives_mode_and_visibility() {
