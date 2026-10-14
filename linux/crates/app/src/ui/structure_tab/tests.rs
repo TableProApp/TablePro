@@ -195,7 +195,7 @@ fn style_handler_disconnected_on_shutdown() {
 #[gtk4::test]
 fn structure_tab_freed_after_drop() {
     let mut harness = Harness::open(StructureMode::New, ConnectionScript::default(), []);
-    harness.tab().send(StructureTabInput::AddColumn);
+    harness.tab().send(ColumnsInput::AddColumn);
     drain_main_context();
     let row = first_descendant_of_type::<adw::ExpanderRow>(harness.tab())
         .expect("the added column's row")
@@ -224,7 +224,7 @@ fn structure_tab_freed_after_drop() {
 #[gtk4::test]
 fn a_draft_takes_its_dialect_from_the_session() {
     let harness = Harness::open(StructureMode::New, postgres_script(), []);
-    harness.tab().send(StructureTabInput::AddColumn);
+    harness.tab().send(ColumnsInput::AddColumn);
     drain_main_context();
 
     let buffer = sql_buffer(harness.tab());
@@ -285,8 +285,8 @@ fn a_schema_change_leaves_a_tab_with_edits_alone() {
     wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
     let counters = harness.fake.connection.counters();
 
-    harness.tab().send(StructureTabInput::AddColumn);
-    harness.tab().send(StructureTabInput::SchemaChanged);
+    harness.tab().send(ColumnsInput::AddColumn);
+    harness.tab().send(LoadInput::SchemaChanged);
     drain_main_context();
     std::thread::sleep(Duration::from_millis(100));
     drain_main_context();
@@ -331,7 +331,7 @@ fn a_read_only_connection_offers_no_drop() {
         .connect_drop_table_requested(move |_, _, _| sink.set(sink.get() + 1));
 
     assert!(!harness.tab().imp().drop_button.is_visible());
-    harness.tab().send(StructureTabInput::DropTableRequested);
+    harness.tab().send(TableInput::DropTableRequested);
     assert_eq!(asked.get(), 0, "the tab asked to drop the table");
 }
 
@@ -387,7 +387,7 @@ fn structure_refresh_failure_keeps_editor_and_shows_banner() {
     wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
     let toasts = toasts(harness.tab());
 
-    harness.tab().send(StructureTabInput::SchemaChanged);
+    harness.tab().send(LoadInput::SchemaChanged);
     wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed read was not shown");
 
     assert_eq!(harness.page().as_deref(), Some("editor"));
@@ -410,9 +410,7 @@ fn a_failed_read_after_a_save_keeps_the_saved_draft_locked() {
     let harness = Harness::open(StructureMode::Edit, readable_once(), []);
     wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
 
-    harness
-        .tab()
-        .send(StructureTabInput::SaveCompleted { new_table_name: None });
+    harness.tab().send(SaveInput::SaveCompleted { new_table_name: None });
     wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed read was not shown");
 
     assert_eq!(harness.page().as_deref(), Some("editor"));
@@ -429,13 +427,11 @@ fn a_failed_read_after_a_save_keeps_the_saved_draft_locked() {
 fn an_edit_after_a_failed_read_after_a_save_says_to_retry() {
     let harness = Harness::open(StructureMode::Edit, readable_once(), []);
     wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
-    harness
-        .tab()
-        .send(StructureTabInput::SaveCompleted { new_table_name: None });
+    harness.tab().send(SaveInput::SaveCompleted { new_table_name: None });
     wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed read was not shown");
     let toasts = toasts(harness.tab());
 
-    harness.tab().send(StructureTabInput::AddColumn);
+    harness.tab().send(ColumnsInput::AddColumn);
 
     assert_eq!(
         *toasts.borrow(),
@@ -489,7 +485,7 @@ fn index_fetch_failure_keeps_loaded_indexes() {
     let harness = Harness::open(StructureMode::Edit, script, []);
     wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
 
-    harness.tab().send(StructureTabInput::SchemaChanged);
+    harness.tab().send(LoadInput::SchemaChanged);
     wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed read was not shown");
 
     let indexes: Vec<String> = harness.draft().indexes.into_iter().map(|index| index.name).collect();
@@ -507,7 +503,7 @@ fn structure_retry_after_failure_hides_banner() {
         .always(FakeReply::ok(definition("email")));
     let harness = Harness::open(StructureMode::Edit, script, []);
     wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
-    harness.tab().send(StructureTabInput::SchemaChanged);
+    harness.tab().send(LoadInput::SchemaChanged);
     wait_until(WAIT, || banner(&harness).is_revealed()).expect("the stale banner");
 
     banner(&harness).emit_by_name::<()>("button-clicked", &[]);
@@ -548,9 +544,7 @@ fn schema_save_shows_new_column_list() {
         .tab()
         .connect_loading_changed(move |_, busy| sink.borrow_mut().push(busy));
 
-    harness
-        .tab()
-        .send(StructureTabInput::SaveCompleted { new_table_name: None });
+    harness.tab().send(SaveInput::SaveCompleted { new_table_name: None });
 
     assert_eq!(
         harness.page().as_deref(),
@@ -739,7 +733,7 @@ fn an_edit_previews_the_plan_and_saves_through_the_tracker() {
     let counter = saves.clone();
     tab.connect_save_requested(move |_| counter.set(counter.get() + 1));
 
-    tab.send(StructureTabInput::ColumnEdited {
+    tab.send(ColumnsInput::ColumnEdited {
         column: column_object(&tab, 0),
         field: ColumnField::Default("42".to_owned()),
     });
@@ -755,7 +749,7 @@ fn an_edit_previews_the_plan_and_saves_through_the_tracker() {
         crate::workspace::RollbackCause::NotApplied,
     ));
 
-    tab.send(StructureTabInput::ColumnEdited {
+    tab.send(ColumnsInput::ColumnEdited {
         column: column_object(&tab, 0),
         field: ColumnField::Default("1 +".to_owned()),
     });
@@ -786,7 +780,7 @@ fn stop_saving_shows_only_while_a_save_runs() {
     harness
         .tab()
         .connect_stop_save_requested(move |_| stop_sink.set(stop_sink.get() + 1));
-    harness.tab().send(StructureTabInput::ColumnEdited {
+    harness.tab().send(ColumnsInput::ColumnEdited {
         column: harness.column(0),
         field: ColumnField::Comment(Some("key".to_owned())),
     });
@@ -795,14 +789,14 @@ fn stop_saving_shows_only_while_a_save_runs() {
     assert!(!stop.is_visible());
     assert!(save.is_sensitive());
 
-    harness.tab().send(StructureTabInput::SaveStarted);
+    harness.tab().send(SaveInput::SaveStarted);
     assert!(stop.is_visible() && imp.saving_spinner.is_visible());
     assert!(
         !imp.columns_box.is_sensitive(),
         "the columns stayed editable during the save"
     );
     let toasts = toasts(harness.tab());
-    harness.tab().send(StructureTabInput::ColumnEdited {
+    harness.tab().send(ColumnsInput::ColumnEdited {
         column: harness.column(0),
         field: ColumnField::Comment(Some("the key".to_owned())),
     });
@@ -816,9 +810,7 @@ fn stop_saving_shows_only_while_a_save_runs() {
     stop.emit_clicked();
     assert_eq!(stops.get(), 1);
 
-    harness
-        .tab()
-        .send(StructureTabInput::SaveFailed("rolled back".to_owned()));
+    harness.tab().send(SaveInput::SaveFailed("rolled back".to_owned()));
     assert!(!stop.is_visible() && !imp.saving_spinner.is_visible());
     assert!(save.is_sensitive() && imp.columns_box.is_sensitive());
 }
@@ -839,23 +831,21 @@ fn an_edit_waits_for_the_read_after_a_committed_save() {
     let counters = harness.fake.connection.counters();
     let tracker = harness.tracker();
     let imp = harness.tab().imp();
-    harness.tab().send(StructureTabInput::ColumnEdited {
+    harness.tab().send(ColumnsInput::ColumnEdited {
         column: harness.column(0),
         field: ColumnField::Comment(Some("key".to_owned())),
     });
 
     let _saving = tracker.begin_save().expect("a save").expect("the change is pending");
-    harness.tab().send(StructureTabInput::ColumnEdited {
+    harness.tab().send(ColumnsInput::ColumnEdited {
         column: harness.column(0),
         field: ColumnField::Comment(Some("before the tab heard".to_owned())),
     });
-    harness.tab().send(StructureTabInput::SaveStarted);
+    harness.tab().send(SaveInput::SaveStarted);
     tracker.settle_save(&crate::workspace::SaveOutcome::Committed { rows: None });
-    harness.tab().send(StructureTabInput::AddColumn);
-    harness
-        .tab()
-        .send(StructureTabInput::SaveCompleted { new_table_name: None });
-    harness.tab().send(StructureTabInput::AddColumn);
+    harness.tab().send(ColumnsInput::AddColumn);
+    harness.tab().send(SaveInput::SaveCompleted { new_table_name: None });
+    harness.tab().send(ColumnsInput::AddColumn);
 
     assert_eq!(harness.comments(), [Some("key".to_owned())]);
     assert_eq!(harness.column_names(), ["id"]);
@@ -864,7 +854,7 @@ fn an_edit_waits_for_the_read_after_a_committed_save() {
         CallCounters::get(&counters.fetch_table_definition) == 2 && imp.columns_box.is_sensitive()
     })
     .expect("the read after the save");
-    harness.tab().send(StructureTabInput::AddColumn);
+    harness.tab().send(ColumnsInput::AddColumn);
     assert_eq!(harness.column_names(), ["id", "column_1"]);
 }
 
@@ -1045,13 +1035,13 @@ fn reads_after_discard(change: Option<StructureTabInput>) -> usize {
     let harness = Harness::open(StructureMode::Edit, script, []);
     wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
     let counters = harness.fake.connection.counters();
-    harness.tab().send(StructureTabInput::AddColumn);
+    harness.tab().send(ColumnsInput::AddColumn);
     let read_again = change.is_some();
     if let Some(change) = change {
         harness.tab().send(change);
     }
 
-    harness.tab().send(StructureTabInput::Discard);
+    harness.tab().send(SaveInput::Discard);
 
     if read_again {
         wait_until(WAIT, || CallCounters::get(&counters.fetch_table_definition) == 2)
@@ -1070,12 +1060,12 @@ fn a_plain_discard_restores_the_definition_it_read() {
 
 #[gtk4::test]
 fn a_discard_after_a_change_elsewhere_reads_the_table_again() {
-    assert_eq!(reads_after_discard(Some(StructureTabInput::SchemaChanged)), 2);
+    assert_eq!(reads_after_discard(Some(LoadInput::SchemaChanged.into())), 2);
 }
 
 #[gtk4::test]
 fn a_discard_after_a_save_found_the_table_changed_reads_it_again() {
-    assert_eq!(reads_after_discard(Some(StructureTabInput::TableChangedBeforeSave)), 2);
+    assert_eq!(reads_after_discard(Some(SaveInput::TableChangedBeforeSave.into())), 2);
 }
 
 /// The titles of the add buttons the tab shows under `container`.
@@ -1146,7 +1136,7 @@ fn columns_store(tab: &StructureTab) -> gio::ListStore {
 fn table_name_edit_is_not_dropped() {
     let harness = Harness::open(StructureMode::New, postgres_script(), []);
     let tab = harness.tab();
-    tab.send(StructureTabInput::AddColumn);
+    tab.send(ColumnsInput::AddColumn);
 
     tab.imp().name_entry.set_text("people");
 
@@ -1163,7 +1153,7 @@ fn expanded_row_stays_expanded_after_editing_another_column() {
     let first = column_row(tab, 0);
     first.set_expanded(true);
 
-    tab.send(StructureTabInput::AddColumn);
+    tab.send(ColumnsInput::AddColumn);
     entry(tab, 2, "col-name").set_text("points");
     entry(tab, 1, "col-type").set_text("bigint");
     drain_main_context();
@@ -1177,7 +1167,7 @@ fn expanded_row_stays_expanded_after_editing_another_column() {
 fn remove_by_identity_after_reorder_removes_right_column() {
     let harness = open_edit(postgres(), keyed_users());
     let tab = harness.tab();
-    tab.send(StructureTabInput::AddColumn);
+    tab.send(ColumnsInput::AddColumn);
     let store = columns_store(tab);
     let added = store.item(2).expect("the added column");
     store.remove(2);
@@ -1205,7 +1195,7 @@ fn add_column_changes_one_item() {
         sink.borrow_mut().push((position, removed, added));
     });
 
-    tab.send(StructureTabInput::AddColumn);
+    tab.send(ColumnsInput::AddColumn);
 
     assert_eq!(*changes.borrow(), [(2, 0, 1)]);
     let after = column_rows(tab);
@@ -1226,7 +1216,7 @@ fn discard_restores_without_phantom_ops() {
     tab.connect_dirty_changed(move |_, value| sink.borrow_mut().push(value));
     entry(tab, 1, "col-name").set_text("points");
     entry(tab, 0, "col-comment").set_text("key");
-    tab.send(StructureTabInput::AddColumn);
+    tab.send(ColumnsInput::AddColumn);
     assert_eq!(imp.pending_label.label(), "3 pending changes");
 
     imp.discard_button.emit_clicked();
@@ -1447,7 +1437,7 @@ fn ctrl_s_saves_while_save_is_on() {
     let press = || ctrl_s.activate(gtk::ShortcutActionFlags::empty(), &tab, None);
 
     assert!(!press(), "Ctrl+S was taken with nothing to save");
-    tab.send(StructureTabInput::ColumnEdited {
+    tab.send(ColumnsInput::ColumnEdited {
         column: column_object(&tab, 0),
         field: ColumnField::Default("42".to_owned()),
     });

@@ -7,8 +7,7 @@ use tablepro_core::WriteKind;
 
 use super::{WorkspaceInput, WorkspaceModel};
 use crate::runtime::DeliverInput;
-use crate::ui::browse_tab;
-use crate::ui::structure_tab::StructureTabInput;
+use crate::ui::{browse_tab, structure_tab};
 use crate::workspace::{
     CloseScope, DirtyTab, SaveOutcome, SaveSettled, SaveStart, WorkKind, WorkOutcome, WorkspaceEvent,
 };
@@ -45,7 +44,7 @@ impl WorkspaceModel {
         match event {
             WorkspaceEvent::SaveStarted { tab } => {
                 self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveStarted);
-                self.send_to_structure_tab(tab, StructureTabInput::SaveStarted);
+                self.send_to_structure_tab(tab, structure_tab::SaveInput::SaveStarted);
             }
             WorkspaceEvent::SaveSettled { settled, in_prompt } => self.on_save_settled(*settled, in_prompt),
             WorkspaceEvent::Discarded { tabs, reload } => {
@@ -56,8 +55,8 @@ impl WorkspaceModel {
                     };
                     self.dispatch_to_tab(tab, browse);
                     let structure = match reload {
-                        true => StructureTabInput::Reload,
-                        false => StructureTabInput::Discard,
+                        true => structure_tab::SaveInput::Reload,
+                        false => structure_tab::SaveInput::Discard,
                     };
                     self.send_to_structure_tab(tab, structure);
                 }
@@ -115,14 +114,14 @@ impl WorkspaceModel {
             }
             (WriteKind::SchemaChanges, SaveOutcome::RolledBack(cause)) => {
                 let input = match cause.found_changes() {
-                    true => StructureTabInput::TableChangedBeforeSave,
-                    false => StructureTabInput::SaveFailed(cause.message()),
+                    true => structure_tab::SaveInput::TableChangedBeforeSave,
+                    false => structure_tab::SaveInput::SaveFailed(cause.message()),
                 };
                 self.send_to_structure_tab(tab, input);
             }
             (WriteKind::SchemaChanges, SaveOutcome::Unknown(cause)) => {
                 let message = cause.sentence(&self.tab_name(tab));
-                self.send_to_structure_tab(tab, StructureTabInput::SaveOutcomeUnknown(message));
+                self.send_to_structure_tab(tab, structure_tab::SaveInput::SaveOutcomeUnknown(message));
             }
         }
         // The close prompt waited for the save in front of the user, and

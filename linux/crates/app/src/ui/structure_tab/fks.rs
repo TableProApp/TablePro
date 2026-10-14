@@ -9,7 +9,7 @@ use tablepro_core::ddl::Permission;
 use super::columns::gate;
 use super::foreign_key_object::ForeignKeyObject;
 use super::referential_action_label::action_text;
-use super::{StructureTabInput, StructureTabSender};
+use super::{ForeignKeysInput, StructureTabSender};
 
 /// The subtitle reads the whole relationship at a glance:
 /// `col_a, col_b → other_table (ref_a, ref_b)`. `drafted` is a key the
@@ -56,7 +56,7 @@ pub(super) fn build_fk_row(
     let sender_for_remove = sender.clone();
     remove_button.connect_clicked(move |_| {
         if let Some(key) = key_for_remove.upgrade() {
-            sender_for_remove.input(StructureTabInput::RemoveForeignKey(key));
+            sender_for_remove.input(ForeignKeysInput::RemoveForeignKey(key));
         }
     });
     row.add_suffix(&remove_button);
