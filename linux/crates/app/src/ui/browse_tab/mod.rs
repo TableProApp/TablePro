@@ -1531,7 +1531,7 @@ impl BrowseModel {
                 fx.output(BrowseTabOutput::StateChanged);
             }
             BrowseTabInput::DuplicateRows(rows) => {
-                if self.current_columns.is_empty() || self.grid_is_stale() || rows.is_empty() {
+                if self.read_only || self.current_columns.is_empty() || self.grid_is_stale() || rows.is_empty() {
                     return;
                 }
                 let ctx = self.grid_context();
@@ -1561,7 +1561,7 @@ impl BrowseModel {
                 fx.input(BrowseTabInput::FocusInsertedDraft);
             }
             BrowseTabInput::InsertRow => {
-                if self.current_columns.is_empty() {
+                if self.read_only || self.current_columns.is_empty() {
                     return;
                 }
                 let cells = self.current_columns.iter().map(new_draft_cell).collect();

@@ -1841,6 +1841,12 @@ fn a_read_only_tab_refuses_insert_row() {
         0,
         "Ctrl+N added a row to a read-only table"
     );
+
+    harness.tab().send(BrowseTabInput::InsertRow);
+    harness
+        .tab()
+        .send(BrowseTabInput::DuplicateRows(vec![harness.grid_row(0)]));
+    assert_eq!(harness.tracker.pending_count(), 0, "a read-only table took a new row");
 }
 
 #[gtk4::test]
