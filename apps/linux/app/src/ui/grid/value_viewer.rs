@@ -84,7 +84,7 @@ fn capped(text: String) -> String {
     format!("{}\n\n{note}", &text[..end])
 }
 
-pub(crate) fn present(parent: &impl IsA<gtk::Widget>, column: &str, value: &Value, copy_text: String) {
+fn build_text_view(text: &str) -> gtk::TextView {
     let view = gtk::TextView::builder()
         .editable(false)
         .cursor_visible(false)
@@ -95,7 +95,19 @@ pub(crate) fn present(parent: &impl IsA<gtk::Widget>, column: &str, value: &Valu
         .left_margin(12)
         .right_margin(12)
         .build();
-    view.buffer().set_text(&body(value));
+    let buffer = view.buffer();
+    buffer.set_text(text);
+    let no_hyphens = gtk::TextTag::builder()
+        .name("value-view-no-hyphens")
+        .insert_hyphens(false)
+        .build();
+    buffer.tag_table().add(&no_hyphens);
+    buffer.apply_tag(&no_hyphens, &buffer.start_iter(), &buffer.end_iter());
+    view
+}
+
+pub(crate) fn present(parent: &impl IsA<gtk::Widget>, column: &str, value: &Value, copy_text: String) {
+    let view = build_text_view(&body(value));
     let scroller = gtk::ScrolledWindow::builder().child(&view).vexpand(true).build();
 
     let copy = gtk::Button::with_label(&crate::tr!("Copy value"));
@@ -167,6 +179,16 @@ mod tests {
     fn the_viewer_dialog_builds_and_shows_the_full_value() {
         gtk::init().unwrap();
         adw::init().unwrap();
+        let view = build_text_view(&"a".repeat(64));
+        let buffer = view.buffer();
+        let tag = buffer.tag_table().lookup("value-view-no-hyphens").unwrap();
+        assert!(!tag.property::<bool>("insert-hyphens"));
+        assert_eq!(view.wrap_mode(), gtk::WrapMode::WordChar);
+        let start = buffer.start_iter();
+        assert!(start.has_tag(&tag));
+        let mut end = buffer.end_iter();
+        end.backward_char();
+        assert!(end.has_tag(&tag));
         let window = adw::Window::new();
         window.present();
         present(&window, "payload", &Value::Text(r#"{"a":1}"#.into()), "{}".into());
