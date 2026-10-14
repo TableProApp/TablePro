@@ -291,10 +291,7 @@ mod tests {
             self.questions.lock().unwrap().push(question);
             Box::pin(async move {
                 let _unanswered = answer.await;
-                Ok(RefreshedRequest {
-                    request,
-                    remember: Vec::new(),
-                })
+                Ok(RefreshedRequest::unchanged(request))
             })
         }
     }

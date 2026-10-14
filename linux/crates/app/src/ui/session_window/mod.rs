@@ -394,13 +394,14 @@ impl SessionWindow {
             pending,
             saved,
             warnings,
+            session_only,
         } = connected;
         let (Some(state), Some(guards)) = (self.state(), self.close_guards()) else {
             self.discard_pending(pending);
             return;
         };
         let key = claim.key().clone();
-        let credentials = state.context.credentials_for(saved.as_ref());
+        let credentials = state.context.session_credentials(saved.as_ref(), &session_only);
         let session = Session::start(pending, state.context.session_deps(credentials));
         claim.attach(&session);
         if let ConnectSource::Intent(intent) = &source
@@ -804,13 +805,15 @@ fn connect_work(
                 )
                 .await;
                 match connected {
-                    Ok((pending, refused)) => Ok(Connected {
-                        pending,
+                    Ok(login) => Ok(Connected {
+                        pending: login.pending,
                         saved: Some(saved),
-                        warnings: refused
+                        warnings: login
+                            .refused
                             .iter()
                             .map(|(_, error)| crate::services::secret_save_report::not_saved_message(error))
                             .collect(),
+                        session_only: login.session_only,
                     }),
                     Err(error) => Err(match attempt_error(&error) {
                         AttemptError::Failed(failure) => AttemptError::Failed(ConnectFailure {
@@ -833,6 +836,7 @@ fn connect_work(
                             pending,
                             saved: None,
                             warnings: Vec::new(),
+                            session_only: Vec::new(),
                         })
                         .map_err(|error| attempt_error(&error))
                 }
@@ -865,6 +869,7 @@ fn connect_work(
                             .iter()
                             .map(|(_, error)| crate::services::secret_save_report::not_saved_message(error))
                             .collect(),
+                        session_only: report.secret_failures.iter().map(|(kind, _)| *kind).collect(),
                         saved: Some(report.saved),
                     }),
                     Err(connect_flow::SubmitError::Connect(error)) => Err(attempt_error(&error)),
@@ -888,6 +893,7 @@ fn connect_work(
                         pending,
                         saved: None,
                         warnings: Vec::new(),
+                        session_only: Vec::new(),
                     })
                     .map_err(|error| attempt_error(&error))
             }

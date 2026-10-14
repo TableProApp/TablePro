@@ -26,7 +26,11 @@ pub(crate) const WAIT: Duration = Duration::from_secs(10);
 struct FakeSources(FakeCredentialSource);
 
 impl CredentialSourceFactory for FakeSources {
-    fn for_connection(&self, _saved: Option<&SavedConnection>) -> Arc<dyn CredentialSource> {
+    fn for_connection(
+        &self,
+        _saved: Option<&SavedConnection>,
+        _session_only: &[tablepro_core::credentials::SecretKind],
+    ) -> Arc<dyn CredentialSource> {
         Arc::new(self.0.clone())
     }
 }
@@ -406,6 +410,7 @@ fn a_connect_still_queued_when_its_window_shuts_down_is_closed() {
             pending,
             saved: None,
             warnings: Vec::new(),
+            session_only: Vec::new(),
         }),
     };
 

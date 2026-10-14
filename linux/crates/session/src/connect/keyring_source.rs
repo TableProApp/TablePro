@@ -19,20 +19,20 @@ impl CredentialSource for KeyringCredentials {
         let credentials = self.clone();
         Box::pin(async move {
             let mut request = request;
-            let mut remember = Vec::new();
+            let mut typed = Typed::default();
             let RequestTarget::Network {
                 credentials: login,
                 ssh,
                 ..
             } = &mut request.target
             else {
-                return Ok(RefreshedRequest { request, remember });
+                return Ok(RefreshedRequest::unchanged(request));
             };
             if let Credentials::Password { password, .. } = login {
                 let resolved = credentials
                     .resolve(SecretKind::DatabasePassword, Some(password), &interaction, demand)
                     .await?;
-                fill(password, resolved, &mut remember);
+                fill(password, SecretKind::DatabasePassword, resolved, &mut typed);
             }
             if let Some(ssh) = ssh {
                 match &mut ssh.auth {
@@ -40,21 +40,24 @@ impl CredentialSource for KeyringCredentials {
                         let resolved = credentials
                             .resolve(SecretKind::SshPassword, Some(password), &interaction, demand)
                             .await?;
-                        fill(password, resolved, &mut remember);
+                        fill(password, SecretKind::SshPassword, resolved, &mut typed);
                     }
                     SshAuth::PrivateKey { passphrase, .. } => {
                         let resolved = credentials
                             .resolve(SecretKind::SshPassphrase, passphrase.as_ref(), &interaction, demand)
                             .await?;
                         if let Some(resolved) = resolved {
-                            remember.extend(resolved.remember);
-                            *passphrase = Some(resolved.secret);
+                            *passphrase = Some(typed.note(SecretKind::SshPassphrase, resolved));
                         }
                     }
                     SshAuth::Agent | SshAuth::KeyboardInteractive => {}
                 }
             }
-            Ok(RefreshedRequest { request, remember })
+            Ok(RefreshedRequest {
+                request,
+                remember: typed.remember,
+                typed: typed.kinds,
+            })
         })
     }
 
@@ -73,9 +76,25 @@ impl CredentialSource for KeyringCredentials {
     }
 }
 
-fn fill(slot: &mut SecretString, resolved: Option<ResolvedSecret>, remember: &mut Vec<SecretSave>) {
+/// What the user typed while one request was refreshed.
+#[derive(Default)]
+struct Typed {
+    remember: Vec<SecretSave>,
+    kinds: Vec<SecretKind>,
+}
+
+impl Typed {
+    fn note(&mut self, kind: SecretKind, resolved: ResolvedSecret) -> SecretString {
+        self.remember.extend(resolved.remember);
+        if resolved.typed {
+            self.kinds.push(kind);
+        }
+        resolved.secret
+    }
+}
+
+fn fill(slot: &mut SecretString, kind: SecretKind, resolved: Option<ResolvedSecret>, typed: &mut Typed) {
     if let Some(resolved) = resolved {
-        remember.extend(resolved.remember);
-        *slot = resolved.secret;
+        *slot = typed.note(kind, resolved);
     }
 }

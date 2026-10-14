@@ -24,6 +24,7 @@ pub struct KeyringCredentials {
     targets: [String; 3],
     key_path: Option<PathBuf>,
     labeler: SecretLabeler,
+    session_only: Vec<SecretKind>,
 }
 
 impl KeyringCredentials {
@@ -35,7 +36,16 @@ impl KeyringCredentials {
             targets: SecretKind::ALL.map(|kind| saved.secret_target(kind)),
             key_path: saved.ssh_key_path().map(PathBuf::from),
             labeler: english_secret_label,
+            session_only: Vec::new(),
         }
+    }
+
+    /// For a session that logged in with secrets of `kinds` the user
+    /// typed and the keyring does not hold. Its reconnects use the one
+    /// in use: the keyring's copy may be the one the server refused.
+    pub fn keeping_session_secrets(mut self, kinds: &[SecretKind]) -> Self {
+        self.session_only = kinds.to_vec();
+        self
     }
 
     /// Label remembered secrets with the app's own, translated wording.
@@ -70,6 +80,11 @@ impl KeyringCredentials {
             && let CredentialInteraction::Attended(prompter) = interaction
         {
             return self.ask(prompter, kind, PromptReason::Rejected, true).await.map(Some);
+        }
+        if self.session_only.contains(&kind)
+            && let Some(secret) = in_use.filter(|secret| !secret.expose_secret().is_empty())
+        {
+            return Ok(Some(ResolvedSecret::known(secret.clone())));
         }
         if kind == SecretKind::SshPassphrase && !self.passphrase_stored {
             return Ok(None);
@@ -135,7 +150,11 @@ impl KeyringCredentials {
             secret: secret.clone(),
             label: (self.labeler)(kind, &target),
         });
-        Ok(ResolvedSecret { secret, remember })
+        Ok(ResolvedSecret {
+            secret,
+            remember,
+            typed: true,
+        })
     }
 
     fn target(&self, kind: SecretKind) -> &str {
@@ -152,6 +171,7 @@ impl std::fmt::Debug for KeyringCredentials {
         f.debug_struct("KeyringCredentials")
             .field("connection_id", &self.connection_id)
             .field("passphrase_stored", &self.passphrase_stored)
+            .field("session_only", &self.session_only)
             .finish_non_exhaustive()
     }
 }
@@ -343,6 +363,7 @@ mod tests {
 
         assert_eq!(resolved.secret.expose_secret(), "s3cret");
         assert!(resolved.remember.is_none());
+        assert!(!resolved.typed);
     }
 
     #[tokio::test]
@@ -407,6 +428,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(resolved.secret.expose_secret(), "typed");
+        assert!(resolved.typed);
         let requests = prompter.requests();
         assert_eq!(requests.len(), 1);
         assert_eq!(
@@ -545,6 +567,50 @@ mod tests {
                 reason: PromptReason::Rejected
             }
         );
+    }
+
+    #[tokio::test]
+    async fn a_secret_typed_for_the_session_wins_over_the_stored_copy() {
+        let (credentials, vault) = credentials(Vault::holding(SecretKind::DatabasePassword, "refused"), None);
+        let credentials = credentials.keeping_session_secrets(&[SecretKind::DatabasePassword]);
+        let in_use = SecretString::from("typed");
+
+        let resolved = credentials
+            .resolve(
+                SecretKind::DatabasePassword,
+                Some(&in_use),
+                &CredentialInteraction::Unattended,
+                CredentialDemand::default(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(resolved.secret.expose_secret(), "typed");
+        assert!(vault.loads().is_empty(), "the stored copy was read");
+    }
+
+    #[tokio::test]
+    async fn other_kinds_still_come_from_the_keyring() {
+        let (credentials, _) = credentials(
+            Vault::holding(SecretKind::SshPassword, "stored"),
+            Some(SavedSshAuth::Password),
+        );
+        let credentials = credentials.keeping_session_secrets(&[SecretKind::DatabasePassword]);
+        let in_use = SecretString::from("typed");
+
+        let resolved = credentials
+            .resolve(
+                SecretKind::SshPassword,
+                Some(&in_use),
+                &CredentialInteraction::Unattended,
+                CredentialDemand::default(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(resolved.secret.expose_secret(), "stored");
     }
 
     #[tokio::test]

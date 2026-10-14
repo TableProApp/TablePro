@@ -367,6 +367,51 @@ mod window_tests {
     }
 
     #[gtk4::test]
+    fn a_reconnect_uses_the_password_typed_without_remember() {
+        let test = TestWindow::with_script(
+            "ReenterReconnect",
+            Script {
+                establish: vec![refused()],
+                network: true,
+                ..Script::default()
+            },
+        );
+        let (vault, id) = (test.vault.clone(), test.saved.id);
+        finish_on_main(WAIT, async move {
+            vault
+                .store(id, SecretKind::DatabasePassword, &SecretString::from("old"), "label")
+                .await
+        })
+        .expect("the store to end")
+        .expect("the old password stored");
+        test.window
+            .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+        test.wait_for_page("connect-failed");
+        failed_page(&test.window)
+            .reenter_button()
+            .expect("an Enter Password button")
+            .emit_clicked();
+        answer_prompt(&test.window, "new", false);
+        test.wait_for_page("workspace");
+
+        WidgetExt::activate_action(&test.window, "win.reconnect", None).expect("win.reconnect");
+        wait_until(WAIT, || test.connector.calls().len() == 3).expect("the reconnect");
+
+        let calls = test.connector.calls();
+        assert_eq!(
+            password_of(&calls[2]).as_deref(),
+            Some("new"),
+            "the reconnect logged in with the refused password"
+        );
+        assert!(open_prompt(&test.window).is_none(), "the reconnect asked again");
+        assert_eq!(
+            test.vault.stored_secret(id, SecretKind::DatabasePassword).as_deref(),
+            Some("old"),
+            "a password typed without Remember was kept"
+        );
+    }
+
+    #[gtk4::test]
     fn a_failure_no_password_fixes_offers_no_enter_password() {
         let lost = tablepro_session::fakes::FakeEstablish::Fail(ConnectError::Driver(DriverError::ConnectionLost {
             during: tablepro_core::LossPhase::Connect,

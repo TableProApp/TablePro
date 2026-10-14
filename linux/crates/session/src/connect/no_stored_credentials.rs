@@ -16,11 +16,6 @@ impl CredentialSource for NoStoredCredentials {
         _interaction: CredentialInteraction,
         _demand: CredentialDemand,
     ) -> BoxFuture<'static, Result<RefreshedRequest, ConnectError>> {
-        Box::pin(async move {
-            Ok(RefreshedRequest {
-                request,
-                remember: Vec::new(),
-            })
-        })
+        Box::pin(async move { Ok(RefreshedRequest::unchanged(request)) })
     }
 }

@@ -62,10 +62,7 @@ impl CredentialSource for FakeCredentialSource {
         Box::pin(async move {
             match failure {
                 Some(error) => Err(error),
-                None => Ok(RefreshedRequest {
-                    request,
-                    remember: Vec::new(),
-                }),
+                None => Ok(RefreshedRequest::unchanged(request)),
             }
         })
     }

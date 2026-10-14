@@ -25,6 +25,9 @@ pub(crate) struct Connected {
     pub saved: Option<SavedConnection>,
     /// Secrets the keyring refused to keep, one sentence each.
     pub warnings: Vec<String>,
+    /// Secrets typed for this login that the keyring does not hold. The
+    /// session reconnects with them rather than with the keyring's copy.
+    pub session_only: Vec<SecretKind>,
 }
 
 #[derive(Debug)]

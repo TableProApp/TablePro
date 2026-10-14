@@ -89,6 +89,10 @@ it cannot depends on whether someone is there to answer:
 - A login the server refused offers Enter Password on the failed page. That
   retry passes `CredentialDemand::reenter`, which asks again without reading
   the keyring's copy, the one just refused.
+- A secret typed for a session that the keyring does not hold, because
+  Remember was off or the keyring refused it, is the one that session's
+  reconnects use (`KeyringCredentials::keeping_session_secrets`). Otherwise a
+  reconnect would log in with the stored copy the server refused.
 - Background reconnects run unattended and never ask. A missing secret parks
   the session until the user presses Retry, which runs attended.
 - A typed secret lives in a `SecretString`, and the prompt clears its rows
