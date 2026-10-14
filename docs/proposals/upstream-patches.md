@@ -14,7 +14,7 @@ upstream release includes the last patch for a crate, remove that vendored copy
 and its `[patch.crates-io]` entry.
 
 | Patch | Crate | Upstream status | Why it matters to BookiE |
-|---|---|---|---|---|
+|---|---|---|---|
 | SCRAM iteration cap and nonce checks | `sqlx-postgres`, `mongodb` | sqlx [#4451](https://github.com/transact-rs/sqlx/issues/4451), MongoDB [#1819](https://github.com/mongodb/mongo-rust-driver/issues/1819), both open; see [RUSTSEC-2026-0179](https://rustsec.org/advisories/RUSTSEC-2026-0179.html) | Limits hostile-server CPU use and rejects invalid server nonces |
 | TLS hostname separate from dial address | `mongodb`, `redis` | Not filed | Certificate checks use the database hostname through a tunnel or proxy |
 | Quoted `NULL` in text arrays | `sqlx-postgres` | [#4452](https://github.com/transact-rs/sqlx/issues/4452), open | Preserves the string `NULL` instead of decoding it as SQL NULL (ADR 0007) |
