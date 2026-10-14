@@ -27,5 +27,6 @@
     <file compressed="true" preprocess="xml-stripblanks">ui/workspace.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/table-relation-symbolic.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/statement-pending-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/document-modified-symbolic.svg</file>
   </gresource>
 </gresources>

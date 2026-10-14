@@ -13,14 +13,13 @@ use tablepro_storage::{DraftId, DraftScope};
 use uuid::Uuid;
 
 use crate::ui::browse_tab::BrowseTabInput;
-use crate::ui::editor::derive_tab_label;
 use crate::ui::structure_tab::StructureMode;
 use crate::workspace::{
     RestoredDrafts, TabRecord, WorkspaceFileName, WorkspaceLoad, WorkspaceRecord, WorkspaceSaveError,
 };
 
 use super::structure_target::StructureTarget;
-use super::tab_factory::{EditorPreview, editor_tab_tooltip};
+use super::tab_factory::EditorPreview;
 use super::tab_index::TabIndex;
 use super::tab_spec::{TabSpec, TablePage};
 use super::workspace_persistence::reopen;
@@ -217,7 +216,7 @@ impl WorkspaceModel {
         drop(removed);
         self.persist_workspace_state();
         self.refresh_window_title();
-        self.refresh_inhibitor();
+        self.refresh_unsaved();
     }
 
     /// With no tab open, Ctrl+W closes the window, as in GNOME Text
@@ -435,35 +434,6 @@ impl WorkspaceModel {
         Some((schema.map(str::to_owned), table.to_string()))
     }
 
-    pub(super) fn sidebar_schemas_distinct(&self) -> usize {
-        self.factory.distinct_schemas()
-    }
-
-    /// The label is built again rather than stored, so the schema
-    /// prefix follows the other tabs. Only a background tab asks for
-    /// attention; the selected one has its "•" in view.
-    pub(super) fn refresh_browse_tab_dirty(&self, tab_id: uuid::Uuid, dirty: bool) {
-        let schemas_count = self.sidebar_schemas_distinct();
-        let tabs = self.workspace_tabs.borrow();
-        let Some(slot) = tabs.get(&tab_id) else {
-            return;
-        };
-        // Combined dirty state: data-side OR structure-side. The
-        // Structure-side input also calls this helper via the
-        // dirty-changed bus, so the Boolean ORs naturally compose.
-        let WorkspaceTab::Table(s) = slot else {
-            return;
-        };
-        let (page, schema, table) = (&s.page, s.schema.as_deref(), s.table.as_str());
-        let combined_dirty = dirty || self.dirty_tabs().contains(&s.id);
-        let base = super::tab_factory::qualified_browse_tab_label(schemas_count, schema, table);
-        let title = if combined_dirty { format!("• {base}") } else { base };
-        page.set_title(&title);
-        let is_selected = self.tab_view.selected_page().as_ref() == Some(page);
-        page.set_needs_attention(combined_dirty && !is_selected);
-        self.refresh_window_title();
-    }
-
     /// Stop every tab and let go of the tab view. The pending edits
     /// name rows of the connection going away, so they cannot be saved
     /// after it.
@@ -504,23 +474,16 @@ impl WorkspaceModel {
     /// a moment later. Only the first `PREVIEW_CHARS` are read here, so a
     /// long script costs nothing to type in.
     pub(super) fn on_editor_tab_content_changed(&self, id: Uuid) {
-        let tabs = self.workspace_tabs.borrow();
-        let Some(WorkspaceTab::Editor(slot)) = tabs.get(&id) else {
-            return;
-        };
-        let buffer = slot.editor.buffer();
-        let preview = EditorPreview::read(&buffer);
-        let label = if preview.is_blank() {
-            crate::i18n::gettext("Empty query")
-        } else {
-            derive_tab_label(&preview.text)
-        };
-        slot.page.set_title(&label);
-        // libadwaita treats an empty tooltip as none, which clears the
-        // last one.
-        slot.page
-            .set_tooltip(&editor_tab_tooltip(&preview, &label).unwrap_or_default());
-        self.drafts.schedule(&self.draft_scope(), slot.draft, &buffer);
+        {
+            let mut tabs = self.workspace_tabs.borrow_mut();
+            let Some(WorkspaceTab::Editor(slot)) = tabs.get_mut(&id) else {
+                return;
+            };
+            let buffer = slot.editor.buffer();
+            slot.label = EditorPreview::read(&buffer).label(slot.ordinal);
+            self.drafts.schedule(&self.draft_scope(), slot.draft, &buffer);
+        }
+        self.retitle_tab(id);
     }
 
     pub(super) fn on_editor_tab_run_state_changed(&self, id: Uuid, running: bool) {

@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::Cell;
 use std::rc::Rc;
 
 use gtk4 as gtk;
@@ -9,18 +9,23 @@ use tablepro_core::meta::TableRef;
 use tablepro_storage::{DraftId, DraftScope};
 use uuid::Uuid;
 
+use super::editor_label::EditorLabel;
 use super::structure_target::StructureTarget;
 use super::tab_index::TabIndex;
 use super::tab_spec::{TabSpec, TablePage};
+use super::tab_title::resolve_tab_title;
+use super::table_naming::TableNaming;
 use super::workspace_persistence::WorkspaceTabs;
-use super::{EditorTabSlot, StructureTabSlot, TableTabSlot, WorkspaceInput, WorkspaceSender, WorkspaceTab};
+use super::{
+    EditorTabSlot, StructureTabSlot, TableTabSlot, WorkspaceInput, WorkspaceSender, WorkspaceTab, apply_tab_title,
+};
 use crate::runtime::DeliverInput;
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
 use crate::services::history_service::HistoryService;
 use crate::services::session_context::SessionContext;
 use crate::services::structure_tracker_registry::StructureTrackerRegistry;
 use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, ExportRequest};
-use crate::ui::editor::{SqlEditor, SqlEditorInit, derive_tab_label};
+use crate::ui::editor::{SqlEditor, SqlEditorInit};
 use crate::ui::structure_tab::{StructureMode, StructureTab, StructureTabInit};
 use crate::workspace::DraftWriter;
 
@@ -41,9 +46,8 @@ pub(super) struct TabFactoryParts {
     pub change_trackers: Rc<ChangeTrackerRegistry>,
     pub structure_trackers: Rc<StructureTrackerRegistry>,
     pub read_only: bool,
-    /// The schema of each table the sidebar lists, which decides whether
-    /// a tab's title names the schema.
-    pub sidebar_schemas: Rc<RefCell<Vec<Option<String>>>>,
+    /// Whether a tab's title names the table's schema.
+    pub naming: Rc<Cell<TableNaming>>,
 }
 
 /// The one place a tab is built: its widget, its page, its slot and its
@@ -62,20 +66,24 @@ impl TabFactory {
     /// spec needs a session and the workspace has none any more.
     pub(super) fn create(&self, spec: TabSpec) -> Option<adw::TabPage> {
         let id = Uuid::new_v4();
-        let (slot, page) = match spec {
+        let slot = match spec {
             TabSpec::Editor { initial_query, draft } => self.editor(id, initial_query, draft),
             TabSpec::Table { table, page } => self.table(id, table, page)?,
             TabSpec::Structure { target } => self.structure(id, target)?,
         };
-        self.parts.tabs.borrow_mut().insert(id, slot);
-        self.parts.input.deliver(WorkspaceInput::WorkspaceTabsChanged);
-        Some(page)
+        Some(self.insert(id, slot))
     }
 
     /// The overview's new-tab button needs its page back at once.
     pub(super) fn create_editor(&self) -> adw::TabPage {
         let id = Uuid::new_v4();
-        let (slot, page) = self.editor(id, None, None);
+        let slot = self.editor(id, None, None);
+        self.insert(id, slot)
+    }
+
+    fn insert(&self, id: Uuid, slot: WorkspaceTab) -> adw::TabPage {
+        let page = slot.page().clone();
+        apply_tab_title(&page, &resolve_tab_title(&slot.identity(), self.parts.naming.get()));
         self.parts.tabs.borrow_mut().insert(id, slot);
         self.parts.input.deliver(WorkspaceInput::WorkspaceTabsChanged);
         page
@@ -87,7 +95,7 @@ impl TabFactory {
         page
     }
 
-    fn editor(&self, id: Uuid, initial_query: Option<String>, draft: Option<DraftId>) -> (WorkspaceTab, adw::TabPage) {
+    fn editor(&self, id: Uuid, initial_query: Option<String>, draft: Option<DraftId>) -> WorkspaceTab {
         let parts = &self.parts;
         // Such a tab shows the editor's sample query, which names nothing.
         let opened_empty = initial_query.is_none();
@@ -101,18 +109,12 @@ impl TabFactory {
             close_timeout: parts.context.close_timeout(),
         });
         connect_editor(&editor, id, &parts.input, &parts.toasts);
-        let label_number = self.editor_count() + 1;
+        let ordinal = self.editor_count() + 1;
         let page = self.append(&editor, id);
-        let preview = EditorPreview::read(&editor.buffer());
-        let label = if opened_empty || preview.is_blank() {
-            default_editor_tab_label(label_number)
-        } else {
-            derive_tab_label(&preview.text)
+        let label = match opened_empty {
+            true => EditorLabel::Untitled(ordinal),
+            false => EditorPreview::read(&editor.buffer()).label(ordinal),
         };
-        page.set_title(&label);
-        if !opened_empty && let Some(tip) = editor_tab_tooltip(&preview, &label) {
-            page.set_tooltip(&tip);
-        }
         let draft = draft.unwrap_or_else(|| {
             // Text a new tab opens with is written even if the user
             // never types in it.
@@ -120,15 +122,16 @@ impl TabFactory {
             parts.drafts.schedule(&parts.draft_scope, draft, &editor.buffer());
             draft
         });
-        let slot = WorkspaceTab::Editor(EditorTabSlot {
+        WorkspaceTab::Editor(EditorTabSlot {
             editor,
-            page: page.clone(),
+            page,
             draft,
-        });
-        (slot, page)
+            ordinal,
+            label,
+        })
     }
 
-    fn table(&self, id: Uuid, table: TableRef, page: TablePage) -> Option<(WorkspaceTab, adw::TabPage)> {
+    fn table(&self, id: Uuid, table: TableRef, page: TablePage) -> Option<WorkspaceTab> {
         let parts = &self.parts;
         let session = parts.context.active.get()?;
         let TableRef { schema, name } = table;
@@ -151,22 +154,16 @@ impl TabFactory {
         let tab_page = self.append(&browse, id);
         let follow = follow_loading(&tab_page, browse.is_loading());
         browse.connect_loading_changed(move |_, loading| follow(loading));
-        let label = qualified_browse_tab_label(self.distinct_schemas(), schema.as_deref(), &name);
-        tab_page.set_title(&label);
-        if let Some(tip) = browse_tab_tooltip(schema.as_deref(), &name, &label) {
-            tab_page.set_tooltip(&tip);
-        }
-        let slot = WorkspaceTab::Table(TableTabSlot {
+        Some(WorkspaceTab::Table(TableTabSlot {
             id,
-            page: tab_page.clone(),
+            page: tab_page,
             schema,
             table: name,
             browse,
-        });
-        Some((slot, tab_page))
+        }))
     }
 
-    fn structure(&self, id: Uuid, target: StructureTarget) -> Option<(WorkspaceTab, adw::TabPage)> {
+    fn structure(&self, id: Uuid, target: StructureTarget) -> Option<WorkspaceTab> {
         let parts = &self.parts;
         let session = parts.context.active.get()?;
         let (schema, table, mode) = match target {
@@ -185,26 +182,14 @@ impl TabFactory {
         let page = self.append(&structure, id);
         let follow = follow_loading(&page, structure.is_loading());
         structure.connect_loading_changed(move |_, loading| follow(loading));
-        let title = match mode {
-            StructureMode::New => crate::i18n::gettext("New Table"),
-            // Told apart from the table's own tab, with the middle dot
-            // GNOME apps use in compound titles.
-            StructureMode::Edit => format!(
-                "{} · {}",
-                qualified_browse_tab_label(self.distinct_schemas(), schema.as_deref(), &table),
-                crate::i18n::gettext("Structure")
-            ),
-        };
-        page.set_title(&title);
-        let slot = WorkspaceTab::Structure(StructureTabSlot {
+        Some(WorkspaceTab::Structure(StructureTabSlot {
             id,
             structure,
-            page: page.clone(),
+            page,
             schema,
             table,
             mode,
-        });
-        Some((slot, page))
+        }))
     }
 
     fn editor_count(&self) -> usize {
@@ -215,36 +200,6 @@ impl TabFactory {
             .filter(|tab| matches!(tab, WorkspaceTab::Editor(_)))
             .count()
     }
-
-    pub(super) fn distinct_schemas(&self) -> usize {
-        let schemas = self.parts.sidebar_schemas.borrow();
-        let distinct: std::collections::BTreeSet<&str> = schemas.iter().filter_map(|s| s.as_deref()).collect();
-        distinct.len()
-    }
-}
-
-pub(super) fn qualified_browse_tab_label(schemas_count: usize, schema: Option<&str>, table: &str) -> String {
-    if schemas_count >= 2
-        && let Some(s) = schema
-    {
-        format!("{s}.{table}")
-    } else {
-        table.to_string()
-    }
-}
-
-fn default_editor_tab_label(n: usize) -> String {
-    crate::i18n::gettext_f("Query {n}", &[("n", &n.to_string())])
-}
-
-/// Returns a tooltip for a Browse tab, but only when it would add info
-/// beyond the visible label. When the label is already
-/// `schema.table`, or there is no schema, the tooltip would just
-/// duplicate the tab title and we skip it.
-fn browse_tab_tooltip(schema: Option<&str>, table: &str, label: &str) -> Option<String> {
-    let s = schema?;
-    let qualified = format!("{s}.{table}");
-    if qualified == label { None } else { Some(qualified) }
 }
 
 pub(super) const PREVIEW_CHARS: i32 = 200;
@@ -264,30 +219,16 @@ impl EditorPreview {
         }
     }
 
-    pub(super) fn is_blank(&self) -> bool {
-        !self.truncated && self.text.trim().is_empty()
+    /// What tab number `ordinal` with this script is named after.
+    pub(super) fn label(&self, ordinal: usize) -> EditorLabel {
+        EditorLabel::of(ordinal, &self.text, self.truncated)
     }
-}
-
-/// The start of the script, and none when the label already shows it.
-pub(super) fn editor_tab_tooltip(preview: &EditorPreview, label: &str) -> Option<String> {
-    let text = preview.text.trim();
-    if text.is_empty() {
-        return None;
-    }
-    let tooltip = match preview.truncated {
-        true => format!("{}…", preview.text.trim_start()),
-        false => text.to_owned(),
-    };
-    (tooltip != label).then_some(tooltip)
 }
 
 /// The structure tab's signals, as the workspace's inputs for the tab.
 fn connect_structure(structure: &StructureTab, tab_id: Uuid, input: &WorkspaceSender) {
     let dirty = input.clone();
-    structure.connect_dirty_changed(move |_, is_dirty| {
-        dirty.deliver(WorkspaceInput::StructureTabDirtyChanged(tab_id, is_dirty))
-    });
+    structure.connect_dirty_changed(move |_, _| dirty.deliver(WorkspaceInput::TabDirtyChanged));
     let save = input.clone();
     structure.connect_save_requested(move |_| save.deliver(WorkspaceInput::SaveTab(tab_id)));
     let stop = input.clone();
@@ -329,9 +270,7 @@ fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &WorkspaceSender) {
     let toast = input.clone();
     browse.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
     let dirty = input.clone();
-    browse.connect_dirty_changed(move |_, is_dirty| {
-        dirty.deliver(WorkspaceInput::BrowseTabDirtyChanged(tab_id, is_dirty))
-    });
+    browse.connect_dirty_changed(move |_, _| dirty.deliver(WorkspaceInput::TabDirtyChanged));
     let save = input.clone();
     browse.connect_save_requested(move |_| save.deliver(WorkspaceInput::SaveTab(tab_id)));
     let stop = input.clone();
@@ -401,20 +340,15 @@ mod tests {
         let limit = usize::try_from(PREVIEW_CHARS).expect("a positive limit");
         assert_eq!(preview.text.chars().count(), limit);
         assert!(preview.truncated);
-        let tooltip = editor_tab_tooltip(&preview, "SELECT 1;").expect("a tooltip");
-        assert!(tooltip.starts_with("SELECT 1;"), "{tooltip}");
-        assert!(tooltip.ends_with('…'), "{tooltip}");
+        assert!(matches!(preview.label(1), EditorLabel::Query { truncated: true, .. }));
     }
 
     #[gtk4::test]
-    fn a_script_its_label_shows_whole_has_no_tooltip() {
+    fn a_blank_script_is_named_by_its_number() {
         let buffer = gtk::TextBuffer::new(None);
-        buffer.set_text("SELECT 1;");
+        buffer.set_text("  \n");
 
-        let preview = EditorPreview::read(&buffer);
-
-        assert!(!preview.truncated);
-        assert_eq!(editor_tab_tooltip(&preview, &derive_tab_label(&preview.text)), None);
+        assert_eq!(EditorPreview::read(&buffer).label(4), EditorLabel::Untitled(4));
     }
 
     #[gtk4::test]

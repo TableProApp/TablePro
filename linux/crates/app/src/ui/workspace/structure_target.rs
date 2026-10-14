@@ -10,3 +10,17 @@ pub(crate) enum StructureTarget {
         schema: Option<String>,
     },
 }
+
+impl StructureTarget {
+    /// A tab with no table name yet is a draft, so its title is never
+    /// empty.
+    pub(crate) fn of(schema: Option<&str>, table: &str) -> Self {
+        if table.trim().is_empty() {
+            Self::NewDraft {
+                schema: schema.map(str::to_owned),
+            }
+        } else {
+            Self::Existing(TableRef::new(schema.map(str::to_owned), table))
+        }
+    }
+}

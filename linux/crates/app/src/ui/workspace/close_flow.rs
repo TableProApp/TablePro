@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use gtk4::glib;
@@ -5,6 +6,7 @@ use gtk4::prelude::*;
 use tablepro_core::EditorSession;
 use uuid::Uuid;
 
+use super::unsaved_icon::apply_unsaved_icon;
 use super::workspace_persistence::WorkspaceTabs;
 use super::{WorkspaceInput, WorkspaceModel, WorkspaceTab};
 use crate::runtime::DeliverInput;
@@ -92,10 +94,14 @@ impl WorkspaceModel {
         }
     }
 
-    /// Tell the window whether a logout would lose something here, so it
-    /// holds the session back while one would.
-    pub(super) fn refresh_inhibitor(&self) {
-        let dirty = !self.workspace_handle.dirty_tabs().is_empty();
+    /// Mark each tab that closing would lose something in, and tell the
+    /// window whether a logout would, so it holds the session back.
+    pub(super) fn refresh_unsaved(&self) {
+        let unsaved: HashSet<Uuid> = self.workspace_handle.dirty_tabs().iter().map(|tab| tab.id).collect();
+        for (id, tab) in self.workspace_tabs.borrow().iter() {
+            apply_unsaved_icon(tab.page(), unsaved.contains(id));
+        }
+        let dirty = !unsaved.is_empty();
         if self.reported_dirty.replace(Some(dirty)) == Some(dirty) {
             return;
         }
@@ -159,7 +165,7 @@ mod tests {
         wait_until(WAIT, || !editor.is_running()).expect("the run to end");
         let view = adw::TabView::new();
         let page = view.append(&editor);
-        page.set_title("• Query 1");
+        page.set_title("Query 1");
         let id = Uuid::new_v4();
         let index = Rc::new(TabIndex::default());
         index.insert(&page, id);
@@ -169,6 +175,8 @@ mod tests {
                 editor: editor.clone(),
                 page,
                 draft: DraftId::new(),
+                ordinal: 1,
+                label: crate::ui::workspace::editor_label::EditorLabel::Untitled(1),
             }),
         )])));
         let directory = WindowTabs::new(tabs.clone(), index, &view);

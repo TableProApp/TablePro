@@ -78,6 +78,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - About TablePro links to the website, documentation and issue tracker, and shows a release's notes.
 - The sidebar and the tabs each have a header bar, and a narrow window folds the sidebar away and swaps the tab bar for a tab button.
 - New Connection and the main menu sit in the connection list's header bar.
+- A tab with unsaved changes or an open transaction shows a dot icon instead of a • in its title.
+- The window title names the tab in front and its connection, and the header says when the connection is read-only.
+- Tab titles name the schema once the database has two schemas of its own.
 
 ### Removed
 

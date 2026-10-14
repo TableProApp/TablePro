@@ -210,6 +210,9 @@ impl WorkspaceModel {
                 });
             }
             SaveKind::UpdateInPlace(schema, table) => {
+                if new_table_name.is_some() {
+                    self.retitle_tab(tab_id);
+                }
                 self.send_to_structure_tab(tab_id, StructureTabInput::SaveCompleted { new_table_name });
                 self.input.deliver(WorkspaceInput::SchemaChanged {
                     schema,
@@ -307,35 +310,7 @@ impl WorkspaceModel {
     /// keeps it as it was.
     pub(super) fn on_catalog_changed(&mut self, snapshot: &tablepro_session::ObjectListSnapshot) {
         self.show_objects(&snapshot.objects);
-    }
-
-    pub(super) fn refresh_structure_tab_dirty(&self, tab_id: Uuid, dirty: bool) {
-        let schemas_count = self.sidebar_schemas_distinct();
-        let tabs = self.workspace_tabs.borrow();
-        let Some(slot) = tabs.get(&tab_id) else {
-            return;
-        };
-        let (page, schema, table_name, combined_dirty) = match slot {
-            WorkspaceTab::Structure(s) => (&s.page, s.schema.as_deref(), s.table.clone(), dirty),
-            WorkspaceTab::Table(s) => {
-                let data = self
-                    .change_trackers
-                    .get(s.id)
-                    .is_some_and(|tracker| tracker.pending_count() > 0);
-                (&s.page, s.schema.as_deref(), s.table.clone(), dirty || data)
-            }
-            _ => return,
-        };
-        let base = if table_name.is_empty() {
-            crate::i18n::gettext("New Table")
-        } else {
-            super::tab_factory::qualified_browse_tab_label(schemas_count, schema, &table_name)
-        };
-        let title = if combined_dirty { format!("• {base}") } else { base };
-        page.set_title(&title);
-        let is_selected = self.tab_view.selected_page().as_ref() == Some(page);
-        page.set_needs_attention(combined_dirty && !is_selected);
-        self.refresh_window_title();
+        self.read_table_naming();
     }
 }
 

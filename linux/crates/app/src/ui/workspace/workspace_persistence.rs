@@ -12,7 +12,9 @@ use uuid::Uuid;
 use super::WorkspaceTab;
 use super::tab_index::TabIndex;
 use crate::ui::structure_tab::StructureMode;
-use crate::workspace::{PersistDebouncer, SortRecord, TabRecord, WorkspaceRecord, WorkspaceSaveError, WorkspaceStore};
+use crate::workspace::{
+    PersistDebouncer, SortRecord, TabRecord, TabSnapshot, WorkspaceRecord, WorkspaceSaveError, WorkspaceStore,
+};
 
 /// How long after the last tab change the tab list is written.
 const PERSIST_DELAY: Duration = Duration::from_millis(500);
@@ -112,30 +114,26 @@ impl WorkspacePersistence {
     }
 }
 
+/// The record of the tabs `view` shows, in its order.
 pub(super) fn workspace_record(
     view: &adw::TabView,
     tabs: &HashMap<Uuid, WorkspaceTab>,
     index: &TabIndex,
 ) -> WorkspaceRecord {
-    let selected = view.selected_page();
     let pages = view.pages();
-    let mut record = WorkspaceRecord::default();
-    for position in 0..pages.n_items() {
-        let Some(page) = pages.item(position).and_downcast::<adw::TabPage>() else {
-            continue;
-        };
-        let Some(tab) = index.id_of(&page).and_then(|id| tabs.get(&id)) else {
-            continue;
-        };
-        let Some(saved) = tab_record(tab) else {
-            continue;
-        };
-        if selected.as_ref() == Some(&page) {
-            record.active_tab = u32::try_from(record.tabs.len()).ok();
-        }
-        record.tabs.push(saved);
-    }
-    record
+    let snapshots: Vec<TabSnapshot> = (0..pages.n_items())
+        .filter_map(|position| pages.item(position).and_downcast::<adw::TabPage>())
+        .filter_map(|page| {
+            let id = index.id_of(&page)?;
+            let tab = tabs.get(&id)?;
+            Some(TabSnapshot {
+                id,
+                record: tab_record(tab),
+            })
+        })
+        .collect();
+    let selected = view.selected_page().and_then(|page| index.id_of(&page));
+    crate::workspace::workspace_record(&snapshots, selected)
 }
 
 fn tab_record(tab: &WorkspaceTab) -> Option<TabRecord> {
@@ -248,6 +246,8 @@ mod tests {
                     editor,
                     page: page.clone(),
                     draft,
+                    ordinal: 1,
+                    label: crate::ui::workspace::editor_label::EditorLabel::Untitled(1),
                 }),
             );
             (page, draft)

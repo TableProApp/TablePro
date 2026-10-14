@@ -325,6 +325,7 @@ crates/app/src/ui/tab_load/stale_banner.rs
 crates/app/src/ui/welcome_view.rs
 crates/app/src/ui/window_geometry.rs
 crates/app/src/ui/workspace/close_flow.rs
+crates/app/src/ui/workspace/editor_label.rs
 crates/app/src/ui/workspace/health_banner.rs
 crates/app/src/ui/workspace/imp.rs
 crates/app/src/ui/workspace/import.rs
@@ -338,9 +339,15 @@ crates/app/src/ui/workspace/status_pages.rs
 crates/app/src/ui/workspace/structure.rs
 crates/app/src/ui/workspace/structure_target.rs
 crates/app/src/ui/workspace/tab_factory.rs
+crates/app/src/ui/workspace/tab_identity.rs
 crates/app/src/ui/workspace/tab_index.rs
 crates/app/src/ui/workspace/tab_spec.rs
+crates/app/src/ui/workspace/tab_title.rs
+crates/app/src/ui/workspace/tab_title_tests.rs
+crates/app/src/ui/workspace/table_naming.rs
+crates/app/src/ui/workspace/unsaved_icon.rs
 crates/app/src/ui/workspace/window_tabs.rs
+crates/app/src/ui/workspace/window_title.rs
 crates/app/src/ui/workspace/workspace_actions.rs
 crates/app/src/ui/workspace/workspace_persistence.rs
 crates/app/src/ui/workspace/workspace_tab_view.rs
@@ -386,6 +393,7 @@ crates/app/src/workspace/structure_review_tests.rs
 crates/app/src/workspace/tab_directory.rs
 crates/app/src/workspace/tab_entry.rs
 crates/app/src/workspace/tab_record.rs
+crates/app/src/workspace/tab_snapshot.rs
 crates/app/src/workspace/test_workspace.rs
 crates/app/src/workspace/unknown_cause.rs
 crates/app/src/workspace/unknown_outcome_dialog.rs
@@ -397,6 +405,7 @@ crates/app/src/workspace/workspace_handle.rs
 crates/app/src/workspace/workspace_load.rs
 crates/app/src/workspace/workspace_load_error.rs
 crates/app/src/workspace/workspace_record.rs
+crates/app/src/workspace/workspace_record_builder.rs
 crates/app/src/workspace/workspace_save_error.rs
 crates/app/src/workspace/workspace_store.rs
 crates/app/src/workspace/write_job.rs

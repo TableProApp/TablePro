@@ -3,6 +3,8 @@
 
 pub const DIALOG_ERROR: &str = "dialog-error-symbolic";
 pub const DIALOG_WARNING: &str = "dialog-warning-symbolic";
+/// Not in Adwaita; the app's resources carry it, as GNOME Text Editor's do.
+pub const DOCUMENT_MODIFIED: &str = "document-modified-symbolic";
 pub const DOCUMENT_OPEN: &str = "document-open-symbolic";
 pub const DOCUMENT_OPEN_RECENT: &str = "document-open-recent-symbolic";
 pub const DOCUMENT_SAVE: &str = "document-save-symbolic";
@@ -52,6 +54,7 @@ pub const WINDOW_CLOSE: &str = "window-close-symbolic";
 pub const ALL: &[&str] = &[
     DIALOG_ERROR,
     DIALOG_WARNING,
+    DOCUMENT_MODIFIED,
     DOCUMENT_OPEN,
     DOCUMENT_OPEN_RECENT,
     DOCUMENT_SAVE,

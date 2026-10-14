@@ -61,7 +61,7 @@ impl WorkspaceModel {
                 }
             }
         }
-        self.refresh_inhibitor();
+        self.refresh_unsaved();
     }
 
     pub(super) fn on_saves_in_flight_changed(&mut self, count: usize) {
@@ -70,7 +70,7 @@ impl WorkspaceModel {
             let count = u32::try_from(count).unwrap_or(u32::MAX);
             workspace.emit_by_name::<()>("saves-in-flight-changed", &[&count]);
         }
-        self.refresh_inhibitor();
+        self.refresh_unsaved();
     }
 
     fn on_save_settled(&mut self, settled: SaveSettled) {
@@ -126,10 +126,11 @@ impl WorkspaceModel {
     /// The tab's name for a sentence, quoted as the close prompts quote
     /// it.
     fn tab_name(&self, tab: Uuid) -> String {
-        let title = self.workspace_tabs.borrow().get(&tab).map(|slot| {
-            let title = slot.page().title();
-            title.strip_prefix("• ").unwrap_or(&title).to_owned()
-        });
+        let title = self
+            .workspace_tabs
+            .borrow()
+            .get(&tab)
+            .map(|slot| slot.page().title().to_string());
         DirtyTab::quote(&title.unwrap_or_default())
     }
 }

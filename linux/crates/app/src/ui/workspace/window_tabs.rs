@@ -41,10 +41,9 @@ impl TabDirectory for WindowTabs {
             .filter_map(|page| {
                 let id = self.index.id_of(&page)?;
                 let tab = tabs.get(&id)?;
-                let title = page.title();
                 Some(TabEntry {
                     id,
-                    title: title.strip_prefix("• ").unwrap_or(&title).to_owned(),
+                    title: page.title().to_string(),
                     open_transaction: matches!(
                         tab,
                         WorkspaceTab::Editor(slot) if slot.editor.has_open_transaction()

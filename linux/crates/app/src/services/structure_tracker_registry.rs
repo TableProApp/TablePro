@@ -1,13 +1,7 @@
 use super::structure_tracker_handle::StructureTrackerHandle;
-use super::tab_registry::{TabRegistry, TrackerHandle};
+use super::tab_registry::TabRegistry;
 
 pub type StructureTrackerRegistry = TabRegistry<StructureTrackerHandle>;
-
-impl TrackerHandle for StructureTrackerHandle {
-    fn has_pending(&self) -> bool {
-        StructureTrackerHandle::has_pending(self)
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -40,20 +34,20 @@ mod tests {
         first.register(tab).set_pending(new_table());
         second.register(tab);
 
-        assert_eq!(first.dirty(), vec![tab]);
-        assert!(second.dirty().is_empty());
+        assert!(first.get(tab).is_some_and(|tracker| tracker.has_pending()));
+        assert!(second.get(tab).is_some_and(|tracker| !tracker.has_pending()));
     }
 
     #[test]
-    fn dirty_lists_only_pending_tabs() {
+    fn register_returns_the_tabs_own_tracker() {
         let registry = StructureTrackerRegistry::default();
         let edited = Uuid::new_v4();
         registry.register(edited).set_pending(new_table());
         registry.register(Uuid::new_v4());
 
-        assert_eq!(registry.dirty(), vec![edited]);
+        assert!(registry.register(edited).has_pending());
 
         registry.get(edited).expect("registered").clear();
-        assert!(registry.dirty().is_empty());
+        assert!(!registry.register(edited).has_pending());
     }
 }
