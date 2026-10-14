@@ -330,14 +330,35 @@ impl WorkspaceHandle {
         SaveStart::Started(id)
     }
 
-    /// What the structure save would run, planned with the session's
-    /// dialect, and agreed to by the user where it loses something or can
-    /// stop halfway. Nothing is taken from the tracker yet.
+    /// What the structure save would run, agreed to by the user where it
+    /// loses something or can stop halfway. Nothing is taken from the
+    /// tracker yet.
     async fn review_structure(
         &self,
         parent: &gtk::Widget,
         tracker: &StructureTrackerHandle,
     ) -> Result<ChangeReview, SaveStart> {
+        let (table, review) = self.plan_review(tracker)?;
+        let engine = &self.0.deps.engine;
+        if review.requires_confirmation(engine.ddl_writes) {
+            if review_dialog::confirm(parent, &table, &review, engine).await == ReviewDecision::Cancel {
+                return Err(SaveStart::Rejected(SaveRejection::ReviewDeclined));
+            }
+            // Ctrl+Z is a window shortcut too, so the draft can change
+            // under an open review.
+            let (_, now) = self.plan_review(tracker)?;
+            if now.statements != review.statements {
+                return Err(SaveStart::Rejected(SaveRejection::Unplannable(
+                    BuildDdlError::NotAsReviewed,
+                )));
+            }
+        }
+        Ok(review)
+    }
+
+    /// The structure save planned with the session's dialect, and the
+    /// name of its table.
+    fn plan_review(&self, tracker: &StructureTrackerHandle) -> Result<(String, ChangeReview), SaveStart> {
         let session = match self.writable_session(tracker.pending_state()) {
             Ok(Some(session)) => session,
             Ok(None) => return Err(SaveStart::NothingToSave),
@@ -356,19 +377,12 @@ impl WorkspaceHandle {
             .ok_or(BuildDdlError::Unsupported(pending.operation()))
             .and_then(|ddl| pending.review(ddl))
             .map_err(|error| SaveStart::Rejected(SaveRejection::Unplannable(error)))?;
-        let engine = &self.0.deps.engine;
-        if review.requires_confirmation(engine.ddl_writes) {
-            let table = pending.table().name;
-            if review_dialog::confirm(parent, &table, &review, engine).await == ReviewDecision::Cancel {
-                return Err(SaveStart::Rejected(SaveRejection::ReviewDeclined));
-            }
-        }
-        Ok(review)
+        Ok((pending.table().name, review))
     }
 
-    /// Runs only the statements reviewed: a draft or a connection that
-    /// changed while the review was open plans others, and the save is
-    /// refused before anything is sent.
+    /// Runs only the statements reviewed: a connection replaced since the
+    /// review plans others, and the save is refused before anything is
+    /// sent.
     fn save_structure(&self, tab: Uuid, tracker: &StructureTrackerHandle, reviewed: ChangeReview) -> SaveStart {
         let (session, ticket, pending) =
             match self.begin(tab, WriteKind::SchemaChanges, tracker.pending_state(), || {

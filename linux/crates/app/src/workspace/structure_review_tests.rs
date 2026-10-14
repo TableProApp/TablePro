@@ -8,7 +8,7 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::WriteReport;
-use tablepro_core::ddl::{DraftColumn, DraftType, TableDraft};
+use tablepro_core::ddl::{BuildDdlError, DraftColumn, DraftType, TableDraft};
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 
 use super::dialog_response::{answer, visible_alert};
@@ -164,10 +164,18 @@ fn a_draft_changed_during_the_review_is_not_saved() {
     workspace.structure.set_pending(Some(renamed));
     assert!(answer(&window, "apply"));
 
-    assert!(matches!(started(&starts).as_slice(), [SaveStart::Started(_)]));
-    assert!(matches!(workspace.settle().outcome, SaveOutcome::RolledBack(_)));
+    let rejection = SaveRejection::Unplannable(BuildDdlError::NotAsReviewed);
+    assert_eq!(started(&starts), [SaveStart::Rejected(rejection.clone())]);
+    assert!(rejection.needs_alert());
+    assert_eq!(
+        rejection.message(),
+        "The changes were edited or the connection changed during the review, so nothing was saved. Save again to \
+         review them."
+    );
+    crate::test_support::drain_main_context();
     assert_eq!(CallCounters::get(&workspace.counters().write_batch), 0);
     assert_eq!(workspace.structure.pending_state(), PendingState::Unsaved);
+    assert_eq!(workspace.handle.ledger().in_flight(), 0);
 }
 
 #[gtk4::test]

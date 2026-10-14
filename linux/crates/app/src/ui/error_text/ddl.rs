@@ -116,7 +116,7 @@ pub fn build_error_text(error: &BuildDdlError) -> String {
             &[("name", name)],
         ),
         BuildDdlError::NotAsReviewed => crate::i18n::gettext(
-            "The connection changed while the changes were under review, so nothing was saved. Save again to review them.",
+            "The changes were edited or the connection changed during the review, so nothing was saved. Save again to review them.",
         ),
     }
 }
