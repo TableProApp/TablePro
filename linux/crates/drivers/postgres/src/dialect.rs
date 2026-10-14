@@ -372,6 +372,11 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "pgp_sym_decrypt_bytea",
         "pgp_pub_decrypt",
         "pgp_pub_decrypt_bytea",
+        "encrypt",
+        "decrypt",
+        "encrypt_iv",
+        "decrypt_iv",
+        "hmac",
     ],
 };
 
@@ -628,6 +633,11 @@ mod tests {
             "UPDATE users SET pw = crypt('secret', gen_salt('bf'))",
             "SELECT u.id FROM users u JOIN credentials c ON crypt('secret', c.hash) = c.hash",
             "SELECT id FROM users WHERE EXISTS crypt('secret', hash)",
+            "SELECT encrypt('data', 'key', 'aes')",
+            "SELECT decrypt(secret, 'key', 'aes') FROM t",
+            "SELECT encrypt_iv('data', 'key', 'iv', 'aes')",
+            "SELECT decrypt_iv(secret, 'key', 'iv', 'aes') FROM t",
+            "SELECT hmac('data', 'key', 'sha256')",
         ] {
             assert_eq!(
                 dialect().history_recording(sql),
@@ -646,6 +656,9 @@ mod tests {
         for sql in [
             "CREATE INDEX ON crypt (hash)",
             "CREATE TABLE IF NOT EXISTS crypt (hash text)",
+            "SELECT encrypt, decrypt, hmac FROM settings",
+            "CREATE TABLE hmac (id int)",
+            "INSERT INTO encrypt_iv (id) VALUES (1)",
         ] {
             assert_eq!(dialect().history_recording(sql), HistoryRecording::Record, "{sql}");
         }
