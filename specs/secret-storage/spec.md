@@ -91,7 +91,8 @@ An absent item (`Ok(None)`) is not a keyring failure. `connect_options_for` then
 
 ## Requirements
 
-- The system MUST store database passwords, SSH passwords, SSH key passphrases, per-hop SSH secrets and MCP token plaintext through Secret Service, not in connection JSON.
+- The desktop application MUST store database passwords, SSH passwords, SSH key passphrases, per-hop SSH secrets and GUI-issued MCP token plaintext through Secret Service, not in connection JSON.
+- `bookie-agentd` MUST persist only the MCP token hash in its token registry and MUST emit newly issued plaintext once to stdout or an explicitly selected owner-only token file.
 - An absent item MUST return `Ok(None)`.
 - Unavailable, locked or cancelled keyring access MUST return `StorageError::Keyring` with the matching `KeyringFailure`.
 - Saved connection assembly MUST propagate keyring failure and MUST NOT treat it as a missing password.
@@ -130,7 +131,7 @@ Transport loads hop and legacy SSH secrets here, then opens the tunnel. Host-key
 
 ### governed-sql
 
-MCP token plaintext is shown once at issuance, stored here, and authenticated later by hash in `tablepro-mcp`. Policy and audit never log the plaintext.
+GUI-issued MCP token plaintext is returned once and best-effort stored here; issuance still succeeds if keyring storage fails. `bookie-agentd` instead emits plaintext once to stdout or an explicitly selected owner-only file. In both paths `tablepro-mcp` authenticates against the stored hash. Policy and audit never log the plaintext.
 
 ## Acceptance criteria
 

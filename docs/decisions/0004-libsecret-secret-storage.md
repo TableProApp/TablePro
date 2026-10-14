@@ -6,7 +6,7 @@
 
 ## Context
 
-Database, SSH, and MCP credentials must persist without being written to JSON files. The storage mechanism must work across common Linux desktop environments, expose an async Rust API, and fail safely when no keyring service is available.
+Database and SSH credentials must persist without being written to JSON files. GUI-issued MCP tokens are saved through Secret Service; the headless agent has a separate explicit issuance flow that emits plaintext once. The storage mechanism must work across common Linux desktop environments, expose an async Rust API, and fail safely when no keyring service is available.
 
 Available choices include the Secret Service D-Bus API, desktop-specific keyring APIs, encrypted application files, plain files, or prompting on every connection.
 
@@ -14,7 +14,7 @@ Available choices include the Secret Service D-Bus API, desktop-specific keyring
 
 BookiE stores credentials through the Secret Service D-Bus API using the `oo7` Rust crate.
 
-Items use the schema `com.tablepro.linux.Password` with connection and secret-kind attributes. The storage crate exposes typed functions for database passwords, SSH passwords, SSH key passphrases, and MCP secrets.
+Items use the schema `com.tablepro.linux.Password` with connection and secret-kind attributes. The storage crate exposes typed functions for database passwords, SSH passwords, SSH key passphrases, and GUI MCP tokens.
 
 An absent keyring item returns `Ok(None)`. Unavailable, locked or cancelled Secret Service access returns a typed `StorageError`; saved transport assembly propagates the error and refuses connection assembly. Callers may offer recovery or an explicit credential prompt, but must not disguise failed access as an absent item. The application never falls back to a plain credential file.
 

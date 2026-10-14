@@ -19,7 +19,7 @@ The only path a consumer may hold to a live database. Token scopes and connectio
 ## Out of scope
 
 - Opening SSH tunnels and host-key trust ([ssh-transport](../ssh-transport/spec.md)).
-- Secret Service storage of passwords and MCP plaintext tokens after issuance ([secret-storage](../secret-storage/spec.md)).
+- Secret Service storage of database and SSH credentials, plus GUI-issued MCP token plaintext ([secret-storage](../secret-storage/spec.md)).
 - Grid page retention/display, browse paging and export snapshot rules (later specs; ADRs 0011 and 0014).
 
 ## Core concepts
@@ -37,7 +37,7 @@ The only path a consumer may hold to a live database. Token scopes and connectio
 |---|---|---|
 | `id` | UUID | Token identity used as the agent principal. |
 | `name` | string | Shown to the operator; used as MCP client name. |
-| `token_hash` | SHA-256 hex | Hash of the plaintext token. Plaintext is shown once at issuance and never stored. |
+| `token_hash` | SHA-256 hex | `TokenStore` persists only the hash. GUI issuance returns plaintext once and attempts Secret Service storage; `bookie-agentd` emits it once to stdout or an explicitly selected owner-only file. |
 | `permissions` | `read_only` or `read_write` | `full_access` deserializes as `read_write`. |
 | `connection_allowlist` | list of connection UUIDs | Empty list denies connection use. |
 | `created_at` | datetime | Issuance time. |
@@ -178,7 +178,7 @@ Terminal audit states: `succeeded`, `failed`, `denied`, `cancelled`, `timed_out`
 ## Trust boundaries
 
 - MCP input, saved connection files, imported files, environment variables and database metadata are untrusted.
-- Token plaintext crosses the boundary once at issuance; only `token_hash` is stored.
+- Token plaintext is returned once at issuance; `TokenStore` persists only `token_hash`. GUI issuance attempts Secret Service storage, while `bookie-agentd` emits the token once to stdout or an explicitly selected owner-only file.
 - SQL parameters are bound, not concatenated. Identifiers are dialect-quoted.
 - Policy decisions are evaluated inside `tablepro-policy`. MCP may ask whether a statement needs write scope; it does not evaluate rules or write audit records itself.
 
