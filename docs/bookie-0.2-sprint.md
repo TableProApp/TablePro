@@ -7,12 +7,7 @@ Approved 2026-09-16. Delivery branch: `linux`; source version 0.1.6-dev (0.1.5 i
 
 The maintainer's current delivery target is the Arch/Hyprland development release in [0.2.0 scope](0.2.0-scope.md). That page owns the blocker list. Broader engine matrices, Debian/GNOME desktop acceptance and Flatpak continue after 0.2.0 in the [backlog](backlog.md). Historical acceptance gaps below stay open without becoming additional release blockers.
 
-No 0.2 release is approved. Before a frozen candidate SHA, these stay open (owner in brackets; details on [Project #3](https://github.com/users/cozyGarage/projects/3) and the [ledger index](known-issues.md)):
-
-- B3 [B3]: the broader type, consumer and configuration matrix, PERF-10 memory reduction (the preview is display-only; full values are still held), PERF-3 MongoDB census, UI-19 (foreign key value picker and estimated counts remain; FK navigation, paste and the ENUM and SET pickers landed), mutation triage, installed grid acceptance. See [Project #3](https://github.com/users/cozyGarage/projects/3) (Lane B3) and the [archived B3 retest record](archive/type-contract-strategy-pre-project-migration-2026-10-12.md#retest-indicators).
-- B4 [B4]: B4-12 scoped rollback acceptance is complete. Frozen-candidate and installed acceptance remains for the other transport rows; B4-11 optional engine/effect coverage, AUD-2 hosted/installed acceptance, AUD-9 exact-candidate masking acceptance, UI-1b (GTK editor after #490 storage groundwork), TEST-15, PERF-2 and PERF-8 remain. AUD-10 is done (#486); AUD-11 behavioural fixes are closed on the current policy suite and single-AST-walk consolidation is post-0.2.0 backlog work. #537/#538/#539 are merged. Full-table export refusal shipped in #539; per-engine snapshot export remains an unselected future candidate under ADR 0014. See [Project #3](https://github.com/users/cozyGarage/projects/3) (Lane B4), the [B4 board pointer](b4-task-board.md) and the [ledger index](known-issues.md) for issue links.
-- Desktop acceptance [maintainer]: PKG-1 native Wayland on Arch, PKG-2 Debian/GNOME, PKG-4 Flathub submission and screenshots, PKG-8 the Flatpak file-access decision, TEST-6 the 130-item manual checklist.
-- B7: a frozen SHA, the affected gates green on Forgejo at that SHA (the acceptance gate since 2026-10-08), installed checks on Arch and Debian, and the 30-attempt soak (Forgejo nightly `gtk-soak`).
+No 0.2 release is approved. The [0.2.0 scope](0.2.0-scope.md) is the sole source for blockers and their exit criteria. Current lane status is summarized below; Project #3 and the owning boards hold the active work.
 
 ## Current continuation
 
@@ -50,13 +45,13 @@ Plans and case evidence apply these decisions; they do not define another conver
 | Milestone | Established scope | Remaining acceptance / owner |
 | --- | --- | --- |
 | A1–A4 | Prior correctness, drafts/planning, Jump to Column and BookiE branding implemented | Historical 0.1.x proof does not qualify 0.2; A5 installed candidate work folds into B7 |
-| B1 platform/build | Rust 1.98, GNOME 50, SQLx/system SQLite, resources and dev profiles integrated | Installed Arch then Debian/GNOME qualification; full Flatpak qualification separate |
+| B1 platform/build | Rust 1.98, GNOME 50, SQLx/system SQLite, resources and dev profiles integrated | Installed Arch qualification for 0.2.0; Debian/GNOME and full Flatpak qualification are later work |
 | B2 runtime/storage | Owned tasks/stores, migrations, GSettings mirrors and coalesced writers implemented | Installed upgrade/rollback and shutdown acceptance in B7 |
 | B3 type/value contracts | Native and consumer coverage spans the supported engines. The broader engine/type/consumer/configuration matrix, mutation triage, remaining TEST-15 paths and installed grid acceptance remain open. | [Type/consumer board](type-contract-strategy.md) and [value evidence index](value-contracts.md) |
 | B4 transport/sessions | Policy, transport, rollback and audit fixes are merged; the full B4 lane is not yet accepted. | The [current B4 board](b4-task-board.md) and Project #3 own the remaining acceptance. B4-12's scoped rollback acceptance is complete; other rows still need their listed candidate or installed proof |
 | B5 editor/files | Open/Save/Save As, changed-on-disk detection and file relinking implemented | Installed file-dialog/recovery/dirty-close flows |
 | B6 PostgreSQL catalog | Guarded read-only catalog/types implemented | Restricted-role, stale-owner and installed catalog flows |
-| B7 qualification | Open | Frozen SHA, affected automated gates, both installed desktop targets and retry-free soak; publication separate |
+| B7 qualification | Open | Frozen SHA, affected automated gates, installed Arch/Hyprland checks and retry-free soak; publication separate |
 
 This table summarizes source/evidence ownership, not a fresh runtime pass. Consult each exact case/SHA; do not promote a whole type or engine from one test.
 
