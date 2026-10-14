@@ -1,6 +1,6 @@
 # SSH transport
 
-> [NEEDS REVIEW] Draft written on 2026-10-11 from `tablepro-ssh`, `tablepro-transport` and ARCHITECTURE. A maintainer review is pending.
+> Reviewed against source and tests at `852385fa` on 2026-10-14. The transport remains in development; see the active sprint for acceptance status.
 
 **Spec tier:** buildable **Serves:** `Local DBA` **Status:** in-development **Success metric:** A tunnel opens only after the host key is trusted or explicitly learned; TLS still verifies the saved database hostname, not loopback.
 
@@ -14,11 +14,12 @@ Turn a saved SSH hop into a local forward, and decide whether an unknown or chan
 - Host-key outcomes: trusted, learned, changed, unknown, known_hosts I/O failure (`crates/ssh/src/known_hosts.rs`).
 - `UnknownHostKey::{Learn, Refuse}` (`crates/ssh/src/lib.rs`).
 - Transport assembly: saved connection to driver options, SSH chain, tunnel, TLS service identity (`crates/transport`, [ARCHITECTURE](../../ARCHITECTURE.md#transport-and-service-identity)).
+- Independent per-hop credential resolution and connection-material identity (`crates/transport`).
 
 ## Out of scope
 
 - What SQL may run after the driver connects ([governed-sql](../governed-sql/spec.md)).
-- Storing hop passwords and key passphrases ([secret-storage](../secret-storage/spec.md), ADR 0004). Jump-chain editing that is not yet integrated stays on the ledger.
+- Secret Service storage details for hop passwords and key passphrases ([secret-storage](../secret-storage/spec.md), ADR 0004). Jump-chain editing remains incomplete ([#548](https://github.com/cozyGarage/BookiE/issues/548)).
 - Flatpak OpenSSH refuse (I2 / packaging). That is a packaging decision, not this capability's host-key rule.
 
 ## Core concepts
@@ -74,7 +75,8 @@ OpenSSH backend forces `StrictHostKeyChecking=ask` (`crates/ssh/src/openssh/argv
 `verify_or_prompt` in `crates/ssh/src/known_hosts.rs`.
 
 - Known matching key → `Trusted`.
-- Otherwise prompt. `PromptAnswer::Accept` records the key. Any other answer → `Unknown`.
+- Unknown key → prompt. `PromptAnswer::Accept` records the key. Any other answer → `Unknown`.
+- Changed keys and known_hosts I/O errors return their refusal outcome without prompting.
 
 ### Transport identity
 
@@ -89,7 +91,7 @@ OpenSSH backend forces `StrictHostKeyChecking=ask` (`crates/ssh/src/openssh/argv
 
 ## Algorithms & rules
 
-1. Resolve the saved hop (host, port, username, auth). Secrets remain wrapped until the driver/SSH boundary.
+1. Resolve each saved hop's host, port, username and auth independently. Secrets remain wrapped until the SSH boundary.
 2. Read BookiE `known_hosts` (default from `default_known_hosts_path`).
 3. Compare the presented key.
 4. Match → continue. Change → fail with `HostKeyMismatch`. Missing + `Refuse` → fail with `UnknownHostKey`. Missing + `Learn` or an accepted prompt → append and continue.
@@ -166,4 +168,4 @@ Each line names the tip proof. When the proof is code only, that is marked.
 
 ## Open questions
 
-None known. Architect review of this draft is still the open checklist fork.
+No additional transport behavior questions were identified in this source review. Jump-chain editing and installed acceptance remain open under [#548](https://github.com/cozyGarage/BookiE/issues/548) and the active sprint.
