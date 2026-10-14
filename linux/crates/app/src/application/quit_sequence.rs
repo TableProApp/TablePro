@@ -19,7 +19,7 @@ use crate::workspace::{CloseDecision, CloseReason};
 /// The open sessions stay recorded through the quit, so the next launch
 /// reopens the windows it closes. The record is written before the
 /// process may end, and a cancelled quit keeps only the windows still
-/// open.
+/// showing or connecting their session.
 ///
 /// An approved quit can leave the process running with no window while
 /// a session closes, and a second launch then activates it. That
@@ -56,9 +56,12 @@ impl QuitSequence {
                         restore.set(RestoreState::NotAttempted);
                     }
                 }
-                CloseDecision::Cancelled => services
-                    .open_sessions()
-                    .thaw(|key| services.sessions.window_for(key).is_some()),
+                CloseDecision::Cancelled => services.open_sessions().thaw(|key| {
+                    services
+                        .sessions
+                        .window_for(key)
+                        .is_some_and(|window_id| app.imp().windows.keeps_session(window_id))
+                }),
             }
         }
         drop(hold);

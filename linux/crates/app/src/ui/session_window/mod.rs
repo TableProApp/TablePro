@@ -179,6 +179,12 @@ impl SessionWindow {
         }
     }
 
+    /// Whether the window's claim is a session to reopen: it shows the
+    /// session or is connecting it. A failed connect's claim is not.
+    pub(crate) fn keeps_session(&self) -> bool {
+        self.page_is(|page| matches!(page, SessionPage::Connecting { .. } | SessionPage::Workspace { .. }))
+    }
+
     /// Whether the window holds logout back now.
     pub(crate) fn is_inhibiting(&self) -> bool {
         self.imp()

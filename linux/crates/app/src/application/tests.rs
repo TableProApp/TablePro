@@ -457,6 +457,30 @@ fn an_activate_after_an_approved_quit_restores_its_record() {
 }
 
 #[gtk4::test]
+fn a_cancelled_quit_forgets_a_restore_that_failed_during_it() {
+    let test = TestApp::started("QuitFailedRestore");
+    let gone = test.file_key("gone.db");
+    test.record(std::slice::from_ref(&gone));
+    let services = test.services();
+    // The restore fails while the quit waits on another window.
+    services.open_sessions().freeze_for_quit();
+    test.app.activate();
+    wait_until(WAIT, || services.sessions.window_for(&gone).is_some()).expect("the failed connect's claim");
+    // The window's close request dismisses the dialog instead, which
+    // cancels the quit.
+    adw::AlertDialog::new(Some("Busy"), None).present(Some(&test.window_for(&gone)));
+
+    let decision = finish_on_main(WAIT, QuitSequence::run(test.app.clone())).expect("the quit to finish");
+
+    assert_eq!(decision, CloseDecision::Cancelled);
+    assert!(
+        services.sessions.window_for(&gone).is_some(),
+        "the failed connect's window closed"
+    );
+    assert!(test.recorded().is_empty(), "the failed restore stayed recorded");
+}
+
+#[gtk4::test]
 fn new_window_action_opens_another_window() {
     let test = TestApp::started("NewWindow");
     test.window();
