@@ -3,7 +3,7 @@ use tablepro_session::OperationError;
 use tablepro_session::runtime::TaskFailure;
 use thiserror::Error;
 
-use super::{AbortOutcome, ExportStreamFailure};
+use super::{AbortOutcome, ExportStreamFailure, OpenError};
 
 /// How an export ended.
 #[derive(Debug)]
@@ -35,4 +35,15 @@ pub(crate) enum ExportFailure {
     /// connection of its own, which the alert has to explain.
     #[error("running the statement again failed: {0}")]
     Statement(OperationError),
+    #[error("another export is writing to this file")]
+    InUse,
+}
+
+impl From<OpenError> for ExportFailure {
+    fn from(error: OpenError) -> Self {
+        match error {
+            OpenError::InUse => Self::InUse,
+            OpenError::File(error) => Self::File(error),
+        }
+    }
 }

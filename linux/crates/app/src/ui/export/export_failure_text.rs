@@ -74,6 +74,10 @@ pub(crate) fn failure_text(failure: &ExportFailure, file: Option<AbortOutcome>, 
             "Writing {name} failed: {error}",
             &[("name", name), ("error", error.message())],
         ),
+        ExportFailure::InUse => gettext_f(
+            "An export to {name} is already running. Wait for it to finish, or export to another file.",
+            &[("name", name)],
+        ),
         ExportFailure::Task(TaskFailure::Panicked(_) | TaskFailure::Aborted)
         | ExportFailure::Stream(ExportStreamFailure::Task(_)) => gettext("The export stopped unexpectedly."),
     };

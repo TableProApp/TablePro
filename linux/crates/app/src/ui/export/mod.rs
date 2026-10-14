@@ -36,4 +36,4 @@ pub(crate) use export_query::{ExportQuery, TableExport};
 pub(crate) use export_scope::{ExportOffer, ExportOrigin, ScopeChoice, ScopeSource, scope_choices};
 pub(crate) use export_sink_parts::ExportSinkParts;
 pub(crate) use export_source::ExportSource;
-pub(crate) use replace_file_writer::{AbortOutcome, FinishError, ReplaceFileWriter};
+pub(crate) use replace_file_writer::{AbortOutcome, FinishError, OpenError, ReplaceFileWriter};
