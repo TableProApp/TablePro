@@ -11,6 +11,7 @@ use tablepro_session::{ConnectAttempts, SessionKey};
 use super::locate_file::LocateChooser;
 use super::picker_page::PickerPage;
 use super::session_page::SessionPage;
+use super::work_notifier::WorkNotifier;
 use super::{SessionWindowInput, WindowState};
 use crate::runtime::InputSender;
 use crate::services::file_location::LocationClassifier;
@@ -70,6 +71,13 @@ pub struct SessionWindow {
     /// Asks where a lost database file is now. `None` opens the file
     /// chooser; a test answers for the user.
     pub(super) locate_chooser: RefCell<Option<Rc<dyn LocateChooser>>>,
+    /// Tells the desktop when work ends in a tab the user is not
+    /// looking at.
+    pub(super) notifier: RefCell<Option<WorkNotifier>>,
+    /// Whether the window counts as the active one, which a test session
+    /// with no window manager cannot decide.
+    #[cfg(test)]
+    pub(super) active_for_test: Cell<Option<bool>>,
 }
 
 #[glib::object_subclass]

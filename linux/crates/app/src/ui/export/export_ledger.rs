@@ -13,6 +13,7 @@ use tablepro_session::OperationError;
 use tablepro_session::runtime::{HoldToken, ProcessHold, TaskResult, Tasks};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 use super::export_producer::{start_query_producer, start_rows_producer};
 use super::{
@@ -21,11 +22,13 @@ use super::{
 };
 use crate::i18n::{gettext, ngettext_f};
 use crate::ui::format::plural_count;
-use crate::workspace::{CloseBlockPrompt, CloseBlocker, InhibitReason, WindowInhibitor};
+use crate::workspace::{CloseBlockPrompt, CloseBlocker, InhibitReason, WindowInhibitor, WorkOutcome};
 
 /// Chunks in flight between the encoder and the file. Few, so a slow
 /// disk holds the encoder back within a few hundred kilobytes.
 const CHANNEL_CHUNKS: usize = 4;
+
+type EndedListener = Rc<dyn Fn(Uuid, WorkOutcome)>;
 
 /// The exports a workspace has running.
 ///
@@ -40,6 +43,7 @@ pub(crate) struct ExportLedger {
     /// The running jobs, as the operations popover lists them.
     jobs: gio::ListStore,
     state: RefCell<LedgerState>,
+    ended: RefCell<Vec<EndedListener>>,
 }
 
 #[derive(Default)]
@@ -90,7 +94,14 @@ impl ExportLedger {
             inhibitor: RefCell::new(init.inhibitor),
             jobs: gio::ListStore::new::<ExportJobItem>(),
             state: RefCell::default(),
+            ended: RefCell::default(),
         })
+    }
+
+    /// Call `listener` with the tab and the outcome of each job that
+    /// came from a tab, once the job has settled.
+    pub(crate) fn on_ended(&self, listener: impl Fn(Uuid, WorkOutcome) + 'static) {
+        self.ended.borrow_mut().push(Rc::new(listener));
     }
 
     pub(crate) fn jobs(&self) -> gio::ListStore {
@@ -127,9 +138,13 @@ impl ExportLedger {
         let ledger = self.clone();
         glib::spawn_future_local(async move {
             let destination = job.destination.clone();
+            let tab = job.tab;
             let ended = run(&ledger.tasks, job, &cancel, &item).await;
             ledger.settle(id, &item);
             ledger.reporter.report(&destination, &item.title(), &ended);
+            if let Some(tab) = tab {
+                ledger.tell_ended(tab, WorkOutcome::from(&ended));
+            }
             let _ = reply.send(ended);
         });
         Some(ExportJobHandle { outcome })
@@ -192,6 +207,13 @@ impl ExportLedger {
         drop(finished);
         for waiter in woken {
             let _ = waiter.send(());
+        }
+    }
+
+    fn tell_ended(&self, tab: Uuid, outcome: WorkOutcome) {
+        let listeners: Vec<EndedListener> = self.ended.borrow().clone();
+        for listener in listeners {
+            listener(tab, outcome);
         }
     }
 

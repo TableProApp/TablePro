@@ -9,6 +9,7 @@ use relm4::{adw, gtk};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote, XLSX_MAX_DATA_ROWS};
 use tablepro_session::Session;
+use uuid::Uuid;
 
 use super::export::{
     DocumentFormat, ExpectedRows, ExportFormat, ExportJob, ExportLedger, ExportOffer, ExportOrigin, ExportSource,
@@ -199,6 +200,8 @@ pub(crate) struct ExportDialogInit<'a> {
     pub offer: ExportOffer,
     pub dialect: Option<Arc<dyn SqlDialect>>,
     pub settings: &'a Rc<tablepro_storage::AppSettings>,
+    /// The tab that offered the rows.
+    pub tab: Uuid,
 }
 
 /// The Rows list: which rows the export writes, one entry per scope
@@ -245,6 +248,7 @@ pub(crate) fn present(init: ExportDialogInit<'_>) {
         offer,
         dialect,
         settings,
+        tab,
     } = init;
     let ExportOffer {
         origin,
@@ -420,6 +424,7 @@ pub(crate) fn present(init: ExportDialogInit<'_>) {
             name: name.clone(),
             source,
             expected_rows: choice.expected,
+            tab,
         };
         glib::spawn_future_local(save_with_file_dialog(window.clone(), exports.clone(), chosen));
     });
@@ -473,6 +478,7 @@ struct Chosen {
     name: String,
     source: ExportSource,
     expected_rows: Option<ExpectedRows>,
+    tab: Uuid,
 }
 
 async fn save_with_file_dialog(parent: adw::ApplicationWindow, exports: Rc<ExportLedger>, chosen: Chosen) {
@@ -482,6 +488,7 @@ async fn save_with_file_dialog(parent: adw::ApplicationWindow, exports: Rc<Expor
         name,
         source,
         expected_rows,
+        tab,
     } = chosen;
     let filter = gtk::FileFilter::new();
     filter.set_name(Some(&crate::i18n::gettext_f(
@@ -509,6 +516,7 @@ async fn save_with_file_dialog(parent: adw::ApplicationWindow, exports: Rc<Expor
         format: job_format,
         source,
         expected_rows,
+        tab: Some(tab),
     });
 }
 

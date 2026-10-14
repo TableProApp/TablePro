@@ -182,7 +182,7 @@ impl Workspace {
             structures: structures.clone(),
             directory: tabs.clone(),
             events: Rc::new(move |event| {
-                if let WorkspaceEvent::SaveSettled(settled) = &event {
+                if let WorkspaceEvent::SaveSettled { settled, .. } = &event {
                     settled_sink.borrow_mut().push((**settled).clone());
                 }
                 event_sink.borrow_mut().push(event);
@@ -263,6 +263,23 @@ impl Workspace {
     pub(crate) fn settle(&self) -> SaveSettled {
         wait_until(WAIT, || !self.settled.borrow().is_empty()).expect("the save to settle");
         self.settled.borrow_mut().remove(0)
+    }
+
+    /// Change the edited cell again, for another save.
+    pub(crate) fn edit(&self, value: i64) {
+        edit(&self.tracker, value);
+    }
+
+    /// Whether each save settled under a close prompt, in order.
+    pub(crate) fn settled_in_prompt(&self) -> Vec<bool> {
+        self.events
+            .borrow()
+            .iter()
+            .filter_map(|event| match event {
+                WorkspaceEvent::SaveSettled { in_prompt, .. } => Some(*in_prompt),
+                _ => None,
+            })
+            .collect()
     }
 
     pub(crate) fn counters(&self) -> CallCounters {

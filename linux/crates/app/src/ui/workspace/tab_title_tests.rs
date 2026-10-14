@@ -215,3 +215,27 @@ fn tabs_name_the_schema_once_the_session_has_two() {
         "the tooltip repeats the title"
     );
 }
+
+#[gtk4::test]
+fn a_new_editor_tab_takes_the_lowest_number_no_open_tab_has() {
+    let test = TestWindow::connected("LowestFreeQueryNumber");
+    let view = test.workspace().imp().tab_view.get();
+    let open = || {
+        let before = editors(&test.window).len();
+        WidgetExt::activate_action(&test.window, "win.new-editor-tab", None).expect("win.new-editor-tab");
+        wait_until(WAIT, || editors(&test.window).len() == before + 1).expect("a new editor tab");
+    };
+    open();
+    open();
+    open();
+
+    view.close_page(&view.nth_page(0));
+    wait_until(WAIT, || view.n_pages() == 2).expect("Query 1 to close");
+    open();
+
+    let mut titles: Vec<String> = (0..view.n_pages())
+        .map(|index| view.nth_page(index).title().to_string())
+        .collect();
+    titles.sort();
+    assert_eq!(titles, ["Query 1", "Query 2", "Query 3"]);
+}

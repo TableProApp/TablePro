@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -56,6 +56,8 @@ struct Inner {
     reviewing: RefCell<HashSet<Uuid>>,
     /// Work a window close asks about before it closes any tab.
     blockers: RefCell<Vec<Rc<dyn CloseBlocker>>>,
+    /// What the close prompt deciding now covers.
+    asking: Cell<Option<CloseScope>>,
 }
 
 impl Inner {
@@ -63,8 +65,25 @@ impl Inner {
     /// save go, which may wake a close waiting on it, and the tab is
     /// told.
     fn settled(&self, id: SaveId, settled: SaveSettled) {
+        // Read here: the prompt this wakes can end before the tab hears.
+        let in_prompt = self.asking.get().is_some_and(|scope| scope.covers(settled.tab));
         self.ledger.settle(id);
-        (self.deps.events)(WorkspaceEvent::SaveSettled(Box::new(settled)));
+        (self.deps.events)(WorkspaceEvent::SaveSettled {
+            settled: Box::new(settled),
+            in_prompt,
+        });
+    }
+}
+
+/// Marks a close prompt as deciding until it is dropped.
+pub struct PromptClaim {
+    inner: Rc<Inner>,
+    previous: Option<CloseScope>,
+}
+
+impl Drop for PromptClaim {
+    fn drop(&mut self) {
+        self.inner.asking.set(self.previous);
     }
 }
 
@@ -113,7 +132,19 @@ impl WorkspaceHandle {
             ledger: SaveLedger::new(),
             reviewing: RefCell::default(),
             blockers: RefCell::default(),
+            asking: Cell::new(None),
         }))
+    }
+
+    /// Count a close prompt over `scope` as deciding until the claim
+    /// drops. A save of a tab it covers settles in front of the prompt,
+    /// which waited for it and says itself how it went.
+    pub fn claim_for_prompt(&self, scope: CloseScope) -> PromptClaim {
+        let previous = self.0.asking.replace(Some(scope));
+        PromptClaim {
+            inner: self.0.clone(),
+            previous,
+        }
     }
 
     /// Have every close of the whole window ask about `blocker`'s work
@@ -701,6 +732,36 @@ mod tests {
         assert!(matches!(settled.outcome, SaveOutcome::RolledBack(_)));
         assert_eq!(workspace.tracker.pending_state(), PendingState::Unsaved);
         assert_eq!(workspace.handle.ledger().in_flight(), 0);
+    }
+
+    #[gtk4::test]
+    fn a_save_settles_under_a_prompt_only_while_one_covers_its_tab() {
+        let mut script = ConnectionScript::default();
+        script
+            .write_batch
+            .always(FakeReply::ok(WriteReport::new(vec![Some(1)])));
+        let workspace = Workspace::open(script);
+        let edits = Cell::new(10);
+        let save_under = |scope: Option<CloseScope>| {
+            let _claim = scope.map(|scope| workspace.handle.claim_for_prompt(scope));
+            edits.set(edits.get() + 1);
+            workspace.edit(edits.get());
+            workspace.save();
+            workspace.settled_in_prompt().pop().expect("a settled save")
+        };
+
+        assert!(!save_under(None));
+        assert!(
+            !save_under(Some(CloseScope::Tab(Uuid::new_v4()))),
+            "another tab's prompt took the save"
+        );
+        assert!(save_under(Some(CloseScope::Tab(workspace.tab))));
+        assert!(save_under(Some(CloseScope::Window)));
+        let window = workspace.handle.claim_for_prompt(CloseScope::Window);
+        drop(workspace.handle.claim_for_prompt(CloseScope::Tab(Uuid::new_v4())));
+        assert!(save_under(None), "an inner claim ended the outer one");
+        drop(window);
+        assert!(!save_under(None), "a prompt that ended still took the save");
     }
 
     #[gtk4::test]

@@ -55,7 +55,7 @@ Windows share nothing but `AppServices`. CI fails on a `thread_local!` under `cr
 - Actions, signal handlers and background work send it a message, and `pump_inputs` hands the messages to the widget one at a time on the GTK thread, never inside the signal or action that sent one.
 - Shutdown aborts the pump, which closes the queue. A queued message that owns something, such as a connection that finished connecting, goes to the pump's leftover handler (`pump_inputs_with_leftovers`) and is closed rather than dropped.
 - Window actions go on the window's own action map with `add_action_entries`, which GTK exports as `win`; CI fails on a group inserted as `win`. The workspace removes the actions it added when it shuts down.
-- The workspace reports to the window through signals (`title-changed`, `dirty-changed`, `saves-in-flight-changed`), and the window turns each into one of its own inputs.
+- The workspace reports to the window through signals (`title-changed`, `dirty-changed`, `saves-in-flight-changed`, `work-completed`, `tabs-changed`), and the window turns each into one of its own inputs.
 
 A background read follows this shape, trimmed from `SessionWindow::on_restore`, which looks up the saved connection `id` names:
 

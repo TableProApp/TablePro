@@ -315,6 +315,7 @@ crates/app/src/ui/result_pane/result_limit_banner.rs
 crates/app/src/ui/result_pane/result_set_view.rs
 crates/app/src/ui/result_pane/result_summary.rs
 crates/app/src/ui/saved_queries_dialog.rs
+crates/app/src/ui/session_window/application_notification_sink.rs
 crates/app/src/ui/session_window/connect_failed_page.rs
 crates/app/src/ui/session_window/connect_failure_view.rs
 crates/app/src/ui/session_window/connect_flow.rs
@@ -323,6 +324,10 @@ crates/app/src/ui/session_window/connections.rs
 crates/app/src/ui/session_window/imp.rs
 crates/app/src/ui/session_window/locate_file.rs
 crates/app/src/ui/session_window/mod.rs
+crates/app/src/ui/session_window/notification_request.rs
+crates/app/src/ui/session_window/notification_sink.rs
+crates/app/src/ui/session_window/notification_tests.rs
+crates/app/src/ui/session_window/notifications.rs
 crates/app/src/ui/session_window/open_file_tests.rs
 crates/app/src/ui/session_window/picker_page.rs
 crates/app/src/ui/session_window/resolve_file_identity.rs
@@ -335,6 +340,7 @@ crates/app/src/ui/session_window/session_window_input.rs
 crates/app/src/ui/session_window/sqlite_location_dialog.rs
 crates/app/src/ui/session_window/tests.rs
 crates/app/src/ui/session_window/window_actions.rs
+crates/app/src/ui/session_window/work_notifier.rs
 crates/app/src/ui/shell/mod.rs
 crates/app/src/ui/shell/primary_menu_button.rs
 crates/app/src/ui/ssh_inputs.rs
@@ -372,6 +378,7 @@ crates/app/src/ui/welcome_view.rs
 crates/app/src/ui/window_geometry.rs
 crates/app/src/ui/workspace/close_flow.rs
 crates/app/src/ui/workspace/editor_label.rs
+crates/app/src/ui/workspace/finished_work.rs
 crates/app/src/ui/workspace/health_banner.rs
 crates/app/src/ui/workspace/imp.rs
 crates/app/src/ui/workspace/import.rs
@@ -417,6 +424,7 @@ crates/app/src/workspace/close_guards.rs
 crates/app/src/workspace/close_reason.rs
 crates/app/src/workspace/close_scope.rs
 crates/app/src/workspace/close_step.rs
+crates/app/src/workspace/completed_work.rs
 crates/app/src/workspace/dialog_response.rs
 crates/app/src/workspace/dirty_kind.rs
 crates/app/src/workspace/dirty_tab.rs
@@ -456,6 +464,8 @@ crates/app/src/workspace/unknown_cause.rs
 crates/app/src/workspace/unknown_outcome_dialog.rs
 crates/app/src/workspace/waiting_dialog.rs
 crates/app/src/workspace/window_inhibitor.rs
+crates/app/src/workspace/work_kind.rs
+crates/app/src/workspace/work_outcome.rs
 crates/app/src/workspace/workspace_event.rs
 crates/app/src/workspace/workspace_file_name.rs
 crates/app/src/workspace/workspace_handle.rs

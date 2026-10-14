@@ -3,6 +3,7 @@
 //! session's workspace. A disconnect tears the workspace down in order
 //! and returns to the picker; it never moves to another session.
 
+mod application_notification_sink;
 mod connect_failed_page;
 mod connect_failure_view;
 mod connect_flow;
@@ -10,6 +11,11 @@ mod connecting_page;
 mod connections;
 mod imp;
 mod locate_file;
+mod notification_request;
+mod notification_sink;
+#[cfg(test)]
+mod notification_tests;
+mod notifications;
 #[cfg(test)]
 mod open_file_tests;
 mod picker_page;
@@ -24,6 +30,7 @@ mod sqlite_location_dialog;
 #[cfg(test)]
 pub(crate) mod tests;
 mod window_actions;
+mod work_notifier;
 
 use std::rc::Rc;
 
@@ -123,6 +130,7 @@ impl SessionWindow {
         }
         crate::ui::window_geometry::restore(self.upcast_ref(), &services.settings);
         window_actions::install(self.upcast_ref(), &input);
+        self.install_notifier(&input);
         imp.prompt_presenter
             .replace(Some(crate::ui::credential_prompt::CredentialPromptPresenter::start(
                 prompts, self,
@@ -245,6 +253,9 @@ impl SessionWindow {
         if let Some(pump) = imp.pump.take() {
             pump.abort();
         }
+        if let Some(notifier) = imp.notifier.take() {
+            notifier.withdraw_all();
+        }
         if let Some(presenter) = imp.prompt_presenter.take() {
             presenter.abort();
         }
@@ -346,6 +357,9 @@ impl SessionWindow {
                     self.set_title(Some(&title));
                 }
             }
+            SessionWindowInput::WorkCompleted(work) => self.on_work_completed(work),
+            SessionWindowInput::TabsChanged => self.on_tabs_changed(),
+            SessionWindowInput::FocusTab(tab) => self.on_focus_tab(tab),
             SessionWindowInput::Command(command) => match *command {
                 SessionWindowCommand::Attempt { generation, result } => self.on_attempt(generation, result),
             },
@@ -548,6 +562,7 @@ impl SessionWindow {
         workspace.connect_saves_in_flight_changed(move |_, count| {
             saves.deliver(SessionWindowInput::SavesInFlightChanged(count));
         });
+        self.follow_workspace_tabs(workspace, &input);
         workspace.connect_title_changed(move |_, title| input.deliver(SessionWindowInput::TitleChanged(title)));
     }
 

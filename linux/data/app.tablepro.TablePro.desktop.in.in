@@ -12,6 +12,7 @@ Categories=Development;Database;
 MimeType=application/vnd.sqlite3;
 DBusActivatable=true
 StartupNotify=true
+X-GNOME-UsesNotifications=true
 Actions=new-window;
 
 [Desktop Action new-window]

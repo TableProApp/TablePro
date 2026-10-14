@@ -217,6 +217,7 @@ impl WorkspaceModel {
         self.persist_workspace_state();
         self.refresh_window_title();
         self.refresh_unsaved();
+        self.report_tabs_changed();
     }
 
     /// With no tab open, Ctrl+W closes the window, as in GNOME Text
@@ -387,6 +388,7 @@ impl WorkspaceModel {
         self.persist_workspace_state();
         self.refresh_window_title();
         self.sync_sidebar_selection();
+        self.report_tabs_changed();
     }
 
     pub(super) fn selected_workspace_tab_id(&self) -> Option<Uuid> {
