@@ -4,7 +4,7 @@
 # on 2026-10-13, so churn does not trip it but a real loss of tests does.
 crates/drivers/postgres 92
 crates/drivers/mysql 88
-crates/drivers/sqlite 88
+crates/drivers/sqlite 89
 crates/drivers/mongodb 84
 crates/drivers/redis 82
 crates/drivers/clickhouse 80

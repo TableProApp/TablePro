@@ -41,6 +41,11 @@ class MutantBaselineTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertTrue(any("now caught" in line for line in lines))
 
+    def test_a_partial_run_does_not_call_other_shards_entries_caught(self):
+        ok, lines = module.judge(Counter(), Counter({"a.rs: replace f with 1": 1}), 0, partial=True)
+        self.assertTrue(ok)
+        self.assertFalse(any("now caught" in line for line in lines))
+
     def test_a_run_that_did_not_complete_fails(self):
         for status in (1, 4, 70, 137):
             self.assertFalse(module.judge(Counter(), Counter(), status)[0], status)

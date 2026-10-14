@@ -42,7 +42,7 @@ jobs:
   docker-coverage:
     runs-on: debian-host
     needs: coverage
-    if: always()
+    if: ${{ !cancelled() }}
     timeout-minutes: 120
     env:
       CARGO_TARGET_DIR: /var/cache/ci/target/nightly-docker-cov-${{ matrix.driver }}
@@ -82,7 +82,7 @@ jobs:
   mutation:
     runs-on: debian-host
     needs: coverage
-    if: always()
+    if: ${{ !cancelled() }}
     timeout-minutes: 150
     env:
       CARGO_TARGET_DIR: /var/cache/ci/target/nightly-mutants-${{ matrix.label }}
@@ -127,12 +127,14 @@ jobs:
           fi
           status=0
           cargo mutants "${args[@]}" -- --lib || status=$?
-          python3 scripts/check-mutants-baseline.py "${{ matrix.label }}" "/tmp/mutants-${{ matrix.label }}" "$status"
+          partial=()
+          [ "${{ matrix.shard }}" = 0/1 ] || partial=(--partial)
+          python3 scripts/check-mutants-baseline.py "${{ matrix.package }}" "/tmp/mutants-${{ matrix.label }}" "$status" "${partial[@]}"
 
   gtk-soak:
     runs-on: debian-host
     needs: [docker-coverage, mutation]
-    if: always()
+    if: ${{ !cancelled() }}
     timeout-minutes: 120
     env:
       CARGO_TARGET_DIR: /var/cache/ci/target/nightly-soak
@@ -169,7 +171,7 @@ jobs:
   arch-package:
     runs-on: debian-host
     needs: [docker-coverage, mutation]
-    if: always()
+    if: ${{ !cancelled() }}
     timeout-minutes: 120
     steps:
       - name: Check out
@@ -186,7 +188,7 @@ jobs:
   values:
     runs-on: debian-host
     needs: [docker-coverage, mutation]
-    if: always()
+    if: ${{ !cancelled() }}
     timeout-minutes: 120
     env:
       CARGO_TARGET_DIR: /var/cache/ci/target/nightly-values
@@ -205,7 +207,7 @@ jobs:
   gtk-ubuntu:
     runs-on: ubuntu-host
     needs: [docker-coverage, mutation]
-    if: always()
+    if: ${{ !cancelled() }}
     continue-on-error: true
     timeout-minutes: 60
     env:
