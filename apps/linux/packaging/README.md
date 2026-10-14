@@ -14,7 +14,7 @@ TABLEPRO_RC_COMMIT="$(git rev-parse HEAD)" TABLEPRO_RC_VERSION=0.2.0 ./scripts/b
 
 The example builds the current 0.2.0 candidate from the committed tree; it does not rebuild the released 0.1.5 package. The helper refuses a dirty tree or a candidate SHA other than `HEAD`. It archives that exact local commit, computes the checksum, builds with `makepkg`, and runs `namcap` and package-content validation. Set `TABLEPRO_RC_TAG=linux-v…` instead of `TABLEPRO_RC_COMMIT` to verify an already published tag against the remote. The Arch package replaces/conflicts with `tablepro`; it retains production paths, application ID, gettext domain, keyring records, and legacy commands. Publication remains a separate decision.
 
-Also validate the installed artifact in a clean Arch VM or container:
+Package-content checks can run in a clean Arch VM or container; they do not qualify PKG-1. Install, upgrade, rollback and removal acceptance requires the target Arch or Omarchy system running Hyprland on native Wayland. Run the UI smoke in that graphical session:
 
 ```bash
 desktop-file-validate /usr/share/applications/com.tablepro.linux.desktop
