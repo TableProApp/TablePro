@@ -169,7 +169,7 @@ Build and install with the helper (`cargo build -p tablepro-ssh --bin tablepro-a
 
 - [ ] Double-click an ENUM cell: a list of the declared members opens with the current one highlighted; choosing another shows a pending change and Save writes that member. **2026-10-12 Hyprland dark:** passed on PostgreSQL; the keyboard highlight starts on the first member, [#660](https://github.com/cozyGarage/BookiE/issues/660).
 - [ ] Choose the (empty) member of an ENUM that declares one: the cell shows empty and the stored value is the empty string, not NULL.
-- [ ] Double-click a SET cell: each member has a check; toggling and pressing Apply writes the members in declared order; with none checked the stored value is the empty set, not NULL. **2026-10-12 Hyprland dark:** declared order passed on MariaDB (`red,green,blue`); the empty set not run. The popover clips its labels, [#657](https://github.com/cozyGarage/BookiE/issues/657).
+- [ ] Double-click a SET cell: each member has a check; toggling and pressing Apply writes the members in declared order; with none checked the stored value is the empty set, not NULL. **2026-10-12 Hyprland dark:** declared order passed on MariaDB (`red,green,blue`); the empty set not run. That run found the popover clipped its labels; the current popover behavior has not been retested. This was also reported in [#657](https://github.com/cozyGarage/BookiE/issues/657), which is closed after the editor-toolbar fix.
 - [ ] Set to NULL from the cell menu still works on a nullable ENUM or SET.
 - [ ] On PostgreSQL, an enum column offers its labels in declared order; a column of an enum array type still opens the text editor.
 
