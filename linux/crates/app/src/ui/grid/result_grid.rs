@@ -128,13 +128,15 @@ mod tests {
         sort(&view, 0, gtk::SortType::Ascending);
 
         // The order is the locale's: whatever it is, it is the order of
-        // the collation keys GLib builds for it, with NULL first.
+        // the collation keys GLib builds for it, with NULL first. The
+        // sorter ignores case, as GtkStringSorter does by default, so
+        // `e` and `E` tie and keep their row order.
         let mut collated = names.to_vec();
-        collated.sort_by_key(|name| glib::CollationKey::from(*name));
+        collated.sort_by_key(|name| glib::CollationKey::from(glib::casefold(name).as_str()));
         let mut expected = vec![Value::Null];
         expected.extend(collated.iter().map(|name| text(name)));
         assert_eq!(shown(&selection, 0), expected);
-        let key = |name: &str| glib::CollationKey::from(name);
+        let key = |name: &str| glib::CollationKey::from(glib::casefold(name).as_str());
         if key("e") < key("é") && key("é") < key("f") {
             let order: Vec<Value> = shown(&selection, 0)
                 .into_iter()
