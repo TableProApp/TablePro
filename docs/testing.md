@@ -4,11 +4,9 @@ The [active sprint](bookie-0.2-sprint.md) owns current acceptance. Start with th
 
 ## Executable gates
 
-Command catalogs, layer boundaries and CI ownership live in the [validation playbook](validation-playbook.md). Prefer `python3 scripts/run-test-layer.py --list` and the playbook’s Start here section over copying Cargo invocations from this page.
+Use the [validation playbook](validation-playbook.md) for the command catalog, layer boundaries and CI ownership.
 
 `scripts/ci-local.sh` remains the shared local/CI entry for full, widgets and integration modes. Registrations for isolated GTK and keyring tests live in `scripts/isolated-tests.json`; zero selected tests is a failure. Every `ci-local.sh` run saves exact-tree evidence under `target/quality/`. Release mode does not certify package installation, Wayland, upgrade/rollback or retry-free candidate soak. See the [packaging guide](../apps/linux/packaging/README.md) and [manual checklist](manual-verification-0.2-features.md).
-
-Run from the repository root. Current scope and acceptance are in [the active sprint](bookie-0.2-sprint.md); dated audits stay in [archive](archive/).
 
 ## What a container run proves
 
@@ -16,27 +14,11 @@ Database fixtures, the GTK scenarios and the distro-floor jobs run in containers
 
 ## Local checks and fixtures
 
-Use `./scripts/preflight.sh` for the quick non-GTK gate and `python3 scripts/run-test-layer.py quick` / `full` for the playbook layers. Select Cargo test targets deliberately: `tablepro-app` puts UI and service tests in the `tablepro_app` library, while `agentd` has library, binary and integration tests. DuckDB stays out of the default gate because its optional native build is large.
-
-The workspace lints deny `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, the `print!` family and `dbg!`. Unit tests inside a `#[cfg(test)]` module are exempt through `clippy.toml`. A new standalone Cargo test target under `tests/` must start with:
-
-```rust
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-```
-
-Without it the file compiles locally but fails Clippy. See [error-handling.md](error-handling.md) for the production-path rules.
+Select Cargo test targets deliberately: `tablepro-app` puts UI and service tests in the `tablepro_app` library, while `agentd` has library, binary and integration tests. DuckDB stays out of the default gate because its optional native build is large. Contributor lint and test-target rules live in [AGENTS.md](../AGENTS.md).
 
 ## Optional features and ignored tests
 
-Validate DuckDB explicitly with the playbook `duckdb` / Build Linux DuckDB job commands. JSON and Parquet extensions are bundled; tests disable extension installation/loading when checking availability. Flat-file tests cover CSV/TSV/JSON/Parquet, quoted filenames and malformed/missing files.
-
-The ignored-test inventory names every declaration, prerequisite and activation command. It is generated from the source and is not committed, so it never conflicts between pull requests. Print it with:
-
-```bash
-python3 scripts/inventory-ignored-tests.py
-```
-
-`python3 scripts/inventory-ignored-tests.py --check` (part of the harness job) fails when an ignored test is unmapped or an isolated-test registration is stale.
+JSON and Parquet extensions are bundled; tests disable extension installation/loading when checking availability. Flat-file tests cover CSV/TSV/JSON/Parquet, quoted filenames and malformed/missing files. The ignored-test inventory records each declaration, prerequisite and activation layer. It is generated rather than committed; the harness rejects unmapped tests or stale isolated-test registrations.
 
 ## Unit tests
 
