@@ -931,7 +931,7 @@ impl WorkspaceModel {
                         offer: *offer,
                         dialect,
                         settings: &self.settings,
-                        tab: Some(tab),
+                        tab,
                     });
                 }
             }

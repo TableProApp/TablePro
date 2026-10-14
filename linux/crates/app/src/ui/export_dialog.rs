@@ -201,7 +201,7 @@ pub(crate) struct ExportDialogInit<'a> {
     pub dialect: Option<Arc<dyn SqlDialect>>,
     pub settings: &'a Rc<tablepro_storage::AppSettings>,
     /// The tab that offered the rows.
-    pub tab: Option<Uuid>,
+    pub tab: Uuid,
 }
 
 /// The Rows list: which rows the export writes, one entry per scope
@@ -478,7 +478,7 @@ struct Chosen {
     name: String,
     source: ExportSource,
     expected_rows: Option<ExpectedRows>,
-    tab: Option<Uuid>,
+    tab: Uuid,
 }
 
 async fn save_with_file_dialog(parent: adw::ApplicationWindow, exports: Rc<ExportLedger>, chosen: Chosen) {
@@ -516,7 +516,7 @@ async fn save_with_file_dialog(parent: adw::ApplicationWindow, exports: Rc<Expor
         format: job_format,
         source,
         expected_rows,
-        tab,
+        tab: Some(tab),
     });
 }
 
