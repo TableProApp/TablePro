@@ -9,7 +9,8 @@ use libadwaita::prelude::*;
 use tablepro_session::SessionKey;
 use uuid::Uuid;
 
-use super::{WorkspaceTab, read_workspace_tab_id};
+use super::WorkspaceTab;
+use super::tab_index::TabIndex;
 use crate::ui::structure_tab::StructureMode;
 use crate::workspace::{PersistDebouncer, SortRecord, TabRecord, WorkspaceRecord, WorkspaceSaveError, WorkspaceStore};
 
@@ -32,12 +33,13 @@ struct Target {
     key: SessionKey,
     view: glib::WeakRef<adw::TabView>,
     tabs: WorkspaceTabs,
+    index: Rc<TabIndex>,
 }
 
 impl Target {
     fn record(&self) -> Option<WorkspaceRecord> {
         let view = self.view.upgrade()?;
-        Some(workspace_record(&view, &self.tabs.borrow()))
+        Some(workspace_record(&view, &self.tabs.borrow(), &self.index))
     }
 }
 
@@ -51,12 +53,13 @@ impl WorkspacePersistence {
     }
 
     /// Start writing the tabs of `key`, whose saved tabs have been read.
-    pub fn attach(&self, key: SessionKey, view: &adw::TabView, tabs: WorkspaceTabs) {
+    pub fn attach(&self, key: SessionKey, view: &adw::TabView, tabs: WorkspaceTabs, index: Rc<TabIndex>) {
         self.debouncer.cancel();
         *self.target.borrow_mut() = Some(Target {
             key,
             view: view.downgrade(),
             tabs,
+            index,
         });
     }
 
@@ -109,15 +112,19 @@ impl WorkspacePersistence {
     }
 }
 
-pub(super) fn workspace_record(view: &adw::TabView, tabs: &HashMap<Uuid, WorkspaceTab>) -> WorkspaceRecord {
+pub(super) fn workspace_record(
+    view: &adw::TabView,
+    tabs: &HashMap<Uuid, WorkspaceTab>,
+    index: &TabIndex,
+) -> WorkspaceRecord {
     let selected = view.selected_page();
     let pages = view.pages();
     let mut record = WorkspaceRecord::default();
-    for index in 0..pages.n_items() {
-        let Some(page) = pages.item(index).and_downcast::<adw::TabPage>() else {
+    for position in 0..pages.n_items() {
+        let Some(page) = pages.item(position).and_downcast::<adw::TabPage>() else {
             continue;
         };
-        let Some(tab) = read_workspace_tab_id(&page).and_then(|id| tabs.get(&id)) else {
+        let Some(tab) = index.id_of(&page).and_then(|id| tabs.get(&id)) else {
             continue;
         };
         let Some(saved) = tab_record(tab) else {
@@ -184,7 +191,7 @@ mod tests {
     use super::*;
     use crate::test_support::{finish_on_main, wait_until};
     use crate::ui::editor::{SqlEditor, SqlEditorInit};
-    use crate::ui::workspace::{EditorTabSlot, write_workspace_tab_id};
+    use crate::ui::workspace::EditorTabSlot;
     use crate::workspace::WorkspaceLoad;
 
     const WAIT: Duration = Duration::from_secs(5);
@@ -196,6 +203,7 @@ mod tests {
         store: WorkspaceStore,
         view: adw::TabView,
         tabs: WorkspaceTabs,
+        index: Rc<TabIndex>,
     }
 
     impl Fixture {
@@ -216,6 +224,7 @@ mod tests {
                 store,
                 view: adw::TabView::new(),
                 tabs: WorkspaceTabs::default(),
+                index: Rc::default(),
             }
         }
 
@@ -231,7 +240,7 @@ mod tests {
             });
             let page = self.view.append(&editor);
             let id = Uuid::new_v4();
-            write_workspace_tab_id(&page, id);
+            self.index.insert(&page, id);
             let draft = DraftId::new();
             self.tabs.borrow_mut().insert(
                 id,
@@ -276,7 +285,7 @@ mod tests {
         let (selected, second) = fixture.add_editor();
         fixture.view.set_selected_page(&selected);
 
-        let record = workspace_record(&fixture.view, &fixture.tabs.borrow());
+        let record = workspace_record(&fixture.view, &fixture.tabs.borrow(), &fixture.index);
 
         assert_eq!(editor_drafts(&record), [first, second]);
         assert_eq!(record.active_tab, Some(1));
@@ -301,7 +310,7 @@ mod tests {
             });
             let page = fixture.view.append(&structure);
             let id = Uuid::new_v4();
-            write_workspace_tab_id(&page, id);
+            fixture.index.insert(&page, id);
             fixture.tabs.borrow_mut().insert(
                 id,
                 WorkspaceTab::Structure(crate::ui::workspace::StructureTabSlot {
@@ -315,7 +324,7 @@ mod tests {
             );
         }
 
-        let record = workspace_record(&fixture.view, &fixture.tabs.borrow());
+        let record = workspace_record(&fixture.view, &fixture.tabs.borrow(), &fixture.index);
 
         assert_eq!(
             record.tabs,
@@ -379,7 +388,7 @@ mod tests {
         let persistence = WorkspacePersistence::new(fixture.store.clone());
         let key = SessionKey::Saved(Uuid::new_v4());
         let (_, draft) = fixture.add_editor();
-        persistence.attach(key.clone(), &fixture.view, fixture.tabs.clone());
+        persistence.attach(key.clone(), &fixture.view, fixture.tabs.clone(), fixture.index.clone());
 
         let flushing = persistence.detach().expect("an attached session");
         finish_on_main(WAIT, flushing)
@@ -399,7 +408,7 @@ mod tests {
         let persistence = WorkspacePersistence::new(fixture.store.clone());
         let key = SessionKey::Saved(Uuid::new_v4());
         let (_, draft) = fixture.add_editor();
-        persistence.attach(key.clone(), &fixture.view, fixture.tabs.clone());
+        persistence.attach(key.clone(), &fixture.view, fixture.tabs.clone(), fixture.index.clone());
 
         persistence.request();
         let flushing = persistence.detach().expect("an attached session");

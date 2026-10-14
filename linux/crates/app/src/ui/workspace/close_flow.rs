@@ -62,9 +62,7 @@ impl WorkspaceModel {
     /// A tab asked to close. One with nothing to lose closes now; any
     /// other waits for the prompts.
     pub(super) fn close_workspace_tab_by_id(&mut self, id: Uuid) {
-        let Some(tab_view) = self.workspace_tab_view.clone() else {
-            return;
-        };
+        let tab_view = self.tab_view.clone();
         if self.close_guards.may_close_tab(&self.workspace_handle, id) {
             self.finish_close_workspace_tab(id, &tab_view);
             return;
@@ -83,9 +81,7 @@ impl WorkspaceModel {
     }
 
     pub(super) fn on_tab_close_decided(&mut self, id: Uuid, approved: bool) {
-        let Some(tab_view) = self.workspace_tab_view.clone() else {
-            return;
-        };
+        let tab_view = self.tab_view.clone();
         if approved {
             self.finish_close_workspace_tab(id, &tab_view);
             return;
@@ -126,8 +122,9 @@ mod tests {
     use crate::services::active_session::ActiveSession;
     use crate::test_support::{FakeSession, MemorySettings, wait_until};
     use crate::ui::editor::{SqlEditor, SqlEditorInit};
+    use crate::ui::workspace::EditorTabSlot;
+    use crate::ui::workspace::tab_index::TabIndex;
     use crate::ui::workspace::window_tabs::WindowTabs;
-    use crate::ui::workspace::{EditorTabSlot, write_workspace_tab_id};
     use crate::workspace::{TabDirectory, TabEntry};
 
     const WAIT: Duration = Duration::from_secs(10);
@@ -164,7 +161,8 @@ mod tests {
         let page = view.append(&editor);
         page.set_title("• Query 1");
         let id = Uuid::new_v4();
-        write_workspace_tab_id(&page, id);
+        let index = Rc::new(TabIndex::default());
+        index.insert(&page, id);
         let tabs: WorkspaceTabs = Rc::new(RefCell::new(HashMap::from([(
             id,
             WorkspaceTab::Editor(EditorTabSlot {
@@ -173,8 +171,7 @@ mod tests {
                 draft: DraftId::new(),
             }),
         )])));
-        let directory = WindowTabs::new(tabs.clone());
-        directory.set_view(Some(&view));
+        let directory = WindowTabs::new(tabs.clone(), index, &view);
 
         assert_eq!(
             directory.tabs(),

@@ -11,6 +11,10 @@ mod imp {
     #[template(resource = "/app/tablepro/TablePro/ui/connecting-page.ui")]
     pub struct ConnectingPage {
         #[template_child]
+        pub toast_overlay: TemplateChild<adw::ToastOverlay>,
+        #[template_child]
+        pub header_bar: TemplateChild<adw::HeaderBar>,
+        #[template_child]
         pub status_page: TemplateChild<adw::StatusPage>,
     }
 
@@ -43,11 +47,16 @@ glib::wrapper! {
 }
 
 impl ConnectingPage {
-    pub fn new(name: &str) -> Self {
+    pub fn new(name: &str, app: Option<&gtk::Application>) -> Self {
         let page: Self = glib::Object::new();
-        page.imp()
-            .status_page
+        let imp = page.imp();
+        imp.status_page
             .set_title(&crate::i18n::gettext_f("Connecting to {name}", &[("name", name)]));
+        imp.header_bar.pack_end(&crate::ui::shell::primary_menu_button(app));
         page
+    }
+
+    pub fn toast_overlay(&self) -> adw::ToastOverlay {
+        self.imp().toast_overlay.get()
     }
 }

@@ -71,6 +71,8 @@ pub const ACCELERATORS: &[Accelerator] = &[
     application("app.new-window", &["<Primary><Shift>n"], General),
     application("app.preferences", &["<Primary>comma"], General),
     application("win.show-history", &["<Primary><Shift>h"], General),
+    // As in GNOME Files.
+    application("win.show-sidebar", &["F9"], General),
     application("app.quit", &["<Primary>q"], General),
     // AdwApplication adds the action and its accelerator once it finds
     // shortcuts-dialog.ui under the resource base path.

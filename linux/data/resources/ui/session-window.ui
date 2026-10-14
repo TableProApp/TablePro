@@ -6,10 +6,9 @@
     <property name="title" translatable="yes">TablePro</property>
     <property name="default-width">1200</property>
     <property name="default-height">760</property>
-    <property name="content">
-      <!-- The page the window is on: the connection picker, the
-           connect in progress or its failure, or the workspace. -->
-      <object class="AdwToastOverlay" id="toast_overlay"/>
-    </property>
+    <!-- The smallest size the GNOME HIG asks a window to fit, which every
+         page the window shows is laid out for. -->
+    <property name="width-request">360</property>
+    <property name="height-request">294</property>
   </template>
 </interface>

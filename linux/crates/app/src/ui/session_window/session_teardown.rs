@@ -8,6 +8,7 @@ use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
+use libadwaita::prelude::AdwApplicationWindowExt;
 use tablepro_core::EditorSession;
 use tablepro_session::Session;
 use tablepro_session::runtime::{ProcessHold, Tasks};
@@ -48,7 +49,8 @@ impl SessionWindow {
         drop(page);
         workspace.flush();
         let editor_sessions = workspace.take_editor_sessions();
-        imp.toast_overlay.set_child(gtk::Widget::NONE);
+        self.set_content(gtk::Widget::NONE);
+        imp.page_toasts.replace(None);
         self.set_title(Some(&crate::i18n::gettext("TablePro")));
         workspace.shutdown();
         drop(workspace);
@@ -152,7 +154,7 @@ mod tests {
             "a step ran before the one it depends on"
         );
 
-        let child = test.window.imp().toast_overlay.child();
+        let child = test.window.content();
         assert!(
             child.is_some_and(|child| child.type_().name() == "TableProPickerPage"),
             "the picker did not replace the workspace"

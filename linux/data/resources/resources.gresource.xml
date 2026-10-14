@@ -7,6 +7,8 @@
     <!-- Written by build-aux/update-third-party-licenses.sh. -->
     <file compressed="true" alias="licenses/third-party.json">../licenses/third-party.json</file>
     <file compressed="true" preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
+    <!-- GtkApplication reads the menus from here at startup. -->
+    <file compressed="true" preprocess="xml-stripblanks">gtk/menus.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/browse-tab.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/connect-dialog.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/connect-failed-page.ui</file>

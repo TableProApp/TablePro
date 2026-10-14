@@ -28,6 +28,12 @@
           </object>
         </child>
         <child>
+          <object class="AdwShortcutsItem" id="win-show-sidebar">
+            <property name="title" translatable="yes">Show or hide the sidebar</property>
+            <property name="action-name">win.show-sidebar</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwShortcutsItem" id="app-shortcuts">
             <property name="title" translatable="yes">Keyboard shortcuts</property>
             <property name="action-name">app.shortcuts</property>

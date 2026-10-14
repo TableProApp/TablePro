@@ -19,7 +19,8 @@ type ActionInput = fn() -> SessionWindowInput;
 /// The window's actions and the input each one sends. A closure holds
 /// only the window's input sender, so an action that outlives the window
 /// drops its input rather than reaching a window that is gone.
-const ACTIONS: [(&str, ActionInput); 9] = [
+const ACTIONS: [(&str, ActionInput); 10] = [
+    ("new-connection", || SessionWindowInput::OpenConnectDialog),
     ("close-current", || SessionWindowInput::CloseCurrent),
     ("disconnect", || SessionWindowInput::Disconnect),
     ("reconnect", || SessionWindowInput::Reconnect),

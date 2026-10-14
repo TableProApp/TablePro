@@ -19,6 +19,9 @@ use crate::runtime::DeliverInput;
 use crate::ui::error_text;
 use crate::ui::structure_tab::{StructureMode, StructureTabInput};
 use crate::ui::workspace::{WorkspaceInput, WorkspaceModel, WorkspaceTab};
+
+use super::structure_target::StructureTarget;
+use super::tab_spec::{TabSpec, TablePage};
 use crate::workspace::run_schema_plan;
 
 impl WorkspaceModel {
@@ -37,7 +40,9 @@ impl WorkspaceModel {
             ));
             return;
         }
-        self.append_new_structure_tab(schema);
+        self.open_tab(TabSpec::Structure {
+            target: StructureTarget::NewDraft { schema },
+        });
     }
 
     /// Select the table's Structure tab, or open one. Its Table tab
@@ -51,13 +56,13 @@ impl WorkspaceModel {
             }
             _ => None,
         });
-        if let Some(page) = existing_structure
-            && let Some(tab_view) = self.workspace_tab_view.as_ref()
-        {
-            tab_view.set_selected_page(&page);
+        if let Some(page) = existing_structure {
+            self.tab_view.set_selected_page(&page);
             return;
         }
-        self.append_existing_structure_tab(schema, table);
+        self.open_tab(TabSpec::Structure {
+            target: StructureTarget::Existing(TableRef::new(schema, table)),
+        });
     }
 
     /// Right-click → "Drop Table…", or in-tab destructive button.
@@ -141,9 +146,7 @@ impl WorkspaceModel {
     /// pointing at `(schema, table)`. Skips the per-tab pending-changes
     /// dialog because the underlying table is gone.
     pub(super) fn close_tabs_for_table(&mut self, schema: Option<&str>, table: &str) {
-        let Some(tab_view) = self.workspace_tab_view.clone() else {
-            return;
-        };
+        let tab_view = self.tab_view.clone();
         let mut targets: Vec<Uuid> = Vec::new();
         for (id, tab) in self.workspace_tabs.borrow().iter() {
             match tab {
@@ -193,12 +196,14 @@ impl WorkspaceModel {
 
         match kind {
             SaveKind::PromoteNewToTable(schema, name) => {
-                if let Some(tab_view) = self.workspace_tab_view.clone() {
-                    self.finish_close_workspace_tab(tab_id, &tab_view);
-                }
+                let tab_view = self.tab_view.clone();
+                self.finish_close_workspace_tab(tab_id, &tab_view);
                 // A table just designed is filled in next.
                 let page_size = u64::from(self.settings.default_page_size());
-                self.append_table_tab(schema.clone(), name.clone(), 0, page_size, None);
+                self.open_tab(TabSpec::Table {
+                    table: TableRef::new(schema.clone(), name.clone()),
+                    page: TablePage::first(page_size),
+                });
                 self.input.deliver(WorkspaceInput::SchemaChanged {
                     schema,
                     table: Some(name),
@@ -324,16 +329,11 @@ impl WorkspaceModel {
         let base = if table_name.is_empty() {
             crate::i18n::gettext("New Table")
         } else {
-            super::workspace_tabs::qualified_browse_tab_label(schemas_count, schema, &table_name)
+            super::tab_factory::qualified_browse_tab_label(schemas_count, schema, &table_name)
         };
         let title = if combined_dirty { format!("• {base}") } else { base };
         page.set_title(&title);
-        let is_selected = self
-            .workspace_tab_view
-            .as_ref()
-            .and_then(|tv| tv.selected_page())
-            .map(|p| &p == page)
-            .unwrap_or(false);
+        let is_selected = self.tab_view.selected_page().as_ref() == Some(page);
         page.set_needs_attention(combined_dirty && !is_selected);
         self.refresh_window_title();
     }

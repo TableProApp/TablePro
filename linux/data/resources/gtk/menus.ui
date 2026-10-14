@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <!-- GtkApplication loads this file from the resource base path at
+       startup; the windows read the menus with menu_by_id. -->
+  <menu id="primary_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">New Window</attribute>
+        <attribute name="action">app.new-window</attribute>
+      </item>
+    </section>
+    <section>
+      <!-- A workspace adds these; the picker has no session to show
+           history for. -->
+      <item>
+        <attribute name="label" translatable="yes">Query History</attribute>
+        <attribute name="action">win.show-history</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Saved Queries</attribute>
+        <attribute name="action">win.show-saved-queries</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
+      </item>
+      <!-- The window always has it, enabled only while it shows a
+           session. -->
+      <item>
+        <attribute name="label" translatable="yes">Disconnect</attribute>
+        <attribute name="action">win.disconnect</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Import Connections…</attribute>
+        <attribute name="action">win.import-connections</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Export Connections…</attribute>
+        <attribute name="action">win.export-connections</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Preferences</attribute>
+        <attribute name="action">app.preferences</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Keyboard Shortcuts</attribute>
+        <attribute name="action">app.shortcuts</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">About TablePro</attribute>
+        <attribute name="action">app.about</attribute>
+      </item>
+    </section>
+  </menu>
+  <menu id="tab_overview_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Reopen Closed Tab</attribute>
+        <attribute name="action">win.reopen-closed-tab</attribute>
+      </item>
+    </section>
+  </menu>
+</interface>

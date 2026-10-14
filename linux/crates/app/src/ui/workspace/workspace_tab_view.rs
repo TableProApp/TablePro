@@ -8,15 +8,19 @@ const CHILD_NAVIGATION_KEYS: adw::TabViewShortcuts = adw::TabViewShortcuts::CONT
     .union(adw::TabViewShortcuts::CONTROL_SHIFT_HOME)
     .union(adw::TabViewShortcuts::CONTROL_SHIFT_END);
 
-pub(super) fn new_workspace_tab_view() -> adw::TabView {
-    let view = adw::TabView::new();
+pub(super) fn keep_child_navigation_keys(view: &adw::TabView) {
     view.remove_shortcuts(CHILD_NAVIGATION_KEYS);
-    view
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn new_workspace_tab_view() -> adw::TabView {
+        let view = adw::TabView::new();
+        keep_child_navigation_keys(&view);
+        view
+    }
 
     #[gtk4::test]
     fn workspace_tab_view_leaves_buffer_navigation_keys_to_children() {

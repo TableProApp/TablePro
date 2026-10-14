@@ -13,6 +13,10 @@ mod imp {
     #[template(resource = "/app/tablepro/TablePro/ui/connect-failed-page.ui")]
     pub struct ConnectFailedPage {
         #[template_child]
+        pub toast_overlay: TemplateChild<adw::ToastOverlay>,
+        #[template_child]
+        pub header_bar: TemplateChild<adw::HeaderBar>,
+        #[template_child]
         pub status_page: TemplateChild<adw::StatusPage>,
         #[template_child]
         pub reenter_button: TemplateChild<gtk::Button>,
@@ -55,9 +59,10 @@ impl ConnectFailedPage {
     /// `None` for a connection the dialog cannot edit, such as a file
     /// nobody saved. `reenter` is the secret the server refused, which
     /// the user is offered to type again.
-    pub fn new(message: &str, edit: Option<&str>, reenter: Option<SecretKind>) -> Self {
+    pub fn new(message: &str, edit: Option<&str>, reenter: Option<SecretKind>, app: Option<&gtk::Application>) -> Self {
         let page: Self = glib::Object::new();
         let imp = page.imp();
+        imp.header_bar.pack_end(&crate::ui::shell::primary_menu_button(app));
         imp.status_page.set_description(Some(message));
         if let Some(label) = edit {
             imp.edit_button.set_label(label);
@@ -71,6 +76,10 @@ impl ConnectFailedPage {
             imp.retry_button.remove_css_class("suggested-action");
         }
         page
+    }
+
+    pub fn toast_overlay(&self) -> adw::ToastOverlay {
+        self.imp().toast_overlay.get()
     }
 
     #[cfg(test)]

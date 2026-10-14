@@ -116,24 +116,11 @@ impl SimpleComponent for WelcomeView {
             .margin_end(12)
             .build();
 
-        // Single CTA on the populated page: the "+" button in the
-        // group header. Previously we also rendered a bottom pill
-        // labelled "New connection", which duplicated the affordance —
-        // ambiguity at different visual weights. Empty-page pill
-        // stays (it's the only CTA there); on this page the header
-        // suffix is sufficient.
+        // The picker's header bar has New Connection, so the list has no
+        // button of its own; the empty page keeps its pill.
         let group = adw::PreferencesGroup::builder()
             .title(crate::i18n::gettext("Saved connections"))
             .build();
-        let header_btn = gtk::Button::builder()
-            .icon_name(crate::ui::icons::LIST_ADD)
-            .tooltip_text(crate::i18n::gettext("Add Connection"))
-            .valign(gtk::Align::Center)
-            .build();
-        header_btn.add_css_class("flat");
-        let s_header = sender.clone();
-        header_btn.connect_clicked(move |_| s_header.deliver(WelcomeViewInput::OpenConnect));
-        group.set_header_suffix(Some(&header_btn));
         group.add(factory.widget());
         outer.append(&group);
         clamp.set_child(Some(&outer));

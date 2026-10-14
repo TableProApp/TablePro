@@ -26,6 +26,7 @@ mod import_dialog;
 mod preferences_dialog;
 mod saved_queries_dialog;
 mod session_window;
+mod shell;
 mod sidebar_row;
 mod ssh_inputs;
 mod ssh_section;
