@@ -249,6 +249,55 @@ mod tests {
         assert!(path.exists());
     }
 
+    #[test]
+    fn default_known_hosts_path_uses_the_product_config_directory() {
+        match default_known_hosts_path() {
+            Some(path) => {
+                assert_eq!(path.file_name().and_then(|name| name.to_str()), Some("known_hosts"));
+                assert_eq!(
+                    path.parent().and_then(Path::file_name).and_then(|name| name.to_str()),
+                    Some("tablepro")
+                );
+            }
+            None => {
+                assert!(std::env::var_os("XDG_CONFIG_HOME").is_none());
+                assert!(std::env::var_os("HOME").is_none());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_declined_host_key_sends_its_fingerprint_to_the_handshake() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("known_hosts");
+        let key = parse_key(KEY_A_BASE64);
+        let (decliner, _) = recording_prompter(false);
+        let (prompt_events, mut prompt_event_receiver) = tokio::sync::mpsc::unbounded_channel();
+        let outcome = verify_or_prompt(
+            "bastion.example.com",
+            2222,
+            &key,
+            &path,
+            "SHA256:declined",
+            &decliner,
+            &prompt_events,
+        )
+        .await;
+
+        assert!(matches!(outcome, HostKeyOutcome::Unknown { .. }));
+        assert!(matches!(
+            prompt_event_receiver.try_recv(),
+            Ok(HostKeyPromptEvent::WaitingForUser)
+        ));
+        assert!(matches!(
+            prompt_event_receiver.try_recv(),
+            Ok(HostKeyPromptEvent::UserResponded {
+                declined_fingerprint: Some(fingerprint)
+            }) if fingerprint == "SHA256:declined"
+        ));
+        assert!(prompt_event_receiver.try_recv().is_err());
+    }
+
     #[tokio::test]
     async fn built_in_host_key_trust_is_persisted_only_after_acceptance() {
         let dir = tempfile::tempdir().unwrap();
