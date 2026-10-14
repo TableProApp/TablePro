@@ -76,7 +76,10 @@ final class ConnectionImportReviewUITests: UITestCase {
             message.waitToExist(timeout: 15),
             "The result must count the connection and only the query still checked"
         )
-        app.buttons["OK"].firstMatch.click()
+        // The alert is a sheet on the welcome window; an app-wide query also matches its Touch Bar copy.
+        let ok = welcome.sheets.buttons["OK"].firstMatch
+        XCTAssertTrue(waitUntilHittable(ok, timeout: 5), "The result alert must offer OK")
+        ok.click()
 
         let list = welcomeConnectionList(in: welcome)
         XCTAssertTrue(
