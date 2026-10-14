@@ -116,7 +116,7 @@
         <child>
           <object class="AdwShortcutsItem">
             <property name="title" translatable="yes">Set focused cell to NULL</property>
-            <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;n</property>
+            <property name="accelerator">&lt;Primary&gt;BackSpace</property>
           </object>
         </child>
         <child>

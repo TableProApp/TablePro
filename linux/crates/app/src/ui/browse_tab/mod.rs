@@ -444,7 +444,7 @@ impl BrowseTab {
         });
     }
 
-    /// Set the focused cell to NULL, for Ctrl+Shift+N. A locked cell
+    /// Set the focused cell to NULL, for Ctrl+Backspace. A locked cell
     /// lets the key go on.
     fn set_focused_cell_null(&self) -> glib::Propagation {
         // `RootExt::focus` would return the window itself.
