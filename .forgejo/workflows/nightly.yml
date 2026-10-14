@@ -129,7 +129,7 @@ jobs:
           fi
           status=0
           test_args=(--lib)
-          [ "${{ matrix.package }}" = tablepro-agentd ] && test_args+=(--bins)
+          [ "${{ matrix.package }}" = tablepro-agentd ] && test_args+=(--bins --tests)
           cargo mutants "${args[@]}" -- "${test_args[@]}" || status=$?
           partial=()
           [ "${{ matrix.shard }}" = 0/1 ] || partial=(--partial)
