@@ -17,8 +17,9 @@ aws-lc-rs is the only crypto provider, and `deny.toml` enforces providers, sourc
 - **Sources**: crates.io plus exactly one git source, `tiberius-rs/tiberius`, until tiberius 0.13 is published. No forks.
 - **Bans**: ring, openssl-sys, native-tls, rustls before 0.23, rustls-pemfile, bigdecimal, backoff and instant are denied with a reason each, and libsqlite3-sys may appear only once.
 - **RUSTSEC-2023-0071** (Marvin attack on rsa):
-  - Stage A, until the OpenSSH transport replaces russh: rsa signs SSH RSA identities in process, one blinded signature per authentication. Host-key verification and agent signing do not use it. sqlx-mysql only encrypts a password with the server's public key.
-  - Stage B, written by the commit that removes russh: rsa is reached only through sqlx-mysql's public-key encryption.
+  - Stage A, until the OpenSSH transport replaced russh: rsa signed SSH RSA identities in process, one blinded signature per authentication. Host-key verification and agent signing did not use it.
+  - Stage B, since ADR 0013 removed russh: rsa is reached only through sqlx-mysql, which encrypts the MySQL password with the server's public key when the connection has no TLS. The advisory is about private-key timing, and no private-key operation runs in process: the OpenSSH client or the agent signs SSH identities in its own process. `deny.toml` bans rsa under any other parent, so a dependency that brings an in-process RSA signer fails `cargo deny check bans` instead of passing under the ignore.
+  - RSA identity files stay supported with no hint on the key row. Recommending Ed25519 or the agent was the Stage A mitigation; under Stage B it would warn about a working key with no exposure behind it.
 
 ## Consequences
 
