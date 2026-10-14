@@ -1,8 +1,10 @@
+use tablepro_core::credentials::SecretKind;
 use tablepro_storage::{ConnectionColor, SavedConnection};
 use uuid::Uuid;
 
 use super::resolve_file_identity::ResolvedFile;
 use super::session_window_command::SessionWindowCommand;
+use crate::services::connection_deletion::DeletionOptions;
 use crate::ui::connect_dialog::ConnectSubmission;
 use crate::workspace::CloseReason;
 
@@ -26,6 +28,9 @@ pub(crate) enum SessionWindowInput {
     /// Connect again from where the failed connect came from, reading
     /// the keyring again.
     RetryConnect,
+    /// Connect a saved connection whose login was refused again, asking
+    /// for this secret instead of reading the keyring's copy.
+    RetryWithNewSecret(SecretKind),
     /// Open the connect dialog on a connection that failed to connect,
     /// with the focus on the setting that fixes it.
     EditConnection,
@@ -54,8 +59,13 @@ pub(crate) enum SessionWindowInput {
     ConnectionsLoaded(Vec<SavedConnection>),
     ConnectionListUnavailable,
     ResetConnectionList,
-    SecretDeleteFailed(Uuid),
+    /// The keyring kept a deleted connection's secrets, so the entry
+    /// was kept too. The toast's Retry runs the same delete again.
+    SecretDeleteFailed(Uuid, DeletionOptions),
+    /// Ask whether to delete a saved connection.
     DeleteConnection(Uuid),
+    /// The user confirmed the delete.
+    ConfirmDelete(Uuid, DeletionOptions),
     DuplicateConnection(Box<SavedConnection>),
     /// A colour picked from a connection row's menu, or `None` when the
     /// user cleared it.

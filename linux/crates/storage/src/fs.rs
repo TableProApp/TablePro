@@ -168,6 +168,43 @@ pub fn moved_aside_exists_blocking(path: &Path) -> Result<bool, StorageError> {
     Ok(false)
 }
 
+/// Delete every copy of `path` that `move_aside_blocking` moved aside,
+/// for a file whose owner is gone. Returns how many there were.
+pub fn remove_moved_aside_blocking(path: &Path) -> Result<usize, StorageError> {
+    let Some(name) = path.file_name() else {
+        return Ok(0);
+    };
+    let prefix = format!("{}{MOVED_ASIDE}", name.to_string_lossy());
+    let parent = path.parent().unwrap_or(Path::new("."));
+    let entries = match std::fs::read_dir(parent) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(0),
+        Err(source) => {
+            return Err(StorageError::Io {
+                path: parent.to_owned(),
+                source,
+            });
+        }
+    };
+    let mut removed = 0;
+    for entry in entries {
+        let entry = entry.map_err(|source| StorageError::Io {
+            path: parent.to_owned(),
+            source,
+        })?;
+        if !entry.file_name().to_string_lossy().starts_with(&prefix) {
+            continue;
+        }
+        let copy = entry.path();
+        match std::fs::remove_file(&copy) {
+            Ok(()) => removed += 1,
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(source) => return Err(StorageError::Io { path: copy, source }),
+        }
+    }
+    Ok(removed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,6 +326,31 @@ mod tests {
 
         assert!(moved_aside_exists_blocking(&file).expect("list"));
         assert!(!moved_aside_exists_blocking(&root.path().join("missing").join("a.json")).expect("no directory"));
+    }
+
+    #[test]
+    fn remove_moved_aside_takes_only_that_files_copies() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let file = root.path().join("a.json");
+        let other = root.path().join("a.json2");
+        for path in [&file, &other] {
+            std::fs::write(path, b"x").expect("seed");
+            move_aside_blocking(path, std::time::SystemTime::now()).expect("move");
+        }
+        std::fs::write(&file, b"current").expect("seed");
+
+        assert_eq!(remove_moved_aside_blocking(&file).expect("remove"), 1);
+
+        assert!(!moved_aside_exists_blocking(&file).expect("list"));
+        assert!(
+            moved_aside_exists_blocking(&other).expect("list"),
+            "another file's copy went"
+        );
+        assert_eq!(std::fs::read(&file).expect("read"), b"current");
+        assert_eq!(
+            remove_moved_aside_blocking(&root.path().join("missing").join("a.json")).expect("no directory"),
+            0
+        );
     }
 
     #[test]

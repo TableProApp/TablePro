@@ -18,7 +18,22 @@
                 <property name="spacing">12</property>
                 <property name="halign">center</property>
                 <child>
-                  <object class="GtkButton">
+                  <!-- Shown when the server refused a secret the user
+                       can type again, labelled with that secret. It
+                       takes the suggested style from Retry, which
+                       would only send the refused secret again. -->
+                  <object class="GtkButton" id="reenter_button">
+                    <property name="visible">false</property>
+                    <property name="label" translatable="yes">Enter Password…</property>
+                    <property name="action-name">win.retry-with-new-secret</property>
+                    <style>
+                      <class name="pill"/>
+                      <class name="suggested-action"/>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="retry_button">
                     <property name="label" translatable="yes">Retry</property>
                     <property name="action-name">win.retry-connect</property>
                     <style>

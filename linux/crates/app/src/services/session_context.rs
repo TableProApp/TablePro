@@ -31,8 +31,10 @@ pub struct SessionContext {
 /// Where a session's secrets come from at each connect and reconnect.
 pub trait CredentialSourceFactory {
     /// A saved connection's keyring entries, or for a connection with no
-    /// saved entry, only what its request carries.
-    fn for_connection(&self, saved: Option<&SavedConnection>) -> Arc<dyn CredentialSource>;
+    /// saved entry, only what its request carries. `session_only` names
+    /// the secrets typed for the session that the keyring does not hold.
+    fn for_connection(&self, saved: Option<&SavedConnection>, session_only: &[SecretKind])
+    -> Arc<dyn CredentialSource>;
 }
 
 /// The keyring, labelling what it remembers in the user's language.
@@ -47,10 +49,16 @@ impl KeyringSources {
 }
 
 impl CredentialSourceFactory for KeyringSources {
-    fn for_connection(&self, saved: Option<&SavedConnection>) -> Arc<dyn CredentialSource> {
+    fn for_connection(
+        &self,
+        saved: Option<&SavedConnection>,
+        session_only: &[SecretKind],
+    ) -> Arc<dyn CredentialSource> {
         match saved {
             Some(saved) => Arc::new(
-                KeyringCredentials::for_saved(self.secrets.clone(), saved).with_labeler(translated_secret_label),
+                KeyringCredentials::for_saved(self.secrets.clone(), saved)
+                    .with_labeler(translated_secret_label)
+                    .keeping_session_secrets(session_only),
             ),
             None => Arc::new(NoStoredCredentials),
         }
@@ -63,10 +71,20 @@ impl SessionContext {
         CredentialInteraction::Attended(self.prompter.clone())
     }
 
-    /// What a session opened from `saved` reads its secrets from at
-    /// every connect, or one opened without a saved entry.
+    /// What a connect to `saved` reads its secrets from, or one with no
+    /// saved entry.
     pub fn credentials_for(&self, saved: Option<&SavedConnection>) -> Arc<dyn CredentialSource> {
-        self.credentials.for_connection(saved)
+        self.credentials.for_connection(saved, &[])
+    }
+
+    /// What a session opened from `saved` reconnects with, keeping the
+    /// `session_only` secrets it logged in with over the keyring's.
+    pub fn session_credentials(
+        &self,
+        saved: Option<&SavedConnection>,
+        session_only: &[SecretKind],
+    ) -> Arc<dyn CredentialSource> {
+        self.credentials.for_connection(saved, session_only)
     }
 
     /// What a started session reconnects with. A Retry the user presses

@@ -5,6 +5,7 @@
 //! it from the application's accelerators and from D-Bus.
 
 use gtk4 as gtk;
+use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
 
@@ -38,6 +39,23 @@ pub(super) fn install(window: &adw::ApplicationWindow, input: &InputSender<Sessi
             .build()
     });
     window.add_action_entries(entries);
+    window.add_action_entries([retry_with_new_secret(input.clone())]);
+}
+
+/// Takes the secret to ask for as its target, named the way the keyring
+/// attribute names it.
+fn retry_with_new_secret(input: InputSender<SessionWindowInput>) -> gio::ActionEntry<adw::ApplicationWindow> {
+    gio::ActionEntry::builder("retry-with-new-secret")
+        .parameter_type(Some(glib::VariantTy::STRING))
+        .activate(move |_, _, target| {
+            if let Some(kind) = target
+                .and_then(|target| target.str())
+                .and_then(super::secret_retry::secret_kind_named)
+            {
+                input.deliver(SessionWindowInput::RetryWithNewSecret(kind));
+            }
+        })
+        .build()
 }
 
 /// Enable each action on the page it means something on, so its menu
@@ -45,6 +63,7 @@ pub(super) fn install(window: &adw::ApplicationWindow, input: &InputSender<Sessi
 pub(super) fn sync(window: &adw::ApplicationWindow, page: &SessionPage, editable: bool) {
     let connected = matches!(page, SessionPage::Workspace { .. });
     let failed = matches!(page, SessionPage::ConnectFailed { .. });
+    let reenter = matches!(page, SessionPage::ConnectFailed { failure, .. } if failure.reenter.is_some());
     for (name, enabled) in [
         ("disconnect", connected),
         ("reconnect", connected),
@@ -54,6 +73,7 @@ pub(super) fn sync(window: &adw::ApplicationWindow, page: &SessionPage, editable
             matches!(page, SessionPage::Connecting { .. }) || failed,
         ),
         ("retry-connect", failed),
+        ("retry-with-new-secret", reenter),
         ("edit-connection", failed && editable),
     ] {
         if let Some(action) = window.lookup_action(name).and_downcast::<gio::SimpleAction>() {

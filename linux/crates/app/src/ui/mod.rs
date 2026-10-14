@@ -4,6 +4,7 @@ mod connection_list;
 mod connection_list_banner;
 mod connection_row;
 pub(crate) mod credential_prompt;
+mod delete_connection_dialog;
 mod editor;
 mod editor_font_provider;
 pub(crate) mod error_text;

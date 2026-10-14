@@ -176,6 +176,7 @@ mod tests {
         .await
         .unwrap();
 
+        assert!(refreshed.typed.is_empty(), "{:?}", refreshed.typed);
         let request = refreshed.request;
         assert_eq!(request.metadata.id, saved.id);
         assert!(request.workspace_settings.read_only);
@@ -201,6 +202,42 @@ mod tests {
             panic!("expected ssh password auth");
         };
         assert_eq!(password.expose_secret(), "ssh");
+    }
+
+    #[tokio::test]
+    async fn the_kinds_typed_into_a_prompt_are_reported() {
+        use tablepro_core::credentials::PromptReply;
+        use tablepro_test_support::FakePrompter;
+
+        let saved = saved(Some(bastion(SavedSshAuth::Password)));
+        let vault = Arc::new(FakeSecretVault::new());
+        vault
+            .store(
+                saved.id,
+                SecretKind::DatabasePassword,
+                &SecretString::from("db"),
+                "label",
+            )
+            .await
+            .unwrap();
+        let credentials = KeyringCredentials::for_saved(vault, &saved);
+        let prompter = Arc::new(FakePrompter::new([PromptReply::Submitted {
+            values: vec![SecretString::from("ssh")],
+            remember: false,
+        }]));
+
+        let refreshed = resolve_saved(
+            &saved,
+            &drivers(),
+            &credentials,
+            CredentialInteraction::Attended(prompter),
+            CredentialDemand::default(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(refreshed.typed, [SecretKind::SshPassword]);
+        assert!(refreshed.remember.is_empty());
     }
 
     #[tokio::test]

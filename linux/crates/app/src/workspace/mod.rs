@@ -49,6 +49,7 @@ mod workspace_record;
 mod workspace_save_error;
 mod workspace_store;
 mod write_job;
+mod writes_in_flight;
 
 pub use close_decision::CloseDecision;
 pub(crate) use close_guard::CloseGuard;

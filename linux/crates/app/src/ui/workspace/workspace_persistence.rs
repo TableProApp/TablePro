@@ -204,7 +204,11 @@ mod tests {
             crate::register_test_resources();
             let runtime = crate::test_support::test_runtime();
             let root = tempfile::tempdir().expect("tempdir");
-            let store = WorkspaceStore::start(root.path().join("workspaces"), &runtime.tasks());
+            let store = WorkspaceStore::start(
+                root.path().join("workspaces"),
+                tablepro_storage::DraftStore::new(root.path().join("drafts")),
+                &runtime.tasks(),
+            );
             Self {
                 runtime,
                 settings: crate::test_support::MemorySettings::new(),

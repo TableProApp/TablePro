@@ -11,6 +11,19 @@ pub struct RefreshedRequest {
     /// Secrets typed into a prompt with "Remember" on. They are stored
     /// only once the login they were typed for has worked.
     pub remember: Vec<SecretSave>,
+    /// Every kind the user typed into a prompt, remembered or not.
+    pub typed: Vec<SecretKind>,
+}
+
+impl RefreshedRequest {
+    /// `request` as it came, with nothing typed for it.
+    pub fn unchanged(request: ConnectRequest) -> Self {
+        Self {
+            request,
+            remember: Vec::new(),
+            typed: Vec::new(),
+        }
+    }
 }
 
 /// Where a request's secrets come from at each connect.

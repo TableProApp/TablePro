@@ -91,6 +91,22 @@ impl HistoryService {
     pub fn store(&self) -> Option<QueryHistory> {
         self.store.lock().ok().and_then(|guard| guard.clone())
     }
+
+    /// The database once the open at startup has finished, or `None`
+    /// when it failed, for work that must not skip the history just
+    /// because it ran early.
+    pub fn ready_store(&self) -> impl Future<Output = Option<QueryHistory>> + use<> {
+        let mut availability = self.availability.clone();
+        let store = self.store.clone();
+        async move {
+            // A sender gone means the worker ended, which it does only
+            // after it has said how the open went.
+            let _ = availability
+                .wait_for(|state| !matches!(state, HistoryAvailability::Starting))
+                .await;
+            store.lock().ok().and_then(|guard| guard.clone())
+        }
+    }
 }
 
 /// One prune at the retention the user has set right now.
@@ -151,6 +167,16 @@ mod tests {
 
         assert_eq!(state, HistoryAvailability::Ready);
         assert!(service.store().is_some());
+    }
+
+    #[tokio::test]
+    async fn ready_store_waits_for_the_open() {
+        let root = tempfile::tempdir().expect("tempdir");
+
+        let service = HistoryService::start(paths(&root), retention(30), &paused_tasks());
+        assert!(service.store().is_none());
+
+        assert!(service.ready_store().await.is_some());
     }
 
     #[tokio::test]

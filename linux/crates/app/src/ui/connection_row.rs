@@ -21,19 +21,15 @@ pub struct ConnectionRowInit {
 pub struct ConnectionRow {
     saved: SavedConnection,
     groups: Vec<String>,
-    /// AdwActionRow root widget. Cached so the trash button's
-    /// confirmation dialog can `present()` against it (the dialog
-    /// walks up to find the GtkWindow, but it needs *some* widget
-    /// in the tree to start from).
+    /// The row, which the New Group dialog presents over: a dialog
+    /// finds its window from any widget inside it.
     root: Option<gtk::Widget>,
 }
 
 #[derive(Debug)]
 pub enum ConnectionRowMsg {
     Open,
-    /// Trash button pressed. Triggers a confirmation dialog before
-    /// any actual delete is dispatched — saved connections include
-    /// credentials and SSH config and a misclick is unrecoverable.
+    /// Delete from the row's menu. The window confirms it.
     RequestDelete,
     /// Copy the connection under a free name, so a second database on
     /// the same server does not have to be typed out again.
@@ -214,33 +210,10 @@ impl FactoryComponent for ConnectionRow {
                 });
                 dialog.present(self.root.as_ref());
             }
+            // The window asks before anything is deleted, with the
+            // choices only it can offer: an open connection, its history.
             ConnectionRowMsg::RequestDelete => {
-                // GNOME HIG: destructive actions need explicit
-                // confirmation. AdwAlertDialog with a destructive-
-                // appearance Remove button is the documented pattern;
-                // the Cancel default + Esc-cancellable close response
-                // make a misclick a no-op. Body copy spells out the
-                // blast radius so the user knows what's actually lost.
-                let dialog = adw::AlertDialog::new(None, None);
-                dialog.set_heading(Some(&crate::i18n::gettext_f(
-                    "Remove “{name}”?",
-                    &[("name", &self.saved.name)],
-                )));
-                dialog.set_body(&crate::i18n::gettext("The saved credentials and SSH settings will be deleted from this device. The database itself is unaffected."));
-                dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
-                dialog.add_response("remove", &crate::i18n::gettext("Remove"));
-                dialog.set_response_appearance("remove", adw::ResponseAppearance::Destructive);
-                dialog.set_default_response(Some("cancel"));
-                dialog.set_close_response("cancel");
-                let id = self.saved.id;
-                let output = sender.output_sender().clone();
-                dialog.connect_response(None, move |dlg, response| {
-                    dlg.close();
-                    if response == "remove" {
-                        let _ = output.send(ConnectionRowOutput::Delete(id));
-                    }
-                });
-                dialog.present(self.root.as_ref());
+                let _ = sender.output(ConnectionRowOutput::Delete(self.saved.id));
             }
         }
     }
@@ -256,7 +229,7 @@ fn subtitle_for(saved: &SavedConnection) -> String {
     }
 }
 
-/// The row's own menu. Remove sits in its own section so a destructive
+/// The row's own menu. Delete sits in its own section so a destructive
 /// action is never the neighbour of an ordinary one.
 fn row_menu(groups: &[String]) -> gio::Menu {
     let menu = gio::Menu::new();
@@ -264,7 +237,8 @@ fn row_menu(groups: &[String]) -> gio::Menu {
     menu.append_submenu(Some(&crate::i18n::gettext("Colour")), &color_menu());
     menu.append_submenu(Some(&crate::i18n::gettext("Group")), &group_menu(groups));
     let danger = gio::Menu::new();
-    danger.append(Some(&crate::i18n::gettext("Remove…")), Some("connection.remove"));
+    // Named as the dialog it opens names it.
+    danger.append(Some(&crate::i18n::gettext("Delete…")), Some("connection.remove"));
     menu.append_section(None, &danger);
     menu
 }
