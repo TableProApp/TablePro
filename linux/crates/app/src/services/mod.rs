@@ -3,6 +3,8 @@ pub mod cell_overlay;
 pub mod change_tracker;
 pub mod change_tracker_registry;
 pub mod column_relayout;
+pub mod file_location;
+mod file_location_kind;
 pub mod file_resolution;
 pub mod history_availability;
 pub mod history_service;

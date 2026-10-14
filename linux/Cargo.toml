@@ -76,6 +76,7 @@ gtk4 = { version = "0.11", features = ["gnome_50"] }
 libadwaita = { version = "0.9", features = ["v1_9"] }
 sourceview5 = { version = "0.11", features = ["v5_18"] }
 gio = { version = "0.22", features = ["v2_88"] }
+gio-unix = { version = "0.22", features = ["v2_84"] }
 glib = { version = "0.22", features = ["v2_88"] }
 glib-build-tools = "0.22"
 uuid = { version = "1", features = ["v4", "serde"] }

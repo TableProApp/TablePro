@@ -1,13 +1,17 @@
+use std::path::Path;
+
 use relm4::adw::prelude::*;
 use relm4::factory::{DynamicIndex, FactoryComponent, FactorySender};
-use relm4::gtk::gio;
+use relm4::gtk::{gio, glib};
 use relm4::{adw, gtk};
 use uuid::Uuid;
 
 use tablepro_core::AuthMode;
+use tablepro_session::runtime::Tasks;
 use tablepro_storage::{ConnectionColor, SavedConnection};
 
 use crate::runtime::DeliverInput;
+use crate::services::file_location;
 
 /// What a row needs to build itself: the connection, plus the groups
 /// the rest of the list is filed under so its menu can offer them.
@@ -15,12 +19,16 @@ use crate::runtime::DeliverInput;
 pub struct ConnectionRowInit {
     pub saved: SavedConnection,
     pub groups: Vec<String>,
+    /// Reads the file a portal path stands for. `None` names the file
+    /// alone.
+    pub tasks: Option<Tasks>,
 }
 
 #[derive(Debug)]
 pub struct ConnectionRow {
     saved: SavedConnection,
     groups: Vec<String>,
+    tasks: Option<Tasks>,
     /// AdwActionRow root widget. Cached so the trash button's
     /// confirmation dialog can `present()` against it (the dialog
     /// walks up to find the GtkWindow, but it needs *some* widget
@@ -68,7 +76,7 @@ impl FactoryComponent for ConnectionRow {
     view! {
         adw::ActionRow {
             set_title: &self.saved.name,
-            set_subtitle: &subtitle_for(&self.saved),
+            set_subtitle: &subtitle_for(&self.saved, None),
             set_activatable: true,
             connect_activated[sender] => move |_| sender.deliver(ConnectionRowMsg::Open),
 
@@ -100,6 +108,7 @@ impl FactoryComponent for ConnectionRow {
         Self {
             saved: init.saved,
             groups: init.groups,
+            tasks: init.tasks,
             root: None,
         }
     }
@@ -114,6 +123,7 @@ impl FactoryComponent for ConnectionRow {
         let widgets = view_output!();
         // Stash for the destructive-confirm dialog in update().
         self.root = Some(root.clone().upcast::<gtk::Widget>());
+        self.show_host_path(&root);
 
         // Each row owns its actions, so the menu on one row cannot
         // act on another.
@@ -246,9 +256,36 @@ impl FactoryComponent for ConnectionRow {
     }
 }
 
-fn subtitle_for(saved: &SavedConnection) -> String {
-    if saved.driver_id == "sqlite" {
-        return format!("sqlite · {}", saved.database);
+impl ConnectionRow {
+    /// A portal path's folder is an id, so the row names the file the
+    /// portal stands for once it is read.
+    fn show_host_path(&self, root: &adw::ActionRow) {
+        let path = std::path::PathBuf::from(&self.saved.database);
+        if !is_sqlite(&self.saved) || !file_location::is_portal_path(&path) {
+            return;
+        }
+        let Some(tasks) = &self.tasks else {
+            return;
+        };
+        let looking = tasks.spawn_blocking_task(move || file_location::portal_host_path_blocking(&path));
+        let (saved, row) = (self.saved.clone(), root.downgrade());
+        glib::spawn_future_local(async move {
+            if let (Ok(Some(host)), Some(row)) = (looking.await, row.upgrade()) {
+                row.set_subtitle(&subtitle_for(&saved, Some(&host)));
+            }
+        });
+    }
+}
+
+fn is_sqlite(saved: &SavedConnection) -> bool {
+    saved.driver_id == "sqlite"
+}
+
+/// `host_path` names the file a portal path stands for.
+fn subtitle_for(saved: &SavedConnection, host_path: Option<&Path>) -> String {
+    if is_sqlite(saved) {
+        let shown = file_location::display_path(Path::new(&saved.database), host_path);
+        return format!("sqlite · {shown}");
     }
     match saved.auth_mode {
         AuthMode::Kerberos => format!("{} · {}:{}", saved.driver_id, saved.host, saved.port),
@@ -404,13 +441,28 @@ mod tests {
     #[test]
     fn a_kerberos_row_has_no_username_separator_to_dangle() {
         assert_eq!(
-            subtitle_for(&saved("", AuthMode::Kerberos)),
+            subtitle_for(&saved("", AuthMode::Kerberos), None),
             "mssql · sql.corp.example:1433"
         );
         assert_eq!(
-            subtitle_for(&saved("sa", AuthMode::Password)),
+            subtitle_for(&saved("sa", AuthMode::Password), None),
             "mssql · sa@sql.corp.example:1433"
         );
+    }
+
+    #[test]
+    fn portal_path_shows_host_path() {
+        let mut file = saved("", AuthMode::Password);
+        file.driver_id = "sqlite".into();
+        file.database = "/run/user/1000/doc/1a2b3c/app.db".into();
+
+        assert_eq!(
+            subtitle_for(&file, Some(Path::new("/srv/data/app.db"))),
+            "sqlite · /srv/data/app.db"
+        );
+        assert_eq!(subtitle_for(&file, None), "sqlite · app.db");
+        file.database = "/home/me/app.db".into();
+        assert_eq!(subtitle_for(&file, None), "sqlite · /home/me/app.db");
     }
 
     #[test]

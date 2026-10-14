@@ -35,6 +35,8 @@ crates/app/src/services/cell_overlay.rs
 crates/app/src/services/change_tracker.rs
 crates/app/src/services/change_tracker_registry.rs
 crates/app/src/services/column_relayout.rs
+crates/app/src/services/file_location.rs
+crates/app/src/services/file_location_kind.rs
 crates/app/src/services/file_resolution.rs
 crates/app/src/services/history_availability.rs
 crates/app/src/services/history_service.rs
@@ -180,6 +182,7 @@ crates/app/src/ui/session_window/connect_flow.rs
 crates/app/src/ui/session_window/connecting_page.rs
 crates/app/src/ui/session_window/connections.rs
 crates/app/src/ui/session_window/imp.rs
+crates/app/src/ui/session_window/locate_file.rs
 crates/app/src/ui/session_window/mod.rs
 crates/app/src/ui/session_window/picker_page.rs
 crates/app/src/ui/session_window/resolve_file_identity.rs
@@ -187,6 +190,7 @@ crates/app/src/ui/session_window/session_page.rs
 crates/app/src/ui/session_window/session_teardown.rs
 crates/app/src/ui/session_window/session_window_command.rs
 crates/app/src/ui/session_window/session_window_input.rs
+crates/app/src/ui/session_window/sqlite_location_dialog.rs
 crates/app/src/ui/session_window/tests.rs
 crates/app/src/ui/session_window/window_actions.rs
 crates/app/src/ui/sidebar_row.rs

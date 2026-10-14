@@ -61,6 +61,7 @@ tablepro-ssh = { path = "../ssh" }
 tablepro-session = { path = "../session" }
 tablepro-storage = { path = "../storage" }
 gio.workspace = true
+gio-unix.workspace = true
 gtk4.workspace = true
 libadwaita.workspace = true
 sourceview5.workspace = true

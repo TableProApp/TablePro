@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Delete button in the table grid, with the reason in its tooltip when the selected rows can't be deleted.
 - Set to DEFAULT in a new row's cell menu, for columns the server fills.
 - New Window (Ctrl+Shift+N, or `tablepro --new-window`) opens another window in the running TablePro.
+- Read-only or read-write choice before opening a SQLite file on a network share or FUSE filesystem.
+- Locate… for a saved SQLite connection whose file was moved or renamed.
 
 ### Changed
 
@@ -39,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Quit asks each window about its unsaved changes in turn, and waits for open connections to close.
 - Each window holds one connection: opening one already open brings its window forward, and Disconnect returns to the list.
 - Connecting shows in the window with Cancel, and a failed connect says why, with Retry, Edit Connection and Choose Connection.
+- SQLite files shared through the document portal show their own path instead of the portal's.
 
 ### Removed
 

@@ -8,12 +8,14 @@ mod connect_flow;
 mod connecting_page;
 mod connections;
 mod imp;
+mod locate_file;
 mod picker_page;
 mod resolve_file_identity;
 mod session_page;
 mod session_teardown;
 mod session_window_command;
 mod session_window_input;
+mod sqlite_location_dialog;
 #[cfg(test)]
 pub(crate) mod tests;
 mod window_actions;
@@ -29,6 +31,7 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use relm4::prelude::*;
 
+use tablepro_core::DriverError;
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::registry::FileIdentity;
 use tablepro_session::runtime::ProcessHold;
@@ -45,6 +48,7 @@ use self::resolve_file_identity::{FileResolveError, FileTarget, ResolvedFile, re
 use self::session_page::SessionPage;
 use self::session_window_command::{AttemptError, ConnectFailure, Connected, SessionWindowCommand};
 pub(crate) use self::session_window_input::SessionWindowInput;
+use self::sqlite_location_dialog::FileCheck;
 pub(crate) use self::window_actions::install_window_shortcuts;
 use crate::application::{AppServices, WindowHost, WindowLaunch};
 use crate::runtime::{DeliverInput, InputSender};
@@ -133,7 +137,9 @@ impl SessionWindow {
 
         let welcome_input = input.clone();
         let welcome = WelcomeView::builder()
-            .launch(WelcomeViewInit)
+            .launch(WelcomeViewInit {
+                tasks: Some(services.tasks.clone()),
+            })
             .connect_receiver(move |_, out| {
                 welcome_input.deliver(match out {
                     WelcomeViewOutput::OpenConnect => SessionWindowInput::OpenConnectDialog,
@@ -295,6 +301,9 @@ impl SessionWindow {
             SessionWindowInput::Command(command) => match *command {
                 SessionWindowCommand::Attempt { generation, result } => self.on_attempt(generation, result),
             },
+            SessionWindowInput::LocationChosen { generation, choice } => self.on_location_chosen(generation, choice),
+            SessionWindowInput::FileLocated(path) => self.on_file_located(path),
+            SessionWindowInput::LocatedSaved(located) => self.on_located_saved(*located),
             SessionWindowInput::ReloadConnections => self.on_reload_connections(),
             SessionWindowInput::ConnectionsLoaded(connections) => self.on_connections_loaded(connections),
             SessionWindowInput::ConnectionListUnavailable => self.show_connection_list_banner(),
@@ -367,9 +376,20 @@ impl SessionWindow {
                 drop(claim);
                 self.show_page(SessionPage::Picker);
             }
+            Err(AttemptError::AskLocation(kind)) => {
+                imp.page.replace(SessionPage::Connecting { claim, source });
+                self.ask_about_location(generation, &kind);
+            }
             Err(AttemptError::Failed(failure)) => {
                 tracing::warn!(error = %failure.message, "connect failed");
+                let missing = match &source {
+                    ConnectSource::Saved(_) => failure.missing_file.clone(),
+                    _ => None,
+                };
                 self.show_page(SessionPage::ConnectFailed { claim, source, failure });
+                if let Some(missing) = missing {
+                    self.offer_locate(missing);
+                }
             }
         }
     }
@@ -577,13 +597,20 @@ impl SessionWindow {
     }
 
     fn begin_connect(&self, claim: SessionClaim, source: ConnectSource) {
+        self.start_connect(claim, source, None);
+    }
+
+    /// `answer` is how the user chose to open a database file on a
+    /// filesystem whose locking SQLite cannot trust, once asked.
+    fn start_connect(&self, claim: SessionClaim, source: ConnectSource, answer: Option<bool>) {
         let Some(state) = self.state() else {
             return;
         };
+        let check = self.file_check(&source, answer);
         let ticket = self.imp().attempts.begin();
         let generation = ticket.generation();
         let cancel = ticket.cancel().clone();
-        let work = connect_work(state, &source, cancel);
+        let work = connect_work(state, &source, check, cancel);
         self.show_page(SessionPage::Connecting { claim, source });
         let input = self.input();
         let (tasks, hold) = (state.services.tasks.clone(), state.services.hold());
@@ -753,12 +780,24 @@ fn stop_connecting(attempts: &tablepro_session::ConnectAttempts) {
     attempts.cancel();
 }
 
-/// The connect a source makes, off the GTK thread. Reading the keyring,
-/// asking for what it lacks and connecting all happen there; only the
-/// outcome comes back.
+/// The connect a source makes, off the GTK thread, once `check` finds
+/// its file safe to open. Reading the keyring, asking for what it lacks
+/// and connecting all happen there; only the outcome comes back.
 fn connect_work(
     state: &WindowState,
     source: &ConnectSource,
+    check: FileCheck,
+    cancel: tokio_util::sync::CancellationToken,
+) -> BoxFuture<'static, Result<Connected, AttemptError>> {
+    let connecting = connect_source(state, source, check.read_only(), cancel.clone());
+    check.guard(&state.services.tasks, cancel, connecting)
+}
+
+/// `read_only` opens it read-only whatever the source says.
+fn connect_source(
+    state: &WindowState,
+    source: &ConnectSource,
+    read_only: bool,
     cancel: tokio_util::sync::CancellationToken,
 ) -> BoxFuture<'static, Result<Connected, AttemptError>> {
     let context = &state.context;
@@ -767,11 +806,13 @@ fn connect_work(
     match source {
         ConnectSource::Saved(saved) => {
             let saved = (**saved).clone();
+            let mut opened = saved.clone();
+            opened.read_only |= read_only;
             let drivers = context.drivers.clone();
             let credentials = context.credentials_for(Some(&saved));
             async move {
                 let connected =
-                    connect_flow::connect_saved(&saved, &drivers, &*credentials, &*connector, interaction, cancel)
+                    connect_flow::connect_saved(&opened, &drivers, &*credentials, &*connector, interaction, cancel)
                         .await;
                 match connected {
                     Ok((pending, refused)) => Ok(Connected {
@@ -788,7 +829,8 @@ fn connect_work(
             .boxed()
         }
         ConnectSource::Intent(intent) => {
-            let request = intent.request.clone();
+            let mut request = intent.request.clone();
+            request.workspace_settings.read_only |= read_only;
             let Some(pending_save) = intent.pending_save.clone() else {
                 return async move {
                     connect_flow::connect_request(&*connector, request, interaction, cancel)
@@ -843,7 +885,7 @@ fn connect_work(
             .boxed()
         }
         ConnectSource::File(identity) => {
-            let request = resolve_file_identity::file_request(identity, &context.drivers);
+            let request = resolve_file_identity::file_request(identity, &context.drivers, read_only);
             async move {
                 let request = request.map_err(|error| attempt_error(&error))?;
                 connect_flow::connect_request(&*connector, request, interaction, cancel)
@@ -866,6 +908,10 @@ fn attempt_error(error: &ConnectError) -> AttemptError {
         error => AttemptError::Failed(ConnectFailure {
             message: crate::ui::error_text::connect_error_message(error),
             remedy: crate::ui::error_text::connect_remedy(error),
+            missing_file: match error {
+                ConnectError::Driver(DriverError::FileNotFound { path }) => Some(path.clone()),
+                _ => None,
+            },
         }),
     }
 }

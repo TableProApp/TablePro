@@ -30,6 +30,9 @@ pub(crate) struct Connected {
 pub(crate) enum AttemptError {
     /// The user stopped it, which needs no error.
     Cancelled,
+    /// The database file is on a filesystem whose locking SQLite cannot
+    /// trust, so the user is asked how to open it first.
+    AskLocation(crate::services::file_location::FileLocationKind),
     Failed(ConnectFailure),
 }
 
@@ -38,10 +41,17 @@ pub(crate) enum AttemptError {
 pub(crate) struct ConnectFailure {
     pub message: String,
     pub remedy: Option<TlsRemedy>,
+    /// The database file the driver could not find, which the user can
+    /// locate again for a saved connection.
+    pub missing_file: Option<std::path::PathBuf>,
 }
 
 impl ConnectFailure {
     pub(crate) fn new(message: String) -> Self {
-        Self { message, remedy: None }
+        Self {
+            message,
+            remedy: None,
+            missing_file: None,
+        }
     }
 }

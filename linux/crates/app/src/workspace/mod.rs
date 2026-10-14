@@ -56,6 +56,9 @@ pub(crate) use close_guards::CloseGuards;
 pub use close_reason::CloseReason;
 pub use close_scope::CloseScope;
 pub use close_step::{CloseStep, next_close_step};
+pub(crate) use dialog_response::respond;
+#[cfg(test)]
+pub(crate) use dialog_response::{answer, visible_alert};
 pub use dirty_kind::DirtyKind;
 pub use dirty_tab::DirtyTab;
 pub use draft_writer::DraftWriter;

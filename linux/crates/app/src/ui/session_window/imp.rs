@@ -10,10 +10,12 @@ use relm4::Controller;
 use tablepro_session::ConnectAttempts;
 use tablepro_storage::SavedConnection;
 
+use super::locate_file::LocateChooser;
 use super::picker_page::PickerPage;
 use super::session_page::SessionPage;
 use super::{SessionWindowInput, WindowState};
 use crate::runtime::InputSender;
+use crate::services::file_location::LocationClassifier;
 use crate::ui::connect_dialog::ConnectDialog;
 use crate::ui::welcome_view::WelcomeView;
 use crate::workspace::{CloseGuards, WindowInhibitor};
@@ -50,6 +52,12 @@ pub struct SessionWindow {
     /// looked for.
     pub(super) dialog_opening: Cell<bool>,
     pub(super) shut_down: Cell<bool>,
+    /// Reads which filesystem a database file is on. `None` reads the
+    /// real one; a test stands in for a network share.
+    pub(super) classify_location: Cell<Option<LocationClassifier>>,
+    /// Asks where a lost database file is now. `None` opens the file
+    /// chooser; a test answers for the user.
+    pub(super) locate_chooser: RefCell<Option<Rc<dyn LocateChooser>>>,
 }
 
 #[glib::object_subclass]
