@@ -791,6 +791,36 @@ fn an_edit_test_logs_in_with_the_kept_password() {
     wait_until(WAIT, || !imp.toasts.borrow().is_empty()).expect("the test result");
 
     assert_eq!(imp.toasts.borrow().as_slice(), ["Connection works"]);
+    assert_eq!(tested_password(&harness), "s3cret");
+}
+
+#[gtk4::test]
+fn an_edit_test_logs_in_with_a_typed_password_it_will_not_keep() {
+    let saved = shop();
+    let harness = editing(
+        &saved,
+        FakeConnector::new([FakeEstablish::Connect(ConnectionScript::default())]),
+    );
+    let imp = harness.dialog.imp();
+    imp.password_row.set_text("n3w");
+    imp.remember_row.set_active(false);
+
+    imp.test_button.emit_clicked();
+    wait_until(WAIT, || !imp.toasts.borrow().is_empty()).expect("the test result");
+
+    assert_eq!(tested_password(&harness), "n3w", "Test used the stored password");
+    assert_eq!(
+        harness
+            .vault
+            .stored_secret(saved.id, SecretKind::DatabasePassword)
+            .as_deref(),
+        Some("s3cret"),
+        "Test changed the keyring"
+    );
+}
+
+/// The password the first connect logged in with.
+fn tested_password(harness: &Harness) -> String {
     let calls = harness.connector.calls();
     let RequestTarget::Network {
         credentials: tablepro_core::Credentials::Password { password, .. },
@@ -799,5 +829,5 @@ fn an_edit_test_logs_in_with_the_kept_password() {
     else {
         panic!("expected a password login");
     };
-    assert_eq!(secrecy::ExposeSecret::expose_secret(password), "s3cret");
+    secrecy::ExposeSecret::expose_secret(password).to_owned()
 }

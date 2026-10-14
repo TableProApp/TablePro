@@ -20,14 +20,6 @@ impl SecretChanges {
         }
     }
 
-    /// The kinds the edit types a new value for.
-    pub fn replaced(&self) -> Vec<SecretKind> {
-        SecretKind::ALL
-            .into_iter()
-            .filter(|kind| matches!(self.get(*kind), SecretChange::Replace(_)))
-            .collect()
-    }
-
     /// Record on `connection` whether its key's passphrase is in the
     /// keyring once the edit is saved. The form only knows what was
     /// typed, and an empty passphrase row keeps the one `original` had.
@@ -109,17 +101,5 @@ mod tests {
         };
         removed.settle_passphrase(&mut edited, &keyed(true));
         assert!(!edited.has_stored_passphrase());
-    }
-
-    #[test]
-    fn only_typed_kinds_are_replaced() {
-        let changes = SecretChanges {
-            database_password: SecretChange::Replace(SecretString::from("s3cret")),
-            ssh_password: SecretChange::Remove,
-            ssh_passphrase: SecretChange::Keep,
-        };
-
-        assert_eq!(changes.replaced(), vec![SecretKind::DatabasePassword]);
-        assert!(matches!(changes.get(SecretKind::SshPassword), SecretChange::Remove));
     }
 }

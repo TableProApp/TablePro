@@ -692,13 +692,12 @@ impl ConnectDialog {
             return self.build_submission().map(|submission| (submission.request, None));
         };
         let checked = self.checked_form()?;
-        let (connection, changes) = self.edited(&original, &checked);
+        let (connection, _) = self.edited(&original, &checked);
         let request = connect_request(&checked.entry, &checked.form, &checked.valid, &connection);
-        let kept = self.services().map(|services| {
-            services
-                .credentials
-                .for_connection(Some(&connection), &changes.replaced())
-        });
+        let typed = checked.form.typed_secrets(&checked.valid);
+        let kept = self
+            .services()
+            .map(|services| services.credentials.for_connection(Some(&connection), &typed));
         Ok((request, kept))
     }
 

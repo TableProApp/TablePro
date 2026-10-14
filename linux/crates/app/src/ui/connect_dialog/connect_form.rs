@@ -507,6 +507,30 @@ impl ConnectForm {
         }
     }
 
+    /// The secrets whose rows hold a typed value. A Test logs in with
+    /// these over the keyring's whatever Remember says, since the
+    /// keyring may still hold the one they replace.
+    pub fn typed_secrets(&self, valid: &ValidatedForm) -> Vec<SecretKind> {
+        let typed = |secret: &SecretString| !secret.expose_secret().is_empty();
+        let password_login = matches!(
+            valid.target,
+            RequestTarget::Network {
+                credentials: Credentials::Password { .. },
+                ..
+            }
+        );
+        let mut kinds = Vec::new();
+        if password_login && typed(&self.password) {
+            kinds.push(SecretKind::DatabasePassword);
+        }
+        match valid.ssh.as_ref().map(|(_, secret)| secret) {
+            Some(SshSecretToStore::Password(secret)) if typed(secret) => kinds.push(SecretKind::SshPassword),
+            Some(SshSecretToStore::Passphrase(secret)) if typed(secret) => kinds.push(SecretKind::SshPassphrase),
+            _ => {}
+        }
+        kinds
+    }
+
     fn keeps_database_password(&self, valid: &ValidatedForm) -> bool {
         self.remember_password
             && matches!(
@@ -1052,6 +1076,25 @@ mod tests {
         let submitted = moved.submitted_connection(postgres(), &valid, derived.id, Some(&derived));
 
         assert_eq!(submitted.name, "app@db2.example.com");
+    }
+
+    #[test]
+    fn typed_secrets_ignore_remember() {
+        let mut form = filled("postgres", postgres());
+        form.remember_password = false;
+        let valid = form.validate(postgres()).expect("valid");
+        assert_eq!(form.typed_secrets(&valid), [SecretKind::DatabasePassword]);
+
+        form.password = SecretString::from(String::new());
+        let valid = form.validate(postgres()).expect("valid");
+        assert!(form.typed_secrets(&valid).is_empty());
+
+        let tunnelled = tunnelled(SshAuthChoice::PrivateKey, "/home/u/.ssh/id_ed25519", "phrase");
+        let valid = tunnelled.validate(postgres()).expect("valid");
+        assert_eq!(
+            tunnelled.typed_secrets(&valid),
+            [SecretKind::DatabasePassword, SecretKind::SshPassphrase]
+        );
     }
 
     #[test]
