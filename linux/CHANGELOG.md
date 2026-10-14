@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Screen readers say when a grid cell is modified and when a row is new or marked for deletion.
 - Connections open when TablePro quits open again at the next launch; Restore session in Preferences turns it off.
 - Save query history in Preferences turns the query history off and keeps the entries already saved.
+- Troubleshooting in About TablePro, with the app, toolkit and driver versions to copy into a bug report.
 
 ### Changed
 
@@ -54,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add Index and Add Foreign Key check the form as you type, and pick the referenced table and columns from the database.
 - Denser grid rows, with numbers aligned right in even-width digits at the precision their column declares.
 - A grid value too long to draw says how many bytes it leaves out, and its tooltip points to Show Row as JSON.
+- About TablePro links to the website, documentation and issue tracker, and shows a release's notes.
 
 ### Removed
 

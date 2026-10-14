@@ -1,12 +1,15 @@
 //! The GApplication: one process per profile, the actions every window
 //! shares, and the windows themselves.
 
+mod about_dialog;
 mod app_actions;
 mod app_services;
 mod app_window_host;
+mod debug_info;
 mod imp;
 mod open_files;
 mod quit_sequence;
+mod runtime_versions;
 mod session_signals;
 mod window_host;
 mod window_launch;
