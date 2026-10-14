@@ -55,7 +55,7 @@ Reviewed against the current ADR index, code and living docs on 2026-10-14. The 
 | CI/CD & environments | Decided | GitHub cheap tier; Forgejo merge tiers. [AGENTS](../../AGENTS.md), [validation playbook](../validation-playbook.md#ci-tiers). |
 | Feature-flagging & rollout | Decided | No account, license or remote entitlement flags. [AGENTS](../../AGENTS.md), [PRODUCT.md](../../PRODUCT.md). |
 | Changelog & release notes | Decided | Keep a Changelog 1.1.0 in root `CHANGELOG.md`. [AGENTS](../../AGENTS.md). |
-| Externally-owned release gate | Undecided | Flathub and distro review exist as packaging work (PKG-4) but the fork is unrecorded as a gate. Flatpak is left out of 0.2.0 ([PRODUCT.md](../../PRODUCT.md)). |
+| Externally-owned release gate | Undecided | Flathub submission remains backlog work (PKG-4/PKG-8); no external distribution review is adopted as a release gate. Flatpak is left out of 0.2.0 ([PRODUCT.md](../../PRODUCT.md)). |
 | Native library floors | Decided | Build/CI floor vs GNOME 50 package line. [ADR 0002](0002-rust-gtk4-libadwaita.md), [platforms](../platforms.md). |
 
 ## Product
@@ -98,4 +98,4 @@ Reviewed against the current ADR index, code and living docs on 2026-10-14. The 
 | Accessibility / WCAG claim | Maintainer | Ledger DOC-3; do not claim AA from Adwaita alone |
 | Data retention | Product | Leave open until legal or product answers |
 | Performance budget ADR | Architect | Optional; PERF-* ledger rows may stay sufficient |
-| Flathub / distro as external release gate | Architect / packaging | Name the gate when PKG-4 moves; Flatpak out of 0.2.0 already |
+| Flathub / distro as external release gate | Architect / packaging | Decide whether external review is a release gate before planning a Flathub or distro submission; Flatpak is out of 0.2.0 |
