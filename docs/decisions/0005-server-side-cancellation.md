@@ -5,7 +5,7 @@
 
 ## Context
 
-`OperationControl` carries a cancellation token and an optional deadline into every `*_controlled` driver call. Until now only the PostgreSQL driver acted on it. Every other driver inherited the default in `tablepro-core`, which races the operation against the token with `tokio::select!` and drops the losing future.
+`OperationControl` carries a cancellation token and an optional deadline into every `*_controlled` driver call. When this decision was written, only the PostgreSQL driver acted on it. Other drivers inherited the default in `tablepro-core`, which races the operation against the token with `tokio::select!` and drops the losing future.
 
 Dropping a future closes the client side of the statement. It does not stop the server. The statement can keep holding locks, keep writing rows, and keep consuming a worker until it finishes on its own. Because the caller cannot know what happened, the default returns `OperationOutcomeUnknown`, and `PolicyGuard` treats that as poisoning: one Stop or one timeout on a write disabled governed writes for the rest of the session while the write was possibly still in flight.
 
