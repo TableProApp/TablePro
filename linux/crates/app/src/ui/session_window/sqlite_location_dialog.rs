@@ -205,7 +205,9 @@ impl SessionWindow {
 mod tests {
     use std::path::Path;
 
-    use super::super::tests::{TestWindow, WAIT};
+    use tablepro_core::FileEndpoint;
+
+    use super::super::tests::{TestWindow, WAIT, dialog_submission};
     use super::*;
     use crate::test_support::wait_until;
     use crate::workspace::{answer, visible_alert};
@@ -303,5 +305,59 @@ mod tests {
         test.wait_for_page("workspace");
 
         assert!(visible_alert(&test.window).is_none());
+    }
+
+    #[gtk4::test]
+    fn a_file_handed_over_from_a_share_is_asked_about() {
+        let test = TestWindow::picker("ShareFile");
+        test.window.imp().classify_location.set(Some(on_a_share));
+        let dir = tempfile::tempdir().expect("tempdir");
+        let database = dir.path().join("app.db");
+        std::fs::write(&database, b"").expect("seed");
+
+        test.window
+            .send(SessionWindowInput::OpenFile(gio::File::for_path(&database)));
+        wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the location question");
+        assert!(test.connector.calls().is_empty());
+        assert!(answer(&test.window, READ_ONLY));
+        test.wait_for_page("workspace");
+
+        let calls = test.connector.calls();
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].request.workspace_settings.read_only);
+    }
+
+    #[gtk4::test]
+    fn an_existing_file_from_the_connect_dialog_is_asked_about() {
+        let test = TestWindow::picker("ShareDialog");
+        test.window.imp().classify_location.set(Some(on_a_share));
+        let endpoint = FileEndpoint::open_existing(PathBuf::from("/mnt/share/app.db")).expect("an endpoint");
+
+        test.window
+            .send(SessionWindowInput::ConnectFromDialog(Box::new(dialog_submission(
+                endpoint,
+            ))));
+        wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the location question");
+        assert!(test.connector.calls().is_empty());
+        assert!(answer(&test.window, READ_ONLY));
+        test.wait_for_page("workspace");
+
+        assert!(test.connector.calls()[0].request.workspace_settings.read_only);
+    }
+
+    #[gtk4::test]
+    fn a_new_file_from_the_connect_dialog_is_not_asked_about() {
+        let test = TestWindow::picker("ShareDialogNew");
+        test.window.imp().classify_location.set(Some(on_a_share));
+        let endpoint = FileEndpoint::create_new(PathBuf::from("/mnt/share/new.db")).expect("an endpoint");
+
+        test.window
+            .send(SessionWindowInput::ConnectFromDialog(Box::new(dialog_submission(
+                endpoint,
+            ))));
+        test.wait_for_page("workspace");
+
+        assert!(visible_alert(&test.window).is_none());
+        assert!(!test.connector.calls()[0].request.workspace_settings.read_only);
     }
 }
