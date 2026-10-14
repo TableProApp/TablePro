@@ -1,5 +1,4 @@
 import Foundation
-@testable import TablePro
 import TableProPluginKit
 import Testing
 
@@ -51,14 +50,5 @@ struct LibPQPluginErrorTests {
             message: "ERROR: function to_regclass(text) does not exist"
         )
         #expect(error.errorDescription?.contains("(SQLSTATE: 42883)") == true)
-    }
-
-    @Test("A decoded read-only transaction error is diagnosed as server-enforced read-only")
-    func readOnlyTransactionIsDiagnosed() {
-        let error = Self.decoded(
-            [Int32(UInt8(ascii: "C")): "25006"],
-            message: "ERROR: cannot execute INSERT in a read-only transaction"
-        )
-        #expect(DatabaseWriteRejectionDiagnosis.classify(error) != nil)
     }
 }

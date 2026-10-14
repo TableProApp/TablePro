@@ -11,6 +11,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 
 struct RedisKeyspacePage: Sendable {
     let cursor: String

@@ -10,6 +10,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProRedisCore
 import Testing
 
 private final class BrowseCountStubDriver: PluginDatabaseDriver, @unchecked Sendable {

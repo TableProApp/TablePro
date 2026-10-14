@@ -3,6 +3,7 @@ import os
 import TableProDatabase
 import TableProModels
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 nonisolated extension PostgreSQLDriver {
     /// iOS errors carry no SQLSTATE, so any failure of the catalog form retries once on the

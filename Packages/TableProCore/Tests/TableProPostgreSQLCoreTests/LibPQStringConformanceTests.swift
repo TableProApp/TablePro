@@ -6,6 +6,8 @@
 import Foundation
 import Testing
 
+@testable import TableProPostgreSQLCore
+
 struct LibPQStringConformanceTests {
     @Test("Every session turns standard_conforming_strings on")
     func sessionSetupForcesStandardConformingStrings() {

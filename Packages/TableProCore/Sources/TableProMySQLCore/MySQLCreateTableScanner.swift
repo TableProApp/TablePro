@@ -1,11 +1,6 @@
-//
-//  MySQLCreateTableScanner.swift
-//  MySQLDriverPlugin
-//
-
 import Foundation
 
-nonisolated internal enum MySQLCreateTableScanner {
+nonisolated public enum MySQLCreateTableScanner {
     /// Each column's `DEFAULT` operand as `SHOW CREATE TABLE` spells it, keyed by column name, or nil
     /// when the statement does not create a table. A column with no `DEFAULT` clause is absent.
     ///
@@ -14,7 +9,7 @@ nonisolated internal enum MySQLCreateTableScanner {
     /// next. A quoted column name is the one thing every server quotes correctly, and it may hold a
     /// line break, so a line that opens a name without closing it runs on into the next: read on its
     /// own, the rest of that name would reach another column as its default.
-    static func columnDefaultClauses(fromCreateTable sql: String) -> [String: String]? {
+    public static func columnDefaultClauses(fromCreateTable sql: String) -> [String: String]? {
         let lines = sql.split(separator: "\n", omittingEmptySubsequences: false)
         guard let header = lines.first, declaresTable(header) else { return nil }
         var clauses: [String: String] = [:]
@@ -35,7 +30,7 @@ nonisolated internal enum MySQLCreateTableScanner {
         return clauses
     }
 
-    static func firstGroup(in text: Substring) -> Substring? {
+    public static func firstGroup(in text: Substring) -> Substring? {
         var depth = 0
         var start: Substring.Index?
         for (index, mark) in structuralMarks(in: text) {
@@ -54,7 +49,7 @@ nonisolated internal enum MySQLCreateTableScanner {
         return nil
     }
 
-    static func topLevelElements(of body: Substring) -> [Substring] {
+    public static func topLevelElements(of body: Substring) -> [Substring] {
         var elements: [Substring] = []
         var depth = 0
         var elementStart = body.startIndex
@@ -74,7 +69,7 @@ nonisolated internal enum MySQLCreateTableScanner {
         return elements
     }
 
-    static func consume(_ keyword: String, from rest: inout Substring) -> Bool {
+    public static func consume(_ keyword: String, from rest: inout Substring) -> Bool {
         let trimmed = rest.drop(while: \.isWhitespace)
         guard trimmed.prefix(keyword.count).uppercased() == keyword else { return false }
         let remainder = trimmed.dropFirst(keyword.count)
@@ -83,11 +78,11 @@ nonisolated internal enum MySQLCreateTableScanner {
         return true
     }
 
-    static func consumeBacktickName(from rest: inout Substring) -> String? {
+    public static func consumeBacktickName(from rest: inout Substring) -> String? {
         consumeQuotedName(from: &rest, quote: "`")
     }
 
-    static func consumeQuotedName(from rest: inout Substring, quote: Character) -> String? {
+    public static func consumeQuotedName(from rest: inout Substring, quote: Character) -> String? {
         var text = rest.drop(while: \.isWhitespace)
         guard text.first == quote else { return nil }
         text = text.dropFirst()

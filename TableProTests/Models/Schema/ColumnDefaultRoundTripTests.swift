@@ -3,12 +3,11 @@
 //  TableProTests
 //
 //  The menu and the DDL writers are two lists that have to agree and that nothing at runtime
-//  forces to agree. This is what forces them: every value the menu can choose is run through the
-//  writer that would emit it, and has to come back the same text.
+//  forces to agree. This pins the menu to the lists MySQLDriverTests' MySQLColumnDefaultMenuTests and
+//  SQLiteDriverTests' SQLiteColumnDefaultMenuTests run through each engine's writer.
 //
 
 @testable import TablePro
-import TableProPluginKit
 import Testing
 
 struct ColumnDefaultRoundTripTests {
@@ -16,69 +15,26 @@ struct ColumnDefaultRoundTripTests {
         ColumnDefaultVocabulary.options(for: type).compactMap(\.sql)
     }
 
-    /// The writer adds the syntax an engine's grammar demands and rewrites nothing else, so a menu
-    /// value comes back as itself or as itself in parentheses, and never as a string literal.
-    /// Quoting one is what turned `(UUID())` into the six-character text `uuid()`.
-    @Test(
-        "Every menu value survives its own engine's column definition builder",
-        arguments: [(type: DatabaseType.mysql, isMariaDB: false), (type: .mariadb, isMariaDB: true)]
-    )
-    func menuValuesSurviveTheWriter(type: DatabaseType, isMariaDB: Bool) {
-        for sql in menuSQL(type) {
-            let column = PluginColumnDefinition(
-                name: "c", dataType: "VARCHAR(64)", isNullable: true, defaultValue: sql
-            )
-            let emitted = mysqlColumnDefinitionSQL(column, isMariaDB: isMariaDB)
-            let survives = emitted.contains("DEFAULT \(sql)") || emitted.contains("DEFAULT (\(sql))")
-            #expect(survives, "\(type.rawValue): \(sql) -> \(emitted)")
-            #expect(!emitted.contains("DEFAULT '\(sql)'"), "\(type.rawValue): \(sql)")
-        }
-    }
-
-    /// MariaDB writes an expression default bare and MySQL will not accept it that way, so one
-    /// engine's menu value is not the other's statement. Copy To crosses exactly this line.
-    @Test("MariaDB's own expressions are parenthesised when they reach MySQL")
-    func mariaDBExpressionsAreParenthesisedForMySQL() {
-        for sql in menuSQL(.mariadb) where sql.hasSuffix(")") && !sql.hasPrefix("(") {
-            let column = PluginColumnDefinition(
-                name: "c", dataType: "VARCHAR(64)", isNullable: true, defaultValue: sql
-            )
-            #expect(
-                mysqlColumnDefinitionSQL(column, isMariaDB: false).contains("DEFAULT (\(sql))"),
-                "\(sql)"
-            )
-        }
-    }
-
-    /// A `TEXT` column is the one place MySQL's grammar adds something, and it adds it to every
-    /// value rather than to the ones the writer happens to recognise. NULL is the exception: every
-    /// type takes it bare, and `DEFAULT (NULL)` is an expression default on MySQL 8 and a syntax
-    /// error on MySQL 5.7.
-    @Test(
-        "A MySQL TEXT column parenthesises every menu value but NULL exactly once",
-        arguments: [(type: DatabaseType.mysql, isMariaDB: false), (type: .mariadb, isMariaDB: true)]
-    )
-    func mysqlTextColumnParenthesisesOnce(type: DatabaseType, isMariaDB: Bool) {
-        for sql in menuSQL(type) {
-            let column = PluginColumnDefinition(
-                name: "c", dataType: "TEXT", isNullable: true, defaultValue: sql
-            )
-            let expected = sql == "NULL" || sql.hasPrefix("(") ? sql : "(\(sql))"
-            #expect(
-                mysqlColumnDefinitionSQL(column, isMariaDB: isMariaDB).hasSuffix("DEFAULT \(expected)"),
-                "\(type.rawValue): \(sql)"
-            )
+    @Test("The MySQL-family menus offer the values the MySQL writer is held to")
+    func mysqlFamilyMenusArePinned() {
+        let mysql = ["NULL", "''", "CURRENT_TIMESTAMP", "(UUID())", "(CURRENT_DATE)"]
+        let menus: [(type: DatabaseType, sql: [String])] = [
+            (.mysql, mysql), (.tidb, mysql), (.oceanbase, mysql),
+            (.mariadb, ["NULL", "''", "CURRENT_TIMESTAMP", "uuid()", "curdate()"])
+        ]
+        for menu in menus {
+            #expect(menuSQL(menu.type) == menu.sql, "\(menu.type.rawValue)")
         }
     }
 
     @Test(
-        "Every SQLite-family menu value is already what the catalog normaliser would produce",
+        "Every SQLite-family menu offers the values the catalog normaliser is held to",
         arguments: [DatabaseType.sqlite, .libsql, .turso, .cloudflareD1]
     )
-    func sqliteFamilyMenuValuesAreStable(type: DatabaseType) {
-        for sql in menuSQL(type) {
-            #expect(sqliteDefaultValueFromCatalog(sql) == sql, "\(sql)")
-        }
+    func sqliteFamilyMenusArePinned(type: DatabaseType) {
+        #expect(menuSQL(type) == [
+            "NULL", "''", "CURRENT_TIMESTAMP", "CURRENT_DATE", "CURRENT_TIME", "(datetime('now'))", "(unixepoch())"
+        ])
     }
 }
 

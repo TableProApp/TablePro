@@ -17,12 +17,12 @@ struct PluginTableInfoTests {
 
     @Test("decoding a payload without comment keeps it nil for forward compatibility")
     func legacyPayloadDecodesToNilComment() throws {
-        let legacyJson = """
+        let legacyJson = Data("""
         {
             "name": "users",
             "type": "TABLE"
         }
-        """.data(using: .utf8)!
+        """.utf8)
         let decoded = try JSONDecoder().decode(PluginTableInfo.self, from: legacyJson)
         #expect(decoded.comment == nil)
         #expect(decoded.name == "users")

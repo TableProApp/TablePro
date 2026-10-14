@@ -5,6 +5,7 @@ import TableProCoreTypes
 import TableProDatabase
 import TableProModels
 import TableProMSSQLCore
+import TableProMySQLCore
 import TableProPluginKit
 import TableProSQLGrammar
 

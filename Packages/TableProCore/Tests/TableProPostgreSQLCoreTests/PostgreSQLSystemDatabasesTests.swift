@@ -11,6 +11,8 @@
 import Foundation
 import Testing
 
+@testable import TableProPostgreSQLCore
+
 struct PostgreSQLSystemDatabasesTests {
     @Test("PostgreSQL has no system databases")
     func postgreSQLHasNone() {

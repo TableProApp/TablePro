@@ -1,5 +1,6 @@
 import Foundation
 import TableProModels
+import TableProRedisCore
 
 nonisolated internal enum RedisKeyBrowse {
     static let missingTypeName = "none"

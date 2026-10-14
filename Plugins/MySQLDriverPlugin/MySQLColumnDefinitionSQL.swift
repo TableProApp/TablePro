@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMySQLCore
 import TableProPluginKit
 
 internal func mysqlQuoteIdentifier(_ name: String) -> String {

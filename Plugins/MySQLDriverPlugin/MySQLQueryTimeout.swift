@@ -3,10 +3,10 @@
 //  MySQLDriverPlugin
 //
 //  What enforces the query timeout on this server, and how a statement that ran past it is read.
-//  Pure, so TableProTests compiles it.
 //
 
 import Foundation
+import TableProMySQLCore
 
 /// Which statements a client-side deadline covers, matching the scope each engine's own statement
 /// timeout has. Measured on MySQL 5.7.44: `max_execution_time` stops a `SELECT` and leaves

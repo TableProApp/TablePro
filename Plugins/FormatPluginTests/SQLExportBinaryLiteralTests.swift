@@ -7,8 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@testable import TablePro
-
 /// `X'4142'` is three different things across the engines this export writes for, and on PostgreSQL
 /// it is a bit string rather than binary. Measured on PostgreSQL 17.11:
 /// `INSERT INTO b (payload) VALUES (X'414243')` answers

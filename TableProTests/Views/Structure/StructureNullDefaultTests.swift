@@ -59,11 +59,14 @@ struct StructureNullDefaultTests {
         #expect(target.defaultValue == nil)
     }
 
+    /// MySQLDriverTests holds the MySQL writer to writing no DEFAULT for a column that hands over none.
     @Test("The MODIFY written after turning Nullable off carries no DEFAULT NULL")
     func modifyAfterNotNullIsAccepted() {
         var target = column(default: "NULL")
         StructureEditingSupport.updateColumn(&target, at: 0, with: "NO", orderedFields: [.nullable])
-        #expect(mysqlColumnDefinitionSQL(target.toPlugin()) == "`Name` VARCHAR(255) NOT NULL")
+        let written = target.toPlugin()
+        #expect(!written.isNullable)
+        #expect(written.defaultValue == nil)
     }
 
     private func loadedManager(nameIsNullable: Bool = true, nameDefault: String? = "NULL") -> StructureChangeManager {

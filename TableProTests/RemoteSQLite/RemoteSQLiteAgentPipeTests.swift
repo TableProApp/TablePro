@@ -9,9 +9,10 @@ import Testing
 @testable import TablePro
 
 /// Runs the SQLite agent that ships in the app against a real database, driven with the local
-/// `python3` over pipes. It proves the embedded program and the plugin's codec agree on the wire,
-/// that typed values and declared types come back the way the local driver reads them, and that the
-/// server-side safety rules hold, without needing SSH.
+/// `python3` over pipes. It proves the embedded program speaks the wire layout below, that typed values
+/// and declared types come back the way the local driver reads them, and that the server-side safety
+/// rules hold, without needing SSH. SQLiteDriverTests' SQLiteAgentWireFixtureTests holds the plugin's
+/// codec to the same layout.
 struct RemoteSQLiteAgentPipeTests {
     private static var python3Path: String? {
         for candidate in ["/usr/bin/python3", "/opt/homebrew/bin/python3", "/usr/local/bin/python3"] where
@@ -23,13 +24,149 @@ struct RemoteSQLiteAgentPipeTests {
 
     static var hasPython3: Bool { python3Path != nil }
 
+    // MARK: - Wire
+
+    fileprivate enum Value: Equatable {
+        case null
+        case text(Data)
+        case blob(Data)
+    }
+
+    fileprivate struct Column: Equatable {
+        let name: String
+        let declaredType: String?
+    }
+
+    fileprivate enum Reply {
+        case ready
+        case failure(code: UInt32, message: String)
+        case header([Column])
+        case rows(columnCount: Int, values: [Value])
+        case done(changes: Int64, truncated: Bool)
+        case error(message: String)
+    }
+
+    /// A frame is a big-endian length, an opcode, then the payload. Text is a length and its bytes.
+    private enum Wire {
+        static func uint32(_ value: UInt32) -> [UInt8] {
+            withUnsafeBytes(of: value.bigEndian) { Array($0) }
+        }
+
+        static func bytes(_ data: Data) -> [UInt8] {
+            uint32(UInt32(data.count)) + Array(data)
+        }
+
+        static func string(_ text: String) -> [UInt8] {
+            bytes(Data(text.utf8))
+        }
+
+        static func value(_ value: Value) -> [UInt8] {
+            switch value {
+            case .null: return [0]
+            case .text(let data): return [1] + bytes(data)
+            case .blob(let data): return [2] + bytes(data)
+            }
+        }
+
+        static func frame(_ opcode: UInt8, _ payload: [UInt8]) -> Data {
+            Data(uint32(UInt32(payload.count + 1)) + [opcode] + payload)
+        }
+
+        static func hello(path: String, busyTimeoutMilliseconds: UInt32) -> Data {
+            frame(0x01, uint32(1) + string(path) + uint32(busyTimeoutMilliseconds))
+        }
+
+        static func execute(_ sql: String, parameters: [Value]) -> Data {
+            frame(0x02, string(sql) + uint32(UInt32(parameters.count)) + parameters.flatMap(value) + uint32(0))
+        }
+    }
+
+    private struct Cursor {
+        let bytes: [UInt8]
+        private var offset = 0
+
+        init(_ bytes: [UInt8]) {
+            self.bytes = bytes
+        }
+
+        var isAtEnd: Bool { offset == bytes.count }
+
+        mutating func take(_ count: Int) throws -> [UInt8] {
+            guard count >= 0, bytes.count - offset >= count else { throw Agent.AgentError.truncated }
+            defer { offset += count }
+            return Array(bytes[offset..<(offset + count)])
+        }
+
+        mutating func uint8() throws -> UInt8 {
+            try take(1)[0]
+        }
+
+        mutating func uint32() throws -> UInt32 {
+            try take(4).reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+        }
+
+        mutating func int64() throws -> Int64 {
+            Int64(bitPattern: try take(8).reduce(UInt64(0)) { ($0 << 8) | UInt64($1) })
+        }
+
+        mutating func data() throws -> Data {
+            let count = Int(try uint32())
+            return Data(try take(count))
+        }
+
+        mutating func string() throws -> String {
+            guard let text = String(data: try data(), encoding: .utf8) else {
+                throw Agent.AgentError.unexpected
+            }
+            return text
+        }
+
+        mutating func value() throws -> Value {
+            switch try uint8() {
+            case 0: return .null
+            case 1: return .text(try data())
+            case 2: return .blob(try data())
+            default: throw Agent.AgentError.unexpected
+            }
+        }
+
+        mutating func reply(opcode: UInt8) throws -> Reply {
+            switch opcode {
+            case 0x81:
+                _ = try uint32()
+                _ = try string()
+                _ = try string()
+                return .ready
+            case 0x82:
+                return .failure(code: try uint32(), message: try string())
+            case 0x83:
+                let count = Int(try uint32())
+                return .header(try (0..<count).map { _ in
+                    let name = try string()
+                    return Column(name: name, declaredType: try uint8() == 1 ? try string() : nil)
+                })
+            case 0x84:
+                let columnCount = Int(try uint32())
+                let rowCount = Int(try uint32())
+                return .rows(columnCount: columnCount, values: try (0..<(columnCount * rowCount)).map { _ in try value() })
+            case 0x85:
+                return .done(changes: try int64(), truncated: try uint8() == 1)
+            case 0x86:
+                _ = try uint32()
+                return .error(message: try string())
+            default:
+                throw Agent.AgentError.unexpected
+            }
+        }
+    }
+
     // MARK: - Harness
 
     private final class Agent {
         private let process = Process()
         private let toAgent = Pipe()
         private let fromAgent = Pipe()
-        private var reader = SQLiteAgentFrameReader()
+        private var buffer: [UInt8] = []
 
         init(pythonPath: String) throws {
             let encoded = Data(RemoteSQLiteAgentSource.python.utf8).base64EncodedString()
@@ -41,24 +178,37 @@ struct RemoteSQLiteAgentPipeTests {
             try process.run()
         }
 
-        func send(_ request: SQLiteAgentRequest) {
-            toAgent.fileHandleForWriting.write(SQLiteAgentFrameEncoder.encode(request))
+        func send(_ frame: Data) {
+            toAgent.fileHandleForWriting.write(frame)
         }
 
-        func nextReply() throws -> SQLiteAgentReply {
+        func nextReply() throws -> Reply {
             while true {
-                if let reply = try reader.nextReply() { return reply }
+                if let reply = try takeReply() { return reply }
                 let chunk = fromAgent.fileHandleForReading.availableData
                 if chunk.isEmpty { throw AgentError.closed }
-                reader.append(chunk)
+                buffer.append(contentsOf: chunk)
             }
         }
 
+        private func takeReply() throws -> Reply? {
+            guard buffer.count >= 4 else { return nil }
+            var header = Cursor(Array(buffer[0..<4]))
+            let length = Int(try header.uint32())
+            guard length > 0 else { throw AgentError.unexpected }
+            guard buffer.count >= 4 + length else { return nil }
+            var payload = Cursor(Array(buffer[5..<(4 + length)]))
+            let reply = try payload.reply(opcode: buffer[4])
+            buffer.removeFirst(4 + length)
+            guard payload.isAtEnd else { throw AgentError.unexpected }
+            return reply
+        }
+
         /// Reads a full EXEC response: header, then rows, then done or error.
-        func runExecute(_ sql: String, parameters: [SQLiteAgentValue] = []) throws -> ExecuteResult {
-            send(.execute(sql: sql, parameters: parameters, rowCap: 0))
-            var columns: [SQLiteAgentColumn] = []
-            var rows: [[SQLiteAgentValue]] = []
+        func runExecute(_ sql: String, parameters: [Value] = []) throws -> ExecuteResult {
+            send(Wire.execute(sql, parameters: parameters))
+            var columns: [Column] = []
+            var rows: [[Value]] = []
             while true {
                 switch try nextReply() {
                 case .header(let cols): columns = cols
@@ -70,7 +220,7 @@ struct RemoteSQLiteAgentPipeTests {
                     }
                 case .done(let changes, let truncated):
                     return .ok(columns: columns, rows: rows, changes: changes, truncated: truncated)
-                case .error(_, let message):
+                case .error(let message):
                     return .error(message)
                 default:
                     throw AgentError.unexpected
@@ -83,9 +233,9 @@ struct RemoteSQLiteAgentPipeTests {
             process.waitUntilExit()
         }
 
-        enum AgentError: Error { case closed, unexpected }
+        enum AgentError: Error { case closed, truncated, unexpected }
         enum ExecuteResult {
-            case ok(columns: [SQLiteAgentColumn], rows: [[SQLiteAgentValue]], changes: Int64, truncated: Bool)
+            case ok(columns: [Column], rows: [[Value]], changes: Int64, truncated: Bool)
             case error(String)
         }
     }
@@ -99,7 +249,7 @@ struct RemoteSQLiteAgentPipeTests {
 
         let agent = try Agent(pythonPath: python)
         defer { agent.close() }
-        agent.send(.hello(protocolVersion: 1, path: path, busyTimeoutMilliseconds: 2000))
+        agent.send(Wire.hello(path: path, busyTimeoutMilliseconds: 2000))
         guard case .ready = try agent.nextReply() else {
             Issue.record("agent did not report ready")
             return
@@ -184,12 +334,12 @@ struct RemoteSQLiteAgentPipeTests {
             .appendingPathComponent("missing-\(UUID().uuidString).db").path
         let agent = try Agent(pythonPath: python)
         defer { agent.close() }
-        agent.send(.hello(protocolVersion: 1, path: path, busyTimeoutMilliseconds: 2000))
-        guard case .failure(let failure) = try agent.nextReply() else {
+        agent.send(Wire.hello(path: path, busyTimeoutMilliseconds: 2000))
+        guard case .failure(let code, _) = try agent.nextReply() else {
             Issue.record("expected a failure for a missing file")
             return
         }
-        #expect(failure.code == SQLiteAgentFailure.openFailed)
+        #expect(code == 4, "the open-failed code")
         #expect(!FileManager.default.fileExists(atPath: path))
     }
 }

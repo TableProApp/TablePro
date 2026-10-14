@@ -1,20 +1,17 @@
 //
-//  RedisKeySlot.swift
-//  RedisDriverPlugin
-//
 //  Redis Cluster hash slot assignment. Verified against CLUSTER KEYSLOT on Redis 8.10.1.
 //
 
 import Foundation
 
-enum RedisKeySlot {
-    static let slotCount = 16_384
+public enum RedisKeySlot {
+    public static let slotCount = 16_384
 
-    static func slot(for key: String) -> Int {
+    public static func slot(for key: String) -> Int {
         slot(for: Data(key.utf8))
     }
 
-    static func slot(for key: Data) -> Int {
+    public static func slot(for key: Data) -> Int {
         Int(crc16(hashedRegion(of: key))) & (slotCount - 1)
     }
 
@@ -26,14 +23,14 @@ enum RedisKeySlot {
         return key[afterOpen ..< close]
     }
 
-    static func slotsAreEqual(for keys: [Data]) -> Bool {
+    public static func slotsAreEqual(for keys: [Data]) -> Bool {
         guard let first = keys.first else { return true }
         let reference = slot(for: first)
         return keys.allSatisfy { slot(for: $0) == reference }
     }
 
     /// Elements whose keys share a slot, in the order each slot first appears, with duplicates kept.
-    static func groupedBySlot<Element>(_ elements: [Element], key: (Element) -> String) -> [[Element]] {
+    public static func groupedBySlot<Element>(_ elements: [Element], key: (Element) -> String) -> [[Element]] {
         var order: [Int] = []
         var groups: [Int: [Element]] = [:]
         for element in elements {

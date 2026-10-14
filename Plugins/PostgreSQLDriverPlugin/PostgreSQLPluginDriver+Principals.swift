@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 extension PostgreSQLPluginDriver: PluginPrincipalManagement {
     var supportsPrincipalHostScoping: Bool { false }

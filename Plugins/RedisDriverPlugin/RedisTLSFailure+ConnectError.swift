@@ -1,5 +1,6 @@
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 
 extension RedisTLSFailure {
     var connectError: any Error {

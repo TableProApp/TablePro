@@ -1,25 +1,47 @@
 //
 //  DataFileExportFormatTests.swift
-//  TableProTests
+//  FormatPluginTests
 //
 
 import Foundation
 import TableProPluginKit
 import Testing
 
-@testable import TablePro
-
 struct DataFileExportFormatTests {
-    private static func dataSource() -> QueryResultExportDataSource {
-        let rows = TableRows.from(
-            queryRows: [["1", "O'Brien"], ["2", .null]],
-            columns: ["id", "full \"name\""],
-            columnTypes: [.integer(rawType: "INTEGER"), .text(rawType: "")]
-        )
-        return QueryResultExportDataSource(
-            detachedRows: rows,
-            databaseTypeId: DataSourceExportRequest.dataFileTypeId
-        )
+    /// What the app's `QueryResultExportDataSource(detachedRows:databaseTypeId:)` hands a format for a data file: the
+    /// `DataFile` type id, ANSI quoting and escaping, and no engine session.
+    private final class DataFileSource: PluginExportDataSource, @unchecked Sendable {
+        struct NoSession: Error {}
+
+        let databaseTypeId = "DataFile"
+
+        func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+            AsyncThrowingStream { continuation in
+                continuation.yield(.header(PluginStreamHeader(
+                    columns: ["id", "full \"name\""],
+                    columnTypeNames: ["INTEGER", ""],
+                    estimatedRowCount: 2
+                )))
+                continuation.yield(.rows([[.text("1"), .text("O'Brien")], [.text("2"), .null]]))
+                continuation.finish()
+            }
+        }
+
+        func fetchApproximateRowCount(table: String, databaseName: String) async throws -> Int? { 2 }
+
+        func quoteIdentifier(_ identifier: String) -> String {
+            "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
+        }
+
+        func escapeStringLiteral(_ value: String) -> String {
+            value.replacingOccurrences(of: "'", with: "''").replacingOccurrences(of: "\0", with: "")
+        }
+
+        func fetchTableDDL(table: String, databaseName: String) async throws -> String { "" }
+
+        func execute(query: String) async throws -> PluginQueryResult {
+            throw NoSession()
+        }
     }
 
     private static func table(optionValues: [Bool]) -> PluginExportTable {
@@ -37,7 +59,7 @@ struct DataFileExportFormatTests {
     func sqlExportIsAnsi() async throws {
         let output = try await SQLExportHarness.shared.dump(
             tables: [Self.table(optionValues: [false, false, true])],
-            dataSource: Self.dataSource()
+            dataSource: DataFileSource()
         )
 
         #expect(output.text.contains("-- Database Type: DataFile"))
@@ -54,7 +76,7 @@ struct DataFileExportFormatTests {
         let output = try await CSVExportHarness.shared.bytes(
             options: CSVExportOptions(),
             tables: [Self.table(optionValues: [])],
-            dataSource: Self.dataSource()
+            dataSource: DataFileSource()
         )
         let text = try #require(String(bytes: output.data, encoding: .utf8))
         let lines = text

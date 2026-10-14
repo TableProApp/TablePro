@@ -1,16 +1,11 @@
-//
-//  PostgreSQLCatalogPresence.swift
-//  PostgreSQLDriverPlugin
-//
-
 import Foundation
 
-nonisolated struct PostgreSQLCatalogPresence: Sendable, Equatable {
-    let hasMaterializedViews: Bool
-    let hasForeignTables: Bool
-    let hasSequences: Bool
+nonisolated public struct PostgreSQLCatalogPresence: Sendable, Equatable {
+    public let hasMaterializedViews: Bool
+    public let hasForeignTables: Bool
+    public let hasSequences: Bool
 
-    static let probeQuery = """
+    public static let probeQuery = """
         SELECT c.relname
         FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
@@ -18,7 +13,7 @@ nonisolated struct PostgreSQLCatalogPresence: Sendable, Equatable {
           AND c.relname IN ('pg_matviews', 'pg_foreign_table', 'pg_sequences')
         """
 
-    init(relationNames: [String]) {
+    public init(relationNames: [String]) {
         let names = Set(relationNames)
         self.hasMaterializedViews = names.contains("pg_matviews")
         self.hasForeignTables = names.contains("pg_foreign_table")

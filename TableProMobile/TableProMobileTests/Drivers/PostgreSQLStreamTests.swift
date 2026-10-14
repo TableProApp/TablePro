@@ -1,6 +1,7 @@
 import CLibPQ
 import Foundation
 @testable import TableProMobile
+import TableProPostgreSQLCore
 import Testing
 
 @Suite("PostgreSQL stream end")
@@ -91,7 +92,7 @@ struct PostgreSQLStreamTests {
         #expect(PostgreSQLStreamEnd.cancelled.error is CancellationError)
         #expect(PostgreSQLStreamEnd.completed.error == nil)
         let copy = PostgreSQLStreamEnd.abandonedCopy(.copyOut).error as? PostgreSQLError
-        #expect(copy?.errorDescription == LibPQCopyDirection.copyOut.unsupportedMessage)
+        #expect(copy?.errorDescription == LibPQCopyDirection.copyOut.mobileUnsupportedMessage)
     }
 }
 

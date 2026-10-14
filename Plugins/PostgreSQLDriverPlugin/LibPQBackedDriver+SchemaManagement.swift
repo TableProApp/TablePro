@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 extension LibPQBackedDriver {
     /// `aclexplode` arrived in PostgreSQL 8.4 and Redshift forked before it, so reading a schema's

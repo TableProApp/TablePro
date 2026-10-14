@@ -21,6 +21,12 @@ struct MySQLProtocolVariantParityTests {
         #expect(Set(routed) == Set(Self.variants))
     }
 
+    @Test("The pinned variants are exactly the types the MySQL plugin declares")
+    func variantListMatchesThePlugin() throws {
+        let declared = try BundledPlugin.driver("MySQLDriver").additionalDatabaseTypeIds
+        #expect(Set(declared) == Set(Self.variants.map(\.rawValue)))
+    }
+
     @Test("Every variant is driven by the MySQL plugin", arguments: variants)
     func drivenByMySQLPlugin(type: DatabaseType) {
         #expect(PluginMetadataRegistry.shared.pluginTypeId(for: type.rawValue) == DatabaseType.mysql.rawValue)
@@ -46,13 +52,31 @@ struct MySQLProtocolVariantParityTests {
 
     /// The app classifies a database list by the connection type's registry entry and the driver flags metadata by
     /// the same type's plugin list. Classifying by the flavor instead let a TiDB server saved as MySQL disagree.
-    @Test("The registry names the system databases the plugin flags for each connection type")
-    func systemDatabaseListsAgree() {
+    @Test("The registry names the system databases the plugin flags for MySQL and MariaDB")
+    func systemDatabaseListsAgree() throws {
+        let declared = try BundledPlugin.driver("MySQLDriver").systemDatabaseNames
         let manager = PluginManager.shared
-        #expect(manager.systemDatabaseNames(for: .mysql) == MySQLSystemDatabases.names(forVariant: nil))
-        #expect(manager.systemDatabaseNames(for: .mariadb) == MySQLSystemDatabases.names(forVariant: nil))
+        #expect(manager.systemDatabaseNames(for: .mysql) == declared)
+        #expect(manager.systemDatabaseNames(for: .mariadb) == declared)
+    }
+
+    // MySQLDriverTests pins MySQLSystemDatabases.names(forVariant:) to these lists. The plugin reads a variant's
+    // list only on a live connection, so no loaded bundle can answer for it here.
+    nonisolated private static let variantSystemDatabases: [DatabaseType: [String]] = [
+        .tidb: [
+            "INFORMATION_SCHEMA", "METRICS_SCHEMA", "PERFORMANCE_SCHEMA", "mysql", "sys",
+            "information_schema", "performance_schema"
+        ],
+        .databend: ["information_schema", "system"],
+        .oceanbase: [
+            "information_schema", "mysql", "oceanbase", "__recyclebin", "__public", "SYS", "LBACSYS", "ORAAUDITOR"
+        ]
+    ]
+
+    @Test("The registry names the system databases the plugin flags for each other variant")
+    func variantSystemDatabaseListsAgree() {
         for type in Self.variants where type != .mariadb {
-            #expect(manager.systemDatabaseNames(for: type) == MySQLSystemDatabases.names(forVariant: type.rawValue))
+            #expect(PluginManager.shared.systemDatabaseNames(for: type) == Self.variantSystemDatabases[type], "\(type)")
         }
     }
 }

@@ -1,0 +1,75 @@
+//
+//  SQLiteCheckConstraintParserTests.swift
+//  SQLiteDriverTests
+//
+//  Every expectation here is a measured server response, not a guess: SQLite 3.53.4/3.54.0 was
+//  probed directly.
+//
+
+import Foundation
+import Testing
+
+struct SQLiteCheckConstraintParserTests {
+    private let createStatement = """
+        CREATE TABLE t (
+          a INTEGER NOT NULL CHECK (a > 0),
+          b TEXT,
+          c INTEGER GENERATED ALWAYS AS (a * 2) VIRTUAL,
+          d TEXT GENERATED ALWAYS AS (b || 'x') STORED,
+          CONSTRAINT ck_multi CHECK (a > 0 AND length(b) < 10)
+        , CONSTRAINT ck2 CHECK (a < 100))
+        """
+
+    @Test("a named table-level constraint is read with its full expression")
+    func readsNamedTableConstraints() {
+        let parsed = SQLiteCheckConstraintParser.constraints(inCreateStatement: createStatement)
+        #expect(parsed.map(\.name) == ["ck_multi", "ck2"])
+        #expect(parsed.first?.expression == "a > 0 AND length(b) < 10")
+    }
+
+    @Test("a multi-column check is one constraint, not one per column")
+    func multiColumnCheckIsOneRow() {
+        let parsed = SQLiteCheckConstraintParser.constraints(inCreateStatement: createStatement)
+        #expect(parsed.filter { $0.name == "ck_multi" }.count == 1)
+    }
+
+    @Test("an unnamed column-level check is skipped, because DROP CONSTRAINT needs a name")
+    func skipsUnnamedColumnChecks() {
+        let parsed = SQLiteCheckConstraintParser.constraints(inCreateStatement: createStatement)
+        #expect(!parsed.contains { $0.expression == "a > 0" })
+    }
+
+    @Test("a comma inside an expression does not split the constraint")
+    func commaInsideExpressionDoesNotSplit() {
+        let statement = "CREATE TABLE t (a INT, CONSTRAINT ck CHECK (a IN (1, 2, 3)))"
+        let parsed = SQLiteCheckConstraintParser.constraints(inCreateStatement: statement)
+        #expect(parsed.count == 1)
+        #expect(parsed.first?.expression == "a IN (1, 2, 3)")
+    }
+
+    @Test("a quoted constraint name is unquoted")
+    func unquotesConstraintName() {
+        let statement = #"CREATE TABLE t (a INT, CONSTRAINT "my check" CHECK (a > 0))"#
+        #expect(SQLiteCheckConstraintParser.constraints(inCreateStatement: statement).first?.name == "my check")
+    }
+
+    @Test("generation expressions are read per column, in both spellings")
+    func readsGenerationExpressions() {
+        let expressions = SQLiteCheckConstraintParser.generationExpressions(inCreateStatement: createStatement)
+        #expect(expressions["c"] == "a * 2")
+        #expect(expressions["d"] == "b || 'x'")
+    }
+
+    @Test("the short AS spelling is recognised too")
+    func readsShortGenerationSpelling() {
+        let statement = "CREATE TABLE t (a INT, c INT AS (a + 1) STORED)"
+        #expect(SQLiteCheckConstraintParser.generationExpressions(inCreateStatement: statement)["c"] == "a + 1")
+    }
+
+    @Test("a plain column reports no generation expression")
+    func plainColumnHasNoExpression() {
+        let expressions = SQLiteCheckConstraintParser.generationExpressions(inCreateStatement: createStatement)
+        #expect(expressions["a"] == nil)
+        #expect(expressions["b"] == nil)
+    }
+}

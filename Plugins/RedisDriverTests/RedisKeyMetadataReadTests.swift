@@ -11,6 +11,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 import Testing
 
 private struct TransportFailure: Error, Equatable {}

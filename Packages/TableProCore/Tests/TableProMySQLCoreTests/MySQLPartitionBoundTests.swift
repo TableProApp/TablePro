@@ -6,6 +6,8 @@
 import Foundation
 import Testing
 
+@testable import TableProMySQLCore
+
 /// The values are what MariaDB 12.3.3 actually returns from `information_schema.PARTITIONS`,
 /// measured against a live server rather than transcribed from the manual.
 struct MySQLPartitionBoundTests {

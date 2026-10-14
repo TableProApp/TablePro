@@ -1,7 +1,4 @@
 //
-//  RedisClusterRedirect.swift
-//  RedisDriverPlugin
-//
 //  Parses the cluster control errors Redis answers with instead of a result.
 //  Endpoint forms verified on Redis 8.10.1: "127.0.0.1:7103", ":7103" and "?:7103" all occur,
 //  and an IPv6 literal arrives unbracketed.
@@ -9,14 +6,19 @@
 
 import Foundation
 
-struct RedisNodeAddress: Equatable, Hashable, Sendable {
-    let host: String
-    let port: Int
+public struct RedisNodeAddress: Equatable, Hashable, Sendable {
+    public let host: String
+    public let port: Int
 
-    var identifier: String { "\(host):\(port)" }
+    public var identifier: String { "\(host):\(port)" }
+
+    public init(host: String, port: Int) {
+        self.host = host
+        self.port = port
+    }
 }
 
-enum RedisClusterRedirect: Equatable, Sendable {
+public enum RedisClusterRedirect: Equatable, Sendable {
     case moved(slot: Int, address: RedisNodeAddress)
     case ask(slot: Int, address: RedisNodeAddress)
     case tryAgain(slot: Int?)
@@ -41,7 +43,7 @@ enum RedisClusterRedirect: Equatable, Sendable {
     /// `fallbackHost` stands in when the server reports an empty or unknown endpoint, which it does
     /// when it has no announced address for the owning node. The spec says to reuse the endpoint of
     /// the node that answered.
-    static func parse(_ message: String, fallbackHost: String) -> RedisClusterRedirect? {
+    public static func parse(_ message: String, fallbackHost: String) -> RedisClusterRedirect? {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         let fields = trimmed.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
         guard let code = fields.first?.uppercased() else { return nil }
@@ -62,7 +64,7 @@ enum RedisClusterRedirect: Equatable, Sendable {
         }
     }
 
-    static func parseEndpoint(_ endpoint: String, fallbackHost: String) -> RedisNodeAddress? {
+    public static func parseEndpoint(_ endpoint: String, fallbackHost: String) -> RedisNodeAddress? {
         guard let lastColon = endpoint.lastIndex(of: ":") else { return nil }
         guard let port = Int(endpoint[endpoint.index(after: lastColon)...]), (1 ... 65_535).contains(port) else {
             return nil

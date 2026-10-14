@@ -1,7 +1,3 @@
-//
-//  LibPQByteaDecoder.swift
-//  PostgreSQLDriverPlugin
-//
 //  Decodes PostgreSQL BYTEA values from libpq's text result format into raw Data.
 //
 //  PostgreSQL emits BYTEA in one of two text formats, controlled by the server's
@@ -22,15 +18,8 @@
 
 import Foundation
 
-enum LibPQByteaDecoder {
-    /// Decodes a BYTEA text representation as returned by libpq's text result format
-    /// into raw bytes.
-    ///
-    /// - Parameter text: The BYTEA value as libpq emitted it (e.g. "\\xd38ce566..." or
-    ///   "\\\\012abc").
-    /// - Returns: The decoded raw bytes, or nil if `text` is not a valid BYTEA
-    ///   text representation in either supported format.
-    static func decode(_ text: String) -> Data? {
+public enum LibPQByteaDecoder {
+    public static func decode(_ text: String) -> Data? {
         if text.isEmpty {
             return Data()
         }
@@ -98,11 +87,7 @@ enum LibPQByteaDecoder {
         return byte - 0x30
     }
 
-    /// Encodes raw bytes back to BYTEA hex text format for inclusion in SQL literals.
-    ///
-    /// Produces the canonical `\xHHHH...` representation suitable for use in
-    /// `'\xHHHH...'::bytea` or `E'\\xHHHH...'` SQL literals.
-    static func encodeHexText(_ data: Data) -> String {
+    public static func encodeHexText(_ data: Data) -> String {
         var out = "\\x"
         out.reserveCapacity(2 + data.count * 2)
         for byte in data {

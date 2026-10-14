@@ -8,6 +8,7 @@
 import CMariaDB
 import Foundation
 import OSLog
+import TableProMySQLCore
 
 private let deadlineLogger = Logger(subsystem: "com.TablePro", category: "MariaDBStatementDeadline")
 

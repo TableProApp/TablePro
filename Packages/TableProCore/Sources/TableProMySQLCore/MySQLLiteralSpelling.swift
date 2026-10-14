@@ -1,8 +1,3 @@
-//
-//  MySQLLiteralSpelling.swift
-//  MySQLDriverPlugin
-//
-
 import Foundation
 
 /// How a quoted string literal is spelled for the session that reads it.
@@ -15,16 +10,16 @@ import Foundation
 /// type and MariaDB's catalog defaults alike, so that is how the plugin spells every literal it
 /// holds. A statement it runs is re-spelled once, for the session that will read it, from the same
 /// status flag `mysql_real_escape_string` reads to make the same choice.
-internal enum MySQLLiteralSpelling: Equatable, Sendable {
+public enum MySQLLiteralSpelling: Equatable, Sendable {
     case backslashEscapes
     case quoteDoubling
 
-    init(noBackslashEscapes: Bool?) {
+    public init(noBackslashEscapes: Bool?) {
         self = noBackslashEscapes == true ? .quoteDoubling : .backslashEscapes
     }
 
     /// The body of a single-quoted literal that reads back as `value`.
-    func escaped(_ value: String) -> String {
+    public func escaped(_ value: String) -> String {
         switch self {
         case .backslashEscapes:
             return mysqlEscapeStringLiteral(value)
@@ -37,7 +32,7 @@ internal enum MySQLLiteralSpelling: Equatable, Sendable {
     /// this session instead. Identifiers, double-quoted text and comments are copied unchanged:
     /// a double-quoted span is an identifier under `ANSI_QUOTES`, and nothing the plugin writes
     /// puts a string there.
-    func respelled(_ sql: String) -> String {
+    public func respelled(_ sql: String) -> String {
         guard self == .quoteDoubling else { return sql }
         let scalars = Array(sql.unicodeScalars)
         var output = String.UnicodeScalarView()

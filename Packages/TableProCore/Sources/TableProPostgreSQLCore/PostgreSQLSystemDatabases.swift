@@ -1,12 +1,7 @@
-//
-//  PostgreSQLSystemDatabases.swift
-//  PostgreSQLDriverPlugin
-//
-
 import Foundation
 
-enum PostgreSQLSystemDatabases {
-    static let postgreSQL: [String] = []
-    static let redshift: [String] = ["padb_harvest"]
-    static let cockroachDB: [String] = ["system"]
+public enum PostgreSQLSystemDatabases {
+    public static let postgreSQL: [String] = []
+    public static let redshift: [String] = ["padb_harvest"]
+    public static let cockroachDB: [String] = ["system"]
 }

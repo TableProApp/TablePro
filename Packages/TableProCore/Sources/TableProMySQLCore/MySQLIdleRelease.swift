@@ -1,11 +1,3 @@
-//
-//  MySQLIdleRelease.swift
-//  MySQLDriverPlugin
-//
-//  The idle-release policy and its timer. No CMariaDB import, so TableProTests can
-//  exercise both without loading the plugin bundle.
-//
-
 import Foundation
 
 /// How long a MySQL connection may sit unused before it hands its server connection back.
@@ -17,23 +9,23 @@ import Foundation
 /// round trips including the TLS handshake and auth. Past roughly 50ms of latency this trades a
 /// free connection slot for a visibly slower first query, which is a trade only the person using
 /// it can make.
-enum MySQLIdleRelease {
-    static let fieldId = "mysqlIdleReleaseMinutes"
+public enum MySQLIdleRelease {
+    public static let fieldId = "mysqlIdleReleaseMinutes"
 
-    static let maximumMinutes = 240
+    public static let maximumMinutes = 240
 
-    static let neverValue = "0"
+    public static let neverValue = "0"
 
     /// Nil for never, which covers the default, an absent field, a blank one, zero, a negative
     /// number and anything that is not a number at all.
-    static func minutes(fromFieldValue value: String?) -> Int? {
+    public static func minutes(fromFieldValue value: String?) -> Int? {
         guard let trimmed = value?.trimmingCharacters(in: .whitespaces), !trimmed.isEmpty,
               let minutes = Int(trimmed), minutes > 0
         else { return nil }
         return min(minutes, maximumMinutes)
     }
 
-    static func interval(fromFieldValue value: String?) -> Duration? {
+    public static func interval(fromFieldValue value: String?) -> Duration? {
         minutes(fromFieldValue: value).map { .seconds($0 * 60) }
     }
 
@@ -46,10 +38,12 @@ enum MySQLIdleRelease {
 /// Wakes on a schedule and asks whether the connection has been idle long enough to release.
 /// The same shape as `SnowflakeHeartbeat`: one `Task` looping on `Task.sleep`, so cancelling the
 /// task is the whole of stopping it.
-actor MySQLIdleReleaseTimer {
+public actor MySQLIdleReleaseTimer {
     private var task: Task<Void, Never>?
 
-    func start(interval: Duration, onTick: @escaping @Sendable () async -> Void) {
+    public init() {}
+
+    public func start(interval: Duration, onTick: @escaping @Sendable () async -> Void) {
         stop()
         let poll = MySQLIdleRelease.pollInterval(for: interval)
         task = Task {
@@ -61,7 +55,7 @@ actor MySQLIdleReleaseTimer {
         }
     }
 
-    func stop() {
+    public func stop() {
         task?.cancel()
         task = nil
     }

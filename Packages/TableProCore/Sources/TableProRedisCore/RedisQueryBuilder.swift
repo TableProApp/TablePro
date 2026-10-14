@@ -1,20 +1,13 @@
-//
-//  RedisQueryBuilder.swift
-//  RedisDriverPlugin
-//
-//  Builds Redis command strings for key browsing and filtering.
-//  Plugin-local version using primitive types instead of Core types.
-//
-
 import Foundation
-import TableProPluginKit
 
-struct RedisQueryBuilder {
+public struct RedisQueryBuilder: Sendable {
+    public init() {}
+
     // MARK: - Base Query
 
     /// Build a key-browse command for a namespace. KEYBROWSE iterates the SCAN cursor
     /// to completion (bounded) and honors LIMIT/OFFSET, so paging returns every key.
-    func buildBaseQuery(
+    public func buildBaseQuery(
         namespace: String,
         database: Int? = nil,
         sortColumns: [(columnIndex: Int, ascending: Bool)] = [],
@@ -30,7 +23,7 @@ struct RedisQueryBuilder {
     /// A ("Key", "MATCH", glob) tuple is a raw glob typed by the user and passed verbatim.
     /// A ("Type", "=", type) tuple selects a server-side SCAN TYPE scope.
     /// Legacy Key operators (CONTAINS, STARTS WITH, ...) still resolve to an escaped glob.
-    func buildFilteredQuery(
+    public func buildFilteredQuery(
         namespace: String,
         database: Int? = nil,
         filters: [(column: String, op: String, value: String)],
@@ -52,7 +45,7 @@ struct RedisQueryBuilder {
     /// The SCAN `MATCH` glob and `TYPE` scope a filtered browse lists keys by, both nil when the
     /// filters narrow nothing. The exact row count reads the same pair, so it counts the keys the
     /// grid would list rather than a reading of the filters of its own.
-    func browseScope(
+    public func browseScope(
         filters: [(column: String, op: String, value: String)],
         namespace: String = ""
     ) -> (pattern: String?, typeScope: String?) {
@@ -60,12 +53,12 @@ struct RedisQueryBuilder {
     }
 
     /// Streamed, so the whole database is read and `LIMIT` is never consulted.
-    func buildExportQuery(database: Int?) -> String {
+    public func buildExportQuery(database: Int?) -> String {
         guard let database else { return "KEYBROWSE" }
         return "KEYBROWSE DB \(database)"
     }
 
-    func buildKeyBrowseQuery(
+    public func buildKeyBrowseQuery(
         pattern: String?,
         typeScope: String?,
         database: Int? = nil,
@@ -91,7 +84,7 @@ struct RedisQueryBuilder {
     /// returns the total key count for the entire database. We use a SCAN-based
     /// approach instead; note the returned count is approximate since SCAN may
     /// return duplicates across iterations and new keys may appear mid-scan.
-    func buildCountQuery(namespace: String) -> String {
+    public func buildCountQuery(namespace: String) -> String {
         if namespace.isEmpty {
             return "DBSIZE"
         }

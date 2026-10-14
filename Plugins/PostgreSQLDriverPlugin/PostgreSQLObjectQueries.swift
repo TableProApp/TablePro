@@ -8,6 +8,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 nonisolated public enum PostgreSQLObjectQueries {
     /// The single owner of literal quoting for every statement this plugin builds, which is why it

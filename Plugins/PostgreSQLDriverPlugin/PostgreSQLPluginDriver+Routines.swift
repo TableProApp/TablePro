@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 extension PostgreSQLPluginDriver {
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {

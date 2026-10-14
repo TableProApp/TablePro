@@ -5,6 +5,7 @@
 
 import CLibPQ
 import Foundation
+import TableProPostgreSQLCore
 
 internal extension LibPQPluginConnection {
     /// A type created after connect has an oid the connect-time probe never saw, so its columns

@@ -5,6 +5,8 @@
 
 import Testing
 
+@testable import TableProMySQLCore
+
 struct MySQLStatementKeywordTests {
     /// Measured on 4.1.22 for `SHOW`, `DESCRIBE` and `HELP`; the maintenance statements build the same
     /// columns in 4.1.22's source.

@@ -7,8 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@testable import TablePro
-
 /// The budget only means something if the number it counts is the number the file gets, so every
 /// case here re-measures the statement it was handed rather than trusting the accumulator's tally.
 struct SQLExportStatementBudgetTests {

@@ -9,12 +9,11 @@ import Testing
 
 @testable import TablePro
 
+// Writes what the MySQL plugin's MySQLAccountStatements writes for the accounts below, which MySQLDriverTests pins.
 private final class MySQLPrincipalDriverStub: PluginDatabaseDriver, PluginPrincipalManagement, @unchecked Sendable {
-    private let accounts = MySQLAccountStatements(
-        syntax: .alterUser,
-        account: { "'\($0.name)'@'\($0.host ?? "%")'" },
-        literal: { mysqlEscapeStringLiteral($0) }
-    )
+    private func account(_ ref: PluginPrincipalRef) -> String {
+        "'\(ref.name)'@'\(ref.host ?? "%")'"
+    }
 
     func connect() async throws {}
     func disconnect() {}
@@ -41,18 +40,25 @@ private final class MySQLPrincipalDriverStub: PluginDatabaseDriver, PluginPrinci
     func fetchGrants(for principal: PluginPrincipalRef) async throws -> [PluginGrantInfo] { [] }
 
     func generateCreatePrincipalSQL(definition: PluginPrincipalDefinition) -> [String]? {
-        accounts.create(definition)
+        var statement = "CREATE USER \(account(definition.ref))"
+        if let password = definition.password, !password.isEmpty {
+            statement += " IDENTIFIED BY '\(password)'"
+        }
+        if let limit = definition.connectionLimit {
+            statement += " WITH MAX_USER_CONNECTIONS \(limit)"
+        }
+        return [statement]
     }
 
     func generateAlterPrincipalSQL(
         old: PluginPrincipalDefinition,
         new: PluginPrincipalDefinition
     ) -> [String]? {
-        accounts.alter(old: old, new: new)
+        []
     }
 
     func generateSetPasswordSQL(principal: PluginPrincipalRef, password: String) -> [String]? {
-        accounts.setPassword(password, for: principal)
+        ["ALTER USER \(account(principal)) IDENTIFIED BY '\(password)'"]
     }
 
     func generateDropPrincipalSQL(

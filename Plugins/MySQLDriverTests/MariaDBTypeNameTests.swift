@@ -1,9 +1,3 @@
-//
-//  MariaDBTypeNameTests.swift
-//  TableProTests
-//
-
-@testable import TablePro
 import Testing
 
 struct MariaDBTypeNameTests {
@@ -30,16 +24,6 @@ struct MariaDBTypeNameTests {
         #expect(resolve(typeRaw: 4) == "FLOAT")
         #expect(resolve(typeRaw: 5) == "DOUBLE")
         #expect(resolve(typeRaw: 246) == "DECIMAL")
-    }
-
-    /// Every DECIMAL column arrives as type 246. Named after the protocol constant, it fell through
-    /// the classifier to text, so charts, sorting and JSON copy treated the numbers as strings.
-    @Test("A DECIMAL result column classifies as a number")
-    func decimalResultColumnIsNumeric() {
-        guard case .decimal = ColumnTypeClassifier().classify(rawTypeName: resolve(typeRaw: 246)) else {
-            Issue.record("Type 246 must classify as decimal")
-            return
-        }
     }
 
     // MARK: - Temporal types

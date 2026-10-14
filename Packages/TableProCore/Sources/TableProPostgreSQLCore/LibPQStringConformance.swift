@@ -1,18 +1,13 @@
-//
-//  LibPQStringConformance.swift
-//  PostgreSQLDriverPlugin
-//
-
 import Foundation
 
-enum LibPQStringConformance {
-    static let parameterName = "standard_conforming_strings"
+public enum LibPQStringConformance {
+    public static let parameterName = "standard_conforming_strings"
 
-    static let enableStatement = "SET standard_conforming_strings TO on"
+    public static let enableStatement = "SET standard_conforming_strings TO on"
 
-    static let showQuery = "SHOW standard_conforming_strings"
+    public static let showQuery = "SHOW standard_conforming_strings"
 
-    static func isOn(_ reportedValue: String?) -> Bool? {
+    public static func isOn(_ reportedValue: String?) -> Bool? {
         guard let reportedValue else { return nil }
         let normalized = reportedValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         switch normalized {
@@ -25,7 +20,7 @@ enum LibPQStringConformance {
         }
     }
 
-    static func escape(_ value: String, standardConformingStrings: Bool) -> String {
+    public static func escape(_ value: String, standardConformingStrings: Bool) -> String {
         let quoted = value
             .replacingOccurrences(of: "\0", with: "")
             .replacingOccurrences(of: "'", with: "''")

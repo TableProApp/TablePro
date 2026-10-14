@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import TableProRedisCore
 
 enum RedisDatabaseCount {
     static let assumed = 16

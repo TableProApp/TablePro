@@ -8,6 +8,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 final class LibPQDriverCore: @unchecked Sendable {
     private let config: DriverConnectionConfig

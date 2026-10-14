@@ -2,11 +2,9 @@
 //  MySQLSessionFootprintTests.swift
 //  TableProTests
 //
-//  Tests for MySQLSessionFootprint and MySQLIdleRelease (compiled via project.yml from
-//  MySQLDriverPlugin).
-//
 
 import Foundation
+import TableProMySQLCore
 import TableProPluginKit
 import Testing
 

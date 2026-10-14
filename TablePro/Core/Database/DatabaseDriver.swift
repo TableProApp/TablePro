@@ -8,6 +8,7 @@
 import Foundation
 import OSLog
 import TableProPluginKit
+import TableProRedisCore
 
 /// Protocol defining database driver operations
 protocol DatabaseDriver: AnyObject, Sendable {

@@ -1,10 +1,9 @@
 //
 //  MQLExportHelpersTests.swift
-//  TableProTests
+//  FormatPluginTests
 //
 
 import Foundation
-@testable import TablePro
 import TableProPluginKit
 import Testing
 
@@ -182,8 +181,6 @@ struct MQLExportHelpersTests {
             let header = MQLExportHelpers.headerComment(label: "Collection", name: "a\(String(terminator))b")
             #expect(!header.unicodeScalars.contains { Self.lineTerminators.contains($0) }, "U+\(terminator.value)")
             #expect(header.hasPrefix("// Collection: a\\"))
-            let statements = JavaScriptStatementScanner.executableStatements(in: "x = 1;" + header)
-            #expect(statements.map(\.trimmed) == ["x = 1;"], "U+\(terminator.value)")
         }
         #expect(MQLExportHelpers.headerComment(label: "Database", name: "shop */ 'x'") == "// Database: shop */ 'x'")
     }

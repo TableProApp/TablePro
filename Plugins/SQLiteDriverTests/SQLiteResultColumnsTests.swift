@@ -6,8 +6,9 @@
 //  columns, because they were read before the step that notices the schema changed.
 //
 
+import CSQLite
 import Foundation
-import SQLite3
+import TableProSQLiteCore
 import Testing
 
 struct SQLiteResultColumnsTests {

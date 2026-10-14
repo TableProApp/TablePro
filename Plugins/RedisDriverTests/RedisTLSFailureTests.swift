@@ -1,5 +1,6 @@
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 import Testing
 
 struct RedisTLSFailureTests {

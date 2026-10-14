@@ -6,8 +6,6 @@
 import Foundation
 import TableProPluginKit
 
-@testable import TablePro
-
 /// Runs a real CSV export and hands back the bytes it wrote.
 ///
 /// Bytes rather than a decoded string, because what this suite is about is which bytes reached the

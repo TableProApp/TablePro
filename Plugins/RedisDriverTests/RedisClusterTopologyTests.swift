@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProRedisCore
 import Testing
 
 private func shardsReply() -> RedisReply {

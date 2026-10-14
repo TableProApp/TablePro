@@ -1,43 +1,38 @@
-//
-//  RedisArgumentCodec.swift
-//  RedisDriverPlugin
-//
-
 import Foundation
 
-struct RedisArgument {
-    let bytes: Data
+public struct RedisArgument: Sendable {
+    public let bytes: Data
 
-    var text: String { String(decoding: bytes, as: UTF8.self) }
+    public var text: String { String(decoding: bytes, as: UTF8.self) } // swiftlint:disable:this optional_data_string_conversion
 
-    init(_ bytes: Data) {
+    public init(_ bytes: Data) {
         self.bytes = bytes
     }
 
-    init(_ text: String) {
+    public init(_ text: String) {
         bytes = Data(text.utf8)
     }
 }
 
-extension String {
+public extension String {
     var redisArgument: Data {
         Data(utf8)
     }
 }
 
-extension Array where Element == String {
+public extension Array where Element == String {
     var asRedisArguments: [Data] {
         map { Data($0.utf8) }
     }
 }
 
-extension Array where Element == RedisArgument {
+public extension Array where Element == RedisArgument {
     var asRedisArguments: [Data] {
         map(\.bytes)
     }
 }
 
-enum RedisArgumentCodec {
+public enum RedisArgumentCodec {
     private static let space = UInt8(ascii: " ")
     private static let tab = UInt8(ascii: "\t")
     private static let newline = UInt8(ascii: "\n")
@@ -47,7 +42,7 @@ enum RedisArgumentCodec {
     private static let singleQuote = UInt8(ascii: "'")
     private static let hexMarker = UInt8(ascii: "x")
 
-    static func split(_ input: String) -> [Data]? {
+    public static func split(_ input: String) -> [Data]? {
         let bytes = Array(input.utf8)
         var arguments: [Data] = []
         var index = 0
@@ -134,14 +129,14 @@ enum RedisArgumentCodec {
         return arguments
     }
 
-    static func quote(_ bytes: Data) -> String {
+    public static func quote(_ bytes: Data) -> String {
         if let text = String(data: bytes, encoding: .utf8) {
             return isBare(text) ? text : quotedText(text)
         }
         return quotedBytes(bytes)
     }
 
-    static func quote(_ text: String) -> String {
+    public static func quote(_ text: String) -> String {
         isBare(text) ? text : quotedText(text)
     }
 
@@ -153,7 +148,7 @@ enum RedisArgumentCodec {
         }
     }
 
-    static func quotedText(_ text: String) -> String {
+    public static func quotedText(_ text: String) -> String {
         var result = "\""
         for scalar in text.unicodeScalars {
             switch scalar {

@@ -1,16 +1,16 @@
 import Foundation
 
-nonisolated struct RedisConnectTimeout: Equatable, Sendable {
-    static let defaultMilliseconds = 10_000
+nonisolated public struct RedisConnectTimeout: Equatable, Sendable {
+    public static let defaultMilliseconds = 10_000
     static let maximumMilliseconds = 3_600_000
 
-    let milliseconds: Int
+    public let milliseconds: Int
 
-    init(additionalFields: [String: String]) {
+    public init(additionalFields: [String: String]) {
         milliseconds = Self.resolve(additionalFields: additionalFields)
     }
 
-    init(milliseconds: Int) {
+    public init(milliseconds: Int) {
         self.milliseconds = min(max(milliseconds, 1), Self.maximumMilliseconds)
     }
 
@@ -39,19 +39,19 @@ nonisolated struct RedisConnectTimeout: Equatable, Sendable {
     }
 }
 
-nonisolated struct RedisConnectDeadline: Sendable {
+nonisolated public struct RedisConnectDeadline: Sendable {
     private let expiresAt: TimeInterval
 
-    init(timeout: RedisConnectTimeout, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+    public init(timeout: RedisConnectTimeout, now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         expiresAt = now + timeout.timeInterval
     }
 
-    func remainingMilliseconds(now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> Int? {
+    public func remainingMilliseconds(now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> Int? {
         let remaining = Int(((expiresAt - now) * 1_000).rounded(.up))
         return remaining > 0 ? remaining : nil
     }
 
-    func socketTimeout(now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> RedisSocketTimeout? {
+    public func socketTimeout(now: TimeInterval = ProcessInfo.processInfo.systemUptime) -> RedisSocketTimeout? {
         guard let milliseconds = remainingMilliseconds(now: now) else { return nil }
         return RedisSocketTimeout(
             seconds: milliseconds / 1_000,
@@ -60,9 +60,9 @@ nonisolated struct RedisConnectDeadline: Sendable {
     }
 }
 
-nonisolated struct RedisSocketTimeout: Equatable, Sendable {
-    let seconds: Int
-    let microseconds: Int
+nonisolated public struct RedisSocketTimeout: Equatable, Sendable {
+    public let seconds: Int
+    public let microseconds: Int
 }
 
 /// Whether a connection carries an identity, asked of the server rather than assumed.
@@ -78,21 +78,21 @@ nonisolated struct RedisSocketTimeout: Equatable, Sendable {
 /// session bound to a user without `+ping` gets `NOPERM` and can still run what it is allowed.
 /// `NOPERM` is therefore the server confirming an identity, and `NOAUTH` is the only reply that
 /// says there is none.
-nonisolated enum RedisConnectProbe {
-    enum Outcome: Equatable, Sendable {
+nonisolated public enum RedisConnectProbe {
+    public enum Outcome: Equatable, Sendable {
         case established
         case unauthenticated
         case refused(String)
     }
 
-    static let command = ["PING"]
+    public static let command = ["PING"]
 
-    static let unauthenticatedMessage = String(localized: "This server requires authentication.")
-    static let unauthenticatedHint = String(
+    public static let unauthenticatedMessage = String(localized: "This server requires authentication.")
+    public static let unauthenticatedHint = String(
         localized: "Fill in Password, and Username too if the server uses Redis 6 ACL users."
     )
 
-    static func outcome(errorMessage: String?) -> Outcome {
+    public static func outcome(errorMessage: String?) -> Outcome {
         guard let errorMessage, !errorMessage.isEmpty else { return .established }
         switch errorClass(of: errorMessage) {
         case "NOAUTH": return .unauthenticated
@@ -103,12 +103,12 @@ nonisolated enum RedisConnectProbe {
 
     /// RESP puts the error class in the first word, so the class is compared whole. A prefix test
     /// would let a future `NOAUTHZ` read as `NOAUTH`.
-    static func errorClass(of message: String) -> String {
+    public static func errorClass(of message: String) -> String {
         String(message.prefix { !$0.isWhitespace }).uppercased()
     }
 }
 
-nonisolated extension RedisConnectProbe.Outcome {
+nonisolated public extension RedisConnectProbe.Outcome {
     var failureMessage: String? {
         switch self {
         case .established:

@@ -9,6 +9,8 @@
 import Foundation
 import Testing
 
+@testable import TableProMySQLCore
+
 struct MySQLLiteralSpellingTests {
     private let session = MySQLLiteralSpelling.quoteDoubling
 

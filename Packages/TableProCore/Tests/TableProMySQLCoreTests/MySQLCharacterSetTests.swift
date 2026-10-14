@@ -6,6 +6,8 @@
 import Foundation
 import Testing
 
+@testable import TableProMySQLCore
+
 struct MySQLCharacterSetTests {
     private func decode(_ bytes: [UInt8], as name: String) -> String {
         bytes.withUnsafeBytes { MySQLCharacterSet(serverName: name).decode($0) }

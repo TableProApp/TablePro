@@ -6,8 +6,9 @@
 //
 
 import Foundation
-import TableProPluginKit
 import Testing
+
+@testable import TableProMySQLCore
 
 // MARK: - Test Helpers
 
@@ -180,7 +181,7 @@ struct GeometryWKBParserTests {
     /// way PostGIS spells it.
     @Test("A non-zero SRID reaches the output as an EWKT prefix")
     func sridBecomesAnEWKTPrefix() {
-        let data = mysqlGeometry(srid: 4326, wkb: wkbPoint(-122.4194, 37.7749))
+        let data = mysqlGeometry(srid: 4_326, wkb: wkbPoint(-122.4194, 37.7749))
         #expect(GeometryWKBParser.parse(data) == "SRID=4326;POINT(-122.4194 37.7749)")
     }
 
@@ -222,7 +223,7 @@ struct GeometryWKBParserTests {
     @Test("A Z ordinate does not desynchronise the reader")
     func threeDimensionalPointReads() {
         var wkb: [UInt8] = [0x01]
-        wkb += uint32Bytes(1001)
+        wkb += uint32Bytes(1_001)
         wkb += float64Bytes(1) + float64Bytes(2) + float64Bytes(3)
         let data = mysqlGeometry(wkb: wkb)
         #expect(GeometryWKBParser.parse(data) == "POINT(1.0 2.0)")

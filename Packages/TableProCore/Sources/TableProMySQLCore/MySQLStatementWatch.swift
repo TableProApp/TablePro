@@ -1,10 +1,3 @@
-//
-//  MySQLStatementWatch.swift
-//  MySQLDriverPlugin
-//
-//  Which statement the client-side deadline is allowed to interrupt, and whether it did.
-//
-
 import Foundation
 
 /// `KILL QUERY` sets a flag on the server's thread that the *next* statement to test it consumes,
@@ -18,15 +11,15 @@ import Foundation
 /// finish, and therefore the next one on the serial queue cannot start, while a kill is in flight.
 /// And `end` reports whether a kill was sent, so a caller whose statement did not end in an
 /// interruption knows to consume the flag itself before releasing the queue.
-internal final class MySQLStatementWatch: @unchecked Sendable {
+public final class MySQLStatementWatch: @unchecked Sendable {
     private let lock = NSLock()
     private var lastToken: UInt64 = 0
     private var runningToken: UInt64?
     private var interruptedToken: UInt64?
 
-    internal init() {}
+    public init() {}
 
-    internal func begin() -> UInt64 {
+    public func begin() -> UInt64 {
         lock.withLock {
             lastToken += 1
             runningToken = lastToken
@@ -35,7 +28,7 @@ internal final class MySQLStatementWatch: @unchecked Sendable {
     }
 
     /// Whether a kill was sent for this statement. Blocks while an interrupt for it is in flight.
-    internal func end(_ token: UInt64) -> Bool {
+    public func end(_ token: UInt64) -> Bool {
         lock.withLock {
             if runningToken == token { runningToken = nil }
             guard interruptedToken == token else { return false }
@@ -44,13 +37,13 @@ internal final class MySQLStatementWatch: @unchecked Sendable {
         }
     }
 
-    internal func isRunning(_ token: UInt64) -> Bool {
+    public func isRunning(_ token: UInt64) -> Bool {
         lock.withLock { runningToken == token }
     }
 
     /// Runs `interrupt` only while `token` is still the running statement, and records that a kill
     /// was sent only when it reports one went out.
-    internal func expire(_ token: UInt64, interrupt: () -> Bool) {
+    public func expire(_ token: UInt64, interrupt: () -> Bool) {
         lock.withLock {
             guard runningToken == token, interrupt() else { return }
             interruptedToken = token

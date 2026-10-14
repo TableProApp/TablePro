@@ -1,14 +1,8 @@
-//
-//  ExportRowScopeTests.swift
-//  TableProTests
-//
-
 import Foundation
 import TableProPluginKit
 import Testing
 
 struct ExportRowScopeTests {
-
     @Test("An empty scope exports everything")
     func emptyScopeIsUnrestricted() {
         #expect(PluginExportRowScope.unrestricted.isUnrestricted)

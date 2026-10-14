@@ -8,6 +8,7 @@ import Combine
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProRedisCore
 import TableProSyncTransport
 
 @MainActor

@@ -9,6 +9,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 
 struct StubRedisCluster {
     static let firstAddress = RedisNodeAddress(host: "127.0.0.1", port: 7_000)

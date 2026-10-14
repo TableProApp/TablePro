@@ -1,8 +1,3 @@
-//
-//  PostgreSQLCatalogTypeNames.swift
-//  PostgreSQLDriver
-//
-
 import Foundation
 
 /// The spelling a result column gets for its type oid. A built-in type's oid is fixed in PostgreSQL's
@@ -11,10 +6,10 @@ import Foundation
 /// column classifier reads, a domain is its base type so the cell edits as one, and anything else is
 /// its own name. Both the connect-time enum probe and the per-result lookup spell through here, so a
 /// column reads the same whether its type existed at connect or was created a moment ago.
-enum PostgreSQLCatalogTypeNames {
-    static let unresolved = "unknown"
+public enum PostgreSQLCatalogTypeNames {
+    public static let unresolved = "unknown"
 
-    static func builtinTypeName(for oid: UInt32) -> String? {
+    public static func builtinTypeName(for oid: UInt32) -> String? {
         switch oid {
         case 16: return "boolean"
         case 17: return "bytea"
@@ -74,25 +69,43 @@ enum PostgreSQLCatalogTypeNames {
         }
     }
 
-    static func enumTypeName(_ name: String) -> String { "ENUM(\(name))" }
+    public static func enumTypeName(_ name: String) -> String { "ENUM(\(name))" }
 
-    static func enumArrayTypeName(_ name: String) -> String { "ENUM[](\(name))" }
+    public static func enumArrayTypeName(_ name: String) -> String { "ENUM[](\(name))" }
 
-    struct Row: Equatable {
-        let oid: UInt32
-        let name: String
-        let kind: Character
-        let domainBase: String?
-        let elementName: String?
-        let elementKind: Character?
-        let elementDomainBase: String?
+    public struct Row: Equatable {
+        public let oid: UInt32
+        public let name: String
+        public let kind: Character
+        public let domainBase: String?
+        public let elementName: String?
+        public let elementKind: Character?
+        public let elementDomainBase: String?
+
+        public init(
+            oid: UInt32,
+            name: String,
+            kind: Character,
+            domainBase: String?,
+            elementName: String?,
+            elementKind: Character?,
+            elementDomainBase: String?
+        ) {
+            self.oid = oid
+            self.name = name
+            self.kind = kind
+            self.domainBase = domainBase
+            self.elementName = elementName
+            self.elementKind = elementKind
+            self.elementDomainBase = elementDomainBase
+        }
     }
 
     /// An array is `typelem` set on a variable-length type rather than `typcategory = 'A'`,
     /// because Redshift's catalog predates `typcategory` and the predicate agrees with it on
     /// every real type: `point` and `name` carry a `typelem` at a fixed length, and the one
     /// disagreement is the pseudo-type `_record`, which no column has.
-    static func lookupQuery(oids: [UInt32]) -> String? {
+    public static func lookupQuery(oids: [UInt32]) -> String? {
         let list = Set(oids).sorted().map(String.init).joined(separator: ", ")
         guard !list.isEmpty else { return nil }
         return """
@@ -106,7 +119,7 @@ enum PostgreSQLCatalogTypeNames {
             """
     }
 
-    static func row(fromColumns columns: [String?]) -> Row? {
+    public static func row(fromColumns columns: [String?]) -> Row? {
         guard columns.count >= 7,
               let oid = columns[0].flatMap({ UInt32($0) }),
               let name = columns[1],
@@ -122,7 +135,7 @@ enum PostgreSQLCatalogTypeNames {
         )
     }
 
-    static func typeName(for row: Row) -> String {
+    public static func typeName(for row: Row) -> String {
         if let elementName = row.elementName {
             guard row.elementKind != "e" else { return enumArrayTypeName(elementName) }
             return "\(row.elementDomainBase ?? elementName)[]"
@@ -134,7 +147,7 @@ enum PostgreSQLCatalogTypeNames {
 
     /// The connect-time probe and the refresh after a `CREATE TYPE` both read every enum with its
     /// scalar and array oids; a zero array oid is a server that does not give enums one.
-    static func enumProbeNames(rows: [[String?]]) -> [UInt32: String] {
+    public static func enumProbeNames(rows: [[String?]]) -> [UInt32: String] {
         var names: [UInt32: String] = [:]
         for row in rows {
             guard row.count >= 3,
@@ -150,7 +163,7 @@ enum PostgreSQLCatalogTypeNames {
 
     /// Every oid asked about gets an entry, so an oid the catalog does not know is not asked
     /// about again on every following result.
-    static func names(for oids: [UInt32], rows: [[String?]]) -> [UInt32: String] {
+    public static func names(for oids: [UInt32], rows: [[String?]]) -> [UInt32: String] {
         var names: [UInt32: String] = [:]
         for oid in oids {
             names[oid] = unresolved

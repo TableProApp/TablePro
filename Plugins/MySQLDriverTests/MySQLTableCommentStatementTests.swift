@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMySQLCore
 import Testing
 
 struct MySQLTableCommentStatementTests {

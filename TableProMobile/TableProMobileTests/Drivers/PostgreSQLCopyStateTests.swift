@@ -1,6 +1,7 @@
 import CLibPQ
 import Foundation
 @testable import TableProMobile
+import TableProPostgreSQLCore
 import Testing
 
 @Suite("PostgreSQL COPY state")
@@ -23,11 +24,11 @@ struct PostgreSQLCopyStateTests {
 
     @Test("Every direction explains itself and names the COPY form it rejects")
     func unsupportedMessages() {
-        #expect(LibPQCopyDirection.copyIn.unsupportedMessage.contains("COPY FROM STDIN"))
-        #expect(LibPQCopyDirection.copyIn.unsupportedMessage.contains("no rows were sent"))
-        #expect(LibPQCopyDirection.copyOut.unsupportedMessage.contains("COPY TO STDOUT"))
-        #expect(!LibPQCopyDirection.copyBoth.unsupportedMessage.isEmpty)
-        let messages = Set([LibPQCopyDirection.copyIn, .copyOut, .copyBoth].map(\.unsupportedMessage))
+        #expect(LibPQCopyDirection.copyIn.mobileUnsupportedMessage.contains("COPY FROM STDIN"))
+        #expect(LibPQCopyDirection.copyIn.mobileUnsupportedMessage.contains("no rows were sent"))
+        #expect(LibPQCopyDirection.copyOut.mobileUnsupportedMessage.contains("COPY TO STDOUT"))
+        #expect(!LibPQCopyDirection.copyBoth.mobileUnsupportedMessage.isEmpty)
+        let messages = Set([LibPQCopyDirection.copyIn, .copyOut, .copyBoth].map(\.mobileUnsupportedMessage))
         #expect(messages.count == 3)
     }
 

@@ -1,12 +1,10 @@
 //
 //  SQLExportHarness.swift
-//  TableProTests
+//  FormatPluginTests
 //
 
 import Foundation
 import TableProPluginKit
-
-@testable import TablePro
 
 /// Runs a real SQL export and hands back the dump it wrote.
 ///

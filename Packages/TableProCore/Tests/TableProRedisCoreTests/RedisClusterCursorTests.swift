@@ -1,7 +1,4 @@
 //
-//  RedisClusterCursorTests.swift
-//  TableProTests
-//
 //  A cluster SCAN walks one node at a time. Redis accepts another node's cursor without
 //  complaining and answers with a plausible page, so a cursor that names the wrong node loses
 //  keys silently. These tests pin the behaviour that makes that detectable.
@@ -9,6 +6,8 @@
 
 import Foundation
 import Testing
+
+@testable import TableProRedisCore
 
 private let nodes = ["a1b2", "c3d4", "e5f6"]
 

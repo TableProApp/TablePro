@@ -1,6 +1,7 @@
 #if canImport(CRedis)
 import CRedis
 import Foundation
+import TableProRedisCore
 
 nonisolated enum RedisTLSSession {
     static func initiate(

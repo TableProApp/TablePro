@@ -3,8 +3,7 @@
 //  MySQLDriverPlugin
 //
 //  What a session is holding that reconnecting would destroy, tracked from the statements
-//  that go through it. No CMariaDB import, so TableProTests can exercise it without loading
-//  the plugin bundle.
+//  that go through it.
 //
 
 import Foundation

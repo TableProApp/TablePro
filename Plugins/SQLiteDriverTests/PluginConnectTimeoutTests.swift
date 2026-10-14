@@ -1,8 +1,6 @@
 import Foundation
 import Testing
 
-@testable import TablePro
-
 struct PluginConnectTimeoutTests {
     @Test("Millisecond timeout takes precedence over seconds")
     func millisecondsTakePrecedence() {

@@ -6,6 +6,8 @@
 import Foundation
 import Testing
 
+@testable import TableProPostgreSQLCore
+
 private final class SimulatedLibPQConnection {
     private var queue: [LibPQPendingResult]
     private var activeCopy: LibPQCopy?

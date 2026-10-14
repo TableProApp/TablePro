@@ -1,6 +1,6 @@
 //
 //  SQLExportBatchSeparatorTests.swift
-//  TableProTests
+//  FormatPluginTests
 //
 //  SQL Server's client runs a script in batches cut at lines holding only `GO`, and SQL Server refuses a view, a
 //  routine or a trigger that is not the first statement of its batch with Msg 111. A dump written with only `;`
@@ -9,9 +9,7 @@
 //
 
 import Foundation
-@testable import TablePro
 import TableProPluginKit
-import TableProSQLGrammar
 import Testing
 
 /// Holds an export inside its first table definition fetch until the test lets it go, so a second export can run to
@@ -43,16 +41,26 @@ private actor ExportPause {
 }
 
 struct SQLExportBatchSeparatorTests {
+    private enum Engine: String {
+        case sqlServer = "SQL Server"
+        case mysql = "MySQL"
+
+        // The export reads only this feature; which engines report it is the app adapter's, and tested there.
+        var lexicalFeatures: SQLLexicalFeatures {
+            self == .sqlServer ? [.batchSeparatorLines] : []
+        }
+    }
+
+    /// Script text comes from the kit's default, which ends each definition with a `;` the way the app's script text
+    /// does for SQL Server.
     private final class ServerDataSource: PluginExportDataSource, @unchecked Sendable {
         let databaseTypeId: String
         let lexicalFeatures: SQLLexicalFeatures
-        private let scriptTextOwner: SQLScriptText
         private let pause: ExportPause?
 
-        init(databaseType: DatabaseType, pause: ExportPause? = nil) {
-            self.databaseTypeId = databaseType.rawValue
-            self.lexicalFeatures = databaseType.lexicalGrammar.pluginFeatures
-            self.scriptTextOwner = SQLScriptText(databaseType: databaseType)
+        init(engine: Engine, pause: ExportPause? = nil) {
+            self.databaseTypeId = engine.rawValue
+            self.lexicalFeatures = engine.lexicalFeatures
             self.pause = pause
         }
 
@@ -89,10 +97,6 @@ struct SQLExportBatchSeparatorTests {
             }
         }
 
-        func scriptText(for ddl: String) -> String {
-            scriptTextOwner.scriptText(forDriverText: ddl)
-        }
-
         func execute(query: String) async throws -> PluginQueryResult {
             PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
         }
@@ -126,10 +130,10 @@ struct SQLExportBatchSeparatorTests {
         ]
     }
 
-    private func dump(_ databaseType: DatabaseType) async throws -> String {
+    private func dump(_ engine: Engine) async throws -> String {
         try await SQLExportHarness.shared.dump(
             tables: objects,
-            dataSource: ServerDataSource(databaseType: databaseType)
+            dataSource: ServerDataSource(engine: engine)
         ).text
     }
 
@@ -137,34 +141,22 @@ struct SQLExportBatchSeparatorTests {
         dump.components(separatedBy: "\n").filter { $0 == "GO" }.count
     }
 
-    /// What SQL Server's client would send, with the comment lines the dump writes around each statement set aside.
-    private func batches(of dump: String) async throws -> [String] {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sql")
-        try dump.write(to: url, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(at: url) }
-        var batches: [String] = []
-        for try await (batch, _) in SQLFileParser().parseFile(url: url, encoding: .utf8, grammar: TestGrammar.sqlServer) {
-            let code = batch
-                .components(separatedBy: "\n")
-                .filter { !$0.hasPrefix("--") }
-                .joined(separator: "\n")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            batches.append(code)
-        }
-        return batches
-    }
-
-    @Test("The dump source reports SQL Server's GO lines, and no other engine's")
-    func adapterReportsBatchLines() {
-        let sqlServer = ExportDataSourceAdapter(driver: MockDatabaseDriver(), databaseType: .mssql)
-        let mysql = ExportDataSourceAdapter(driver: MockDatabaseDriver(), databaseType: .mysql)
-        #expect(sqlServer.lexicalFeatures.contains(.batchSeparatorLines))
-        #expect(!mysql.lexicalFeatures.contains(.batchSeparatorLines))
+    /// What SQL Server's client would send: the text between lines holding only `GO`, as sqlcmd cuts it, with the
+    /// comment lines the dump writes around each statement set aside.
+    private func batches(of dump: String) -> [String] {
+        dump.components(separatedBy: "\n")
+            .split(separator: "GO", omittingEmptySubsequences: false)
+            .map { lines in
+                lines
+                    .filter { !$0.hasPrefix("--") }
+                    .joined(separator: "\n")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
     }
 
     @Test("Every statement of a SQL Server dump is a batch of its own, the view and the routine first in theirs")
     func everyStatementIsItsOwnBatch() async throws {
-        let batches = try await batches(of: try await dump(.mssql))
+        let batches = batches(of: try await dump(.sqlServer))
 
         #expect(batches.contains("CREATE VIEW [v_orders] AS SELECT id FROM orders;"))
         #expect(batches.contains("CREATE PROCEDURE [p_orders] AS SET NOCOUNT ON; SELECT 1;"))
@@ -177,7 +169,7 @@ struct SQLExportBatchSeparatorTests {
 
     @Test("A SQL Server dump ends each statement on a GO line, as SQL Server Management Studio writes one")
     func goLinesFollowStatements() async throws {
-        let dump = try await dump(.mssql)
+        let dump = try await dump(.sqlServer)
         #expect(dump.contains("SET IDENTITY_INSERT [orders] ON;\nGO\nINSERT INTO [orders]"))
         #expect(dump.contains(");\nGO\n\nSET IDENTITY_INSERT [orders] OFF;\nGO\n"))
         #expect(dump.contains("CREATE VIEW [v_orders] AS SELECT id FROM orders;\nGO\n"))
@@ -195,27 +187,27 @@ struct SQLExportBatchSeparatorTests {
     @Test("Two exports on one plugin each end their statements the way their own engine reads them")
     func exportsSharingThePluginKeepTheirOwnStatementEnds() async throws {
         let expectedGoLines = [
-            DatabaseType.mssql: goLines(in: try await dump(.mssql)),
-            DatabaseType.mysql: goLines(in: try await dump(.mysql)),
+            Engine.sqlServer: goLines(in: try await dump(.sqlServer)),
+            Engine.mysql: goLines(in: try await dump(.mysql)),
         ]
-        #expect(expectedGoLines[.mssql, default: 0] > 0)
+        #expect(expectedGoLines[.sqlServer, default: 0] > 0)
 
-        for (heldType, otherType) in [(DatabaseType.mssql, DatabaseType.mysql), (.mysql, .mssql)] {
+        for (heldEngine, otherEngine) in [(Engine.sqlServer, Engine.mysql), (.mysql, .sqlServer)] {
             let pause = ExportPause()
             let tables = objects
             let (held, other) = try await SQLExportHarness.shared.withPlugin { plugin in
                 async let held = SQLExportHarness.dump(
-                    on: plugin, tables: tables, dataSource: ServerDataSource(databaseType: heldType, pause: pause)
+                    on: plugin, tables: tables, dataSource: ServerDataSource(engine: heldEngine, pause: pause)
                 )
                 await pause.untilReached()
                 let other = try await SQLExportHarness.dump(
-                    on: plugin, tables: tables, dataSource: ServerDataSource(databaseType: otherType)
+                    on: plugin, tables: tables, dataSource: ServerDataSource(engine: otherEngine)
                 )
                 await pause.resume()
                 return (try await held, other)
             }
-            #expect(goLines(in: held) == expectedGoLines[heldType], "\(heldType.rawValue) held while another ran")
-            #expect(goLines(in: other) == expectedGoLines[otherType], "\(otherType.rawValue) run during another")
+            #expect(goLines(in: held) == expectedGoLines[heldEngine], "\(heldEngine.rawValue) held while another ran")
+            #expect(goLines(in: other) == expectedGoLines[otherEngine], "\(otherEngine.rawValue) run during another")
         }
     }
 }

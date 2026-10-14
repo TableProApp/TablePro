@@ -1,10 +1,7 @@
-//
-//  RedisConnectionModeTests.swift
-//  TableProTests
-//
-
 import Foundation
 import Testing
+
+@testable import TableProRedisCore
 
 struct RedisConnectionModeTests {
     @Test("An unset mode is standalone, so an existing connection keeps working")

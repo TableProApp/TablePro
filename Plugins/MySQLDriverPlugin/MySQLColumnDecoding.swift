@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMySQLCore
 import TableProPluginKit
 
 nonisolated internal enum MySQLColumnDecoding: Equatable, Sendable {

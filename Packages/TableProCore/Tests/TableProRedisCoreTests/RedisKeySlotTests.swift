@@ -1,13 +1,12 @@
 //
-//  RedisKeySlotTests.swift
-//  TableProTests
-//
 //  Every expected slot here was read back from `CLUSTER KEYSLOT` on a live Redis 8.10.1 cluster,
 //  so this suite fails if the CRC16 or the hash-tag rule ever drifts from what the server does.
 //
 
 import Foundation
 import Testing
+
+@testable import TableProRedisCore
 
 struct RedisKeySlotVectorTests {
     static let measured: [(key: String, slot: Int)] = [

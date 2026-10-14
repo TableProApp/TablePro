@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProMySQLCore
 import TableProPluginKit
 
 internal enum MySQLCheckConstraintSource: Equatable, Sendable {

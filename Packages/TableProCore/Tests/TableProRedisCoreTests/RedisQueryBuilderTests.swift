@@ -1,13 +1,7 @@
-//
-//  RedisQueryBuilderTests.swift
-//  TableProTests
-//
-//  Tests for RedisQueryBuilder (compiled via symlink from RedisDriverPlugin).
-//
-
 import Foundation
-import TableProPluginKit
 import Testing
+
+@testable import TableProRedisCore
 
 struct RedisQueryBuilderTests {
     private let builder = RedisQueryBuilder()

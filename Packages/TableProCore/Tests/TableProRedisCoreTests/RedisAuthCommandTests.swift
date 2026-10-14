@@ -1,6 +1,8 @@
 import Foundation
 import Testing
 
+@testable import TableProRedisCore
+
 struct RedisAuthCommandTests {
     @Test("no credentials at all sends no AUTH")
     func noCredentials() {

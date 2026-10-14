@@ -9,6 +9,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 import Testing
 
 /// Answers SCAN with the pages it was given, the way a cluster channel does when a node left the

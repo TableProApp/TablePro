@@ -3,7 +3,8 @@
 //  TableProTests
 //
 //  A PostgreSQL index over an expression, with INCLUDE columns and the server's own DDL spellings,
-//  edited in the structure editor and written back.
+//  edited in the structure editor and handed to the driver. PostgreSQLDriverTests' PostgreSQLIndexReplayTests
+//  writes the statement from what these hand over.
 //
 
 import Foundation
@@ -58,9 +59,10 @@ struct StructureChangeManagerIndexExpressionTests {
 
         #expect(manager.validationErrors.isEmpty)
         #expect(manager.canCommit)
-        let new = try #require(stagedIndex(manager))
-        let sql = PostgreSQLIndexClauses.createStatement(for: new.toPlugin(), qualifiedTable: #""public"."users""#)
-        #expect(sql == #"CREATE UNIQUE INDEX "users_tenant_email" ON "public"."users" USING btree (tenant_id, lower(email)) INCLUDE (name)"#)
+        let written = try #require(stagedIndex(manager)).toPlugin()
+        #expect(written.name == "users_tenant_email")
+        #expect(written.isUnique)
+        #expect(written.ddlMethodAndKeys == Self.keys)
     }
 
     @Test("The same Columns text changes nothing, and a reordered one writes the expression from the fields")
@@ -75,8 +77,13 @@ struct StructureChangeManagerIndexExpressionTests {
         #expect(manager.validationErrors.isEmpty)
         let new = try #require(stagedIndex(manager))
         #expect(new.ddlMethodAndKeys == nil)
-        let sql = PostgreSQLIndexClauses.createStatement(for: new.toPlugin(), qualifiedTable: #""public"."users""#)
-        #expect(sql == #"CREATE UNIQUE INDEX "users_tenant_lower_email" ON "public"."users" USING btree ((lower(email)), "tenant_id") INCLUDE ("name")"#)
+        let written = new.toPlugin()
+        #expect(written.ddlMethodAndKeys == nil)
+        #expect(written.isUnique)
+        #expect(written.indexType?.uppercased() == "BTREE")
+        #expect(written.columns == ["lower(email)", "tenant_id"])
+        #expect(written.expressions == ["lower(email)"])
+        #expect(written.includedColumns == ["name"])
     }
 
     @Test("A new index typed with an expression validates and writes the expression in parentheses")
@@ -94,8 +101,14 @@ struct StructureChangeManagerIndexExpressionTests {
             Issue.record("Expected a staged index add")
             return
         }
-        let sql = PostgreSQLIndexClauses.createStatement(for: staged.toPlugin(), qualifiedTable: #""public"."users""#)
-        #expect(sql == #"CREATE INDEX "ix" ON "public"."users" USING btree ("tenant_id", (lower(email)))"#)
+        let written = staged.toPlugin()
+        #expect(written.name == "ix")
+        #expect(!written.isUnique)
+        #expect(written.ddlMethodAndKeys == nil)
+        #expect(written.indexType?.uppercased() == "BTREE")
+        #expect(written.columns == ["tenant_id", "lower(email)"])
+        #expect(written.expressions == ["lower(email)"])
+        #expect((written.includedColumns ?? []).isEmpty)
     }
 
     @Test("An expression typed with a sort order is refused before anything runs")

@@ -7,8 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@testable import TablePro
-
 /// `PRAGMA foreign_key_list` reports a null target column for a shorthand `REFERENCES parent`, so
 /// the parent's own primary key has to be fetched before the rows can be grouped. The single-table
 /// read asked for it and the bulk read did not, and nothing made the two agree. Both now name the

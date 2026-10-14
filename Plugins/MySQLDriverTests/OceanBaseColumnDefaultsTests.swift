@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import TableProMySQLCore
 import Testing
 
 struct OceanBaseColumnDefaultsTests {

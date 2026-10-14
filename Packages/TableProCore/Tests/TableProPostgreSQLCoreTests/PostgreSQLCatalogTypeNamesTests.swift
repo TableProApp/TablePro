@@ -6,6 +6,8 @@
 import Foundation
 import Testing
 
+@testable import TableProPostgreSQLCore
+
 struct PostgreSQLCatalogTypeNamesTests {
     private func row(
         oid: UInt32 = 16_385,

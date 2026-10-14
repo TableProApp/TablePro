@@ -1,9 +1,5 @@
-//
-//  MSSQLLoginParametersTests.swift
-//  TableProTests
-//
-
 import Foundation
+@testable import TableProMobile
 import Testing
 
 struct MSSQLLoginParametersTests {

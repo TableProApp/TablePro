@@ -6,6 +6,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProRedisCore
 
 // MARK: - Shared Tunnel Helpers
 

@@ -1,14 +1,6 @@
-//
-//  PostgreSQLCheckConstraintDefinition.swift
-//  PostgreSQLDriverPlugin
-//
-//  Reduces pg_get_constraintdef output to the bare CHECK expression.
-//  Compiled into the test target via project.yml.
-//
-
 import Foundation
 
-enum PostgreSQLCheckConstraintDefinition {
+public enum PostgreSQLCheckConstraintDefinition {
     /// `pg_get_constraintdef` returns the whole clause, not the expression: `CHECK ((a > 0))`, and
     /// `CHECK ((a < 1000)) NOT VALID` for an unvalidated one. The grid edits an expression, so the
     /// keyword, the wrapping parentheses and the trailing flag come off.
@@ -16,7 +8,7 @@ enum PostgreSQLCheckConstraintDefinition {
     /// Only the parentheses PostgreSQL itself added are removed. `(a > 0) AND (b > 0)` keeps both
     /// of its pairs because neither wraps the whole expression, which a naive trim of the first and
     /// last character would break.
-    static func expression(fromConstraintDef definition: String) -> String {
+    public static func expression(fromConstraintDef definition: String) -> String {
         var text = definition.trimmingCharacters(in: .whitespacesAndNewlines)
 
         for suffix in ["NOT VALID", "NO INHERIT"] where text.uppercased().hasSuffix(suffix) {

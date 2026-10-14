@@ -1,25 +1,20 @@
-//
-//  MySQLCharacterSet.swift
-//  MySQLDriverPlugin
-//
-
 import CoreFoundation
 import Foundation
 
-nonisolated internal struct MySQLCharacterSet: Hashable, Sendable {
-    static let utf8mb4 = MySQLCharacterSet(serverName: "utf8mb4")
-    static let latin1 = MySQLCharacterSet(serverName: "latin1")
+nonisolated public struct MySQLCharacterSet: Hashable, Sendable {
+    public static let utf8mb4 = MySQLCharacterSet(serverName: "utf8mb4")
+    public static let latin1 = MySQLCharacterSet(serverName: "latin1")
 
-    let name: String
+    public let name: String
     private let decoding: Decoding
 
-    init(serverName: String) {
+    public init(serverName: String) {
         let normalized = serverName.trimmingCharacters(in: .whitespaces).lowercased()
         name = normalized == "utf8" ? "utf8mb3" : normalized
         decoding = Self.decoding(forName: name)
     }
 
-    func decode(_ bytes: UnsafeRawBufferPointer) -> String {
+    public func decode(_ bytes: UnsafeRawBufferPointer) -> String {
         switch decoding {
         case .utf8:
             return Self.decodeUTF8ReplacingInvalid(bytes)
@@ -30,14 +25,14 @@ nonisolated internal struct MySQLCharacterSet: Hashable, Sendable {
         }
     }
 
-    static func decodeUTF8OrMySQLLatin1(_ bytes: UnsafeRawBufferPointer) -> String {
+    public static func decodeUTF8OrMySQLLatin1(_ bytes: UnsafeRawBufferPointer) -> String {
         if let text = String(bytes: bytes, encoding: .utf8) {
             return text
         }
         return MySQLLatin1.decode(bytes)
     }
 
-    static func decodeUTF8ReplacingInvalid(_ bytes: UnsafeRawBufferPointer) -> String {
+    public static func decodeUTF8ReplacingInvalid(_ bytes: UnsafeRawBufferPointer) -> String {
         String(decoding: bytes, as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
     }
 

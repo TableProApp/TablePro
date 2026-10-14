@@ -4,10 +4,9 @@
 //
 
 import Foundation
+import TableProMySQLCore
 import TableProPluginKit
 import Testing
-
-@testable import TablePro
 
 struct MySQLBlockingPasswordRefreshTests {
     private func waitOnDispatchQueue(

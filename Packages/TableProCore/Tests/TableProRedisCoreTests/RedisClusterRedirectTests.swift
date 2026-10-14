@@ -1,13 +1,12 @@
 //
-//  RedisClusterRedirectTests.swift
-//  TableProTests
-//
 //  The error strings here were captured from a live Redis 8.10.1 cluster, including the endpoint
 //  forms a node uses when it cannot announce its own address.
 //
 
 import Foundation
 import Testing
+
+@testable import TableProRedisCore
 
 struct RedisClusterRedirectParsingTests {
     @Test("Parses a MOVED with a full endpoint")

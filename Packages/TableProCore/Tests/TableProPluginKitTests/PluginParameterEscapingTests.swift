@@ -1,8 +1,3 @@
-//
-//  PluginParameterEscapingTests.swift
-//  TableProTests
-//
-
 import Foundation
 import TableProPluginKit
 import Testing
@@ -65,7 +60,6 @@ private final class SqlStandardStubDriver: PluginDatabaseDriver, @unchecked Send
 // MARK: - isNumericLiteral
 
 struct IsNumericLiteralTests {
-
     @Test("Integers")
     func integers() {
         #expect(StubDriver.isNumericLiteral("0"))

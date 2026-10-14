@@ -10,6 +10,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     let core: LibPQDriverCore

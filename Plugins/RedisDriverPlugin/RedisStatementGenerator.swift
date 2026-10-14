@@ -8,6 +8,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 
 /// How the grid's deleted keys become `DEL` statements.
 enum RedisDeleteBatching: Sendable {

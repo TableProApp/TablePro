@@ -1,7 +1,7 @@
 import Foundation
 
-nonisolated enum RedisAuthCommand {
-    enum Failure: Equatable, Sendable {
+nonisolated public enum RedisAuthCommand {
+    public enum Failure: Equatable, Sendable {
         case rejectedCredentials
         case rejectedWithoutUsername
         case rejectedWithoutPassword
@@ -18,7 +18,7 @@ nonisolated enum RedisAuthCommand {
     /// privileges, and the app reports a successful sign-in as the user who was never sent.
     /// `AUTH <username> ""` is the wire form for a `nopass` ACL user and is rejected for every
     /// other user, so it is both the correct request and an exact test of the identity.
-    static func arguments(username: String?, password: String?) -> [String]? {
+    public static func arguments(username: String?, password: String?) -> [String]? {
         let user = username ?? ""
         let secret = password ?? ""
         if !user.isEmpty { return ["AUTH", user, secret] }
@@ -28,7 +28,7 @@ nonisolated enum RedisAuthCommand {
 
     /// `WRONGPASS` is the same reply for a wrong password, an empty one and an unknown user, so
     /// what the client sent is the only thing that can tell the three apart.
-    static func failure(serverError: String, hadUsername: Bool, hadPassword: Bool) -> Failure {
+    public static func failure(serverError: String, hadUsername: Bool, hadPassword: Bool) -> Failure {
         let text = serverError.lowercased()
         if text.contains("wrong number of arguments") { return .usernameUnsupported }
         if text.contains("without any password configured") || text.contains("no password is set") {
@@ -43,7 +43,7 @@ nonisolated enum RedisAuthCommand {
         return .unrecognized
     }
 
-    static func hint(for failure: Failure) -> String? {
+    public static func hint(for failure: Failure) -> String? {
         switch failure {
         case .rejectedWithoutUsername:
             return String(localized: "If this server uses Redis 6 or later ACL users, fill in the Username field.")

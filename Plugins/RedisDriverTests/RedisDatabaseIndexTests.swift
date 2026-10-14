@@ -1,4 +1,5 @@
 import Foundation
+import TableProRedisCore
 import Testing
 
 struct RedisDatabaseIndexTests {

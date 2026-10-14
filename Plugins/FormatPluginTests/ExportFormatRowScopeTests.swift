@@ -7,8 +7,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@testable import TablePro
-
 struct ExportFormatRowScopeTests {
     private final class ScopedExportDataSource: PluginExportDataSource, @unchecked Sendable {
         let databaseTypeId = "SQLite"

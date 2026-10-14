@@ -10,8 +10,8 @@ import Foundation
 /// The method is matched by prefix rather than by equality because `RANGE COLUMNS` and
 /// `LIST COLUMNS` are separate spellings of the same two shapes, and an equality test left both of
 /// them without a bound.
-internal enum MySQLPartitionBound {
-    internal static func display(method: String?, description: String?) -> String? {
+public enum MySQLPartitionBound {
+    public static func display(method: String?, description: String?) -> String? {
         let normalizedMethod = method?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased() ?? ""

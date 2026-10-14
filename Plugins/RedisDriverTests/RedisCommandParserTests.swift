@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 import Testing
 
 // MARK: - Key Commands

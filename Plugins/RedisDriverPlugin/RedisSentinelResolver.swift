@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import TableProRedisCore
 
 enum RedisSentinelReply: Equatable, Sendable {
     case primaryUnknown

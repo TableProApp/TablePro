@@ -1,11 +1,6 @@
-//
-//  LibPQCopyDirection+UnsupportedMessage.swift
-//  PostgreSQLDriverPlugin
-//
-
 import Foundation
 
-nonisolated extension LibPQCopyDirection {
+nonisolated public extension LibPQCopyDirection {
     var unsupportedMessage: String {
         switch self {
         case .copyIn:

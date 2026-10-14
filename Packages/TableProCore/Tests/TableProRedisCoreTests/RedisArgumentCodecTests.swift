@@ -1,10 +1,7 @@
-//
-//  RedisArgumentCodecTests.swift
-//  TableProTests
-//
-
 import Foundation
 import Testing
+
+@testable import TableProRedisCore
 
 struct RedisArgumentCodecRoundTripTests {
     @Test("every byte value survives quote then split")

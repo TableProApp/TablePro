@@ -1,25 +1,20 @@
-//
-//  MySQLSocketTimeout.swift
-//  MySQLDriverPlugin
-//
-
 import Foundation
 
-internal struct MySQLConnectTimeout: Equatable, Sendable {
-    static let defaultMilliseconds = 30_000
-    static let maximumMilliseconds = 3_600_000
+public struct MySQLConnectTimeout: Equatable, Sendable {
+    public static let defaultMilliseconds = 30_000
+    public static let maximumMilliseconds = 3_600_000
 
-    let milliseconds: Int
+    public let milliseconds: Int
 
-    init(additionalFields: [String: String]) {
+    public init(additionalFields: [String: String]) {
         milliseconds = Self.resolve(additionalFields: additionalFields)
     }
 
-    init(milliseconds: Int) {
+    public init(milliseconds: Int) {
         self.milliseconds = min(max(milliseconds, 1), Self.maximumMilliseconds)
     }
 
-    var nativeSeconds: UInt32 {
+    public var nativeSeconds: UInt32 {
         UInt32((milliseconds + 999) / 1_000)
     }
 
@@ -41,17 +36,17 @@ internal struct MySQLConnectTimeout: Equatable, Sendable {
     }
 }
 
-internal struct MySQLConnectDeadline: Equatable, Sendable {
+public struct MySQLConnectDeadline: Equatable, Sendable {
     private let expiration: ContinuousClock.Instant
 
-    init(
+    public init(
         timeout: MySQLConnectTimeout,
         startedAt: ContinuousClock.Instant = .now
     ) {
         expiration = startedAt.advanced(by: .milliseconds(timeout.milliseconds))
     }
 
-    func remainingMilliseconds(at now: ContinuousClock.Instant = .now) -> Int? {
+    public func remainingMilliseconds(at now: ContinuousClock.Instant = .now) -> Int? {
         guard now < expiration else { return nil }
         let components = now.duration(to: expiration).components
         let milliseconds = Double(components.seconds) * 1_000
@@ -59,14 +54,14 @@ internal struct MySQLConnectDeadline: Equatable, Sendable {
         return max(1, Int(milliseconds.rounded(.up)))
     }
 
-    func socketTimeoutSeconds(at now: ContinuousClock.Instant = .now) -> UInt32? {
+    public func socketTimeoutSeconds(at now: ContinuousClock.Instant = .now) -> UInt32? {
         remainingMilliseconds(at: now).map { MySQLConnectTimeout(milliseconds: $0).nativeSeconds }
     }
 }
 
-internal let mysqlSocketTimeoutGraceSeconds = 30
+public let mysqlSocketTimeoutGraceSeconds = 30
 
-internal func mysqlSocketTimeoutSeconds(forQueryTimeout queryTimeoutSeconds: Int) -> UInt32 {
+public func mysqlSocketTimeoutSeconds(forQueryTimeout queryTimeoutSeconds: Int) -> UInt32 {
     guard queryTimeoutSeconds > 0 else { return 0 }
     let ceiling = Int(UInt32.max) - mysqlSocketTimeoutGraceSeconds
     let clamped = min(queryTimeoutSeconds, ceiling)
@@ -76,7 +71,7 @@ internal func mysqlSocketTimeoutSeconds(forQueryTimeout queryTimeoutSeconds: Int
 /// Whether a failure this long into a statement could be the client's own read timeout rather than
 /// the server dropping the connection. `MYSQL_OPT_READ_TIMEOUT` needs that much silence before it
 /// fires, so anything earlier is never ours.
-internal func mysqlWaitCouldOutlastSocketTimeout(
+public func mysqlWaitCouldOutlastSocketTimeout(
     _ waited: Duration,
     socketTimeoutSeconds: UInt32
 ) -> Bool {

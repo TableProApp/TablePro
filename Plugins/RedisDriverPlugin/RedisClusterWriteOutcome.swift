@@ -12,6 +12,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 
 enum RedisShardPartOutcome: Equatable, Sendable {
     case ran

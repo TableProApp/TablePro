@@ -15,6 +15,7 @@ import Foundation
 import os
 import OSLog
 import TableProPluginKit
+import TableProRedisCore
 
 private let logger = Logger(subsystem: "com.TablePro.RedisDriver", category: "RedisPluginConnection")
 

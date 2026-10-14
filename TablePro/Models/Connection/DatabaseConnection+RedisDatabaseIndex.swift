@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProRedisCore
 
 extension DatabaseConnection {
     private static let redisModeFieldId = "redisMode"

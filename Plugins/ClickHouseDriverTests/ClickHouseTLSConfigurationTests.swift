@@ -8,8 +8,6 @@ import Security
 import TableProPluginKit
 import Testing
 
-@testable import TablePro
-
 struct ClickHouseTLSConfigurationTests {
     private func configuration(_ mode: SSLMode, caPath: String = "") -> SSLConfiguration {
         SSLConfiguration(mode: mode, caCertificatePath: caPath)

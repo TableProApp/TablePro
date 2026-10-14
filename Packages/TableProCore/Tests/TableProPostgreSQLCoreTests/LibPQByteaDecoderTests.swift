@@ -4,8 +4,9 @@
 //
 
 import Foundation
-import TableProPluginKit
 import Testing
+
+@testable import TableProPostgreSQLCore
 
 struct LibPQByteaDecoderHexTests {
     @Test("Empty input returns empty Data")

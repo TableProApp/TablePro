@@ -3,7 +3,6 @@
 //  MySQLDriverPlugin
 //
 //  Feature floors for the catalogs the structure editor reads.
-//  Compiled into the test target via project.yml.
 //
 
 import Foundation

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPostgreSQLCore
 import Testing
 
 struct PostgreSQLTableRebuildTests {

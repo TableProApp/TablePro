@@ -1,11 +1,6 @@
-//
-//  RedisKeySummary.swift
-//  RedisDriverPlugin
-//
-
 import Foundation
 
-nonisolated enum RedisKeyKind: String, CaseIterable {
+nonisolated public enum RedisKeyKind: String, CaseIterable, Sendable {
     case string
     case hash
     case list
@@ -13,16 +8,16 @@ nonisolated enum RedisKeyKind: String, CaseIterable {
     case zset
     case stream
 
-    init?(typeName: String) {
+    public init?(typeName: String) {
         self.init(rawValue: typeName.lowercased())
     }
 }
 
-nonisolated enum RedisKeySummary {
+nonisolated public enum RedisKeySummary {
     static let collectionPreviewLimit = 100
     static let streamPreviewLimit = 5
 
-    static func lengthCommand(for kind: RedisKeyKind, key: String) -> [String] {
+    public static func lengthCommand(for kind: RedisKeyKind, key: String) -> [String] {
         switch kind {
         case .string:
             return ["STRLEN", key]
@@ -39,7 +34,7 @@ nonisolated enum RedisKeySummary {
         }
     }
 
-    static func previewCommand(for kind: RedisKeyKind, key: String) -> [String] {
+    public static func previewCommand(for kind: RedisKeyKind, key: String) -> [String] {
         switch kind {
         case .string:
             return ["GET", key]
@@ -56,7 +51,7 @@ nonisolated enum RedisKeySummary {
         }
     }
 
-    static func jsonObject(flatPairs: [String]) -> String? {
+    public static func jsonObject(flatPairs: [String]) -> String? {
         var object: [String: String] = [:]
         object.reserveCapacity(flatPairs.count / 2)
         for pair in pairs(from: flatPairs) {
@@ -65,15 +60,15 @@ nonisolated enum RedisKeySummary {
         return encode(object)
     }
 
-    static func jsonArray(elements: [String]) -> String? {
+    public static func jsonArray(elements: [String]) -> String? {
         encode(elements)
     }
 
-    static func jsonScorePairs(flatPairs: [String]) -> String? {
+    public static func jsonScorePairs(flatPairs: [String]) -> String? {
         encode(pairs(from: flatPairs).map { [$0.first, $0.second] })
     }
 
-    static func jsonStreamEntries(_ entries: [(id: String, flatFields: [String])]) -> String? {
+    public static func jsonStreamEntries(_ entries: [(id: String, flatFields: [String])]) -> String? {
         let encoded = entries.map { entry -> [Any] in
             var fields: [String: String] = [:]
             fields.reserveCapacity(entry.flatFields.count / 2)
@@ -85,7 +80,7 @@ nonisolated enum RedisKeySummary {
         return encode(encoded)
     }
 
-    static func pairs(from flat: [String]) -> [(first: String, second: String)] {
+    public static func pairs(from flat: [String]) -> [(first: String, second: String)] {
         var result: [(first: String, second: String)] = []
         result.reserveCapacity(flat.count / 2)
         var index = 0

@@ -21,7 +21,7 @@ struct AWSQueryRequestTests {
     func formBody() {
         let request = AWSQueryRequest(service: "rds", region: "us-east-1", parameters: Self.parameters)
         #expect(
-            String(decoding: request.body, as: UTF8.self)
+            String(bytes: request.body, encoding: .utf8)
                 == "Action=DescribeDBInstances&MaxRecords=100&Version=2014-10-31"
         )
     }

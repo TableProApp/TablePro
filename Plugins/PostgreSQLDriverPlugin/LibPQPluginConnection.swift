@@ -12,6 +12,7 @@ import Foundation
 import os
 import OSLog
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 private final class LibPQCancelRequest: @unchecked Sendable {
     private let cancelObject: OpaquePointer

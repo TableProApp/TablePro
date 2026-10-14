@@ -8,6 +8,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 // MARK: - Plugin Entry Point
 

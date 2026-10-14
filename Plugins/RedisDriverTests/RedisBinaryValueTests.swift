@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 import Testing
 
 private let browseColumns = ["Key", "Type", "TTL", "Length", "Value"]

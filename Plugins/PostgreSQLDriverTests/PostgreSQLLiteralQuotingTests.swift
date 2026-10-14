@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPostgreSQLCore
 import Testing
 
 /// Every catalog statement the PostgreSQL-family plugin builds names objects by literal, and a

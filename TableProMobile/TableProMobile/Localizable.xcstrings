@@ -1194,6 +1194,10 @@
         }
       }
     },
+    "A tunnel forwards one address, and the node Sentinel names is on the server's own network, so Sentinel mode cannot run through one. Connect to a data node directly, or turn the tunnel off." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "About" : {
       "localizations" : {
         "ko" : {
@@ -7515,6 +7519,8 @@
       }
     },
     "Fill in Password, and Username too if the server uses Redis 6 ACL users." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -8677,6 +8683,8 @@
       }
     },
     "If this server uses Redis 6 or later ACL users, fill in the Username field." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -13085,6 +13093,8 @@
       "generatesSymbol" : false
     },
     "PING failed: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -15515,6 +15525,10 @@
           }
         }
       }
+    },
+    "Sentinel resolved to another Sentinel rather than a data node. Check the primary group name in your sentinel configuration." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Sequence" : {
 
@@ -19007,6 +19021,8 @@
       "generatesSymbol" : false
     },
     "The Password field is empty. Fill it in, or clear Username to sign in as the default user." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -19098,6 +19114,18 @@
           }
         }
       }
+    },
+    "The query editor cannot receive the output of COPY TO STDOUT, so it was discarded. Run a SELECT, or use Export to save the rows to a file." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The query editor cannot run a replication COPY." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The query editor cannot send data to COPY FROM STDIN, so no rows were sent. Use Import to load a file into a table." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The query returned no rows." : {
       "localizations" : {
@@ -20130,6 +20158,10 @@
         }
       }
     },
+    "This is a Redis Sentinel, not a data node, so it only answers SENTINEL commands. Set Connection Mode to Sentinel and list this address under Sentinel Nodes." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This Oracle server is older than release 11.1, which the database driver does not support." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -20193,6 +20225,8 @@
       }
     },
     "This server has no password set for the default user. Clear the Password field." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -20220,7 +20254,17 @@
         }
       }
     },
+    "This server is not running in cluster mode. Set Connection Mode to Standalone, or point Cluster mode at a node started with cluster-enabled yes." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This server is part of a Redis Cluster, so requests for keys it does not own will fail. Set Connection Mode to Cluster and list this address under Cluster Seed Nodes." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This server predates Redis 6 and takes no username. Clear the Username field." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -20249,6 +20293,8 @@
       }
     },
     "This server requires authentication." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {

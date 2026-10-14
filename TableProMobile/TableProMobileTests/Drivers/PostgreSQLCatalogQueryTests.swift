@@ -2,6 +2,7 @@ import Foundation
 @testable import TableProMobile
 import TableProModels
 import TableProPluginKit
+import TableProPostgreSQLCore
 import Testing
 
 @Suite("PostgreSQL catalog reads on iOS")

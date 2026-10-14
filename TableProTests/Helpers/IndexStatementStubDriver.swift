@@ -20,11 +20,14 @@ internal final class IndexStatementStubDriver: PluginDatabaseDriver, @unchecked 
 
     internal func quoteIdentifier(_ name: String) -> String { "\"\(name)\"" }
 
+    // The statement PostgreSQLIndexClauses writes for an index built from its fields.
     internal func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
         guard writesIndexes else { return nil }
-        return PostgreSQLIndexClauses.createStatement(
-            for: index, qualifiedTable: "\(quoteIdentifier(indexSchema)).\(quoteIdentifier(table))"
-        )
+        let unique = index.isUnique ? "UNIQUE " : ""
+        let method = index.indexType.map { "USING \($0.lowercased()) " } ?? ""
+        let keys = index.columns.map(quoteIdentifier).joined(separator: ", ")
+        let qualifiedTable = "\(quoteIdentifier(indexSchema)).\(quoteIdentifier(table))"
+        return "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) ON \(qualifiedTable) \(method)(\(keys))"
     }
 
     internal func generateDropIndexSQL(table: String, indexName: String) -> String? {

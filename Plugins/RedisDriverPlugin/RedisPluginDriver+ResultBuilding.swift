@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 
 extension RedisPluginDriver {
     static let keyBrowseColumns = ["Key", "Type", "TTL", "Length", "Value"]

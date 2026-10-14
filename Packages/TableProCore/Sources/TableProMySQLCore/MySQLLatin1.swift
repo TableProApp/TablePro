@@ -1,11 +1,6 @@
-//
-//  MySQLLatin1.swift
-//  MySQLDriverPlugin
-//
-
 import Foundation
 
-nonisolated internal enum MySQLLatin1 {
+nonisolated public enum MySQLLatin1 {
     private static let windowsRangeScalars: [UInt32] = [
         0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
         0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F,
@@ -27,7 +22,7 @@ nonisolated internal enum MySQLLatin1 {
         uniqueKeysWithValues: scalarsByByte.enumerated().map { ($0.element.value, UInt8($0.offset)) }
     )
 
-    static func decode(_ bytes: UnsafeRawBufferPointer) -> String {
+    public static func decode(_ bytes: UnsafeRawBufferPointer) -> String {
         guard bytes.contains(where: { $0 >= 0x80 }) else {
             return MySQLCharacterSet.decodeUTF8ReplacingInvalid(bytes)
         }
@@ -39,7 +34,7 @@ nonisolated internal enum MySQLLatin1 {
         return String(scalars)
     }
 
-    static func decode(_ bytes: [UInt8]) -> String {
+    public static func decode(_ bytes: [UInt8]) -> String {
         bytes.withUnsafeBytes { decode($0) }
     }
 
@@ -53,7 +48,7 @@ nonisolated internal enum MySQLLatin1 {
         return bytes
     }
 
-    static func repairingDoubleEncodedUTF8(_ text: String) -> String {
+    public static func repairingDoubleEncodedUTF8(_ text: String) -> String {
         guard text.utf8.contains(where: { $0 >= 0x80 }) else { return text }
         guard let original = bytes(representing: text),
               let repaired = String(bytes: original, encoding: .utf8) else {

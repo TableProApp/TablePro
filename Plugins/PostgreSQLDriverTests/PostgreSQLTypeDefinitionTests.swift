@@ -10,8 +10,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@testable import TablePro
-
 struct PostgreSQLTypeDefinitionTests {
     private func record(
         name: String = "mood",

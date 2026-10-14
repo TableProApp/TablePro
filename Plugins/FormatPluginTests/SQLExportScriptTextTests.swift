@@ -1,6 +1,6 @@
 //
 //  SQLExportScriptTextTests.swift
-//  TableProTests
+//  FormatPluginTests
 //
 //  A dump is a script for the engine's own client. Written with a bare `;` after every
 //  definition, an Oracle dump buffered every statement after the first procedure in SQL*Plus and
@@ -8,22 +8,23 @@
 //
 
 import Foundation
-@testable import TablePro
 import TableProPluginKit
 import Testing
 
 struct SQLExportScriptTextTests {
+    /// The script text is what the app's `SQLScriptText` writes for each definition today, which
+    /// `SQLScriptTextTests` and `ExportDataSourceAdapterScriptTextTests` pin on the app side.
     private final class DefinitionDataSource: PluginExportDataSource, @unchecked Sendable {
         let databaseTypeId: String
         let tableDDL: String
         let routineDDL: String
-        private let scriptTextOwner: SQLScriptText
+        private let scriptTexts: [String: String]
 
-        init(databaseType: DatabaseType, tableDDL: String, routineDDL: String) {
-            self.databaseTypeId = databaseType.rawValue
+        init(databaseTypeId: String, tableDDL: String, routineDDL: String, scriptTexts: [String: String]) {
+            self.databaseTypeId = databaseTypeId
             self.tableDDL = tableDDL
             self.routineDDL = routineDDL
-            self.scriptTextOwner = SQLScriptText(databaseType: databaseType)
+            self.scriptTexts = scriptTexts
         }
 
         func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -37,7 +38,7 @@ struct SQLExportScriptTextTests {
         }
 
         func scriptText(for ddl: String) -> String {
-            scriptTextOwner.scriptText(forDriverText: ddl)
+            scriptTexts[ddl] ?? (ddl.hasSuffix(";") ? ddl : ddl + ";")
         }
 
         func execute(query: String) async throws -> PluginQueryResult {
@@ -75,10 +76,15 @@ struct SQLExportScriptTextTests {
     @Test("An Oracle dump ends a unit on a / line and splits a table from its index")
     func oracleDump() async throws {
         let procedure = "CREATE OR REPLACE PROCEDURE P IS\nBEGIN\n  NULL;\nEND;"
+        let table = "CREATE TABLE \"T\" (\n  \"A\" NUMBER\n);\n\nCREATE INDEX \"I\" ON \"T\" (\"A\");"
         let dump = try await dump(DefinitionDataSource(
-            databaseType: .oracle,
-            tableDDL: "CREATE TABLE \"T\" (\n  \"A\" NUMBER\n);\n\nCREATE INDEX \"I\" ON \"T\" (\"A\");",
-            routineDDL: procedure
+            databaseTypeId: "Oracle",
+            tableDDL: table,
+            routineDDL: procedure,
+            scriptTexts: [
+                procedure: "\(procedure)\n/",
+                table: "CREATE TABLE \"T\" (\n  \"A\" NUMBER\n);\nCREATE INDEX \"I\" ON \"T\" (\"A\");",
+            ]
         ))
 
         #expect(dump.contains("\(procedure)\n/\n"))
@@ -88,10 +94,15 @@ struct SQLExportScriptTextTests {
     @Test("A MySQL dump puts a routine body in a DELIMITER block")
     func mysqlDump() async throws {
         let routine = "CREATE PROCEDURE `P`()\nBEGIN\n  SELECT 1;\n  SELECT 2;\nEND"
+        let table = "CREATE TABLE `T` (`a` int)"
         let dump = try await dump(DefinitionDataSource(
-            databaseType: .mysql,
-            tableDDL: "CREATE TABLE `T` (`a` int)",
-            routineDDL: routine
+            databaseTypeId: "MySQL",
+            tableDDL: table,
+            routineDDL: routine,
+            scriptTexts: [
+                routine: "DELIMITER //\n\(routine) //\nDELIMITER ;",
+                table: "\(table);",
+            ]
         ))
 
         #expect(dump.contains("DELIMITER //\n\(routine) //\nDELIMITER ;"))

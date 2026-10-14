@@ -132,23 +132,17 @@ struct PluginDriverAdapterTableTypeMappingTests {
         #expect(tables.allSatisfy { $0.type == .systemTable })
     }
 
+    /// `EXTERNAL TABLE` is what PostgreSQLDriverTests pins `RedshiftExternalSchemaQueries.classifyTableType` to.
     @Test("Maps the Redshift external classifier output to an external table")
     func mapsExternalTable() async throws {
         let driver = StubTableTypeDriver()
         driver.stubbedTables = [
-            PluginTableInfo(
-                name: "customers",
-                type: RedshiftExternalSchemaQueries.classifyTableType(rawTabletype: "TABLE")
-            ),
-            PluginTableInfo(
-                name: "orders",
-                type: RedshiftExternalSchemaQueries.classifyTableType(rawTabletype: " ")
-            ),
+            PluginTableInfo(name: "customers", type: "EXTERNAL TABLE"),
             PluginTableInfo(name: "events", type: "external_table")
         ]
         let adapter = makeAdapter(driver: driver)
         let tables = try await adapter.fetchTables()
-        #expect(tables.count == 3)
+        #expect(tables.count == 2)
         #expect(tables.allSatisfy { $0.type == .externalTable })
         #expect(tables.allSatisfy { !$0.type.allowsRowEditing })
     }

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProRedisCore
 import Testing
 
 private let sentinelA = RedisNodeAddress(host: "10.0.0.1", port: 26_379)

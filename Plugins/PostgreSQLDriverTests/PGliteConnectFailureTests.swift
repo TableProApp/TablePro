@@ -1,10 +1,4 @@
-//
-//  PGliteConnectFailureTests.swift
-//  TableProTests
-//
-
 import Foundation
-@testable import TablePro
 import TableProPluginKit
 import Testing
 
@@ -63,12 +57,5 @@ struct PGliteConnectFailureTests {
         let error = try #require(presented as? PGliteConnectionError)
         #expect(error.pluginErrorMessage.contains("127.0.0.1:5432"))
         #expect(error.pluginErrorDetail == Self.refusedConnection.message)
-    }
-
-    @Test("A refused login through PGlite still reads as an authentication failure")
-    @MainActor
-    func refusedLoginStillPromptsForCredentials() {
-        let presented = PGliteConnectFailure.presented(Self.refusedLogin, host: "127.0.0.1", port: 5_432)
-        #expect(DatabaseManager.shared.isAuthenticationFailure(presented))
     }
 }

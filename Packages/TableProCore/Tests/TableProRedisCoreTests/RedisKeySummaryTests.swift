@@ -1,10 +1,7 @@
-//
-//  RedisKeySummaryTests.swift
-//  TableProTests
-//
-
 import Foundation
 import Testing
+
+@testable import TableProRedisCore
 
 private func parseJson(_ text: String?) -> Any? {
     guard let text, let data = text.data(using: .utf8) else { return nil }

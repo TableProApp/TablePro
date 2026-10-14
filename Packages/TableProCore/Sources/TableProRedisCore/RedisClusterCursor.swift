@@ -1,7 +1,4 @@
 //
-//  RedisClusterCursor.swift
-//  RedisDriverPlugin
-//
 //  SCAN across a cluster walks each master in turn, so the cursor has to say which node it
 //  belongs to as well as where that node got to.
 //
@@ -13,11 +10,11 @@
 
 import Foundation
 
-enum RedisClusterCursor {
+public enum RedisClusterCursor {
     /// The value both Redis and the driver use for "start here" and for "nothing left".
-    static let start = "0"
+    public static let start = "0"
 
-    enum Position: Equatable {
+    public enum Position: Equatable, Sendable {
         /// Every node has been walked.
         case finished
         /// Scan `id`, resuming at `cursor`. `restarted` means the cursor named a node the topology
@@ -25,11 +22,11 @@ enum RedisClusterCursor {
         case node(id: String, cursor: String, restarted: Bool)
     }
 
-    static func encode(nodeId: String, nodeCursor: String) -> String {
+    public static func encode(nodeId: String, nodeCursor: String) -> String {
         "\(nodeId)-\(nodeCursor)"
     }
 
-    static func decode(_ raw: String, orderedNodeIds: [String]) -> Position {
+    public static func decode(_ raw: String, orderedNodeIds: [String]) -> Position {
         guard let firstNode = orderedNodeIds.first else { return .finished }
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty, trimmed != start else {
@@ -51,7 +48,7 @@ enum RedisClusterCursor {
     /// The cursor to hand back once `nodeId` has answered with `nodeCursor`. A node that reports
     /// `0` has finished its own iteration, so the walk moves to the next one; running out of nodes
     /// ends the scan.
-    static func advance(after nodeId: String, nodeCursor: String, orderedNodeIds: [String]) -> String {
+    public static func advance(after nodeId: String, nodeCursor: String, orderedNodeIds: [String]) -> String {
         guard nodeCursor == start else { return encode(nodeId: nodeId, nodeCursor: nodeCursor) }
         guard let index = orderedNodeIds.firstIndex(of: nodeId), index + 1 < orderedNodeIds.count else {
             return start

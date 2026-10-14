@@ -1,5 +1,6 @@
 import Foundation
 @testable import TableProMobile
+import TableProMySQLCore
 import Testing
 
 @Suite("MySQL shared decoding on iOS")

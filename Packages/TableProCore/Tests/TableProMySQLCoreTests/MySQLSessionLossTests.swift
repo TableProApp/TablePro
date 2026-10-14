@@ -6,6 +6,8 @@
 import Foundation
 import Testing
 
+@testable import TableProMySQLCore
+
 struct MySQLSessionLossTests {
     private final class Handle {}
 

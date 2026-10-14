@@ -1,10 +1,4 @@
-//
-//  LibPQConnectionLossTests.swift
-//  TableProTests
-//
-
 import Foundation
-@testable import TablePro
 import TableProPluginKit
 import Testing
 
@@ -111,39 +105,5 @@ struct LibPQConnectionLossTests {
         let error = LibPQConnectionLostError(loss: .afterSending, underlying: underlying)
         #expect(error.pluginSqlState == nil)
         #expect(error.pluginErrorDetail == "hint")
-    }
-}
-
-/// The app reads a driver error's message to tell an authentication failure from a refusal, and
-/// PostgreSQL sends those as a FATAL, which is exactly the shape that now carries an explanation
-/// as well. Both classifiers have to keep working through it.
-@MainActor
-struct LibPQConnectionLossClassifierTests {
-    @Test("an authentication FATAL lost with the connection is still an authentication failure")
-    func authenticationFailureStillFires() {
-        let underlying = LibPQPluginError(
-            message: "FATAL:  password authentication failed for user \"app\"",
-            sqlState: "28P01",
-            detail: nil
-        )
-        let error = LibPQConnectionLostError(
-            loss: .beforeSending(transactionMayBeOpen: false), underlying: underlying
-        )
-
-        #expect(DatabaseManager.shared.isAuthenticationFailure(error))
-    }
-
-    @Test("a read-only refusal lost with the connection is still classified, with the server's words")
-    func readOnlyRefusalStillFires() {
-        let underlying = LibPQPluginError(
-            message: "ERROR:  cannot execute INSERT in a read-only transaction",
-            sqlState: "25006",
-            detail: nil
-        )
-        let error = LibPQConnectionLostError(loss: .afterSending, underlying: underlying)
-
-        let diagnosis = DatabaseWriteRejectionDiagnosis.classify(error)
-        #expect(diagnosis != nil)
-        #expect(diagnosis?.serverMessage.contains("read-only transaction") == true)
     }
 }

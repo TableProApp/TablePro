@@ -114,7 +114,7 @@ expect "PING as an unrestricted user"     "PONG"      --user alice --pass alicep
 echo
 if [ "$FAILURES" -ne 0 ]; then
     echo "$FAILURES handshake fact(s) no longer match the server."
-    echo "Plugins/RedisDriverPlugin/RedisAuthCommand.swift and RedisConnectProbe.swift need updating."
+    echo "Packages/TableProCore/Sources/TableProRedisCore/RedisAuthCommand.swift and RedisConnectProbe.swift need updating."
     exit 1
 fi
 

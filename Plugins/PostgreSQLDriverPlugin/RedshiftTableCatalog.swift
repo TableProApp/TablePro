@@ -1,5 +1,6 @@
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 nonisolated enum RedshiftTableCatalog {
     static func listingQuery(schema: String) -> String {

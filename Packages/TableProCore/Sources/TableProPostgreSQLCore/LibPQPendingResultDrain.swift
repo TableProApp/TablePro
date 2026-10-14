@@ -1,43 +1,43 @@
-//
-//  LibPQPendingResultDrain.swift
-//  PostgreSQLDriverPlugin
-//
-
 import Foundation
 
-nonisolated enum LibPQCopyDirection: Sendable, Equatable {
+nonisolated public enum LibPQCopyDirection: Sendable, Equatable {
     case copyIn
     case copyOut
     case copyBoth
 }
 
-nonisolated enum LibPQCopyFormat: Sendable, Equatable {
+nonisolated public enum LibPQCopyFormat: Sendable, Equatable {
     case textual
     case binary
 }
 
-nonisolated struct LibPQCopy: Sendable, Equatable {
-    let direction: LibPQCopyDirection
-    let format: LibPQCopyFormat
+nonisolated public struct LibPQCopy: Sendable, Equatable {
+    public let direction: LibPQCopyDirection
+    public let format: LibPQCopyFormat
+
+    public init(direction: LibPQCopyDirection, format: LibPQCopyFormat) {
+        self.direction = direction
+        self.format = format
+    }
 }
 
-nonisolated enum LibPQPendingResult: Sendable, Equatable {
+nonisolated public enum LibPQPendingResult: Sendable, Equatable {
     case copy(LibPQCopy)
     case completed
 }
 
-nonisolated struct LibPQDrainOutcome: Sendable, Equatable {
-    let endedCopies: [LibPQCopy]
-    let stuckInCopy: LibPQCopy?
+nonisolated public struct LibPQDrainOutcome: Sendable, Equatable {
+    public let endedCopies: [LibPQCopy]
+    public let stuckInCopy: LibPQCopy?
 
-    static let idle = LibPQDrainOutcome(endedCopies: [], stuckInCopy: nil)
+    public static let idle = LibPQDrainOutcome(endedCopies: [], stuckInCopy: nil)
 
-    var abandonedCopy: LibPQCopy? { endedCopies.first ?? stuckInCopy }
-    var leavesConnectionUnusable: Bool { stuckInCopy != nil }
+    public var abandonedCopy: LibPQCopy? { endedCopies.first ?? stuckInCopy }
+    public var leavesConnectionUnusable: Bool { stuckInCopy != nil }
 }
 
-nonisolated enum LibPQPendingResultDrain {
-    static func drain(
+nonisolated public enum LibPQPendingResultDrain {
+    public static func drain(
         nextResult: () -> LibPQPendingResult?,
         endCopy: (LibPQCopy) -> Void
     ) -> LibPQDrainOutcome {

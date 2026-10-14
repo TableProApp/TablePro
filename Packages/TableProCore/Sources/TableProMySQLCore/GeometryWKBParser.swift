@@ -1,10 +1,3 @@
-//
-//  GeometryWKBParser.swift
-//  MySQLDriverPlugin
-//
-//  Renders MySQL's internal geometry binary as EWKT.
-//
-
 import Foundation
 import TableProGeometry
 
@@ -23,8 +16,8 @@ import TableProGeometry
 /// MariaDB 12.3.3, these bytes are longitude-first even for SRID 4326, whose `ST_AsText` prints
 /// latitude first. Reordering them to match `ST_AsText` would move every MySQL point to the wrong
 /// hemisphere.
-nonisolated enum GeometryWKBParser {
-    static func parse(_ data: Data) -> String {
+nonisolated public enum GeometryWKBParser {
+    public static func parse(_ data: Data) -> String {
         guard data.count >= 9 else { return hexString(data) }
         switch WKBGeometryReader.read(mysqlInternal: Array(data)) {
         case .success(let value):
@@ -34,7 +27,7 @@ nonisolated enum GeometryWKBParser {
         }
     }
 
-    static func parse(_ buffer: UnsafeRawBufferPointer) -> String {
+    public static func parse(_ buffer: UnsafeRawBufferPointer) -> String {
         parse(Data(buffer))
     }
 

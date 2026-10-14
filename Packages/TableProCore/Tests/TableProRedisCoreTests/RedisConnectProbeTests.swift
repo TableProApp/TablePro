@@ -1,6 +1,8 @@
 import Foundation
 import Testing
 
+@testable import TableProRedisCore
+
 struct RedisConnectProbeTests {
     @Test("a reply with no error means the server bound the session")
     func successEstablishes() {

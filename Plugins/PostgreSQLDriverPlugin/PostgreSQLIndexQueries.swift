@@ -6,6 +6,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 nonisolated enum PostgreSQLIndexQueries {
     private static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "IndexQueries")

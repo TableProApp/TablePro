@@ -1,15 +1,10 @@
-//
-//  MySQLBlockingPasswordRefresh.swift
-//  MySQLDriverPlugin
-//
-
 import Foundation
 import os
 
 /// Waits on a dispatch queue for the host to mint a password. Never call it from a Swift
 /// concurrency thread: the refresh runs on one, and the host's refresh never needs the main actor.
-internal enum MySQLBlockingPasswordRefresh {
-    static func wait(
+public enum MySQLBlockingPasswordRefresh {
+    public static func wait(
         for refresh: @escaping @Sendable () async throws -> String,
         timeout: DispatchTimeInterval
     ) -> String? {

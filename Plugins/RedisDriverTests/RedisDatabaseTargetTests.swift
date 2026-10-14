@@ -10,6 +10,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 import Testing
 
 private struct Refused: Error, Equatable {}

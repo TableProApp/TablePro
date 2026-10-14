@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 import TableProSQLGrammar
 
 enum QueryTier: Sendable, Equatable {

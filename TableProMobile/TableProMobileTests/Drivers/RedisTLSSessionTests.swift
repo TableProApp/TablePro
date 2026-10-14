@@ -2,6 +2,7 @@ import CRedis
 import Darwin
 import Foundation
 @testable import TableProMobile
+import TableProRedisCore
 import TableProTLSTestFixtures
 import Testing
 

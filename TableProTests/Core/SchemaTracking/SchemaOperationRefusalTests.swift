@@ -234,17 +234,19 @@ struct SchemaOperationRefusalTests {
     /// `DROP INDEX PRIMARY` commits, `ADD UNIQUE INDEX PRIMARY` fails with ERROR 1280, and the table
     /// is left with no key. The one-statement form fails the same way and keeps the key.
     @Test("A copy of MySQL's PRIMARY row put in place of the original is refused before anything runs")
-    func mysqlPrimaryReplacementIsRefused() throws {
+    func mysqlPrimaryReplacementIsRefused() {
+        let reason = "PRIMARY is the primary key's name, and no other index can take it."
         let driver = RefusingDDLDriver()
         driver.refuse = { operation in
-            guard case .addIndex(let index) = operation else { return nil }
-            return mysqlReservedIndexNameRefusal(for: index)
+            guard case .addIndex(let index) = operation,
+                  index.name.caseInsensitiveCompare("PRIMARY") == .orderedSame else { return nil }
+            return reason
         }
         var primary = index("PRIMARY", type: .btree)
         primary.isPrimary = true
         var copy = primary.withNewIdentity()
         copy.isPrimary = false
-        let reason = try #require(mysqlReservedIndexNameRefusal(for: copy.toPlugin()))
+        #expect(copy.toPlugin().name == "PRIMARY")
 
         #expect(refusalOfBatch([.addIndex(copy), .deleteIndex(primary)], driver: driver) == reason)
         #expect(refusalOfBatch(

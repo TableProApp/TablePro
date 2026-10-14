@@ -1,20 +1,17 @@
 //
-//  RedisConnectionMode.swift
-//  RedisDriverPlugin
-//
 //  How the connection form's fields become a topology choice.
 //
 
 import Foundation
 
-enum RedisConnectionMode: String, Sendable, CaseIterable {
+public enum RedisConnectionMode: String, Sendable, CaseIterable {
     case standalone
     case sentinel
     case cluster
 
-    static let fieldId = "redisMode"
+    public static let fieldId = "redisMode"
 
-    static func resolve(additionalFields: [String: String]) -> RedisConnectionMode {
+    public static func resolve(additionalFields: [String: String]) -> RedisConnectionMode {
         let raw = (additionalFields[fieldId] ?? "").trimmingCharacters(in: .whitespaces).lowercased()
         // "single" was the value the first draft of the Sentinel form shipped with.
         if raw == "single" { return .standalone }
@@ -24,24 +21,24 @@ enum RedisConnectionMode: String, Sendable, CaseIterable {
     var usesHostList: Bool { self != .standalone }
 }
 
-enum RedisSentinelFieldKey {
-    static let hosts = "redisSentinelHosts"
-    static let masterName = "redisSentinelMasterName"
-    static let username = "redisSentinelUsername"
-    static let password = "redisSentinelPassword"
-    static let defaultPort = 26_379
-    static let defaultMasterName = "mymaster"
+public enum RedisSentinelFieldKey {
+    public static let hosts = "redisSentinelHosts"
+    public static let masterName = "redisSentinelMasterName" // swiftlint:disable:this inclusive_language
+    public static let username = "redisSentinelUsername"
+    public static let password = "redisSentinelPassword"
+    public static let defaultPort = 26_379
+    public static let defaultMasterName = "mymaster" // swiftlint:disable:this inclusive_language
 }
 
-enum RedisClusterFieldKey {
-    static let hosts = "redisClusterHosts"
-    static let defaultPort = 6_379
+public enum RedisClusterFieldKey {
+    public static let hosts = "redisClusterHosts"
+    public static let defaultPort = 6_379
 }
 
-enum RedisHostListParser {
+public enum RedisHostListParser {
     /// The connection form stores a host list as a comma-separated string. An entry may omit the
     /// port, and an IPv6 literal may be bracketed.
-    static func parse(_ raw: String, defaultPort: Int) -> [RedisNodeAddress] {
+    public static func parse(_ raw: String, defaultPort: Int) -> [RedisNodeAddress] {
         raw.split(separator: ",").compactMap { entry in
             parseEntry(entry.trimmingCharacters(in: .whitespaces), defaultPort: defaultPort)
         }
@@ -75,12 +72,8 @@ enum RedisHostListParser {
         return RedisNodeAddress(host: entry, port: defaultPort)
     }
 
-    static func parsePort(_ text: String) -> Int? {
+    public static func parsePort(_ text: String) -> Int? {
         guard let port = Int(text), (1 ... 65_535).contains(port) else { return nil }
         return port
     }
-}
-
-extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

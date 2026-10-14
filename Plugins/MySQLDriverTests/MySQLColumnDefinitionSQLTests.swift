@@ -7,6 +7,7 @@
 //  round trip has to carry through an edit to an unrelated field.
 //
 
+import TableProMySQLCore
 import TableProPluginKit
 import Testing
 

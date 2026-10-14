@@ -1,16 +1,10 @@
-//
-//  MySQLSessionLoss.swift
-//  MySQLDriverPlugin
-//
-//  Below MySQL 5.0 the only way to stop a statement is `KILL <id>`, which ends the session with it.
-//  Pure, so TableProTests can exercise it without loading the plugin bundle.
-//
-
 import Foundation
 
+/// Below MySQL 5.0 the only way to stop a statement is `KILL <id>`, which ends the session with it.
+///
 /// What a session-ending kill left behind, and what the driver does about it before its next use.
-internal struct MySQLSessionLoss: Equatable {
-    enum Verdict: Equatable {
+public struct MySQLSessionLoss: Equatable {
+    public enum Verdict: Equatable {
         case useConnection
         /// The kill ended a session that held nothing, so a new one loses nothing: the idle release.
         case reacquire
@@ -26,11 +20,13 @@ internal struct MySQLSessionLoss: Equatable {
     }
 
     private var pending: Pending?
-    private(set) var isLost = false
+    public private(set) var isLost = false
+
+    public init() {}
 
     /// Taken before the kill goes out, because the kill lands on another queue and the next statement
     /// must never find the session ended with nothing noted.
-    mutating func noteKill(on connection: ObjectIdentifier, holding reason: String?) {
+    public mutating func noteKill(on connection: ObjectIdentifier, holding reason: String?) {
         pending = Pending(connection: connection, reason: reason)
     }
 
@@ -39,7 +35,7 @@ internal struct MySQLSessionLoss: Equatable {
     /// session holds now overstates it. Any other kill, such as the cleanup of a statement the socket
     /// timeout gave up on, is judged by what the session holds now, because a note left by an
     /// approved kill that never went out says nothing about it.
-    mutating func verdict(
+    public mutating func verdict(
         for connection: ObjectIdentifier?,
         sessionEndedByKill: Bool,
         killWasApproved: Bool,
@@ -54,7 +50,7 @@ internal struct MySQLSessionLoss: Equatable {
         return .report(reason: reason)
     }
 
-    mutating func reset() {
+    public mutating func reset() {
         self = MySQLSessionLoss()
     }
 }

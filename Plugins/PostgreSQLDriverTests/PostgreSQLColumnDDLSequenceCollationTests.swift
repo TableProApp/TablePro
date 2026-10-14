@@ -8,6 +8,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 import Testing
 
 struct PostgreSQLColumnDDLQuerySequenceCollationTests {

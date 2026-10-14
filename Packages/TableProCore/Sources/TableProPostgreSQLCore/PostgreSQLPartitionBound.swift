@@ -9,10 +9,10 @@ import Foundation
 /// does distinguish them out of the visible width. `DEFAULT` carries no prefix and is left alone.
 ///
 /// A legacy `INHERITS` child has no bound at all and comes back null.
-internal enum PostgreSQLPartitionBound {
+public enum PostgreSQLPartitionBound {
     private static let prefix = "FOR VALUES "
 
-    internal static func display(rawExpression: String?) -> String? {
+    public static func display(rawExpression: String?) -> String? {
         guard let trimmed = rawExpression?.trimmingCharacters(in: .whitespacesAndNewlines),
               !trimmed.isEmpty
         else { return nil }

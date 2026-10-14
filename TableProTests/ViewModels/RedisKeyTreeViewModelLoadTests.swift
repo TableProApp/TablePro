@@ -40,6 +40,11 @@ private enum KeyTreeReply: Sendable {
 
 private struct UnscriptedDatabase: Error {}
 
+// The shape the Redis plugin's RedisPluginError and RedisQueuedCommand reach the app in.
+private struct RedisReplyError: PluginDriverError {
+    let pluginErrorMessage: String
+}
+
 /// The statements the stub driver was asked to run. The driver runs off the main actor, so the log
 /// is locked rather than isolated.
 private final class ExecutedQueryLog: @unchecked Sendable {
@@ -149,8 +154,8 @@ struct RedisKeyTreeViewModelLoadTests {
     @Test("A refused scan, an open MULTI block and a lost session each commit their failure")
     func failuresCommitTheirMessage() async {
         let failures: [any Error] = [
-            RedisPluginError(code: 0, message: "NOPERM User noscan has no permissions to run the 'scan' command"),
-            RedisQueuedCommand(command: "SCAN"),
+            RedisReplyError(pluginErrorMessage: "NOPERM User noscan has no permissions to run the 'scan' command"),
+            RedisReplyError(pluginErrorMessage: "Redis queued SCAN instead of running it."),
             DatabaseError.notConnected
         ]
         for error in failures {
@@ -183,7 +188,7 @@ struct RedisKeyTreeViewModelLoadTests {
     func supersededLoadCommitsNothing() async {
         let outcomes: [KeyTreeReply] = [
             .keys(["stale:1"]),
-            .failure(RedisPluginError(code: 0, message: "ERR stale")),
+            .failure(RedisReplyError(pluginErrorMessage: "ERR stale")),
             .failure(CancellationError())
         ]
         for outcome in outcomes {
@@ -239,7 +244,7 @@ struct RedisKeyTreeViewModelLoadTests {
         provider.answer("0", with: .keys(["a"]))
         await load(viewModel, databaseIndex: 0)
 
-        provider.answer("0", with: .failure(RedisPluginError(code: 0, message: "ERR refused")))
+        provider.answer("0", with: .failure(RedisReplyError(pluginErrorMessage: "ERR refused")))
         let refresh = try #require(viewModel.reload())
         #expect(viewModel.state.value?.database == "0")
         await refresh.value
@@ -280,7 +285,7 @@ struct RedisKeyTreeViewModelLoadTests {
         await refresh.value
 
         let (moveReached, moveRelease) = provider.hold("6")
-        provider.answer("6", with: .failure(RedisPluginError(code: 0, message: "ERR refused")))
+        provider.answer("6", with: .failure(RedisReplyError(pluginErrorMessage: "ERR refused")))
         let move = viewModel.loadKeys(connectionId: connection.id, databaseIndex: 6, separator: ":")
         await moveReached.wait()
         #expect(viewModel.shownDatabaseIndex == nil)
@@ -293,7 +298,7 @@ struct RedisKeyTreeViewModelLoadTests {
     @Test("Refresh after a failed load retries it and shows the keys it gets")
     func refreshRecoversAFailedLoad() async throws {
         let (viewModel, provider) = makeViewModel()
-        provider.answer("0", with: .failure(RedisQueuedCommand(command: "SCAN")))
+        provider.answer("0", with: .failure(RedisReplyError(pluginErrorMessage: "Redis queued SCAN instead of running it.")))
         await load(viewModel, databaseIndex: 0)
         #expect(viewModel.state.value == nil)
 

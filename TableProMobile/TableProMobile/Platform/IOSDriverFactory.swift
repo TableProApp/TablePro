@@ -2,6 +2,7 @@ import Foundation
 import os
 import TableProDatabase
 import TableProModels
+import TableProRedisCore
 
 nonisolated final class IOSDriverFactory: DriverFactory {
     private static let logger = Logger(subsystem: "com.TablePro", category: "IOSDriverFactory")
