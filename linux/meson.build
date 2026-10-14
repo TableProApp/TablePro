@@ -69,6 +69,7 @@ cargo_env.set('TABLEPRO_LIBEXECDIR', libexecdir)
 subdir('data')
 subdir('po')
 subdir('crates/app')
+subdir('build-aux')
 
 # `meson devenv` runs cargo against the build tree, where the askpass
 # helper sits next to the binary rather than under libexecdir.

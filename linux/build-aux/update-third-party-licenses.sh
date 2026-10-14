@@ -1,7 +1,8 @@
 #!/bin/sh
-# Writes data/licenses from Cargo.lock with cargo-about. CI runs it and
-# fails when the committed files differ, so run it after every change to
-# Cargo.lock and commit what it writes.
+# Writes data/licenses from Cargo.lock with cargo-about, then the Debian
+# copyright file and the RPM spec's License tag from data/licenses. CI runs
+# it and fails when the committed files differ, so run it after every
+# change to Cargo.lock and commit what it writes.
 set -eu
 
 expected_version="cargo-about 0.9.2"
@@ -43,3 +44,9 @@ fi
 for output in third-party.json THIRD-PARTY-NOTICE.md; do
     generate "$root/build-aux/about/$output.hbs" "$root/data/licenses/$output"
 done
+
+python3 "$root/build-aux/packaging/license_metadata.py" write \
+    --licenses "$root/data/licenses/third-party.json" \
+    --license-file "$root/LICENSE" \
+    --copyright "$root/build-aux/debian/copyright" \
+    --spec "$root/build-aux/rpm/tablepro.spec"
