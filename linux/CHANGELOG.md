@@ -68,7 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Format could split `+=`, `b'01'` or `@@version`, or detach a MySQL function from its parenthesis, and change the statement.
 - Opening a SQL, CSV or connections file from a pipe or a device never finished, or read past its size limit.
 - Exporting results or query history, or opening the connect dialog, froze the window on a slow disk or network folder.
-- A failed query history export said nothing, and a stopped or failed export could leave a half-written file in place of the old one.
+- A failed query history export said nothing.
 - Copying many rows, or showing a row with a long value as JSON, froze the window.
 - A query saved just before quitting could be lost.
 - The sidebar's table search button had no name for screen readers.
