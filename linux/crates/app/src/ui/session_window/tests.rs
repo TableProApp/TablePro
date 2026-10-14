@@ -190,7 +190,7 @@ impl Drop for TestWindow {
     }
 }
 
-fn editors(window: &SessionWindow) -> Vec<crate::ui::editor::SqlEditor> {
+pub(crate) fn editors(window: &SessionWindow) -> Vec<crate::ui::editor::SqlEditor> {
     descendants(window)
         .into_iter()
         .filter_map(|widget| widget.downcast::<crate::ui::editor::SqlEditor>().ok())

@@ -34,6 +34,9 @@ pub(crate) enum SessionWindowInput {
     Disconnect,
     /// The prompts approved the disconnect.
     TeardownApproved,
+    /// Close the workspace's current tab, or the window when it shows
+    /// no tab.
+    CloseCurrent,
     /// The health banner's Retry: ask the session to reconnect now.
     Reconnect,
     /// The toast's Reset: move the workspace's unreadable saved tabs

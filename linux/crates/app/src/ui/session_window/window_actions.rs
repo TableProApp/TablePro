@@ -18,7 +18,8 @@ type ActionInput = fn() -> SessionWindowInput;
 /// The window's actions and the input each one sends. A closure holds
 /// only the window's input sender, so an action that outlives the window
 /// drops its input rather than reaching a window that is gone.
-const ACTIONS: [(&str, ActionInput); 8] = [
+const ACTIONS: [(&str, ActionInput); 9] = [
+    ("close-current", || SessionWindowInput::CloseCurrent),
     ("disconnect", || SessionWindowInput::Disconnect),
     ("reconnect", || SessionWindowInput::Reconnect),
     ("cancel-connect", || SessionWindowInput::CancelConnect),
@@ -63,7 +64,8 @@ pub(super) fn sync(window: &adw::ApplicationWindow, page: &SessionPage, editable
 
 /// Quit, New Window and Preferences are application accelerators, which
 /// GTK runs before these, so none of their keys is bound here. The
-/// workspace adds the actions these name while it is open.
+/// workspace adds the actions these name while it is open, apart from
+/// close-current, which the window keeps so Ctrl+W works on every page.
 pub(crate) fn install_window_shortcuts(window: &adw::ApplicationWindow) {
     use gtk::gdk::{Key, ModifierType};
     let primary = ModifierType::CONTROL_MASK;
@@ -97,7 +99,8 @@ fn make_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType, action: 
 mod tests {
     use super::*;
     use crate::runtime::Delivery;
-    use crate::ui::session_window::tests::TestWindow;
+    use crate::test_support::wait_until;
+    use crate::ui::session_window::tests::{TestWindow, WAIT, editors};
 
     fn shortcut_action_names(window: &adw::ApplicationWindow) -> Vec<String> {
         let controllers = window.observe_controllers();
@@ -180,5 +183,31 @@ mod tests {
             input.try_deliver(crate::ui::workspace::WorkspaceInput::RefreshPage),
             Delivery::ReceiverGone
         );
+    }
+
+    #[gtk4::test]
+    fn close_current_closes_a_window_with_no_workspace() {
+        let test = TestWindow::picker("CloseCurrentPicker");
+
+        WidgetExt::activate_action(&test.window, "win.close-current", None).expect("win.close-current");
+
+        wait_until(WAIT, || test.app.windows().is_empty()).expect("the picker's window to close");
+    }
+
+    #[gtk4::test]
+    fn close_current_closes_the_tab_and_still_works_after_a_disconnect() {
+        let test = TestWindow::connected("CloseCurrentTab");
+        WidgetExt::activate_action(&test.window, "win.open-editor", None).expect("win.open-editor");
+        wait_until(WAIT, || editors(&test.window).len() == 1).expect("an editor tab");
+
+        WidgetExt::activate_action(&test.window, "win.close-current", None).expect("win.close-current");
+        wait_until(WAIT, || editors(&test.window).is_empty()).expect("the tab to close");
+        assert_eq!(test.app.windows().len(), 1, "the window closed with its tab");
+
+        test.window.send(SessionWindowInput::Disconnect);
+        test.wait_for_page("picker");
+        WidgetExt::activate_action(&test.window, "win.close-current", None).expect("win.close-current on the picker");
+
+        wait_until(WAIT, || test.app.windows().is_empty()).expect("the window to close");
     }
 }

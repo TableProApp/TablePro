@@ -247,6 +247,7 @@ impl SessionWindow {
                     tracing::info!("disconnected");
                 }
             }
+            SessionWindowInput::CloseCurrent => self.on_close_current(),
             SessionWindowInput::Reconnect => {
                 if let SessionPage::Workspace { session, .. } = &*self.imp().page.borrow() {
                     session.signal(MonitorSignal::RetryNow);
@@ -660,6 +661,15 @@ impl SessionWindow {
                 input.deliver(SessionWindowInput::TeardownApproved);
             }
         });
+    }
+
+    /// Ctrl+W: the workspace closes its current tab, and with no
+    /// workspace the window closes, through its close prompts.
+    fn on_close_current(&self) {
+        match self.workspace().and_then(|workspace| workspace.input()) {
+            Some(input) => input.deliver(WorkspaceInput::CloseActiveWorkspaceTab),
+            None => self.close(),
+        }
     }
 
     /// The close prompts approved the window's close, which goes ahead

@@ -21,9 +21,8 @@ const HISTORY_ACTIONS: [&str; 2] = ["show-history", "show-saved-queries"];
 /// Each one sends its input through `input`, so one activated after the
 /// workspace is gone is dropped rather than handled.
 pub(super) fn install(window: &adw::ApplicationWindow, input: &WorkspaceSender) -> Vec<&'static str> {
-    let entries: [(&'static str, ActionInput); 11] = [
+    let entries: [(&'static str, ActionInput); 10] = [
         ("open-editor", || WorkspaceInput::NewEditorTab),
-        ("close-current", || WorkspaceInput::CloseActiveWorkspaceTab),
         ("refresh-page", || WorkspaceInput::RefreshPage),
         ("save-changes", || WorkspaceInput::SaveActiveTab),
         ("undo-change", || WorkspaceInput::UndoActiveBrowseTab),
