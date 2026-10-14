@@ -15,7 +15,7 @@ pub(crate) use self::result_summary::ResultSummary;
 use crate::i18n::ngettext_f;
 use crate::ui::export::ExportSource;
 use crate::ui::format::{format_thousands, plural_count};
-use crate::ui::grid::{GridContent, GridSink, RowObject, TabGridContext, build_column_view, export_snapshot};
+use crate::ui::grid::{GridSink, RowObject, TabGridContext, build_result_grid, export_snapshot};
 
 /// The page for `view`. Export All on its banner hands `export_all` the
 /// rows the grid shows, in the order it shows them, for the dialog's
@@ -25,11 +25,8 @@ pub(crate) fn result_set_page(
     sink: GridSink,
     export_all: impl Fn(ExportSource) + 'static,
 ) -> gtk::Widget {
-    let content = GridContent {
-        columns: view.columns.clone(),
-        rows: view.rows.iter().cloned().map(RowObject::result).collect(),
-    };
-    let (column_view, _selection) = build_column_view(content, &[], sink, None, false, TabGridContext::default());
+    let rows = view.rows.iter().cloned().map(RowObject::result).collect();
+    let (column_view, _selection) = build_result_grid(view.columns.clone(), rows, sink);
     let banner = ResultLimitBanner::new(&view.summary);
     let columns = view.columns.clone();
     let grid = column_view.downgrade();

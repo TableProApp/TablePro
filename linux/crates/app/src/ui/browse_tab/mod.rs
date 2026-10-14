@@ -64,8 +64,8 @@ use self::selection_snapshot::SelectionSnapshot;
 use super::format::format_thousands;
 use super::grid::{
     CellPreset, ColumnWidthBinding, DeleteAvailability, GridContent, GridMsg, GridRowId, GridRowIndex, GridSink,
-    RowJsonRequest, RowKeyBuilder, RowObject, RowSnapshot, TabGridContext, build_column_view, cell_editability,
-    cell_presets, delete_availability, edit_context, edit_row, export_snapshot, present_row_json,
+    GridSorting, RowJsonRequest, RowKeyBuilder, RowObject, RowSnapshot, TabGridContext, build_column_view,
+    cell_editability, cell_presets, delete_availability, edit_context, edit_row, export_snapshot, present_row_json,
 };
 use super::tab_load::{ContentLoad, ContentPage, LoadFailure, LoadPresentation, StaleBanner};
 use crate::runtime::{FailedRequests, RequestSequencer};
@@ -1254,8 +1254,9 @@ impl BrowseModel {
             content,
             &self.current_columns,
             self.grid_sink.clone(),
-            self.current_sort,
-            true,
+            GridSorting::Server {
+                initial: self.current_sort,
+            },
             self.grid_context(),
         );
         self.current_selection = Some(selection);
