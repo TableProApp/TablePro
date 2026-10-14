@@ -107,9 +107,17 @@ where
     };
 
     let mut dispatch = Box::pin(tokio::time::timeout(CANCELLATION_DISPATCH_TIMEOUT, cancellation));
-    tokio::select! {
-        result = &mut operation => return classify_interrupted(result, interruption, confirms_cancellation),
-        _ = &mut dispatch => {}
+    let dispatch_result = tokio::select! {
+        result = &mut operation => {
+            if dispatch.await.is_err() {
+                return Err(unknown_outcome(interruption.into_error()));
+            }
+            return classify_interrupted(result, interruption, confirms_cancellation);
+        },
+        result = &mut dispatch => result,
+    };
+    if dispatch_result.is_err() {
+        return Err(unknown_outcome(interruption.into_error()));
     }
     match tokio::time::timeout(CANCELLATION_GRACE, &mut operation).await {
         Ok(result) => classify_interrupted(result, interruption, confirms_cancellation),
@@ -123,7 +131,7 @@ fn classify_interrupted<T>(
     confirms_cancellation: fn(&DriverError) -> bool,
 ) -> Result<T, DriverError> {
     match result {
-        Ok(value) => Ok(value),
+        Ok(_) => Err(unknown_outcome(interruption.into_error())),
         Err(error) if confirms_cancellation(&error) => Err(interruption.into_error()),
         Err(error) => Err(unknown_outcome(error)),
     }
@@ -234,5 +242,57 @@ mod tests {
             .expect_err("operation should be interrupted");
 
         assert!(matches!(error, DriverError::Cancelled));
+    }
+
+    #[tokio::test]
+    async fn completed_operation_waits_for_an_in_flight_server_cancel_dispatch() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use tokio::sync::oneshot;
+
+        let token = CancellationToken::new();
+        let control = OperationControl::new(token.clone(), None);
+        let (operation_started_tx, operation_started_rx) = oneshot::channel();
+        let (operation_finish_tx, operation_finish_rx) = oneshot::channel();
+        let (cancel_started_tx, cancel_started_rx) = oneshot::channel();
+        let (cancel_finish_tx, cancel_finish_rx) = oneshot::channel();
+        let cancellation_dispatched = Arc::new(AtomicBool::new(false));
+        let cancellation_dispatched_worker = Arc::clone(&cancellation_dispatched);
+        let operation = async move {
+            let _ = operation_started_tx.send(());
+            operation_finish_rx
+                .await
+                .map_err(|_| DriverError::Internal("operation completion signal was dropped".into()))?
+        };
+        let cancellation = async move {
+            let _ = cancel_started_tx.send(());
+            let _ = cancel_finish_rx.await;
+            cancellation_dispatched_worker.store(true, Ordering::SeqCst);
+            Ok::<_, DriverError>(())
+        };
+        let task =
+            tokio::spawn(async move { run_server_cancellable(operation, cancellation, |_| false, &control).await });
+
+        operation_started_rx.await.expect("operation should start");
+        token.cancel();
+        cancel_started_rx.await.expect("cancel dispatch should start");
+        operation_finish_tx
+            .send(Ok::<_, DriverError>(7))
+            .expect("operation should finish");
+        tokio::task::yield_now().await;
+
+        assert!(!task.is_finished());
+        cancel_finish_tx.send(()).expect("cancel dispatch should finish");
+
+        let error = task
+            .await
+            .expect("task should finish")
+            .expect_err("a completed result after cancellation is uncertain");
+        assert!(matches!(
+            error,
+            DriverError::OperationOutcomeUnknown { source }
+                if matches!(source.as_ref(), DriverError::Cancelled)
+        ));
+        assert!(cancellation_dispatched.load(Ordering::SeqCst));
     }
 }
