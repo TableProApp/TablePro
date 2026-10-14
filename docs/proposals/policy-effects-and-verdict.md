@@ -1,11 +1,11 @@
 # Proposal: statement effects and a joined verdict
 
-Status: proposed, for the B4 lane. Not a decision; an ADR follows if accepted.
+Status: the statement-safety defects are closed by [#480](https://github.com/cozyGarage/BookiE/pull/480), [#506](https://github.com/cozyGarage/BookiE/pull/506) and the current policy suite. The remaining single-AST-walk consolidation is post-0.2.0 backlog work ([#571](https://github.com/cozyGarage/BookiE/issues/571)). This page records that proposal; it is not an accepted ADR.
 
 ## Problem
 
-A review on 2026-10-08 found that the policy outcome depends on the order in
-which things are written, not only on what a statement does:
+A review on 2026-10-08 found that the policy outcome depended on the order in
+which statements were written, not only on what they did:
 
 - Rules run first-match. With `human_approve_unparseable=false`, a malformed
   `DELETE; ...` is allowed even when write approval is on (S6). Reproduced by B4
@@ -20,31 +20,25 @@ which things are written, not only on what a statement does:
 - `classify.rs` and the masking walker traverse the same AST separately and have
   drifted (a write the classifier sees, masking misses).
 
-S6 and S8 are confirmed; S7 is confirmed for the statements named above.
+These were historical findings. The behavior defects are closed; duplicated
+classification and masking AST walks remain a structural cleanup.
 
-## Proposal
+## Remaining proposal
 
-1. **Effects as a set.** A statement's facts become a bit set (`READS`, `WRITES_ROWS`,
-   `WRITES_SCHEMA`, `ADMIN`, `TRANSACTION_CONTROL`, `SESSION_STATE`, `HOST_OR_FILE_ACCESS`,
-   `UNKNOWN`). A script's effects are the union of its statements', so order cannot
-   change them.
-2. **Verdict as a join.** Each rule returns `Allow`, `RequireApproval` or `Deny`
-   with a reason. The decision is the maximum under `Allow < RequireApproval < Deny`,
-   with reasons concatenated. Rule order cannot change the outcome. Each reason
-   keeps its stable rule name, so the audit event still says which rule decided.
-3. **One traversal.** Classification, masking and blast-radius planning read the
-   effects from a single AST walk.
+Consolidate classification, masking and blast-radius planning around one AST
+walk that produces statement effects. Preserve the current joined verdict,
+stable rule names and audit behavior. This is structural cleanup; the behavioral
+fixes are already closed.
 
 ## Migration
 
-One mechanism per PR, each with a test that reorders its inputs and expects the
-same result:
+The behavioral steps landed. The remaining step is optional structural cleanup:
 
-1. Add `Effects` beside the current facts; compute both; assert equal in tests.
-2. Move scripts to the union and drop first-statement classification (S8).
-3. Convert rules to return verdicts and fold them; keep rule names for audit
-   (S6, S7). Done on tip via #480 (joined Allow < RequireApproval < Deny).
-4. Delete the old facts fields and the duplicated walkers.
+1. Add shared statement effects and use them across policy analysis; shared
+   statement analysis landed in #506.
+2. Join rule verdicts so statement order cannot weaken approval; landed in #480.
+3. Consolidate classification, masking and blast-radius analysis into one AST
+   walk. This remains backlog work under #571.
 
 ## Checks
 

@@ -30,11 +30,11 @@ A function body may be at most **60 lines**, counted between its braces.
 
 This is enforced by `scripts/check-function-size.py`, which runs in `preflight.sh`. Existing longer functions are frozen by count per file in `baselines/function-size-baselines.txt`. A file listed there may not gain another over-limit function, and when you split one you lower its count in the same commit. Test code is excluded: `#[cfg(test)]` modules and files under a crate's `tests/`.
 
-Sixty is deliberately generous. The measured median function body in this workspace is 8 lines and the 90th percentile outside `apps/linux/app/src/ui` is about 25. Reaching 60 is a signal, not a budget to spend.
+Sixty is a ceiling, not a target. Reaching it is a signal to check whether the function still has one responsibility.
 
 ### Parameters
 
-Five parameters is the point where you justify yourself, and `self` counts. Ninety percent of functions here take three or fewer. Past five, pass a struct, or the function is doing two jobs.
+Five parameters is the point where you justify yourself, and `self` counts. Past five, pass a struct, or the function is doing two jobs.
 
 Prefer `&str` over `&String`, `&[T]` over `&Vec<T>`, and an owned parameter only when the callee stores it.
 
@@ -75,7 +75,7 @@ A name is too long when a reader (or an agent) must re-parse it to find the verb
 
 ## GTK construction is the known exception
 
-Fifty-nine of the eighty-six functions currently over the limit live in `apps/linux/app/src/ui`, according to the ratchet. Relm4 `init`, `update`, and `build_*` functions accumulate widget wiring that has no natural seam, and splitting them arbitrarily produces helpers that are called once and read worse than the original.
+Relm4 `init`, `update`, and `build_*` functions accumulate widget wiring that has no natural seam, and splitting them arbitrarily produces helpers that are called once and read worse than the original.
 
 The exception is narrow. It covers only widget construction and message dispatch. It does not cover logic that happens to sit inside them. When an `update` arm computes something, that computation moves to a free function in a sibling module and gets a unit test, which is the rule `AGENTS.md` already states as "keep reusable logic outside widget construction".
 
