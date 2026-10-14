@@ -33,9 +33,9 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sourceview5::prelude::*;
+use tablepro_core::RowLimit;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::sql_syntax::SqlGrammar;
-use tablepro_core::{QueryResult, RowLimit};
 use tablepro_session::runtime::{ProcessHold, Tasks};
 use tokio_util::sync::CancellationToken;
 
@@ -44,6 +44,7 @@ use self::imp::RunningScript;
 use self::run_log::{RunEvent, RunLog};
 use self::run_scope::ScopedText;
 use self::script_runner::{ScriptRun, plan_batches, run_in_tab};
+use super::export::ExportSource;
 use super::grid::{GridMsg, GridSink};
 use super::handler_guard::HandlerGuard;
 use crate::services::active_session::ActiveSession;
@@ -299,13 +300,16 @@ impl SqlEditor {
         )
     }
 
-    pub fn connect_export_results<F: Fn(&Self, QueryResult, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+    pub(crate) fn connect_export_results<F: Fn(&Self, ExportSource, String) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
         self.connect_closure(
             "export-results",
             false,
             glib::closure_local!(move |editor: &Self, payload: glib::BoxedAnyObject| {
-                let (result, name) = payload.borrow::<(QueryResult, String)>().clone();
-                f(editor, result, name);
+                let (source, name) = payload.borrow::<(ExportSource, String)>().clone();
+                f(editor, source, name);
             }),
         )
     }
@@ -623,9 +627,9 @@ impl SqlEditor {
                     editor.emit_by_name::<()>("copy-to-clipboard", &[&glib::BoxedAnyObject::new(text)]);
                 }
                 GridMsg::ShowToast(text) => editor.emit_by_name::<()>("toast", &[&text]),
-                GridMsg::ExportResults(result) => {
+                GridMsg::ExportResults(source) => {
                     let name = export_name_for_query(&editor.selected_preview());
-                    let payload = glib::BoxedAnyObject::new((result, name));
+                    let payload = glib::BoxedAnyObject::new((source, name));
                     editor.emit_by_name::<()>("export-results", &[&payload]);
                 }
                 _ => {}

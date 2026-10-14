@@ -211,13 +211,20 @@ impl SessionWindow {
         self.page_is(|page| matches!(page, SessionPage::Connecting { .. } | SessionPage::Workspace { .. }))
     }
 
-    /// Whether the window holds logout back now.
+    /// Whether the window holds logout back now, for its unsaved
+    /// changes or for an export its workspace is writing.
     pub(crate) fn is_inhibiting(&self) -> bool {
-        self.imp()
-            .inhibitor
-            .borrow()
-            .as_ref()
-            .is_some_and(WindowInhibitor::is_held)
+        let exporting = self
+            .workspace()
+            .and_then(|workspace| workspace.exports())
+            .is_some_and(|exports| exports.is_inhibiting());
+        exporting
+            || self
+                .imp()
+                .inhibitor
+                .borrow()
+                .as_ref()
+                .is_some_and(WindowInhibitor::is_held)
     }
 
     /// A test session has no session manager to grant an inhibition.

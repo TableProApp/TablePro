@@ -110,6 +110,7 @@ crates/app/src/ui/connect_dialog/tls_section.rs
 crates/app/src/ui/connection_list.rs
 crates/app/src/ui/connection_list_banner.rs
 crates/app/src/ui/connection_row.rs
+crates/app/src/ui/count_text.rs
 crates/app/src/ui/credential_prompt/mod.rs
 crates/app/src/ui/credential_prompt/presenter.rs
 crates/app/src/ui/credential_prompt/prompt_form.rs
@@ -157,6 +158,22 @@ crates/app/src/ui/error_text/ssh.rs
 crates/app/src/ui/error_text/tests.rs
 crates/app/src/ui/error_text/tls.rs
 crates/app/src/ui/error_text/tls_remedy.rs
+crates/app/src/ui/export/encoding_sink.rs
+crates/app/src/ui/export/export_failure_text.rs
+crates/app/src/ui/export/export_format.rs
+crates/app/src/ui/export/export_job.rs
+crates/app/src/ui/export/export_job_item.rs
+crates/app/src/ui/export/export_ledger.rs
+crates/app/src/ui/export/export_ledger/tests.rs
+crates/app/src/ui/export/export_message.rs
+crates/app/src/ui/export/export_operations_button.rs
+crates/app/src/ui/export/export_outcome.rs
+crates/app/src/ui/export/export_producer.rs
+crates/app/src/ui/export/export_sink_parts.rs
+crates/app/src/ui/export/export_source.rs
+crates/app/src/ui/export/mod.rs
+crates/app/src/ui/export/replace_file_writer.rs
+crates/app/src/ui/export/replace_file_writer/tests.rs
 crates/app/src/ui/export_dialog.rs
 crates/app/src/ui/file_read.rs
 crates/app/src/ui/file_write.rs
@@ -274,6 +291,8 @@ crates/app/src/ui/workspace/workspace_actions.rs
 crates/app/src/ui/workspace/workspace_persistence.rs
 crates/app/src/ui/workspace/workspace_tab_view.rs
 crates/app/src/ui/workspace/workspace_tabs.rs
+crates/app/src/workspace/close_blocker.rs
+crates/app/src/workspace/close_blocker_dialog.rs
 crates/app/src/workspace/close_decision.rs
 crates/app/src/workspace/close_guard.rs
 crates/app/src/workspace/close_guards.rs
@@ -336,6 +355,7 @@ data/resources/ui/browse-tab.ui
 data/resources/ui/connect-dialog.ui
 data/resources/ui/connect-failed-page.ui
 data/resources/ui/connecting-page.ui
+data/resources/ui/export-operations-button.ui
 data/resources/ui/picker-page.ui
 data/resources/ui/preferences-dialog.ui
 data/resources/ui/results-pane.ui

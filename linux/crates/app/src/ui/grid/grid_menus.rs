@@ -11,7 +11,7 @@ use super::cell_preset::cell_presets;
 use super::context_menu::CellContext;
 use super::menu_rows::menu_rows_of;
 use super::row_json_dialog::show_row_json_dialog;
-use super::selection::{export_snapshot, snapshot_result};
+use super::selection::export_snapshot;
 use super::{
     CellPreset, DeleteAvailability, GridCell, GridMsg, GridSink, RowObject, TabGridContext, delete_availability,
 };
@@ -173,9 +173,6 @@ pub(super) struct GridMenuInit<'a> {
     pub(super) column_view: &'a gtk::ColumnView,
     pub(super) sink: GridSink,
     pub(super) columns: std::sync::Arc<[ResultColumn]>,
-    /// From the fetch that filled the grid, so Export Results reports the
-    /// same truncation the paginator does.
-    pub(super) truncated: bool,
     pub(super) tab_ctx: TabGridContext,
 }
 
@@ -184,7 +181,6 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         column_view,
         sink,
         columns,
-        truncated,
         tab_ctx,
     } = init;
     let editable = tab_ctx.editable;
@@ -382,8 +378,10 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         gio::ActionEntry::builder("export")
             .activate(move |_, _, _| {
                 let Some(cv) = view.upgrade() else { return };
-                let rows = export_snapshot(&cv, &tab);
-                s(GridMsg::ExportResults(snapshot_result(cols.clone(), &rows, truncated)));
+                s(GridMsg::ExportResults(crate::ui::export::ExportSource::Rows {
+                    columns: cols.clone(),
+                    rows: export_snapshot(&cv, &tab),
+                }));
             })
             .build()
     };

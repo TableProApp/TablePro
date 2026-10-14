@@ -5,6 +5,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use uuid::Uuid;
 
+use super::close_blocker_dialog::ask_stop;
 use super::open_transaction_dialog::confirm_open_transactions;
 use super::save_changes_dialog::{SaveChoice, ask_save_changes};
 use super::unknown_outcome_dialog::{UnknownChoice, resolve_unknown_outcome};
@@ -30,6 +31,12 @@ impl CloseGuard {
         loop {
             match handle.close_step(scope, acknowledged) {
                 CloseStep::Approve => return CloseDecision::Approved,
+                CloseStep::StopBlocker { blocker, prompt } => {
+                    if !ask_stop(parent, &prompt).await {
+                        return CloseDecision::Cancelled;
+                    }
+                    handle.stop_blocker(blocker).await;
+                }
                 CloseStep::WaitForSaves => {
                     if !wait_for_saves(parent, handle, scope).await {
                         return CloseDecision::Cancelled;

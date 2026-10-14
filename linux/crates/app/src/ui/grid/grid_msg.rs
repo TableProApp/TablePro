@@ -1,9 +1,8 @@
 use std::rc::Rc;
 
-use tablepro_core::QueryResult;
-
 use super::{CellPreset, RowObject};
 use crate::services::tracker_edit::TrackerEdit;
+use crate::ui::export::ExportSource;
 
 /// Where a grid sends its events. The owner holds the grid, so the
 /// closure holds the owner weakly.
@@ -32,7 +31,7 @@ pub enum GridMsg {
         column: usize,
         preset: CellPreset,
     },
-    ExportResults(QueryResult),
+    ExportResults(ExportSource),
     DeleteRows {
         rows: Vec<RowObject>,
     },

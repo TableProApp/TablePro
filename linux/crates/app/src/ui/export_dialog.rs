@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -5,9 +6,13 @@ use relm4::adw::prelude::*;
 use relm4::gtk::{gio, glib};
 use relm4::{adw, gtk};
 
-use tablepro_core::QueryResult;
 use tablepro_core::dialect::SqlDialect;
-use tablepro_core::export::{self, CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
+use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
+
+use super::count_text::{format_thousands, plural_count};
+use super::export::{
+    DocumentFormat, ExpectedRows, ExportFormat, ExportJob, ExportLedger, ExportSource, InsertTarget, RowFormat,
+};
 
 /// The table a result can be written back to as `INSERT` statements.
 ///
@@ -16,14 +21,6 @@ use tablepro_core::export::{self, CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOpt
 #[derive(Debug, Clone)]
 pub struct SqlTarget {
     pub table: String,
-}
-
-/// A table to insert into and the spelling of the server the rows came
-/// from. SQL is offered only with both.
-#[derive(Debug, Clone)]
-struct InsertTarget {
-    table: String,
-    dialect: Arc<dyn SqlDialect>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -87,6 +84,20 @@ impl Format {
             Format::Xml => "xml",
             Format::Sql => "sql",
         }
+    }
+
+    /// What a job writes in this format. `None` for SQL without a table
+    /// to insert into, which the dialog never offers.
+    fn job_format(self, csv: CsvOptions, name: &str, target: Option<&InsertTarget>) -> Option<ExportFormat> {
+        Some(match self {
+            Format::Csv => ExportFormat::Rows(RowFormat::Csv(csv)),
+            Format::Json => ExportFormat::Rows(RowFormat::Json),
+            Format::Markdown => ExportFormat::Rows(RowFormat::Markdown),
+            Format::Xlsx => ExportFormat::Document(DocumentFormat::Xlsx { sheet: name.to_owned() }),
+            Format::Html => ExportFormat::Document(DocumentFormat::Html { title: name.to_owned() }),
+            Format::Xml => ExportFormat::Document(DocumentFormat::Xml),
+            Format::Sql => ExportFormat::Document(DocumentFormat::Sql(target?.clone())),
+        })
     }
 
     fn mime_type(self) -> &'static str {
@@ -164,15 +175,27 @@ fn combo_row(title: &str, choices: &[&str]) -> adw::ComboRow {
         .build()
 }
 
-pub fn present(
-    parent: &adw::ApplicationWindow,
-    toast_overlay: &adw::ToastOverlay,
-    result: QueryResult,
-    name: String,
-    target: Option<SqlTarget>,
-    dialect: Option<Arc<dyn SqlDialect>>,
-    settings: &Rc<tablepro_storage::AppSettings>,
-) {
+/// What the dialog exports, and where it hands the job.
+pub(crate) struct ExportDialogInit<'a> {
+    pub parent: &'a adw::ApplicationWindow,
+    pub exports: &'a Rc<ExportLedger>,
+    pub source: ExportSource,
+    pub name: String,
+    pub target: Option<SqlTarget>,
+    pub dialect: Option<Arc<dyn SqlDialect>>,
+    pub settings: &'a Rc<tablepro_storage::AppSettings>,
+}
+
+pub(crate) fn present(init: ExportDialogInit<'_>) {
+    let ExportDialogInit {
+        parent,
+        exports,
+        source,
+        name,
+        target,
+        dialect,
+        settings,
+    } = init;
     let target = target.zip(dialect).map(|(target, dialect)| InsertTarget {
         table: target.table,
         dialect,
@@ -183,11 +206,12 @@ pub fn present(
     let format_group = adw::PreferencesGroup::new();
     let format_labels: Vec<&str> = formats.iter().map(|f| f.label()).collect();
     let format_row = combo_row(&crate::i18n::gettext("Format"), &format_labels);
+    let row_count = source.row_count() as u64;
     let rows_label = crate::i18n::ngettext_f(
         "{n} row",
         "{n} rows",
-        result.rows.len() as u32,
-        &[("n", &result.rows.len().to_string())],
+        plural_count(row_count),
+        &[("n", &format_thousands(row_count))],
     );
     format_row.set_subtitle(&rows_label);
     format_group.add(&format_row);
@@ -313,46 +337,48 @@ pub fn present(
         .build();
     dialog.set_default_widget(Some(&export_button));
 
+    // One dialog, one export: the rows go to the job rather than being
+    // copied for each click.
+    let source = Rc::new(RefCell::new(Some(source)));
     let window = parent.clone();
-    let toast_overlay = toast_overlay.clone();
+    let exports = exports.clone();
     let dialog_for_export = dialog.clone();
     export_button.connect_clicked(move |_| {
         let format = pick(formats, format_row.selected());
-        let options = rows.read();
+        let Some(job_format) = format.job_format(rows.read(), &name, target.as_ref()) else {
+            return;
+        };
+        let Some(source) = source.borrow_mut().take() else {
+            return;
+        };
         dialog_for_export.close();
-        save_with_file_dialog(
-            &window,
-            &toast_overlay,
-            Export {
-                format,
-                name: name.clone(),
-                target: target.clone(),
-                result: result.clone(),
-                options,
-            },
-        );
+        let chosen = Chosen {
+            format,
+            job_format,
+            name: name.clone(),
+            source,
+        };
+        glib::spawn_future_local(save_with_file_dialog(window.clone(), exports.clone(), chosen));
     });
 
     dialog.present(Some(parent));
 }
 
 /// One export, as the dialog left it.
-struct Export {
+struct Chosen {
     format: Format,
+    job_format: ExportFormat,
     name: String,
-    target: Option<InsertTarget>,
-    result: QueryResult,
-    options: CsvOptions,
+    source: ExportSource,
 }
 
-fn save_with_file_dialog(parent: &adw::ApplicationWindow, toast_overlay: &adw::ToastOverlay, export: Export) {
-    let Export {
+async fn save_with_file_dialog(parent: adw::ApplicationWindow, exports: Rc<ExportLedger>, chosen: Chosen) {
+    let Chosen {
         format,
+        job_format,
         name,
-        target,
-        result,
-        options,
-    } = export;
+        source,
+    } = chosen;
     let filter = gtk::FileFilter::new();
     filter.set_name(Some(&crate::i18n::gettext_f(
         "{format} files",
@@ -369,71 +395,16 @@ fn save_with_file_dialog(parent: &adw::ApplicationWindow, toast_overlay: &adw::T
         .default_filter(&filter)
         .filters(&filters)
         .build();
-
-    let parent_for_alert = parent.clone();
-    let toast_overlay = toast_overlay.clone();
-    // The HTML document titles itself after the export, and the
-    // callback outlives this call, so it carries its own copy.
-    let title = name.clone();
-    file_dialog.save(Some(parent), gio::Cancellable::NONE, move |outcome| {
-        let Ok(file) = outcome else { return };
-        // Bytes rather than text, because a workbook is a zip archive.
-        // The text formats hand over their own bytes unchanged.
-        let encoded: Result<Vec<u8>, String> = match format {
-            Format::Csv => export::render_csv(&result.columns, &result.rows, &options)
-                .map(String::into_bytes)
-                .map_err(|e| e.to_string()),
-            Format::Xlsx => {
-                export::render_xlsx(&result.columns, &result.rows, &title).map_err(|error| error.to_string())
-            }
-            Format::Json => export::render_json(&result.columns, &result.rows)
-                .map(String::into_bytes)
-                .map_err(|e| e.to_string()),
-            Format::Markdown => export::render_markdown(&result.columns, &result.rows)
-                .map(String::into_bytes)
-                .map_err(|e| e.to_string()),
-            Format::Html => Ok(export::render_html(&result.columns, &result.rows, &title).into_bytes()),
-            Format::Xml => Ok(export::render_xml(&result.columns, &result.rows).into_bytes()),
-            Format::Sql => match target.as_ref() {
-                Some(target) => {
-                    Ok(
-                        export::render_sql_insert(&*target.dialect, &target.table, &result.columns, &result.rows)
-                            .into_bytes(),
-                    )
-                }
-                // The format is only offered with a target, so this is
-                // unreachable through the dialog.
-                None => Err(crate::i18n::gettext("This result has no table to insert into.")),
-            },
-        };
-        glib::spawn_future_local(async move {
-            let written = match encoded {
-                Ok(bytes) => crate::ui::file_write::replace_file(&file, bytes)
-                    .await
-                    .map_err(|error| error.to_string()),
-                Err(error) => Err(error),
-            };
-            let path = file.parse_name().to_string();
-            match written {
-                Ok(()) => toast_overlay.add_toast(adw::Toast::new(&crate::i18n::gettext_f(
-                    "Exported to {path}",
-                    &[("path", &path)],
-                ))),
-                Err(error) => {
-                    let alert = adw::AlertDialog::new(
-                        Some(&crate::i18n::gettext("Couldn't export")),
-                        Some(&crate::i18n::gettext_f(
-                            "Writing {path} failed: {error}",
-                            &[("path", &path), ("error", &error)],
-                        )),
-                    );
-                    alert.add_response("close", &crate::i18n::gettext("Close"));
-                    alert.set_default_response(Some("close"));
-                    alert.set_close_response("close");
-                    alert.present(Some(&parent_for_alert));
-                }
-            }
-        });
+    // Cancelling the chooser is the only way it fails without a file.
+    let Ok(destination) = file_dialog.save_future(Some(&parent)).await else {
+        return;
+    };
+    let expected_rows = Some(ExpectedRows::Exact(source.row_count() as u64));
+    exports.begin(ExportJob {
+        destination,
+        format: job_format,
+        source,
+        expected_rows,
     });
 }
 

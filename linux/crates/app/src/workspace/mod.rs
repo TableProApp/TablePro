@@ -3,6 +3,8 @@
 //! prompts that decide whether they may close. Also which sessions the
 //! windows show, so a launch opens them again.
 
+mod close_blocker;
+mod close_blocker_dialog;
 mod close_decision;
 mod close_guard;
 mod close_guards;
@@ -59,6 +61,7 @@ mod workspace_store;
 mod write_job;
 mod writes_in_flight;
 
+pub use close_blocker::{CloseBlockPrompt, CloseBlocker};
 pub use close_decision::CloseDecision;
 pub(crate) use close_guard::CloseGuard;
 pub(crate) use close_guards::CloseGuards;

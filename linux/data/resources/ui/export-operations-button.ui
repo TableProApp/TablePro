@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <!-- Shown while exports run, as GNOME Files shows its file
+       operations. -->
+  <template class="TableProExportOperationsButton" parent="AdwBin">
+    <property name="visible">false</property>
+    <property name="child">
+      <object class="GtkMenuButton" id="menu_button">
+        <property name="icon-name">document-save-symbolic</property>
+        <property name="tooltip-text" translatable="yes">Exports</property>
+        <accessibility>
+          <property name="label" translatable="yes">Exports</property>
+        </accessibility>
+        <property name="popover">
+          <object class="GtkPopover">
+            <property name="child">
+              <object class="GtkScrolledWindow">
+                <property name="hscrollbar-policy">never</property>
+                <property name="propagate-natural-height">true</property>
+                <property name="max-content-height">360</property>
+                <property name="child">
+                  <object class="GtkListBox" id="job_list">
+                    <property name="selection-mode">none</property>
+                    <property name="width-request">320</property>
+                    <property name="margin-top">6</property>
+                    <property name="margin-bottom">6</property>
+                    <property name="margin-start">6</property>
+                    <property name="margin-end">6</property>
+                    <accessibility>
+                      <property name="label" translatable="yes">Running exports</property>
+                    </accessibility>
+                    <style>
+                      <class name="boxed-list"/>
+                    </style>
+                  </object>
+                </property>
+              </object>
+            </property>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

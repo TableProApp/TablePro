@@ -44,7 +44,7 @@ use self::row_deletion::{RowDeletion, plan_row_deletion};
 use super::grid::{
     CellPreset, ColumnWidthBinding, DeleteAvailability, GridContent, GridMsg, GridRowId, GridRowIndex, GridSink,
     RowKeyBuilder, RowObject, TabGridContext, build_column_view, cell_editability, cell_presets, delete_availability,
-    edit_context, edit_row, export_snapshot, snapshot_result,
+    edit_context, edit_row, export_snapshot,
 };
 use crate::runtime::{FailedRequests, RequestSequencer};
 use crate::services::change_tracker::{RowKey, StatementSource, new_draft_cell, pk_identity};
@@ -53,6 +53,8 @@ use crate::services::save_batch::SaveTarget;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
 use crate::services::tracker_edit::TrackerEdit;
+use crate::ui::count_text::format_thousands;
+use crate::ui::export::ExportSource;
 
 const PAGE_SIZE_OPTIONS: &[u64] = &[100, 500, 1_000, 5_000, 10_000];
 const DEFAULT_PAGE_SIZE: u64 = 1_000;
@@ -90,7 +92,7 @@ pub struct BrowseTabInit {
 /// Rows the user asked to write to a file, and what to call it.
 #[derive(Debug, Clone)]
 pub struct ExportRequest {
-    pub result: QueryResult,
+    pub source: ExportSource,
     pub name: String,
     pub target: Option<crate::ui::export_dialog::SqlTarget>,
 }
@@ -670,7 +672,7 @@ pub(crate) enum BrowseTabInput {
         preset: CellPreset,
     },
     GridShowToast(String),
-    GridExportResults(QueryResult),
+    GridExportResults(ExportSource),
     ExportCurrentPage,
     GridCopyRowsAsInsert(Vec<RowObject>),
     DuplicateRows(Vec<RowObject>),
@@ -779,14 +781,17 @@ impl BrowseModel {
 
     /// What the paginator's Export button writes: the grid's rows, so
     /// it matches the context menu's Export Results row for row.
-    fn export_payload(&self) -> Option<QueryResult> {
+    fn export_payload(&self) -> Option<ExportSource> {
         let page = self.page.as_ref()?;
         let rows = self
             .current_column_view
             .as_ref()
             .map(|column_view| export_snapshot(column_view, &self.grid_context()))
             .unwrap_or_default();
-        Some(snapshot_result(page.result_columns.clone(), &rows, page.truncated))
+        Some(ExportSource::Rows {
+            columns: page.result_columns.clone(),
+            rows,
+        })
     }
 
     /// Resolve a preset against the column it lands in. The menu offers
@@ -1090,7 +1095,6 @@ impl BrowseModel {
         let content = GridContent {
             columns: page.result_columns.clone(),
             rows,
-            truncated: page.truncated,
         };
         let (column_view, selection) = build_column_view(
             content,
@@ -1315,11 +1319,7 @@ impl BrowseModel {
     fn on_rows_loaded(&mut self, offset: u64, reply: PageReply, fx: &mut Effects) {
         self.current_offset = offset;
         let PageReply { result, layout, .. } = reply;
-        let QueryResult {
-            columns,
-            rows,
-            truncated,
-        } = result;
+        let QueryResult { columns, rows, .. } = result;
         // The tracker saves a row by its primary key, so that is what
         // names it here too.
         let keys = RowKeyBuilder::for_page(&pk_identity(&self.current_columns), &self.current_columns, &layout);
@@ -1339,7 +1339,6 @@ impl BrowseModel {
         };
         self.page = Some(PageState {
             result_columns,
-            truncated,
             row_count,
             start_ordinal: offset,
         });
@@ -1591,23 +1590,20 @@ impl BrowseModel {
             BrowseTabInput::GridShowToast(message) => {
                 fx.output(BrowseTabOutput::ShowToast(message));
             }
-            BrowseTabInput::GridExportResults(mut result) => {
-                // The grid owns the rows it shows; whether the fetch was
-                // cut short belongs to the tab.
-                result.truncated = self.page.as_ref().is_some_and(|page| page.truncated);
+            BrowseTabInput::GridExportResults(source) => {
                 fx.output(BrowseTabOutput::ExportResults(ExportRequest {
-                    result,
+                    source,
                     name: self.export_name(),
                     target: Some(self.sql_target()),
                 }));
             }
             BrowseTabInput::ExportCurrentPage => {
-                let Some(result) = self.export_payload() else {
+                let Some(source) = self.export_payload() else {
                     fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext("Nothing to export")));
                     return;
                 };
                 fx.output(BrowseTabOutput::ExportResults(ExportRequest {
-                    result,
+                    source,
                     name: self.export_name(),
                     target: Some(self.sql_target()),
                 }));
@@ -1980,23 +1976,6 @@ fn update_selection_chrome(label: &gtk::Label, n: u32) {
         &[("n", &count)],
     ));
     label.set_visible(true);
-}
-
-/// Format a positive integer with thousands separators (1000 → 1,000).
-/// Used for page-size dropdown labels so they read naturally instead
-/// of the abbreviated "1 K" / "5 K" form.
-fn format_thousands(n: u64) -> String {
-    let s = n.to_string();
-    let bytes = s.as_bytes();
-    let len = bytes.len();
-    let mut out = String::with_capacity(len + len / 3);
-    for (i, b) in bytes.iter().enumerate() {
-        if i > 0 && (len - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(*b as char);
-    }
-    out
 }
 
 /// The result-column view of a catalogue column list, for a result the

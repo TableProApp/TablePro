@@ -12,6 +12,7 @@ use tablepro_storage::query_history::{Entry, SearchFilter};
 
 use uuid::Uuid;
 
+use super::export::ReplaceFileWriter;
 use crate::runtime::DeliverInput;
 
 pub struct HistoryDialog {
@@ -622,6 +623,7 @@ impl Component for HistoryDialog {
             HistoryDialogCmd::ExportReady(content, suggested_name) => self.save_export(content, suggested_name),
             HistoryDialogCmd::ExportFailed(msg) => {
                 tracing::warn!(error = %msg, "history export failed");
+                show_export_failure(self.root.upcast_ref(), &msg);
             }
         }
     }
@@ -1011,13 +1013,13 @@ impl HistoryDialog {
             .filters(&filters)
             .build();
         let parent_window = self.root.root().and_then(|r| r.downcast::<gtk::Window>().ok());
-        dialog.save(parent_window.as_ref(), gio::Cancellable::NONE, move |outcome| {
-            let Ok(file) = outcome else { return };
-            glib::spawn_future_local(async move {
-                if let Err(error) = crate::ui::file_write::replace_file(&file, content.into_bytes()).await {
-                    tracing::warn!(%error, path = %file.parse_name(), "history export write failed");
-                }
-            });
+        let parent = self.root.clone().upcast::<gtk::Widget>();
+        glib::spawn_future_local(async move {
+            // Cancelling the chooser is the only way it fails without a file.
+            let Ok(file) = dialog.save_future(parent_window.as_ref()).await else {
+                return;
+            };
+            write_history_export(&parent, &file, content).await;
         });
     }
 
@@ -1028,6 +1030,42 @@ impl HistoryDialog {
     fn is_pinned(&self, id: i64) -> bool {
         self.entries.iter().any(|e| e.id == id && e.pinned)
     }
+}
+
+/// Write the exported history to `file`, replacing it only once the
+/// whole export is written, and say so over `parent` when it fails.
+async fn write_history_export(parent: &gtk::Widget, file: &gio::File, content: String) {
+    let written = async {
+        let writer = ReplaceFileWriter::open(file).await?;
+        if let Err(error) = writer.write(content.into_bytes()).await {
+            writer.abort().await;
+            return Err(error);
+        }
+        writer.finish().await
+    }
+    .await;
+    if let Err(error) = written {
+        tracing::warn!(%error, path = %file.parse_name(), "history export write failed");
+        let name = file.basename().map_or_else(
+            || file.parse_name().to_string(),
+            |name| name.to_string_lossy().into_owned(),
+        );
+        show_export_failure(
+            parent,
+            &crate::i18n::gettext_f(
+                "Writing {name} failed: {error}",
+                &[("name", &name), ("error", error.message())],
+            ),
+        );
+    }
+}
+
+fn show_export_failure(parent: &gtk::Widget, body: &str) {
+    let alert = adw::AlertDialog::new(Some(&crate::i18n::gettext("Couldn't Export")), Some(body));
+    alert.add_response("close", &crate::i18n::gettext("_Close"));
+    alert.set_default_response(Some("close"));
+    alert.set_close_response("close");
+    alert.present(Some(parent));
 }
 
 fn fts5_query(input: &str) -> String {
@@ -1111,5 +1149,37 @@ fn format_relative_time(when: SystemTime) -> String {
 fn clear_listbox(listbox: &gtk::ListBox) {
     while let Some(child) = listbox.first_child() {
         listbox.remove(&child);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+    use crate::test_support::finish_on_main;
+    use crate::workspace::visible_alert;
+
+    #[gtk4::test]
+    fn history_export_failure_presents_alert() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let window = adw::Window::new();
+        window.present();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = gio::File::for_path(dir.path().join("missing").join("history.csv"));
+        let parent = window.clone().upcast::<gtk::Widget>();
+
+        finish_on_main(Duration::from_secs(10), async move {
+            write_history_export(&parent, &file, "query\n".to_owned()).await;
+        })
+        .expect("the write to end");
+
+        let alert = visible_alert(&window).expect("an alert");
+        assert_eq!(alert.heading().as_deref(), Some("Couldn't Export"));
+        assert!(
+            alert.body().contains("history.csv"),
+            "the alert does not name the file: {}",
+            alert.body()
+        );
     }
 }

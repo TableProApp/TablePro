@@ -4334,6 +4334,7 @@ dependencies = [
 name = "tablepro"
 version = "0.0.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "futures",
  "gettext-rs",

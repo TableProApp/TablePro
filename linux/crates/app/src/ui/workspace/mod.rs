@@ -32,13 +32,14 @@ use libadwaita::prelude::*;
 use relm4::factory::FactoryVecDeque;
 use relm4::{ComponentController, Controller};
 
-use tablepro_core::{EditorSession, QueryResult};
+use tablepro_core::EditorSession;
 use tablepro_session::runtime::WatchForwarder;
 use tablepro_session::{ObjectListSnapshot, Session, SessionHealth, SessionKey};
 use uuid::Uuid;
 
 use super::browse_tab::{BrowseTab, BrowseTabInput};
 use super::editor::SqlEditor;
+use super::export::{ExportLedger, ExportLedgerInit, ExportReporter, ExportSource};
 use super::history_dialog::HistoryDialog;
 use super::host_key_failure::HostKeyFailure;
 use super::host_key_review::HostKeyReviewOutcome;
@@ -48,7 +49,7 @@ use crate::runtime::{DeliverInput, InputSender};
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
 use crate::services::session_context::SessionContext;
 use crate::services::structure_tracker_registry::StructureTrackerRegistry;
-use crate::workspace::{CloseGuards, WorkspaceHandle};
+use crate::workspace::{ApplicationInhibit, CloseBlocker, CloseGuards, WindowInhibitor, WorkspaceHandle};
 
 glib::wrapper! {
     pub struct Workspace(ObjectSubclass<imp::Workspace>)
@@ -122,6 +123,8 @@ pub(crate) struct WorkspaceModel {
     /// The tabs as the close prompts read them.
     window_tabs: Rc<window_tabs::WindowTabs>,
     close_guards: Rc<CloseGuards>,
+    /// The exports running from this workspace's grids.
+    exports: Rc<ExportLedger>,
     /// Whether the window was last told there is something to lose.
     reported_dirty: Cell<Option<bool>>,
     history_dialog: Option<Controller<HistoryDialog>>,
@@ -338,7 +341,7 @@ pub(crate) enum WorkspaceInput {
     },
     RefreshPage,
     ExportResults {
-        result: QueryResult,
+        source: ExportSource,
         name: String,
         target: Option<super::export_dialog::SqlTarget>,
     },
@@ -466,6 +469,14 @@ impl Workspace {
             .ledger()
             .on_change(move |count| saves.deliver(WorkspaceInput::SavesInFlightChanged(count)));
 
+        let exports = ExportLedger::new(ExportLedgerInit {
+            tasks: tasks.clone(),
+            hold: context.hold.clone(),
+            reporter: ExportReporter::new(&window, &imp.toast_overlay.get()),
+            inhibitor: WindowInhibitor::new(ApplicationInhibit::new(&window)),
+        });
+        imp.export_operations_button.bind(&exports.jobs());
+
         let sidebar = sidebar::build(&workspace, &context, &input);
         let actions = workspace_actions::install(&window, &input);
         let history_gate = workspace_actions::spawn_history_gate(&window, history.availability());
@@ -517,6 +528,7 @@ impl Workspace {
             workspace_handle,
             window_tabs,
             close_guards,
+            exports: exports.clone(),
             reported_dirty: Cell::new(None),
             history_dialog: None,
             saved_queries_dialog: None,
@@ -529,6 +541,7 @@ impl Workspace {
             _catalog_watch: catalog_watch,
         };
         imp.model.replace(Some(model));
+        workspace.register_close_blocker(exports);
         workspace
     }
 
@@ -547,6 +560,16 @@ impl Workspace {
     /// The saves and the close prompts' view of the tabs.
     pub(crate) fn handle(&self) -> Option<WorkspaceHandle> {
         self.read(|model| model.workspace_handle.clone())
+    }
+
+    /// The exports running from this workspace.
+    pub(crate) fn exports(&self) -> Option<Rc<ExportLedger>> {
+        self.read(|model| model.exports.clone())
+    }
+
+    /// Have every close of the window ask about `blocker`'s work first.
+    pub(crate) fn register_close_blocker(&self, blocker: Rc<dyn CloseBlocker>) {
+        self.with_model(|model| model.workspace_handle.register_close_blocker(blocker));
     }
 
     /// Write what the workspace shows: the tab list, the editor text,
@@ -708,6 +731,9 @@ impl WorkspaceModel {
             }
         }
         self.close_tabs();
+        // The close asked about them already; one started since has no
+        // window left to finish in.
+        self.exports.cancel_all();
         self.context.active.take();
     }
 
@@ -792,18 +818,18 @@ impl WorkspaceModel {
             WorkspaceInput::OpenHistoryQuery(text) => self.append_editor_tab(Some(text)),
             WorkspaceInput::ReplaceActiveTabQuery(text) => self.on_replace_active_tab_query(text),
             WorkspaceInput::RefreshPage => self.on_refresh_active_tab(),
-            WorkspaceInput::ExportResults { result, name, target } => {
+            WorkspaceInput::ExportResults { source, name, target } => {
                 if let Some(window) = self.window() {
                     let dialect = self.context.active.get().and_then(|session| session.current_dialect());
-                    super::export_dialog::present(
-                        &window,
-                        &self.toast_overlay,
-                        result,
+                    super::export_dialog::present(super::export_dialog::ExportDialogInit {
+                        parent: &window,
+                        exports: &self.exports,
+                        source,
                         name,
                         target,
                         dialect,
-                        &self.settings,
-                    );
+                        settings: &self.settings,
+                    });
                 }
             }
             WorkspaceInput::CopyToClipboard(text) => self.on_copy_to_clipboard(text),

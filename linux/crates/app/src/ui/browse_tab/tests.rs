@@ -668,7 +668,9 @@ fn export_and_save_reach_the_window_as_signals() {
     let saved = std::rc::Rc::new(std::cell::Cell::new(0));
     let export_sink = exported.clone();
     harness.tab().connect_export_results(move |_, request| {
-        export_sink.borrow_mut().push((request.name, request.result.rows.len()));
+        export_sink
+            .borrow_mut()
+            .push((request.name, request.source.row_count()));
     });
     let save_sink = saved.clone();
     harness
@@ -998,19 +1000,19 @@ fn page_export_snapshot_contains_no_hidden_columns() {
     let sink = exported.clone();
     harness
         .tab()
-        .connect_export_results(move |_, request| sink.borrow_mut().push(request.result));
+        .connect_export_results(move |_, request| sink.borrow_mut().push(request.source));
 
     harness.tab().send(BrowseTabInput::ExportCurrentPage);
 
     let exported = exported.borrow();
-    let [result] = exported.as_slice() else {
+    let [crate::ui::export::ExportSource::Rows { columns, rows }] = exported.as_slice() else {
         panic!("one export, not {}", exported.len());
     };
-    let names: Vec<&str> = result.columns.iter().map(|column| column.name.as_str()).collect();
+    let names: Vec<&str> = columns.iter().map(|column| column.name.as_str()).collect();
     assert_eq!(names, ["id", "name"]);
-    assert_eq!(result.rows.len(), 2);
-    for row in &result.rows {
-        visible_only(row);
+    assert_eq!(rows.len(), 2);
+    for row in rows {
+        visible_only(&row.to_values());
     }
 }
 

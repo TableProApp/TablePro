@@ -59,5 +59,5 @@ pub(crate) use self::grid_row_index::GridRowIndex;
 pub(crate) use self::row_key_builder::RowKeyBuilder;
 pub(crate) use self::row_object::RowObject;
 pub(crate) use self::row_snapshot::RowSnapshot;
-pub(crate) use self::selection::{export_snapshot, selected_positions, snapshot_result};
+pub(crate) use self::selection::{export_snapshot, selected_positions};
 pub(crate) use self::tab_grid_context::TabGridContext;
