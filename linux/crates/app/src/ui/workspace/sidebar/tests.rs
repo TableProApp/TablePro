@@ -8,7 +8,7 @@ use gtk4::subclass::prelude::*;
 use gtk4::{gdk, gio, glib};
 use libadwaita as adw;
 use tablepro_core::DriverError;
-use tablepro_core::meta::{ObjectInfo, ObjectKind, SchemaInfo, TableRef};
+use tablepro_core::meta::{ObjectInfo, ObjectKind, ObjectScope, SchemaInfo, TableRef};
 use tablepro_test_support::FakeReply;
 
 use super::object_key::ObjectKey;
@@ -29,12 +29,16 @@ fn object(schema: &str, name: &str) -> ObjectInfo {
     }
 }
 
-fn public() -> [SchemaInfo; 1] {
-    [SchemaInfo {
-        name: "public".to_owned(),
-        is_default: true,
+fn schema(name: &str, is_default: bool) -> SchemaInfo {
+    SchemaInfo {
+        name: name.to_owned(),
+        is_default,
         is_system: false,
-    }]
+    }
+}
+
+fn public() -> [SchemaInfo; 1] {
+    [schema("public", true)]
 }
 
 fn table(name: &str) -> TableRef {
@@ -554,6 +558,13 @@ fn sidebar_lists_every_schema_after_the_connect() {
 
     wait_until(WAIT, || workspace.read(|model| model.sidebar.shown()) == Some(2))
         .expect("the second schema's table listed");
+    let session = workspace
+        .read(|model| model.context.active.get())
+        .flatten()
+        .expect("the session");
+    let listed = session.catalog().subscribe(ObjectScope::AllSchemas).borrow().clone();
+    assert!(listed.generation > 0, "every schema's list was never asked for");
+    assert_eq!(listed.objects.len(), 2);
 }
 
 #[gtk4::test]
@@ -608,6 +619,9 @@ fn a_reconnect_reads_every_schema_again() {
         .flatten()
         .expect("the session");
 
+    let listed = || session.catalog().subscribe(ObjectScope::AllSchemas).borrow().clone();
+    let before = listed().generation;
+
     // What a reconnect does once the new connection read its catalog.
     session.catalog().commit(Vec::new(), vec![object("public", "users")]);
 
@@ -615,4 +629,39 @@ fn a_reconnect_reads_every_schema_again() {
         workspace.read(|model| model.sidebar.shown()) == Some(2)
     })
     .expect("every schema's list read again");
+    assert!(listed().generation > before, "every schema's list was not read again");
+    assert_eq!(listed().objects.len(), 2);
+}
+
+#[gtk4::test]
+fn a_reconnect_names_tabs_by_its_schemas_when_the_list_fails() {
+    let test = TestWindow::connected_with("SidebarReconnectNaming", |script| {
+        script.list_objects.once(FakeReply::ok(vec![object("public", "users")]));
+        script
+            .list_objects
+            .once(FakeReply::err(DriverError::Protocol("catalog gone".to_owned())));
+    });
+    let workspace = test.workspace();
+    wait_until(WAIT, || workspace.read(|model| model.sidebar.shown()) == Some(1)).expect("the table listed");
+    let naming = || workspace.read(|model| model.naming.get());
+    assert_eq!(naming(), Some(TableNaming::Bare));
+    let session = workspace
+        .read(|model| model.context.active.get())
+        .flatten()
+        .expect("the session");
+    let toasts_before = toast_count(&workspace);
+
+    session.catalog().commit(
+        vec![schema("public", true), schema("sales", false)],
+        vec![object("public", "users")],
+    );
+
+    wait_until(WAIT, || toast_count(&workspace) > toasts_before).expect("the list read to fail");
+    wait_until(WAIT, || naming() == Some(TableNaming::SchemaQualified))
+        .expect("the reconnect's schemas never named the tabs");
+    assert_eq!(
+        workspace.read(|model| model.sidebar.shown()),
+        Some(1),
+        "the failure emptied the list"
+    );
 }

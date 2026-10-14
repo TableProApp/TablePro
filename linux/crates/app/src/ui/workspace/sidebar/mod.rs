@@ -199,13 +199,23 @@ impl WorkspaceModel {
         ));
     }
 
-    /// A reconnect committed the default schema's list and left every
-    /// other list stale, so the sidebar's is read again. Until every
-    /// schema's list first lands, the default schema's is what it shows.
+    /// A reconnect committed the default schema's list and its schemas,
+    /// and left every other list stale, so the sidebar's is read again.
+    /// The schemas are read now, under the list on screen, so they name
+    /// the tabs even when every schema's list cannot be read again.
+    /// Until every schema's list first lands, the default schema's is
+    /// what the sidebar shows.
     pub(super) fn on_default_list_committed(&mut self, snapshot: ObjectListSnapshot) {
-        if !self.all_schemas_listed {
-            self.read_sidebar(snapshot.objects);
-        }
+        let objects = match (self.all_schemas_listed, self.context.active.get()) {
+            (true, Some(session)) => session
+                .catalog()
+                .subscribe(ObjectScope::AllSchemas)
+                .borrow()
+                .objects
+                .clone(),
+            _ => snapshot.objects,
+        };
+        self.read_sidebar(objects);
         self.list_all_schemas();
     }
 

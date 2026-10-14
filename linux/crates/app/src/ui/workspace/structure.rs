@@ -67,7 +67,12 @@ impl WorkspaceModel {
 
     /// Right-click → "Drop Table…", or in-tab destructive button.
     pub(super) fn on_drop_table_prompt(&mut self, schema: Option<String>, table: String) {
-        let title = crate::i18n::gettext_f("Drop {table}?", &[("table", &table)]);
+        // The sidebar lists every schema, so two tables can share a name.
+        let named = match &schema {
+            Some(schema) => format!("{schema}.{table}"),
+            None => table.clone(),
+        };
+        let title = crate::i18n::gettext_f("Drop {table}?", &[("table", &named)]);
         let body = crate::i18n::gettext(
             "All rows and the table definition will be removed. This can't be undone from inside TablePro.",
         );
@@ -473,5 +478,22 @@ mod tests {
 
         assert!(answered, "the prompt has no Cancel button");
         assert!(visible_alert(&test.window).is_none(), "the prompt stayed open");
+    }
+
+    #[gtk4::test]
+    fn the_drop_prompt_names_the_schema() {
+        use crate::test_support::wait_until;
+        use crate::ui::session_window::tests::{TestWindow, WAIT};
+        use crate::workspace::{answer, visible_alert};
+
+        let test = TestWindow::connected("DropPromptNamesSchema");
+        test.workspace()
+            .with_model(|model| model.on_drop_table_prompt(Some("sales".to_owned()), "orders".to_owned()));
+        wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the drop prompt");
+
+        let heading = visible_alert(&test.window).and_then(|alert| alert.heading());
+
+        assert_eq!(heading.as_deref(), Some("Drop sales.orders?"));
+        assert!(answer(&test.window, "cancel"), "the prompt has no Cancel button");
     }
 }
