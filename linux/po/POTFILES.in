@@ -226,7 +226,13 @@ crates/app/src/ui/file_reveal/mod.rs
 crates/app/src/ui/file_reveal/recording_revealer.rs
 crates/app/src/ui/file_reveal/reveal_failure_toast.rs
 crates/app/src/ui/file_write.rs
-crates/app/src/ui/filter_strip.rs
+crates/app/src/ui/filter_strip/filter_rule_object.rs
+crates/app/src/ui/filter_strip/imp.rs
+crates/app/src/ui/filter_strip/mod.rs
+crates/app/src/ui/filter_strip/rule_operators.rs
+crates/app/src/ui/filter_strip/rule_row.rs
+crates/app/src/ui/filter_strip/rule_value_editor.rs
+crates/app/src/ui/filter_strip/tests.rs
 crates/app/src/ui/format/mod.rs
 crates/app/src/ui/format/thousands.rs
 crates/app/src/ui/grid/calendar_editor.rs
@@ -472,6 +478,8 @@ data/resources/ui/connect-dialog.ui
 data/resources/ui/connect-failed-page.ui
 data/resources/ui/connecting-page.ui
 data/resources/ui/export-operations-button.ui
+data/resources/ui/filter-rule-row.ui
+data/resources/ui/filter-strip.ui
 data/resources/ui/find-bar.ui
 data/resources/ui/history-dialog.ui
 data/resources/ui/history-row.ui

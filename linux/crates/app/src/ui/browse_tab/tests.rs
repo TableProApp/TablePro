@@ -806,7 +806,7 @@ fn browse_tab_and_filter_strip_freed_after_drop() {
             .model
             .borrow()
             .as_ref()
-            .and_then(|model| model.filter_strip.as_ref().map(|strip| strip.widget.downgrade()))
+            .map(|model| model.filter_strip.downgrade())
             .expect("the filter strip")
     };
     let tab = harness.tab().downgrade();
@@ -1848,8 +1848,10 @@ mod real_keys {
         let strip = {
             use gtk4::subclass::prelude::ObjectSubclassIsExt;
             let model = harness.tab().imp().model.borrow();
-            let strip = model.as_ref().and_then(|model| model.filter_strip.as_ref());
-            strip.expect("the filter strip").widget.clone()
+            model
+                .as_ref()
+                .map(|model| model.filter_strip.clone())
+                .expect("the filter strip")
         };
 
         harness.tab().send(BrowseTabInput::ToggleFilterStrip);
@@ -1883,10 +1885,7 @@ fn refresh_asks_the_window_and_filter_opens_the_strip() {
     let strip_open = || {
         use gtk4::subclass::prelude::ObjectSubclassIsExt;
         let model = harness.tab().imp().model.borrow();
-        model
-            .as_ref()
-            .and_then(|model| model.filter_strip.as_ref())
-            .is_some_and(crate::ui::filter_strip::FilterStrip::is_revealed)
+        model.as_ref().is_some_and(|model| model.filter_strip.revealed())
     };
 
     harness
