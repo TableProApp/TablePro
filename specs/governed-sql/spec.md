@@ -100,7 +100,7 @@ Audit intent is written before driver execution when `intent_is_required` is tru
 
 ## Algorithms & rules
 
-1. Classify the statement. Parser rejection becomes `StatementClass::Unparseable` and is a write.
+1. Classify the statement. Parser rejection becomes `StatementClass::Unparseable` and is a write. A PostgreSQL `SELECT` with a row-locking clause (such as `FOR UPDATE` or `FOR SHARE`) is also treated as a write.
 2. Evaluate policy for the principal, environment, `read_only` flag and connection-scoped `PolicyConfig`.
 3. If the decision is `Deny`, persist terminal audit `denied` and return. Do not execute.
 4. If the decision is `RequireApproval`, wait for `ApprovalOutcome` under `OperationControl`. A cancel during the wait writes terminal `cancelled`; a deadline writes `timed_out`; rejection writes `denied`.
@@ -197,6 +197,7 @@ Each line names the tip proof. When the proof is code only, that is marked.
 - **Read-only token.** GIVEN `TokenPermissions::ReadOnly` WHEN a write tool is called THEN `authorize_scopes` fails and no connection is opened for that write. Proof: `write_without_tools_write_scope_denied`; `a_read_only_token_is_refused_a_delete_before_a_connection_opens`.
 - **Empty allowlist.** GIVEN a token whose `connection_allowlist` is empty WHEN `ensure_connection_allowed` runs THEN connection use is denied. Proof: `empty_allowlist_denies_connection_access` (asserts the error mentions `allowlist`). Code string: `token has an empty connection allowlist`.
 - **Unparseable is a write.** GIVEN SQL the parser rejects WHEN classify runs THEN `StatementClass` is `Unparseable` AND `is_write` is true. Proof: `parse_failure_fail_closed`.
+- **PostgreSQL locking reads are writes.** GIVEN a `SELECT` with a row-locking clause WHEN classification runs THEN policy treats it as a write. Proof: `locking_reads_are_writes_because_a_read_only_session_refuses_them` checks `classify(...).writes()` for `FOR UPDATE`, `FOR SHARE`, `FOR NO KEY UPDATE`, and nested queries; it does not exercise the guard or driver dispatch.
 - **Cancel still audits.** GIVEN a pending approval or governed bulk finish WHEN work is cancelled THEN the journal records terminal `cancelled`. Proof: `cancelling_a_pending_approval_records_a_terminal_cancelled_outcome`; `a_cancelled_import_writes_the_cancelled_terminal_state`. Mapping `DriverError::Cancelled` after intent to journal `cancelled` is in `controlled_error_terminal_status` and has no dedicated post-intent execute test.
 - **Cursor pages stay governed.** GIVEN a single read in a read-only snapshot WHEN pages are fetched THEN every page is masked and all records share one operation ID. A page failure, cancellation or timeout closes the cursor and records the outcome. Proof: `cursor_masks_every_page_and_keeps_one_audit_operation_id`, `a_page_error_closes_the_cursor_and_records_failure_after_prior_pages`, `cancellation_after_a_delivered_page_closes_and_audits_the_cursor`, and `a_cursor_timeout_closes_and_audits_the_cursor`.
 - **Unsupported cursor stays refused.** GIVEN a driver without cursor support WHEN a cursor is opened THEN it returns `Unsupported` without materializing the query. Proof: `unsupported_cursor_is_refused_without_materializing_the_query`.
