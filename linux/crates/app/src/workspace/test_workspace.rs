@@ -119,6 +119,7 @@ pub(crate) struct Workspace {
     pub tracker: TabTrackerHandle,
     pub structure: StructureTrackerHandle,
     pub tabs: Rc<Tabs>,
+    structures: Rc<StructureTrackerRegistry>,
     pub settled: Rc<RefCell<Vec<SaveSettled>>>,
     pub events: Rc<RefCell<Vec<WorkspaceEvent>>>,
     pub fake: FakeSession,
@@ -178,7 +179,7 @@ impl Workspace {
             hold: Rc::new(hold.clone()),
             history: None,
             rows,
-            structures,
+            structures: structures.clone(),
             directory: tabs.clone(),
             events: Rc::new(move |event| {
                 if let WorkspaceEvent::SaveSettled(settled) = &event {
@@ -197,6 +198,7 @@ impl Workspace {
             tracker,
             structure,
             tabs,
+            structures,
             settled,
             events,
             fake,
@@ -214,6 +216,19 @@ impl Workspace {
             open_transaction: true,
         });
         id
+    }
+
+    /// A structure tab after the first, holding `pending`.
+    pub(crate) fn add_structure_tab(&self, title: &str, pending: PendingStructure) -> StructureTrackerHandle {
+        let id = Uuid::new_v4();
+        let tracker = self.structures.register(id);
+        tracker.set_pending(Some(pending));
+        self.tabs.0.borrow_mut().push(TabEntry {
+            id,
+            title: title.to_owned(),
+            open_transaction: false,
+        });
+        tracker
     }
 
     /// Ask the tab to save, as its Save button does, for a save that

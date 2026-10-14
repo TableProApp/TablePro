@@ -53,24 +53,11 @@ impl CloseGuard {
                     SaveChoice::Cancel => return CloseDecision::Cancelled,
                     SaveChoice::Proceed { save, discard } => {
                         handle.discard(&discard, false);
-                        let refused: Vec<(Uuid, SaveRejection)> = save
-                            .iter()
-                            .zip(handle.save(parent, &save).await)
-                            .filter_map(|(tab, start)| match start {
-                                SaveStart::Rejected(rejection) => Some((*tab, rejection)),
-                                SaveStart::Started(_) | SaveStart::NothingToSave => None,
-                            })
-                            .collect();
+                        let (refused, declined) = start_saves(parent, handle, &save).await;
                         if !refused.is_empty() {
-                            // A declined review is the user keeping the
-                            // window open, not a save that failed.
-                            let failed: Vec<(Uuid, SaveRejection)> = refused
-                                .into_iter()
-                                .filter(|(_, rejection)| *rejection != SaveRejection::ReviewDeclined)
-                                .collect();
-                            if !failed.is_empty() {
-                                show_refused(parent, &tabs, &failed);
-                            }
+                            show_refused(parent, &tabs, &refused);
+                        }
+                        if declined || !refused.is_empty() {
                             return CloseDecision::Cancelled;
                         }
                     }
@@ -78,6 +65,28 @@ impl CloseGuard {
             }
         }
     }
+}
+
+/// Start each save in turn, and give back the ones refused and whether
+/// the user declined a review. A declined review is the user keeping the
+/// window open, not a save that failed, so the saves after it are not
+/// started and their reviews never shown.
+async fn start_saves(
+    parent: &gtk::Widget,
+    handle: &WorkspaceHandle,
+    tabs: &[Uuid],
+) -> (Vec<(Uuid, SaveRejection)>, bool) {
+    let mut refused = Vec::new();
+    for tab in tabs {
+        for start in handle.save(parent, &[*tab]).await {
+            match start {
+                SaveStart::Rejected(SaveRejection::ReviewDeclined) => return (refused, true),
+                SaveStart::Rejected(rejection) => refused.push((*tab, rejection)),
+                SaveStart::Started(_) | SaveStart::NothingToSave => {}
+            }
+        }
+    }
+    (refused, false)
 }
 
 fn ids(tabs: &[DirtyTab]) -> Vec<Uuid> {
@@ -386,5 +395,22 @@ mod tests {
         );
         assert_eq!(CallCounters::get(&workspace.counters().write_batch), 0);
         assert_eq!(workspace.structure.pending_state(), PendingState::Unsaved);
+    }
+
+    #[gtk4::test]
+    fn a_declined_review_stops_the_saves_after_it() {
+        let workspace = Workspace::open_structure(ConnectionScript::default(), edited_table(without_n));
+        let second = workspace.add_structure_tab("u", edited_table(without_n));
+        let window = window();
+
+        let decision = guard(&window, &workspace.handle, CloseScope::Window);
+        let asked = answer_next(&window, "Save Changes?", "save", None);
+        answer_next(&window, "Apply 1 Change to “t”?", "cancel", Some(&asked));
+
+        assert_eq!(decided(&decision), CloseDecision::Cancelled);
+        crate::test_support::drain_main_context();
+        assert!(visible_alert(&window).is_none(), "the next tab's review opened");
+        assert_eq!(CallCounters::get(&workspace.counters().write_batch), 0);
+        assert_eq!(second.pending_state(), PendingState::Unsaved);
     }
 }
