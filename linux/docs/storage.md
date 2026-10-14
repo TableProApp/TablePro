@@ -250,6 +250,7 @@ Schema id and path: `app.tablepro.TablePro`.
 | `default-page-size` | `u` | `1000` | 100 to 100000 |
 | `confirm-destructive` | `b` | `true` | |
 | `restore-session` | `b` | `true` | |
+| `connect-dialog-driver` | `s` | `postgres` | |
 | `save-query-history` | `b` | `true` | |
 | `history-retention-days` | `u` | `30` | 0 to 365 |
 | `query-timeout-secs` | `u` | `60` | 0 to 3600 |
@@ -292,8 +293,11 @@ High-churn keyed data stays in files: column widths, per-table filters and works
 `StorageError` is the crate's `thiserror` enum:
 
 - Files: `Io` and `Permissions` with the path, `Write` with the path and GLib's error, `Serde`, `DocumentUnavailable` for a JSON document that cannot be used, and `DraftNotUtf8`.
-- The history database: `Database`, `HistoryNewerThanApp`, `HistoryMigration`, `TooLarge` and `NotInitialised`.
-- The rest: `Schema`, `NotFound` and `EmptyName` for the saved queries, `Encode` for a history export, and `Settings`.
+- `Schema` with a reason: a Reset of a connection list that is readable, a name `DraftScope::new` refuses, or, from `tablepro-session`, a connections write task that failed.
+- The history database: `Database`, `HistoryNewerThanApp`, `HistoryMigration`, and `TooLarge` for a query over the size limit.
+- The saved queries: `EmptyName`, `NotFound`, and `TooLarge` for a name or query over its limit.
+- `Encode` for a history CSV export.
+- `NotInitialised` and `Settings` are declared, but nothing returns them: `AppSettings` returns its own `SettingsError`.
 
 A keyring failure is a `SecretError` from `tablepro-core`, not a `StorageError`. UI code matches on the variants to say something useful, never the raw `Display` text. See [error-handling.md](error-handling.md).
 

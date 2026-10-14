@@ -319,7 +319,7 @@ Editor tests run on a `FakeEditorSession` scripted with `Replies<FakeRun>`, neve
 - `texts` returns what each run was sent, so a test asserts the split itself, such as `GO 2` sending its batch twice. `stopped_runs` counts the runs a cancel or a timeout ended, and `close_count` the closes.
 - The fake keeps the session's rules: a run while another runs gets `EditorSessionBusy`, and a lost session stays lost.
 
-The tests in `crates/app/src/ui/editor/script_runner.rs` drive `run_batches` under tokio and fold its events into a `RunLog`. The widget tests in `crates/app/src/ui/editor/tests.rs` build a `SqlEditor` over a `Session` whose `ConnectionScript` hands out the fake from `open_editor_session`, run it, wait for `run-state-changed`, then check the results list, the transaction label, the history and what was sent.
+The tests in `crates/app/src/ui/editor/script_runner.rs` drive `run_batches` under tokio and fold its events into a `RunLog`. The widget tests in `crates/app/src/ui/editor/tests.rs` build a `SqlEditor` over a `Session` whose `ConnectionScript` hands out the fake from `open_editor_session`, run it, wait until `is_running` is false, then check the results list, the transaction label, the history and what was sent.
 
 ### Structure review
 

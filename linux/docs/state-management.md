@@ -96,7 +96,7 @@ After a run that left its session `Lost`, the runner lets it go and asks the win
 ### What a run sends
 
 1. **Scope.** Run sends the selection when there is one and the whole buffer otherwise (`run_scope::for_run`). Run at Cursor selects the statement under the cursor and sends that. `ScopedText` keeps where the text starts in the buffer, in characters, so a server's error position becomes a buffer position.
-2. **Plan.** `plan_batches` reads the text with `ScriptPlan` and the grammar of the window session's dialect, or PostgreSQL's when there is none. Each `RunBatch` is one statement on PostgreSQL, MySQL, SQLite and ClickHouse, and one `GO` batch on SQL Server, which `GO <count>` repeats. psql, mysql, sqlite3 and sqlcmd send a script the same way: no multi-statement text reaches the server, so an implicit transaction never rolls back statements that already reported success. The plan is built again at every run, never kept.
+2. **Plan.** `plan_batches` reads the text with `ScriptPlan` and the grammar of the window session's dialect, or PostgreSQL's when there is none. Each `RunBatch` is one statement on PostgreSQL, MySQL, SQLite and ClickHouse, and one `GO` batch on SQL Server, which `GO <count>` repeats. psql, mysql and sqlite3 send a script the same way: no multi-statement text reaches the server, so an implicit transaction never rolls back statements that already reported success. On SQL Server the unit is the `GO` batch, as in sqlcmd: a batch reaches the server whole, whatever `;` it holds. The plan is built again at every run, never kept.
 3. **Warnings.** A string, quoted name, comment or dollar quote that never closes adds a warning line naming its line. The text is still sent, so the server has the last word.
 4. **Runs.** `run_batches` sends each batch as one `EditorSession::run`, with the statement timeout from Preferences, the editor's row limit and a child of the run's cancel token. A run that gets `EditorSessionBusy`, because the last one is still settling, is shown as failed and not sent again.
 5. **Stopping.** A failed statement stops the script, since the ones after it were written assuming it worked. SQL Server batches run on their own, as in sqlcmd, so a failed `GO` batch goes on to the next (`BatchErrorPolicy::ContinueNextBatch`). A cancel, a timeout or a session error stops the script on every engine. Each batch never sent gets a Not Run line.
@@ -114,7 +114,7 @@ Events cross to the GTK thread through a channel. `BatchCollector` turns one bat
 - When the run ends, the first failure or timeout is selected, or else the first line. A failure's page offers Go to Error when the server named a position.
 - A result set's page is a read-only grid of the rows the run kept, under a `ResultLimitBanner` when the row limit cut it short.
 
-A finished run goes to `HistoryService::record` with the text that was sent, judged by the dialect of the session that ran it, not the window's current one ([storage.md](storage.md#what-goes-into-the-history)).
+A finished run goes to `HistoryService::record` with the text that was run, `DELIMITER` and `GO` lines included, judged by the dialect of the session that ran it, not the window's current one ([storage.md](storage.md#what-goes-into-the-history)).
 
 ### Open transactions
 
