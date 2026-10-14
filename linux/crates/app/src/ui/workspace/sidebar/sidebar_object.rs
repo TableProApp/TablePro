@@ -48,12 +48,22 @@ impl SidebarObject {
         self.imp().kind.get().copied().unwrap_or(ObjectKind::Table)
     }
 
-    /// What the row's tooltip and the tab it opens call the table.
+    /// What the row's tooltip calls the table.
     pub(crate) fn qualified_name(&self) -> String {
         let table = self.table_ref();
         match table.schema {
             Some(schema) => format!("{schema}.{}", table.name),
             None => table.name,
+        }
+    }
+
+    /// What a screen reader says the row is, which sighted users read
+    /// from its icon.
+    pub(crate) fn kind_name(&self) -> String {
+        match self.kind() {
+            ObjectKind::View => crate::i18n::pgettext("object kind", "View"),
+            ObjectKind::MaterializedView => crate::i18n::pgettext("object kind", "Materialized View"),
+            _ => crate::i18n::pgettext("object kind", "Table"),
         }
     }
 }
@@ -116,6 +126,10 @@ mod tests {
         assert_eq!(default.icon_name(), "view-grid-symbolic");
         assert_eq!(other.icon_name(), "view-paged-symbolic");
         assert_eq!(system.icon_name(), "view-list-symbolic");
+        assert_eq!(
+            [default.kind_name(), other.kind_name(), system.kind_name()],
+            ["Table", "Materialized View", "View"]
+        );
         assert_eq!(default.table_ref(), TableRef::new(Some("public".to_owned()), "Users"));
     }
 

@@ -121,12 +121,12 @@ fn names(count: usize) -> Vec<String> {
     (0..count).map(|index| format!("t{index:05}")).collect()
 }
 
-#[gtk4::test]
-fn empty_filter_shows_placeholder() {
-    let shown = Shown::new(&["orders", "users"], every_affordance());
-    let stack = shown.view.widget().clone();
-    let status = || {
-        stack.visible_child().and_downcast::<adw::StatusPage>().map(|page| {
+/// The placeholder's title and description, when it shows.
+fn placeholder(view: &SidebarView) -> Option<(String, Option<String>)> {
+    view.widget()
+        .visible_child()
+        .and_downcast::<adw::StatusPage>()
+        .map(|page| {
             (
                 page.title().to_string(),
                 page.description()
@@ -134,12 +134,16 @@ fn empty_filter_shows_placeholder() {
                     .map(|text| text.to_string()),
             )
         })
-    };
-    assert_eq!(status(), None, "a list with rows shows its placeholder");
+}
+
+#[gtk4::test]
+fn empty_filter_shows_placeholder() {
+    let shown = Shown::new(&["orders", "users"], every_affordance());
+    assert_eq!(placeholder(&shown.view), None, "a list with rows shows its placeholder");
 
     shown.view.set_query("nothing like it");
     assert_eq!(
-        status(),
+        placeholder(&shown.view),
         Some((
             "No Matching Tables".to_owned(),
             Some("Try a different search.".to_owned())
@@ -148,7 +152,19 @@ fn empty_filter_shows_placeholder() {
 
     shown.view.set_query("");
     shown.view.apply_objects(&[], &public());
-    assert_eq!(status(), Some(("No Tables".to_owned(), None)));
+    assert_eq!(placeholder(&shown.view), Some(("No Tables".to_owned(), None)));
+}
+
+#[gtk4::test]
+fn clearing_a_search_over_an_emptied_list_says_there_are_no_tables() {
+    let shown = Shown::new(&["orders"], every_affordance());
+    shown.view.set_query("zzz");
+    // An empty list under a search that matched nothing: no row changes.
+    shown.view.apply_objects(&[], &public());
+
+    shown.view.set_query("");
+
+    assert_eq!(placeholder(&shown.view), Some(("No Tables".to_owned(), None)));
 }
 
 #[gtk4::test]
@@ -213,7 +229,8 @@ fn ctrl_click_and_middle_click_open_a_new_tab() {
 
     assert!(inner.pressed(1, gdk::BUTTON_PRIMARY, gdk::ModifierType::CONTROL_MASK, None));
     assert!(!inner.pressed(1, gdk::BUTTON_PRIMARY, gdk::ModifierType::empty(), None));
-    assert!(inner.released(2, gdk::BUTTON_MIDDLE));
+    assert!(!inner.pressed(2, gdk::BUTTON_MIDDLE, gdk::ModifierType::empty(), None));
+    assert!(inner.released(gdk::BUTTON_MIDDLE));
 
     assert_eq!(
         shown.taken(),
@@ -222,6 +239,32 @@ fn ctrl_click_and_middle_click_open_a_new_tab() {
             SidebarEvent::OpenInNewTab(table("c"))
         ]
     );
+}
+
+#[gtk4::test]
+fn a_middle_click_opens_the_table_it_was_pressed_on() {
+    let shown = Shown::new(&["a", "b", "c"], every_affordance());
+    let inner = shown.view.inner().clone();
+    assert!(
+        !inner.released(gdk::BUTTON_MIDDLE),
+        "a release with no press opened a table"
+    );
+
+    inner.pressed(1, gdk::BUTTON_MIDDLE, gdk::ModifierType::empty(), None);
+    // A refresh lands between the press and the release, and binds the
+    // pressed row to another table.
+    shown.view.apply_objects(
+        &[
+            object("public", "a"),
+            object("public", "aa"),
+            object("public", "b"),
+            object("public", "c"),
+        ],
+        &public(),
+    );
+
+    assert!(inner.released(gdk::BUTTON_MIDDLE));
+    assert_eq!(shown.taken(), [SidebarEvent::OpenInNewTab(table("b"))]);
 }
 
 #[gtk4::test]
@@ -360,6 +403,31 @@ fn keyboard_menu_opens_for_the_focused_row() {
         .expect("the action");
     assert_eq!(menu_table(&shown), Some(ObjectKey(table("c"))));
     shown.popover().popdown();
+}
+
+#[gtk4::test]
+fn a_row_tells_a_screen_reader_its_kind() {
+    let shown = Shown::new(&[], every_affordance());
+    shown.view.apply_objects(
+        &[
+            object("public", "orders"),
+            ObjectInfo {
+                schema: Some("public".to_owned()),
+                name: "totals".to_owned(),
+                kind: ObjectKind::View,
+            },
+        ],
+        &public(),
+    );
+
+    wait_until(WAIT, || shown.view.row_descriptions().len() == 2).expect("both rows bound");
+    assert_eq!(
+        shown.view.row_descriptions(),
+        [
+            ("orders".to_owned(), "Table".to_owned()),
+            ("totals".to_owned(), "View".to_owned())
+        ]
+    );
 }
 
 #[gtk4::test]

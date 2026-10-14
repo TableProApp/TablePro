@@ -52,6 +52,7 @@ pub(super) fn row_factory(view: Weak<SidebarInner>) -> gtk::SignalListItemFactor
             label.set_label(&object.name());
         }
         row.set_tooltip_text(Some(&object.qualified_name()));
+        item.set_accessible_description(&object.kind_name());
     });
     factory
 }
@@ -78,12 +79,11 @@ fn click_gesture(view: Weak<SidebarInner>, item: &gtk::ListItem) -> gtk::Gesture
             gesture.set_state(gtk::EventSequenceState::Claimed);
         }
     });
-    let released_item = item.downgrade();
     gesture.connect_released(move |gesture, _, _, _| {
-        let (Some(view), Some(item)) = (view.upgrade(), released_item.upgrade()) else {
+        let Some(view) = view.upgrade() else {
             return;
         };
-        if view.released(item.position(), gesture.current_button()) {
+        if view.released(gesture.current_button()) {
             gesture.set_state(gtk::EventSequenceState::Claimed);
         }
     });

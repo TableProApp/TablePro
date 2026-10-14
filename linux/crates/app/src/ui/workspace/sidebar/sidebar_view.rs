@@ -44,6 +44,9 @@ pub(crate) struct SidebarInner {
     active: RefCell<Option<TableRef>>,
     /// The recycled rows, to point the keyboard's menu at one.
     rows: RefCell<Vec<glib::WeakRef<gtk::ListItem>>>,
+    /// The table under a middle press. A new list can bind its row to
+    /// another table before the release.
+    middle_pressed: RefCell<Option<TableRef>>,
     handlers: RefCell<Vec<(glib::WeakRef<glib::Object>, glib::SignalHandlerId)>>,
     hover: RefCell<Option<gtk::EventControllerMotion>>,
 }
@@ -86,6 +89,7 @@ impl SidebarView {
             header_factory: RefCell::new(None),
             active: RefCell::new(None),
             rows: RefCell::new(Vec::new()),
+            middle_pressed: RefCell::new(None),
             handlers: RefCell::new(Vec::new()),
             hover: RefCell::new(None),
         });
@@ -111,11 +115,15 @@ impl SidebarView {
     pub(crate) fn apply_objects(&self, objects: &[ObjectInfo], schemas: &[SchemaInfo]) {
         self.inner.model.replace(objects, schemas);
         self.inner.reselect();
+        // An empty list replacing an empty list changes no item, so the
+        // list's signal never says the placeholder is out of date.
+        self.inner.refresh_placeholder();
     }
 
     pub(crate) fn set_query(&self, query: &str) {
         self.inner.model.set_query(query);
         self.inner.reselect();
+        self.inner.refresh_placeholder();
     }
 
     /// Select the row of the table the tab in front shows, or none for
@@ -177,6 +185,21 @@ impl SidebarView {
         self.inner.model.shown()
     }
 
+    /// Each bound row's table name and what a screen reader says it is.
+    #[cfg(test)]
+    pub(crate) fn row_descriptions(&self) -> Vec<(String, String)> {
+        let mut found: Vec<(String, String)> = self
+            .inner
+            .bound_rows()
+            .filter_map(|item| {
+                let object = item.item().and_downcast::<super::sidebar_object::SidebarObject>()?;
+                Some((object.name(), item.accessible_description().to_string()))
+            })
+            .collect();
+        found.sort();
+        found
+    }
+
     #[cfg(test)]
     pub(crate) fn selected_table(&self) -> Option<TableRef> {
         let model = &self.inner.model;
@@ -215,16 +238,27 @@ impl SidebarInner {
                 self.open_in_new_tab(position);
                 true
             }
+            gdk::BUTTON_MIDDLE => {
+                self.middle_pressed
+                    .replace(self.model.object_at(position).map(|object| object.table_ref()));
+                false
+            }
             _ => false,
         }
     }
 
-    /// A middle click opens the table in a new tab, as a link does.
-    pub(super) fn released(&self, position: u32, button: u32) -> bool {
+    /// A middle click opens the table it was pressed on in a new tab, as
+    /// a link does.
+    pub(super) fn released(&self, button: u32) -> bool {
         if button != gdk::BUTTON_MIDDLE {
             return false;
         }
-        self.open_in_new_tab(position);
+        let Some(table) = self.middle_pressed.take() else {
+            return false;
+        };
+        if self.model.kind_of(&table).is_some() {
+            (self.events)(SidebarEvent::OpenInNewTab(table));
+        }
         true
     }
 
