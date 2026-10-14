@@ -12,11 +12,11 @@ For MySQL and MariaDB, choose a local socket file instead of a host to connect t
 
 Passwords are kept in your desktop keyring, never in BookiE's own files.
 
-- **SSH**: open the SSH section of the form to reach a database through one or more SSH hosts. BookiE asks before trusting a host key it has not seen.
+- **SSH**: the form configures one SSH host. The built-in transport can use saved multi-hop routes, but the form cannot edit them yet. System OpenSSH uses jump hosts from your SSH configuration. BookiE asks before trusting a built-in host key it has not seen.
 - **TLS**: choose how strictly the server certificate is checked. "Verify full" checks both the certificate authority and the host name.
 - **Environment and read-only**: mark a connection as production, staging or local, and tick **Read-only** to refuse every change on it.
 - **Import from URL** fills the form from a connection URL such as `postgres://user@host:5432/db`.
-- **Share connections**: export or import connections from the menu in the saved list. Give a passphrase to include saved passwords; without one, passwords stay behind.
+- **Share connections**: export or import connections from the menu in the saved list. Encrypt the export with a passphrase to include stored database and SSH credentials. Plaintext exports contain no credentials.
 
 ## Browse a table
 
