@@ -154,7 +154,7 @@ fn evaluate_categorical_decisions(
         });
     }
 
-    if facts.class == StatementClass::Administrative && principal.is_agent() {
+    if principal.is_agent() && (facts.class == StatementClass::Administrative || effects.contains(Effects::ADMIN)) {
         decisions.push(Decision::Deny {
             rule: "agent_admin_denied".into(),
             message: "agents may not run administrative database operations".into(),
