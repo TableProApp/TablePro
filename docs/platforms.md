@@ -56,7 +56,7 @@ Flatpak and Flathub are left out of 0.2.0 ([PRODUCT.md](../PRODUCT.md)). The Fla
 3. `appstreamcli validate apps/linux/flatpak/com.tablepro.linux.metainfo.xml`.
 4. Fork flathub/flathub, open the manifest PR, attach a release blurb.
 
-Permissions stay minimal: network, home (saved connections, SSH keys) and `org.freedesktop.secrets`. The manifests grant `--socket=ssh-auth` for the built-in client's agent authentication. The system OpenSSH option needs a host `ssh` and must refuse explicitly in the sandbox instead of falling back to the built-in client.
+The current manifests allow network and IPC, X11/Wayland display and graphics access, home-directory access, read-only host configuration, the Kerberos credential-cache socket, `org.freedesktop.secrets`, and the SSH-agent socket. Home-directory access versus portal-only access remains undecided (PKG-8). The `ssh-auth` socket supports the built-in client's agent authentication. The system OpenSSH option needs a host `ssh` executable and must refuse explicitly in the sandbox instead of falling back to the built-in client.
 
 ## Accessibility
 
