@@ -34,9 +34,9 @@ impl BrowseActions {
     }
 }
 
-/// The tab's `browse` group and the tab's own keys for it. The grid's
-/// keys go on each column view the tab builds, through
-/// `install_grid_shortcuts`.
+/// The tab's `browse` group, the tab's own keys for it and the keys its
+/// buttons announce. The grid's keys go on each column view the tab
+/// builds, through `install_grid_shortcuts`.
 pub(super) fn install_browse_actions(tab: &BrowseTab) -> BrowseActions {
     let group = gio::SimpleActionGroup::new();
     let add = |name: &str, input: fn() -> BrowseTabInput| {
@@ -96,6 +96,16 @@ pub(super) fn install_browse_actions(tab: &BrowseTab) -> BrowseActions {
     }
     tab.insert_action_group("browse", Some(&group));
     tab.add_controller(local_shortcut_controller(ShortcutOwner::BrowseTab));
+    for (button, action) in [
+        (&imp.insert_button, "browse.insert-row"),
+        (&imp.delete_button, "browse.delete-rows"),
+        (&imp.filter_button, "browse.filter"),
+        (&imp.prev_button, "browse.previous-page"),
+        (&imp.next_button, "browse.next-page"),
+        (&imp.save_button, "browse.save"),
+    ] {
+        crate::ui::a11y::announce_key_shortcuts(&button.get(), action);
+    }
     actions
 }
 

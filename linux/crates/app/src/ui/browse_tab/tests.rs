@@ -1843,6 +1843,30 @@ fn a_read_only_tab_refuses_insert_row() {
     );
 }
 
+#[gtk4::test]
+fn browse_buttons_announce_their_keys() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
+    let imp = harness.tab().imp();
+
+    for (name, button) in [
+        ("insert row", imp.insert_button.get()),
+        ("delete rows", imp.delete_button.get()),
+        ("filter", imp.filter_button.get()),
+        ("previous page", imp.prev_button.get()),
+        ("next page", imp.next_button.get()),
+        ("save", imp.save_button.get()),
+    ] {
+        assert!(
+            gtk4::test_accessible_has_property(&button, gtk4::AccessibleProperty::KeyShortcuts),
+            "the {name} button announces no keys"
+        );
+    }
+}
+
 fn action_enabled(tab: &BrowseTab, name: &str) -> bool {
     use gtk4::subclass::prelude::ObjectSubclassIsExt;
     let model = tab.imp().model.borrow();
