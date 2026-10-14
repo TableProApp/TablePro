@@ -1,15 +1,10 @@
-//
-//  SidebarScopeControlTests.swift
-//  TableProTests
-//
-
 import AppKit
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 /// The Tables and Favorites choice, in its own row at the top of the sidebar.
-@Suite("Sidebar scope control", .serialized)
 @MainActor
 struct SidebarScopeControlTests {
     /// The sidebar's own minimum, and the insets the row is laid out with.
@@ -188,13 +183,10 @@ struct SidebarScopeControlTests {
 
     /// The state reaches the control through a run-loop hop and then a main-actor job, so the test
     /// has to give the main thread back rather than spin it: a run loop spun inside this test runs
-    /// no main-actor job, measured, because the test is one. Bounded by a count of short sleeps.
+    /// no main-actor job, measured, because the test is one.
     private static func waitFor(_ condition: () -> Bool) async -> Bool {
-        for _ in 0..<200 {
-            if condition() { return true }
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-        return condition()
+        let met: Void? = try? await waitUntil { condition() }
+        return met != nil
     }
 
     /// The two labels in every language the app catalog carries, English included.

@@ -1,8 +1,3 @@
-//
-//  WindowSidebarStateSeedingTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import Testing
@@ -11,12 +6,14 @@ import Testing
 /// opened", so the seed has to record that it ran rather than infer it from emptiness.
 @MainActor
 struct WindowSidebarStateSeedingTests {
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
     private func makeDefaults() -> UserDefaults {
-        let suiteName = "com.TablePro.tests.sidebarSeeding.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suiteName) else {
-            fatalError("Could not create a test UserDefaults suite")
-        }
-        return defaults
+        suite.defaults
     }
 
     @Test("Seeding opens the browsed database and schema")

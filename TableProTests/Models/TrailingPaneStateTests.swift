@@ -1,23 +1,10 @@
-//
-//  TrailingPaneStateTests.swift
-//  TableProTests
-//
-
 import Combine
 import Foundation
 @testable import TablePro
 import TableProPluginKit
 import Testing
 
-@Suite("Trailing pane state", .serialized)
 struct TrailingPaneStateTests {
-    private func makeDefaults() throws -> UserDefaults {
-        let suite = "TrailingPaneStateTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
-        return defaults
-    }
-
     @Test("teardown is idempotent")
     @MainActor
     func teardownIdempotent() {
@@ -147,7 +134,8 @@ struct TrailingPaneStateTests {
     @Test("The surface defaults to the inspector when nothing is stored")
     @MainActor
     func surfaceDefaults() throws {
-        let defaults = try makeDefaults()
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let state = TrailingPaneState(connectionId: UUID(), defaults: defaults)
         #expect(state.surface == .inspector)
         #expect(state.inspector.viewMode == .fields)
@@ -156,7 +144,8 @@ struct TrailingPaneStateTests {
     @Test("The surface round-trips per connection")
     @MainActor
     func surfaceRoundTrip() throws {
-        let defaults = try makeDefaults()
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let connectionId = UUID()
         TrailingPaneState(connectionId: connectionId, defaults: defaults).surface = .assistant
         let restored = TrailingPaneState(connectionId: connectionId, defaults: defaults)
@@ -166,7 +155,8 @@ struct TrailingPaneStateTests {
     @Test("The view mode round-trips per connection")
     @MainActor
     func viewModeRoundTrip() throws {
-        let defaults = try makeDefaults()
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let connectionId = UUID()
         TrailingPaneState(connectionId: connectionId, defaults: defaults).inspector.viewMode = .json
         let restored = TrailingPaneState(connectionId: connectionId, defaults: defaults)
@@ -176,7 +166,8 @@ struct TrailingPaneStateTests {
     @Test("The surface is isolated per connection")
     @MainActor
     func surfaceIsolation() throws {
-        let defaults = try makeDefaults()
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let first = UUID()
         let second = UUID()
         TrailingPaneState(connectionId: first, defaults: defaults).surface = .assistant
@@ -187,7 +178,8 @@ struct TrailingPaneStateTests {
     @Test("Nothing is persisted without a connection id")
     @MainActor
     func noConnectionMeansNoPersistence() throws {
-        let defaults = try makeDefaults()
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let state = TrailingPaneState(connectionId: nil, defaults: defaults)
         state.surface = .assistant
         state.inspector.viewMode = .json
@@ -204,7 +196,8 @@ struct TrailingPaneStateTests {
     @Test("A connection last left on AI Chat comes back on the assistant")
     @MainActor
     func migratesAIChatToTheAssistant() throws {
-        let defaults = try makeDefaults()
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let connectionId = UUID()
         defaults.set("AI Chat", forKey: TrailingPaneState.legacyActiveTabKeyPrefix + connectionId.uuidString)
 
@@ -216,7 +209,8 @@ struct TrailingPaneStateTests {
     @Test("A connection last left on JSON comes back on the inspector showing JSON")
     @MainActor
     func migratesJSONToTheInspectorsJSONMode() throws {
-        let defaults = try makeDefaults()
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let connectionId = UUID()
         defaults.set("JSON", forKey: TrailingPaneState.legacyActiveTabKeyPrefix + connectionId.uuidString)
 
@@ -229,7 +223,8 @@ struct TrailingPaneStateTests {
     @Test("A connection last left on Details comes back on the inspector's fields")
     @MainActor
     func migratesDetailsToTheInspector() throws {
-        let defaults = try makeDefaults()
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let connectionId = UUID()
         defaults.set("Details", forKey: TrailingPaneState.legacyActiveTabKeyPrefix + connectionId.uuidString)
 
@@ -242,7 +237,8 @@ struct TrailingPaneStateTests {
     @Test("The legacy key is consumed so it cannot override a later choice")
     @MainActor
     func migrationConsumesTheLegacyKey() throws {
-        let defaults = try makeDefaults()
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let connectionId = UUID()
         let legacyKey = TrailingPaneState.legacyActiveTabKeyPrefix + connectionId.uuidString
         defaults.set("AI Chat", forKey: legacyKey)

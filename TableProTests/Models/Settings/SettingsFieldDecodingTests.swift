@@ -181,7 +181,8 @@ struct AISettingsProviderDecodingTests {
 
     @Test("Storage loads the AI category around an unknown provider row")
     func storageLoadsAroundUnknownRow() throws {
-        let defaults = try #require(UserDefaults(suiteName: "settings-decode-\(UUID().uuidString)"))
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let storage = AppSettingsStorage(userDefaults: defaults)
         var stored = AISettings.default
         stored.enabled = false

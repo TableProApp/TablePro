@@ -1,15 +1,11 @@
-//
-//  KeychainHelperTests.swift
-//  TableProTests
-//
-
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 struct KeychainHelperTests {
-    private let helper = KeychainHelper.shared
+    /// A service of its own, so nothing a case writes lands among the app's real items.
+    private let helper = KeychainHelper(service: "com.TablePro.tests.\(UUID().uuidString)")
 
     @Test("writeString and readString round trip")
     func writeAndReadStringRoundTrip() {

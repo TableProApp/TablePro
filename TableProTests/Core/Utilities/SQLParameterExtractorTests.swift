@@ -3,157 +3,123 @@
 //  TableProTests
 //
 
+import Foundation
 @testable import TablePro
 import TableProPluginKit
-import XCTest
+import Testing
 
-final class SQLParameterExtractorTests: XCTestCase {
+struct SQLParameterExtractorTests {
     // MARK: - extractParameters
 
-    func testNoParameters() {
-        XCTAssertEqual(SQLParameterExtractor.extractParameters(from: "SELECT 1"), [])
+    @Test
+    func noParameters() {
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT 1") == [])
     }
 
-    func testSingleParameter() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "SELECT * FROM t WHERE id = :id"),
-            ["id"]
-        )
+    @Test
+    func singleParameter() {
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT * FROM t WHERE id = :id") == ["id"])
     }
 
-    func testMultipleParameters() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "WHERE id = :id AND name = :name"),
-            ["id", "name"]
-        )
+    @Test
+    func multipleParameters() {
+        #expect(SQLParameterExtractor.extractParameters(from: "WHERE id = :id AND name = :name") == ["id", "name"])
     }
 
-    func testDuplicateParameters() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "WHERE :id = :id OR :name = :id"),
-            ["id", "name"]
-        )
+    @Test
+    func duplicateParameters() {
+        #expect(SQLParameterExtractor.extractParameters(from: "WHERE :id = :id OR :name = :id") == ["id", "name"])
     }
 
-    func testUnderscoreInName() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "WHERE user_id = :user_id"),
-            ["user_id"]
-        )
+    @Test
+    func underscoreInName() {
+        #expect(SQLParameterExtractor.extractParameters(from: "WHERE user_id = :user_id") == ["user_id"])
     }
 
-    func testParameterAtEnd() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "WHERE id = :id"),
-            ["id"]
-        )
+    @Test
+    func parameterAtEnd() {
+        #expect(SQLParameterExtractor.extractParameters(from: "WHERE id = :id") == ["id"])
     }
 
-    func testDoubleColonCast() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "SELECT col::integer FROM t"),
-            []
-        )
+    @Test
+    func doubleColonCast() {
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT col::integer FROM t") == [])
     }
 
-    func testCastFollowedByParameter() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "SELECT col::int WHERE id = :id"),
-            ["id"]
-        )
+    @Test
+    func castFollowedByParameter() {
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT col::int WHERE id = :id") == ["id"])
     }
 
-    func testCastVarcharWithLength() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "SELECT col::varchar(255) WHERE id = :id"),
-            ["id"]
-        )
+    @Test
+    func castVarcharWithLength() {
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT col::varchar(255) WHERE id = :id") == ["id"])
     }
 
-    func testParameterInSingleQuotes() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "SELECT ':name' FROM t"),
-            []
-        )
+    @Test
+    func parameterInSingleQuotes() {
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT ':name' FROM t") == [])
     }
 
-    func testParameterInDoubleQuotes() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "SELECT \":name\" FROM t"),
-            []
-        )
+    @Test
+    func parameterInDoubleQuotes() {
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT \":name\" FROM t") == [])
     }
 
-    func testParameterInBackticks() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "SELECT `:name` FROM t"),
-            []
-        )
+    @Test
+    func parameterInBackticks() {
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT `:name` FROM t") == [])
     }
 
-    func testEscapedQuoteInString() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "SELECT ':name''s value' FROM t"),
-            []
-        )
+    @Test
+    func escapedQuoteInString() {
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT ':name''s value' FROM t") == [])
     }
 
-    func testParameterInLineComment() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "SELECT 1 -- :name"),
-            []
-        )
+    @Test
+    func parameterInLineComment() {
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT 1 -- :name") == [])
     }
 
-    func testParameterInBlockComment() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "SELECT /* :name */ 1"),
-            []
-        )
+    @Test
+    func parameterInBlockComment() {
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT /* :name */ 1") == [])
     }
 
-    func testParameterAfterComment() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "-- comment\nSELECT :name"),
-            ["name"]
-        )
+    @Test
+    func parameterAfterComment() {
+        #expect(SQLParameterExtractor.extractParameters(from: "-- comment\nSELECT :name") == ["name"])
     }
 
-    func testBareColon() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "SELECT : FROM t"),
-            []
-        )
+    @Test
+    func bareColon() {
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT : FROM t") == [])
     }
 
-    func testColonFollowedByNumber() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "SELECT :123 FROM t"),
-            []
-        )
+    @Test
+    func colonFollowedByNumber() {
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT :123 FROM t") == [])
     }
 
-    func testEmptyString() {
-        XCTAssertEqual(SQLParameterExtractor.extractParameters(from: ""), [])
+    @Test
+    func emptyString() {
+        #expect(SQLParameterExtractor.extractParameters(from: "") == [])
     }
 
-    func testMultipleStatementsParameters() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "SELECT :a; SELECT :b"),
-            ["a", "b"]
-        )
+    @Test
+    func multipleStatementsParameters() {
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT :a; SELECT :b") == ["a", "b"])
     }
 
-    func testBackslashEscapeInString() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "SELECT '\\:name' FROM t"),
-            []
-        )
+    @Test
+    func backslashEscapeInString() {
+        #expect(SQLParameterExtractor.extractParameters(from: "SELECT '\\:name' FROM t") == [])
     }
 
     // MARK: - convertToNativeStyle
 
-    func testConvertToQuestionMark() {
+    @Test
+    func convertToQuestionMark() {
         let params = [
             QueryParameter(name: "id", value: "42", type: .integer),
             QueryParameter(name: "name", value: "Alice", type: .string)
@@ -163,13 +129,14 @@ final class SQLParameterExtractorTests: XCTestCase {
             parameters: params,
             style: .questionMark
         )
-        XCTAssertEqual(result.sql, "WHERE id = ? AND name = ?")
-        XCTAssertEqual(result.values.count, 2)
-        XCTAssertEqual(result.values[0] as? String, "42")
-        XCTAssertEqual(result.values[1] as? String, "Alice")
+        #expect(result.sql == "WHERE id = ? AND name = ?")
+        #expect(result.values.count == 2)
+        #expect((result.values[0] as? String) == "42")
+        #expect((result.values[1] as? String) == "Alice")
     }
 
-    func testConvertToDollar() {
+    @Test
+    func convertToDollar() {
         let params = [
             QueryParameter(name: "id", value: "42"),
             QueryParameter(name: "name", value: "Alice")
@@ -179,88 +146,87 @@ final class SQLParameterExtractorTests: XCTestCase {
             parameters: params,
             style: .dollar
         )
-        XCTAssertEqual(result.sql, "WHERE id = $1 AND name = $2")
-        XCTAssertEqual(result.values.count, 2)
+        #expect(result.sql == "WHERE id = $1 AND name = $2")
+        #expect(result.values.count == 2)
     }
 
-    func testConvertDuplicateParameter() {
+    @Test
+    func convertDuplicateParameter() {
         let params = [QueryParameter(name: "id", value: "42")]
         let result = SQLParameterExtractor.convertToNativeStyle(
             sql: "WHERE :id = :id",
             parameters: params,
             style: .questionMark
         )
-        XCTAssertEqual(result.sql, "WHERE ? = ?")
-        XCTAssertEqual(result.values.count, 2)
-        XCTAssertEqual(result.values[0] as? String, "42")
-        XCTAssertEqual(result.values[1] as? String, "42")
+        #expect(result.sql == "WHERE ? = ?")
+        #expect(result.values.count == 2)
+        #expect((result.values[0] as? String) == "42")
+        #expect((result.values[1] as? String) == "42")
     }
 
-    func testConvertNullParameter() {
+    @Test
+    func convertNullParameter() {
         let params = [QueryParameter(name: "id", value: "42", isNull: true)]
         let result = SQLParameterExtractor.convertToNativeStyle(
             sql: "WHERE id = :id",
             parameters: params,
             style: .questionMark
         )
-        XCTAssertEqual(result.sql, "WHERE id = ?")
-        XCTAssertEqual(result.values.count, 1)
-        XCTAssertNil(result.values[0])
+        #expect(result.sql == "WHERE id = ?")
+        #expect(result.values.count == 1)
+        #expect(result.values[0] == nil)
     }
 
-    func testConvertSkipsParameterInString() {
+    @Test
+    func convertSkipsParameterInString() {
         let params = [QueryParameter(name: "id", value: "42")]
         let result = SQLParameterExtractor.convertToNativeStyle(
             sql: "WHERE ':id' = :id",
             parameters: params,
             style: .questionMark
         )
-        XCTAssertEqual(result.sql, "WHERE ':id' = ?")
-        XCTAssertEqual(result.values.count, 1)
+        #expect(result.sql == "WHERE ':id' = ?")
+        #expect(result.values.count == 1)
     }
 
-    func testConvertSkipsDoubleColon() {
+    @Test
+    func convertSkipsDoubleColon() {
         let params = [QueryParameter(name: "id", value: "42")]
         let result = SQLParameterExtractor.convertToNativeStyle(
             sql: "SELECT col::text WHERE id = :id",
             parameters: params,
             style: .dollar
         )
-        XCTAssertEqual(result.sql, "SELECT col::text WHERE id = $1")
-        XCTAssertEqual(result.values.count, 1)
+        #expect(result.sql == "SELECT col::text WHERE id = $1")
+        #expect(result.values.count == 1)
     }
 
     // MARK: - Dollar-Quoted Strings
 
-    func testParameterInDollarQuotedString() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "CREATE FUNCTION foo() AS $$ SELECT :name $$ LANGUAGE sql"),
-            []
-        )
+    @Test
+    func parameterInDollarQuotedString() {
+        #expect(SQLParameterExtractor.extractParameters(from: "CREATE FUNCTION foo() AS $$ SELECT :name $$ LANGUAGE sql") == [])
     }
 
-    func testParameterInTaggedDollarQuotedString() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "DO $body$ SELECT :name $body$"),
-            []
-        )
+    @Test
+    func parameterInTaggedDollarQuotedString() {
+        #expect(SQLParameterExtractor.extractParameters(from: "DO $body$ SELECT :name $body$") == [])
     }
 
-    func testParameterAfterDollarQuotedString() {
-        XCTAssertEqual(
-            SQLParameterExtractor.extractParameters(from: "$$ body $$ SELECT :id"),
-            ["id"]
-        )
+    @Test
+    func parameterAfterDollarQuotedString() {
+        #expect(SQLParameterExtractor.extractParameters(from: "$$ body $$ SELECT :id") == ["id"])
     }
 
-    func testConvertSkipsDollarQuotedString() {
+    @Test
+    func convertSkipsDollarQuotedString() {
         let params = [QueryParameter(name: "id", value: "42")]
         let result = SQLParameterExtractor.convertToNativeStyle(
             sql: "$$ :id $$ WHERE id = :id",
             parameters: params,
             style: .questionMark
         )
-        XCTAssertEqual(result.sql, "$$ :id $$ WHERE id = ?")
-        XCTAssertEqual(result.values.count, 1)
+        #expect(result.sql == "$$ :id $$ WHERE id = ?")
+        #expect(result.values.count == 1)
     }
 }

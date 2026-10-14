@@ -1,6 +1,7 @@
 import Foundation
 @testable import TableProMCP
 import TableProMCPTestSupport
+import TableProTestSupport
 import XCTest
 
 final class MCPStreamableHttpClientTransportTests: XCTestCase {
@@ -237,7 +238,8 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
             body: Data("kaboom".utf8)
         ))
 
-        let transport = makeTransport()
+        let logger = RecordingBridgeLogger()
+        let transport = makeTransport(errorLogger: logger)
         try await transport.send(MCPUpstreamFrame(
             body: Data(#"{"jsonrpc":"2.0","method":"notifications/cancelled"}"#.utf8),
             method: "notifications/cancelled"
@@ -245,9 +247,11 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
 
         let mock = server
         try await waitUntil { await mock?.requests.count == 1 }
-        let inbound = try? await firstInbound(transport: transport, timeout: 0.4)
-        XCTAssertNil(inbound, "A notification has no id, so there is nothing to answer")
+        // The transport logs as it decides the failure has no one to answer; closing then flushes anything it emitted.
+        try await waitUntil { !logger.entries.isEmpty }
         await transport.close()
+        let inbound = try await remainingInbound(transport: transport)
+        XCTAssertEqual(inbound, [], "A notification has no id, so there is nothing to answer")
     }
 
     func testUnauthorizedRefreshesCredentialsAndRetriesExactlyOnce() async throws {
@@ -363,13 +367,17 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
     func testClosingSendsNoDeleteAndNoFurtherRequest() async throws {
         await server.respondWithJson(try Self.successBody(id: .number(1)))
 
-        let transport = makeTransport()
+        let watcher = SessionTaskWatcher()
+        let session = URLSession(configuration: .ephemeral, delegate: watcher, delegateQueue: nil)
+        let transport = makeTransport(urlSession: session)
         try await transport.send(frame(method: "tools/list", requestId: .number(1)))
         _ = try await firstInbound(transport: transport)
 
         await transport.close()
-        try await Task.sleep(for: .milliseconds(200))
+        // A session reports itself invalid only after every task it ran has finished.
+        await watcher.invalidated.wait()
 
+        XCTAssertEqual(watcher.createdMethods, ["POST"])
         let requests = await server.requests
         XCTAssertEqual(requests.count, 1)
         XCTAssertFalse(requests.contains { $0.method == "DELETE" })
@@ -435,7 +443,9 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
     }
 
     private func makeTransport(
-        credentialsProvider: (any MCPUpstreamCredentialsProviding)? = nil
+        credentialsProvider: (any MCPUpstreamCredentialsProviding)? = nil,
+        urlSession: URLSession? = nil,
+        errorLogger: (any MCPBridgeLogger)? = nil
     ) -> MCPStreamableHttpClientTransport {
         let credentials = MCPUpstreamCredentials(
             endpoint: URL(string: "http://127.0.0.1:\(server.port)/mcp") ?? URL(fileURLWithPath: "/"),
@@ -446,7 +456,8 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
         return MCPStreamableHttpClientTransport(
             configuration: MCPStreamableHttpClientConfiguration(requestTimeout: .seconds(5)),
             credentialsProvider: provider,
-            errorLogger: nil
+            urlSession: urlSession,
+            errorLogger: errorLogger
         )
     }
 
@@ -465,16 +476,12 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
         return Data(text.utf8)
     }
 
-    private func waitUntil(
-        timeout: TimeInterval = 3.0,
-        condition: @Sendable () async -> Bool
-    ) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if await condition() { return }
-            try await Task.sleep(for: .milliseconds(20))
+    private func remainingInbound(transport: MCPStreamableHttpClientTransport) async throws -> [Data] {
+        var collected: [Data] = []
+        for try await next in transport.inbound {
+            collected.append(next)
         }
-        throw TransportTestError.timeout
+        return collected
     }
 
     private func firstInbound(
@@ -512,6 +519,25 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
             group.cancelAll()
             return value
         }
+    }
+}
+
+private final class SessionTaskWatcher: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    let invalidated = AsyncGate()
+    private let lock = NSLock()
+    private var methods: [String] = []
+
+    var createdMethods: [String] {
+        lock.withLock { methods }
+    }
+
+    func urlSession(_ session: URLSession, didCreateTask task: URLSessionTask) {
+        lock.withLock { methods.append(task.originalRequest?.httpMethod ?? "") }
+    }
+
+    func urlSession(_ session: URLSession, didBecomeInvalidWithError error: Error?) {
+        let invalidated = invalidated
+        Task { await invalidated.open() }
     }
 }
 

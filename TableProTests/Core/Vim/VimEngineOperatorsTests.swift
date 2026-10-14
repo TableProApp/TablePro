@@ -6,27 +6,21 @@
 //  including doublings (dd/cc/yy), shortcuts (D/C/Y/x/X), and operator+motion combos.
 //
 
-import XCTest
-import TableProPluginKit
+import Foundation
 @testable import TablePro
+import TableProPluginKit
+import Testing
 
 // swiftlint:disable file_length type_body_length
 
 @MainActor
-final class VimEngineOperatorsTests: XCTestCase {
+final class VimEngineOperatorsTests {
     private var engine: VimEngine!
     private var buffer: VimTextBufferMock!
 
-    override func setUp() {
-        super.setUp()
+    init() {
         buffer = VimTextBufferMock(text: "hello world\nsecond line\nthird line\n")
         engine = VimEngine(buffer: buffer)
-    }
-
-    override func tearDown() {
-        engine = nil
-        buffer = nil
-        super.tearDown()
     }
 
     private func keys(_ chars: String) {
@@ -43,367 +37,414 @@ final class VimEngineOperatorsTests: XCTestCase {
 
     // MARK: - x: Delete Character Under Cursor
 
-    func testXDeletesCharUnderCursor() {
+    @Test
+    func xDeletesCharUnderCursor() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("x")
-        XCTAssertEqual(buffer.text, "ello world\nsecond line\nthird line\n")
+        #expect(buffer.text == "ello world\nsecond line\nthird line\n")
     }
 
-    func testXWithCount() {
+    @Test
+    func xWithCount() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("3x")
-        XCTAssertEqual(buffer.text, "lo world\nsecond line\nthird line\n")
+        #expect(buffer.text == "lo world\nsecond line\nthird line\n")
     }
 
-    func testXDoesNotCrossNewline() {
+    @Test
+    func xDoesNotCrossNewline() {
         buffer.setSelectedRange(NSRange(location: 10, length: 0))
         keys("5x")
-        XCTAssertEqual(buffer.text, "hello worl\nsecond line\nthird line\n",
+        #expect(buffer.text == "hello worl\nsecond line\nthird line\n",
             "x with count should clamp at the line-terminating newline")
     }
 
-    func testXOnEmptyLineIsNoOp() {
+    @Test
+    func xOnEmptyLineIsNoOp() {
         buffer = VimTextBufferMock(text: "a\n\nb\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 2, length: 0))
         keys("x")
-        XCTAssertEqual(buffer.text, "a\n\nb\n", "x on empty line should leave buffer unchanged")
+        #expect(buffer.text == "a\n\nb\n", "x on empty line should leave buffer unchanged")
     }
 
-    func testXOnLastCharOfLineMovesCursorBack() {
+    @Test
+    func xOnLastCharOfLineMovesCursorBack() {
         // After deleting last content char, cursor should sit on the new last content char.
         buffer.setSelectedRange(NSRange(location: 10, length: 0))
         keys("x")
-        XCTAssertEqual(pos, 9, "After x deletes last content char, cursor moves left")
+        #expect(pos == 9, "After x deletes last content char, cursor moves left")
     }
 
     // MARK: - X: Delete Character Before Cursor
 
-    func testCapitalXDeletesCharBeforeCursor() {
+    @Test
+    func capitalXDeletesCharBeforeCursor() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         key("X", shift: true)
-        XCTAssertEqual(buffer.text, "hell world\nsecond line\nthird line\n",
+        #expect(buffer.text == "hell world\nsecond line\nthird line\n",
             "X should delete the char to the left of the cursor")
     }
 
-    func testCapitalXWithCount() {
+    @Test
+    func capitalXWithCount() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("3")
         key("X", shift: true)
-        XCTAssertEqual(buffer.text, "he world\nsecond line\nthird line\n")
+        #expect(buffer.text == "he world\nsecond line\nthird line\n")
     }
 
-    func testCapitalXAtLineStartIsNoOp() {
+    @Test
+    func capitalXAtLineStartIsNoOp() {
         buffer.setSelectedRange(NSRange(location: 12, length: 0))
         key("X", shift: true)
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\nthird line\n",
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n",
             "X must not cross line boundary backward")
     }
 
-    func testCapitalXAtBufferStartIsNoOp() {
+    @Test
+    func capitalXAtBufferStartIsNoOp() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("X", shift: true)
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\nthird line\n")
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n")
     }
 
     // MARK: - dd: Delete Line
 
-    func testDDDeletesCurrentLine() {
+    @Test
+    func dDDeletesCurrentLine() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("dd")
-        XCTAssertEqual(buffer.text, "second line\nthird line\n")
+        #expect(buffer.text == "second line\nthird line\n")
     }
 
-    func testDDWithCount() {
+    @Test
+    func dDWithCount() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("2dd")
-        XCTAssertEqual(buffer.text, "third line\n")
+        #expect(buffer.text == "third line\n")
     }
 
-    func testDDOnLastLineLeavesPreviousLineCursorOnIt() {
+    @Test
+    func dDOnLastLineLeavesPreviousLineCursorOnIt() {
         // After deleting last line, cursor should sit on the new last line.
         buffer.setSelectedRange(NSRange(location: 28, length: 0))
         keys("dd")
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\n")
+        #expect(buffer.text == "hello world\nsecond line\n")
     }
 
-    func testDDOnSoleLineEmptiesBuffer() {
+    @Test
+    func dDOnSoleLineEmptiesBuffer() {
         buffer = VimTextBufferMock(text: "only\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("dd")
-        XCTAssertEqual(buffer.text, "")
+        #expect(buffer.text == "")
     }
 
-    func testDDCountClampsAtBufferEnd() {
+    @Test
+    func dDCountClampsAtBufferEnd() {
         buffer.setSelectedRange(NSRange(location: 12, length: 0))
         keys("99dd")
-        XCTAssertEqual(buffer.text, "hello world\n", "dd with large count clamps to remaining lines")
+        #expect(buffer.text == "hello world\n", "dd with large count clamps to remaining lines")
     }
 
     // MARK: - d + Motion
 
-    func testDWDeletesToNextWord() {
+    @Test
+    func dWDeletesToNextWord() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("dw")
-        XCTAssertEqual(buffer.text, "world\nsecond line\nthird line\n")
+        #expect(buffer.text == "world\nsecond line\nthird line\n")
     }
 
-    func testDEDeletesToWordEndInclusive() {
+    @Test
+    func dEDeletesToWordEndInclusive() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("de")
-        XCTAssertEqual(buffer.text, " world\nsecond line\nthird line\n",
+        #expect(buffer.text == " world\nsecond line\nthird line\n",
             "de should delete inclusive of the word-end character")
     }
 
-    func testDBDeletesBackwardWord() {
+    @Test
+    func dBDeletesBackwardWord() {
         buffer.setSelectedRange(NSRange(location: 6, length: 0))
         keys("db")
-        XCTAssertEqual(buffer.text, "world\nsecond line\nthird line\n")
+        #expect(buffer.text == "world\nsecond line\nthird line\n")
     }
 
-    func testDDollarDeletesToLineEnd() {
+    @Test
+    func dDollarDeletesToLineEnd() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("d$")
-        XCTAssertEqual(buffer.text, "hello\nsecond line\nthird line\n")
+        #expect(buffer.text == "hello\nsecond line\nthird line\n")
     }
 
-    func testDZeroDeletesToLineStart() {
+    @Test
+    func dZeroDeletesToLineStart() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("d0")
-        XCTAssertEqual(buffer.text, " world\nsecond line\nthird line\n")
+        #expect(buffer.text == " world\nsecond line\nthird line\n")
     }
 
-    func testDCaretDeletesToFirstNonBlank() {
+    @Test
+    func dCaretDeletesToFirstNonBlank() {
         buffer = VimTextBufferMock(text: "   hello\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 6, length: 0))
         keys("d^")
-        XCTAssertEqual(buffer.text, "   lo\n")
+        #expect(buffer.text == "   lo\n")
     }
 
-    func testDGoesGoesAllToEndOfBuffer() {
+    @Test
+    func dGoesGoesAllToEndOfBuffer() {
         // dG from line 0 should delete all lines (linewise).
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("d")
         key("G", shift: true)
-        XCTAssertEqual(buffer.text, "", "dG should delete from current line to end-of-buffer")
+        #expect(buffer.text == "", "dG should delete from current line to end-of-buffer")
     }
 
-    func testDGGFromMidBufferDeletesToTop() {
+    @Test
+    func dGGFromMidBufferDeletesToTop() {
         buffer.setSelectedRange(NSRange(location: 14, length: 0))
         keys("dgg")
-        XCTAssertEqual(buffer.text, "third line\n",
+        #expect(buffer.text == "third line\n",
             "dgg should delete from current line to first line (linewise)")
     }
 
-    func testDJDeletesTwoLines() {
+    @Test
+    func dJDeletesTwoLines() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("dj")
-        XCTAssertEqual(buffer.text, "third line\n",
+        #expect(buffer.text == "third line\n",
             "dj should delete current line and the line below (linewise)")
     }
 
-    func testDKDeletesTwoLines() {
+    @Test
+    func dKDeletesTwoLines() {
         buffer.setSelectedRange(NSRange(location: 12, length: 0))
         keys("dk")
-        XCTAssertEqual(buffer.text, "third line\n",
+        #expect(buffer.text == "third line\n",
             "dk should delete current line and the line above (linewise)")
     }
 
-    func testDCountWordsDeletesMultipleWords() {
+    @Test
+    func dCountWordsDeletesMultipleWords() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("d3w")
-        XCTAssertEqual(buffer.text, "line\nthird line\n",
+        #expect(buffer.text == "line\nthird line\n",
             "d3w from offset 0 should delete 'hello world\\nsecond '")
     }
 
     // MARK: - D: Delete to End of Line
 
-    func testCapitalDDeletesToEndOfLine() {
+    @Test
+    func capitalDDeletesToEndOfLine() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         key("D", shift: true)
-        XCTAssertEqual(buffer.text, "hello\nsecond line\nthird line\n",
+        #expect(buffer.text == "hello\nsecond line\nthird line\n",
             "D is shorthand for d$ and deletes through end-of-line content")
     }
 
-    func testCapitalDOnEmptyLineIsNoOp() {
+    @Test
+    func capitalDOnEmptyLineIsNoOp() {
         buffer = VimTextBufferMock(text: "\nfoo\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("D", shift: true)
-        XCTAssertEqual(buffer.text, "\nfoo\n", "D on an empty line should not delete the newline")
+        #expect(buffer.text == "\nfoo\n", "D on an empty line should not delete the newline")
     }
 
     // MARK: - yy: Yank Line
 
-    func testYYDoesNotModifyBuffer() {
+    @Test
+    func yYDoesNotModifyBuffer() {
         let original = buffer.text
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("yy")
-        XCTAssertEqual(buffer.text, original)
+        #expect(buffer.text == original)
     }
 
-    func testYYThenPasteRestoresLine() {
+    @Test
+    func yYThenPasteRestoresLine() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("yyp")
-        XCTAssertEqual(buffer.text, "hello world\nhello world\nsecond line\nthird line\n")
+        #expect(buffer.text == "hello world\nhello world\nsecond line\nthird line\n")
     }
 
-    func testYYWithCount() {
+    @Test
+    func yYWithCount() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("2yyp")
-        XCTAssertEqual(buffer.text, "hello world\nhello world\nsecond line\nsecond line\nthird line\n",
+        #expect(buffer.text == "hello world\nhello world\nsecond line\nsecond line\nthird line\n",
             "2yy should yank two lines, p pastes them after current line")
     }
 
-    func testYYCursorStaysAtLineStart() {
+    @Test
+    func yYCursorStaysAtLineStart() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("yy")
         // Yank doesn't move cursor across lines; column may be preserved or cursor returned to motion start.
         let (line, _) = buffer.lineAndColumn(forOffset: pos)
-        XCTAssertEqual(line, 0)
+        #expect(line == 0)
     }
 
     // MARK: - y + Motion
 
-    func testYWYanksWordIntoRegister() {
+    @Test
+    func yWYanksWordIntoRegister() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("yw")
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\nthird line\n",
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n",
             "yw must not modify the buffer")
     }
 
-    func testYWThenPasteInsertsWord() {
+    @Test
+    func yWThenPasteInsertsWord() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("ywp")
-        XCTAssertEqual(buffer.text, "hhello ello world\nsecond line\nthird line\n",
+        #expect(buffer.text == "hhello ello world\nsecond line\nthird line\n",
             "After yw, p pastes 'hello ' after the cursor at offset 0")
     }
 
-    func testYDollarYanksToLineEnd() {
+    @Test
+    func yDollarYanksToLineEnd() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("y$p")
-        XCTAssertEqual(buffer.text, "hello  worldworld\nsecond line\nthird line\n",
+        #expect(buffer.text == "hello  worldworld\nsecond line\nthird line\n",
             "y$ from offset 5 yanks ' world', p pastes it after cursor")
     }
 
     // MARK: - Y: Yank Line (synonym of yy)
 
-    func testCapitalYYanksLine() {
+    @Test
+    func capitalYYanksLine() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("Y", shift: true)
         keys("p")
-        XCTAssertEqual(buffer.text, "hello world\nhello world\nsecond line\nthird line\n",
+        #expect(buffer.text == "hello world\nhello world\nsecond line\nthird line\n",
             "Y is a synonym for yy and yanks the whole line linewise")
     }
 
     // MARK: - cc: Change Line
 
-    func testCCDeletesLineContentEntersInsert() {
+    @Test
+    func cCDeletesLineContentEntersInsert() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("cc")
-        XCTAssertEqual(engine.mode, .insert)
-        XCTAssertEqual(buffer.text, "\nsecond line\nthird line\n")
-        XCTAssertEqual(pos, 0)
+        #expect(engine.mode == .insert)
+        #expect(buffer.text == "\nsecond line\nthird line\n")
+        #expect(pos == 0)
     }
 
-    func testCCWithCount() {
+    @Test
+    func cCWithCount() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("2cc")
-        XCTAssertEqual(engine.mode, .insert)
-        XCTAssertEqual(buffer.text, "\nthird line\n",
+        #expect(engine.mode == .insert)
+        #expect(buffer.text == "\nthird line\n",
             "2cc should clear two lines' content and leave one newline")
     }
 
     // MARK: - c + Motion
 
-    func testCWChangesWord() {
+    @Test
+    func cWChangesWord() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("cw")
-        XCTAssertEqual(engine.mode, .insert)
-        XCTAssertEqual(buffer.text, "world\nsecond line\nthird line\n")
+        #expect(engine.mode == .insert)
+        #expect(buffer.text == "world\nsecond line\nthird line\n")
     }
 
-    func testCDollarChangesToLineEnd() {
+    @Test
+    func cDollarChangesToLineEnd() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("c$")
-        XCTAssertEqual(engine.mode, .insert)
-        XCTAssertEqual(buffer.text, "hello\nsecond line\nthird line\n")
+        #expect(engine.mode == .insert)
+        #expect(buffer.text == "hello\nsecond line\nthird line\n")
     }
 
-    func testCEChangesToWordEndInclusive() {
+    @Test
+    func cEChangesToWordEndInclusive() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("ce")
-        XCTAssertEqual(buffer.text, " world\nsecond line\nthird line\n",
+        #expect(buffer.text == " world\nsecond line\nthird line\n",
             "ce should delete through the word-end character")
     }
 
     // MARK: - C: Change to End of Line
 
-    func testCapitalCChangesToEndOfLine() {
+    @Test
+    func capitalCChangesToEndOfLine() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         key("C", shift: true)
-        XCTAssertEqual(engine.mode, .insert)
-        XCTAssertEqual(buffer.text, "hello\nsecond line\nthird line\n",
+        #expect(engine.mode == .insert)
+        #expect(buffer.text == "hello\nsecond line\nthird line\n",
             "C is shorthand for c$")
     }
 
     // MARK: - Pending Operator Cancellation
 
-    func testPendingDCancelledByEscape() {
+    @Test
+    func pendingDCancelledByEscape() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("d")
         escape()
         keys("l")
-        XCTAssertEqual(pos, 1)
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\nthird line\n",
+        #expect(pos == 1)
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n",
             "Escape should cancel the pending operator without modifying the buffer")
     }
 
-    func testPendingCCancelledByEscape() {
+    @Test
+    func pendingCCancelledByEscape() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("c")
         escape()
         keys("l")
-        XCTAssertEqual(pos, 1)
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\nthird line\n")
+        #expect(pos == 1)
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n")
     }
 
-    func testPendingYCancelledByEscape() {
+    @Test
+    func pendingYCancelledByEscape() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("y")
         escape()
         keys("p")
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\nthird line\n",
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n",
             "Cancelled yank should leave the register untouched")
     }
 
-    func testPendingOperatorCancelledByUnknownKey() {
+    @Test
+    func pendingOperatorCancelledByUnknownKey() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("dz")
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\nthird line\n")
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n")
     }
 
     // MARK: - Count Multiplication
 
-    func testCountTimesCountMultipliesMotion() {
+    @Test
+    func countTimesCountMultipliesMotion() {
         // 2d3w should delete 6 words worth (counts multiply).
         buffer = VimTextBufferMock(text: "a b c d e f g\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("2d3w")
-        XCTAssertEqual(buffer.text, "g\n", "2d3w should delete 6 words (2*3)")
+        #expect(buffer.text == "g\n", "2d3w should delete 6 words (2*3)")
     }
 
     // MARK: - Register After Delete (Default Register)
 
-    func testDeleteAndPasteRoundTrip() {
+    @Test
+    func deleteAndPasteRoundTrip() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("dw")
-        XCTAssertEqual(buffer.text, "world\nsecond line\nthird line\n")
+        #expect(buffer.text == "world\nsecond line\nthird line\n")
         key("P", shift: true)
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\nthird line\n",
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n",
             "Deleted text should round-trip through P")
     }
 }

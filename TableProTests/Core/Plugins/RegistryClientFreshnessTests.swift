@@ -50,6 +50,12 @@ private final class MockRegistryProtocol: URLProtocol, @unchecked Sendable {
 @Suite("RegistryClient freshness", .serialized)
 @MainActor
 struct RegistryClientFreshnessTests {
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
     private static let testTypeId = "TestFreshnessDB"
 
     private func manifestData(includingTestPlugin: Bool) -> Data {
@@ -87,10 +93,7 @@ struct RegistryClientFreshnessTests {
             try cachedManifest.write(to: cacheURL)
         }
 
-        let suiteName = "registry-freshness-tests-\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suiteName) else {
-            throw CocoaError(.fileNoSuchFile)
-        }
+        let defaults = suite.defaults
 
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockRegistryProtocol.self]

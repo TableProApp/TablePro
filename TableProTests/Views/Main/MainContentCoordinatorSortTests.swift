@@ -1,10 +1,6 @@
-//
-//  MainContentCoordinatorSortTests.swift
-//  TableProTests
-//
-
 import Foundation
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @testable import TablePro
@@ -435,7 +431,11 @@ struct MainContentCoordinatorSortTests {
             tab.display.resultSets.append(other)
             tab.display.activeResultSetId = other.id
         }
-        try await Task.sleep(for: .milliseconds(300))
+        // The reload holds the safe-mode flag until it is authorized, and a started run holds the tab.
+        try await waitUntil {
+            !harness.coordinator.isShowingSafeModePrompt
+                && !harness.coordinator.tabExecution.isExecuting(harness.tabId)
+        }
 
         #expect(harness.driver.sent.count == alreadySent)
         let display = try #require(harness.tabManager.tabs.first { $0.id == harness.tabId }?.display)
@@ -660,9 +660,8 @@ struct MainContentCoordinatorSortTests {
         coordinator.setActiveTableRows(rows, for: tab.id)
 
         coordinator.handleSortStateChanged(sortState([(0, .ascending)]))
-        for _ in 0 ..< 500 {
-            if !coordinator.isShowingSafeModePrompt, !coordinator.tabExecution.isExecuting(tab.id) { break }
-            try await Task.sleep(for: .milliseconds(10))
+        try await waitUntil {
+            !coordinator.isShowingSafeModePrompt && !coordinator.tabExecution.isExecuting(tab.id)
         }
 
         #expect(driver.sentSQL.isEmpty)
@@ -865,11 +864,11 @@ private struct ParameterizedRunHarness {
     }
 
     private func waitUntilIdle(_ condition: () -> Bool) async throws {
-        for _ in 0 ..< 500 {
-            if condition(), !coordinator.tabExecution.isExecuting(tabId) { return }
-            try await Task.sleep(for: .milliseconds(10))
+        do {
+            try await waitUntil { condition() && !coordinator.tabExecution.isExecuting(tabId) }
+        } catch is WaitTimeout {
+            Issue.record("The run never settled. Sent: \(driver.sent.map(\.sql))")
         }
-        Issue.record("The run never settled. Sent: \(driver.sent.map(\.sql))")
     }
 }
 

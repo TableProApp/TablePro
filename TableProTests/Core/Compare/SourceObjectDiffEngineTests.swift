@@ -8,10 +8,11 @@
 //  as a real one.
 //
 
+import Foundation
 @testable import TablePro
-import XCTest
+import Testing
 
-final class SourceObjectDiffEngineTests: XCTestCase {
+struct SourceObjectDiffEngineTests {
     private func read(
         _ name: String,
         kind: CompareObjectKind = .function,
@@ -48,122 +49,131 @@ final class SourceObjectDiffEngineTests: XCTestCase {
 
     // MARK: - Status
 
-    func testAnObjectOnlyOnTheSourceIsCreated() {
+    @Test
+    func anObjectOnlyOnTheSourceIsCreated() {
         let results = engine().compare(
             source: [read("audit", source: "CREATE FUNCTION audit() BEGIN END")],
             target: []
         )
 
-        XCTAssertEqual(results.count, 1)
-        XCTAssertEqual(results[0].status, .onlyInSource)
-        XCTAssertEqual(results[0].suggestedAction, .create)
+        #expect(results.count == 1)
+        #expect(results[0].status == .onlyInSource)
+        #expect(results[0].suggestedAction == .create)
     }
 
-    func testAnObjectOnlyOnTheTargetIsDropped() {
+    @Test
+    func anObjectOnlyOnTheTargetIsDropped() {
         let results = engine().compare(
             source: [],
             target: [read("stale", source: "CREATE FUNCTION stale() BEGIN END")]
         )
 
-        XCTAssertEqual(results[0].status, .onlyInTarget)
-        XCTAssertEqual(results[0].suggestedAction, .drop)
+        #expect(results[0].status == .onlyInTarget)
+        #expect(results[0].suggestedAction == .drop)
     }
 
-    func testAMatchingDefinitionIsIdentical() {
+    @Test
+    func aMatchingDefinitionIsIdentical() {
         let results = engine().compare(
             source: [read("audit", source: "CREATE FUNCTION audit()\nBEGIN\n  SELECT 1;\nEND")],
             target: [read("audit", source: "CREATE FUNCTION audit()\nBEGIN\n  SELECT 1;\nEND")]
         )
 
-        XCTAssertEqual(results[0].status, .identical)
-        XCTAssertEqual(results[0].suggestedAction, .skip)
+        #expect(results[0].status == .identical)
+        #expect(results[0].suggestedAction == .skip)
     }
 
-    func testADifferentDefinitionIsAlter() {
+    @Test
+    func aDifferentDefinitionIsAlter() {
         let results = engine().compare(
             source: [read("audit", source: "CREATE FUNCTION audit() BEGIN SELECT 1; END")],
             target: [read("audit", source: "CREATE FUNCTION audit() BEGIN SELECT 2; END")]
         )
 
-        XCTAssertEqual(results[0].status, .differs)
-        XCTAssertEqual(results[0].suggestedAction, .alter)
-        XCTAssertFalse(results[0].sourceDefinition.isEmpty)
-        XCTAssertFalse(results[0].targetDefinition.isEmpty)
+        #expect(results[0].status == .differs)
+        #expect(results[0].suggestedAction == .alter)
+        #expect(!(results[0].sourceDefinition.isEmpty))
+        #expect(!(results[0].targetDefinition.isEmpty))
     }
 
     // MARK: - Normalising
 
-    func testTrailingSemicolonsAndLineEndingsAreNotADifference() {
+    @Test
+    func trailingSemicolonsAndLineEndingsAreNotADifference() {
         let results = engine().compare(
             source: [read("audit", source: "CREATE FUNCTION audit() BEGIN SELECT 1; END;")],
             target: [read("audit", source: "CREATE FUNCTION audit() BEGIN SELECT 1; END\r\n")]
         )
 
-        XCTAssertEqual(results[0].status, .identical)
+        #expect(results[0].status == .identical)
     }
 
     /// Measured on Oracle 23ai: a procedure sent without the `;` after its END is stored INVALID, with it VALID.
-    func testAnOracleUnitWithoutItsOwnSemicolonIsADifferentObject() {
+    @Test
+    func anOracleUnitWithoutItsOwnSemicolonIsADifferentObject() {
         let valid = "CREATE OR REPLACE PROCEDURE audit IS\nBEGIN\n  NULL;\nEND;"
         let invalid = "CREATE OR REPLACE PROCEDURE audit IS\nBEGIN\n  NULL;\nEND"
 
-        XCTAssertEqual(status(of: valid, against: invalid, on: .oracle), .differs)
-        XCTAssertEqual(status(of: valid, against: valid + "\n", on: .oracle), .identical)
+        #expect(status(of: valid, against: invalid, on: .oracle) == .differs)
+        #expect(status(of: valid, against: valid + "\n", on: .oracle) == .identical)
     }
 
     /// Folding whitespace first turned the comment's newline into a space, and the comment then ran to the end of
     /// the text: a body that differed after it compared equal.
-    func testALineCommentCannotHideTheRestOfTheBody() {
+    @Test
+    func aLineCommentCannotHideTheRestOfTheBody() {
         let source = "CREATE OR REPLACE PROCEDURE audit IS\nBEGIN\n  NULL; -- keep\nEND;"
         let target = "CREATE OR REPLACE PROCEDURE audit IS\nBEGIN\n  NULL; -- keep\nEND"
 
-        XCTAssertEqual(status(of: source, against: target, on: .oracle), .differs)
+        #expect(status(of: source, against: target, on: .oracle) == .differs)
     }
 
-    func testAWhenClauseOrADisabledStateIsADifference() {
+    @Test
+    func aWhenClauseOrADisabledStateIsADifference() {
         let plain = "CREATE OR REPLACE TRIGGER audit BEFORE INSERT ON t FOR EACH ROW\nBEGIN NULL; END;"
         let guarded = "CREATE OR REPLACE TRIGGER audit BEFORE INSERT ON t FOR EACH ROW\nWHEN (NEW.id > 0)\nBEGIN NULL; END;"
         let disabled = "CREATE OR REPLACE TRIGGER audit BEFORE INSERT ON t FOR EACH ROW\nDISABLE\nBEGIN NULL; END;"
 
-        XCTAssertEqual(status(of: plain, against: guarded, on: .oracle), .differs)
-        XCTAssertEqual(status(of: plain, against: disabled, on: .oracle), .differs)
+        #expect(status(of: plain, against: guarded, on: .oracle) == .differs)
+        #expect(status(of: plain, against: disabled, on: .oracle) == .differs)
     }
 
     /// An engine the app has no grammar for accepts a definition with or without its trailing `;`.
-    func testATrailingSemicolonIsNoDifferenceWhereTheGrammarIsNotTracked() {
-        XCTAssertEqual(
-            status(of: "CREATE VIEW audit AS SELECT 1;", against: "CREATE VIEW audit AS SELECT 1", on: .mssql),
-            .identical
-        )
+    @Test
+    func aTrailingSemicolonIsNoDifferenceWhereTheGrammarIsNotTracked() {
+        #expect(status(of: "CREATE VIEW audit AS SELECT 1;", against: "CREATE VIEW audit AS SELECT 1", on: .mssql) == .identical)
     }
 
-    func testWhitespaceIsADifferenceUntilItIsIgnored() {
+    @Test
+    func whitespaceIsADifferenceUntilItIsIgnored() {
         let source = [read("audit", source: "CREATE FUNCTION audit()\nBEGIN\n    SELECT 1;\nEND")]
         let target = [read("audit", source: "CREATE FUNCTION audit() BEGIN SELECT 1; END")]
 
-        XCTAssertEqual(engine(strict()).compare(source: source, target: target)[0].status, .differs)
+        #expect(engine(strict()).compare(source: source, target: target)[0].status == .differs)
 
         var lenient = StructureCompareOptions.default
         lenient.ignoreWhitespaceInText = true
-        XCTAssertEqual(engine(lenient).compare(source: source, target: target)[0].status, .identical)
+        #expect(engine(lenient).compare(source: source, target: target)[0].status == .identical)
     }
 
-    func testIdentifierCaseIsADifferenceUntilItIsIgnored() {
+    @Test
+    func identifierCaseIsADifferenceUntilItIsIgnored() {
         let source = [read("audit", source: "CREATE FUNCTION audit() BEGIN SELECT 1; END")]
         let target = [read("audit", source: "create function audit() begin select 1; end")]
 
-        XCTAssertEqual(engine(strict()).compare(source: source, target: target)[0].status, .differs)
+        #expect(engine(strict()).compare(source: source, target: target)[0].status == .differs)
 
         var lenient = StructureCompareOptions.default
         lenient.ignoreIdentifierCase = true
-        XCTAssertEqual(engine(lenient).compare(source: source, target: target)[0].status, .identical)
+        #expect(engine(lenient).compare(source: source, target: target)[0].status == .identical)
     }
 
     // MARK: - Matching
 
     /// PostgreSQL and Oracle both allow two routines to share a name, so the signature is part of
     /// the identity. Without it one overload is compared against the other.
-    func testTwoOverloadsOfOneNameAreMatchedBySignature() {
+    @Test
+    func twoOverloadsOfOneNameAreMatchedBySignature() {
         let results = engine().compare(
             source: [
                 read("area", signature: "(integer)", source: "CREATE FUNCTION area(integer) BEGIN SELECT 1; END"),
@@ -174,105 +184,114 @@ final class SourceObjectDiffEngineTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(results.count, 2)
-        XCTAssertEqual(results.filter { $0.status == .identical }.count, 1)
-        XCTAssertEqual(results.filter { $0.status == .onlyInSource }.count, 1)
+        #expect(results.count == 2)
+        #expect(results.filter { $0.status == .identical }.count == 1)
+        #expect(results.filter { $0.status == .onlyInSource }.count == 1)
     }
 
-    func testTwoKindsSharingOneNameAreNotMatched() {
+    @Test
+    func twoKindsSharingOneNameAreNotMatched() {
         let results = engine().compare(
             source: [read("audit", kind: .function, source: "CREATE FUNCTION audit() BEGIN END")],
             target: [read("audit", kind: .procedure, source: "CREATE PROCEDURE audit() BEGIN END")]
         )
 
-        XCTAssertEqual(results.count, 2)
-        XCTAssertEqual(Set(results.map { $0.status }), [.onlyInSource, .onlyInTarget])
+        #expect(results.count == 2)
+        #expect(Set(results.map { $0.status }) == [.onlyInSource, .onlyInTarget])
     }
 
-    func testTwoSchemasSharingOneNameAreNotMatched() {
+    @Test
+    func twoSchemasSharingOneNameAreNotMatched() {
         let results = engine().compare(
             source: [read("audit", schema: "public", source: "CREATE FUNCTION audit() BEGIN END")],
             target: [read("audit", schema: "sales", source: "CREATE FUNCTION audit() BEGIN END")]
         )
 
-        XCTAssertEqual(results.count, 2)
+        #expect(results.count == 2)
     }
 
     // MARK: - Unreadable definitions
 
-    func testASourceWhoseReadFailedIsNotComparedAgainstAReadableTarget() {
+    @Test
+    func aSourceWhoseReadFailedIsNotComparedAgainstAReadableTarget() {
         let denied = "SHOW VIEW command denied to user 'reader'@'%' for table 'v'"
         let results = engine(databaseType: .mysql).compare(
             source: [read("v", kind: .view, schema: nil, source: "", failure: denied)],
             target: [read("v", kind: .view, schema: nil, source: "CREATE VIEW v AS SELECT 1")]
         )
 
-        XCTAssertEqual(results.count, 1)
-        XCTAssertEqual(results[0].comparisonError, SourceDefinitionDefect.unreadable(denied).reason(on: .source))
-        XCTAssertEqual(results[0].suggestedAction, .skip)
-        XCTAssertEqual(results[0].availableActions, [.skip])
-        XCTAssertEqual(results[0].sourceDefinition, [])
-        XCTAssertEqual(results[0].targetDefinition, ["CREATE VIEW v AS SELECT 1"])
+        #expect(results.count == 1)
+        #expect(results[0].comparisonError == SourceDefinitionDefect.unreadable(denied).reason(on: .source))
+        #expect(results[0].suggestedAction == .skip)
+        #expect(results[0].availableActions == [.skip])
+        #expect(results[0].sourceDefinition == [])
+        #expect(results[0].targetDefinition == ["CREATE VIEW v AS SELECT 1"])
     }
 
-    func testTwoFailedReadsOfOneObjectAreNotIdentical() {
+    @Test
+    func twoFailedReadsOfOneObjectAreNotIdentical() {
         let results = engine().compare(
             source: [read("v", kind: .view, source: "", failure: "denied")],
             target: [read("v", kind: .view, source: "", failure: "denied")]
         )
 
-        XCTAssertEqual(results.count, 1)
-        XCTAssertNotEqual(results[0].status, .identical)
-        XCTAssertFalse(results[0].isComparable)
+        #expect(results.count == 1)
+        #expect(results[0].status != .identical)
+        #expect(!(results[0].isComparable))
     }
 
-    func testAnUnreadableObjectOnlyOnTheSourceIsNeverCreated() {
+    @Test
+    func anUnreadableObjectOnlyOnTheSourceIsNeverCreated() {
         let results = engine().compare(
             source: [read("audit", source: "", failure: "permission denied")],
             target: []
         )
 
-        XCTAssertEqual(results[0].comparisonError, SourceDefinitionDefect.unreadable("permission denied").reason(on: .source))
-        XCTAssertEqual(results[0].suggestedAction, .skip)
-        XCTAssertEqual(results[0].availableActions, [.skip])
+        #expect(results[0].comparisonError == SourceDefinitionDefect.unreadable("permission denied").reason(on: .source))
+        #expect(results[0].suggestedAction == .skip)
+        #expect(results[0].availableActions == [.skip])
     }
 
-    func testAnUnreadableObjectOnlyOnTheTargetNamesTheTargetAndIsNeverDropped() {
+    @Test
+    func anUnreadableObjectOnlyOnTheTargetNamesTheTargetAndIsNeverDropped() {
         let results = engine().compare(
             source: [],
             target: [read("stale", source: "", failure: "permission denied")]
         )
 
-        XCTAssertEqual(results[0].comparisonError, SourceDefinitionDefect.unreadable("permission denied").reason(on: .target))
-        XCTAssertEqual(results[0].availableActions, [.skip])
+        #expect(results[0].comparisonError == SourceDefinitionDefect.unreadable("permission denied").reason(on: .target))
+        #expect(results[0].availableActions == [.skip])
     }
 
-    func testADefinitionWithNothingToRunIsUnreadable() {
+    @Test
+    func aDefinitionWithNothingToRunIsUnreadable() {
         for blank in ["", "   \n\t", "-- nothing here", "/* nothing */", "# nothing"] {
             let results = engine(databaseType: .mysql).compare(
                 source: [read("audit", source: blank)],
                 target: [read("audit", source: "CREATE FUNCTION audit() RETURNS INT RETURN 1")]
             )
 
-            XCTAssertEqual(results[0].comparisonError, SourceDefinitionDefect.empty.reason(on: .source), blank)
-            XCTAssertEqual(results[0].availableActions, [.skip], blank)
+            #expect(results[0].comparisonError == SourceDefinitionDefect.empty.reason(on: .source), Comment(rawValue: blank))
+            #expect(results[0].availableActions == [.skip], Comment(rawValue: blank))
         }
     }
 
-    func testABodyThatIsNotACreateStatementIsUnreadable() {
+    @Test
+    func aBodyThatIsNotACreateStatementIsUnreadable() {
         for body in ["(a + b)", "SELECT 1 AS x"] {
             let results = engine(databaseType: .duckdb).compare(
                 source: [read("add", source: body)],
                 target: []
             )
 
-            XCTAssertEqual(results[0].comparisonError, SourceDefinitionDefect.notACreateStatement.reason(on: .source), body)
-            XCTAssertEqual(results[0].availableActions, [.skip], body)
-            XCTAssertEqual(results[0].sourceDefinition, [body], body)
+            #expect(results[0].comparisonError == SourceDefinitionDefect.notACreateStatement.reason(on: .source), Comment(rawValue: body))
+            #expect(results[0].availableActions == [.skip], Comment(rawValue: body))
+            #expect(results[0].sourceDefinition == [body], Comment(rawValue: body))
         }
     }
 
-    func testALeadingCommentDoesNotHideTheCreate() {
+    @Test
+    func aLeadingCommentDoesNotHideTheCreate() {
         let definition = "-- Author: ops\n/* audit */\nCREATE PROCEDURE dbo.audit AS SET NOCOUNT ON; SELECT 1;"
 
         let results = engine(databaseType: .mssql).compare(
@@ -280,11 +299,12 @@ final class SourceObjectDiffEngineTests: XCTestCase {
             target: [read("audit", schema: "dbo", source: definition)]
         )
 
-        XCTAssertNil(results[0].comparisonError)
-        XCTAssertEqual(results[0].status, .identical)
+        #expect(results[0].comparisonError == nil)
+        #expect(results[0].status == .identical)
     }
 
-    func testEachSideIsReadInItsOwnEnginesGrammar() {
+    @Test
+    func eachSideIsReadInItsOwnEnginesGrammar() {
         let mysqlDefinition = "# reporting view\nCREATE VIEW v AS SELECT 1"
         let postgresDefinition = "CREATE VIEW v AS SELECT 1"
 
@@ -301,11 +321,12 @@ final class SourceObjectDiffEngineTests: XCTestCase {
             target: [read("v", kind: .view, schema: nil, source: mysqlDefinition)]
         )
 
-        XCTAssertNil(fromMySQL[0].comparisonError)
-        XCTAssertNil(intoMySQL[0].comparisonError)
+        #expect(fromMySQL[0].comparisonError == nil)
+        #expect(intoMySQL[0].comparisonError == nil)
     }
 
-    func testASQLServerModuleStoredAfterAlterOrCreateOrAlterIsReadable() {
+    @Test
+    func aSQLServerModuleStoredAfterAlterOrCreateOrAlterIsReadable() {
         let altered = "/* comment */  CREATE PROCEDURE Test1A  AS  SELECT 3;"
         let createdOrAltered = "CrEaTe /*Y*/ PROCEDURE Test1B AS SELECT 2;"
 
@@ -317,19 +338,20 @@ final class SourceObjectDiffEngineTests: XCTestCase {
             target: []
         )
 
-        XCTAssertEqual(results.map(\.comparisonError), [nil, nil])
-        XCTAssertEqual(results.map(\.suggestedAction), [.create, .create])
+        #expect(results.map(\.comparisonError) == [nil, nil])
+        #expect(results.map(\.suggestedAction) == [.create, .create])
     }
 
-    func testAnUnreadableObjectIsNeitherADifferenceNorSelectable() {
+    @Test
+    func anUnreadableObjectIsNeitherADifferenceNorSelectable() {
         let report = CompareReport(results: engine().compare(
             source: [read("v", kind: .view, source: "", failure: "denied")],
             target: [read("v", kind: .view, source: "CREATE VIEW v AS SELECT 1")]
         ))
 
-        XCTAssertEqual(report.uncomparable.count, 1)
-        XCTAssertTrue(report.comparable.isEmpty)
-        XCTAssertEqual(report.differenceCount, 0)
+        #expect(report.uncomparable.count == 1)
+        #expect(report.comparable.isEmpty)
+        #expect(report.differenceCount == 0)
     }
 
     private func strict() -> StructureCompareOptions {
@@ -340,7 +362,7 @@ final class SourceObjectDiffEngineTests: XCTestCase {
     }
 }
 
-final class SourceObjectHazardTests: XCTestCase {
+struct SourceObjectHazardTests {
     private let classifier = SyncSafetyClassifier()
 
     private func identity(_ kind: CompareObjectKind) -> CompareObjectIdentity {
@@ -349,21 +371,23 @@ final class SourceObjectHazardTests: XCTestCase {
 
     /// A view holds no rows, so dropping one is recoverable from the source and only warns. A
     /// materialized view does hold rows, so it is refused like a table.
-    func testDroppingAViewIsRefusedButDroppingAMaterializedViewAlsoWarnsAboutItsRows() {
+    @Test
+    func droppingAViewIsRefusedButDroppingAMaterializedViewAlsoWarnsAboutItsRows() {
         let view = classifier.hazards(forDropping: identity(.view), isReplacement: false)
         let materialized = classifier.hazards(forDropping: identity(.materializedView), isReplacement: false)
 
-        XCTAssertTrue(view.contains { $0.severity == .refusedByDefault })
-        XCTAssertTrue(materialized.contains { $0.severity == .refusedByDefault })
-        XCTAssertGreaterThan(materialized.count, view.count)
+        #expect(view.contains { $0.severity == .refusedByDefault })
+        #expect(materialized.contains { $0.severity == .refusedByDefault })
+        #expect(materialized.count > view.count)
     }
 
     /// A replace drops and recreates, so it warns about dependents rather than about losing the
     /// object: the object comes straight back.
-    func testAReplacementWarnsAboutDependentsRatherThanBeingRefused() {
+    @Test
+    func aReplacementWarnsAboutDependentsRatherThanBeingRefused() {
         let hazards = classifier.hazards(forDropping: identity(.function), isReplacement: true)
 
-        XCTAssertFalse(hazards.contains { $0.severity == .refusedByDefault })
-        XCTAssertTrue(hazards.contains { $0.severity == .warning })
+        #expect(!(hazards.contains { $0.severity == .refusedByDefault }))
+        #expect(hazards.contains { $0.severity == .warning })
     }
 }

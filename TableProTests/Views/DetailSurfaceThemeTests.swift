@@ -12,7 +12,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("Detail surfaces keep their system color until the theme sets their slot", .serialized)
 @MainActor
 struct DetailSurfaceThemeTests {
     private static let size = CGSize(width: 320, height: 240)

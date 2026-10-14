@@ -8,10 +8,15 @@ import Testing
 @testable import TablePro
 
 struct TransferDialogStorageTests {
-    private let suiteName = "com.TablePro.tests.exportDialog.\(UUID().uuidString)"
+    private let suite: EphemeralDefaults
+    private var suiteName: String { suite.suiteName }
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
 
     private func makeDefaults() throws -> UserDefaults {
-        try #require(UserDefaults(suiteName: suiteName))
+        suite.defaults
     }
 
     @Test("loadLastExportFormatId returns nil when nothing stored")

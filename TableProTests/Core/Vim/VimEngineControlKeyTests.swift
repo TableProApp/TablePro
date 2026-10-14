@@ -3,25 +3,19 @@
 //  TableProTests
 //
 
+import Foundation
 @testable import TablePro
-import XCTest
+import Testing
 
 @MainActor
-final class VimEngineControlKeyTests: XCTestCase {
+final class VimEngineControlKeyTests {
     private var engine: VimEngine!
     private var buffer: VimTextBufferMock!
 
-    override func setUp() {
-        super.setUp()
+    init() {
         let lines = (0..<30).map { "line\($0) text" }
         buffer = VimTextBufferMock(text: lines.joined(separator: "\n") + "\n")
         engine = VimEngine(buffer: buffer)
-    }
-
-    override func tearDown() {
-        engine = nil
-        buffer = nil
-        super.tearDown()
     }
 
     private func useText(_ text: String) {
@@ -49,165 +43,181 @@ final class VimEngineControlKeyTests: XCTestCase {
 
     // MARK: - Normal mode
 
-    func testControlRRedoesThroughTheEngine() {
-        XCTAssertTrue(control("r"))
-        XCTAssertEqual(buffer.redoCallCount, 1)
+    @Test
+    func controlRRedoesThroughTheEngine() {
+        #expect(control("r"))
+        #expect(buffer.redoCallCount == 1)
     }
 
-    func testControlRTakesACount() {
+    @Test
+    func controlRTakesACount() {
         keys("3")
         control("r")
-        XCTAssertEqual(buffer.redoCallCount, 3)
+        #expect(buffer.redoCallCount == 3)
     }
 
-    func testControlHMovesLeftLikeH() {
+    @Test
+    func controlHMovesLeftLikeH() {
         caret(atLine: 0, column: 5)
         let original = buffer.text
-        XCTAssertTrue(control("h"))
-        XCTAssertEqual(pos, 4)
-        XCTAssertEqual(buffer.text, original, "Ctrl+H must move the caret in Normal mode, never delete")
+        #expect(control("h"))
+        #expect(pos == 4)
+        #expect(buffer.text == original, "Ctrl+H must move the caret in Normal mode, never delete")
     }
 
-    func testControlHTakesACount() {
+    @Test
+    func controlHTakesACount() {
         caret(atLine: 0, column: 5)
         keys("3")
         control("h")
-        XCTAssertEqual(pos, 2)
+        #expect(pos == 2)
     }
 
-    func testControlNAndControlPMoveBetweenLines() {
+    @Test
+    func controlNAndControlPMoveBetweenLines() {
         caret(atLine: 4, column: 2)
         control("n")
-        XCTAssertEqual(line, 5)
+        #expect(line == 5)
         control("p")
         control("p")
-        XCTAssertEqual(line, 3)
+        #expect(line == 3)
     }
 
-    func testControlNCompletesAPendingOperatorLikeJ() {
+    @Test
+    func controlNCompletesAPendingOperatorLikeJ() {
         useText("one\ntwo\nthree\n")
         keys("d")
         control("n")
-        XCTAssertEqual(buffer.text, "three\n", "d followed by Ctrl+N deletes two lines, as dj does")
+        #expect(buffer.text == "three\n", "d followed by Ctrl+N deletes two lines, as dj does")
     }
 
-    func testScrollControlCancelsAPendingOperator() {
+    @Test
+    func scrollControlCancelsAPendingOperator() {
         useText("one two three\n")
         keys("d")
         control("d")
         keys("w")
-        XCTAssertEqual(buffer.text, "one two three\n", "Ctrl+D is no motion, so it abandons the pending d")
-        XCTAssertNil(engine.pendingOperator)
+        #expect(buffer.text == "one two three\n", "Ctrl+D is no motion, so it abandons the pending d")
+        #expect(engine.pendingOperator == nil)
     }
 
-    func testScrollControlUsesAndConsumesItsCount() {
+    @Test
+    func scrollControlUsesAndConsumesItsCount() {
         caret(atLine: 0)
         keys("4")
         control("d")
-        XCTAssertEqual(line, 4, "A count sets how many lines Ctrl+D moves")
+        #expect(line == 4, "A count sets how many lines Ctrl+D moves")
         keys("j")
-        XCTAssertEqual(line, 5, "The count must not carry over to the next command")
+        #expect(line == 5, "The count must not carry over to the next command")
     }
 
-    func testUnboundControlCharacterDoesNotEditInNormalMode() {
+    @Test
+    func unboundControlCharacterDoesNotEditInNormalMode() {
         caret(atLine: 0, column: 3)
         let original = buffer.text
-        XCTAssertTrue(control("k"))
-        XCTAssertTrue(control("o"))
-        XCTAssertTrue(control("t"))
-        XCTAssertEqual(buffer.text, original)
-        XCTAssertEqual(engine.mode, .normal)
+        #expect(control("k"))
+        #expect(control("o"))
+        #expect(control("t"))
+        #expect(buffer.text == original)
+        #expect(engine.mode == .normal)
     }
 
-    func testOptionTypedCharactersDoNotEditInNormalMode() {
+    @Test
+    func optionTypedCharactersDoNotEditInNormalMode() {
         caret(atLine: 0, column: 3)
         let original = buffer.text
-        XCTAssertTrue(engine.process("\u{02D9}", shift: false))
-        XCTAssertTrue(engine.process("\u{00A0}", shift: false))
-        XCTAssertEqual(buffer.text, original)
+        #expect(engine.process("\u{02D9}", shift: false))
+        #expect(engine.process("\u{00A0}", shift: false))
+        #expect(buffer.text == original)
     }
 
-    func testReplaceCharConsumesAControlCharacterWithoutWritingIt() {
+    @Test
+    func replaceCharConsumesAControlCharacterWithoutWritingIt() {
         useText("hello\n")
         keys("r")
         control("d")
         keys("x")
-        XCTAssertEqual(buffer.text, "ello\n", "r takes Ctrl+D as its argument, so the next x deletes")
+        #expect(buffer.text == "ello\n", "r takes Ctrl+D as its argument, so the next x deletes")
     }
 
     // MARK: - Visual mode
 
-    func testControlDExtendsTheVisualSelection() {
+    @Test
+    func controlDExtendsTheVisualSelection() {
         caret(atLine: 0)
         keys("v")
         control("d")
         let selection = buffer.selectedRange()
-        XCTAssertEqual(selection.location, 0)
-        XCTAssertEqual(
-            buffer.lineAndColumn(forOffset: selection.location + selection.length - 1).line,
-            15,
-            "Ctrl+D moves the visual cursor half the visible lines down"
-        )
-        XCTAssertEqual(engine.mode, .visual(linewise: false))
+        #expect(selection.location == 0)
+        #expect(buffer.lineAndColumn(forOffset: selection.location + selection.length - 1).line == 15,
+            "Ctrl+D moves the visual cursor half the visible lines down")
+        #expect(engine.mode == .visual(linewise: false))
     }
 
-    func testControlHMovesTheVisualCursor() {
+    @Test
+    func controlHMovesTheVisualCursor() {
         caret(atLine: 0)
         keys("vll")
         control("h")
-        XCTAssertEqual(buffer.selectedRange(), NSRange(location: 0, length: 2))
+        #expect(buffer.selectedRange() == NSRange(location: 0, length: 2))
     }
 
-    func testUnboundControlCharacterLeavesTheVisualSelection() {
+    @Test
+    func unboundControlCharacterLeavesTheVisualSelection() {
         caret(atLine: 0)
         keys("vl")
         let original = buffer.text
         control("k")
-        XCTAssertEqual(buffer.text, original)
-        XCTAssertEqual(buffer.selectedRange(), NSRange(location: 0, length: 2))
-        XCTAssertEqual(engine.mode, .visual(linewise: false))
+        #expect(buffer.text == original)
+        #expect(buffer.selectedRange() == NSRange(location: 0, length: 2))
+        #expect(engine.mode == .visual(linewise: false))
     }
 
     // MARK: - Insert and Replace mode
 
-    func testControlHInInsertModeIsLeftToTheTextView() {
+    @Test
+    func controlHInInsertModeIsLeftToTheTextView() {
         useText("a\u{1F600}b\n")
         buffer.setSelectedRange(NSRange(location: 3, length: 0))
         keys("i")
-        XCTAssertFalse(control("h"), "Insert mode Ctrl+H is the text view's deleteBackward, as Delete is")
-        XCTAssertEqual(buffer.text, "a\u{1F600}b\n")
-        XCTAssertEqual(engine.mode, .insert)
+        #expect(!control("h"), "Insert mode Ctrl+H is the text view's deleteBackward, as Delete is")
+        #expect(buffer.text == "a\u{1F600}b\n")
+        #expect(engine.mode == .insert)
     }
 
-    func testControlHInReplaceModeRestoresLikeBackspace() {
+    @Test
+    func controlHInReplaceModeRestoresLikeBackspace() {
         useText("hello\n")
         _ = engine.process("R", shift: true)
         _ = engine.process("X", shift: true)
         _ = engine.process("Y", shift: true)
         control("h")
-        XCTAssertEqual(buffer.text, "Xello\n")
-        XCTAssertEqual(pos, 1)
+        #expect(buffer.text == "Xello\n")
+        #expect(pos == 1)
     }
 
-    func testOptionTypedCharacterOverwritesInReplaceMode() {
+    @Test
+    func optionTypedCharacterOverwritesInReplaceMode() {
         useText("hello\n")
         _ = engine.process("R", shift: true)
         _ = engine.process("\u{00E9}", shift: false)
-        XCTAssertEqual(buffer.text, "\u{00E9}ello\n")
+        #expect(buffer.text == "\u{00E9}ello\n")
     }
 
     // MARK: - Command line
 
-    func testControlHErasesInTheCommandLine() {
+    @Test
+    func controlHErasesInTheCommandLine() {
         keys(":ab")
         control("h")
-        XCTAssertEqual(engine.mode, .commandLine(buffer: ":a"))
+        #expect(engine.mode == .commandLine(buffer: ":a"))
     }
 
-    func testControlCharacterIsNotAppendedToTheCommandLine() {
+    @Test
+    func controlCharacterIsNotAppendedToTheCommandLine() {
         keys(":")
         control("d")
         control("k")
-        XCTAssertEqual(engine.mode, .commandLine(buffer: ":"))
+        #expect(engine.mode == .commandLine(buffer: ":"))
     }
 }

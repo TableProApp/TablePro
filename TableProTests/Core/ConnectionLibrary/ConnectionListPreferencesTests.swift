@@ -10,11 +10,11 @@ import Testing
 
 @MainActor
 internal struct ConnectionListPreferencesTests {
-    private let suiteName = "com.TablePro.tests.ConnectionListPreferences.\(UUID().uuidString)"
-    private let defaults: UserDefaults
+    private let suite: EphemeralDefaults
+    private var defaults: UserDefaults { suite.defaults }
 
     internal init() throws {
-        defaults = try #require(UserDefaults(suiteName: suiteName))
+        suite = try EphemeralDefaults()
     }
 
     private func makePreferences() -> ConnectionListPreferences {
@@ -23,14 +23,12 @@ internal struct ConnectionListPreferencesTests {
 
     @Test("Recent is shown until the user hides it")
     internal func showsRecentByDefault() {
-        defer { defaults.removePersistentDomain(forName: suiteName) }
 
         #expect(makePreferences().showsRecent)
     }
 
     @Test("Hiding Recent survives a relaunch on this Mac")
     internal func hidingRecentPersists() {
-        defer { defaults.removePersistentDomain(forName: suiteName) }
         makePreferences().setShowsRecent(false)
 
         #expect(!makePreferences().showsRecent)
@@ -38,7 +36,6 @@ internal struct ConnectionListPreferencesTests {
 
     @Test("Resetting shows Recent again and forgets the stored choice")
     internal func resetRestoresTheDefault() {
-        defer { defaults.removePersistentDomain(forName: suiteName) }
         let preferences = makePreferences()
         preferences.setShowsRecent(false)
 
@@ -51,7 +48,6 @@ internal struct ConnectionListPreferencesTests {
 
     @Test("Only a real change is published")
     internal func publishesOnlyChanges() {
-        defer { defaults.removePersistentDomain(forName: suiteName) }
         let preferences = makePreferences()
         var received: [Bool] = []
         let cancellable = preferences.$showsRecent.dropFirst().sink { received.append($0) }

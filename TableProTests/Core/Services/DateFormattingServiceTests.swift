@@ -6,6 +6,7 @@
 import Foundation
 import TableProPluginKit
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -342,13 +343,11 @@ struct DateFormattingServiceTimeZoneTests {
     }
 
     @Test("A system time zone change raises the generation the grid caches on")
-    func systemTimeZoneChangeRaisesTheGeneration() async {
+    func systemTimeZoneChangeRaisesTheGeneration() async throws {
         let before = DateFormattingService.shared.systemTimeZoneGeneration
         NotificationCenter.default.post(name: .NSSystemTimeZoneDidChange, object: nil)
 
-        for _ in 0 ..< 100 where DateFormattingService.shared.systemTimeZoneGeneration == before {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        try await waitUntil { DateFormattingService.shared.systemTimeZoneGeneration != before }
         #expect(DateFormattingService.shared.systemTimeZoneGeneration > before)
     }
 

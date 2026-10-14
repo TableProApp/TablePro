@@ -11,6 +11,8 @@ import Testing
 
 @MainActor
 struct DocumentEditingAvailabilityTests {
+    private let fixtures = CoordinatorFixtures()
+
     private let locators: [String?] = [#"{"$numberInt":"1"}"#, #"{"$numberInt":"2"}"#, nil, #"{"$numberInt":"4"}"#]
 
     private func makeCoordinator(
@@ -18,13 +20,9 @@ struct DocumentEditingAvailabilityTests {
         tabType: TabType = .table,
         locators: [String?]? = nil
     ) -> MainContentCoordinator {
-        let tabManager = QueryTabManager()
-        let coordinator = MainContentCoordinator(
-            connection: TestFixtures.makeConnection(type: type),
-            tabManager: tabManager,
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
+        let fixture = fixtures.make(connection: TestFixtures.makeConnection(type: type))
+        let tabManager = fixture.tabManager
+        let coordinator = fixture.coordinator
         var tab = tabType == .table
             ? QueryTab(title: "people", query: "db.people.find({})", tabType: .table, tableName: "people")
             : QueryTab(title: "Query", query: "db.people.find({})", tabType: .query)

@@ -16,6 +16,8 @@ struct ConnectionStorageImportTests {
     private let unique = UUID().uuidString
     private let directory: URL
     private let keychain = InMemoryKeychain()
+    private let suite: EphemeralDefaults
+    private let syncSuite: EphemeralDefaults
     private let syncDefaults: DirtyWriteCountingDefaults
     private let metadata: SyncMetadataStorage
     private let events: AppEvents
@@ -25,9 +27,9 @@ struct ConnectionStorageImportTests {
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("connection-import-\(unique)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        syncDefaults = try #require(
-            DirtyWriteCountingDefaults(suiteName: "com.TablePro.tests.ConnectionImport.sync.\(unique)")
-        )
+        suite = try EphemeralDefaults()
+        syncSuite = try EphemeralDefaults()
+        syncDefaults = try #require(DirtyWriteCountingDefaults(suiteName: syncSuite.suiteName))
         metadata = SyncMetadataStorage(userDefaults: syncDefaults)
         events = AppEvents()
     }
@@ -39,7 +41,7 @@ struct ConnectionStorageImportTests {
     private func makeStorage() throws -> ConnectionStorage {
         ConnectionStorage(
             fileURL: fileURL,
-            userDefaults: try #require(UserDefaults(suiteName: "com.TablePro.tests.ConnectionImport.\(unique)")),
+            userDefaults: suite.defaults,
             syncTracker: SyncChangeTracker(metadataStorage: metadata),
             keychain: keychain,
             appEvents: events,

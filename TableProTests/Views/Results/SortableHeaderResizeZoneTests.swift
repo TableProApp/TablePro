@@ -20,7 +20,6 @@ private final class ResizeZoneLayoutPersister: ColumnLayoutPersisting {
 /// A hidden column's header rect is zero, so its trailing edge is x = 0 and it reads as a divider
 /// at the header's leading edge: the resize cursor appeared over the row-number heading and the
 /// header swallowed the clicks landing there.
-@Suite("Sortable header resize zone", .serialized)
 @MainActor
 struct SortableHeaderResizeZoneTests {
     private struct Grid {

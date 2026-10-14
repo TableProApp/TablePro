@@ -12,6 +12,7 @@ import Testing
 
 struct SQLFavoriteVersionTests {
     private let storage: SQLFavoriteStorage
+    private let suite: EphemeralDefaults
     private let defaults: UserDefaults
     private let tracker: SyncChangeTracker
 
@@ -21,7 +22,8 @@ struct SQLFavoriteVersionTests {
             .appendingPathComponent("sql_favorites_versions_\(UUID().uuidString).db")
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         storage = SQLFavoriteStorage(databaseURL: url, removeDatabaseOnDeinit: true)
-        defaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.SQLFavoriteVersions.\(UUID().uuidString)"))
+        suite = try EphemeralDefaults()
+        defaults = suite.defaults
         tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: defaults))
     }
 

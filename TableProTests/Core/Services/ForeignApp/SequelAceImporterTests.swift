@@ -9,7 +9,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("SequelAceImporter", .serialized)
 struct SequelAceImporterTests {
     private var tempDir: URL
     private var importer: SequelAceImporter

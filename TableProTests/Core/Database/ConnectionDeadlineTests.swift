@@ -5,18 +5,6 @@ import TableProPluginKit
 import TableProTestSupport
 import Testing
 
-private func waitUntil(
-    timeout: Duration = .seconds(2),
-    _ condition: @Sendable () -> Bool
-) async -> Bool {
-    let deadline = ContinuousClock.now.advanced(by: timeout)
-    while ContinuousClock.now < deadline {
-        if condition() { return true }
-        try? await Task.sleep(for: .milliseconds(5))
-    }
-    return condition()
-}
-
 struct ConnectionDeadlineTests {
     @Test("Connect timeout policy defaults and rejects out-of-range values")
     func connectPolicy() {
@@ -233,7 +221,7 @@ struct ConnectionDeadlineTests {
             resolution.cancel()
             resolver.finish()
         }
-        try #require(await waitUntil { resolver.isResolving })
+        try await waitUntil { resolver.isResolving }
         let startedAt = ContinuousClock.now
 
         let result = try #require(await BoundedCall.result(within: .seconds(2)) {
@@ -274,7 +262,7 @@ struct PluginDriverAdapterConnectDeadlineTests {
             plugin.finishConnect()
         }
 
-        try #require(await waitUntil { plugin.isConnecting })
+        try await waitUntil { plugin.isConnecting }
         try await Task.sleep(for: .milliseconds(120))
         #expect(plugin.isConnecting)
         #expect(plugin.disconnectCallCount == 0)
@@ -316,7 +304,7 @@ struct PluginDriverAdapterConnectDeadlineTests {
             connect.cancel()
             plugin.finishConnect()
         }
-        try #require(await waitUntil { plugin.isConnecting })
+        try await waitUntil { plugin.isConnecting }
         let adapter = try #require(adapterBox.withLock { $0 })
         let startedAt = ContinuousClock.now
 
@@ -349,14 +337,14 @@ struct PluginDriverAdapterConnectDeadlineTests {
         #expect(repeatedError is DatabaseError)
 
         plugin.finishConnect()
-        try #require(await waitUntil { plugin.disconnectCallCount == 1 })
+        try await waitUntil { plugin.disconnectCallCount == 1 }
 
         #expect(!plugin.disconnectedWhileConnecting)
         #expect(stages.withLock { $0 } == [.authenticating])
     }
 }
 
-private final class DeadlineBlockingPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class DeadlineBlockingPluginDriver: PluginDriverStub, @unchecked Sendable {
     private struct State {
         var continuation: CheckedContinuation<Void, Never>?
         var isConnecting = false
@@ -410,23 +398,6 @@ private final class DeadlineBlockingPluginDriver: PluginDatabaseDriver, @uncheck
 
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
-
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-
-    func fetchDatabases() async throws -> [String] { [] }
-
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 }
 

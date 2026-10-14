@@ -31,7 +31,6 @@ private final class ThemeFillView: NSView {
     }
 }
 
-@Suite("The ER diagram follows the theme", .serialized)
 @MainActor
 struct ERDiagramThemeTests {
     private typealias Fixture = ThemeTestFixture

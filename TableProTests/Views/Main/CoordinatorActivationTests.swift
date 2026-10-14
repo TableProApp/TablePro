@@ -1,15 +1,11 @@
-//
-//  CoordinatorActivationTests.swift
-//  TableProTests
-//
-//  A connection switch takes a connection's panes out of the window and puts them back, which
-//  runs `onAppear` again. Activation must treat that as the same connection coming back, not as a
-//  new one opening: nothing it already loaded is fetched again.
-//
+// A connection switch takes a connection's panes out of the window and puts them back, which runs
+// `onAppear` again. Activation must treat that as the same connection coming back: nothing it
+// already loaded is fetched again.
 
 import AppKit
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 @Suite("Coordinator activation", .serialized)
@@ -22,7 +18,7 @@ struct CoordinatorActivationTests {
         let mock = harness.connectBackground()
         harness.controller.workspaces.select(harness.background.connectionId)
         let coordinator = try #require(harness.background.sessionState?.coordinator)
-        await harness.settle { coordinator.isActivated && harness.isAutocompletePopulated && coordinator.schemaLoadTask == nil }
+        try await harness.settle { coordinator.isActivated && harness.isAutocompletePopulated && coordinator.schemaLoadTask == nil }
         try #require(harness.isAutocompletePopulated)
         let tablesFetched = mock.fetchTablesCallCount
 
@@ -30,7 +26,7 @@ struct CoordinatorActivationTests {
             await harness.switchAway()
             let activations = coordinator.activationCount
             harness.controller.workspaces.select(harness.background.connectionId)
-            await harness.settle { coordinator.activationCount > activations && coordinator.schemaLoadTask == nil }
+            try await harness.settle { coordinator.activationCount > activations && coordinator.schemaLoadTask == nil }
             await harness.settle(for: 0.5)
         }
 
@@ -43,7 +39,7 @@ struct CoordinatorActivationTests {
         SchemaProviderRegistry.shared.clear(for: harness.backgroundConnection.id)
         await harness.switchAway()
         harness.controller.workspaces.select(harness.background.connectionId)
-        await harness.settle { harness.isAutocompletePopulated && coordinator.schemaLoadTask == nil }
+        try await harness.settle { harness.isAutocompletePopulated && coordinator.schemaLoadTask == nil }
 
         #expect(harness.isAutocompletePopulated)
         #expect(mock.fetchTablesCallCount == tablesFetched)
@@ -51,7 +47,7 @@ struct CoordinatorActivationTests {
         await harness.switchAway()
         await SchemaService.shared.invalidate(connectionId: harness.backgroundConnection.id)
         harness.controller.workspaces.select(harness.background.connectionId)
-        await harness.settle { mock.fetchTablesCallCount > tablesFetched }
+        try await harness.settle { mock.fetchTablesCallCount > tablesFetched }
 
         #expect(mock.fetchTablesCallCount > tablesFetched)
         #expect(mock.fetchAllColumnsCallCount == 0)
@@ -65,7 +61,7 @@ struct CoordinatorActivationTests {
         harness.controller.workspaces.select(harness.background.connectionId)
         let coordinator = try #require(harness.background.sessionState?.coordinator)
 
-        await harness.settle { coordinator.isActivated && harness.isAutocompletePopulated && coordinator.schemaLoadTask == nil }
+        try await harness.settle { coordinator.isActivated && harness.isAutocompletePopulated && coordinator.schemaLoadTask == nil }
         await harness.settle(for: 0.2)
 
         #expect(harness.isAutocompletePopulated)
@@ -82,7 +78,7 @@ struct CoordinatorActivationTests {
         let mock = harness.connectBackground(bulkForeignKeyFetch: true)
         harness.controller.workspaces.select(harness.background.connectionId)
         let coordinator = try #require(harness.background.sessionState?.coordinator)
-        await harness.settle { coordinator.isActivated && harness.isAutocompletePopulated && coordinator.schemaLoadTask == nil }
+        try await harness.settle { coordinator.isActivated && harness.isAutocompletePopulated && coordinator.schemaLoadTask == nil }
         let scope = try #require(DatabaseManager.shared.browseScope(for: harness.backgroundConnection.id))
 
         #expect(mock.providesBulkForeignKeyFetch)
@@ -136,9 +132,7 @@ struct CoordinatorActivationTests {
         try #require(tree.isTablesCurrent(connectionId: connection.id, database: connection.database, schema: nil))
         coordinator.markActivated()
         try #require(coordinator.fileWatcher != nil)
-        for _ in 0 ..< 50 where coordinator.schemaLoadTask != nil {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        try await waitUntil { coordinator.schemaLoadTask == nil }
         try #require(
             tree.isTablesCurrent(connectionId: connection.id, database: connection.database, schema: nil),
             "Opening the connection marked the list before the file changed"
@@ -147,8 +141,8 @@ struct CoordinatorActivationTests {
         let handle = try FileHandle(forWritingTo: file)
         try handle.write(contentsOf: Data("changed".utf8))
         try handle.close()
-        for _ in 0 ..< 300 where tree.isTablesCurrent(connectionId: connection.id, database: connection.database, schema: nil) {
-            try await Task.sleep(for: .milliseconds(20))
+        try await waitUntil {
+            !tree.isTablesCurrent(connectionId: connection.id, database: connection.database, schema: nil)
         }
 
         #expect(!tree.isTablesCurrent(connectionId: connection.id, database: connection.database, schema: nil))
@@ -212,10 +206,10 @@ struct CoordinatorActivationTests {
         /// SwiftUI mounts a pane on the next layout pass, and the schema load runs as a main-actor
         /// task, so a test that asks what a switch did has to give the main actor up between passes.
         /// Spinning the run loop from inside a synchronous test holds the actor and runs neither.
-        func settle(until isSatisfied: () -> Bool) async {
-            let deadline = Date(timeIntervalSinceNow: 10)
-            while !isSatisfied(), Date() < deadline {
-                await pump()
+        func settle(until isSatisfied: () -> Bool) async throws {
+            try await waitUntil {
+                layOut()
+                return isSatisfied()
             }
         }
 
@@ -231,9 +225,13 @@ struct CoordinatorActivationTests {
             }
         }
 
-        private func pump() async {
+        private func layOut() {
             window.contentView?.layoutSubtreeIfNeeded()
             controller.view.layoutSubtreeIfNeeded()
+        }
+
+        private func pump() async {
+            layOut()
             try? await Task.sleep(for: .milliseconds(20))
         }
 

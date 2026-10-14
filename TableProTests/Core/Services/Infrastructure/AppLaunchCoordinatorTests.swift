@@ -1,166 +1,166 @@
-//
-//  AppLaunchCoordinatorTests.swift
-//  TableProTests
-//
-
+import Foundation
 @testable import TablePro
-import XCTest
+import TableProTestSupport
+import Testing
 
 @MainActor
-final class AppLaunchCoordinatorTests: XCTestCase {
-    private var environment: RecordingLaunchEnvironment!
-    private var coordinator: AppLaunchCoordinator!
+struct AppLaunchCoordinatorTests {
+    private let environment = RecordingLaunchEnvironment()
+    private let coordinator: AppLaunchCoordinator
 
-    override func setUp() async throws {
-        try await super.setUp()
-        environment = RecordingLaunchEnvironment()
+    init() {
         coordinator = AppLaunchCoordinator(environment: environment)
     }
 
-    override func tearDown() async throws {
-        coordinator = nil
-        environment = nil
-        try await super.tearDown()
-    }
-
-    func testNothingIsRoutedBeforeTheFirstTurn() async {
+    @Test
+    func nothingIsRoutedBeforeTheFirstTurn() {
         let connectionId = UUID()
         coordinator.deliver([.openConnection(connectionId)])
         coordinator.didFinishLaunching()
 
-        XCTAssertEqual(coordinator.phase, .collectingIntents)
-        XCTAssertTrue(environment.routedConnectionIds.isEmpty)
-        XCTAssertEqual(environment.pendingTurnCount, 1)
+        #expect(coordinator.phase == .collectingIntents)
+        #expect(environment.routedConnectionIds.isEmpty)
+        #expect(environment.pendingTurnCount == 1)
     }
 
     /// The gesture that launched the app reaches `application(_:open:)` before
     /// `applicationDidFinishLaunching`, so this is the ordinary case, not an edge one.
-    func testAnIntentDeliveredBeforeLaunchFinishesIsRoutedOnce() async {
+    @Test
+    func anIntentDeliveredBeforeLaunchFinishesIsRoutedOnce() async throws {
         let connectionId = UUID()
         coordinator.deliver([.openConnection(connectionId)])
         coordinator.didFinishLaunching()
 
-        await environment.runNextTurnAndWaitForCompletion()
+        try await environment.runNextTurnAndWaitForCompletion()
 
-        XCTAssertEqual(environment.routedConnectionIds, [connectionId])
-        XCTAssertEqual(coordinator.phase, .ready)
+        #expect(environment.routedConnectionIds == [connectionId])
+        #expect(coordinator.phase == .ready)
     }
 
     /// A straggler from the same gesture lands within a few milliseconds of
     /// `applicationDidFinishLaunching` and before the first turn of the main queue, so it must join
     /// the same routing pass rather than opening a second window behind the first.
-    func testAnIntentDeliveredAfterLaunchFinishesJoinsTheSamePass() async {
+    @Test
+    func anIntentDeliveredAfterLaunchFinishesJoinsTheSamePass() async throws {
         let first = UUID()
         let second = UUID()
         coordinator.deliver([.openConnection(first)])
         coordinator.didFinishLaunching()
         coordinator.deliver([.openConnection(second)])
 
-        await environment.runNextTurnAndWaitForCompletion()
+        try await environment.runNextTurnAndWaitForCompletion()
 
-        XCTAssertEqual(environment.routedConnectionIds, [first, second])
-        XCTAssertEqual(environment.startupBehaviorRuns, 1)
-        XCTAssertEqual(environment.completions, 1)
+        #expect(environment.routedConnectionIds == [first, second])
+        #expect(environment.startupBehaviorRuns == 1)
+        #expect(environment.completions == 1)
     }
 
-    func testEveryIntentInOneDeliveryIsRoutedInOrder() async {
+    @Test
+    func everyIntentInOneDeliveryIsRoutedInOrder() async throws {
         let ids = [UUID(), UUID(), UUID()]
         coordinator.deliver(ids.map { .openConnection($0) })
         coordinator.didFinishLaunching()
 
-        await environment.runNextTurnAndWaitForCompletion()
+        try await environment.runNextTurnAndWaitForCompletion()
 
-        XCTAssertEqual(environment.routedConnectionIds, ids)
+        #expect(environment.routedConnectionIds == ids)
     }
 
-    func testALaunchWithNoIntentsStillRunsTheStartupBehaviour() async {
+    @Test
+    func aLaunchWithNoIntentsStillRunsTheStartupBehaviour() async throws {
         coordinator.didFinishLaunching()
 
-        await environment.runNextTurnAndWaitForCompletion()
+        try await environment.runNextTurnAndWaitForCompletion()
 
-        XCTAssertTrue(environment.routedConnectionIds.isEmpty)
-        XCTAssertEqual(environment.startupBehaviorRuns, 1)
-        XCTAssertEqual(environment.welcomeFallbackRuns, 1)
-        XCTAssertEqual(coordinator.phase, .ready)
+        #expect(environment.routedConnectionIds.isEmpty)
+        #expect(environment.startupBehaviorRuns == 1)
+        #expect(environment.welcomeFallbackRuns == 1)
+        #expect(coordinator.phase == .ready)
     }
 
     /// A second scheduled turn would route the same intents twice. Nothing schedules one today, and
     /// this is what keeps that true.
-    func testASecondTurnRoutesNothingFurther() async {
+    @Test
+    func aSecondTurnRoutesNothingFurther() async throws {
         let connectionId = UUID()
         coordinator.deliver([.openConnection(connectionId)])
         coordinator.didFinishLaunching()
-        await environment.runNextTurnAndWaitForCompletion()
+        try await environment.runNextTurnAndWaitForCompletion()
 
         environment.replayLastTurn()
-        await environment.settle()
+        await environment.runQueuedMainActorWork()
 
-        XCTAssertEqual(environment.routedConnectionIds, [connectionId])
-        XCTAssertEqual(environment.completions, 1)
+        #expect(environment.routedConnectionIds == [connectionId])
+        #expect(environment.completions == 1)
     }
 
-    func testAnIntentArrivingAfterReadyIsRoutedOnItsOwn() async {
+    @Test
+    func anIntentArrivingAfterReadyIsRoutedOnItsOwn() async throws {
         coordinator.didFinishLaunching()
-        await environment.runNextTurnAndWaitForCompletion()
+        try await environment.runNextTurnAndWaitForCompletion()
 
         let late = UUID()
         coordinator.deliver([.openConnection(late)])
-        await environment.settle()
+        try await waitUntil { environment.dismissWelcomeRuns == 2 }
 
-        XCTAssertEqual(environment.routedConnectionIds, [late])
-        XCTAssertEqual(environment.dismissWelcomeRuns, 2)
+        #expect(environment.routedConnectionIds == [late])
+        #expect(environment.dismissWelcomeRuns == 2)
     }
 
     /// Routing suspends: `TabRouter.openTable` awaits `ensureConnected`. An intent that arrives
     /// during that wait must join the pass in flight, not start a second one, or two tasks can each
     /// find no session for the same connection and each open one.
-    func testAnIntentArrivingDuringARouteJoinsTheSameDrain() async {
+    @Test
+    func anIntentArrivingDuringARouteJoinsTheSameDrain() async throws {
         let first = UUID()
         let second = UUID()
         environment.holdsRoutes = true
         coordinator.deliver([.openConnection(first)])
         coordinator.didFinishLaunching()
         environment.fireNextTurn()
-        await environment.settle()
+        try await waitUntil { environment.isHoldingARoute }
 
-        XCTAssertEqual(environment.routedConnectionIds, [first], "The first route should still be suspended")
+        #expect(environment.routedConnectionIds == [first], "The first route should still be suspended")
 
         coordinator.deliver([.openConnection(second)])
-        await environment.settle()
+        await environment.runQueuedMainActorWork()
 
-        XCTAssertEqual(environment.routedConnectionIds, [first], "The second intent must wait, not race")
-        XCTAssertEqual(environment.concurrentRoutes, 1)
+        #expect(environment.routedConnectionIds == [first], "The second intent must wait, not race")
+        #expect(environment.concurrentRoutes == 1)
 
         environment.holdsRoutes = false
         environment.releaseRoute()
-        await environment.settle()
+        try await waitUntil { environment.completions == 1 }
 
-        XCTAssertEqual(environment.routedConnectionIds, [first, second])
-        XCTAssertEqual(environment.concurrentRoutes, 1, "Only one route may be in flight at a time")
-        XCTAssertEqual(environment.completions, 1)
+        #expect(environment.routedConnectionIds == [first, second])
+        #expect(environment.concurrentRoutes == 1, "Only one route may be in flight at a time")
+        #expect(environment.completions == 1)
     }
 
-    func testStartupBehaviourIsToldWhetherAnyIntentWasRouted() async {
+    @Test
+    func startupBehaviourIsToldWhetherAnyIntentWasRouted() async throws {
         coordinator.deliver([.openConnection(UUID())])
         coordinator.didFinishLaunching()
 
-        await environment.runNextTurnAndWaitForCompletion()
+        try await environment.runNextTurnAndWaitForCompletion()
 
-        XCTAssertTrue(environment.startupBehaviorSawIntents)
+        #expect(environment.startupBehaviorSawIntents)
     }
 
-    func testReopenWithNoVisibleWindowsPresentsWelcome() {
+    @Test
+    func reopenWithNoVisibleWindowsPresentsWelcome() {
         let handled = coordinator.handleReopen(hasVisibleWindows: false)
 
-        XCTAssertFalse(handled)
-        XCTAssertEqual(environment.presentWelcomeRuns, 1)
+        #expect(!handled)
+        #expect(environment.presentWelcomeRuns == 1)
     }
 
-    func testReopenWithVisibleWindowsPresentsNothing() {
+    @Test
+    func reopenWithVisibleWindowsPresentsNothing() {
         let handled = coordinator.handleReopen(hasVisibleWindows: true)
 
-        XCTAssertTrue(handled)
-        XCTAssertEqual(environment.presentWelcomeRuns, 0)
+        #expect(handled)
+        #expect(environment.presentWelcomeRuns == 0)
     }
 }
 
@@ -186,6 +186,7 @@ private final class RecordingLaunchEnvironment: LaunchEnvironment {
     private var lastTurn: (@MainActor () -> Void)?
 
     var pendingTurnCount: Int { turns.count }
+    var isHoldingARoute: Bool { routeGate != nil }
 
     func scheduleNextTurn(_ body: @escaping @MainActor () -> Void) {
         turns.append(body)
@@ -228,27 +229,28 @@ private final class RecordingLaunchEnvironment: LaunchEnvironment {
     }
 
     func fireNextTurn() {
-        guard !turns.isEmpty else { return XCTFail("No turn was scheduled") }
+        guard !turns.isEmpty else {
+            Issue.record("No turn was scheduled")
+            return
+        }
         turns.removeFirst()()
     }
 
-    /// Fires the turn the coordinator scheduled, then drains the main queue until the routing task
-    /// it starts has finished. `launchDidComplete()` is the coordinator's own last step, so the
-    /// count moving is the signal, not a sleep.
-    func runNextTurnAndWaitForCompletion() async {
-        guard !turns.isEmpty else { return XCTFail("No turn was scheduled") }
+    /// `launchDidComplete()` is the coordinator's own last step, so the count moving is the signal.
+    func runNextTurnAndWaitForCompletion() async throws {
+        guard !turns.isEmpty else {
+            Issue.record("No turn was scheduled")
+            return
+        }
         let target = completions + 1
         turns.removeFirst()()
-        for _ in 0 ..< 100 where completions < target {
-            await Task.yield()
-        }
-        XCTAssertEqual(completions, target, "The routing pass never completed")
+        try await waitUntil { self.completions >= target }
+        #expect(completions == target, "The routing pass ran more than once")
     }
 
-    /// Lets any already-started task finish without expecting a completion.
-    func settle() async {
-        for _ in 0 ..< 100 {
-            await Task.yield()
-        }
+    /// The main queue runs its jobs in order, so a job queued now runs after every routing task the
+    /// case has already started has reached its first suspension.
+    func runQueuedMainActorWork() async {
+        await Task { @MainActor in }.value
     }
 }

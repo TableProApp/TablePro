@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Plugin bundle version reading", .serialized)
 struct PluginBundleVersionTests {
     private func makeTempDir() throws -> URL {
         let dir = FileManager.default.temporaryDirectory

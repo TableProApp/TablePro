@@ -1,11 +1,7 @@
-//
-//  HistoryPanelViewModelTests.swift
-//  TableProTests
-//
-
 import Combine
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 private actor RecordingHistoryReader: QueryHistoryReading {
@@ -118,7 +114,8 @@ struct HistoryPanelViewModelTests {
     private func makeViewModel(
         connectionId: UUID,
         entries: [QueryHistoryEntry],
-        pageSize: Int = 10
+        pageSize: Int = 10,
+        clock: any Clock<Duration> = ContinuousClock()
     ) -> (HistoryPanelViewModel, RecordingHistoryReader) {
         HistoryPanelState.removeConnection(connectionId)
         HistoryPanelPreferencesStorage.remove(for: connectionId)
@@ -127,7 +124,8 @@ struct HistoryPanelViewModelTests {
             connectionId: connectionId,
             history: reader,
             connectionDirectory: .none,
-            pageSize: pageSize
+            pageSize: pageSize,
+            clock: clock
         )
         return (viewModel, reader)
     }
@@ -155,9 +153,11 @@ struct HistoryPanelViewModelTests {
     @Test("a deactivated panel stops refetching when history changes")
     func deactivatedPanelStopsRefetching() async throws {
         let connectionId = UUID()
+        let clock = ManualClock()
         let (viewModel, reader) = makeViewModel(
             connectionId: connectionId,
-            entries: [Self.makeEntry(connectionId: connectionId, query: "SELECT 1")]
+            entries: [Self.makeEntry(connectionId: connectionId, query: "SELECT 1")],
+            clock: clock
         )
 
         await viewModel.activate()
@@ -165,30 +165,31 @@ struct HistoryPanelViewModelTests {
         let afterActivate = await reader.fetchCount()
 
         AppEvents.shared.queryHistoryDidUpdate.send(connectionId)
-        let refetched = await Self.waitForFetchCount(above: afterActivate, in: reader)
-        #expect(refetched, "A visible panel refreshes when a query is recorded")
+        let scheduled = (try? await waitUntil { clock.pendingSleeperCount > 0 }) != nil
+        clock.advance(by: .milliseconds(200))
+        let refetched = (try? await waitUntil { await reader.fetchCount() > afterActivate }) != nil
+        #expect(scheduled && refetched, "A visible panel refreshes when a query is recorded")
         let whileVisible = await reader.fetchCount()
 
         viewModel.deactivate()
         #expect(!viewModel.isObserving)
 
         AppEvents.shared.queryHistoryDidUpdate.send(connectionId)
-        try await Task.sleep(for: .milliseconds(600))
+        await Self.drainMainRunLoop()
+        #expect(clock.pendingSleeperCount == 0, "No refresh is scheduled for a panel nobody can see")
+        clock.advance(by: .milliseconds(200))
+        await Self.drainMainRunLoop()
         #expect(
             await reader.fetchCount() == whileVisible,
             "A panel nobody can see must not go back to the store"
         )
     }
 
-    private static func waitForFetchCount(
-        above baseline: Int,
-        in reader: RecordingHistoryReader
-    ) async -> Bool {
-        for _ in 0..<40 {
-            if await reader.fetchCount() > baseline { return true }
-            try? await Task.sleep(for: .milliseconds(50))
+    // Runs after the RunLoop.main delivery of an earlier send, and resumes behind any main-actor task it started.
+    private static func drainMainRunLoop() async {
+        await withCheckedContinuation { continuation in
+            RunLoop.main.perform { continuation.resume() }
         }
-        return false
     }
 
     @Test("the panel scopes to its own connection by default")

@@ -9,7 +9,6 @@ import SwiftUI
 import TableProPluginKit
 import Testing
 
-@Suite("Statement previews highlight in the language they are written in", .serialized)
 @MainActor
 struct MaintenancePreviewSyntaxTests {
     private static let updateTable = #"UpdateTable {"TableName":"orders","DeletionProtectionEnabled":true}"#

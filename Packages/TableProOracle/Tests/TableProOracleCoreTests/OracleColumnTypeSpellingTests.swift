@@ -1,9 +1,10 @@
+import Foundation
 @testable import TableProOracleCore
-import XCTest
+import Testing
 
 /// Each dictionary row here is what `USER_TAB_COLS` reported on Oracle 23ai (AL32UTF8, AL16UTF16) for the column
 /// declared beside it, and each expected spelling recreated that same row through `CREATE TABLE` (measured).
-final class OracleColumnTypeSpellingTests: XCTestCase {
+struct OracleColumnTypeSpellingTests {
     private struct Shape {
         let declared: String
         let row: OracleColumnTypeSpelling
@@ -35,13 +36,13 @@ final class OracleColumnTypeSpellingTests: XCTestCase {
         )
     }
 
-    private func assertShapes(_ shapes: [Shape], file: StaticString = #filePath, line: UInt = #line) {
+    private func assertShapes(_ shapes: [Shape], sourceLocation: SourceLocation = #_sourceLocation) {
         for shape in shapes {
-            XCTAssertEqual(shape.row.declaration, shape.spelling, "declared \(shape.declared)", file: file, line: line)
+            #expect(shape.row.declaration == shape.spelling, "declared \(shape.declared)", sourceLocation: sourceLocation)
         }
     }
 
-    func testCharacterTypesSpellTheirDeclaredLength() {
+    @Test func testCharacterTypesSpellTheirDeclaredLength() {
         assertShapes([
             Shape(declared: "NVARCHAR2(100)", row: row("NVARCHAR2", length: 200, charLength: 100, charUsed: "C"), spelling: "NVARCHAR2(100)"),
             Shape(declared: "NCHAR(10)", row: row("NCHAR", length: 20, charLength: 10, charUsed: "C"), spelling: "NCHAR(10)"),
@@ -57,7 +58,7 @@ final class OracleColumnTypeSpellingTests: XCTestCase {
     }
 
     /// `NUMBER(*,s)` and `INTEGER` report no precision and keep their scale; a negative scale is kept.
-    func testNumericTypesKeepStarPrecisionAndNegativeScale() {
+    @Test func testNumericTypesKeepStarPrecisionAndNegativeScale() {
         assertShapes([
             Shape(declared: "NUMBER", row: row("NUMBER", length: 22, charLength: 0), spelling: "NUMBER"),
             Shape(declared: "NUMBER(*)", row: row("NUMBER", length: 22, charLength: 0), spelling: "NUMBER"),
@@ -77,7 +78,7 @@ final class OracleColumnTypeSpellingTests: XCTestCase {
     }
 
     /// `DATA_TYPE` already carries the fractional and leading precisions, with the defaults filled in.
-    func testDatetimeAndIntervalTypesAreTheirDataTypeVerbatim() {
+    @Test func testDatetimeAndIntervalTypesAreTheirDataTypeVerbatim() {
         assertShapes([
             Shape(declared: "DATE", row: row("DATE", length: 7), spelling: "DATE"),
             Shape(declared: "TIMESTAMP", row: row("TIMESTAMP(6)", length: 11, scale: 6), spelling: "TIMESTAMP(6)"),
@@ -105,7 +106,7 @@ final class OracleColumnTypeSpellingTests: XCTestCase {
         ])
     }
 
-    func testBinaryRowidAndLargeObjectTypes() {
+    @Test func testBinaryRowidAndLargeObjectTypes() {
         assertShapes([
             Shape(declared: "RAW(16)", row: row("RAW", length: 16), spelling: "RAW(16)"),
             Shape(declared: "UROWID", row: row("UROWID", length: 4_000), spelling: "UROWID"),
@@ -124,7 +125,7 @@ final class OracleColumnTypeSpellingTests: XCTestCase {
     }
 
     /// `VECTOR_INFO` spells every part; `DENSE` and trailing `*` are the defaults a declaration leaves out.
-    func testVectorSpellsItsVectorInfo() {
+    @Test func testVectorSpellsItsVectorInfo() {
         let vector = { (info: String, dimensions: Int) in self.row("VECTOR", length: 8_200, charLength: dimensions, vectorInfo: info) }
         assertShapes([
             Shape(declared: "VECTOR", row: vector("VECTOR(*,*,DENSE)", 0), spelling: "VECTOR"),
@@ -144,19 +145,19 @@ final class OracleColumnTypeSpellingTests: XCTestCase {
     }
 
     /// Before 23.4 the query projects `NULL` for `VECTOR_INFO`, and `CHAR_LENGTH` still carries the dimension count.
-    func testVectorWithoutVectorInfoKeepsTheDimensionCount() {
-        XCTAssertEqual(row("VECTOR", length: 8_200, charLength: 3).declaration, "VECTOR(3, *)")
-        XCTAssertEqual(row("VECTOR", length: 8_200, charLength: 0).declaration, "VECTOR")
-        XCTAssertEqual(row("VECTOR", length: 8_200).declaration, "VECTOR")
+    @Test func testVectorWithoutVectorInfoKeepsTheDimensionCount() {
+        #expect(row("VECTOR", length: 8_200, charLength: 3).declaration == "VECTOR(3, *)")
+        #expect(row("VECTOR", length: 8_200, charLength: 0).declaration == "VECTOR")
+        #expect(row("VECTOR", length: 8_200).declaration == "VECTOR")
     }
 
-    func testAnUnreadableVectorInfoFallsBackToTheDimensionCount() {
-        XCTAssertEqual(row("VECTOR", charLength: 3, vectorInfo: "VECTOR").declaration, "VECTOR(3, *)")
-        XCTAssertEqual(row("VECTOR", charLength: 3, vectorInfo: "VECTOR(3,,DENSE)").declaration, "VECTOR(3, *)")
+    @Test func testAnUnreadableVectorInfoFallsBackToTheDimensionCount() {
+        #expect(row("VECTOR", charLength: 3, vectorInfo: "VECTOR").declaration == "VECTOR(3, *)")
+        #expect(row("VECTOR", charLength: 3, vectorInfo: "VECTOR(3,,DENSE)").declaration == "VECTOR(3, *)")
     }
 
     /// `PUBLIC` owns `XMLTYPE` declared plainly; `SYS.XMLTYPE` and `SYS.ANYDATA` report `SYS`.
-    func testATypeOfAnotherSchemaIsQualifiedWithItsOwner() {
+    @Test func testATypeOfAnotherSchemaIsQualifiedWithItsOwner() {
         assertShapes([
             Shape(declared: "XMLTYPE", row: row("XMLTYPE", length: 2_000, owner: "PUBLIC"), spelling: "XMLTYPE"),
             Shape(declared: "SYS.XMLTYPE", row: row("XMLTYPE", length: 2_000, owner: "SYS"), spelling: "\"SYS\".\"XMLTYPE\""),
@@ -167,11 +168,11 @@ final class OracleColumnTypeSpellingTests: XCTestCase {
         ])
     }
 
-    func testAnOwnerOrTypeNameWithAQuoteIsEscaped() {
-        XCTAssertEqual(row("T\"X", length: 1, owner: "O\"WN").declaration, "\"O\"\"WN\".\"T\"\"X\"")
+    @Test func testAnOwnerOrTypeNameWithAQuoteIsEscaped() {
+        #expect(row("T\"X", length: 1, owner: "O\"WN").declaration == "\"O\"\"WN\".\"T\"\"X\"")
     }
 
-    func testARefNamesTheTypeItPointsTo() {
+    @Test func testARefNamesTheTypeItPointsTo() {
         assertShapes([
             Shape(declared: "REF S_OBJ", row: row("S_OBJ", length: 50, owner: "PROBE", modifier: "REF"), spelling: "REF S_OBJ"),
             Shape(declared: "REF HR.ADDRESS_T", row: row("ADDRESS_T", length: 50, owner: "HR", modifier: "REF"), spelling: "REF \"HR\".\"ADDRESS_T\""),
@@ -181,55 +182,55 @@ final class OracleColumnTypeSpellingTests: XCTestCase {
 
     /// A type created under a quoted mixed-case name only resolves under that exact name, so it is never case-folded
     /// and is quoted when an unquoted name would read as another.
-    func testATypeNameIsNeverCaseFolded() {
-        XCTAssertEqual(row("S_Mixed", length: 1, owner: "PROBE").declaration, "\"S_Mixed\"")
-        XCTAssertEqual(row("S_Mixed", length: 1, owner: "PROBE").dataType, "S_Mixed")
-        XCTAssertEqual(row("TYPE WITH SPACE", length: 1, owner: "PROBE").declaration, "\"TYPE WITH SPACE\"")
+    @Test func testATypeNameIsNeverCaseFolded() {
+        #expect(row("S_Mixed", length: 1, owner: "PROBE").declaration == "\"S_Mixed\"")
+        #expect(row("S_Mixed", length: 1, owner: "PROBE").dataType == "S_Mixed")
+        #expect(row("TYPE WITH SPACE", length: 1, owner: "PROBE").declaration == "\"TYPE WITH SPACE\"")
     }
 
     /// A built-in name is a keyword, so a lowercase one is still recognised, and the case it came in is kept.
-    func testABuiltInNameIsRecognisedInAnyCase() {
-        XCTAssertEqual(row("number", precision: 10, scale: 2).declaration, "number(10,2)")
-        XCTAssertEqual(row("nvarchar2", length: 20, charLength: 10, charUsed: "C").declaration, "nvarchar2(10)")
+    @Test func testABuiltInNameIsRecognisedInAnyCase() {
+        #expect(row("number", precision: 10, scale: 2).declaration == "number(10,2)")
+        #expect(row("nvarchar2", length: 20, charLength: 10, charUsed: "C").declaration == "nvarchar2(10)")
     }
 
-    func testMissingLengthsLeaveTheBareTypeName() {
-        XCTAssertEqual(row("VARCHAR2").declaration, "VARCHAR2")
-        XCTAssertEqual(row("NVARCHAR2").declaration, "NVARCHAR2")
-        XCTAssertEqual(row("RAW").declaration, "RAW")
-        XCTAssertEqual(row("FLOAT").declaration, "FLOAT")
-        XCTAssertEqual(row("UROWID").declaration, "UROWID")
+    @Test func testMissingLengthsLeaveTheBareTypeName() {
+        #expect(row("VARCHAR2").declaration == "VARCHAR2")
+        #expect(row("NVARCHAR2").declaration == "NVARCHAR2")
+        #expect(row("RAW").declaration == "RAW")
+        #expect(row("FLOAT").declaration == "FLOAT")
+        #expect(row("UROWID").declaration == "UROWID")
     }
 
     /// `DATA_LENGTH` is the byte count, so it stands in for a missing `CHAR_LENGTH` only under byte semantics.
-    func testDataLengthStandsInForCharLengthOnlyUnderByteSemantics() {
-        XCTAssertEqual(row("VARCHAR2", length: 50, charUsed: "B").declaration, "VARCHAR2(50 BYTE)")
-        XCTAssertEqual(row("VARCHAR2", length: 200, charUsed: "C").declaration, "VARCHAR2")
+    @Test func testDataLengthStandsInForCharLengthOnlyUnderByteSemantics() {
+        #expect(row("VARCHAR2", length: 50, charUsed: "B").declaration == "VARCHAR2(50 BYTE)")
+        #expect(row("VARCHAR2", length: 200, charUsed: "C").declaration == "VARCHAR2")
     }
 
-    func testClassificationTypeName() {
-        XCTAssertEqual(row("DATE", length: 7).classificationTypeName, "TIMESTAMP(0)")
-        XCTAssertEqual(row("XMLTYPE", owner: "SYS").classificationTypeName, "XMLTYPE")
-        XCTAssertEqual(row("SDO_GEOMETRY", owner: "MDSYS").classificationTypeName, "SDO_GEOMETRY")
-        XCTAssertEqual(row("S_OBJ", owner: "PROBE", modifier: "REF").classificationTypeName, "S_OBJ")
-        XCTAssertEqual(row("S_Mixed", owner: "PROBE").classificationTypeName, "S_Mixed")
-        XCTAssertNil(row("XMLTYPE", owner: "PUBLIC").classificationTypeName)
-        XCTAssertNil(row("S_OBJ", owner: "PROBE").classificationTypeName)
-        XCTAssertNil(row("TIMESTAMP(0)", scale: 0).classificationTypeName)
-        XCTAssertNil(row("NUMBER", precision: 10, scale: 0).classificationTypeName)
-        XCTAssertNil(row("NVARCHAR2", length: 200, charLength: 100, charUsed: "C").classificationTypeName)
+    @Test func testClassificationTypeName() {
+        #expect(row("DATE", length: 7).classificationTypeName == "TIMESTAMP(0)")
+        #expect(row("XMLTYPE", owner: "SYS").classificationTypeName == "XMLTYPE")
+        #expect(row("SDO_GEOMETRY", owner: "MDSYS").classificationTypeName == "SDO_GEOMETRY")
+        #expect(row("S_OBJ", owner: "PROBE", modifier: "REF").classificationTypeName == "S_OBJ")
+        #expect(row("S_Mixed", owner: "PROBE").classificationTypeName == "S_Mixed")
+        #expect(row("XMLTYPE", owner: "PUBLIC").classificationTypeName == nil)
+        #expect(row("S_OBJ", owner: "PROBE").classificationTypeName == nil)
+        #expect(row("TIMESTAMP(0)", scale: 0).classificationTypeName == nil)
+        #expect(row("NUMBER", precision: 10, scale: 0).classificationTypeName == nil)
+        #expect(row("NVARCHAR2", length: 200, charLength: 100, charUsed: "C").classificationTypeName == nil)
     }
 
     /// `CHAR_LENGTH` is also a `VECTOR`'s dimension count and 0 for a `NUMBER`, neither of which is a length.
-    func testCharacterLengthIsOnlyForTheFourCharacterTypes() {
-        XCTAssertEqual(row("VARCHAR2", length: 50, charLength: 50, charUsed: "B").characterLength, 50)
-        XCTAssertEqual(row("VARCHAR2", length: 200, charLength: 50, charUsed: "C").characterLength, 50)
-        XCTAssertEqual(row("CHAR", length: 40, charLength: 10, charUsed: "C").characterLength, 10)
-        XCTAssertEqual(row("NVARCHAR2", length: 200, charLength: 100, charUsed: "C").characterLength, 100)
-        XCTAssertEqual(row("NCHAR", length: 2, charLength: 1, charUsed: "C").characterLength, 1)
-        XCTAssertNil(row("VECTOR", length: 8_200, charLength: 3, vectorInfo: "VECTOR(3,FLOAT32,DENSE)").characterLength)
-        XCTAssertNil(row("NUMBER", length: 22, charLength: 0).characterLength)
-        XCTAssertNil(row("RAW", length: 16).characterLength)
-        XCTAssertNil(row("CLOB", length: 4_000).characterLength)
+    @Test func testCharacterLengthIsOnlyForTheFourCharacterTypes() {
+        #expect(row("VARCHAR2", length: 50, charLength: 50, charUsed: "B").characterLength == 50)
+        #expect(row("VARCHAR2", length: 200, charLength: 50, charUsed: "C").characterLength == 50)
+        #expect(row("CHAR", length: 40, charLength: 10, charUsed: "C").characterLength == 10)
+        #expect(row("NVARCHAR2", length: 200, charLength: 100, charUsed: "C").characterLength == 100)
+        #expect(row("NCHAR", length: 2, charLength: 1, charUsed: "C").characterLength == 1)
+        #expect(row("VECTOR", length: 8_200, charLength: 3, vectorInfo: "VECTOR(3,FLOAT32,DENSE)").characterLength == nil)
+        #expect(row("NUMBER", length: 22, charLength: 0).characterLength == nil)
+        #expect(row("RAW", length: 16).characterLength == nil)
+        #expect(row("CLOB", length: 4_000).characterLength == nil)
     }
 }

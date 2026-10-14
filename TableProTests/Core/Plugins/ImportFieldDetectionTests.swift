@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 private final class BlockingDetectionPlugin: ImportFormatPlugin, @unchecked Sendable {
@@ -59,9 +60,7 @@ struct ImportFieldDetectionTests {
                 targetTable: nil
             )
         }
-        for _ in 0..<500 where !plugin.hasStarted {
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
+        try await waitUntil { plugin.hasStarted }
         try #require(plugin.hasStarted)
 
         caller.cancel()

@@ -10,15 +10,15 @@ import Testing
 
 @MainActor
 struct LoadableExtensionApprovalStoreTests {
+    private let suite: EphemeralDefaults
     private let defaults: UserDefaults
     private let store: LoadableExtensionApprovalStore
     private let vec = LoadableExtension(path: "/opt/homebrew/lib/vec0.dylib")
     private let spatialite = LoadableExtension(path: "/opt/homebrew/lib/mod_spatialite.dylib")
 
     init() throws {
-        let suite = "LoadableExtensionApprovalStoreTests-\(UUID().uuidString)"
-        defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        suite = try EphemeralDefaults()
+        defaults = suite.defaults
         store = LoadableExtensionApprovalStore(defaults: defaults)
     }
 

@@ -1,6 +1,5 @@
 import XCTest
 
-/// The only way a UI test gets a running app: every launch names a sandbox, so the app never touches the real store.
 internal class UITestCase: XCTestCase {
     internal private(set) var sandboxRoot: URL?
     private var launchedApps: [XCUIApplication] = []
@@ -75,7 +74,7 @@ internal class UITestCase: XCTestCase {
 
     // MARK: - Launching
 
-    /// A defaults override such as `-AppleLanguages` only works as a launch argument, never in `environment`.
+    // A defaults override such as `-AppleLanguages` only works as a launch argument, never in `environment`.
     internal func launchApp(
         environment: [String: String] = [:],
         arguments: [String] = []
@@ -91,10 +90,7 @@ internal class UITestCase: XCTestCase {
         return app
     }
 
-    /// Restores `seeds` as the last session, so the window opens already connected.
-    ///
-    /// An intent variable (`TABLEPRO_UI_TEST_OPEN_*`) in `environment` skips the session restore;
-    /// use `launchWithFixture(openingDataFile:contents:)` to pair the fixture with a data file.
+    // An intent variable (`TABLEPRO_UI_TEST_OPEN_*`) in `environment` skips the session restore.
     @discardableResult
     internal func launchWithFixture(
         _ seeds: [ConnectionSeed] = [ConnectionSeed()],
@@ -108,19 +104,17 @@ internal class UITestCase: XCTestCase {
         return FixtureLaunch(app: app, window: window, connections: connections)
     }
 
-    /// Opens a data file window the way a Finder double-click does.
     internal func launchWithDataFile(named name: String, contents: Data) throws -> XCUIApplication {
         let fileURL = try writeIntoSandbox(name, contents: contents)
         return try launchApp(environment: ["TABLEPRO_UI_TEST_OPEN_FILE": fileURL.path])
     }
 
-    /// Arrives as the intent a Finder double-click on a `.tablepro` file sends.
     internal func launchWithConnectionShare(named name: String, contents: Data) throws -> XCUIApplication {
         let fileURL = try writeIntoSandbox(name, contents: contents)
         return try launchApp(environment: ["TABLEPRO_UI_TEST_OPEN_CONNECTION_SHARE": fileURL.path])
     }
 
-    /// Reaches the app's own URL handling, never another installed copy registered for the scheme.
+    // Reaches the app's own URL handling, never another installed copy registered for the scheme.
     internal func launchOpeningURL(_ url: String, arguments: [String] = []) throws -> XCUIApplication {
         try launchApp(environment: ["TABLEPRO_UI_TEST_OPEN_URL": url], arguments: arguments)
     }
@@ -134,7 +128,7 @@ internal class UITestCase: XCTestCase {
 
     // MARK: - Finding things
 
-    /// A window is a direct child of the application; `app.windows` walks the whole tree to find one.
+    // A window is a direct child of the application; `app.windows` walks the whole tree to find one.
     internal func window(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
         app.children(matching: .window).matching(identifier: identifier).firstMatch
     }
@@ -155,13 +149,13 @@ internal class UITestCase: XCTestCase {
             .descendants(matching: .outline).firstMatch
     }
 
-    /// The cheapest proof a connection is live: its object browser lists something.
+    // The cheapest proof a connection is live: its object browser lists something.
     internal func waitForObjectBrowser(in window: XCUIElement, timeout: TimeInterval = 30) -> Bool {
         let firstObject = objectBrowser(in: window).descendants(matching: .staticText).firstMatch
         return waitForPredicate(timeout: timeout) { firstObject.exists }
     }
 
-    /// Hosted cells publish the row's name as the static text's `value`, prefixed with its kind.
+    // Hosted cells publish the row's name as the static text's `value`, prefixed with its kind.
     internal func objectBrowserRow(_ name: String, kind: String = "Table", in window: XCUIElement) -> XCUIElement {
         objectBrowser(in: window).staticTexts
             .matching(NSPredicate(format: "value == %@", "\(kind): \(name)"))
@@ -177,7 +171,7 @@ internal class UITestCase: XCTestCase {
         window.textViews.firstMatch
     }
 
-    /// Keystrokes typed before the editor installs its key monitor are lost, so this retypes until the text arrives.
+    // Keystrokes typed before the editor installs its key monitor are lost, so this retypes until the text arrives.
     internal func typeQuery(_ sql: String, in window: XCUIElement, attempts: Int = 3) {
         let editor = editorTextView(in: window)
         XCTAssertTrue(editor.waitToExist(timeout: 10), "The query tab must hold an editor to type into")
@@ -193,8 +187,7 @@ internal class UITestCase: XCTestCase {
         XCTFail("The editor never received the query typed into it")
     }
 
-    /// An item of the contextual menu a right-click just raised; the menu bar's closed copy of the
-    /// same title is never hittable. Assert an absent contextual item in a unit test instead.
+    // The menu bar holds a closed copy of each title that is never hittable, so this cannot prove an item absent.
     internal func contextMenuItem(_ title: String, in app: XCUIApplication) -> XCUIElement {
         let matches = app.menuItems.matching(NSPredicate(format: "title == %@", title))
         return matches.allElementsBoundByIndex.first { $0.isHittable } ?? matches.firstMatch
@@ -206,19 +199,20 @@ internal class UITestCase: XCTestCase {
         UITestPoll.until(timeout: timeout, condition)
     }
 
-    /// Existence is not enough to click: a row in a pane still animating open hit-tests to nothing.
+    // Existence is not enough to click: a row in a pane still animating open hit-tests to nothing.
     internal func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
         waitForPredicate(timeout: timeout) { element.exists && element.isHittable }
     }
 
-    // macOS clicks where an element is and never scrolls it into view. Scrolling a window posts at its
-    // top-left corner, over the title bar, so the scroll goes to a point inside the content.
+    // A fixed step can carry a row past a short list, so each scroll centres the element. It posts inside the
+    // container because a window's own scroll lands on its title bar.
     internal func scrollUntilHittable(_ element: XCUIElement, in container: XCUIElement, timeout: TimeInterval) -> Bool {
-        let content = container.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
         let deadline = Date(timeIntervalSinceNow: timeout)
+        guard element.waitToExist(timeout: timeout) else { return false }
         while !(element.exists && element.isHittable) {
-            guard Date() < deadline else { return false }
-            content.scroll(byDeltaX: 0, deltaY: -400)
+            guard Date() < deadline, container.exists, element.exists else { return false }
+            container.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                .scroll(byDeltaX: 0, deltaY: container.frame.midY - element.frame.midY)
         }
         return true
     }
@@ -258,13 +252,13 @@ internal class UITestCase: XCTestCase {
             .withOffset(CGVector(dx: max(80, clearOfBrowser), dy: dy))
     }
 
-    /// AppKit reports some rows as disabled, so they never become hittable; a coordinate click reaches them.
+    // AppKit reports some rows as disabled, so they never become hittable; a coordinate click reaches them.
     internal func clickAtCenter(_ element: XCUIElement) {
         element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
     }
 
-    /// For a command with no key equivalent. Click it without probing: resolving the item opens its
-    /// menu, and the click's own traversal then fails with "open menu during menu traversal".
+    // Click the item without probing it: resolving it opens its menu, and the click's own traversal then
+    // fails with "open menu during menu traversal".
     internal func menuItem(_ title: String, under menu: String, in app: XCUIApplication) -> XCUIElement {
         app.menuBars.firstMatch.menuBarItems[menu].menuItems[title].firstMatch
     }

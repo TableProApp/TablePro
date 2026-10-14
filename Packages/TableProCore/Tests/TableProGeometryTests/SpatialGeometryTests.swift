@@ -1,12 +1,13 @@
+import Foundation
 import TableProGeometry
-import XCTest
+import Testing
 
 /// Imported without `@testable`: the app reads `typeName` from another module, so this file stops
 /// compiling if the accessor loses `public`.
-final class SpatialGeometryTests: XCTestCase {
+struct SpatialGeometryTests {
     private let point = SpatialPoint(x: 1, y: 2)
 
-    func testTypeNameForEveryCase() {
+    @Test func testTypeNameForEveryCase() {
         let ring = [point, SpatialPoint(x: 3, y: 4), SpatialPoint(x: 5, y: 0), point]
         let expected: [(geometry: SpatialGeometry, name: String)] = [
             (.point(point), "Point"),
@@ -19,23 +20,20 @@ final class SpatialGeometryTests: XCTestCase {
             (.empty, "Empty"),
         ]
         for entry in expected {
-            XCTAssertEqual(entry.geometry.typeName, entry.name)
+            #expect(entry.geometry.typeName == entry.name)
         }
     }
 
     /// The name is the type the value declared, whatever is left inside it.
-    func testTypeNameIgnoresContents() {
-        XCTAssertEqual(SpatialGeometry.polygon(rings: []).typeName, "Polygon")
-        XCTAssertEqual(SpatialGeometry.multiPoint([]).typeName, "MultiPoint")
-        XCTAssertEqual(SpatialGeometry.collection([]).typeName, "GeometryCollection")
-        XCTAssertEqual(SpatialGeometry.collection([.polygon(rings: [])]).typeName, "GeometryCollection")
+    @Test func testTypeNameIgnoresContents() {
+        #expect(SpatialGeometry.polygon(rings: []).typeName == "Polygon")
+        #expect(SpatialGeometry.multiPoint([]).typeName == "MultiPoint")
+        #expect(SpatialGeometry.collection([]).typeName == "GeometryCollection")
+        #expect(SpatialGeometry.collection([.polygon(rings: [])]).typeName == "GeometryCollection")
     }
 
-    func testTypeNameOfAReadValue() {
-        XCTAssertEqual(
-            try? WKTGeometryReader.read("MULTIPOLYGON(((0 0,1 0,1 1,0 0)))").get().geometry.typeName,
-            "MultiPolygon"
-        )
-        XCTAssertEqual(try? WKTGeometryReader.read("POINT EMPTY").get().geometry.typeName, "Empty")
+    @Test func testTypeNameOfAReadValue() {
+        #expect((try? WKTGeometryReader.read("MULTIPOLYGON(((0 0,1 0,1 1,0 0)))").get().geometry.typeName) == "MultiPolygon")
+        #expect((try? WKTGeometryReader.read("POINT EMPTY").get().geometry.typeName) == "Empty")
     }
 }

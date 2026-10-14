@@ -9,9 +9,10 @@ import Testing
 
 @MainActor
 struct FilterSettingsStorageTests {
+    private let pool = EphemeralDefaultsPool()
+
     private func makeStorage() -> (storage: FilterSettingsStorage, directory: URL) {
-        let suiteName = "FilterSettingsStorageTests-\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suiteName) else {
+        guard let defaults = try? pool.make().defaults else {
             fatalError("Failed to create UserDefaults suite for tests")
         }
         let directory = FileManager.default.temporaryDirectory
@@ -73,7 +74,7 @@ struct FilterSettingsStorageTests {
     /// per-table sweep would miss. A fresh reader proves the file went, not just the cache.
     @Test("Dropping a schema forgets a table this session never loaded")
     func dropContainerForgetsAnUnloadedTable() throws {
-        let defaults = try #require(UserDefaults(suiteName: "FilterSettingsStorageTests-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -328,8 +329,7 @@ struct FilterSettingsStorageTests {
 
     @Test("Removed filters stay gone for a fresh storage instance")
     func removeFiltersDeletesFiles() {
-        let suiteName = "FilterSettingsStorageTests-\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suiteName) else {
+        guard let defaults = try? pool.make().defaults else {
             fatalError("Failed to create UserDefaults suite for tests")
         }
         let directory = FileManager.default.temporaryDirectory
@@ -389,7 +389,7 @@ struct FilterSettingsStorageTests {
         behavior: FilterRestoreBehavior,
         alwaysShowPanel: Bool
     ) throws {
-        let defaults = try #require(UserDefaults(suiteName: "FilterSettingsStorageTests-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -409,7 +409,7 @@ struct FilterSettingsStorageTests {
     /// again afterwards kept it. Reading it in the decoder holds for every launch instead.
     @Test("Reading a legacy settings file twice gives the same answer")
     func legacyPanelStateMigrationIsIdempotent() throws {
-        let defaults = try #require(UserDefaults(suiteName: "FilterSettingsStorageTests-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -447,7 +447,7 @@ struct FilterSettingsStorageTests {
     /// Every file written before the flag existed held a set that was running.
     @Test("A saved file with no applied flag decodes as applied")
     func legacyFilterFileDecodesAsApplied() throws {
-        let defaults = try #require(UserDefaults(suiteName: "FilterSettingsStorageTests-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -480,8 +480,7 @@ struct FilterSettingsStorageTests {
 
     @Test("Saved filters decode from disk in a fresh storage instance")
     func persistsAcrossInstances() {
-        let suiteName = "FilterSettingsStorageTests-\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suiteName) else {
+        guard let defaults = try? pool.make().defaults else {
             fatalError("Failed to create UserDefaults suite for tests")
         }
         let directory = FileManager.default.temporaryDirectory
@@ -518,8 +517,7 @@ struct FilterSettingsStorageTests {
 
     @Test("A save followed by an immediate clear leaves no file on disk")
     func clearAfterSaveLeavesNothingOnDisk() {
-        let suiteName = "FilterSettingsStorageTests-\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suiteName) else {
+        guard let defaults = try? pool.make().defaults else {
             fatalError("Failed to create UserDefaults suite for tests")
         }
         let directory = FileManager.default.temporaryDirectory
@@ -541,8 +539,7 @@ struct FilterSettingsStorageTests {
 
     @Test("Browse search persists to disk and clearing it leaves nothing")
     func browseSearchPersistsAndClears() {
-        let suiteName = "FilterSettingsStorageTests-\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suiteName) else {
+        guard let defaults = try? pool.make().defaults else {
             fatalError("Failed to create UserDefaults suite for tests")
         }
         let directory = FileManager.default.temporaryDirectory
@@ -596,7 +593,7 @@ struct FilterSettingsStorageTests {
 
     @Test("The logic mode survives a fresh storage instance")
     func logicModePersistsAcrossInstances() throws {
-        let defaults = try #require(UserDefaults(suiteName: "FilterSettingsStorageTests-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -619,7 +616,7 @@ struct FilterSettingsStorageTests {
 
     @Test("A legacy bare-array filter file loads with the default AND logic mode")
     func legacyArrayFileLoadsWithAndMode() throws {
-        let defaults = try #require(UserDefaults(suiteName: "FilterSettingsStorageTests-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         defaults.set(true, forKey: "com.TablePro.filterStateMigrationComplete")
         defaults.set(true, forKey: "com.TablePro.filterStateCompositeKeyMigrationComplete")
         let directory = FileManager.default.temporaryDirectory
@@ -645,7 +642,7 @@ struct FilterSettingsStorageTests {
 
     @Test("A table rename moves its filters and browse search and leaves a longer name alone")
     func renameTableMovesFiltersAndBrowseSearch() throws {
-        let defaults = try #require(UserDefaults(suiteName: "FilterSettingsStorageTests-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -691,7 +688,7 @@ struct FilterSettingsStorageTests {
 
     @Test("A schema rename moves browse search along with the filters")
     func renameContainerMovesBrowseSearch() throws {
-        let defaults = try #require(UserDefaults(suiteName: "FilterSettingsStorageTests-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("FilterSettingsStorageTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }

@@ -4,12 +4,12 @@
 //
 
 import Foundation
-import XCTest
+import Testing
 
 @testable import TablePro
 
 @MainActor
-final class CompareRowServiceRefusalTests: XCTestCase {
+final class CompareRowServiceRefusalTests {
     private let connection = UUID()
 
     private func endpoint(database: String, schema: String? = nil, connectionId: UUID? = nil) -> DatabaseEndpoint {
@@ -25,14 +25,16 @@ final class CompareRowServiceRefusalTests: XCTestCase {
     /// Two scopes that are one scope reach one pooled entry, which runs its callers serially. The
     /// outer scope cannot finish until the inner one does and the inner one queues behind the
     /// outer, so the comparison would hang with nothing to report and leave the entry wedged.
-    func testComparingAScopeWithItselfIsRefusedBeforeAnythingOpens() {
+    @Test
+    func comparingAScopeWithItselfIsRefusedBeforeAnythingOpens() {
         let service = CompareRowService()
         let scope = endpoint(database: "shop")
 
-        XCTAssertEqual(service.concurrentReadRefusal(source: scope, target: scope), .sameScope)
+        #expect(service.concurrentReadRefusal(source: scope, target: scope) == .sameScope)
     }
 
-    func testTwoDatabasesOnOneConnectionAreNotRefusedForBeingTheSameScope() {
+    @Test
+    func twoDatabasesOnOneConnectionAreNotRefusedForBeingTheSameScope() {
         let service = CompareRowService()
 
         let refusal = service.concurrentReadRefusal(
@@ -40,10 +42,11 @@ final class CompareRowServiceRefusalTests: XCTestCase {
             target: endpoint(database: "shop_staging")
         )
 
-        XCTAssertNotEqual(refusal, .sameScope)
+        #expect(refusal != .sameScope)
     }
 
-    func testTwoSchemasInOneDatabaseAreTwoScopes() {
+    @Test
+    func twoSchemasInOneDatabaseAreTwoScopes() {
         let service = CompareRowService()
 
         let refusal = service.concurrentReadRefusal(
@@ -51,23 +54,23 @@ final class CompareRowServiceRefusalTests: XCTestCase {
             target: endpoint(database: "shop", schema: "archive")
         )
 
-        XCTAssertNotEqual(refusal, .sameScope)
+        #expect(refusal != .sameScope)
     }
 
-    func testASharedConnectionRefusalKeepsTheComparisonWording() {
+    @Test
+    func aSharedConnectionRefusalKeepsTheComparisonWording() {
         let refusal = ConcurrentReadRefusal.sharedConnection(.duckdb)
 
-        XCTAssertTrue(refusal.comparisonMessage.hasPrefix("DuckDB cannot compare"))
+        #expect(refusal.comparisonMessage.hasPrefix("DuckDB cannot compare"))
     }
 
-    func testTwoConnectionsAreNeverRefused() {
+    @Test
+    func twoConnectionsAreNeverRefused() {
         let service = CompareRowService()
 
-        XCTAssertNil(
-            service.concurrentReadRefusal(
+        #expect(service.concurrentReadRefusal(
                 source: endpoint(database: "shop"),
                 target: endpoint(database: "shop", connectionId: UUID())
-            )
-        )
+            ) == nil)
     }
 }

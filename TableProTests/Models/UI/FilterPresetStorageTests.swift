@@ -9,7 +9,6 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-@Suite("FilterPresetStorage - savePreset", .serialized)
 struct FilterPresetStorageTests {
     private let storage = FilterPresetStorage.shared
 

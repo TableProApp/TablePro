@@ -6,25 +6,19 @@
 //  the repeat command (.), and the line undo (U).
 //
 
-import XCTest
-import TableProPluginKit
+import Foundation
 @testable import TablePro
+import TableProPluginKit
+import Testing
 
 @MainActor
-final class VimEngineUndoRepeatTests: XCTestCase {
+final class VimEngineUndoRepeatTests {
     private var engine: VimEngine!
     private var buffer: VimTextBufferMock!
 
-    override func setUp() {
-        super.setUp()
+    init() {
         buffer = VimTextBufferMock(text: "hello world\nsecond line\nthird line\n")
         engine = VimEngine(buffer: buffer)
-    }
-
-    override func tearDown() {
-        engine = nil
-        buffer = nil
-        super.tearDown()
     }
 
     private func keys(_ chars: String) {
@@ -37,90 +31,101 @@ final class VimEngineUndoRepeatTests: XCTestCase {
 
     // MARK: - u: Undo
 
-    func testUCallsBufferUndo() {
-        XCTAssertEqual(buffer.undoCallCount, 0)
+    @Test
+    func uCallsBufferUndo() {
+        #expect(buffer.undoCallCount == 0)
         keys("u")
-        XCTAssertEqual(buffer.undoCallCount, 1)
+        #expect(buffer.undoCallCount == 1)
     }
 
-    func testUWithCountCallsUndoNTimes() {
+    @Test
+    func uWithCountCallsUndoNTimes() {
         keys("3u")
-        XCTAssertEqual(buffer.undoCallCount, 3, "3u should call undo three times")
+        #expect(buffer.undoCallCount == 3, "3u should call undo three times")
     }
 
-    func testUConsumesKey() {
-        XCTAssertTrue(engine.process("u", shift: false))
+    @Test
+    func uConsumesKey() {
+        #expect(engine.process("u", shift: false))
     }
 
     // MARK: - Ctrl+R: Redo
 
-    func testRedoCallsBufferRedo() {
-        XCTAssertEqual(buffer.redoCallCount, 0)
+    @Test
+    func redoCallsBufferRedo() {
+        #expect(buffer.redoCallCount == 0)
         key("\u{12}")
-        XCTAssertEqual(buffer.redoCallCount, 1)
+        #expect(buffer.redoCallCount == 1)
     }
 
-    func testMultipleRedoCalls() {
+    @Test
+    func multipleRedoCalls() {
         key("\u{12}")
         key("\u{12}")
         key("\u{12}")
-        XCTAssertEqual(buffer.redoCallCount, 3)
+        #expect(buffer.redoCallCount == 3)
     }
 
     // MARK: - U: Undo Line (undo all changes on the last edited line)
 
-    func testCapitalUUndoesLineChanges() {
+    @Test
+    func capitalUUndoesLineChanges() {
         // U undoes all changes made on the last edited line in one go.
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("x") // delete 'h'
         keys("x") // delete 'e'
         key("U", shift: true)
-        XCTAssertEqual(buffer.undoCallCount, 2,
+        #expect(buffer.undoCallCount == 2,
             "U should restore the original line — implemented via repeated undo")
     }
 
     // MARK: - . (Repeat Last Change)
 
-    func testDotRepeatsLastEdit() {
+    @Test
+    func dotRepeatsLastEdit() {
         // Delete a word, then dot should delete another word.
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("dw") // delete "hello "
-        XCTAssertEqual(buffer.text, "world\nsecond line\nthird line\n")
+        #expect(buffer.text == "world\nsecond line\nthird line\n")
         keys(".")
-        XCTAssertEqual(buffer.text, "\nsecond line\nthird line\n",
+        #expect(buffer.text == "\nsecond line\nthird line\n",
             ". should repeat the last change (delete word)")
     }
 
-    func testDotRepeatsXDelete() {
+    @Test
+    func dotRepeatsXDelete() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("x")
-        XCTAssertEqual(buffer.text, "ello world\nsecond line\nthird line\n")
+        #expect(buffer.text == "ello world\nsecond line\nthird line\n")
         keys(".")
-        XCTAssertEqual(buffer.text, "llo world\nsecond line\nthird line\n",
+        #expect(buffer.text == "llo world\nsecond line\nthird line\n",
             ". should repeat the last delete")
     }
 
-    func testDotRepeatsWithExplicitCount() {
+    @Test
+    func dotRepeatsWithExplicitCount() {
         // dw, then 3. should delete 3 more words.
         buffer = VimTextBufferMock(text: "a b c d e f\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("dw") // delete "a "
         keys("3.") // delete 3 more words
-        XCTAssertEqual(buffer.text, "e f\n",
+        #expect(buffer.text == "e f\n",
             "3. should repeat the last change three times")
     }
 
-    func testDotDoesNotRepeatMotions() {
+    @Test
+    func dotDoesNotRepeatMotions() {
         // Pure motions (no edit) should not be repeatable by dot.
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("l")
         keys("l")
         keys(".") // no last change → no-op
-        XCTAssertEqual(buffer.text, "hello world\nsecond line\nthird line\n")
+        #expect(buffer.text == "hello world\nsecond line\nthird line\n")
     }
 
-    func testDotRepeatsInsertedText() {
+    @Test
+    func dotRepeatsInsertedText() {
         // Inserted text should be repeatable. This requires the engine to record the
         // insert-mode text, then dot replays it. Hard to test purely at engine level —
         // we at least assert that dot is consumed.
@@ -129,6 +134,6 @@ final class VimEngineUndoRepeatTests: XCTestCase {
         _ = engine.process("X", shift: false) // pass-through in insert mode
         _ = engine.process("\u{1B}", shift: false) // escape
         let consumed = engine.process(".", shift: false)
-        XCTAssertTrue(consumed, ". must be consumed in normal mode")
+        #expect(consumed, ". must be consumed in normal mode")
     }
 }

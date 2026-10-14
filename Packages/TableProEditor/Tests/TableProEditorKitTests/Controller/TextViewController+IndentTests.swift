@@ -1,3 +1,4 @@
+import Foundation
 //
 //  TextViewController+IndentTests.swift
 //  TableProEditorKit
@@ -7,25 +8,26 @@
 
 @testable import TableProEditorKit
 @testable import TableProTextEngine
-import XCTest
+import Testing
 
-final class TextViewControllerIndentTests: XCTestCase {
+@MainActor
+final class TextViewControllerIndentTests {
     var controller: TextViewController!
 
-    override func setUpWithError() throws {
+    init() throws {
         controller = Mock.textViewController(theme: Mock.theme())
 
         controller.loadView()
     }
 
-    func testHandleIndentWithSpacesInwards() {
+    @Test func testHandleIndentWithSpacesInwards() {
         controller.setText("    This is a test string")
         let cursorPositions = [CursorPosition(range: NSRange(location: 0, length: 0))]
         controller.cursorPositions = cursorPositions
         controller.textView.selectionManager.textSelections = [.init(range: NSRange(location: 0, length: 0))]
         controller.handleIndent(inwards: true)
 
-        XCTAssertEqual(controller.text, "This is a test string")
+        #expect(controller.text == "This is a test string")
 
         // Normally, 4 spaces are used for indentation; however, now we only insert 2 leading spaces.
         // The outcome should be the same, though.
@@ -34,10 +36,10 @@ final class TextViewControllerIndentTests: XCTestCase {
         controller.textView.selectionManager.textSelections = [.init(range: NSRange(location: 0, length: 0))]
         controller.handleIndent(inwards: true)
 
-        XCTAssertEqual(controller.text, "This is a test string")
+        #expect(controller.text == "This is a test string")
     }
 
-    func testHandleIndentWithSpacesOutwards() {
+    @Test func testHandleIndentWithSpacesOutwards() {
         controller.setText("This is a test string")
         let cursorPositions = [CursorPosition(range: NSRange(location: 0, length: 0))]
         controller.textView.selectionManager.textSelections = [.init(range: NSRange(location: 0, length: 0))]
@@ -45,10 +47,10 @@ final class TextViewControllerIndentTests: XCTestCase {
 
         controller.handleIndent(inwards: false)
 
-        XCTAssertEqual(controller.text, "    This is a test string")
+        #expect(controller.text == "    This is a test string")
     }
 
-    func testHandleIndentWithTabsInwards() {
+    @Test func testHandleIndentWithTabsInwards() {
         controller.setText("\tThis is a test string")
         controller.configuration.behavior .indentOption = .tab
         let cursorPositions = [CursorPosition(range: NSRange(location: 0, length: 0))]
@@ -57,10 +59,10 @@ final class TextViewControllerIndentTests: XCTestCase {
 
         controller.handleIndent(inwards: true)
 
-        XCTAssertEqual(controller.text, "This is a test string")
+        #expect(controller.text == "This is a test string")
     }
 
-    func testHandleIndentWithTabsOutwards() {
+    @Test func testHandleIndentWithTabsOutwards() {
         controller.setText("This is a test string")
         controller.configuration.behavior.indentOption = .tab
         let cursorPositions = [CursorPosition(range: NSRange(location: 0, length: 0))]
@@ -71,10 +73,10 @@ final class TextViewControllerIndentTests: XCTestCase {
 
         // Normally, we expect nothing to happen because only one line is selected.
         // However, this logic is not handled inside `handleIndent`.
-        XCTAssertEqual(controller.text, "\tThis is a test string")
+        #expect(controller.text == "\tThis is a test string")
     }
 
-    func testHandleIndentMultiLine() {
+    @Test func testHandleIndentMultiLine() {
         controller.configuration.behavior.indentOption = .tab
         let strings: [(NSString, Int)] = [
             ("This is a test string\n", 0),
@@ -94,10 +96,10 @@ final class TextViewControllerIndentTests: XCTestCase {
 
         controller.handleIndent()
         let expectedString = "\tThis is a test string\n\tWith multiple lines\n\tAnd some indentation"
-        XCTAssertEqual(controller.text, expectedString)
+        #expect(controller.text == expectedString)
     }
 
-    func testHandleInwardIndentMultiLine() {
+    @Test func testHandleInwardIndentMultiLine() {
         controller.configuration.behavior.indentOption = .tab
         let strings: [(NSString, NSRange)] = [
             ("\tThis is a test string\n", NSRange(location: 0, length: 0)),
@@ -117,19 +119,19 @@ final class TextViewControllerIndentTests: XCTestCase {
 
         controller.handleIndent(inwards: true)
         let expectedString = "This is a test string\nWith multiple lines\nAnd some indentation"
-        XCTAssertEqual(controller.text, expectedString)
+        #expect(controller.text == expectedString)
     }
 
-    func testMultipleLinesHighlighted() {
+    @Test func testMultipleLinesHighlighted() {
         controller.setText("\tThis is a test string\n\tWith multiple lines\n\tAnd some indentation")
         var cursorPositions = [CursorPosition(range: NSRange(location: 0, length: controller.text.count))]
         controller.cursorPositions = cursorPositions
 
-        XCTAssert(controller.multipleLinesHighlighted())
+        #expect(controller.multipleLinesHighlighted())
 
         cursorPositions = [CursorPosition(range: NSRange(location: 0, length: 5))]
         controller.cursorPositions = cursorPositions
 
-        XCTAssertFalse(controller.multipleLinesHighlighted())
+        #expect(!controller.multipleLinesHighlighted())
     }
 }

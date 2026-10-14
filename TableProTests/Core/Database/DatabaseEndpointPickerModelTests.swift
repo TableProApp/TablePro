@@ -7,11 +7,12 @@
 //  every submenu open refetched.
 //
 
+import Foundation
 @testable import TablePro
-import XCTest
+import Testing
 
 @MainActor
-final class DatabaseEndpointPickerModelTests: XCTestCase {
+final class DatabaseEndpointPickerModelTests {
     private struct Unreachable: LocalizedError {
         var errorDescription: String? { "Connection refused" }
     }
@@ -27,11 +28,13 @@ final class DatabaseEndpointPickerModelTests: XCTestCase {
         DatabaseEndpointPickerModel(databaseLoader: databases, schemaLoader: schemas)
     }
 
-    func testAnUnopenedConnectionReportsLoadingRatherThanAnEmptyList() {
-        XCTAssertEqual(model().databases(for: UUID()), .loading)
+    @Test
+    func anUnopenedConnectionReportsLoadingRatherThanAnEmptyList() {
+        #expect(model().databases(for: UUID()) == .loading)
     }
 
-    func testDatabasesAreLoadedOnce() async {
+    @Test
+    func databasesAreLoadedOnce() async {
         let calls = Counter()
         let subject = model(databases: { _ in
             calls.increment()
@@ -42,22 +45,24 @@ final class DatabaseEndpointPickerModelTests: XCTestCase {
         await subject.loadDatabases(for: connection)
         await subject.loadDatabases(for: connection)
 
-        XCTAssertEqual(calls.value, 1, "reopening the chooser must not refetch")
-        XCTAssertEqual(subject.databases(for: connection.id), .loaded(["orders"]))
+        #expect(calls.value == 1, "reopening the chooser must not refetch")
+        #expect(subject.databases(for: connection.id) == .loaded(["orders"]))
     }
 
     /// A server that refused the connection is not a server with no databases. Caching the failure
     /// as `[]` is what told users their database list was empty, with no way to retry.
-    func testAFailedLoadIsRememberedAsAFailure() async {
+    @Test
+    func aFailedLoadIsRememberedAsAFailure() async {
         let subject = model(databases: { _ in throw Unreachable() })
         let connection = connection()
 
         await subject.loadDatabases(for: connection)
 
-        XCTAssertEqual(subject.databases(for: connection.id), .failed("Connection refused"))
+        #expect(subject.databases(for: connection.id) == .failed("Connection refused"))
     }
 
-    func testAFailedLoadCanBeRetriedWithoutAskingForAReload() async {
+    @Test
+    func aFailedLoadCanBeRetriedWithoutAskingForAReload() async {
         let calls = Counter()
         let subject = model(databases: { _ in
             calls.increment()
@@ -69,12 +74,13 @@ final class DatabaseEndpointPickerModelTests: XCTestCase {
         await subject.loadDatabases(for: connection)
         await subject.loadDatabases(for: connection)
 
-        XCTAssertEqual(subject.databases(for: connection.id), .loaded(["orders"]))
+        #expect(subject.databases(for: connection.id) == .loaded(["orders"]))
     }
 
     /// `CLAUDE.md`: a refresh never clears the cache it is refreshing. The list stays on screen
     /// while the reload runs, so Try Again cannot blank a pane that already had an answer.
-    func testAReloadKeepsTheLoadedListUntilTheNewOneArrives() async {
+    @Test
+    func aReloadKeepsTheLoadedListUntilTheNewOneArrives() async {
         let gate = AsyncGate()
         let subject = model(databases: { _ in
             await gate.wait()
@@ -87,15 +93,17 @@ final class DatabaseEndpointPickerModelTests: XCTestCase {
         await gate.close()
 
         let reload = Task { await subject.loadDatabases(for: connection, reload: true) }
-        await Task.yield()
-        XCTAssertEqual(subject.databases(for: connection.id), .loaded(["orders", "audit"]))
+        // The main queue runs jobs in order, so this lets the reload reach its fetch first.
+        await Task { @MainActor in }.value
+        #expect(subject.databases(for: connection.id) == .loaded(["orders", "audit"]))
 
         await gate.open()
         await reload.value
-        XCTAssertEqual(subject.databases(for: connection.id), .loaded(["orders", "audit"]))
+        #expect(subject.databases(for: connection.id) == .loaded(["orders", "audit"]))
     }
 
-    func testSchemasAreKeyedPerDatabaseRatherThanPerConnection() async {
+    @Test
+    func schemasAreKeyedPerDatabaseRatherThanPerConnection() async {
         let subject = model(schemas: { endpoint, _ in [endpoint.database + "_schema"] })
         let connection = connection()
         let orders = DatabaseEndpoint.from(connection: connection, database: "orders")
@@ -104,8 +112,8 @@ final class DatabaseEndpointPickerModelTests: XCTestCase {
         await subject.loadSchemas(for: orders, connection: connection)
         await subject.loadSchemas(for: audit, connection: connection)
 
-        XCTAssertEqual(subject.schemas(for: orders), .loaded(["orders_schema"]))
-        XCTAssertEqual(subject.schemas(for: audit), .loaded(["audit_schema"]))
+        #expect(subject.schemas(for: orders) == .loaded(["orders_schema"]))
+        #expect(subject.schemas(for: audit) == .loaded(["audit_schema"]))
     }
 }
 

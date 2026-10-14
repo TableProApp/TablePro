@@ -138,23 +138,13 @@ struct HttpRequestStreamParserTests {
         #expect(bodies == ["abcdef"])
     }
 
-    @Test("A malformed chunk size is rejected")
-    func malformedChunkSize() {
+    @Test("A malformed chunk size, or a chunk not terminated by CRLF, is rejected", arguments: [
+        "POST /mcp HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\n",
+        "POST /mcp HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nhiXX",
+    ])
+    func malformedChunk(_ request: String) {
         var parser = HttpRequestStreamParser()
-        parser.append(
-            Data("POST /mcp HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\n".utf8)
-        )
-        #expect(throws: HttpRequestParseError.self) {
-            _ = try parser.next()
-        }
-    }
-
-    @Test("A chunk that is not terminated by CRLF is rejected")
-    func malformedChunkTerminator() {
-        var parser = HttpRequestStreamParser()
-        parser.append(
-            Data("POST /mcp HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nhiXX".utf8)
-        )
+        parser.append(Data(request.utf8))
         #expect(throws: HttpRequestParseError.self) {
             _ = try parser.next()
         }

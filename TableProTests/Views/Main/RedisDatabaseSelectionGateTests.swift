@@ -1,37 +1,12 @@
-//
-//  RedisDatabaseSelectionGateTests.swift
-//  TableProTests
-//
-//  Selecting a Redis database moves the connection's one shared driver. It used to send its SELECT
-//  around the driver gate, so the SELECT could land between a browse's SCAN and its TYPE/TTL
-//  pipeline, or in the middle of a key tree load, and both then read another database's keys.
-//
+// Selecting a Redis database moves the connection's one shared driver. It used to send its SELECT
+// around the driver gate, so the SELECT could land between a browse's SCAN and its TYPE/TTL
+// pipeline, or in the middle of a key tree load, and both then read another database's keys.
 
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
-
-@MainActor
-private final class Latch {
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    private var isOpen = false
-
-    func open() {
-        guard !isOpen else { return }
-        isOpen = true
-        let pending = waiters
-        waiters = []
-        for waiter in pending {
-            waiter.resume()
-        }
-    }
-
-    func wait() async {
-        guard !isOpen else { return }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-}
 
 @Suite("Redis database selection and the session driver gate", .serialized)
 @MainActor
@@ -64,11 +39,11 @@ struct RedisDatabaseSelectionGateTests {
     }
 
     /// Holds the connection's driver until `release` opens, and returns only once it holds it.
-    private func holdDriver(_ connectionId: UUID, until release: Latch) async -> Task<Void, Error> {
-        let acquired = Latch()
+    private func holdDriver(_ connectionId: UUID, until release: AsyncGate) async -> Task<Void, Error> {
+        let acquired = AsyncGate()
         let holder = Task { @MainActor in
             try await DatabaseManager.shared.sessionDriverGate.withExclusiveAccess(connectionId) {
-                acquired.open()
+                await acquired.open()
                 await release.wait()
             }
         }
@@ -79,9 +54,7 @@ struct RedisDatabaseSelectionGateTests {
     /// The bound is there so a caller that never queues, which is the regression these tests guard,
     /// fails the assertions after it rather than hanging the suite.
     private func waitForQueuedCallers(_ count: Int, on connectionId: UUID) async {
-        for _ in 0..<10_000 where DatabaseManager.shared.sessionDriverGate.waiterCount(for: connectionId) < count {
-            await Task.yield()
-        }
+        _ = try? await waitUntil { DatabaseManager.shared.sessionDriverGate.waiterCount(for: connectionId) >= count }
     }
 
     @Test("Selecting a database waits for the driver and switches once its turn comes")
@@ -90,7 +63,7 @@ struct RedisDatabaseSelectionGateTests {
         defer { cleanUp(connection.id) }
         let coordinator = makeCoordinator(for: connection)
         defer { coordinator.teardown() }
-        let release = Latch()
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, until: release)
 
         coordinator.openTableTab("db2")
@@ -99,7 +72,7 @@ struct RedisDatabaseSelectionGateTests {
         #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) == 1)
         #expect(recorder.switchedDatabases.isEmpty)
 
-        release.open()
+        await release.open()
         try await holder.value
         await coordinator.redisDatabaseSwitchTask?.value
 
@@ -113,7 +86,7 @@ struct RedisDatabaseSelectionGateTests {
         defer { cleanUp(connection.id) }
         let coordinator = makeCoordinator(for: connection)
         defer { coordinator.teardown() }
-        let release = Latch()
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, until: release)
 
         coordinator.openTableTab("db2")
@@ -124,7 +97,7 @@ struct RedisDatabaseSelectionGateTests {
         await superseded?.value
         await waitForQueuedCallers(1, on: connection.id)
 
-        release.open()
+        await release.open()
         try await holder.value
         await coordinator.redisDatabaseSwitchTask?.value
 
@@ -140,7 +113,7 @@ struct RedisDatabaseSelectionGateTests {
         defer { cleanUp(connection.id) }
         let coordinator = makeCoordinator(for: connection)
         defer { coordinator.teardown() }
-        let release = Latch()
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, until: release)
 
         coordinator.openTableTab("db2")
@@ -157,7 +130,7 @@ struct RedisDatabaseSelectionGateTests {
         #expect(coordinator.tabManager.selectedTab?.pagination.isLoading == false)
         #expect(recorder.switchedDatabases.isEmpty)
 
-        release.open()
+        await release.open()
         try await holder.value
     }
 
@@ -167,7 +140,7 @@ struct RedisDatabaseSelectionGateTests {
     func selectionSwitchesTheDriverInstalledWhenItRuns() async throws {
         let (connection, original) = makeSession()
         defer { cleanUp(connection.id) }
-        let release = Latch()
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, until: release)
 
         let selection = Task { @MainActor in
@@ -180,7 +153,7 @@ struct RedisDatabaseSelectionGateTests {
         DatabaseManager.shared.updateSession(connection.id) { session in
             session.driver = PluginDriverAdapter(connection: connection, pluginDriver: replacement)
         }
-        release.open()
+        await release.open()
         try await holder.value
         try await selection.value
 
@@ -217,7 +190,7 @@ struct RedisDatabaseSelectionGateTests {
         recorder.refuseSelections(with: RefusedSelection())
         let coordinator = makeCoordinator(for: connection)
         defer { coordinator.teardown() }
-        let release = Latch()
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, until: release)
 
         coordinator.openTableTab("db3")
@@ -227,7 +200,7 @@ struct RedisDatabaseSelectionGateTests {
         let frontTabId = try #require(coordinator.tabManager.selectedTabId)
         #expect(frontTabId != retargetedTabId)
 
-        release.open()
+        await release.open()
         try await holder.value
         await coordinator.redisDatabaseSwitchTask?.value
 
@@ -245,7 +218,7 @@ struct RedisDatabaseSelectionGateTests {
         defer { cleanUp(connection.id) }
         let coordinator = makeCoordinator(for: connection)
         defer { coordinator.teardown() }
-        let release = Latch()
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, until: release)
 
         coordinator.openTableTab("db3")
@@ -253,7 +226,7 @@ struct RedisDatabaseSelectionGateTests {
         let retargetedTabId = try #require(coordinator.tabManager.selectedTabId)
         coordinator.tabManager.addTab(initialQuery: "PING")
 
-        release.open()
+        await release.open()
         try await holder.value
         await coordinator.redisDatabaseSwitchTask?.value
 
@@ -267,7 +240,7 @@ struct RedisDatabaseSelectionGateTests {
     func keyTreeLoadWaitsForTheDriver() async throws {
         let (connection, recorder) = makeSession()
         defer { cleanUp(connection.id) }
-        let release = Latch()
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, until: release)
 
         let viewModel = RedisKeyTreeViewModel()
@@ -278,7 +251,7 @@ struct RedisDatabaseSelectionGateTests {
         #expect(recorder.executedQueries.isEmpty)
         #expect(viewModel.state.erased == .loading)
 
-        release.open()
+        await release.open()
         try await holder.value
         await load.value
 
@@ -289,9 +262,7 @@ struct RedisDatabaseSelectionGateTests {
     /// Query execution runs off the switch task, so the key's command lands a moment after it. The
     /// bound turns a command that never runs into a failed assertion rather than a hung suite.
     private func waitForExecution(of query: String, on recorder: RecordingRedisPluginDriver) async {
-        for _ in 0..<500 where !recorder.executedQueries.contains(query) {
-            try? await Task.sleep(nanoseconds: 10_000_000)
-        }
+        _ = try? await waitUntil { recorder.executedQueries.contains(query) }
     }
 
     @Test("The key tree first lists the database the session was left on after connecting")
@@ -355,7 +326,7 @@ struct RedisDatabaseSelectionGateTests {
         defer { cleanUp(connection.id) }
         let coordinator = makeCoordinator(for: connection)
         defer { coordinator.teardown() }
-        let release = Latch()
+        let release = AsyncGate()
         let holder = await holdDriver(connection.id, until: release)
 
         coordinator.openTableTab("db3")
@@ -363,7 +334,7 @@ struct RedisDatabaseSelectionGateTests {
         let clickedTabId = try #require(coordinator.tabManager.selectedTabId)
         coordinator.openRedisKey("three:a", keyType: "hash", inDatabase: 3)
 
-        release.open()
+        await release.open()
         try await holder.value
         await coordinator.redisDatabaseSwitchTask?.value
         let read = RedisKeyTreeCommand.openKey("three:a", keyType: "hash", inDatabase: 3)
@@ -384,7 +355,7 @@ private struct RefusedSelection: LocalizedError {
 
 /// Records the calls that move or read the connection. The ping answers, because Redis declares a
 /// health monitor and a check before use would otherwise fail the session.
-private final class RecordingRedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class RecordingRedisPluginDriver: PluginDriverStub, @unchecked Sendable {
     private let lock = NSLock()
     private var switched: [String] = []
     private var executed: [String] = []
@@ -425,21 +396,5 @@ private final class RecordingRedisPluginDriver: PluginDatabaseDriver, @unchecked
             log.append("execute:\(query)")
         }
         return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
-
-    func connect() async throws {}
-    func disconnect() {}
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 }

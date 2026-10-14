@@ -1,8 +1,3 @@
-//
-//  ERDiagramInitialFitTests.swift
-//  TableProTests
-//
-
 import AppKit
 import SwiftUI
 @testable import TablePro
@@ -14,7 +9,7 @@ private final class HostedDiagram {
     private let window: NSWindow
     private let host: NSHostingView<AnyView>
 
-    init(viewModel: ERDiagramViewModel) {
+    init(viewModel: ERDiagramViewModel) async {
         self.viewModel = viewModel
         let frame = CGRect(x: 0, y: 0, width: 900, height: 700)
         window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
@@ -22,31 +17,35 @@ private final class HostedDiagram {
         host = NSHostingView(rootView: AnyView(ERDiagramView(viewModel: viewModel)))
         host.sizingOptions = []
         window.contentView = host
-        settle()
+        await settle()
     }
 
     var scrollView: DiagramScrollView? {
         host.firstDescendant(of: DiagramScrollView.self)
     }
 
-    func leaveTheTab() {
+    func leaveTheTab() async {
         host.rootView = AnyView(Color.clear)
-        settle()
+        await settle()
     }
 
-    func returnToTheTab() {
+    func returnToTheTab() async {
         host.rootView = AnyView(ERDiagramView(viewModel: viewModel))
-        settle()
+        await settle()
     }
 
     func close() {
         window.orderOut(nil)
     }
 
-    private func settle() {
+    /// Each pass lays out, then waits for one main-queue turn: SwiftUI mounts the canvas on a later
+    /// run-loop turn, and the fit it triggers runs as main-actor work queued before the turn returns.
+    private func settle() async {
         for _ in 0 ..< 20 {
             host.layoutSubtreeIfNeeded()
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { continuation.resume() }
+            }
         }
     }
 }
@@ -59,7 +58,7 @@ struct ERDiagramInitialFitTests {
         defer { fixture.tearDown() }
         await fixture.viewModel.loadDiagram()
 
-        let diagram = HostedDiagram(viewModel: fixture.viewModel)
+        let diagram = await HostedDiagram(viewModel: fixture.viewModel)
         defer { diagram.close() }
 
         let scrollView = try #require(diagram.scrollView)
@@ -75,15 +74,15 @@ struct ERDiagramInitialFitTests {
         defer { fixture.tearDown() }
         await fixture.viewModel.loadDiagram()
 
-        let diagram = HostedDiagram(viewModel: fixture.viewModel)
+        let diagram = await HostedDiagram(viewModel: fixture.viewModel)
         defer { diagram.close() }
         diagram.viewModel.viewport.resetZoom()
         diagram.viewModel.viewport.zoomOut()
         #expect(diagram.viewModel.viewport.magnification == 0.75)
 
-        diagram.leaveTheTab()
+        await diagram.leaveTheTab()
         #expect(diagram.scrollView == nil)
-        diagram.returnToTheTab()
+        await diagram.returnToTheTab()
 
         let scrollView = try #require(diagram.scrollView)
         #expect(scrollView.magnification == 0.75)

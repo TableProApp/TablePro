@@ -63,7 +63,7 @@ internal enum AppShortcut {
 }
 
 internal extension XCUIElement {
-    /// Sent to the key window, so call it on the app unless the command belongs to a focused element.
+    // Sent to the key window, so call it on the app unless the command belongs to a focused element.
     func typeShortcut(_ shortcut: AppShortcut) {
         typeKey(shortcut.chord.key, modifierFlags: shortcut.chord.modifiers)
     }

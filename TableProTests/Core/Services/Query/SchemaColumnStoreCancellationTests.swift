@@ -11,7 +11,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Schema column store cancellation", .serialized)
 @MainActor
 struct SchemaColumnStoreCancellationTests {
     @Test("Cancelling the only waiter cancels the fetch")

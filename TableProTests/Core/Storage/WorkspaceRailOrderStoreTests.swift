@@ -5,14 +5,15 @@ import Testing
 
 @MainActor
 struct WorkspaceRailOrderStoreTests {
+    private let pool = EphemeralDefaultsPool()
+
     private func makeId(container: String = "app") -> WorkspaceID {
         WorkspaceID(connectionId: UUID(), container: container)
     }
 
     private func makeStore() throws -> (WorkspaceRailOrderStore, UserDefaults, String) {
-        let suiteName = "com.TablePro.tests.workspaceRail.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        return (WorkspaceRailOrderStore(defaults: defaults), defaults, suiteName)
+        let suite = try pool.make()
+        return (WorkspaceRailOrderStore(defaults: suite.defaults), suite.defaults, suite.suiteName)
     }
 
     @Test("A fresh store has no stored arrangement")

@@ -249,7 +249,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProCoreTypesTests",
-            dependencies: ["TableProCoreTypes"],
+            dependencies: ["TableProCoreTypes", "TableProTestSupport"],
             path: "Tests/TableProCoreTypesTests"
         ),
         .testTarget(
@@ -289,7 +289,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProDatabaseTests",
-            dependencies: ["TableProDatabase", "TableProModels", "TableProPluginKit"],
+            dependencies: ["TableProDatabase", "TableProModels", "TableProPluginKit", "TableProTestSupport"],
             path: "Tests/TableProDatabaseTests"
         ),
         .testTarget(
@@ -309,7 +309,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProMSSQLCoreTests",
-            dependencies: ["TableProMSSQLCore"],
+            dependencies: ["TableProMSSQLCore", "TableProTestSupport"],
             path: "Tests/TableProMSSQLCoreTests"
         ),
         .testTarget(
@@ -319,7 +319,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProGoogleCloudTests",
-            dependencies: ["TableProGoogleCloud"],
+            dependencies: ["TableProGoogleCloud", "TableProTestSupport"],
             path: "Tests/TableProGoogleCloudTests"
         ),
         .testTarget(

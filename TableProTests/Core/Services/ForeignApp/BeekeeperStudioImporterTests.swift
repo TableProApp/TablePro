@@ -9,7 +9,6 @@ import SQLite3
 import TableProImport
 import Testing
 
-@Suite("BeekeeperStudioImporter", .serialized)
 struct BeekeeperStudioImporterTests {
     private let tempDir: URL
     private var importer: BeekeeperStudioImporter

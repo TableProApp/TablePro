@@ -1,15 +1,11 @@
-//
-//  SQLEditorCursorPropagationTests.swift
-//  TableProTests
-//
-//  Run, Explain and the AI actions read the caret the editor reports through its binding, so a caret moved while
-//  focus is elsewhere (find navigation, a jump to a result's statement) still has to reach it.
-//
+// Run, Explain and the AI actions read the caret the editor reports through its binding, so a caret moved while
+// focus is elsewhere (find navigation, a jump to a result's statement) still has to reach it.
 
 import AppKit
 import Combine
 import SwiftUI
 import TableProEditorKit
+import TableProTestSupport
 import TableProTextEngine
 import Testing
 
@@ -36,10 +32,10 @@ struct SQLEditorCursorPropagationTests {
         }
     }
 
-    private func settle(_ window: NSWindow) {
-        for _ in 0 ..< 10 {
+    private func settle(_ window: NSWindow, until condition: () -> Bool) async throws {
+        try await waitUntil {
             window.contentView?.layoutSubtreeIfNeeded()
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+            return condition()
         }
     }
 
@@ -53,7 +49,7 @@ struct SQLEditorCursorPropagationTests {
     }
 
     @Test("A caret moved while the editor is not first responder reaches the binding")
-    func caretMovedWithoutFocusReachesTheBinding() throws {
+    func caretMovedWithoutFocusReachesTheBinding() async throws {
         let model = Model()
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
@@ -64,7 +60,7 @@ struct SQLEditorCursorPropagationTests {
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: Host(model: model))
         defer { window.orderOut(nil) }
-        settle(window)
+        try await settle(window) { textView(in: window.contentView)?.window != nil }
 
         let editor = try #require(textView(in: window.contentView))
         _ = window.makeFirstResponder(nil)
@@ -72,7 +68,7 @@ struct SQLEditorCursorPropagationTests {
 
         let match = NSRange(location: 42, length: 2)
         editor.selectionManager.setSelectedRange(match)
-        settle(window)
+        try await settle(window) { model.cursorPositions.map(\.range) == [match] }
 
         #expect(model.cursorPositions.map(\.range) == [match])
     }

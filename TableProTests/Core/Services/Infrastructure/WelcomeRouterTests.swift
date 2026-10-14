@@ -3,21 +3,16 @@
 //  TableProTests
 //
 
+import Foundation
 @testable import TablePro
-import XCTest
+import Testing
 
 @MainActor
-final class WelcomeRouterTests: XCTestCase {
+final class WelcomeRouterTests {
     private var router: WelcomeRouter!
 
-    override func setUp() {
-        super.setUp()
+    init() {
         router = WelcomeRouter()
-    }
-
-    override func tearDown() {
-        router = nil
-        super.tearDown()
     }
 
     private func makeChooserPayload(
@@ -27,56 +22,66 @@ final class WelcomeRouterTests: XCTestCase {
         DatabaseTypeChooserPayload(initialType: initialType, onSelected: onSelected)
     }
 
-    func testRouteStoresRequestWithoutASubscriber() {
+    @Test
+    func routeStoresRequestWithoutASubscriber() {
         router.route(.exportConnections)
 
         guard case .exportConnections = router.pendingRequest else {
-            return XCTFail("Expected the request to survive without a mounted Welcome window")
+            Issue.record("Expected the request to survive without a mounted Welcome window")
+            return
         }
     }
 
-    func testConsumeReturnsRequestOnceThenNil() {
+    @Test
+    func consumeReturnsRequestOnceThenNil() {
         router.route(.importFromApp)
 
         guard case .importFromApp = router.consumePendingRequest() else {
-            return XCTFail("Expected the routed request")
+            Issue.record("Expected the routed request")
+            return
         }
-        XCTAssertNil(router.consumePendingRequest())
-        XCTAssertNil(router.pendingRequest)
+        #expect(router.consumePendingRequest() == nil)
+        #expect(router.pendingRequest == nil)
     }
 
-    func testSecondRouteReplacesAnUnconsumedRequest() {
+    @Test
+    func secondRouteReplacesAnUnconsumedRequest() {
         router.route(.exportConnections)
         router.route(.openProjectFolder)
 
         guard case .openProjectFolder = router.consumePendingRequest() else {
-            return XCTFail("Expected the most recent request to win")
+            Issue.record("Expected the most recent request to win")
+            return
         }
-        XCTAssertNil(router.consumePendingRequest())
+        #expect(router.consumePendingRequest() == nil)
     }
 
-    func testChooserRequestCarriesItsPayload() {
+    @Test
+    func chooserRequestCarriesItsPayload() {
         var selected: DatabaseType?
         let payload = makeChooserPayload(initialType: .postgresql) { selected = $0 }
 
         router.route(.chooseDatabaseType(payload))
 
         guard case .chooseDatabaseType(let delivered) = router.consumePendingRequest() else {
-            return XCTFail("Expected a chooser request")
+            Issue.record("Expected a chooser request")
+            return
         }
-        XCTAssertEqual(delivered.initialType, .postgresql)
+        #expect(delivered.initialType == .postgresql)
         delivered.onSelected(.mysql)
-        XCTAssertEqual(selected, .mysql)
+        #expect(selected == .mysql)
     }
 
-    func testRequestSlotIsIndependentOfTheOtherPendingSlots() {
+    @Test
+    func requestSlotIsIndependentOfTheOtherPendingSlots() {
         let connection = DatabaseConnection(name: "Test", type: .mysql)
         router.routePluginInstall(connection)
         router.route(.importConnections)
 
         guard case .importConnections = router.consumePendingRequest() else {
-            return XCTFail("Expected the request slot to be untouched by routePluginInstall")
+            Issue.record("Expected the request slot to be untouched by routePluginInstall")
+            return
         }
-        XCTAssertEqual(router.consumePendingPluginInstall()?.id, connection.id)
+        #expect(router.consumePendingPluginInstall()?.id == connection.id)
     }
 }

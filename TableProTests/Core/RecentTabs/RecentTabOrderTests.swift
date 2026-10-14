@@ -1,8 +1,3 @@
-//
-//  RecentTabOrderTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import Testing
@@ -21,6 +16,14 @@ struct RecentTabOrderTests {
         manager.selectedTab.map { RecentTabReference(connectionId: connection, tabId: $0.id) }
     }
 
+    /// A selection is recorded on the main queue's next turn, and the queue runs blocks in order, so
+    /// a block queued after it runs once the record has landed.
+    private static func mainQueueTurn() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+    }
+
     /// The report: two tabs in use that are not neighbours, so stepping the strip from D reaches
     /// C. B rather than A, because A is first in the strip and a broken record would still reach it
     /// through the strip-order tail.
@@ -35,9 +38,9 @@ struct RecentTabOrderTests {
         let tabB = manager.tabs[1]
         let tabD = try #require(manager.tabs.last)
         manager.selectedTabId = tabB.id
-        try? await Task.sleep(for: .milliseconds(20))
+        await Self.mainQueueTurn()
         manager.selectedTabId = tabD.id
-        try? await Task.sleep(for: .milliseconds(20))
+        await Self.mainQueueTurn()
 
         let order = RecentTabOrder.order(
             sources: [source(manager, connection: connection)],

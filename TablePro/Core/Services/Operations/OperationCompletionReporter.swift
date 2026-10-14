@@ -53,7 +53,8 @@ internal final class OperationCompletionReporter {
         }
     }
 
-    internal func report(_ completion: OperationCompletion) {
+    @discardableResult
+    internal func report(_ completion: OperationCompletion) -> Task<Void, Never>? {
         let visibility = resolveVisibility(completion.owner, completion.connectionId)
         let decision = OperationCompletionPolicy.decide(
             completion: completion,
@@ -65,9 +66,9 @@ internal final class OperationCompletionReporter {
             markUnseen(completion.owner)
         }
 
-        guard let plan = decision.notification else { return }
+        guard let plan = decision.notification else { return nil }
 
-        Task { [weak self] in
+        return Task { [weak self] in
             await self?.deliver(plan, for: completion)
         }
     }

@@ -1,13 +1,9 @@
-//
-//  QueryDiagnosticsRefreshTests.swift
-//  TableProTests
-//
-
 import AppKit
 import Foundation
 import SwiftUI
 @testable import TablePro
 import TableProEditorKit
+import TableProTestSupport
 import TableProTextEngine
 import Testing
 
@@ -24,8 +20,10 @@ private final class DocumentReplacementRecorder: TextViewCoordinator {
 
 @MainActor
 struct QueryDiagnosticsRefreshTests {
+    private let clock = ManualClock()
+
     private func makeEditor(_ text: String = "") -> (SQLEditorCoordinator, TextViewController) {
-        let coordinator = SQLEditorCoordinator()
+        let coordinator = SQLEditorCoordinator(diagnosticsClock: clock)
         coordinator.databaseType = .mysql
         let controller = EditorControllerFixture.make(string: text, coordinators: [coordinator])
         return (coordinator, controller)
@@ -37,17 +35,22 @@ struct QueryDiagnosticsRefreshTests {
             .map(\.range) ?? []
     }
 
-    private func waitForUnderlines(
-        in controller: TextViewController,
-        timeout: Duration = .seconds(5)
-    ) async -> [NSRange] {
-        let deadline = ContinuousClock.now.advanced(by: timeout)
-        while ContinuousClock.now < deadline {
-            let ranges = underlines(in: controller)
-            if !ranges.isEmpty { return ranges }
-            try? await Task.sleep(for: .milliseconds(20))
-        }
+    private func passDebounce() async throws {
+        try await waitUntil { clock.pendingSleeperCount > 0 }
+        clock.advance(by: .milliseconds(500))
+    }
+
+    private func waitForUnderlines(in controller: TextViewController) async throws -> [NSRange] {
+        try await passDebounce()
+        try await waitUntil { !underlines(in: controller).isEmpty }
         return underlines(in: controller)
+    }
+
+    // The woken refresh is already queued on the main executor, so a block queued after it runs later.
+    private func afterQueuedMainActorWork() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
     }
 
     @Test("Replacing the document tells every coordinator, and an edit does not")
@@ -63,13 +66,13 @@ struct QueryDiagnosticsRefreshTests {
     }
 
     @Test("A replaced document is checked without a keystroke")
-    func replacedDocumentIsChecked() async {
+    func replacedDocumentIsChecked() async throws {
         let (coordinator, controller) = makeEditor("SELECT 1")
         defer { coordinator.destroy() }
 
         controller.setText("SELECT 2))")
 
-        #expect(await waitForUnderlines(in: controller) == [NSRange(location: 8, length: 1)])
+        #expect(try await waitForUnderlines(in: controller) == [NSRange(location: 8, length: 1)])
     }
 
     @Test("The previous document's underline goes the moment the document is replaced")
@@ -77,12 +80,13 @@ struct QueryDiagnosticsRefreshTests {
         let (coordinator, controller) = makeEditor("SELECT 1")
         defer { coordinator.destroy() }
         controller.textView.replaceCharacters(in: NSRange(location: 8, length: 0), with: ")")
-        #expect(await waitForUnderlines(in: controller) == [NSRange(location: 8, length: 1)])
+        #expect(try await waitForUnderlines(in: controller) == [NSRange(location: 8, length: 1)])
 
         controller.setText("SELECT name FROM t")
 
         #expect(underlines(in: controller).isEmpty)
-        try await Task.sleep(for: .milliseconds(800))
+        try await passDebounce()
+        await afterQueuedMainActorWork()
         #expect(underlines(in: controller).isEmpty)
     }
 
@@ -90,16 +94,16 @@ struct QueryDiagnosticsRefreshTests {
     /// The binding plumbing itself is the editor's, and `SourceEditorBindingSyncTests` covers it; what belongs
     /// here is that a second replacement re-checks rather than leaving the first document's answer behind.
     @Test("A second replacement re-checks the incoming document")
-    func secondReplacementIsChecked() async {
+    func secondReplacementIsChecked() async throws {
         let (coordinator, controller) = makeEditor()
         defer { coordinator.destroy() }
         controller.setText("SELECT 1)")
-        #expect(await waitForUnderlines(in: controller) == [NSRange(location: 8, length: 1)])
+        #expect(try await waitForUnderlines(in: controller) == [NSRange(location: 8, length: 1)])
 
         controller.setText("SELECT name FROM t /* open")
 
         #expect(underlines(in: controller).isEmpty)
-        #expect(await waitForUnderlines(in: controller) == [NSRange(location: 19, length: 2)])
+        #expect(try await waitForUnderlines(in: controller) == [NSRange(location: 19, length: 2)])
     }
 
     @Test("An underline below the lines on screen is drawn once its line lays out")
@@ -108,7 +112,7 @@ struct QueryDiagnosticsRefreshTests {
         defer { coordinator.destroy() }
         let statements = (1...200).map { "SELECT \($0);" } + ["SELECT 201)"]
         controller.setText(statements.joined(separator: "\n"))
-        let range = try #require(await waitForUnderlines(in: controller).first)
+        let range = try #require(try await waitForUnderlines(in: controller).first)
 
         let textView = try #require(controller.textView)
         textView.layoutManager.layoutLines(in: CGRect(origin: .zero, size: CGSize(width: 1_000, height: 20_000)))

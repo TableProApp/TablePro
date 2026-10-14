@@ -34,8 +34,6 @@ public actor MCPTestClock: MCPClock {
         for sleep in due {
             sleep.continuation.resume()
         }
-
-        await Task.yield()
     }
 
     public func setNow(_ date: Date) async {

@@ -10,14 +10,14 @@ final class SidebarTableTabUITests: UITestCase {
 
         clickAtCenter(sidebarRow("album", in: window))
         XCTAssertTrue(waitForTabs(["album"], in: window), "A click must open the table in a tab")
-        let previewing = tabCount(in: window)
+        let previewing = editorTabs(in: window).count
 
         clickAtCenter(sidebarRow("artist", in: window))
         XCTAssertTrue(
             waitForTabs(["artist"], without: ["album"], in: window),
             "A second click must reuse the preview tab rather than open another"
         )
-        XCTAssertEqual(tabCount(in: window), previewing)
+        XCTAssertEqual(editorTabs(in: window).count, previewing)
 
         doubleClickAtCenter(sidebarRow("genre", in: window))
         XCTAssertTrue(waitForTabs(["genre"], without: ["artist"], in: window), "A double-click opens in the preview tab")
@@ -26,7 +26,7 @@ final class SidebarTableTabUITests: UITestCase {
             waitForTabs(["genre", "track"], in: window),
             "A double-clicked table keeps its tab, so the next table must get a tab of its own"
         )
-        XCTAssertEqual(tabCount(in: window), previewing + 1)
+        XCTAssertEqual(editorTabs(in: window).count, previewing + 1)
 
         clickAtCenter(tab("track", in: window))
         clickAtCenter(sidebarRow("note", in: window))
@@ -34,7 +34,7 @@ final class SidebarTableTabUITests: UITestCase {
             waitForTabs(["note"], without: ["track"], in: window),
             "Selecting a preview tab must not keep it, so the next table still reuses it"
         )
-        XCTAssertEqual(tabCount(in: window), previewing + 1)
+        XCTAssertEqual(editorTabs(in: window).count, previewing + 1)
 
         doubleClickAtCenter(tab("note", in: window))
         clickAtCenter(sidebarRow("document", in: window))
@@ -42,7 +42,7 @@ final class SidebarTableTabUITests: UITestCase {
             waitForTabs(["note", "document"], in: window),
             "Double-clicking a preview tab keeps it, so the next table must get a tab of its own"
         )
-        XCTAssertEqual(tabCount(in: window), previewing + 2)
+        XCTAssertEqual(editorTabs(in: window).count, previewing + 2)
     }
 
     private func sidebarRow(_ name: String, in window: XCUIElement) -> XCUIElement {
@@ -52,21 +52,13 @@ final class SidebarTableTabUITests: UITestCase {
     }
 
     private func tab(_ title: String, in window: XCUIElement) -> XCUIElement {
-        let match = tabs(in: window).matching(NSPredicate(format: "label == %@", title)).firstMatch
+        let match = editorTabs(titled: title, in: window).firstMatch
         XCTAssertTrue(match.waitToExist(timeout: 20), "The tab strip must show \(title)")
         return match
     }
 
-    private func tabs(in window: XCUIElement) -> XCUIElementQuery {
-        window.descendants(matching: .any).matching(identifier: "editor-tab")
-    }
-
-    private func tabCount(in window: XCUIElement) -> Int {
-        tabs(in: window).count
-    }
-
     private func hasTab(_ title: String, in window: XCUIElement) -> Bool {
-        tabs(in: window).matching(NSPredicate(format: "label == %@", title)).firstMatch.exists
+        editorTabs(titled: title, in: window).firstMatch.exists
     }
 
     private func waitForTabs(_ present: [String], without absent: [String] = [], in window: XCUIElement) -> Bool {

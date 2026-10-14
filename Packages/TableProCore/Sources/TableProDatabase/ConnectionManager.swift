@@ -8,6 +8,7 @@ public final class ConnectionManager: @unchecked Sendable {
     private let secureStore: SecureStore
     private let sshProvider: SSHProvider?
     private let teardownWaitLimit: Duration
+    private let clock: any Clock<Duration>
 
     private let lock = NSLock()
     private var sessions: [UUID: ConnectionSession] = [:]
@@ -20,12 +21,14 @@ public final class ConnectionManager: @unchecked Sendable {
         driverFactory: DriverFactory,
         secureStore: SecureStore,
         sshProvider: SSHProvider? = nil,
-        teardownWaitLimit: Duration = ConnectionManager.defaultTeardownWaitLimit
+        teardownWaitLimit: Duration = ConnectionManager.defaultTeardownWaitLimit,
+        clock: any Clock<Duration> = ContinuousClock()
     ) {
         self.driverFactory = driverFactory
         self.secureStore = secureStore
         self.sshProvider = sshProvider
         self.teardownWaitLimit = teardownWaitLimit
+        self.clock = clock
     }
 
     /// Opens a session, waiting out a teardown still running for the same connection first.
@@ -152,18 +155,22 @@ public final class ConnectionManager: @unchecked Sendable {
         case .untilFinished:
             return await teardown.waitUntilFinished() ? .cleared : .cancelled
         case .after(let limit):
-            return await Self.wait(on: teardown, within: limit)
+            return await Self.wait(on: teardown, within: limit, clock: clock)
         }
     }
 
-    private static func wait(on teardown: ConnectionTeardown, within limit: Duration) async -> TeardownWait {
+    private static func wait(
+        on teardown: ConnectionTeardown,
+        within limit: Duration,
+        clock: any Clock<Duration>
+    ) async -> TeardownWait {
         await withTaskGroup(of: TeardownWait.self) { group in
             group.addTask {
                 await teardown.waitUntilFinished() ? .cleared : .cancelled
             }
             group.addTask {
                 do {
-                    try await Task.sleep(for: limit)
+                    try await clock.sleep(for: limit)
                 } catch {
                     return .cancelled
                 }

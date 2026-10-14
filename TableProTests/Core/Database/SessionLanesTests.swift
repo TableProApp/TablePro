@@ -10,13 +10,12 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @Suite("Session lanes", .serialized)
 @MainActor
 struct SessionLanesTests {
-    /// Reopens its connection to change database and can open a second one, like PostgreSQL.
-    private static let typeId = "SessionLaneFake"
 
     private final class Opener {
         var opened: [String: MockDatabaseDriver] = [:]
@@ -38,10 +37,13 @@ struct SessionLanesTests {
         let connection: DatabaseConnection
         let home: MockDatabaseDriver
         let opener: Opener
+        let typeId: String
     }
 
-    private func registerTypeIfNeeded() {
-        guard PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: Self.typeId) == nil else { return }
+    /// Reopens its connection to change database and can open a second one, like PostgreSQL. Each
+    /// case registers a type of its own, so one case's cleanup never unregisters another's.
+    private func registerType() -> String {
+        let typeId = "SessionLaneFake-\(UUID().uuidString)"
         let defaults = PluginMetadataSnapshot.CapabilityFlags.defaults
         let capabilities = PluginMetadataSnapshot.CapabilityFlags(
             supportsSchemaSwitching: true,
@@ -57,7 +59,7 @@ struct SessionLanesTests {
             supportsDropDatabase: defaults.supportsDropDatabase
         )
         let snapshot = PluginMetadataSnapshot(
-            displayName: Self.typeId, iconName: "cylinder", defaultPort: 1_234,
+            displayName: typeId, iconName: "cylinder", defaultPort: 1_234,
             requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
             isDownloadable: false, primaryUrlScheme: "sessionlanefake", parameterStyle: .questionMark,
             navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
@@ -66,14 +68,15 @@ struct SessionLanesTests {
             connectionMode: .network, supportsDatabaseSwitching: true,
             capabilities: capabilities, schema: .defaults, editor: .defaults, connection: .defaults
         )
-        PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: Self.typeId)
+        PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: typeId)
+        return typeId
     }
 
     /// A connected session browsing `app` on `home`, with lane opens answered by `opener`.
     private func makeHarness() -> Harness {
-        registerTypeIfNeeded()
+        let typeId = registerType()
         var connection = TestFixtures.makeConnection(database: "app")
-        connection.type = DatabaseType(rawValue: Self.typeId)
+        connection.type = DatabaseType(rawValue: typeId)
         let home = MockDatabaseDriver(connection: connection)
         var session = ConnectionSession(connection: connection, driver: home)
         session.status = .connected
@@ -89,7 +92,7 @@ struct SessionLanesTests {
             }
             return try await opener.open(scope)
         }
-        return Harness(connection: connection, home: home, opener: opener)
+        return Harness(connection: connection, home: home, opener: opener, typeId: typeId)
     }
 
     private func cleanUp(_ harness: Harness) {
@@ -99,7 +102,7 @@ struct SessionLanesTests {
         }
         AppSettingsStorage.shared.saveLastDatabase(nil, for: harness.connection.id)
         AppSettingsStorage.shared.saveLastSchema(nil, for: harness.connection.id)
-        PluginMetadataRegistry.shared.unregister(typeId: Self.typeId)
+        PluginMetadataRegistry.shared.unregister(typeId: harness.typeId)
     }
 
     private func session(_ harness: Harness) -> ConnectionSession? {
@@ -317,21 +320,27 @@ struct SessionLanesTests {
         try await DatabaseManager.shared.switchDatabase(to: "logs", for: harness.connection.id, persist: false)
         harness.home.pingError = DatabaseError.connectionFailed("server closed the connection")
         harness.home.sessionTransactionStateToReturn = .idle
-        harness.home.pingDelaySeconds = 1
+        let ping = AsyncGate()
+        harness.home.pingGate = ping
         let lanes = DatabaseManager.shared.sessionLanes
         let scope = DatabaseScope(connectionId: harness.connection.id, database: "app", schema: nil)
+        let connectionId = harness.connection.id
         let work = Task { @MainActor in
             try await DatabaseManager.shared.withScopedDriver(
                 scope: scope, route: .sessionDriver, cancellation: .untracked
             ) { driver in ObjectIdentifier(driver) }
         }
-        let deadline = Date().addingTimeInterval(5)
-        while !lanes.isVerifying(harness.home), Date() < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        try await waitUntil { lanes.isVerifying(harness.home) }
         #expect(lanes.isVerifying(harness.home))
 
-        try await DatabaseManager.shared.switchDatabase(to: "app", for: harness.connection.id, persist: false)
+        let generation = lanes.generation(for: connectionId)
+        let switchBack = Task { @MainActor in
+            try await DatabaseManager.shared.switchDatabase(to: "app", for: connectionId, persist: false)
+        }
+        // The switch takes its generation and then waits for the check, with no suspension between.
+        try await waitUntil { lanes.generation(for: connectionId) != generation }
+        await ping.open()
+        try await switchBack.value
 
         let replacement = try #require(harness.opener.opened["app"])
         #expect(session(harness)?.driver === replacement)
@@ -364,13 +373,13 @@ struct SessionLanesTests {
     func schemaSwitchSharesTheDatabaseTurn() async throws {
         let harness = makeHarness()
         defer { cleanUp(harness) }
-        let release = AsyncLatch()
-        let acquired = AsyncLatch()
+        let release = AsyncGate()
+        let acquired = AsyncGate()
         let holder = Task { @MainActor in
             try await DatabaseManager.shared.sessionDriverGate.withExclusiveAccess(
                 SessionDriverGate.Key(connectionId: harness.connection.id, database: "app")
             ) {
-                acquired.open()
+                await acquired.open()
                 await release.wait()
             }
         }
@@ -379,13 +388,13 @@ struct SessionLanesTests {
         let schemaSwitch = Task { @MainActor in
             try await DatabaseManager.shared.switchSchema(to: "reporting", for: harness.connection.id)
         }
-        for _ in 0..<10_000 where DatabaseManager.shared.sessionDriverGate.waiterCount(for: harness.connection.id) < 1 {
-            await Task.yield()
+        try await waitUntil {
+            DatabaseManager.shared.sessionDriverGate.waiterCount(for: harness.connection.id) >= 1
         }
 
         #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: harness.connection.id) == 1)
         #expect(harness.home.switchSchemaCallCount == 0)
-        release.open()
+        await release.open()
         try await holder.value
         try await schemaSwitch.value
         #expect(harness.home.switchSchemaCallCount == 1)
@@ -491,13 +500,13 @@ struct SessionLanesTests {
         let harness = makeHarness()
         defer { cleanUp(harness) }
         harness.home.sessionTransactionStateToReturn = .inTransaction
-        let release = AsyncLatch()
-        let acquired = AsyncLatch()
+        let release = AsyncGate()
+        let acquired = AsyncGate()
         let holder = Task { @MainActor in
             try await DatabaseManager.shared.sessionDriverGate.withExclusiveAccess(
                 SessionDriverGate.Key(connectionId: harness.connection.id, database: "app")
             ) {
-                acquired.open()
+                await acquired.open()
                 await release.wait()
             }
         }
@@ -505,7 +514,7 @@ struct SessionLanesTests {
 
         let holding = await DatabaseManager.shared.databasesHoldingTransaction(for: harness.connection.id)
 
-        release.open()
+        await release.open()
         try await holder.value
         #expect(holding.isEmpty)
     }
@@ -515,14 +524,21 @@ struct SessionLanesTests {
         let harness = makeHarness()
         defer { cleanUp(harness) }
         harness.home.sessionTransactionStateToReturn = .inTransaction
-        harness.home.sessionTransactionStateDelaySeconds = 30
-        let clock = ContinuousClock()
-        let started = clock.now
+        let reply = AsyncGate()
+        harness.home.sessionTransactionStateGate = reply
+        let clock = ManualClock()
+        let connectionId = harness.connection.id
+        let probe = Task { @MainActor in
+            await DatabaseManager.shared.databasesHoldingTransaction(for: connectionId, clock: clock)
+        }
 
-        let holding = await DatabaseManager.shared.databasesHoldingTransaction(for: harness.connection.id)
+        await clock.waitUntilSleeping()
+        clock.advance(by: .seconds(1))
+        let holding = await probe.value
 
         #expect(holding.isEmpty)
-        #expect(clock.now - started < .seconds(5))
+        #expect(harness.home.finishedSessionTransactionStateReads == 0)
+        await reply.open()
     }
 
     /// A driver's cancel can reach past the read: FreeTDS stops every call queued on the connection.
@@ -531,33 +547,21 @@ struct SessionLanesTests {
         let harness = makeHarness()
         defer { cleanUp(harness) }
         harness.home.sessionTransactionStateToReturn = .inTransaction
-        harness.home.sessionTransactionStateDelaySeconds = 1.5
+        let reply = AsyncGate()
+        harness.home.sessionTransactionStateGate = reply
+        let clock = ManualClock()
+        let connectionId = harness.connection.id
+        let probe = Task { @MainActor in
+            await DatabaseManager.shared.databasesHoldingTransaction(for: connectionId, clock: clock)
+        }
+        await clock.waitUntilSleeping()
+        clock.advance(by: .seconds(1))
+        let holding = await probe.value
 
-        let holding = await DatabaseManager.shared.databasesHoldingTransaction(for: harness.connection.id)
-        try await Task.sleep(for: .seconds(1))
+        await reply.open()
+        try await waitUntil { harness.home.finishedSessionTransactionStateReads == 1 }
 
         #expect(holding.isEmpty)
         #expect(!harness.home.sessionTransactionStateReadWasCancelled)
-    }
-}
-
-@MainActor
-private final class AsyncLatch {
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    private var isOpen = false
-
-    func open() {
-        guard !isOpen else { return }
-        isOpen = true
-        let pending = waiters
-        waiters = []
-        for waiter in pending {
-            waiter.resume()
-        }
-    }
-
-    func wait() async {
-        guard !isOpen else { return }
-        await withCheckedContinuation { waiters.append($0) }
     }
 }

@@ -25,8 +25,8 @@ struct ScopedDriverCancellationTests {
         defer { DatabaseManager.shared.runningDrivers.removeValue(forKey: connection.id) }
 
         try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .background)
+        await Self.settleCancels(on: connection.id)
 
-        #expect(await Self.awaitCancel(driver))
         #expect(driver.cancelledOnMainThread == false)
         #expect(driver.cancelCount == 1)
     }
@@ -64,8 +64,9 @@ struct ScopedDriverCancellationTests {
 
         try DatabaseManager.shared.cancelRunningQuery(owner: myOwner, on: connection.id, delivery: .immediate)
 
+        await Self.settleCancels(on: connection.id)
+
         #expect(mine.cancelCount == 1)
-        #expect(await Self.awaitCancel(theirs) == false)
         #expect(theirs.cancelCount == 0)
     }
 
@@ -81,8 +82,8 @@ struct ScopedDriverCancellationTests {
 
         try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .background)
         try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .immediate)
+        await Self.settleCancels(on: connection.id)
 
-        #expect(await Self.awaitCancel(driver) == false)
         #expect(driver.cancelCount == 0)
     }
 
@@ -102,8 +103,8 @@ struct ScopedDriverCancellationTests {
 
         try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .background)
         try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .immediate)
+        await Self.settleCancels(on: connection.id)
 
-        #expect(await Self.awaitCancel(driver) == false)
         #expect(driver.cancelCount == 0)
     }
 
@@ -121,8 +122,8 @@ struct ScopedDriverCancellationTests {
 
         try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .immediate)
         try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .background)
+        await Self.settleCancels(on: connection.id)
 
-        #expect(await Self.awaitCancel(driver) == false)
         #expect(driver.cancelCount == 0)
 
         DatabaseManager.shared.endProtectedWrite(token, for: connection.id)
@@ -187,8 +188,8 @@ struct ScopedDriverCancellationTests {
 
         _ = DatabaseManager.shared.releaseRunningDriver(token, for: connection.id)
         try DatabaseManager.shared.cancelRunningQuery(owner: owner, on: connection.id, delivery: .immediate)
+        await Self.settleCancels(on: connection.id)
 
-        #expect(await Self.awaitCancel(driver) == false)
         #expect(driver.cancelCount == 0)
     }
 
@@ -231,19 +232,12 @@ struct ScopedDriverCancellationTests {
         ]
     }
 
-    /// The cancel now lands on a global queue, so the assertion has to wait for it. Polling keeps
-    /// the main actor free for anything the cancel path might still hop back to, and the deadline
-    /// means a regression fails the test instead of hanging the suite.
-    private static func awaitCancel(
-        _ driver: CancelRecordingDriver,
-        within timeout: Duration = .seconds(2)
-    ) async -> Bool {
-        let deadline = ContinuousClock.now + timeout
-        while ContinuousClock.now < deadline {
-            if driver.cancelCount > 0 { return true }
-            try? await Task.sleep(for: .milliseconds(5))
+    /// Every background cancel the manager sends is handed to the lease that owns the handle, so
+    /// awaiting those is the barrier: after it, a cancel that was going to land has landed.
+    private static func settleCancels(on connectionId: UUID) async {
+        for entry in (DatabaseManager.shared.runningDrivers[connectionId] ?? [:]).values {
+            await entry.pendingCancel?.value
         }
-        return false
     }
 }
 

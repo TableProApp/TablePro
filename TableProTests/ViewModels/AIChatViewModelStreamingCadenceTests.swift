@@ -8,7 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("AIChatViewModel streaming cadence", .serialized)
 @MainActor
 struct AIChatViewModelStreamingCadenceTests {
     private final class NeverTickingClock: StreamFlushClock, @unchecked Sendable {

@@ -1,9 +1,9 @@
 import CoreFoundation
 import Foundation
 @testable import TableProTabularIO
-import XCTest
+import Testing
 
-final class JSONDifferentialTests: XCTestCase {
+struct JSONDifferentialTests {
     private struct SeededGenerator: RandomNumberGenerator {
         var state: UInt64
 
@@ -101,13 +101,13 @@ final class JSONDifferentialTests: XCTestCase {
         }
     }
 
-    func testGeneratedDocumentsReadRoundTripAndSurviveEdits() async throws {
+    @Test func testGeneratedDocumentsReadRoundTripAndSurviveEdits() async throws {
         var generator = DocumentGenerator(random: SeededGenerator(state: 2_026), allowsUnicodeEscapes: true)
         for trial in 0..<400 {
             let array = generator.chance(50)
             let text = generator.document(array: array, compact: !array || generator.chance(30))
             let source = try await JSONFixtures.source(text, kind: array ? .json : .jsonLines)
-            XCTAssertEqual(try JSONFixtures.written(source, rows: JSONFixtures.untouchedRows(of: source)), text, "trial \(trial)")
+            #expect(try JSONFixtures.written(source, rows: JSONFixtures.untouchedRows(of: source)) == text, "trial \(trial)")
 
             var expected = cellsByKey(of: source)
             var output: [JSONOutputRow] = []
@@ -141,11 +141,11 @@ final class JSONDifferentialTests: XCTestCase {
             }
             let written = try JSONFixtures.written(source, rows: output)
             let reread = try await JSONFixtures.source(written, kind: array ? .json : .jsonLines)
-            XCTAssertEqual(cellsByKey(of: reread), outputExpected, "trial \(trial): \(text.debugDescription) -> \(written.debugDescription)")
+            #expect(cellsByKey(of: reread) == outputExpected, "trial \(trial): \(text.debugDescription) -> \(written.debugDescription)")
         }
     }
 
-    func testMutatedDocumentsAgreeWithJSONSerialization() async throws {
+    @Test func testMutatedDocumentsAgreeWithJSONSerialization() async throws {
         var generator = DocumentGenerator(random: SeededGenerator(state: 99), allowsUnicodeEscapes: false)
         let alphabet = Array("{}[]\"\\:,01-.eatn x".utf8)
         var accepted = 0
@@ -169,31 +169,31 @@ final class JSONDifferentialTests: XCTestCase {
             do {
                 ours = try await JSONFixtures.source(bytes, kind: .json)
             } catch let error as JSONTableError where referenceAccepts {
-                XCTAssertTrue(Self.isTrailingComma(in: bytes, closingAt: error.byteOffset), "trial \(trial): \(error) \(description)")
+                #expect(Self.isTrailingComma(in: bytes, closingAt: error.byteOffset), "trial \(trial): \(error) \(description)")
                 continue
             } catch {
-                XCTAssertFalse(referenceAccepts, "trial \(trial): \(error) \(description)")
+                #expect(!referenceAccepts, "trial \(trial): \(error) \(description)")
                 continue
             }
-            XCTAssertTrue(referenceAccepts, "trial \(trial): \(description)")
+            #expect(referenceAccepts, "trial \(trial): \(description)")
             guard let referenceRows, referenceAccepts else { continue }
             accepted += 1
-            XCTAssertEqual(ours.rowCount, referenceRows.count, "trial \(trial)")
-            XCTAssertEqual(Set(ours.keys), Set(referenceRows.flatMap(\.keys)), "trial \(trial): \(description)")
+            #expect(ours.rowCount == referenceRows.count, "trial \(trial)")
+            #expect(Set(ours.keys) == Set(referenceRows.flatMap(\.keys)), "trial \(trial): \(description)")
             for (row, object) in referenceRows.enumerated() {
                 let memberKeys = try ours.objectLayout(ofRow: row).members.map(\.key)
                 let repeatedKeys = Set(memberKeys.filter { key in memberKeys.filter { $0 == key }.count > 1 })
                 for (column, key) in ours.keys.enumerated() where !repeatedKeys.contains(key) {
                     let cell = ours.cell(row: row, column: column)
                     guard let value = object[key] else {
-                        XCTAssertEqual(cell.kind, .missing, "trial \(trial) row \(row) key \(key)")
+                        #expect(cell.kind == .missing, "trial \(trial) row \(row) key \(key)")
                         continue
                     }
-                    XCTAssertTrue(Self.cell(cell, matches: value), "trial \(trial) row \(row) key \(key): \(cell) vs \(value)")
+                    #expect(Self.cell(cell, matches: value), "trial \(trial) row \(row) key \(key): \(cell) vs \(value)")
                 }
             }
         }
-        XCTAssertGreaterThan(accepted, 300)
+        #expect(accepted > 300)
     }
 
     private static func isTrailingComma(in bytes: [UInt8], closingAt offset: Int) -> Bool {

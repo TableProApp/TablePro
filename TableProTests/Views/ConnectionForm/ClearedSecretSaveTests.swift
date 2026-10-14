@@ -1,8 +1,3 @@
-//
-//  ClearedSecretSaveTests.swift
-//  TableProTests
-//
-
 import Foundation
 import Testing
 
@@ -13,6 +8,12 @@ import Testing
 /// it, and a duplicate copies it.
 @MainActor
 struct ClearedSecretSaveTests {
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
     private final class ScriptedKeychain: KeychainStoring, @unchecked Sendable {
         private let lock = NSLock()
         private var result: KeychainStringResult
@@ -45,7 +46,7 @@ struct ClearedSecretSaveTests {
         )
         return ConnectionStorage(
             fileURL: fileURL,
-            userDefaults: UserDefaults(suiteName: "com.TablePro.tests.ClearedSecret.\(unique)")!,
+            userDefaults: suite.defaults,
             keychain: ScriptedKeychain(result)
         )
     }

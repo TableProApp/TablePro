@@ -8,67 +8,77 @@
 //  driver overrides `sqlLiteral(for:)`, so the spelling is decided per engine here.
 //
 
+import Foundation
 @testable import TablePro
-import XCTest
+import Testing
 
-final class CompareSQLLiteralTests: XCTestCase {
+struct CompareSQLLiteralTests {
     private let png = Data([0x89, 0x50, 0x4E, 0x47])
 
-    func testBitStringEnginesKeepTheDefaultSpelling() throws {
+    @Test
+    func bitStringEnginesKeepTheDefaultSpelling() throws {
         for type in [DatabaseType.mysql, .mariadb, .tidb, .databend, .oceanbase, .sqlite, .clickhouse, .libsql, .turso, .cloudflareD1] {
-            let literal = try XCTUnwrap(CompareSQLLiteral.binaryLiteral(for: png, databaseType: type))
-            XCTAssertEqual(literal, "X'89504E47'", "\(type.rawValue) uses a bit-string literal")
+            let literal = try #require(CompareSQLLiteral.binaryLiteral(for: png, databaseType: type))
+            #expect(literal == "X'89504E47'", "\(type.rawValue) uses a bit-string literal")
         }
     }
 
-    func testDuckDBDecodesHexWithUnhex() throws {
-        let literal = try XCTUnwrap(CompareSQLLiteral.binaryLiteral(for: png, databaseType: .duckdb))
-        XCTAssertEqual(literal, "unhex('89504E47')")
+    @Test
+    func duckDBDecodesHexWithUnhex() throws {
+        let literal = try #require(CompareSQLLiteral.binaryLiteral(for: png, databaseType: .duckdb))
+        #expect(literal == "unhex('89504E47')")
     }
 
     /// A compare script runs its own statements, so a plain literal on a SQL Server database with
     /// a non-Unicode collation writes `?` into the target rather than the text it compared.
-    func testTextLiteralsCarryTheSQLServerPrefix() {
-        XCTAssertEqual(CompareSQLLiteral.prefixed("'日本語'", databaseType: .mssql), "N'日本語'")
-        XCTAssertEqual(CompareSQLLiteral.prefixed("'abc'", databaseType: .mysql), "'abc'")
+    @Test
+    func textLiteralsCarryTheSQLServerPrefix() {
+        #expect(CompareSQLLiteral.prefixed("'日本語'", databaseType: .mssql) == "N'日本語'")
+        #expect(CompareSQLLiteral.prefixed("'abc'", databaseType: .mysql) == "'abc'")
     }
 
     /// `sqlLiteral(for:)` answers `NULL` for a null and passes a number through unquoted. `N` in
     /// front of either is a syntax error.
-    func testOnlyQuotedLiteralsTakeThePrefix() {
-        XCTAssertEqual(CompareSQLLiteral.prefixed("NULL", databaseType: .mssql), "NULL")
-        XCTAssertEqual(CompareSQLLiteral.prefixed("42", databaseType: .mssql), "42")
-        XCTAssertEqual(CompareSQLLiteral.prefixed("0x89504E47", databaseType: .mssql), "0x89504E47")
+    @Test
+    func onlyQuotedLiteralsTakeThePrefix() {
+        #expect(CompareSQLLiteral.prefixed("NULL", databaseType: .mssql) == "NULL")
+        #expect(CompareSQLLiteral.prefixed("42", databaseType: .mssql) == "42")
+        #expect(CompareSQLLiteral.prefixed("0x89504E47", databaseType: .mssql) == "0x89504E47")
     }
 
-    func testPostgresFamilyUsesAByteaCast() throws {
+    @Test
+    func postgresFamilyUsesAByteaCast() throws {
         for type in [DatabaseType.postgresql, .cockroachdb, .redshift, .pglite] {
-            let literal = try XCTUnwrap(CompareSQLLiteral.binaryLiteral(for: png, databaseType: type))
-            XCTAssertEqual(literal, "'\\x89504e47'::bytea", "\(type.rawValue) uses a bytea literal")
+            let literal = try #require(CompareSQLLiteral.binaryLiteral(for: png, databaseType: type))
+            #expect(literal == "'\\x89504e47'::bytea", "\(type.rawValue) uses a bytea literal")
         }
     }
 
-    func testSQLServerUsesZeroX() throws {
-        let literal = try XCTUnwrap(CompareSQLLiteral.binaryLiteral(for: png, databaseType: .mssql))
+    @Test
+    func sQLServerUsesZeroX() throws {
+        let literal = try #require(CompareSQLLiteral.binaryLiteral(for: png, databaseType: .mssql))
 
-        XCTAssertEqual(literal, "0x89504E47")
+        #expect(literal == "0x89504E47")
     }
 
-    func testOracleUsesHexToRaw() throws {
-        let literal = try XCTUnwrap(CompareSQLLiteral.binaryLiteral(for: png, databaseType: .oracle))
+    @Test
+    func oracleUsesHexToRaw() throws {
+        let literal = try #require(CompareSQLLiteral.binaryLiteral(for: png, databaseType: .oracle))
 
-        XCTAssertEqual(literal, "HEXTORAW('89504E47')")
+        #expect(literal == "HEXTORAW('89504E47')")
     }
 
     /// An engine this build does not name falls back to the driver's own spelling rather than
     /// guessing at one, which is why the helper returns nil instead of a default.
-    func testAnUnnamedEngineHasNoOpinion() {
-        XCTAssertNil(CompareSQLLiteral.binaryLiteral(for: png, databaseType: DatabaseType(rawValue: "Whatever")))
+    @Test
+    func anUnnamedEngineHasNoOpinion() {
+        #expect(CompareSQLLiteral.binaryLiteral(for: png, databaseType: DatabaseType(rawValue: "Whatever")) == nil)
     }
 
-    func testEmptyDataStillProducesAValidLiteral() throws {
-        let literal = try XCTUnwrap(CompareSQLLiteral.binaryLiteral(for: Data(), databaseType: .postgresql))
+    @Test
+    func emptyDataStillProducesAValidLiteral() throws {
+        let literal = try #require(CompareSQLLiteral.binaryLiteral(for: Data(), databaseType: .postgresql))
 
-        XCTAssertEqual(literal, "'\\x'::bytea")
+        #expect(literal == "'\\x'::bytea")
     }
 }

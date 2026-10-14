@@ -1,130 +1,119 @@
-//
-//  CompareRowGridModelTests.swift
-//  TableProTests
-//
-
 import AppKit
 import TableProPluginKit
-import XCTest
+import Testing
 
 @testable import TablePro
 
 @MainActor
-final class CompareRowGridModelTests: XCTestCase {
-    private let suiteName = "CompareRowGridModelTests"
+struct CompareRowGridModelTests {
+    private let suite: EphemeralDefaults
     private let columns = ["id", "email", "name"]
 
-    override func setUp() {
-        super.setUp()
-        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
+    init() throws {
+        suite = try EphemeralDefaults()
     }
 
-    override func tearDown() {
-        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
-        super.tearDown()
-    }
-
-    func testInsertAndIdenticalGiveOneSourceLineThatOpensTheEntry() {
+    @Test func testInsertAndIdenticalGiveOneSourceLineThatOpensTheEntry() {
         for kind in [RowDiffKind.insert, .identical] {
             let diff = entry(kind, key: "k1")
 
             let lines = CompareRowGridModel.lines(for: diff)
 
-            XCTAssertEqual(lines.count, 1, "\(kind)")
-            XCTAssertEqual(lines.first?.side, .source, "\(kind)")
-            XCTAssertEqual(lines.first?.opensEntry, true, "\(kind)")
-            XCTAssertEqual(lines.first?.entry.id, diff.id, "\(kind)")
+            #expect(lines.count == 1, "\(kind)")
+            #expect(lines.first?.side == .source, "\(kind)")
+            #expect(lines.first?.opensEntry == true, "\(kind)")
+            #expect(lines.first?.entry.id == diff.id, "\(kind)")
         }
     }
 
-    func testDeleteGivesOneTargetLineThatOpensTheEntry() {
+    @Test func testDeleteGivesOneTargetLineThatOpensTheEntry() {
         let diff = entry(.delete, key: "k1")
 
         let lines = CompareRowGridModel.lines(for: diff)
 
-        XCTAssertEqual(lines.count, 1)
-        XCTAssertEqual(lines.first?.side, .target)
-        XCTAssertEqual(lines.first?.opensEntry, true)
-        XCTAssertEqual(lines.first?.entry.id, diff.id)
+        #expect(lines.count == 1)
+        #expect(lines.first?.side == .target)
+        #expect(lines.first?.opensEntry == true)
+        #expect(lines.first?.entry.id == diff.id)
     }
 
-    func testUpdateAndConflictGiveSourceThenTargetWithOnlyTheFirstOpeningTheEntry() {
+    @Test func testUpdateAndConflictGiveSourceThenTargetWithOnlyTheFirstOpeningTheEntry() {
         for kind in [RowDiffKind.update, .conflict] {
             let diff = entry(kind, key: "k1", differingIn: ["email"])
 
             let lines = CompareRowGridModel.lines(for: diff)
 
-            XCTAssertEqual(lines.map(\.side), [ComparisonSide.source, .target], "\(kind)")
-            XCTAssertEqual(lines.map(\.opensEntry), [true, false], "\(kind)")
-            XCTAssertEqual(lines.map(\.entry.id), [diff.id, diff.id], "\(kind)")
+            #expect(lines.map(\.side) == [ComparisonSide.source, .target], "\(kind)")
+            #expect(lines.map(\.opensEntry) == [true, false], "\(kind)")
+            #expect(lines.map(\.entry.id) == [diff.id, diff.id], "\(kind)")
         }
     }
 
-    func testAnInsertLineIsMarkedInsertedInComparisonWords() throws {
-        let line = try XCTUnwrap(CompareRowGridModel.lines(for: entry(.insert, key: "k1")).first)
+    @Test func testAnInsertLineIsMarkedInsertedInComparisonWords() throws {
+        let line = try #require(CompareRowGridModel.lines(for: entry(.insert, key: "k1")).first)
 
         let state = CompareRowGridModel.visualState(for: line, columns: columns)
 
-        XCTAssertTrue(state.isInserted)
-        XCTAssertFalse(state.isDeleted)
-        XCTAssertTrue(state.modifiedColumns.isEmpty)
-        XCTAssertTrue(state.struckColumns.isEmpty)
-        XCTAssertEqual(state.vocabulary, .comparison)
+        #expect(state.isInserted)
+        #expect(!state.isDeleted)
+        #expect(state.modifiedColumns.isEmpty)
+        #expect(state.struckColumns.isEmpty)
+        #expect(state.vocabulary == .comparison)
     }
 
-    func testADeleteLineIsMarkedDeletedInComparisonWords() throws {
-        let line = try XCTUnwrap(CompareRowGridModel.lines(for: entry(.delete, key: "k1")).first)
+    @Test func testADeleteLineIsMarkedDeletedInComparisonWords() throws {
+        let line = try #require(CompareRowGridModel.lines(for: entry(.delete, key: "k1")).first)
 
         let state = CompareRowGridModel.visualState(for: line, columns: columns)
 
-        XCTAssertTrue(state.isDeleted)
-        XCTAssertFalse(state.isInserted)
-        XCTAssertTrue(state.modifiedColumns.isEmpty)
-        XCTAssertTrue(state.struckColumns.isEmpty)
-        XCTAssertEqual(state.vocabulary, .comparison)
+        #expect(state.isDeleted)
+        #expect(!state.isInserted)
+        #expect(state.modifiedColumns.isEmpty)
+        #expect(state.struckColumns.isEmpty)
+        #expect(state.vocabulary == .comparison)
     }
 
     /// The grid puts Include, Change and Side ahead of the plan's columns, so `email` at plan index 1
     /// is grid column 4.
-    func testAnUpdateMarksTheSourceModifiedAndTheTargetStruckAtTheDifferingGridColumn() {
+    @Test func testAnUpdateMarksTheSourceModifiedAndTheTargetStruckAtTheDifferingGridColumn() {
         let lines = CompareRowGridModel.lines(for: entry(.update, key: "k1", differingIn: ["email"]))
         let expectedColumn = 1 + CompareRowGridModel.leadingColumnCount
 
         let source = CompareRowGridModel.visualState(for: lines[0], columns: columns)
         let target = CompareRowGridModel.visualState(for: lines[1], columns: columns)
 
-        XCTAssertEqual(source.modifiedColumns, [expectedColumn])
-        XCTAssertTrue(source.struckColumns.isEmpty)
-        XCTAssertEqual(target.struckColumns, [expectedColumn])
-        XCTAssertTrue(target.modifiedColumns.isEmpty)
+        #expect(source.modifiedColumns == [expectedColumn])
+        #expect(source.struckColumns.isEmpty)
+        #expect(target.struckColumns == [expectedColumn])
+        #expect(target.modifiedColumns.isEmpty)
         for state in [source, target] {
-            XCTAssertFalse(state.isInserted)
-            XCTAssertFalse(state.isDeleted)
-            XCTAssertEqual(state.vocabulary, .comparison)
+            #expect(!state.isInserted)
+            #expect(!state.isDeleted)
+            #expect(state.vocabulary == .comparison)
         }
     }
 
-    func testADifferingColumnIsFoundWhateverItsCase() {
+    @Test func testADifferingColumnIsFoundWhateverItsCase() {
         let lines = CompareRowGridModel.lines(for: entry(.update, key: "k1", differingIn: ["EMAIL", "Name"]))
 
         let source = CompareRowGridModel.visualState(for: lines[0], columns: columns)
 
-        XCTAssertEqual(source.modifiedColumns, [4, 5])
+        #expect(source.modifiedColumns == [4, 5])
     }
 
-    func testAnIdenticalLineCarriesNoMark() throws {
-        let line = try XCTUnwrap(CompareRowGridModel.lines(for: entry(.identical, key: "k1")).first)
+    @Test func testAnIdenticalLineCarriesNoMark() throws {
+        let line = try #require(CompareRowGridModel.lines(for: entry(.identical, key: "k1")).first)
 
         let state = CompareRowGridModel.visualState(for: line, columns: columns)
 
-        XCTAssertFalse(state.isInserted)
-        XCTAssertFalse(state.isDeleted)
-        XCTAssertTrue(state.modifiedColumns.isEmpty)
-        XCTAssertTrue(state.struckColumns.isEmpty)
-        XCTAssertEqual(state.vocabulary, .comparison)
+        #expect(!state.isInserted)
+        #expect(!state.isDeleted)
+        #expect(state.modifiedColumns.isEmpty)
+        #expect(state.struckColumns.isEmpty)
+        #expect(state.vocabulary == .comparison)
     }
 
-    func testEnsureLoadedLeadsWithIncludeChangeAndSideThenThePlanColumns() throws {
+    @Test func testEnsureLoadedLeadsWithIncludeChangeAndSideThenThePlanColumns() throws {
         let session = try makeSession()
         let model = CompareRowGridModel()
         let entries = [
@@ -135,13 +124,13 @@ final class CompareRowGridModelTests: XCTestCase {
 
         let rows = model.ensureLoaded(key: key(entryCount: 3), plan: plan(), entries: entries, session: session)
 
-        XCTAssertEqual(rows.columns, ["Include", "Change", "Side", "id", "email", "name"])
-        XCTAssertEqual(rows.columnTypes.count, 6)
-        XCTAssertEqual(rows.count, 4)
-        XCTAssertEqual(rows.count, model.lines.count)
+        #expect(rows.columns == ["Include", "Change", "Side", "id", "email", "name"])
+        #expect(rows.columnTypes.count == 6)
+        #expect(rows.count == 4)
+        #expect(rows.count == model.lines.count)
     }
 
-    func testEnsureLoadedFillsEachLineFromItsOwnSide() throws {
+    @Test func testEnsureLoadedFillsEachLineFromItsOwnSide() throws {
         let session = try makeSession()
         let model = CompareRowGridModel()
         let entries = [
@@ -152,21 +141,21 @@ final class CompareRowGridModelTests: XCTestCase {
 
         let rows = model.ensureLoaded(key: key(entryCount: 3), plan: plan(), entries: entries, session: session)
 
-        XCTAssertEqual(rows.rows.map(\.id), [.existing(0), .existing(1), .existing(2), .existing(3)])
-        XCTAssertEqual(rows.rows[0][0], .null)
-        XCTAssertEqual(rows.rows[0][1], .text("Insert"))
-        XCTAssertEqual(rows.rows[0][2], .text("Source"))
-        XCTAssertEqual(rows.rows[0][4], .text("k1@source"))
-        XCTAssertEqual(rows.rows[1][1], .text("Update"))
-        XCTAssertEqual(rows.rows[1][4], .text("k2@source"))
-        XCTAssertEqual(rows.rows[2][2], .text("Target"))
-        XCTAssertEqual(rows.rows[2][4], .text("k2@target"))
-        XCTAssertEqual(rows.rows[3][1], .text("Delete"))
-        XCTAssertEqual(rows.rows[3][2], .text("Target"))
-        XCTAssertEqual(rows.rows[3][4], .text("k3@target"))
+        #expect(rows.rows.map(\.id) == [.existing(0), .existing(1), .existing(2), .existing(3)])
+        #expect(rows.rows[0][0] == .null)
+        #expect(rows.rows[0][1] == .text("Insert"))
+        #expect(rows.rows[0][2] == .text("Source"))
+        #expect(rows.rows[0][4] == .text("k1@source"))
+        #expect(rows.rows[1][1] == .text("Update"))
+        #expect(rows.rows[1][4] == .text("k2@source"))
+        #expect(rows.rows[2][2] == .text("Target"))
+        #expect(rows.rows[2][4] == .text("k2@target"))
+        #expect(rows.rows[3][1] == .text("Delete"))
+        #expect(rows.rows[3][2] == .text("Target"))
+        #expect(rows.rows[3][4] == .text("k3@target"))
     }
 
-    func testEnsureLoadedDoesNotRebuildForTheSameKey() throws {
+    @Test func testEnsureLoadedDoesNotRebuildForTheSameKey() throws {
         let session = try makeSession()
         let model = CompareRowGridModel()
         let sameKey = key(entryCount: 1)
@@ -179,11 +168,11 @@ final class CompareRowGridModelTests: XCTestCase {
             session: session
         )
 
-        XCTAssertEqual(again.count, 1)
-        XCTAssertEqual(model.lines.count, 1)
+        #expect(again.count == 1)
+        #expect(model.lines.count == 1)
     }
 
-    func testEnsureLoadedRebuildsForADifferentKey() throws {
+    @Test func testEnsureLoadedRebuildsForADifferentKey() throws {
         let session = try makeSession()
         let model = CompareRowGridModel()
         _ = model.ensureLoaded(
@@ -197,55 +186,55 @@ final class CompareRowGridModelTests: XCTestCase {
             session: session
         )
 
-        XCTAssertEqual(rebuilt.count, 3)
-        XCTAssertEqual(model.lines.count, 3)
+        #expect(rebuilt.count == 3)
+        #expect(model.lines.count == 3)
     }
 
-    func testTheDelegateHandsBackEachLinesVisualState() throws {
+    @Test func testTheDelegateHandsBackEachLinesVisualState() throws {
         let session = try makeSession()
         let model = CompareRowGridModel()
         let entries = [entry(.insert, key: "k1"), entry(.update, key: "k2", differingIn: ["email"])]
         _ = model.ensureLoaded(key: key(entryCount: 2), plan: plan(), entries: entries, session: session)
 
-        XCTAssertEqual(model.dataGridVisualState(forRow: 0)?.isInserted, true)
-        XCTAssertEqual(model.dataGridVisualState(forRow: 1)?.modifiedColumns, Set([4]))
-        XCTAssertEqual(model.dataGridVisualState(forRow: 2)?.struckColumns, Set([4]))
-        XCTAssertNil(model.dataGridVisualState(forRow: 3))
-        XCTAssertNil(model.dataGridVisualState(forRow: -1))
+        #expect(model.dataGridVisualState(forRow: 0)?.isInserted == true)
+        #expect(model.dataGridVisualState(forRow: 1)?.modifiedColumns == Set([4]))
+        #expect(model.dataGridVisualState(forRow: 2)?.struckColumns == Set([4]))
+        #expect(model.dataGridVisualState(forRow: 3) == nil)
+        #expect(model.dataGridVisualState(forRow: -1) == nil)
     }
 
-    func testTheIncludeCheckboxShowsOnlyOnTheOpeningLineOfADifference() throws {
+    @Test func testTheIncludeCheckboxShowsOnlyOnTheOpeningLineOfADifference() throws {
         let session = try makeSession()
         let model = loadedModel(session: session)
 
-        XCTAssertEqual(includeState(model, row: 0), true)
-        XCTAssertEqual(includeState(model, row: 1), true)
-        XCTAssertNil(includeState(model, row: 2), "the target line of an update")
-        XCTAssertNil(includeState(model, row: 3), "an identical row")
-        XCTAssertNil(includeState(model, row: 4), "a conflict row")
-        XCTAssertNil(includeState(model, row: 5), "the target line of a conflict")
+        #expect(includeState(model, row: 0) == true)
+        #expect(includeState(model, row: 1) == true)
+        #expect(includeState(model, row: 2) == nil, "the target line of an update")
+        #expect(includeState(model, row: 3) == nil, "an identical row")
+        #expect(includeState(model, row: 4) == nil, "a conflict row")
+        #expect(includeState(model, row: 5) == nil, "the target line of a conflict")
     }
 
-    func testTheIncludeCheckboxLivesInTheIncludeColumnAlone() throws {
+    @Test func testTheIncludeCheckboxLivesInTheIncludeColumnAlone() throws {
         let session = try makeSession()
         let model = loadedModel(session: session)
 
-        XCTAssertNil(model.dataGridCheckboxState(row: 0, column: 1))
-        XCTAssertNil(model.dataGridCheckboxState(row: 0, column: 4))
-        XCTAssertNil(includeState(model, row: 99))
+        #expect(model.dataGridCheckboxState(row: 0, column: 1) == nil)
+        #expect(model.dataGridCheckboxState(row: 0, column: 4) == nil)
+        #expect(includeState(model, row: 99) == nil)
     }
 
-    func testTheIncludeCheckboxReflectsARowExcludedInTheSession() throws {
+    @Test func testTheIncludeCheckboxReflectsARowExcludedInTheSession() throws {
         let session = try makeSession()
         let model = loadedModel(session: session)
 
         session.setRowsIncluded(false, entries: [model.lines[0].entry], planId: "orders")
 
-        XCTAssertEqual(includeState(model, row: 0), false)
-        XCTAssertEqual(includeState(model, row: 1), true)
+        #expect(includeState(model, row: 0) == false)
+        #expect(includeState(model, row: 1) == true)
     }
 
-    func testTheIncludeCheckboxHasNoStateOnceTheSessionNoLongerHoldsThePlan() throws {
+    @Test func testTheIncludeCheckboxHasNoStateOnceTheSessionNoLongerHoldsThePlan() throws {
         let session = try makeSession()
         let model = loadedModel(session: session)
 
@@ -259,130 +248,127 @@ final class CompareRowGridModelTests: XCTestCase {
             )
         ])
 
-        XCTAssertNil(includeState(model, row: 0))
+        #expect(includeState(model, row: 0) == nil)
     }
 
-    func testClearingTheCheckboxExcludesTheEntriesAndTickingItIncludesThemAgain() throws {
+    @Test func testClearingTheCheckboxExcludesTheEntriesAndTickingItIncludesThemAgain() throws {
         let session = try makeSession()
         let model = loadedModel(session: session)
 
         model.dataGridSetCheckbox(false, rows: IndexSet([0, 1]), column: CompareRowGridModel.includeColumn)
 
-        XCTAssertEqual(session.dataPlans.first?.excludedRowKeys, Set(["k1", "k2"]))
-        XCTAssertEqual(includeState(model, row: 0), false)
-        XCTAssertEqual(includeState(model, row: 1), false)
+        #expect(session.dataPlans.first?.excludedRowKeys == Set(["k1", "k2"]))
+        #expect(includeState(model, row: 0) == false)
+        #expect(includeState(model, row: 1) == false)
 
         model.dataGridSetCheckbox(true, rows: IndexSet(integer: 0), column: CompareRowGridModel.includeColumn)
 
-        XCTAssertEqual(session.dataPlans.first?.excludedRowKeys, Set(["k2"]))
-        XCTAssertEqual(includeState(model, row: 0), true)
+        #expect(session.dataPlans.first?.excludedRowKeys == Set(["k2"]))
+        #expect(includeState(model, row: 0) == true)
     }
 
-    func testSettingACheckboxOutsideTheIncludeColumnChangesNothing() throws {
+    @Test func testSettingACheckboxOutsideTheIncludeColumnChangesNothing() throws {
         let session = try makeSession()
         let model = loadedModel(session: session)
 
         model.dataGridSetCheckbox(false, rows: IndexSet([0, 1]), column: 1)
 
-        XCTAssertEqual(session.dataPlans.first?.excludedRowKeys, Set<String>())
+        #expect(session.dataPlans.first?.excludedRowKeys == Set<String>())
     }
 
-    func testSettingTheCheckboxOnRowsThatAreNotDifferencesExcludesNothing() throws {
+    @Test func testSettingTheCheckboxOnRowsThatAreNotDifferencesExcludesNothing() throws {
         let session = try makeSession()
         let model = loadedModel(session: session)
 
         model.dataGridSetCheckbox(false, rows: IndexSet([3, 4, 5]), column: CompareRowGridModel.includeColumn)
 
-        XCTAssertEqual(session.dataPlans.first?.excludedRowKeys, Set<String>())
+        #expect(session.dataPlans.first?.excludedRowKeys == Set<String>())
     }
 
-    func testSameListsTheRetainedIdenticalRows() {
+    @Test func testSameListsTheRetainedIdenticalRows() {
         let fixture = summaryFixture()
 
         let listed = RowDiffFilter.same.entries(in: fixture.summary)
 
-        XCTAssertEqual(listed.map(\.id), [fixture.identical.id])
+        #expect(listed.map(\.id) == [fixture.identical.id])
     }
 
-    func testAllListsTheDifferencesFollowedByTheIdenticalRows() {
+    @Test func testAllListsTheDifferencesFollowedByTheIdenticalRows() {
         let fixture = summaryFixture()
 
         let listed = RowDiffFilter.all.entries(in: fixture.summary)
 
-        XCTAssertEqual(
-            listed.map(\.id),
-            [fixture.insert.id, fixture.update.id, fixture.delete.id, fixture.conflict.id, fixture.identical.id]
-        )
+        #expect(listed.map(\.id) == [fixture.insert.id, fixture.update.id, fixture.delete.id, fixture.conflict.id, fixture.identical.id])
     }
 
-    func testOutsideFilterListsOnlyTheConflicts() {
+    @Test func testOutsideFilterListsOnlyTheConflicts() {
         let fixture = summaryFixture()
 
         let listed = RowDiffFilter.conflict.entries(in: fixture.summary)
 
-        XCTAssertEqual(listed.map(\.id), [fixture.conflict.id])
+        #expect(listed.map(\.id) == [fixture.conflict.id])
     }
 
-    func testDifferenceListsInsertsUpdatesAndDeletesButNoConflict() {
+    @Test func testDifferenceListsInsertsUpdatesAndDeletesButNoConflict() {
         let fixture = summaryFixture()
 
         let listed = RowDiffFilter.difference.entries(in: fixture.summary)
 
-        XCTAssertEqual(listed.map(\.id), [fixture.insert.id, fixture.update.id, fixture.delete.id])
+        #expect(listed.map(\.id) == [fixture.insert.id, fixture.update.id, fixture.delete.id])
     }
 
-    func testAStruckColumnIsStruckThroughAndAModifiedColumnIsUnderlined() {
+    @Test func testAStruckColumnIsStruckThroughAndAModifiedColumnIsUnderlined() {
         let struck = comparisonState(struckColumns: [4])
         let modified = comparisonState(modifiedColumns: [4])
 
-        XCTAssertEqual(DataGridCellTextMark.resolve(state: struck, columnIndex: 4), .struckThrough)
-        XCTAssertNil(DataGridCellTextMark.resolve(state: struck, columnIndex: 5))
-        XCTAssertEqual(DataGridCellTextMark.resolve(state: modified, columnIndex: 4), .underlined)
-        XCTAssertNil(DataGridCellTextMark.resolve(state: modified, columnIndex: 5))
+        #expect(DataGridCellTextMark.resolve(state: struck, columnIndex: 4) == .struckThrough)
+        #expect(DataGridCellTextMark.resolve(state: struck, columnIndex: 5) == nil)
+        #expect(DataGridCellTextMark.resolve(state: modified, columnIndex: 4) == .underlined)
+        #expect(DataGridCellTextMark.resolve(state: modified, columnIndex: 5) == nil)
     }
 
-    func testAWholeRowOnlyOnOneSideMarksEveryColumn() {
+    @Test func testAWholeRowOnlyOnOneSideMarksEveryColumn() {
         let inserted = comparisonState(isInserted: true)
         let deleted = comparisonState(isDeleted: true)
 
-        XCTAssertEqual(DataGridCellTextMark.resolve(state: inserted, columnIndex: 5), .underlined)
-        XCTAssertEqual(DataGridCellTextMark.resolve(state: deleted, columnIndex: 5), .struckThrough)
+        #expect(DataGridCellTextMark.resolve(state: inserted, columnIndex: 5) == .underlined)
+        #expect(DataGridCellTextMark.resolve(state: deleted, columnIndex: 5) == .struckThrough)
     }
 
-    func testAComparisonReadsInComparisonWords() {
+    @Test func testAComparisonReadsInComparisonWords() {
         let source = comparisonState(modifiedColumns: [4])
         let target = comparisonState(struckColumns: [4])
 
-        XCTAssertEqual(spoken(comparisonState(isInserted: true), at: 3), "only in the source")
-        XCTAssertEqual(spoken(comparisonState(isDeleted: true), at: 3), "only in the target")
-        XCTAssertEqual(spoken(source, at: 4), "source value, differs")
-        XCTAssertEqual(spoken(target, at: 4), "target value, differs")
-        XCTAssertNil(spoken(source, at: 5))
-        XCTAssertNil(spoken(target, at: 5))
+        #expect(spoken(comparisonState(isInserted: true), at: 3) == "only in the source")
+        #expect(spoken(comparisonState(isDeleted: true), at: 3) == "only in the target")
+        #expect(spoken(source, at: 4) == "source value, differs")
+        #expect(spoken(target, at: 4) == "target value, differs")
+        #expect(spoken(source, at: 5) == nil)
+        #expect(spoken(target, at: 5) == nil)
     }
 
-    func testAPendingEditReadsInEditingWords() {
+    @Test func testAPendingEditReadsInEditingWords() {
         let inserted = RowVisualState(isDeleted: false, isInserted: true, modifiedColumns: [])
         let deleted = RowVisualState(isDeleted: true, isInserted: false, modifiedColumns: [])
         let edited = RowVisualState(isDeleted: false, isInserted: false, modifiedColumns: [4])
 
-        XCTAssertEqual(spoken(inserted, at: 3), "new row")
-        XCTAssertEqual(spoken(deleted, at: 3), "marked for deletion")
-        XCTAssertEqual(spoken(edited, at: 4), "edited")
-        XCTAssertNil(spoken(edited, at: 5))
+        #expect(spoken(inserted, at: 3) == "new row")
+        #expect(spoken(deleted, at: 3) == "marked for deletion")
+        #expect(spoken(edited, at: 4) == "edited")
+        #expect(spoken(edited, at: 5) == nil)
     }
 
-    func testTheGridLinesOfAnUpdateReadAsSourceAndTargetValuesAtTheDifferingColumn() {
+    @Test func testTheGridLinesOfAnUpdateReadAsSourceAndTargetValuesAtTheDifferingColumn() {
         let lines = CompareRowGridModel.lines(for: entry(.update, key: "k1", differingIn: ["email"]))
         let source = CompareRowGridModel.visualState(for: lines[0], columns: columns)
         let target = CompareRowGridModel.visualState(for: lines[1], columns: columns)
 
-        XCTAssertEqual(spoken(source, at: 4), "source value, differs")
-        XCTAssertEqual(spoken(target, at: 4), "target value, differs")
-        XCTAssertNil(spoken(source, at: 3))
+        #expect(spoken(source, at: 4) == "source value, differs")
+        #expect(spoken(target, at: 4) == "target value, differs")
+        #expect(spoken(source, at: 3) == nil)
     }
 
-    func testACheckboxColumnPresentsAsACheckboxWithNoChevron() {
+    @Test func testACheckboxColumnPresentsAsACheckboxWithNoChevron() {
         let presentation = DataGridColumnPresentation.resolve(
             columnType: .boolean(rawType: "BOOLEAN"),
             isForeignKey: true,
@@ -393,46 +379,45 @@ final class CompareRowGridModelTests: XCTestCase {
             isCheckbox: true
         )
 
-        XCTAssertEqual(presentation.kind, .checkbox)
-        XCTAssertEqual(presentation.accessory, .none)
+        #expect(presentation.kind == .checkbox)
+        #expect(presentation.accessory == .none)
     }
 
-    func testTheCheckboxMarkIsCentredInTheCell() {
+    @Test func testTheCheckboxMarkIsCentredInTheCell() {
         let cell = NSRect(x: 100, y: 0, width: 60, height: 24)
 
         let frame = DataGridCheckboxMark.frame(in: cell)
 
-        XCTAssertEqual(frame, NSRect(x: 122, y: 4, width: 16, height: 16))
-        XCTAssertEqual(frame.midX, cell.midX)
-        XCTAssertEqual(frame.midY, cell.midY)
+        #expect(frame == NSRect(x: 122, y: 4, width: 16, height: 16))
+        #expect(frame.midX == cell.midX)
+        #expect(frame.midY == cell.midY)
     }
 
-    func testTheCheckboxMarkIsEmptyInACellTooSmallForIt() {
-        XCTAssertTrue(DataGridCheckboxMark.frame(in: NSRect(x: 0, y: 0, width: 12, height: 24)).isEmpty)
-        XCTAssertTrue(DataGridCheckboxMark.frame(in: NSRect(x: 0, y: 0, width: 60, height: 10)).isEmpty)
+    @Test func testTheCheckboxMarkIsEmptyInACellTooSmallForIt() {
+        #expect(DataGridCheckboxMark.frame(in: NSRect(x: 0, y: 0, width: 12, height: 24)).isEmpty)
+        #expect(DataGridCheckboxMark.frame(in: NSRect(x: 0, y: 0, width: 60, height: 10)).isEmpty)
     }
 
-    func testACheckboxCellCarriesItsMarkAndNoText() {
+    @Test func testACheckboxCellCarriesItsMarkAndNoText() {
         let checked = appearance(kind: .checkbox, text: "", placeholder: .null, checkboxMark: .checked)
         let unchecked = appearance(kind: .checkbox, text: "", placeholder: .null, checkboxMark: .unchecked)
 
-        XCTAssertEqual(checked.checkboxMark, .checked)
-        XCTAssertEqual(checked.text, "")
-        XCTAssertEqual(unchecked.checkboxMark, .unchecked)
-        XCTAssertEqual(unchecked.text, "")
+        #expect(checked.checkboxMark == .checked)
+        #expect(checked.text == "")
+        #expect(unchecked.checkboxMark == .unchecked)
+        #expect(unchecked.text == "")
     }
 
-    func testATextCellCarriesNoCheckboxMarkEvenWhenHandedOne() {
+    @Test func testATextCellCarriesNoCheckboxMarkEvenWhenHandedOne() {
         let text = appearance(kind: .text, text: "value", placeholder: nil, checkboxMark: .checked)
 
-        XCTAssertNil(text.checkboxMark)
-        XCTAssertEqual(text.text, "value")
+        #expect(text.checkboxMark == nil)
+        #expect(text.text == "value")
     }
 
     private func makeSession() throws -> CompareSyncSession {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         let session = CompareSyncSession(
-            profileStorage: CompareSyncProfileStorage(defaults: defaults),
+            profileStorage: CompareSyncProfileStorage(defaults: suite.defaults),
             connectionsProvider: { [] }
         )
         session.adoptDataPlans([plan()])
@@ -469,7 +454,7 @@ final class CompareRowGridModelTests: XCTestCase {
             entry(.conflict, key: "k4")
         ]
         let rows = model.ensureLoaded(key: key(entryCount: 4), plan: plan(), entries: entries, session: session)
-        XCTAssertEqual(rows.count, 6)
+        #expect(rows.count == 6)
         return model
     }
 

@@ -1,13 +1,9 @@
-//
-//  SchemaServiceRoutinesTests.swift
-//  TableProTests
-//
-
 import Foundation
 import TableProPluginKit
 import Testing
 
 @testable import TablePro
+import TableProTestSupport
 
 private final class RoutineMockDriver: DatabaseDriver, @unchecked Sendable {
     let connection: DatabaseConnection
@@ -150,31 +146,6 @@ private final class FailingRoutineDriver: DatabaseDriver, @unchecked Sendable {
 
     func fetchRoutines(schema: String?) async throws -> [RoutineInfo] {
         throw NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "boom"])
-    }
-}
-
-private actor AsyncGate {
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    private var isOpen = false
-
-    func wait() async {
-        if isOpen {
-            return
-        }
-
-        await withCheckedContinuation { continuation in
-            waiters.append(continuation)
-        }
-    }
-
-    func open() {
-        guard !isOpen else { return }
-        isOpen = true
-        let currentWaiters = waiters
-        waiters.removeAll()
-        for continuation in currentWaiters {
-            continuation.resume()
-        }
     }
 }
 
@@ -376,7 +347,7 @@ struct SchemaServiceRoutinesTests {
     }
 
     @Test("table state becomes loaded before auxiliary metadata finishes")
-    func tableStateLoadsBeforeAuxiliaryMetadata() async {
+    func tableStateLoadsBeforeAuxiliaryMetadata() async throws {
         let service = SchemaService()
         let connectionId = UUID()
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
@@ -395,7 +366,7 @@ struct SchemaServiceRoutinesTests {
         }
 
         await driver.tablesGate.open()
-        await waitForLoadedState(service, connectionId: connectionId)
+        try await waitForLoadedState(service, connectionId: connectionId)
 
         #expect(service.tables(for: connectionId).map(\.name) == ["users"])
         #expect(service.procedures(for: connectionId).isEmpty)
@@ -415,7 +386,7 @@ struct SchemaServiceRoutinesTests {
     /// for the database being entered joined the in-flight routine fetch of the one being left
     /// and committed that database's routines under the new scope.
     @Test("A load for another scope never joins the routine fetch of the scope being left")
-    func scopeChangeDoesNotJoinInFlightRoutineFetch() async {
+    func scopeChangeDoesNotJoinInFlightRoutineFetch() async throws {
         let service = SchemaService()
         let connectionId = UUID()
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
@@ -430,13 +401,13 @@ struct SchemaServiceRoutinesTests {
             await service.load(connectionId: connectionId, driver: driver, connection: connection, scope: primary)
         }
         await driver.tablesGate.open()
-        await waitForLoadedState(service, connectionId: connectionId)
-        await waitUntil { driver.routinesCallCount == 1 }
+        try await waitForLoadedState(service, connectionId: connectionId)
+        try await waitUntil { driver.routinesCallCount == 1 }
 
         let analyticsLoad = Task {
             await service.load(connectionId: connectionId, driver: driver, connection: connection, scope: analytics)
         }
-        await waitUntil { driver.routinesCallCount == 2 }
+        try await waitUntil { driver.routinesCallCount == 2 }
         #expect(driver.routinesCallCount == 2)
 
         await driver.routinesGate.open()
@@ -448,18 +419,10 @@ struct SchemaServiceRoutinesTests {
         #expect(service.procedures(for: connectionId).map(\.name) == ["add_user"])
     }
 
-    private func waitForLoadedState(_ service: SchemaService, connectionId: UUID) async {
-        while true {
-            if case .loaded = service.state(for: connectionId) {
-                return
-            }
-            await Task.yield()
-        }
-    }
-
-    private func waitUntil(_ condition: () -> Bool) async {
-        for _ in 0..<10_000 where !condition() {
-            await Task.yield()
+    private func waitForLoadedState(_ service: SchemaService, connectionId: UUID) async throws {
+        try await waitUntil {
+            if case .loaded = service.state(for: connectionId) { return true }
+            return false
         }
     }
 

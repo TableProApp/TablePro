@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import os
+import TableProUtilities
 
 /// What one `NSSplitView` autosave record describes.
 ///
@@ -21,16 +22,11 @@ internal enum SplitViewAutosaveRecord: Equatable {
     /// lifetime it cannot reason about, and guessing costs a reader their saved layout.
     case unrecognised
 
-    /// Undocumented by Apple, so `SplitViewAutosaveSweepTests` derives it from a real `NSSplitView`
-    /// rather than trusting this transcription.
-    internal static let keyPrefix = "NSSplitView Subview Frames "
-
     private static let uuidLength = 36
 
-    /// Parses a defaults key, or returns nil when the key is not an autosave record at all.
+    /// Nil when the key is not an autosave record at all.
     internal static func parse(key: String) -> SplitViewAutosaveRecord? {
-        guard key.hasPrefix(keyPrefix) else { return nil }
-        let name = String(key.dropFirst(keyPrefix.count))
+        guard let name = key.dropPrefixIfPresent(SplitViewAutosaveKey.prefix) else { return nil }
         guard let rest = name.dropPrefixIfPresent(SplitViewAutosaveName.querySplitPrefix) else {
             return .unrecognised
         }

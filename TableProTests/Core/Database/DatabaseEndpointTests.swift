@@ -6,11 +6,12 @@
 //  not address two databases on one server.
 //
 
+import Foundation
 @testable import TablePro
 import TableProPluginKit
-import XCTest
+import Testing
 
-final class DatabaseEndpointTests: XCTestCase {
+struct DatabaseEndpointTests {
     private let connectionId = UUID()
 
     private func endpoint(database: String, schema: String? = nil) -> DatabaseEndpoint {
@@ -25,35 +26,38 @@ final class DatabaseEndpointTests: XCTestCase {
 
     /// `canCompare` used to key on the connection id, which made this pair identical and refused
     /// the comparison the issue asks for by name: two versions of a schema on one server.
-    func testTwoDatabasesOnOneConnectionAreDistinctEndpoints() {
-        XCTAssertNotEqual(endpoint(database: "app_prod").id, endpoint(database: "app_staging").id)
+    @Test
+    func twoDatabasesOnOneConnectionAreDistinctEndpoints() {
+        #expect(endpoint(database: "app_prod").id != endpoint(database: "app_staging").id)
     }
 
-    func testTwoSchemasInOneDatabaseAreDistinctEndpoints() {
-        XCTAssertNotEqual(
-            endpoint(database: "app", schema: "public").id,
-            endpoint(database: "app", schema: "sales").id
-        )
+    @Test
+    func twoSchemasInOneDatabaseAreDistinctEndpoints() {
+        #expect(endpoint(database: "app", schema: "public").id != endpoint(database: "app", schema: "sales").id)
     }
 
-    func testTheSameScopeIsTheSameEndpoint() {
-        XCTAssertEqual(endpoint(database: "app", schema: "public").id, endpoint(database: "app", schema: "public").id)
+    @Test
+    func theSameScopeIsTheSameEndpoint() {
+        #expect(endpoint(database: "app", schema: "public").id == endpoint(database: "app", schema: "public").id)
     }
 
-    func testQualifiedDescriptionNamesEveryLevelThatIsSet() {
-        XCTAssertEqual(endpoint(database: "app", schema: "public").qualifiedDescription, "server / app / public")
-        XCTAssertEqual(endpoint(database: "app").qualifiedDescription, "server / app")
-        XCTAssertEqual(endpoint(database: "").qualifiedDescription, "server")
+    @Test
+    func qualifiedDescriptionNamesEveryLevelThatIsSet() {
+        #expect(endpoint(database: "app", schema: "public").qualifiedDescription == "server / app / public")
+        #expect(endpoint(database: "app").qualifiedDescription == "server / app")
+        #expect(endpoint(database: "").qualifiedDescription == "server")
     }
 
-    func testChangingDatabaseClearsTheSchema() {
+    @Test
+    func changingDatabaseClearsTheSchema() {
         let moved = endpoint(database: "app", schema: "public").withDatabase("other")
 
-        XCTAssertEqual(moved.database, "other")
-        XCTAssertNil(moved.schema)
+        #expect(moved.database == "other")
+        #expect(moved.schema == nil)
     }
 
-    func testReadOnlyEndpointIsRefusedAsATarget() {
+    @Test
+    func readOnlyEndpointIsRefusedAsATarget() {
         let readOnly = DatabaseEndpoint(
             scope: DatabaseScope(connectionId: connectionId, database: "prod", schema: nil),
             connectionName: "prod",
@@ -62,7 +66,7 @@ final class DatabaseEndpointTests: XCTestCase {
             color: .red
         )
 
-        XCTAssertFalse(readOnly.canBeWrittenTo)
-        XCTAssertNotNil(readOnly.ineligibleAsTargetReason)
+        #expect(!readOnly.canBeWrittenTo)
+        #expect(readOnly.ineligibleAsTargetReason != nil)
     }
 }

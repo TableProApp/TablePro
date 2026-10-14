@@ -156,14 +156,12 @@ struct MySQLForeignKeyClauseTests {
         #expect(parse(ddl).isEmpty)
     }
 
-    @Test("A table with no constraint at all yields no keys")
-    func noConstraints() {
-        #expect(parse("CREATE TABLE `t` (`id` int NOT NULL, PRIMARY KEY (`id`))").isEmpty)
-    }
-
-    @Test("A CHECK constraint is not read as a foreign key")
-    func checkConstraint() {
-        #expect(parse("CREATE TABLE `t` (`a` int, CONSTRAINT `c` CHECK (`a` > 0))").isEmpty)
+    @Test("A table with no constraint, or only a CHECK constraint, yields no keys", arguments: [
+        "CREATE TABLE `t` (`id` int NOT NULL, PRIMARY KEY (`id`))",
+        "CREATE TABLE `t` (`a` int, CONSTRAINT `c` CHECK (`a` > 0))",
+    ])
+    func noForeignKeyConstraint(_ ddl: String) {
+        #expect(parse(ddl).isEmpty)
     }
 }
 

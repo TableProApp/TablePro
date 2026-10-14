@@ -1,10 +1,11 @@
 import AppKit
 @testable import TableProEditorKit
-import XCTest
+import Testing
 
-final class SuggestionApplyTests: XCTestCase {
+@MainActor
+struct SuggestionApplyTests {
     @MainActor
-    func test_apply_invokesOnApplyCallback() throws {
+    @Test func test_apply_invokesOnApplyCallback() throws {
         let model = SuggestionViewModel()
         let textViewController = Mock.textViewController(theme: Mock.theme())
         let delegate = StubSuggestionDelegate()
@@ -20,12 +21,12 @@ final class SuggestionApplyTests: XCTestCase {
 
         model.applySelectedItem(item: item)
 
-        XCTAssertEqual(onApplyCount, 1)
-        XCTAssertEqual(delegate.applyCallCount, 1)
+        #expect(onApplyCount == 1)
+        #expect(delegate.applyCallCount == 1)
     }
 
     @MainActor
-    func test_apply_ignoresTriggersFiredByTheInsertionItself() throws {
+    @Test func test_apply_ignoresTriggersFiredByTheInsertionItself() throws {
         let model = SuggestionViewModel()
         let textViewController = Mock.textViewController(theme: Mock.theme())
         let delegate = StubSuggestionDelegate()
@@ -39,7 +40,7 @@ final class SuggestionApplyTests: XCTestCase {
         var closeCount = 0
         delegate.applyHook = { [weak model] in
             guard let model else { return }
-            XCTAssertTrue(model.isApplyingCompletion)
+            #expect(model.isApplyingCompletion)
             model.cursorsUpdated(
                 textView: textViewController,
                 delegate: delegate,
@@ -54,26 +55,26 @@ final class SuggestionApplyTests: XCTestCase {
 
         model.applySelectedItem(item: item)
 
-        XCTAssertEqual(closeCount, 0)
-        XCTAssertNil(model.itemsRequestTask)
-        XCTAssertFalse(model.isApplyingCompletion)
-        XCTAssertEqual(model.items.map(\.label), ["users"])
+        #expect(closeCount == 0)
+        #expect(model.itemsRequestTask == nil)
+        #expect(!model.isApplyingCompletion)
+        #expect(model.items.map(\.label) == ["users"])
     }
 
     @MainActor
-    func test_willClose_notifiesDelegateOnce() throws {
+    @Test func test_willClose_notifiesDelegateOnce() throws {
         let model = SuggestionViewModel()
         let delegate = StubSuggestionDelegate()
         model.delegate = delegate
 
         model.willClose()
 
-        XCTAssertEqual(delegate.didCloseCount, 1)
-        XCTAssertNil(model.delegate)
+        #expect(delegate.didCloseCount == 1)
+        #expect(model.delegate == nil)
     }
 
     @MainActor
-    func test_apply_skipsCallbackWhenActiveTextViewIsNil() throws {
+    @Test func test_apply_skipsCallbackWhenActiveTextViewIsNil() throws {
         let model = SuggestionViewModel()
         let delegate = StubSuggestionDelegate()
         let item = StubSuggestionEntry(label: "users")
@@ -86,12 +87,12 @@ final class SuggestionApplyTests: XCTestCase {
 
         model.applySelectedItem(item: item)
 
-        XCTAssertEqual(onApplyCount, 0)
-        XCTAssertEqual(delegate.applyCallCount, 0)
+        #expect(onApplyCount == 0)
+        #expect(delegate.applyCallCount == 0)
     }
 
     @MainActor
-    func test_nsWindowClose_clearsModelState() throws {
+    @Test func test_nsWindowClose_clearsModelState() throws {
         let controller = SuggestionController()
         let textViewController = Mock.textViewController(theme: Mock.theme())
 
@@ -102,12 +103,12 @@ final class SuggestionApplyTests: XCTestCase {
 
         controller.window?.close()
 
-        XCTAssertNil(controller.model.activeTextView)
-        XCTAssertTrue(controller.model.items.isEmpty)
+        #expect(controller.model.activeTextView == nil)
+        #expect(controller.model.items.isEmpty)
     }
 
     @MainActor
-    func test_controllerClose_clearsModelState() throws {
+    @Test func test_controllerClose_clearsModelState() throws {
         let controller = SuggestionController()
         let textViewController = Mock.textViewController(theme: Mock.theme())
 
@@ -118,12 +119,12 @@ final class SuggestionApplyTests: XCTestCase {
 
         controller.close()
 
-        XCTAssertNil(controller.model.activeTextView)
-        XCTAssertTrue(controller.model.items.isEmpty)
+        #expect(controller.model.activeTextView == nil)
+        #expect(controller.model.items.isEmpty)
     }
 
     @MainActor
-    func test_onBackgroundTap_closesControllerAndClearsModelState() throws {
+    @Test func test_onBackgroundTap_closesControllerAndClearsModelState() throws {
         let controller = SuggestionController()
         let textViewController = Mock.textViewController(theme: Mock.theme())
 
@@ -134,8 +135,8 @@ final class SuggestionApplyTests: XCTestCase {
 
         controller.model.onBackgroundTap?()
 
-        XCTAssertNil(controller.model.activeTextView)
-        XCTAssertTrue(controller.model.items.isEmpty)
+        #expect(controller.model.activeTextView == nil)
+        #expect(controller.model.items.isEmpty)
     }
 }
 

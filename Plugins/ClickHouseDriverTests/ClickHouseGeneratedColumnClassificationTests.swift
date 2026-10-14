@@ -6,14 +6,9 @@
 import Testing
 
 struct ClickHouseGeneratedColumnClassificationTests {
-    @Test("MATERIALIZED columns are generated")
-    func materialized() {
-        #expect(clickhouseColumnIsGenerated(defaultKind: "MATERIALIZED"))
-    }
-
-    @Test("ALIAS columns are generated")
-    func alias() {
-        #expect(clickhouseColumnIsGenerated(defaultKind: "ALIAS"))
+    @Test("MATERIALIZED and ALIAS columns are generated", arguments: ["MATERIALIZED", "ALIAS"])
+    func generatedKinds(_ defaultKind: String) {
+        #expect(clickhouseColumnIsGenerated(defaultKind: defaultKind))
     }
 
     @Test("DEFAULT columns stay insertable")

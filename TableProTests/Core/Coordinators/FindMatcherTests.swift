@@ -163,6 +163,35 @@ struct TabFindStateTests {
         #expect(value.currentMatchIndex == nil)
         #expect(value.currentMatch == nil)
     }
+
+    /// The bar seeds its field from the selected tab's state, so the term has to stay with the tab it
+    /// was typed in. The other half of #2667, the bar's `.id(tab.id)`, is view identity.
+    @Test("each tab keeps its own find term across a switch")
+    @MainActor
+    func termStaysWithItsTab() {
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: TestFixtures.makeConnection(),
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+        let first = QueryTab(title: "Album", query: "", tabType: .table)
+        let second = QueryTab(title: "Artist", query: "", tabType: .table)
+        tabManager.tabs = [first, second]
+
+        tabManager.selectedTabId = first.id
+        coordinator.findCoordinator.show()
+        coordinator.findCoordinator.setTerm("alice")
+        tabManager.selectedTabId = second.id
+        coordinator.findCoordinator.show()
+        coordinator.findCoordinator.setTerm("berlin")
+        tabManager.selectedTabId = first.id
+
+        #expect(coordinator.findCoordinator.selectedTabFindState?.term == "alice")
+        #expect(tabManager.tabs.first { $0.id == second.id }?.findState.term == "berlin")
+    }
 }
 
 /// The find bar renders only on table tabs, and a table tab pages through `currentPage`, never

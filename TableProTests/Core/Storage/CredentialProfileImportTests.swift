@@ -11,6 +11,7 @@ import Testing
 
 @MainActor
 struct CredentialProfileImportTests {
+    private let pool = EphemeralDefaultsPool()
     private let directory: URL
     private let keychain = InMemoryKeychain()
     private let metadata: SyncMetadataStorage
@@ -25,13 +26,13 @@ struct CredentialProfileImportTests {
             .appendingPathComponent("credential-import-\(unique)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         metadata = SyncMetadataStorage(
-            userDefaults: try #require(UserDefaults(suiteName: "com.TablePro.tests.CredentialImport.sync.\(unique)"))
+            userDefaults: try pool.make().defaults
         )
         integrity = ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
         let tracker = SyncChangeTracker(metadataStorage: metadata)
         let connectionStorage = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),
-            userDefaults: try #require(UserDefaults(suiteName: "com.TablePro.tests.CredentialImport.\(unique)")),
+            userDefaults: try pool.make().defaults,
             syncTracker: tracker,
             keychain: keychain,
             integrity: integrity

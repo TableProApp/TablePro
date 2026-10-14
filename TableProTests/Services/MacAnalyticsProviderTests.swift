@@ -1,8 +1,3 @@
-//
-//  MacAnalyticsProviderTests.swift
-//  TableProTests
-//
-
 import Foundation
 import TableProPluginKit
 import Testing
@@ -11,79 +6,63 @@ import Testing
 
 @MainActor
 struct MacAnalyticsProviderTests {
-    private static let suiteCounter = SuiteCounter()
+    private let storage: EphemeralDefaults
+    private let provider: MacAnalyticsProvider
 
-    private final class SuiteCounter: @unchecked Sendable {
-        private var value: Int = 0
-        private let lock = NSLock()
-        func next() -> Int {
-            lock.lock()
-            defer { lock.unlock() }
-            value += 1
-            return value
-        }
+    init() throws {
+        storage = try EphemeralDefaults()
+        provider = MacAnalyticsProvider(defaults: storage.defaults)
     }
 
-    private func makeProvider(test: String = #function) throws -> (MacAnalyticsProvider, UserDefaults) {
-        let id = "test.MacAnalyticsProviderTests.\(test).\(Self.suiteCounter.next()).\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: id))
-        defaults.removePersistentDomain(forName: id)
-        return (MacAnalyticsProvider(defaults: defaults), defaults)
+    /// A stamp no second mark could write, so a timestamp that survives the mark was not rewritten.
+    private func seed(_ key: String) -> Date {
+        let recorded = Date(timeIntervalSince1970: 1)
+        storage.defaults.set(recorded, forKey: key)
+        return recorded
     }
 
     @Test("Getter returns nil when no timestamp recorded")
-    func gettersAreNilByDefault() throws {
-        let (provider, _) = try makeProvider()
+    func gettersAreNilByDefault() {
         #expect(provider.connectionAttemptedAt == nil)
         #expect(provider.connectionSucceededAt == nil)
         #expect(provider.firstQueryExecutedAt == nil)
     }
 
     @Test("markConnectionAttempted writes once and never overwrites")
-    func attemptedIsWriteOnce() throws {
-        let (provider, _) = try makeProvider()
+    func attemptedIsWriteOnce() {
         provider.markConnectionAttempted()
-        let first = provider.connectionAttemptedAt
-        #expect(first != nil)
+        #expect(provider.connectionAttemptedAt != nil)
 
-        Thread.sleep(forTimeInterval: 0.01)
+        let first = seed(MacAnalyticsProvider.Keys.connectionAttemptedAt)
         provider.markConnectionAttempted()
-        let second = provider.connectionAttemptedAt
 
-        #expect(first == second, "Second mark must not overwrite the first timestamp")
+        #expect(provider.connectionAttemptedAt == first, "Second mark must not overwrite the first timestamp")
     }
 
     @Test("markConnectionSucceeded writes once and never overwrites")
-    func succeededIsWriteOnce() throws {
-        let (provider, _) = try makeProvider()
+    func succeededIsWriteOnce() {
         provider.markConnectionSucceeded()
-        let first = provider.connectionSucceededAt
-        #expect(first != nil)
+        #expect(provider.connectionSucceededAt != nil)
 
-        Thread.sleep(forTimeInterval: 0.01)
+        let first = seed(MacAnalyticsProvider.Keys.connectionSucceededAt)
         provider.markConnectionSucceeded()
-        let second = provider.connectionSucceededAt
 
-        #expect(first == second)
+        #expect(provider.connectionSucceededAt == first)
     }
 
     @Test("markFirstQueryExecuted writes once and never overwrites")
-    func firstQueryIsWriteOnce() throws {
-        let (provider, _) = try makeProvider()
+    func firstQueryIsWriteOnce() {
         provider.markFirstQueryExecuted()
-        let first = provider.firstQueryExecutedAt
-        #expect(first != nil)
+        #expect(provider.firstQueryExecutedAt != nil)
 
-        Thread.sleep(forTimeInterval: 0.01)
+        let first = seed(MacAnalyticsProvider.Keys.firstQueryExecutedAt)
         provider.markFirstQueryExecuted()
-        let second = provider.firstQueryExecutedAt
 
-        #expect(first == second)
+        #expect(provider.firstQueryExecutedAt == first)
     }
 
     @Test("markConnectionAttempted does not affect connectionSucceededAt")
-    func attemptedDoesNotAffectSucceeded() throws {
-        let (provider, _) = try makeProvider()
+    func attemptedDoesNotAffectSucceeded() {
         provider.markConnectionAttempted()
 
         #expect(provider.connectionAttemptedAt != nil)
@@ -92,13 +71,11 @@ struct MacAnalyticsProviderTests {
     }
 
     @Test("Repeated successful connections keep the timestamp write-once")
-    func succeededTimestampStaysWriteOnce() throws {
-        let (provider, _) = try makeProvider()
-
+    func succeededTimestampStaysWriteOnce() {
         provider.markConnectionSucceeded()
-        let firstSucceededAt = provider.connectionSucceededAt
-        #expect(firstSucceededAt != nil)
+        #expect(provider.connectionSucceededAt != nil)
 
+        let firstSucceededAt = seed(MacAnalyticsProvider.Keys.connectionSucceededAt)
         provider.markConnectionSucceeded()
         provider.markConnectionSucceeded()
 

@@ -7,11 +7,12 @@
 //  schema keeps the unqualified name it has always produced.
 //
 
+import Foundation
 @testable import TablePro
 import TableProPluginKit
-import XCTest
+import Testing
 
-final class SQLStatementGeneratorSchemaTests: XCTestCase {
+struct SQLStatementGeneratorSchemaTests {
     private func generator(schema: String?) throws -> SQLStatementGenerator {
         try SQLStatementGenerator(
             tableName: "orders",
@@ -23,48 +24,48 @@ final class SQLStatementGeneratorSchemaTests: XCTestCase {
         )
     }
 
-    func testASchemaQualifiesTheInsert() throws {
+    @Test
+    func aSchemaQualifiesTheInsert() throws {
         let statement = try generator(schema: "sales")
             .insertStatement(columns: ["id"], values: [.text("1")])
 
-        XCTAssertEqual(statement?.sql, "INSERT INTO \"sales\".\"orders\" (\"id\") VALUES ($1)")
+        #expect(statement?.sql == "INSERT INTO \"sales\".\"orders\" (\"id\") VALUES ($1)")
     }
 
     /// Every existing caller passes no schema, so nothing that worked before changes shape.
-    func testNoSchemaKeepsTheUnqualifiedName() throws {
+    @Test
+    func noSchemaKeepsTheUnqualifiedName() throws {
         let statement = try generator(schema: nil)
             .insertStatement(columns: ["id"], values: [.text("1")])
 
-        XCTAssertEqual(statement?.sql, "INSERT INTO \"orders\" (\"id\") VALUES ($1)")
+        #expect(statement?.sql == "INSERT INTO \"orders\" (\"id\") VALUES ($1)")
     }
 
-    func testAnEmptySchemaIsTreatedAsNoSchema() throws {
-        XCTAssertEqual(try generator(schema: "").qualifiedTableName, "\"orders\"")
+    @Test
+    func anEmptySchemaIsTreatedAsNoSchema() throws {
+        #expect(try generator(schema: "").qualifiedTableName == "\"orders\"")
     }
 
-    func testTheMultiRowInsertIsQualifiedToo() throws {
+    @Test
+    func theMultiRowInsertIsQualifiedToo() throws {
         let statement = try generator(schema: "sales")
             .insertStatement(columns: ["id", "total"], rows: [[.text("1"), .text("9")], [.text("2"), .text("8")]])
 
-        XCTAssertEqual(
-            statement?.sql,
-            "INSERT INTO \"sales\".\"orders\" (\"id\", \"total\") VALUES ($1, $2), ($3, $4)"
-        )
+        #expect(statement?.sql == "INSERT INTO \"sales\".\"orders\" (\"id\", \"total\") VALUES ($1, $2), ($3, $4)")
     }
 
     /// The copier hands the driver the batch flattened row-major, so the generator's own parameter
     /// order has to match or values land in the wrong columns.
-    func testMultiRowParametersAreOrderedRowMajor() throws {
+    @Test
+    func multiRowParametersAreOrderedRowMajor() throws {
         let statement = try generator(schema: nil)
             .insertStatement(columns: ["id", "total"], rows: [[.text("1"), .text("9")], [.text("2"), .text("8")]])
 
-        XCTAssertEqual(statement?.parameters.map { $0 as? String }, ["1", "9", "2", "8"])
+        #expect(statement?.parameters.map { $0 as? String } == ["1", "9", "2", "8"])
     }
 
-    func testDeleteAllRowsIsQualified() throws {
-        XCTAssertEqual(
-            try generator(schema: "sales").deleteAllRowsStatement(),
-            "DELETE FROM \"sales\".\"orders\""
-        )
+    @Test
+    func deleteAllRowsIsQualified() throws {
+        #expect(try generator(schema: "sales").deleteAllRowsStatement() == "DELETE FROM \"sales\".\"orders\"")
     }
 }

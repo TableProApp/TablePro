@@ -1,8 +1,3 @@
-//
-//  ERDiagramViewModelLoadTests.swift
-//  TableProTests
-//
-
 import AppKit
 @testable import TablePro
 import Testing
@@ -37,7 +32,10 @@ struct ERDiagramViewModelLoadTests {
         let openingLoad = Task { await viewModel.loadDiagram() }
         await opening.reached.wait()
         let returningLoad = Task { await viewModel.loadDiagram() }
-        await Task.yield()
+        // The load is a main-actor task, so a block queued after it runs once it has joined the first.
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
 
         await opening.release.open()
         await openingLoad.value

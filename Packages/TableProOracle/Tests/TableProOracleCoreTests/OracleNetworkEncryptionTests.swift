@@ -1,62 +1,60 @@
+import Foundation
 import OracleNIO
 @testable import TableProOracleCore
-import XCTest
+import Testing
 
-final class OracleNetworkEncryptionTests: XCTestCase {
-    func testNetworkEncryptionKeyMatchesTheMacKey() {
-        XCTAssertEqual(
-            OracleConnectionOptions.AdditionalFieldKey.networkEncryption,
-            "oracleNetworkEncryption"
-        )
+struct OracleNetworkEncryptionTests {
+    @Test func testNetworkEncryptionKeyMatchesTheMacKey() {
+        #expect(OracleConnectionOptions.AdditionalFieldKey.networkEncryption == "oracleNetworkEncryption")
     }
 
-    func testLevelRawValuesAreStableWireStrings() {
-        XCTAssertEqual(OracleConnectionOptions.NetworkEncryption.rejected.rawValue, "rejected")
-        XCTAssertEqual(OracleConnectionOptions.NetworkEncryption.accepted.rawValue, "accepted")
-        XCTAssertEqual(OracleConnectionOptions.NetworkEncryption.requested.rawValue, "requested")
-        XCTAssertEqual(OracleConnectionOptions.NetworkEncryption.required.rawValue, "required")
+    @Test func testLevelRawValuesAreStableWireStrings() {
+        #expect(OracleConnectionOptions.NetworkEncryption.rejected.rawValue == "rejected")
+        #expect(OracleConnectionOptions.NetworkEncryption.accepted.rawValue == "accepted")
+        #expect(OracleConnectionOptions.NetworkEncryption.requested.rawValue == "requested")
+        #expect(OracleConnectionOptions.NetworkEncryption.required.rawValue == "required")
     }
 
-    func testLevelDefaultsToAcceptedWhenAbsent() {
-        XCTAssertEqual(OracleConnectionOptions.networkEncryption(from: [:]), .accepted)
+    @Test func testLevelDefaultsToAcceptedWhenAbsent() {
+        #expect(OracleConnectionOptions.networkEncryption(from: [:]) == .accepted)
     }
 
-    func testLevelDefaultsToAcceptedForAnUnknownValue() {
+    @Test func testLevelDefaultsToAcceptedForAnUnknownValue() {
         let fields = [OracleConnectionOptions.AdditionalFieldKey.networkEncryption: "maybe"]
-        XCTAssertEqual(OracleConnectionOptions.networkEncryption(from: fields), .accepted)
+        #expect(OracleConnectionOptions.networkEncryption(from: fields) == .accepted)
     }
 
-    func testLevelIsReadFromAdditionalFields() {
+    @Test func testLevelIsReadFromAdditionalFields() {
         for level in OracleConnectionOptions.NetworkEncryption.allCases {
             let fields = [OracleConnectionOptions.AdditionalFieldKey.networkEncryption: level.rawValue]
-            XCTAssertEqual(OracleConnectionOptions.networkEncryption(from: fields), level)
+            #expect(OracleConnectionOptions.networkEncryption(from: fields) == level)
         }
     }
 
-    func testEveryLevelMapsToTheMatchingDriverLevel() {
-        XCTAssertEqual(OracleCoreConnection.encryptionLevel(for: .rejected), .rejected)
-        XCTAssertEqual(OracleCoreConnection.encryptionLevel(for: .accepted), .accepted)
-        XCTAssertEqual(OracleCoreConnection.encryptionLevel(for: .requested), .requested)
-        XCTAssertEqual(OracleCoreConnection.encryptionLevel(for: .required), .required)
+    @Test func testEveryLevelMapsToTheMatchingDriverLevel() {
+        #expect(OracleCoreConnection.encryptionLevel(for: .rejected) == .rejected)
+        #expect(OracleCoreConnection.encryptionLevel(for: .accepted) == .accepted)
+        #expect(OracleCoreConnection.encryptionLevel(for: .requested) == .requested)
+        #expect(OracleCoreConnection.encryptionLevel(for: .required) == .required)
     }
 
-    func testOptionsDefaultToAccepted() {
+    @Test func testOptionsDefaultToAccepted() {
         let options = OracleConnectionOptions(host: "localhost", user: "scott", password: "tiger")
-        XCTAssertEqual(options.networkEncryption, .accepted)
+        #expect(options.networkEncryption == .accepted)
     }
 
-    func testStalledLoginNamesTheStepItStalledIn() {
+    @Test func testStalledLoginNamesTheStepItStalledIn() {
         let error = OracleCoreError.loginHandshakeStalled(phase: "advancedNegotiation")
         let description = error.errorDescription ?? ""
-        XCTAssertTrue(description.contains("network encryption"), description)
+        #expect(description.contains("network encryption"), "\(description)")
     }
 
-    func testStalledLoginWithoutAPhaseStillReads() {
+    @Test func testStalledLoginWithoutAPhaseStillReads() {
         let error = OracleCoreError.loginHandshakeStalled(phase: nil)
-        XCTAssertFalse((error.errorDescription ?? "").isEmpty)
+        #expect(!((error.errorDescription ?? "").isEmpty))
     }
 
-    func testAnUnknownPhaseFallsBackToItsRawLabel() {
-        XCTAssertEqual(OracleCoreError.handshakePhaseName("somethingNew"), "somethingNew")
+    @Test func testAnUnknownPhaseFallsBackToItsRawLabel() {
+        #expect(OracleCoreError.handshakePhaseName("somethingNew") == "somethingNew")
     }
 }

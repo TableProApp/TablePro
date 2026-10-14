@@ -10,6 +10,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 /// Stands in for opening a pooled connection, remembering each driver by the database it was
@@ -79,21 +80,13 @@ struct MetadataConnectionPoolCapacityTests {
         DatabaseScope(connectionId: connection.id, database: database, schema: nil)
     }
 
-    /// Bounded, so a caller that never reaches the point being waited for fails the assertions after
-    /// it rather than hanging the suite.
-    private func waitUntil(_ condition: () -> Bool) async {
-        for _ in 0..<2_000 where !condition() {
-            try? await Task.sleep(for: .milliseconds(5))
-        }
-    }
-
     /// Starts one lease per database, each held open until its gate opens, and waits until every one
     /// of them is running its body.
     private func fill(
         _ pool: MetadataConnectionPool,
         _ connection: DatabaseConnection,
         databases: [String]
-    ) async -> (gates: [LeaseGate], leases: [Task<Void, Error>]) {
+    ) async throws -> (gates: [LeaseGate], leases: [Task<Void, Error>]) {
         let gates = databases.map { _ in LeaseGate() }
         let leases = zip(databases, gates).map { database, gate in
             Task { @MainActor in
@@ -102,7 +95,7 @@ struct MetadataConnectionPoolCapacityTests {
                 }
             }
         }
-        await waitUntil { gates.allSatisfy(\.hasArrived) }
+        try await waitUntil { gates.allSatisfy(\.hasArrived) }
         return (gates, leases)
     }
 
@@ -146,7 +139,7 @@ struct MetadataConnectionPoolCapacityTests {
         defer { pool.closeAll(connectionId: connection.id) }
 
         let databases = (0..<limit + 2).map { "db\($0)" }
-        let (gates, leases) = await fill(pool, connection, databases: databases)
+        let (gates, leases) = try await fill(pool, connection, databases: databases)
         #expect(pool.heldConnectionCount(for: connection.id) == limit + 2)
 
         gates[0].open()
@@ -172,7 +165,7 @@ struct MetadataConnectionPoolCapacityTests {
         let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
         defer { pool.closeAll(connectionId: connection.id) }
 
-        let (gates, leases) = await fill(pool, connection, databases: (1..<limit).map { "db\($0)" })
+        let (gates, leases) = try await fill(pool, connection, databases: (1..<limit).map { "db\($0)" })
         var late: Task<Void, Error>?
         opener.afterOpen = { opened in
             guard opened.database == "fresh", late == nil else { return }
@@ -237,7 +230,6 @@ struct MetadataConnectionPoolCapacityTests {
     }
 }
 
-@Suite("Session removal and the metadata pool", .serialized)
 @MainActor
 struct SessionRemovalClosesPoolTests {
     @Test("A connect that fails over an existing session closes the pooled connections it held")

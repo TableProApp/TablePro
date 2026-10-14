@@ -1,13 +1,8 @@
-//
-//  WindowSidebarStateTests.swift
-//  TableProTests
-//
-//  Pins per-window scoping of table selection. Regression guard for #1313 where
-//  selectedTables was shared across windows of the same connection, causing
-//  Cmd+T to jump focus back to a sibling window. Sidebar filter text is
-//  connection-scoped and lives in SharedSidebarState; see SharedSidebarStateTests.
-//  Also pins per-connection persistence of database-tree expansion.
-//
+// Pins per-window scoping of table selection. Regression guard for #1313 where
+// selectedTables was shared across windows of the same connection, causing
+// Cmd+T to jump focus back to a sibling window. Sidebar filter text is
+// connection-scoped and lives in SharedSidebarState; see SharedSidebarStateTests.
+// Also pins per-connection persistence of database-tree expansion.
 
 import Foundation
 @testable import TablePro
@@ -16,6 +11,12 @@ import Testing
 
 @MainActor
 struct WindowSidebarStateTests {
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
     @Test
     func twoInstancesHoldIndependentSelection() {
         let windowA = WindowSidebarState()
@@ -64,7 +65,7 @@ struct WindowSidebarStateTests {
     }
 
     private func makeDefaults() throws -> UserDefaults {
-        try #require(UserDefaults(suiteName: "sidebar-tree-\(UUID().uuidString)"))
+        suite.defaults
     }
 
     @Test("Tree expansion persists and restores across instances for a connection")

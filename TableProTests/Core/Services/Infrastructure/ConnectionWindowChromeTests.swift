@@ -11,7 +11,6 @@ import Testing
 /// recording of a PostgreSQL connection through an SSH jump host showed: blank for 0.5s, chrome
 /// collapsed with a progress screen for 1.0s, then the chrome back with a dozen toolbar items
 /// arriving at once.
-@Suite("Connection window chrome", .serialized)
 @MainActor
 struct ConnectionWindowChromeTests {
     @Test("No connection phase collapses the sidebar")
@@ -116,6 +115,22 @@ struct ConnectionWindowChromeTests {
         #expect(!before.isEmpty)
     }
 
+    @Test("The toolbar's item set does not change when the connection goes away")
+    func toolbarItemsOutliveTheConnection() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+
+        harness.attachRenderableSession()
+        harness.controller.transition(to: .connected, for: harness.selected.connectionId)
+        let connected = try #require(harness.window.toolbar).items.map(\.itemIdentifier)
+
+        harness.controller.transition(to: .unavailable(.disconnectedByUser), for: harness.selected.connectionId)
+        let disconnected = try #require(harness.window.toolbar).items.map(\.itemIdentifier)
+
+        #expect(disconnected == connected)
+        #expect(!connected.isEmpty)
+    }
+
     /// Switch Connection reaches the window itself, so it needs no subject, and the toolbar's own
     /// validation says so for a window whose connection has not come up.
     @Test("Switch Connection answers with no coordinator behind the toolbar")
@@ -205,21 +220,19 @@ struct ConnectionWindowChromeTests {
     @available(macOS 14.0, *)
     @Test("An assistant the user left open can still be closed from the toolbar with the session gone")
     func openAssistantStaysClosableFromTheToolbar() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness()
-            defer { harness.tearDown() }
+        let harness = try Harness()
+        defer { harness.tearDown() }
 
-            harness.attachRenderableSession()
-            harness.controller.transition(to: .connected, for: harness.selected.connectionId)
-            harness.controller.showAssistant()
-            #expect(harness.controller.isAssistantVisible)
+        harness.attachRenderableSession()
+        harness.controller.transition(to: .connected, for: harness.selected.connectionId)
+        harness.controller.showAssistant()
+        #expect(harness.controller.isAssistantVisible)
 
-            harness.controller.transition(to: .unavailable(.disconnected(nil)), for: harness.selected.connectionId)
+        harness.controller.transition(to: .unavailable(.disconnected(nil)), for: harness.selected.connectionId)
 
-            #expect(harness.controller.validateMenuItem(
-                Self.item(for: #selector(MainSplitViewController.toggleAssistant(_:)))
-            ))
-        }
+        #expect(harness.controller.validateMenuItem(
+            Self.item(for: #selector(MainSplitViewController.toggleAssistant(_:)))
+        ))
     }
 
     /// The other half of the same rule: a pane the user never opened offers nothing to open.

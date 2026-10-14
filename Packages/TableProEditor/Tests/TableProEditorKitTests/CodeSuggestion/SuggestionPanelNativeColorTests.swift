@@ -5,6 +5,7 @@
 
 import AppKit
 @testable import TableProEditorKit
+import TableProTestSupport
 import Testing
 
 /// The panel used to build its background by scaling the editor background's red, green and blue components, which
@@ -32,14 +33,15 @@ struct SuggestionPanelNativeColorTests {
     }
 
     @Test("The panel draws a menu material behind its rows")
-    func panelDrawsAMenuMaterial() throws {
+    func panelDrawsAMenuMaterial() async throws {
         let controller = SuggestionController()
         let window = try #require(controller.window)
         controller.model.items = [StubSuggestionEntry(label: "SELECT")]
         window.setContentSize(NSSize(width: 300, height: 200))
         window.orderFrontRegardless()
         defer { window.close() }
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
+        window.contentView?.layoutSubtreeIfNeeded()
+        try await waitUntil { visualEffectView(in: window.contentView) != nil }
 
         let background = try #require(visualEffectView(in: window.contentView))
         #expect(background.material == .menu)

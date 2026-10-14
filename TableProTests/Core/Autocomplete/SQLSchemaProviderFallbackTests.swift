@@ -105,7 +105,6 @@ private func populateCache(
 
 // MARK: - Tests
 
-@Suite("SQLSchemaProvider Fallback Columns", .serialized)
 @MainActor
 struct SQLSchemaProviderFallbackTests {
     // MARK: - allColumnsFromCachedTables

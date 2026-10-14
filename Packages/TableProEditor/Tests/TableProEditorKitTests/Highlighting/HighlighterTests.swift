@@ -1,9 +1,11 @@
+import AppKit
 @testable import TableProEditorKit
 import TableProGrammars
 import TableProTextEngine
-import XCTest
+import Testing
 
-final class HighlighterTests: XCTestCase {
+@MainActor
+final class HighlighterTests {
     class MockHighlightProvider: HighlightProviding {
         var setUpCount = 0
         var queryCount = 0
@@ -56,14 +58,14 @@ final class HighlighterTests: XCTestCase {
     var attributeProvider: MockAttributeProvider!
     var textView: TextView!
 
-    override func setUp() {
+    init() {
         attributeProvider = MockAttributeProvider()
         textView = Mock.textView()
         textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
     }
 
     @MainActor
-    func test_canceledHighlightsAreInvalidated() {
+    @Test func test_canceledHighlightsAreInvalidated() {
         var didQueryOnce = false
         var didQueryAgain = false
 
@@ -87,15 +89,12 @@ final class HighlighterTests: XCTestCase {
 
         highlighter.invalidate()
 
-        XCTAssertTrue(didQueryOnce, "Highlighter did not invalidate text.")
-        XCTAssertTrue(
-            didQueryAgain,
-            "Highlighter did not query again after cancelling the first request"
-        )
+        #expect(didQueryOnce, "Highlighter did not invalidate text.")
+        #expect(didQueryAgain, "Highlighter did not query again after cancelling the first request")
     }
 
     @MainActor
-    func test_highlightsDoNotInvalidateEntireTextView() {
+    @Test func test_highlightsDoNotInvalidateEntireTextView() {
         let highlightProvider = TreeSitterClient()
         highlightProvider.forceSyncOperation = true
         textView.setText("func helloWorld() {\n\tprint(\"Hello World!\")\n}")
@@ -114,11 +113,11 @@ final class HighlighterTests: XCTestCase {
         let invalidSet = IndexSet(integersIn: NSRange(location: 0, length: 24))
         highlighter.invalidate(invalidSet) // Invalidate first line
 
-        XCTAssertEqual(sentryStorage.editedIndices, invalidSet) // Should only cause highlights on the first line
+        #expect(sentryStorage.editedIndices == invalidSet) // Should only cause highlights on the first line
     }
 
     @MainActor
-    func test_insertedNewHighlightProvider() {
+    @Test func test_insertedNewHighlightProvider() {
         let highlightProvider1 = MockHighlightProvider(queryResponse: { .success([]) })
         let attributeProvider = MockAttributeProvider()
         let textView = Mock.textView()
@@ -130,17 +129,17 @@ final class HighlighterTests: XCTestCase {
             attributeProvider: attributeProvider
         )
 
-        XCTAssertEqual(highlightProvider1.setUpCount, 1, "Highlighter 1 did not set up")
+        #expect(highlightProvider1.setUpCount == 1, "Highlighter 1 did not set up")
 
         let newProvider = MockHighlightProvider(queryResponse: { .success([]) })
         highlighter.setProviders([highlightProvider1, newProvider])
 
-        XCTAssertEqual(highlightProvider1.setUpCount, 1, "Highlighter 1 set up again")
-        XCTAssertEqual(newProvider.setUpCount, 1, "New highlighter did not set up")
+        #expect(highlightProvider1.setUpCount == 1, "Highlighter 1 set up again")
+        #expect(newProvider.setUpCount == 1, "New highlighter did not set up")
     }
 
     @MainActor
-    func test_removedHighlightProvider() {
+    @Test func test_removedHighlightProvider() {
         let highlightProvider1 = MockHighlightProvider()
         let highlightProvider2 = MockHighlightProvider()
 
@@ -155,19 +154,19 @@ final class HighlighterTests: XCTestCase {
             attributeProvider: attributeProvider
         )
 
-        XCTAssertEqual(highlightProvider1.setUpCount, 1, "Highlighter 1 did not set up")
-        XCTAssertEqual(highlightProvider2.setUpCount, 1, "Highlighter 2 did not set up")
+        #expect(highlightProvider1.setUpCount == 1, "Highlighter 1 did not set up")
+        #expect(highlightProvider2.setUpCount == 1, "Highlighter 2 did not set up")
 
         highlighter.setProviders([highlightProvider1])
 
         highlighter.invalidate()
 
-        XCTAssertEqual(highlightProvider1.queryCount, 1, "Highlighter 1 was not queried")
-        XCTAssertEqual(highlightProvider2.queryCount, 0, "Removed highlighter was queried")
+        #expect(highlightProvider1.queryCount == 1, "Highlighter 1 was not queried")
+        #expect(highlightProvider2.queryCount == 0, "Removed highlighter was queried")
     }
 
     @MainActor
-    func test_movedHighlightProviderIsNotSetUpAgain() {
+    @Test func test_movedHighlightProviderIsNotSetUpAgain() {
         let highlightProvider1 = MockHighlightProvider()
         let highlightProvider2 = MockHighlightProvider()
 
@@ -182,19 +181,19 @@ final class HighlighterTests: XCTestCase {
             attributeProvider: attributeProvider
         )
 
-        XCTAssertEqual(highlightProvider1.setUpCount, 1, "Highlighter 1 did not set up")
-        XCTAssertEqual(highlightProvider2.setUpCount, 1, "Highlighter 2 did not set up")
+        #expect(highlightProvider1.setUpCount == 1, "Highlighter 1 did not set up")
+        #expect(highlightProvider2.setUpCount == 1, "Highlighter 2 did not set up")
 
         highlighter.setProviders([highlightProvider2, highlightProvider1])
 
         highlighter.invalidate()
 
-        XCTAssertEqual(highlightProvider1.queryCount, 1, "Highlighter 1 was not queried")
-        XCTAssertEqual(highlightProvider2.queryCount, 1, "Highlighter 2 was not queried")
+        #expect(highlightProvider1.queryCount == 1, "Highlighter 1 was not queried")
+        #expect(highlightProvider2.queryCount == 1, "Highlighter 2 was not queried")
     }
 
     @MainActor
-    func test_randomHighlightProvidersChanging() {
+    @Test func test_randomHighlightProvidersChanging() {
         for _ in 0..<25 {
             let highlightProviders = (0..<Int.random(in: 10..<20)).map { _ in MockHighlightProvider() }
 
@@ -215,28 +214,28 @@ final class HighlighterTests: XCTestCase {
 
             highlighter.invalidate()
 
-            XCTAssertTrue(firstSet.allSatisfy({ $0.setUpCount == 1 }), "Not all in first batch were set up")
-            XCTAssertTrue(firstSet.allSatisfy({ $0.queryCount == 1 }), "Not all in first batch were queried")
+            #expect(firstSet.allSatisfy({ $0.setUpCount == 1 }), "Not all in first batch were set up")
+            #expect(firstSet.allSatisfy({ $0.queryCount == 1 }), "Not all in first batch were queried")
 
             highlighter.setProviders(secondSet)
             highlighter.invalidate()
 
-            XCTAssertTrue(secondSet.allSatisfy({ $0.setUpCount == 1 }), "All in second batch were not set up twice")
-            XCTAssertTrue(secondSet.allSatisfy({ $0.queryCount >= 1 }), "Not all in second batch were queried")
+            #expect(secondSet.allSatisfy({ $0.setUpCount == 1 }), "All in second batch were not set up twice")
+            #expect(secondSet.allSatisfy({ $0.queryCount >= 1 }), "Not all in second batch were queried")
 
             highlighter.setProviders(thirdSet)
             highlighter.invalidate()
 
             // Can't check for == 1 here because some might be removed in #2 and added back in in #3
-            XCTAssertTrue(thirdSet.allSatisfy({ $0.setUpCount >= 1 }), "Not all in third batch were set up")
-            XCTAssertTrue(thirdSet.allSatisfy({ $0.queryCount >= 1 }), "Not all in third batch were queried")
+            #expect(thirdSet.allSatisfy({ $0.setUpCount >= 1 }), "Not all in third batch were set up")
+            #expect(thirdSet.allSatisfy({ $0.queryCount >= 1 }), "Not all in third batch were queried")
         }
     }
 
     // This test isn't testing much highlighter functionality. However, we've seen crashes and other errors after normal
     // editing that were caused by the highlighter and would only have been caught by an integration test like this.
     @MainActor
-    func test_editFile() {
+    @Test func test_editFile() {
         let highlightProvider = TreeSitterClient()
         highlightProvider.forceSyncOperation = true
         textView.setText("func helloWorld() {\n\tprint(\"Hello World!\")\n}") // 44 chars
@@ -255,7 +254,7 @@ final class HighlighterTests: XCTestCase {
         textView.replaceCharacters(in: [NSRange(location: 6, length: 5)], with: "")
         textView.replaceCharacters(in: [NSRange(location: 25, length: 5)], with: "")
 
-        XCTAssertEqual(textView.string, " hello() {\n\tprint(\"Hello !\")\n")
+        #expect(textView.string == " hello() {\n\tprint(\"Hello !\")\n")
 
         // Insert Characters
         textView.replaceCharacters(in: [NSRange(location: 29, length: 0)], with: "}")
@@ -269,16 +268,16 @@ final class HighlighterTests: XCTestCase {
         textView.insertText("u")
         textView.insertText("n")
         textView.insertText("c")
-        XCTAssertEqual(textView.string, "func helloWorld() {\n\tprint(\"Hello World!\")\n}")
+        #expect(textView.string == "func helloWorld() {\n\tprint(\"Hello World!\")\n}")
 
         // Replace contents
         textView.replaceCharacters(in: textView.documentRange, with: "")
         textView.insertText("func helloWorld() {\n\tprint(\"Hello World!\")\n}")
-        XCTAssertEqual(textView.string, "func helloWorld() {\n\tprint(\"Hello World!\")\n}")
+        #expect(textView.string == "func helloWorld() {\n\tprint(\"Hello World!\")\n}")
     }
 
     @MainActor
-    func test_editDoesNotHighlightDocumentOverMaxLength() {
+    @Test func test_editDoesNotHighlightDocumentOverMaxLength() {
         let highlightProvider = MockHighlightProvider(queryResponse: { .success([]) })
         let textView = Mock.textView()
         textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
@@ -294,15 +293,11 @@ final class HighlighterTests: XCTestCase {
         let baseline = highlightProvider.queryCount
         textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "b")
 
-        XCTAssertEqual(
-            highlightProvider.queryCount,
-            baseline,
-            "Editing a document over maxHighlightableLength must not query highlights"
-        )
+        #expect(highlightProvider.queryCount == baseline, "Editing a document over maxHighlightableLength must not query highlights")
     }
 
     @MainActor
-    func test_editHighlightsDocumentUnderMaxLength() {
+    @Test func test_editHighlightsDocumentUnderMaxLength() {
         let highlightProvider = MockHighlightProvider(queryResponse: { .success([]) })
         let textView = Mock.textView()
         textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
@@ -317,10 +312,6 @@ final class HighlighterTests: XCTestCase {
 
         textView.replaceCharacters(in: NSRange(location: 0, length: 0), with: "x")
 
-        XCTAssertGreaterThan(
-            highlightProvider.queryCount,
-            0,
-            "A document under maxHighlightableLength should still be highlighted"
-        )
+        #expect(highlightProvider.queryCount > 0, "A document under maxHighlightableLength should still be highlighted")
     }
 }

@@ -8,30 +8,15 @@
 
 import Foundation
 import TableProPluginKit
-import XCTest
+import Testing
 
 @testable import TablePro
 
-private final class ScopeQuotingDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class ScopeQuotingDriver: PluginDriverStub, @unchecked Sendable {
     func quoteIdentifier(_ name: String) -> String { "\"\(name)\"" }
 
-    func connect() async throws {}
-    func disconnect() {}
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 }
 
@@ -54,171 +39,189 @@ private enum ScopeDialect {
     }
 }
 
-final class DataTableScopeTests: XCTestCase {
+struct DataTableScopeTests {
 
     // MARK: - Filters
 
-    func testAWhitespaceOnlyFilterIsNoFilter() {
+    @Test
+    func aWhitespaceOnlyFilterIsNoFilter() {
         let scope = DataTableScope(sourceFilter: "  \n\t ")
 
-        XCTAssertNil(scope.effectiveSourceFilter)
-        XCTAssertNil(scope.effectiveTargetFilter)
-        XCTAssertFalse(scope.hasFilter)
-        XCTAssertNil(scope.filterValidationError)
+        #expect(scope.effectiveSourceFilter == nil)
+        #expect(scope.effectiveTargetFilter == nil)
+        #expect(!scope.hasFilter)
+        #expect(scope.filterValidationError == nil)
     }
 
-    func testAFilterIsTrimmedBeforeItIsUsed() {
+    @Test
+    func aFilterIsTrimmedBeforeItIsUsed() {
         let scope = DataTableScope(sourceFilter: "  status = 'active'\n")
 
-        XCTAssertEqual(scope.effectiveSourceFilter, "status = 'active'")
+        #expect(scope.effectiveSourceFilter == "status = 'active'")
     }
 
-    func testANilTargetFilterReusesTheSourceFilter() {
+    @Test
+    func aNilTargetFilterReusesTheSourceFilter() {
         let scope = DataTableScope(sourceFilter: " status = 'active' ")
 
-        XCTAssertTrue(scope.usesSameFilterForTarget)
-        XCTAssertEqual(scope.effectiveTargetFilter, "status = 'active'")
-        XCTAssertTrue(scope.hasFilter)
+        #expect(scope.usesSameFilterForTarget)
+        #expect(scope.effectiveTargetFilter == "status = 'active'")
+        #expect(scope.hasFilter)
     }
 
     /// An empty target filter is a choice to read the whole target, not a request to reuse the
     /// source filter, so the two must stay distinguishable.
-    func testAnEmptyTargetFilterReadsTheWholeTarget() {
+    @Test
+    func anEmptyTargetFilterReadsTheWholeTarget() {
         let scope = DataTableScope(sourceFilter: "status = 'active'", targetFilter: "")
 
-        XCTAssertFalse(scope.usesSameFilterForTarget)
-        XCTAssertEqual(scope.effectiveSourceFilter, "status = 'active'")
-        XCTAssertNil(scope.effectiveTargetFilter)
-        XCTAssertTrue(scope.hasFilter)
+        #expect(!scope.usesSameFilterForTarget)
+        #expect(scope.effectiveSourceFilter == "status = 'active'")
+        #expect(scope.effectiveTargetFilter == nil)
+        #expect(scope.hasFilter)
     }
 
-    func testATargetOnlyFilterLeavesTheSourceUnfiltered() {
+    @Test
+    func aTargetOnlyFilterLeavesTheSourceUnfiltered() {
         let scope = DataTableScope(sourceFilter: "   ", targetFilter: "region = 'eu'")
 
-        XCTAssertNil(scope.effectiveSourceFilter)
-        XCTAssertEqual(scope.effectiveTargetFilter, "region = 'eu'")
-        XCTAssertTrue(scope.hasFilter)
+        #expect(scope.effectiveSourceFilter == nil)
+        #expect(scope.effectiveTargetFilter == "region = 'eu'")
+        #expect(scope.hasFilter)
     }
 
-    func testAnInvalidSourceFilterIsReported() {
+    @Test
+    func anInvalidSourceFilterIsReported() {
         let scope = DataTableScope(sourceFilter: "(status = 'active'")
 
-        XCTAssertNotNil(scope.filterValidationError)
+        #expect(scope.filterValidationError != nil)
     }
 
-    func testAnInvalidTargetFilterIsReportedEvenWhenTheSourceFilterIsValid() {
+    @Test
+    func anInvalidTargetFilterIsReportedEvenWhenTheSourceFilterIsValid() {
         let scope = DataTableScope(sourceFilter: "status = 'active'", targetFilter: "region = 'eu")
 
-        XCTAssertNotNil(scope.filterValidationError)
+        #expect(scope.filterValidationError != nil)
     }
 
-    func testTwoValidFiltersReportNoError() {
+    @Test
+    func twoValidFiltersReportNoError() {
         let scope = DataTableScope(sourceFilter: "status = 'active'", targetFilter: "region = 'eu'")
 
-        XCTAssertNil(scope.filterValidationError)
+        #expect(scope.filterValidationError == nil)
     }
 
     // MARK: - Row limit
 
-    func testSetRowLimitClampsZeroAndNegativeValuesToOne() {
+    @Test
+    func setRowLimitClampsZeroAndNegativeValuesToOne() {
         var scope = DataTableScope()
 
         scope.setRowLimit(0)
-        XCTAssertEqual(scope.rowLimit, 1)
+        #expect(scope.rowLimit == 1)
 
         scope.setRowLimit(-25)
-        XCTAssertEqual(scope.rowLimit, 1)
+        #expect(scope.rowLimit == 1)
 
         scope.setRowLimit(500)
-        XCTAssertEqual(scope.rowLimit, 500)
+        #expect(scope.rowLimit == 500)
 
         scope.setRowLimit(nil)
-        XCTAssertNil(scope.rowLimit)
+        #expect(scope.rowLimit == nil)
     }
 
-    func testTheInitializerClampsTheRowLimitTheSameWay() {
-        XCTAssertEqual(DataTableScope(rowLimit: 0).rowLimit, 1)
-        XCTAssertEqual(DataTableScope(rowLimit: -3).rowLimit, 1)
-        XCTAssertEqual(DataTableScope(rowLimit: 10).rowLimit, 10)
-        XCTAssertNil(DataTableScope().rowLimit)
+    @Test
+    func theInitializerClampsTheRowLimitTheSameWay() {
+        #expect(DataTableScope(rowLimit: 0).rowLimit == 1)
+        #expect(DataTableScope(rowLimit: -3).rowLimit == 1)
+        #expect(DataTableScope(rowLimit: 10).rowLimit == 10)
+        #expect(DataTableScope().rowLimit == nil)
     }
 
     // MARK: - Columns
 
-    func testExcludedColumnsMatchWithoutRegardToCase() {
+    @Test
+    func excludedColumnsMatchWithoutRegardToCase() {
         var scope = DataTableScope(excludedColumns: ["Updated_At"])
 
-        XCTAssertTrue(scope.isExcluded("updated_at"))
-        XCTAssertTrue(scope.isExcluded("UPDATED_AT"))
+        #expect(scope.isExcluded("updated_at"))
+        #expect(scope.isExcluded("UPDATED_AT"))
 
         scope.setExcluded(true, column: "Notes")
-        XCTAssertTrue(scope.isExcluded("NOTES"))
+        #expect(scope.isExcluded("NOTES"))
 
         scope.setExcluded(false, column: "notes")
         scope.setExcluded(false, column: "UPDATED_at")
-        XCTAssertFalse(scope.isExcluded("Notes"))
-        XCTAssertFalse(scope.isExcluded("updated_at"))
-        XCTAssertTrue(scope.excludedColumns.isEmpty)
+        #expect(!scope.isExcluded("Notes"))
+        #expect(!scope.isExcluded("updated_at"))
+        #expect(scope.excludedColumns.isEmpty)
     }
 
-    func testExcludingOneColumnInTwoSpellingsKeepsOneEntry() {
+    @Test
+    func excludingOneColumnInTwoSpellingsKeepsOneEntry() {
         var scope = DataTableScope()
 
         scope.setExcluded(true, column: "Email")
         scope.setExcluded(true, column: "EMAIL")
 
-        XCTAssertEqual(scope.excludedColumns, ["email"])
+        #expect(scope.excludedColumns == ["email"])
     }
 
-    func testKeyColumnsMatchWithoutRegardToCase() {
+    @Test
+    func keyColumnsMatchWithoutRegardToCase() {
         let scope = DataTableScope(keyColumns: ["Tenant_Id", "id"])
 
-        XCTAssertTrue(scope.isKeyColumn("tenant_id"))
-        XCTAssertTrue(scope.isKeyColumn("ID"))
-        XCTAssertFalse(scope.isKeyColumn("name"))
+        #expect(scope.isKeyColumn("tenant_id"))
+        #expect(scope.isKeyColumn("ID"))
+        #expect(!scope.isKeyColumn("name"))
     }
 
-    func testRestrictExclusionsDropsColumnsTheTableNoLongerHas() {
+    @Test
+    func restrictExclusionsDropsColumnsTheTableNoLongerHas() {
         var scope = DataTableScope(excludedColumns: ["name", "dropped_column"])
 
         scope.restrictExclusions(to: ["ID", "Name"])
 
-        XCTAssertEqual(scope.excludedColumns, ["name"])
-        XCTAssertTrue(scope.isExcluded("Name"))
-        XCTAssertFalse(scope.isExcluded("dropped_column"))
+        #expect(scope.excludedColumns == ["name"])
+        #expect(scope.isExcluded("Name"))
+        #expect(!scope.isExcluded("dropped_column"))
     }
 
-    func testRestrictExclusionsToNoColumnsClearsThemAll() {
+    @Test
+    func restrictExclusionsToNoColumnsClearsThemAll() {
         var scope = DataTableScope(excludedColumns: ["name"])
 
         scope.restrictExclusions(to: [])
 
-        XCTAssertTrue(scope.excludedColumns.isEmpty)
+        #expect(scope.excludedColumns.isEmpty)
     }
 
     // MARK: - Coding
 
-    func testDecodingAnEmptyObjectGivesTheDefaults() throws {
+    @Test
+    func decodingAnEmptyObjectGivesTheDefaults() throws {
         let scope = try JSONDecoder().decode(DataTableScope.self, from: Data("{}".utf8))
 
-        XCTAssertEqual(scope.keyColumns, [])
-        XCTAssertTrue(scope.excludedColumns.isEmpty)
-        XCTAssertEqual(scope.sourceFilter, "")
-        XCTAssertNil(scope.targetFilter)
-        XCTAssertNil(scope.rowLimit)
-        XCTAssertEqual(scope, DataTableScope())
+        #expect(scope.keyColumns == [])
+        #expect(scope.excludedColumns.isEmpty)
+        #expect(scope.sourceFilter == "")
+        #expect(scope.targetFilter == nil)
+        #expect(scope.rowLimit == nil)
+        #expect(scope == DataTableScope())
     }
 
-    func testDecodingLowercasesExclusionsAndClampsTheRowLimit() throws {
+    @Test
+    func decodingLowercasesExclusionsAndClampsTheRowLimit() throws {
         let json = #"{"excludedColumns": ["Updated_At"], "rowLimit": 0}"#
 
         let scope = try JSONDecoder().decode(DataTableScope.self, from: Data(json.utf8))
 
-        XCTAssertEqual(scope.excludedColumns, ["updated_at"])
-        XCTAssertEqual(scope.rowLimit, 1)
+        #expect(scope.excludedColumns == ["updated_at"])
+        #expect(scope.rowLimit == 1)
     }
 
-    func testEncodingThenDecodingRoundTrips() throws {
+    @Test
+    func encodingThenDecodingRoundTrips() throws {
         let scope = DataTableScope(
             keyColumns: ["tenant", "id"],
             excludedColumns: ["updated_at", "notes"],
@@ -229,23 +232,24 @@ final class DataTableScopeTests: XCTestCase {
 
         let decoded = try JSONDecoder().decode(DataTableScope.self, from: JSONEncoder().encode(scope))
 
-        XCTAssertEqual(decoded, scope)
-        XCTAssertEqual(decoded.targetFilter, "", "an empty target filter must not come back as the shared filter")
-        XCTAssertFalse(decoded.usesSameFilterForTarget)
+        #expect(decoded == scope)
+        #expect(decoded.targetFilter == "", "an empty target filter must not come back as the shared filter")
+        #expect(!decoded.usesSameFilterForTarget)
     }
 
-    func testASharedFilterStaysSharedAcrossARoundTrip() throws {
+    @Test
+    func aSharedFilterStaysSharedAcrossARoundTrip() throws {
         let scope = DataTableScope(keyColumns: ["id"], sourceFilter: "status = 'active'")
 
         let decoded = try JSONDecoder().decode(DataTableScope.self, from: JSONEncoder().encode(scope))
 
-        XCTAssertNil(decoded.targetFilter)
-        XCTAssertTrue(decoded.usesSameFilterForTarget)
-        XCTAssertEqual(decoded, scope)
+        #expect(decoded.targetFilter == nil)
+        #expect(decoded.usesSameFilterForTarget)
+        #expect(decoded == scope)
     }
 }
 
-final class CompareRowFilterValidationTests: XCTestCase {
+struct CompareRowFilterValidationTests {
     private let semicolonMessage = String(
         localized: "A filter is a single condition and cannot contain a semicolon."
     )
@@ -254,166 +258,194 @@ final class CompareRowFilterValidationTests: XCTestCase {
         localized: "A quote or parenthesis in this filter is not closed."
     )
 
-    func testAPlainConditionIsAccepted() {
-        XCTAssertNil(CompareRowFilter.validationError(for: "status = 'active'"))
-        XCTAssertNil(CompareRowFilter.validationError(for: "id > 100 AND region = 'eu'"))
+    @Test
+    func aPlainConditionIsAccepted() {
+        #expect(CompareRowFilter.validationError(for: "status = 'active'") == nil)
+        #expect(CompareRowFilter.validationError(for: "id > 100 AND region = 'eu'") == nil)
     }
 
-    func testAnEmptyFilterIsAccepted() {
-        XCTAssertNil(CompareRowFilter.validationError(for: ""))
-        XCTAssertNil(CompareRowFilter.validationError(for: "   \n "))
+    @Test
+    func anEmptyFilterIsAccepted() {
+        #expect(CompareRowFilter.validationError(for: "") == nil)
+        #expect(CompareRowFilter.validationError(for: "   \n ") == nil)
     }
 
     /// A filter is one condition, so a semicolon is refused wherever it sits, literal included.
-    func testASemicolonInsideALiteralIsStillRefused() {
-        XCTAssertEqual(CompareRowFilter.validationError(for: "name = 'a;b'"), semicolonMessage)
+    @Test
+    func aSemicolonInsideALiteralIsStillRefused() {
+        #expect(CompareRowFilter.validationError(for: "name = 'a;b'") == semicolonMessage)
     }
 
-    func testAStackedStatementIsRefused() {
-        XCTAssertEqual(CompareRowFilter.validationError(for: "1=1; DELETE FROM t"), semicolonMessage)
+    @Test
+    func aStackedStatementIsRefused() {
+        #expect(CompareRowFilter.validationError(for: "1=1; DELETE FROM t") == semicolonMessage)
     }
 
-    func testALineCommentIsRefused() {
-        XCTAssertEqual(CompareRowFilter.validationError(for: "id = 1 -- x"), commentMessage)
+    @Test
+    func aLineCommentIsRefused() {
+        #expect(CompareRowFilter.validationError(for: "id = 1 -- x") == commentMessage)
     }
 
-    func testABlockCommentIsRefused() {
-        XCTAssertEqual(CompareRowFilter.validationError(for: "a /* b */"), commentMessage)
+    @Test
+    func aBlockCommentIsRefused() {
+        #expect(CompareRowFilter.validationError(for: "a /* b */") == commentMessage)
     }
 
-    func testAnUnclosedParenthesisIsRefused() {
-        XCTAssertEqual(CompareRowFilter.validationError(for: "(a = 1"), unbalancedMessage)
+    @Test
+    func anUnclosedParenthesisIsRefused() {
+        #expect(CompareRowFilter.validationError(for: "(a = 1") == unbalancedMessage)
     }
 
-    func testAStrayClosingParenthesisIsRefused() {
-        XCTAssertEqual(CompareRowFilter.validationError(for: "a = 1)"), unbalancedMessage)
+    @Test
+    func aStrayClosingParenthesisIsRefused() {
+        #expect(CompareRowFilter.validationError(for: "a = 1)") == unbalancedMessage)
     }
 
     /// The filter is wrapped in parentheses before it reaches the query, so a filter that closes
     /// the wrapper and opens its own would escape it.
-    func testAFilterThatClosesTheWrapperIsRefused() {
-        XCTAssertEqual(CompareRowFilter.validationError(for: "a = 1) OR (1 = 1"), unbalancedMessage)
+    @Test
+    func aFilterThatClosesTheWrapperIsRefused() {
+        #expect(CompareRowFilter.validationError(for: "a = 1) OR (1 = 1") == unbalancedMessage)
     }
 
-    func testAnUnclosedQuoteIsRefused() {
-        XCTAssertEqual(CompareRowFilter.validationError(for: "a = 'open"), unbalancedMessage)
+    @Test
+    func anUnclosedQuoteIsRefused() {
+        #expect(CompareRowFilter.validationError(for: "a = 'open") == unbalancedMessage)
     }
 
-    func testAParenthesisInsideALiteralDoesNotCount() {
-        XCTAssertNil(CompareRowFilter.validationError(for: "a IN (1, 2) AND (b = 'x)')"))
+    @Test
+    func aParenthesisInsideALiteralDoesNotCount() {
+        #expect(CompareRowFilter.validationError(for: "a IN (1, 2) AND (b = 'x)')") == nil)
     }
 
-    func testADoubledQuoteStaysInsideTheLiteral() {
-        XCTAssertNil(CompareRowFilter.validationError(for: "name = 'O''Hara'"))
-        XCTAssertEqual(CompareRowFilter.validationError(for: "name = 'O''Hara"), unbalancedMessage)
+    @Test
+    func aDoubledQuoteStaysInsideTheLiteral() {
+        #expect(CompareRowFilter.validationError(for: "name = 'O''Hara'") == nil)
+        #expect(CompareRowFilter.validationError(for: "name = 'O''Hara") == unbalancedMessage)
     }
 
-    func testQuotedIdentifiersMayHoldParentheses() {
-        XCTAssertNil(CompareRowFilter.validationError(for: "\"odd)name\" = 1"))
-        XCTAssertNil(CompareRowFilter.validationError(for: "[odd(name] = 1"))
-        XCTAssertNil(CompareRowFilter.validationError(for: "`odd(name` = 1"))
+    @Test
+    func quotedIdentifiersMayHoldParentheses() {
+        #expect(CompareRowFilter.validationError(for: "\"odd)name\" = 1") == nil)
+        #expect(CompareRowFilter.validationError(for: "[odd(name] = 1") == nil)
+        #expect(CompareRowFilter.validationError(for: "`odd(name` = 1") == nil)
     }
 
-    func testNormalizedTrimsAndTreatsBlankAsNil() {
-        XCTAssertEqual(CompareRowFilter.normalized("  a = 1 \n"), "a = 1")
-        XCTAssertNil(CompareRowFilter.normalized("   "))
-        XCTAssertNil(CompareRowFilter.normalized(nil))
+    @Test
+    func normalizedTrimsAndTreatsBlankAsNil() {
+        #expect(CompareRowFilter.normalized("  a = 1 \n") == "a = 1")
+        #expect(CompareRowFilter.normalized("   ") == nil)
+        #expect(CompareRowFilter.normalized(nil) == nil)
     }
 
-    func testAConditionIsWrappedInParentheses() {
-        XCTAssertEqual(CompareRowFilter.condition(for: "a = 1 OR b = 2"), "(a = 1 OR b = 2)")
+    @Test
+    func aConditionIsWrappedInParentheses() {
+        #expect(CompareRowFilter.condition(for: "a = 1 OR b = 2") == "(a = 1 OR b = 2)")
     }
 
     /// `#` is MySQL's line comment, and the filter is spliced into a one-line statement, so it
     /// would comment out the ordering and the row limit that follow it.
-    func testAHashCommentIsRefused() {
-        XCTAssertEqual(CompareRowFilter.validationError(for: "a = 1 # rest"), commentMessage)
-        XCTAssertEqual(CompareRowFilter.validationError(for: "a = 1#rest"), commentMessage)
+    @Test
+    func aHashCommentIsRefused() {
+        #expect(CompareRowFilter.validationError(for: "a = 1 # rest") == commentMessage)
+        #expect(CompareRowFilter.validationError(for: "a = 1#rest") == commentMessage)
     }
 
-    func testALineCommentWithNoSpaceBeforeItIsRefused() {
-        XCTAssertEqual(CompareRowFilter.validationError(for: "id = 1--x"), commentMessage)
+    @Test
+    func aLineCommentWithNoSpaceBeforeItIsRefused() {
+        #expect(CompareRowFilter.validationError(for: "id = 1--x") == commentMessage)
     }
 
     /// MySQL, MariaDB and ClickHouse read a backslash inside a literal as an escape and PostgreSQL
     /// does not, so a filter only one of them reads as balanced is refused rather than spliced.
-    func testAFilterThatOnlyBalancesUnderOneBackslashReadingIsRefused() {
-        XCTAssertEqual(CompareRowFilter.validationError(for: "a = 'x\\' AND (1=1 OR y='"), unbalancedMessage)
-        XCTAssertEqual(CompareRowFilter.validationError(for: "a = 'x\\'"), unbalancedMessage)
+    @Test
+    func aFilterThatOnlyBalancesUnderOneBackslashReadingIsRefused() {
+        #expect(CompareRowFilter.validationError(for: "a = 'x\\' AND (1=1 OR y='") == unbalancedMessage)
+        #expect(CompareRowFilter.validationError(for: "a = 'x\\'") == unbalancedMessage)
     }
 
-    func testABackslashThatBalancesUnderBothReadingsIsAccepted() {
-        XCTAssertNil(CompareRowFilter.validationError(for: "path LIKE 'C:\\\\Users%'"))
+    @Test
+    func aBackslashThatBalancesUnderBothReadingsIsAccepted() {
+        #expect(CompareRowFilter.validationError(for: "path LIKE 'C:\\\\Users%'") == nil)
     }
 }
 
-final class SQLRowLimitClauseTests: XCTestCase {
+struct SQLRowLimitClauseTests {
 
     // MARK: - Style
 
-    func testNoDialectMeansLimit() {
-        XCTAssertEqual(SQLRowLimitClause.style(for: nil), .limit)
+    @Test
+    func noDialectMeansLimit() {
+        #expect(SQLRowLimitClause.style(for: nil) == .limit)
     }
 
-    func testAnOffsetFetchDialectOutranksTop() {
+    @Test
+    func anOffsetFetchDialectOutranksTop() {
         let dialect = ScopeDialect.make(paginationStyle: .offsetFetch, autoLimitStyle: .top)
 
-        XCTAssertEqual(SQLRowLimitClause.style(for: dialect), .offsetFetch)
+        #expect(SQLRowLimitClause.style(for: dialect) == .offsetFetch)
     }
 
-    func testTopIsUsedWhenPaginationIsLimit() {
+    @Test
+    func topIsUsedWhenPaginationIsLimit() {
         let dialect = ScopeDialect.make(paginationStyle: .limit, autoLimitStyle: .top)
 
-        XCTAssertEqual(SQLRowLimitClause.style(for: dialect), .top)
+        #expect(SQLRowLimitClause.style(for: dialect) == .top)
     }
 
     // MARK: - Statements
 
-    func testNoDialectEmitsALimitClauseLast() {
+    @Test
+    func noDialectEmitsALimitClauseLast() {
         let sql = SQLRowLimitClause.select(
             columns: "*", from: "t", where: "a = 1", orderBy: "k", limit: 10, dialect: nil
         )
 
-        XCTAssertEqual(sql, "SELECT * FROM t WHERE a = 1 ORDER BY k LIMIT 10")
+        #expect(sql == "SELECT * FROM t WHERE a = 1 ORDER BY k LIMIT 10")
     }
 
-    func testAnOffsetFetchDialectPutsTheFetchAfterTheOrderBy() {
+    @Test
+    func anOffsetFetchDialectPutsTheFetchAfterTheOrderBy() {
         let sql = SQLRowLimitClause.select(
             columns: "*", from: "t", orderBy: "k", limit: 5, dialect: ScopeDialect.make(paginationStyle: .offsetFetch)
         )
 
-        XCTAssertEqual(sql, "SELECT * FROM t ORDER BY k OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY")
+        #expect(sql == "SELECT * FROM t ORDER BY k OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY")
     }
 
     /// T-SQL parses OFFSET/FETCH as part of ORDER BY, so a statement with no ordering of its own
     /// still needs the dialect's filler.
-    func testAnOffsetFetchDialectWithNoOrderingUsesItsFiller() {
+    @Test
+    func anOffsetFetchDialectWithNoOrderingUsesItsFiller() {
         let sql = SQLRowLimitClause.select(
             columns: "*", from: "t", limit: 5, dialect: ScopeDialect.make(paginationStyle: .offsetFetch)
         )
 
-        XCTAssertEqual(sql, "SELECT * FROM t ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY")
+        #expect(sql == "SELECT * FROM t ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY")
     }
 
-    func testADialectThatDeclaresNoFillerEmitsTheFetchAlone() {
+    @Test
+    func aDialectThatDeclaresNoFillerEmitsTheFetchAlone() {
         let dialect = ScopeDialect.make(paginationStyle: .offsetFetch, offsetFetchOrderBy: "")
 
         let sql = SQLRowLimitClause.select(columns: "*", from: "t", limit: 5, dialect: dialect)
 
-        XCTAssertEqual(sql, "SELECT * FROM t OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY")
+        #expect(sql == "SELECT * FROM t OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY")
     }
 
-    func testATopDialectPutsTheLimitAfterSelect() {
+    @Test
+    func aTopDialectPutsTheLimitAfterSelect() {
         let dialect = ScopeDialect.make(paginationStyle: .limit, autoLimitStyle: .top)
 
         let sql = SQLRowLimitClause.select(
             columns: "id", from: "t", where: "a = 1", orderBy: "k", limit: 3, dialect: dialect
         )
 
-        XCTAssertEqual(sql, "SELECT TOP 3 id FROM t WHERE a = 1 ORDER BY k")
+        #expect(sql == "SELECT TOP 3 id FROM t WHERE a = 1 ORDER BY k")
     }
 
-    func testNoLimitEmitsNoClauseOnAnyDialect() {
+    @Test
+    func noLimitEmitsNoClauseOnAnyDialect() {
         let dialects: [SQLDialectDescriptor?] = [
             nil,
             ScopeDialect.make(paginationStyle: .offsetFetch),
@@ -424,78 +456,75 @@ final class SQLRowLimitClauseTests: XCTestCase {
             let sql = SQLRowLimitClause.select(
                 columns: "*", from: "t", where: "a = 1", orderBy: "k", dialect: dialect
             )
-            XCTAssertEqual(sql, "SELECT * FROM t WHERE a = 1 ORDER BY k")
+            #expect(sql == "SELECT * FROM t WHERE a = 1 ORDER BY k")
         }
     }
 
-    func testAnUnlimitedOffsetFetchStatementCarriesNoFiller() {
+    @Test
+    func anUnlimitedOffsetFetchStatementCarriesNoFiller() {
         let sql = SQLRowLimitClause.select(
             columns: "*", from: "t", dialect: ScopeDialect.make(paginationStyle: .offsetFetch)
         )
 
-        XCTAssertEqual(sql, "SELECT * FROM t")
+        #expect(sql == "SELECT * FROM t")
     }
 }
 
-final class KeyOrderedQueryScopeTests: XCTestCase {
+struct KeyOrderedQueryScopeTests {
     private let driver = ScopeQuotingDriver()
 
     // MARK: - Reading a side
 
-    func testAFilterIsWrappedInParentheses() {
+    @Test
+    func aFilterIsWrappedInParentheses() {
         let sql = KeyOrderedQuery.build(
             table: "users", schema: nil, columns: ["id", "name"], keyColumns: ["id"],
             filter: "status = 'active' OR status = 'trial'", driver: driver, databaseType: .postgresql
         )
 
-        XCTAssertEqual(
-            sql,
-            #"SELECT "id", "name" FROM "users" WHERE (status = 'active' OR status = 'trial')"#
-                + #" ORDER BY "id""#
-        )
+        #expect(sql == #"SELECT "id", "name" FROM "users" WHERE (status = 'active' OR status = 'trial')"#
+                + #" ORDER BY "id""#)
     }
 
     /// A row limit makes the window the first n keys, and a NULL key has no place in that order, so
     /// the limited read leaves those rows out rather than spending the window on them. The clause
     /// asks for one row more than the limit: the provider never hands that row out, and it is what
     /// separates a side that ends exactly at the limit from one the limit cut short.
-    func testARowLimitExcludesNullKeysAndAddsTheLimitClause() {
+    @Test
+    func aRowLimitExcludesNullKeysAndAddsTheLimitClause() {
         let sql = KeyOrderedQuery.build(
             table: "users", schema: nil, columns: ["id", "name"], keyColumns: ["id"],
             filter: "status = 'active'", rowLimit: 100, driver: driver, databaseType: .postgresql
         )
 
-        XCTAssertEqual(
-            sql,
-            #"SELECT "id", "name" FROM "users" WHERE (status = 'active') AND "id" IS NOT NULL"#
-                + #" ORDER BY "id" LIMIT 101"#
-        )
+        #expect(sql == #"SELECT "id", "name" FROM "users" WHERE (status = 'active') AND "id" IS NOT NULL"#
+                + #" ORDER BY "id" LIMIT 101"#)
     }
 
-    func testEveryKeyColumnOfACompositeKeyIsCheckedForNull() {
+    @Test
+    func everyKeyColumnOfACompositeKeyIsCheckedForNull() {
         let sql = KeyOrderedQuery.build(
             table: "orders", schema: nil, columns: ["tenant", "id", "total"], keyColumns: ["tenant", "id"],
             rowLimit: 50, driver: driver, databaseType: .postgresql
         )
 
-        XCTAssertEqual(
-            sql,
-            #"SELECT "tenant", "id", "total" FROM "orders" WHERE "tenant" IS NOT NULL AND "id" IS NOT NULL"#
-                + #" ORDER BY "tenant", "id" LIMIT 51"#
-        )
+        #expect(sql == #"SELECT "tenant", "id", "total" FROM "orders" WHERE "tenant" IS NOT NULL AND "id" IS NOT NULL"#
+                + #" ORDER BY "tenant", "id" LIMIT 51"#)
     }
 
-    func testWithoutARowLimitNullKeysAreNotFilteredOut() {
+    @Test
+    func withoutARowLimitNullKeysAreNotFilteredOut() {
         let sql = KeyOrderedQuery.build(
             table: "orders", schema: nil, columns: ["id"], keyColumns: ["id"],
             filter: "total > 10", driver: driver, databaseType: .postgresql
         )
 
-        XCTAssertEqual(sql, #"SELECT "id" FROM "orders" WHERE (total > 10) ORDER BY "id""#)
-        XCTAssertFalse(sql.contains("IS NOT NULL"))
+        #expect(sql == #"SELECT "id" FROM "orders" WHERE (total > 10) ORDER BY "id""#)
+        #expect(!sql.contains("IS NOT NULL"))
     }
 
-    func testTheRowLimitFollowsTheDialect() {
+    @Test
+    func theRowLimitFollowsTheDialect() {
         let offsetFetch = KeyOrderedQuery.build(
             table: "users", schema: nil, columns: ["id"], keyColumns: ["id"], rowLimit: 10,
             driver: driver, databaseType: .mssql, dialect: ScopeDialect.make(paginationStyle: .offsetFetch)
@@ -506,36 +535,39 @@ final class KeyOrderedQueryScopeTests: XCTestCase {
             dialect: ScopeDialect.make(paginationStyle: .limit, autoLimitStyle: .top)
         )
 
-        XCTAssertTrue(offsetFetch.hasSuffix(#"ORDER BY "id" OFFSET 0 ROWS FETCH NEXT 11 ROWS ONLY"#), offsetFetch)
-        XCTAssertTrue(top.hasPrefix(#"SELECT TOP 11 "id" FROM "#), top)
-        XCTAssertTrue(top.hasSuffix(#"ORDER BY "id""#), top)
+        #expect(offsetFetch.hasSuffix(#"ORDER BY "id" OFFSET 0 ROWS FETCH NEXT 11 ROWS ONLY"#), Comment(rawValue: offsetFetch))
+        #expect(top.hasPrefix(#"SELECT TOP 11 "id" FROM "#), Comment(rawValue: top))
+        #expect(top.hasSuffix(#"ORDER BY "id""#), Comment(rawValue: top))
     }
 
     // MARK: - Looking rows up by key
 
-    func testALookupOnOneKeyColumnUsesIn() {
+    @Test
+    func aLookupOnOneKeyColumnUsesIn() {
         let sql = KeyOrderedQuery.lookup(
             table: "users", schema: nil, columns: ["id", "name"], keyColumns: ["id"],
             keyTypes: [.integer(rawType: "INT")], keys: [[.text("1")], [.text("2")]],
             driver: driver, databaseType: .postgresql
         )
 
-        XCTAssertEqual(sql, #"SELECT "id", "name" FROM "users" WHERE "id" IN (1, 2) ORDER BY "id""#)
+        #expect(sql == #"SELECT "id", "name" FROM "users" WHERE "id" IN (1, 2) ORDER BY "id""#)
     }
 
     /// A VARCHAR key holding `007` has to stay quoted, or MySQL compares it as 7 and the lookup
     /// answers with rows that are not the ones asked for.
-    func testALookupQuotesANumericLookingTextKey() {
+    @Test
+    func aLookupQuotesANumericLookingTextKey() {
         let sql = KeyOrderedQuery.lookup(
             table: "items", schema: nil, columns: ["code"], keyColumns: ["code"],
             keyTypes: [.text(rawType: "VARCHAR(10)")], keys: [[.text("007")], [.text("O'Brien")]],
             driver: driver, databaseType: .mysql
         )
 
-        XCTAssertEqual(sql, #"SELECT "code" FROM "items" WHERE "code" IN ('007', 'O''Brien') ORDER BY "code""#)
+        #expect(sql == #"SELECT "code" FROM "items" WHERE "code" IN ('007', 'O''Brien') ORDER BY "code""#)
     }
 
-    func testALookupOnACompositeKeyOrsParenthesisedConjunctions() {
+    @Test
+    func aLookupOnACompositeKeyOrsParenthesisedConjunctions() {
         let sql = KeyOrderedQuery.lookup(
             table: "orders", schema: nil, columns: ["tenant", "id"], keyColumns: ["tenant", "id"],
             keyTypes: [.text(rawType: "TEXT"), .integer(rawType: "BIGINT")],
@@ -543,64 +575,64 @@ final class KeyOrderedQueryScopeTests: XCTestCase {
             driver: driver, databaseType: .postgresql
         )
 
-        XCTAssertEqual(
-            sql,
-            #"SELECT "tenant", "id" FROM "orders" WHERE ("tenant" = 'acme' AND "id" = 1)"#
-                + #" OR ("tenant" = '007' AND "id" = 2) ORDER BY "tenant", "id""#
-        )
+        #expect(sql == #"SELECT "tenant", "id" FROM "orders" WHERE ("tenant" = 'acme' AND "id" = 1)"#
+                + #" OR ("tenant" = '007' AND "id" = 2) ORDER BY "tenant", "id""#)
     }
 
-    func testALookupQualifiesTheSchema() {
+    @Test
+    func aLookupQualifiesTheSchema() {
         let sql = KeyOrderedQuery.lookup(
             table: "orders", schema: "app", columns: ["id"], keyColumns: ["id"],
             keyTypes: [.integer(rawType: "INT")], keys: [[.text("1")]],
             driver: driver, databaseType: .postgresql
         )
 
-        XCTAssertEqual(sql, #"SELECT "id" FROM "app"."orders" WHERE "id" IN (1) ORDER BY "id""#)
+        #expect(sql == #"SELECT "id" FROM "app"."orders" WHERE "id" IN (1) ORDER BY "id""#)
     }
 
-    func testALookupOnSQLServerPrefixesATextKey() {
+    @Test
+    func aLookupOnSQLServerPrefixesATextKey() {
         let sql = KeyOrderedQuery.lookup(
             table: "customers", schema: nil, columns: ["name"], keyColumns: ["name"],
             keyTypes: [.text(rawType: "NVARCHAR(20)")], keys: [[.text("日本語")]],
             driver: driver, databaseType: .mssql
         )
 
-        XCTAssertTrue(sql.contains(#""name" IN (N'日本語')"#), sql)
+        #expect(sql.contains(#""name" IN (N'日本語')"#), Comment(rawValue: sql))
     }
 
-    func testALookupWithNoKeyTypesQuotesTheKey() {
+    @Test
+    func aLookupWithNoKeyTypesQuotesTheKey() {
         let sql = KeyOrderedQuery.lookup(
             table: "items", schema: nil, columns: ["code"], keyColumns: ["code"],
             keyTypes: [], keys: [[.text("7")]], driver: driver, databaseType: .postgresql
         )
 
-        XCTAssertEqual(sql, #"SELECT "code" FROM "items" WHERE "code" IN ('7') ORDER BY "code""#)
+        #expect(sql == #"SELECT "code" FROM "items" WHERE "code" IN ('7') ORDER BY "code""#)
     }
 }
 
-final class CompareSQLLiteralTextTests: XCTestCase {
+struct CompareSQLLiteralTextTests {
     private let driver = ScopeQuotingDriver()
 
-    func testNumericLookingTextIsQuotedForATextColumn() {
+    @Test
+    func numericLookingTextIsQuotedForATextColumn() {
         let literal = CompareSQLLiteral.textLiteral(
             "007", columnType: .text(rawType: "VARCHAR(10)"), databaseType: .mysql, driver: driver
         )
 
-        XCTAssertEqual(literal, "'007'")
+        #expect(literal == "'007'")
     }
 
     /// With no type to consult the safe answer is the quoted one: a quoted number still compares
     /// against a numeric column, while an unquoted string does not compare against a text one.
-    func testNumericLookingTextIsQuotedWhenTheColumnTypeIsUnknown() {
-        XCTAssertEqual(
-            CompareSQLLiteral.textLiteral("42", columnType: nil, databaseType: .postgresql, driver: driver),
-            "'42'"
-        )
+    @Test
+    func numericLookingTextIsQuotedWhenTheColumnTypeIsUnknown() {
+        #expect(CompareSQLLiteral.textLiteral("42", columnType: nil, databaseType: .postgresql, driver: driver) == "'42'")
     }
 
-    func testAnIntegerColumnKeepsANumberBare() {
+    @Test
+    func anIntegerColumnKeepsANumberBare() {
         let positive = CompareSQLLiteral.textLiteral(
             "42", columnType: .integer(rawType: "INT"), databaseType: .mysql, driver: driver
         )
@@ -608,111 +640,106 @@ final class CompareSQLLiteralTextTests: XCTestCase {
             "-17", columnType: .integer(rawType: "INT"), databaseType: .mysql, driver: driver
         )
 
-        XCTAssertEqual(positive, "42")
-        XCTAssertEqual(negative, "-17")
+        #expect(positive == "42")
+        #expect(negative == "-17")
     }
 
-    func testADecimalColumnKeepsANumberBare() {
+    @Test
+    func aDecimalColumnKeepsANumberBare() {
         let literal = CompareSQLLiteral.textLiteral(
             "3.50", columnType: .decimal(rawType: "NUMERIC(10,2)"), databaseType: .postgresql, driver: driver
         )
 
-        XCTAssertEqual(literal, "3.50")
+        #expect(literal == "3.50")
     }
 
-    func testTextThatIsNotANumberIsQuotedEvenForANumericColumn() {
+    @Test
+    func textThatIsNotANumberIsQuotedEvenForANumericColumn() {
         let literal = CompareSQLLiteral.textLiteral(
             "abc", columnType: .integer(rawType: "INT"), databaseType: .postgresql, driver: driver
         )
 
-        XCTAssertEqual(literal, "'abc'")
+        #expect(literal == "'abc'")
     }
 
-    func testSQLServerKeepsItsPrefixOnQuotedText() {
-        XCTAssertEqual(
-            CompareSQLLiteral.textLiteral(
+    @Test
+    func sQLServerKeepsItsPrefixOnQuotedText() {
+        #expect(CompareSQLLiteral.textLiteral(
                 "007", columnType: .text(rawType: "NVARCHAR(10)"), databaseType: .mssql, driver: driver
-            ),
-            "N'007'"
-        )
-        XCTAssertEqual(
-            CompareSQLLiteral.textLiteral("O'Hara", columnType: nil, databaseType: .mssql, driver: driver),
-            "N'O''Hara'"
-        )
+            ) == "N'007'")
+        #expect(CompareSQLLiteral.textLiteral("O'Hara", columnType: nil, databaseType: .mssql, driver: driver) == "N'O''Hara'")
     }
 
-    func testSQLServerLeavesABareNumberUnprefixed() {
+    @Test
+    func sQLServerLeavesABareNumberUnprefixed() {
         let literal = CompareSQLLiteral.textLiteral(
             "42", columnType: .integer(rawType: "INT"), databaseType: .mssql, driver: driver
         )
 
-        XCTAssertEqual(literal, "42")
+        #expect(literal == "42")
     }
 
-    func testLiteralRoutesNullAndTextThroughTheSameRules() {
-        XCTAssertEqual(
-            CompareSQLLiteral.literal(
+    @Test
+    func literalRoutesNullAndTextThroughTheSameRules() {
+        #expect(CompareSQLLiteral.literal(
                 for: .null, columnType: .text(rawType: "TEXT"), databaseType: .mssql, driver: driver
-            ),
-            "NULL"
-        )
-        XCTAssertEqual(
-            CompareSQLLiteral.literal(
+            ) == "NULL")
+        #expect(CompareSQLLiteral.literal(
                 for: .text("007"), columnType: .text(rawType: "CHAR(3)"), databaseType: .mysql, driver: driver
-            ),
-            "'007'"
-        )
+            ) == "'007'")
     }
 }
 
-final class DataCompareOptionsDecodingTests: XCTestCase {
+struct DataCompareOptionsDecodingTests {
     private func decode(_ json: String) throws -> DataCompareOptions {
         try JSONDecoder().decode(DataCompareOptions.self, from: Data(json.utf8))
     }
 
-    func testAnObjectWithOneKeyFillsTheRestWithDefaults() throws {
+    @Test
+    func anObjectWithOneKeyFillsTheRestWithDefaults() throws {
         let options = try decode(#"{"insertMissingRows": false}"#)
 
-        XCTAssertFalse(options.insertMissingRows)
-        XCTAssertTrue(options.updateDifferingRows)
-        XCTAssertFalse(options.deleteExtraRows)
-        XCTAssertEqual(options.floatTolerance, 0)
-        XCTAssertEqual(options.timestampFractionalDigits, 6)
-        XCTAssertEqual(options.maxRetainedEntries, 5_000)
-        XCTAssertEqual(options.maxRetainedIdenticalEntries, 1_000)
+        #expect(!options.insertMissingRows)
+        #expect(options.updateDifferingRows)
+        #expect(!options.deleteExtraRows)
+        #expect(options.floatTolerance == 0)
+        #expect(options.timestampFractionalDigits == 6)
+        #expect(options.maxRetainedEntries == 5_000)
+        #expect(options.maxRetainedIdenticalEntries == 1_000)
     }
 
-    func testAnEmptyObjectDecodesToTheDefaults() throws {
-        XCTAssertEqual(try decode("{}"), .default)
+    @Test
+    func anEmptyObjectDecodesToTheDefaults() throws {
+        #expect(try decode("{}") == .default)
     }
 
     /// Key columns and excluded columns moved to each table's own scope. A profile written before
     /// that still carries them, and decoding must step over them rather than fail.
-    func testRetiredKeysAreIgnored() throws {
+    @Test
+    func retiredKeysAreIgnored() throws {
         let json = #"{"keyColumns": ["id"], "excludedFromComparison": ["updated_at"], "deleteExtraRows": true}"#
 
         let options = try decode(json)
 
         var expected = DataCompareOptions()
         expected.deleteExtraRows = true
-        XCTAssertEqual(options, expected)
+        #expect(options == expected)
     }
 
-    func testEncodingWritesTheCurrentKeysOnly() throws {
+    @Test
+    func encodingWritesTheCurrentKeysOnly() throws {
         let data = try JSONEncoder().encode(DataCompareOptions.default)
 
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
 
-        XCTAssertEqual(
-            Set(object.keys),
-            [
+        #expect(Set(object.keys) == [
                 "insertMissingRows", "updateDifferingRows", "deleteExtraRows", "floatTolerance",
                 "timestampFractionalDigits", "maxRetainedEntries", "maxRetainedIdenticalEntries"
-            ]
-        )
+            ])
     }
 
-    func testEncodingThenDecodingRoundTrips() throws {
+    @Test
+    func encodingThenDecodingRoundTrips() throws {
         var options = DataCompareOptions()
         options.insertMissingRows = false
         options.updateDifferingRows = false
@@ -724,24 +751,25 @@ final class DataCompareOptionsDecodingTests: XCTestCase {
 
         let decoded = try JSONDecoder().decode(DataCompareOptions.self, from: JSONEncoder().encode(options))
 
-        XCTAssertEqual(decoded, options)
+        #expect(decoded == options)
     }
 
-    func testWritesRowsFollowsTheThreeToggles() {
+    @Test
+    func writesRowsFollowsTheThreeToggles() {
         var options = DataCompareOptions()
         options.insertMissingRows = true
         options.updateDifferingRows = false
         options.deleteExtraRows = true
 
-        XCTAssertTrue(options.writesRows(of: .insert))
-        XCTAssertFalse(options.writesRows(of: .update))
-        XCTAssertTrue(options.writesRows(of: .delete))
-        XCTAssertFalse(options.writesRows(of: .identical))
-        XCTAssertFalse(options.writesRows(of: .conflict))
+        #expect(options.writesRows(of: .insert))
+        #expect(!options.writesRows(of: .update))
+        #expect(options.writesRows(of: .delete))
+        #expect(!options.writesRows(of: .identical))
+        #expect(!options.writesRows(of: .conflict))
     }
 }
 
-final class CompareSyncProfileScopeCodingTests: XCTestCase {
+struct CompareSyncProfileScopeCodingTests {
     private let profileId = UUID()
     private let sourceConnection = UUID()
     private let targetConnection = UUID()
@@ -793,36 +821,39 @@ final class CompareSyncProfileScopeCodingTests: XCTestCase {
 
     /// A profile saved before exclusions became per table keeps leaving out the columns it left
     /// out, so the first comparison after an update does not report every row as different.
-    func testAProfileSavedBeforeTableScopesKeepsItsExcludedColumns() throws {
+    @Test
+    func aProfileSavedBeforeTableScopesKeepsItsExcludedColumns() throws {
         let decoded = try JSONDecoder().decode(
             CompareSyncProfile.self, from: legacyProfileJSON(dataOptions: legacyDataOptions)
         )
 
-        XCTAssertEqual(decoded.id, profileId)
-        XCTAssertEqual(decoded.name, "Nightly")
-        XCTAssertEqual(decoded.mode, .data)
-        XCTAssertEqual(decoded.source.database, "prod")
-        XCTAssertEqual(decoded.source.schema, "public")
-        XCTAssertNil(decoded.target.schema)
-        XCTAssertEqual(decoded.tableScopes, [:])
-        XCTAssertEqual(decoded.legacyExcludedColumns, ["updated_at"])
-        XCTAssertFalse(decoded.dataOptions.updateDifferingRows)
-        XCTAssertTrue(decoded.dataOptions.deleteExtraRows)
-        XCTAssertEqual(decoded.structureOptions, .default)
-        XCTAssertEqual(decoded.selectedObjects, ["orders"])
+        #expect(decoded.id == profileId)
+        #expect(decoded.name == "Nightly")
+        #expect(decoded.mode == .data)
+        #expect(decoded.source.database == "prod")
+        #expect(decoded.source.schema == "public")
+        #expect(decoded.target.schema == nil)
+        #expect(decoded.tableScopes == [:])
+        #expect(decoded.legacyExcludedColumns == ["updated_at"])
+        #expect(!decoded.dataOptions.updateDifferingRows)
+        #expect(decoded.dataOptions.deleteExtraRows)
+        #expect(decoded.structureOptions == .default)
+        #expect(decoded.selectedObjects == ["orders"])
     }
 
-    func testAProfileWithNoDataOptionsCarriesNoLegacyExclusions() throws {
+    @Test
+    func aProfileWithNoDataOptionsCarriesNoLegacyExclusions() throws {
         let decoded = try JSONDecoder().decode(
             CompareSyncProfile.self, from: legacyProfileJSON(dataOptions: nil)
         )
 
-        XCTAssertEqual(decoded.dataOptions, .default)
-        XCTAssertTrue(decoded.legacyExcludedColumns.isEmpty)
-        XCTAssertEqual(decoded.tableScopes, [:])
+        #expect(decoded.dataOptions == .default)
+        #expect(decoded.legacyExcludedColumns.isEmpty)
+        #expect(decoded.tableScopes == [:])
     }
 
-    func testTableScopesRoundTrip() throws {
+    @Test
+    func tableScopesRoundTrip() throws {
         let key = "public\u{1F}orders"
         let original = profile(tableScopes: [
             key: DataTableScope(
@@ -837,24 +868,25 @@ final class CompareSyncProfileScopeCodingTests: XCTestCase {
 
         let decoded = try JSONDecoder().decode(CompareSyncProfile.self, from: JSONEncoder().encode(original))
 
-        XCTAssertEqual(decoded.tableScopes, original.tableScopes)
-        XCTAssertEqual(decoded.tableScopes[key]?.rowLimit, 500)
-        XCTAssertEqual(decoded.tableScopes[key]?.targetFilter, "")
-        XCTAssertEqual(decoded, original)
+        #expect(decoded.tableScopes == original.tableScopes)
+        #expect(decoded.tableScopes[key]?.rowLimit == 500)
+        #expect(decoded.tableScopes[key]?.targetFilter == "")
+        #expect(decoded == original)
     }
 
     /// Saving or deleting any one comparison rewrites the whole stored array, so a comparison the
     /// user has not opened yet keeps the columns it was told to leave out. They move onto its table
     /// scopes the first time its tables load, and the session stops writing them from then on.
-    func testLegacyExcludedColumnsSurviveARewriteUntilTheTablesLoad() throws {
+    @Test
+    func legacyExcludedColumnsSurviveARewriteUntilTheTablesLoad() throws {
         let data = try JSONEncoder().encode(profile(tableScopes: [:], legacy: ["updated_at"]))
 
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertEqual(object["legacyExcludedColumns"] as? [String], ["updated_at"])
-        let dataOptions = try XCTUnwrap(object["dataOptions"] as? [String: Any])
-        XCTAssertNil(dataOptions["excludedFromComparison"], "the option they used to live in is gone")
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect((object["legacyExcludedColumns"] as? [String]) == ["updated_at"])
+        let dataOptions = try #require(object["dataOptions"] as? [String: Any])
+        #expect(dataOptions["excludedFromComparison"] == nil, "the option they used to live in is gone")
 
         let decoded = try JSONDecoder().decode(CompareSyncProfile.self, from: data)
-        XCTAssertEqual(decoded.legacyExcludedColumns, ["updated_at"])
+        #expect(decoded.legacyExcludedColumns == ["updated_at"])
     }
 }

@@ -183,9 +183,8 @@ struct OperationCompletionPolicyTests {
 
     @Test("Stored settings with per-kind choices load with the switch and the threshold intact")
     func storedKindChoicesAreIgnored() throws {
-        let suiteName = "notifications-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         defaults.set(
             Data(#"{"isEnabled":false,"thresholdSeconds":60,"disabledKindIds":["query","backup"]}"#.utf8),
             forKey: "com.TablePro.settings.notifications"

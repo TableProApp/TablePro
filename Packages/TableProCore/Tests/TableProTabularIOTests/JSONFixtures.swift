@@ -1,6 +1,6 @@
 import Foundation
 @testable import TableProTabularIO
-import XCTest
+import Testing
 
 enum JSONFixtures {
     static func index(_ text: String, kind: JSONTableFileKind = .jsonLines) throws -> JSONTableIndex {
@@ -50,7 +50,7 @@ enum JSONFixtures {
     }
 
     static func text(_ bytes: [UInt8]) throws -> String {
-        try XCTUnwrap(String(bytes: bytes, encoding: .utf8))
+        try #require(String(bytes: bytes, encoding: .utf8))
     }
 
     static func texts(_ source: JSONSource, row: Int) -> [String] {

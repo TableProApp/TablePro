@@ -9,7 +9,6 @@ import SwiftUI
 import TableProPluginKit
 import Testing
 
-@Suite("Result states that stand in for the grid", .serialized)
 @MainActor
 struct GridStandInBackgroundTests {
     private static let center = CGPoint(x: 0.5, y: 0.5)

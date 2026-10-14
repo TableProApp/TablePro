@@ -139,7 +139,7 @@ enum StreamingStubError: Error {
     case producerFailed
 }
 
-private final class StreamingStubDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class StreamingStubDriver: PluginDriverStub, @unchecked Sendable {
     private let totalRows: Int
     private let batchSize: Int
     private let failAfterRows: Int?
@@ -184,23 +184,6 @@ private final class StreamingStubDriver: PluginDatabaseDriver, @unchecked Sendab
             continuation.onTermination = { @Sendable _ in task.cancel() }
         }
     }
-
-    func connect() async throws {}
-    func disconnect() {}
-    func execute(query: String) async throws -> PluginQueryResult { .empty }
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
-    }
 }
 
 private final class ProducedRowCounter: @unchecked Sendable {
@@ -220,15 +203,12 @@ private final class ProducedRowCounter: @unchecked Sendable {
     }
 }
 
-private final class NonBoundedStubDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class NonBoundedStubDriver: PluginDriverStub, @unchecked Sendable {
     private let rowCount: Int
 
     init(rowCount: Int = 0) {
         self.rowCount = rowCount
     }
-
-    func connect() async throws {}
-    func disconnect() {}
 
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(
@@ -239,31 +219,14 @@ private final class NonBoundedStubDriver: PluginDatabaseDriver, @unchecked Senda
             executionTime: 0
         )
     }
-
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
-    }
 }
 
-private final class SourceBoundedStubDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class SourceBoundedStubDriver: PluginDriverStub, @unchecked Sendable {
     private let inner: NonBoundedStubDriver
 
     init(rowCount: Int) {
         inner = NonBoundedStubDriver(rowCount: rowCount)
     }
-
-    func connect() async throws {}
-    func disconnect() {}
 
     func execute(query: String) async throws -> PluginQueryResult {
         try await inner.execute(query: query)
@@ -271,19 +234,5 @@ private final class SourceBoundedStubDriver: PluginDatabaseDriver, @unchecked Se
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
         try await executeUserQuery(query: query, rowCap: rowCap, parameters: nil)
-    }
-
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 }

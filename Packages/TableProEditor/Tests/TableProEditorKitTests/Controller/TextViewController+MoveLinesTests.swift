@@ -1,3 +1,4 @@
+import Foundation
 //
 //  TextViewController+MoveLinesTests.swift
 //  TableProEditorKit
@@ -7,18 +8,19 @@
 
 @testable import TableProEditorKit
 @testable import TableProTextEngine
-import XCTest
+import Testing
 
-final class TextViewControllerMoveLinesTests: XCTestCase {
+@MainActor
+final class TextViewControllerMoveLinesTests {
     var controller: TextViewController!
 
-    override func setUpWithError() throws {
+    init() throws {
         controller = Mock.textViewController(theme: Mock.theme())
 
         controller.loadView()
     }
 
-    func testHandleMoveLinesUpForSingleLine() {
+    @Test func testHandleMoveLinesUpForSingleLine() {
         let strings: [(NSString, Int)] = [
             ("This is a test string\n", 0),
             ("With multiple lines\n", 22)
@@ -36,10 +38,10 @@ final class TextViewControllerMoveLinesTests: XCTestCase {
 
         controller.moveLinesUp()
         let expectedString = "With multiple lines\nThis is a test string\n"
-        XCTAssertEqual(controller.text, expectedString)
+        #expect(controller.text == expectedString)
     }
 
-    func testHandleMoveLinesDownForSingleLine() {
+    @Test func testHandleMoveLinesDownForSingleLine() {
         let strings: [(NSString, Int)] = [
             ("This is a test string\n", 0),
             ("With multiple lines\n", 22)
@@ -57,10 +59,10 @@ final class TextViewControllerMoveLinesTests: XCTestCase {
 
         controller.moveLinesDown()
         let expectedString = "With multiple lines\nThis is a test string\n"
-        XCTAssertEqual(controller.text, expectedString)
+        #expect(controller.text == expectedString)
     }
 
-    func testHandleMoveLinesUpForMultiLine() {
+    @Test func testHandleMoveLinesUpForMultiLine() {
         let strings: [(NSString, Int)] = [
             ("This is a test string\n", 0),
             ("With multiple lines\n", 22),
@@ -79,10 +81,10 @@ final class TextViewControllerMoveLinesTests: XCTestCase {
 
         controller.moveLinesUp()
         let expectedString = "With multiple lines\nAnd additional info\nThis is a test string\n"
-        XCTAssertEqual(controller.text, expectedString)
+        #expect(controller.text == expectedString)
     }
 
-    func testHandleMoveLinesDownForMultiLine() {
+    @Test func testHandleMoveLinesDownForMultiLine() {
         let strings: [(NSString, Int)] = [
             ("This is a test string\n", 0),
             ("With multiple lines\n", 22),
@@ -101,6 +103,6 @@ final class TextViewControllerMoveLinesTests: XCTestCase {
 
         controller.moveLinesDown()
         let expectedString = "And additional info\nThis is a test string\nWith multiple lines\n"
-        XCTAssertEqual(controller.text, expectedString)
+        #expect(controller.text == expectedString)
     }
 }

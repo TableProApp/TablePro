@@ -3,14 +3,9 @@ import Foundation
 import Testing
 
 struct SQLSnippetMarkerTests {
-    @Test("Query without a marker expands to nil")
-    func noMarkerReturnsNil() {
-        #expect(SQLSnippetMarker.expand("SELECT * FROM users") == nil)
-    }
-
-    @Test("Empty query expands to nil")
-    func emptyQueryReturnsNil() {
-        #expect(SQLSnippetMarker.expand("") == nil)
+    @Test("A query without a marker, and an empty query, expand to nil", arguments: ["SELECT * FROM users", ""])
+    func noMarkerReturnsNil(_ query: String) {
+        #expect(SQLSnippetMarker.expand(query) == nil)
     }
 
     @Test("Marker at the start strips and places the caret at zero")

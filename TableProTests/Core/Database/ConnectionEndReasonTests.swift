@@ -13,7 +13,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Connection end reason", .serialized)
 @MainActor
 struct ConnectionEndReasonTests {
     private func injectConnectingSession() -> UUID {

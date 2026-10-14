@@ -14,10 +14,11 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Data refresh scoping", .serialized)
 @MainActor
 struct DataRefreshScopeTests {
-    private static func makeCoordinator(
+    private let fixtures = CoordinatorFixtures()
+
+    private func makeCoordinator(
         connection: DatabaseConnection,
         browseDatabase: String,
         tabDatabase: String? = nil
@@ -26,13 +27,9 @@ struct DataRefreshScopeTests {
         session.browseDatabase = browseDatabase
         DatabaseManager.shared.injectSession(session, for: connection.id)
 
-        let tabManager = QueryTabManager()
-        let coordinator = MainContentCoordinator(
-            connection: connection,
-            tabManager: tabManager,
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
+        let fixture = fixtures.make(connection: connection)
+        let tabManager = fixture.tabManager
+        let coordinator = fixture.coordinator
 
         if let tabDatabase {
             var tab = QueryTab(title: "orders", query: "SELECT 1", tabType: .table, tableName: "orders")
@@ -48,7 +45,7 @@ struct DataRefreshScopeTests {
     func scopedRefreshSkipsAWindowBrowsingElsewhere() throws {
         let connection = TestFixtures.makeConnection(database: "saved_default")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, _) = Self.makeCoordinator(
+        let (coordinator, _) = makeCoordinator(
             connection: connection,
             browseDatabase: "inventory",
             tabDatabase: "inventory"
@@ -65,7 +62,7 @@ struct DataRefreshScopeTests {
     func unscopedRefreshReachesEveryone() {
         let connection = TestFixtures.makeConnection(database: "saved_default")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, _) = Self.makeCoordinator(
+        let (coordinator, _) = makeCoordinator(
             connection: connection,
             browseDatabase: "inventory",
             tabDatabase: "orders"
@@ -82,7 +79,7 @@ struct DataRefreshScopeTests {
     func scopedRefreshReachesItsOwnTab() throws {
         let connection = TestFixtures.makeConnection(database: "saved_default")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, _) = Self.makeCoordinator(
+        let (coordinator, _) = makeCoordinator(
             connection: connection,
             browseDatabase: "inventory",
             tabDatabase: "orders"
@@ -104,7 +101,7 @@ struct DataRefreshScopeTests {
     func browseScopeAndTabScopeAreIndependent() throws {
         let connection = TestFixtures.makeConnection(database: "saved_default")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, _) = Self.makeCoordinator(
+        let (coordinator, _) = makeCoordinator(
             connection: connection,
             browseDatabase: "inventory",
             tabDatabase: "orders"
@@ -122,7 +119,7 @@ struct DataRefreshScopeTests {
     func refreshForAnotherConnectionIsIgnored() throws {
         let connection = TestFixtures.makeConnection(database: "saved_default")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, _) = Self.makeCoordinator(
+        let (coordinator, _) = makeCoordinator(
             connection: connection,
             browseDatabase: "orders",
             tabDatabase: "orders"
@@ -156,7 +153,7 @@ struct DataRefreshScopeTests {
     func scopedRefreshMarksTheTableTabsInItsScope() {
         let connection = TestFixtures.makeConnection(database: "saved_default")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection, browseDatabase: "inventory")
+        let (coordinator, tabManager) = makeCoordinator(connection: connection, browseDatabase: "inventory")
         let inScope = Self.loadedTab("orders", database: "orders", in: coordinator)
         let queryInScope = Self.loadedTab("orders", database: "orders", tabType: .query, in: coordinator)
         let elsewhere = Self.loadedTab("orders", database: "inventory", in: coordinator)
@@ -181,7 +178,7 @@ struct DataRefreshScopeTests {
     func unscopedRefreshMarksEveryTableTab() {
         let connection = TestFixtures.makeConnection(database: "saved_default")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection, browseDatabase: "inventory")
+        let (coordinator, tabManager) = makeCoordinator(connection: connection, browseDatabase: "inventory")
         let first = Self.loadedTab("orders", database: "orders", in: coordinator)
         let second = Self.loadedTab("stock", database: "inventory", in: coordinator)
         tabManager.tabs = [first, second]
@@ -196,7 +193,7 @@ struct DataRefreshScopeTests {
     func refreshForgetsCachedColumnsBeforeTheReload() throws {
         let connection = TestFixtures.makeConnection(database: "saved_default")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection, browseDatabase: "orders")
+        let (coordinator, tabManager) = makeCoordinator(connection: connection, browseDatabase: "orders")
         var tab = Self.loadedTab("orders", database: "orders", in: coordinator)
         tab.columnLayout.hiddenColumns = ["note"]
         tabManager.tabs = [tab]
@@ -241,7 +238,7 @@ struct DataRefreshScopeTests {
     func refreshMarksTheStructureOfEveryTabItReaches() {
         let connection = TestFixtures.makeConnection(database: "saved_default")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection, browseDatabase: "orders")
+        let (coordinator, tabManager) = makeCoordinator(connection: connection, browseDatabase: "orders")
         let inScope = Self.loadedTab("orders", database: "orders", in: coordinator)
         let editing = Self.loadedTab("orders", database: "orders", in: coordinator)
         let elsewhere = Self.loadedTab("stock", database: "inventory", in: coordinator)
@@ -273,7 +270,7 @@ struct DataRefreshScopeTests {
     func refreshForAnotherConnectionMarksNothing() {
         let connection = TestFixtures.makeConnection(database: "saved_default")
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
-        let (coordinator, tabManager) = Self.makeCoordinator(connection: connection, browseDatabase: "orders")
+        let (coordinator, tabManager) = makeCoordinator(connection: connection, browseDatabase: "orders")
         let tab = Self.loadedTab("orders", database: "orders", in: coordinator)
         tabManager.tabs = [tab]
 

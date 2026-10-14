@@ -1,8 +1,3 @@
-//
-//  PipeReaderTests.swift
-//  TableProTests
-//
-
 import Darwin
 import Foundation
 import Testing
@@ -35,16 +30,6 @@ struct PipeReaderTests {
 
         var isRaised: Bool {
             lock.withLock { raised }
-        }
-    }
-
-    private struct TimedOut: Error {}
-
-    private func waitUntil(_ condition: () -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(10)
-        while !condition() {
-            guard ContinuousClock.now < deadline else { throw TimedOut() }
-            try await Task.sleep(for: .milliseconds(5))
         }
     }
 

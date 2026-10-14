@@ -1,9 +1,9 @@
 import Foundation
 @testable import TableProMCP
-import XCTest
+import Testing
 
-final class JsonRpcMessageTests: XCTestCase {
-    func testRequestRoundTrip() throws {
+struct JsonRpcMessageTests {
+    @Test func testRequestRoundTrip() throws {
         let message = JsonRpcMessage.request(
             JsonRpcRequest(
                 id: .number(1),
@@ -13,35 +13,35 @@ final class JsonRpcMessageTests: XCTestCase {
         )
         let data = try JsonRpcCodec.encode(message)
         let decoded = try JsonRpcCodec.decode(data)
-        XCTAssertEqual(decoded, message)
+        #expect(decoded == message)
     }
 
-    func testRequestWithoutParamsRoundTrip() throws {
+    @Test func testRequestWithoutParamsRoundTrip() throws {
         let message = JsonRpcMessage.request(
             JsonRpcRequest(id: .string("req-1"), method: "ping", params: nil)
         )
         let data = try JsonRpcCodec.encode(message)
         let decoded = try JsonRpcCodec.decode(data)
-        XCTAssertEqual(decoded, message)
+        #expect(decoded == message)
 
-        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
-        XCTAssertFalse(json.contains("\"params\""))
+        let json = try #require(String(data: data, encoding: .utf8))
+        #expect(!json.contains("\"params\""))
     }
 
-    func testNotificationRoundTrip() throws {
+    @Test func testNotificationRoundTrip() throws {
         let message = JsonRpcMessage.notification(
             JsonRpcNotification(method: "notifications/initialized", params: nil)
         )
         let data = try JsonRpcCodec.encode(message)
         let decoded = try JsonRpcCodec.decode(data)
-        XCTAssertEqual(decoded, message)
+        #expect(decoded == message)
 
-        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
-        XCTAssertFalse(json.contains("\"id\""))
-        XCTAssertFalse(json.contains("\"params\""))
+        let json = try #require(String(data: data, encoding: .utf8))
+        #expect(!json.contains("\"id\""))
+        #expect(!json.contains("\"params\""))
     }
 
-    func testNotificationWithParamsRoundTrip() throws {
+    @Test func testNotificationWithParamsRoundTrip() throws {
         let message = JsonRpcMessage.notification(
             JsonRpcNotification(
                 method: "notifications/progress",
@@ -50,10 +50,10 @@ final class JsonRpcMessageTests: XCTestCase {
         )
         let data = try JsonRpcCodec.encode(message)
         let decoded = try JsonRpcCodec.decode(data)
-        XCTAssertEqual(decoded, message)
+        #expect(decoded == message)
     }
 
-    func testSuccessResponseRoundTrip() throws {
+    @Test func testSuccessResponseRoundTrip() throws {
         let message = JsonRpcMessage.successResponse(
             JsonRpcSuccessResponse(
                 id: .number(7),
@@ -62,10 +62,10 @@ final class JsonRpcMessageTests: XCTestCase {
         )
         let data = try JsonRpcCodec.encode(message)
         let decoded = try JsonRpcCodec.decode(data)
-        XCTAssertEqual(decoded, message)
+        #expect(decoded == message)
     }
 
-    func testErrorResponseRoundTrip() throws {
+    @Test func testErrorResponseRoundTrip() throws {
         let message = JsonRpcMessage.errorResponse(
             JsonRpcErrorResponse(
                 id: .number(8),
@@ -74,32 +74,32 @@ final class JsonRpcMessageTests: XCTestCase {
         )
         let data = try JsonRpcCodec.encode(message)
         let decoded = try JsonRpcCodec.decode(data)
-        XCTAssertEqual(decoded, message)
+        #expect(decoded == message)
     }
 
-    func testErrorResponseWithNullIdEncodesAsJsonNull() throws {
+    @Test func testErrorResponseWithNullIdEncodesAsJsonNull() throws {
         let message = JsonRpcMessage.errorResponse(
             JsonRpcErrorResponse(id: nil, error: JsonRpcError.parseError())
         )
         let data = try JsonRpcCodec.encode(message)
-        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
-        XCTAssertTrue(json.contains("\"id\":null"))
+        let json = try #require(String(data: data, encoding: .utf8))
+        #expect(json.contains("\"id\":null"))
     }
 
-    func testErrorResponseWithExplicitNullIdRoundTrips() throws {
+    @Test func testErrorResponseWithExplicitNullIdRoundTrips() throws {
         let message = JsonRpcMessage.errorResponse(
             JsonRpcErrorResponse(id: .null, error: JsonRpcError.serverError())
         )
         let data = try JsonRpcCodec.encode(message)
         let decoded = try JsonRpcCodec.decode(data)
         if case .errorResponse(let response) = decoded {
-            XCTAssertEqual(response.id, .null)
+            #expect(response.id == .null)
         } else {
-            XCTFail("Expected errorResponse")
+            Issue.record("Expected errorResponse")
         }
     }
 
-    func testErrorResponseDataRoundTrip() throws {
+    @Test func testErrorResponseDataRoundTrip() throws {
         let message = JsonRpcMessage.errorResponse(
             JsonRpcErrorResponse(
                 id: .number(9),
@@ -112,10 +112,10 @@ final class JsonRpcMessageTests: XCTestCase {
         )
         let data = try JsonRpcCodec.encode(message)
         let decoded = try JsonRpcCodec.decode(data)
-        XCTAssertEqual(decoded, message)
+        #expect(decoded == message)
     }
 
-    func testErrorResponseWithoutDataOmitsField() throws {
+    @Test func testErrorResponseWithoutDataOmitsField() throws {
         let message = JsonRpcMessage.errorResponse(
             JsonRpcErrorResponse(
                 id: .number(10),
@@ -123,88 +123,88 @@ final class JsonRpcMessageTests: XCTestCase {
             )
         )
         let data = try JsonRpcCodec.encode(message)
-        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
-        XCTAssertFalse(json.contains("\"data\""))
+        let json = try #require(String(data: data, encoding: .utf8))
+        #expect(!json.contains("\"data\""))
     }
 
-    func testRejectsNon20JsonRpcVersion() {
+    @Test func testRejectsNon20JsonRpcVersion() {
         let raw = Data(#"{"jsonrpc":"1.0","id":1,"method":"ping"}"#.utf8)
-        XCTAssertThrowsError(try JsonRpcCodec.decode(raw)) { error in
+        if let error = #expect(throws: (any Error).self, performing: { try JsonRpcCodec.decode(raw) }) {
             guard case JsonRpcDecodingError.invalidJsonRpcVersion(let value) = error else {
-                XCTFail("Expected invalidJsonRpcVersion, got \(error)")
+                Issue.record("Expected invalidJsonRpcVersion, got \(error)")
                 return
             }
-            XCTAssertEqual(value, "1.0")
+            #expect(value == "1.0")
         }
     }
 
-    func testRejectsMissingJsonRpcVersion() {
+    @Test func testRejectsMissingJsonRpcVersion() {
         let raw = Data(#"{"id":1,"method":"ping"}"#.utf8)
-        XCTAssertThrowsError(try JsonRpcCodec.decode(raw)) { error in
-            XCTAssertEqual(error as? JsonRpcDecodingError, .missingJsonRpcVersion)
+        if let error = #expect(throws: (any Error).self, performing: { try JsonRpcCodec.decode(raw) }) {
+            #expect(error as? JsonRpcDecodingError == .missingJsonRpcVersion)
         }
     }
 
-    func testRejectsBatchArray() {
+    @Test func testRejectsBatchArray() {
         let raw = Data(#"[{"jsonrpc":"2.0","id":1,"method":"ping"}]"#.utf8)
-        XCTAssertThrowsError(try JsonRpcCodec.decode(raw)) { error in
-            XCTAssertEqual(error as? JsonRpcDecodingError, .batchUnsupported)
+        if let error = #expect(throws: (any Error).self, performing: { try JsonRpcCodec.decode(raw) }) {
+            #expect(error as? JsonRpcDecodingError == .batchUnsupported)
         }
     }
 
-    func testRejectsBatchArrayWithLeadingWhitespace() {
+    @Test func testRejectsBatchArrayWithLeadingWhitespace() {
         let raw = Data("   \n[{\"jsonrpc\":\"2.0\"}]".utf8)
-        XCTAssertThrowsError(try JsonRpcCodec.decode(raw)) { error in
-            XCTAssertEqual(error as? JsonRpcDecodingError, .batchUnsupported)
+        if let error = #expect(throws: (any Error).self, performing: { try JsonRpcCodec.decode(raw) }) {
+            #expect(error as? JsonRpcDecodingError == .batchUnsupported)
         }
     }
 
-    func testEncodeLineAppendsNewline() throws {
+    @Test func testEncodeLineAppendsNewline() throws {
         let message = JsonRpcMessage.notification(
             JsonRpcNotification(method: "ping", params: nil)
         )
         let data = try JsonRpcCodec.encodeLine(message)
-        XCTAssertEqual(data.last, 0x0A)
+        #expect(data.last == 0x0A)
     }
 
-    func testNullIdInRequestRoundTrips() throws {
+    @Test func testNullIdInRequestRoundTrips() throws {
         let message = JsonRpcMessage.request(
             JsonRpcRequest(id: .null, method: "test", params: nil)
         )
         let data = try JsonRpcCodec.encode(message)
         let decoded = try JsonRpcCodec.decode(data)
-        XCTAssertEqual(decoded, message)
+        #expect(decoded == message)
     }
 
-    func testRejectsAmbiguousMessageWithMethodAndResult() {
+    @Test func testRejectsAmbiguousMessageWithMethodAndResult() {
         let raw = Data(#"{"jsonrpc":"2.0","id":1,"method":"foo","result":1}"#.utf8)
-        XCTAssertThrowsError(try JsonRpcCodec.decode(raw)) { error in
-            XCTAssertEqual(error as? JsonRpcDecodingError, .ambiguousMessage)
+        if let error = #expect(throws: (any Error).self, performing: { try JsonRpcCodec.decode(raw) }) {
+            #expect(error as? JsonRpcDecodingError == .ambiguousMessage)
         }
     }
 
-    func testRejectsResultAndError() {
+    @Test func testRejectsResultAndError() {
         let raw = Data(#"{"jsonrpc":"2.0","id":1,"result":1,"error":{"code":-32000,"message":"x"}}"#.utf8)
-        XCTAssertThrowsError(try JsonRpcCodec.decode(raw)) { error in
-            XCTAssertEqual(error as? JsonRpcDecodingError, .ambiguousMessage)
+        if let error = #expect(throws: (any Error).self, performing: { try JsonRpcCodec.decode(raw) }) {
+            #expect(error as? JsonRpcDecodingError == .ambiguousMessage)
         }
     }
 
-    func testRejectsEmptyEnvelope() {
+    @Test func testRejectsEmptyEnvelope() {
         let raw = Data(#"{"jsonrpc":"2.0","id":1}"#.utf8)
-        XCTAssertThrowsError(try JsonRpcCodec.decode(raw)) { error in
-            XCTAssertEqual(error as? JsonRpcDecodingError, .missingResultOrError)
+        if let error = #expect(throws: (any Error).self, performing: { try JsonRpcCodec.decode(raw) }) {
+            #expect(error as? JsonRpcDecodingError == .missingResultOrError)
         }
     }
 
-    func testRejectsEnvelopeWithoutMethodOrIdEvenWithVersion() {
+    @Test func testRejectsEnvelopeWithoutMethodOrIdEvenWithVersion() {
         let raw = Data(#"{"jsonrpc":"2.0"}"#.utf8)
-        XCTAssertThrowsError(try JsonRpcCodec.decode(raw)) { error in
-            XCTAssertEqual(error as? JsonRpcDecodingError, .missingMethod)
+        if let error = #expect(throws: (any Error).self, performing: { try JsonRpcCodec.decode(raw) }) {
+            #expect(error as? JsonRpcDecodingError == .missingMethod)
         }
     }
 
-    func testSpecificationErrorCodesSurviveARoundTrip() throws {
+    @Test func testSpecificationErrorCodesSurviveARoundTrip() throws {
         for code in [
             JsonRpcErrorCode.headerMismatch,
             JsonRpcErrorCode.missingRequiredClientCapability,
@@ -214,11 +214,11 @@ final class JsonRpcMessageTests: XCTestCase {
                 JsonRpcErrorResponse(id: .number(1), error: JsonRpcError(code: code, message: "x"))
             )
             let decoded = try JsonRpcCodec.decode(try JsonRpcCodec.encode(message))
-            XCTAssertEqual(decoded, message, "code \(code) must survive the wire")
+            #expect(decoded == message, "code \(code) must survive the wire")
         }
     }
 
-    func testUnsupportedProtocolVersionDataRoundTrips() throws {
+    @Test func testUnsupportedProtocolVersionDataRoundTrips() throws {
         let payload = JsonValue.object([
             "supported": .array(MCPProtocolVersion.supportedRawValues.map { .string($0) }),
             "requested": .string("1999-01-01")
@@ -235,16 +235,13 @@ final class JsonRpcMessageTests: XCTestCase {
         )
         let decoded = try JsonRpcCodec.decode(try JsonRpcCodec.encode(message))
         guard case .errorResponse(let response) = decoded else {
-            XCTFail("Expected errorResponse")
+            Issue.record("Expected errorResponse")
             return
         }
-        XCTAssertEqual(
-            response.error.data?["supported"]?.arrayValue?.compactMap(\.stringValue),
-            MCPProtocolVersion.supportedRawValues
-        )
+        #expect(response.error.data?["supported"]?.arrayValue?.compactMap(\.stringValue) == MCPProtocolVersion.supportedRawValues)
     }
 
-    func testRequestMetaSurvivesTheWire() throws {
+    @Test func testRequestMetaSurvivesTheWire() throws {
         let params = JsonValue.object([
             "name": .string("run_query"),
             "_meta": .object([
@@ -255,37 +252,34 @@ final class JsonRpcMessageTests: XCTestCase {
         let message = JsonRpcMessage.request(JsonRpcRequest(id: .number(3), method: "tools/call", params: params))
         let decoded = try JsonRpcCodec.decode(try JsonRpcCodec.encode(message))
         guard case .request(let request) = decoded else {
-            XCTFail("Expected request")
+            Issue.record("Expected request")
             return
         }
-        XCTAssertTrue(MCPRequestMeta.declaresModernProtocol(params: request.params))
-        XCTAssertEqual(
-            MCPRequestMeta.metaObject(in: request.params)?[MCPMetaKeys.protocolVersion]?.stringValue,
-            MCPProtocolVersion.latest.rawValue
-        )
+        #expect(MCPRequestMeta.declaresModernProtocol(params: request.params))
+        #expect(MCPRequestMeta.metaObject(in: request.params)?[MCPMetaKeys.protocolVersion]?.stringValue == MCPProtocolVersion.latest.rawValue)
     }
 
-    func testNotificationCarriesNoIdAfterARoundTrip() throws {
+    @Test func testNotificationCarriesNoIdAfterARoundTrip() throws {
         let message = JsonRpcMessage.notification(
             JsonRpcNotification(method: "notifications/progress", params: .object(["progress": .double(0.25)]))
         )
         let data = try JsonRpcCodec.encode(message)
         let decoded = try JsonRpcCodec.decode(data)
         guard case .notification = decoded else {
-            XCTFail("Expected notification")
+            Issue.record("Expected notification")
             return
         }
-        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
-        XCTAssertFalse(json.contains("\"id\""))
+        let json = try #require(String(data: data, encoding: .utf8))
+        #expect(!json.contains("\"id\""))
     }
 
-    func testDecodeRejectsAJsonFragment() {
-        XCTAssertThrowsError(try JsonRpcCodec.decode(Data("\"hello\"".utf8)))
+    @Test func testDecodeRejectsAJsonFragment() {
+        #expect(throws: (any Error).self) { try JsonRpcCodec.decode(Data("\"hello\"".utf8)) }
     }
 
-    func testDecodeRejectsAnEmptyBody() {
-        XCTAssertThrowsError(try JsonRpcCodec.decode(Data())) { error in
-            XCTAssertEqual(error as? JsonRpcDecodingError, .missingJsonRpcVersion)
+    @Test func testDecodeRejectsAnEmptyBody() {
+        if let error = #expect(throws: (any Error).self, performing: { try JsonRpcCodec.decode(Data()) }) {
+            #expect(error as? JsonRpcDecodingError == .missingJsonRpcVersion)
         }
     }
 }

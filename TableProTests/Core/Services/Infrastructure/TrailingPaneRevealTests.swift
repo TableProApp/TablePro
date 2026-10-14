@@ -14,7 +14,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Trailing pane reveal", .serialized)
 @MainActor
 struct TrailingPaneRevealTests {
     // MARK: - The decision
@@ -87,51 +86,47 @@ struct TrailingPaneRevealTests {
 
     @Test("In Agent mode the pane toggle opens and closes the result column and stores nothing")
     func agentModePaneToggleActsOnTheResult() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness()
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            harness.paneState.surface = .assistant
-            harness.selected.contentMode = .agent
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        harness.paneState.surface = .assistant
+        harness.selected.contentMode = .agent
 
-            let item = Harness.menuItem(#selector(MainSplitViewController.toggleInspector(_:)))
-            #expect(harness.controller.validateMenuItem(item))
-            #expect(item.title == String(localized: "Show Result"))
+        let item = Harness.menuItem(#selector(MainSplitViewController.toggleInspector(_:)))
+        #expect(harness.controller.validateMenuItem(item))
+        #expect(item.title == String(localized: "Show Result"))
 
-            harness.controller.toggleInspector(nil)
-            #expect(harness.controller.isTrailingPaneOpen)
-            #expect(harness.controller.inspectorPaneHost.shown === harness.selected.panes.agentResult)
-            #expect(harness.paneState.surface == .assistant)
-            _ = harness.controller.validateMenuItem(item)
-            #expect(item.title == String(localized: "Hide Result"))
+        harness.controller.toggleInspector(nil)
+        #expect(harness.controller.isTrailingPaneOpen)
+        #expect(harness.controller.inspectorPaneHost.shown === harness.selected.panes.agentResult)
+        #expect(harness.paneState.surface == .assistant)
+        _ = harness.controller.validateMenuItem(item)
+        #expect(item.title == String(localized: "Hide Result"))
 
-            harness.controller.toggleInspector(nil)
-            #expect(!harness.controller.isTrailingPaneOpen)
-            #expect(harness.paneState.surface == .assistant)
-        }
+        harness.controller.toggleInspector(nil)
+        #expect(!harness.controller.isTrailingPaneOpen)
+        #expect(harness.paneState.surface == .assistant)
     }
 
     /// Both routes: the View menu's command, and `showAssistant()`, which Explain with AI and Fix with
     /// AI reach from the Query menu whatever the mode.
     @Test("In Agent mode Show Assistant is dimmed and neither route stores a browse preference")
     func agentModeAssistantStoresNothing() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness()
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            harness.paneState.surface = .inspector
-            harness.selected.contentMode = .agent
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        harness.paneState.surface = .inspector
+        harness.selected.contentMode = .agent
 
-            let item = Harness.menuItem(#selector(MainSplitViewController.toggleAssistant(_:)))
-            #expect(!harness.controller.validateMenuItem(item))
-            #expect(item.title == String(localized: "Show Assistant"))
+        let item = Harness.menuItem(#selector(MainSplitViewController.toggleAssistant(_:)))
+        #expect(!harness.controller.validateMenuItem(item))
+        #expect(item.title == String(localized: "Show Assistant"))
 
-            harness.controller.toggleAssistant(nil)
-            harness.controller.showAssistant()
+        harness.controller.toggleAssistant(nil)
+        harness.controller.showAssistant()
 
-            #expect(harness.paneState.surface == .inspector)
-            #expect(!harness.controller.isTrailingPaneOpen)
-        }
+        #expect(harness.paneState.surface == .inspector)
+        #expect(!harness.controller.isTrailingPaneOpen)
     }
 
     /// Show Assistant is dimmed in Agent mode on the strength of this command reaching the
@@ -140,44 +135,40 @@ struct TrailingPaneRevealTests {
     /// validation that read them dimmed Focus Assistant too, leaving no command to the composer.
     @Test("Focus Assistant reaches the composer in a window that opened in Agent mode")
     func focusAssistantInAWindowOpenedInAgentMode() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness(contentMode: .agent)
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            try #require(
-                harness.controller.commandActions == nil,
-                "The browse content mounted, so this is not the window the welcome route opens"
-            )
-            /// Stands in for the composer the conversation draws once a session has a provider to
-            /// answer it, which a unit test has no way to configure. The conversation is a pane of
-            /// its own, parented in place of the browse content, so that is where it goes.
-            let composer = ChatComposerNSTextView.make()
-            try #require(harness.controller.detailPaneHost.shown === harness.selected.panes.agentConversation)
-            harness.selected.panes.agentConversation.view.addSubview(composer)
+        let harness = try Harness(contentMode: .agent)
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        try #require(
+            harness.controller.commandActions == nil,
+            "The browse content mounted, so this is not the window the welcome route opens"
+        )
+        /// Stands in for the composer the conversation draws once a session has a provider to
+        /// answer it, which a unit test has no way to configure. The conversation is a pane of
+        /// its own, parented in place of the browse content, so that is where it goes.
+        let composer = ChatComposerNSTextView.make()
+        try #require(harness.controller.detailPaneHost.shown === harness.selected.panes.agentConversation)
+        harness.selected.panes.agentConversation.view.addSubview(composer)
 
-            let item = Harness.menuItem(#selector(MainSplitViewController.focusAssistant(_:)))
-            #expect(harness.controller.validateMenuItem(item))
+        let item = Harness.menuItem(#selector(MainSplitViewController.focusAssistant(_:)))
+        #expect(harness.controller.validateMenuItem(item))
 
-            harness.controller.focusAssistant(nil)
-            #expect(harness.window.firstResponder === composer)
-            #expect(!harness.controller.isTrailingPaneOpen)
-            #expect(harness.paneState.surface == .inspector)
-        }
+        harness.controller.focusAssistant(nil)
+        #expect(harness.window.firstResponder === composer)
+        #expect(!harness.controller.isTrailingPaneOpen)
+        #expect(harness.paneState.surface == .inspector)
     }
 
     @Test("A grid click leaves a pane closed on the assistant closed, and the choice stored")
     func gridClickKeepsTheAssistantChoice() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness()
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            harness.paneState.surface = .assistant
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        harness.paneState.surface = .assistant
 
-            harness.controller.revealInspectorForSelection()
+        harness.controller.revealInspectorForSelection()
 
-            #expect(!harness.controller.isTrailingPaneOpen)
-            #expect(harness.paneState.surface == .assistant)
-        }
+        #expect(!harness.controller.isTrailingPaneOpen)
+        #expect(harness.paneState.surface == .assistant)
     }
 
     @Test("A grid click opens a closed pane on the inspector")
@@ -199,92 +190,86 @@ struct TrailingPaneRevealTests {
     /// action, so the window follows on the next turn of the run loop.
     @Test("A surface picked in the header is parented after the picker's action returns")
     func headerChoiceIsParentedOnTheNextTurn() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness()
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            harness.controller.showInspector()
-            #expect(harness.controller.inspectorPaneHost.shown === harness.selected.panes.inspector)
-            /// A status event still queued from the injected session reparents the pane as well, as
-            /// any transition does, and would pass this case with no observer behind the picker.
-            Self.drainRunLoop()
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        harness.controller.showInspector()
+        #expect(harness.controller.inspectorPaneHost.shown === harness.selected.panes.inspector)
+        /// A status event still queued from the injected session reparents the pane as well, as
+        /// any transition does, and would pass this case with no observer behind the picker.
+        Self.drainRunLoop()
 
-            harness.paneState.surface = .assistant
+        harness.paneState.surface = .assistant
 
-            #expect(
-                harness.controller.inspectorPaneHost.shown === harness.selected.panes.inspector,
-                "The outgoing surface left the window from inside the write"
-            )
-            #expect(Self.turnRunLoop { harness.controller.inspectorPaneHost.shown === harness.selected.panes.assistant })
-            #expect(harness.controller.isAssistantVisible)
-        }
+        #expect(
+            harness.controller.inspectorPaneHost.shown === harness.selected.panes.inspector,
+            "The outgoing surface left the window from inside the write"
+        )
+        #expect(Self.turnRunLoop { harness.controller.inspectorPaneHost.shown === harness.selected.panes.assistant })
+        #expect(harness.controller.isAssistantVisible)
     }
 
     @Test("Visibility follows the surface the pane draws, not the one stored")
     func visibilityFollowsTheDrawnSurface() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness()
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            harness.controller.showAssistant()
-            #expect(harness.controller.isAssistantVisible)
-            #expect(!harness.controller.isInspectorVisible)
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        harness.controller.showAssistant()
+        #expect(harness.controller.isAssistantVisible)
+        #expect(!harness.controller.isInspectorVisible)
 
-            harness.selected.contentMode = .agent
+        harness.selected.contentMode = .agent
 
-            #expect(!harness.controller.isAssistantVisible)
-            #expect(!harness.controller.isInspectorVisible)
-            #expect(harness.paneState.surface == .assistant)
-        }
+        #expect(!harness.controller.isAssistantVisible)
+        #expect(!harness.controller.isInspectorVisible)
+        #expect(harness.paneState.surface == .assistant)
     }
 
     /// Table Info reads its numbers only while the inspector says it is drawn, so a background
     /// workspace or a pane on another surface must never say so.
     @Test("Only the selected workspace's inspector is on screen, and only while the pane is open")
     func inspectorIsOnScreenOnlyForTheSelectedOpenPane() throws {
-        try AIFeatureScope.enabled {
-            let harness = try Harness()
-            defer { harness.tearDown() }
-            try harness.requireContent()
-            let backgroundConnection = TestFixtures.makeConnection(name: "Background")
-            let backgroundState = TrailingPaneState()
-            let background = ConnectionWorkspace(
-                connectionId: backgroundConnection.id,
-                payload: nil,
-                autoConnect: false,
-                payloadConnection: backgroundConnection,
-                session: nil,
-                sessionState: nil,
-                trailingPaneState: backgroundState,
-                phase: .idle
-            )
-            harness.controller.workspaces.insert(background, select: false)
-            defer {
-                harness.controller.workspaces.remove(background.connectionId)
-                background.teardown()
-            }
-            harness.paneState.surface = .inspector
-            #expect(!harness.paneState.inspector.isOnScreen)
-
-            harness.controller.showInspector()
-            #expect(harness.paneState.inspector.isOnScreen)
-            #expect(!backgroundState.inspector.isOnScreen)
-
-            harness.controller.showAssistant()
-            #expect(!harness.paneState.inspector.isOnScreen)
-
-            harness.controller.showInspector()
-            harness.controller.workspaces.select(background.connectionId)
-            #expect(!harness.paneState.inspector.isOnScreen)
-            #expect(backgroundState.inspector.isOnScreen)
-
-            harness.controller.workspaces.select(harness.selected.connectionId)
-            #expect(harness.paneState.inspector.isOnScreen)
-            #expect(!backgroundState.inspector.isOnScreen)
-
-            harness.controller.hideTrailingPane()
-            #expect(!harness.paneState.inspector.isOnScreen)
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        let backgroundConnection = TestFixtures.makeConnection(name: "Background")
+        let backgroundState = TrailingPaneState()
+        let background = ConnectionWorkspace(
+            connectionId: backgroundConnection.id,
+            payload: nil,
+            autoConnect: false,
+            payloadConnection: backgroundConnection,
+            session: nil,
+            sessionState: nil,
+            trailingPaneState: backgroundState,
+            phase: .idle
+        )
+        harness.controller.workspaces.insert(background, select: false)
+        defer {
+            harness.controller.workspaces.remove(background.connectionId)
+            background.teardown()
         }
+        harness.paneState.surface = .inspector
+        #expect(!harness.paneState.inspector.isOnScreen)
+
+        harness.controller.showInspector()
+        #expect(harness.paneState.inspector.isOnScreen)
+        #expect(!backgroundState.inspector.isOnScreen)
+
+        harness.controller.showAssistant()
+        #expect(!harness.paneState.inspector.isOnScreen)
+
+        harness.controller.showInspector()
+        harness.controller.workspaces.select(background.connectionId)
+        #expect(!harness.paneState.inspector.isOnScreen)
+        #expect(backgroundState.inspector.isOnScreen)
+
+        harness.controller.workspaces.select(harness.selected.connectionId)
+        #expect(harness.paneState.inspector.isOnScreen)
+        #expect(!backgroundState.inspector.isOnScreen)
+
+        harness.controller.hideTrailingPane()
+        #expect(!harness.paneState.inspector.isOnScreen)
     }
 
     // MARK: - Helpers
@@ -337,15 +322,14 @@ struct TrailingPaneRevealTests {
         let paneState: TrailingPaneState
         let window: NSWindow
         private let connection: DatabaseConnection
-        private let defaults: UserDefaults
-        private let suiteName: String
+        private let suite: EphemeralDefaults
 
         /// `contentMode` is set before the window is built, which is how the welcome window's Open in
         /// Agent Mode lands: the mode is on before the connect, so the browse content never mounts.
         init(contentMode: ConnectionWorkspaceContentMode = .browse) throws {
             connection = TestFixtures.makeConnection(name: "Trailing", type: .mysql)
-            suiteName = "TrailingPaneRevealTests.\(UUID().uuidString)"
-            defaults = try #require(UserDefaults(suiteName: suiteName))
+            suite = try EphemeralDefaults()
+            let defaults = suite.defaults
             let registryDirectory = FileManager.default.temporaryDirectory
                 .appendingPathComponent("TrailingPaneRevealTests-\(UUID().uuidString)", isDirectory: true)
             paneState = TrailingPaneState(
@@ -407,7 +391,7 @@ struct TrailingPaneRevealTests {
             window.contentViewController = nil
             selected.teardown()
             DatabaseManager.shared.removeSession(for: connection.id)
-            defaults.removePersistentDomain(forName: suiteName)
+            suite.defaults.removePersistentDomain(forName: suite.suiteName)
         }
     }
 }

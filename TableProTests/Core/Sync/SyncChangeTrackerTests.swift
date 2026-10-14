@@ -11,13 +11,13 @@ import Testing
 
 @MainActor
 struct SyncChangeTrackerTests {
+    private let suite: EphemeralDefaults
     private let metadata: SyncMetadataStorage
     private let tracker: SyncChangeTracker
 
     init() throws {
-        let unique = UUID().uuidString
-        let syncDefaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.SyncChangeTracker.\(unique)"))
-        metadata = SyncMetadataStorage(userDefaults: syncDefaults)
+        suite = try EphemeralDefaults()
+        metadata = SyncMetadataStorage(userDefaults: suite.defaults)
         tracker = SyncChangeTracker(metadataStorage: metadata)
     }
 

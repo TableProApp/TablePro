@@ -7,11 +7,12 @@
 //  dropped and created one again left it without the unique index its concurrent refresh needs.
 //
 
+import Foundation
 @testable import TablePro
 import TableProPluginKit
-import XCTest
+import Testing
 
-final class MaterializedViewIndexCompareTests: XCTestCase {
+struct MaterializedViewIndexCompareTests {
     private let definition = "CREATE MATERIALIZED VIEW public.mv AS SELECT id, customer FROM orders WITH DATA;"
 
     private let uniqueId = PluginIndexInfo(name: "mv_id_idx", columns: ["id"], isUnique: true)
@@ -44,52 +45,57 @@ final class MaterializedViewIndexCompareTests: XCTestCase {
 
     // MARK: - Differences
 
-    func testAnIndexOnlyDifferenceIsADifference() throws {
-        let result = try XCTUnwrap(compare(
+    @Test
+    func anIndexOnlyDifferenceIsADifference() throws {
+        let result = try #require(compare(
             source: read(indexes: .read([uniqueId])),
             target: read(indexes: .read([]))
         ))
 
-        XCTAssertEqual(result.status, .differs)
-        XCTAssertTrue(result.definitionMatches)
-        XCTAssertEqual(result.changes.map(\.description), ["Add index 'mv_id_idx'"])
-        XCTAssertEqual(result.suggestedAction, .alter)
+        #expect(result.status == .differs)
+        #expect(result.definitionMatches)
+        #expect(result.changes.map(\.description) == ["Add index 'mv_id_idx'"])
+        #expect(result.suggestedAction == .alter)
     }
 
-    func testEqualIndexSetsAreIdentical() {
+    @Test
+    func equalIndexSetsAreIdentical() {
         let result = compare(
             source: read(indexes: .read([uniqueId, customer])),
             target: read(indexes: .read([customer, uniqueId]))
         )
 
-        XCTAssertEqual(result?.status, .identical)
-        XCTAssertEqual(result?.changes.count, 0)
+        #expect(result?.status == .identical)
+        #expect(result?.changes.count == 0)
     }
 
-    func testTheSameIndexUnderAnotherNameIsANoteRatherThanAChange() {
+    @Test
+    func theSameIndexUnderAnotherNameIsANoteRatherThanAChange() {
         let renamed = PluginIndexInfo(name: "mv_id_key", columns: ["id"], isUnique: true)
 
         let result = compare(source: read(indexes: .read([uniqueId])), target: read(indexes: .read([renamed])))
 
-        XCTAssertEqual(result?.changes.count, 0)
-        XCTAssertEqual(result?.notes.count, 1)
+        #expect(result?.changes.count == 0)
+        #expect(result?.notes.count == 1)
     }
 
-    func testADefinitionDifferenceStillListsTheIndexChanges() throws {
-        let result = try XCTUnwrap(compare(
+    @Test
+    func aDefinitionDifferenceStillListsTheIndexChanges() throws {
+        let result = try #require(compare(
             source: read("CREATE MATERIALIZED VIEW public.mv AS SELECT id FROM orders;", indexes: .read([uniqueId])),
             target: read(indexes: .read([customer]))
         ))
 
-        XCTAssertEqual(result.status, .differs)
-        XCTAssertFalse(result.definitionMatches)
-        XCTAssertEqual(result.sourceIndexes?.map(\.name), ["mv_id_idx"])
-        XCTAssertEqual(result.targetIndexes?.map(\.name), ["mv_customer_idx"])
+        #expect(result.status == .differs)
+        #expect(!result.definitionMatches)
+        #expect(result.sourceIndexes?.map(\.name) == ["mv_id_idx"])
+        #expect(result.targetIndexes?.map(\.name) == ["mv_customer_idx"])
     }
 
     // MARK: - Failed reads
 
-    func testAFailedIndexReadOnEitherSideIsNotCompared() {
+    @Test
+    func aFailedIndexReadOnEitherSideIsNotCompared() {
         let sourceFailed = compare(
             source: read(indexes: .failed("permission denied for pg_index")),
             target: read(indexes: .read([uniqueId]))
@@ -100,80 +106,88 @@ final class MaterializedViewIndexCompareTests: XCTestCase {
         )
 
         for result in [sourceFailed, targetFailed] {
-            XCTAssertEqual(result?.comparisonError?.contains("permission denied for pg_index"), true)
-            XCTAssertEqual(result?.suggestedAction, .skip)
-            XCTAssertEqual(result?.availableActions, [.skip])
-            XCTAssertEqual(result?.changes.count, 0, "no DROP INDEX may come from a read that failed")
+            #expect(result?.comparisonError?.contains("permission denied for pg_index") == true)
+            #expect(result?.suggestedAction == .skip)
+            #expect(result?.availableActions == [.skip])
+            #expect(result?.changes.count == 0, "no DROP INDEX may come from a read that failed")
         }
-        XCTAssertEqual(sourceFailed?.comparisonError?.contains("source"), true)
-        XCTAssertEqual(targetFailed?.comparisonError?.contains("target"), true)
+        #expect(sourceFailed?.comparisonError?.contains("source") == true)
+        #expect(targetFailed?.comparisonError?.contains("target") == true)
     }
 
-    func testAViewWhoseIndexesCouldNotBeReadIsNeverCreated() {
+    @Test
+    func aViewWhoseIndexesCouldNotBeReadIsNeverCreated() {
         let result = compare(source: read(indexes: .failed("denied")), target: nil)
 
-        XCTAssertEqual(result?.status, .onlyInSource)
-        XCTAssertNotNil(result?.comparisonError)
-        XCTAssertEqual(result?.suggestedAction, .skip)
+        #expect(result?.status == .onlyInSource)
+        #expect(result?.comparisonError != nil)
+        #expect(result?.suggestedAction == .skip)
     }
 
-    func testATargetWhoseIndexesCouldNotBeReadCanStillBeDropped() {
+    @Test
+    func aTargetWhoseIndexesCouldNotBeReadCanStillBeDropped() {
         let result = compare(source: nil, target: read(indexes: .failed("denied")))
 
-        XCTAssertNil(result?.comparisonError)
-        XCTAssertEqual(result?.suggestedAction, .drop)
+        #expect(result?.comparisonError == nil)
+        #expect(result?.suggestedAction == .drop)
     }
 
     // MARK: - Engines that do not carry them
 
-    func testATargetThatTakesNoIndexesComparesTheDefinitionAlone() {
+    @Test
+    func aTargetThatTakesNoIndexesComparesTheDefinitionAlone() {
         let result = compare(
             source: read(indexes: .read([uniqueId])),
             target: read(indexes: nil),
             targetCarries: false
         )
 
-        XCTAssertEqual(result?.status, .identical)
-        XCTAssertNil(result?.sourceIndexes)
-        XCTAssertEqual(result?.showsIndexes, false)
+        #expect(result?.status == .identical)
+        #expect(result?.sourceIndexes == nil)
+        #expect(result?.showsIndexes == false)
     }
 
-    func testASourceThatReportsNoIndexesComparesTheDefinitionAlone() {
+    @Test
+    func aSourceThatReportsNoIndexesComparesTheDefinitionAlone() {
         let result = compare(source: read(indexes: nil), target: read(indexes: .read([uniqueId])))
 
-        XCTAssertEqual(result?.status, .identical)
-        XCTAssertNil(result?.sourceIndexes)
+        #expect(result?.status == .identical)
+        #expect(result?.sourceIndexes == nil)
     }
 
-    func testACreateOnATargetThatTakesNoIndexesSaysTheyAreLeftOut() {
+    @Test
+    func aCreateOnATargetThatTakesNoIndexesSaysTheyAreLeftOut() {
         let result = compare(source: read(indexes: .read([uniqueId])), target: nil, targetCarries: false)
 
-        XCTAssertEqual(result?.notes, [SourceObjectIndexes.notCarriedByTargetNote])
-        XCTAssertNil(result?.sourceIndexes)
+        #expect(result?.notes == [SourceObjectIndexes.notCarriedByTargetNote])
+        #expect(result?.sourceIndexes == nil)
     }
 
-    func testACreateCarriesTheSourcesIndexes() {
+    @Test
+    func aCreateCarriesTheSourcesIndexes() {
         let result = compare(source: read(indexes: .read([uniqueId, customer])), target: nil)
 
-        XCTAssertEqual(result?.sourceIndexes?.map(\.name), ["mv_id_idx", "mv_customer_idx"])
-        XCTAssertEqual(result?.showsIndexes, true)
+        #expect(result?.sourceIndexes?.map(\.name) == ["mv_id_idx", "mv_customer_idx"])
+        #expect(result?.showsIndexes == true)
     }
 
     // MARK: - What the definitions pane shows
 
-    func testTheIndexLinesAreDisplayedApartFromTheDefinition() throws {
-        let result = try XCTUnwrap(compare(
+    @Test
+    func theIndexLinesAreDisplayedApartFromTheDefinition() throws {
+        let result = try #require(compare(
             source: read(indexes: .read([uniqueId])),
             target: read(indexes: .read([]))
         ))
 
-        XCTAssertEqual(result.sourceIndexLines, ["UNIQUE INDEX mv_id_idx (id) USING BTREE"])
-        XCTAssertEqual(result.targetIndexLines, [])
-        XCTAssertFalse(result.sourceDefinition.joined().contains("INDEX"))
+        #expect(result.sourceIndexLines == ["UNIQUE INDEX mv_id_idx (id) USING BTREE"])
+        #expect(result.targetIndexLines == [])
+        #expect(!(result.sourceDefinition.joined().contains("INDEX")))
     }
 
-    func testAnIndexOnlyDifferenceCountsItsChangesInTheResultsList() throws {
-        let result = try XCTUnwrap(compare(
+    @Test
+    func anIndexOnlyDifferenceCountsItsChangesInTheResultsList() throws {
+        let result = try #require(compare(
             source: read(indexes: .read([uniqueId, customer])),
             target: read(indexes: .read([]))
         ))
@@ -182,6 +196,6 @@ final class MaterializedViewIndexCompareTests: XCTestCase {
             from: [result], sortedUsing: [KeyPathComparator(\CompareResultRow.objectName)]
         ).first
 
-        XCTAssertEqual(row?.changeSummary, String(format: String(localized: "%d changes"), 2))
+        #expect(row?.changeSummary == String(format: String(localized: "%d changes"), 2))
     }
 }

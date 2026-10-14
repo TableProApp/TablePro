@@ -9,14 +9,9 @@ import Testing
 @testable import TableProPostgreSQLCore
 
 struct LibPQByteaDecoderHexTests {
-    @Test("Empty input returns empty Data")
-    func emptyInput() {
-        #expect(LibPQByteaDecoder.decode("") == Data())
-    }
-
-    @Test("Empty hex (\\x with no digits) returns empty Data")
-    func emptyHexPrefix() {
-        #expect(LibPQByteaDecoder.decode("\\x") == Data())
+    @Test("Empty input, and \\x with no digits, return empty Data", arguments: ["", "\\x"])
+    func emptyInput(_ input: String) {
+        #expect(LibPQByteaDecoder.decode(input) == Data())
     }
 
     @Test("Single byte 0x00 round-trips")
@@ -29,19 +24,9 @@ struct LibPQByteaDecoderHexTests {
         #expect(LibPQByteaDecoder.decode("\\xff") == Data([0xFF]))
     }
 
-    @Test("Lowercase hex parses correctly")
-    func lowercaseHex() {
-        #expect(LibPQByteaDecoder.decode("\\xdeadbeef") == Data([0xDE, 0xAD, 0xBE, 0xEF]))
-    }
-
-    @Test("Uppercase hex parses correctly")
-    func uppercaseHex() {
-        #expect(LibPQByteaDecoder.decode("\\xDEADBEEF") == Data([0xDE, 0xAD, 0xBE, 0xEF]))
-    }
-
-    @Test("Mixed-case hex parses correctly")
-    func mixedCaseHex() {
-        #expect(LibPQByteaDecoder.decode("\\xDeAdBeEf") == Data([0xDE, 0xAD, 0xBE, 0xEF]))
+    @Test("Hex parses in lowercase, uppercase and mixed case", arguments: ["\\xdeadbeef", "\\xDEADBEEF", "\\xDeAdBeEf"])
+    func hexInAnyCase(_ input: String) {
+        #expect(LibPQByteaDecoder.decode(input) == Data([0xDE, 0xAD, 0xBE, 0xEF]))
     }
 
     @Test("Uppercase \\X prefix accepted")
@@ -49,14 +34,9 @@ struct LibPQByteaDecoderHexTests {
         #expect(LibPQByteaDecoder.decode("\\X48656c6c6f") == Data([0x48, 0x65, 0x6C, 0x6C, 0x6F]))
     }
 
-    @Test("Odd hex length returns nil")
-    func oddHexLength() {
-        #expect(LibPQByteaDecoder.decode("\\xabc") == nil)
-    }
-
-    @Test("Non-hex character returns nil")
-    func nonHexCharacter() {
-        #expect(LibPQByteaDecoder.decode("\\xdeadXX") == nil)
+    @Test("Odd hex length or a non-hex character returns nil", arguments: ["\\xabc", "\\xdeadXX"])
+    func malformedHex(_ input: String) {
+        #expect(LibPQByteaDecoder.decode(input) == nil)
     }
 
     @Test("Embedded NUL byte 0x00 mid-stream round-trips")
@@ -106,14 +86,9 @@ struct LibPQByteaDecoderEscapeTests {
         #expect(LibPQByteaDecoder.decode("\\000") == Data([0x00]))
     }
 
-    @Test("Bare backslash with insufficient digits returns nil")
-    func badEscapeShort() {
-        #expect(LibPQByteaDecoder.decode("\\1") == nil)
-    }
-
-    @Test("Backslash followed by non-octal returns nil")
-    func badEscapeNonOctal() {
-        #expect(LibPQByteaDecoder.decode("\\xyz") == nil)
+    @Test("Backslash with too few digits, or followed by non-octal, returns nil", arguments: ["\\1", "\\xyz"])
+    func badEscape(_ input: String) {
+        #expect(LibPQByteaDecoder.decode(input) == nil)
     }
 
     @Test("Bare trailing backslash returns nil")

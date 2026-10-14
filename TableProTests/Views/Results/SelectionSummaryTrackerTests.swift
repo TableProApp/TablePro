@@ -1,14 +1,10 @@
-//
-//  SelectionSummaryTrackerTests.swift
-//  TableProTests
-//
-
 import AppKit
 import Foundation
 import SwiftUI
 @testable import TablePro
 import TableProNumberFormatting
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -39,34 +35,25 @@ private final class SummaryInputBox {
 /// Holds the first computation open until the test lets it go, after it has its result.
 private actor SummaryComputeGate {
     private var callCount = 0
-    private var hasEntered = false
-    private var isOpen = false
-    private var enteredWaiters: [CheckedContinuation<Void, Never>] = []
-    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+    private let entered = AsyncGate()
+    private let release = AsyncGate()
 
     func compute(_ input: SelectionSummaryInput) async throws -> SelectionSummary {
         callCount += 1
         let isFirst = callCount == 1
         let summary = try await SelectionSummaryCalculator().summarize(input)
         guard isFirst else { return summary }
-        hasEntered = true
-        for waiter in enteredWaiters { waiter.resume() }
-        enteredWaiters.removeAll()
-        if !isOpen {
-            await withCheckedContinuation { releaseWaiters.append($0) }
-        }
+        await entered.open()
+        await release.wait()
         return summary
     }
 
     func waitUntilEntered() async {
-        guard !hasEntered else { return }
-        await withCheckedContinuation { enteredWaiters.append($0) }
+        await entered.wait()
     }
 
-    func open() {
-        isOpen = true
-        for waiter in releaseWaiters { waiter.resume() }
-        releaseWaiters.removeAll()
+    func open() async {
+        await release.open()
     }
 }
 

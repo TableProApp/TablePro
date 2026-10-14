@@ -100,7 +100,7 @@ struct ConnectionLocalStatePurgeTests {
         #expect(await recordedQueries(storage, connectionId: second).isEmpty)
     }
 
-    private func makeFavorites() -> (SQLFavoriteManager, SyncMetadataStorage) {
+    private func makeFavorites(defaults: UserDefaults) -> (SQLFavoriteManager, SyncMetadataStorage) {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("purge_favorites_\(UUID().uuidString).db")
@@ -108,7 +108,7 @@ struct ConnectionLocalStatePurgeTests {
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true
         )
         let metadata = SyncMetadataStorage(
-            userDefaults: UserDefaults(suiteName: "tablepro-purge-\(UUID().uuidString)") ?? .standard,
+            userDefaults: defaults,
             prefix: "tests.\(UUID().uuidString)"
         )
         let manager = SQLFavoriteManager(
@@ -129,8 +129,9 @@ struct ConnectionLocalStatePurgeTests {
     /// The device that deleted the connection already told CloudKit. A tombstone from here sends
     /// its own deletion back at it.
     @Test("A remote purge removes the SQL favorites without tombstoning them")
-    func remotePurgeLeavesNoFavoriteTombstone() async {
-        let (favorites, metadata) = makeFavorites()
+    func remotePurgeLeavesNoFavoriteTombstone() async throws {
+        let suite = try EphemeralDefaults()
+        let (favorites, metadata) = makeFavorites(defaults: suite.defaults)
         let (history, _) = makeHistory()
         let deleted = UUID()
         let favorite = await seedFavorite(favorites, connectionId: deleted)
@@ -144,8 +145,9 @@ struct ConnectionLocalStatePurgeTests {
     }
 
     @Test("A local purge tombstones the SQL favorites it removes")
-    func localPurgeTombstonesFavorites() async {
-        let (favorites, metadata) = makeFavorites()
+    func localPurgeTombstonesFavorites() async throws {
+        let suite = try EphemeralDefaults()
+        let (favorites, metadata) = makeFavorites(defaults: suite.defaults)
         let (history, _) = makeHistory()
         let deleted = UUID()
         let favorite = await seedFavorite(favorites, connectionId: deleted)
@@ -216,9 +218,8 @@ struct ConnectionLocalStatePurgeTests {
     @Test("Purging a connection takes its trailing pane preferences with it")
     @MainActor
     func purgeClearsTrailingPaneKeys() throws {
-        let suite = "tablepro-purge-pane-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let deleted = UUID()
 
         defaults.set(TrailingPaneSurface.assistant.rawValue, forKey: TrailingPaneState.surfaceKey(deleted))
@@ -235,9 +236,8 @@ struct ConnectionLocalStatePurgeTests {
     @Test("Purging one connection leaves another connection's trailing pane alone")
     @MainActor
     func purgeLeavesOtherTrailingPanesAlone() throws {
-        let suite = "tablepro-purge-pane-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let deleted = UUID()
         let kept = UUID()
 

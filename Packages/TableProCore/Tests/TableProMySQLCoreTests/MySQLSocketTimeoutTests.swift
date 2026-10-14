@@ -8,14 +8,9 @@ import Testing
 @testable import TableProMySQLCore
 
 struct MySQLSocketTimeoutTests {
-    @Test("No limit maps to an infinite socket timeout")
-    func noLimitIsInfinite() {
-        #expect(mysqlSocketTimeoutSeconds(forQueryTimeout: 0) == 0)
-    }
-
-    @Test("A negative query timeout maps to an infinite socket timeout")
-    func negativeIsInfinite() {
-        #expect(mysqlSocketTimeoutSeconds(forQueryTimeout: -5) == 0)
+    @Test("No limit, or a negative query timeout, maps to an infinite socket timeout", arguments: [0, -5])
+    func noLimitIsInfinite(_ queryTimeout: Int) {
+        #expect(mysqlSocketTimeoutSeconds(forQueryTimeout: queryTimeout) == 0)
     }
 
     @Test("A finite query timeout adds the grace period")

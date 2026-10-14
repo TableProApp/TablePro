@@ -1,8 +1,3 @@
-//
-//  DataGridRowViewSetValueTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -28,15 +23,9 @@ struct DataGridRowViewSetValueTests {
         #expect(presets == ["NOW()", "CURRENT_TIMESTAMP"])
     }
 
-    @Test("TIME column offers CURRENT_TIME only")
-    func timeColumnOffersCurrentTime() {
-        let presets = DataGridRowView.dateValueFunctions(for: .timestamp(rawType: "TIME"))
-        #expect(presets == ["CURRENT_TIME"])
-    }
-
-    @Test("TIMETZ column offers CURRENT_TIME only")
-    func timetzColumnOffersCurrentTime() {
-        let presets = DataGridRowView.dateValueFunctions(for: .timestamp(rawType: "TIMETZ"))
+    @Test("TIME and TIMETZ columns offer CURRENT_TIME only", arguments: ["TIME", "TIMETZ"])
+    func timeColumnOffersCurrentTime(rawType: String) {
+        let presets = DataGridRowView.dateValueFunctions(for: .timestamp(rawType: rawType))
         #expect(presets == ["CURRENT_TIME"])
     }
 

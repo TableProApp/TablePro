@@ -1,8 +1,3 @@
-//
-//  QuickSwitcherRecentIdentityTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 @testable import TableProUtilities
@@ -10,11 +5,17 @@ import Testing
 
 @MainActor
 struct QuickSwitcherRecentIdentityTests {
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
     private let connectionId = UUID()
     private let start = Date()
 
     private func makeDefaults() -> UserDefaults? {
-        UserDefaults(suiteName: "QuickSwitcherRecentIdentityTests.\(UUID().uuidString)")
+        suite.defaults
     }
 
     private func table(_ name: String) -> TableInfo {

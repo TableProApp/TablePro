@@ -33,7 +33,7 @@ private final class StubMetadataProvider: ScopedMetadataProviding {
     func browseScope(for connectionId: UUID) -> DatabaseScope? { nil }
 }
 
-private final class RecordingCopyDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class RecordingCopyDriver: PluginDriverStub, @unchecked Sendable {
     private let lock = NSLock()
     private var statements: [String] = []
     private var transactions: [String] = []
@@ -52,9 +52,6 @@ private final class RecordingCopyDriver: PluginDatabaseDriver, @unchecked Sendab
 
     func sessionTransactionState() async -> PluginSessionTransactionState { lock.withLock { state } }
 
-    func connect() async throws {}
-    func disconnect() {}
-
     func execute(query: String) async throws -> PluginQueryResult {
         lock.withLock { statements.append(query) }
         return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
@@ -63,21 +60,6 @@ private final class RecordingCopyDriver: PluginDatabaseDriver, @unchecked Sendab
     func beginTransaction() async throws { lock.withLock { transactions.append("begin") } }
     func commitTransaction() async throws { lock.withLock { transactions.append("commit") } }
     func rollbackTransaction() async throws { lock.withLock { transactions.append("rollback") } }
-
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
-    }
 }
 
 @MainActor

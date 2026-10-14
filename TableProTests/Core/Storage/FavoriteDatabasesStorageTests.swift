@@ -12,14 +12,11 @@ import Testing
 @MainActor
 struct FavoriteDatabasesStorageTests {
     private static let storageKey = "com.TablePro.favoriteDatabases"
+    private let pool = EphemeralDefaultsPool()
 
     private func makeStorage() throws -> (FavoriteDatabasesStorage, UserDefaults, SyncMetadataStorage) {
-        let favoritesSuite = "FavoriteDatabasesStorageTests.favorites.\(UUID().uuidString)"
-        let syncSuite = "FavoriteDatabasesStorageTests.sync.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: favoritesSuite))
-        let syncDefaults = try #require(UserDefaults(suiteName: syncSuite))
-        defaults.removePersistentDomain(forName: favoritesSuite)
-        syncDefaults.removePersistentDomain(forName: syncSuite)
+        let defaults = try pool.make().defaults
+        let syncDefaults = try pool.make().defaults
 
         let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
         let storage = FavoriteDatabasesStorage(

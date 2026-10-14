@@ -1,11 +1,6 @@
-//
-//  JSONRowInspectorViewModelTests.swift
-//  TableProTests
-//
-//  What the JSON inspector does with a row that changes under it while a foreign key is still
-//  being fetched. A rerun keeps a row's identity while its values move, so a fetched row held
-//  against a node path is the wrong row the moment the values do.
-//
+// What the JSON inspector does with a row that changes under it while a foreign key is still
+// being fetched. A rerun keeps a row's identity while its values move, so a fetched row held
+// against a node path is the wrong row the moment the values do.
 
 import AppKit
 import Foundation
@@ -13,19 +8,6 @@ import TableProPluginKit
 import Testing
 
 @testable import TablePro
-
-private final class JSONInspectorClipboard: ClipboardProvider {
-    var texts: [String] = []
-
-    func readText() -> String? { texts.last }
-    func readGridRows() -> GridRowsClipboardPayload? { nil }
-    func writeText(_ text: String) { texts.append(text) }
-    func writeCsv(_ csv: String) {}
-    func writeImage(_ image: NSImage) {}
-    func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) {}
-    var hasText: Bool { !texts.isEmpty }
-    var hasGridRows: Bool { false }
-}
 
 @MainActor
 struct JSONRowInspectorViewModelTests {
@@ -65,9 +47,14 @@ struct JSONRowInspectorViewModelTests {
     }
 
     /// Lets the model's fetch task run up to its first suspension point, which is where it hands
-    /// the gate its continuation. Nothing can be released before that has happened.
+    /// the gate its continuation. Nothing can be released before that has happened. Each pass waits
+    /// for one main-queue turn, which runs every main-actor job queued before it.
     private func settle() async {
-        for _ in 0..<8 { await Task.yield() }
+        for _ in 0..<8 {
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { continuation.resume() }
+            }
+        }
     }
 
     private static func snapshot(
@@ -96,7 +83,7 @@ struct JSONRowInspectorViewModelTests {
     }
 
     /// A row with one nested document, so there is a container to close besides the root.
-    private static func documentSnapshot(rowIdentity: String = "tab\u{001F}existing(0)") -> JSONRowSnapshot {
+    fileprivate static func documentSnapshot(rowIdentity: String = "tab\u{001F}existing(0)") -> JSONRowSnapshot {
         JSONRowSnapshot(
             rowIdentity: rowIdentity,
             columns: ["id", "meta"],
@@ -420,22 +407,22 @@ struct JSONRowInspectorViewModelTests {
 
         #expect(keys(in: model) == ["ArtistId", "ArtistId", "Name"])
     }
+}
 
-    // MARK: - Clipboard
+extension GlobalStateSuites {
+    @Suite(.recordingClipboard)
+    @MainActor
+    struct JSONRowInspectorCopyTests {
+        @Test("Copy Visible writes the lines on screen through the clipboard service")
+        func copyVisibleWritesTheFilteredLines() throws {
+            let clipboard = try #require(RecordingClipboard.current)
+            let model = JSONRowInspectorViewModel { _, _, _, _ in nil }
+            model.update(snapshot: JSONRowInspectorViewModelTests.documentSnapshot())
+            model.filterText = "teal"
+            model.toggle(row: try #require(model.displayRows.first { $0.key == .name("meta") && $0.token != .closeObject }))
+            model.copyVisible()
 
-    @Test("Copy Visible writes the lines on screen through the clipboard service")
-    func copyVisibleWritesTheFilteredLines() throws {
-        let original = ClipboardService.shared
-        defer { ClipboardService.shared = original }
-        let clipboard = JSONInspectorClipboard()
-        ClipboardService.shared = clipboard
-
-        let model = makeModel(gate: FetchGate())
-        model.update(snapshot: Self.documentSnapshot())
-        model.filterText = "teal"
-        model.toggle(row: try metaRow(in: model))
-        model.copyVisible()
-
-        #expect(clipboard.texts == ["{\n  \"meta\": {…}\n}"])
+            #expect(clipboard.writes == ["{\n  \"meta\": {…}\n}"])
+        }
     }
 }

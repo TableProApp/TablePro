@@ -1,6 +1,7 @@
 import Foundation
 @testable import TableProDatabase
 @testable import TableProModels
+import TableProTestSupport
 import Testing
 
 // MARK: - Mock Types
@@ -81,32 +82,6 @@ final class MockSecureStore: SecureStore, Sendable {
 
 // MARK: - Synchronisation Helpers
 
-actor Gate {
-    private var isOpen = false
-    private var hasEntered = false
-    private var blocked: [CheckedContinuation<Void, Never>] = []
-    private var observers: [CheckedContinuation<Void, Never>] = []
-
-    func enter() async {
-        hasEntered = true
-        for observer in observers { observer.resume() }
-        observers.removeAll()
-        guard !isOpen else { return }
-        await withCheckedContinuation { blocked.append($0) }
-    }
-
-    func open() {
-        isOpen = true
-        for waiter in blocked { waiter.resume() }
-        blocked.removeAll()
-    }
-
-    func waitUntilEntered() async {
-        guard !hasEntered else { return }
-        await withCheckedContinuation { observers.append($0) }
-    }
-}
-
 actor Flag {
     private(set) var isRaised = false
 
@@ -128,17 +103,9 @@ actor OrderLog {
     }
 }
 
-/// How an attempt run on its own task ended, for a test that has to be able to stop waiting for it.
-///
-/// A test must never end on `await task.value`: that ignores the awaiting task's own cancellation, so
-/// `.timeLimit` cannot break it, and a task group never leaves scope while one of its children is
-/// awaiting one. Work that never lands then hangs the whole run instead of failing the one test that
-/// asked for it. Polling a recorded outcome is a wait the test can give up on, which is what turns
-/// that hang back into a failure.
+// Polled, never awaited: `await task.value` ignores the waiter's own cancellation, so `.timeLimit` cannot end it.
 actor AttemptOutcome<Success: Sendable> {
-    private static var pollInterval: Duration { .milliseconds(10) }
-
-    private var result: Result<Success, any Error>?
+    private(set) var result: Result<Success, any Error>?
 
     func record(_ work: @Sendable () async throws -> Success) async {
         do {
@@ -148,20 +115,10 @@ actor AttemptOutcome<Success: Sendable> {
             result = .failure(error)
         }
     }
-
-    func settled(within limit: Duration) async -> Result<Success, any Error>? {
-        let deadline = ContinuousClock.now + limit
-        while result == nil, ContinuousClock.now < deadline, !Task.isCancelled {
-            try? await Task.sleep(for: Self.pollInterval)
-        }
-        return result
-    }
 }
 
+// Bounded, so teardowns run one at a time fail the overlap count instead of hanging.
 actor Barrier {
-    private static let pollInterval: UInt64 = 20_000_000
-    private static let maxPolls = 250
-
     private let expected: Int
     private var arrived = 0
     private(set) var overlapped = 0
@@ -172,12 +129,7 @@ actor Barrier {
 
     func arriveAndWait() async {
         arrived += 1
-        var polls = 0
-        while arrived < expected, polls < Self.maxPolls {
-            try? await Task.sleep(nanoseconds: Self.pollInterval)
-            polls += 1
-        }
-        guard arrived >= expected else { return }
+        guard (try? await waitUntil(timeout: .seconds(5)) { self.arrived >= self.expected }) != nil else { return }
         overlapped += 1
     }
 }

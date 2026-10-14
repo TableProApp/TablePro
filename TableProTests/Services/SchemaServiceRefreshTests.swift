@@ -1,13 +1,9 @@
-//
-//  SchemaServiceRefreshTests.swift
-//  TableProTests
-//
-
 import Foundation
 import TableProPluginKit
 import Testing
 
 @testable import TablePro
+import TableProTestSupport
 
 private final class RefreshMockDriver: DatabaseDriver, @unchecked Sendable {
     let connection: DatabaseConnection
@@ -150,7 +146,7 @@ struct SchemaServiceRefreshTests {
     }
 
     @Test("A load for a new scope does not adopt the in-flight load for the old scope")
-    func loadsForDifferentScopesDoNotJoin() async {
+    func loadsForDifferentScopesDoNotJoin() async throws {
         let connectionId = UUID()
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = RefreshMockDriver(connection: connection)
@@ -184,7 +180,7 @@ struct SchemaServiceRefreshTests {
                 scope: analytics
             )
         }
-        await Task.yield()
+        try await waitUntil { driver.tablesCallCount == 2 }
         driver.resumeFetchTables()
         await first.value
         await second.value
@@ -236,7 +232,11 @@ struct SchemaServiceRefreshTests {
             await service.waitForRefresh(connectionId: connectionId)
             waiterFinished = true
         }
-        await Task.yield()
+        // The waiter is a main-actor task queued ahead of this block, and a refresh that let it
+        // through would let it finish without suspending.
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
         #expect(!waiterFinished)
 
         driver.resumeFetchTables()

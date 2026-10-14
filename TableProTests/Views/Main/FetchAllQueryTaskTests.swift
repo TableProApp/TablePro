@@ -1,14 +1,10 @@
-//
-//  FetchAllQueryTaskTests.swift
-//  TableProTests
-//
-//  Fetch All installs a query handle under the tab's id and has to retire it on every exit. The
-//  cancelled exit did not: it cleared the loading flag and returned, so a finished fetch stayed
-//  installed and the next execution on that tab read it as a live displaced entry and cancelled it.
-//
+// Fetch All installs a query handle under the tab's id and has to retire it on every exit. The
+// cancelled exit did not: it cleared the loading flag and returned, so a finished fetch stayed
+// installed and the next execution on that tab read it as a live displaced entry and cancelled it.
 
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 @Suite("Fetch All query handle", .serialized)
@@ -49,7 +45,7 @@ struct FetchAllQueryTaskTests {
             return
         }
         handle.cancel()
-        driver.release()
+        await driver.release()
         await handle.value
 
         #expect(coordinator.queryTasks.hasTask(for: tab.id) == false)
@@ -65,30 +61,24 @@ private final class GatedQueryDriver: DatabaseDriver, @unchecked Sendable {
     var status: ConnectionStatus = .connected
     var serverVersion: String? { nil }
 
-    private let lock = NSLock()
-    private var startedQuery = false
-    private var released = false
+    private let answer = AsyncGate()
 
     init(connection: DatabaseConnection) {
         self.connection = connection
     }
 
+    /// Bounded, so a fetch that never queries fails on the missing handle rather than hanging.
     func waitUntilRunning() async {
-        for _ in 0 ..< 500 {
-            if lock.withLock({ startedQuery }) { return }
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        _ = await BoundedCall.result { [answer] in await answer.arrived(1) }
     }
 
-    func release() {
-        lock.withLock { released = true }
+    func release() async {
+        await answer.open()
     }
 
+    /// The gate ignores cancellation, so the answer still comes back after the task is cancelled.
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
-        lock.withLock { startedQuery = true }
-        while !lock.withLock({ released }) {
-            await Task.yield()
-        }
+        await answer.wait()
         return Self.emptyResult
     }
 

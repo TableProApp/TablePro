@@ -9,7 +9,7 @@ import UniformTypeIdentifiers
 
 struct InstalledPluginsView: View {
     @ObservedObject private var pluginManager = PluginManager.shared
-    @ObservedObject private var registryClient = RegistryClient.shared
+    @ObservedObject private var registryClient: RegistryClient
     @ObservedObject private var installTracker = PluginInstallTracker.shared
     @ObservedObject private var navigation = PluginsSettingsNavigation.shared
 
@@ -20,6 +20,10 @@ struct InstalledPluginsView: View {
     @State private var errorAlertMessage = ""
     @State private var dismissedRestartBanner = false
     @State private var dismissedRejectedBanner = false
+
+    init(registryClient: RegistryClient = .shared) {
+        self.registryClient = registryClient
+    }
 
     private var filteredPlugins: [PluginEntry] {
         if searchText.isEmpty { return pluginManager.plugins }

@@ -1146,3 +1146,57 @@ struct DatabaseMenuCommandTests {
             == #selector(MainSplitViewController.retryConnection))
     }
 }
+
+@MainActor
+struct MainMenuBuilderTests {
+    private func modeItems(in menu: NSMenu) throws -> [NSMenuItem] {
+        let view = try #require(menu.items.first { $0.title == String(localized: "View") }?.submenu)
+        let mode = try #require(view.items.first { $0.title == String(localized: "Mode") }?.submenu)
+        return mode.items.filter { $0.action == ContentModeMenuDelegate.action }
+    }
+
+    /// A radio pair, never both ticked. With no connection window nothing validates the pair, so a
+    /// fresh menu bar ticks neither; a window that validates it ticks the mode its connection is in.
+    @Test("View > Mode never ticks both Browse and Agent")
+    func modePairIsNeverBothTicked() throws {
+        let items = try modeItems(in: buildMenu())
+        #expect(items.map(\.title) == ConnectionWorkspaceContentMode.allCases.map(\.localizedTitle))
+        #expect(items.allSatisfy { $0.state == .off })
+
+        let connection = TestFixtures.makeConnection(name: "Mode pair")
+        for mode in ConnectionWorkspaceContentMode.allCases {
+            let workspace = ConnectionWorkspace(
+                connectionId: connection.id,
+                payload: nil,
+                autoConnect: false,
+                payloadConnection: connection,
+                session: nil,
+                sessionState: nil,
+                trailingPaneState: nil,
+                phase: .connecting
+            )
+            workspace.contentMode = mode
+            let controller = MainSplitViewController(payload: nil, sessionState: nil, adopting: workspace)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1_000, height: 600),
+                styleMask: [.titled],
+                backing: .buffered,
+                defer: false
+            )
+            window.isReleasedWhenClosed = false
+            window.contentViewController = controller
+            defer {
+                window.contentViewController = nil
+                workspace.teardown()
+            }
+
+            for item in items {
+                _ = controller.validateMenuItem(item)
+            }
+
+            let ticked = items.filter { $0.state == .on }
+            #expect(ticked.count == 1, "\(mode)")
+            #expect(ticked.first?.representedObject as? String == workspace.resolvedContentMode.rawValue, "\(mode)")
+        }
+    }
+}

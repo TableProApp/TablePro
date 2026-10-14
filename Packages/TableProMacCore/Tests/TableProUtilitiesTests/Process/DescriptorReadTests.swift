@@ -87,11 +87,7 @@ struct DescriptorReadTests {
         #expect(!DescriptorRead.hasInputWithoutWaiting(descriptor))
 
         try pipe.fileHandleForWriting.close()
-        let deadline = ContinuousClock.now + .seconds(10)
-        while !DescriptorRead.hasInputWithoutWaiting(descriptor), ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(5))
-        }
-        #expect(DescriptorRead.hasInputWithoutWaiting(descriptor))
+        try await waitUntil { DescriptorRead.hasInputWithoutWaiting(descriptor) }
     }
 
     @Test("On a non-blocking pipe the next read waits for bytes instead of failing with EAGAIN", .timeLimit(.minutes(1)))

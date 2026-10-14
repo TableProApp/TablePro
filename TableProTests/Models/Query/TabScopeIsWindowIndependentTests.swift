@@ -1,34 +1,19 @@
-//
-//  TabScopeIsWindowIndependentTests.swift
-//  TableProTests
-//
-//  A macOS window tab is a full NSWindow the user can drag out at any time, so
-//  "Move Tab to New Window" has to be semantically a no-op. That holds only while a
-//  tab's target is a pure function of the tab and its connection. #2026 was what
-//  happened when it was not: the tab read the window's sidebar selection instead.
-//
+// A macOS window tab is a full NSWindow the user can drag out at any time, so
+// "Move Tab to New Window" has to be semantically a no-op. That holds only while a
+// tab's target is a pure function of the tab and its connection. When it was not,
+// the tab read the window's sidebar selection instead.
 
 import Foundation
 @testable import TablePro
 import TableProPluginKit
 import Testing
 
-@Suite("A tab's scope is independent of the window showing it", .serialized)
 @MainActor
 struct TabScopeIsWindowIndependentTests {
-    private static func makeCoordinator(
-        connection: DatabaseConnection,
-        tab: QueryTab
-    ) -> MainContentCoordinator {
-        let tabManager = QueryTabManager()
-        tabManager.tabs.append(tab)
-        tabManager.selectedTabId = tab.id
-        return MainContentCoordinator(
-            connection: connection,
-            tabManager: tabManager,
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
+    private static func makeWindow(connection: DatabaseConnection, tab: QueryTab) -> CoordinatorFixture {
+        let window = CoordinatorFixture(connection: connection)
+        window.addTab(tab)
+        return window
     }
 
     private static func makeTab(database: String, schema: String?) -> QueryTab {
@@ -48,14 +33,14 @@ struct TabScopeIsWindowIndependentTests {
         var browsingOrders = ConnectionSession(connection: connection)
         browsingOrders.browseDatabase = "orders"
         DatabaseManager.shared.injectSession(browsingOrders, for: connection.id)
-        let windowOnOrders = Self.makeCoordinator(connection: connection, tab: tab)
-        let scopeFromOrders = try #require(windowOnOrders.scope(for: tab))
+        let windowOnOrders = Self.makeWindow(connection: connection, tab: tab)
+        let scopeFromOrders = try #require(windowOnOrders.coordinator.scope(for: tab))
 
         var browsingInventory = ConnectionSession(connection: connection)
         browsingInventory.browseDatabase = "inventory"
         DatabaseManager.shared.injectSession(browsingInventory, for: connection.id)
-        let windowOnInventory = Self.makeCoordinator(connection: connection, tab: tab)
-        let scopeFromInventory = try #require(windowOnInventory.scope(for: tab))
+        let windowOnInventory = Self.makeWindow(connection: connection, tab: tab)
+        let scopeFromInventory = try #require(windowOnInventory.coordinator.scope(for: tab))
 
         #expect(scopeFromOrders == scopeFromInventory)
         #expect(scopeFromOrders.database == "orders")
@@ -73,8 +58,8 @@ struct TabScopeIsWindowIndependentTests {
         session.browseSchema = "dbo"
         DatabaseManager.shared.injectSession(session, for: connection.id)
 
-        let coordinator = Self.makeCoordinator(connection: connection, tab: tab)
-        let scope = try #require(coordinator.scope(for: tab))
+        let window = Self.makeWindow(connection: connection, tab: tab)
+        let scope = try #require(window.coordinator.scope(for: tab))
 
         #expect(scope.database == "orders")
         #expect(scope.schema == "sales")
@@ -91,8 +76,8 @@ struct TabScopeIsWindowIndependentTests {
         session.browseDatabase = "inventory"
         DatabaseManager.shared.injectSession(session, for: connection.id)
 
-        let coordinator = Self.makeCoordinator(connection: connection, tab: tab)
-        let seeded = try #require(coordinator.scope(for: tab))
+        let window = Self.makeWindow(connection: connection, tab: tab)
+        let seeded = try #require(window.coordinator.scope(for: tab))
 
         #expect(seeded.database == "inventory")
     }

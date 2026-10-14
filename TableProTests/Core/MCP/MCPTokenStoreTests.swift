@@ -13,6 +13,7 @@ import Foundation
 import TableProMCP
 import TableProMCPTestSupport
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @testable import TablePro
@@ -358,9 +359,10 @@ struct MCPTokenStoreTests {
         }
 
         await store.revoke(tokenId: result.token.id)
-        try? await Task.sleep(for: .milliseconds(100))
+        let key = result.token.id.uuidString
+        try await waitUntil { await recorder.keys().contains(key) }
 
-        #expect(await recorder.keys().contains(result.token.id.uuidString))
+        #expect(await recorder.keys().contains(key))
     }
 
     @Test("Deleting drops the token from the list entirely")

@@ -1,8 +1,3 @@
-//
-//  SOCKSProxyManagerTests.swift
-//  TableProTests
-//
-
 import Foundation
 import Network
 import os
@@ -11,30 +6,13 @@ import Testing
 @testable import TablePro
 import TableProTestSupport
 
-@Suite("SOCKS proxy manager", .serialized)
 struct SOCKSProxyManagerTests {
     private func config(port: Int, username: String = "") -> SOCKSProxyConfiguration {
         SOCKSProxyConfiguration(host: "127.0.0.1", port: port, username: username)
     }
 
-    private func waitUntil(
-        timeout: Duration = .seconds(2),
-        _ condition: @escaping @Sendable () -> Bool
-    ) async -> Bool {
-        let deadline = ContinuousClock.now.advanced(by: timeout)
-        while ContinuousClock.now < deadline {
-            if condition() { return true }
-            try? await Task.sleep(for: .milliseconds(5))
-        }
-        return condition()
-    }
-
-    private func expectPortEventuallyFree(_ port: Int, host: String = "127.0.0.1") async {
-        for _ in 0..<100 {
-            if await !LoopbackPort.isReachable(host: host, port: port) { return }
-            try? await Task.sleep(for: .milliseconds(50))
-        }
-        #expect(await !LoopbackPort.isReachable(host: host, port: port))
+    private func expectPortEventuallyFree(_ port: Int, host: String = "127.0.0.1") async throws {
+        try await waitUntil { await !LoopbackPort.isReachable(host: host, port: port) }
     }
 
     @Test("invalid configuration is rejected without touching the network")
@@ -207,7 +185,7 @@ struct SOCKSProxyManagerTests {
             )
         }
         defer { creation.cancel() }
-        try #require(await waitUntil { server.acceptedConnectionCount > 0 })
+        try await waitUntil { server.acceptedConnectionCount > 0 }
 
         let result = try #require(await BoundedCall.result(within: .seconds(2)) {
             await creation.result
@@ -240,7 +218,7 @@ struct SOCKSProxyManagerTests {
             )
         }
         defer { creation.cancel() }
-        try await Task.sleep(nanoseconds: 200_000_000)
+        try await waitUntil { server.acceptedConnectionCount > 0 }
         let started = Date()
         creation.cancel()
         let result = try #require(await BoundedCall.result(within: .seconds(2)) {
@@ -261,11 +239,12 @@ struct SOCKSProxyManagerTests {
         try await server.start()
         defer { server.stop() }
 
-        let manager = SOCKSProxyManager(connectTimeout: 30)
+        let skew = OSAllocatedUnfairLock(initialState: Duration.zero)
+        let manager = SOCKSProxyManager(connectTimeout: 30, now: { .now.advanced(by: skew.withLock { $0 }) })
         let connectionId = UUID()
         let deadline = ConnectionDeadline(
             configuredSeconds: 30,
-            instant: ContinuousClock.now.advanced(by: .seconds(1))
+            instant: ContinuousClock.now.advanced(by: .seconds(10))
         )
         let localPort = try await manager.createTunnel(
             connectionId: connectionId,
@@ -277,21 +256,19 @@ struct SOCKSProxyManagerTests {
         )
         defer { Task { try await manager.closeTunnel(connectionId: connectionId) } }
 
-        try await Task.sleep(for: .milliseconds(1_050))
+        skew.withLock { $0 = .seconds(11) }
         let client = try await TestTCPClient.connect(port: localPort)
         defer { client.cancel() }
 
-        for _ in 0..<100 {
-            if let failure = await manager.consumeLastConnectionFailure(connectionId: connectionId) {
-                #expect(failure == ConnectionTimeoutError(
-                    endpoint: .proxy("127.0.0.1:\(server.port)"),
-                    configuredSeconds: 30
-                ))
-                return
-            }
-            try await Task.sleep(for: .milliseconds(10))
+        var failure: ConnectionTimeoutError?
+        try await waitUntil {
+            failure = await manager.consumeLastConnectionFailure(connectionId: connectionId)
+            return failure != nil
         }
-        Issue.record("The first relay did not report the original connection deadline")
+        #expect(failure == ConnectionTimeoutError(
+            endpoint: .proxy("127.0.0.1:\(server.port)"),
+            configuredSeconds: 30
+        ))
     }
 
     @Test("two concurrent clients relay independently through one tunnel")
@@ -351,7 +328,7 @@ struct SOCKSProxyManagerTests {
         try await manager.closeTunnel(connectionId: connectionId)
         #expect(await !manager.hasTunnel(connectionId: connectionId))
         #expect(await manager.getLocalPort(connectionId: connectionId) == nil)
-        await expectPortEventuallyFree(localPort)
+        try await expectPortEventuallyFree(localPort)
     }
 
     @Test("recreating a tunnel for the same connection replaces the old one")
@@ -379,7 +356,7 @@ struct SOCKSProxyManagerTests {
         defer { Task { try await manager.closeTunnel(connectionId: connectionId) } }
 
         #expect(await manager.getLocalPort(connectionId: connectionId) == secondPort)
-        await expectPortEventuallyFree(firstPort)
+        try await expectPortEventuallyFree(firstPort)
     }
 }
 

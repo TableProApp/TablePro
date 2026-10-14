@@ -3,14 +3,16 @@
 //  TableProTests
 //
 
+import Foundation
 @testable import TablePro
 import TableProPluginKit
-import XCTest
+import Testing
 
-final class SQLDialectDescriptorTests: XCTestCase {
+struct SQLDialectDescriptorTests {
     // MARK: - SQLDialectDescriptor Creation
 
-    func testDescriptorCreation() {
+    @Test
+    func descriptorCreation() {
         let descriptor = SQLDialectDescriptor(
             identifierQuote: "`",
             keywords: ["SELECT", "FROM", "WHERE"],
@@ -18,13 +20,14 @@ final class SQLDialectDescriptorTests: XCTestCase {
             dataTypes: ["INT", "VARCHAR"]
         )
 
-        XCTAssertEqual(descriptor.identifierQuote, "`")
-        XCTAssertEqual(descriptor.keywords, ["SELECT", "FROM", "WHERE"])
-        XCTAssertEqual(descriptor.functions, ["COUNT", "SUM"])
-        XCTAssertEqual(descriptor.dataTypes, ["INT", "VARCHAR"])
+        #expect(descriptor.identifierQuote == "`")
+        #expect(descriptor.keywords == ["SELECT", "FROM", "WHERE"])
+        #expect(descriptor.functions == ["COUNT", "SUM"])
+        #expect(descriptor.dataTypes == ["INT", "VARCHAR"])
     }
 
-    func testDescriptorWithEmptySets() {
+    @Test
+    func descriptorWithEmptySets() {
         let descriptor = SQLDialectDescriptor(
             identifierQuote: "\"",
             keywords: [],
@@ -32,16 +35,17 @@ final class SQLDialectDescriptorTests: XCTestCase {
             dataTypes: []
         )
 
-        XCTAssertEqual(descriptor.identifierQuote, "\"")
-        XCTAssertTrue(descriptor.keywords.isEmpty)
-        XCTAssertTrue(descriptor.functions.isEmpty)
-        XCTAssertTrue(descriptor.dataTypes.isEmpty)
+        #expect(descriptor.identifierQuote == "\"")
+        #expect(descriptor.keywords.isEmpty)
+        #expect(descriptor.functions.isEmpty)
+        #expect(descriptor.dataTypes.isEmpty)
     }
 
     // MARK: - PluginDialectAdapter
 
     @MainActor
-    func testPluginDialectAdapterWrapsDescriptor() {
+    @Test
+    func pluginDialectAdapterWrapsDescriptor() {
         let descriptor = SQLDialectDescriptor(
             identifierQuote: "[",
             keywords: ["SELECT", "TOP", "NOLOCK"],
@@ -51,14 +55,15 @@ final class SQLDialectDescriptorTests: XCTestCase {
 
         let adapter = PluginDialectAdapter(descriptor: descriptor)
 
-        XCTAssertEqual(adapter.identifierQuote, "[")
-        XCTAssertEqual(adapter.keywords, ["SELECT", "TOP", "NOLOCK"])
-        XCTAssertEqual(adapter.functions, ["LEN", "GETDATE"])
-        XCTAssertEqual(adapter.dataTypes, ["NVARCHAR", "BIT"])
+        #expect(adapter.identifierQuote == "[")
+        #expect(adapter.keywords == ["SELECT", "TOP", "NOLOCK"])
+        #expect(adapter.functions == ["LEN", "GETDATE"])
+        #expect(adapter.dataTypes == ["NVARCHAR", "BIT"])
     }
 
     @MainActor
-    func testPluginDialectAdapterConformsToSQLDialectProvider() {
+    @Test
+    func pluginDialectAdapterConformsToSQLDialectProvider() {
         let descriptor = SQLDialectDescriptor(
             identifierQuote: "`",
             keywords: ["SELECT", "FROM"],
@@ -68,34 +73,36 @@ final class SQLDialectDescriptorTests: XCTestCase {
 
         let adapter: SQLDialectProvider = PluginDialectAdapter(descriptor: descriptor)
 
-        XCTAssertTrue(adapter.isKeyword("SELECT"))
-        XCTAssertTrue(adapter.isKeyword("select"))
-        XCTAssertFalse(adapter.isKeyword("NONEXISTENT"))
+        #expect(adapter.isKeyword("SELECT"))
+        #expect(adapter.isKeyword("select"))
+        #expect(!adapter.isKeyword("NONEXISTENT"))
 
-        XCTAssertTrue(adapter.isFunction("COUNT"))
-        XCTAssertTrue(adapter.isFunction("count"))
-        XCTAssertFalse(adapter.isFunction("NONEXISTENT"))
+        #expect(adapter.isFunction("COUNT"))
+        #expect(adapter.isFunction("count"))
+        #expect(!adapter.isFunction("NONEXISTENT"))
 
-        XCTAssertTrue(adapter.isDataType("INT"))
-        XCTAssertTrue(adapter.isDataType("int"))
-        XCTAssertFalse(adapter.isDataType("NONEXISTENT"))
+        #expect(adapter.isDataType("INT"))
+        #expect(adapter.isDataType("int"))
+        #expect(!adapter.isDataType("NONEXISTENT"))
     }
 
-    func testTextCastTypeNameDefaultsToNil() {
+    @Test
+    func textCastTypeNameDefaultsToNil() {
         let descriptor = SQLDialectDescriptor(
             identifierQuote: "`", keywords: [], functions: [], dataTypes: []
         )
-        XCTAssertNil(descriptor.textCastTypeName)
+        #expect(descriptor.textCastTypeName == nil)
     }
 
-    func testTextCastTypeNameSurvivesCaseSensitivityRestyle() {
+    @Test
+    func textCastTypeNameSurvivesCaseSensitivityRestyle() {
         let descriptor = SQLDialectDescriptor(
             identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
             caseSensitivityStyle: .ilikeOperator, textCastTypeName: "TEXT"
         )
         let restyled = descriptor.withCaseSensitivityStyle(.caseFoldFunction)
-        XCTAssertEqual(descriptor.textCastTypeName, "TEXT")
-        XCTAssertEqual(restyled.textCastTypeName, "TEXT")
-        XCTAssertEqual(restyled.caseSensitivityStyle, .caseFoldFunction)
+        #expect(descriptor.textCastTypeName == "TEXT")
+        #expect(restyled.textCastTypeName == "TEXT")
+        #expect(restyled.caseSensitivityStyle == .caseFoldFunction)
     }
 }

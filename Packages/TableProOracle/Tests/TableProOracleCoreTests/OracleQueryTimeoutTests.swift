@@ -1,16 +1,17 @@
+import Foundation
 @testable import TableProOracleCore
-import XCTest
+import Testing
 
-final class OracleQueryTimeoutTests: XCTestCase {
-    func testTimeoutBoundsCannotOverflowNativeUnits() {
+struct OracleQueryTimeoutTests {
+    @Test func testTimeoutBoundsCannotOverflowNativeUnits() {
         let maximum = OracleQueryTimeout.maximumSeconds
 
-        XCTAssertEqual(OracleQueryTimeout.boundedSeconds(maximum), maximum)
-        XCTAssertEqual(OracleQueryTimeout.boundedSeconds(maximum + 1), maximum)
-        XCTAssertEqual(OracleQueryTimeout.boundedSeconds(Int.max), maximum)
-        XCTAssertEqual(OracleQueryTimeout.boundedSeconds(-1), 0)
-        XCTAssertEqual(OracleQueryTimeout.nanoseconds(Double(maximum)), UInt64(maximum) * 1_000_000_000)
-        XCTAssertEqual(OracleQueryTimeout.nanoseconds(.infinity), UInt64(maximum) * 1_000_000_000)
-        XCTAssertEqual(OracleQueryTimeout.nanoseconds(.nan), 0)
+        #expect(OracleQueryTimeout.boundedSeconds(maximum) == maximum)
+        #expect(OracleQueryTimeout.boundedSeconds(maximum + 1) == maximum)
+        #expect(OracleQueryTimeout.boundedSeconds(Int.max) == maximum)
+        #expect(OracleQueryTimeout.boundedSeconds(-1) == 0)
+        #expect(OracleQueryTimeout.nanoseconds(Double(maximum)) == UInt64(maximum) * 1_000_000_000)
+        #expect(OracleQueryTimeout.nanoseconds(.infinity) == UInt64(maximum) * 1_000_000_000)
+        #expect(OracleQueryTimeout.nanoseconds(.nan) == 0)
     }
 }

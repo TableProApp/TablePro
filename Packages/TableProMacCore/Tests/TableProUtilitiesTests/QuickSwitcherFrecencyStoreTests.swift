@@ -3,15 +3,21 @@ import Foundation
 import Testing
 
 final class QuickSwitcherFrecencyStoreTests {
-    private let suiteName = "QuickSwitcherFrecencyTests.\(UUID().uuidString)"
+    // A suite named by a path keeps its plist in the directory, out of ~/Library/Preferences.
+    private let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("QuickSwitcherFrecencyTests-\(UUID().uuidString)", isDirectory: true)
+    private let suiteName: String
     private let suite: UserDefaults
 
     init() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        suiteName = directory.appendingPathComponent("defaults", isDirectory: false).path
         suite = try #require(UserDefaults(suiteName: suiteName))
     }
 
     deinit {
         suite.removePersistentDomain(forName: suiteName)
+        try? FileManager.default.removeItem(at: directory)
     }
 
     private func makeStore() -> (store: QuickSwitcherFrecencyStore, defaults: UserDefaults, connectionId: UUID) {

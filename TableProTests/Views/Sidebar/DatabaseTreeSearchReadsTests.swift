@@ -1,12 +1,8 @@
-//
-//  DatabaseTreeSearchReadsTests.swift
-//  TableProTests
-//
-
 import AppKit
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 /// A real outline over the shared tree service, on a PGlite session so every read stays on the
@@ -119,12 +115,6 @@ struct DatabaseTreeSearchReadsTests {
         }
     }
 
-    private func waitUntil(_ condition: () -> Bool) async {
-        for _ in 0..<300 where !condition() {
-            try? await Task.sleep(nanoseconds: 10_000_000)
-        }
-    }
-
     @Test("The flat list shows a match in two unopened schemas without reading either")
     func flatSearchReadsNoSchema() async throws {
         let fixture = try await makeFixture(layout: .flat)
@@ -161,7 +151,7 @@ struct DatabaseTreeSearchReadsTests {
         let timesheets = try #require(schemaNode(fixture, "timesheets"))
 
         fixture.outlineView.expandItem(timesheets)
-        await waitUntil {
+        try await waitUntil {
             service.tablesLoadState(connectionId: fixture.connection.id, database: "shop", schema: "timesheets").value != nil
         }
         fixture.coordinator.refresh()
@@ -183,7 +173,7 @@ struct DatabaseTreeSearchReadsTests {
 
         service.markListsStale(connectionId: connectionId)
         fixture.coordinator.refresh()
-        await waitUntil { service.isTablesCurrent(connectionId: connectionId, database: "shop", schema: "attendance") }
+        try await waitUntil { service.isTablesCurrent(connectionId: connectionId, database: "shop", schema: "attendance") }
 
         #expect(Array(fixture.driver.fetchSchemaTablesCalls.dropFirst(readsBefore)) == ["attendance"])
         #expect(!service.isTablesCurrent(connectionId: connectionId, database: "shop", schema: "payroll"))

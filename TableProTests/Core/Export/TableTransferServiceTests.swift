@@ -10,7 +10,7 @@ import Testing
 @testable import TablePro
 
 /// Serves one table's rows as a source, and records what reaches it as a destination.
-private final class TransferStubDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class TransferStubDriver: PluginDriverStub, @unchecked Sendable {
     let header: [String]
     let rows: [PluginRow]
     let columns: [String]
@@ -42,9 +42,6 @@ private final class TransferStubDriver: PluginDatabaseDriver, @unchecked Sendabl
         }
     }
 
-    func connect() async throws {}
-    func disconnect() {}
-
     func execute(query: String) async throws -> PluginQueryResult {
         executedQueries.append(query)
         return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
@@ -56,25 +53,8 @@ private final class TransferStubDriver: PluginDatabaseDriver, @unchecked Sendabl
         return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
     }
 
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         columns.map { PluginColumnInfo(name: $0, dataType: "TEXT") }
-    }
-
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-
-    func fetchDatabases() async throws -> [String] { [] }
-
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 }
 

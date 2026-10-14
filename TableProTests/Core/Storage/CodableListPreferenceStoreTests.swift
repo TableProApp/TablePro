@@ -13,9 +13,10 @@ struct CodableListPreferenceStoreTests {
         var label: String
     }
 
+    private let pool = EphemeralDefaultsPool()
+
     private func makeStore() throws -> CodableListPreferenceStore<Item> {
-        let defaults = try #require(UserDefaults(suiteName: "codablelist-\(UUID().uuidString)"))
-        return CodableListPreferenceStore(key: DefaultsKey<[Item]>("com.TablePro.test.items"), store: defaults)
+        CodableListPreferenceStore(key: DefaultsKey<[Item]>("com.TablePro.test.items"), store: try pool.make().defaults)
     }
 
     @Test("Loading an unset key returns an empty list")

@@ -17,7 +17,6 @@ private final class SpokenValueLayoutPersister: ColumnLayoutPersisting {
     func clear(for key: ColumnLayoutTableKey) {}
 }
 
-@Suite("Structure list cells speak what they mean", .serialized)
 @MainActor
 struct StructureListGridAccessibilityTests {
     private struct Grid {

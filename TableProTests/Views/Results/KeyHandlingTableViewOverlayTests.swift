@@ -1,12 +1,8 @@
-//
-//  KeyHandlingTableViewOverlayTests.swift
-//  TableProTests
-//
-
 import AppKit
 import Foundation
 import SwiftUI
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @testable import TablePro
@@ -111,9 +107,7 @@ struct KeyHandlingTableViewOverlayTests {
             overlay.removeOverlay()
             #expect(recorder.closedCount == before)
 
-            for _ in 0..<50 where recorder.closedCount == before {
-                try await Task.sleep(for: .milliseconds(10))
-            }
+            _ = try? await waitUntil { recorder.closedCount != before }
             #expect(recorder.closedCount == before + 1)
         }
     }

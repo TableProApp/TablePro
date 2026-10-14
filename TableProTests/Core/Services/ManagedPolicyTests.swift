@@ -89,11 +89,14 @@ struct ManagedPolicyResolverTests {
 }
 
 struct ManagedPolicyReaderTests {
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
     private func makeReader(_ values: [String: Any]) -> ManagedPolicyReader {
-        let suiteName = "com.TablePro.tests.policy.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suiteName) else {
-            fatalError("Could not create an isolated UserDefaults suite")
-        }
+        let defaults = suite.defaults
         for (key, value) in values { defaults.set(value, forKey: key) }
         return ManagedPolicyReader(defaults: defaults)
     }

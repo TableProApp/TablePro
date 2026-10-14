@@ -11,7 +11,6 @@ import Testing
 /// SwiftUI and did not exist yet, so the pick fell to the connections strip's list, which was
 /// collapsed to zero width but never hidden. The strip answers Close itself, so Command W took the
 /// connection.
-@Suite("Connection window initial focus", .serialized)
 @MainActor
 struct ConnectionWindowInitialFocusTests {
     @Test("A connections strip that has never been shown is not a key view")

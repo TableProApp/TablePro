@@ -8,7 +8,6 @@ import Foundation
 import TableProImport
 import Testing
 
-@Suite("DataGripImporter", .serialized)
 struct DataGripImporterTests {
     private let root: URL
     private let optionsDir: URL

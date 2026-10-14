@@ -3,10 +3,11 @@
 //  TableProTests
 //
 
+import Foundation
 @testable import TablePro
-import XCTest
+import Testing
 
-final class SQLTypeRendererModifierTests: XCTestCase {
+struct SQLTypeRendererModifierTests {
     private func rendered(
         _ spelling: String,
         from source: SQLTypeFamily,
@@ -25,49 +26,49 @@ final class SQLTypeRendererModifierTests: XCTestCase {
 
     // MARK: - PostgreSQL catalog spellings
 
-    func testPostgresModifiersReachMySQL() {
+    @Test
+    func postgresModifiersReachMySQL() {
         let amount = rendered("numeric(10,2)", from: .postgres, to: .mysql)
-        XCTAssertEqual(amount.spelling, "DECIMAL(10, 2)")
-        XCTAssertEqual(amount.fidelity, .exact)
-        XCTAssertEqual(spelling("character varying(50)", from: .postgres, to: .mysql), "VARCHAR(50)")
-        XCTAssertEqual(spelling("character(10)", from: .postgres, to: .mysql), "CHAR(10)")
-        XCTAssertEqual(spelling("time(6) without time zone", from: .postgres, to: .mysql), "TIME(6)")
-        XCTAssertEqual(spelling("bit(8)", from: .postgres, to: .mysql), "BIT(8)")
+        #expect(amount.spelling == "DECIMAL(10, 2)")
+        #expect(amount.fidelity == .exact)
+        #expect(spelling("character varying(50)", from: .postgres, to: .mysql) == "VARCHAR(50)")
+        #expect(spelling("character(10)", from: .postgres, to: .mysql) == "CHAR(10)")
+        #expect(spelling("time(6) without time zone", from: .postgres, to: .mysql) == "TIME(6)")
+        #expect(spelling("bit(8)", from: .postgres, to: .mysql) == "BIT(8)")
 
         let made = rendered("timestamp(3) with time zone", from: .postgres, to: .mysql)
-        XCTAssertEqual(made.spelling, "DATETIME(3)")
-        XCTAssertEqual(made.fidelity, .approximated)
+        #expect(made.spelling == "DATETIME(3)")
+        #expect(made.fidelity == .approximated)
     }
 
     /// A bare PostgreSQL timestamp stores microseconds, and a MySQL `DATETIME` without a precision
     /// stores whole seconds.
-    func testAPostgresTimestampWithoutPrecisionKeepsMicrosecondsEverywhere() {
-        XCTAssertEqual(spelling("timestamp without time zone", from: .postgres, to: .mysql), "DATETIME(6)")
-        XCTAssertEqual(rendered("timestamp without time zone", from: .postgres, to: .mysql).fidelity, .exact)
-        XCTAssertEqual(spelling("timestamp without time zone", from: .postgres, to: .mssql), "DATETIME2(6)")
-        XCTAssertEqual(spelling("timestamp with time zone", from: .postgres, to: .clickhouse), "DateTime64(6)")
-        XCTAssertEqual(spelling("time without time zone", from: .postgres, to: .mysql), "TIME(6)")
+    @Test
+    func aPostgresTimestampWithoutPrecisionKeepsMicrosecondsEverywhere() {
+        #expect(spelling("timestamp without time zone", from: .postgres, to: .mysql) == "DATETIME(6)")
+        #expect(rendered("timestamp without time zone", from: .postgres, to: .mysql).fidelity == .exact)
+        #expect(spelling("timestamp without time zone", from: .postgres, to: .mssql) == "DATETIME2(6)")
+        #expect(spelling("timestamp with time zone", from: .postgres, to: .clickhouse) == "DateTime64(6)")
+        #expect(spelling("time without time zone", from: .postgres, to: .mysql) == "TIME(6)")
     }
 
-    func testPostgresModifiersReachTheRegistryEngines() {
-        XCTAssertEqual(spelling("character varying(50)", from: .postgres, to: .mssql), "NVARCHAR(50)")
-        XCTAssertEqual(spelling("character varying(50)", from: .postgres, to: .oracle), "VARCHAR2(50 CHAR)")
-        XCTAssertEqual(spelling("character varying(50)", from: .postgres, to: .duckdb), "VARCHAR(50)")
-        XCTAssertEqual(
-            spelling("timestamp(3) with time zone", from: .postgres, to: .mssql), "DATETIMEOFFSET(3)"
-        )
-        XCTAssertEqual(
-            spelling("timestamp(3) with time zone", from: .postgres, to: .oracle), "TIMESTAMP(3) WITH TIME ZONE"
-        )
-        XCTAssertEqual(spelling("timestamp(3) with time zone", from: .postgres, to: .clickhouse), "DateTime64(3)")
-        XCTAssertEqual(spelling("numeric(10,2)", from: .postgres, to: .oracle), "NUMBER(10, 2)")
-        XCTAssertEqual(spelling("numeric(10,2)", from: .postgres, to: .clickhouse), "Decimal(10, 2)")
+    @Test
+    func postgresModifiersReachTheRegistryEngines() {
+        #expect(spelling("character varying(50)", from: .postgres, to: .mssql) == "NVARCHAR(50)")
+        #expect(spelling("character varying(50)", from: .postgres, to: .oracle) == "VARCHAR2(50 CHAR)")
+        #expect(spelling("character varying(50)", from: .postgres, to: .duckdb) == "VARCHAR(50)")
+        #expect(spelling("timestamp(3) with time zone", from: .postgres, to: .mssql) == "DATETIMEOFFSET(3)")
+        #expect(spelling("timestamp(3) with time zone", from: .postgres, to: .oracle) == "TIMESTAMP(3) WITH TIME ZONE")
+        #expect(spelling("timestamp(3) with time zone", from: .postgres, to: .clickhouse) == "DateTime64(3)")
+        #expect(spelling("numeric(10,2)", from: .postgres, to: .oracle) == "NUMBER(10, 2)")
+        #expect(spelling("numeric(10,2)", from: .postgres, to: .clickhouse) == "Decimal(10, 2)")
     }
 
     // MARK: - Unconstrained decimals
 
     /// Each engine's widest precision, keeping 20 digits before the point and at most 30 after it.
-    func testAnUnconstrainedDecimalTakesTheEnginesWidestPrecision() {
+    @Test
+    func anUnconstrainedDecimalTakesTheEnginesWidestPrecision() {
         let expected: [SQLTypeFamily: String] = [
             .mysql: "DECIMAL(65, 30)",
             .mssql: "DECIMAL(38, 18)",
@@ -77,38 +78,41 @@ final class SQLTypeRendererModifierTests: XCTestCase {
         ]
         for (family, spelling) in expected {
             let result = SQLTypeRenderer.render(unconstrained, family: family)
-            XCTAssertEqual(result.spelling, spelling, "\(family)")
-            XCTAssertEqual(result.fidelity, .approximated, "\(family)")
-            XCTAssertNotNil(result.reason, "\(family)")
+            #expect(result.spelling == spelling, "\(family)")
+            #expect(result.fidelity == .approximated, "\(family)")
+            #expect(result.reason != nil, "\(family)")
         }
     }
 
-    func testAnUnconstrainedDecimalStaysUnconstrainedWhereTheEngineHasOne() {
+    @Test
+    func anUnconstrainedDecimalStaysUnconstrainedWhereTheEngineHasOne() {
         for family in [SQLTypeFamily.postgres, .sqlite] {
             let result = SQLTypeRenderer.render(unconstrained, family: family)
-            XCTAssertEqual(result.spelling, "NUMERIC", "\(family)")
-            XCTAssertEqual(result.fidelity, .exact, "\(family)")
+            #expect(result.spelling == "NUMERIC", "\(family)")
+            #expect(result.fidelity == .exact, "\(family)")
         }
         let oracle = SQLTypeRenderer.render(unconstrained, family: .oracle)
-        XCTAssertEqual(oracle.spelling, "NUMBER")
-        XCTAssertEqual(oracle.fidelity, .approximated)
-        XCTAssertNotNil(oracle.reason)
+        #expect(oracle.spelling == "NUMBER")
+        #expect(oracle.fidelity == .approximated)
+        #expect(oracle.reason != nil)
     }
 
-    func testEveryFamilyAnswersAnUnconstrainedDecimal() {
+    @Test
+    func everyFamilyAnswersAnUnconstrainedDecimal() {
         for family in SQLTypeFamily.allCases {
-            XCTAssertFalse(SQLTypeRenderer.render(unconstrained, family: family).spelling.isEmpty, "\(family)")
+            #expect(!(SQLTypeRenderer.render(unconstrained, family: family).spelling.isEmpty), "\(family)")
         }
     }
 
     /// A bare Oracle `NUMBER` keeps 38 significant digits. Read as unconstrained it would reach MySQL as
     /// `DECIMAL(65, 30)`, which refuses a 36-digit integer a `DECIMAL(38)` holds.
-    func testABareOracleNumberKeepsItsExactRendering() {
+    @Test
+    func aBareOracleNumberKeepsItsExactRendering() {
         let toMySQL = rendered("NUMBER", from: .oracle, to: .mysql)
-        XCTAssertEqual(toMySQL.spelling, "DECIMAL(38)")
-        XCTAssertEqual(toMySQL.fidelity, .exact)
-        XCTAssertEqual(spelling("NUMBER", from: .oracle, to: .mssql), "DECIMAL(38)")
-        XCTAssertEqual(spelling("NUMBER", from: .oracle, to: .postgres), "NUMERIC(38)")
+        #expect(toMySQL.spelling == "DECIMAL(38)")
+        #expect(toMySQL.fidelity == .exact)
+        #expect(spelling("NUMBER", from: .oracle, to: .mssql) == "DECIMAL(38)")
+        #expect(spelling("NUMBER", from: .oracle, to: .postgres) == "NUMERIC(38)")
     }
 
     // MARK: - Scales
@@ -116,84 +120,87 @@ final class SQLTypeRendererModifierTests: XCTestCase {
     /// PostgreSQL 17 stores `numeric(5,-2)` as whole hundreds below 10^7 and `numeric(3,5)` as
     /// fractions below 10^-2. MySQL 8.4 and MariaDB 12.3 refuse `DECIMAL(5, -2)` with ERROR 1064
     /// and `DECIMAL(3, 5)` with ERROR 1427, and create `DECIMAL(7, 0)` and `DECIMAL(5, 5)`.
-    func testAScaleOutsideThePrecisionKeepsTheDigitsItsValuesHave() {
+    @Test
+    func aScaleOutsideThePrecisionKeepsTheDigitsItsValuesHave() {
         let rounded = rendered("numeric(5,-2)", from: .postgres, to: .mysql)
-        XCTAssertEqual(rounded.spelling, "DECIMAL(7, 0)")
-        XCTAssertEqual(rounded.fidelity, .widened)
-        XCTAssertNotNil(rounded.reason)
+        #expect(rounded.spelling == "DECIMAL(7, 0)")
+        #expect(rounded.fidelity == .widened)
+        #expect(rounded.reason != nil)
 
         let tiny = rendered("numeric(3,5)", from: .postgres, to: .mysql)
-        XCTAssertEqual(tiny.spelling, "DECIMAL(5, 5)")
-        XCTAssertEqual(tiny.fidelity, .widened)
+        #expect(tiny.spelling == "DECIMAL(5, 5)")
+        #expect(tiny.fidelity == .widened)
 
-        XCTAssertEqual(spelling("numeric(5,-2)", from: .postgres, to: .mssql), "DECIMAL(7, 0)")
-        XCTAssertEqual(spelling("numeric(3,5)", from: .postgres, to: .duckdb), "DECIMAL(5, 5)")
-        XCTAssertEqual(spelling("numeric(5,-2)", from: .postgres, to: .clickhouse), "Decimal(7, 0)")
-        XCTAssertEqual(spelling("NUMBER(5,-2)", from: .oracle, to: .mysql), "DECIMAL(7, 0)")
+        #expect(spelling("numeric(5,-2)", from: .postgres, to: .mssql) == "DECIMAL(7, 0)")
+        #expect(spelling("numeric(3,5)", from: .postgres, to: .duckdb) == "DECIMAL(5, 5)")
+        #expect(spelling("numeric(5,-2)", from: .postgres, to: .clickhouse) == "Decimal(7, 0)")
+        #expect(spelling("NUMBER(5,-2)", from: .oracle, to: .mysql) == "DECIMAL(7, 0)")
     }
 
     /// Oracle's `NUMBER` takes a scale from -84 to 127 with the same meaning.
-    func testOracleKeepsAScaleOutsideThePrecisionAsWritten() {
+    @Test
+    func oracleKeepsAScaleOutsideThePrecisionAsWritten() {
         let rounded = rendered("numeric(5,-2)", from: .postgres, to: .oracle)
-        XCTAssertEqual(rounded.spelling, "NUMBER(5, -2)")
-        XCTAssertEqual(rounded.fidelity, .exact)
-        XCTAssertEqual(spelling("numeric(3,5)", from: .postgres, to: .oracle), "NUMBER(3, 5)")
-        XCTAssertEqual(spelling("numeric(10,-90)", from: .postgres, to: .oracle), "NUMBER(38, 0)")
+        #expect(rounded.spelling == "NUMBER(5, -2)")
+        #expect(rounded.fidelity == .exact)
+        #expect(spelling("numeric(3,5)", from: .postgres, to: .oracle) == "NUMBER(3, 5)")
+        #expect(spelling("numeric(10,-90)", from: .postgres, to: .oracle) == "NUMBER(38, 0)")
     }
 
     /// MySQL 8.4 refuses `DECIMAL(40, 35)` and `DECIMAL(65, 31)` with ERROR 1425, a scale over 30, and
     /// creates `DECIMAL(35, 30)`.
-    func testMySQLKeepsAtMost30DigitsAfterThePoint() {
+    @Test
+    func mySQLKeepsAtMost30DigitsAfterThePoint() {
         let fine = rendered("numeric(40,35)", from: .postgres, to: .mysql)
-        XCTAssertEqual(fine.spelling, "DECIMAL(35, 30)")
-        XCTAssertEqual(fine.fidelity, .approximated)
-        XCTAssertNotNil(fine.reason)
+        #expect(fine.spelling == "DECIMAL(35, 30)")
+        #expect(fine.fidelity == .approximated)
+        #expect(fine.reason != nil)
 
-        XCTAssertEqual(spelling("numeric(70,40)", from: .postgres, to: .mysql), "DECIMAL(65, 30)")
-        XCTAssertEqual(spelling("numeric(38,-10)", from: .postgres, to: .mysql), "DECIMAL(48, 0)")
-        XCTAssertEqual(spelling("numeric(65,30)", from: .postgres, to: .mysql), "DECIMAL(65, 30)")
-        XCTAssertEqual(rendered("numeric(65,30)", from: .postgres, to: .mysql).fidelity, .exact)
+        #expect(spelling("numeric(70,40)", from: .postgres, to: .mysql) == "DECIMAL(65, 30)")
+        #expect(spelling("numeric(38,-10)", from: .postgres, to: .mysql) == "DECIMAL(48, 0)")
+        #expect(spelling("numeric(65,30)", from: .postgres, to: .mysql) == "DECIMAL(65, 30)")
+        #expect(rendered("numeric(65,30)", from: .postgres, to: .mysql).fidelity == .exact)
     }
 
     /// Only MySQL has a scale ceiling below its precision; elsewhere a precision cut keeps the scale.
-    func testAPrecisionCutKeepsTheScaleWhereTheEngineAllowsIt() {
+    @Test
+    func aPrecisionCutKeepsTheScaleWhereTheEngineAllowsIt() {
         let fine = rendered("numeric(40,35)", from: .postgres, to: .mssql)
-        XCTAssertEqual(fine.spelling, "DECIMAL(38, 35)")
-        XCTAssertEqual(fine.fidelity, .approximated)
-        XCTAssertEqual(spelling("numeric(38,-10)", from: .postgres, to: .mssql), "DECIMAL(38, 0)")
-        XCTAssertEqual(spelling("DECIMAL(65,30)", from: .mysql, to: .mssql), "DECIMAL(38, 30)")
+        #expect(fine.spelling == "DECIMAL(38, 35)")
+        #expect(fine.fidelity == .approximated)
+        #expect(spelling("numeric(38,-10)", from: .postgres, to: .mssql) == "DECIMAL(38, 0)")
+        #expect(spelling("DECIMAL(65,30)", from: .mysql, to: .mssql) == "DECIMAL(38, 30)")
     }
 
     // MARK: - ClickHouse text
 
     /// `FixedString(n)` holds at most n bytes, and a padded PostgreSQL `char(20)` holding `José` is 21.
-    func testFixedLengthTextReachesClickHouseAsString() {
+    @Test
+    func fixedLengthTextReachesClickHouseAsString() {
         let padded = rendered("character(20)", from: .postgres, to: .clickhouse)
-        XCTAssertEqual(padded.spelling, "String")
-        XCTAssertEqual(padded.fidelity, .exact)
-        XCTAssertEqual(spelling("CHAR(20)", from: .mysql, to: .clickhouse), "String")
-        XCTAssertEqual(spelling("NCHAR(10)", from: .mssql, to: .clickhouse), "String")
+        #expect(padded.spelling == "String")
+        #expect(padded.fidelity == .exact)
+        #expect(spelling("CHAR(20)", from: .mysql, to: .clickhouse) == "String")
+        #expect(spelling("NCHAR(10)", from: .mssql, to: .clickhouse) == "String")
     }
 
     // MARK: - Oracle character semantics
 
     /// A byte length refuses multibyte text an engine counting characters accepted, so the length
     /// says `CHAR` and a column whose four-byte worst case passes Oracle's byte ceiling moves up.
-    func testOracleTextCountsCharactersWithinItsByteCeiling() {
+    @Test
+    func oracleTextCountsCharactersWithinItsByteCeiling() {
         let text = { (length: Int, isFixed: Bool) in
             SQLTypeRenderer.render(
                 CanonicalColumnType(kind: .text(length: length, isFixed: isFixed), sourceSpelling: "text"),
                 family: .oracle
             )
         }
-        XCTAssertEqual(text(1_000, false).spelling, "VARCHAR2(1000 CHAR)")
-        XCTAssertEqual(text(1_001, false).spelling, "CLOB")
-        XCTAssertEqual(text(1_001, false).fidelity, .widened)
-        XCTAssertEqual(text(500, true).spelling, "CHAR(500 CHAR)")
-        XCTAssertEqual(text(501, true).spelling, "VARCHAR2(501 CHAR)")
-        XCTAssertEqual(
-            SQLTypeParser.parse(text(1_000, false).spelling, family: .oracle).kind,
-            .text(length: 1_000, isFixed: false)
-        )
+        #expect(text(1_000, false).spelling == "VARCHAR2(1000 CHAR)")
+        #expect(text(1_001, false).spelling == "CLOB")
+        #expect(text(1_001, false).fidelity == .widened)
+        #expect(text(500, true).spelling == "CHAR(500 CHAR)")
+        #expect(text(501, true).spelling == "VARCHAR2(501 CHAR)")
+        #expect(SQLTypeParser.parse(text(1_000, false).spelling, family: .oracle).kind == .text(length: 1_000, isFixed: false))
     }
 }

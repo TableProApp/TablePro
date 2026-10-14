@@ -1,10 +1,3 @@
-//
-//  ConnectionSessionTests.swift
-//  TableProTests
-//
-//  Tests for ConnectionSession.isContentViewEquivalent — verifies which
-//  field changes trigger SwiftUI re-renders and which are ignored.
-//
 
 import Foundation
 import TableProPluginKit
@@ -202,11 +195,13 @@ struct ConnectionSessionStateTests {
     }
 
     @Test("markActive updates lastActiveAt")
-    func markActiveUpdatesLastActiveAt() async throws {
+    func markActiveUpdatesLastActiveAt() {
         var session = makeSession()
-        try await Task.sleep(for: .milliseconds(10))
+        session.lastActiveAt = .distantPast
+        let before = Date()
         session.markActive()
-        #expect(session.lastActiveAt > session.connectedAt)
+        #expect(session.lastActiveAt >= before)
+        #expect(session.lastActiveAt >= session.connectedAt)
     }
 
     @Test("id matches connection.id")

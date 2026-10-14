@@ -86,7 +86,6 @@ internal extension LaunchIntent {
              .openDatabaseURL,
              .installPlugin,
              .reopenClosedTab,
-             .openSampleDatabase,
              .openSettings:
             return true
         }

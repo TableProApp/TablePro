@@ -161,7 +161,8 @@ struct MCPConnectionApprovalTests {
     @Test("Ask Once remembers the answer, and the next call does not ask")
     func askOnceRemembers() async throws {
         let presenter = RecordingApprovalPresenter(answer: true)
-        let store = MCPApprovalStore(defaults: Self.scratchDefaults())
+        let suite = try EphemeralDefaults()
+        let store = MCPApprovalStore(defaults: suite.defaults)
         let policy = makePolicy(approval: .oncePerConnection, presenter: presenter, store: store)
         let principal = makePrincipal()
 
@@ -178,7 +179,8 @@ struct MCPConnectionApprovalTests {
     @Test("Ask Every Time asks again on the next call")
     func everyTimeAsksAgain() async throws {
         let presenter = RecordingApprovalPresenter(answer: true)
-        let store = MCPApprovalStore(defaults: Self.scratchDefaults())
+        let suite = try EphemeralDefaults()
+        let store = MCPApprovalStore(defaults: suite.defaults)
         let policy = makePolicy(approval: .everyTime, presenter: presenter, store: store)
         let principal = makePrincipal()
 
@@ -208,7 +210,8 @@ struct MCPConnectionApprovalTests {
     @Test("A refusal stands for a cool-off instead of raising a fresh prompt on the retry")
     func denialIsRememberedBriefly() async throws {
         let presenter = RecordingApprovalPresenter(answer: false)
-        let store = MCPApprovalStore(defaults: Self.scratchDefaults())
+        let suite = try EphemeralDefaults()
+        let store = MCPApprovalStore(defaults: suite.defaults)
         let policy = makePolicy(approval: .oncePerConnection, presenter: presenter, store: store)
         let principal = makePrincipal()
 
@@ -225,7 +228,8 @@ struct MCPConnectionApprovalTests {
 
     @Test("The bundled bridge keeps its grant when its credential rotates")
     func bridgeGrantSurvivesCredentialRotation() async throws {
-        let store = MCPApprovalStore(defaults: Self.scratchDefaults())
+        let suite = try EphemeralDefaults()
+        let store = MCPApprovalStore(defaults: suite.defaults)
         let presenter = RecordingApprovalPresenter(answer: true)
         let policy = makePolicy(approval: .oncePerConnection, presenter: presenter, store: store)
 
@@ -256,7 +260,8 @@ struct MCPConnectionApprovalTests {
 
     @Test("Revoking a token the user issued drops the grant it was carrying")
     func revokingAnIssuedTokenDropsItsGrant() async throws {
-        let store = MCPApprovalStore(defaults: Self.scratchDefaults())
+        let suite = try EphemeralDefaults()
+        let store = MCPApprovalStore(defaults: suite.defaults)
         let presenter = RecordingApprovalPresenter(answer: true)
         let policy = makePolicy(approval: .oncePerConnection, presenter: presenter, store: store)
         let principal = makePrincipal(label: "Laptop token")
@@ -274,7 +279,8 @@ struct MCPConnectionApprovalTests {
 
     @Test("A remembered grant survives the teardown a settings change triggers")
     func grantSurvivesServerTeardown() async throws {
-        let store = MCPApprovalStore(defaults: Self.scratchDefaults())
+        let suite = try EphemeralDefaults()
+        let store = MCPApprovalStore(defaults: suite.defaults)
         let presenter = RecordingApprovalPresenter(answer: true)
         let policy = makePolicy(approval: .oncePerConnection, presenter: presenter, store: store)
         let principal = makePrincipal()
@@ -292,7 +298,8 @@ struct MCPConnectionApprovalTests {
 
     @Test("Forgetting a grant makes the next call ask again")
     func forgettingAGrantAsksAgain() async throws {
-        let store = MCPApprovalStore(defaults: Self.scratchDefaults())
+        let suite = try EphemeralDefaults()
+        let store = MCPApprovalStore(defaults: suite.defaults)
         let presenter = RecordingApprovalPresenter(answer: true)
         let policy = makePolicy(approval: .oncePerConnection, presenter: presenter, store: store)
         let principal = makePrincipal()
@@ -313,7 +320,8 @@ struct MCPConnectionApprovalTests {
 
     @Test("A token that merely calls itself the bridge inherits none of the bridge's grants")
     func aTokenNamedLikeTheBridgeInheritsNothing() async throws {
-        let store = MCPApprovalStore(defaults: Self.scratchDefaults())
+        let suite = try EphemeralDefaults()
+        let store = MCPApprovalStore(defaults: suite.defaults)
         let presenter = RecordingApprovalPresenter(answer: true)
         let policy = makePolicy(approval: .oncePerConnection, presenter: presenter, store: store)
 
@@ -336,7 +344,8 @@ struct MCPConnectionApprovalTests {
 
     @Test("Ask Every Time asks again even for a connection that already carries a grant")
     func everyTimeIgnoresAnExistingGrant() async throws {
-        let store = MCPApprovalStore(defaults: Self.scratchDefaults())
+        let suite = try EphemeralDefaults()
+        let store = MCPApprovalStore(defaults: suite.defaults)
         let principal = makePrincipal()
 
         let remembering = RecordingApprovalPresenter(answer: true)
@@ -357,7 +366,8 @@ struct MCPConnectionApprovalTests {
 
     @Test("A denial withdraws a grant the user had already given")
     func denialWithdrawsAnExistingGrant() async throws {
-        let store = MCPApprovalStore(defaults: Self.scratchDefaults())
+        let suite = try EphemeralDefaults()
+        let store = MCPApprovalStore(defaults: suite.defaults)
         let principal = makePrincipal()
 
         let allowing = makePolicy(
@@ -382,12 +392,5 @@ struct MCPConnectionApprovalTests {
         }
 
         #expect(await denying.grants().isEmpty)
-    }
-
-    private static func scratchDefaults() -> UserDefaults {
-        let suite = "com.TablePro.tests.mcpApprovals." + UUID().uuidString
-        let defaults = UserDefaults(suiteName: suite) ?? .standard
-        defaults.removePersistentDomain(forName: suite)
-        return defaults
     }
 }

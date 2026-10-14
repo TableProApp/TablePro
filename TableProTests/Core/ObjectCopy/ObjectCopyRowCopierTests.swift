@@ -7,11 +7,12 @@
 //  ceiling, and the parameters arrive in the order the placeholders expect.
 //
 
+import Foundation
 @testable import TablePro
 import TableProPluginKit
-import XCTest
+import Testing
 
-private final class CopyDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class CopyDriver: PluginDriverStub, @unchecked Sendable {
     var streamed: [[PluginCellValue]] = []
     var batchSize = 2
     var executedQueries: [String] = []
@@ -21,9 +22,6 @@ private final class CopyDriver: PluginDatabaseDriver, @unchecked Sendable {
     var transactionEvents: [String] = []
 
     var parameterStyle: ParameterStyle { declaredParameterStyle }
-
-    func connect() async throws {}
-    func disconnect() {}
 
     func execute(query: String) async throws -> PluginQueryResult {
         executedQueries.append(query)
@@ -56,23 +54,9 @@ private final class CopyDriver: PluginDatabaseDriver, @unchecked Sendable {
     func beginTransaction() async throws { transactionEvents.append("begin") }
     func commitTransaction() async throws { transactionEvents.append("commit") }
     func rollbackTransaction() async throws { transactionEvents.append("rollback") }
-
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
-    }
 }
 
-final class ObjectCopyRowCopierTests: XCTestCase {
+struct ObjectCopyRowCopierTests {
     private func step(
         columns: [String] = ["id", "name"],
         schema: String? = "public",
@@ -104,7 +88,8 @@ final class ObjectCopyRowCopierTests: XCTestCase {
         (0..<count).map { [.text(String($0)), .text("row\($0)")] }
     }
 
-    func testEveryRowReachesTheTarget() async throws {
+    @Test
+    func everyRowReachesTheTarget() async throws {
         let source = CopyDriver()
         source.streamed = rows(5)
         let target = CopyDriver()
@@ -112,14 +97,15 @@ final class ObjectCopyRowCopierTests: XCTestCase {
         let outcome = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
             .copy(from: source, to: target) { _ in }
 
-        XCTAssertEqual(outcome.inserted, 5)
-        XCTAssertFalse(outcome.cancelled)
-        XCTAssertEqual(target.executedParameters.flatMap { $0 }.count, 10)
+        #expect(outcome.inserted == 5)
+        #expect(!outcome.cancelled)
+        #expect(target.executedParameters.flatMap { $0 }.count == 10)
     }
 
     /// One multi-row INSERT per batch, not one per row: that is the whole reason the copy is
     /// faster than exporting to a file and importing it back.
-    func testRowsAreWrittenInBatchesRatherThanOneAtATime() async throws {
+    @Test
+    func rowsAreWrittenInBatchesRatherThanOneAtATime() async throws {
         let source = CopyDriver()
         source.streamed = rows(2_500)
         let target = CopyDriver()
@@ -127,13 +113,14 @@ final class ObjectCopyRowCopierTests: XCTestCase {
         _ = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
             .copy(from: source, to: target) { _ in }
 
-        XCTAssertEqual(target.executedQueries.count, 3, "1,000 rows per statement at the row cap")
-        XCTAssertTrue(target.executedQueries.allSatisfy { $0.hasPrefix("INSERT INTO `public`.`orders`") })
+        #expect(target.executedQueries.count == 3, "1,000 rows per statement at the row cap")
+        #expect(target.executedQueries.allSatisfy { $0.hasPrefix("INSERT INTO `public`.`orders`") })
     }
 
     /// The generator flattens its rows in row-major order, and the copier hands the same
     /// sequence to the driver. If those two ever disagree, values land in the wrong columns.
-    func testParametersArriveInPlaceholderOrder() async throws {
+    @Test
+    func parametersArriveInPlaceholderOrder() async throws {
         let source = CopyDriver()
         source.streamed = [[.text("1"), .text("a")], [.text("2"), .text("b")]]
         source.batchSize = 2
@@ -142,13 +129,11 @@ final class ObjectCopyRowCopierTests: XCTestCase {
         _ = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
             .copy(from: source, to: target) { _ in }
 
-        XCTAssertEqual(
-            target.executedParameters.first?.map(\.sortKey),
-            ["1", "a", "2", "b"]
-        )
+        #expect(target.executedParameters.first?.map(\.sortKey) == ["1", "a", "2", "b"])
     }
 
-    func testTheTargetSchemaIsWrittenIntoTheInsert() async throws {
+    @Test
+    func theTargetSchemaIsWrittenIntoTheInsert() async throws {
         let source = CopyDriver()
         source.streamed = rows(1)
         let target = CopyDriver()
@@ -156,15 +141,13 @@ final class ObjectCopyRowCopierTests: XCTestCase {
         _ = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
             .copy(from: source, to: target) { _ in }
 
-        XCTAssertEqual(
-            target.executedQueries.first,
-            "INSERT INTO `public`.`orders` (`id`, `name`) VALUES (?, ?), (?, ?)".replacingOccurrences(
+        #expect(target.executedQueries.first == "INSERT INTO `public`.`orders` (`id`, `name`) VALUES (?, ?), (?, ?)".replacingOccurrences(
                 of: ", (?, ?)", with: ""
-            )
-        )
+            ))
     }
 
-    func testAnUnqualifiedTargetKeepsThePlainName() async throws {
+    @Test
+    func anUnqualifiedTargetKeepsThePlainName() async throws {
         let source = CopyDriver()
         source.streamed = rows(1)
         let target = CopyDriver()
@@ -172,23 +155,25 @@ final class ObjectCopyRowCopierTests: XCTestCase {
         _ = try await ObjectCopyRowCopier(step: step(schema: nil), targetDatabaseType: .mysql)
             .copy(from: source, to: target) { _ in }
 
-        XCTAssertEqual(target.executedQueries.first, "INSERT INTO `orders` (`id`, `name`) VALUES (?, ?)")
+        #expect(target.executedQueries.first == "INSERT INTO `orders` (`id`, `name`) VALUES (?, ?)")
     }
 
-    func testAnEmptyTableWritesNothing() async throws {
+    @Test
+    func anEmptyTableWritesNothing() async throws {
         let source = CopyDriver()
         let target = CopyDriver()
 
         let outcome = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
             .copy(from: source, to: target) { _ in }
 
-        XCTAssertEqual(outcome.inserted, 0)
-        XCTAssertTrue(target.executedQueries.isEmpty)
+        #expect(outcome.inserted == 0)
+        #expect(target.executedQueries.isEmpty)
     }
 
     /// A row of the wrong width means the source answered a different question from the one the
     /// plan asked, and writing it would put values in the wrong columns.
-    func testAMisalignedRowStopsTheTable() async {
+    @Test
+    func aMisalignedRowStopsTheTable() async {
         let source = CopyDriver()
         source.streamed = [[.text("1")]]
         let target = CopyDriver()
@@ -196,13 +181,14 @@ final class ObjectCopyRowCopierTests: XCTestCase {
         do {
             _ = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
                 .copy(from: source, to: target) { _ in }
-            XCTFail("A row of the wrong width must not be written")
+            Issue.record("A row of the wrong width must not be written")
         } catch {
-            XCTAssertTrue(target.executedQueries.isEmpty)
+            #expect(target.executedQueries.isEmpty)
         }
     }
 
-    func testProgressReportsTheRunningTotal() async throws {
+    @Test
+    func progressReportsTheRunningTotal() async throws {
         let source = CopyDriver()
         source.streamed = rows(2_500)
         let target = CopyDriver()
@@ -211,7 +197,7 @@ final class ObjectCopyRowCopierTests: XCTestCase {
         _ = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
             .copy(from: source, to: target) { reported.append($0) }
 
-        XCTAssertEqual(reported.values, [1_000, 2_000, 2_500])
+        #expect(reported.values == [1_000, 2_000, 2_500])
     }
 
     // MARK: - Batch bounds
@@ -219,7 +205,8 @@ final class ObjectCopyRowCopierTests: XCTestCase {
     /// A bind-parameter count is not a size: six rows of 400,000 characters sit well inside the row
     /// cap and used to go out as one statement no server would take. The sizing arithmetic itself
     /// moved to SQLWriteBatchBudgetTests, onto the type that now owns it.
-    func testAByteHeavyCopyIsSplitAcrossStatements() async throws {
+    @Test
+    func aByteHeavyCopyIsSplitAcrossStatements() async throws {
         let source = CopyDriver()
         let wide = String(repeating: "a", count: 400_000)
         source.streamed = (0 ..< 6).map { [.text(String($0)), .text(wide)] }
@@ -229,21 +216,19 @@ final class ObjectCopyRowCopierTests: XCTestCase {
         _ = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
             .copy(from: source, to: target) { _ in }
 
-        XCTAssertGreaterThan(target.executedQueries.count, 1, "one mebibyte holds two of these rows")
-        XCTAssertEqual(target.executedParameters.flatMap { $0 }.count, 12)
+        #expect(target.executedQueries.count > 1, "one mebibyte holds two of these rows")
+        #expect(target.executedParameters.flatMap { $0 }.count == 12)
         for batch in target.executedParameters {
-            XCTAssertLessThanOrEqual(
-                SQLWriteBatchBudget(maxRows: 1_000)
-                    .byteCount(of: batch.map { PluginCellValue.text($0.asText ?? "") }),
-                SQLWriteBatchBudget.maximumBytes + 400_012,
-                "no batch may exceed the budget by more than the one row that cannot be split"
-            )
+            #expect(SQLWriteBatchBudget(maxRows: 1_000)
+                    .byteCount(of: batch.map { PluginCellValue.text($0.asText ?? "") }) <= SQLWriteBatchBudget.maximumBytes + 400_012,
+                "no batch may exceed the budget by more than the one row that cannot be split")
         }
     }
 
     /// A row over the budget on its own cannot be split, so it goes out alone rather than being
     /// dropped or looping forever.
-    func testARowOverTheBudgetIsStillWritten() async throws {
+    @Test
+    func aRowOverTheBudgetIsStillWritten() async throws {
         let source = CopyDriver()
         source.streamed = [[.text("1"), .text(String(repeating: "a", count: 2_000_000))]]
         source.batchSize = 1
@@ -252,15 +237,16 @@ final class ObjectCopyRowCopierTests: XCTestCase {
         let outcome = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
             .copy(from: source, to: target) { _ in }
 
-        XCTAssertEqual(outcome.inserted, 1)
-        XCTAssertEqual(target.executedQueries.count, 1)
+        #expect(outcome.inserted == 1)
+        #expect(target.executedQueries.count == 1)
     }
 
     // MARK: - Crossing engines
 
     /// A `t` from PostgreSQL bound into a MySQL `TINYINT(1)` is 0 outside strict mode, so every
     /// `true` in the table would arrive as `false` with nothing reported.
-    func testValuesAreReshapedForTheTarget() async throws {
+    @Test
+    func valuesAreReshapedForTheTarget() async throws {
         let source = CopyDriver()
         source.streamed = [[.text("1"), .text("t")]]
         let target = CopyDriver()
@@ -276,13 +262,14 @@ final class ObjectCopyRowCopierTests: XCTestCase {
             step: step(columns: ["id", "live"], coercer: coercer), targetDatabaseType: .mysql
         ).copy(from: source, to: target) { _ in }
 
-        XCTAssertEqual(target.executedParameters.first?.map(\.sortKey), ["1", "1"])
+        #expect(target.executedParameters.first?.map(\.sortKey) == ["1", "1"])
     }
 
     // MARK: - The server-side path
 
     /// One statement instead of a stream, and the source driver is never read from at all.
-    func testAServerSideCopyRunsOneStatementAndReadsNothing() async throws {
+    @Test
+    func aServerSideCopyRunsOneStatementAndReadsNothing() async throws {
         let source = CopyDriver()
         source.streamed = rows(5)
         let target = CopyDriver()
@@ -296,16 +283,17 @@ final class ObjectCopyRowCopierTests: XCTestCase {
             step: step(serverSideInsert: statement, estimatedRows: 5), targetDatabaseType: .mysql
         ).copy(from: source, to: target) { _ in }
 
-        XCTAssertEqual(target.executedQueries, [statement.sql])
-        XCTAssertTrue(target.executedParameters.isEmpty)
-        XCTAssertFalse(outcome.cancelled)
+        #expect(target.executedQueries == [statement.sql])
+        #expect(target.executedParameters.isEmpty)
+        #expect(!outcome.cancelled)
     }
 
     /// The server's own count and never the plan's estimate. `rowsAffected` cannot tell "the driver
     /// reported nothing" from "the statement matched nothing", so standing the estimate in for zero
     /// told the user a copy of an empty table had written however many rows a stale table statistic
     /// had guessed at.
-    func testTheServerCountIsReportedRatherThanTheEstimate() async throws {
+    @Test
+    func theServerCountIsReportedRatherThanTheEstimate() async throws {
         let outcome = try await ObjectCopyRowCopier(
             step: step(
                 serverSideInsert: SyncStatement(sql: "INSERT INTO x SELECT 1;", objectName: "x", summary: ""),
@@ -314,7 +302,7 @@ final class ObjectCopyRowCopierTests: XCTestCase {
             targetDatabaseType: .mysql
         ).copy(from: CopyDriver(), to: CopyDriver()) { _ in }
 
-        XCTAssertEqual(outcome.inserted, 0)
+        #expect(outcome.inserted == 0)
     }
 }
 

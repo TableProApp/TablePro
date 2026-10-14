@@ -55,6 +55,8 @@ struct SQLTableEditAdoptionTests {
         let store: RecordingStore
         let favorites: FavoriteTablesStorage
         let service: CatalogChangeService
+        // Holds the favorites' defaults suites for as long as the harness lives.
+        let suites: [EphemeralDefaults]
 
         func run(
             _ statements: [String],
@@ -90,12 +92,11 @@ struct SQLTableEditAdoptionTests {
         session.browseSchema = browseSchema
         DatabaseManager.shared.injectSession(session, for: connection.id)
 
-        let suite = "SQLTableEditAdoptionTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        let syncDefaults = try #require(UserDefaults(suiteName: suite + ".sync"))
+        let defaults = try EphemeralDefaults()
+        let syncDefaults = try EphemeralDefaults()
         let favorites = FavoriteTablesStorage(
-            userDefaults: defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults))
+            userDefaults: defaults.defaults,
+            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults.defaults))
         )
         let store = RecordingStore()
         let adoption = CatalogEditAdoption(settingsStores: [store], favoriteTables: favorites)
@@ -105,7 +106,9 @@ struct SQLTableEditAdoptionTests {
             isSessionLive: { _ in true },
             startupCommands: { _ in startupCommands }
         )
-        return Harness(connection: connection, store: store, favorites: favorites, service: service)
+        return Harness(
+            connection: connection, store: store, favorites: favorites, service: service, suites: [defaults, syncDefaults]
+        )
     }
 
     private func tearDown(_ harness: Harness) {

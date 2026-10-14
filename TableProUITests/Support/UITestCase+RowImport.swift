@@ -1,8 +1,7 @@
 import XCTest
 
 extension UITestCase {
-    /// The fixture connection and a data file window, both open at launch. A launch intent skips the
-    /// session restore, so the connection opens through its `tablepro://connect/<id>` link instead.
+    // A launch intent skips the session restore, so the connection opens through its `tablepro://connect/<id>` link.
     @discardableResult
     internal func launchWithFixture(openingDataFile name: String, contents: Data) throws -> FixtureLaunch {
         let connections = try seedSQLiteSession([ConnectionSeed()])
@@ -59,7 +58,7 @@ extension UITestCase {
         return sheet
     }
 
-    /// A SwiftUI control with `labelsHidden()` publishes both labels joined ("Title, Import Title") on the runner.
+    // A SwiftUI control with `labelsHidden()` publishes both labels joined ("Title, Import Title") on the runner.
     internal func element(_ query: XCUIElementQuery, labelEndingWith label: String) -> XCUIElement {
         query.matching(NSPredicate(format: "label ENDSWITH %@", label)).firstMatch
     }

@@ -73,20 +73,12 @@ struct MainWindowToolbarInspectorPlacementTests {
     /// once was the shape this revamp took the Tables and Favorites control out of the titlebar
     /// for, and offering it in Customize Toolbar kept it reachable. View > Show Assistant and
     /// ⌥⌘A are the command, and `TrailingPaneCommandTitleTests` is what pins their behaviour.
-    @Test("No toolbar item opens the assistant")
-    func assistantHasNoToolbarItem() {
+    @Test("No toolbar item opens the assistant or the Server Dashboard", arguments: [".assistant", ".dashboard"])
+    func surfaceHasNoToolbarItem(_ suffix: String) {
         let identifiers = Set(MainWindowToolbar.allowedItemIdentifiers).union(
             MainWindowToolbar.defaultItemIdentifiers
         )
-        #expect(!identifiers.contains { $0.rawValue.hasSuffix(".assistant") })
-    }
-
-    @Test("No toolbar item opens the Server Dashboard")
-    func dashboardHasNoToolbarItem() {
-        let identifiers = Set(MainWindowToolbar.allowedItemIdentifiers).union(
-            MainWindowToolbar.defaultItemIdentifiers
-        )
-        #expect(!identifiers.contains { $0.rawValue.hasSuffix(".dashboard") })
+        #expect(!identifiers.contains { $0.rawValue.hasSuffix(suffix) })
     }
 
     /// Ahead of the separator the toggle lands in the content section, which measured wrong in both

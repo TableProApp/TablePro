@@ -5,6 +5,7 @@
 
 import AppKit
 @testable import TableProEditorKit
+import TableProTestSupport
 import TableProTextEngine
 import Testing
 
@@ -47,13 +48,8 @@ struct LineFoldChunkBoundaryTests {
         controller.foldProvider = provider
         let model = LineFoldModel(controller: controller, foldView: NSView())
 
-        // The calculation runs on the main actor, which every other suite in this target shares, so wait for it to
-        // reach the last line rather than for a fixed time. The deadline only turns a hang into a failure; it is not
-        // a budget, and five seconds of it was not enough once the editor's own suites moved into this target.
-        let deadline = ContinuousClock.now + .seconds(60)
-        while provider.previousDepths[100] == nil, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        // The calculation shares the main actor with every suite in this target; 5 s of bound was not enough there.
+        try await waitUntil(timeout: .seconds(60)) { provider.previousDepths[100] != nil }
         _ = model
 
         #expect(provider.previousDepths[49] == 1)

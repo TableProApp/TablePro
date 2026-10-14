@@ -10,18 +10,15 @@ import Testing
 
 @MainActor
 struct CustomSlashCommandStorageTests {
-    private func makeStorage() -> CustomSlashCommandStorage {
-        let suiteName = "com.TablePro.tests.CustomSlashCommandStorage.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suiteName) else {
-            fatalError("UserDefaults suite creation failed")
-        }
-        defaults.removePersistentDomain(forName: suiteName)
-        return CustomSlashCommandStorage(defaults: defaults)
+    private let pool = EphemeralDefaultsPool()
+
+    private func makeStorage() throws -> CustomSlashCommandStorage {
+        CustomSlashCommandStorage(defaults: try pool.make().defaults)
     }
 
     @Test("add stores a new command")
     func addStoresCommand() throws {
-        let storage = makeStorage()
+        let storage = try makeStorage()
         let command = CustomSlashCommand(name: "review", promptTemplate: "Review {{query}}")
         try storage.add(command)
         #expect(storage.commands.count == 1)
@@ -30,7 +27,7 @@ struct CustomSlashCommandStorageTests {
 
     @Test("add throws on duplicate name regardless of case")
     func addRejectsDuplicateName() throws {
-        let storage = makeStorage()
+        let storage = try makeStorage()
         try storage.add(CustomSlashCommand(name: "review", promptTemplate: "x"))
 
         #expect(throws: CustomSlashCommandError.self) {
@@ -41,7 +38,7 @@ struct CustomSlashCommandStorageTests {
 
     @Test("isDuplicate ignores the command being edited")
     func isDuplicateExcludesSelf() throws {
-        let storage = makeStorage()
+        let storage = try makeStorage()
         let command = CustomSlashCommand(name: "review", promptTemplate: "x")
         try storage.add(command)
         #expect(storage.isDuplicate("review", excluding: command.id) == false)
@@ -50,7 +47,7 @@ struct CustomSlashCommandStorageTests {
 
     @Test("update rejects rename to an existing command's name")
     func updateRejectsCollidingRename() throws {
-        let storage = makeStorage()
+        let storage = try makeStorage()
         try storage.add(CustomSlashCommand(name: "review", promptTemplate: "x"))
         let second = CustomSlashCommand(name: "summarize", promptTemplate: "y")
         try storage.add(second)
@@ -66,7 +63,7 @@ struct CustomSlashCommandStorageTests {
 
     @Test("update preserves the same command across rename without collision")
     func updateAllowsNonCollidingRename() throws {
-        let storage = makeStorage()
+        let storage = try makeStorage()
         let original = CustomSlashCommand(name: "review", promptTemplate: "x")
         try storage.add(original)
 

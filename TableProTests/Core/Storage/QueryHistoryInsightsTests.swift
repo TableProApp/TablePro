@@ -574,4 +574,24 @@ struct QueryHistoryInsightsTests {
         #expect(grouped == snapshot.totals.totalCount)
         #expect(snapshot.totals.distinctShapeCount == 3)
     }
+
+    /// The panels behind a missing license are a branch of `QueryInsightsView`'s body, so only the tab
+    /// is reachable here.
+    @Test("Opening Query Insights again selects the one tab it already opened")
+    @MainActor
+    func insightsTabIsOnePerConnection() throws {
+        let tabManager = QueryTabManager()
+        tabManager.addQueryInsightsTab()
+        let insights = try #require(tabManager.tabs.first { $0.tabType == .insights })
+        #expect(tabManager.selectedTabId == insights.id)
+
+        tabManager.addTab(initialQuery: "SELECT 1", databaseName: "main", claimFocus: true)
+        tabManager.selectedTabId = tabManager.tabs.last?.id
+        #expect(tabManager.selectedTabId != insights.id)
+
+        tabManager.addQueryInsightsTab()
+
+        #expect(tabManager.tabs.filter { $0.tabType == .insights }.map(\.id) == [insights.id])
+        #expect(tabManager.selectedTabId == insights.id)
+    }
 }

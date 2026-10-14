@@ -9,9 +9,11 @@ import Testing
 
 @MainActor
 struct RecentTablesStoreMigrationTests {
+    private let pool = EphemeralDefaultsPool()
+
     @Test("Migrates the legacy RecentTables.v1 key to the namespaced key")
     func migratesLegacyKey() throws {
-        let defaults = try #require(UserDefaults(suiteName: "recent-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         let store = RecentTablesStore(defaults: defaults)
         let conn = UUID()
         let entry = RecentTableEntry(
@@ -32,7 +34,7 @@ struct RecentTablesStoreMigrationTests {
 
     @Test("Records and reads through the namespaced key")
     func recordRoundTrip() throws {
-        let defaults = try #require(UserDefaults(suiteName: "recent-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         let store = RecentTablesStore(defaults: defaults)
         let conn = UUID()
         store.record(
@@ -68,7 +70,7 @@ struct RecentTablesStoreMigrationTests {
     /// recorded through `isView` alone said "Drop View" and issued one.
     @Test("A recorded kind is what the Recent row opens as")
     func recordedKindSurvivesARoundTrip() throws {
-        let defaults = try #require(UserDefaults(suiteName: "recent-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         let store = RecentTablesStore(defaults: defaults)
         let conn = UUID()
         store.record(

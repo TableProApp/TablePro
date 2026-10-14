@@ -1,8 +1,9 @@
+import Foundation
 import TableProImport
-import XCTest
+import Testing
 
-final class ShareableAdditionalFieldsTests: XCTestCase {
-    func testLeavesOutEveryImportBlockedKeyInAnyCase() {
+struct ShareableAdditionalFieldsTests {
+    @Test func testLeavesOutEveryImportBlockedKeyInAnyCase() {
         let fields = [
             "preConnectScript": "export PGTOKEN=secret-token",
             "usePgpass": "true",
@@ -14,10 +15,10 @@ final class ShareableAdditionalFieldsTests: XCTestCase {
 
         let shareable = ExportableConnection.shareableAdditionalFields(fields)
 
-        XCTAssertEqual(shareable, ["connectionOptions": "-c search_path=app"])
+        #expect(shareable == ["connectionOptions": "-c search_path=app"])
     }
 
-    func testLeavesOutTheExcludedKeys() {
+    @Test func testLeavesOutTheExcludedKeys() {
         let fields = ["mssqlKerberosPassword": "secret", "mssqlAuthMethod": "kerberos"]
 
         let shareable = ExportableConnection.shareableAdditionalFields(
@@ -25,13 +26,13 @@ final class ShareableAdditionalFieldsTests: XCTestCase {
             excluding: ["mssqlKerberosPassword"]
         )
 
-        XCTAssertEqual(shareable, ["mssqlAuthMethod": "kerberos"])
+        #expect(shareable == ["mssqlAuthMethod": "kerberos"])
     }
 
-    func testReturnsNilWhenNothingIsLeftToShare() {
+    @Test func testReturnsNilWhenNothingIsLeftToShare() {
         let fields = ["preConnectScript": "echo hi", "usePgpass": "true"]
 
-        XCTAssertNil(ExportableConnection.shareableAdditionalFields(fields))
-        XCTAssertNil(ExportableConnection.shareableAdditionalFields([:]))
+        #expect(ExportableConnection.shareableAdditionalFields(fields) == nil)
+        #expect(ExportableConnection.shareableAdditionalFields([:]) == nil)
     }
 }

@@ -1,5 +1,6 @@
 import Foundation
 @testable import TableProCoreTypes
+import TableProTestSupport
 import Testing
 
 private final class FlagBox: @unchecked Sendable {
@@ -14,55 +15,7 @@ private final class FlagBox: @unchecked Sendable {
     }
 }
 
-private func waitUntil(
-    timeout: Duration = .seconds(2),
-    _ condition: @Sendable () -> Bool
-) async -> Bool {
-    let deadline = ContinuousClock.now.advanced(by: timeout)
-    while ContinuousClock.now < deadline {
-        if condition() { return true }
-        try? await Task.sleep(for: .milliseconds(5))
-    }
-    return condition()
-}
-
 private struct TimeoutError: Error {}
-
-private enum TestWatchdog {
-    private final class FirstArrival<Value: Sendable>: @unchecked Sendable {
-        private let lock = NSLock()
-        private var continuation: CheckedContinuation<Value?, Never>?
-
-        init(_ continuation: CheckedContinuation<Value?, Never>) {
-            self.continuation = continuation
-        }
-
-        func claim() -> CheckedContinuation<Value?, Never>? {
-            lock.withLock {
-                defer { continuation = nil }
-                return continuation
-            }
-        }
-    }
-
-    static func result<Value: Sendable>(
-        within timeout: Duration = .seconds(2),
-        of work: @escaping @Sendable () async -> Value
-    ) async -> Value? {
-        await withCheckedContinuation { continuation in
-            let arrival = FirstArrival(continuation)
-            let timer = Task {
-                try? await Task.sleep(for: timeout)
-                arrival.claim()?.resume(returning: nil)
-            }
-            Task {
-                let value = await work()
-                arrival.claim()?.resume(returning: value)
-                timer.cancel()
-            }
-        }
-    }
-}
 
 @Suite("Cancellable blocking work")
 struct CancellableBlockingWorkTests {
@@ -97,10 +50,10 @@ struct CancellableBlockingWorkTests {
             if !didRelease { release.signal() }
         }
 
-        try #require(await waitUntil { workStarted.value })
+        try await waitUntil { workStarted.value }
         task.cancel()
 
-        let result = try #require(await TestWatchdog.result { await task.result })
+        let result = try #require(await BoundedCall.result(within: .seconds(2)) { await task.result })
         switch result {
         case .failure(let error):
             #expect(error is CancellationError)
@@ -111,7 +64,7 @@ struct CancellableBlockingWorkTests {
 
         didRelease = true
         release.signal()
-        #expect(await waitUntil { discarded.value })
+        try await waitUntil { discarded.value }
     }
 
     @Test("A deadline fails the caller and discards the late result")
@@ -138,7 +91,7 @@ struct CancellableBlockingWorkTests {
             if !didRelease { release.signal() }
         }
 
-        let result = try #require(await TestWatchdog.result { await task.result })
+        let result = try #require(await BoundedCall.result(within: .seconds(2)) { await task.result })
 
         switch result {
         case .failure(let error):
@@ -149,7 +102,7 @@ struct CancellableBlockingWorkTests {
 
         didRelease = true
         release.signal()
-        #expect(await waitUntil { discarded.value })
+        try await waitUntil { discarded.value }
     }
 
     @Test("Work that completes before any cancel adopts the result")

@@ -1,70 +1,71 @@
+import Foundation
 @testable import TableProOracleCore
-import XCTest
+import Testing
 
 /// Two closers reach one channel: whoever decided to close it, and the statement that was on the
 /// wire when it went. The second arrives as `clientClosedConnection` and knows nothing about the
 /// first, so it must not be able to talk the connection into redialing after the app let it go.
-final class OracleCloseRecordTests: XCTestCase {
-    func testAFreshRecordPermitsBothRecoveries() {
+struct OracleCloseRecordTests {
+    @Test func testAFreshRecordPermitsBothRecoveries() {
         var record = OracleCloseRecord()
-        XCTAssertTrue(record.allowsReconnect)
-        XCTAssertFalse(record.allowsSessionSetupReplay)
+        #expect(record.allowsReconnect)
+        #expect(!record.allowsSessionSetupReplay)
 
         record.record(.pingTimedOut)
-        XCTAssertTrue(record.allowsReconnect)
-        XCTAssertTrue(record.allowsSessionSetupReplay)
+        #expect(record.allowsReconnect)
+        #expect(record.allowsSessionSetupReplay)
     }
 
-    func testTheDyingStatementCannotOverwriteADeliberateTeardown() {
+    @Test func testTheDyingStatementCannotOverwriteADeliberateTeardown() {
         var record = OracleCloseRecord()
         record.record(.userRequested)
         record.record(.channelAlreadyClosed)
 
-        XCTAssertEqual(record.reason, .userRequested)
-        XCTAssertFalse(record.allowsSessionSetupReplay)
-        XCTAssertFalse(record.allowsReconnect)
+        #expect(record.reason == .userRequested)
+        #expect(!record.allowsSessionSetupReplay)
+        #expect(!record.allowsReconnect)
     }
 
-    func testATeardownArrivingSecondStillFinishesTheConnection() {
+    @Test func testATeardownArrivingSecondStillFinishesTheConnection() {
         var record = OracleCloseRecord()
         record.record(.transportError)
         record.record(.userRequested)
 
-        XCTAssertEqual(record.reason, .transportError)
-        XCTAssertFalse(record.allowsSessionSetupReplay)
-        XCTAssertFalse(record.allowsReconnect)
+        #expect(record.reason == .transportError)
+        #expect(!record.allowsSessionSetupReplay)
+        #expect(!record.allowsReconnect)
     }
 
-    func testADyingProbeCannotOverwriteAConnectDeadlineTeardown() {
+    @Test func testADyingProbeCannotOverwriteAConnectDeadlineTeardown() {
         var record = OracleCloseRecord()
         record.record(.connectTimedOut)
         record.record(.channelAlreadyClosed)
 
-        XCTAssertEqual(record.reason, .connectTimedOut)
-        XCTAssertFalse(record.allowsSessionSetupReplay)
-        XCTAssertFalse(record.allowsReconnect)
+        #expect(record.reason == .connectTimedOut)
+        #expect(!record.allowsSessionSetupReplay)
+        #expect(!record.allowsReconnect)
     }
 
-    func testCancellingAQueryDoesNotFinishTheConnection() {
+    @Test func testCancellingAQueryDoesNotFinishTheConnection() {
         var record = OracleCloseRecord()
         record.record(.queryCancelled)
 
-        XCTAssertTrue(record.allowsReconnect)
-        XCTAssertFalse(record.allowsSessionSetupReplay)
+        #expect(record.allowsReconnect)
+        #expect(!record.allowsSessionSetupReplay)
     }
 
     /// A connect clears the reason so the next failure reads its own, and leaves `isFinished`
     /// alone: the plugin never reuses a connection the app disconnected.
-    func testConnectingClearsTheReasonButNotTheTeardown() {
+    @Test func testConnectingClearsTheReasonButNotTheTeardown() {
         var record = OracleCloseRecord()
         record.record(.transportError)
         record.clearOnConnect()
-        XCTAssertNil(record.reason)
-        XCTAssertTrue(record.allowsReconnect)
-        XCTAssertFalse(record.allowsSessionSetupReplay)
+        #expect(record.reason == nil)
+        #expect(record.allowsReconnect)
+        #expect(!record.allowsSessionSetupReplay)
 
         record.record(.userRequested)
         record.clearOnConnect()
-        XCTAssertFalse(record.allowsReconnect)
+        #expect(!record.allowsReconnect)
     }
 }

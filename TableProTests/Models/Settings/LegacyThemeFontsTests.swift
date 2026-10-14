@@ -110,7 +110,8 @@ struct LegacyThemeFontsTests {
         let file = try writeTheme(id: "user.dark", editorSize: 16, in: directory)
         let original = try Data(contentsOf: file)
 
-        let defaults = try #require(UserDefaults(suiteName: "legacy-theme-fonts-\(UUID().uuidString)"))
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let storage = AppSettingsStorage(userDefaults: defaults)
         storage.saveAppearance(appearance(.dark))
 

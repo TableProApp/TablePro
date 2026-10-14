@@ -1,8 +1,8 @@
 import Foundation
 @testable import TableProDatabase
 @testable import TableProModels
+import TableProTestSupport
 import Testing
-
 
 @Suite("ConnectionManager Tests", .timeLimit(.minutes(1)))
 struct ConnectionManagerTests {
@@ -169,14 +169,14 @@ struct ConnectionManagerTests {
             sshEnabled: true,
             sshConfiguration: SSHConfiguration(host: "jump.example.com")
         )
-        let gate = Gate()
+        let gate = AsyncGate()
 
         let slow = MockDatabaseDriver()
-        slow.beforeConnect = { await gate.enter() }
+        slow.beforeConnect = { await gate.wait() }
         factory.drivers["mock"] = slow
 
         let losing = Task { _ = try await manager.connect(connection) }
-        await gate.waitUntilEntered()
+        await gate.arrived(1)
 
         factory.drivers["mock"] = MockDatabaseDriver()
         _ = try await manager.connect(connection)
@@ -249,16 +249,16 @@ struct ConnectionManagerTests {
         let store = MockSecureStore()
         let manager = ConnectionManager(driverFactory: factory, secureStore: store)
         let connection = DatabaseConnection(name: "File", type: DatabaseType(rawValue: "mock"))
-        let gate = Gate()
+        let gate = AsyncGate()
 
         let driver = MockDatabaseDriver()
         driver.holdsSuspensionBlockingResource = true
-        driver.beforeDisconnect = { await gate.enter() }
+        driver.beforeDisconnect = { await gate.wait() }
         factory.drivers["mock"] = driver
         _ = try await manager.connect(connection)
 
         let teardown = Task { await manager.disconnect(connection.id) }
-        await gate.waitUntilEntered()
+        await gate.arrived(1)
 
         #expect(manager.session(for: connection.id) == nil)
         #expect(manager.hasSuspensionBlockingResources)
@@ -273,23 +273,24 @@ struct ConnectionManagerTests {
     func connectWaitsForInFlightTeardown() async throws {
         let factory = MockDriverFactory()
         let store = MockSecureStore()
-        let manager = ConnectionManager(driverFactory: factory, secureStore: store)
+        let clock = ManualClock()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: store, clock: clock)
         let connection = DatabaseConnection(name: "Test", type: DatabaseType(rawValue: "mock"))
-        let gate = Gate()
+        let gate = AsyncGate()
 
         let first = MockDatabaseDriver()
-        first.beforeDisconnect = { await gate.enter() }
+        first.beforeDisconnect = { await gate.wait() }
         factory.drivers["mock"] = first
         _ = try await manager.connect(connection)
 
         let teardown = Task { await manager.disconnect(connection.id) }
-        await gate.waitUntilEntered()
+        await gate.arrived(1)
 
         let second = MockDatabaseDriver()
         factory.drivers["mock"] = second
         let reconnect = Task { try await manager.connect(connection) }
 
-        try await Task.sleep(nanoseconds: 100_000_000)
+        await clock.waitUntilSleeping()
         #expect(!second.isConnected)
 
         await gate.open()
@@ -305,14 +306,14 @@ struct ConnectionManagerTests {
         let factory = MockDriverFactory()
         let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore())
         let connection = DatabaseConnection(name: "Test", type: DatabaseType(rawValue: "mock"))
-        let gate = Gate()
+        let gate = AsyncGate()
 
         let driver = MockDatabaseDriver()
-        driver.beforeConnect = { await gate.enter() }
+        driver.beforeConnect = { await gate.wait() }
         factory.drivers["mock"] = driver
 
         let attempt = Task { try await manager.connect(connection) }
-        await gate.waitUntilEntered()
+        await gate.arrived(1)
 
         manager.invalidateAttempt(for: connection.id)
         await gate.open()
@@ -327,14 +328,14 @@ struct ConnectionManagerTests {
         let factory = MockDriverFactory()
         let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore())
         let connection = DatabaseConnection(name: "Test", type: DatabaseType(rawValue: "mock"))
-        let gate = Gate()
+        let gate = AsyncGate()
 
         let slow = MockDatabaseDriver()
-        slow.beforeConnect = { await gate.enter() }
+        slow.beforeConnect = { await gate.wait() }
         factory.drivers["mock"] = slow
 
         let first = Task { try await manager.connect(connection) }
-        await gate.waitUntilEntered()
+        await gate.arrived(1)
 
         let fast = MockDatabaseDriver()
         factory.drivers["mock"] = fast
@@ -390,10 +391,10 @@ struct ConnectionManagerTests {
             sshEnabled: true,
             sshConfiguration: SSHConfiguration(host: "jump.example.com")
         )
-        let unblocked = Gate()
+        let unblocked = AsyncGate()
 
         let driver = MockDatabaseDriver()
-        driver.beforeDisconnect = { await unblocked.enter() }
+        driver.beforeDisconnect = { await unblocked.wait() }
         ssh.beforeCloseTunnel = { _ in await unblocked.open() }
         factory.drivers["mock"] = driver
 
@@ -423,16 +424,16 @@ struct ConnectionManagerTests {
             teardownWaitLimit: .milliseconds(200)
         )
         let connection = DatabaseConnection(name: "Ledger", type: DatabaseType(rawValue: "mock"))
-        let stuck = Gate()
+        let stuck = AsyncGate()
 
         let first = MockDatabaseDriver()
         first.holdsSuspensionBlockingResource = true
-        first.beforeDisconnect = { await stuck.enter() }
+        first.beforeDisconnect = { await stuck.wait() }
         factory.drivers["mock"] = first
         _ = try await manager.connect(connection)
 
         let release = Task { await manager.disconnect(connection.id) }
-        await stuck.waitUntilEntered()
+        await stuck.arrived(1)
 
         await #expect(throws: ConnectionError.previousSessionStillClosing) {
             _ = try await manager.connect(connection)
@@ -459,12 +460,12 @@ struct ConnectionManagerTests {
             teardownWaitLimit: .milliseconds(50)
         )
         let connection = DatabaseConnection(name: "Ledger", type: DatabaseType(rawValue: "mock"))
-        let checkpointing = Gate()
+        let checkpointing = AsyncGate()
         let hasReturned = Flag()
 
         let driver = MockDatabaseDriver()
         driver.holdsSuspensionBlockingResource = true
-        driver.beforeDisconnect = { await checkpointing.enter() }
+        driver.beforeDisconnect = { await checkpointing.wait() }
         factory.drivers["mock"] = driver
         _ = try await manager.connect(connection)
 
@@ -472,7 +473,7 @@ struct ConnectionManagerTests {
             await manager.releaseSuspensionBlockingResources()
             await hasReturned.raise()
         }
-        await checkpointing.waitUntilEntered()
+        await checkpointing.arrived(1)
         try await Task.sleep(for: .milliseconds(250))
 
         #expect(await hasReturned.isRaised == false)
@@ -489,36 +490,39 @@ struct ConnectionManagerTests {
     @Test("A connect cancelled while it waits for a teardown gives up instead of queuing behind it")
     func cancelledConnectStopsWaitingForTheTeardown() async throws {
         let factory = MockDriverFactory()
+        let clock = ManualClock()
         let manager = ConnectionManager(
             driverFactory: factory,
             secureStore: MockSecureStore(),
-            teardownWaitLimit: .seconds(30)
+            teardownWaitLimit: .seconds(30),
+            clock: clock
         )
         let connection = DatabaseConnection(name: "Ledger", type: DatabaseType(rawValue: "mock"))
-        let stuck = Gate()
+        let stuck = AsyncGate()
 
         let first = MockDatabaseDriver()
-        first.beforeDisconnect = { await stuck.enter() }
+        first.beforeDisconnect = { await stuck.wait() }
         factory.drivers["mock"] = first
         _ = try await manager.connect(connection)
 
         let release = Task { await manager.disconnect(connection.id) }
-        await stuck.waitUntilEntered()
+        await stuck.arrived(1)
 
         let second = MockDatabaseDriver()
         factory.drivers["mock"] = second
         let outcome = AttemptOutcome<ConnectionSession>()
         let attempt = Task { await outcome.record { try await manager.connect(connection) } }
-        try await Task.sleep(for: .milliseconds(100))
+        await clock.waitUntilSleeping()
         attempt.cancel()
 
-        let settled = await outcome.settled(within: .seconds(10))
+        let gaveUp = (try? await waitUntil { await outcome.result != nil }) != nil
         #expect(!second.isConnected)
 
         await stuck.open()
         await release.value
 
-        let result = try #require(settled, "the cancelled connect never gave up")
+        #expect(gaveUp, "the cancelled connect never gave up")
+        let result = try #require(await outcome.result)
         #expect(throws: CancellationError.self) { try result.get() }
     }
 

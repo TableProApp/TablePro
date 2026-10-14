@@ -8,7 +8,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Connection window toolbar", .serialized)
 @MainActor
 internal struct ConnectionWindowToolbarTests {
     private static let pinnedWindowSize = CGSize(width: 1_512, height: 861)

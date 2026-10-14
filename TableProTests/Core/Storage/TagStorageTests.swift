@@ -10,9 +10,9 @@ import XCTest
 
 @MainActor
 final class TagStorageTests: XCTestCase {
-    private var suiteName: String!
+    private var suite: EphemeralDefaults!
+    private var syncSuite: EphemeralDefaults!
     private var defaults: UserDefaults!
-    private var syncSuiteName: String!
     private var syncDefaults: UserDefaults!
     private var metadata: SyncMetadataStorage!
     private var tracker: SyncChangeTracker!
@@ -23,11 +23,10 @@ final class TagStorageTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
-        let unique = UUID().uuidString
-        suiteName = "com.TablePro.tests.TagStorage.\(unique)"
-        syncSuiteName = "com.TablePro.tests.TagStorage.sync.\(unique)"
-        defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        syncDefaults = try XCTUnwrap(UserDefaults(suiteName: syncSuiteName))
+        suite = try EphemeralDefaults()
+        syncSuite = try EphemeralDefaults()
+        defaults = suite.defaults
+        syncDefaults = syncSuite.defaults
         metadata = SyncMetadataStorage(userDefaults: syncDefaults)
         tracker = SyncChangeTracker(metadataStorage: metadata)
         appEvents = AppEvents()
@@ -40,8 +39,6 @@ final class TagStorageTests: XCTestCase {
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
-        syncDefaults.removePersistentDomain(forName: syncSuiteName)
         changeSubscription = nil
         storage = nil
         appEvents = nil
@@ -49,8 +46,8 @@ final class TagStorageTests: XCTestCase {
         metadata = nil
         defaults = nil
         syncDefaults = nil
-        suiteName = nil
-        syncSuiteName = nil
+        suite = nil
+        syncSuite = nil
         super.tearDown()
     }
 

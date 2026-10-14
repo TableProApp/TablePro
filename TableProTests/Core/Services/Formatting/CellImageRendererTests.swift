@@ -45,7 +45,6 @@ private func encodedPng(width: Int, height: Int) -> Data {
 }
 
 @MainActor
-@Suite("CellImageRenderer", .serialized)
 struct CellImageRendererTests {
     @Test("a raster value renders and reports the stored pixel size")
     func rasterRendersAtStoredSize() async {

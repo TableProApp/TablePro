@@ -1,8 +1,3 @@
-//
-//  SSHMatchExecutorTests.swift
-//  TableProTests
-//
-
 import Foundation
 import Testing
 
@@ -27,6 +22,8 @@ struct SSHMatchExecutorTests {
 
     @Test("Slow command times out and does not match")
     func timeoutDoesNotMatch() {
-        #expect(!SSHMatchExecutor.evaluate(command: "sleep 6"))
+        #expect(SSHMatchExecutor.timeoutSeconds > 0)
+        #expect(SSHMatchExecutor.timeoutSeconds < 6, "The connect path must stop a 6 second command")
+        #expect(!SSHMatchExecutor.evaluate(command: "sleep 6", timeout: 0.1))
     }
 }

@@ -30,7 +30,6 @@ internal enum LaunchIntent: @unchecked Sendable {
     case openDatabaseURL(URL)
     case installPlugin(URL)
     case reopenClosedTab(RecentlyClosedTabEntry)
-    case openSampleDatabase
 
     internal var targetConnectionId: UUID? {
         switch self {
@@ -41,8 +40,7 @@ internal enum LaunchIntent: @unchecked Sendable {
             return id
         case .reopenClosedTab(let entry):
             return entry.connectionId
-        case .openSampleDatabase,
-             .openDatabaseURL,
+        case .openDatabaseURL,
              .openDatabaseFile,
              .openDataFile,
              .openSQLFile,

@@ -9,19 +9,16 @@ import TableProPluginKit
 import Testing
 
 /// The reopen journey end to end: what a table's filter rows do between one tab and the next.
-@Suite("FilterPersistenceRoundTrip", .serialized)
 @MainActor
 struct FilterPersistenceRoundTripTests {
+    private let fixtures = CoordinatorFixtures()
+
     private static let settingsKey = "com.TablePro.filter.settings"
 
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {
-        let tabManager = QueryTabManager()
-        let coordinator = MainContentCoordinator(
-            connection: TestFixtures.makeConnection(),
-            tabManager: tabManager,
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
+        let fixture = fixtures.make()
+        let tabManager = fixture.tabManager
+        let coordinator = fixture.coordinator
         return (coordinator, tabManager)
     }
 

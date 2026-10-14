@@ -1,9 +1,9 @@
 import Foundation
 @testable import TableProMCP
 import TableProMCPTestSupport
-import XCTest
+import Testing
 
-final class MCPInflightRegistryTests: XCTestCase {
+struct MCPInflightRegistryTests {
     private static let aliceTokenId = UUID(uuidString: "AAAAAAAA-0000-0000-0000-000000000001") ?? UUID()
     private static let bobTokenId = UUID(uuidString: "BBBBBBBB-0000-0000-0000-000000000002") ?? UUID()
 
@@ -16,7 +16,7 @@ final class MCPInflightRegistryTests: XCTestCase {
         tokenId: MCPInflightRegistryTests.bobTokenId
     )
 
-    func testCancelCancelsTheRegisteredToken() async {
+    @Test func testCancelCancelsTheRegisteredToken() async {
         let registry = MCPInflightRegistry()
         let token = MCPCancellationToken()
         let key = MCPInflightKey(principal: alice, requestId: .number(42))
@@ -24,14 +24,14 @@ final class MCPInflightRegistryTests: XCTestCase {
         await registry.register(key: key, token: token, tokenId: alice.tokenId, method: "tools/call", startedAt: .now)
         let cancelled = await registry.cancel(key: key, reason: .clientRequested("stop"))
 
-        XCTAssertTrue(cancelled)
+        #expect(cancelled)
         let tokenCancelled = await token.isCancelled
         let reason = await token.reason
-        XCTAssertTrue(tokenCancelled)
-        XCTAssertEqual(reason, .clientRequested("stop"))
+        #expect(tokenCancelled)
+        #expect(reason == .clientRequested("stop"))
     }
 
-    func testTheSameRequestIdFromTwoPrincipalsIsTwoEntries() async {
+    @Test func testTheSameRequestIdFromTwoPrincipalsIsTwoEntries() async {
         let registry = MCPInflightRegistry()
         let aliceToken = MCPCancellationToken()
         let bobToken = MCPCancellationToken()
@@ -39,7 +39,7 @@ final class MCPInflightRegistryTests: XCTestCase {
         let aliceKey = MCPInflightKey(principal: alice, requestId: requestId)
         let bobKey = MCPInflightKey(principal: bob, requestId: requestId)
 
-        XCTAssertNotEqual(aliceKey, bobKey)
+        #expect(aliceKey != bobKey)
 
         let aliceRegistered = await registry.register(
             key: aliceKey,
@@ -55,24 +55,24 @@ final class MCPInflightRegistryTests: XCTestCase {
             method: "tools/call",
             startedAt: .now
         )
-        XCTAssertTrue(aliceRegistered)
-        XCTAssertTrue(bobRegistered)
+        #expect(aliceRegistered)
+        #expect(bobRegistered)
 
         let count = await registry.count()
-        XCTAssertEqual(count, 2)
+        #expect(count == 2)
 
         await registry.cancel(key: aliceKey, reason: .clientRequested(nil))
 
         let aliceCancelled = await aliceToken.isCancelled
         let bobCancelled = await bobToken.isCancelled
-        XCTAssertTrue(aliceCancelled)
-        XCTAssertFalse(bobCancelled)
+        #expect(aliceCancelled)
+        #expect(!bobCancelled)
 
         let remaining = await registry.contains(key: bobKey)
-        XCTAssertTrue(remaining)
+        #expect(remaining)
     }
 
-    func testReusingAnInFlightRequestIdReportsTheDisplacement() async {
+    @Test func testReusingAnInFlightRequestIdReportsTheDisplacement() async {
         let registry = MCPInflightRegistry()
         let first = MCPCancellationToken()
         let second = MCPCancellationToken()
@@ -92,18 +92,18 @@ final class MCPInflightRegistryTests: XCTestCase {
             method: "tools/call",
             startedAt: .now
         )
-        XCTAssertTrue(firstRegistered)
-        XCTAssertFalse(secondRegistered)
+        #expect(firstRegistered)
+        #expect(!secondRegistered)
 
         await registry.cancel(key: key, reason: .clientRequested(nil))
 
         let firstCancelled = await first.isCancelled
         let secondCancelled = await second.isCancelled
-        XCTAssertFalse(firstCancelled)
-        XCTAssertTrue(secondCancelled)
+        #expect(!firstCancelled)
+        #expect(secondCancelled)
     }
 
-    func testRemovingWithAStaleTokenLeavesTheEntryAlone() async {
+    @Test func testRemovingWithAStaleTokenLeavesTheEntryAlone() async {
         let registry = MCPInflightRegistry()
         let stale = MCPCancellationToken()
         let live = MCPCancellationToken()
@@ -114,25 +114,25 @@ final class MCPInflightRegistryTests: XCTestCase {
         await registry.remove(key: key, token: stale)
 
         let stillThere = await registry.contains(key: key)
-        XCTAssertTrue(stillThere)
+        #expect(stillThere)
 
         await registry.remove(key: key, token: live)
         let gone = await registry.contains(key: key)
-        XCTAssertFalse(gone)
+        #expect(!gone)
     }
 
-    func testCancellingAnEntryThatIsNotInFlightIsANoop() async {
+    @Test func testCancellingAnEntryThatIsNotInFlightIsANoop() async {
         let registry = MCPInflightRegistry()
         let key = MCPInflightKey(principal: alice, requestId: .number(7))
 
         let cancelled = await registry.cancel(key: key, reason: .clientRequested(nil))
-        XCTAssertFalse(cancelled)
+        #expect(!cancelled)
 
         let count = await registry.count()
-        XCTAssertEqual(count, 0)
+        #expect(count == 0)
     }
 
-    func testCancellingTwiceOnlyReportsTheFirstCancellation() async {
+    @Test func testCancellingTwiceOnlyReportsTheFirstCancellation() async {
         let registry = MCPInflightRegistry()
         let key = MCPInflightKey(principal: alice, requestId: .number(9))
         await registry.register(
@@ -145,11 +145,11 @@ final class MCPInflightRegistryTests: XCTestCase {
 
         let first = await registry.cancel(key: key, reason: .clientRequested(nil))
         let second = await registry.cancel(key: key, reason: .clientRequested(nil))
-        XCTAssertTrue(first)
-        XCTAssertFalse(second)
+        #expect(first)
+        #expect(!second)
     }
 
-    func testRevokingATokenCancelsOnlyThatTokensRequests() async {
+    @Test func testRevokingATokenCancelsOnlyThatTokensRequests() async {
         let registry = MCPInflightRegistry()
         let aliceToken = MCPCancellationToken()
         let bobToken = MCPCancellationToken()
@@ -175,17 +175,17 @@ final class MCPInflightRegistryTests: XCTestCase {
             matchingTokenId: Self.aliceTokenId,
             reason: .credentialRevoked
         )
-        XCTAssertEqual(cancelledCount, 1)
+        #expect(cancelledCount == 1)
 
         let aliceCancelled = await aliceToken.isCancelled
         let bobCancelled = await bobToken.isCancelled
         let aliceReason = await aliceToken.reason
-        XCTAssertTrue(aliceCancelled)
-        XCTAssertFalse(bobCancelled)
-        XCTAssertEqual(aliceReason, .credentialRevoked)
+        #expect(aliceCancelled)
+        #expect(!bobCancelled)
+        #expect(aliceReason == .credentialRevoked)
     }
 
-    func testCancellingByFingerprintCancelsEveryRequestOfThatClient() async {
+    @Test func testCancellingByFingerprintCancelsEveryRequestOfThatClient() async {
         let registry = MCPInflightRegistry()
         let firstToken = MCPCancellationToken()
         let secondToken = MCPCancellationToken()
@@ -217,16 +217,16 @@ final class MCPInflightRegistryTests: XCTestCase {
             matchingFingerprint: alice.tokenFingerprint,
             reason: .serverShuttingDown
         )
-        XCTAssertEqual(cancelled, 2)
+        #expect(cancelled == 2)
 
         let remaining = await registry.count()
-        XCTAssertEqual(remaining, 1)
+        #expect(remaining == 1)
 
         let otherCancelled = await otherToken.isCancelled
-        XCTAssertFalse(otherCancelled)
+        #expect(!otherCancelled)
     }
 
-    func testShutdownCancelsEverythingAndEmptiesTheRegistry() async {
+    @Test func testShutdownCancelsEverythingAndEmptiesTheRegistry() async {
         let registry = MCPInflightRegistry()
         for index in 1 ... 3 {
             await registry.register(
@@ -239,16 +239,16 @@ final class MCPInflightRegistryTests: XCTestCase {
         }
 
         let cancelled = await registry.cancelAll(reason: .serverShuttingDown)
-        XCTAssertEqual(cancelled, 3)
+        #expect(cancelled == 3)
 
         let count = await registry.count()
-        XCTAssertEqual(count, 0)
+        #expect(count == 0)
     }
 
-    func testKeyIsBuiltFromTheClientFingerprint() {
+    @Test func testKeyIsBuiltFromTheClientFingerprint() {
         let key = MCPInflightKey(principal: alice, requestId: .string("abc"))
-        XCTAssertEqual(key.clientFingerprint, alice.tokenFingerprint)
-        XCTAssertEqual(key.requestId, .string("abc"))
-        XCTAssertEqual(key, MCPInflightKey(clientFingerprint: "alice", requestId: .string("abc")))
+        #expect(key.clientFingerprint == alice.tokenFingerprint)
+        #expect(key.requestId == .string("abc"))
+        #expect(key == MCPInflightKey(clientFingerprint: "alice", requestId: .string("abc")))
     }
 }

@@ -3,12 +3,13 @@
 //  TableProTests
 //
 
+import Foundation
 @testable import TablePro
-import XCTest
+import Testing
 
 /// The rule PostgreSQL applies to `REFRESH MATERIALIZED VIEW CONCURRENTLY`, as the index read
 /// reports it. Each shape was measured on PostgreSQL 17.11.
-final class ConcurrentRefreshIndexRuleTests: XCTestCase {
+struct ConcurrentRefreshIndexRuleTests {
     private func index(
         unique: Bool = true,
         type: EditableIndexDefinition.IndexType = .btree,
@@ -23,22 +24,25 @@ final class ConcurrentRefreshIndexRuleTests: XCTestCase {
         )
     }
 
-    func testAPlainUniqueIndexAllowsIt() {
-        XCTAssertTrue(ConcurrentRefreshIndexRule.isUsable(index()))
-        XCTAssertTrue(ConcurrentRefreshIndexRule.isUsable(index(columns: ["customer", "id"])))
-        XCTAssertTrue(ConcurrentRefreshIndexRule.isUsable(index(includedColumns: ["customer"])))
+    @Test
+    func aPlainUniqueIndexAllowsIt() {
+        #expect(ConcurrentRefreshIndexRule.isUsable(index()))
+        #expect(ConcurrentRefreshIndexRule.isUsable(index(columns: ["customer", "id"])))
+        #expect(ConcurrentRefreshIndexRule.isUsable(index(includedColumns: ["customer"])))
     }
 
-    func testAPredicateAnExpressionOrANonUniqueIndexDoesNot() {
-        XCTAssertFalse(ConcurrentRefreshIndexRule.isUsable(index(whereClause: "id > 0")))
-        XCTAssertFalse(ConcurrentRefreshIndexRule.isUsable(index(columns: ["(id + 0)"], expressions: ["(id + 0)"])))
-        XCTAssertFalse(ConcurrentRefreshIndexRule.isUsable(index(unique: false)))
-        XCTAssertFalse(ConcurrentRefreshIndexRule.isUsable(index(type: .gist)))
+    @Test
+    func aPredicateAnExpressionOrANonUniqueIndexDoesNot() {
+        #expect(!(ConcurrentRefreshIndexRule.isUsable(index(whereClause: "id > 0"))))
+        #expect(!(ConcurrentRefreshIndexRule.isUsable(index(columns: ["(id + 0)"], expressions: ["(id + 0)"]))))
+        #expect(!(ConcurrentRefreshIndexRule.isUsable(index(unique: false))))
+        #expect(!(ConcurrentRefreshIndexRule.isUsable(index(type: .gist))))
     }
 
-    func testOneUsableIndexIsEnough() {
-        XCTAssertTrue(ConcurrentRefreshIndexRule.allowsConcurrentRefresh([index(unique: false), index()]))
-        XCTAssertFalse(ConcurrentRefreshIndexRule.allowsConcurrentRefresh([index(unique: false)]))
-        XCTAssertFalse(ConcurrentRefreshIndexRule.allowsConcurrentRefresh([]))
+    @Test
+    func oneUsableIndexIsEnough() {
+        #expect(ConcurrentRefreshIndexRule.allowsConcurrentRefresh([index(unique: false), index()]))
+        #expect(!(ConcurrentRefreshIndexRule.allowsConcurrentRefresh([index(unique: false)])))
+        #expect(!ConcurrentRefreshIndexRule.allowsConcurrentRefresh([]))
     }
 }

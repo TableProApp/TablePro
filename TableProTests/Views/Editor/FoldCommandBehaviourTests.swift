@@ -1,8 +1,3 @@
-//
-//  FoldCommandBehaviourTests.swift
-//  TableProTests
-//
-
 import AppKit
 import Foundation
 @testable import TablePro
@@ -10,6 +5,7 @@ import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProTestSupport
 import TableProTextEngine
 import Testing
 
@@ -48,11 +44,9 @@ struct FoldCommandBehaviourTests {
         return controller
     }
 
+    /// Returns on a timeout too, so the case's own expectation names what never arrived.
     private func waitForFolds(_ controller: TextViewController) async throws {
-        for _ in 0..<40 {
-            if !controller.foldRanges.isEmpty { return }
-            try await Task.sleep(for: .milliseconds(50))
-        }
+        _ = try? await waitUntil { !controller.foldRanges.isEmpty }
     }
 
     /// Hiding the line numbers hides the gutter with them, and the chevrons go with it, but the reader turned off

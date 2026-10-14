@@ -638,6 +638,15 @@ struct SQLFormatterServiceTests {
         #expect(formatted.contains("'C:\\"))
     }
 
+    /// The editor closes a typed quote for the user, so a backtick is how this input reaches Format
+    /// Query from the keyboard. It takes the same tokenizer branch.
+    @Test("Formats a query whose backtick identifier is unterminated and ends in a backslash")
+    func unterminatedBacktickEndingInBackslash() throws {
+        let formatted = try format("select * from t where c like `C:\\")
+        #expect(formatted.contains("SELECT"))
+        #expect(formatted.contains("`C:\\"))
+    }
+
     @Test("Formats a query whose block comment is unterminated")
     func unterminatedBlockComment() throws {
         let formatted = try format("select 1; /* note")

@@ -11,11 +11,14 @@ import Testing
 
 struct AppSettingsStorageMigrationTests {
     private let generalKey = "com.TablePro.settings.general"
+    private let scratch: EphemeralDefaults
+
+    init() throws {
+        scratch = try EphemeralDefaults()
+    }
 
     private func makeStorage() -> (storage: AppSettingsStorage, defaults: UserDefaults, suite: String) {
-        let suite = "StartupMigrationTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        return (AppSettingsStorage(userDefaults: defaults), defaults, suite)
+        (AppSettingsStorage(userDefaults: scratch.defaults), scratch.defaults, scratch.suiteName)
     }
 
     @Test("A saved showWelcome default flips to reopenLast")

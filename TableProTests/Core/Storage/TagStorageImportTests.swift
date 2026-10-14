@@ -12,21 +12,19 @@ import Testing
 
 @MainActor
 struct TagStorageImportTests {
-    private let unique = UUID().uuidString
+    private let pool = EphemeralDefaultsPool()
     private let metadata: SyncMetadataStorage
     private let tracker: SyncChangeTracker
     private let events: AppEvents
 
     init() throws {
-        metadata = SyncMetadataStorage(
-            userDefaults: try #require(UserDefaults(suiteName: "com.TablePro.tests.TagImport.sync.\(unique)"))
-        )
+        metadata = SyncMetadataStorage(userDefaults: try pool.make().defaults)
         tracker = SyncChangeTracker(metadataStorage: metadata)
         events = AppEvents()
     }
 
-    private func makeStorage(_ name: String = "tags", seed: Data? = nil) throws -> (TagStorage, UserDefaults) {
-        let defaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.TagImport.\(name).\(unique)"))
+    private func makeStorage(seed: Data? = nil) throws -> (TagStorage, UserDefaults) {
+        let defaults = try pool.make().defaults
         if let seed {
             defaults.set(seed, forKey: "com.TablePro.tags")
         }
@@ -121,7 +119,7 @@ struct TagStorageImportTests {
     @Test("An unreadable tag store throws and is left as it was")
     func unreadableStoreThrows() throws {
         let junk = Data([0x00, 0x01])
-        let (storage, defaults) = try makeStorage("unreadable", seed: junk)
+        let (storage, defaults) = try makeStorage(seed: junk)
 
         #expect(throws: TagStorageError.storeUnreadable) {
             try storage.ensureTags([PlannedTag(name: "Billing", color: nil)])

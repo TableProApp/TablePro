@@ -1,13 +1,9 @@
-//
-//  SidebarOutlineScaffoldTests.swift
-//  TableProTests
-//
-
 import AppKit
 import os
 import SwiftUI
 import TableProPluginKit
 import TableProSyncTransport
+import TableProTestSupport
 import Testing
 
 @testable import TablePro
@@ -107,20 +103,18 @@ struct DatabaseTreeObjectGroupHierarchyTests {
     /// for the highlight rather than for the task that moves it. It waits for the row it expects,
     /// because "no row yet" and "the wrong row" are the same reading otherwise.
     private func selectionSettles(in outlineView: NSOutlineView, on expected: DatabaseTreeNode) async -> Bool {
-        for _ in 0 ..< 8 {
-            if outlineView.selectedRow >= 0,
-               outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === expected {
-                return true
-            }
-            await Task.yield()
+        let met: Void? = try? await waitUntil {
+            outlineView.selectedRow >= 0
+                && outlineView.item(atRow: outlineView.selectedRow) as? DatabaseTreeNode === expected
         }
-        return false
+        return met != nil
     }
 
     @Test("Nested groups preserve depth and partition expansion")
     func nestedGroupsPreserveDepth() async throws {
         let connectionId = UUID()
-        let defaults = try #require(UserDefaults(suiteName: "tree-groups-\(UUID().uuidString)"))
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
         let database = DatabaseTreeNode(id: "database", kind: .database(.minimal(name: "shop")))
         let schema = DatabaseTreeNode(id: "schema", kind: .schema(database: "shop", schema: "public"))
@@ -204,7 +198,8 @@ struct DatabaseTreeObjectGroupHierarchyTests {
     @Test("Collapsed groups keep model selection adoption pending")
     func collapsedGroupsKeepSelectionPending() async throws {
         let connectionId = UUID()
-        let defaults = try #require(UserDefaults(suiteName: "tree-group-selection-\(UUID().uuidString)"))
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
         let tableRef = DatabaseTreeTableRef(
             database: "shop",
@@ -264,7 +259,8 @@ struct DatabaseTreeObjectGroupHierarchyTests {
     @Test("Selection adoption distinguishes identical objects across databases")
     func selectionAdoptionUsesTheActiveDatabase() async throws {
         let connectionId = UUID()
-        let defaults = try #require(UserDefaults(suiteName: "tree-group-database-\(UUID().uuidString)"))
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
         let table = TableInfo(name: "report", type: .view, rowCount: nil, schema: "public")
         let oldRef = DatabaseTreeTableRef(database: "archive", schema: "public", table: table)
@@ -313,7 +309,8 @@ struct DatabaseTreeObjectGroupHierarchyTests {
     @Test("A multi-selection adopts only rows in the active database")
     func multiTableAdoptionScopesToTheActiveDatabase() async throws {
         let connectionId = UUID()
-        let defaults = try #require(UserDefaults(suiteName: "tree-group-multi-\(UUID().uuidString)"))
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
         let orders = TableInfo(name: "orders", type: .table, rowCount: nil, schema: "public")
         let report = TableInfo(name: "report", type: .table, rowCount: nil, schema: "public")
@@ -371,7 +368,8 @@ struct DatabaseTreeObjectGroupHierarchyTests {
     @Test("Collapsing a kind folder keeps the model selection")
     func collapsingAGroupKeepsTheModelSelection() async throws {
         let connectionId = UUID()
-        let defaults = try #require(UserDefaults(suiteName: "tree-group-collapse-\(UUID().uuidString)"))
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
         let orders = TableInfo(name: "orders", type: .table, rowCount: nil, schema: "public")
         let schema = DatabaseTreeNode(id: "schema", kind: .schema(database: "shop", schema: "public"))
@@ -430,7 +428,8 @@ struct DatabaseTreeObjectGroupHierarchyTests {
     @Test("Opening a row in another database keeps that row selected")
     func selectionSurvivesACrossDatabaseOpen() throws {
         let connectionId = UUID()
-        let defaults = try #require(UserDefaults(suiteName: "tree-group-open-\(UUID().uuidString)"))
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
         let orders = TableInfo(name: "orders", type: .table, rowCount: nil, schema: "public")
         let report = TableInfo(name: "report", type: .table, rowCount: nil, schema: "public")
@@ -477,7 +476,8 @@ struct DatabaseTreeObjectGroupHierarchyTests {
     @Test("One disclosure gesture persists the expansion snapshot once")
     func oneGesturePersistsOnce() throws {
         let connectionId = UUID()
-        let defaults = try #require(WriteCountingDefaults(suiteName: "tree-group-writes-\(UUID().uuidString)"))
+        let suite = try EphemeralDefaults()
+        let defaults = try #require(WriteCountingDefaults(suiteName: suite.suiteName))
         let windowState = WindowSidebarState(connectionId: connectionId, defaults: defaults)
         let database = DatabaseTreeNode(id: "database", kind: .database(.minimal(name: "shop")))
         let schema = DatabaseTreeNode(id: "schema", kind: .schema(database: "shop", schema: "public"))
@@ -575,24 +575,17 @@ struct SidebarHostingCellViewTests {
     }
 }
 
-@Suite("Database tree favorite refresh", .serialized)
 @MainActor
 struct DatabaseTreeFavoriteRefreshTests {
     private static let width: CGFloat = 320
     private static let height: CGFloat = 120
 
     @Test("Adding and removing a favorite repaints every visible copy without replacing its host")
-    func favoriteMutationRepaintsVisibleRows() throws {
-        let favoritesSuite = "DatabaseTreeFavoriteRefreshTests.favorites.\(UUID().uuidString)"
-        let syncSuite = "DatabaseTreeFavoriteRefreshTests.sync.\(UUID().uuidString)"
-        let favoritesDefaults = try #require(UserDefaults(suiteName: favoritesSuite))
-        let syncDefaults = try #require(UserDefaults(suiteName: syncSuite))
-        favoritesDefaults.removePersistentDomain(forName: favoritesSuite)
-        syncDefaults.removePersistentDomain(forName: syncSuite)
-        defer {
-            favoritesDefaults.removePersistentDomain(forName: favoritesSuite)
-            syncDefaults.removePersistentDomain(forName: syncSuite)
-        }
+    func favoriteMutationRepaintsVisibleRows() async throws {
+        let favoritesSuite = try EphemeralDefaults()
+        let syncSuite = try EphemeralDefaults()
+        let favoritesDefaults = favoritesSuite.defaults
+        let syncDefaults = syncSuite.defaults
 
         let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
         let tracker = SyncChangeTracker(metadataStorage: metadata)
@@ -628,7 +621,7 @@ struct DatabaseTreeFavoriteRefreshTests {
         outlineView.delegate = coordinator
         coordinator.attach(outlineView: outlineView)
         outlineView.reloadData()
-        settle(window)
+        await settle(window)
 
         #expect(outlineView.numberOfRows == 2)
         let cells = try (0..<2).map { row in
@@ -636,12 +629,12 @@ struct DatabaseTreeFavoriteRefreshTests {
                 outlineView.view(atColumn: 0, row: row, makeIfNecessary: true) as? DatabaseTreeCellView
             )
         }
-        settle(window)
+        await settle(window)
         let hosts = cells.map(\.hostedView)
         let unfavoritePixels = try cells.map(trailingPixels)
 
         coordinator.toggleFavorite(ref)
-        settle(window)
+        await settle(window)
 
         #expect(coordinator.isFavorite(ref))
         #expect(cells.indices.allSatisfy { cells[$0].hostedView === hosts[$0] })
@@ -649,7 +642,7 @@ struct DatabaseTreeFavoriteRefreshTests {
         #expect(zip(unfavoritePixels, favoritePixels).allSatisfy(!=))
 
         coordinator.toggleFavorite(ref)
-        settle(window)
+        await settle(window)
 
         #expect(!coordinator.isFavorite(ref))
         #expect(cells.indices.allSatisfy { cells[$0].hostedView === hosts[$0] })
@@ -658,18 +651,13 @@ struct DatabaseTreeFavoriteRefreshTests {
     }
 
     @Test("Adding and removing a database favorite repaints its star in place")
-    func databaseFavoriteMutationRepaintsVisibleRow() throws {
-        let tableSuite = "DatabaseTreeFavoriteRefreshTests.tables.\(UUID().uuidString)"
-        let databaseSuite = "DatabaseTreeFavoriteRefreshTests.databases.\(UUID().uuidString)"
-        let syncSuite = "DatabaseTreeFavoriteRefreshTests.database-sync.\(UUID().uuidString)"
-        let tableDefaults = try #require(UserDefaults(suiteName: tableSuite))
-        let databaseDefaults = try #require(UserDefaults(suiteName: databaseSuite))
-        let syncDefaults = try #require(UserDefaults(suiteName: syncSuite))
-        defer {
-            tableDefaults.removePersistentDomain(forName: tableSuite)
-            databaseDefaults.removePersistentDomain(forName: databaseSuite)
-            syncDefaults.removePersistentDomain(forName: syncSuite)
-        }
+    func databaseFavoriteMutationRepaintsVisibleRow() async throws {
+        let tableSuite = try EphemeralDefaults()
+        let databaseSuite = try EphemeralDefaults()
+        let syncSuite = try EphemeralDefaults()
+        let tableDefaults = tableSuite.defaults
+        let databaseDefaults = databaseSuite.defaults
+        let syncDefaults = syncSuite.defaults
 
         let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
         let tracker = SyncChangeTracker(metadataStorage: metadata)
@@ -709,12 +697,12 @@ struct DatabaseTreeFavoriteRefreshTests {
         outlineView.delegate = coordinator
         coordinator.attach(outlineView: outlineView)
         outlineView.reloadData()
-        settle(window)
+        await settle(window)
 
         let cell = try #require(
             outlineView.view(atColumn: 0, row: 0, makeIfNecessary: true) as? DatabaseTreeCellView
         )
-        settle(window)
+        await settle(window)
         let host = cell.hostedView
         let unfavoritePixels = try trailingPixels(of: cell)
 
@@ -723,7 +711,7 @@ struct DatabaseTreeFavoriteRefreshTests {
             environment: .production,
             connectionId: connectionId
         )
-        settle(window)
+        await settle(window)
 
         #expect(coordinator.favoriteDatabaseEnvironments()["shop"] == .production)
         #expect(cell.hostedView === host)
@@ -731,16 +719,22 @@ struct DatabaseTreeFavoriteRefreshTests {
         #expect(unfavoritePixels != favoritePixels)
 
         databaseStorage.removeFavorite(database: "shop", connectionId: connectionId)
-        settle(window)
+        await settle(window)
 
         #expect(coordinator.favoriteDatabaseEnvironments()["shop"] == nil)
         #expect(cell.hostedView === host)
         #expect(try trailingPixels(of: cell) != favoritePixels)
     }
 
-    private func settle(_ window: NSWindow) {
-        window.layoutIfNeeded()
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+    /// The favorite stores notify on a later turn and the cell repaints on the layout after it, so
+    /// each pass lays out and then waits for one main-queue turn.
+    private func settle(_ window: NSWindow) async {
+        for _ in 0 ..< 5 {
+            window.layoutIfNeeded()
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { continuation.resume() }
+            }
+        }
         window.layoutIfNeeded()
     }
 

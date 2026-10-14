@@ -1,11 +1,6 @@
-//
-//  ERDiagramPointerInputTests.swift
-//  TableProTests
-//
-//  Drives the ER diagram's document view with mouse events at the zoom levels the app reaches. The
-//  SwiftUI gestures it replaced resolved every point at the pointer's position times the zoom, so
-//  these pin the one thing that went wrong: the point handed on is the one drawn under the pointer.
-//
+// Drives the ER diagram's document view with mouse events at the zoom levels the app reaches. The
+// SwiftUI gestures it replaced resolved every point at the pointer's position times the zoom, so
+// these pin the one thing that went wrong: the point handed on is the one drawn under the pointer.
 
 import AppKit
 @testable import TablePro
@@ -232,9 +227,9 @@ struct ERDiagramPointerInputTests {
     /// A tab switch mounts the canvas while the outgoing tab's view still holds focus and removes that
     /// view in the same update, which leaves the window holding focus. The claim runs on a later
     /// main-queue turn, which a nested run loop inside this main-actor test never reaches, so the test
-    /// suspends instead.
+    /// suspends behind it instead.
     @Test("The canvas takes focus once the view that held it on arrival leaves")
-    func canvasClaimsFocusAfterTheOutgoingViewLeaves() async throws {
+    func canvasClaimsFocusAfterTheOutgoingViewLeaves() async {
         let frame = CGRect(x: 0, y: 0, width: 800, height: 600)
         let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
         let container = NSView(frame: frame)
@@ -248,13 +243,13 @@ struct ERDiagramPointerInputTests {
         #expect(window.firstResponder === outgoing)
         outgoing.removeFromSuperview()
 
-        try await Task.sleep(for: .milliseconds(100))
+        await afterQueuedMainWork()
 
         #expect(window.firstResponder === sceneView)
     }
 
     @Test("The canvas leaves focus alone when another view still holds it")
-    func canvasLeavesHeldFocusAlone() async throws {
+    func canvasLeavesHeldFocusAlone() async {
         let frame = CGRect(x: 0, y: 0, width: 800, height: 600)
         let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
         let container = NSView(frame: frame)
@@ -264,9 +259,15 @@ struct ERDiagramPointerInputTests {
         window.makeFirstResponder(sidebar)
 
         container.addSubview(ERDiagramSceneView(frame: frame))
-        try await Task.sleep(for: .milliseconds(100))
+        await afterQueuedMainWork()
 
         #expect(window.firstResponder === sidebar)
+    }
+
+    private func afterQueuedMainWork() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
     }
 
     @Test("A click on the canvas gives it focus back")

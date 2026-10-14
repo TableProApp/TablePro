@@ -10,9 +10,12 @@ struct RedisConnectProbeTests {
         #expect(RedisConnectProbe.outcome(errorMessage: "") == .established)
     }
 
-    @Test("NOAUTH is the only reply that means no identity")
-    func noAuthIsFatal() {
-        #expect(RedisConnectProbe.outcome(errorMessage: "NOAUTH Authentication required.") == .unauthenticated)
+    @Test("NOAUTH, matched case-insensitively, is the only reply that means no identity", arguments: [
+        "NOAUTH Authentication required.",
+        "noauth Authentication required.",
+    ])
+    func noAuthIsFatal(_ message: String) {
+        #expect(RedisConnectProbe.outcome(errorMessage: message) == .unauthenticated)
     }
 
     @Test("NOPERM means authenticated but restricted, which is a usable session")
@@ -34,11 +37,6 @@ struct RedisConnectProbeTests {
     func errorClassIsDelimited() {
         #expect(RedisConnectProbe.outcome(errorMessage: "NOAUTHZ something new") == .refused("NOAUTHZ something new"))
         #expect(RedisConnectProbe.outcome(errorMessage: "NOPERMISSION something new") != .established)
-    }
-
-    @Test("the error class is matched case-insensitively")
-    func errorClassIsCaseInsensitive() {
-        #expect(RedisConnectProbe.outcome(errorMessage: "noauth Authentication required.") == .unauthenticated)
     }
 
     @Test("only a failing outcome carries a message, and only the unauthenticated one names a field")

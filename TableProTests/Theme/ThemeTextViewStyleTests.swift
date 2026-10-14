@@ -13,7 +13,6 @@ import Testing
 
 /// Each test adopts a pair on the shared `ThemeEngine` and restores it in a `defer`. The bodies are
 /// synchronous and `@MainActor`, so nothing else on the main actor runs between the two.
-@Suite("Text views follow the editor theme", .serialized)
 @MainActor
 struct ThemeTextViewStyleTests {
     private func makeTextView() throws -> NSTextView {

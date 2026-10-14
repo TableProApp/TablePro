@@ -3,11 +3,12 @@
 //  TableProTests
 //
 
+import Foundation
 @testable import TablePro
-import XCTest
+import Testing
 
 @MainActor
-final class ObjectCopyConcurrentReadRefusalTests: XCTestCase {
+final class ObjectCopyConcurrentReadRefusalTests {
     private let connection = UUID()
 
     private func endpoint(database: String, schema: String?) -> DatabaseEndpoint {
@@ -24,36 +25,37 @@ final class ObjectCopyConcurrentReadRefusalTests: XCTestCase {
         ObjectCopyPlanner(manager: .shared).concurrentReadRefusal(source: source, target: target)
     }
 
-    func testACopyBetweenTwoSchemasOfOneConnectionIsRefusedInCopyWording() throws {
-        let refusal = try XCTUnwrap(copyRefusal(
+    @Test
+    func aCopyBetweenTwoSchemasOfOneConnectionIsRefusedInCopyWording() throws {
+        let refusal = try #require(copyRefusal(
             source: endpoint(database: "shop", schema: "main"),
             target: endpoint(database: "shop", schema: "archive")
         ))
 
-        XCTAssertFalse(refusal.localizedCaseInsensitiveContains("compare"))
-        XCTAssertTrue(refusal.contains("schemas"))
+        #expect(!refusal.localizedCaseInsensitiveContains("compare"))
+        #expect(refusal.contains("schemas"))
     }
 
-    func testACopyBetweenTwoDatabasesOfOneConnectionIsRefusedInCopyWording() throws {
-        let refusal = try XCTUnwrap(copyRefusal(
+    @Test
+    func aCopyBetweenTwoDatabasesOfOneConnectionIsRefusedInCopyWording() throws {
+        let refusal = try #require(copyRefusal(
             source: endpoint(database: "shop", schema: nil),
             target: endpoint(database: "shop_archive", schema: nil)
         ))
 
-        XCTAssertFalse(refusal.localizedCaseInsensitiveContains("compare"))
-        XCTAssertTrue(refusal.contains("databases"))
+        #expect(!refusal.localizedCaseInsensitiveContains("compare"))
+        #expect(refusal.contains("databases"))
     }
 
-    func testACopyOntoItsOwnScopeIsRefusedInCopyWording() {
+    @Test
+    func aCopyOntoItsOwnScopeIsRefusedInCopyWording() {
         let scope = endpoint(database: "shop", schema: "main")
 
-        XCTAssertEqual(
-            copyRefusal(source: scope, target: scope),
-            String(localized: "The source and the target are the same database. Choose a different target.")
-        )
+        #expect(copyRefusal(source: scope, target: scope) == String(localized: "The source and the target are the same database. Choose a different target."))
     }
 
-    func testTwoConnectionsAreNeverRefused() {
+    @Test
+    func twoConnectionsAreNeverRefused() {
         let refusal = copyRefusal(
             source: endpoint(database: "shop", schema: "main"),
             target: DatabaseEndpoint(
@@ -65,6 +67,6 @@ final class ObjectCopyConcurrentReadRefusalTests: XCTestCase {
             )
         )
 
-        XCTAssertNil(refusal)
+        #expect(refusal == nil)
     }
 }

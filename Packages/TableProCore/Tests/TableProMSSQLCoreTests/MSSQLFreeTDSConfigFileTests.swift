@@ -1,5 +1,6 @@
 import Foundation
 @testable import TableProMSSQLCore
+import TableProTestSupport
 import Testing
 
 @Suite("MSSQL FreeTDS config file")
@@ -96,7 +97,7 @@ struct MSSQLFreeTDSConfigFileTests {
         let waiter = runOnOwnThread {
             try? file.withEntry(upper, waitingAtMost: 10) { order.append("upper in") }
         }
-        try await Task.sleep(for: .milliseconds(200))
+        try await waitUntil { file.waitingConnections(named: "db.example.com") == 1 }
         released.signal()
         await holder.wait()
         await waiter.wait()
@@ -129,7 +130,7 @@ struct MSSQLFreeTDSConfigFileTests {
                 seenByEncrypted.value = contents()
             }
         }
-        try await Task.sleep(for: .milliseconds(200))
+        try await waitUntil { file.waitingConnections(named: "db.example.com") == 1 }
         #expect(order.entries == ["plain in"])
         released.signal()
         await holder.wait()
@@ -211,11 +212,11 @@ struct MSSQLFreeTDSConfigFileTests {
         let encryptedConnect = runOnOwnThread {
             try? file.withEntry(encrypted, waitingAtMost: 10) { order.append("encrypted in") }
         }
-        #expect(await eventually { file.waitingConnections(named: "db.example.com") == 1 })
+        try await waitUntil { file.waitingConnections(named: "db.example.com") == 1 }
         let secondPlainConnect = runOnOwnThread {
             try? file.withEntry(plain, waitingAtMost: 10) { order.append("second plain in") }
         }
-        #expect(await eventually { file.waitingConnections(named: "db.example.com") == 2 })
+        try await waitUntil { file.waitingConnections(named: "db.example.com") == 2 }
         #expect(order.entries == ["first plain in"])
         released.signal()
         await holder.wait()
@@ -277,7 +278,7 @@ struct MSSQLFreeTDSConfigFileTests {
                 waiterError.value = error
             }
         }
-        #expect(await eventually { file.waitingConnections(named: "db.example.com") == 1 })
+        try await waitUntil { file.waitingConnections(named: "db.example.com") == 1 }
         abandoned.value = true
         file.interruptWaits()
         let leftInTime = await waiter.opens(within: .seconds(2))
@@ -301,15 +302,6 @@ struct MSSQLFreeTDSConfigFileTests {
         }
         #expect(!ran)
     }
-}
-
-private func eventually(within limit: Duration = .seconds(5), _ condition: () -> Bool) async -> Bool {
-    let deadline = ContinuousClock.now + limit
-    while !condition() {
-        guard ContinuousClock.now < deadline else { return false }
-        try? await Task.sleep(for: .milliseconds(10))
-    }
-    return true
 }
 
 private func runOnOwnThread(_ work: @escaping @Sendable () -> Void) -> Latch {
@@ -358,7 +350,7 @@ private final class Latch: @unchecked Sendable {
     }
 
     func opens(within limit: Duration) async -> Bool {
-        await eventually(within: limit) { opened }
+        (try? await waitUntil(timeout: limit) { opened }) != nil
     }
 }
 

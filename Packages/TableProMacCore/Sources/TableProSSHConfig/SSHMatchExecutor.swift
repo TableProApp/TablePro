@@ -1,15 +1,10 @@
-//
-//  SSHMatchExecutor.swift
-//  TablePro
-//
-
 import Foundation
 import os
 import TableProLogRedaction
 
 enum SSHMatchExecutor {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SSHMatchExecutor")
-    private static let timeoutSeconds: TimeInterval = 5
+    static let timeoutSeconds: TimeInterval = 5
 
     private static let killGraceSeconds: TimeInterval = 2
 
@@ -24,6 +19,10 @@ enum SSHMatchExecutor {
     /// `trap '' TERM; sleep 300` never returned. A handler that merely traps and exits is fine, so
     /// the grace period gives it its chance first.
     static func evaluate(command: String) -> Bool {
+        evaluate(command: command, timeout: timeoutSeconds)
+    }
+
+    static func evaluate(command: String, timeout: TimeInterval) -> Bool {
         let trimmed = command.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return false }
 
@@ -58,7 +57,7 @@ enum SSHMatchExecutor {
             )
         }
         DispatchQueue.global(qos: .utility).asyncAfter(
-            deadline: .now() + timeoutSeconds,
+            deadline: .now() + timeout,
             execute: timeoutWorkItem
         )
 

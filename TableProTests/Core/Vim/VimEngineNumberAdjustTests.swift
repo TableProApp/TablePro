@@ -6,23 +6,17 @@
 //  the cursor on the current line.
 //
 
-import XCTest
-import TableProPluginKit
+import Foundation
 @testable import TablePro
+import TableProPluginKit
+import Testing
 
 @MainActor
-final class VimEngineNumberAdjustTests: XCTestCase {
+final class VimEngineNumberAdjustTests {
     private var engine: VimEngine!
     private var buffer: VimTextBufferMock!
 
-    override func setUp() {
-        super.setUp()
-    }
-
-    override func tearDown() {
-        engine = nil
-        buffer = nil
-        super.tearDown()
+    init() {
     }
 
     private func make(_ text: String, at offset: Int) {
@@ -33,101 +27,114 @@ final class VimEngineNumberAdjustTests: XCTestCase {
 
     // MARK: - Ctrl+A: Increment
 
-    func testCtrlAIncrementsNumberUnderCursor() {
+    @Test
+    func ctrlAIncrementsNumberUnderCursor() {
         make("x = 42\n", at: 4)
         _ = engine.process("\u{01}", shift: false) // Ctrl+A
-        XCTAssertEqual(buffer.text, "x = 43\n", "Ctrl+A should increment the number under the cursor")
+        #expect(buffer.text == "x = 43\n", "Ctrl+A should increment the number under the cursor")
     }
 
-    func testCtrlAFindsNumberAfterCursor() {
+    @Test
+    func ctrlAFindsNumberAfterCursor() {
         make("x = 42\n", at: 0)
         _ = engine.process("\u{01}", shift: false)
-        XCTAssertEqual(buffer.text, "x = 43\n",
+        #expect(buffer.text == "x = 43\n",
             "Ctrl+A should find the next number to the right of the cursor on the current line")
     }
 
-    func testCtrlAWithCount() {
+    @Test
+    func ctrlAWithCount() {
         make("x = 42\n", at: 4)
         _ = engine.process("5", shift: false)
         _ = engine.process("\u{01}", shift: false)
-        XCTAssertEqual(buffer.text, "x = 47\n", "5<C-a> should increment by 5")
+        #expect(buffer.text == "x = 47\n", "5<C-a> should increment by 5")
     }
 
-    func testCtrlANegativeNumber() {
+    @Test
+    func ctrlANegativeNumber() {
         make("x = -5\n", at: 4)
         _ = engine.process("\u{01}", shift: false)
-        XCTAssertEqual(buffer.text, "x = -4\n",
+        #expect(buffer.text == "x = -4\n",
             "Ctrl+A on a negative number should increment toward zero")
     }
 
-    func testCtrlAZeroToOne() {
+    @Test
+    func ctrlAZeroToOne() {
         make("x = 0\n", at: 4)
         _ = engine.process("\u{01}", shift: false)
-        XCTAssertEqual(buffer.text, "x = 1\n")
+        #expect(buffer.text == "x = 1\n")
     }
 
-    func testCtrlAOnLineWithoutNumberIsNoOp() {
+    @Test
+    func ctrlAOnLineWithoutNumberIsNoOp() {
         make("foo bar baz\n", at: 0)
         _ = engine.process("\u{01}", shift: false)
-        XCTAssertEqual(buffer.text, "foo bar baz\n",
+        #expect(buffer.text == "foo bar baz\n",
             "Ctrl+A on a line without any number should not modify the buffer")
     }
 
     // MARK: - Ctrl+X: Decrement
 
-    func testCtrlXDecrementsNumberUnderCursor() {
+    @Test
+    func ctrlXDecrementsNumberUnderCursor() {
         make("x = 42\n", at: 4)
         _ = engine.process("\u{18}", shift: false) // Ctrl+X
-        XCTAssertEqual(buffer.text, "x = 41\n", "Ctrl+X should decrement the number under the cursor")
+        #expect(buffer.text == "x = 41\n", "Ctrl+X should decrement the number under the cursor")
     }
 
-    func testCtrlXWithCount() {
+    @Test
+    func ctrlXWithCount() {
         make("x = 42\n", at: 4)
         _ = engine.process("1", shift: false)
         _ = engine.process("0", shift: false)
         _ = engine.process("\u{18}", shift: false)
-        XCTAssertEqual(buffer.text, "x = 32\n", "10<C-x> should decrement by 10")
+        #expect(buffer.text == "x = 32\n", "10<C-x> should decrement by 10")
     }
 
-    func testCtrlXOnZeroProducesNegative() {
+    @Test
+    func ctrlXOnZeroProducesNegative() {
         make("x = 0\n", at: 4)
         _ = engine.process("\u{18}", shift: false)
-        XCTAssertEqual(buffer.text, "x = -1\n")
+        #expect(buffer.text == "x = -1\n")
     }
 
     // MARK: - Hex Numbers
 
-    func testCtrlAOnHex() {
+    @Test
+    func ctrlAOnHex() {
         make("x = 0x1F\n", at: 4)
         _ = engine.process("\u{01}", shift: false)
-        XCTAssertEqual(buffer.text, "x = 0x20\n",
+        #expect(buffer.text == "x = 0x20\n",
             "Ctrl+A on a hex number should preserve the format and increment")
     }
 
-    func testCtrlXOnHex() {
+    @Test
+    func ctrlXOnHex() {
         make("x = 0x10\n", at: 4)
         _ = engine.process("\u{18}", shift: false)
-        XCTAssertEqual(buffer.text, "x = 0xf\n",
+        #expect(buffer.text == "x = 0xf\n",
             "Ctrl+X on hex should preserve the format and decrement")
     }
 
     // MARK: - Cursor Position After Adjust
 
-    func testCursorLandsOnLastDigitAfterIncrement() {
+    @Test
+    func cursorLandsOnLastDigitAfterIncrement() {
         make("x = 9\n", at: 4)
         _ = engine.process("\u{01}", shift: false)
         // After 9 → 10, cursor should land on '0' (the new last digit).
-        XCTAssertEqual(buffer.text, "x = 10\n")
-        XCTAssertEqual(buffer.selectedRange().location, 5,
+        #expect(buffer.text == "x = 10\n")
+        #expect(buffer.selectedRange().location == 5,
             "Cursor should land on the last digit of the new number after increment")
     }
 
     // MARK: - Multi-Digit Numbers
 
-    func testCtrlAOnLargeNumber() {
+    @Test
+    func ctrlAOnLargeNumber() {
         make("count = 999\n", at: 8)
         _ = engine.process("\u{01}", shift: false)
-        XCTAssertEqual(buffer.text, "count = 1000\n",
+        #expect(buffer.text == "count = 1000\n",
             "Ctrl+A across a digit-rollover should add a digit")
     }
 }

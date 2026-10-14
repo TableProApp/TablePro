@@ -1,11 +1,12 @@
+import Foundation
 @testable import TableProImport
-import XCTest
+import Testing
 
 @MainActor
-final class ConnectionExportCryptoIsolationTests: XCTestCase {
+struct ConnectionExportCryptoIsolationTests {
     private let passphrase = "correct horse battery"
 
-    func testEncryptingLeavesTheMainActorFree() async throws {
+    @Test func testEncryptingLeavesTheMainActorFree() async throws {
         let payload = Data("payload".utf8)
         let passphrase = passphrase
         try await assertLeavesMainActorFree {
@@ -13,7 +14,7 @@ final class ConnectionExportCryptoIsolationTests: XCTestCase {
         }
     }
 
-    func testDecryptingLeavesTheMainActorFree() async throws {
+    @Test func testDecryptingLeavesTheMainActorFree() async throws {
         let passphrase = passphrase
         let sealed = try await ConnectionExportCrypto.encrypt(data: Data("payload".utf8), passphrase: passphrase)
         try await assertLeavesMainActorFree {
@@ -21,7 +22,7 @@ final class ConnectionExportCryptoIsolationTests: XCTestCase {
         }
     }
 
-    func testEncodingAnEncryptedFileLeavesTheMainActorFree() async throws {
+    @Test func testEncodingAnEncryptedFileLeavesTheMainActorFree() async throws {
         let passphrase = passphrase
         let bundle = try makeBundle()
         try await assertLeavesMainActorFree {
@@ -29,7 +30,7 @@ final class ConnectionExportCryptoIsolationTests: XCTestCase {
         }
     }
 
-    func testDecodingAnEncryptedFileLeavesTheMainActorFree() async throws {
+    @Test func testDecodingAnEncryptedFileLeavesTheMainActorFree() async throws {
         let passphrase = passphrase
         let sealed = try await ConnectionBundleCodec.encode(makeBundle(), passphrase: passphrase)
         try await assertLeavesMainActorFree {
@@ -51,26 +52,25 @@ final class ConnectionExportCryptoIsolationTests: XCTestCase {
 
     private func assertLeavesMainActorFree(
         _ work: @escaping @MainActor () async throws -> Void,
-        file: StaticString = #filePath,
-        line: UInt = #line
+        sourceLocation: SourceLocation = #_sourceLocation
     ) async throws {
         let probe = DerivationProbe()
+        let (started, signalStart) = AsyncStream<Void>.makeStream()
         let task = Task { @MainActor in
-            probe.hasStarted = true
+            signalStart.yield()
+            signalStart.finish()
             try await work()
             probe.hasFinished = true
         }
-        while !probe.hasStarted {
-            await Task.yield()
-        }
-        XCTAssertFalse(probe.hasFinished, "The derivation held the main actor until it finished", file: file, line: line)
+        // This resumes on the main actor, so it runs before the work finishes only if the work let go of it.
+        for await _ in started { break }
+        #expect(!probe.hasFinished, "The derivation held the main actor until it finished", sourceLocation: sourceLocation)
         try await task.value
-        XCTAssertTrue(probe.hasFinished, file: file, line: line)
+        #expect(probe.hasFinished, sourceLocation: sourceLocation)
     }
 }
 
 @MainActor
 private final class DerivationProbe {
-    var hasStarted = false
     var hasFinished = false
 }

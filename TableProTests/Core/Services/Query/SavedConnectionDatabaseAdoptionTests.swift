@@ -13,6 +13,14 @@ import Testing
 /// nothing every time.
 @MainActor
 struct SavedConnectionDatabaseAdoptionTests {
+    private let defaults: EphemeralDefaults
+    private let syncDefaults: EphemeralDefaults
+
+    init() throws {
+        defaults = try EphemeralDefaults()
+        syncDefaults = try EphemeralDefaults()
+    }
+
     private func makeStorage() -> ConnectionStorage {
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
@@ -21,15 +29,10 @@ struct SavedConnectionDatabaseAdoptionTests {
         try? FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true
         )
-        guard let defaults = UserDefaults(suiteName: "com.TablePro.tests.SavedDatabase.\(unique)"),
-              let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.SavedDatabaseSync.\(unique)")
-        else {
-            fatalError("Failed to create isolated test user defaults")
-        }
         return ConnectionStorage(
             fileURL: fileURL,
-            userDefaults: defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults)),
+            userDefaults: defaults.defaults,
+            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults.defaults)),
             keychain: InMemoryKeychain()
         )
     }

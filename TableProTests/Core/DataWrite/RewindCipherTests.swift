@@ -8,23 +8,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-private final class FakeKeychain: KeychainStoring, @unchecked Sendable {
-    private var values: [String: String] = [:]
-
-    func writeString(_ value: String, forKey key: String) -> Bool {
-        values[key] = value
-        return true
-    }
-
-    func readStringResult(forKey key: String) -> KeychainStringResult {
-        values[key].map { .found($0) } ?? .notFound
-    }
-
-    func delete(forKey key: String) {
-        values.removeValue(forKey: key)
-    }
-}
-
 private final class LockedKeychain: KeychainStoring, @unchecked Sendable {
     func writeString(_ value: String, forKey key: String) -> Bool { false }
     func readStringResult(forKey key: String) -> KeychainStringResult { .locked }
@@ -59,7 +42,7 @@ struct RewindCipherTests {
 
     @Test("A record survives a round trip through the cipher, binary values included")
     func roundTrip() throws {
-        let cipher = RewindCipher(keychain: FakeKeychain())
+        let cipher = RewindCipher(keychain: InMemoryKeychain())
         let original = record()
 
         let sealed = try cipher.seal(original)
@@ -68,7 +51,7 @@ struct RewindCipherTests {
 
     @Test("The sealed bytes do not carry the row values in the clear")
     func sealedPayloadIsNotReadable() throws {
-        let cipher = RewindCipher(keychain: FakeKeychain())
+        let cipher = RewindCipher(keychain: InMemoryKeychain())
         let sealed = try cipher.seal(record())
 
         #expect(String(data: sealed, encoding: .utf8)?.contains("users") != true)
@@ -83,7 +66,7 @@ struct RewindCipherTests {
 
     @Test("A record sealed under one key cannot be read under another")
     func keyIsRequiredToRead() throws {
-        let sealed = try RewindCipher(keychain: FakeKeychain()).seal(record())
-        #expect(throws: (any Error).self) { try RewindCipher(keychain: FakeKeychain()).open(sealed) }
+        let sealed = try RewindCipher(keychain: InMemoryKeychain()).seal(record())
+        #expect(throws: (any Error).self) { try RewindCipher(keychain: InMemoryKeychain()).open(sealed) }
     }
 }

@@ -15,6 +15,8 @@ import Testing
 
 @MainActor
 struct TabExecutionObservationTests {
+    private let fixtures = CoordinatorFixtures()
+
     private final class ChangeCounter {
         private(set) var sends = 0
         private var subscription: AnyCancellable?
@@ -25,12 +27,7 @@ struct TabExecutionObservationTests {
     }
 
     private func makeCoordinator() -> MainContentCoordinator {
-        MainContentCoordinator(
-            connection: TestFixtures.makeConnection(),
-            tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
+        fixtures.make().coordinator
     }
 
     @Test("a claim opening and settling each reach the observer")

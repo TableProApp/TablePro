@@ -11,7 +11,7 @@ import Testing
 /// One test double for every case in this file: it records the order of everything it was asked to
 /// do, reports whatever affected-row count the test wants, and can be told to fail on the Nth
 /// statement.
-private final class CountingDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class CountingDriver: PluginDriverStub, @unchecked Sendable {
     struct Failure: Error {}
 
     let affectedRows: Int
@@ -49,8 +49,6 @@ private final class CountingDriver: PluginDatabaseDriver, @unchecked Sendable {
     var currentSchema: String? { nil }
     var serverVersion: String? { nil }
 
-    func connect() async throws {}
-    func disconnect() {}
     func ping() async throws {}
 
     func execute(query: String) async throws -> PluginQueryResult {
@@ -69,21 +67,6 @@ private final class CountingDriver: PluginDatabaseDriver, @unchecked Sendable {
     func rollbackTransaction() async throws {
         trace.append("ROLLBACK")
         if rollbackFails { throw Failure() }
-    }
-
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 }
 

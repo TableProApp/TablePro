@@ -128,7 +128,6 @@ struct MaterializedViewConcurrentRefreshNoteTests {
     }
 }
 
-@Suite("Materialized view concurrent refresh check", .serialized)
 @MainActor
 struct MaterializedViewConcurrentRefreshCheckTests {
     private static func makeSession(

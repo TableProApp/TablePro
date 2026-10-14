@@ -4,11 +4,10 @@ import Testing
 
 @MainActor
 struct ExternalConnectionTrustStoreTests {
+    private let pool = EphemeralDefaultsPool()
+
     private func makeStore() throws -> ExternalConnectionTrustStore {
-        let suite = "ExternalConnectionTrustStoreTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
-        return ExternalConnectionTrustStore(defaults: defaults)
+        ExternalConnectionTrustStore(defaults: try pool.make().defaults)
     }
 
     private func loopbackKey(scopeName: String = "ddev-shop") -> ExternalConnectionTrustKey {
@@ -80,9 +79,7 @@ struct ExternalConnectionTrustStoreTests {
 
     @Test("A poisoned defaults blob cannot make a remote host trusted")
     func poisonedDefaultsAreIgnored() throws {
-        let suite = "ExternalConnectionTrustStoreTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = try pool.make().defaults
 
         let remote = ExternalConnectionTrustKey(
             databaseType: "MySQL",
@@ -212,9 +209,7 @@ struct ExternalConnectionTrustStoreTests {
 
     @Test("Entries saved before sockets still decode and stay trusted")
     func legacyEntriesDecode() throws {
-        let suite = "ExternalConnectionTrustStoreTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = try pool.make().defaults
         let legacy = """
             [{"key":{"databaseType":"mysql","host":"127.0.0.1","database":"db","username":"db",\
             "scopeName":"ddev-shop"},"trustedAt":0}]
@@ -229,9 +224,7 @@ struct ExternalConnectionTrustStoreTests {
 
     @Test("A poisoned entry pairing a remote host with a socket is not trusted")
     func poisonedSocketEntryIsIgnored() throws {
-        let suite = "ExternalConnectionTrustStoreTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
+        let defaults = try pool.make().defaults
         let poisoned = """
             [{"key":{"databaseType":"mysql","host":"db.evil.example.com","database":"db","username":"db",\
             "scopeName":"","socketPath":"/tmp/mysql.sock"},"trustedAt":0}]
