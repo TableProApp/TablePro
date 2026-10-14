@@ -10,6 +10,10 @@ pub enum OperationKind {
     Save(WriteKind),
     Probe,
     Close,
+    /// Every row of a read streamed to a file, on a connection of its
+    /// own. It runs as long as the rows keep coming, and a second run
+    /// would write the file twice.
+    Export,
 }
 
 impl OperationKind {
