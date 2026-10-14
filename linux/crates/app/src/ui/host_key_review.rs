@@ -11,6 +11,7 @@ const CANCEL: &str = "cancel";
 const CLOSE: &str = "close";
 const TRUST: &str = "trust";
 const REPLACE: &str = "replace";
+const RETRY: &str = "retry";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HostKeyReviewOutcome {
@@ -19,6 +20,9 @@ pub(crate) enum HostKeyReviewOutcome {
     /// Remove the old key from known_hosts, then connect trusting the
     /// new one.
     Replace,
+    /// Connect again answering nothing, for a key the user fixed outside
+    /// TablePro.
+    Retry,
     Dismissed,
 }
 
@@ -50,6 +54,10 @@ impl HostKeyResponse {
 
     fn close() -> Self {
         Self::new(CLOSE, crate::i18n::gettext("Close"), adw::ResponseAppearance::Default)
+    }
+
+    fn retry() -> Self {
+        Self::new(RETRY, crate::i18n::gettext("Retry"), adw::ResponseAppearance::Default)
     }
 }
 
@@ -86,10 +94,18 @@ pub(crate) fn host_key_dialog_spec(failure: &HostKeyFailure) -> HostKeyDialogSpe
                 close: CANCEL,
             }
         }
-        HostKeyFailureKind::Unknown { trust_allowed: false } => close_only(
+        HostKeyFailureKind::Unknown { trust_allowed: false } => fixed_elsewhere(
             crate::i18n::gettext("Unknown SSH Host"),
             crate::i18n::gettext_f(
                 "The SSH configuration for “{host}” accepts only keys already in known_hosts. Add the server’s key there, then retry.",
+                &[("host", host)],
+            ),
+        ),
+        // Without the file ssh named, there is no key to replace.
+        HostKeyFailureKind::Changed { known_hosts, .. } if known_hosts.as_os_str().is_empty() => fixed_elsewhere(
+            crate::i18n::gettext("SSH Host Key Changed"),
+            crate::i18n::gettext_f(
+                "The key “{host}” sent is not the one trusted in known_hosts. Someone may be intercepting the connection, or the server was reinstalled. If your server administrator confirms the new fingerprint, remove the old key from known_hosts, then retry.",
                 &[("host", host)],
             ),
         ),
@@ -114,7 +130,7 @@ pub(crate) fn host_key_dialog_spec(failure: &HostKeyFailure) -> HostKeyDialogSpe
             default: CANCEL,
             close: CANCEL,
         },
-        HostKeyFailureKind::Revoked { detail } => close_only(
+        HostKeyFailureKind::Revoked { detail } => fixed_elsewhere(
             crate::i18n::gettext("SSH Host Key Revoked"),
             crate::i18n::gettext_f(
                 "The key “{host}” sent is revoked, so TablePro will not connect to it. Ask your server administrator for its current key. ssh reported: {detail}",
@@ -124,11 +140,13 @@ pub(crate) fn host_key_dialog_spec(failure: &HostKeyFailure) -> HostKeyDialogSpe
     }
 }
 
-fn close_only(heading: String, body: String) -> HostKeyDialogSpec {
+/// Only a change outside TablePro clears these, so the dialog offers the
+/// retry the banner would have.
+fn fixed_elsewhere(heading: String, body: String) -> HostKeyDialogSpec {
     HostKeyDialogSpec {
         heading,
         body,
-        responses: vec![HostKeyResponse::close()],
+        responses: vec![HostKeyResponse::close(), HostKeyResponse::retry()],
         default: CLOSE,
         close: CLOSE,
     }
@@ -142,6 +160,7 @@ pub(crate) async fn review_host_key(parent: &gtk::Widget, failure: &HostKeyFailu
     match response.as_str() {
         TRUST => HostKeyReviewOutcome::Trust,
         REPLACE => HostKeyReviewOutcome::Replace,
+        RETRY => HostKeyReviewOutcome::Retry,
         _ => HostKeyReviewOutcome::Dismissed,
     }
 }
@@ -227,18 +246,27 @@ mod tests {
             },
             "",
         ));
+        let unplaced = host_key_dialog_spec(&failure(
+            HostKeyFailureKind::Changed {
+                known_hosts: PathBuf::new(),
+                line: 0,
+            },
+            "SHA256:new",
+        ));
 
         assert_eq!(ids(&unknown), [CANCEL, TRUST]);
         assert_eq!(ids(&unseen), [CANCEL, TRUST]);
         assert_eq!(unknown.responses[1].appearance, adw::ResponseAppearance::Suggested);
-        assert_eq!(ids(&strict), [CLOSE]);
+        assert_eq!(ids(&strict), [CLOSE, RETRY]);
         assert_eq!(ids(&changed), [CANCEL, REPLACE]);
         assert_eq!(changed.responses[1].appearance, adw::ResponseAppearance::Destructive);
         assert!(changed.body.contains("/home/u/.ssh/known_hosts"), "{}", changed.body);
         assert!(changed.body.contains('3'), "{}", changed.body);
-        assert_eq!(ids(&revoked), [CLOSE]);
+        assert_eq!(ids(&revoked), [CLOSE, RETRY]);
         assert!(revoked.body.contains("/etc/ssh/krl"), "{}", revoked.body);
-        for spec in [&unknown, &unseen, &strict, &changed, &revoked] {
+        assert_eq!(ids(&unplaced), [CLOSE, RETRY]);
+        assert!(!unplaced.body.contains(", line 0"), "{}", unplaced.body);
+        for spec in [&unknown, &unseen, &strict, &changed, &revoked, &unplaced] {
             assert!(spec.body.contains("bastion"), "{}", spec.body);
             assert_eq!(spec.default, spec.close, "{spec:?}");
             let default = spec.responses.iter().find(|response| response.id == spec.default);

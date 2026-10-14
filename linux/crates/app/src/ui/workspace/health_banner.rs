@@ -9,13 +9,10 @@ use crate::runtime::{DeliverInput, spawn_and_deliver};
 use crate::ui::host_key_failure::{HostKeyFailure, HostKeyFailureKind};
 use crate::ui::host_key_review::{HostKeyReviewOutcome, review_host_key};
 
-/// The window action the banner's Review Key button runs.
 pub(super) const REVIEW_HOST_KEY: &str = "review-host-key";
 
-/// What the banner's button does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BannerButton {
-    /// `win.reconnect`, which posts RetryNow.
     Retry,
     ReviewKey,
 }
@@ -83,6 +80,7 @@ impl WorkspaceModel {
         self.reviewing_host_key = false;
         match outcome {
             HostKeyReviewOutcome::Dismissed => {}
+            HostKeyReviewOutcome::Retry => self.retry(),
             HostKeyReviewOutcome::Trust => self.retry_trusting(&failure),
             HostKeyReviewOutcome::Replace => self.forget_old_host_key(failure),
         }
@@ -116,6 +114,12 @@ impl WorkspaceModel {
         match failure.fingerprint.is_empty() {
             true => session.signal(MonitorSignal::RetryNow),
             false => session.retry_trusting_host_key(failure.fingerprint.clone()),
+        }
+    }
+
+    fn retry(&self) {
+        if let Some(session) = self.context.active.get() {
+            session.signal(MonitorSignal::RetryNow);
         }
     }
 
@@ -438,6 +442,26 @@ mod tests {
         assert_eq!(test.connector.calls().len(), 2, "a dismissed review retried");
         assert!(banner(&test).is_revealed());
         assert!(review_enabled(&test));
+    }
+
+    #[gtk4::test]
+    fn review_retry_reconnects_a_key_fixed_outside_tablepro() {
+        let strict = FakeEstablish::Fail(ConnectError::Driver(DriverError::Transport(TransportError::Ssh(
+            SshFailure::HostKeyUnknown {
+                host: "bastion".to_owned(),
+                algorithm: String::new(),
+                sha256_fingerprint: String::new(),
+                trust_allowed: false,
+                declined: false,
+            },
+        ))));
+        let test = parked("ReviewRetry", vec![strict, FakeEstablish::Connect(healthy())], None);
+        wait_for_button(&test, "Review Key…");
+
+        review_and_answer(&test, "retry");
+
+        wait_until(WAIT, || health(&test) == SessionHealth::Online).expect("the session back online");
+        assert_eq!(test.connector.calls().len(), 3);
     }
 
     #[gtk4::test]
