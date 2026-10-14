@@ -1,17 +1,19 @@
 # Contributing to BookiE
 
-BookiE is a Linux-only Rust project (formerly TablePro on this branch). Current development happens on the `linux` branch, and pull requests should target that branch in [`cozyGarage/BookiE`](https://github.com/cozyGarage/BookiE).
+BookiE is a Linux-only Rust and GTK database client. Current development happens on the `linux` branch. Pull requests target `linux` in [`cozyGarage/BookiE`](https://github.com/cozyGarage/BookiE).
 
-Every shipped feature must remain available without an account, license key, subscription, paid tier, or remote entitlement check.
+## Start here
 
-The rules every change follows (code style, tests, security, commits, the Forgejo gate) are in [`AGENTS.md`](AGENTS.md).
+- Read [`AGENTS.md`](AGENTS.md) for contributor rules, lane ownership, tests, security, commits and review workflow.
+- Read the [documentation map](docs/README.md) and [active sprint](docs/bookie-0.2-sprint.md) before choosing work. The sprint links to current scope, boards and acceptance criteria.
+- The Cargo workspace is at the repository root. [Architecture](ARCHITECTURE.md) explains crate boundaries and data flow.
 
 ## Development setup
 
-The workspace requires Rust 1.98. For the build / CI floor install GTK4 4.14+, GLib 2.80+, libadwaita 1.5+, GtkSourceView 5.12+ (Ubuntu 24.04 and Debian 13), plus OpenSSL, Secret Service, Kerberos, Clang, `pkg-config`, and standard build tools. The GNOME 50 package line is higher; see [`README.md`](README.md) and [ADR 0002](docs/decisions/0002-rust-gtk4-libadwaita.md).
+Install the native libraries and Rust toolchain listed in the [README](README.md) and [platform guide](docs/platforms.md). Replace `OWNER` with your GitHub account, then clone your fork and check the environment:
 
 ```bash
-git clone https://github.com/<your-name>/BookiE.git
+git clone https://github.com/OWNER/BookiE.git
 cd BookiE
 git checkout linux
 rustc --version
@@ -19,106 +21,12 @@ pkg-config --modversion gtk4 libadwaita-1 gtksourceview-5
 cargo run -p tablepro-app
 ```
 
-Agents use a lane-named worktree and branch; human contributors may use a local branch. Open pull requests against `linux`.
+## Validation
 
-## Project layout
-
-The Cargo workspace is at the repository root. Crate roles, the governed request pipeline and the import DAG are in [`ARCHITECTURE.md`](ARCHITECTURE.md). Read that page before changing crate boundaries, policy enforcement, connection ownership, or async execution. Packaging lives in `apps/linux/packaging/`; the documentation map is [`docs/README.md`](docs/README.md).
-
-## Code style
-
-`rustfmt.toml` and `clippy.toml` define formatting and lint settings.
-
-- Use Rust edition 2024 and Rust 1.98.
-- Keep lines at or below 120 characters where practical.
-- Do not add comments. Use names, types, functions, and tests to express intent.
-- Prefer small functions and early returns.
-- Do not use `unwrap`, `expect`, `panic!`, `todo!`, or `unimplemented!` in production paths.
-- Use typed errors at crate boundaries.
-- Use `tracing` for app logs. Do not use print macros for logging.
-- Never log credentials, tokens, SQL parameters, connection strings, or unmasked query results.
-- Keep GTK widget access on the glib main context. Move database and blocking work off the UI thread.
-
-## Security and MCP changes
-
-All database consumers must use a policy-gated connection. MCP requests require a valid token, the required scope, an allowed connection, and a passing policy decision. Do not bypass those checks for preview, retry, transaction, or batch paths.
-
-Changes to policy, MCP, approvals, masking, or audit behavior need tests for both allowed and denied paths. Include timeout, cancellation, and terminal audit outcomes when affected. Keep database and SSH credentials in Secret Service through `tablepro-storage`. GUI-issued MCP token plaintext is returned once and keyring storage is attempted; headless token issuance emits plaintext once to stdout or an explicitly selected owner-only file.
-
-New dependencies need an advisory, source, and license review through `deny.toml`.
-
-## Database drivers
-
-Drivers are static crates under `crates/drivers/`. A new driver must:
-
-1. Implement the contracts from `tablepro-core`.
-2. Stay independent of GTK, Relm4, MCP, policy, and other drivers.
-3. Register in the app and agent composition roots.
-4. Include unit tests and real-engine integration tests.
-5. Document maturity and known limits.
-6. Add a user-facing entry to `CHANGELOG.md`.
-
-See [`docs/adding-drivers.md`](docs/adding-drivers.md).
-
-## Tests
-
-Every testable behavior change needs a test. Put pure unit tests near the code and integration tests in the crate's `tests/` directory. Use `tempfile` for filesystem tests and testcontainers for database drivers.
-
-For GTK-only changes, include manual test steps and light and dark screenshots in the pull request. Move business logic out of widgets when it can be tested as Rust code.
-
-The usual local gate is `bash scripts/preflight.sh` from the repository root (non-GTK `--lib` tests, fmt, Clippy, sandbox). Details: [`AGENTS.md`](AGENTS.md) and [`docs/development.md`](docs/development.md).
-
-A fuller workspace check that includes the GTK app library/binary tests:
-
-```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --exclude tablepro-driver-duckdb --all-targets -- -D warnings
-cargo test --workspace --exclude tablepro-driver-duckdb --lib --bins
-cargo test -p tablepro-mcp --test enforce_policy
-cargo test -p tablepro-mcp --test timeout_audit
-cargo deny check
-```
-
-Driver integration tests require Docker or a compatible Podman socket. See [`docs/testing.md`](docs/testing.md).
-
-## File size
-
-`scripts/check-file-size.sh` enforces the Rust file-size guard. New files should stay at or below 1,200 lines. Unlisted files above 1,800 lines fail. Files in `baselines/file-size-baselines.txt` cannot grow beyond their listed ceiling. Split by responsibility instead of raising a baseline.
-
-## Changelog
-
-Update [`CHANGELOG.md`](CHANGELOG.md) under `[Unreleased]` for user-facing changes. Follow Keep a Changelog 1.1.0 and use `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, or `Security`.
-
-Each entry must be one line and describe user impact. Documentation-only changes do not need an entry. Do not add a `Fixed` entry for a defect introduced and corrected before release.
-
-## Commits
-
-Use Conventional Commits 1.0.0. Commit subjects are one line with no body.
-
-```text
-feat(app): add query tab restore
-fix(driver-postgres): cancel timed-out connections
-security(mcp): enforce connection allowlists
-refactor(core): split query result conversion
-```
-
-Keep one logical change per commit. Public API changes must update all callers and tests in the same commit.
-
-## Pull requests
-
-- Target the `linux` branch.
-- Explain what changed and why.
-- List the commands and manual checks you ran.
-- Add or update tests.
-- Update `CHANGELOG.md` for user-facing changes.
-- Update documentation when behavior or setup changes.
-- Include light and dark screenshots for UI changes.
-- State any validation you could not run and why.
+Use the [validation playbook](docs/validation-playbook.md) to select local checks for your change. It explains which checks run on GitHub and which require the Forgejo acceptance gate. Do not treat a skipped check as a pass.
 
 ## Reporting bugs
 
-Open a [bug report](https://github.com/cozyGarage/BookiE/issues/new?template=bug_report.yml) with the BookiE version, Linux distribution, desktop session, reproduction steps, database type and version, and redacted logs.
-
-## License
+Open a [bug report](https://github.com/cozyGarage/BookiE/issues/new?template=bug_report.yml) with the BookiE version, Linux distribution, desktop session, reproduction steps, database type and version, and redacted logs. Never attach credentials, tokens, connection strings, SQL parameters or unmasked database values.
 
 Contributions are licensed under [AGPL-3.0-or-later](LICENSE).
