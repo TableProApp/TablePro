@@ -61,7 +61,7 @@ pub(crate) async fn run_monitor(ctx: MonitorContext) {
             () = ctx.cancel.cancelled() => return,
             signals = ctx.mailbox.next() => Wakeup::Signals(signals),
             () = sleep_until(policy.next_deadline()) => Wakeup::Deadline,
-            generation = lease_lost(watched) => Wakeup::LeaseLost(generation),
+            generation = lease_lost(watched) => after_loss(&ctx.mailbox, generation),
         };
         let now = Instant::now();
         let (mut action, mut user_asked) = match wakeup {
@@ -96,6 +96,18 @@ pub(crate) async fn run_monitor(ctx: MonitorContext) {
                 }
             };
         }
+    }
+}
+
+/// A signal posted after the select polled the mailbox, and before it
+/// saw the loss, is still waiting. It is read first, as when both are
+/// ready together, so the loss is judged with it: an unreachable answer
+/// waits offline instead of redialling. The loss holds for the next
+/// turn.
+fn after_loss(mailbox: &MonitorMailbox, generation: LinkGeneration) -> Wakeup {
+    match mailbox.try_next() {
+        Some(signals) => Wakeup::Signals(signals),
+        None => Wakeup::LeaseLost(generation),
     }
 }
 
@@ -369,6 +381,21 @@ mod tests {
         MonitorSignal::ConnectionLost {
             generation: LinkGeneration::FIRST,
         }
+    }
+
+    #[test]
+    fn a_loss_seen_with_a_signal_waiting_reads_the_signal_first() {
+        let mailbox = MonitorMailbox::new();
+        mailbox.post(MonitorSignal::Reachability(Reachability::Unreachable));
+
+        let first = after_loss(&mailbox, LinkGeneration::FIRST);
+        let then = after_loss(&mailbox, LinkGeneration::FIRST);
+
+        assert!(
+            matches!(&first, Wakeup::Signals(signals) if signals.reachability == Some(Reachability::Unreachable)),
+            "the loss was judged before the reachability answer that came with it"
+        );
+        assert!(matches!(then, Wakeup::LeaseLost(generation) if generation == LinkGeneration::FIRST));
     }
 
     #[tokio::test(start_paused = true)]
