@@ -258,8 +258,10 @@ mod window_tests {
                 switch.set_active(remember);
             }
         }
-        alert.emit_by_name::<()>("response", &[&"accept"]);
-        alert.force_close();
+        assert!(
+            crate::workspace::answer(window, "accept"),
+            "the prompt has no Connect button"
+        );
         body
     }
 
