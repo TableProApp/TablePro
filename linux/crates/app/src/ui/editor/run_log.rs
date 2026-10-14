@@ -4,17 +4,13 @@ use tablepro_core::{
     UserSql,
 };
 
-use super::result_rows::ResultRows;
 use super::script_runner::sql_preview;
+use crate::ui::result_pane::{ResultSetView, ResultSummary};
 
 /// One line of the results list.
 #[derive(Debug, Clone)]
 pub enum EntryKind {
-    ResultSet {
-        result: ResultRows,
-        /// What the server says the whole set held, when it says.
-        total_rows: Option<u64>,
-    },
+    ResultSet(ResultSetView),
     /// A statement that returned no rows, with what it changed when the
     /// server reports that.
     Command {
@@ -55,8 +51,6 @@ pub struct RunLogEntry {
     /// The batch it came from, `None` for a warning about the script.
     pub batch: Option<usize>,
     pub preview: String,
-    /// The text of the batch it came from, which Export All runs again.
-    pub statement: Option<UserSql>,
 }
 
 /// How one run of a batch ended, for deciding whether the next is sent.
@@ -100,22 +94,32 @@ pub enum RunEvent {
 
 /// Turns the events of one run into results list lines, on the runtime,
 /// so only finished lines cross to the GTK thread.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct BatchCollector {
+    /// The batch's text, which each of its result sets keeps.
+    statement: UserSql,
     entries: Vec<EntryKind>,
     /// Where each result set of this run sits in `entries`.
     sets: Vec<usize>,
 }
 
 impl BatchCollector {
+    pub fn new(statement: UserSql) -> Self {
+        Self {
+            statement,
+            entries: Vec::new(),
+            sets: Vec::new(),
+        }
+    }
+
     pub fn record(&mut self, event: ResultEvent) {
         match event {
             ResultEvent::ResultSetStarted { columns } => {
                 self.sets.push(self.entries.len());
-                self.entries.push(EntryKind::ResultSet {
-                    result: ResultRows::new(columns),
-                    total_rows: None,
-                });
+                self.entries.push(EntryKind::ResultSet(ResultSetView::new(
+                    columns,
+                    self.statement.clone(),
+                )));
             }
             ResultEvent::ColumnsResolved { set_index, columns } => {
                 if let Some(result) = self.set(set_index) {
@@ -123,26 +127,36 @@ impl BatchCollector {
                 }
             }
             ResultEvent::Rows(rows) => match self.last_set() {
-                Some(result) => result.rows.extend(rows.into_iter().map(Into::into)),
+                Some(result) => {
+                    result.rows.extend(rows.into_iter().map(Into::into));
+                    result.summary.retained = result.rows.len() as u64;
+                }
                 // Rows with no columns would draw a grid that cannot say
                 // what any cell is.
                 None => tracing::warn!(rows = rows.len(), "rows arrived before their result set"),
             },
-            ResultEvent::RowLimitReached { .. } => {
+            // Until the set ends and says how far the read went, all
+            // that is known is that more rows were left behind.
+            ResultEvent::RowLimitReached { retained } => {
                 if let Some(result) = self.last_set() {
-                    result.truncated = true;
+                    result.summary = ResultSummary {
+                        retained,
+                        total_rows: None,
+                        truncation: Truncation::ServerStopped,
+                    };
                 }
             }
             ResultEvent::ResultSetFinished {
-                total_rows, truncation, ..
+                retained,
+                total_rows,
+                truncation,
             } => {
-                if let Some(EntryKind::ResultSet {
-                    result,
-                    total_rows: total,
-                }) = self.sets.last().and_then(|index| self.entries.get_mut(*index))
-                {
-                    result.truncated |= truncation == Truncation::ReadPastLimit;
-                    *total = total_rows;
+                if let Some(result) = self.last_set() {
+                    result.summary = ResultSummary {
+                        retained,
+                        total_rows,
+                        truncation,
+                    };
                 }
             }
             ResultEvent::CommandCompleted { rows_affected } => {
@@ -201,15 +215,15 @@ impl BatchCollector {
         (self.entries, verdict, transaction)
     }
 
-    fn set(&mut self, set_index: usize) -> Option<&mut ResultRows> {
+    fn set(&mut self, set_index: usize) -> Option<&mut ResultSetView> {
         let index = *self.sets.get(set_index)?;
         match self.entries.get_mut(index) {
-            Some(EntryKind::ResultSet { result, .. }) => Some(result),
+            Some(EntryKind::ResultSet(result)) => Some(result),
             _ => None,
         }
     }
 
-    fn last_set(&mut self) -> Option<&mut ResultRows> {
+    fn last_set(&mut self) -> Option<&mut ResultSetView> {
         let last = self.sets.len().checked_sub(1)?;
         self.set(last)
     }
@@ -239,7 +253,6 @@ fn failed(error: &DriverError, state: EditorSessionState, error_base: usize) -> 
 /// The results list of one run, built as the batches report.
 #[derive(Debug, Default)]
 pub struct RunLog {
-    statements: Vec<UserSql>,
     previews: Vec<String>,
     entries: Vec<RunLogEntry>,
     /// The first batch no report has arrived for yet.
@@ -258,12 +271,10 @@ impl RunLog {
                 kind: EntryKind::ClientWarning { message },
                 batch: None,
                 preview: String::new(),
-                statement: None,
             })
             .collect();
         Self {
             previews: statements.iter().map(|sql| sql_preview(sql.as_str())).collect(),
-            statements,
             entries,
             ..Self::default()
         }
@@ -276,12 +287,10 @@ impl RunLog {
         match event {
             RunEvent::Batch(report) => {
                 let preview = self.previews.get(report.batch).cloned().unwrap_or_default();
-                let statement = self.statements.get(report.batch).cloned();
                 self.entries.extend(report.entries.into_iter().map(|kind| RunLogEntry {
                     kind,
                     batch: Some(report.batch),
                     preview: preview.clone(),
-                    statement: statement.clone(),
                 }));
                 self.next_batch = self.next_batch.max(report.batch + 1);
                 if report.transaction.is_some() {
@@ -296,7 +305,6 @@ impl RunLog {
                         kind: EntryKind::NotRun,
                         batch: Some(batch),
                         preview: self.previews[batch].clone(),
-                        statement: self.statements.get(batch).cloned(),
                     });
                 }
                 self.next_batch = self.previews.len();
@@ -354,23 +362,29 @@ impl RunLog {
     }
 
     /// What the run changed or returned, for the history entry: the
-    /// rows statements reported changing, else the rows that came back.
+    /// rows statements reported changing, else every row the results
+    /// had. A result the row limit cut short with no total makes that
+    /// unknown, rather than the rows the grid happens to hold.
     pub fn rows_for_history(&self) -> Option<i64> {
-        let mut affected: Option<u64> = None;
-        let mut returned: u64 = 0;
+        let mut affected: Option<i64> = None;
+        let mut returned: Option<i64> = Some(0);
         for entry in &self.entries {
             match &entry.kind {
                 EntryKind::Command {
                     rows_affected: Some(rows),
-                } => affected = Some(affected.unwrap_or(0).saturating_add(*rows)),
-                EntryKind::ResultSet { result, .. } => {
-                    returned = returned.saturating_add(result.rows.len() as u64);
+                } => {
+                    let rows = i64::try_from(*rows).unwrap_or(i64::MAX);
+                    affected = Some(affected.unwrap_or(0).saturating_add(rows));
+                }
+                EntryKind::ResultSet(result) => {
+                    returned = returned
+                        .zip(result.summary.history_row_count())
+                        .map(|(sum, rows)| sum.saturating_add(rows));
                 }
                 _ => {}
             }
         }
-        let rows = affected.unwrap_or(returned);
-        (affected.is_some() || returned > 0).then(|| i64::try_from(rows).unwrap_or(i64::MAX))
+        affected.or(returned.filter(|rows| *rows > 0))
     }
 
     /// The line above the results: how many there are and how long the
@@ -428,7 +442,7 @@ mod tests {
     }
 
     fn collect(events: Vec<ResultEvent>, end: RunEnd) -> (Vec<EntryKind>, Verdict) {
-        let mut collector = BatchCollector::default();
+        let mut collector = BatchCollector::new(UserSql::new("SELECT a FROM t"));
         for event in events {
             collector.record(event);
         }
@@ -473,14 +487,73 @@ mod tests {
 
         assert_eq!(verdict, Verdict::Completed);
         assert_eq!(entries.len(), 3, "{entries:?}");
-        let EntryKind::ResultSet { result, total_rows } = &entries[0] else {
+        let EntryKind::ResultSet(result) = &entries[0] else {
             panic!("expected rows: {entries:?}");
         };
         assert_eq!(result.row_count(), 2);
-        assert!(result.truncated);
-        assert_eq!(*total_rows, Some(5));
+        assert_eq!(
+            result.summary,
+            ResultSummary {
+                retained: 2,
+                total_rows: Some(5),
+                truncation: Truncation::ServerStopped,
+            }
+        );
+        assert_eq!(result.statement.as_str(), "SELECT a FROM t");
         assert!(matches!(&entries[1], EntryKind::Notice { message } if message.contains("vacuumed")));
         assert!(matches!(entries[2], EntryKind::Command { rows_affected: Some(4) }));
+    }
+
+    #[test]
+    fn a_set_cut_by_the_limit_and_then_stopped_stays_truncated() {
+        let (entries, _) = collect(
+            vec![
+                ResultEvent::ResultSetStarted {
+                    columns: columns(&["a"]),
+                },
+                ResultEvent::Rows(vec![vec![Value::Int(1)]]),
+                ResultEvent::RowLimitReached { retained: 1 },
+            ],
+            RunEnd::Cancelled,
+        );
+
+        let EntryKind::ResultSet(result) = &entries[0] else {
+            panic!("expected rows: {entries:?}");
+        };
+        assert!(result.summary.is_truncated());
+        assert_eq!(result.summary.total_rows, None);
+    }
+
+    #[test]
+    fn history_counts_every_row_a_result_had() {
+        let set = |summary: ResultSummary| {
+            let mut view = ResultSetView::new(columns(&["a"]), UserSql::new("SELECT a FROM t"));
+            view.summary = summary;
+            EntryKind::ResultSet(view)
+        };
+        let capped = ResultSummary {
+            retained: 100,
+            total_rows: None,
+            truncation: Truncation::ServerStopped,
+        };
+        let counted = ResultSummary {
+            retained: 100,
+            total_rows: Some(250),
+            truncation: Truncation::ReadPastLimit,
+        };
+        let history = |entries: Vec<EntryKind>| {
+            let mut log = RunLog::new(vec![UserSql::new("SELECT a FROM t")], Vec::new());
+            log.apply(report(0, entries, Verdict::Completed));
+            log.rows_for_history()
+        };
+
+        assert_eq!(history(vec![set(counted), set(ResultSummary::complete(3))]), Some(253));
+        assert_eq!(history(vec![set(counted), set(capped)]), None);
+        assert_eq!(
+            history(vec![set(capped), EntryKind::Command { rows_affected: Some(4) }]),
+            Some(4),
+            "rows a statement changed are what history records"
+        );
     }
 
     #[test]
@@ -499,7 +572,7 @@ mod tests {
             position: Some(8),
             ..ServerDiagnostics::new(Some(ServerCode::SqlState("42601".to_owned())), "syntax error")
         };
-        let collector = BatchCollector::default();
+        let collector = BatchCollector::new(UserSql::new("SELECT"));
 
         let (entries, verdict, _) = collector.finish(
             summary(RunEnd::Failed(DriverError::reported(diagnostics))),

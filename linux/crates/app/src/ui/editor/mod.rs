@@ -9,7 +9,6 @@ mod editor_session_slot;
 mod format_plan;
 mod imp;
 mod result_item;
-mod result_rows;
 mod result_widgets;
 mod results_pane;
 mod run_history;
@@ -42,6 +41,7 @@ use tokio_util::sync::CancellationToken;
 
 use self::buffer_edit::{CursorAnchor, replace_all_undoable};
 use self::imp::RunningScript;
+use self::result_widgets::PageActions;
 use self::run_log::{EntryKind, RunEvent, RunLog};
 use self::run_scope::ScopedText;
 use self::script_runner::{ScriptRun, plan_batches, run_in_tab};
@@ -437,12 +437,20 @@ impl SqlEditor {
         let grid_sink = imp.grid_sink.get()?;
         let log = imp.log.borrow();
         let entry = log.as_ref()?.entries().get(usize::try_from(index).ok()?)?;
-        let weak = self.downgrade();
-        Some(result_widgets::entry_widget(entry, grid_sink, move |position| {
-            if let Some(editor) = weak.upgrade() {
-                editor.go_to_char(position);
-            }
-        }))
+        let (errors, exports) = (self.downgrade(), self.downgrade());
+        let actions = PageActions {
+            go_to_error: move |position| {
+                if let Some(editor) = errors.upgrade() {
+                    editor.go_to_char(position);
+                }
+            },
+            export_all: move |shown| {
+                if let Some(editor) = exports.upgrade() {
+                    editor.offer_export(index, shown);
+                }
+            },
+        };
+        Some(result_widgets::entry_widget(entry, grid_sink, actions))
     }
 
     fn finish_run(
@@ -620,7 +628,11 @@ impl SqlEditor {
                     }
                 }
                 GridMsg::ShowToast(text) => editor.emit_by_name::<()>("toast", &[&text]),
-                GridMsg::ExportResults(shown) => editor.offer_export(shown),
+                GridMsg::ExportResults(shown) => {
+                    if let Some(index) = editor.imp().results.selected() {
+                        editor.offer_export(index, shown);
+                    }
+                }
                 _ => {}
             }
         });
@@ -641,31 +653,30 @@ impl SqlEditor {
         });
     }
 
-    /// Ask the window to export the result on screen: the rows its
-    /// grid holds, or every row its statement returns when run again.
-    fn offer_export(&self, shown: ExportSource) {
-        let Some(offer) = self.export_offer(shown) else {
+    /// Ask the window to export the result on line `index`: the rows
+    /// its grid shows, or every row its statement returns when run
+    /// again.
+    fn offer_export(&self, index: u32, shown: ExportSource) {
+        let Some(offer) = self.export_offer(index, shown) else {
             return;
         };
         self.emit_by_name::<()>("export-results", &[&glib::BoxedAnyObject::new(offer)]);
     }
 
-    fn export_offer(&self, shown: ExportSource) -> Option<ExportOffer> {
-        let imp = self.imp();
-        let index = usize::try_from(imp.results.selected()?).ok()?;
-        let log = imp.log.borrow();
-        let entry = log.as_ref()?.entries().get(index)?;
-        let EntryKind::ResultSet { result, .. } = &entry.kind else {
+    fn export_offer(&self, index: u32, shown: ExportSource) -> Option<ExportOffer> {
+        let log = self.imp().log.borrow();
+        let entry = log.as_ref()?.entries().get(usize::try_from(index).ok()?)?;
+        let EntryKind::ResultSet(result) = &entry.kind else {
             return None;
         };
         Some(ExportOffer {
             origin: ExportOrigin::Editor {
                 shown,
                 query: ExportQuery::Editor {
-                    sql: entry.statement.clone()?,
+                    sql: result.statement.clone(),
                 },
                 shown_rows: result.row_count() as u64,
-                truncated: result.truncated,
+                truncated: result.summary.is_truncated(),
             },
             session: self.deps().and_then(|deps| deps.session.get()),
             name: export_name_for_query(&entry.preview),

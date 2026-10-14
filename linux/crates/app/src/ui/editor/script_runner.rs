@@ -98,7 +98,8 @@ pub async fn run_batches(
             if cancel.is_cancelled() {
                 break 'batches;
             }
-            let collector = Arc::new(Mutex::new(BatchCollector::default()));
+            let sql = UserSql::new(batch.text.as_str());
+            let collector = Arc::new(Mutex::new(BatchCollector::new(sql.clone())));
             let options = RunOptions::new(cancel.child_token())
                 .with_deadline(run.statement_timeout)
                 .with_row_limit(run.row_limit);
@@ -106,9 +107,9 @@ pub async fn run_batches(
                 collector: collector.clone(),
             });
             let started = Instant::now();
-            let outcome = editor.run(UserSql::new(batch.text.as_str()), options, sink).await;
+            let outcome = editor.run(sql.clone(), options, sink).await;
             let elapsed_ms = started.elapsed().as_millis();
-            let collected = std::mem::take(&mut *lock(&collector));
+            let collected = std::mem::replace(&mut *lock(&collector), BatchCollector::new(sql));
             let state = editor.state();
             let (entries, verdict, transaction) = collected.finish(outcome, state, batch.error_base);
             let report = BatchReport {
@@ -458,7 +459,7 @@ mod tests {
     #[test]
     fn a_timed_out_run_is_a_stop() {
         assert!(!continues(Verdict::Stopped, BatchErrorPolicy::ContinueNextBatch));
-        let collector = BatchCollector::default();
+        let collector = BatchCollector::new(UserSql::new("SELECT pg_sleep(60)"));
         let (entries, verdict, _) = collector.finish(
             Ok(tablepro_core::RunSummary {
                 elapsed: Duration::from_secs(30),

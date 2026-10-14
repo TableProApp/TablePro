@@ -169,7 +169,6 @@ crates/app/src/ui/editor/format_plan.rs
 crates/app/src/ui/editor/imp.rs
 crates/app/src/ui/editor/mod.rs
 crates/app/src/ui/editor/result_item.rs
-crates/app/src/ui/editor/result_rows.rs
 crates/app/src/ui/editor/result_widgets.rs
 crates/app/src/ui/editor/results_pane.rs
 crates/app/src/ui/editor/run_history.rs
@@ -269,6 +268,10 @@ crates/app/src/ui/import_dialog.rs
 crates/app/src/ui/mod.rs
 crates/app/src/ui/preferences_dialog/imp.rs
 crates/app/src/ui/preferences_dialog/mod.rs
+crates/app/src/ui/result_pane/mod.rs
+crates/app/src/ui/result_pane/result_limit_banner.rs
+crates/app/src/ui/result_pane/result_set_view.rs
+crates/app/src/ui/result_pane/result_summary.rs
 crates/app/src/ui/saved_queries_dialog.rs
 crates/app/src/ui/session_window/connect_failed_page.rs
 crates/app/src/ui/session_window/connect_flow.rs

@@ -2,40 +2,33 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 
 use super::run_log::{EntryKind, RunLogEntry};
-use crate::ui::grid::{GridContent, GridSink, RowObject, TabGridContext, build_column_view};
+use crate::ui::export::ExportSource;
+use crate::ui::grid::GridSink;
 use crate::ui::icons;
+use crate::ui::result_pane::result_set_page;
 
-/// The widget a results list line shows. `go_to_error` puts the editor
-/// cursor where the server says a statement went wrong.
-pub fn entry_widget(entry: &RunLogEntry, grid_sink: &GridSink, go_to_error: impl Fn(usize) + 'static) -> gtk4::Widget {
+/// What a page's buttons reach in the editor.
+pub struct PageActions<G, E> {
+    /// Put the editor cursor where the server says a statement went
+    /// wrong.
+    pub go_to_error: G,
+    /// Offer every row of a result the row limit cut short, with the
+    /// rows its grid shows.
+    pub export_all: E,
+}
+
+/// The widget a results list line shows.
+pub fn entry_widget<G, E>(entry: &RunLogEntry, grid_sink: &GridSink, actions: PageActions<G, E>) -> gtk4::Widget
+where
+    G: Fn(usize) + 'static,
+    E: Fn(ExportSource) + 'static,
+{
+    let PageActions {
+        go_to_error,
+        export_all,
+    } = actions;
     match &entry.kind {
-        EntryKind::ResultSet { result, total_rows } => {
-            let content = GridContent {
-                columns: result.columns.clone(),
-                rows: result.rows.iter().cloned().map(RowObject::result).collect(),
-            };
-            let (column_view, _selection) =
-                build_column_view(content, &[], grid_sink.clone(), None, false, TabGridContext::default());
-            let scrolled = gtk4::ScrolledWindow::builder()
-                .child(&column_view)
-                .hexpand(true)
-                .vexpand(true)
-                .build();
-            let footer = gtk4::Label::builder()
-                .label(row_count_text(result.row_count(), result.truncated, *total_rows))
-                .xalign(0.0)
-                .margin_start(12)
-                .margin_end(12)
-                .margin_top(4)
-                .margin_bottom(4)
-                .build();
-            footer.add_css_class("dim-label");
-            footer.add_css_class("caption");
-            let page = gtk4::Box::builder().orientation(gtk4::Orientation::Vertical).build();
-            page.append(&scrolled);
-            page.append(&footer);
-            page.upcast()
-        }
+        EntryKind::ResultSet(result) => result_set_page(result, grid_sink.clone(), export_all),
         EntryKind::Command { rows_affected } => {
             let title = match rows_affected {
                 Some(rows) => crate::i18n::ngettext_f(
@@ -114,32 +107,19 @@ fn status_page(title: &str, description: &str, icon: &str) -> adw::StatusPage {
         .build()
 }
 
-fn row_count_text(rows: usize, truncated: bool, total: Option<u64>) -> String {
-    let shown = rows.to_string();
-    match (truncated, total) {
-        (true, Some(total)) => crate::i18n::gettext_f(
-            "Showing the first {shown} of {total} rows",
-            &[("shown", &shown), ("total", &total.to_string())],
-        ),
-        (true, None) => crate::i18n::gettext_f(
-            "Showing the first {shown} rows. The query returned more.",
-            &[("shown", &shown)],
-        ),
-        (false, _) => crate::i18n::ngettext_f(
-            "{n} row",
-            "{n} rows",
-            u32::try_from(rows).unwrap_or(u32::MAX),
-            &[("n", &shown)],
-        ),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn sink() -> GridSink {
         std::rc::Rc::new(|_| {})
+    }
+
+    fn actions<G: Fn(usize) + 'static>(go_to_error: G) -> PageActions<G, impl Fn(ExportSource) + 'static> {
+        PageActions {
+            go_to_error,
+            export_all: |_| {},
+        }
     }
 
     #[gtk4::test]
@@ -151,10 +131,9 @@ mod tests {
             },
             batch: Some(0),
             preview: String::new(),
-            statement: None,
         };
 
-        let widget = entry_widget(&entry, &sink(), |_| {});
+        let widget = entry_widget(&entry, &sink(), actions(|_| {}));
 
         let page = widget.downcast::<adw::StatusPage>().expect("a status page");
         assert_eq!(
@@ -172,23 +151,15 @@ mod tests {
             },
             batch: Some(0),
             preview: String::new(),
-            statement: None,
         };
         let reached = std::rc::Rc::new(std::cell::Cell::new(None));
         let seen = reached.clone();
 
-        let widget = entry_widget(&entry, &sink(), move |position| seen.set(Some(position)));
+        let widget = entry_widget(&entry, &sink(), actions(move |position| seen.set(Some(position))));
         let page = widget.downcast::<adw::StatusPage>().expect("a status page");
         let button = page.child().and_downcast::<gtk4::Button>().expect("Go to Error");
         button.emit_clicked();
 
         assert_eq!(reached.get(), Some(42));
-    }
-
-    #[test]
-    fn a_truncated_set_says_so() {
-        assert!(row_count_text(10, true, Some(50)).contains("50"));
-        assert!(row_count_text(10, true, None).contains("more"));
-        assert_eq!(row_count_text(1, false, None), "1 row");
     }
 }

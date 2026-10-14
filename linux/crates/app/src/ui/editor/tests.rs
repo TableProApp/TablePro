@@ -1,7 +1,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tablepro_core::{DriverError, EditorSession, TransactionState};
+use tablepro_core::column::{ColumnType, ResultColumn};
+use tablepro_core::{DriverError, EditorSession, ResultEvent, TransactionState, Truncation, Value};
 use tablepro_session::Session;
 use tablepro_session::fakes::{FakeConnector, FakeCredentialSource};
 use tablepro_session::operation::DefaultDeadlines;
@@ -76,8 +77,12 @@ fn build_editor(runs: Replies<FakeRun>, text: &str, history: impl FnOnce(&Tasks)
 
 /// An editor whose runs go into a real history under `root`.
 fn editor_with_history(root: &tempfile::TempDir, text: &str) -> Harness {
+    editor_with_history_runs(root, answering(), text)
+}
+
+fn editor_with_history_runs(root: &tempfile::TempDir, runs: Replies<FakeRun>, text: &str) -> Harness {
     let paths = tablepro_storage::StoragePaths::under(root.path(), "tablepro-test", "app.tablepro.TablePro.Devel");
-    build_editor(answering(), text, |tasks| {
+    build_editor(runs, text, |tasks| {
         let preferences = HistoryPreferences {
             retention_days: tokio::sync::watch::channel(30).1,
             save: tokio::sync::watch::channel(true).1,
@@ -440,6 +445,10 @@ fn a_run_is_judged_by_the_engine_it_ran_on() {
 
 /// What the harness's history holds, newest first.
 fn recorded(harness: &Harness) -> Vec<String> {
+    recorded_entries(harness).into_iter().map(|entry| entry.query).collect()
+}
+
+fn recorded_entries(harness: &Harness) -> Vec<tablepro_storage::query_history::Entry> {
     let Some(history) = harness.history.as_ref().and_then(HistoryService::store) else {
         return Vec::new();
     };
@@ -447,11 +456,121 @@ fn recorded(harness: &Harness) -> Vec<String> {
         limit: 100,
         ..Default::default()
     });
-    block_on(&harness.runtime, search)
-        .expect("search")
-        .into_iter()
-        .map(|entry| entry.query)
-        .collect()
+    block_on(&harness.runtime, search).expect("search")
+}
+
+/// A result set of `rows` one-column rows, ended the way `truncation`
+/// says.
+fn result_set(rows: u64, total_rows: Option<u64>, truncation: Truncation) -> FakeRun {
+    let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("n", ColumnType::untyped_text("text"))].into();
+    let mut events = vec![
+        ResultEvent::ResultSetStarted { columns },
+        ResultEvent::Rows((0..rows).map(|row| vec![Value::Int(row as i64)]).collect()),
+    ];
+    if truncation != Truncation::Complete {
+        events.push(ResultEvent::RowLimitReached { retained: rows });
+    }
+    events.push(ResultEvent::ResultSetFinished {
+        retained: rows,
+        total_rows,
+        truncation,
+    });
+    FakeRun::completed(events)
+}
+
+/// The banner over the result page on show.
+fn shown_banner(harness: &Harness) -> adw::Banner {
+    let page = harness
+        .editor
+        .imp()
+        .results
+        .imp()
+        .stack
+        .visible_child()
+        .expect("a result page");
+    crate::test_support::first_descendant_of_type::<adw::Banner>(&page).expect("the page's banner")
+}
+
+#[gtk4::test]
+fn truncated_result_reveals_banner_and_complete_result_hides_it() {
+    let mut runs = Replies::default();
+    runs.when_sql_contains("capped", result_set(3, None, Truncation::ServerStopped));
+    runs.always(result_set(2, Some(2), Truncation::Complete));
+    let harness = editor_with(runs, "SELECT n FROM capped; SELECT n FROM small");
+
+    run_and_wait(&harness);
+    let results = &harness.editor.imp().results;
+    results.select(0);
+    let capped = shown_banner(&harness);
+    results.select(1);
+    let complete = shown_banner(&harness);
+
+    assert!(capped.is_revealed(), "the capped result has no banner");
+    assert_eq!(capped.title(), "Showing the first 3 rows");
+    assert_eq!(capped.button_label().as_deref(), Some("Export All…"));
+    assert!(!complete.is_revealed(), "a complete result shows a banner");
+}
+
+#[gtk4::test]
+fn export_all_uses_originating_statement_of_second_result() {
+    let mut runs = Replies::default();
+    runs.always(result_set(3, Some(40), Truncation::ReadPastLimit));
+    let harness = editor_with(runs, "SELECT n FROM first;\nSELECT n FROM second WHERE n > 2;");
+    let offers = SignalLog::connect(&harness.editor, "export-results", |values| {
+        values[1]
+            .get::<glib::BoxedAnyObject>()
+            .expect("an offer")
+            .borrow::<ExportOffer>()
+            .clone()
+    });
+    run_and_wait(&harness);
+
+    harness.editor.imp().results.select(1);
+    shown_banner(&harness).emit_by_name::<()>("button-clicked", &[]);
+
+    let offers = offers.take();
+    let [offer] = offers.as_slice() else {
+        panic!("one offer, not {}", offers.len());
+    };
+    let ExportOrigin::Editor {
+        shown,
+        query: ExportQuery::Editor { sql },
+        shown_rows,
+        truncated,
+    } = &offer.origin
+    else {
+        panic!("not an editor result: {:?}", offer.origin);
+    };
+    assert_eq!(sql.as_str(), "SELECT n FROM second WHERE n > 2");
+    assert!(*truncated);
+    assert_eq!(*shown_rows, 3);
+    assert_eq!(shown.row_count(), Some(3));
+    assert!(offer.session.is_some(), "Export All has no session to read through");
+    assert_eq!(offer.origin.preselected(), crate::ui::export::ScopeSource::Query);
+}
+
+#[gtk4::test]
+fn history_records_none_for_capped_result() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let mut runs = Replies::default();
+    runs.when_sql_contains("capped", result_set(3, None, Truncation::ServerStopped));
+    runs.always(result_set(2, Some(9), Truncation::ReadPastLimit));
+    let harness = editor_with_history_runs(&root, runs, "SELECT n FROM capped;");
+    run_and_wait(&harness);
+    harness.editor.buffer().set_text("SELECT n FROM counted;");
+    run_and_wait(&harness);
+
+    wait_until(WAIT, || recorded_entries(&harness).len() == 2).expect("both runs recorded");
+    let entries = recorded_entries(&harness);
+    let rows = |query: &str| {
+        entries
+            .iter()
+            .find(|entry| entry.query.contains(query))
+            .map(|entry| entry.rows_affected)
+            .expect("the run's entry")
+    };
+    assert_eq!(rows("capped"), None, "a capped result recorded the rows it kept");
+    assert_eq!(rows("counted"), Some(9));
 }
 
 /// The test drives the runtime from outside it, which is the one place

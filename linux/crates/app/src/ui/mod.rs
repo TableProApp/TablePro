@@ -24,6 +24,7 @@ mod host_key_review;
 pub(crate) mod icons;
 mod import_dialog;
 mod preferences_dialog;
+mod result_pane;
 mod saved_queries_dialog;
 mod session_window;
 mod sidebar_row;

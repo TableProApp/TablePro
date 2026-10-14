@@ -459,7 +459,67 @@ async fn save_with_file_dialog(parent: adw::ApplicationWindow, exports: Rc<Expor
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use tablepro_core::column::{ColumnType, ResultColumn};
+    use tablepro_core::{EditorSession, ResultEvent, Truncation, Value};
+    use tablepro_test_support::{FakeEditorSession, FakeReply, FakeRun, Replies};
+
     use super::*;
+    use crate::test_support::{descendants, first_descendant_of_type, wait_until};
+    use crate::ui::session_window::tests::{TestWindow, editors};
+
+    const WAIT: Duration = Duration::from_secs(20);
+
+    /// A run whose one result the row limit cut short.
+    fn capped_run() -> Replies<FakeRun> {
+        let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("n", ColumnType::untyped_text("text"))].into();
+        let mut runs = Replies::default();
+        runs.always(FakeRun::completed(vec![
+            ResultEvent::ResultSetStarted { columns },
+            ResultEvent::Rows(vec![vec![Value::Int(1)], vec![Value::Int(2)]]),
+            ResultEvent::RowLimitReached { retained: 2 },
+            ResultEvent::ResultSetFinished {
+                retained: 2,
+                total_rows: None,
+                truncation: Truncation::ServerStopped,
+            },
+        ]));
+        runs
+    }
+
+    #[gtk4::test]
+    fn export_all_opens_dialog_with_all_rows_scope_selected() {
+        let fake = Arc::new(FakeEditorSession::new(capped_run()));
+        let test = TestWindow::connected_with("ExportAll", |script| {
+            let editor: Arc<dyn EditorSession> = fake.clone();
+            script.open_editor_session.always(FakeReply::ok(editor));
+        });
+        test.run_in_new_editor_tab();
+        let editor = editors(&test.window).pop().expect("the editor tab");
+        let banner = first_descendant_of_type::<adw::Banner>(&editor).expect("the result's banner");
+        assert!(banner.is_revealed(), "the capped result has no banner");
+
+        banner.emit_by_name::<()>("button-clicked", &[]);
+
+        wait_until(WAIT, || test.window.visible_dialog().is_some()).expect("the export dialog");
+        let dialog = test.window.visible_dialog().expect("the export dialog");
+        assert_eq!(dialog.title(), "Export Rows");
+        let rows = descendants(&dialog)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<adw::ComboRow>().ok())
+            .find(|row| row.title() == "Rows")
+            .expect("the Rows list");
+        let selected = rows
+            .selected_item()
+            .and_downcast::<gtk::StringObject>()
+            .expect("a selected scope");
+        assert_eq!(selected.string(), "All Rows");
+        assert_eq!(
+            rows.subtitle().as_deref(),
+            Some("Runs the statement again on a separate read-only connection")
+        );
+    }
 
     #[test]
     fn every_format_has_a_label_extension_and_type_of_its_own() {
