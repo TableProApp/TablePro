@@ -585,10 +585,11 @@ impl SessionWindow {
         let uri = file.uri().to_string();
         let resolving_uri = uri.clone();
         let connections = state.services.storage.connections().clone();
+        let drivers = state.services.drivers.clone();
         let resolving = state
             .services
             .tasks
-            .spawn_blocking_task(move || resolve_file_blocking(path, resolving_uri, &connections));
+            .spawn_blocking_task(move || resolve_file_blocking(path, resolving_uri, &connections, &drivers));
         let input = self.input();
         glib::spawn_future_local(async move {
             let resolved = resolving.await.unwrap_or_else(|failure| ResolvedFile {

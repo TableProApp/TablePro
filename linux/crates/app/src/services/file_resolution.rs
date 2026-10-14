@@ -3,6 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
+use tablepro_core::DriverRegistry;
 use tablepro_session::SessionKey;
 use tablepro_session::registry::FileIdentity;
 use tablepro_storage::{ConnectionStore, SavedConnection};
@@ -51,7 +52,12 @@ pub fn resolve_file_identity_blocking(path: Option<&Path>, uri: &str) -> Result<
 
 /// Resolve the file, then find whether a saved connection opens the
 /// same one.
-pub fn resolve_file_blocking(path: Option<PathBuf>, uri: String, connections: &ConnectionStore) -> ResolvedFile {
+pub fn resolve_file_blocking(
+    path: Option<PathBuf>,
+    uri: String,
+    connections: &ConnectionStore,
+    drivers: &DriverRegistry,
+) -> ResolvedFile {
     let target = resolve_file_identity_blocking(path.as_deref(), &uri).map(|identity| {
         let saved = match connections.load_blocking() {
             Ok(saved) => saved.to_vec(),
@@ -60,7 +66,12 @@ pub fn resolve_file_blocking(path: Option<PathBuf>, uri: String, connections: &C
                 Vec::new()
             }
         };
-        match SessionKey::for_file(&identity, &saved) {
+        let is_file_driver = |id: &str| {
+            drivers
+                .get(id)
+                .is_some_and(|driver| driver.capabilities().is_file_based())
+        };
+        match SessionKey::for_file(&identity, &saved, is_file_driver) {
             SessionKey::Saved(id) => match saved.into_iter().find(|connection| connection.id == id) {
                 Some(connection) => FileTarget::Saved(Box::new(connection)),
                 None => FileTarget::File(identity),
@@ -73,6 +84,8 @@ pub fn resolve_file_blocking(path: Option<PathBuf>, uri: String, connections: &C
 
 #[cfg(test)]
 mod tests {
+    use tablepro_test_support::{ConnectionScript, FakeDriver};
+
     use super::*;
 
     #[test]
@@ -89,11 +102,24 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn a_saved_file_opens_its_saved_connection() {
+    fn drivers(capabilities: &'static tablepro_core::DriverCapabilities) -> DriverRegistry {
+        let mut drivers = DriverRegistry::new();
+        drivers.register(std::sync::Arc::new(FakeDriver::connecting(
+            capabilities,
+            ConnectionScript::default(),
+        )));
+        drivers
+    }
+
+    /// `database` saved as a connection of the fake driver, and what
+    /// opening the file then resolves to.
+    fn resolve_saved(
+        database: &str,
+        capabilities: &'static tablepro_core::DriverCapabilities,
+    ) -> (uuid::Uuid, ResolvedFile) {
         let root = tempfile::tempdir().expect("tempdir");
-        let database = root.path().join("app.db");
-        std::fs::write(&database, b"").expect("seed");
+        let path = std::fs::canonicalize(root.path()).expect("canonical").join(database);
+        std::fs::write(&path, b"").expect("seed");
         let store = ConnectionStore::new(&tablepro_storage::StoragePaths::under(
             root.path(),
             "tablepro-test",
@@ -102,10 +128,10 @@ mod tests {
         let saved = SavedConnection {
             id: uuid::Uuid::new_v4(),
             name: "local".to_owned(),
-            driver_id: "sqlite".to_owned(),
+            driver_id: "fake".to_owned(),
             host: String::new(),
             port: 0,
-            database: database.display().to_string(),
+            database: path.display().to_string(),
             username: String::new(),
             tls: tablepro_core::TlsConfig::disabled(),
             read_only: false,
@@ -116,12 +142,32 @@ mod tests {
             group: None,
         };
         store.upsert_blocking(saved.clone()).expect("saved");
+        let uri = format!("file://{}", path.display());
 
-        let resolved = resolve_file_blocking(Some(database.clone()), format!("file://{}", database.display()), &store);
+        (
+            saved.id,
+            resolve_file_blocking(Some(path), uri, &store, &drivers(capabilities)),
+        )
+    }
+
+    #[test]
+    fn a_saved_file_opens_its_saved_connection() {
+        let (id, resolved) = resolve_saved("app.db", &FakeDriver::FILE_CAPABILITIES);
 
         match resolved.target {
-            Ok(FileTarget::Saved(connection)) => assert_eq!(connection.id, saved.id),
+            Ok(FileTarget::Saved(connection)) => assert_eq!(connection.id, id),
             other => panic!("the saved connection was not found: {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_server_whose_database_names_the_file_is_not_opened() {
+        let (_, resolved) = resolve_saved("shop", &FakeDriver::NETWORK_CAPABILITIES);
+
+        assert!(
+            matches!(resolved.target, Ok(FileTarget::File(_))),
+            "{:?}",
+            resolved.target
+        );
     }
 }

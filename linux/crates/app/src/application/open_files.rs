@@ -26,9 +26,10 @@ impl TableProApplication {
         };
         let (path, uri) = (file.path(), file.uri().to_string());
         let connections = services.storage.connections().clone();
+        let drivers = services.drivers.clone();
         let resolving = services
             .tasks
-            .spawn_blocking_task(move || resolve_file_blocking(path, uri, &connections));
+            .spawn_blocking_task(move || resolve_file_blocking(path, uri, &connections, &drivers));
         // An instance D-Bus started for this file would otherwise exit
         // before its window opens.
         let hold = self.hold();
