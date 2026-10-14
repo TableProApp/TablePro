@@ -54,6 +54,10 @@ impl ConnectionDeletion {
         let mut report = DeletionReport::default();
         self.column_widths.forget_connection(id);
         self.filters.forget_connection(id);
+        // Awaited inside the delete's hold, so a quit right after it
+        // cannot leave them on disk.
+        self.column_widths.flush().await;
+        self.filters.flush().await;
         if let Err(error) = self.workspaces.purge(&SessionKey::Saved(id)).await {
             report.purge_failures.push(PurgeFailure::Workspace(error));
         }
@@ -402,6 +406,15 @@ mod tests {
                 .is_none()
         );
         assert!(fixture.filters.filters(fixture.id, Some("public"), "users").is_empty());
+        for file in [fixture.paths.column_widths_file(), fixture.paths.filter_settings_file()] {
+            let on_disk = std::fs::read_to_string(&file).expect("the file");
+            assert!(
+                !on_disk.contains(&fixture.id.to_string()),
+                "{} still names the deleted connection once the delete ended",
+                file.display()
+            );
+            assert!(on_disk.contains(&fixture.other.to_string()));
+        }
         assert!(
             !fixture.tabs(fixture.id).exists(),
             "the saved tabs outlived the connection"
