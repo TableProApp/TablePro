@@ -11,7 +11,7 @@ import Testing
 /// this registry, `snippets/driver-counts.mdx` in TableProApp/docs, and the marketing site. Nothing at runtime
 /// reconciles them, and by August 2026 they read 28, 27 and 25 at once.
 ///
-/// The answer is 39, and the reason it once read 28 is worth keeping. Turso is served by
+/// The answer is 40, and the reason it once read 28 is worth keeping. Turso is served by
 /// the libSQL plugin and was the only alias in `reverseTypeIndex` with no curated entry of its
 /// own, so it was the only type the picker could not offer before its plugin was installed.
 /// ScyllaDB is the shape every other alias already had: an alias of Cassandra with a curated
@@ -29,7 +29,7 @@ struct PluginMetadataRegistryTypeCountTests {
         "CockroachDB", "Dameng", "Databend", "DuckDB", "DynamoDB", "Elasticsearch", "etcd", "Kafka",
         "libSQL", "MariaDB", "MongoDB", "MySQL", "Oracle", "PGlite", "PostgreSQL", "Redis", "Redshift",
         "SAP HANA", "ScyllaDB", "Snowflake", "Spanner", "SQL Server", "SQLite", "SurrealDB", "Teradata", "TiDB",
-        "Trino", "Turso", "Typesense", "Weaviate", "OceanBase", "Firestore", "Firebase Realtime Database"
+        "Trino", "Turso", "Typesense", "Weaviate", "OceanBase", "Firestore", "Firebase Realtime Database", "Bigtable"
     ]
 
     private static func builtInTypeIds() -> Set<String> {

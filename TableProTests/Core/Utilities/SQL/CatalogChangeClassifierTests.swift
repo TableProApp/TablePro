@@ -152,6 +152,13 @@ struct CatalogChangeClassifierTests {
         #expect(kinds("db.dropDatabase()", .mongodb) == .everything)
     }
 
+    @Test("A Bigtable write refreshes the columns, since it can add one")
+    func bigtableWritesRefresh() {
+        #expect(kinds("SCAN events/user#", .bigtable).isEmpty)
+        #expect(kinds("BIGTABLE_BROWSE:e30=", .bigtable).isEmpty)
+        #expect(kinds("PUT events/k {\"cf:new\": \"1\"}", .bigtable) == .everything)
+    }
+
     @Test("A Firebase write refreshes the sidebar, since it can create a collection or a node")
     func firebaseWritesRefresh() {
         for type in [DatabaseType.firestore, .firebaseRealtimeDatabase] {

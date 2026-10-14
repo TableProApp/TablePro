@@ -1288,6 +1288,19 @@ targets:
       - package: TableProCore
         product: TableProDocumentPath
 
+  BigtableDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: BigtableDriverPlugin
+      principalClass: BigtablePlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProGoogleCloud
+      - package: TableProCore
+        product: TableProBigtableCore
+      - package: TableProCore
+        product: TableProLogRedaction
+
   FirebaseDriverPlugin:
     templates: [DriverPlugin]
     templateAttributes:
@@ -1317,6 +1330,7 @@ aggregateTargets:
     targets:
       - BeancountDriver
       - BigQueryDriverPlugin
+      - BigtableDriverPlugin
       - CSVExport
       - CSVImport
       - CassandraDriver

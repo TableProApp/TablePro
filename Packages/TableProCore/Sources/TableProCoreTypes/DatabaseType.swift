@@ -44,12 +44,13 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let weaviate = DatabaseType(rawValue: "Weaviate")
     public static let firestore = DatabaseType(rawValue: "Firestore")
     public static let firebaseRealtimeDatabase = DatabaseType(rawValue: "Firebase Realtime Database")
+    public static let bigtable = DatabaseType(rawValue: "Bigtable")
 
     public static let allKnownTypes: [DatabaseType] = [
         .mysql, .mariadb, .tidb, .databend, .oceanbase, .postgresql, .sqlite, .redis, .mongodb,
         .clickhouse, .mssql, .oracle, .dameng, .duckdb, .cassandra, .redshift,
         .etcd, .cloudflareD1, .dynamodb, .bigquery, .spanner, .snowflake, .libsql, .beancount,
-        .surrealdb, .teradata, .trino, .kafka, .cloudflareR2SQL, .weaviate, .firestore, .firebaseRealtimeDatabase
+        .surrealdb, .teradata, .trino, .kafka, .cloudflareR2SQL, .weaviate, .firestore, .firebaseRealtimeDatabase, .bigtable
     ]
 
     /// Icon name for this database type — asset catalog name (e.g. "mysql-icon") or SF Symbol fallback
@@ -87,6 +88,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         case .cloudflareR2SQL: return "cloudflare-r2-sql-icon"
         case .weaviate: return "weaviate-icon"
         case .firestore, .firebaseRealtimeDatabase: return "firebase-icon"
+        case .bigtable: return "bigtable-icon"
         default: return "externaldrive"
         }
     }

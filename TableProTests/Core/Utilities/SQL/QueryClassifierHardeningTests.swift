@@ -690,6 +690,19 @@ struct QueryClassifierNonSqlTests {
         #expect(!QueryClassifier.isWriteQuery(search, databaseType: .weaviate))
     }
 
+    @Test("Bigtable request lines are tiered by their verb, and a PUT that nulls a cell is destructive")
+    func bigtableTiers() {
+        #expect(!QueryClassifier.isWriteQuery("BIGTABLE_BROWSE:e30=", databaseType: .bigtable))
+        #expect(!QueryClassifier.isWriteQuery("GET events/user#42", databaseType: .bigtable))
+        #expect(!QueryClassifier.isWriteQuery("scan events/user#?limit=5", databaseType: .bigtable))
+        #expect(!QueryClassifier.isWriteQuery("READ events {\"rowsLimit\": \"5\"}", databaseType: .bigtable))
+        #expect(QueryClassifier.classifyTier("PUT events/k {\"cf:a\": \"1\"}", databaseType: .bigtable) == .write)
+        #expect(QueryClassifier.classifyTier("PUT events/k {\"cf:a\": null}", databaseType: .bigtable) == .destructive)
+        #expect(QueryClassifier.classifyTier("PUT events/\"a{b\" {\"cf:a\": null}", databaseType: .bigtable) == .destructive)
+        #expect(QueryClassifier.classifyTier("DELETE events/k", databaseType: .bigtable) == .destructive)
+        #expect(QueryClassifier.isWriteQuery("SELECT * FROM events", databaseType: .bigtable))
+    }
+
     @Test("Firebase request lines are tiered by their verb, and a grid page is a read")
     func firebaseTiers() {
         for type in [DatabaseType.firestore, .firebaseRealtimeDatabase] {

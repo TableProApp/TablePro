@@ -61,7 +61,7 @@ struct DatabaseTypeTests {
 
     @Test("allKnownTypes contains all expected types")
     func allKnownTypesComplete() {
-        #expect(DatabaseType.allKnownTypes.count == 32)
+        #expect(DatabaseType.allKnownTypes.count == 33)
         #expect(DatabaseType.allKnownTypes.contains(.mysql))
         #expect(DatabaseType.allKnownTypes.contains(.tidb))
         #expect(DatabaseType.allKnownTypes.contains(.databend))
@@ -80,6 +80,7 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.allKnownTypes.contains(.weaviate))
         #expect(DatabaseType.allKnownTypes.contains(.firestore))
         #expect(DatabaseType.allKnownTypes.contains(.firebaseRealtimeDatabase))
+        #expect(DatabaseType.allKnownTypes.contains(.bigtable))
     }
 
     /// The list has no duplicates, which a count alone would not catch: adding a type twice
@@ -111,6 +112,13 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.firestore.pluginTypeId == "Firestore")
         #expect(DatabaseType.firebaseRealtimeDatabase.iconName == "firebase-icon")
         #expect(DatabaseType.firebaseRealtimeDatabase.pluginTypeId == "Firebase Realtime Database")
+    }
+
+    @Test("Bigtable resolves its icon and plugin type id")
+    func bigtableIdentity() {
+        #expect(DatabaseType.bigtable.rawValue == "Bigtable")
+        #expect(DatabaseType.bigtable.iconName == "bigtable-icon")
+        #expect(DatabaseType.bigtable.pluginTypeId == "Bigtable")
     }
 
     @Test("ScyllaDB resolves its own icon")

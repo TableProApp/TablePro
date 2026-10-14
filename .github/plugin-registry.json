@@ -46,6 +46,20 @@
       "category": "database-driver",
       "homepage": "https://docs.tablepro.app/databases/bigquery"
     },
+    "bigtable": {
+      "target": "BigtableDriverPlugin",
+      "bundleName": "BigtableDriverPlugin",
+      "bundleId": "com.TablePro.BigtableDriverPlugin",
+      "bundled": false,
+      "displayName": "Bigtable Driver",
+      "summary": "Google Cloud Bigtable driver over the REST API",
+      "databaseTypeIds": [
+        "Bigtable"
+      ],
+      "icon": "bigtable-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/bigtable"
+    },
     "cassandra": {
       "target": "CassandraDriver",
       "bundleName": "CassandraDriver",

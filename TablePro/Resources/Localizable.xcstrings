@@ -784,7 +784,19 @@
         }
       }
     },
+    "\"%@\" is not a Bigtable instance ID." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "\"%@\" is not a Bigtable table ID." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "\"%@\" is not a collection path." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "\"%@\" is not a column. Name it as family:qualifier." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -925,6 +937,10 @@
     "\"%@\" is not a valid theme identifier." : {
 
     },
+    "\"%@\" is not an app profile ID." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "\"%@\" is not an AWS region" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -950,6 +966,10 @@
       }
     },
     "\"%@\" is not true or false." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "\"%@\" is not valid base64." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -4233,6 +4253,10 @@
       "generatesSymbol" : false
     },
     "%@ needs a JSON body after the path." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%@ needs a row key." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -15393,6 +15417,10 @@
         }
       }
     },
+    "A key range cannot be ORed with a column filter. Use =, STARTS WITH or REGEX on _key, or AND." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "A Kubernetes resource is required, such as service/postgres" : {
       "localizations" : {
         "fr" : {
@@ -15562,6 +15590,14 @@
       }
     },
     "A new row in a collection group needs __name__ set to the full document path, such as users/alice/orders/1." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "A new row needs a _key. Bigtable has no generated keys." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "A new row needs at least one cell. Bigtable does not store empty rows." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -15837,6 +15873,14 @@
         }
       }
     },
+    "A quoted row key is missing its closing quote." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "A quoted row key is not a valid JSON string." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "A quoted value was never closed." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -15848,6 +15892,10 @@
           }
         }
       }
+    },
+    "A raw Bigtable filter is a JSON RowFilter, such as {\"rowKeyRegexFilter\": \"<base64>\"}." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "A raw Firestore filter is a JSON Filter object, such as %@." : {
       "extractionState" : "manual",
@@ -15900,6 +15948,10 @@
           }
         }
       }
+    },
+    "A row needs a key. Bigtable has no empty row key." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "A row the filter hides holds %@ in column “%@”, which %@ cannot store. Clear the filter to find it, or choose Save As and pick UTF-8." : {
       "localizations" : {
@@ -24922,6 +24974,10 @@
         }
       }
     },
+    "App Profile ID" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "app_reader" : {
       "localizations" : {
         "fr" : {
@@ -30408,6 +30464,42 @@
           }
         }
       }
+    },
+    "Bigtable answered with something other than HTTP." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Bigtable cannot filter with %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Bigtable committed a row it never started." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Bigtable ended the response in the middle of a row." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Bigtable has no views." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Bigtable returned HTTP %d." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Bigtable sent a response that is not JSON." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Bigtable sent bytes that are not base64." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Bigtable started a new row before committing the last one." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Billing" : {
       "extractionState" : "manual",
@@ -69936,6 +70028,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Enter a request such as GET events/user#42, SCAN events/user#?limit=20, PUT events/user#42 {\"profile:name\": \"Ann\"} or DELETE events/user#42." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Enter a value for the primary key column %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -84593,6 +84689,10 @@
           }
         }
       }
+    },
+    "Google refused the credential." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Google rejected the OAuth client ID or secret." : {
       "extractionState" : "manual",
@@ -100535,6 +100635,10 @@
         }
       }
     },
+    "list instances" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "List Maintenance Operations" : {
       "localizations" : {
         "fr" : {
@@ -101338,6 +101442,10 @@
           }
         }
       }
+    },
+    "list the tables of %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "List the tables the user opened most recently on a connection, newest first." : {
       "localizations" : {
@@ -109839,6 +109947,10 @@
           }
         }
       }
+    },
+    "Name the table before the key, as in GET events/user#42." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Name this selection" : {
       "localizations" : {
@@ -118791,6 +118903,10 @@
           }
         }
       }
+    },
+    "Not connected to Bigtable." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Not connected to database" : {
       "extractionState" : "manual",
@@ -134944,6 +135060,10 @@
         }
       }
     },
+    "Project %@ has no Bigtable instance." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Project ID" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -135945,6 +136065,14 @@
           }
         }
       }
+    },
+    "PUT needs a JSON object of cells, such as {\"profile:name\": \"Ann\"}." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "PUT needs a JSON object of cells, such as PUT events/user#42 {\"profile:name\": \"Ann\"}." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Put the credential in the Token field, not in the address." : {
       "localizations" : {
@@ -139087,6 +139215,10 @@
         }
       }
     },
+    "READ needs a ReadRows JSON body, such as READ events {\"rowsLimit\": \"10\"}." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Read Only" : {
       "localizations" : {
         "fr" : {
@@ -139379,6 +139511,10 @@
           }
         }
       }
+    },
+    "read the schema of %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Read-only" : {
       "extractionState" : "stale",
@@ -179530,6 +179666,10 @@
         }
       }
     },
+    "The Bigtable REST API returns rows in ascending key order only." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The binary subtype of %@ is not known, so saving could store a different kind of binary. Change this field with a query." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -179807,6 +179947,10 @@
       }
     },
     "The browse request is damaged. Reopen the collection." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The browse request is damaged. Reopen the table." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -185211,6 +185355,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The row has no _key, so the row it came from is unknown. Reload the table." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The row has no $key, so the node it came from is unknown. Reload the table." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -188677,6 +188825,10 @@
           }
         }
       }
+    },
+    "The value of %@ must be text or null. Bigtable stores bytes, so a number is written as its digits." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The value of a %@ key cannot be edited in the grid. Change it with a command in the query editor." : {
       "extractionState" : "manual",
@@ -209637,6 +209789,10 @@
           }
         }
       }
+    },
+    "write a row of %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Write and Run SQL" : {
       "localizations" : {

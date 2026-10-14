@@ -829,7 +829,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             return .document
         case "Redis":
             return .keyValue
-        case "Cassandra", "ScyllaDB":
+        case "Cassandra", "ScyllaDB", "Bigtable":
             return .wideColumn
         case "etcd", "Etcd":
             return .coordination
@@ -869,6 +869,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         case "Typesense":      return String(localized: "Typo-tolerant open-source search engine")
         case "Weaviate":       return String(localized: "Open-source vector database")
         case "Firestore":      return String(localized: "Serverless document database from Google")
+        case "Bigtable":       return String(localized: "Google Cloud wide-column store for large data")
         case "Firebase Realtime Database": return String(localized: "JSON tree database that syncs in real time")
         default:               return ""
         }

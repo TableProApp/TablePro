@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Setting in Settings > General to hide the version and Check for Updates on the Welcome window.
 - Install Parquet… in the Export dialog's format menu when the Parquet plugin is not installed.
 - Cloud Firestore and Firebase Realtime Database as a registry plugin over their REST APIs. (#2504)
+- Google Cloud Bigtable as a registry plugin over the REST API.
 - Warning banner and Test Connection notice for a server warning at login, such as an Oracle password about to expire. (#3401)
 
 ### Changed

@@ -859,6 +859,8 @@ private extension QueryClassifier {
             return trimmed.isEmpty ? .safe : weaviateClassification(trimmed)
         case .firestore, .firebaseRealtimeDatabase:
             return trimmed.isEmpty ? .safe : firebaseClassification(trimmed, databaseType: databaseType)
+        case .bigtable:
+            return trimmed.isEmpty ? .safe : bigtableClassification(trimmed)
         default:
             return nil
         }
@@ -1088,5 +1090,36 @@ private extension QueryClassifier {
         default:
             return false
         }
+    }
+
+    /// A grid page is a tagged spec and anything else a request line led by its verb. A PUT that sets
+    /// a cell to null deletes that cell, so it ranks with DELETE.
+    static func bigtableClassification(_ trimmed: String) -> QueryClassification {
+        if trimmed.hasPrefix("BIGTABLE_BROWSE:") {
+            return .safe
+        }
+        let destructive = QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
+        let verb = trimmed.prefix { !$0.isWhitespace }.uppercased()
+        switch verb {
+        case "GET", "SCAN", "READ":
+            return .safe
+        case "DELETE":
+            return destructive
+        case "PUT" where bigtableBodyDeletesCell(trimmed):
+            return destructive
+        default:
+            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+        }
+    }
+
+    /// The body is the JSON object that runs to the end of the text. A quoted row key may itself
+    /// hold a brace, so each brace is tried until one starts an object that parses.
+    private static func bigtableBodyDeletesCell(_ trimmed: String) -> Bool {
+        for brace in trimmed.indices where trimmed[brace] == "{" {
+            guard let data = String(trimmed[brace...]).data(using: .utf8),
+                  let cells = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+            return cells.values.contains { $0 is NSNull }
+        }
+        return false
     }
 }

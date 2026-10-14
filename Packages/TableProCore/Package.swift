@@ -28,6 +28,7 @@ let package = Package(
         .library(name: "TableProSpannerCore", targets: ["TableProSpannerCore"]),
         .library(name: "TableProWeaviateCore", targets: ["TableProWeaviateCore"]),
         .library(name: "TableProFirebaseCore", targets: ["TableProFirebaseCore"]),
+        .library(name: "TableProBigtableCore", targets: ["TableProBigtableCore"]),
         .library(name: "TableProNumberFormatting", targets: ["TableProNumberFormatting"]),
         .library(name: "TableProDocumentPath", targets: ["TableProDocumentPath"]),
         .library(name: "TableProJavaScriptText", targets: ["TableProJavaScriptText"]),
@@ -153,6 +154,11 @@ let package = Package(
             path: "Sources/TableProWeaviateCore"
         ),
         .target(
+            name: "TableProBigtableCore",
+            dependencies: [],
+            path: "Sources/TableProBigtableCore"
+        ),
+        .target(
             name: "TableProFirebaseCore",
             dependencies: [],
             path: "Sources/TableProFirebaseCore"
@@ -196,6 +202,11 @@ let package = Package(
             name: "TableProSQLiteCore",
             dependencies: ["CSQLite"],
             path: "Sources/TableProSQLiteCore"
+        ),
+        .testTarget(
+            name: "TableProBigtableCoreTests",
+            dependencies: ["TableProBigtableCore"],
+            path: "Tests/TableProBigtableCoreTests"
         ),
         .testTarget(
             name: "TableProTabularIOTests",
