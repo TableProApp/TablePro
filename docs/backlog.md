@@ -82,3 +82,4 @@ The linked issue records each theme's scope or acceptance decision. Project #3 o
 | [#609](https://github.com/cozyGarage/BookiE/issues/609) | Local filtering and sorting for loaded SQL and pinned results (UI-38) |
 | [#634](https://github.com/cozyGarage/BookiE/issues/634) | CSV import always skips auto-increment columns |
 | [#638](https://github.com/cozyGarage/BookiE/issues/638) | MySQL supports_local_socket accepts a socket_dir |
+| [#861](https://github.com/cozyGarage/BookiE/issues/861) | MCP token dialog reports best-effort keyring storage accurately (UI-43) |
