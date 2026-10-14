@@ -82,11 +82,12 @@ impl WorkspaceModel {
             HostKeyReviewOutcome::Dismissed => {}
             HostKeyReviewOutcome::Retry => self.retry(),
             HostKeyReviewOutcome::Trust => self.retry_trusting(&failure),
-            HostKeyReviewOutcome::Replace => self.forget_old_host_key(failure),
+            HostKeyReviewOutcome::Replace => self.reviewing_host_key = self.forget_old_host_key(failure),
         }
     }
 
     pub(super) fn on_old_host_key_forgotten(&mut self, failure: HostKeyFailure, forgotten: Result<(), String>) {
+        self.reviewing_host_key = false;
         match forgotten {
             Ok(()) => self.retry_trusting(&failure),
             Err(detail) => {
@@ -124,14 +125,15 @@ impl WorkspaceModel {
     }
 
     /// ssh never accepts a changed key, so the old one leaves known_hosts
-    /// first, with the ssh-keygen command ssh itself suggests.
-    fn forget_old_host_key(&self, failure: HostKeyFailure) {
+    /// first, with the ssh-keygen command ssh itself suggests. Returns
+    /// whether ssh-keygen was started.
+    fn forget_old_host_key(&self, failure: HostKeyFailure) -> bool {
         let HostKeyFailureKind::Changed { known_hosts, .. } = &failure.kind else {
-            return;
+            return false;
         };
         let Some(ssh) = self.ssh.clone() else {
             tracing::warn!("no SSH services to remove the old host key with");
-            return;
+            return false;
         };
         let (host, known_hosts) = (failure.host.clone(), known_hosts.clone());
         let input = self.input.clone();
@@ -147,6 +149,7 @@ impl WorkspaceModel {
                 input.deliver(WorkspaceInput::OldHostKeyForgotten { failure, forgotten });
             },
         ));
+        true
     }
 }
 
@@ -485,23 +488,26 @@ mod tests {
         }
     }
 
+    fn changed_key(known_hosts: &Path) -> FakeEstablish {
+        FakeEstablish::Fail(ConnectError::Driver(DriverError::Transport(TransportError::Ssh(
+            SshFailure::HostKeyChanged {
+                host: "[bastion]:2222".to_owned(),
+                algorithm: "ED25519".to_owned(),
+                sha256_fingerprint: FINGERPRINT.to_owned(),
+                known_hosts: known_hosts.to_owned(),
+                line: 1,
+            },
+        ))))
+    }
+
     #[gtk4::test]
     fn replace_removes_the_old_key_and_retries_trusting_the_new_one() {
         let dir = tempfile::tempdir().unwrap();
         let known_hosts = dir.path().join("known_hosts");
         std::fs::write(&known_hosts, format!("[bastion]:2222 {KEY}\nother {KEY}\n")).unwrap();
-        let changed = FakeEstablish::Fail(ConnectError::Driver(DriverError::Transport(TransportError::Ssh(
-            SshFailure::HostKeyChanged {
-                host: "[bastion]:2222".to_owned(),
-                algorithm: "ED25519".to_owned(),
-                sha256_fingerprint: FINGERPRINT.to_owned(),
-                known_hosts: known_hosts.clone(),
-                line: 1,
-            },
-        ))));
         let test = parked(
             "ReviewReplace",
-            vec![changed, asks("[bastion]:2222", FINGERPRINT)],
+            vec![changed_key(&known_hosts), asks("[bastion]:2222", FINGERPRINT)],
             Some(ssh_services(dir.path())),
         );
         let banner = wait_for_button(&test, "Review Key…");
@@ -517,5 +523,40 @@ mod tests {
             alert(&test).is_none(),
             "ssh's question about the reviewed key reached the user"
         );
+    }
+
+    #[gtk4::test]
+    fn no_second_review_while_the_old_key_is_removed() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let known_hosts = dir.path().join("known_hosts");
+        std::fs::write(&known_hosts, format!("[bastion]:2222 {KEY}\n")).unwrap();
+        let slow_keygen = dir.path().join("slow-ssh-keygen");
+        std::fs::write(&slow_keygen, "#!/bin/sh\nsleep 1\nexec ssh-keygen \"$@\"\n").unwrap();
+        std::fs::set_permissions(&slow_keygen, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let ssh = SshServices {
+            ssh_keygen_program: slow_keygen,
+            ..ssh_services(dir.path())
+        };
+        let test = parked(
+            "ReviewReplaceBusy",
+            vec![changed_key(&known_hosts), asks("[bastion]:2222", FINGERPRINT)],
+            Some(ssh),
+        );
+        wait_for_button(&test, "Review Key…");
+        review_and_answer(&test, "replace");
+        drain_main_context();
+
+        gtk::prelude::WidgetExt::activate_action(&test.window, &format!("win.{REVIEW_HOST_KEY}"), None)
+            .expect("the review action");
+        std::thread::sleep(Duration::from_millis(200));
+        drain_main_context();
+
+        assert!(
+            alert(&test).is_none(),
+            "a second review opened while ssh-keygen was still running"
+        );
+        wait_until(WAIT, || health(&test) == SessionHealth::Online).expect("the session back online");
     }
 }

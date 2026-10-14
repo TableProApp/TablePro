@@ -100,7 +100,8 @@ pub(crate) struct WorkspaceModel {
     table_search: gtk::SearchEntry,
     /// Removes a changed host key from known_hosts. `None` without ssh.
     ssh: Option<tablepro_ssh::SshServices>,
-    /// A host key review dialog is open.
+    /// Held until a Replace's ssh-keygen finishes too, so a second
+    /// Replace cannot remove the key the first one's retry wrote.
     reviewing_host_key: bool,
     /// `"empty"` while no tab is open, `"tabs"` otherwise.
     workspace_outer_stack: gtk::Stack,
