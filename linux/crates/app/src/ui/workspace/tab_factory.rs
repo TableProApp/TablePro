@@ -1,4 +1,5 @@
 use std::cell::Cell;
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use gtk4 as gtk;
@@ -109,7 +110,7 @@ impl TabFactory {
             close_timeout: parts.context.close_timeout(),
         });
         connect_editor(&editor, id, &parts.input, &parts.toasts);
-        let ordinal = self.editor_count() + 1;
+        let ordinal = self.free_ordinal();
         let page = self.append(&editor, id);
         let label = match opened_empty {
             true => EditorLabel::Untitled(ordinal),
@@ -192,13 +193,21 @@ impl TabFactory {
         }))
     }
 
-    fn editor_count(&self) -> usize {
-        self.parts
-            .tabs
-            .borrow()
+    /// The lowest number no open editor tab has, so two never share one.
+    fn free_ordinal(&self) -> usize {
+        let tabs = self.parts.tabs.borrow();
+        let taken: HashSet<usize> = tabs
             .values()
-            .filter(|tab| matches!(tab, WorkspaceTab::Editor(_)))
-            .count()
+            .filter_map(|tab| match tab {
+                WorkspaceTab::Editor(slot) => Some(slot.ordinal),
+                _ => None,
+            })
+            .collect();
+        let mut ordinal = 1;
+        while taken.contains(&ordinal) {
+            ordinal += 1;
+        }
+        ordinal
     }
 }
 

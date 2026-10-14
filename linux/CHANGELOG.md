@@ -195,6 +195,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A bulk delete confirmed after the table's primary key changed marked rows by their old key.
 - Ctrl+Home and Ctrl+End jumped to the first or last tab instead of the start or end of the SQL editor or table.
 - Ctrl+N added a row to a read-only table or a table without a primary key.
+- Two SQL editor tabs could both be named Query 3 after an earlier editor tab closed.
 
 ### Security
 
