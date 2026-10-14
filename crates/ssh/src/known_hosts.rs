@@ -1,3 +1,5 @@
+use std::ffi::OsString;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use russh::keys::known_hosts::{check_known_hosts_path, known_host_keys_path, learn_known_hosts_path};
@@ -82,6 +84,16 @@ fn check_known_host(
     known_hosts: &Path,
     fingerprint: &str,
 ) -> Result<bool, HostKeyOutcome> {
+    match is_revoked(host, port, key, known_hosts) {
+        Ok(false) => {}
+        Ok(true) => {
+            return Err(HostKeyOutcome::KnownHostsIo(format!(
+                "the host key of {host}:{port} is marked @revoked in {}; refusing to connect",
+                known_hosts.display()
+            )));
+        }
+        Err(error) => return Err(HostKeyOutcome::KnownHostsIo(error)),
+    }
     match check_known_hosts_path(host, port, key, known_hosts) {
         Ok(true) => Ok(true),
         Ok(false) => match known_host_keys_path(host, port, known_hosts) {
@@ -98,6 +110,55 @@ fn check_known_host(
         }),
         Err(error) => Err(HostKeyOutcome::KnownHostsIo(error.to_string())),
     }
+}
+
+struct ScratchFile(PathBuf);
+
+impl ScratchFile {
+    fn create(contents: &str) -> std::io::Result<Self> {
+        use std::os::unix::fs::OpenOptionsExt;
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_nanos());
+        let path = std::env::temp_dir().join(format!("tablepro-revoked-{}-{nanos}", std::process::id()));
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&path)?;
+        let scratch = Self(path);
+        file.write_all(contents.as_bytes())?;
+        Ok(scratch)
+    }
+}
+
+impl Drop for ScratchFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+fn is_revoked(host: &str, port: u16, key: &PublicKey, known_hosts: &Path) -> Result<bool, String> {
+    let text = match std::fs::read_to_string(known_hosts) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error.to_string()),
+    };
+    let revoked: String = text
+        .lines()
+        .filter_map(|line| {
+            line.trim_start()
+                .strip_prefix("@revoked")
+                .filter(|rest| rest.starts_with(char::is_whitespace))
+        })
+        .map(|rest| format!("{}\n", rest.trim_start()))
+        .collect();
+    if revoked.is_empty() {
+        return Ok(false);
+    }
+    let scratch = ScratchFile::create(&revoked).map_err(|error| error.to_string())?;
+    let keys = known_host_keys_path(host, port, &scratch.0).map_err(|error| error.to_string())?;
+    Ok(keys.iter().any(|(_, known)| known == key))
 }
 
 fn record_known_host(host: &str, port: u16, key: &PublicKey, known_hosts: &Path, fingerprint: &str) -> HostKeyOutcome {
@@ -119,9 +180,14 @@ fn ensure_parent_dir(path: &Path) -> std::io::Result<()> {
 }
 
 pub fn default_known_hosts_path() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
+    known_hosts_path_from(std::env::var_os("XDG_CONFIG_HOME"), std::env::var_os("HOME"))
+}
+
+fn known_hosts_path_from(xdg_config_home: Option<OsString>, home: Option<OsString>) -> Option<PathBuf> {
+    let base = xdg_config_home
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
+        .filter(|path| path.is_absolute())
+        .or_else(|| home.map(|home| PathBuf::from(home).join(".config")))?;
     Some(base.join("tablepro").join("known_hosts"))
 }
 
@@ -339,5 +405,164 @@ mod tests {
             UnknownHostKey::Learn,
         );
         assert!(matches!(outcome, HostKeyOutcome::KnownHostsIo(_)));
+    }
+    const HASHED_BASTION: &str = "|1|AQIDBAUGBwgJCgsMDQ4PEBESExQ=|DUqwpsqDi3m75dxKjEHG8TtOtp4=";
+
+    fn learn_then(path: &Path, host: &str, port: u16, key_base64: &str, unknown: UnknownHostKey) -> HostKeyOutcome {
+        verify_or_learn(host, port, &parse_key(key_base64), path, "fp", unknown)
+    }
+
+    #[test]
+    fn a_revoked_key_is_never_trusted_never_learned_and_never_prompted_for() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("known_hosts");
+        let line = format!("@revoked bastion.example.com ssh-ed25519 {KEY_A_BASE64}\n");
+        std::fs::write(&path, &line).unwrap();
+
+        for unknown in [UnknownHostKey::Learn, UnknownHostKey::Refuse] {
+            let outcome = learn_then(&path, "bastion.example.com", 22, KEY_A_BASE64, unknown);
+            assert!(
+                !matches!(
+                    outcome,
+                    HostKeyOutcome::Trusted | HostKeyOutcome::LearnedNew { .. } | HostKeyOutcome::Unknown { .. }
+                ),
+                "a revoked key came back as {outcome:?}"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&path).unwrap(),
+                line,
+                "a revoked key was written over"
+            );
+        }
+    }
+
+    #[test]
+    fn an_entry_for_port_22_does_not_trust_another_port() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("known_hosts");
+        learn_then(&path, "h.example.com", 22, KEY_A_BASE64, UnknownHostKey::Learn);
+
+        let other_port = learn_then(&path, "h.example.com", 2222, KEY_B_BASE64, UnknownHostKey::Refuse);
+        assert!(matches!(other_port, HostKeyOutcome::Unknown { .. }), "{other_port:?}");
+        let learned = learn_then(&path, "h.example.com", 2222, KEY_B_BASE64, UnknownHostKey::Learn);
+        assert!(matches!(learned, HostKeyOutcome::LearnedNew { .. }), "{learned:?}");
+        let again = learn_then(&path, "h.example.com", 2222, KEY_B_BASE64, UnknownHostKey::Refuse);
+        assert!(matches!(again, HostKeyOutcome::Trusted), "{again:?}");
+        let first = learn_then(&path, "h.example.com", 22, KEY_A_BASE64, UnknownHostKey::Refuse);
+        assert!(matches!(first, HostKeyOutcome::Trusted), "{first:?}");
+    }
+
+    #[test]
+    fn an_ipv6_host_round_trips_on_both_ports() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("known_hosts");
+        for port in [22, 2222] {
+            let learned = learn_then(&path, "::1", port, KEY_A_BASE64, UnknownHostKey::Learn);
+            assert!(
+                matches!(learned, HostKeyOutcome::LearnedNew { .. }),
+                "{port}: {learned:?}"
+            );
+            let again = learn_then(&path, "::1", port, KEY_A_BASE64, UnknownHostKey::Refuse);
+            assert!(matches!(again, HostKeyOutcome::Trusted), "{port}: {again:?}");
+            let changed = learn_then(&path, "::1", port, KEY_B_BASE64, UnknownHostKey::Refuse);
+            assert!(matches!(changed, HostKeyOutcome::Changed { .. }), "{port}: {changed:?}");
+        }
+    }
+
+    #[test]
+    fn a_matching_line_with_an_unreadable_key_fails_closed_and_is_not_written_over() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("known_hosts");
+        let line = "bastion.example.com ssh-ed25519 notbase64\n";
+        std::fs::write(&path, line).unwrap();
+
+        for unknown in [UnknownHostKey::Learn, UnknownHostKey::Refuse] {
+            let outcome = learn_then(&path, "bastion.example.com", 22, KEY_A_BASE64, unknown);
+            assert!(matches!(outcome, HostKeyOutcome::KnownHostsIo(_)), "{outcome:?}");
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), line);
+        }
+    }
+
+    #[test]
+    fn a_hashed_entry_trusts_its_key_and_flags_any_other_as_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("known_hosts");
+        std::fs::write(&path, format!("{HASHED_BASTION} ssh-ed25519 {KEY_A_BASE64}\n")).unwrap();
+
+        let trusted = learn_then(&path, "bastion.example.com", 22, KEY_A_BASE64, UnknownHostKey::Refuse);
+        assert!(matches!(trusted, HostKeyOutcome::Trusted), "{trusted:?}");
+        let changed = learn_then(&path, "bastion.example.com", 22, KEY_B_BASE64, UnknownHostKey::Refuse);
+        assert!(matches!(changed, HostKeyOutcome::Changed { .. }), "{changed:?}");
+        let other_host = learn_then(&path, "other.example.com", 22, KEY_A_BASE64, UnknownHostKey::Refuse);
+        assert!(matches!(other_host, HostKeyOutcome::Unknown { .. }), "{other_host:?}");
+    }
+
+    #[test]
+    fn comments_blank_lines_and_crlf_do_not_hide_or_break_an_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("known_hosts");
+        std::fs::write(
+            &path,
+            format!("# a comment\r\n\r\nbastion.example.com ssh-ed25519 {KEY_A_BASE64}\r\n"),
+        )
+        .unwrap();
+
+        let outcome = learn_then(&path, "bastion.example.com", 22, KEY_A_BASE64, UnknownHostKey::Refuse);
+        assert!(matches!(outcome, HostKeyOutcome::Trusted), "{outcome:?}");
+    }
+    #[test]
+    fn the_default_path_ignores_an_empty_or_relative_xdg_config_home() {
+        let home = Some(OsString::from("/h"));
+        let expected = Some(PathBuf::from("/h/.config/tablepro/known_hosts"));
+        assert_eq!(known_hosts_path_from(Some(OsString::new()), home.clone()), expected);
+        assert_eq!(
+            known_hosts_path_from(Some(OsString::from("cfg")), home.clone()),
+            expected
+        );
+        assert_eq!(known_hosts_path_from(None, home.clone()), expected);
+        assert_eq!(
+            known_hosts_path_from(Some(OsString::from("/x")), home),
+            Some(PathBuf::from("/x/tablepro/known_hosts"))
+        );
+        assert_eq!(known_hosts_path_from(Some(OsString::new()), None), None);
+    }
+
+    #[test]
+    fn a_revoked_line_for_another_host_or_key_does_not_block_a_good_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("known_hosts");
+        std::fs::write(
+            &path,
+            format!(
+                "@revoked other.example.com ssh-ed25519 {KEY_A_BASE64}\n@revoked bastion.example.com ssh-ed25519 {KEY_B_BASE64}\nbastion.example.com ssh-ed25519 {KEY_A_BASE64}\n"
+            ),
+        )
+        .unwrap();
+
+        let good = learn_then(&path, "bastion.example.com", 22, KEY_A_BASE64, UnknownHostKey::Refuse);
+        assert!(matches!(good, HostKeyOutcome::Trusted), "{good:?}");
+        let revoked = learn_then(&path, "bastion.example.com", 22, KEY_B_BASE64, UnknownHostKey::Refuse);
+        assert!(matches!(revoked, HostKeyOutcome::KnownHostsIo(_)), "{revoked:?}");
+    }
+
+    #[test]
+    fn a_revoked_hashed_entry_is_matched_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("known_hosts");
+        std::fs::write(&path, format!("@revoked {HASHED_BASTION} ssh-ed25519 {KEY_A_BASE64}\n")).unwrap();
+
+        let outcome = learn_then(&path, "bastion.example.com", 22, KEY_A_BASE64, UnknownHostKey::Learn);
+        assert!(matches!(outcome, HostKeyOutcome::KnownHostsIo(message) if message.contains("@revoked")));
+    }
+
+    #[test]
+    fn the_scratch_file_is_private_and_removed_when_dropped() {
+        use std::os::unix::fs::PermissionsExt;
+        let scratch = ScratchFile::create("a line\n").unwrap();
+        let path = scratch.0.clone();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "a line\n");
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        drop(scratch);
+        assert!(!path.exists());
     }
 }
