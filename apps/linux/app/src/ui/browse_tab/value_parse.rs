@@ -123,6 +123,9 @@ pub(super) fn parse_input_for_driver(text: &str, col: Option<&ColumnInfo>, drive
     {
         return result;
     }
+    if driver_id == "postgres" && text == "''" && col.is_some_and(|column| column.enum_type.is_some()) {
+        return Ok(Value::Text(String::new()));
+    }
     if text.is_empty() {
         return parse_input_for_column(text, col);
     }

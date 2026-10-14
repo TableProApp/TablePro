@@ -1301,7 +1301,7 @@ GLib.MainLoop().run()
 
         click_cell("NULL", count=2)
         time.sleep(1.0)
-        ui.press_x11_key("Down")
+        ui.press_x11_key("Up")
         time.sleep(0.3)
         ui.press_x11_key("Return")
         ui.wait_for_node(name="2 unsaved changes")
