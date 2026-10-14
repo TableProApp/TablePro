@@ -29,7 +29,6 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::edit::{CellInput, EditParseError, parse_edit_text};
-use tablepro_core::export::RenderInsertError;
 use tablepro_core::meta::{RowIdentity, TableRef};
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 use tablepro_session::runtime::{Tasks, WatchForwarder};
@@ -43,8 +42,8 @@ use self::page_state::PageState;
 use self::row_deletion::{RowDeletion, plan_row_deletion};
 use super::grid::{
     CellPreset, ColumnWidthBinding, DeleteAvailability, GridContent, GridMsg, GridRowId, GridRowIndex, GridSink,
-    RowKeyBuilder, RowObject, TabGridContext, build_column_view, cell_editability, cell_presets, delete_availability,
-    edit_context, edit_row, export_snapshot,
+    RowJsonRequest, RowKeyBuilder, RowObject, RowSnapshot, TabGridContext, build_column_view, cell_editability,
+    cell_presets, delete_availability, edit_context, edit_row, export_snapshot, present_row_json,
 };
 use crate::runtime::{FailedRequests, RequestSequencer};
 use crate::services::change_tracker::{RowKey, StatementSource, new_draft_cell, pk_identity};
@@ -53,6 +52,7 @@ use crate::services::save_batch::SaveTarget;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
 use crate::services::tracker_edit::TrackerEdit;
+use crate::ui::clipboard::{CopyKind, CopyRequest, InsertCopy};
 use crate::ui::count_text::format_thousands;
 use crate::ui::export::ExportSource;
 
@@ -322,16 +322,6 @@ impl BrowseTab {
         self.connect_closure("state-changed", false, glib::closure_local!(move |tab: &Self| f(tab)))
     }
 
-    pub fn connect_copy_to_clipboard<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
-        self.connect_closure(
-            "copy-to-clipboard",
-            false,
-            glib::closure_local!(move |tab: &Self, text: glib::BoxedAnyObject| {
-                f(tab, text.borrow::<String>().clone());
-            }),
-        )
-    }
-
     pub fn connect_export_results<F: Fn(&Self, ExportRequest) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
             "export-results",
@@ -384,8 +374,14 @@ impl BrowseTab {
     fn emit_output(&self, output: BrowseTabOutput) {
         match output {
             BrowseTabOutput::StateChanged => self.emit_by_name::<()>("state-changed", &[]),
-            BrowseTabOutput::CopyToClipboard(text) => {
-                self.emit_by_name::<()>("copy-to-clipboard", &[&glib::BoxedAnyObject::new(text)]);
+            BrowseTabOutput::Copy(request) => self.copy(request),
+            BrowseTabOutput::ShowRowJson(request) => {
+                if let Some(tasks) = self.read(|model| model.tasks.clone()) {
+                    let tab = self.clone().upcast();
+                    glib::spawn_future_local(async move {
+                        present_row_json(tab, tasks, request).await;
+                    });
+                }
             }
             BrowseTabOutput::ExportResults(request) => {
                 self.emit_by_name::<()>("export-results", &[&glib::BoxedAnyObject::new(request)]);
@@ -398,6 +394,19 @@ impl BrowseTab {
             BrowseTabOutput::SaveRequested => self.emit_by_name::<()>("save-requested", &[]),
             BrowseTabOutput::StopSaveRequested => self.emit_by_name::<()>("stop-save-requested", &[]),
         }
+    }
+
+    /// Render a copy off the GTK thread, and toast how it went.
+    fn copy(&self, request: CopyRequest) {
+        let Some(tasks) = self.read(|model| model.tasks.clone()) else {
+            return;
+        };
+        let tab = self.downgrade();
+        crate::ui::clipboard::copy_rows(self, &tasks, request, move |text| {
+            if let Some(tab) = tab.upgrade() {
+                tab.emit_by_name::<()>("toast", &[&text]);
+            }
+        });
     }
 
     /// The top-bar slot draws a thin strip even when every banner in it
@@ -491,7 +500,8 @@ impl From<GridMsg> for BrowseTabInput {
         match msg {
             GridMsg::SortChanged(col_idx, ascending) => Self::SortChanged { col_idx, ascending },
             GridMsg::Edit { row, column, edit } => Self::GridEdit { row, column, edit },
-            GridMsg::CopyToClipboard(text) => Self::GridCopyToClipboard(text),
+            GridMsg::Copy(request) => Self::GridCopy(request),
+            GridMsg::ShowRowJson(request) => Self::GridShowRowJson(request),
             GridMsg::ShowToast(text) => Self::GridShowToast(text),
             GridMsg::CopyRowsAsInsert { rows } => Self::GridCopyRowsAsInsert(rows),
             GridMsg::SetCellValue { row, column, preset } => Self::GridSetCellValue { row, column, preset },
@@ -676,7 +686,8 @@ pub(crate) enum BrowseTabInput {
     ExportCurrentPage,
     GridCopyRowsAsInsert(Vec<RowObject>),
     DuplicateRows(Vec<RowObject>),
-    GridCopyToClipboard(String),
+    GridCopy(CopyRequest),
+    GridShowRowJson(RowJsonRequest),
     Undo,
     Redo,
     CommitSave,
@@ -716,7 +727,8 @@ pub(crate) enum BrowseTabOutput {
     /// Something the window keeps for the tab changed: the page, the
     /// sort, the page size.
     StateChanged,
-    CopyToClipboard(String),
+    Copy(CopyRequest),
+    ShowRowJson(RowJsonRequest),
     ExportResults(ExportRequest),
     ShowSelectionAlert {
         title: String,
@@ -1613,9 +1625,8 @@ impl BrowseModel {
                     self.copy_rows_as_insert(&rows, fx);
                 }
             }
-            BrowseTabInput::GridCopyToClipboard(text) => {
-                fx.output(BrowseTabOutput::CopyToClipboard(text));
-            }
+            BrowseTabInput::GridCopy(request) => fx.output(BrowseTabOutput::Copy(request)),
+            BrowseTabInput::GridShowRowJson(request) => fx.output(BrowseTabOutput::ShowRowJson(request)),
             BrowseTabInput::CopySelectedRowsAsTsv => self.copy_selected_rows(fx),
             BrowseTabInput::PasteNotSupported => {
                 fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext(
@@ -1847,68 +1858,44 @@ impl BrowseModel {
             return;
         };
         let ctx = self.grid_context();
-        let mut statements = Vec::with_capacity(rows.len());
-        for row in rows {
-            let cells = match row.id() {
+        let rows = rows
+            .iter()
+            .map(|row| match row.id() {
                 GridRowId::Draft(draft_id) => self
                     .tracker
                     .draft_cells(*draft_id, &self.current_columns)
                     .unwrap_or_default(),
-                _ => ctx
-                    .snapshot(row)
-                    .to_values()
-                    .into_iter()
-                    .map(CellInput::Value)
-                    .collect(),
-            };
-            match tablepro_core::export::render_insert(&*dialect, &self.table_ref(), &self.current_columns, &cells) {
-                Ok(sql) => statements.push(sql),
-                Err(error) => {
-                    tracing::debug!(%error, "a row could not be written as an INSERT");
-                    let message = match error {
-                        RenderInsertError::Literal(_) => {
-                            crate::i18n::gettext("This row has a value that can't be written as SQL")
-                        }
-                        RenderInsertError::NoValues => {
-                            crate::i18n::gettext("This row has no value to put in an INSERT")
-                        }
-                    };
-                    fx.output(BrowseTabOutput::ShowToast(message));
-                    return;
-                }
-            }
-        }
-        if !statements.is_empty() {
-            fx.output(BrowseTabOutput::CopyToClipboard(statements.join("\n")));
-        }
+                _ => ctx.snapshot(row).values().cloned().map(CellInput::Value).collect(),
+            })
+            .collect();
+        fx.output(BrowseTabOutput::Copy(CopyRequest::Insert(InsertCopy {
+            dialect,
+            table: self.table_ref(),
+            columns: self.current_columns.iter().cloned().collect(),
+            rows,
+        })));
     }
 
-    /// Same renderer as the context menu's Copy as > Rows: one
-    /// selection cannot produce two different clipboard payloads.
+    /// Same request as the context menu's Copy as > Rows: one selection
+    /// cannot produce two different clipboard payloads.
     fn copy_selected_rows(&self, fx: &mut Effects) {
         let Some(selection) = self.current_selection.as_ref() else {
             return;
         };
-        let positions = super::grid::selected_positions(selection);
-        if positions.is_empty() {
-            return;
-        }
         let ctx = self.grid_context();
-        let rows: Vec<Vec<Value>> = positions
+        let rows: Vec<RowSnapshot> = super::grid::selected_positions(selection)
             .iter()
             .filter_map(|position| selection.item(*position).and_downcast::<RowObject>())
-            .map(|row| ctx.snapshot(&row).to_values())
+            .map(|row| ctx.snapshot(&row))
             .collect();
         if rows.is_empty() {
             return;
         }
-        match tablepro_core::export::render_tsv(&result_columns(&self.current_columns), &rows, false) {
-            Ok(tsv) => fx.output(BrowseTabOutput::CopyToClipboard(tsv)),
-            Err(error) => fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext_f(
-                "Couldn't copy the selection: {error}",
-                &[("error", &error.to_string())],
-            ))),
-        }
+        fx.output(BrowseTabOutput::Copy(CopyRequest::Rows {
+            columns: result_columns(&self.current_columns),
+            rows,
+            kind: CopyKind::Rows,
+        }));
     }
 }
 

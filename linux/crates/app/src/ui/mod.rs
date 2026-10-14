@@ -1,4 +1,5 @@
 mod browse_tab;
+pub(crate) mod clipboard;
 mod connect_dialog;
 mod connection_list;
 mod connection_list_banner;

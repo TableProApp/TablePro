@@ -34,9 +34,15 @@ impl RowSnapshot {
         self.cells.len()
     }
 
-    /// The row as the owned cells an encoder takes.
+    /// Each cell as the grid shows it, borrowed, for an encoder that
+    /// takes a row at a time.
+    pub fn values(&self) -> impl Iterator<Item = &Value> {
+        (0..self.len()).map(|column| self.value(column))
+    }
+
+    /// The row as owned cells, for a renderer that takes whole rows.
     pub fn to_values(&self) -> Vec<Value> {
-        (0..self.len()).map(|column| self.value(column).clone()).collect()
+        self.values().cloned().collect()
     }
 }
 

@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connections open when TablePro quits open again at the next launch; Restore session in Preferences turns it off.
 - Save query history in Preferences turns the query history off and keeps the entries already saved.
 - Exports write in the background, with progress and Stop in the header bar, and a close or quit asks to stop them first.
+- Copy as puts CSV, JSON, Markdown, SQL and tab-separated rows on the clipboard as their own type beside plain text.
 
 ### Changed
 
@@ -68,6 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Opening a SQL, CSV or connections file from a pipe or a device never finished, or read past its size limit.
 - Exporting results or query history, or opening the connect dialog, froze the window on a slow disk or network folder.
 - A failed query history export said nothing, and a stopped or failed export could leave a half-written file in place of the old one.
+- Copying many rows, or showing a row with a long value as JSON, froze the window.
 - A query saved just before quitting could be lost.
 - The sidebar's table search button had no name for screen readers.
 - PostgreSQL statement timeouts showed as a plain server error when the server's messages were not in English.

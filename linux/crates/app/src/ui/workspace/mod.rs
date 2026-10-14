@@ -345,7 +345,8 @@ pub(crate) enum WorkspaceInput {
         name: String,
         target: Option<super::export_dialog::SqlTarget>,
     },
-    CopyToClipboard(String),
+    /// Text to copy as it is, such as a saved query.
+    CopyText(String),
     WorkspaceTabClosed(Uuid),
     /// Each tab still asks about its own unsaved changes.
     CloseOtherWorkspaceTabs(Uuid),
@@ -832,7 +833,7 @@ impl WorkspaceModel {
                     });
                 }
             }
-            WorkspaceInput::CopyToClipboard(text) => self.on_copy_to_clipboard(text),
+            WorkspaceInput::CopyText(text) => self.on_copy_text(text),
             WorkspaceInput::ReopenClosedTab => self.on_reopen_closed_tab(),
             WorkspaceInput::ShowFilterDialog => self.on_show_filter_dialog(),
         }

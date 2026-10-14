@@ -317,18 +317,46 @@ fn a_dropped_file_goes_in_at_the_cursor_as_one_undo_step() {
 }
 
 #[gtk4::test]
-fn a_copy_from_a_result_grid_reaches_the_tab_whole() {
+fn a_copy_from_a_result_grid_reaches_the_clipboard() {
+    use tablepro_core::column::{ColumnType, ResultColumn};
+
+    use tablepro_core::Value;
+
+    use crate::ui::clipboard::{CopyKind, CopyRequest};
+    use crate::ui::grid::RowSnapshot;
+
     let harness = editor_with(answering(), "SELECT 1");
-    let copied = Rc::new(std::cell::RefCell::new(Vec::new()));
-    let sink = copied.clone();
+    let toasts = Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = toasts.clone();
     harness
         .editor
-        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
+        .connect_toast(move |_, text| sink.borrow_mut().push(text));
     let grid = harness.editor.imp().grid_sink.get().expect("the grid's sink").clone();
+    let clipboard = harness.editor.clipboard();
+    clipboard.set_text("before");
+    let columns: std::sync::Arc<[ResultColumn]> = ["a", "b"]
+        .iter()
+        .map(|name| ResultColumn::new(*name, ColumnType::untyped_text("text")))
+        .collect();
+    let rows = vec![
+        RowSnapshot::new(vec![Value::Int(1), Value::Text("x".into())].into(), Vec::new()),
+        RowSnapshot::new(vec![Value::Int(2), Value::Text("y".into())].into(), Vec::new()),
+    ];
 
-    grid(GridMsg::CopyToClipboard("a\0b".to_owned()));
+    grid(GridMsg::Copy(CopyRequest::Rows {
+        columns,
+        rows,
+        kind: CopyKind::Rows,
+    }));
+    wait_until(WAIT, || !toasts.borrow().is_empty()).expect("the copy to land");
 
-    assert_eq!(*copied.borrow(), ["a\0b".to_owned()]);
+    assert_eq!(*toasts.borrow(), ["Copied 2 rows".to_owned()]);
+    assert!(clipboard.formats().contain_mime_type("text/tab-separated-values"));
+    let text: Option<String> = clipboard
+        .content()
+        .and_then(|content| content.value(String::static_type()).ok())
+        .and_then(|value| value.get().ok());
+    assert_eq!(text.as_deref(), Some("1\tx\n2\ty\n"));
 }
 
 #[gtk4::test]

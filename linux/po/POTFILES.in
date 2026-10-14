@@ -95,6 +95,13 @@ crates/app/src/ui/browse_tab/page_reply.rs
 crates/app/src/ui/browse_tab/page_state.rs
 crates/app/src/ui/browse_tab/row_deletion.rs
 crates/app/src/ui/browse_tab/tests.rs
+crates/app/src/ui/clipboard/clipboard_copy.rs
+crates/app/src/ui/clipboard/clipboard_format.rs
+crates/app/src/ui/clipboard/clipboard_payload.rs
+crates/app/src/ui/clipboard/clipboard_writer.rs
+crates/app/src/ui/clipboard/copy_renderer.rs
+crates/app/src/ui/clipboard/mod.rs
+crates/app/src/ui/clipboard/tests.rs
 crates/app/src/ui/connect_dialog/connect_form.rs
 crates/app/src/ui/connect_dialog/connect_submission.rs
 crates/app/src/ui/connect_dialog/form_errors.rs

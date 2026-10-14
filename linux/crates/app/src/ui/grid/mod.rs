@@ -56,6 +56,7 @@ pub(crate) use self::grid_content::GridContent;
 pub(crate) use self::grid_msg::{GridMsg, GridSink};
 pub(crate) use self::grid_row_id::GridRowId;
 pub(crate) use self::grid_row_index::GridRowIndex;
+pub(crate) use self::row_json_dialog::{RowJsonRequest, present_row_json};
 pub(crate) use self::row_key_builder::RowKeyBuilder;
 pub(crate) use self::row_object::RowObject;
 pub(crate) use self::row_snapshot::RowSnapshot;

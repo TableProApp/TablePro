@@ -59,7 +59,7 @@ impl WorkspaceModel {
                         SavedQueriesDialogOutput::ReplaceCurrentTabQuery(text) => {
                             WorkspaceInput::ReplaceActiveTabQuery(text)
                         }
-                        SavedQueriesDialogOutput::CopyToClipboard(text) => WorkspaceInput::CopyToClipboard(text),
+                        SavedQueriesDialogOutput::CopyToClipboard(text) => WorkspaceInput::CopyText(text),
                         SavedQueriesDialogOutput::ShowToast(text) => WorkspaceInput::ShowToast(text),
                     });
                 }

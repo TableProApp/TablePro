@@ -44,8 +44,9 @@ use self::imp::RunningScript;
 use self::run_log::{RunEvent, RunLog};
 use self::run_scope::ScopedText;
 use self::script_runner::{ScriptRun, plan_batches, run_in_tab};
+use super::clipboard::CopyRequest;
 use super::export::ExportSource;
-use super::grid::{GridMsg, GridSink};
+use super::grid::{GridMsg, GridSink, present_row_json};
 use super::handler_guard::HandlerGuard;
 use crate::services::active_session::ActiveSession;
 use crate::services::history_service::HistoryService;
@@ -270,16 +271,6 @@ impl SqlEditor {
             "content-changed",
             false,
             glib::closure_local!(move |editor: &Self| f(editor)),
-        )
-    }
-
-    pub fn connect_copy_to_clipboard<F: Fn(&Self, String) + 'static>(&self, f: F) -> glib::SignalHandlerId {
-        self.connect_closure(
-            "copy-to-clipboard",
-            false,
-            glib::closure_local!(move |editor: &Self, text: glib::BoxedAnyObject| {
-                f(editor, text.borrow::<String>().clone());
-            }),
         )
     }
 
@@ -623,8 +614,14 @@ impl SqlEditor {
                 return;
             };
             match message {
-                GridMsg::CopyToClipboard(text) => {
-                    editor.emit_by_name::<()>("copy-to-clipboard", &[&glib::BoxedAnyObject::new(text)]);
+                GridMsg::Copy(request) => editor.copy(request),
+                GridMsg::ShowRowJson(request) => {
+                    if let Some(tasks) = editor.deps().map(|deps| deps.tasks.clone()) {
+                        let parent = editor.clone().upcast();
+                        glib::spawn_future_local(async move {
+                            present_row_json(parent, tasks, request).await;
+                        });
+                    }
                 }
                 GridMsg::ShowToast(text) => editor.emit_by_name::<()>("toast", &[&text]),
                 GridMsg::ExportResults(source) => {
@@ -636,6 +633,20 @@ impl SqlEditor {
             }
         });
         let _ = self.imp().grid_sink.set(sink);
+    }
+
+    /// Render a copy from a result grid off the GTK thread, and toast
+    /// how it went.
+    fn copy(&self, request: CopyRequest) {
+        let Some(tasks) = self.deps().map(|deps| deps.tasks.clone()) else {
+            return;
+        };
+        let editor = self.downgrade();
+        crate::ui::clipboard::copy_rows(self, &tasks, request, move |text| {
+            if let Some(editor) = editor.upgrade() {
+                editor.emit_by_name::<()>("toast", &[&text]);
+            }
+        });
     }
 
     /// The statement behind the result on screen, to name its export.

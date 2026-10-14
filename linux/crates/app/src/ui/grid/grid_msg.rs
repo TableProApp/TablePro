@@ -1,7 +1,8 @@
 use std::rc::Rc;
 
-use super::{CellPreset, RowObject};
+use super::{CellPreset, RowJsonRequest, RowObject};
 use crate::services::tracker_edit::TrackerEdit;
+use crate::ui::clipboard::CopyRequest;
 use crate::ui::export::ExportSource;
 
 /// Where a grid sends its events. The owner holds the grid, so the
@@ -19,7 +20,9 @@ pub enum GridMsg {
         column: usize,
         edit: TrackerEdit,
     },
-    CopyToClipboard(String),
+    /// Rows to copy, which the owner renders off the GTK thread.
+    Copy(CopyRequest),
+    ShowRowJson(RowJsonRequest),
     ShowToast(String),
     CopyRowsAsInsert {
         rows: Vec<RowObject>,
