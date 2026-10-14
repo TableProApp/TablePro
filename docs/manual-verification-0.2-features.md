@@ -49,7 +49,7 @@ Right-click a table in the sidebar, then Import CSV. Separately, use the second 
 - [ ] For SQLite `id INTEGER PRIMARY KEY`, a CSV `id` header stays on Skip, explains that the database generates the value, and importing source IDs 51 and 52 stores generated IDs 1 and 2.
 - [ ] Creating a table shows a name and an inferred type per column, both editable before anything runs.
 - [ ] Approval is requested **once** for the whole import, not per batch.
-- [ ] Progress advances and Cancel stops it. **2026-10-12 Hyprland dark:** failed. The rows were written but the progress dialog stayed at 2 of 2 and Cancel did not close it, [#655](https://github.com/cozyGarage/BookiE/issues/655).
+- [ ] Progress advances and Cancel stops it. **2026-10-12 Hyprland dark:** failed. The rows were written but the progress dialog stayed at 2 of 2 and Cancel did not close it, [#655](https://github.com/cozyGarage/BookiE/issues/655). **Regression fix:** the GTK widget test verifies the terminal close path works while user closing is disabled; repeat the full import and cancel check on Hyprland.
 - [ ] A file with a bad row partway through stops the import and the message says how many rows were written.
 - [ ] Import refuses to start on a read-only connection.
 

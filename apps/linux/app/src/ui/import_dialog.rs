@@ -690,7 +690,7 @@ impl ImportProgress {
     }
 
     pub(crate) fn close(&self) {
-        self.dialog.close();
+        self.dialog.force_close();
     }
 }
 
@@ -740,6 +740,23 @@ pub(crate) fn present_progress(parent: &adw::ApplicationWindow, table: &str, tot
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn finishing_an_import_force_closes_the_non_user_closable_progress_dialog() {
+        gtk::init().unwrap();
+        adw::init().unwrap();
+        let application = gtk::Application::new(None::<&str>, gtk::gio::ApplicationFlags::NON_UNIQUE);
+        application.register(None::<&gtk::gio::Cancellable>).unwrap();
+        let window = adw::ApplicationWindow::new(&application);
+        window.present();
+        let progress = present_progress(&window, "items", 2);
+
+        assert!(progress.dialog.is_mapped());
+        progress.close();
+        assert!(!progress.dialog.is_mapped());
+        window.close();
+    }
 
     fn column(name: &str) -> ColumnInfo {
         ColumnInfo {

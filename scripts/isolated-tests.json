@@ -380,6 +380,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::import_dialog::tests::finishing_an_import_force_closes_the_non_user_closable_progress_dialog"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::app::organization::tests::changing_a_connection_colour_updates_the_retained_tab_bar"
     ],
     [
