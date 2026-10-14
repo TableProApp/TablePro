@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use tablepro_core::browse::{PageRequest, SortKey, build_count, build_page, split_page};
+use tablepro_core::browse::{BrowseSqlError, PageLayout, PageRequest, SortKey, build_count, build_page};
 use tablepro_core::meta::{PagePosition, RowIdentity, TableRef};
 use tablepro_core::statement::StatementBuilder;
 use tablepro_core::{ColumnInfo, FilterSet, QueryResult, RowLimit};
@@ -123,14 +123,15 @@ impl BrowseModel {
                         )?;
                         let limit = RowLimit::new(plan.limit).unwrap_or(RowLimit::EDITOR_DEFAULT);
                         let result = lease.query_bound(&spec.statement, limit, options).await?;
-                        let page = split_page(result, &spec)?;
-                        Ok(QueryResult::new(page.columns, page.rows).truncated(page.truncated))
+                        check_shape(&result, &spec.layout)?;
+                        Ok((result, spec.layout))
                     }
                 })
                 .await
-                .map(|result| PageReply {
+                .map(|(result, layout)| PageReply {
                     position: reply_position,
                     result,
+                    layout,
                 })
         };
         self.deliver(ticket, work, BrowseCommand::Page, OperationError::from);
@@ -218,7 +219,7 @@ impl BrowseModel {
     /// stays with a toast; without one, the error page says why rather
     /// than a spinner that nothing will replace.
     fn on_filter_problem(&mut self, message: &str, fx: &mut Effects) {
-        if self.current_result.is_some() {
+        if self.page.is_some() {
             self.refresh_inner_stack_visibility();
             fx.output(BrowseTabOutput::ShowToast(message.to_owned()));
             return;
@@ -260,7 +261,7 @@ impl BrowseModel {
                 match value {
                     Ok(reply) => {
                         let offset = reply.offset().unwrap_or(self.current_offset);
-                        self.on_rows_loaded(offset, reply.result, fx);
+                        self.on_rows_loaded(offset, reply, fx);
                     }
                     Err(error) => {
                         self.on_read_failed(&crate::ui::error_text::operation_error_message(&error), fx);
@@ -329,6 +330,19 @@ impl BrowseModel {
                 }
             }
         }
+    }
+}
+
+/// Every row has the columns the page asked for, visible then identity,
+/// so the split on the GTK thread takes each row apart at the same place.
+fn check_shape(result: &QueryResult, layout: &PageLayout) -> Result<(), BrowseSqlError> {
+    let expected = layout.width();
+    let found = std::iter::once(result.columns.len())
+        .chain(result.rows.iter().map(Vec::len))
+        .find(|width| *width != expected);
+    match found {
+        Some(found) => Err(BrowseSqlError::ShapeMismatch { expected, found }),
+        None => Ok(()),
     }
 }
 

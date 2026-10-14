@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use gtk4::glib;
 use gtk4::prelude::*;
 use tablepro_core::column::{ColumnDefault, ColumnType};
 use tablepro_core::edit::CellInput;
@@ -12,7 +13,7 @@ use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeConnection, FakeReply};
 
 use super::row_deletion::RowDeletion;
-use super::{BrowseTab, BrowseTabInit, BrowseTabInput, Effects, apply_draft_changes, format_thousands, persisted_key};
+use super::{BrowseTab, BrowseTabInit, BrowseTabInput, Effects, apply_draft_changes, format_thousands};
 use crate::services::change_tracker::{RowKey, StatementSource};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
@@ -77,47 +78,6 @@ fn format_thousands_handles_edges() {
     assert_eq!(format_thousands(0), "0");
     assert_eq!(format_thousands(1), "1");
     assert_eq!(format_thousands(999), "999");
-}
-
-#[test]
-fn a_fetched_row_is_keyed_by_its_primary_key_cells() {
-    let cells = vec![Value::Int(42), Value::Text("alice".into())];
-
-    assert_eq!(persisted_key(&cells, &[0]), RowKey::from_pk_values(&[Value::Int(42)]));
-}
-
-#[test]
-fn a_composite_key_keeps_the_key_order() {
-    // Two tables with the same columns in a different key order must not
-    // produce colliding keys.
-    let cells = vec![
-        Value::Text("eu-west".into()),
-        Value::Text("ignored".into()),
-        Value::Int(7),
-    ];
-
-    assert_eq!(
-        persisted_key(&cells, &[2, 0]),
-        RowKey::from_pk_values(&[Value::Int(7), Value::Text("eu-west".into())])
-    );
-}
-
-#[test]
-fn a_row_without_its_key_cells_is_unkeyed() {
-    assert!(
-        persisted_key(&[Value::Int(1)], &[]).is_none(),
-        "a table with no primary key"
-    );
-    assert!(persisted_key(&[Value::Int(1)], &[5]).is_none());
-    assert!(persisted_key(&[Value::Int(1)], &[0, 1]).is_none());
-}
-
-#[test]
-fn a_null_key_cell_still_names_the_row() {
-    assert!(matches!(
-        persisted_key(&[Value::Null, Value::Text("x".into())], &[0]),
-        Some(RowKey::Persisted(_))
-    ));
 }
 
 fn row_at(store: &gtk4::gio::ListStore, position: u32) -> RowObject {
@@ -241,11 +201,30 @@ impl Harness {
         tab
     }
 
+    /// The second cell of each saved row on screen, empty while the
+    /// tab shows no page.
     fn shown(&self) -> Vec<Value> {
-        self.tab()
-            .snapshot()
-            .map(|result| result.rows.into_iter().filter_map(|row| row.get(1).cloned()).collect())
-            .unwrap_or_default()
+        self.saved_rows()
+            .iter()
+            .filter_map(|row| row.cell(1).cloned())
+            .collect()
+    }
+
+    /// The saved rows the grid holds for the page on screen.
+    fn saved_rows(&self) -> Vec<RowObject> {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+        let model = self.tab().imp().model.borrow();
+        let Some(selection) = model
+            .as_ref()
+            .filter(|model| model.page.is_some())
+            .and_then(|model| model.current_selection.clone())
+        else {
+            return Vec::new();
+        };
+        (0..selection.n_items())
+            .filter_map(|position| selection.item(position).and_downcast::<RowObject>())
+            .filter(|row| row.draft_id().is_none())
+            .collect()
     }
 
     fn visible_page(&self) -> Option<String> {
@@ -899,6 +878,255 @@ fn key(id: i64) -> RowKey {
     RowKey::from_pk_values(&[Value::Int(id)]).expect("a key")
 }
 
+/// `names` keyed from `first` on, as the next page of `rows` would be.
+fn rows_from(first: i64, names: &[&str]) -> QueryResult {
+    let mut page = rows(names);
+    for (row, id) in page.rows.iter_mut().zip(first..) {
+        row[0] = Value::Int(id);
+    }
+    page
+}
+
+/// A partitioned PostgreSQL table with no key, whose page carries the
+/// partition, the row address and its version after the visible cells.
+fn partitioned_table() -> ConnectionScript {
+    let server = tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0);
+    let mut script = ConnectionScript {
+        dialect: Arc::new(drivers_postgres::PgDialect::new(&server)),
+        ..ConnectionScript::default()
+    };
+    script
+        .fetch_columns
+        .always(FakeReply::ok(vec![column("id", false), column("name", false)]));
+    script.row_identity.always(FakeReply::ok(RowIdentity::EngineRowId(
+        tablepro_core::meta::EngineRowId::PostgresTableoidCtid,
+    )));
+    script.count_rows.always(FakeReply::ok(2));
+    script.probe.always(FakeReply::ok(()));
+    let mut columns: Vec<_> = [column("id", false), column("name", false)]
+        .iter()
+        .map(ColumnInfo::result_column)
+        .collect();
+    for hidden in ["__tablepro_row_oid", "__tablepro_row_id", "__tablepro_row_xmin"] {
+        columns.push(column(hidden, false).result_column());
+    }
+    let rows = [("Ada", "(0,1)"), ("Grace", "(0,1)")]
+        .iter()
+        .zip(0..)
+        .map(|((name, ctid), id)| {
+            vec![
+                Value::Int(id),
+                Value::Text((*name).to_owned()),
+                Value::Int(16_401 + id),
+                Value::Text((*ctid).to_owned()),
+                Value::Text("812".to_owned()),
+            ]
+        })
+        .collect();
+    script
+        .query_bound
+        .always(FakeReply::ok(QueryResult::new(columns, rows)));
+    script
+}
+
+fn visible_only(values: &[Value]) {
+    assert_eq!(values.len(), 2, "a row carried hidden cells: {values:?}");
+}
+
+#[gtk4::test]
+fn row_objects_hold_only_visible_cells() {
+    let harness = Harness::open(partitioned_table(), []);
+    wait_until(WAIT, || harness.saved_rows().len() == 2).expect("the first page");
+
+    for row in harness.saved_rows() {
+        visible_only(&row.cells().expect("a saved row's cells"));
+        assert_eq!(row.key(), None, "a table with no primary key took edits");
+    }
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let model = harness.tab().imp().model.borrow();
+    let page = model.as_ref().and_then(|model| model.page.clone()).expect("the page");
+    assert_eq!(page.result_columns.len(), 2, "the grid was given the hidden columns");
+}
+
+#[gtk4::test]
+fn page_rows_have_single_owner() {
+    let harness = Harness::open(partitioned_table(), []);
+    wait_until(WAIT, || harness.saved_rows().len() == 2).expect("the first page");
+
+    for row in harness.saved_rows() {
+        let cells = row.shared_cells().expect("a saved row's cells");
+        assert_eq!(Arc::strong_count(cells), 1, "the tab kept its own copy of the page");
+    }
+}
+
+#[gtk4::test]
+fn copy_as_insert_and_duplicate_contain_no_hidden_columns() {
+    let harness = Harness::open(partitioned_table(), []);
+    wait_until(WAIT, || harness.saved_rows().len() == 2).expect("the first page");
+    let copied = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = copied.clone();
+    harness
+        .tab()
+        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
+    let rows = harness.saved_rows();
+
+    harness.tab().send(BrowseTabInput::GridCopyRowsAsInsert(rows.clone()));
+    harness.tab().send(BrowseTabInput::DuplicateRows(rows));
+
+    let copied = copied.borrow();
+    assert_eq!(copied.len(), 1);
+    for hidden in ["16401", "(0,1)", "812", "__tablepro"] {
+        assert!(!copied[0].contains(hidden), "{hidden} reached the copy: {}", copied[0]);
+    }
+    let drafts = harness.tracker.drafts();
+    assert_eq!(drafts.len(), 2);
+    for draft in drafts {
+        assert_eq!(
+            draft.cells.len(),
+            2,
+            "a duplicate carried hidden cells: {:?}",
+            draft.cells
+        );
+    }
+}
+
+#[gtk4::test]
+fn page_export_snapshot_contains_no_hidden_columns() {
+    let harness = Harness::open(partitioned_table(), []);
+    wait_until(WAIT, || harness.saved_rows().len() == 2).expect("the first page");
+    let exported = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = exported.clone();
+    harness
+        .tab()
+        .connect_export_results(move |_, request| sink.borrow_mut().push(request.result));
+
+    harness.tab().send(BrowseTabInput::ExportCurrentPage);
+
+    let exported = exported.borrow();
+    let [result] = exported.as_slice() else {
+        panic!("one export, not {}", exported.len());
+    };
+    let names: Vec<&str> = result.columns.iter().map(|column| column.name.as_str()).collect();
+    assert_eq!(names, ["id", "name"]);
+    assert_eq!(result.rows.len(), 2);
+    for row in &result.rows {
+        visible_only(row);
+    }
+}
+
+/// A browse page served first, then `next` for every page after it.
+fn paging(first: QueryResult, next: QueryResult) -> ConnectionScript {
+    let mut script = serving_table();
+    script.count_rows.always(FakeReply::ok(1_000));
+    script
+        .query_bound
+        .once(FakeReply::ok(first))
+        .always(FakeReply::ok(next));
+    script
+}
+
+/// Rows enough for a full page, so Next has somewhere to go.
+fn full_page(first: i64) -> QueryResult {
+    let names: Vec<String> = (0..100).map(|n| format!("row {n}")).collect();
+    let names: Vec<&str> = names.iter().map(String::as_str).collect();
+    rows_from(first, &names)
+}
+
+#[gtk4::test]
+fn page_load_emits_one_items_changed_with_drafts_prepended() {
+    let harness = Harness::open(paging(full_page(0), rows_from(100, &["Linus", "Ken"])), []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    harness.tab().send(BrowseTabInput::InsertRow);
+    let store = harness.store();
+    let changes = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let log = changes.clone();
+    store.connect_items_changed(move |_, position, removed, added| {
+        log.borrow_mut().push((position, removed, added));
+    });
+
+    harness.tab().send(BrowseTabInput::NextPage);
+    wait_until(WAIT, || harness.shown() == text(&["Linus", "Ken"])).expect("the next page");
+
+    assert_eq!(*changes.borrow(), [(0, 101, 3)], "the page was not one splice");
+    assert!(harness.grid_row(0).draft_id().is_some(), "the draft left the top");
+    assert_eq!(harness.grid_row(1).key(), Some(&key(100)));
+}
+
+#[gtk4::test]
+fn second_page_load_drops_previous_rows() {
+    let harness = Harness::open(paging(full_page(0), rows_from(100, &["Linus"])), []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    let _shown = Shown::new(harness.tab());
+    let _drawn = grid_cell_of(harness.tab(), 0, 1);
+    let first: Vec<glib::WeakRef<RowObject>> = harness.saved_rows().iter().map(ObjectExt::downgrade).collect();
+
+    harness.tab().send(BrowseTabInput::NextPage);
+    wait_until(WAIT, || harness.shown() == text(&["Linus"])).expect("the next page");
+
+    wait_until(WAIT, || first.iter().all(|row| row.upgrade().is_none())).expect("the first page's rows were let go");
+}
+
+/// The row holding the focus leaves in the splice, which takes the
+/// focus from it first: the open edit ends as a focus change ends it.
+#[gtk4::test]
+fn a_page_that_replaces_the_row_being_edited_keeps_the_edit_and_the_focus() {
+    let harness = Harness::open(paging(full_page(0), rows_from(100, &["Linus"])), []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    let shown = Shown::new(harness.tab());
+    let view = column_view(harness.tab());
+    let name = view
+        .columns()
+        .item(1)
+        .and_downcast::<gtk4::ColumnViewColumn>()
+        .expect("the name column");
+    view.scroll_to(1, Some(&name), gtk4::ListScrollFlags::FOCUS, None);
+    view.grab_focus();
+    let focused_cell = || gtk4::prelude::GtkWindowExt::focus(&shown.0).and_then(|focus| GridCell::from_focus(&focus));
+    wait_until(WAIT, || focused_cell().is_some_and(|cell| cell.position() == Some(1))).expect("a cell takes the focus");
+    let cell = focused_cell().expect("the focused cell");
+    let _editor = type_into(&cell, "typed");
+    // A focus left in a row the splice took out of the window is what a
+    // window focus-in then trips over.
+    let stranded = std::rc::Rc::new(std::cell::Cell::new(false));
+    let seen = stranded.clone();
+    let window = shown.0.downgrade();
+    harness.store().connect_items_changed(move |_, _, _, _| {
+        let focus = window
+            .upgrade()
+            .and_then(|window| gtk4::prelude::GtkWindowExt::focus(&window));
+        seen.set(seen.get() || focus.is_some_and(|focus| focus.root().is_none()));
+    });
+
+    harness.tab().send(BrowseTabInput::NextPage);
+    wait_until(WAIT, || harness.shown() == text(&["Linus"])).expect("the next page");
+    after_next_frame(&shown.0);
+
+    assert!(!stranded.get(), "the focus stayed in a row the page removed");
+
+    assert!(!cell.is_editing(), "the edit outlived its row");
+    let pending = harness.tracker.cell_overlay(&key(1), 1).pending;
+    assert!(
+        matches!(&pending, Some(CellInput::Value(Value::Other(typed))) if typed.text == "typed"),
+        "what was typed was lost, or landed on another row: {pending:?}"
+    );
+    assert_eq!(harness.tracker.pending_count(), 1);
+    let focus = gtk4::prelude::GtkWindowExt::focus(&shown.0);
+    assert!(
+        focus.is_some_and(|focus| focus == *view.upcast_ref::<gtk4::Widget>() || focus.is_ancestor(&view)),
+        "the focus left the grid"
+    );
+}
+
+fn after_next_frame(window: &gtk4::Window) {
+    let clock = window.frame_clock().expect("the window's frame clock");
+    let painted = std::rc::Rc::new(std::cell::Cell::new(false));
+    let flag = painted.clone();
+    let handler = clock.connect_after_paint(move |_| flag.set(true));
+    clock.request_phase(gtk4::gdk::FrameClockPhase::AFTER_PAINT);
+    wait_until(WAIT, || painted.get()).expect("the window paints a frame");
+    clock.disconnect(handler);
+}
+
 /// The cell showing `column` of the saved row keyed `id`, once drawn.
 fn grid_cell_of(tab: &BrowseTab, id: i64, column: usize) -> GridCell {
     let key = key(id);
@@ -1040,10 +1268,7 @@ fn rejected_edit_restores_cell_display() {
         vec![vec![Value::Int(0), Value::Int(36)]],
     )));
     let harness = Harness::open(script, []);
-    wait_until(WAIT, || {
-        harness.tab().snapshot().is_some_and(|page| page.rows.len() == 1)
-    })
-    .expect("the first page");
+    wait_until(WAIT, || harness.saved_rows().len() == 1).expect("the first page");
     let toasts = toasts(harness.tab());
     let _shown = Shown::new(harness.tab());
     let cell = grid_cell_of(harness.tab(), 0, 1);
@@ -1597,17 +1822,14 @@ fn one_cell(column: ColumnInfo, value: Value) -> (Harness, Shown) {
         vec![vec![Value::Int(0), value]],
     )));
     let harness = Harness::open(script, []);
-    wait_until(WAIT, || {
-        harness.tab().snapshot().is_some_and(|page| page.rows.len() == 1)
-    })
-    .expect("the first page");
+    wait_until(WAIT, || harness.saved_rows().len() == 1).expect("the first page");
     let shown = Shown::new(harness.tab());
     (harness, shown)
 }
 
 /// The value the tracker holds for row 0's second cell.
 fn pending_value(harness: &Harness, fetched: &Value) -> Value {
-    harness.tracker.cell_overlay(&key(0), 1, fetched).value
+    harness.tracker.cell_overlay(&key(0), 1).shown(fetched.clone())
 }
 
 /// Open the cell's one-line editor and paste `text` over its value

@@ -11,7 +11,7 @@ use super::cell_preset::cell_presets;
 use super::context_menu::CellContext;
 use super::menu_rows::menu_rows_of;
 use super::row_json_dialog::show_row_json_dialog;
-use super::selection::export_snapshot;
+use super::selection::{export_snapshot, snapshot_result};
 use super::{
     CellPreset, DeleteAvailability, GridCell, GridMsg, GridSink, RowObject, TabGridContext, delete_availability,
 };
@@ -239,7 +239,7 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
             let s = sink.clone();
             let tab = tab.clone();
             rows_action!($name, |_cell, rows| {
-                let $rows: Vec<_> = rows.iter().map(|row| tab.effective_cells(row)).collect();
+                let $rows = row_values(&tab, &rows);
                 s($message);
             })
         }};
@@ -261,15 +261,13 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         let tab = tab.clone();
         let cols = columns.clone();
         rows_action!("copy", |cell, rows| {
-            let rows: Vec<_> = rows.iter().map(|row| tab.effective_cells(row)).collect();
             let column = cell.column();
             let message = match rows.as_slice() {
                 [row] => GridMsg::CopyToClipboard(
-                    row.get(column)
-                        .and_then(|value| tablepro_core::export::cell_text(&cols, column, value))
+                    tablepro_core::export::cell_text(&cols, column, tab.snapshot(row).value(column))
                         .unwrap_or_default(),
                 ),
-                many => clipboard_message(tablepro_core::export::render_tsv(&cols, many, false)),
+                many => clipboard_message(tablepro_core::export::render_tsv(&cols, &row_values(&tab, many), false)),
             };
             s(message);
         })
@@ -322,7 +320,7 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         let s = sink.clone();
         let tab = tab.clone();
         rows_action!("copy-in-clause", |cell, rows| {
-            let rows: Vec<_> = rows.iter().map(|row| tab.effective_cells(row)).collect();
+            let rows = row_values(&tab, &rows);
             let clause = tablepro_core::export::render_in_clause(&rows, cell.column());
             if clause.sql.is_empty() {
                 s(GridMsg::ShowToast(crate::i18n::gettext(
@@ -357,7 +355,7 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         let tab = tab.clone();
         cell_action!("show-row-json", |_cell, row| {
             let Some(cv) = view.upgrade() else { return };
-            let text = tablepro_core::export::row_to_json(&cols, &tab.effective_cells(&row));
+            let text = tablepro_core::export::row_to_json(&cols, &tab.snapshot(&row).to_values());
             show_row_json_dialog(&cv, text);
         })
     };
@@ -384,7 +382,8 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         gio::ActionEntry::builder("export")
             .activate(move |_, _, _| {
                 let Some(cv) = view.upgrade() else { return };
-                s(GridMsg::ExportResults(export_snapshot(&cv, &cols, truncated, &tab)));
+                let rows = export_snapshot(&cv, &tab);
+                s(GridMsg::ExportResults(snapshot_result(cols.clone(), &rows, truncated)));
             })
             .build()
     };
@@ -502,6 +501,11 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         readonly_popover,
         actions,
     }
+}
+
+/// The rows a menu item copies, as the grid shows them.
+fn row_values(tab: &TabGridContext, rows: &[RowObject]) -> Vec<Vec<tablepro_core::Value>> {
+    rows.iter().map(|row| tab.snapshot(row).to_values()).collect()
 }
 
 fn simple_action(group: &gio::SimpleActionGroup, name: &str) -> Option<gio::SimpleAction> {

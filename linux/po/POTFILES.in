@@ -91,6 +91,7 @@ crates/app/src/ui/browse_tab/fetch.rs
 crates/app/src/ui/browse_tab/imp.rs
 crates/app/src/ui/browse_tab/mod.rs
 crates/app/src/ui/browse_tab/page_reply.rs
+crates/app/src/ui/browse_tab/page_state.rs
 crates/app/src/ui/browse_tab/row_deletion.rs
 crates/app/src/ui/browse_tab/tests.rs
 crates/app/src/ui/connect_dialog/connect_form.rs
@@ -130,6 +131,7 @@ crates/app/src/ui/editor/format_plan.rs
 crates/app/src/ui/editor/imp.rs
 crates/app/src/ui/editor/mod.rs
 crates/app/src/ui/editor/result_item.rs
+crates/app/src/ui/editor/result_rows.rs
 crates/app/src/ui/editor/result_widgets.rs
 crates/app/src/ui/editor/results_pane.rs
 crates/app/src/ui/editor/run_history.rs
@@ -180,6 +182,7 @@ crates/app/src/ui/grid/edit_snapshot.rs
 crates/app/src/ui/grid/grid_attributes.rs
 crates/app/src/ui/grid/grid_cell.rs
 crates/app/src/ui/grid/grid_columns.rs
+crates/app/src/ui/grid/grid_content.rs
 crates/app/src/ui/grid/grid_keyboard.rs
 crates/app/src/ui/grid/grid_menus.rs
 crates/app/src/ui/grid/grid_msg.rs
@@ -191,7 +194,9 @@ crates/app/src/ui/grid/mod.rs
 crates/app/src/ui/grid/multiline_editor.rs
 crates/app/src/ui/grid/row_factory.rs
 crates/app/src/ui/grid/row_json_dialog.rs
+crates/app/src/ui/grid/row_key_builder.rs
 crates/app/src/ui/grid/row_object.rs
+crates/app/src/ui/grid/row_snapshot.rs
 crates/app/src/ui/grid/selection.rs
 crates/app/src/ui/grid/tab_grid_context.rs
 crates/app/src/ui/grid/test_grid.rs

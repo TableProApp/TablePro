@@ -6,7 +6,7 @@ use tablepro_core::edit::CellInput;
 use tablepro_core::{ColumnInfo, Value};
 
 use super::cell_overlay::CellOverlay;
-use super::change_tracker::{CellState, DraftRow, RowKey, RowState, TabChangeTracker, TrackedChanges};
+use super::change_tracker::{DraftRow, RowKey, RowState, TabChangeTracker, TrackedChanges};
 use super::save_batch::{SaveBatch, SaveTarget};
 use super::tracker_delta::TrackerDelta;
 use super::tracker_edit::TrackerEdit;
@@ -19,24 +19,16 @@ use crate::workspace::{PendingState, SaveOutcome, SaveRejection, SaveSnapshot};
 pub struct TabTrackerHandle(Rc<RefCell<TabChangeTracker>>);
 
 impl TabTrackerHandle {
-    pub fn cell_overlay(&self, row_key: &RowKey, col: usize, original: &Value) -> CellOverlay {
-        self.0.borrow().cell_overlay(row_key, col, original)
+    pub fn cell_overlay(&self, row_key: &RowKey, col: usize) -> CellOverlay {
+        self.0.borrow().cell_overlay(row_key, col)
     }
 
     pub fn row_state(&self, row_key: &RowKey) -> RowState {
         self.0.borrow().row_state(row_key)
     }
 
-    pub fn cell_state(&self, row_key: &RowKey, col: usize) -> CellState {
-        self.0.borrow().cell_state(row_key, col)
-    }
-
-    pub fn pending_input(&self, row_key: &RowKey, col: usize) -> Option<CellInput> {
-        self.0.borrow().pending_input(row_key, col)
-    }
-
-    pub fn is_error_row(&self, row_key: &RowKey) -> bool {
-        self.0.borrow().is_error_row(row_key)
+    pub fn pending_values(&self, row_key: &RowKey, width: usize) -> Vec<(usize, Value)> {
+        self.0.borrow().pending_values(row_key, width)
     }
 
     #[must_use = "the grid shows stale rows until the delta is applied"]
@@ -232,8 +224,8 @@ mod tests {
         assert_eq!(delta.removed_drafts.len(), 1);
         assert!(tracker.drafts().is_empty(), "the inserted draft stayed pending");
         assert_eq!(tracker.pending_state(), PendingState::Unsaved);
-        assert_eq!(tracker.cell_overlay(&row(1), 1, &Value::Int(0)).value, Value::Int(3));
-        assert_eq!(tracker.cell_overlay(&row(4), 1, &Value::Int(0)).value, Value::Int(5));
+        assert_eq!(tracker.cell_overlay(&row(1), 1).shown(Value::Int(0)), Value::Int(3));
+        assert_eq!(tracker.cell_overlay(&row(4), 1).shown(Value::Int(0)), Value::Int(5));
     }
 
     #[test]
@@ -327,10 +319,7 @@ mod tests {
 
         assert_eq!(undone.changed, vec![row(1)]);
         assert_eq!(undone.pending_count, 1);
-        assert_eq!(
-            tracker.cell_overlay(&row(1), 1, &fetched).value,
-            Value::Text("b".into())
-        );
+        assert_eq!(tracker.cell_overlay(&row(1), 1).shown(fetched), Value::Text("b".into()));
     }
 
     #[test]
@@ -361,7 +350,7 @@ mod tests {
                 persisted: vec![(key.clone(), vec![Value::Int(1)].into())],
                 drafts: Vec::new(),
             });
-            assert_eq!(tracker.cell_overlay(key, 0, &Value::Int(1)).value, Value::Int(2));
+            assert_eq!(tracker.cell_overlay(key, 0).shown(Value::Int(1)), Value::Int(2));
         }
     }
 }

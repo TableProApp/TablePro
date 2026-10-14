@@ -11,6 +11,7 @@ mod confirming_delete;
 mod fetch;
 mod imp;
 mod page_reply;
+mod page_state;
 mod row_deletion;
 #[cfg(test)]
 mod tests;
@@ -38,10 +39,12 @@ pub(crate) use self::browse_command::{BrowseCommand, ColumnsReply};
 pub(crate) use self::browse_request_kind::BrowseRequestKind;
 use self::confirming_delete::ConfirmingDelete;
 pub(crate) use self::page_reply::PageReply;
+use self::page_state::PageState;
 use self::row_deletion::{RowDeletion, plan_row_deletion};
 use super::grid::{
-    CellPreset, ColumnWidthBinding, DeleteAvailability, GridMsg, GridRowId, GridRowIndex, GridSink, RowObject,
-    TabGridContext, build_column_view, cell_editability, cell_presets, delete_availability, edit_context, edit_row,
+    CellPreset, ColumnWidthBinding, DeleteAvailability, GridContent, GridMsg, GridRowId, GridRowIndex, GridSink,
+    RowKeyBuilder, RowObject, TabGridContext, build_column_view, cell_editability, cell_presets, delete_availability,
+    edit_context, edit_row, export_snapshot, snapshot_result,
 };
 use crate::runtime::{FailedRequests, RequestSequencer};
 use crate::services::change_tracker::{RowKey, StatementSource, new_draft_cell, pk_identity};
@@ -182,7 +185,7 @@ impl BrowseTab {
             current_sort: init.initial_sort,
             current_filter: initial_filter,
             current_columns: Vec::new(),
-            current_result: None,
+            page: None,
             shown_view: None,
             current_selection: None,
             current_total_rows: None,
@@ -286,10 +289,6 @@ impl BrowseTab {
     /// `None` once the tab is closed, and while it is handling an input.
     fn read<T>(&self, read: impl FnOnce(&BrowseModel) -> T) -> Option<T> {
         self.imp().model.try_borrow().ok()?.as_ref().map(read)
-    }
-
-    pub fn snapshot(&self) -> Option<QueryResult> {
-        self.read(|model| model.current_result.clone()).flatten()
     }
 
     pub fn columns(&self) -> Vec<ColumnInfo> {
@@ -567,9 +566,10 @@ pub(crate) struct BrowseModel {
     /// schema and table.
     current_filter: tablepro_core::FilterSet,
     current_columns: Vec<ColumnInfo>,
-    current_result: Option<QueryResult>,
-    /// What `current_result` was read under. A read that fails while
-    /// asking for that same page again leaves it on screen.
+    /// The page on screen, whose rows the grid's store holds.
+    page: Option<PageState>,
+    /// What `page` was read under. A read that fails while asking for
+    /// that same page again leaves it on screen.
     shown_view: Option<PageView>,
     current_selection: Option<gtk::MultiSelection>,
     current_total_rows: Option<u64>,
@@ -760,17 +760,6 @@ impl BrowseModel {
         }
     }
 
-    /// A page's rows, each named by its primary key, which is the key
-    /// the tracker files its edits under.
-    fn page_rows(&self, result: &QueryResult) -> Vec<RowObject> {
-        let pk_indices = self.pk_indices();
-        result
-            .rows
-            .iter()
-            .map(|cells| RowObject::persisted(persisted_key(cells, &pk_indices), cells.clone().into()))
-            .collect()
-    }
-
     /// Checked again here because a keyboard shortcut or a late event
     /// can reach a locked cell.
     fn refuses_edit(&self, row: &RowObject, column: usize) -> bool {
@@ -788,29 +777,16 @@ impl BrowseModel {
         false
     }
 
-    fn pk_indices(&self) -> Vec<usize> {
-        self.current_columns
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| c.primary_key)
-            .map(|(i, _)| i)
-            .collect()
-    }
-
-    /// What the paginator's Export button writes. Built from the live
-    /// grid so it matches the context menu's Export Results row for
-    /// row; falls back to the fetch itself before the grid exists.
+    /// What the paginator's Export button writes: the grid's rows, so
+    /// it matches the context menu's Export Results row for row.
     fn export_payload(&self) -> Option<QueryResult> {
-        let current = self.current_result.as_ref()?;
-        let Some(column_view) = self.current_column_view.as_ref() else {
-            return Some(current.clone());
-        };
-        Some(super::grid::export_snapshot(
-            column_view,
-            &current.columns,
-            current.truncated,
-            &self.grid_context(),
-        ))
+        let page = self.page.as_ref()?;
+        let rows = self
+            .current_column_view
+            .as_ref()
+            .map(|column_view| export_snapshot(column_view, &self.grid_context()))
+            .unwrap_or_default();
+        Some(snapshot_result(page.result_columns.clone(), &rows, page.truncated))
     }
 
     /// Resolve a preset against the column it lands in. The menu offers
@@ -1080,40 +1056,49 @@ impl BrowseModel {
         }
     }
 
-    /// Build the `ColumnView` once both the columns and the current
-    /// page are in. Until then the stack stays on the loading page, so
-    /// the user cannot edit cells whose editability is not known yet.
+    /// The columns came back the same, so the page on screen still
+    /// stands under them: only the chrome follows.
     fn render_grid_if_ready(&mut self, fx: &mut Effects) {
-        let Some(result) = self.current_result.clone() else {
-            return;
-        };
-        if self.current_columns.is_empty() {
+        if self.page.is_none() || !self.column_view_matches_current_columns() {
             return;
         }
+        self.refresh_grid_chrome();
+        self.restore_focused_row();
+        fx.output(BrowseTabOutput::StateChanged);
+    }
 
-        // Same columns as the last render (sort flips, page changes,
-        // save reloads): keep the `ColumnView` and only refresh the
-        // `ListStore`.
+    /// Put a page's rows on screen. Under the same columns the store
+    /// takes them in one splice, which the column view sees as a single
+    /// change; otherwise the view is built for them.
+    fn show_page(&mut self, rows: Vec<RowObject>, fx: &mut Effects) {
+        let Some(page) = self.page.as_ref() else {
+            return;
+        };
         if self.column_view_matches_current_columns()
             && let Some(store) = self.list_store()
         {
-            self.refresh_grid_data(&result, &store);
-            self.refresh_grid_chrome(&result);
+            store.splice(0, store.n_items(), &rows);
+            self.reindex_rows();
+            self.sync_delete_action();
+            self.refresh_grid_chrome();
             self.restore_focused_row();
             fx.output(BrowseTabOutput::StateChanged);
             return;
         }
 
         clear_box(&self.grid_holder);
-        let tab_ctx = self.grid_context();
+        let content = GridContent {
+            columns: page.result_columns.clone(),
+            rows,
+            truncated: page.truncated,
+        };
         let (column_view, selection) = build_column_view(
-            &result,
-            self.page_rows(&result),
+            content,
             &self.current_columns,
             self.grid_sink.clone(),
             self.current_sort,
             true,
-            tab_ctx,
+            self.grid_context(),
         );
         self.current_selection = Some(selection);
         self.current_column_view = Some(column_view.clone());
@@ -1138,9 +1123,6 @@ impl BrowseModel {
             update_selection_chrome(&self.selection_label, 0);
         }
 
-        // Pending draft rows survive page changes, sort flips and F5:
-        // the tracker holds them, and the rebuilt store would not.
-        self.reprepend_drafts();
         self.reindex_rows();
         self.sync_delete_action();
 
@@ -1150,7 +1132,7 @@ impl BrowseModel {
             .vexpand(true)
             .build();
         self.grid_holder.append(&scrolled);
-        self.refresh_grid_chrome(&result);
+        self.refresh_grid_chrome();
         self.restore_focused_row();
         fx.output(BrowseTabOutput::StateChanged);
     }
@@ -1184,18 +1166,6 @@ impl BrowseModel {
         self.show_loading();
     }
 
-    /// New rows under the same columns. The drafts go back on top so
-    /// they survive the swap.
-    fn refresh_grid_data(&mut self, result: &QueryResult, store: &gtk::gio::ListStore) {
-        store.remove_all();
-        for row in self.page_rows(result) {
-            store.append(&row);
-        }
-        self.reprepend_drafts();
-        self.reindex_rows();
-        self.sync_delete_action();
-    }
-
     fn reindex_rows(&mut self) {
         match self.list_store() {
             Some(store) => self.row_index.rebuild(&store),
@@ -1204,14 +1174,14 @@ impl BrowseModel {
     }
 
     /// Paginator label, button sensitivity and stack child: chrome that
-    /// depends on the result but not the column structure.
-    fn refresh_grid_chrome(&self, result: &QueryResult) {
+    /// depends on the page but not the column structure.
+    fn refresh_grid_chrome(&self) {
         self.refresh_crud_buttons();
         self.update_paginator_label();
         let on_first_page = self.current_offset == 0;
         self.first_button.set_sensitive(!on_first_page);
         self.prev_button.set_sensitive(!on_first_page);
-        let n_rows = result.rows.len() as u64;
+        let n_rows = self.page.as_ref().map_or(0, |page| page.row_count as u64);
         self.next_button.set_sensitive(n_rows == self.page_size);
         // Last only enables when the total is known and the tab is not
         // already on the last page.
@@ -1231,17 +1201,8 @@ impl BrowseModel {
     /// status page hid the column view, and inserting a draft into it
     /// then scrolled a view with no allocated adjustments.
     fn refresh_inner_stack_visibility(&self) {
-        if self.current_result.is_some() {
+        if self.page.is_some() {
             self.inner_stack.set_visible_child_name("grid");
-        }
-    }
-
-    fn reprepend_drafts(&self) {
-        let Some(store) = self.list_store() else {
-            return;
-        };
-        for draft in self.tracker.drafts() {
-            store.insert(0, &RowObject::draft(draft.draft_id));
         }
     }
 
@@ -1292,11 +1253,11 @@ impl BrowseModel {
     }
 
     fn update_paginator_label(&self) {
-        let Some(result) = self.current_result.as_ref() else {
+        let Some(page) = self.page.as_ref() else {
             self.paginator_label.set_label("");
             return;
         };
-        let n_rows = result.rows.len();
+        let n_rows = page.row_count;
         if n_rows == 0 {
             // Reachable when the user navigated past the end of a
             // table that shrank in another session, before the count
@@ -1305,8 +1266,8 @@ impl BrowseModel {
                 .set_label(&crate::i18n::gettext("No rows on this page"));
             return;
         }
-        let start = self.current_offset + 1;
-        let end = self.current_offset + n_rows as u64;
+        let start = page.start_ordinal + 1;
+        let end = page.start_ordinal + n_rows as u64;
         let start_s = format_thousands(start);
         let end_s = format_thousands(end);
         let label = match self.current_total_rows {
@@ -1335,7 +1296,7 @@ impl BrowseModel {
     /// before are dropped, so a later reload does not render against
     /// them before its own page arrives.
     fn show_error(&mut self, message: &str) {
-        self.current_result = None;
+        self.page = None;
         self.shown_view = None;
         self.current_total_rows = None;
         self.paginator_label.set_label("");
@@ -1347,16 +1308,43 @@ impl BrowseModel {
         self.inner_stack.set_visible_child_name("error");
     }
 
-    fn on_rows_loaded(&mut self, offset: u64, mut result: QueryResult, fx: &mut Effects) {
+    /// Take the page apart into rows the store owns. Each row's cells
+    /// move into it, and the identity cells after them name the row and
+    /// are dropped, so nothing past the visible columns reaches a copy
+    /// or an export. The tab's drafts stay on top.
+    fn on_rows_loaded(&mut self, offset: u64, reply: PageReply, fx: &mut Effects) {
         self.current_offset = offset;
-        // A zero-row page has no columns of its own; the catalog's list
-        // lets the headers render anyway.
-        if result.columns.is_empty() && !self.current_columns.is_empty() {
-            result.columns = result_columns(&self.current_columns);
-        }
-        self.current_result = Some(result);
+        let PageReply { result, layout, .. } = reply;
+        let QueryResult {
+            columns,
+            rows,
+            truncated,
+        } = result;
+        // The tracker saves a row by its primary key, so that is what
+        // names it here too.
+        let keys = RowKeyBuilder::for_page(&pk_identity(&self.current_columns), &self.current_columns, &layout);
+        let row_count = rows.len();
+        let drafts = self.tracker.drafts();
+        let mut objects = Vec::with_capacity(drafts.len() + row_count);
+        objects.extend(drafts.iter().rev().map(|draft| RowObject::draft(draft.draft_id)));
+        let visible_end = layout.visible.end;
+        objects.extend(rows.into_iter().map(|mut cells| {
+            let identity = cells.split_off(visible_end.min(cells.len()));
+            let key = keys.as_ref().and_then(|keys| keys.key_for(&cells, &identity));
+            RowObject::persisted(key, cells.into())
+        }));
+        let result_columns = match columns.len() == layout.visible.len() {
+            true => columns,
+            false => columns.get(layout.visible.clone()).map(Arc::from).unwrap_or_default(),
+        };
+        self.page = Some(PageState {
+            result_columns,
+            truncated,
+            row_count,
+            start_ordinal: offset,
+        });
         self.shown_view = Some(self.page_view());
-        self.render_grid_if_ready(fx);
+        self.show_page(objects, fx);
     }
 
     fn page_view(&self) -> PageView {
@@ -1372,7 +1360,7 @@ impl BrowseModel {
     /// and a schema change do, the page stays and a toast says why; any
     /// other page on screen no longer matches what the tab asks for.
     fn on_read_failed(&mut self, message: &str, fx: &mut Effects) {
-        if self.current_result.is_some() && self.shown_view.as_ref() == Some(&self.page_view()) {
+        if self.page.is_some() && self.shown_view.as_ref() == Some(&self.page_view()) {
             self.refresh_inner_stack_visibility();
             fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext_f(
                 "Couldn't refresh the rows: {error}",
@@ -1387,7 +1375,7 @@ impl BrowseModel {
         // A page read under other columns would put their names in the
         // headers, so the grid waits for the page read under these.
         if self.current_columns != columns {
-            self.current_result = None;
+            self.page = None;
             self.shown_view = None;
             self.drop_grid();
         }
@@ -1398,11 +1386,6 @@ impl BrowseModel {
             columns: columns.clone(),
         });
         self.apply_tracker_delta(&delta, fx);
-        if let Some(result) = self.current_result.as_mut()
-            && result.columns.is_empty()
-        {
-            result.columns = result_columns(&columns);
-        }
         self.refresh_crud_buttons();
         // Operator lists narrow per type, so the strip rebuilds against
         // the new columns.
@@ -1611,7 +1594,7 @@ impl BrowseModel {
             BrowseTabInput::GridExportResults(mut result) => {
                 // The grid owns the rows it shows; whether the fetch was
                 // cut short belongs to the tab.
-                result.truncated = self.current_result.as_ref().is_some_and(|r| r.truncated);
+                result.truncated = self.page.as_ref().is_some_and(|page| page.truncated);
                 fx.output(BrowseTabOutput::ExportResults(ExportRequest {
                     result,
                     name: self.export_name(),
@@ -1875,7 +1858,12 @@ impl BrowseModel {
                     .tracker
                     .draft_cells(*draft_id, &self.current_columns)
                     .unwrap_or_default(),
-                _ => ctx.effective_cells(row).into_iter().map(CellInput::Value).collect(),
+                _ => ctx
+                    .snapshot(row)
+                    .to_values()
+                    .into_iter()
+                    .map(CellInput::Value)
+                    .collect(),
             };
             match tablepro_core::export::render_insert(&*dialect, &self.table_ref(), &self.current_columns, &cells) {
                 Ok(sql) => statements.push(sql),
@@ -1913,7 +1901,7 @@ impl BrowseModel {
         let rows: Vec<Vec<Value>> = positions
             .iter()
             .filter_map(|position| selection.item(*position).and_downcast::<RowObject>())
-            .map(|row| ctx.effective_cells(&row))
+            .map(|row| ctx.snapshot(&row).to_values())
             .collect();
         if rows.is_empty() {
             return;
@@ -1975,17 +1963,6 @@ fn clear_box(b: &gtk::Box) {
     while let Some(child) = b.first_child() {
         b.remove(&child);
     }
-}
-
-/// A fetched row's key from its primary key cells, in the table's
-/// column order. `None` when the table has no primary key or the row is
-/// too short to hold it.
-fn persisted_key(cells: &[Value], pk_indices: &[usize]) -> Option<RowKey> {
-    let pk_values: Vec<Value> = pk_indices
-        .iter()
-        .map(|&i| cells.get(i).cloned())
-        .collect::<Option<_>>()?;
-    RowKey::from_pk_values(&pk_values)
 }
 
 /// Update the selection-count badge in response to a `MultiSelection`

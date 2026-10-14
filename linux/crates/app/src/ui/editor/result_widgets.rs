@@ -2,7 +2,7 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 
 use super::run_log::{EntryKind, RunLogEntry};
-use crate::ui::grid::{GridSink, RowObject, TabGridContext, build_column_view};
+use crate::ui::grid::{GridContent, GridSink, RowObject, TabGridContext, build_column_view};
 use crate::ui::icons;
 
 /// The widget a results list line shows. `go_to_error` puts the editor
@@ -10,16 +10,13 @@ use crate::ui::icons;
 pub fn entry_widget(entry: &RunLogEntry, grid_sink: &GridSink, go_to_error: impl Fn(usize) + 'static) -> gtk4::Widget {
     match &entry.kind {
         EntryKind::ResultSet { result, total_rows } => {
-            let rows = result.rows.iter().map(|cells| RowObject::result(cells.clone().into()));
-            let (column_view, _selection) = build_column_view(
-                result,
-                rows,
-                &[],
-                grid_sink.clone(),
-                None,
-                false,
-                TabGridContext::default(),
-            );
+            let content = GridContent {
+                columns: result.columns.clone(),
+                rows: result.rows.iter().cloned().map(RowObject::result).collect(),
+                truncated: result.truncated,
+            };
+            let (column_view, _selection) =
+                build_column_view(content, &[], grid_sink.clone(), None, false, TabGridContext::default());
             let scrolled = gtk4::ScrolledWindow::builder()
                 .child(&column_view)
                 .hexpand(true)

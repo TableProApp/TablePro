@@ -1,10 +1,14 @@
 use tablepro_core::QueryResult;
+use tablepro_core::browse::PageLayout;
 use tablepro_core::meta::PagePosition;
 
+/// A page as the server returned it, the row identity cells still after
+/// the visible ones.
 #[derive(Debug, Clone)]
 pub(crate) struct PageReply {
     pub position: PagePosition,
     pub result: QueryResult,
+    pub layout: PageLayout,
 }
 
 impl PageReply {

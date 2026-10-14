@@ -493,15 +493,15 @@ impl TabChangeTracker {
         }
     }
 
-    pub fn cell_overlay(&self, row_key: &RowKey, col: usize, original: &Value) -> CellOverlay {
+    pub fn cell_overlay(&self, row_key: &RowKey, col: usize) -> CellOverlay {
         CellOverlay {
-            value: self.current_cell_value(row_key, col, original),
+            pending: self.pending_input(row_key, col),
             state: self.cell_state(row_key, col),
             error_flash: self.error_row.as_ref() == Some(row_key),
         }
     }
 
-    pub fn cell_state(&self, row_key: &RowKey, col: usize) -> CellState {
+    fn cell_state(&self, row_key: &RowKey, col: usize) -> CellState {
         if matches!(row_key, RowKey::Draft(_)) {
             return CellState::InsertDraft;
         }
@@ -511,9 +511,7 @@ impl TabChangeTracker {
         CellState::Clean
     }
 
-    /// A cell's pending value, `None` when it shows what was read. A
-    /// draft's cell is always the tracker's.
-    pub fn pending_input(&self, row_key: &RowKey, col: usize) -> Option<CellInput> {
+    fn pending_input(&self, row_key: &RowKey, col: usize) -> Option<CellInput> {
         match row_key {
             RowKey::Draft(draft_id) => self.draft_input(*draft_id, col),
             RowKey::Persisted(_) => self
@@ -523,8 +521,19 @@ impl TabChangeTracker {
         }
     }
 
-    pub fn is_error_row(&self, row_key: &RowKey) -> bool {
-        self.error_row.as_ref() == Some(row_key)
+    /// A saved row's pending values among its first `width` columns, in
+    /// column order.
+    pub fn pending_values(&self, row_key: &RowKey, width: usize) -> Vec<(usize, Value)> {
+        if self.updates.is_empty() {
+            return Vec::new();
+        }
+        let mut cell = (row_key.clone(), 0);
+        (0..width)
+            .filter_map(|col| {
+                cell.1 = col;
+                self.updates.get(&cell).map(|edit| (col, edit.pending.clone()))
+            })
+            .collect()
     }
 
     /// Coarse row state. PendingDelete wins over Modified.
@@ -563,23 +572,6 @@ impl TabChangeTracker {
         }
         self.error_row = None;
         true
-    }
-
-    /// A draft's cells live only here, so for a draft `original` is
-    /// what an out-of-range column reads as, and a cell left to the
-    /// server reads as NULL.
-    fn current_cell_value(&self, row_key: &RowKey, col: usize, original: &Value) -> Value {
-        if let RowKey::Draft(draft_id) = row_key {
-            return match self.draft_input(*draft_id, col) {
-                Some(CellInput::Value(value)) => value,
-                Some(CellInput::Default) => Value::Null,
-                None => original.clone(),
-            };
-        }
-        match self.updates.get(&(row_key.clone(), col)) {
-            Some(edit) => edit.pending.clone(),
-            None => original.clone(),
-        }
     }
 
     /// A draft's values, with a cell left to the server as NULL.
@@ -1215,7 +1207,7 @@ mod tests {
 
     /// The cell as the grid draws it, over a fetched "a".
     fn pending(t: &TabChangeTracker, id: i64) -> Value {
-        t.cell_overlay(&rk(&[Value::Int(id)]), 1, &text("a")).value
+        t.cell_overlay(&rk(&[Value::Int(id)]), 1).shown(text("a"))
     }
 
     /// Each change as a verb and the key or draft it names, which is
@@ -1755,14 +1747,11 @@ mod tests {
             input: CellInput::Value(Value::Text("b".into())),
         });
 
-        let overlay = t.cell_overlay(&RowKey::Draft(draft_id), 1, &Value::Null);
+        let overlay = t.cell_overlay(&RowKey::Draft(draft_id), 1);
 
-        assert_eq!(overlay.value, Value::Text("b".into()));
+        assert_eq!(overlay.pending, Some(CellInput::Value(Value::Text("b".into()))));
         assert_eq!(overlay.state, CellState::InsertDraft);
-        assert_eq!(
-            t.cell_overlay(&RowKey::Draft(draft_id), 9, &Value::Null).value,
-            Value::Null
-        );
+        assert_eq!(t.cell_overlay(&RowKey::Draft(draft_id), 9).pending, None);
     }
 
     #[test]
@@ -1877,12 +1866,12 @@ mod tests {
         let fetched = Value::Text("a".into());
         t.track_cell_edit(key.clone(), 1, fetched.clone(), Value::Text("b".into()));
 
-        let edited = t.cell_overlay(&key, 1, &fetched);
-        let untouched = t.cell_overlay(&key, 0, &Value::Int(1));
+        let edited = t.cell_overlay(&key, 1);
+        let untouched = t.cell_overlay(&key, 0);
 
-        assert_eq!(edited.value, Value::Text("b".into()));
+        assert_eq!(edited.pending, Some(CellInput::Value(Value::Text("b".into()))));
         assert_eq!(edited.state, CellState::Modified);
-        assert_eq!(untouched.value, Value::Int(1));
+        assert_eq!(untouched.pending, None, "a clean cell is drawn from its row");
         assert_eq!(untouched.state, CellState::Clean);
     }
 
@@ -2120,7 +2109,7 @@ mod tests {
 
     /// The cell as the grid draws it at `col`, over a fetched "Ada".
     fn pending_at(t: &TabChangeTracker, id: i64, col: usize) -> Value {
-        t.cell_overlay(&rk(&[Value::Int(id)]), col, &text("Ada")).value
+        t.cell_overlay(&rk(&[Value::Int(id)]), col).shown(text("Ada"))
     }
 
     #[test]
@@ -2132,9 +2121,9 @@ mod tests {
         let new = t.flash_error_row(second.clone());
 
         assert!(!t.clear_error_row_if(old));
-        assert!(t.cell_overlay(&second, 0, &Value::Null).error_flash);
-        assert!(!t.cell_overlay(&first, 0, &Value::Null).error_flash);
+        assert!(t.cell_overlay(&second, 0).error_flash);
+        assert!(!t.cell_overlay(&first, 0).error_flash);
         assert!(t.clear_error_row_if(new));
-        assert!(!t.cell_overlay(&second, 0, &Value::Null).error_flash);
+        assert!(!t.cell_overlay(&second, 0).error_flash);
     }
 }

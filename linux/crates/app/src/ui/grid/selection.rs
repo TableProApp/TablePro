@@ -1,10 +1,12 @@
+use std::sync::Arc;
+
 use gtk4 as gtk;
 use gtk4::prelude::*;
 
 use tablepro_core::QueryResult;
 use tablepro_core::column::ResultColumn;
 
-use super::{RowObject, TabGridContext};
+use super::{RowObject, RowSnapshot, TabGridContext};
 
 pub(crate) fn selected_positions(selection: &gtk::MultiSelection) -> Vec<u32> {
     let bitset = selection.selection();
@@ -38,19 +40,19 @@ pub(super) fn select_row_for_menu(column_view: &gtk::ColumnView, position: u32) 
 }
 
 /// The paginator's Export button and the menu's Export Results both
-/// build their payload here, so one label cannot mean two files.
-pub(crate) fn export_snapshot(
-    column_view: &gtk::ColumnView,
-    columns: &[ResultColumn],
-    truncated: bool,
-    ctx: &TabGridContext,
-) -> QueryResult {
-    let rows = match column_view.model() {
-        Some(model) => (0..model.n_items())
-            .filter_map(|p| row_at(column_view, p))
-            .map(|r| ctx.effective_cells(&r))
-            .collect(),
-        None => Vec::new(),
+/// read the rows here, so one label cannot mean two files.
+pub(crate) fn export_snapshot(column_view: &gtk::ColumnView, ctx: &TabGridContext) -> Vec<RowSnapshot> {
+    let Some(model) = column_view.model() else {
+        return Vec::new();
     };
-    QueryResult::new(columns.to_vec(), rows).truncated(truncated)
+    (0..model.n_items())
+        .filter_map(|position| row_at(column_view, position))
+        .map(|row| ctx.snapshot(&row))
+        .collect()
+}
+
+/// Rows for an encoder that takes owned cells, under the columns the
+/// grid shows.
+pub(crate) fn snapshot_result(columns: Arc<[ResultColumn]>, rows: &[RowSnapshot], truncated: bool) -> QueryResult {
+    QueryResult::new(columns, rows.iter().map(RowSnapshot::to_values).collect()).truncated(truncated)
 }

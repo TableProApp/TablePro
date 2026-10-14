@@ -91,6 +91,12 @@ impl RowObject {
         self.imp().cells.get()?.get(column)
     }
 
+    /// The row's own hold on its cells, to count who else holds them.
+    #[cfg(test)]
+    pub(crate) fn shared_cells(&self) -> Option<&Arc<[Value]>> {
+        self.imp().cells.get()
+    }
+
     pub(crate) fn bump_revision(&self) {
         let revision = &self.imp().revision;
         revision.set(revision.get().wrapping_add(1));

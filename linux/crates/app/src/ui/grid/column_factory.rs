@@ -3,8 +3,8 @@ use std::rc::Rc;
 use gtk4::prelude::*;
 use gtk4::{self as gtk, glib};
 
+use tablepro_core::ColumnInfo;
 use tablepro_core::column::{ColumnKind, ResultColumn};
-use tablepro_core::{ColumnInfo, QueryResult};
 
 use super::cell_edit::install_edit_triggers;
 use super::cell_editability::column_takes_edits;
@@ -16,25 +16,27 @@ use super::grid_keyboard::GridKeyboard;
 use super::grid_menus::{GridMenuInit, GridMenus, install_grid_context_menus};
 use super::row_factory::install_row_factory;
 use super::toggle_cell::ToggleCell;
-use super::{GridCell, GridMsg, GridSink, RowObject, TabGridContext};
+use super::{GridCell, GridContent, GridMsg, GridSink, RowObject, TabGridContext};
 
 const WIDE_TABLE_THRESHOLD: usize = 8;
 /// About 14 characters at the default font size.
 const MIN_COLUMN_WIDTH_PX: i32 = 120;
 
 pub fn build_column_view(
-    result: &QueryResult,
-    rows: impl IntoIterator<Item = RowObject>,
+    content: GridContent,
     schema_columns: &[ColumnInfo],
     sink: GridSink,
     sort: Option<(usize, bool)>,
     sortable: bool,
     tab_ctx: TabGridContext,
 ) -> (gtk::ColumnView, gtk::MultiSelection) {
+    let GridContent {
+        columns: result_columns,
+        rows,
+        truncated,
+    } = content;
     let store = gtk4::gio::ListStore::new::<RowObject>();
-    for row in rows {
-        store.append(&row);
-    }
+    store.splice(0, 0, &rows);
     let selection = gtk::MultiSelection::new(Some(store));
     // Tab leaves the grid, and the arrow keys move between cells.
     let column_view = gtk::ColumnView::builder()
@@ -50,8 +52,8 @@ pub fn build_column_view(
     let grid_menus = install_grid_context_menus(GridMenuInit {
         column_view: &column_view,
         sink: sink.clone(),
-        columns: result.columns.clone(),
-        truncated: result.truncated,
+        columns: result_columns.clone(),
+        truncated,
         tab_ctx: tab_ctx.clone(),
     });
     GridKeyboard::install(&column_view, grid_menus.clone(), sink.clone());
@@ -59,15 +61,15 @@ pub fn build_column_view(
     // Sharing the viewport by `expand` alone leaves a wide table with 20
     // to 30 px columns that show nothing, so a column with no saved width
     // starts at a readable minimum there.
-    let default_min_width = if result.columns.len() > WIDE_TABLE_THRESHOLD {
+    let default_min_width = if result_columns.len() > WIDE_TABLE_THRESHOLD {
         Some(MIN_COLUMN_WIDTH_PX)
     } else {
         None
     };
-    let mut columns: Vec<gtk::ColumnViewColumn> = Vec::with_capacity(result.columns.len());
+    let mut columns: Vec<gtk::ColumnViewColumn> = Vec::with_capacity(result_columns.len());
     let grid_columns = Rc::new(GridColumns::default());
     let attributes = Rc::new(GridAttributes::new());
-    for (i, column) in result.columns.iter().enumerate() {
+    for (i, column) in result_columns.iter().enumerate() {
         let col = build_column(ColumnInit {
             info: column,
             idx: i,
@@ -294,8 +296,8 @@ mod tests {
     use gtk4::prelude::*;
     use gtk4::{self as gtk, glib};
 
+    use tablepro_core::Value;
     use tablepro_core::edit::CellInput;
-    use tablepro_core::{ColumnInfo, QueryResult, Value};
 
     use super::build_column_view;
     use crate::services::change_tracker::RowKey;
@@ -305,8 +307,8 @@ mod tests {
     use crate::ui::grid::cell_editability::column_takes_edits;
     use crate::ui::grid::display_text::editable_null_sentinel;
     use crate::ui::grid::test_grid::{
-        Grid, WAIT, col, display_text, edited_rows, flag_rows, key, keyed_by_id, named, persisted, recorder, text,
-        tracked, two_text_rows, type_into,
+        Grid, WAIT, col, content, display_text, edited_rows, flag_rows, key, keyed_by_id, named, persisted, recorder,
+        text, tracked, two_text_rows, type_into,
     };
     use crate::ui::grid::{CellPreset, ColumnWidthBinding, GridCell, GridMsg, RowObject, TabGridContext, begin_edit};
 
@@ -738,10 +740,6 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let columns = vec![named("name", "text", false)];
         let rows = vec![vec![Value::Text("a".into())]];
-        let result = QueryResult::new(
-            columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
-            rows.clone(),
-        );
         let (sink, _messages) = recorder();
         let context = TabGridContext {
             editable: true,
@@ -749,8 +747,7 @@ mod tests {
             ..TabGridContext::default()
         };
         let (view, selection) = build_column_view(
-            &result,
-            persisted(&rows),
+            content(&columns, persisted(&rows)),
             &columns,
             sink,
             Some((0, true)),
@@ -787,15 +784,10 @@ mod tests {
             named("flag", "boolean", false),
         ];
         let rows = vec![vec![Value::Int(7), Value::Text("a".into()), Value::Bool(true)]];
-        let result = QueryResult::new(
-            columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
-            rows.clone(),
-        );
         let tracker = TabTrackerHandle::default();
         let (sink, _messages) = recorder();
         let (view, selection) = build_column_view(
-            &result,
-            persisted(&rows),
+            content(&columns, persisted(&rows)),
             &columns,
             sink,
             None,

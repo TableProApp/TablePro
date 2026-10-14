@@ -1,8 +1,11 @@
+use std::sync::Arc;
+
 use tablepro_core::Value;
 use tablepro_core::edit::CellInput;
 use tablepro_core::meta::RowIdentity;
 
-use super::{ColumnWidthBinding, GridRowId, RowObject};
+use super::{ColumnWidthBinding, GridRowId, RowObject, RowSnapshot};
+use crate::services::cell_overlay::CellOverlay;
 use crate::services::change_tracker::{CellState, RowKey, RowState};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 
@@ -43,32 +46,32 @@ impl TabGridContext {
             .map_or(RowState::Clean, |(tracker, key)| tracker.row_state(&key))
     }
 
-    /// Every copy and export path reads this rather than
-    /// `RowObject::cells`, which holds a saved row as fetched and a
-    /// draft not at all.
-    pub(crate) fn effective_cells(&self, row: &RowObject) -> Vec<Value> {
+    /// The row as the grid shows it, for every copy and export path:
+    /// `RowObject::cells` holds a saved row as read and a draft not at
+    /// all. A draft's cell left to the server reads as NULL.
+    pub(crate) fn snapshot(&self, row: &RowObject) -> RowSnapshot {
         if let (GridRowId::Draft(draft_id), Some(tracker)) = (row.id(), self.tracker.as_ref()) {
-            return tracker.draft_values(*draft_id).unwrap_or_default();
+            return RowSnapshot::new(tracker.draft_values(*draft_id).unwrap_or_default().into(), Vec::new());
         }
-        let Some(raw) = row.cells() else {
-            return Vec::new();
-        };
-        let Some((tracker, key)) = self.tracked_key(row) else {
-            return raw.to_vec();
-        };
-        raw.iter()
-            .enumerate()
-            .map(|(col, value)| tracker.cell_overlay(&key, col, value).value)
-            .collect()
+        let cells = row.cells().unwrap_or_else(|| Arc::from([]));
+        let overrides = self
+            .tracked_key(row)
+            .map(|(tracker, key)| tracker.pending_values(&key, cells.len()))
+            .unwrap_or_default();
+        RowSnapshot::new(cells, overrides)
     }
 
-    /// Like `effective_cells`, except a draft's cell left to the server
-    /// stays `Default` rather than reading as NULL.
+    /// Like `snapshot`, except a draft's cell left to the server stays
+    /// `Default` rather than reading as NULL.
     pub(crate) fn effective_inputs(&self, row: &RowObject) -> Vec<CellInput> {
         if let (GridRowId::Draft(draft_id), Some(tracker)) = (row.id(), self.tracker.as_ref()) {
             return tracker.draft_inputs(*draft_id).unwrap_or_default();
         }
-        self.effective_cells(row).into_iter().map(CellInput::Value).collect()
+        self.snapshot(row)
+            .to_values()
+            .into_iter()
+            .map(CellInput::Value)
+            .collect()
     }
 
     /// What an editor opens on: a draft's cell as the tracker holds it,
@@ -86,7 +89,7 @@ impl TabGridContext {
     pub(crate) fn with_effective_value<R>(&self, row: &RowObject, col: usize, f: impl FnOnce(&Value, bool) -> R) -> R {
         let pending = self
             .tracked_key(row)
-            .and_then(|(tracker, key)| tracker.pending_input(&key, col));
+            .and_then(|(tracker, key)| tracker.cell_overlay(&key, col).pending);
         match (pending, row.cell(col)) {
             (Some(CellInput::Value(value)), _) => f(&value, false),
             (Some(CellInput::Default), _) => f(&Value::Null, true),
@@ -101,21 +104,20 @@ impl TabGridContext {
         let Some((tracker, key)) = self.tracked_key(row) else {
             return (Vec::new(), CellState::Clean);
         };
-        let state = tracker.cell_state(&key, col);
-        let error_flash = col == 0 && tracker.is_error_row(&key);
-        (pending_classes(tracker.row_state(&key), state, error_flash), state)
+        let overlay = tracker.cell_overlay(&key, col);
+        (pending_classes(tracker.row_state(&key), &overlay, col), overlay.state)
     }
 }
 
-fn pending_classes(row_state: RowState, cell_state: CellState, error_flash: bool) -> Vec<&'static str> {
+fn pending_classes(row_state: RowState, overlay: &CellOverlay, col: usize) -> Vec<&'static str> {
     let mut classes = Vec::new();
-    match (row_state, cell_state) {
+    match (row_state, overlay.state) {
         (RowState::PendingDelete, _) => classes.push("tp-row-pending-delete"),
         (RowState::InsertDraft, _) => classes.push("tp-row-pending-insert"),
         (_, CellState::Modified) => classes.push("tp-cell-modified"),
         _ => {}
     }
-    if error_flash {
+    if col == 0 && overlay.error_flash {
         classes.push("tp-row-leftmost-error-flash");
     }
     classes
@@ -199,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn effective_cells_include_pending_edits_and_draft_cells() {
+    fn snapshots_include_pending_edits_and_draft_cells() {
         let tracker = TabTrackerHandle::default();
         let key = RowKey::from_pk_values(&[Value::Int(1)]).expect("a key");
         let _ = tracker.apply(TrackerEdit::Cell {
@@ -212,11 +214,11 @@ mod tests {
         let saved = RowObject::persisted(Some(key), vec![Value::Int(1), Value::Text("old".into())].into());
 
         assert_eq!(
-            context(&tracker).effective_cells(&saved),
+            context(&tracker).snapshot(&saved).to_values(),
             vec![Value::Int(1), Value::Text("new".into())]
         );
         assert_eq!(
-            context(&tracker).effective_cells(&RowObject::draft(draft_id)),
+            context(&tracker).snapshot(&RowObject::draft(draft_id)).to_values(),
             vec![Value::Null, Value::Text("draft".into())]
         );
     }
@@ -232,7 +234,7 @@ mod tests {
         assert_eq!(context(&tracker).edit_input(&draft, 0), CellInput::Default);
         assert_eq!(context(&tracker).edit_input(&draft, 1), CellInput::Value(Value::Null));
         assert_eq!(
-            context(&tracker).effective_cells(&draft),
+            context(&tracker).snapshot(&draft).to_values(),
             vec![Value::Null, Value::Null],
             "a copy has no value to give a default"
         );

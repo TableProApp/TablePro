@@ -97,6 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copy as INSERT could copy the wrong row, drop the schema or unsaved edits, or write a value where the server fills one.
 - Duplicate left out the row's unsaved edits.
 - Cells of a table without a primary key opened for editing, then dropped what was typed.
+- A row whose primary key the driver could not read opened for editing, then failed to save.
 - A save that failed on a new row did not flash that row.
 - Undo after editing a cell twice restored the fetched value instead of the first edit.
 - An edit made while a save ran was dropped when it set the cell back to the value it was read with.

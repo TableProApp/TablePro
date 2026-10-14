@@ -1,14 +1,15 @@
 use tablepro_core::sql_syntax::script::BatchErrorPolicy;
 use tablepro_core::{
-    DriverError, EditorSessionState, ErrorCategory, QueryResult, ResultEvent, RunEnd, RunSummary, TransactionState,
-    Truncation,
+    DriverError, EditorSessionState, ErrorCategory, ResultEvent, RunEnd, RunSummary, TransactionState, Truncation,
 };
+
+use super::result_rows::ResultRows;
 
 /// One line of the results list.
 #[derive(Debug, Clone)]
 pub enum EntryKind {
     ResultSet {
-        result: QueryResult,
+        result: ResultRows,
         /// What the server says the whole set held, when it says.
         total_rows: Option<u64>,
     },
@@ -108,7 +109,7 @@ impl BatchCollector {
             ResultEvent::ResultSetStarted { columns } => {
                 self.sets.push(self.entries.len());
                 self.entries.push(EntryKind::ResultSet {
-                    result: QueryResult::new(columns, Vec::new()),
+                    result: ResultRows::new(columns),
                     total_rows: None,
                 });
             }
@@ -118,7 +119,7 @@ impl BatchCollector {
                 }
             }
             ResultEvent::Rows(rows) => match self.last_set() {
-                Some(result) => result.rows.extend(rows),
+                Some(result) => result.rows.extend(rows.into_iter().map(Into::into)),
                 // Rows with no columns would draw a grid that cannot say
                 // what any cell is.
                 None => tracing::warn!(rows = rows.len(), "rows arrived before their result set"),
@@ -196,7 +197,7 @@ impl BatchCollector {
         (self.entries, verdict, transaction)
     }
 
-    fn set(&mut self, set_index: usize) -> Option<&mut QueryResult> {
+    fn set(&mut self, set_index: usize) -> Option<&mut ResultRows> {
         let index = *self.sets.get(set_index)?;
         match self.entries.get_mut(index) {
             Some(EntryKind::ResultSet { result, .. }) => Some(result),
@@ -204,7 +205,7 @@ impl BatchCollector {
         }
     }
 
-    fn last_set(&mut self) -> Option<&mut QueryResult> {
+    fn last_set(&mut self) -> Option<&mut ResultRows> {
         let last = self.sets.len().checked_sub(1)?;
         self.set(last)
     }
