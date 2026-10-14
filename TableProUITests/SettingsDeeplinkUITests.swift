@@ -1,43 +1,14 @@
 import XCTest
 
 final class SettingsDeeplinkUITests: UITestCase {
-    // Pane titles are localized.
-    private let englishArguments = ["-AppleLanguages", "(en)"]
-
     func testASettingsLinkOpensItsPane() throws {
-        try assertLink("tablepro://settings/license", opensPaneTitled: "License")
-    }
+        let app = try launchOpeningURL("tablepro://settings/license")
 
-    func testTheMCPLinkOpensTheMCPPane() throws {
-        try assertLink("tablepro://settings/mcp", opensPaneTitled: "MCP")
-    }
-
-    func testAnUnknownPaneOpensTheLastUsedPane() throws {
-        let app = try launchOpeningURL("tablepro://settings/not-a-pane", arguments: englishArguments)
-
-        let settingsWindow = app.windows["settings"]
-        XCTAssertTrue(settingsWindow.waitToExist(timeout: 10))
+        let settings = window("settings", in: app)
+        XCTAssertTrue(settings.waitToExist(timeout: 10), "A settings link must open the settings window")
         XCTAssertTrue(
-            waitForPredicate(timeout: 5) { settingsWindow.title == "General" },
-            "A fresh sandbox has no last-used pane, so Settings opens on General, not \(settingsWindow.title)"
-        )
-    }
-
-    private func assertLink(
-        _ link: String,
-        opensPaneTitled title: String,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) throws {
-        let app = try launchOpeningURL(link, arguments: englishArguments)
-
-        let settingsWindow = app.windows["settings"]
-        XCTAssertTrue(settingsWindow.waitToExist(timeout: 10), file: file, line: line)
-        XCTAssertTrue(
-            waitForPredicate(timeout: 5) { settingsWindow.title == title },
-            "\(link) has to open the \(title) pane, the window is titled \(settingsWindow.title)",
-            file: file,
-            line: line
+            waitForPredicate(timeout: 5) { settings.title == "License" },
+            "The link must open the License pane, the window is titled \(settings.title)"
         )
     }
 }

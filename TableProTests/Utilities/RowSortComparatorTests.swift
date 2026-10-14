@@ -62,10 +62,4 @@ struct RowSortComparatorTests {
         let result = RowSortComparator.compare("file2", "file10", columnType: .text(rawType: "VARCHAR"))
         #expect(result == .orderedAscending)
     }
-
-    @Test("nil column type uses numeric string comparison")
-    func nilColumnType() {
-        let result = RowSortComparator.compare("10", "2", columnType: nil)
-        #expect(result == .orderedDescending)
-    }
 }

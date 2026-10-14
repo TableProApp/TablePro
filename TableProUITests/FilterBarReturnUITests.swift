@@ -1,65 +1,74 @@
 import XCTest
 
-/// #2927: the completion list over a filter field preselected its first row the moment it opened,
-/// so `Return` accepted a suggestion the user never asked for and the filter went unapplied until
-/// they pressed `Escape` first.
-///
-/// The list itself is not asserted on. Its rows are a SwiftUI popover the runner does not resolve
-/// reliably, which is the same reason `EditorAutocompleteFocusUITests` asserts on committed text.
-/// **Clear** is the observable proof instead: it is enabled only once a filter has been applied.
+// #2927: the completion list over a filter field preselected its first row, so Return took a suggestion
+// and left the filter unapplied. #3066: a cell's menu filters the table by the clicked value.
+// Clear proves a filter ran: it is enabled only while one is applied.
 final class FilterBarReturnUITests: UITestCase {
-    func testReturnAppliesAFilterWhoseLastTokenStillMatchesSuggestions() throws {
-        let app = try launchWithSampleDatabase()
-        let window = try openAlbum(in: app)
+    func testFilteringFromACellAndFromTheFilterBar() throws {
+        let (launch, grid) = try launchWithFixtureTable("album")
+        let window = launch.window
+        let app = launch.app
+        let clear = window.buttons["Clear"].firstMatch
 
-        openFilterBar(in: app)
-        app.typeText("ArtistId IS NOT NULL")
-        settleCompletion()
-        app.typeKey(.return, modifierFlags: [])
-
-        XCTAssertTrue(
-            waitForPredicate(timeout: 10) { window.buttons["Clear"].isEnabled },
-            "Return must apply the filter while the completion list is open on the NULL keyword"
-        )
-    }
-
-    func testReturnAppliesAFilterThatEndsOnAClosingQuote() throws {
-        let app = try launchWithSampleDatabase()
-        let window = try openAlbum(in: app)
-
-        openFilterBar(in: app)
-        app.typeText("Title='Let There Be Rock'")
-        settleCompletion()
-        app.typeKey(.return, modifierFlags: [])
-
-        XCTAssertTrue(
-            waitForPredicate(timeout: 10) { window.buttons["Clear"].isEnabled },
-            "Return must apply a filter that ends on a closing quote, with no Escape first"
-        )
-    }
-
-    private func openAlbum(in app: XCUIApplication) throws -> XCUIElement {
-        let window = app.windows.firstMatch
-        XCTAssertTrue(window.waitToExist(timeout: 30))
-
-        let row = window.outlines.firstMatch.staticTexts
-            .matching(NSPredicate(format: "value == %@", "Table: Album"))
+        app.typeShortcut(.toggleFilters)
+        // A raw SQL row wraps its text, so its field is not assumed to be a single-line text field.
+        let whereField = window.descendants(matching: .any)
+            .matching(NSPredicate(
+                format: "label == %@ AND (elementType == %lu OR elementType == %lu)",
+                "WHERE clause",
+                XCUIElement.ElementType.textField.rawValue,
+                XCUIElement.ElementType.textView.rawValue
+            ))
             .firstMatch
-        XCTAssertTrue(row.waitToExist(timeout: 20), "The object browser must list Album")
-        clickAtCenter(row)
-        return window
-    }
+        XCTAssertTrue(
+            waitForPredicate(timeout: 15) { self.holdsKeyboardFocus(whereField) },
+            "The filter bar must open on a raw SQL row with the keyboard in it"
+        )
+        let filter = "artist_id > 2 AND title IS NOT NULL"
+        app.typeText(filter)
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { (whereField.value as? String) == filter },
+            "The typed filter must reach the WHERE field"
+        )
+        XCTAssertTrue(
+            window.popovers.firstMatch.waitToExist(timeout: 10),
+            "The completion list must be open on the NULL keyword when Return is pressed"
+        )
+        app.typeKey(.return, modifierFlags: [])
 
-    /// The panel adds a row and focuses it in `onAppear`, and a new row starts in raw SQL, so the
-    /// text goes straight to the field the popup hangs off.
-    private func openFilterBar(in app: XCUIApplication) {
-        app.typeKey("f", modifierFlags: [.command, .shift])
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 1.0))
-    }
+        XCTAssertTrue(
+            waitForPredicate(timeout: 15) { clear.exists && clear.isEnabled },
+            "Return must apply the filter while the completion list is open"
+        )
+        XCTAssertTrue(
+            waitForPredicate(timeout: 20) {
+                grid.value(row: 1, column: 2) == "West" && !grid.cell(row: 4, column: 2).exists
+            },
+            "The filter must leave the three albums of artists 3 to 5"
+        )
 
-    /// The request is debounced 50ms and then makes a schema round trip, so the list is not up on
-    /// the keystroke that asked for it.
-    private func settleCompletion() {
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 1.5))
+        let cell = grid.cellPoint(row: 1, column: 2)
+        cell.click()
+        cell.rightClick()
+        let filterMenu = window.menus.menuItems["Filter"].firstMatch
+        XCTAssertTrue(filterMenu.waitToExist(timeout: 15), "A cell's context menu must offer Filter")
+        filterMenu.hover()
+        let equalsItems = app.menuItems.matching(NSPredicate(format: "title CONTAINS %@", " = \u{201C}West"))
+        var equals: XCUIElement?
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) {
+                equals = equalsItems.allElementsBoundByIndex.first { $0.isHittable }
+                return equals != nil
+            },
+            "The Filter submenu must offer an equals condition built from the clicked value"
+        )
+        try XCTUnwrap(equals).click()
+
+        XCTAssertTrue(
+            waitForPredicate(timeout: 20) { !grid.cell(row: 2, column: 2).exists },
+            "Choosing the condition must narrow the table to the clicked row"
+        )
+        XCTAssertEqual(grid.value(row: 1, column: 2), "West", "The row that was clicked must stay")
+        XCTAssertTrue(clear.isEnabled, "The filter bar must report a filter applied")
     }
 }

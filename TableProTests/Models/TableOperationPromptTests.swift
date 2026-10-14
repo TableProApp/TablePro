@@ -161,35 +161,11 @@ struct TableOperationPromptTests {
         #expect(options.cascade == false)
     }
 
-    @Test("TableOperationOptions is Equatable")
-    func optionsEquatable() {
-        let first = TableOperationOptions(ignoreForeignKeys: true, cascade: false)
-        let second = TableOperationOptions(ignoreForeignKeys: true, cascade: false)
-        let third = TableOperationOptions(ignoreForeignKeys: false, cascade: true)
-        #expect(first == second)
-        #expect(first != third)
-    }
-
-    @Test("TableOperationOptions survives a Codable roundtrip")
-    func optionsCodableRoundtrip() throws {
-        let original = TableOperationOptions(ignoreForeignKeys: true, cascade: true)
-        let data = try JSONEncoder().encode(original)
-        #expect(try JSONDecoder().decode(TableOperationOptions.self, from: data) == original)
-    }
-
     // MARK: - TableOperationType
 
     @Test("TableOperationType raw values are stable")
     func operationTypeRawValues() {
         #expect(TableOperationType.truncate.rawValue == "truncate")
         #expect(TableOperationType.drop.rawValue == "drop")
-    }
-
-    @Test("TableOperationType survives a Codable roundtrip")
-    func operationTypeCodableRoundtrip() throws {
-        for operationType in [TableOperationType.truncate, TableOperationType.drop] {
-            let data = try JSONEncoder().encode(operationType)
-            #expect(try JSONDecoder().decode(TableOperationType.self, from: data) == operationType)
-        }
     }
 }

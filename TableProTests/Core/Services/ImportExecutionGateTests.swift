@@ -211,23 +211,4 @@ struct ImportExecutionGateTests {
         #expect(requests.first?.kind == .importData)
         #expect(requests.first?.capabilities.contains(.confirmationPreCleared) == false)
     }
-
-    /// The sink writes straight to the driver, so whatever builds one is where the gate has to be.
-    @Test("Only the two runs that authorize first build the import sink")
-    func onlyAuthorizedRunsBuildTheSink() throws {
-        var root = URL(fileURLWithPath: #filePath)
-        for _ in 0 ..< 4 {
-            root.deleteLastPathComponent()
-        }
-        let appRoot = root.appendingPathComponent("TablePro")
-        let enumerator = try #require(FileManager.default.enumerator(at: appRoot, includingPropertiesForKeys: nil))
-        var builders: [String] = []
-        for case let url as URL in enumerator where url.pathExtension == "swift" {
-            let source = try String(contentsOf: url, encoding: .utf8)
-            guard source.contains("ImportDataSinkAdapter(") else { continue }
-            builders.append(url.lastPathComponent)
-            #expect(source.contains("gate.authorize("), "\(url.lastPathComponent) builds the sink without the gate")
-        }
-        #expect(builders.sorted() == ["ImportService.swift", "TableTransferService.swift"])
-    }
 }

@@ -36,43 +36,4 @@ struct MenuItemImageVisibilityTests {
 
         #expect(item.image == nil)
     }
-
-    @Test("Every menu whose image carries the meaning goes through the helper")
-    func informativeMenuBuildersUseTheHelper() throws {
-        let root = try repositoryRoot()
-        let sources = [
-            "TablePro/Views/Highlight/HighlightMenuBuilder.swift",
-            "TablePro/Views/Sidebar/Menu/SidebarMenuBuilder.swift",
-            "TablePro/Views/Connection/GroupPopUpButton.swift",
-            "TablePro/Core/Menu/SafeModeMenuDelegate.swift",
-            "TablePro/Views/Results/EnumMenuPicker.swift",
-        ]
-
-        for source in sources {
-            let text = try String(contentsOf: root.appendingPathComponent(source), encoding: .utf8)
-            #expect(
-                text.contains("setInformativeImage("),
-                """
-                \(source) builds a menu whose image is the row's only distinguishing content, so it \
-                must use `setInformativeImage(_:)`. On macOS 27 a plain `image =` is hidden and the \
-                rows become identical.
-                """
-            )
-        }
-    }
-
-    private func repositoryRoot(file: StaticString = #filePath) throws -> URL {
-        var directory = URL(fileURLWithPath: "\(file)").deletingLastPathComponent()
-        while directory.path != "/" {
-            if FileManager.default.fileExists(atPath: directory.appendingPathComponent("project.yml").path) {
-                return directory
-            }
-            directory = directory.deletingLastPathComponent()
-        }
-        throw MenuImageTestError.repositoryRootNotFound
-    }
-
-    private enum MenuImageTestError: Error {
-        case repositoryRootNotFound
-    }
 }

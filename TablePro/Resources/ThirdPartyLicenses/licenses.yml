@@ -1,7 +1,7 @@
 # Open source libraries TablePro redistributes.
 #
-# Hand-maintained. ThirdPartyLicenseInventoryTests checks each version against the pin
-# in scripts/build-*.sh or Package.resolved and fails when they disagree, because a
+# Hand-maintained. scripts/ci/check-license-inventory.py checks each version against the
+# pin in scripts/build-*.sh or Package.resolved and fails when they disagree, because a
 # version bump can change a license and that needs a person to re-read it.
 #
 # spdx: UNVERIFIED means the project publishes no license we could read. Those entries
@@ -10,7 +10,7 @@
 # platforms lists where a component ships: macos, ios or both. Absent means [macos].
 # The iOS app reads TableProMobile/TableProMobile/Acknowledgements/Acknowledgements.json, the
 # projection of every ios entry. Run scripts/generate-ios-acknowledgements.py after editing an
-# ios entry; ThirdPartyLicenseInventoryTests fails while that file is stale.
+# ios entry; scripts/ci/check-license-inventory.py fails while that file is stale.
 - id: bigint
   name: BigInt
   version: 5.7.0
@@ -167,7 +167,7 @@
     library vendors golang.org/x/crypto, x/net, x/sys and x/text (src/vendor/modules.txt at go1.27.1),
     all under this same BSD-3-Clause notice from The Go Authors. PATENTS beside LICENSE is an extra
     patent grant from Google and adds no notice duty. source is manual because the pin lives in go.mod,
-    not in a build-*.sh variable, so ThirdPartyLicenseInventoryTests does not check this version.
+    not in a build-*.sh variable, so scripts/ci/check-license-inventory.py does not check this version.
     Reaches users only through the registry-only SAP HANA plugin: the app and every bundled plugin link
     no Go code.'
 - id: go-hdb

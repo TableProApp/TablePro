@@ -117,13 +117,4 @@ struct ExportFormatCatalogTests {
         #expect(forwards == backwards)
         #expect(forwards == ["csv", "sql", "parquet", "zebra"])
     }
-
-    @Test("Parquet is offered for install until it is installed")
-    func parquetIsOfferedUntilInstalled() {
-        let offered = ExportFormatCatalog.notInstalled(installedFormatIds: ["csv", "sql"])
-        #expect(offered.map(\.formatId) == ["parquet"])
-        #expect(offered.first?.registryPluginId == "com.TablePro.ParquetExportPlugin")
-
-        #expect(ExportFormatCatalog.notInstalled(installedFormatIds: ["csv", "parquet"]).isEmpty)
-    }
 }

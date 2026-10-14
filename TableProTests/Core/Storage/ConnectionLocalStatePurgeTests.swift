@@ -9,8 +9,7 @@ import TableProPluginKit
 import TableProSyncTransport
 import Testing
 
-/// The stores a deleted connection leaves behind that can only be reached with `await`, and the
-/// drift guard over the three sites that delete one.
+/// The stores a deleted connection leaves behind that can only be reached with `await`.
 struct ConnectionLocalStatePurgeTests {
     private func makeHistory() -> (QueryHistoryManager, QueryHistoryStorage) {
         let storage = QueryHistoryStorage(
@@ -256,70 +255,5 @@ struct ConnectionLocalStatePurgeTests {
         #expect(
             defaults.string(forKey: RowInspectorState.viewModeKey(kept)) == InspectorViewMode.json.rawValue
         )
-    }
-
-    /// `ConnectionLocalState` exists because this list used to be written out at each delete site,
-    /// and they drifted: the query history clear reached the two local sites and never the remote
-    /// one. Anything reaching these stores itself is that drift starting again.
-    ///
-    /// Scans the whole app rather than the two files that regressed, because a delete site added in
-    /// a third one is exactly what a two-file list would miss. Comments are stripped first: this
-    /// codebase explains its routing decisions in `///` blocks, and a block naming the store it
-    /// deliberately does not call would otherwise fail the suite with no defect present. A file
-    /// that declares the method is exempt, so a type forwarding to its own storage is not a site.
-    @Test("Only ConnectionLocalState clears a deleted connection's async stores")
-    func onlyConnectionLocalStateClearsAsyncStores() throws {
-        let root = try Self.repoRoot().appendingPathComponent("TablePro", isDirectory: true)
-        let calls = [
-            "removeFavoritesAndFolders(for:",
-            "removeFavoritesAndFoldersWithoutSync(for:",
-            "deleteEverything(forConnection:",
-        ]
-
-        var offenders: [String] = []
-        for url in try Self.swiftSources(under: root)
-        where url.lastPathComponent != "ConnectionLocalState.swift" {
-            let code = Self.strippingComments(try String(contentsOf: url, encoding: .utf8))
-            for call in calls where code.contains(call) {
-                let name = call.prefix { $0 != "(" }
-                guard !code.contains("func \(name)(") else { continue }
-                offenders.append("\(url.lastPathComponent) calls \(call)")
-            }
-        }
-
-        #expect(
-            offenders.isEmpty,
-            "A deleted connection's async stores are cleared through ConnectionLocalState.purge: \(offenders.sorted())"
-        )
-    }
-
-    private static func swiftSources(under directory: URL) throws -> [URL] {
-        guard let walker = FileManager.default.enumerator(
-            at: directory, includingPropertiesForKeys: nil
-        ) else { return [] }
-        return walker.compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" }
-    }
-
-    /// Line comments only. A `/* */` block holding one of these names would slip through, which is
-    /// a trade for not hand-rolling a Swift lexer in a guard test.
-    private static func strippingComments(_ text: String) -> String {
-        text
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { line -> Substring in
-                guard let marker = line.range(of: "//") else { return line }
-                return line[line.startIndex..<marker.lowerBound]
-            }
-            .joined(separator: "\n")
-    }
-
-    private static func repoRoot() throws -> URL {
-        var url = URL(fileURLWithPath: #filePath)
-        while url.pathComponents.count > 1 {
-            url.deleteLastPathComponent()
-            if FileManager.default.fileExists(atPath: url.appendingPathComponent("project.yml").path) {
-                return url
-            }
-        }
-        throw CocoaError(.fileNoSuchFile)
     }
 }

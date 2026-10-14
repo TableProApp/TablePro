@@ -2,10 +2,6 @@
 //  ThemeSlotCoverageTests.swift
 //  TableProTests
 //
-//  A slot exists only because a call site reads it. Whole colour groups once shipped declared,
-//  editable and read by nothing, and the substring check that replaced them passed for
-//  `.editorText` through `self.editorText` and for `.gridSelection` through `.gridSelectionText`.
-//
 
 import AppKit
 import Foundation
@@ -13,58 +9,6 @@ import Foundation
 import Testing
 
 struct ThemeSlotCoverageTests {
-    /// The bridge that builds the editor theme is the one file under `TablePro/Theme/` that reads
-    /// slots rather than declaring them; the editor slots have no other reader.
-    private static let readerInsideThemeDirectory = "TablePro/Theme/ThemeEngine+EditorTheme.swift"
-
-    private static func isReader(_ path: String) -> Bool {
-        !path.hasPrefix("TablePro/Theme/") || path == readerInsideThemeDirectory
-    }
-
-    private static func referencedSlots(in lines: [ThemeSourceScan.Line]) throws -> Set<String> {
-        let expression = try NSRegularExpression(pattern: ThemeSourceScan.slotTokenPattern())
-        var found: Set<String> = []
-        for line in lines {
-            let range = NSRange(line.text.startIndex..., in: line.text)
-            for match in expression.matches(in: line.text, range: range) {
-                guard let name = Range(match.range(at: 1), in: line.text) else { continue }
-                found.insert(String(line.text[name]))
-            }
-        }
-        return found
-    }
-
-    @Test("Every slot is read as a whole token outside the theme definitions")
-    func everySlotHasAReader() throws {
-        let slotRule = try ThemeSourceScan.Rule("theme slot", ThemeSourceScan.slotTokenPattern())
-        let tree = try ThemeSourceScan.scan(
-            ["TablePro", "Packages"],
-            skipping: ["Tests"],
-            rules: [slotRule],
-            including: Self.isReader
-        )
-        let referenced = try Self.referencedSlots(in: tree.lines)
-
-        #expect(tree.fileCount > 500, "Scanned only \(tree.fileCount) files; the tree did not resolve")
-        for slot in ThemeSlot.allCases {
-            #expect(referenced.contains(String(describing: slot)), "Nothing outside TablePro/Theme/ reads .\(slot)")
-        }
-    }
-
-    @Test("The token match ignores properties, longer names and comments")
-    func tokenMatchIsExact() throws {
-        let sample = """
-        let request = self.editorText
-        let fill = palette[.gridSelectionText]
-        // resolved[.gridDeleted] was removed
-        let text = resolved[.syntaxKeyword]
-        let typed = ThemeSlot.gridLine
-        """
-        let referenced = try Self.referencedSlots(in: ThemeSourceScan.codeLines(of: sample, path: "Sample.swift"))
-
-        #expect(referenced == ["gridSelectionText", "syntaxKeyword", "gridLine"])
-    }
-
     @Test("Slot paths are unique and sit under their group's key")
     func slotPathsAreWellFormed() {
         let paths = ThemeSlot.allCases.map(\.rawValue)
@@ -104,17 +48,16 @@ struct ThemeSlotCoverageTests {
 
     // MARK: - Bundled themes
 
-    /// The files on disk are the list, so a third bundled theme is decoded here the day it lands.
-    private static func bundledThemeFiles() throws -> [URL] {
-        let directory = try ThemeSourceScan.repositoryRoot().appendingPathComponent("TablePro/Resources/Themes")
-        return try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "json" }
+    /// The bundle is the list, so a third bundled theme is decoded here the day it ships.
+    private static func bundledThemeFiles() -> [URL] {
+        (Bundle.main.urls(forResourcesWithExtension: "json", subdirectory: nil) ?? [])
+            .filter { $0.lastPathComponent.hasPrefix(ThemeDefinition.builtInPrefix) }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
     @Test("Every bundled theme decodes, and its id is its file name")
     func bundledThemesDecode() throws {
-        let files = try Self.bundledThemeFiles()
+        let files = Self.bundledThemeFiles()
         var ids: Set<String> = []
 
         for file in files {

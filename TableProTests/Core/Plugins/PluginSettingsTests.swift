@@ -218,25 +218,11 @@ struct SettablePluginSnapshotTests {
 
 struct PluginCapabilityTests {
 
-    @Test("only has 3 cases: databaseDriver, exportFormat, importFormat")
-    func onlyThreeCases() {
-        let allCases: [PluginCapability] = [.databaseDriver, .exportFormat, .importFormat]
-        #expect(allCases.count == 3)
-    }
-
     @Test("raw values are stable integers")
     func rawValuesStable() {
         #expect(PluginCapability.databaseDriver.rawValue == 0)
         #expect(PluginCapability.exportFormat.rawValue == 1)
         #expect(PluginCapability.importFormat.rawValue == 2)
-    }
-
-    @Test("Codable round-trip preserves value")
-    func codableRoundTrip() throws {
-        let original = PluginCapability.exportFormat
-        let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(PluginCapability.self, from: data)
-        #expect(decoded == original)
     }
 
     /// `PluginCapability` is a growing set, so a raw value that means nothing today can mean
@@ -247,15 +233,5 @@ struct PluginCapabilityTests {
     func decodingUnknownRawValueFails() {
         let decoded = try? JSONDecoder().decode(PluginCapability.self, from: Data("9999".utf8))
         #expect(decoded == nil)
-    }
-
-    @Test("every declared capability round-trips")
-    func declaredCapabilitiesRoundTrip() {
-        for capability in [
-            PluginCapability.databaseDriver, .exportFormat, .importFormat, .documentInspector,
-        ] {
-            let data = try? JSONEncoder().encode(capability)
-            #expect(data.flatMap { try? JSONDecoder().decode(PluginCapability.self, from: $0) } == capability)
-        }
     }
 }

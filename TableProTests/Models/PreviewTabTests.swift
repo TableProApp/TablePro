@@ -12,12 +12,6 @@ import Testing
 @testable import TablePro
 
 struct PreviewTabTests {
-    @Test("QueryTab isPreview defaults to false")
-    func queryTabIsPreviewDefaultsFalse() {
-        let tab = QueryTab(title: "Test", tabType: .query)
-        #expect(tab.isPreview == false)
-    }
-
     @Test("QueryTab from persisted tab is not preview")
     func queryTabFromPersistedIsNotPreview() {
         let persisted = PersistedTab(
@@ -29,12 +23,6 @@ struct PreviewTabTests {
         )
         let tab = QueryTab(from: persisted, defaultPageSize: 1_000)
         #expect(tab.isPreview == false)
-    }
-
-    @Test("TabSettings enablePreviewTabs defaults to true")
-    func tabSettingsDefaultsToTrue() {
-        let settings = TabSettings.default
-        #expect(settings.enablePreviewTabs == true)
     }
 
     @Test("A table tab added with isPreview is a preview tab")

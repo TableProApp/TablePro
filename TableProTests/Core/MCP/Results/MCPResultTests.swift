@@ -118,14 +118,6 @@ struct MCPResultTests {
         #expect(MCPResult.empty.meta.isEmpty)
     }
 
-    @Test("A result defaults to complete with no cache hint")
-    func defaultsAreComplete() {
-        let result = MCPResult()
-        #expect(result.kind == .complete)
-        #expect(result.cacheHint == nil)
-        #expect(result.meta.isEmpty)
-    }
-
     @Test("Result metadata reports emptiness from its own fields")
     func resultMetaEmptiness() {
         #expect(MCPResultMeta().isEmpty)

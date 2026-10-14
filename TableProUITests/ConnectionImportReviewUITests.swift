@@ -2,7 +2,7 @@ import AppKit
 import XCTest
 
 final class ConnectionImportReviewUITests: UITestCase {
-    private static let fixture = """
+    private static let share = """
     {
       "formatVersion": 2,
       "exportedAt": "2026-10-10T09:00:00Z",
@@ -25,13 +25,18 @@ final class ConnectionImportReviewUITests: UITestCase {
     }
     """
 
-    func testSavedQueriesFollowTheirConnection() throws {
-        let (_, sheet) = try openReview()
+    func testImportReportsConnectionsAndSavedQueries() throws {
+        let app = try launchWithConnectionShare(named: "Review Orders.tablepro", contents: Data(Self.share.utf8))
+        let welcome = welcomeWindow(in: app)
+        XCTAssertTrue(welcome.waitToExist(timeout: 15), "Opening a connection file must show the welcome window")
+        let sheet = welcome.sheets.firstMatch
+        XCTAssertTrue(sheet.waitToExist(timeout: 15), "Opening a connection file must show the import review")
 
         let header = sheet.checkBoxes["import-review-queries-toggle"]
         XCTAssertTrue(header.waitToExist(timeout: 10), "The review must list the file's saved queries")
         XCTAssertTrue(isOn(header), "Both saved queries start checked")
 
+        let first = sheet.checkBoxes["import-query-q1"]
         let second = sheet.checkBoxes["import-query-q2"]
         XCTAssertTrue(waitUntilHittable(second, timeout: 5))
         second.click()
@@ -43,7 +48,6 @@ final class ConnectionImportReviewUITests: UITestCase {
         let connection = sheet.checkBoxes["import-connection-c1"]
         XCTAssertTrue(waitUntilHittable(connection, timeout: 5))
         connection.click()
-        let first = sheet.checkBoxes["import-query-q1"]
         XCTAssertTrue(
             waitForPredicate(timeout: 5) { !first.isEnabled && !second.isEnabled },
             "Unchecking the connection must disable the saved queries that belong to it"
@@ -52,31 +56,33 @@ final class ConnectionImportReviewUITests: UITestCase {
             sheet.staticTexts.matching(Self.text("Its connection is not imported.")).firstMatch.exists,
             "A disabled query must say why"
         )
-    }
 
-    func testImportReportsConnectionsAndSavedQueries() throws {
-        let (app, sheet) = try openReview()
+        connection.click()
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { first.isEnabled && second.isEnabled },
+            "Checking the connection again must give its saved queries back"
+        )
+        XCTAssertTrue(isOn(first), "The query left checked stays checked")
+        XCTAssertFalse(isOn(second), "The query unchecked by hand stays unchecked")
 
         let importButton = sheet.buttons["import-review-import"]
         XCTAssertTrue(waitUntilHittable(importButton, timeout: 10))
         importButton.click()
 
         let message = app.staticTexts
-            .matching(Self.text("1 connection was imported. 2 saved queries were added."))
+            .matching(Self.text("1 connection was imported. 1 saved query was added."))
             .firstMatch
-        XCTAssertTrue(message.waitToExist(timeout: 15), "The result alert must count the connection and both queries")
-    }
-
-    private func openReview() throws -> (XCUIApplication, XCUIElement) {
-        let app = try launchWithConnectionShare(
-            named: "Review Orders.tablepro",
-            contents: Data(Self.fixture.utf8)
+        XCTAssertTrue(
+            message.waitToExist(timeout: 15),
+            "The result must count the connection and only the query still checked"
         )
-        let welcome = app.windows["welcome"]
-        XCTAssertTrue(welcome.waitToExist(timeout: 15), "Opening a connection file must show the welcome window")
-        let sheet = welcome.sheets.firstMatch
-        XCTAssertTrue(sheet.waitToExist(timeout: 15), "Opening a connection file must show the import review")
-        return (app, sheet)
+        app.buttons["OK"].firstMatch.click()
+
+        let list = welcomeConnectionList(in: welcome)
+        XCTAssertTrue(
+            welcomeConnectionRow(named: "Review Orders", in: list).waitToExist(timeout: 10),
+            "The imported connection must be listed"
+        )
     }
 
     // XCUITest reports a mixed checkbox as NSControl.StateValue.mixed (-1), not the AXValue of 2.

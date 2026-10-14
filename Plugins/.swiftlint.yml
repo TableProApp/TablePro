@@ -1,0 +1,18 @@
+# Plugins/TableProPluginKit has its own config: it is part of TableProCore and is linted in full.
+only_rules:
+  - public_error_text_in_log
+  - dispatch_handler_isolation
+  - fsevents_callback_isolation
+  - date_formatter_locale
+  - count_before_inflected_span
+  - empty_title_control_name
+  - column_classification_declared_type
+  - ping_never_reconnects
+  - ping_never_heals_through_execute
+  - index_ddl_single_owner
+  - vendored_sqlite_import
+  - pg_hand_built_literal
+  - pg_session_schema_lookup
+  - pg_session_escape_helper
+  - plugin_logger_import
+  - suite_without_trait

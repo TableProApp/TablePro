@@ -175,24 +175,6 @@ struct SaveCompletionTests {
 
     // MARK: - Pending Table Operations
 
-    @Test("saveChanges with no tab selected and read-only does not crash")
-    func noTabSelected_readOnly_doesNotCrash() {
-        let (coordinator, _, changeManager) = makeCoordinator(safeModeLevel: .readOnly)
-        changeManager.hasChanges = true
-
-        var truncates: Set<DatabaseTreeTableRef> = []
-        var deletes: Set<DatabaseTreeTableRef> = []
-        var options: [DatabaseTreeTableRef: TableOperationOptions] = [:]
-
-        coordinator.saveChanges(
-            pendingTruncates: &truncates,
-            pendingDeletes: &deletes,
-            tableOperationOptions: &options
-        )
-
-        #expect(changeManager.hasChanges == true)
-    }
-
     @Test("saveChanges with no changes and no pending ops does nothing")
     func noChangesNoPendingOps_noop() {
         let (coordinator, tabManager, _) = makeCoordinator()

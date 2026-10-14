@@ -34,7 +34,7 @@ struct NativeDefaultsTests {
     }
 
     private static func bundledTheme(_ id: String) throws -> ThemeDefinition {
-        let url = try ThemeSourceScan.repositoryRoot().appendingPathComponent("TablePro/Resources/Themes/\(id).json")
+        let url = try #require(Bundle.main.url(forResource: id, withExtension: "json"))
         return try ThemeDocument(data: try Data(contentsOf: url)).definition()
     }
 

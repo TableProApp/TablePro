@@ -1,0 +1,16 @@
+only_rules:
+  - ui_test_base_class
+  - ui_menu_query_scope
+
+custom_rules:
+  ui_test_base_class:
+    name: "UI Test Base Class"
+    excluded: '.*/Support/UITestCase\.swift$'
+    regex: '\bXCUIApplication\(\)|:\s*XCTestCase\b'
+    message: "Subclass UITestCase and launch through launchApp(), so every run gets a sandbox."
+    severity: error
+  ui_menu_query_scope:
+    name: "Menu Query Scope"
+    regex: '(?-s)\bmenuBars\.menuItems\[[^\n]*"(?:Server Dashboard|Users & Roles|Query Insights|ER Diagram|Create Table|Source|SQL Query)"'
+    message: "A window can carry this title too. Resolve the item under its menu: app.menuBars.menuBarItems[\"Database\"].menuItems[...]."
+    severity: error

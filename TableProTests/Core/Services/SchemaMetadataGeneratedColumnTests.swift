@@ -46,13 +46,6 @@ struct SchemaMetadataGeneratedColumnTests {
         #expect(QueryExecutor.parseSchemaMetadata(schema).generatedColumns.isEmpty)
     }
 
-    @Test("ColumnInfo defaults to not generated")
-    func columnInfoDefaultsToNotGenerated() {
-        let column = ColumnInfo(name: "id", dataType: "INT", isNullable: false, isPrimaryKey: true)
-        #expect(!column.isGenerated)
-        #expect(column.identityKind == nil)
-    }
-
     /// PostgreSQL reports an identity column with a null `column_default`, so the kind is the only
     /// thing that says the server fills the column in.
     @Test("Both identity kinds are carried into the parsed metadata")

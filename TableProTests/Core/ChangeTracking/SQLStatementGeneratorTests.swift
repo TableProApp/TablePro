@@ -1020,31 +1020,6 @@ struct SQLStatementGeneratorTests {
         #expect(!stmt.sql.contains("?"))
     }
 
-    @Test("Redshift uses $1, $2, $3 sequentially for insert")
-    func testRedshiftSequentialPlaceholders() throws {
-        let generator = try makeGenerator(databaseType: .redshift)
-        let insertedRowData: [RowID: [PluginCellValue]] = [
-            .existing(0): ["1", "John", "john@example.com"]
-        ]
-        let changes: [RowChange] = [
-            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil)
-        ]
-
-        let statements = generator.generateStatements(
-            from: changes,
-            insertedRowData: insertedRowData,
-            deletedRowIDs: [],
-            insertedRowIDs: [.existing(0)]
-        )
-
-        #expect(statements.count == 1)
-        let stmt = statements[0]
-        #expect(stmt.sql.contains("$1"))
-        #expect(stmt.sql.contains("$2"))
-        #expect(stmt.sql.contains("$3"))
-        #expect(!stmt.sql.contains("?"))
-    }
-
     @Test("Redshift parameter order matches placeholder order")
     func testRedshiftParameterOrder() throws {
         let generator = try makeGenerator(databaseType: .redshift)

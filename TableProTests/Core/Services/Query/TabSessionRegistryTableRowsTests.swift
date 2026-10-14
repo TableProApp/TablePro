@@ -95,12 +95,6 @@ struct TabSessionRegistryTableRowsTests {
         #expect(evicted?.columns == ["c"])
     }
 
-    @Test("evict(for:) is no-op for unknown tab")
-    func evictUnknownTabIsNoOp() {
-        let store = TabSessionRegistry()
-        store.evict(for: UUID())
-    }
-
     @Test("setTableRows clears evicted flag")
     func setClearsEvicted() {
         let store = TabSessionRegistry()

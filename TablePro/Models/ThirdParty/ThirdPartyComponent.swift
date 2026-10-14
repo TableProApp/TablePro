@@ -12,7 +12,7 @@ struct ThirdPartyComponent: Codable, Identifiable, Hashable {
     /// Where the shipped version is pinned, so a bump cannot pass unnoticed.
     ///
     /// `shellVariable` and `swiftPackage` are checked against the real pin by
-    /// `ThirdPartyLicenseInventoryTests`. `manual` opts out, and is only correct for a
+    /// `scripts/ci/check-license-inventory.py`. `manual` opts out, and is only correct for a
     /// component whose version is recorded nowhere a machine can read.
     enum VersionSource: Hashable {
         case shellVariable(String)

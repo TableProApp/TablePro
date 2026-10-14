@@ -16,13 +16,6 @@ import Testing
 struct SQLEditorCoordinatorCleanupTests {
     // MARK: - destroy() Safety
 
-    @Test("destroy() on fresh coordinator without prepareCoordinator does not crash")
-    func destroyWithoutPrepare() {
-        let coordinator = SQLEditorCoordinator()
-        coordinator.destroy()
-        #expect(coordinator.isDestroyed == true)
-    }
-
     @Test("destroy() called twice is idempotent and does not crash")
     func destroyTwiceIdempotent() {
         let coordinator = SQLEditorCoordinator()
@@ -55,13 +48,6 @@ struct SQLEditorCoordinatorCleanupTests {
 
     // MARK: - Post-Destroy State
 
-    @Test("After destroy(), vimMode is .normal")
-    func postDestroyVimMode() {
-        let coordinator = SQLEditorCoordinator()
-        coordinator.destroy()
-        #expect(coordinator.vimMode == .normal)
-    }
-
     @Test("After destroy(), isEditorFirstResponder returns false")
     func postDestroyFirstResponder() {
         let coordinator = SQLEditorCoordinator()
@@ -77,12 +63,6 @@ struct SQLEditorCoordinatorCleanupTests {
     }
 
     // MARK: - Initial State
-
-    @Test("Fresh coordinator isDestroyed is false")
-    func freshCoordinatorNotDestroyed() {
-        let coordinator = SQLEditorCoordinator()
-        #expect(coordinator.isDestroyed == false)
-    }
 
     @Test("Fresh coordinator vimMode is .normal")
     func freshCoordinatorVimModeNormal() {

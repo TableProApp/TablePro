@@ -15,14 +15,6 @@ struct PluginTableInfoTests {
         #expect(info.comment == "Account records")
     }
 
-    @Test("comment round-trips through JSON encoding")
-    func commentRoundTrip() throws {
-        let original = PluginTableInfo(name: "orders", type: "TABLE", comment: "Customer orders")
-        let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(PluginTableInfo.self, from: data)
-        #expect(decoded.comment == "Customer orders")
-    }
-
     @Test("decoding a payload without comment keeps it nil for forward compatibility")
     func legacyPayloadDecodesToNilComment() throws {
         let legacyJson = """

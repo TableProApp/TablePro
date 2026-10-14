@@ -208,7 +208,7 @@ struct ThemeCatalogTests {
     func bundledThemesLoad() throws {
         let sandbox = try Sandbox()
         defer { sandbox.remove() }
-        let bundle = try ThemeSourceScan.repositoryRoot().appendingPathComponent("TablePro/Resources/Themes")
+        let bundle = try #require(Bundle.main.resourceURL)
 
         let catalog = ThemeCatalog(userDirectory: sandbox.themes, bundleDirectory: bundle)
         let ids = catalog.themes.map(\.id)

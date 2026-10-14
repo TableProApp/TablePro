@@ -1,78 +1,43 @@
-//
-//  InspectorEditReachesGridUITests.swift
-//  TableProUITests
-//
-//  The row inspector recorded an edit and stopped there, so the grid went on drawing the value the
-//  row no longer had and the inspector dropped the typed text the next time a row was selected
-//  (#2851). This types into the pane and reads the cell back out of the grid.
-//
-
 import XCTest
 
+// #2851: an inspector edit stopped at the inspector, so the grid kept drawing the old value. #3051: the
+// JSON field put the previous value back after every keystroke and pushed it into the store again.
 final class InspectorEditReachesGridUITests: UITestCase {
-    func testTypingInAnInspectorFieldReachesTheGridCell() throws {
-        let app = try launchWithSampleDatabase()
-        let window = try mainWindow(of: app)
-        let grid = try openFirstTableRow(in: app, window: window)
+    func testInspectorEditsReachTheGrid() throws {
+        let (launch, grid) = try launchWithFixtureTable("document")
+        let window = launch.window
+        let app = launch.app
 
-        let field = window.textFields.firstMatch
-        XCTAssertTrue(field.waitToExist(timeout: 30), "The inspector must be showing an editable field")
-        field.click()
+        grid.clickCell(row: 1, column: 2)
+        app.typeShortcut(.toggleInspector)
 
-        let marker = "Zq7"
-        app.typeText(marker)
-
-        let cell = grid
-            .descendants(matching: .any)
-            .matching(NSPredicate(format: "value CONTAINS %@", marker))
-            .firstMatch
+        let labelField = window.textFields.matching(NSPredicate(format: "value == %@", "First")).firstMatch
+        XCTAssertTrue(waitUntilHittable(labelField, timeout: 30), "The inspector must show row 1's label field")
+        labelField.click()
+        app.typeText("Zq7")
         XCTAssertTrue(
-            cell.waitToExist(timeout: 30),
-            """
-            A field edited in the inspector belongs to the same row the grid is drawing, so the \
-            cell has to carry it without a save. The grid published no cell holding "\(marker)".
-            """
-        )
-    }
-
-    // MARK: - Helpers
-
-    /// A row is as wide as the grid and a column is published as its sibling, so XCUITest reads
-    /// every row and cell as obscured and refuses to click either. A point offset from the grid is
-    /// the way in, clear of the object browser that overlaps the grid on the 1024x768 runner and
-    /// below the 42pt header.
-    private func openFirstTableRow(in app: XCUIApplication, window: XCUIElement) throws -> XCUIElement {
-        let grid = window.tables.matching(identifier: "data-grid").firstMatch
-        XCTAssertTrue(grid.waitToExist(timeout: 30), "The sample table must produce a grid")
-        XCTAssertTrue(
-            waitForClickableRows(in: grid),
-            "The sample table must have its rows in before one of them can be clicked"
+            waitForPredicate(timeout: 30) { grid.value(row: 1, column: 2)?.contains("Zq7") == true },
+            "A field edited in the inspector must reach the grid cell without a save, the cell holds "
+                + "'\(grid.value(row: 1, column: 2) ?? "nil")'"
         )
 
-        gridPoint(in: grid, of: window, dy: 70).click()
-        showInspector(in: app)
-        return grid
-    }
+        let jsonField = window.textViews.matching(identifier: "inspector-json-field").firstMatch
+        XCTAssertTrue(jsonField.waitToExist(timeout: 20), "payload holds a JSON object, so it must open the JSON editor")
+        XCTAssertTrue(
+            (jsonField.value as? String)?.contains("\"seats\"") == true,
+            "The JSON editor must hold row 1's payload"
+        )
+        jsonField.click()
+        app.typeText("ZZTOP")
 
-    private func mainWindow(of app: XCUIApplication) throws -> XCUIElement {
-        let window = app.windows.matching(NSPredicate(format: "identifier != %@", "welcome")).firstMatch
-        XCTAssertTrue(window.waitToExist(timeout: 60), "The sample database produced no window")
-        return window
-    }
-
-    /// The inspector remembers whether it was open, so the starting state is whatever the previous
-    /// launch left. The View menu item reads Hide Inspector once it is showing, which is the only
-    /// handle on that state.
-    private func showInspector(in app: XCUIApplication) {
-        let menuBar = app.menuBars.firstMatch
-        XCTAssertTrue(menuBar.waitToExist(timeout: 10))
-        menuBar.menuBarItems["View"].click()
-
-        let show = menuBar.menuItems["Show Inspector"]
-        if show.waitToExist(timeout: 5) {
-            show.click()
-            return
-        }
-        app.typeKey(.escape, modifierFlags: [])
+        // The grid holding the text means the edit made the round trip through the store that used to undo it.
+        XCTAssertTrue(
+            waitForPredicate(timeout: 30) { grid.value(row: 1, column: 3)?.contains("ZZTOP") == true },
+            "Text typed in the JSON field must reach the grid cell"
+        )
+        XCTAssertTrue(
+            (jsonField.value as? String)?.contains("ZZTOP") == true,
+            "The JSON field must keep what was typed, it holds '\(jsonField.value as? String ?? "nil")'"
+        )
     }
 }

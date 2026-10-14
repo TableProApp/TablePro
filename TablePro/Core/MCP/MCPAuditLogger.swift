@@ -257,8 +257,8 @@ enum MCPAuditLogger {
     ) {
         let digest = SHA256.hash(data: payload).compactMap { String(format: "%02x", $0) }.joined()
         /// Named for what it digests. In this surface a fingerprint means a pairing token's, which
-        /// no log line may carry, and `MCPAuditLogStorageTests` reads that vocabulary rather than
-        /// the value.
+        /// no log line may carry, and the `mcp_log_token_material` SwiftLint rule reads that
+        /// vocabulary rather than the value.
         let payloadDigest = String(digest.prefix(16))
         serverTool.info(
             """

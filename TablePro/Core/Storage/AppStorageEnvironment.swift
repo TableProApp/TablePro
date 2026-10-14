@@ -7,34 +7,17 @@ import Foundation
 import os
 import TableProPluginKit
 
-/// The three roots every persistent store resolves through: the Application Support directory, the
-/// defaults domain, and the keychain. Production resolves them to the user's own locations. A UI
-/// test names a throwaway directory in `TABLEPRO_UI_TEST_SANDBOX` and gets all three inside it, so
-/// driving the app from a test can never read or write the data of the person running it.
-///
-/// The app cannot detect on its own that it is running under XCUITest. Measured on macOS 27, the
-/// app under test receives no `XCTestConfigurationFilePath`, no `XCTestSessionIdentifier` and no
-/// XCTest `DYLD_INSERT_LIBRARIES`; the only test-related variable present is the one the test
-/// itself sets. Every other marker (`XCODE_SCHEME_NAME`, `NSUnbufferedIO`) is also present on an
-/// ordinary Run from Xcode, so none of them can gate this. The guard is therefore two layers: at
-/// runtime `TABLEPRO_UI_TESTING` without a sandbox beside it is fatal, which covers every test that
-/// opts in; and at build time `UITestCase` is the only way a UI test may construct an application,
-/// which covers a new test that opts into neither.
+/// Every store, the defaults suite and the keychain resolve inside `TABLEPRO_UI_TEST_SANDBOX` when it is set.
+/// The app cannot detect XCUITest (no XCTest variable reaches it), so `TABLEPRO_UI_TESTING` without a sandbox is fatal.
 internal final class AppStorageEnvironment: @unchecked Sendable {
     internal static let shared = AppStorageEnvironment.resolve()
 
-    /// The Application Support root. Every store already appends its own `TablePro/...` subpath to
-    /// this, so redirecting the root alone moves all of them and leaves each site's own layout
-    /// untouched.
+    /// Every store appends its own `TablePro/...` subpath, so moving the root moves all of them.
     internal let applicationSupportRoot: URL
     internal let defaults: UserDefaults
     internal let keychain: any KeychainStoring
     internal let isIsolated: Bool
     internal let isUnitTestHost: Bool
-
-    /// Named so a test can remove the domain once the app it belongs to is gone. The app cannot do
-    /// it itself: `XCUIApplication.terminate()` kills the process, so `applicationWillTerminate`
-    /// never runs under a UI test.
     internal let defaultsSuiteName: String?
 
     internal var supportDirectory: URL {
@@ -46,6 +29,7 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
     internal static let uiTestingVariable = "TABLEPRO_UI_TESTING"
     internal static let sandboxVariable = PluginHostStorage.sandboxVariable
     internal static let unitTestHostVariable = "XCTestConfigurationFilePath"
+    internal static let sandboxMarkerName = ".defaults-suite"
 
     private init(
         applicationSupportRoot: URL,
@@ -63,20 +47,15 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
         self.defaultsSuiteName = defaultsSuiteName
     }
 
-
-    /// Resolved from `main.swift` before anything else runs. A storage singleton reached from a
-    /// static initializer would otherwise have computed a production path already, and the sandbox
-    /// would apply to whatever happened to be touched after it.
+    /// Called first from `main.swift`, before a static initializer can resolve a production path.
     internal static func bootstrap() {
         _ = shared
     }
 
-    /// The choice the environment variables imply, separated from acting on it so it can be tested
-    /// without a process that has already resolved its storage.
     internal enum Decision: Equatable {
         case production
         case isolated(path: String)
-        /// A UI test opted in but named no sandbox. Launching would drive the real store.
+        /// A UI test opted in but named no sandbox; launching would drive the real store.
         case refuseToLaunch
     }
 
@@ -122,12 +101,14 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
         )
     }
 
-    /// A failure to prepare the sandbox is fatal rather than a fallback to production. Falling back
-    /// is what turns a broken test setup into a polluted store, which is the whole failure this
-    /// type exists to prevent.
+    /// Fatal rather than a fallback, which would turn a broken test setup into a polluted real store.
     private static func isolated(at root: URL, isUnitTestHost: Bool) -> AppStorageEnvironment {
         let supportDirectory = root.appendingPathComponent("TablePro", isDirectory: true)
         do {
+            // The Unit plan reuses one sandbox path per checkout, so every host launch starts empty.
+            if isUnitTestHost, FileManager.default.fileExists(atPath: supportDirectory.path) {
+                try FileManager.default.removeItem(at: supportDirectory)
+            }
             try FileManager.default.createDirectory(at: supportDirectory, withIntermediateDirectories: true)
         } catch {
             logger.fault(
@@ -144,6 +125,7 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
             logger.fault("Refusing to launch: could not open the defaults suite \(suiteName, privacy: .public)")
             exit(EXIT_FAILURE)
         }
+        emptyDefaultsIfNewSandbox(defaults, suiteName: suiteName, supportDirectory: supportDirectory)
 
         logger.notice("Storage sandboxed at \(supportDirectory.path, privacy: .private(mask: .hash))")
         return AppStorageEnvironment(
@@ -156,8 +138,18 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
         )
     }
 
-    /// The one place in the app allowed to ask the file system for this. Every other store goes
-    /// through `applicationSupportRoot`, and a SwiftLint rule keeps it that way.
+    /// cfprefsd keeps a suite after its sandbox directory is deleted, so a directory without the
+    /// marker is a new sandbox and gets an empty suite; a relaunch into the same directory keeps it.
+    internal static func emptyDefaultsIfNewSandbox(_ defaults: UserDefaults, suiteName: String, supportDirectory: URL) {
+        let marker = supportDirectory.appendingPathComponent(sandboxMarkerName, isDirectory: false)
+        guard !FileManager.default.fileExists(atPath: marker.path) else { return }
+        defaults.removePersistentDomain(forName: suiteName)
+        if !FileManager.default.createFile(atPath: marker.path, contents: Data()) {
+            logger.error("Could not mark the sandbox, so the next launch empties its defaults again")
+        }
+    }
+
+    /// The only direct lookup; a SwiftLint rule sends every other store through `applicationSupportRoot`.
     private static func productionRoot() -> URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory

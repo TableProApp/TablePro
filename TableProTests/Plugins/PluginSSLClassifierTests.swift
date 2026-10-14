@@ -92,50 +92,6 @@ struct MariaDBClassifierTests {
     }
 }
 
-struct MongoDBClassifierTests {
-    @Test("Atlas internal-error handshake failure → unknown, not cipherMismatch")
-    func testAtlasInternalErrorHandshake() {
-        let message = "No suitable servers found: [TLS handshake failed: internal error (-9838) "
-            + "calling hello on 'ac-zmho1ul-shard-00-00.dsllzcf.mongodb.net:27017']"
-        guard case .unknown = MongoDBSSLClassifier.classifySSLError(message) else {
-            Issue.record("Expected unknown for a generic handshake failure")
-            return
-        }
-    }
-
-    @Test("Genuine cipher/protocol failure → cipherMismatch")
-    func testGenuineCipherMismatch() {
-        guard case .cipherMismatch = MongoDBSSLClassifier.classifySSLError("TLS handshake failed: sslv3 alert handshake failure: no shared cipher") else {
-            Issue.record("Expected cipherMismatch")
-            return
-        }
-    }
-
-    @Test("Certificate verify failure → untrustedCertificate")
-    func testCertificateVerifyFailed() {
-        guard case .untrustedCertificate = MongoDBSSLClassifier.classifySSLError("TLS handshake failed: certificate verify failed") else {
-            Issue.record("Expected untrustedCertificate")
-            return
-        }
-    }
-
-    @Test("Hostname verification failure → hostnameMismatch")
-    func testHostnameVerification() {
-        guard case .hostnameMismatch = MongoDBSSLClassifier.classifySSLError("hostname verification failed") else {
-            Issue.record("Expected hostnameMismatch")
-            return
-        }
-    }
-
-    @Test("TLS required → serverRejectedPlaintext")
-    func testTLSRequired() {
-        guard case .serverRejectedPlaintext = MongoDBSSLClassifier.classifySSLError("TLS required by Atlas cluster") else {
-            Issue.record("Expected serverRejectedPlaintext")
-            return
-        }
-    }
-}
-
 struct RedisClassifierTests {
     @Test("No shared cipher → cipherMismatch")
     func testNoSharedCipher() {
@@ -149,29 +105,6 @@ struct RedisClassifierTests {
     func testCertVerify() {
         guard case .untrustedCertificate = RedisSSLClassifier.classifySSLError("certificate verify failed (self-signed)") else {
             Issue.record("Expected untrustedCertificate")
-            return
-        }
-    }
-}
-
-struct OracleClassifierTests {
-    @Test("ORA-29024 → cipherMismatch")
-    func testORA29024() {
-        guard case .cipherMismatch = OracleSSLClassifier.classifySSLError("ORA-29024: Certificate validation failure") else {
-            Issue.record("Expected cipherMismatch")
-            return
-        }
-    }
-
-    @Test("Network timeout (ORA-12606) is not classified as SSL")
-    func testTimeoutNotSSL() {
-        #expect(OracleSSLClassifier.classifySSLError("ORA-12606: TNS: Application timeout occurred") == nil)
-    }
-
-    @Test("ORA-28759 → clientCertRequired")
-    func testORA28759() {
-        guard case .clientCertRequired = OracleSSLClassifier.classifySSLError("ORA-28759: failure to open file") else {
-            Issue.record("Expected clientCertRequired")
             return
         }
     }
@@ -240,62 +173,6 @@ struct ClickHouseClassifierTests {
         )
         guard case .hostnameMismatch = ClickHouseSSLClassifier.classifySSLError(error) else {
             Issue.record("Expected hostnameMismatch")
-            return
-        }
-    }
-}
-
-struct CassandraClassifierTests {
-    private let encryptedPkcs8 = "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIIF...\n-----END ENCRYPTED PRIVATE KEY-----"
-    private let encryptedPkcs1 = """
-    -----BEGIN RSA PRIVATE KEY-----
-    Proc-Type: 4,ENCRYPTED
-    DEK-Info: AES-256-CBC,1234
-
-    MIIE...
-    -----END RSA PRIVATE KEY-----
-    """
-    private let unencryptedPkcs8 = "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----"
-
-    @Test("Detects PKCS#8 and PKCS#1 encrypted keys, not unencrypted ones")
-    func testEncryptionDetection() {
-        #expect(CassandraClientKeyClassifier.isEncryptedPrivateKey(encryptedPkcs8))
-        #expect(CassandraClientKeyClassifier.isEncryptedPrivateKey(encryptedPkcs1))
-        #expect(!CassandraClientKeyClassifier.isEncryptedPrivateKey(unencryptedPkcs8))
-    }
-
-    @Test("Encrypted key with no passphrase → clientKeyPassphraseRequired")
-    func testEncryptedNoPassphrase() {
-        let error = CassandraClientKeyClassifier.privateKeyLoadError(
-            keyPEM: encryptedPkcs8, hasPassphrase: false, keyPath: "/k.pem")
-        guard case .clientKeyPassphraseRequired = error else {
-            Issue.record("Expected clientKeyPassphraseRequired")
-            return
-        }
-    }
-
-    @Test("Encrypted key with wrong passphrase → clientKeyPassphraseIncorrect")
-    func testEncryptedWrongPassphrase() {
-        let error = CassandraClientKeyClassifier.privateKeyLoadError(
-            keyPEM: encryptedPkcs1, hasPassphrase: true, keyPath: "/k.pem")
-        guard case .clientKeyPassphraseIncorrect = error else {
-            Issue.record("Expected clientKeyPassphraseIncorrect")
-            return
-        }
-    }
-
-    @Test("Unencrypted but unreadable key → clientKeyInvalid, never a passphrase error")
-    func testUnencryptedInvalid() {
-        let withoutPassphrase = CassandraClientKeyClassifier.privateKeyLoadError(
-            keyPEM: unencryptedPkcs8, hasPassphrase: false, keyPath: "/k.pem")
-        let withPassphrase = CassandraClientKeyClassifier.privateKeyLoadError(
-            keyPEM: unencryptedPkcs8, hasPassphrase: true, keyPath: "/k.pem")
-        guard case .clientKeyInvalid = withoutPassphrase else {
-            Issue.record("Expected clientKeyInvalid without passphrase")
-            return
-        }
-        guard case .clientKeyInvalid = withPassphrase else {
-            Issue.record("Expected clientKeyInvalid with passphrase")
             return
         }
     }

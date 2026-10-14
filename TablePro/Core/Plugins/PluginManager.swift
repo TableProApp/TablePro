@@ -181,8 +181,11 @@ final class PluginManager: ObservableObject {
         let continuation: CheckedContinuation<Void, Never>
     }
 
+    // Until `loadPlugins()` runs, no load is in flight and a wait could only time out.
+    private var hasStartedInitialLoad = false
+
     func waitForInitialLoad() async {
-        if hasFinishedInitialLoad { return }
+        guard hasStartedInitialLoad, !hasFinishedInitialLoad else { return }
         let waiterId = UUID()
         let timeoutTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(10))
@@ -311,6 +314,7 @@ final class PluginManager: ObservableObject {
     // MARK: - Loading
 
     func loadPlugins() {
+        hasStartedInitialLoad = true
         cleanStaleStagingArtifacts()
         discoverAllPlugins()
 

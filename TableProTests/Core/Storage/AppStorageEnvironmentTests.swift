@@ -1,5 +1,6 @@
 import Foundation
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 struct AppStorageEnvironmentTests {
@@ -18,8 +19,7 @@ struct AppStorageEnvironmentTests {
         #expect(decision == .isolated(path: "/tmp/somewhere"))
     }
 
-    /// The failure this whole type exists to prevent: a UI test that opts in but names no sandbox
-    /// would otherwise drive the developer's real connections, keychain and preferences.
+    /// The failure this type exists to prevent: a UI test that names no sandbox would drive the real store.
     @Test("A UI test with no sandbox refuses to launch rather than falling back")
     func refusesWhenUiTestingHasNoSandbox() {
         #expect(AppStorageEnvironment.decision(for: [uiTesting: "1"]) == .refuseToLaunch)
@@ -46,35 +46,45 @@ struct AppStorageEnvironmentTests {
         #expect(AppStorageEnvironment.decision(for: [sandbox: "  /tmp/y  "]) == .isolated(path: "/tmp/y"))
     }
 
-    /// The runtime guard only fires for a test that sets the opt-in flag. A test that sets neither
-    /// variable is caught here instead: `UITestCase` is the only supported way to launch the app,
-    /// and it always names a sandbox.
-    @Test("Every UI test launches through UITestCase")
-    func everyUiTestGoesThroughTheBaseClass() throws {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let suiteDirectory = root.appendingPathComponent("TableProUITests")
-        /// Walked rather than listed. XcodeGen globs the target recursively, so a suite added under
-        /// TableProUITests/Editor/ would compile and run while a top-level listing never saw it.
-        let enumerator = FileManager.default.enumerator(atPath: suiteDirectory.path)
-        let baseClass = "Support/UITestCase.swift"
-        let paths = (enumerator?.allObjects as? [String] ?? [])
-            .filter { $0.hasSuffix(".swift") && $0 != baseClass }
-        #expect(!paths.isEmpty, "The UI test directory should not be empty at \(suiteDirectory.path)")
+    // Fails when TestPlans/Unit.xctestplan stops handing the host its sandbox variable.
+    @Test("The unit test host runs inside the sandbox the Unit plan names")
+    func unitTestHostIsSandboxed() {
+        let environment = AppStorageEnvironment.shared
+        #expect(environment.isIsolated)
+        #expect(environment.applicationSupportRoot.lastPathComponent == "UnitTestStorage")
+        #expect(
+            environment.defaultsSuiteName
+                == PluginHostStorage.suiteName(forSandboxAt: environment.applicationSupportRoot.path)
+        )
+    }
 
-        for path in paths {
-            let source = try String(contentsOf: suiteDirectory.appendingPathComponent(path), encoding: .utf8)
-            #expect(
-                !source.contains("XCUIApplication()"),
-                "\(path) constructs an application directly; use UITestCase.launchApp() so it gets a sandbox"
-            )
-            #expect(
-                !source.contains(": XCTestCase"),
-                "\(path) subclasses XCTestCase; UI tests must subclass UITestCase"
-            )
+    // The literal pins a digest that every process computes alike; `Hasher` would pass the other checks.
+    @Test("Each sandbox path gets its own suite under the uitest prefix")
+    func suiteNameFollowsTheSandboxPath() {
+        let suite = PluginHostStorage.suiteName(forSandboxAt: "/tmp/TableProSandbox")
+        #expect(suite == "com.TablePro.uitest.0b4547851efcce3e")
+        #expect(PluginHostStorage.suiteName(forSandboxAt: "/tmp/TableProSandbox/") == suite)
+        #expect(PluginHostStorage.suiteName(forSandboxAt: "/tmp/OtherSandbox") != suite)
+    }
+
+    @Test("A new sandbox directory starts with an empty suite, and a relaunch into it keeps the suite")
+    func newSandboxEmptiesTheSuite() throws {
+        let suiteName = "com.TablePro.tests.AppStorageEnvironmentTests"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AppStorageEnvironmentTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: directory)
         }
+
+        defaults.set("left by an earlier sandbox", forKey: "probe")
+        AppStorageEnvironment.emptyDefaultsIfNewSandbox(defaults, suiteName: suiteName, supportDirectory: directory)
+        #expect(defaults.string(forKey: "probe") == nil)
+
+        defaults.set("written by this sandbox", forKey: "probe")
+        AppStorageEnvironment.emptyDefaultsIfNewSandbox(defaults, suiteName: suiteName, supportDirectory: directory)
+        #expect(defaults.string(forKey: "probe") == "written by this sandbox")
     }
 }

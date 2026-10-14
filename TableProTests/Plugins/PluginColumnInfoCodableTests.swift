@@ -3,18 +3,6 @@ import TableProPluginKit
 import Testing
 
 struct PluginColumnInfoCodableTests {
-    @Test("allowedValues round-trips through JSON encoding")
-    func allowedValuesRoundTrip() throws {
-        let original = PluginColumnInfo(
-            name: "status",
-            dataType: "ENUM",
-            allowedValues: ["active", "inactive", "pending"]
-        )
-        let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(PluginColumnInfo.self, from: data)
-        #expect(decoded.allowedValues == ["active", "inactive", "pending"])
-    }
-
     @Test("nil allowedValues encodes and decodes back to nil")
     func nilAllowedValuesRoundTrip() throws {
         let original = PluginColumnInfo(name: "id", dataType: "INTEGER")

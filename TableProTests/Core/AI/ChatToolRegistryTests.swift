@@ -3,7 +3,6 @@
 //  TableProTests
 //
 
-import Foundation
 import TableProPluginKit
 @testable import TablePro
 import Testing
@@ -90,13 +89,5 @@ struct ChatToolRegistryTests {
         registry.register(StubTool(name: "alpha"))
         registry.unregister(name: "alpha")
         #expect(registry.tool(named: "alpha") == nil)
-    }
-
-    @Test("ChatToolResult is Codable for round-trip with ToolResultBlock")
-    func chatToolResultRoundTripsThroughCodable() throws {
-        let result = ChatToolResult(content: "hello", isError: true)
-        let data = try JSONEncoder().encode(result)
-        let decoded = try JSONDecoder().decode(ChatToolResult.self, from: data)
-        #expect(decoded == result)
     }
 }

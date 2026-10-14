@@ -11,18 +11,6 @@ import Testing
 @testable import TablePro
 
 struct DatabaseObjectRefCodingTests {
-    @Test("A type ref round-trips with its kind")
-    func userTypeRoundTrip() throws {
-        let ref = DatabaseObjectRef(
-            userType: UserDefinedTypeInfo(name: "mood", kind: .domain, schema: "app", identity: "16387"),
-            database: "shop"
-        )
-        let data = try JSONEncoder().encode(ref)
-        let decoded = try JSONDecoder().decode(DatabaseObjectRef.self, from: data)
-        #expect(decoded == ref)
-        #expect(decoded.typeKind == .domain)
-    }
-
     /// A tab persisted before types existed carries no `typeKind` at all.
     @Test("A routine ref written without typeKind still decodes")
     func legacyRefDecodes() throws {

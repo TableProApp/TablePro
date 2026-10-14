@@ -13,12 +13,6 @@ struct ChatGPTCodexRegistrationTests {
         #expect(AIProviderType.chatgptCodex.authStyle == .oauth)
     }
 
-    @Test("ChatGPT Codex is a known provider type")
-    func isKnownType() {
-        #expect(AIProviderType.allCases.contains(.chatgptCodex))
-        #expect(AIProviderType(rawValue: "chatgptCodex") == .chatgptCodex)
-    }
-
     @Test("Registry builds a ChatGPTCodexProvider for the descriptor")
     func descriptorMakesCodexProvider() {
         AIProviderRegistration.registerAll()

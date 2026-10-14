@@ -15,9 +15,8 @@ import Testing
 @MainActor
 struct ThemeContrastTests {
     private static func bundledThemes() throws -> [ThemeDefinition] {
-        let directory = try ThemeSourceScan.repositoryRoot().appendingPathComponent("TablePro/Resources/Themes")
-        return try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "json" }
+        try (Bundle.main.urls(forResourcesWithExtension: "json", subdirectory: nil) ?? [])
+            .filter { $0.lastPathComponent.hasPrefix(ThemeDefinition.builtInPrefix) }
             .map { try ThemeDocument(data: try Data(contentsOf: $0)).definition() }
     }
 

@@ -8,14 +8,6 @@ import TableProPluginKit
 import Testing
 
 struct HttpQueryTimeoutTests {
-    @Test("Default values match the documented bootstrap policy")
-    func defaultsMatchBootstrap() {
-        let timeout = HttpQueryTimeout()
-        #expect(timeout.serverTimeoutSeconds == HttpQueryTimeout.bootstrapSeconds)
-        #expect(timeout.graceSeconds == HttpQueryTimeout.defaultGraceSeconds)
-        #expect(timeout.requestTimeoutInterval == TimeInterval(60 + 30))
-    }
-
     @Test("Positive server timeout adds grace to request interval")
     func positiveServerTimeoutAddsGrace() {
         let timeout = HttpQueryTimeout(serverTimeoutSeconds: 600, graceSeconds: 30)

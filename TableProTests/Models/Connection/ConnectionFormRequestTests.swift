@@ -51,18 +51,4 @@ struct ConnectionFormRequestTests {
         #expect(ConnectionFormRequest.create(draftId: draftId).draftId == draftId)
         #expect(ConnectionFormRequest.edit(connectionId: UUID()).draftId == nil)
     }
-
-    @Test("A request round trips through Codable")
-    func requestRoundTripsThroughCodable() throws {
-        let requests: [ConnectionFormRequest] = [
-            .edit(connectionId: UUID()),
-            .create(draftId: UUID())
-        ]
-
-        for request in requests {
-            let data = try JSONEncoder().encode(request)
-            let decoded = try JSONDecoder().decode(ConnectionFormRequest.self, from: data)
-            #expect(decoded == request)
-        }
-    }
 }

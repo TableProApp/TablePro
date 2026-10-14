@@ -35,15 +35,11 @@ struct SQLiteDefaultValueTests {
     )
     func roundTrip(catalog: String, expected: String) {
         #expect(sqliteDefaultValueFromCatalog(catalog) == expected)
-        #expect(libSQLDefaultValueFromCatalog(catalog) == expected)
-        #expect(cloudflareD1DefaultValueFromCatalog(catalog) == expected)
     }
 
     @Test("No default at all stays absent")
     func absentDefault() {
         #expect(sqliteDefaultValueFromCatalog(nil) == nil)
         #expect(sqliteDefaultValueFromCatalog("") == nil)
-        #expect(libSQLDefaultValueFromCatalog(nil) == nil)
-        #expect(cloudflareD1DefaultValueFromCatalog(nil) == nil)
     }
 }

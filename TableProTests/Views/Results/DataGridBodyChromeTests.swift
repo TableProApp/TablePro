@@ -87,26 +87,6 @@ struct DataGridBodyChromeTests {
         return Grid(window: window, tableView: tableView, coordinator: coordinator)
     }
 
-    /// Clearing the mask is the fix, so a test that only checked the drawing would pass with the
-    /// separator views back and the cost with them. The fixture sets the mask itself, so asserting
-    /// on the fixture proves nothing; this reads the one line in the app that decides it.
-    @Test("The grid never asks AppKit for vertical grid lines")
-    func gridStyleMaskIsClearedInTheAppItself() throws {
-        let source = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("TablePro/Views/Results/DataGridView.swift")
-        let text = try String(contentsOf: source, encoding: .utf8)
-
-        #expect(text.contains("gridStyleMask = []"))
-        #expect(
-            !text.contains("solidVerticalGridLineMask"),
-            "one separator view per column costs 518ms of layout per pass on a 500-column result"
-        )
-    }
-
     /// A partial repaint invalidates one cell's rect, and `rect(ofColumn:)` includes the intercell
     /// spacing, so the next column's separator lives inside the rect being repainted. It has to be
     /// redrawn there or every visited cell loses its right-hand rule until a full-row repaint.
@@ -312,25 +292,6 @@ struct DataGridBodyChromeTests {
         #expect(abs(sampled.redComponent - expected.redComponent) < 0.02, "sampled \(sampled), expected \(expected)")
         #expect(abs(sampled.greenComponent - expected.greenComponent) < 0.02)
         #expect(abs(sampled.blueComponent - expected.blueComponent) < 0.02)
-    }
-
-    /// A cached drawing of the table cannot show this (see above), so the one line in the app that
-    /// decides it is read instead, as `gridStyleMaskIsClearedInTheAppItself` reads its own.
-    @Test("The table never hands its background back to NSTableView")
-    func tableBackgroundIsTheGridsOwn() throws {
-        let source = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("TablePro/Views/Results/KeyHandlingTableView.swift")
-        let text = try String(contentsOf: source, encoding: .utf8)
-
-        #expect(text.contains("DataGridBodyChrome.drawTableBackground(in: clipRect, of: self)"))
-        #expect(
-            !text.contains("super.drawBackground(inClipRect:"),
-            "NSTableView blends the stripe in twice past the last row, which nothing painting it once can match"
-        )
     }
 
     /// The colour of one alternate stripe blended once over `background`, drawn into a single pixel.

@@ -10,12 +10,6 @@ import Testing
 struct MoveTabToConnectionShortcutTests {
     private static let chord = BoundKey.character("c", command: true, option: true, control: true)
 
-    @Test("The default is Control-Option-Command-C, Switch Connection's chord plus Option")
-    func defaultChord() {
-        #expect(KeyboardSettings.defaultShortcuts[.moveTabToConnection] == Self.chord)
-        #expect(KeyboardSettings.default.shortcut(for: .moveTabToConnection) == Self.chord)
-    }
-
     @Test("No other default and no reserved command claims the chord")
     func chordIsUnique() {
         let owners = KeyboardSettings.defaultShortcuts.filter { $0.value == Self.chord }.map { $0.key }

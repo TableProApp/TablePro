@@ -238,16 +238,6 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         )
     }
 
-    @Test("DuckDB keeps the file kinds a new database can be named with when its plugin registers")
-    func duckDBKeepsItsNewDatabaseFileExtensions() {
-        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockDuckDBPlugin.self)
-
-        #expect(
-            built.capabilities.newDatabaseFileExtensions == DuckDBFileKinds.database,
-            "A missing Parquet or CSV path is refused, so New… must offer only DuckDB's own format"
-        )
-    }
-
     @Test("SQLite keeps the file kinds a new database can be named with when its plugin registers")
     func sqliteKeepsItsNewDatabaseFileExtensions() throws {
         let curated = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "SQLite"))

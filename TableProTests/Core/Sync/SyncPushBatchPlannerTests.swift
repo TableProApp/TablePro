@@ -8,11 +8,6 @@ import Testing
 import TableProSyncTransport
 
 struct SyncPushBatchPlannerTests {
-    @Test("The default limit is the server's documented 250 items per request")
-    func defaultLimitMatchesServer() {
-        #expect(SyncPushBatchPlanner.serverItemLimit == 250)
-    }
-
     @Test("251 saves are sent as two requests")
     func savesAboveTheLimitSplit() {
         let plans = SyncPushBatchPlanner.plans(saveCount: 251, deletionCount: 0)

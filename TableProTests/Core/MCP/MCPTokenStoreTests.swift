@@ -144,23 +144,6 @@ struct MCPTokenStoreTests {
         #expect(MCPTokenStore.defaultTokenLifetime > 0)
     }
 
-    @Test("Minting a token takes its connection scope and expiry with no default to fall back on")
-    func generateDeclaresNoDefaultGrant() throws {
-        let source = try Self.tokenStoreSource()
-        let signature = try #require(
-            source.range(of: #"func generate\([^)]*\)"#, options: .regularExpression).map { String(source[$0]) }
-        )
-
-        #expect(signature.contains("connectionAccess: ConnectionAccess"))
-        #expect(signature.contains("expiresAt: Date?"))
-        #expect(signature.contains("isBridgeCredential: Bool"))
-        #expect(signature.contains("extraScopes: Set<MCPScope>"))
-        #expect(signature.contains("connectionAccess: ConnectionAccess = ") == false)
-        #expect(signature.contains("expiresAt: Date? = ") == false)
-        #expect(signature.contains("isBridgeCredential: Bool = ") == false)
-        #expect(signature.contains("=") == false)
-    }
-
     @Test("Two generated tokens never share a secret or a salt")
     func generatedSecretsAreUnique() async throws {
         let store = makeStore()
@@ -598,19 +581,6 @@ struct MCPTokenStoreTests {
         #expect(access.allows(allowed))
         #expect(access.allows(UUID()) == false)
         #expect(ConnectionAccess.all.allows(UUID()))
-    }
-
-    private static func tokenStoreSource() throws -> String {
-        var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        for _ in 0..<12 {
-            let candidate = directory
-                .appendingPathComponent("TablePro/Core/MCP/MCPTokenStore.swift")
-            if FileManager.default.fileExists(atPath: candidate.path) {
-                return try String(contentsOf: candidate, encoding: .utf8)
-            }
-            directory = directory.deletingLastPathComponent()
-        }
-        throw CocoaError(.fileNoSuchFile)
     }
 }
 

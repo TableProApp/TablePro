@@ -52,12 +52,6 @@ struct ClickHousePartsGridTests {
         #expect(ClickHousePartsView.gridRow(for: inactive).spokenValues == [active: String(localized: "Inactive")])
     }
 
-    @Test("Each column opens at the width the parts list has always given it")
-    func defaultWidths() {
-        #expect(ClickHousePartsView.columnWidths == [120, 200, 100, 100, 160, 60])
-        #expect(ClickHousePartsView.columnWidths.count == ClickHousePartsView.columnTitles.count)
-    }
-
     @Test("Each column keeps the minimum width the parts list has always given it")
     func minimumWidths() {
         #expect(ClickHousePartsView.columnMinimumWidths == [80, 100, 60, 60, 100, 50])

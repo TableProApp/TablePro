@@ -63,43 +63,4 @@ struct ContentWindowBackdropTests {
             try expectFollowsTheTheme(window)
         }
     }
-
-    private static let contentWindowControllers = [
-        "TablePro/Core/Services/Infrastructure/TabWindowController.swift",
-        "TablePro/Views/DataFiles/DataFileWindowController.swift",
-        "TablePro/Views/Compare/CompareSyncWindowController.swift",
-        "TablePro/Views/Results/ValueViewerWindowController.swift",
-    ]
-
-    private static let systemWindowControllers = [
-        "TablePro/Views/Settings/SettingsWindowController.swift",
-        "TablePro/Views/Welcome/WelcomeWindowController.swift",
-        "TablePro/Views/ConnectionForm/ConnectionFormWindowController.swift",
-    ]
-
-    private func code(of path: String) throws -> String {
-        let url = try ThemeSourceScan.repositoryRoot().appendingPathComponent(path)
-        let source = try String(contentsOf: url, encoding: .utf8)
-        return ThemeSourceScan.codeLines(of: source, path: path).map(\.text).joined(separator: "\n")
-    }
-
-    /// A backdrop held only by a local stops answering theme changes as soon as `init` returns.
-    @Test("Each content window controller stores the backdrop it attaches")
-    func contentWindowsStoreTheirBackdrop() throws {
-        let stored = try ThemeSourceScan.Rule("stored backdrop", #"(let|var)\s+\w+\s*:\s*ThemeWindowBackdrop\b"#)
-        let attached = try ThemeSourceScan.Rule("attached backdrop", #"\w+\s*=\s*ThemeWindowBackdrop\(window:"#)
-        for path in Self.contentWindowControllers {
-            let code = try code(of: path)
-            #expect(stored.matches(code), "\(path) does not store a ThemeWindowBackdrop")
-            #expect(attached.matches(code), "\(path) does not attach a ThemeWindowBackdrop")
-        }
-    }
-
-    @Test("Settings, Welcome and the connection form keep the system window")
-    func systemWindowsHaveNoBackdrop() throws {
-        for path in Self.systemWindowControllers {
-            let code = try code(of: path)
-            #expect(!code.contains("ThemeWindowBackdrop"), "\(path) attaches a window backdrop")
-        }
-    }
 }

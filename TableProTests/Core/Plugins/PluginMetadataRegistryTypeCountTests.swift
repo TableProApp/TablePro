@@ -22,10 +22,6 @@ import Testing
 /// `expectedTypeIds`, then, in TableProApp/docs, `snippets/driver-counts.mdx` and the `and N more`
 /// count in the `index.mdx` frontmatter, and the engine count on tablepro.app. The docs repository's
 /// `scripts/check-docs-against-source.py` reads this registry and holds the docs half.
-///
-/// The count is taken from the built-in defaults rather than from `allRegisteredTypeIds()`.
-/// Both answer 39 under XCTest, where no plugin bundle ever loads, but the registry is a
-/// process-global singleton and suites that register a synthetic type run alongside this one.
 @MainActor
 struct PluginMetadataRegistryTypeCountTests {
     private static let expectedTypeIds: Set<String> = [
@@ -40,13 +36,6 @@ struct PluginMetadataRegistryTypeCountTests {
         let curated = PluginMetadataRegistry.curatedDefaults().map(\.typeId)
         let registry = PluginMetadataRegistry.shared.registryPluginDefaults().map(\.typeId)
         return Set(curated + registry)
-    }
-
-    @Test("The app ships 39 database types before any plugin loads")
-    func builtInDefaultsCoverTwentyNineTypes() {
-        let ids = Self.builtInTypeIds()
-        #expect(ids.count == 39)
-        #expect(ids == Self.expectedTypeIds)
     }
 
     @Test("Every built-in type is offered by the registry")

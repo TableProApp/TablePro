@@ -8,19 +8,6 @@ import TableProPluginKit
 import Testing
 
 struct LibPQConnectionStringTests {
-    private func pluginSource(_ name: String) throws -> String {
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        return try String(
-            contentsOf: repository
-                .appendingPathComponent("Plugins/PostgreSQLDriverPlugin")
-                .appendingPathComponent(name),
-            encoding: .utf8
-        )
-    }
-
     private func build(
         user: String = "postgres",
         password: String? = "hunter2",
@@ -90,20 +77,6 @@ struct LibPQConnectionStringTests {
         #expect(
             deadline.nextPollDeadline(nowMicroseconds: 5_200_000, maximumSliceMicroseconds: 100_000) == nil
         )
-    }
-
-    @Test("Bootstrap queries use pollable libpq I/O and adoption follows every post-connect probe")
-    func bootstrapQueriesStayInsideDeadline() throws {
-        let connection = try pluginSource("LibPQPluginConnection.swift")
-        let core = try pluginSource("LibPQDriverCore.swift")
-
-        #expect(connection.contains("if let deadline = activeConnectDeadline"))
-        #expect(connection.contains("PQsendQuery(connection"))
-        #expect(connection.contains("PQsocketPoll("))
-        #expect(connection.contains("requestServerCancel(on: connection, evenWhenSuppressed: true)"))
-        let probes = try #require(core.range(of: "await onPostConnect?()"))
-        let adoption = try #require(core.range(of: "try await pqConn.finishConnecting()"))
-        #expect(probes.lowerBound < adoption.lowerBound)
     }
 
     @Test("The session is pinned to UTF8 in the startup packet, so RESET ALL and DISCARD ALL keep it")

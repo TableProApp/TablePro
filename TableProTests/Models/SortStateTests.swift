@@ -11,21 +11,6 @@ import TableProPluginKit
 import Testing
 
 struct SortDirectionTests {
-    @Test("Ascending equals ascending")
-    func ascendingEquality() {
-        #expect(SortDirection.ascending == SortDirection.ascending)
-    }
-
-    @Test("Descending equals descending")
-    func descendingEquality() {
-        #expect(SortDirection.descending == SortDirection.descending)
-    }
-
-    @Test("Ascending not equal to descending")
-    func ascendingNotDescending() {
-        #expect(SortDirection.ascending != SortDirection.descending)
-    }
-
     @Test("Toggle ascending becomes descending")
     func toggleAscending() {
         var dir = SortDirection.ascending
@@ -50,50 +35,7 @@ struct SortDirectionTests {
 
 }
 
-struct SortColumnTests {
-    @Test("Stores columnIndex and direction")
-    func storesProperties() {
-        let col = SortColumn(columnIndex: 2, direction: .descending)
-        #expect(col.columnIndex == 2)
-        #expect(col.direction == .descending)
-    }
-
-    @Test("Equal columns are equal")
-    func equalColumns() {
-        let a = SortColumn(columnIndex: 1, direction: .ascending)
-        let b = SortColumn(columnIndex: 1, direction: .ascending)
-        #expect(a == b)
-    }
-
-    @Test("Different index produces unequal columns")
-    func differentIndex() {
-        let a = SortColumn(columnIndex: 1, direction: .ascending)
-        let b = SortColumn(columnIndex: 2, direction: .ascending)
-        #expect(a != b)
-    }
-
-    @Test("Different direction produces unequal columns")
-    func differentDirection() {
-        let a = SortColumn(columnIndex: 1, direction: .ascending)
-        let b = SortColumn(columnIndex: 1, direction: .descending)
-        #expect(a != b)
-    }
-
-    @Test("Direction is mutable")
-    func directionMutable() {
-        var col = SortColumn(columnIndex: 0, direction: .ascending)
-        col.direction = .descending
-        #expect(col.direction == .descending)
-    }
-}
-
 struct SortStateTests {
-    @Test("Empty init has no columns")
-    func emptyInit() {
-        let state = SortState()
-        #expect(state.columns.isEmpty)
-    }
-
     @Test("Empty state is not sorting")
     func emptyNotSorting() {
         let state = SortState()
@@ -104,12 +46,6 @@ struct SortStateTests {
     func emptyColumnIndex() {
         let state = SortState()
         #expect(state.columnIndex == nil)
-    }
-
-    @Test("Empty state direction defaults to ascending")
-    func emptyDirectionDefault() {
-        let state = SortState()
-        #expect(state.direction == .ascending)
     }
 
     @Test("Single column makes isSorting true")
@@ -151,15 +87,6 @@ struct SortStateTests {
             SortColumn(columnIndex: 5, direction: .descending)
         ]
         #expect(state.direction == .ascending)
-    }
-
-    @Test("Equal states are equal")
-    func equalStates() {
-        var a = SortState()
-        a.columns = [SortColumn(columnIndex: 1, direction: .ascending)]
-        var b = SortState()
-        b.columns = [SortColumn(columnIndex: 1, direction: .ascending)]
-        #expect(a == b)
     }
 
     @Test("isSorting flips true after adding a column")

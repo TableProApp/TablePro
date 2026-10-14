@@ -1,61 +1,66 @@
-//
-//  SidebarAddMenuUITests.swift
-//  TableProUITests
-//
-
 import XCTest
 
-// Item queries are scoped to the button: the Database menu carries the same titles.
-
 final class SidebarAddMenuUITests: UITestCase {
-    func testTheAddButtonOpensANewTable() throws {
-        let app = try launchWithSampleDatabase()
-        let window = try mainWindow(of: app)
+    func testCreatingATableFromTheSidebar() throws {
+        let launch = try launchWithFixture()
+        let app = launch.app
+        let window = launch.window
 
+        // Scoped to the button: the Database menu carries the same titles.
         let add = window.descendants(matching: .any).matching(identifier: "sidebar-add").firstMatch
-        XCTAssertTrue(add.waitToExist(timeout: 30), "The Tables tab carries an add button at its foot")
+        XCTAssertTrue(waitUntilHittable(add, timeout: 30), "The Tables tab carries an add button at its foot")
         add.click()
-
         let newTable = add.menuItems["New Table…"].firstMatch
         XCTAssertTrue(newTable.waitToExist(timeout: 10), "The add button offers New Table…")
-        XCTAssertTrue(newTable.isEnabled, "A writable SQLite connection can create a table")
-        XCTAssertTrue(add.menuItems["New Folder"].firstMatch.exists, "The flat list offers New Folder")
         newTable.click()
 
+        // By identifier: the editor tab named Create Table also matches a "Create Table" button query.
+        let commit = window.buttons["create-table-commit"].firstMatch
+        XCTAssertTrue(commit.waitToExist(timeout: 30), "New Table… from the add button opens the Create Table tab")
         XCTAssertTrue(
-            window.buttons["create-table-commit"].firstMatch.waitToExist(timeout: 30),
-            "New Table… from the add button opens the Create Table tab"
+            window.staticTexts.matching(identifier: "create-table-validation").firstMatch.waitToExist(timeout: 10),
+            "A draft that cannot run yet must say what is missing"
+        )
+        XCTAssertFalse(commit.isEnabled, "An empty draft has no name and no column, so Create Table stays dimmed")
+
+        let name = window.textFields["create-table-name"]
+        XCTAssertTrue(waitUntilHittable(name, timeout: 10))
+        name.click()
+        name.typeText("playlist")
+
+        fillFirstColumn(named: "title", type: "TEXT", in: window, app: app)
+
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { commit.isEnabled },
+            "A named table with a named, typed column can be created"
+        )
+        commit.click()
+
+        XCTAssertTrue(
+            objectBrowserRow("playlist", in: window).waitToExist(timeout: 30),
+            "The new table must be listed in the sidebar"
+        )
+        XCTAssertEqual(
+            sqliteStrings("SELECT name FROM pragma_table_info('playlist')", in: launch.database),
+            ["title"],
+            "The table must be in the file with the column the draft named"
         )
     }
 
-    func testTheFavoritesAddButtonOffersTheFavoritesCommands() throws {
-        let app = try launchWithSampleDatabase()
-        let window = try mainWindow(of: app)
-        showFavorites(in: app)
-
-        let add = window.descendants(matching: .any).matching(identifier: "sidebar-favorites-add").firstMatch
-        XCTAssertTrue(add.waitToExist(timeout: 30), "The Favorites tab carries its own add button")
-        add.click()
-
-        for title in ["New Query", "New Favorite…", "New Folder", "Add Linked SQL Folder…"] {
-            XCTAssertTrue(add.menuItems[title].firstMatch.waitToExist(timeout: 10), "Favorites add offers \(title)")
+    // Cells are drawn, not mounted, so the row is reached through a point and edited from the keyboard:
+    // Left until the cursor stops on the first column, Return opens its editor, Tab commits and opens the next.
+    private func fillFirstColumn(named column: String, type: String, in window: XCUIElement, app: XCUIApplication) {
+        let grid = dataGrid(in: window)
+        XCTAssertTrue(waitForClickableRows(in: grid), "The draft starts with one empty column row")
+        let firstRow = grid.tableRows.firstMatch
+        gridPoint(in: grid, of: window, dy: firstRow.frame.midY - grid.frame.minY).click()
+        for _ in 0 ..< 12 {
+            app.typeKey(.leftArrow, modifierFlags: [])
         }
-        app.typeKey(.escape, modifierFlags: [])
-    }
-
-    private func showFavorites(in app: XCUIApplication) {
-        let menuBar = app.menuBars.firstMatch
-        XCTAssertTrue(menuBar.waitToExist(timeout: 10))
-        menuBar.menuBarItems["View"].click()
-
-        let showFavorites = menuBar.menuItems["Show Favorites"]
-        XCTAssertTrue(showFavorites.waitToExist(timeout: 5), "View > Show Favorites must be reachable")
-        showFavorites.click()
-    }
-
-    private func mainWindow(of app: XCUIApplication) throws -> XCUIElement {
-        let window = app.windows.matching(NSPredicate(format: "identifier != %@", "welcome")).firstMatch
-        XCTAssertTrue(window.waitToExist(timeout: 60), "The sample database produced no window")
-        return window
+        app.typeKey(.return, modifierFlags: [])
+        app.typeText(column)
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeText(type)
+        app.typeKey(.return, modifierFlags: [])
     }
 }

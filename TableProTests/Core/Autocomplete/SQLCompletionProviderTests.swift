@@ -288,13 +288,6 @@ struct SQLCompletionProviderTests {
         #expect(items.isEmpty)
     }
 
-    @Test("Normal context returns items")
-    func testNormalContextReturnsItems() async {
-        let text = "SELECT * FROM users WHERE "
-        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
-        #expect(!items.isEmpty)
-    }
-
     // MARK: - P0: CF-1 - DatabaseType Threading
 
     @Test("Provider accepts databaseType parameter")
@@ -1033,13 +1026,6 @@ struct SQLCompletionProviderTests {
         let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
         let hasHaving = items.contains { $0.label == "HAVING" }
         #expect(hasHaving)
-    }
-
-    @Test("SELECT with FROM preserves explicit table column resolution")
-    func testSelectWithFromPreservesExplicit() async {
-        let text = "SELECT * FROM users WHERE "
-        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
-        #expect(!items.isEmpty)
     }
 
     @Test("CASE expression without FROM returns CASE keywords")

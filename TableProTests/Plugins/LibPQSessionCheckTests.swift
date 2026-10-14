@@ -8,26 +8,6 @@ import TableProPluginKit
 import Testing
 
 struct LibPQSessionCheckTests {
-    private static func pluginSource(_ name: String) throws -> String {
-        var directory = URL(fileURLWithPath: #filePath)
-        for _ in 0..<3 { directory.deleteLastPathComponent() }
-        return try String(
-            contentsOf: directory
-                .appendingPathComponent("Plugins")
-                .appendingPathComponent("PostgreSQLDriverPlugin")
-                .appendingPathComponent(name),
-            encoding: .utf8
-        )
-    }
-
-    /// The body of the first `signature` in `source`, up to the brace that closes a member indented
-    /// four spaces, which is how every member of these two classes is laid out.
-    private static func body(of signature: String, in source: String) throws -> String {
-        let start = try #require(source.range(of: signature))
-        let end = try #require(source.range(of: "\n    }\n", range: start.upperBound..<source.endIndex))
-        return String(source[start.upperBound..<end.lowerBound])
-    }
-
     private static func serverError(_ sqlState: String?, _ message: String = "ERROR:  refused") -> LibPQPluginError {
         LibPQPluginError(message: message, sqlState: sqlState, detail: nil)
     }
@@ -83,33 +63,5 @@ struct LibPQSessionCheckTests {
         #expect(LibPQSessionCheck.refusalState(of: Self.serverError(nil, "server closed the connection unexpectedly")) == nil)
         #expect(LibPQSessionCheck.refusalState(of: Self.serverError("")) == nil)
         #expect(LibPQSessionCheck.refusalState(of: CancellationError()) == nil)
-    }
-
-    /// `LibPQPluginConnection` imports CLibPQ, which this target cannot, so the wiring is checked in
-    /// the source: read the socket before anything else, send nothing inside a transaction block,
-    /// and take a refusal as an answer only while libpq still reports the connection OK.
-    @Test("The plugin's ping reads the socket first and accepts a refusal only on a live connection")
-    func pingIsWiredThroughTheCheck() throws {
-        let ping = try Self.body(
-            of: "func ping() async throws {",
-            in: Self.pluginSource("LibPQPluginConnection.swift")
-        )
-        let socketRead = try #require(ping.range(of: "sessionEndedBeforeSending(conn)"))
-        let decision = try #require(ping.range(of: "LibPQSessionCheck.sendsStatement(in: transactionStateOnQueue())"))
-        let statement = try #require(ping.range(of: "executeQuerySync(LibPQSessionCheck.statement)"))
-        let liveCheck = try #require(ping.range(of: "PQstatus(conn) == CONNECTION_OK"))
-        let refusal = try #require(ping.range(of: "LibPQSessionCheck.refusalState(of: error)"))
-
-        #expect(socketRead.upperBound < decision.lowerBound)
-        #expect(decision.upperBound < statement.lowerBound)
-        #expect(statement.upperBound < liveCheck.lowerBound)
-        #expect(liveCheck.upperBound < refusal.lowerBound)
-
-        let corePing = try Self.body(
-            of: "func ping() async throws {",
-            in: Self.pluginSource("LibPQDriverCore.swift")
-        )
-        #expect(corePing.contains("try await pqConn.ping()"))
-        #expect(!corePing.contains("executeQuery"))
     }
 }

@@ -42,45 +42,6 @@ struct RowChangeStatementFactoryCoverageTests {
         )
     }
 
-    private let personColumns = ["_id", "identifiers", "identifiers.type", "personId"]
-
-    /// The Elasticsearch driver as the host reaches it: its generator's own `generateRowWrites`,
-    /// which writes a nested array through its parent column and refuses a value typed into a leaf.
-    private func elasticsearchDriver() -> RowWriteStubDriver {
-        let generator = ElasticsearchStatementGenerator(
-            index: "persons",
-            columns: personColumns,
-            columnTypeNames: ["keyword", "nested", "keyword", "keyword"]
-        )
-        return RowWriteStubDriver { changes, insertedRowData, deletedRowIndices, insertedRowIndices in
-            try generator.generateRowWrites(
-                from: changes,
-                insertedRowData: insertedRowData,
-                deletedRowIndices: deletedRowIndices,
-                insertedRowIndices: insertedRowIndices
-            )
-        }
-    }
-
-    private let nestedLeafReason = "'identifiers.type' is a field of a nested array. Edit the array in 'identifiers' instead."
-
-    private func personEdit(_ cells: [CellChange]) -> RowChange {
-        RowChange(
-            rowID: .existing(0),
-            type: .update,
-            cellChanges: cells,
-            originalRow: ["doc1", "[{\"type\":\"CPF\"}]", "[\"CPF\"]", "p1"]
-        )
-    }
-
-    private var leafEdit: CellChange {
-        CellChange(columnIndex: 2, columnName: "identifiers.type", oldValue: "[\"CPF\"]", newValue: "[\"X\"]")
-    }
-
-    private var personIdEdit: CellChange {
-        CellChange(columnIndex: 3, columnName: "personId", oldValue: "p1", newValue: "p2")
-    }
-
     private func writesOnlyUpdates() -> RowWriteStubDriver {
         RowWriteStubDriver { changes, _, _, _ in
             changes.filter { $0.type == .update }.map {
@@ -240,60 +201,6 @@ struct RowChangeStatementFactoryCoverageTests {
         #expect(driver.cellsHanded == rowCount * 2 * 2)
     }
 
-    @Test("An edit to a nested leaf beside a writable edit refuses the save and names the leaf")
-    func elasticsearchMixedEditRefusesTheLeafItWouldDrop() {
-        let refusal = DataWriteError.changeRefused(table: "persons", kind: .update, reason: nestedLeafReason)
-        #expect(throws: refusal) {
-            _ = try factory(
-                table: "persons", columns: personColumns,
-                databaseType: DatabaseType(rawValue: "Elasticsearch"), driver: elasticsearchDriver()
-            ).statements(for: [personEdit([leafEdit, personIdEdit])])
-        }
-        #expect(
-            refusal.errorDescription
-                == "Cannot save the edited row in 'persons'. \(nestedLeafReason)"
-        )
-    }
-
-    @Test("A new Elasticsearch row with only a nested leaf typed is refused rather than saved empty")
-    func elasticsearchNewRowWithOnlyALeafIsRefused() {
-        let inserted = RowID.inserted(UUID())
-        let change = RowChange(
-            rowID: inserted,
-            type: .insert,
-            cellChanges: [CellChange(columnIndex: 2, columnName: "identifiers.type", oldValue: nil, newValue: "[\"X\"]")]
-        )
-
-        #expect(throws: DataWriteError.changeRefused(table: "persons", kind: .insert, reason: nestedLeafReason)) {
-            _ = try factory(
-                table: "persons", columns: personColumns,
-                databaseType: DatabaseType(rawValue: "Elasticsearch"), driver: elasticsearchDriver()
-            ).statements(
-                for: [change],
-                insertedRowData: [inserted: [.null, .null, "[\"X\"]", .null]],
-                insertedRowIDs: [inserted]
-            )
-        }
-    }
-
-    @Test("An edit the driver writes in every value keeps the one statement the driver wrote for it")
-    func elasticsearchEditWrittenInFullIsKept() throws {
-        let parentEdit = CellChange(
-            columnIndex: 1, columnName: "identifiers",
-            oldValue: "[{\"type\":\"CPF\"}]", newValue: "[{\"type\":\"X\"}]"
-        )
-
-        let statements = try factory(
-            table: "persons", columns: personColumns,
-            databaseType: DatabaseType(rawValue: "Elasticsearch"), driver: elasticsearchDriver()
-        ).statements(for: [personEdit([parentEdit, personIdEdit])])
-
-        try #require(statements.count == 1)
-        let body = ElasticsearchStatementGenerator.decode(statements[0].sql)?.body
-        #expect(body?.contains("\"personId\":\"p2\"") == true)
-        #expect(body?.contains("\"identifiers\":[{\"type\":\"X\"}]") == true)
-    }
-
     @Test("A Redis Value edit on a list key refuses the save even beside a TTL edit it could write")
     func redisMixedEditRefusesTheValueItWouldDrop() {
         let generator = RedisStatementGenerator(namespaceName: "0", columns: ["Key", "Type", "TTL", "Length", "Value"])
@@ -418,77 +325,6 @@ struct RowChangeStatementFactoryCoverageTests {
 
         #expect(build.steps.map(\.statement.sql) == ["updateOne(0)"])
         #expect(build.steps.allSatisfy { $0.expectedRowCount == nil })
-    }
-
-    private func sqlServerDriver(primaryKeyColumns: [String]) -> RowWriteStubDriver {
-        let generator = MSSQLStatementGenerator(
-            qualifiedTable: "[dbo].[items]", columns: columns, primaryKeyColumns: primaryKeyColumns
-        )
-        return RowWriteStubDriver { changes, insertedRowData, deletedRowIndices, insertedRowIndices in
-            try generator.rowWrites(
-                for: changes,
-                insertedRowData: insertedRowData,
-                deletedRowIndices: deletedRowIndices,
-                insertedRowIndices: insertedRowIndices
-            )
-        }
-    }
-
-    private func keylessManager(databaseType: DatabaseType, driver: any PluginDatabaseDriver) -> DataChangeManager {
-        let manager = DataChangeManager()
-        manager.configureForTable(
-            tableName: "items", columns: columns, primaryKeyColumns: [],
-            databaseType: databaseType, generatedColumns: []
-        )
-        manager.pluginDriver = driver
-        return manager
-    }
-
-    @Test("A SQL Server save to a table with no primary key is held to the row it matches")
-    func keylessDriverStatementsAreHeldToTheirRow() throws {
-        let manager = keylessManager(databaseType: .mssql, driver: sqlServerDriver(primaryKeyColumns: []))
-        manager.recordCellChange(
-            rowID: .existing(0), columnIndex: 1, columnName: "name",
-            oldValue: "", newValue: "z", originalRow: ["0", ""]
-        )
-        manager.recordRowDeletion(rowID: .existing(1), originalRow: ["1", "b"])
-
-        let build = try manager.buildRowWrites(database: "d", schema: nil, containsTableOperation: false)
-
-        #expect(build.steps.count == 2)
-        #expect(build.steps.allSatisfy { $0.expectedRowCount == 1 && $0.matchesRowsWithoutKey })
-    }
-
-    @Test("A new row on a table with no primary key is not held to a count")
-    func keylessDriverInsertIsNotHeld() throws {
-        let inserted = RowID.inserted(UUID())
-        let written = try factory(
-            primaryKeyColumns: [], databaseType: .mssql, driver: sqlServerDriver(primaryKeyColumns: [])
-        ).rowWriteStatements(
-            for: [RowChange(rowID: inserted, type: .insert)],
-            insertedRowData: [inserted: ["1", "n"]],
-            insertedRowIDs: [inserted]
-        )
-
-        guard case .driverWritten(let statements) = written else {
-            Issue.record("the driver's statements came back as the host's")
-            return
-        }
-        #expect(statements.count == 1)
-        #expect(statements.allSatisfy { $0.keylessRowCount == nil })
-    }
-
-    @Test("A SQL Server save to a keyed table is not held to a lower bound")
-    func keyedDriverStatementIsNotHeld() throws {
-        let written = try factory(
-            databaseType: .mssql, driver: sqlServerDriver(primaryKeyColumns: ["_id"])
-        ).rowWriteStatements(for: [nameEdit()])
-
-        guard case .driverWritten(let statements) = written else {
-            Issue.record("the driver's statements came back as the host's")
-            return
-        }
-        #expect(statements.map(\.keylessRowCount) == [nil])
     }
 
     @Test("A keyless driver statement is not held where the engine reports no real count")

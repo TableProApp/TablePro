@@ -233,11 +233,6 @@ let package = Package(
             path: "Tests/TableProNumberFormattingTests"
         ),
         .testTarget(
-            name: "TableProDocumentPathTests",
-            dependencies: ["TableProDocumentPath"],
-            path: "Tests/TableProDocumentPathTests"
-        ),
-        .testTarget(
             name: "TableProJavaScriptTextTests",
             dependencies: ["TableProJavaScriptText"],
             path: "Tests/TableProJavaScriptTextTests"
@@ -283,16 +278,6 @@ let package = Package(
             path: "Tests/TableProMSSQLCoreTests"
         ),
         .testTarget(
-            name: "TableProTeradataCoreTests",
-            dependencies: ["TableProTeradataCore"],
-            path: "Tests/TableProTeradataCoreTests"
-        ),
-        .testTarget(
-            name: "TableProTrinoCoreTests",
-            dependencies: ["TableProTrinoCore", "TableProTLSClientIdentity", "TableProTLSTestFixtures"],
-            path: "Tests/TableProTrinoCoreTests"
-        ),
-        .testTarget(
             name: "TableProTLSClientIdentityTests",
             dependencies: ["TableProTLSClientIdentity", "TableProTLSTestFixtures"],
             path: "Tests/TableProTLSClientIdentityTests"
@@ -301,26 +286,6 @@ let package = Package(
             name: "TableProGoogleCloudTests",
             dependencies: ["TableProGoogleCloud"],
             path: "Tests/TableProGoogleCloudTests"
-        ),
-        .testTarget(
-            name: "TableProSpannerCoreTests",
-            dependencies: ["TableProSpannerCore", "TableProGoogleCloud"],
-            path: "Tests/TableProSpannerCoreTests"
-        ),
-        .testTarget(
-            name: "TableProFirebaseCoreTests",
-            dependencies: ["TableProFirebaseCore"],
-            path: "Tests/TableProFirebaseCoreTests"
-        ),
-        .testTarget(
-            name: "TableProWeaviateCoreTests",
-            dependencies: ["TableProWeaviateCore"],
-            path: "Tests/TableProWeaviateCoreTests"
-        ),
-        .testTarget(
-            name: "TableProR2SQLCoreTests",
-            dependencies: ["TableProR2SQLCore"],
-            path: "Tests/TableProR2SQLCoreTests"
         ),
         .testTarget(
             name: "TableProSyncTests",

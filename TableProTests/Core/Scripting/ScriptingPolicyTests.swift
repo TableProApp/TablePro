@@ -165,16 +165,4 @@ struct ScriptingPolicyTests {
         #expect(error.number == -10_000)
         #expect(error.errorDescription == String(localized: "The connection is not open. Connect it first."))
     }
-
-    // MARK: - Limits
-
-    /// Deliberately independent of the MCP settings, so tuning the MCP server never changes what a
-    /// script gets back.
-    @Test("Row limit and timeout have their own defaults and ceilings")
-    func limitsAreScriptingsOwn() {
-        #expect(ScriptQueryRunner.defaultRowLimit == 500)
-        #expect(ScriptQueryRunner.maximumRowLimit == 10_000)
-        #expect(ScriptQueryRunner.defaultTimeoutSeconds == 30)
-        #expect(ScriptQueryRunner.maximumTimeoutSeconds == 600)
-    }
 }

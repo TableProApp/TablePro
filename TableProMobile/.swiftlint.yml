@@ -1,0 +1,6 @@
+only_rules:
+  - dispatch_handler_isolation
+  - fsevents_callback_isolation
+  - date_formatter_locale
+  - count_before_inflected_span
+  - sync_record_id_construction

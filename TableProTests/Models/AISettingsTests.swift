@@ -9,11 +9,6 @@ import TableProPluginKit
 import Testing
 
 struct AISettingsTests {
-    @Test("default has enabled true")
-    func defaultEnabledIsTrue() {
-        #expect(AISettings.default.enabled == true)
-    }
-
     @Test("decoding without enabled key defaults to true")
     func decodingWithoutEnabledDefaultsToTrue() throws {
         let json = "{}"

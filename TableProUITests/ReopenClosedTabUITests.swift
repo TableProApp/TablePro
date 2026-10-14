@@ -1,62 +1,42 @@
-import AppKit
 import XCTest
 
-/// Reopen Closed Tab took the closed tab out of its history and opened nothing whenever the
-/// connection's window still had other tabs, which is the ordinary case: close one of several
-/// tabs, then press Command-Shift-T.
 final class ReopenClosedTabUITests: UITestCase {
-    func testReopeningAClosedTableTabBringsItBackSelected() throws {
-        let app = try launchWithSampleDatabase()
-        let window = try readyWindow(of: app)
+    private static let tables = ["album", "artist", "genre"]
 
-        doubleClick(row("Album", in: window))
-        doubleClick(row("Artist", in: window))
-        let artist = tab(named: "Artist", in: window)
+    // Nothing is clicked before Cmd+W: the window's first responder used to be the connection rail,
+    // which answers Close itself, so the keystroke closed a connection instead of a tab. Reopen then
+    // took the tab out of its history and opened nothing while the window still had other tabs.
+    func testCommandWClosesATabAndShiftCommandTBringsItBack() throws {
+        let tabs = Self.tables.map { SeededTab.table($0) }
+        let launch = try launchWithFixture([
+            ConnectionSeed(name: "Fixture A", tabs: tabs),
+            ConnectionSeed(name: "Fixture B", tabs: tabs),
+        ])
+        let app = launch.app
+        let window = launch.window
+
+        let rail = window.tables.matching(identifier: "workspace-rail").firstMatch
         XCTAssertTrue(
-            waitForPredicate(timeout: 20) { self.tab(named: "Album", in: window).exists && artist.isSelected },
-            "Album and Artist must both be open, with Artist selected, before one is closed"
+            waitForPredicate(timeout: 30) { rail.exists && rail.tableRows.count == 2 },
+            "Both restored connections must be listed in the rail"
         )
-
-        app.typeKey("w", modifierFlags: .command)
         XCTAssertTrue(
-            waitForPredicate(timeout: 20) { !artist.exists },
-            "Close Tab must take the selected Artist tab out of the strip"
+            waitForPredicate(timeout: 30) { self.editorTabTitles(in: window) == Self.tables },
+            "The connection on screen must restore its tabs, got \(editorTabTitles(in: window))"
         )
+        let closed = try XCTUnwrap(selectedEditorTabTitle(in: window), "A restored tab must be selected")
 
-        app.typeKey("t", modifierFlags: [.command, .shift])
-
+        app.typeShortcut(.closeTab)
         XCTAssertTrue(
-            waitForPredicate(timeout: 20) { artist.exists && artist.isSelected },
-            "Reopen Closed Tab must bring the Artist tab back and select it"
+            waitForPredicate(timeout: 20) { self.editorTabTitles(in: window) == Self.tables.filter { $0 != closed } },
+            "Cmd+W must close the selected tab, got \(editorTabTitles(in: window))"
         )
-    }
+        XCTAssertEqual(rail.tableRows.count, 2, "Neither connection may close with the tab")
 
-    private func readyWindow(of app: XCUIApplication) throws -> XCUIElement {
-        let window = app.windows.firstMatch
-        XCTAssertTrue(window.waitToExist(timeout: 30))
+        app.typeShortcut(.reopenClosedTab)
         XCTAssertTrue(
-            waitForPredicate(timeout: 30) { window.outlines.firstMatch.outlineRows.count > 1 },
-            "The object browser must list the sample database's tables"
+            waitForPredicate(timeout: 20) { self.selectedEditorTabTitle(in: window) == closed },
+            "Cmd+Shift+T must bring \(closed) back selected, got \(editorTabTitles(in: window))"
         )
-        return window
-    }
-
-    private func row(_ name: String, in window: XCUIElement) -> XCUIElement {
-        let match = objectBrowserRow(name, in: window)
-        XCTAssertTrue(match.waitToExist(timeout: 20), "The object browser must list \(name)")
-        return match
-    }
-
-    private func tab(named name: String, in window: XCUIElement) -> XCUIElement {
-        window.descendants(matching: .any)
-            .matching(identifier: "editor-tab")
-            .matching(NSPredicate(format: "label == %@", name))
-            .firstMatch
-    }
-
-    /// Waited out after the double-click, so the next click is not coalesced into it.
-    private func doubleClick(_ element: XCUIElement) {
-        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleClick()
-        Thread.sleep(forTimeInterval: NSEvent.doubleClickInterval)
     }
 }

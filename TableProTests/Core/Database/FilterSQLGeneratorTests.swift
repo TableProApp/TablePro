@@ -616,22 +616,6 @@ struct FilterSQLGeneratorTests {
 
     // MARK: - Identifier Quoting Per DB Type
 
-    @Test("MySQL uses backtick quoting")
-    func testMySQLQuoting() {
-        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
-        let filter = TableFilter(
-            id: UUID(),
-            columnName: "name",
-            filterOperator: .equal,
-            value: "test",
-            secondValue: nil,
-            isEnabled: true,
-            rawSQL: nil
-        )
-        let result = generator.generateCondition(from: filter)
-        #expect(result == "`name` = 'test'")
-    }
-
     @Test("PostgreSQL uses double quote quoting")
     func testPostgreSQLQuoting() {
         let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
@@ -651,22 +635,6 @@ struct FilterSQLGeneratorTests {
     @Test("SQLite uses backtick quoting")
     func testSQLiteQuoting() {
         let generator = FilterSQLGenerator(dialect: Self.sqliteDialect)
-        let filter = TableFilter(
-            id: UUID(),
-            columnName: "name",
-            filterOperator: .equal,
-            value: "test",
-            secondValue: nil,
-            isEnabled: true,
-            rawSQL: nil
-        )
-        let result = generator.generateCondition(from: filter)
-        #expect(result == "`name` = 'test'")
-    }
-
-    @Test("MariaDB uses backtick quoting")
-    func testMariaDBQuoting() {
-        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -731,22 +699,6 @@ struct FilterSQLGeneratorTests {
     }
 
     // MARK: - Regex Per DB Type
-
-    @Test("MySQL regex uses REGEXP")
-    func testMySQLRegex() {
-        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
-        let filter = TableFilter(
-            id: UUID(),
-            columnName: "email",
-            filterOperator: .regex,
-            value: "^[a-z]+@",
-            secondValue: nil,
-            isEnabled: true,
-            rawSQL: nil
-        )
-        let result = generator.generateCondition(from: filter)
-        #expect(result == "`email` REGEXP '^[a-z]+@'")
-    }
 
     @Test("PostgreSQL regex uses tilde operator")
     func testPostgreSQLRegex() {
@@ -919,70 +871,6 @@ struct FilterSQLGeneratorTests {
 
     // MARK: - Redshift Tests
 
-    @Test("Redshift uses double-quote identifier quoting")
-    func testRedshiftQuoting() {
-        let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
-        let filter = TableFilter(
-            id: UUID(),
-            columnName: "name",
-            filterOperator: .equal,
-            value: "test",
-            secondValue: nil,
-            isEnabled: true,
-            rawSQL: nil
-        )
-        let result = generator.generateCondition(from: filter)
-        #expect(result == "\"name\" = 'test'")
-    }
-
-    @Test("Redshift regex uses tilde operator")
-    func testRedshiftRegex() {
-        let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
-        let filter = TableFilter(
-            id: UUID(),
-            columnName: "email",
-            filterOperator: .regex,
-            value: "^[a-z]+@",
-            secondValue: nil,
-            isEnabled: true,
-            rawSQL: nil
-        )
-        let result = generator.generateCondition(from: filter)
-        #expect(result == "\"email\" ~ '^[a-z]+@'")
-    }
-
-    @Test("Redshift TRUE literal generates TRUE")
-    func testTrueLiteralRedshift() {
-        let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
-        let filter = TableFilter(
-            id: UUID(),
-            columnName: "active",
-            filterOperator: .equal,
-            value: "TRUE",
-            secondValue: nil,
-            isEnabled: true,
-            rawSQL: nil
-        )
-        let result = generator.generateCondition(from: filter)
-        #expect(result == "\"active\" = TRUE")
-    }
-
-    @Test("Redshift FALSE literal generates FALSE")
-    func testFalseLiteralRedshift() {
-        let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
-        let filter = TableFilter(
-            id: UUID(),
-            columnName: "active",
-            filterOperator: .equal,
-            value: "FALSE",
-            secondValue: nil,
-            isEnabled: true,
-            rawSQL: nil
-        )
-        let result = generator.generateCondition(from: filter)
-        #expect(result == "\"active\" = FALSE")
-    }
-
     @Test("Redshift LIKE uses a non-backslash ESCAPE clause")
     func testRedshiftLikeEscape() {
         let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
@@ -1103,17 +991,6 @@ struct FilterSQLGeneratorTests {
         )
         let result = generator.generateCondition(from: filter)
         #expect(result == "`name` IS NOT NULL")
-    }
-
-    @Test("Equal with regular string value unchanged")
-    func testEqualRegularStringUnchanged() {
-        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
-        let filter = TableFilter(
-            id: UUID(), columnName: "name", filterOperator: .equal,
-            value: "hello", secondValue: nil, isEnabled: true, rawSQL: nil
-        )
-        let result = generator.generateCondition(from: filter)
-        #expect(result == "`name` = 'hello'")
     }
 
     // MARK: - IN/NOT IN with NULL Values (Fix D)

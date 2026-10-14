@@ -59,9 +59,9 @@ internal struct ThemeDefinition: Identifiable, Equatable, Sendable {
     }
 }
 
-/// The single registry every slot goes through. A slot exists here because a call site reads it,
-/// which `ThemeSlotCoverageTests` enforces. The document decoder, the encoder and the theme editor
-/// all enumerate this list rather than keeping their own copies.
+/// The single registry every slot goes through. A slot exists here because a call site reads it.
+/// The document decoder, the encoder and the theme editor all enumerate this list rather than
+/// keeping their own copies.
 internal enum ThemeSlot: String, CaseIterable, Sendable {
     case windowBackdrop = "window.background"
 

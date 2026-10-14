@@ -124,14 +124,6 @@ struct DataChangeManagerExtendedTests {
         #expect(!manager.isRowDeleted(.existing(0)))
     }
 
-    @Test("isRowInserted returns true for inserted row, false for others")
-    func isRowInsertedCorrectness() {
-        let manager = makeManager()
-        manager.recordRowInsertion(rowID: insertedID(5), values: ["a", "b", "c"])
-        #expect(manager.isRowInserted(insertedID(5)))
-        #expect(!manager.isRowInserted(.existing(0)))
-    }
-
     @Test("isCellModified returns true after edit, false for unmodified cells")
     func isCellModifiedTrueAfterEdit() {
         let manager = makeManager()

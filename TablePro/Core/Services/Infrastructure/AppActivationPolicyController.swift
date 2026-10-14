@@ -7,10 +7,10 @@ import AppKit
 import os
 
 /// The only place in the app that reads or writes `NSApplication.activationPolicy`, and the only
-/// place that calls `NSApplication.activate`. `AppActivationPolicySourceTests` enforces that, because
-/// the two are the same decision: bringing the app forward for a person is what makes it an app the
-/// person can see, and a background process that activates without a Dock icon or a menu bar leaves
-/// them a window with no Cmd+W, no Cmd+Q and no Edit menu.
+/// place that calls `NSApplication.activate`. The `app_activation_owner` SwiftLint rule enforces
+/// that, because the two are the same decision: bringing the app forward for a person is what makes
+/// it an app the person can see, and a background process that activates without a Dock icon or a
+/// menu bar leaves them a window with no Cmd+W, no Cmd+Q and no Edit menu.
 ///
 /// Three measured behaviours shape this (macOS 26, probe app observed through `lsappinfo`):
 /// the launch role has to be applied before `NSApplicationMain` or LaunchServices registers a

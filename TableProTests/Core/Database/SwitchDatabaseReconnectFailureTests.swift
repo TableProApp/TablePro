@@ -16,8 +16,7 @@ import Testing
 @Suite("Switch database reconnect failure", .serialized)
 @MainActor
 struct SwitchDatabaseReconnectFailureTests {
-    /// A type that reopens its connection to change database, and whose driver plugin is not
-    /// registered, so the reconnect fails on its first step with no network and no waiting.
+    // No driver plugin and no plugin load in the test host, so the reconnect fails on its first step, with no network.
     private static let typeId = "ReconnectSwitchFake"
 
     private func registerTypeIfNeeded() {

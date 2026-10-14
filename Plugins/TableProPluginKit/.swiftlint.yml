@@ -1,0 +1,3 @@
+# Linted in full like the rest of TableProCore, which links this directory. Without this file the
+# Plugins/ nested config would narrow it.
+disabled_rules: []

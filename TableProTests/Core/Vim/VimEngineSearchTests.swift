@@ -165,16 +165,6 @@ final class VimEngineSearchTests: XCTestCase {
         XCTAssertEqual(pos, 20, "# should find the previous occurrence of the word under cursor")
     }
 
-    // MARK: - Search with Operator
-
-    func testDeleteToForwardSearchMatch() throws {
-        // Search-as-motion (d/pattern) is not yet wired into the operator + motion
-        // machinery — the search command runs but does not feed its target back as
-        // a motion endpoint. Leaving this test as a documented TODO so the contract
-        // is recorded for the next implementation pass.
-        throw XCTSkip("Operator + search motion (d/pattern) not yet implemented")
-    }
-
     // MARK: - Search Highlighting
 
     func testSearchStateRetainedAfterMatch() {

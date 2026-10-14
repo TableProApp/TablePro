@@ -74,27 +74,4 @@ struct StatusBarChromeTests {
             #expect(!DetailPaneBackdrop.isThemed(contrast: .increased))
         }
     }
-
-    private static let statusBarSources = [
-        "TablePro/Views/Results/StatusBarChrome.swift",
-        "TablePro/Views/Results/ResultStatusBar.swift",
-        "TablePro/Views/Results/SelectionSummaryReadout.swift",
-        "TablePro/Views/Compare/CompareStatusBar.swift",
-        "TablePro/Views/DataFiles/DataFileStatusBar.swift",
-    ]
-
-    @Test("No status bar separates its items with a middle dot")
-    func noMiddleDotSeparators() throws {
-        let root = try ThemeSourceScan.repositoryRoot()
-        var offenders: [String] = []
-        for path in Self.statusBarSources {
-            let text = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
-            for (index, line) in text.components(separatedBy: .newlines).enumerated() {
-                let code = line.trimmingCharacters(in: .whitespaces)
-                guard !code.hasPrefix("//"), code.contains("\u{00B7}") else { continue }
-                offenders.append("\(path):\(index + 1)")
-            }
-        }
-        #expect(offenders.isEmpty, "Middle dots in status bar text: \(offenders)")
-    }
 }

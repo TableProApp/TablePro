@@ -3,7 +3,7 @@
 
 The iOS app does not link Yams, so it reads a JSON projection of licenses.yml: every component
 whose platforms include ios, sorted by name, with only the fields its Acknowledgements screen shows.
-ThirdPartyLicenseInventoryTests fails when the committed file differs from this output.
+scripts/ci/check-license-inventory.py fails when the committed file differs from this output.
 
 Usage:
   scripts/generate-ios-acknowledgements.py

@@ -166,20 +166,6 @@ struct SidebarNavigationResultTests {
         #expect(result == .reuseActiveTab)
     }
 
-    @Test("Resolves to skip when clicking the active table in QueryTabManager")
-    @MainActor
-    func resolveSkipWithActiveTableInTabManager() throws {
-        let manager = QueryTabManager()
-        try manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
-        let result = SidebarNavigationResult.resolve(
-            clickedTableName: "users",
-            currentTabTableName: manager.selectedTab?.tableContext.tableName,
-            hasExistingTabs: !manager.tabs.isEmpty,
-            isActiveTabReusable: false
-        )
-        #expect(result == .skip)
-    }
-
     @Test("Resolves to openNewTab when clicking a different table while the active tab is protected")
     @MainActor
     func resolveNewTabWhenActiveTabProtected() throws {

@@ -235,25 +235,7 @@ struct TrailingPaneCommandTitleTests {
         #expect(TrailingPaneCommandResolver.assistantToggle(assistantClosed) == nil)
     }
 
-    /// A dead fourth name for the pane toggle, beside Inspector in the menu, trailing pane in the
-    /// proxy and right panel in a legacy defaults key. Nothing called it, and a command surface that
-    /// keeps a name nobody uses is where the next caller picks the wrong one.
-    @Test("The command surface has no second name for the pane toggle")
-    func toggleRightSidebarIsGone() throws {
-        let url = Self.repositoryRoot.appendingPathComponent("TablePro/Views/Main/MainContentCommandActions.swift")
-        let source = try String(contentsOf: url, encoding: .utf8)
-        #expect(!source.contains("toggleRightSidebar"))
-    }
-
     // MARK: - Helpers
-
-    private static let repositoryRoot: URL = {
-        var url = URL(fileURLWithPath: #filePath)
-        for _ in 0 ..< 5 {
-            url.deleteLastPathComponent()
-        }
-        return url
-    }()
 
     private static func context(
         mode: ConnectionWorkspaceContentMode,

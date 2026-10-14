@@ -1,9 +1,9 @@
 import XCTest
 
 final class WelcomeWindowUITests: UITestCase {
-    func testAFreshLaunchOpensOnTheWelcomeWindowWithNoTour() throws {
+    func testALaunchOpensOneWelcomeWindowAsAnOrdinaryApp() throws {
         let app = try launchApp()
-        let welcome = app.windows["welcome"]
+        let welcome = welcomeWindow(in: app)
         XCTAssertTrue(welcome.waitToExist(timeout: 10))
 
         XCTAssertTrue(
@@ -11,11 +11,18 @@ final class WelcomeWindowUITests: UITestCase {
             "An empty store must offer the sample database where the list would be"
         )
         XCTAssertFalse(welcome.links["Skip"].exists, "The first launch must not open on a tour")
+        XCTAssertEqual(
+            app.children(matching: .window).count,
+            1,
+            "Launch must open the welcome window alone, not one window per restored connection"
+        )
+        XCTAssertFalse(window("support", in: app).exists, "Launching must never present the support screen")
+        XCTAssertTrue(waitForActivationPolicy(.regular), "A launch the person asked for is an ordinary app")
     }
 
     func testAFirstLaunchShowsTheWelcomeSheetUntilContinue() throws {
         let app = try launchApp(environment: ["TABLEPRO_UI_TEST_SHOW_WELCOME_SHEET": "1"])
-        let welcome = app.windows["welcome"]
+        let welcome = welcomeWindow(in: app)
         XCTAssertTrue(welcome.waitToExist(timeout: 10))
 
         let continueButton = welcome.descendants(matching: .button)["welcome-sheet-continue"]
@@ -27,36 +34,26 @@ final class WelcomeWindowUITests: UITestCase {
         XCTAssertTrue(welcome.buttons["Open Sample Database"].waitToExist(timeout: 5))
     }
 
-    func testHelpMenuShowsTheWelcomeSheetAgain() throws {
-        let app = try launchApp()
-        let welcome = app.windows["welcome"]
-        XCTAssertTrue(welcome.waitToExist(timeout: 10))
-        XCTAssertFalse(welcome.descendants(matching: .button)["welcome-sheet-continue"].exists)
-
-        let item = app.menuBars.menuItems["Getting Started"]
-        XCTAssertTrue(item.waitToExist(timeout: 10), "Help must offer the welcome sheet")
-        item.click()
-
-        XCTAssertTrue(
-            welcome.descendants(matching: .button)["welcome-sheet-continue"].waitToExist(timeout: 10),
-            "Help > Getting Started must show the sheet again"
-        )
-    }
-
+    // The one flow left on the bundled Chinook sample: opening it is what is under test.
     func testOpenSampleDatabaseFromTheEmptyListOpensTheSample() throws {
         let app = try launchApp()
-        let open = app.windows["welcome"].buttons["Open Sample Database"]
+        let welcome = welcomeWindow(in: app)
+        let open = welcome.buttons["Open Sample Database"]
         XCTAssertTrue(open.waitToExist(timeout: 10))
         XCTAssertTrue(waitUntilHittable(open, timeout: 5))
-
         open.click()
 
-        XCTAssertTrue(waitForSampleDatabaseWindow(in: app), "Open Sample Database must open the sample")
+        let window = mainWindow(in: app)
+        XCTAssertTrue(waitForObjectBrowser(in: window), "Open Sample Database must open a connected window")
+        XCTAssertTrue(objectBrowserRow("Track", in: window).waitToExist(timeout: 10), "The sidebar must list Chinook's tables")
+        XCTAssertTrue(waitForClickableRows(in: dataGrid(in: window)), "The sample must open Track with its rows")
+        XCTAssertTrue(waitForPredicate(timeout: 10) { window.title == "Track" }, "The window must name the open table")
+        XCTAssertFalse(welcome.exists, "Opening the sample takes the place of the welcome window")
     }
 
     func testTheVersionSettingHidesTheVersionAndTheUpdateCheckOnTheOpenWindow() throws {
-        let app = try launchApp(arguments: ["-AppleLanguages", "(en)"])
-        let welcome = app.children(matching: .window).matching(identifier: "welcome").firstMatch
+        let app = try launchApp()
+        let welcome = welcomeWindow(in: app)
         XCTAssertTrue(welcome.waitToExist(timeout: 10))
 
         let versionLine = welcome.descendants(matching: .any).matching(identifier: "welcome-version-line").firstMatch
@@ -65,9 +62,9 @@ final class WelcomeWindowUITests: UITestCase {
         XCTAssertTrue(versionLine.waitToExist(timeout: 10), "The welcome window must show the version by default")
         XCTAssertTrue(updateCheck.exists, "The welcome window must offer the update check by default")
 
-        app.menuBars.menuItems["Settings…"].click()
-        let settings = app.children(matching: .window).matching(identifier: "settings").firstMatch
-        XCTAssertTrue(settings.waitToExist(timeout: 10), "Settings must open")
+        app.typeShortcut(.settings)
+        let settings = window("settings", in: app)
+        XCTAssertTrue(settings.waitToExist(timeout: 10), "Command-comma must open Settings")
         let generalPaneButton = settings.toolbars.buttons["General"]
         XCTAssertTrue(generalPaneButton.waitToExist(timeout: 10))
         generalPaneButton.click()

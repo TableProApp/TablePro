@@ -1,38 +1,37 @@
-import TableProPluginKit
 import XCTest
 
-/// The base every UI test builds on, and the only supported way to get a running app.
-///
-/// A UI test drives the real app against real storage unless something redirects it, and this
-/// project has already paid for that: a suite left stray connections in the developer's own store,
-/// and because `startupBehavior` defaults to reopening the last session, launching the app under
-/// test restored and connected to a production database over an SSH tunnel.
-///
-/// `launchApp()` hands the app a throwaway directory that lives for one test. The app resolves its
-/// Application Support root, its defaults domain and its keychain from it, so nothing a test does
-/// can reach the real ones, and nothing it leaves behind outlives the run.
+/// The only way a UI test gets a running app: every launch names a sandbox, so the app never touches the real store.
 internal class UITestCase: XCTestCase {
     internal private(set) var sandboxRoot: URL?
     private var launchedApps: [XCUIApplication] = []
     private var privacyAlertMonitor: (any NSObjectProtocol)?
+
+    // One path per checkout: the app names its defaults suite after the path and empties it when the
+    // directory is new, so each test starts clean and a worktree never shares a suite with another.
+    private static var sandboxLocation: URL {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in Bundle(for: UITestCase.self).bundlePath.utf8 {
+            hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01b3
+        }
+        return FileManager.default.temporaryDirectory
+            .appendingPathComponent("TableProUITests", isDirectory: true)
+            .appendingPathComponent(String(hash, radix: 16), isDirectory: true)
+    }
 
     override internal func setUpWithError() throws {
         try super.setUpWithError()
         continueAfterFailure = false
         privacyAlertMonitor = addPrivacyAlertMonitor()
 
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("TableProUITests", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let root = Self.sandboxLocation
+        if FileManager.default.fileExists(atPath: root.path) {
+            try FileManager.default.removeItem(at: root)
+        }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         sandboxRoot = root
-        /// Every run shares one defaults domain, so emptying it here is what keeps one test from
-        /// reading what the last one wrote.
-        UserDefaults.standard.removePersistentDomain(forName: PluginHostStorage.sandboxSuiteName)
     }
 
-    /// Terminating before removing the directory matters: the app writes on the way down, and a
-    /// directory deleted underneath it would let those writes fail into somewhere unexamined.
+    // Terminate first: the app writes on the way down, and those writes must land inside the sandbox.
     override internal func tearDownWithError() throws {
         attachElementTreeIfFailed()
         for app in launchedApps where app.state != .notRunning {
@@ -51,12 +50,8 @@ internal class UITestCase: XCTestCase {
         try super.tearDownWithError()
     }
 
-    /// macOS raises its local-network privacy alert over the app under test, and XCTest's built-in
-    /// handler misses it: that matcher keys on the wording "would like to find", which macOS 26
-    /// rewrote to "Allow ... to find devices on local networks?". Nothing dismissed it, so every
-    /// element lookup for the rest of the test paid a full interruption sweep, which cost one suite
-    /// ten minutes of a forty minute job. Matching on the buttons rather than the title keeps this
-    /// working through the next rewording. Nothing under test needs the local network.
+    // XCTest's own handler misses macOS 26's local-network alert ("Allow ... to find devices"), and an
+    // undismissed alert makes every later query pay an interruption sweep. Matching buttons survives rewording.
     private func addPrivacyAlertMonitor() -> any NSObjectProtocol {
         addUIInterruptionMonitor(withDescription: "System privacy alert") { alert in
             for label in ["Don't Allow", "Deny", "Allow"] where alert.buttons[label].exists {
@@ -67,10 +62,7 @@ internal class UITestCase: XCTestCase {
         }
     }
 
-    /// A UI test that fails only on CI is undiagnosable from a log line: the assertion says what
-    /// was not found, never what was there instead. The tree is captured here so the result bundle
-    /// the workflow already uploads carries it, which is the difference between reading a runner
-    /// failure and guessing at it.
+    // An assertion says what was missing, never what was there; the tree in the result bundle does.
     private func attachElementTreeIfFailed() {
         guard let run = testRun, run.failureCount + run.unexpectedExceptionCount > 0 else { return }
         for (index, app) in launchedApps.enumerated() {
@@ -81,10 +73,9 @@ internal class UITestCase: XCTestCase {
         }
     }
 
-    /// `arguments` is separate from `environment` because the two are not interchangeable. A
-    /// defaults override such as `-AppleLanguages` only takes effect as a launch argument: passed
-    /// in the environment it is an ordinary variable nothing reads, so the pin silently does
-    /// nothing and the test passes only on a machine that was already in that language.
+    // MARK: - Launching
+
+    /// A defaults override such as `-AppleLanguages` only works as a launch argument, never in `environment`.
     internal func launchApp(
         environment: [String: String] = [:],
         arguments: [String] = []
@@ -93,135 +84,135 @@ internal class UITestCase: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["TABLEPRO_UI_TESTING"] = "1"
         app.launchEnvironment["TABLEPRO_UI_TEST_SANDBOX"] = root.path
-        for (key, value) in environment {
-            app.launchEnvironment[key] = value
-        }
-        app.launchArguments.append(contentsOf: arguments)
+        app.launchEnvironment.merge(environment) { _, new in new }
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"] + arguments
         app.launch()
         launchedApps.append(app)
         return app
     }
 
-    /// Asks for the sample database at launch instead of clicking `Help > Open Sample Database`.
+    /// Restores `seeds` as the last session, so the window opens already connected.
     ///
-    /// The menu route cost ten seconds on every call. XCUITest resolves a menu item by opening its
-    /// parent, and a probe that resolved the item first left the menu open, so the click's own
-    /// traversal failed with "open menu during menu traversal", waited out a ten second watchdog,
-    /// snapshotted the whole accessibility hierarchy and only then retried. Every one of the 66
-    /// tests that opened the sample paid it: 11 minutes of a 39 minute suite. None of those tests
-    /// is about the Help menu, so they no longer go through it.
-    ///
-    /// `SingleWindowMenuContractUITests.testHelpMenuOpensTheSampleDatabase` still drives the menu
-    /// item the way a person does, so the route keeps its coverage.
-    ///
-    /// The variable is read by `UITestLaunchEnvironment` in the app, which turns it into an
-    /// ordinary `LaunchIntent`. Both sides spell it out because a UI test target cannot import the
-    /// app, the same as `TABLEPRO_UI_TESTING` below.
+    /// An intent variable (`TABLEPRO_UI_TEST_OPEN_*`) in `environment` skips the session restore;
+    /// use `launchWithFixture(openingDataFile:contents:)` to pair the fixture with a data file.
     @discardableResult
-    internal func launchWithSampleDatabase(
+    internal func launchWithFixture(
+        _ seeds: [ConnectionSeed] = [ConnectionSeed()],
         environment: [String: String] = [:],
         arguments: [String] = []
-    ) throws -> XCUIApplication {
-        var launchEnvironment = environment
-        launchEnvironment["TABLEPRO_UI_TEST_OPEN_SAMPLE"] = "1"
-        let app = try launchApp(environment: launchEnvironment, arguments: arguments)
-        XCTAssertTrue(
-            waitForSampleDatabaseWindow(in: app),
-            "The sample database never finished opening"
-        )
-        return app
+    ) throws -> FixtureLaunch {
+        let connections = try seedSQLiteSession(seeds)
+        let app = try launchApp(environment: environment, arguments: arguments)
+        let window = mainWindow(in: app)
+        XCTAssertTrue(waitForObjectBrowser(in: window), "The fixture connection never listed its tables")
+        return FixtureLaunch(app: app, window: window, connections: connections)
     }
 
-    /// Writes `contents` into this test's sandbox and launches with it open in a data file window.
-    ///
-    /// `TABLEPRO_UI_TEST_OPEN_FILE` is read by `UITestLaunchEnvironment` in the app and delivered as
-    /// an ordinary open-file intent, so the window arrives the way a Finder double-click brings it.
+    /// Opens a data file window the way a Finder double-click does.
     internal func launchWithDataFile(named name: String, contents: Data) throws -> XCUIApplication {
-        let root = try XCTUnwrap(sandboxRoot, "setUpWithError did not prepare a sandbox")
-        let fileURL = root.appendingPathComponent(name)
-        try contents.write(to: fileURL)
+        let fileURL = try writeIntoSandbox(name, contents: contents)
         return try launchApp(environment: ["TABLEPRO_UI_TEST_OPEN_FILE": fileURL.path])
     }
 
-    /// Arrives as the open intent a Finder double-click on a `.tablepro` file sends.
+    /// Arrives as the intent a Finder double-click on a `.tablepro` file sends.
     internal func launchWithConnectionShare(named name: String, contents: Data) throws -> XCUIApplication {
-        let root = try XCTUnwrap(sandboxRoot, "setUpWithError did not prepare a sandbox")
-        let fileURL = root.appendingPathComponent(name)
-        try contents.write(to: fileURL)
+        let fileURL = try writeIntoSandbox(name, contents: contents)
         return try launchApp(environment: ["TABLEPRO_UI_TEST_OPEN_CONNECTION_SHARE": fileURL.path])
     }
 
-    /// `TABLEPRO_UI_TEST_OPEN_URL` reaches the app's own URL handling, never another installed copy.
+    /// Reaches the app's own URL handling, never another installed copy registered for the scheme.
     internal func launchOpeningURL(_ url: String, arguments: [String] = []) throws -> XCUIApplication {
         try launchApp(environment: ["TABLEPRO_UI_TEST_OPEN_URL": url], arguments: arguments)
     }
 
-    /// Returning as soon as the launch was requested is what used to leave fourteen suites poking
-    /// at a window that had no connection yet, and every one of those misses cost an XCUITest
-    /// retry. The object browser having rows is the cheapest proof the connection is live.
-    ///
-    /// The query is built once, asks only whether a first match exists, and never leaves the
-    /// sidebar. `objectBrowser(in:)` says why the last part matters: the sample opens `Track`, and
-    /// its 1,000 rows usually reach the grid before the table list reaches the sidebar. A search
-    /// for the outline that starts at the window walks the whole grid while the sidebar is still a
-    /// spinner, three to six seconds on the app's main thread per check, and the table list it was
-    /// waiting for could not load under that. The runs that reported this as "never finished
-    /// opening" had the sidebar spinning and the grid full, a different test each time. Locally the
-    /// wait settles in about two seconds.
-    internal func waitForSampleDatabaseWindow(in app: XCUIApplication, timeout: TimeInterval = 30) -> Bool {
-        let firstObject = objectBrowser(in: app.children(matching: .window).firstMatch)
-            .descendants(matching: .staticText).firstMatch
-        return waitForPredicate(timeout: timeout) { firstObject.exists }
+    internal func writeIntoSandbox(_ name: String, contents: Data) throws -> URL {
+        let root = try XCTUnwrap(sandboxRoot, "setUpWithError did not prepare a sandbox")
+        let fileURL = root.appendingPathComponent(name)
+        try contents.write(to: fileURL)
+        return fileURL
     }
 
-    /// The connection window's object browser, found without searching the rest of the window.
-    ///
-    /// The sidebar is the first group directly under the window's split group, ahead of the
-    /// splitter and the detail pane: `SplitGroup > Group > ScrollView > Outline` once the tables
-    /// have loaded and `SplitGroup > Group > ActivityIndicator` before. A descendants search from
-    /// the window reaches the outline first when it exists, but when it does not yet exist the
-    /// search goes on into the data grid, which publishes about 12,000 elements for `Track`.
-    /// Stepping through direct children keeps a miss as cheap as a hit.
+    // MARK: - Finding things
+
+    /// A window is a direct child of the application; `app.windows` walks the whole tree to find one.
+    internal func window(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
+        app.children(matching: .window).matching(identifier: identifier).firstMatch
+    }
+
+    internal func mainWindow(in app: XCUIApplication) -> XCUIElement {
+        window("main", in: app)
+    }
+
+    internal func welcomeWindow(in app: XCUIApplication) -> XCUIElement {
+        window("welcome", in: app)
+    }
+
+    // A descendants search from the window reaches the data grid while the sidebar is still a spinner,
+    // and walking a loaded grid costs seconds on the app's main thread. Direct children keep a miss cheap.
     internal func objectBrowser(in window: XCUIElement) -> XCUIElement {
         window.children(matching: .splitGroup).firstMatch
             .children(matching: .group).firstMatch
             .descendants(matching: .outline).firstMatch
     }
 
-    /// Opens the sample database the way a person does. Only the menu contract suite needs this;
-    /// everything else takes the launch route above.
-    @discardableResult
-    internal func launchAndOpenSampleDatabaseFromHelpMenu() throws -> XCUIApplication {
-        let app = try launchApp()
-        let menuBar = app.menuBars.firstMatch
-        XCTAssertTrue(menuBar.waitToExist(timeout: 10))
-        menuBar.menuItems["Open Sample Database"].click()
-        return app
+    /// The cheapest proof a connection is live: its object browser lists something.
+    internal func waitForObjectBrowser(in window: XCUIElement, timeout: TimeInterval = 30) -> Bool {
+        let firstObject = objectBrowser(in: window).descendants(matching: .staticText).firstMatch
+        return waitForPredicate(timeout: timeout) { firstObject.exists }
     }
+
+    /// Hosted cells publish the row's name as the static text's `value`, prefixed with its kind.
+    internal func objectBrowserRow(_ name: String, kind: String = "Table", in window: XCUIElement) -> XCUIElement {
+        objectBrowser(in: window).staticTexts
+            .matching(NSPredicate(format: "value == %@", "\(kind): \(name)"))
+            .firstMatch
+    }
+
+    internal func dataGrid(in window: XCUIElement) -> XCUIElement {
+        window.tables.matching(identifier: "data-grid").firstMatch
+    }
+
+    // The identifier sits on the SwiftUI representable, not on the NSTextView, so it never resolves.
+    internal func editorTextView(in window: XCUIElement) -> XCUIElement {
+        window.textViews.firstMatch
+    }
+
+    /// Keystrokes typed before the editor installs its key monitor are lost, so this retypes until the text arrives.
+    internal func typeQuery(_ sql: String, in window: XCUIElement, attempts: Int = 3) {
+        let editor = editorTextView(in: window)
+        XCTAssertTrue(editor.waitToExist(timeout: 10), "The query tab must hold an editor to type into")
+        for _ in 0 ..< attempts {
+            editor.click()
+            editor.typeKey("a", modifierFlags: .command)
+            editor.typeText(sql)
+            let arrived = waitForPredicate(timeout: 3) {
+                ((editor.value as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == sql
+            }
+            if arrived { return }
+        }
+        XCTFail("The editor never received the query typed into it")
+    }
+
+    /// An item of the contextual menu a right-click just raised; the menu bar's closed copy of the
+    /// same title is never hittable. Assert an absent contextual item in a unit test instead.
+    internal func contextMenuItem(_ title: String, in app: XCUIApplication) -> XCUIElement {
+        let matches = app.menuItems.matching(NSPredicate(format: "title == %@", title))
+        return matches.allElementsBoundByIndex.first { $0.isHittable } ?? matches.firstMatch
+    }
+
+    // MARK: - Waiting
 
     internal func waitForPredicate(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
         UITestPoll.until(timeout: timeout, condition)
     }
 
-    internal func isOn(_ toggle: XCUIElement) -> Bool {
-        if let number = toggle.value as? Int { return number == 1 }
-        return (toggle.value as? String) == "1"
-    }
-
-    /// The precondition a click actually has. `waitForExistence` only says the element is in the
-    /// tree, which a row inside a pane that is still animating open already is; the click then
-    /// lands on a moving target, the app hit-tests the point to nothing, and the event goes
-    /// nowhere with no failure of its own. `isHittable` is the question AppKit can answer: does
-    /// this point come back to this element. Nothing in the app can defend against the early
-    /// click, because animating a pane into place is what AppKit does.
+    /// Existence is not enough to click: a row in a pane still animating open hit-tests to nothing.
     internal func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
         waitForPredicate(timeout: timeout) { element.exists && element.isHittable }
     }
 
-    /// macOS clicks an element where it is and never scrolls it into view first, so a row below
-    /// the fold of a scrolling pane is not hittable until the pane has been scrolled down to it.
-    /// The scroll goes to a point inside the content. Measured: scrolling a window element posts
-    /// the event at its top-left corner, over the title bar, and the pane does not move.
+    // macOS clicks where an element is and never scrolls it into view. Scrolling a window posts at its
+    // top-left corner, over the title bar, so the scroll goes to a point inside the content.
     internal func scrollUntilHittable(_ element: XCUIElement, in container: XCUIElement, timeout: TimeInterval) -> Bool {
         let content = container.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
         let deadline = Date(timeIntervalSinceNow: timeout)
@@ -232,19 +223,24 @@ internal class UITestCase: XCTestCase {
         return true
     }
 
-    /// Whether the keyboard is on this element.
-    ///
-    /// `hasFocus` is declared on `XCUIElementAttributes` in ObjC
-    /// (`XCUIAutomation.framework/Headers/XCUIElementAttributes.h:69`) and does not reach Swift:
-    /// it appears in no `XCUIAutomation.swiftinterface` for this toolchain, and `hasKeyboardFocus`
-    /// is the iOS spelling. Key-value coding is not the way round it either. Measured: it raises
-    /// `NSInternalInconsistencyException: Calling hasFocus on element is not supported on a macOS.`,
-    /// which took every test in `WindowFocusUITests` with it.
-    ///
-    /// What macOS does publish is the snapshot XCUITest prints for itself. Its first line holds the
-    /// element's own attributes and carries `Keyboard Focused` when that element has the keyboard,
-    /// so that line is what this reads. Only the first: every `NSTableView` cell under a focused
-    /// list carries the same word, and the subtree below is not this element's answer.
+    // A grid enters the tree before its query returns, and a coordinate taken off an empty frame posts
+    // at (inf, inf). `firstMatch` stops the walk; asking for every row mounts a cell for each.
+    internal func waitForClickableRows(in grid: XCUIElement, timeout: TimeInterval = 30) -> Bool {
+        let firstRow = grid.tableRows.firstMatch
+        return waitForPredicate(timeout: timeout) {
+            grid.frame.width > 0 && grid.frame.height > 0 && firstRow.exists
+        }
+    }
+
+    // MARK: - Acting
+
+    internal func isOn(_ toggle: XCUIElement) -> Bool {
+        if let number = toggle.value as? Int { return number == 1 }
+        return (toggle.value as? String) == "1"
+    }
+
+    // `hasFocus` does not reach Swift on macOS and raises through KVC. The first line of the element's
+    // snapshot carries "Keyboard Focused"; later lines belong to its children.
     internal func holdsKeyboardFocus(_ element: XCUIElement) -> Bool {
         guard element.exists else { return false }
         let ownAttributes = element.debugDescription
@@ -254,194 +250,52 @@ internal class UITestCase: XCTestCase {
         return ownAttributes.contains("Keyboard Focused")
     }
 
-    /// Switches the result to its Structure editor, through **View > Result View > Structure**
-    /// rather than the `Structure` segment of the results status bar.
-    ///
-    /// The segment cannot be clicked on the runner. Its screen is 1024x768, and a window that
-    /// wide cannot hold the sidebar, the detail pane at its minimum width and the row inspector
-    /// at once: the detail pane keeps its minimum and is drawn under the sidebar, taking the
-    /// leading half of the status bar with it. XCUITest still reports the segment as existing and
-    /// hittable, because its accessibility frame is where the layout says it is, so the click is
-    /// posted at (314, 691) and lands on the sidebar. Nothing fails there. The result stays on
-    /// Data, and the suite's next assertion reads the data grid as though it were the structure
-    /// grid, or waits out its timeout for a structure tab picker that was never going to appear.
-    /// (Run 33734073855, where the element tree captured the mode picker still reporting
-    /// `Data` selected after the click.)
-    ///
-    /// The menu item carries no geometry, so it is reachable whatever the window is doing.
-    /// Nothing probes for it first: XCUITest resolves a menu item by opening its parent, and a
-    /// probe that resolves it leaves that menu open, so the click's own traversal then fails with
-    /// "open menu during menu traversal" and waits out a ten second watchdog. Waiting on the menu
-    /// bar costs nothing and waiting for the tab picker afterwards is what makes the switch
-    /// observed rather than assumed.
+    // Rows and cells read as obscured by their sibling columns, so a click goes through a coordinate.
+    // On the 1024pt runner the sidebar overlaps the grid's leading edge, so start right of whichever is further.
+    internal func gridPoint(in grid: XCUIElement, of window: XCUIElement, dy: CGFloat) -> XCUICoordinate {
+        let clearOfBrowser = objectBrowser(in: window).frame.maxX + 40 - grid.frame.minX
+        return grid.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: max(80, clearOfBrowser), dy: dy))
+    }
+
+    /// AppKit reports some rows as disabled, so they never become hittable; a coordinate click reaches them.
+    internal func clickAtCenter(_ element: XCUIElement) {
+        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+    }
+
+    /// For a command with no key equivalent. Click it without probing: resolving the item opens its
+    /// menu, and the click's own traversal then fails with "open menu during menu traversal".
+    internal func menuItem(_ title: String, under menu: String, in app: XCUIApplication) -> XCUIElement {
+        app.menuBars.firstMatch.menuBarItems[menu].menuItems[title].firstMatch
+    }
+
+    // The status-bar segment lands under the sidebar on the 1024x768 runner and the click silently
+    // hits the sidebar, so the result view is switched from View > Result View.
+    internal func showResultView(_ title: String, in app: XCUIApplication) {
+        XCTAssertTrue(app.menuBars.firstMatch.waitToExist(timeout: 20), "The app must publish its menu bar")
+        menuItem(title, under: "View", in: app).click()
+    }
+
     internal func showStructure(in app: XCUIApplication, window: XCUIElement) {
-        let menuBar = app.menuBars.firstMatch
-        XCTAssertTrue(menuBar.waitToExist(timeout: 20), "The app must publish its menu bar")
-        menuBar.menuItems["Structure"].click()
+        showResultView("Structure", in: app)
         XCTAssertTrue(
             window.radioGroups["structure-tab-picker"].firstMatch.waitToExist(timeout: 30),
             "The structure editor must open on the Structure result view"
         )
     }
 
-    /// A point inside the data grid that an overlapping pane cannot steal.
-    ///
-    /// A coordinate is the only way to click a row at all: the grid's columns are siblings of its
-    /// rows and later in the tree, so XCUITest reads every row and every cell as obscured and
-    /// refuses to click either. The grid's leading edge is not safe to measure from, though. On
-    /// the runner the detail pane is drawn under the sidebar, so a point 80pt in from that edge
-    /// lands on the object browser and a right-click raises its menu rather than the grid's.
-    /// Starting from whichever edge is further right keeps the point on the grid at any width.
-    internal func gridPoint(in grid: XCUIElement, of window: XCUIElement, dy: CGFloat) -> XCUICoordinate {
-        let clearOfBrowser = window.outlines.firstMatch.frame.maxX + 40 - grid.frame.minX
-        return grid.coordinate(withNormalizedOffset: .zero)
-            .withOffset(CGVector(dx: max(80, clearOfBrowser), dy: dy))
+    internal func showData(in app: XCUIApplication, window: XCUIElement) {
+        showResultView("Data", in: app)
+        XCTAssertTrue(dataGrid(in: window).waitToExist(timeout: 30), "The Data result view must show a grid")
     }
+}
 
-    /// The preconditions a click taken off the grid actually has, which existence does not give.
-    ///
-    /// The grid enters the tree when its table view is mounted, which is before the query behind it
-    /// has returned. A click posted then lands on empty grid and selects nothing, and nothing fails
-    /// there: the suite goes on to wait out its own timeout for whatever the selection was supposed
-    /// to produce, and reports that as the missing thing. A grid that exists is also not laid out
-    /// yet, and a coordinate taken off an empty frame resolves to `(inf, inf)`, which posts at no
-    /// display at all and takes the runner down instead of failing.
-    ///
-    /// The question has to stop at the first row. `allElementsBoundByIndex` resolves the whole set,
-    /// and asking the grid for its rows is what activates `DataGridCellAccessibilityView`, so the
-    /// table view then prepares every row of the page and mounts a cell view for each: fine on
-    /// Album's 347 rows, and past XCUITest's own query budget on the `Track` table the sample opens
-    /// by default, where it fails the suite with "Timed out while evaluating UI query" rather than
-    /// with an assertion. `firstMatch` is what stops the traversal early.
-    internal func waitForClickableRows(in grid: XCUIElement, timeout: TimeInterval = 30) -> Bool {
-        let firstRow = grid.tableRows.firstMatch
-        return waitForPredicate(timeout: timeout) {
-            grid.frame.width > 0 && grid.frame.height > 0 && firstRow.exists
-        }
-    }
+internal struct FixtureLaunch {
+    internal let app: XCUIApplication
+    internal let window: XCUIElement
+    internal let connections: [SeededConnection]
 
-    /// The object browser draws its rows as hosted cells, so a row's name arrives as the static
-    /// text's `value`, carrying the object kind the row reads out to VoiceOver, rather than as a
-    /// label or an identifier. Matching on `value` is what finds them.
-    internal func objectBrowserRow(
-        _ name: String,
-        kind: String = "Table",
-        in window: XCUIElement
-    ) -> XCUIElement {
-        window.outlines.firstMatch.staticTexts
-            .matching(NSPredicate(format: "value == %@", "\(kind): \(name)"))
-            .firstMatch
-    }
-
-    /// The query editor's text view. Eighteen suites carried a byte-identical private copy of this
-    /// before it moved here.
-    ///
-    /// The identifier branch is the specific query and the `firstMatch` fallback is what actually
-    /// resolves today, because the identifier is applied to the SwiftUI representable rather than
-    /// to the `NSTextView` underneath it. Both are kept: the fallback is what works, and the
-    /// identified lookup is what should start working the day the identifier reaches the text view.
-    internal func editorTextView(in app: XCUIApplication) -> XCUIElement {
-        let window = app.windows.firstMatch
-        let identified = window.textViews.matching(identifier: "sql-editor-textview").firstMatch
-        if identified.exists {
-            return identified
-        }
-        return window.textViews.firstMatch
-    }
-
-    /// Puts `sql` in the query editor and confirms it arrived, retyping it if it did not.
-    ///
-    /// A click focuses the editor, but the keystrokes that follow it can outrun the focus: the
-    /// editor installs its coordinators and its key monitor on a later run-loop turn, and anything
-    /// typed before that lands nowhere. Measured on this suite, `EXPLAIN QUERY PLAN SELECT …`
-    /// reached the editor as `IN QUERY PLAN SELECT …` and the query came back
-    /// `near "IN": syntax error`, which reads in the report as a broken query plan rather than as
-    /// five lost keystrokes. Select-all before each attempt, so a partial first attempt is replaced
-    /// rather than prepended to.
-    internal func typeQuery(_ sql: String, in app: XCUIApplication, attempts: Int = 3) {
-        let editor = editorTextView(in: app)
-        XCTAssertTrue(editor.waitToExist(timeout: 10), "The query tab must hold an editor to type into")
-        for _ in 0 ..< attempts {
-            editor.click()
-            app.typeKey("a", modifierFlags: .command)
-            app.typeText(sql)
-            let arrived = waitForPredicate(timeout: 3) {
-                ((editor.value as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == sql
-            }
-            if arrived { return }
-        }
-        XCTFail("The editor never received the query typed into it")
-    }
-
-    /// AppKit reports those rows as disabled, so they never become hittable and a plain `click()`
-    /// waits for a state that cannot arrive. Clicking through a coordinate reaches them.
-    internal func clickAtCenter(_ element: XCUIElement) {
-        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
-    }
-
-    /// An item of the contextual menu a right-click just raised, picked out from the menu bar's
-    /// copy of the same title.
-    ///
-    /// A closed menu bar submenu is still in the accessibility tree, so an app-rooted
-    /// `menuItems[title]` matches **Database > Copy To…** as readily as the menu under the pointer
-    /// and then refuses to click either. Hittability is what separates them: only the open menu's
-    /// items can be clicked.
-    ///
-    /// Scoping by container does not work here, measured: `app.children(matching: .menu)` is empty
-    /// while a contextual menu is up, so a query built on it silently answers no. That is why this
-    /// takes a title the menu bar also has and narrows it, rather than asking a container what it
-    /// holds. **A negative assertion cannot be written this way at all**: an absent contextual
-    /// item is indistinguishable from a present-but-unhittable menu bar one. Assert the absence in
-    /// a unit test over the menu-building code instead.
-    internal func contextMenuItem(_ title: String, in app: XCUIApplication) -> XCUIElement {
-        let matches = app.menuItems.matching(NSPredicate(format: "title == %@", title))
-        return matches.allElementsBoundByIndex.first { $0.isHittable } ?? matches.firstMatch
-    }
-
-    /// Reached by the row's own identifier, because a section row's label is nested and does not
-    /// answer a subscript by title.
-    ///
-    /// Not finding the row fails the test rather than skipping it: a section list the accessibility
-    /// tree cannot see is a section list VoiceOver cannot drive.
-    internal func selectConnectionFormTab(_ tab: String, in form: XCUIElement) {
-        let row = form.descendants(matching: .any)
-            .matching(identifier: "connection-form-section-\(tab)")
-            .firstMatch
-        XCTAssertTrue(
-            row.waitToExist(timeout: 10),
-            "No section row identified connection-form-section-\(tab)"
-        )
-        XCTAssertTrue(waitUntilHittable(row, timeout: 10))
-        row.click()
-    }
-
-    /// The app removes its own defaults domain as it terminates, which is the only point that
-    /// reliably comes after `cfprefsd` has written it. This sweep is the backstop for a run that
-    /// crashed or was killed before it got there, and it runs before the class's tests so a
-    /// previous session's leftovers go too.
-    override internal class func setUp() {
-        super.setUp()
-        sweepLeftoverSuites()
-    }
-
-    override internal class func tearDown() {
-        sweepLeftoverSuites()
-        super.tearDown()
-    }
-
-    private static func sweepLeftoverSuites() {
-        let preferences = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Preferences", isDirectory: true)
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: preferences.path)) ?? []
-        for name in names where name.hasPrefix("com.TablePro.uitest") && name.hasSuffix(".plist") {
-            removeSuite(named: String(name.dropLast(".plist".count)))
-        }
-    }
-
-    private static func removeSuite(named suiteName: String) {
-        UserDefaults.standard.removePersistentDomain(forName: suiteName)
-        let plist = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Preferences/\(suiteName).plist")
-        try? FileManager.default.removeItem(at: plist)
+    internal var database: URL {
+        connections[0].database
     }
 }

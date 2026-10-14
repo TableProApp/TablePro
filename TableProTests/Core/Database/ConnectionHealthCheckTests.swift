@@ -34,13 +34,6 @@ struct ConnectionHealthCheckTests {
         #expect(!ConnectionHealthCheck.isFresh(answered, now: answered.addingTimeInterval(3_600)))
     }
 
-    /// The default has to be today's behaviour, or every user who never opens Settings gets a
-    /// change they did not ask for.
-    @Test("the default keeps the 30-second check")
-    func defaultIsTheThirtySecondCheck() {
-        #expect(GeneralSettings.default.connectionHealthCheck == .every30Seconds)
-    }
-
     @Test("settings saved before the option existed decode to the default")
     func absentKeyDecodesToTheDefault() throws {
         let json = Data(#"{"startupBehavior":"reopenLast"}"#.utf8)

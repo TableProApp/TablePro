@@ -2,12 +2,6 @@ import XCTest
 
 final class ExternalLinkFilterUITests: UITestCase {
     func testALinkWithAFilterShowsTheWholeFilterAndOffersNoAlwaysAllow() throws {
-        guard #available(macOS 13.3, *) else {
-            throw XCTSkip("XCUIApplication.open(_:) needs macOS 13.3")
-        }
-        let app = try launchApp(arguments: ["-AppleLanguages", "(en)"])
-        XCTAssertTrue(app.windows["welcome"].waitToExist(timeout: 10))
-
         let condition = "status = 'pending' AND total > 1000"
         var components = URLComponents()
         components.scheme = "postgresql"
@@ -19,9 +13,11 @@ final class ExternalLinkFilterUITests: UITestCase {
             URLQueryItem(name: "table", value: "orders"),
             URLQueryItem(name: "raw", value: condition)
         ]
-        app.open(try XCTUnwrap(components.url))
+        let link = try XCTUnwrap(components.url)
+        let app = try launchOpeningURL(link.absoluteString)
 
-        XCTAssertTrue(app.buttons["Connect"].waitToExist(timeout: 10), "A link with a filter must ask before connecting")
+        XCTAssertTrue(app.buttons["Connect"].waitToExist(timeout: 15), "A link with a filter must ask before connecting")
+        // With no key window the prompt runs app-modal; over a window it is a sheet.
         let alert = app.dialogs.firstMatch.exists ? app.dialogs.firstMatch : app.sheets.firstMatch
         let shownFilter = alert.textViews.matching(NSPredicate(format: "value == %@", condition)).firstMatch
         XCTAssertTrue(shownFilter.waitToExist(timeout: 5), "The alert must show the whole filter")
@@ -29,5 +25,6 @@ final class ExternalLinkFilterUITests: UITestCase {
 
         alert.buttons["Cancel"].click()
         XCTAssertTrue(waitForPredicate(timeout: 5) { !alert.exists }, "Cancel must close the alert")
+        XCTAssertFalse(mainWindow(in: app).exists, "Cancel must not open a connection")
     }
 }

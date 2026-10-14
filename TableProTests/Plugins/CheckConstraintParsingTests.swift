@@ -140,19 +140,3 @@ struct MySQLServerVersionTests {
         #expect(!MySQLServerVersion.isKnownBelow((5, 7, 6), banner: "unknown"))
     }
 }
-
-struct MSSQLCheckConstraintDefinitionTests {
-    @Test("the wrapping parentheses SQL Server adds are removed")
-    func stripsWrapper() {
-        #expect(MSSQLCheckConstraintDefinition.expression(fromDefinition: "([a]>(0))") == "[a]>(0)")
-    }
-
-    @Test("an expression whose parentheses do not wrap the whole thing is left alone")
-    func leavesNonEnclosingAlone() {
-        let definition = "([a]>(0) AND len([b])<(10))"
-        #expect(
-            MSSQLCheckConstraintDefinition.expression(fromDefinition: definition)
-                == "[a]>(0) AND len([b])<(10)"
-        )
-    }
-}

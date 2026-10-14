@@ -128,38 +128,6 @@ struct RedisQueuedCommandPolicyTests {
     }
 }
 
-/// The paged read and the streamed read both run an operation, and the streamed one used to run it
-/// without translating the queued reply: a command sent into the user's open block threw instead of
-/// answering `QUEUED`, and nothing recorded it, so `EXEC`'s replies paired with the recorded commands
-/// one position out. The translation therefore belongs to the one function that dispatches an
-/// operation, not to a route. The plugin imports CRedis, which this target cannot, so the guard is a
-/// source scan.
-struct RedisQueuedTranslationSourceScanTests {
-    private static let pluginDirectory: URL = {
-        var directory = URL(fileURLWithPath: #filePath)
-        for _ in 0 ..< 3 { directory.deleteLastPathComponent() }
-        return directory
-            .appendingPathComponent("Plugins")
-            .appendingPathComponent("RedisDriverPlugin")
-    }()
-
-    private static func source(_ name: String) throws -> String {
-        try String(contentsOf: pluginDirectory.appendingPathComponent(name), encoding: .utf8)
-    }
-
-    private static let queuedCatch = "catch let queued as RedisQueuedCommand"
-
-    @Test("The operation dispatcher is what translates a queued reply")
-    func theDispatcherTranslates() throws {
-        #expect(try Self.source("RedisPluginDriver+Operations.swift").contains(Self.queuedCatch))
-    }
-
-    @Test("No route translates a queued reply for itself")
-    func noRouteTranslatesOnItsOwn() throws {
-        #expect(!(try Self.source("RedisPluginDriver.swift").contains(Self.queuedCatch)))
-    }
-}
-
 struct RedisCommandChannelScanTests {
     @Test("A queued SCAN is refused rather than read as an empty keyspace")
     func queuedScanIsRefused() async throws {

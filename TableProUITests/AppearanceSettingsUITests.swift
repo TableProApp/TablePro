@@ -1,43 +1,8 @@
 import XCTest
 
-/// Settings > Appearance, driven the way a person uses it. The app writes theme files into this
-/// test's sandbox, so the checks on disk read the folder the app wrote.
 final class AppearanceSettingsUITests: UITestCase {
-    // Theme and menu titles are localized.
-    private let englishArguments = ["-AppleLanguages", "(en)"]
-
-    func testThemePopupsOfferOnlyTheirOwnAppearance() throws {
-        let (app, window) = try openAppearancePane()
-
-        let mode = window.popUpButtons["appearance-mode-picker"]
-        XCTAssertTrue(mode.waitToExist(timeout: 10))
-        XCTAssertEqual(mode.value as? String, "System", "A fresh sandbox follows the system appearance")
-
-        let dark = window.popUpButtons["appearance-dark-theme"]
-        XCTAssertTrue(dark.waitToExist(timeout: 10))
-        XCTAssertEqual(dark.value as? String, "Default Dark")
-        choose("Nord", in: dark)
-        XCTAssertTrue(
-            waitForPredicate(timeout: 5) { (dark.value as? String) == "Nord" },
-            "Picking Nord should make it the dark theme"
-        )
-
-        let light = window.popUpButtons["appearance-light-theme"]
-        XCTAssertEqual(light.value as? String, "Default Light")
-        XCTAssertTrue(waitUntilHittable(light, timeout: 10))
-        light.click()
-        XCTAssertTrue(light.menuItems["Default Light"].waitToExist(timeout: 5))
-        XCTAssertFalse(light.menuItems["Dracula"].exists, "A dark theme has no place in the Light popup")
-        XCTAssertFalse(light.menuItems["Nord"].exists, "A dark theme has no place in the Light popup")
-        app.typeKey(.escape, modifierFlags: [])
-
-        // The UI test defaults domain outlives this test; leave the dark slot as later tests expect it.
-        choose("Default Dark", in: dark)
-        XCTAssertTrue(waitForPredicate(timeout: 5) { (dark.value as? String) == "Default Dark" })
-    }
-
     func testCustomThemeFromCreationToDeletion() throws {
-        let (_, window) = try openAppearancePane()
+        let window = try openAppearancePane()
 
         createTheme(basedOn: "Dracula", in: window)
         let copy = row("Dracula Copy", in: window)
@@ -145,8 +110,7 @@ final class AppearanceSettingsUITests: UITestCase {
             "The cleared override should be saved"
         )
 
-        // Setting a color goes through the shared color panel, which XCUITest cannot drive reliably;
-        // ThemeEditorDraftTests covers what a well hands back.
+        // The shared color panel cannot be driven reliably; ThemeEditorDraftTests covers what a well hands back.
         let background = element("theme-color-editor.background", in: sheet)
         XCTAssertTrue(waitUntilHittable(background, timeout: 5), "The cleared slot keeps its well")
 
@@ -159,15 +123,15 @@ final class AppearanceSettingsUITests: UITestCase {
 
     // MARK: - Helpers
 
-    private func openAppearancePane() throws -> (XCUIApplication, XCUIElement) {
-        let app = try launchOpeningURL("tablepro://settings/appearance", arguments: englishArguments)
-        let window = app.windows["settings"]
-        XCTAssertTrue(window.waitToExist(timeout: 10))
+    private func openAppearancePane() throws -> XCUIElement {
+        let app = try launchOpeningURL("tablepro://settings/appearance")
+        let settings = window("settings", in: app)
+        XCTAssertTrue(settings.waitToExist(timeout: 10))
         XCTAssertTrue(
-            waitForPredicate(timeout: 5) { window.title == "Appearance" },
-            "The link should open the Appearance pane, the window is titled \(window.title)"
+            waitForPredicate(timeout: 5) { settings.title == "Appearance" },
+            "The link should open the Appearance pane, the window is titled \(settings.title)"
         )
-        return (app, window)
+        return settings
     }
 
     private func choose(_ title: String, in popup: XCUIElement) {
@@ -182,7 +146,7 @@ final class AppearanceSettingsUITests: UITestCase {
         container.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
-    /// SwiftUI text carries its string in `value` with no label, so a subscript by title finds nothing.
+    // SwiftUI text carries its string in `value` with no label, so a subscript by title finds nothing.
     private func row(_ name: String, in window: XCUIElement) -> XCUIElement {
         window.staticTexts.matching(NSPredicate(format: "value == %@", name)).firstMatch
     }
