@@ -10,9 +10,7 @@ pub(crate) fn reveal_failure_toast(result: &Result<(), glib::Error>) -> Option<a
         return None;
     };
     tracing::warn!(%error, "could not show a file in the file manager");
-    let toast = adw::Toast::new(&gettext("Could not show the file in Files"));
-    toast.set_use_markup(false);
-    Some(toast)
+    Some(crate::ui::plain_toast(&gettext("Could not show the file in Files")))
 }
 
 #[cfg(test)]

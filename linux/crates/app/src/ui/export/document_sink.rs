@@ -2,27 +2,32 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use tablepro_core::column::ResultColumn;
+use tablepro_core::export::RenderError;
 use tablepro_core::{ResultEvent, ResultSink, SinkFlow, Value};
 use tablepro_session::runtime::Tasks;
 use tokio::sync::mpsc;
 
+use super::export_format::DocumentWriter;
 use super::{DocumentFormat, ExportMessage, ExportStreamFailure};
 
 /// Rows a document takes in between progress reports.
 const ROWS_PER_PROGRESS: u64 = 4_096;
 
-/// Keeps a result's rows until the last one is in, then renders the
-/// document on the blocking pool and hands it on as one chunk. A
-/// workbook is a zip archive, which cannot be written as rows arrive,
-/// and a sheet's row limit bounds what it holds.
+/// Writes a result's rows into its document on the blocking pool as
+/// they arrive, and hands the finished document on as one chunk. A
+/// workbook is a zip archive, which is written whole, but its sheet
+/// spills the rows to a temporary file meanwhile, so the result is
+/// never held.
 pub(crate) struct DocumentSink {
     messages: mpsc::Sender<ExportMessage>,
     format: DocumentFormat,
     /// The most rows the document can hold.
-    limit: usize,
+    limit: u64,
     tasks: Tasks,
-    columns: Option<Arc<[ResultColumn]>>,
-    rows: Vec<Vec<Value>>,
+    /// Out on the blocking pool while a batch is written, and `None`
+    /// before the result set starts.
+    writer: Option<DocumentWriter>,
+    rows: u64,
     result_sets: u32,
 }
 
@@ -30,11 +35,11 @@ impl DocumentSink {
     pub(crate) fn new(messages: mpsc::Sender<ExportMessage>, format: DocumentFormat, tasks: Tasks) -> Self {
         Self {
             messages,
-            limit: format.row_limit(),
+            limit: format.row_limit() as u64,
             format,
             tasks,
-            columns: None,
-            rows: Vec::new(),
+            writer: None,
+            rows: 0,
             result_sets: 0,
         }
     }
@@ -51,47 +56,66 @@ impl DocumentSink {
         SinkFlow::ConsumerGone
     }
 
+    async fn in_pool<T: Send + 'static>(
+        &mut self,
+        work: impl FnOnce() -> Result<T, RenderError> + Send + 'static,
+    ) -> Result<T, SinkFlow> {
+        match self.tasks.spawn_blocking_task(work).await {
+            Ok(Ok(done)) => Ok(done),
+            Ok(Err(error)) => Err(self.fail(error.into()).await),
+            Err(failure) => Err(self.fail(failure.into()).await),
+        }
+    }
+
+    async fn start(&mut self, columns: Arc<[ResultColumn]>) -> SinkFlow {
+        let format = self.format.clone();
+        match self.in_pool(move || format.start(columns)).await {
+            Ok(writer) => {
+                self.writer = Some(writer);
+                SinkFlow::Continue
+            }
+            Err(flow) => flow,
+        }
+    }
+
     async fn take(&mut self, rows: Vec<Vec<Value>>) -> SinkFlow {
-        if self.columns.is_none() {
+        let Some(mut writer) = self.writer.take() else {
             tracing::warn!("rows arrived before their result set started");
             return SinkFlow::ConsumerGone;
-        }
-        let before = self.rows.len() as u64;
-        self.rows.extend(rows);
-        // A sheet past its last row is refused at render time anyway,
-        // so the read stops here rather than holding the rest.
-        if self.rows.len() > self.limit {
-            let limit = self.limit;
+        };
+        let before = self.rows;
+        let now = before + rows.len() as u64;
+        // The sheet refuses a row past its last, so the read stops here
+        // rather than reading the rest.
+        if now > self.limit {
+            let limit = self.limit as usize;
             return self.fail(ExportStreamFailure::SheetFull { limit }).await;
         }
-        let now = self.rows.len() as u64;
+        let written = self.in_pool(move || writer.write_rows(&rows).map(|()| writer)).await;
+        match written {
+            Ok(writer) => self.writer = Some(writer),
+            Err(flow) => return flow,
+        }
+        self.rows = now;
         if before / ROWS_PER_PROGRESS != now / ROWS_PER_PROGRESS {
             return self.send(ExportMessage::Progress { rows: now }).await;
         }
         SinkFlow::Continue
     }
 
-    async fn render(&mut self) -> SinkFlow {
-        let Some(columns) = self.columns.clone() else {
+    async fn finish(&mut self) -> SinkFlow {
+        let Some(writer) = self.writer.take() else {
             return SinkFlow::Continue;
         };
-        let rows = std::mem::take(&mut self.rows);
-        let count = rows.len() as u64;
-        let format = self.format.clone();
-        let rendered = self
-            .tasks
-            .spawn_blocking_task(move || format.render(&columns, &rows))
-            .await;
-        match rendered {
-            Ok(Ok(bytes)) => {
-                if self.send(ExportMessage::Chunk { bytes, rows: count }).await == SinkFlow::ConsumerGone {
-                    return SinkFlow::ConsumerGone;
-                }
-                self.send(ExportMessage::Finished { rows: count }).await
-            }
-            Ok(Err(error)) => self.fail(error.into()).await,
-            Err(failure) => self.fail(failure.into()).await,
+        let rows = self.rows;
+        let bytes = match self.in_pool(move || writer.finish()).await {
+            Ok(bytes) => bytes,
+            Err(flow) => return flow,
+        };
+        if self.send(ExportMessage::Chunk { bytes, rows }).await == SinkFlow::ConsumerGone {
+            return SinkFlow::ConsumerGone;
         }
+        self.send(ExportMessage::Finished { rows }).await
     }
 }
 
@@ -104,11 +128,10 @@ impl ResultSink for DocumentSink {
                 if self.result_sets > 1 {
                     return self.fail(ExportStreamFailure::MultipleResultSets).await;
                 }
-                self.columns = Some(columns);
-                SinkFlow::Continue
+                self.start(columns).await
             }
             ResultEvent::Rows(rows) => self.take(rows).await,
-            ResultEvent::ResultSetFinished { .. } => self.render().await,
+            ResultEvent::ResultSetFinished { .. } => self.finish().await,
             _ => SinkFlow::Continue,
         }
     }
@@ -171,12 +194,29 @@ mod tests {
         assert!(bytes.starts_with(b"PK"), "the workbook is not a zip archive");
     }
 
+    /// Each batch goes into the sheet as it arrives, so the sink holds
+    /// no rows between batches.
+    #[tokio::test]
+    async fn rows_are_written_into_the_sheet_as_they_arrive() {
+        let (messages, _received) = mpsc::channel(16);
+        let mut sink = DocumentSink::new(messages, sheet(), paused_tasks());
+
+        sink.accept(started()).await;
+        sink.accept(ResultEvent::Rows(rows(300))).await;
+        sink.accept(ResultEvent::Rows(rows(200))).await;
+
+        let Some(DocumentWriter::Xlsx(writer)) = sink.writer.as_ref() else {
+            panic!("no sheet is being written");
+        };
+        assert_eq!(writer.rows(), 500);
+    }
+
     #[tokio::test]
     async fn a_sheet_stops_the_read_once_it_is_full() {
         let (messages, mut received) = mpsc::channel(16);
         let mut sink = DocumentSink::new(messages, sheet(), paused_tasks());
         let limit = 10;
-        sink.limit = limit;
+        sink.limit = limit as u64;
 
         sink.accept(started()).await;
         let flow = sink.accept(ResultEvent::Rows(rows(limit + 1))).await;

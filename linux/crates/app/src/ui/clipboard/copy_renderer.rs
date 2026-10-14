@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use tablepro_core::column::{ColumnInfo, ResultColumn};
-use tablepro_core::dialect::SqlDialect;
+use tablepro_core::column::{ColumnInfo, ColumnType, ResultColumn};
+use tablepro_core::dialect::{LiteralError, SqlDialect};
 use tablepro_core::edit::CellInput;
 use tablepro_core::export::{
     self, CsvEncoder, CsvOptions, EncodeError, JsonArrayEncoder, MarkdownEncoder, RenderInsertError, RowEncoder,
@@ -26,6 +26,20 @@ pub enum CopyRequest {
         kind: CopyKind,
     },
     Insert(InsertCopy),
+    /// One column's values as an IN list, in the spelling of the engine
+    /// the rows came from.
+    InClause {
+        dialect: Arc<dyn SqlDialect>,
+        values: InClauseRows,
+    },
+}
+
+/// One column of the rows a user picked, for an IN list.
+#[derive(Debug)]
+pub struct InClauseRows {
+    pub columns: Arc<[ResultColumn]>,
+    pub rows: Vec<RowSnapshot>,
+    pub column: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,8 +52,6 @@ pub enum CopyKind {
     CsvWithHeaders,
     Json,
     Markdown,
-    /// One column's values as an IN list.
-    InClause(usize),
 }
 
 /// Rows as INSERT statements for the server the tab reads.
@@ -66,6 +78,8 @@ pub(crate) enum CopyError {
     Encode(#[from] EncodeError),
     #[error(transparent)]
     Insert(#[from] RenderInsertError),
+    #[error(transparent)]
+    Literal(#[from] LiteralError),
     /// Every value was NULL or binary, and `()` is not SQL anywhere.
     #[error("no value can go in an IN list")]
     EmptyInClause,
@@ -83,6 +97,7 @@ pub(crate) fn render(request: CopyRequest) -> Result<ClipboardPayload, CopyError
     let payload = match request {
         CopyRequest::Rows { columns, rows, kind } => render_rows(columns, &rows, kind),
         CopyRequest::Insert(insert) => render_insert(insert),
+        CopyRequest::InClause { dialect, values } => render_in_clause(&*dialect, &values),
     }?;
     if holds_nul(&payload.text) {
         return Err(CopyError::ContainsNul);
@@ -117,19 +132,24 @@ fn render_rows(
         ),
         CopyKind::Json => encode(JsonArrayEncoder::new(columns), rows, ClipboardFormat::Json),
         CopyKind::Markdown => encode(MarkdownEncoder::new(columns), rows, ClipboardFormat::Markdown),
-        CopyKind::InClause(column) => {
-            let clause = export::render_in_clause(rows.iter().map(|row| row.value(column)));
-            if clause.sql.is_empty() {
-                return Err(CopyError::EmptyInClause);
-            }
-            Ok(ClipboardPayload {
-                text: clause.sql,
-                format: ClipboardFormat::Sql,
-                rows: rows.len() - clause.skipped,
-                skipped: clause.skipped,
-            })
-        }
     }
+}
+
+fn render_in_clause(dialect: &dyn SqlDialect, values: &InClauseRows) -> Result<ClipboardPayload, CopyError> {
+    let InClauseRows { columns, rows, column } = values;
+    let column_type = columns
+        .get(*column)
+        .map_or_else(|| ColumnType::untyped_text("text"), |column| column.column_type.clone());
+    let clause = export::render_in_clause(dialect, &column_type, rows.iter().map(|row| row.value(*column)))?;
+    if clause.sql.is_empty() {
+        return Err(CopyError::EmptyInClause);
+    }
+    Ok(ClipboardPayload {
+        text: clause.sql,
+        format: ClipboardFormat::Sql,
+        rows: rows.len() - clause.skipped,
+        skipped: clause.skipped,
+    })
 }
 
 /// The cell's full text, never the grid's display form, which stands in

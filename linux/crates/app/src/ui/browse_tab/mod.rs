@@ -78,7 +78,7 @@ use crate::services::save_batch::SaveTarget;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
 use crate::services::tracker_edit::TrackerEdit;
-use crate::ui::clipboard::{CopyKind, CopyRequest, InsertCopy, InsertRow};
+use crate::ui::clipboard::{CopyKind, CopyRequest, InClauseRows, InsertCopy, InsertRow};
 use crate::ui::export::{ExportOffer, ExportOrigin, ExportQuery, ExportSource};
 
 const PAGE_SIZE_OPTIONS: &[u64] = &[100, 500, 1_000, 5_000, 10_000];
@@ -129,10 +129,8 @@ impl BrowseTab {
             .map(|id| init.filter_settings.filters(id, init.schema.as_deref(), &init.table))
             .unwrap_or_default();
         let table_label = qualified(init.schema.as_deref(), &init.table);
-        imp.loading_page.set_description(Some(&crate::i18n::gettext_f(
-            "Fetching rows from {table}",
-            &[("table", &table_label)],
-        )));
+        imp.loading_page
+            .set_description(Some(&loading_description(&table_label)));
         imp.inner_stack.set_visible_child_name("loading");
         imp.read_only_banner.set_revealed(init.read_only);
 
@@ -542,6 +540,7 @@ impl From<GridMsg> for BrowseTabInput {
             GridMsg::ShowRowJson(request) => Self::GridShowRowJson(request),
             GridMsg::ShowToast(text) => Self::GridShowToast(text),
             GridMsg::CopyRowsAsInsert { rows } => Self::GridCopyRowsAsInsert(rows),
+            GridMsg::CopyInClause(values) => Self::GridCopyInClause(values),
             GridMsg::SetCellValue { row, column, preset } => Self::GridSetCellValue { row, column, preset },
             GridMsg::ExportResults(page) => Self::Export(Some(page)),
             GridMsg::DeleteRows { rows } => Self::DeleteRows(rows),
@@ -741,6 +740,7 @@ pub(crate) enum BrowseTabInput {
     /// as the grid holds it.
     Export(Option<ExportSource>),
     GridCopyRowsAsInsert(Vec<RowObject>),
+    GridCopyInClause(InClauseRows),
     DuplicateRows(Vec<RowObject>),
     GridCopy(CopyRequest),
     GridShowRowJson(RowJsonRequest),
@@ -1091,6 +1091,7 @@ impl BrowseModel {
             }
         }
         self.stale_banner.show(presentation.stale.as_ref());
+        self.sync_pager_buttons();
         self.sync_total_chrome();
         self.sync_delete_action();
         if self.tab_loading != presentation.tab_loading {
@@ -1348,16 +1349,23 @@ impl BrowseModel {
     /// depends on the page but not the column structure.
     fn refresh_grid_chrome(&self) {
         self.refresh_crud_buttons();
-        self.first_button.set_sensitive(self.pager.first().is_some());
-        self.prev_button.set_sensitive(self.pager.prev().is_some());
-        self.next_button
-            .set_sensitive(self.pager.next(self.rows_on_page()).is_some());
+        self.sync_pager_buttons();
         self.sync_total_chrome();
         self.suppress_combo_emit.set(false);
     }
 
+    /// A page turn moves the pager before its read lands, so a failed
+    /// read leaves the pager on a page the grid does not show. The way
+    /// back goes from the pager, and Next waits for a page on screen.
+    fn sync_pager_buttons(&self) {
+        self.first_button.set_sensitive(self.pager.first().is_some());
+        self.prev_button.set_sensitive(self.pager.prev().is_some());
+        self.next_button
+            .set_sensitive(self.pager.next(self.rows_on_page()).is_some());
+    }
+
     fn rows_on_page(&self) -> u64 {
-        self.page.as_ref().map_or(0, |page| page.row_count as u64)
+        self.shown_page().map_or(0, |page| page.row_count as u64)
     }
 
     fn has_primary_key(&self) -> bool {
@@ -1427,10 +1435,8 @@ impl BrowseModel {
     }
 
     fn show_loading(&self) {
-        self.loading_page.set_description(Some(&crate::i18n::gettext_f(
-            "Fetching rows from {table}",
-            &[("table", &self.table_label())],
-        )));
+        self.loading_page
+            .set_description(Some(&loading_description(&self.table_label())));
         self.inner_stack.set_visible_child_name("loading");
     }
 
@@ -1661,6 +1667,12 @@ impl BrowseModel {
                     self.copy_rows_as_insert(&rows, fx);
                 }
             }
+            BrowseTabInput::GridCopyInClause(values) => match self.session.current_dialect() {
+                Some(dialect) => fx.output(BrowseTabOutput::Copy(CopyRequest::InClause { dialect, values })),
+                None => fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext(
+                    "Connect to a database first.",
+                ))),
+            },
             BrowseTabInput::GridCopy(request) => fx.output(BrowseTabOutput::Copy(request)),
             BrowseTabInput::GridShowRowJson(request) => fx.output(BrowseTabOutput::ShowRowJson(request)),
             BrowseTabInput::CopySelectedRowsAsTsv => self.copy_selected_rows(fx),
@@ -1938,6 +1950,15 @@ impl BrowseModel {
             kind: CopyKind::Rows,
         }));
     }
+}
+
+/// A status page reads its description as markup, and a table's name
+/// can hold an `&` or a `<`.
+fn loading_description(table: &str) -> glib::GString {
+    glib::markup_escape_text(&crate::i18n::gettext_f(
+        "Fetching rows from {table}",
+        &[("table", table)],
+    ))
 }
 
 fn qualified(schema: Option<&str>, table: &str) -> String {

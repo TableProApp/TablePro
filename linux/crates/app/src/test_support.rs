@@ -30,7 +30,7 @@ pub(crate) use memory_settings::MemorySettings;
 pub(crate) use signal_log::SignalLog;
 pub(crate) use unlabelled_widget::UnlabelledWidget;
 pub(crate) use wait_timed_out::WaitTimedOut;
-pub(crate) use widget_lookup::{descendants, find_by_action_name, first_descendant_of_type};
+pub(crate) use widget_lookup::{descendants, find_by_action_name, first_descendant_of_type, status_page_description};
 
 /// `Tasks` bound to the current test runtime.
 ///

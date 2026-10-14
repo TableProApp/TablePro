@@ -328,7 +328,7 @@ pub(super) fn connect_editor(
         let Some(toasts) = toasts.upgrade() else {
             return;
         };
-        let toast = adw::Toast::new(&title);
+        let toast = crate::ui::plain_toast(&title);
         toast.set_button_label(Some(&crate::i18n::gettext("Undo")));
         let editor = editor.downgrade();
         toast.connect_button_clicked(move |_| {

@@ -18,7 +18,7 @@ use tablepro_session::runtime::CountingHold;
 use tablepro_test_support::{ConnectionScript, FakeReply, StreamEnd};
 
 use super::*;
-use crate::test_support::{FakeSession, finish_on_main, first_descendant_of_type, wait_until};
+use crate::test_support::{FakeSession, descendants, finish_on_main, first_descendant_of_type, wait_until};
 use crate::ui::export::{AbortOutcome, ExpectedRows, ExportFormat, ExportOperationsButton, RowFormat, TableExport};
 use crate::ui::grid::RowSnapshot;
 use crate::workspace::{InhibitTarget, WorkOutcome, answer, visible_alert};
@@ -710,4 +710,58 @@ fn a_new_file_shows_under_its_display_name() {
 
     assert!(matches!(outcome, ExportOutcome::Exported { rows: 10 }), "{outcome:?}");
     assert!(item.title().ends_with("(invalid encoding)"), "{}", item.title());
+}
+
+/// Both exports would race for the file, and the one stopped would
+/// remove what the other finished.
+#[gtk4::test]
+fn a_second_export_to_a_file_being_written_is_refused() {
+    let harness = Harness::new();
+    let path = harness.path("rows.csv");
+
+    let first = harness.ledger.begin(job(&path, 10_000)).expect("started");
+    let second = harness.ledger.begin(job(&path, 10)).expect("started");
+    let refused = harness.finish(second);
+    let exported = harness.finish(first);
+
+    assert!(
+        matches!(
+            refused,
+            ExportOutcome::Failed {
+                failure: ExportFailure::InUse,
+                file: None,
+            }
+        ),
+        "{refused:?}"
+    );
+    assert!(
+        matches!(exported, ExportOutcome::Exported { rows: 10_000 }),
+        "{exported:?}"
+    );
+    let text = std::fs::read_to_string(&path).expect("the export");
+    assert_eq!(text.lines().count(), 10_001);
+    let alert = visible_alert(&harness.window).expect("the alert");
+    assert_eq!(
+        alert.body(),
+        "An export to rows.csv is already running. Wait for it to finish, or export to another file."
+    );
+}
+
+/// The toast's title is plain text: as markup, the `&` would leave it
+/// empty.
+#[gtk4::test]
+fn a_file_name_with_an_ampersand_shows_in_its_toast() {
+    let harness = Harness::new();
+    let path = harness.path("R&D.csv");
+
+    let outcome = harness.finish(harness.ledger.begin(job(&path, 10)).expect("started"));
+
+    assert!(matches!(outcome, ExportOutcome::Exported { rows: 10 }), "{outcome:?}");
+    let shown = || {
+        descendants(&harness.window)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+            .any(|label| label.text() == "Exported 10 rows to R&D.csv")
+    };
+    wait_until(WAIT, shown).expect("the toast to name the file");
 }

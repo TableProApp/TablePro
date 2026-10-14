@@ -839,6 +839,26 @@ fn missing_file_goes_to_connect_failed() {
     assert!(test.connector.calls().is_empty(), "a missing file was connected to");
 }
 
+/// The page reads its description as markup, where the `&` would
+/// leave the reason empty.
+#[gtk4::test]
+fn a_reason_with_an_ampersand_shows_on_the_failed_page() {
+    let test = TestWindow::picker("MissingAmpersand");
+    let missing = test._dir.path().join("R&D").join("gone.db");
+
+    test.window
+        .send(SessionWindowInput::OpenFile(gio::File::for_path(&missing)));
+    test.wait_for_page("connect-failed");
+
+    let message = test
+        .window
+        .content()
+        .and_then(|child| child.downcast::<ConnectFailedPage>().ok())
+        .and_then(|page| page.message())
+        .expect("the failed page's message");
+    assert!(message.contains("R&D"), "{message}");
+}
+
 #[gtk4::test]
 fn a_file_whose_resolve_never_ran_goes_to_connect_failed() {
     let mut test = TestWindow::picker("ResolveStopped");

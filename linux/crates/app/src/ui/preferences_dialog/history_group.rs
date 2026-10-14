@@ -183,7 +183,7 @@ impl HistoryGroup {
                         crate::i18n::gettext("The query history could not be cleared.")
                     }
                 };
-                group.emit_by_name::<()>("toast", &[&adw::Toast::new(&message)]);
+                group.emit_by_name::<()>("toast", &[&crate::ui::plain_toast(&message)]);
             });
         });
         alert.present(Some(self));
