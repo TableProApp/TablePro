@@ -144,11 +144,15 @@ mod tests {
         runtime.shutdown();
     }
 
+    /// The first answer parks the session offline, so only the fanout
+    /// delivering the second one can bring it back before the offline
+    /// recheck.
     #[gtk4::test]
     fn lan_host_reachable_without_default_route_stays_online() {
         let runtime = crate::test_support::test_runtime();
         let registry = SessionRegistry::new();
-        let probe = FakeProbe::answering(Reachability::Reachable);
+        let probe = FakeProbe::answering(Reachability::Unreachable);
+        probe.then(Reachability::Reachable);
         let fanout = ReachabilityFanout::new(registry.clone(), probe.clone());
         let mut healthy = ConnectionScript::default();
         healthy.probe.always(FakeReply::ok(()));
@@ -162,10 +166,17 @@ mod tests {
         fanout.reevaluate_all();
         crate::test_support::drain_main_context();
         lan.fake.connection.mark_lost();
+        wait_until(WAIT, || health(&lan) == SessionHealth::Offline).expect("the session offline");
+        assert!(
+            lan.fake.connector.calls().is_empty(),
+            "an unreachable server was redialled"
+        );
 
-        wait_until(WAIT, || lan.fake.connector.calls().len() == 1).expect("a reconnect");
+        fanout.reevaluate_all();
+
         wait_until(WAIT, || health(&lan) == SessionHealth::Online).expect("the session back online");
-        assert_eq!(probe.asked(), [endpoint("192.168.1.20")]);
+        assert_eq!(lan.fake.connector.calls().len(), 1);
+        assert_eq!(probe.asked(), [endpoint("192.168.1.20"), endpoint("192.168.1.20")]);
         runtime.shutdown();
     }
 
