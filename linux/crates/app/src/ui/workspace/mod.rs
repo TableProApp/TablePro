@@ -127,7 +127,7 @@ pub(crate) struct WorkspaceModel {
     exports: Rc<ExportLedger>,
     /// Whether the window was last told there is something to lose.
     reported_dirty: Cell<Option<bool>>,
-    history_dialog: Option<Controller<HistoryDialog>>,
+    history_dialog: Option<HistoryDialog>,
     saved_queries_dialog: Option<Controller<super::saved_queries_dialog::SavedQueriesDialog>>,
     import_dialog: Option<Controller<super::import_dialog::ImportCsvDialog>>,
     driver_id: String,
@@ -716,7 +716,7 @@ impl WorkspaceModel {
         self.sidebar_bridge.abort();
         // Their entries name this session's tables and queries.
         if let Some(dialog) = self.history_dialog.take() {
-            close_if_presented(dialog.model().dialog());
+            close_if_presented(dialog.upcast_ref());
         }
         if let Some(dialog) = self.saved_queries_dialog.take() {
             close_if_presented(dialog.model().dialog());

@@ -443,12 +443,14 @@ fn recorded(harness: &Harness) -> Vec<String> {
     let Some(history) = harness.history.as_ref().and_then(HistoryService::store) else {
         return Vec::new();
     };
-    let search = history.search(tablepro_storage::query_history::SearchFilter {
-        limit: 100,
-        ..Default::default()
-    });
+    let everything = tablepro_storage::query_history::HistoryQuery::default();
+    let search = history.search_page(
+        &everything,
+        tablepro_storage::query_history::HistoryPageRequest::first(100),
+    );
     block_on(&harness.runtime, search)
         .expect("search")
+        .entries
         .into_iter()
         .map(|entry| entry.query)
         .collect()

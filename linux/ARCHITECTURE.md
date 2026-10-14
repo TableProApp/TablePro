@@ -90,7 +90,7 @@ Work crosses between the two through `crate::runtime`:
 
 `crates/app/clippy.toml` bans the ways around this: `tokio::spawn`, `Handle::current`, `relm4::spawn` and its siblings, `MainContext::block_on`, `ComponentSender::input`, `RelmApp::run` and `gio::Application::quit`. The fast CI job also fails on `std::fs`, a `Path` method that reads the disk, or a `_blocking` call outside `spawn_blocking_task` under `crates/app/src/ui`.
 
-One second runtime remains. Relm4 runs a component's commands (`sender.command`, `oneshot_command`) on a runtime of its own, built the first time one runs, with one worker since nothing sets `RELM_THREADS`. The history and saved-queries dialogs still load through commands, so that runtime starts when either opens.
+One second runtime remains. Relm4 runs a component's commands (`sender.command`, `oneshot_command`) on a runtime of its own, built the first time one runs, with one worker since nothing sets `RELM_THREADS`. The saved-queries dialog still loads through commands, so that runtime starts when it opens.
 
 ## The application
 
@@ -126,7 +126,7 @@ The `Workspace` (`crates/app/src/ui/workspace/`) shows one session: the sidebar 
 
 The application, its windows, the workspace and every view a rewrite has reached are gtk-rs subclasses. A widget with a layout has a CompositeTemplate `.ui` file under `data/resources/ui/`, compiled into the GResource: the session window and its pages, the workspace, the browse, structure and SQL editor tabs, the results pane, and the connect and preferences dialogs with their sections. A subclass keeps its state in its `imp` struct and reports through signals. The window and the workspace take input through their input queues; a browse or structure tab handles its input in `send` at once, and one that arrives while another is being handled waits for it.
 
-A few views are still [Relm4](https://relm4.org) components ([ADR 0003](docs/decisions/0003-relm4-architecture.md)): the picker's `WelcomeView` with its `ConnectionRow` factory, the sidebar's `SidebarRow` factory, and the history, saved-queries and CSV import dialogs. Their output reaches the subclass that hosts them through `connect_receiver` or `relm4_bridge`, which put it on that subclass's queue. The two patterns coexist until a rewrite turns each component into a subclass.
+A few views are still [Relm4](https://relm4.org) components ([ADR 0003](docs/decisions/0003-relm4-architecture.md)): the picker's `WelcomeView` with its `ConnectionRow` factory, the sidebar's `SidebarRow` factory, and the saved-queries and CSV import dialogs. Their output reaches the subclass that hosts them through `connect_receiver` or `relm4_bridge`, which put it on that subclass's queue. The two patterns coexist until a rewrite turns each component into a subclass.
 
 See [docs/state-management.md](docs/state-management.md) for the patterns and naming we use.
 
@@ -135,7 +135,7 @@ See [docs/state-management.md](docs/state-management.md) for the patterns and na
 Every key the app binds or relies on is one `Accelerator` in `ACCELERATORS` (`crates/app/src/application/accelerators.rs`): the action it fires, its triggers, its `AcceleratorScope` and where the shortcuts dialog lists it.
 
 - **Application** keys go in with `set_accels_for_action` at startup. GtkWindow runs them in the capture phase, before the focused widget, so none of them is a key a text field or a list uses.
-- **Local** keys are a `local_shortcut_controller(owner)` on the owner's widget, firing the owner's action group through `NamedAction`: `browse` on a table tab and its column view, `editor` on the SQL editor's source view, `structure`, `filter`, and the sidebar and history rows. A disabled action lets its key go on. Bubble phase leaves a text field inside the owner its own Ctrl+Z and Ctrl+C; the editor's keys run in the capture phase, because GtkTextView binds Ctrl+/ itself.
+- **Local** keys are a `local_shortcut_controller(owner)` on the owner's widget, firing the owner's action group through `NamedAction`: `browse` on a table tab and its column view, `editor` on the SQL editor's source view, `structure`, `filter`, the sidebar rows, and the query history's list, which opens the focused row's menu. A disabled action lets its key go on. Bubble phase leaves a text field inside the owner its own Ctrl+Z and Ctrl+C; the editor's keys run in the capture phase, because GtkTextView binds Ctrl+/ itself.
 - **Component** keys are bound by a component's own controller (the grid cell keys, the cell editors), which reads them from the table through `component_trigger` or `component_matches`.
 - **Stock** keys belong to GTK or libadwaita: GtkListBase's selection and movement, AdwTabView's tab switching, AdwApplication's Ctrl+?. The workspace removes AdwTabView's Ctrl+Home and Ctrl+End pairs so the lists and the editor in its tabs keep them.
 

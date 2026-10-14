@@ -139,12 +139,13 @@ mod tests {
 
         let store = history.ready_store().await.expect("the store");
         let queries: Vec<String> = store
-            .search(tablepro_storage::query_history::SearchFilter {
-                limit: 100,
-                ..Default::default()
-            })
+            .search_page(
+                &tablepro_storage::query_history::HistoryQuery::default(),
+                tablepro_storage::query_history::HistoryPageRequest::first(100),
+            )
             .await
             .expect("search")
+            .entries
             .into_iter()
             .map(|entry| entry.query)
             .collect();

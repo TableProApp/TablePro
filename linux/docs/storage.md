@@ -179,6 +179,20 @@ When it deleted anything it runs FTS5 `optimize`, because the delete
 triggers otherwise leave tombstones that grow the index as the table
 shrinks. It returns a `PruneReport { expired, over_cap }`.
 
+### Searching the history
+
+`QueryHistory::search_page(&HistoryQuery, HistoryPageRequest)` finds
+entries that hold every search term anywhere, in any case. Each row keeps
+its query lowercased by Unicode rules in `query_folded`, which SQLite's
+`lower()` cannot do, so `QueryHistory::open` folds the rows an older
+build recorded. `history_search`, an FTS5 trigram index over that column,
+answers a term of three characters or more as a quoted phrase, so quotes
+and FTS5 operators stay literal; a shorter term goes through `instr`.
+
+A page is read by keyset on `(pinned, executed_at, id)`, newest first
+with pinned entries ahead, and `HistoryPage::next` is where the next one
+starts. Rows recorded while the user scrolls never shift a page.
+
 ### What goes into the history
 
 `HistoryService::record` is the one way in, for editor runs, saves and

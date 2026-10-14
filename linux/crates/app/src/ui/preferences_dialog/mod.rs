@@ -405,12 +405,13 @@ mod tests {
     fn count(runtime: &crate::runtime::AppRuntime, history: &tablepro_storage::QueryHistory) -> usize {
         block_on(
             runtime,
-            history.search(tablepro_storage::query_history::SearchFilter {
-                limit: 100,
-                ..Default::default()
-            }),
+            history.search_page(
+                &tablepro_storage::query_history::HistoryQuery::default(),
+                tablepro_storage::query_history::HistoryPageRequest::first(100),
+            ),
         )
         .expect("search")
+        .entries
         .len()
     }
 

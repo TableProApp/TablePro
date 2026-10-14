@@ -2,7 +2,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use relm4::{Component, ComponentController};
 
-use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, HistoryDialogOutput};
+use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, QueryDestination};
 use crate::ui::saved_queries_dialog::{SavedQueriesDialog, SavedQueriesDialogInit, SavedQueriesDialogOutput};
 
 use super::{WorkspaceInput, WorkspaceModel};
@@ -25,23 +25,18 @@ impl WorkspaceModel {
     }
 
     pub(super) fn on_show_history(&mut self) {
-        let dialog = HistoryDialog::builder()
-            .launch(HistoryDialogInit {
-                history: self.history.clone(),
-                tasks: self.tasks.clone(),
-            })
-            .connect_receiver({
-                let input = self.input.clone();
-                move |_, out| {
-                    input.deliver(match out {
-                        HistoryDialogOutput::OpenInNewTab(text) => WorkspaceInput::OpenHistoryQuery(text),
-                        HistoryDialogOutput::ReplaceCurrentTabQuery(text) => {
-                            WorkspaceInput::ReplaceActiveTabQuery(text)
-                        }
-                    });
-                }
+        let dialog = HistoryDialog::new(HistoryDialogInit {
+            history: self.history.clone(),
+            tasks: self.tasks.clone(),
+        });
+        let input = self.input.clone();
+        dialog.connect_query_chosen(move |_, destination, text| {
+            input.deliver(match destination {
+                QueryDestination::NewTab => WorkspaceInput::OpenHistoryQuery(text),
+                QueryDestination::CurrentTab => WorkspaceInput::ReplaceActiveTabQuery(text),
             });
-        dialog.model().dialog().present(self.dialog_parent().as_ref());
+        });
+        dialog.present(self.dialog_parent().as_ref());
         self.history_dialog = Some(dialog);
     }
 
@@ -208,7 +203,6 @@ mod tests {
     fn a_history_dialog_closed_by_hand_is_not_closed_again_on_disconnect() {
         use gtk4::glib;
         use gtk4::prelude::*;
-        use relm4::ComponentController;
 
         let test = TestWindow::connected("HistoryClosedOnce");
         let dialog = test
@@ -218,7 +212,7 @@ mod tests {
                 model
                     .history_dialog
                     .as_ref()
-                    .map(|dialog| dialog.model().dialog().clone())
+                    .map(|dialog| dialog.clone().upcast::<libadwaita::Dialog>())
             })
             .flatten()
             .expect("the history dialog");
