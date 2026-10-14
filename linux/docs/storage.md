@@ -144,6 +144,7 @@ Schema id and path: `app.tablepro.TablePro`.
 | `is-maximized` | `b` | `false` | |
 | `default-page-size` | `u` | `1000` | 100 to 100000 |
 | `confirm-destructive` | `b` | `true` | |
+| `restore-session` | `b` | `true` | |
 | `history-retention-days` | `u` | `30` | 0 to 365 |
 | `query-timeout-secs` | `u` | `60` | 0 to 3600 |
 | `use-system-font` | `b` | `true` | |

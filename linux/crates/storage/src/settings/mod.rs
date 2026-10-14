@@ -132,6 +132,15 @@ impl AppSettings {
         self.set_string(keys::CONNECT_DIALOG_DRIVER, driver_id)
     }
 
+    /// Whether the connections open at quit are opened again at launch.
+    pub fn restore_session(&self) -> bool {
+        self.settings.boolean(keys::RESTORE_SESSION)
+    }
+
+    pub fn set_restore_session(&self, restore: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::RESTORE_SESSION, restore)
+    }
+
     pub fn csv_options(&self) -> CsvOptions {
         CsvOptions {
             null_to_empty: self.settings.boolean(keys::CSV_NULL_TO_EMPTY),

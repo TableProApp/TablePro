@@ -6,6 +6,7 @@ pub const USE_SYSTEM_FONT: &str = "use-system-font";
 pub const CUSTOM_FONT: &str = "custom-font";
 pub const STYLE_SCHEME: &str = "style-scheme";
 pub const CONNECT_DIALOG_DRIVER: &str = "connect-dialog-driver";
+pub const RESTORE_SESSION: &str = "restore-session";
 
 pub const CSV_NULL_TO_EMPTY: &str = "csv-null-to-empty";
 pub const CSV_LINE_BREAK_TO_SPACE: &str = "csv-line-break-to-space";

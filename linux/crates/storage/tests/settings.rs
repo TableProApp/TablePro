@@ -49,6 +49,17 @@ fn defaults_match_schema() -> TestResult {
     assert_eq!(fixture.settings.query_timeout(), Some(Duration::from_secs(60)));
     assert_eq!(fixture.settings.style_scheme(), "Adwaita");
     assert_eq!(fixture.settings.csv_options(), CsvOptions::default());
+    assert!(fixture.settings.restore_session());
+    Ok(())
+}
+
+#[test]
+fn restore_session_round_trip() -> TestResult {
+    let fixture = Fixture::new()?;
+
+    fixture.settings.set_restore_session(false)?;
+
+    assert!(!fixture.settings.restore_session());
     Ok(())
 }
 
