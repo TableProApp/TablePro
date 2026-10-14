@@ -45,10 +45,24 @@ mod tests {
         let askpass = ScriptedAskpass::new().unwrap();
 
         let mode = std::fs::metadata(askpass.path()).unwrap().permissions().mode() & 0o777;
-        let output = Command::new(askpass.path())
-            .arg("tablepro@localhost's password: ")
-            .env(ScriptedAskpass::ANSWER_VARIABLE, "s3cret value")
-            .output()
+        // A test thread that forks while the script is still open for
+        // writing hands its child the write handle until that child
+        // execs, and exec refuses a file open for writing.
+        let output = (0..100)
+            .find_map(|_| {
+                match Command::new(askpass.path())
+                    .arg("tablepro@localhost's password: ")
+                    .env(ScriptedAskpass::ANSWER_VARIABLE, "s3cret value")
+                    .output()
+                {
+                    Err(error) if error.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                        None
+                    }
+                    ran => Some(ran),
+                }
+            })
+            .expect("the script was busy on every try")
             .unwrap();
 
         assert_eq!(mode, 0o700);

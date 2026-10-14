@@ -48,7 +48,9 @@ mod tests {
     use super::*;
     use crate::test_support::MemorySettings;
 
-    #[test]
+    /// On the GTK thread, which owns the main context GSettings sends
+    /// its change signals through.
+    #[gtk4::test]
     fn a_changed_preference_reaches_the_channel() {
         let settings = MemorySettings::new();
         let preferences = HistoryPreferences::follow(settings.get());
