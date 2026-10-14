@@ -20,15 +20,7 @@ pub struct HistoryDialog {
     #[template_child]
     pub toast_overlay: TemplateChild<adw::ToastOverlay>,
     #[template_child]
-    pub filter_button: TemplateChild<gtk::MenuButton>,
-    #[template_child]
-    pub reset_filters_button: TemplateChild<gtk::Button>,
-    #[template_child]
-    pub connection_row: TemplateChild<adw::ComboRow>,
-    #[template_child]
-    pub status_row: TemplateChild<adw::ComboRow>,
-    #[template_child]
-    pub window_row: TemplateChild<adw::ComboRow>,
+    pub toolbar_view: TemplateChild<adw::ToolbarView>,
     #[template_child]
     pub search_bar: TemplateChild<gtk::SearchBar>,
     #[template_child]

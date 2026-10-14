@@ -263,6 +263,8 @@ crates/app/src/ui/history_dialog/history_actions.rs
 crates/app/src/ui/history_dialog/history_entry_object.rs
 crates/app/src/ui/history_dialog/history_entry_object_imp.rs
 crates/app/src/ui/history_dialog/history_export.rs
+crates/app/src/ui/history_dialog/history_filter_state.rs
+crates/app/src/ui/history_dialog/history_filters.rs
 crates/app/src/ui/history_dialog/history_formatting.rs
 crates/app/src/ui/history_dialog/history_paging.rs
 crates/app/src/ui/history_dialog/history_row.rs

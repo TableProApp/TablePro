@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::rc::Rc;
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
@@ -11,16 +12,17 @@ use crate::i18n::gettext;
 /// The connection filter's choices: All Connections, then each
 /// connection the history has entries for. A saved connection shows the
 /// name it has now; one deleted or never saved shows the name its latest
-/// run had.
+/// run had. A clone shares the same choices.
+#[derive(Clone)]
 pub(crate) struct ConnectionFilterModel {
-    ids: RefCell<Vec<Option<Uuid>>>,
+    ids: Rc<RefCell<Vec<Option<Uuid>>>>,
     labels: gtk::StringList,
 }
 
 impl ConnectionFilterModel {
     pub(crate) fn new() -> Self {
         Self {
-            ids: RefCell::new(vec![None]),
+            ids: Rc::new(RefCell::new(vec![None])),
             labels: gtk::StringList::new(&[gettext("All Connections").as_str()]),
         }
     }

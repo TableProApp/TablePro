@@ -328,7 +328,7 @@ pub(super) fn filter_labels(dialog: &HistoryDialog) -> Vec<String> {
     let Some(parts) = dialog.imp().parts.get() else {
         return Vec::new();
     };
-    let labels = parts.connection_filter.labels();
+    let labels = parts.filters.connections().labels();
     (0..labels.n_items())
         .filter_map(|position| labels.string(position))
         .map(String::from)
@@ -365,8 +365,7 @@ fn filter_lists_saved_connection_without_live_session() {
 
     wait_until(WAIT, || filter_labels(&dialog).len() == 3).expect("the connections");
     assert_eq!(filter_labels(&dialog), ["All Connections", "Scratch", "Warehouse"]);
-    let imp = dialog.imp();
-    imp.connection_row.set_selected(2);
+    connection_drop_down(&dialog).set_selected(2);
     wait_until(WAIT, || entries(&dialog) == ["SELECT 1"]).expect("the saved connection's queries");
 }
 
@@ -380,13 +379,12 @@ fn filter_defaults_to_presenting_window_connection() {
     let dialog = harness.dialog_for(Some(presenting));
 
     wait_until(WAIT, || entries(&dialog) == ["SELECT presenting"]).expect("the presenting connection's queries");
-    let imp = dialog.imp();
-    let selected = imp.connection_row.selected();
+    let selected = connection_drop_down(&dialog).selected();
     assert_eq!(filter_labels(&dialog)[selected as usize], "Presenting");
 
     let without_history = harness.dialog_for(Some(Uuid::new_v4()));
     wait_until(WAIT, || entries(&without_history).len() == 2).expect("every query");
-    assert_eq!(without_history.imp().connection_row.selected(), 0);
+    assert_eq!(connection_drop_down(&without_history).selected(), 0);
 }
 
 #[gtk4::test]
@@ -451,15 +449,93 @@ fn connection_named_with_ampersand_renders_in_filter() {
     let name = "R&D <prod>";
     harness.record_on("SELECT 1", connection, name);
 
-    let dialog = harness.dialog_for(Some(connection));
+    let dialog = harness.present(harness.dialog_for(Some(connection)));
 
     wait_until(WAIT, || filter_labels(&dialog).len() == 2).expect("the connections");
     assert_eq!(filter_labels(&dialog)[1], name);
-    let row = dialog.imp().connection_row.get();
-    assert!(!row.uses_markup(), "the row reads its text as markup");
-    let selected = row
-        .selected_item()
-        .and_downcast::<gtk::StringObject>()
-        .map(|item| item.string().to_string());
-    assert_eq!(selected.as_deref(), Some(name));
+    let drop_down = connection_drop_down(&dialog);
+    let shown = || {
+        descendants(&drop_down)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+            .find(|label| label.is_mapped() && label.label() == name)
+    };
+    wait_until(WAIT, || shown().is_some()).expect("the name on the drop-down");
+    assert!(
+        shown().is_some_and(|label| !label.uses_markup()),
+        "the name was read as markup"
+    );
+}
+
+fn connection_drop_down(dialog: &HistoryDialog) -> gtk::DropDown {
+    dialog.imp().parts.get().expect("parts").filters.controls().0
+}
+
+#[gtk4::test]
+fn history_filters_use_dropdowns_and_toggle_group() {
+    let harness = Harness::new();
+
+    let dialog = harness.presented_dialog();
+
+    let header = crate::test_support::first_descendant_of_type::<adw::HeaderBar>(&dialog).expect("a header bar");
+    let popovers: Vec<gtk::Widget> = descendants(&header)
+        .into_iter()
+        .filter(|widget| widget.is::<gtk::Popover>() && !widget.is::<gtk::PopoverMenu>())
+        .collect();
+    assert!(popovers.is_empty(), "the header still has a filter popover");
+    assert!(crate::test_support::first_descendant_of_type::<adw::ComboRow>(&dialog).is_none());
+    let root = dialog.imp().parts.get().expect("parts").filters.root().clone();
+    let children: Vec<gtk::Widget> = std::iter::successors(root.first_child(), gtk::Widget::next_sibling).collect();
+    assert_eq!(children.iter().filter(|child| child.is::<gtk::DropDown>()).count(), 2);
+    assert_eq!(
+        children.iter().filter(|child| child.is::<adw::ToggleGroup>()).count(),
+        1
+    );
+    let search_bar = dialog.imp().search_bar.get().upcast::<gtk::Widget>();
+    assert_eq!(
+        root.prev_sibling(),
+        Some(search_bar),
+        "the filters are not under the search bar"
+    );
+}
+
+#[gtk4::test]
+fn connection_dropdown_follows_model_and_preferred_connection() {
+    let harness = Harness::new();
+    let (alpha, beta) = (Uuid::new_v4(), Uuid::new_v4());
+    harness.record_on("SELECT a", alpha, "Alpha");
+    harness.record_on("SELECT b", beta, "Beta");
+
+    let dialog = harness.dialog_for(Some(beta));
+    let drop_down = connection_drop_down(&dialog);
+    let labels = dialog
+        .imp()
+        .parts
+        .get()
+        .expect("parts")
+        .filters
+        .connections()
+        .labels()
+        .clone();
+
+    assert_eq!(drop_down.model().and_downcast::<gtk::StringList>(), Some(labels));
+    wait_until(WAIT, || drop_down.model().map(|model| model.n_items()) == Some(3)).expect("the connections");
+    assert_eq!(drop_down.selected(), 2);
+    wait_until(WAIT, || entries(&dialog) == ["SELECT b"]).expect("Beta's queries");
+    drop_down.set_selected(1);
+    wait_until(WAIT, || entries(&dialog) == ["SELECT a"]).expect("Alpha's queries");
+}
+
+#[gtk4::test]
+fn filters_are_labelled() {
+    let filters = HistoryFilters::new(&ConnectionFilterModel::new());
+    let (connection, status, window) = filters.controls();
+
+    for control in [connection.upcast::<gtk::Widget>(), status.upcast(), window.upcast()] {
+        assert!(
+            gtk::test_accessible_has_property(&control, gtk::AccessibleProperty::Label),
+            "{} has no accessible label",
+            control.type_().name()
+        );
+    }
 }

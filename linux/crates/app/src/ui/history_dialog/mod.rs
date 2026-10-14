@@ -6,6 +6,8 @@ mod history_actions;
 mod history_entry_object;
 mod history_entry_object_imp;
 mod history_export;
+mod history_filter_state;
+mod history_filters;
 mod history_formatting;
 mod history_paging;
 mod history_row;
@@ -14,7 +16,7 @@ mod imp;
 mod tests;
 
 use std::collections::HashSet;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
@@ -26,6 +28,7 @@ use tablepro_session::runtime::{TaskFailure, Tasks};
 use tablepro_storage::query_history::{
     Entry, HistoryConnection, HistoryPage, HistoryPageRequest, HistoryQuery, StatusFilter,
 };
+
 use tablepro_storage::{ConnectionStore, QueryHistory, SavedConnection, StorageError};
 use uuid::Uuid;
 
@@ -38,6 +41,7 @@ use history_export::{ExportKind, history_export_failure_text, save_export, show_
 
 use connection_filter::ConnectionFilterModel;
 pub(crate) use history_entry_object::HistoryEntryObject;
+use history_filters::HistoryFilters;
 use history_row::HistoryRow;
 
 /// Several screens of rows, so the edge is reached rarely, and few
@@ -80,7 +84,7 @@ pub(super) struct DialogParts {
     history: Option<QueryHistory>,
     connections: ConnectionStore,
     preferred_connection: Option<Uuid>,
-    connection_filter: ConnectionFilterModel,
+    filters: HistoryFilters,
     tasks: Tasks,
     entries: gio::ListStore,
     plain: gtk::NoSelection,
@@ -100,13 +104,14 @@ impl HistoryDialog {
         // Parented now: a popover menu finds its actions through the
         // parent it had when it was set up.
         menu.set_parent(&imp.list_view.get());
-        let connection_filter = ConnectionFilterModel::new();
-        imp.connection_row.set_model(Some(connection_filter.labels()));
+        let filters = HistoryFilters::new(&ConnectionFilterModel::new());
+        // After the search bar, so the filters sit under it.
+        imp.toolbar_view.add_top_bar(filters.root());
         let _ = imp.parts.set(DialogParts {
             history: init.history.store(),
             connections: init.connections,
             preferred_connection: init.preferred_connection,
-            connection_filter,
+            filters,
             tasks: init.tasks,
             entries,
             plain: gtk::NoSelection::new(Some(sorted.clone())),
@@ -172,21 +177,13 @@ impl HistoryDialog {
                 dialog.refresh();
             }
         });
-        for row in [&imp.connection_row, &imp.status_row, &imp.window_row] {
-            let dialog = self.downgrade();
-            row.connect_selected_notify(move |_| {
-                if let Some(dialog) = dialog.upgrade() {
-                    dialog.refresh();
-                }
-            });
-        }
+        let Some(parts) = imp.parts.get() else {
+            return;
+        };
         let dialog = self.downgrade();
-        imp.reset_filters_button.connect_clicked(move |_| {
+        parts.filters.connect_changed(move |_| {
             if let Some(dialog) = dialog.upgrade() {
-                let imp = dialog.imp();
-                for row in [&imp.connection_row, &imp.status_row, &imp.window_row] {
-                    row.set_selected(0);
-                }
+                dialog.refresh();
             }
         });
     }
@@ -658,35 +655,19 @@ impl HistoryDialog {
                 std::sync::Arc::from([])
             }
         };
-        parts.connection_filter.fill(&listed, &saved);
-        let preferred = parts
-            .preferred_connection
-            .and_then(|id| parts.connection_filter.position_of(id));
-        if let Some(position) = preferred {
-            imp.connection_row.set_selected(position);
-        }
+        parts.filters.connections().fill(&listed, &saved);
+        parts.filters.select_connection(parts.preferred_connection);
     }
 
     fn query_from_filters(&self) -> HistoryQuery {
         let imp = self.imp();
         let mut query = HistoryQuery::from_input(&imp.search_entry.text());
-        query.connection = imp
-            .parts
-            .get()
-            .and_then(|parts| parts.connection_filter.id_at(imp.connection_row.selected()));
-        query.status = match imp.status_row.selected() {
-            1 => StatusFilter::Succeeded,
-            2 => StatusFilter::Failed,
-            3 => StatusFilter::Cancelled,
-            _ => StatusFilter::Any,
-        };
-        let window = match imp.window_row.selected() {
-            1 => Some(Duration::from_secs(86_400)),
-            2 => Some(Duration::from_secs(7 * 86_400)),
-            3 => Some(Duration::from_secs(30 * 86_400)),
-            _ => None,
-        };
-        query.executed_after = window.and_then(|window| SystemTime::now().checked_sub(window));
+        if let Some(parts) = imp.parts.get() {
+            let state = parts.filters.state();
+            query.connection = state.connection;
+            query.status = state.status;
+            query.executed_after = state.window.executed_after(SystemTime::now());
+        }
         query
     }
 

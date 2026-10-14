@@ -9,68 +9,9 @@
     <property name="child">
       <object class="AdwToastOverlay" id="toast_overlay">
         <property name="child">
-          <object class="AdwToolbarView">
+          <object class="AdwToolbarView" id="toolbar_view">
             <child type="top">
               <object class="AdwHeaderBar">
-                <child type="start">
-                  <object class="GtkMenuButton" id="filter_button">
-                    <property name="label" translatable="yes">Filter</property>
-                    <property name="always-show-arrow">true</property>
-                    <property name="tooltip-text" translatable="yes">Filter History</property>
-                    <property name="popover">
-                      <object class="GtkPopover">
-                        <property name="child">
-                          <object class="AdwPreferencesGroup">
-                            <property name="header-suffix">
-                              <object class="GtkButton" id="reset_filters_button">
-                                <property name="label" translatable="yes">Reset</property>
-                                <style>
-                                  <class name="flat"/>
-                                </style>
-                              </object>
-                            </property>
-                            <child>
-                              <object class="AdwComboRow" id="connection_row">
-                                <property name="title" translatable="yes">Connection</property>
-                                <property name="use-markup">false</property>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="AdwComboRow" id="status_row">
-                                <property name="title" translatable="yes">Status</property>
-                                <property name="model">
-                                  <object class="GtkStringList">
-                                    <items>
-                                      <item translatable="yes">Any</item>
-                                      <item translatable="yes">Succeeded</item>
-                                      <item translatable="yes">Failed</item>
-                                      <item translatable="yes">Cancelled</item>
-                                    </items>
-                                  </object>
-                                </property>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="AdwComboRow" id="window_row">
-                                <property name="title" translatable="yes">Time Window</property>
-                                <property name="model">
-                                  <object class="GtkStringList">
-                                    <items>
-                                      <item translatable="yes">Any Time</item>
-                                      <item translatable="yes">Last 24 Hours</item>
-                                      <item translatable="yes">Last 7 Days</item>
-                                      <item translatable="yes">Last 30 Days</item>
-                                    </items>
-                                  </object>
-                                </property>
-                              </object>
-                            </child>
-                          </object>
-                        </property>
-                      </object>
-                    </property>
-                  </object>
-                </child>
                 <child type="start">
                   <object class="GtkToggleButton" id="select_button">
                     <property name="label" translatable="yes">Select</property>
