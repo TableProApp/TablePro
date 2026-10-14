@@ -15,6 +15,86 @@ index f08e213..8ceccd6 100755
  
  impl PgConnection {
      /// Check whether EXPLAIN statements are supported by the current connection
+diff --git a/src/connection/establish.rs b/src/connection/establish.rs
+index 3c2f516..6ff0353 100755
+--- a/src/connection/establish.rs
++++ b/src/connection/establish.rs
+@@ -142,6 +142,7 @@ impl PgConnection {
+                 secret_key,
+                 transaction_status,
+                 transaction_depth: 0,
++                next_query_result_format: None,
+                 pending_ready_for_query_count: 0,
+                 next_statement_id: StatementId::NAMED_START,
+                 cache_statement: StatementCache::new(options.statement_cache_capacity),
+diff --git a/src/connection/executor.rs b/src/connection/executor.rs
+index e0f4c3d..fd892bc 100755
+--- a/src/connection/executor.rs
++++ b/src/connection/executor.rs
+@@ -205,6 +205,12 @@ impl PgConnection {
+     ) -> Result<impl Stream<Item = Result<Either<PgQueryResult, PgRow>, Error>> + 'e, Error> {
+         let mut logger = QueryLogger::new(query, self.inner.log_settings.clone());
+         let sql = logger.sql().as_str();
++        let result_format = self
++            .inner
++            .next_query_result_format
++            .take()
++            .filter(|(expected_sql, _)| expected_sql == sql)
++            .map_or(PgValueFormat::Binary, |(_, format)| format);
+ 
+         // before we continue, wait until we are "ready" to accept more queries
+         self.wait_until_ready().await?;
+@@ -246,7 +252,7 @@ impl PgConnection {
+                 formats: &[PgValueFormat::Binary],
+                 num_params,
+                 params: &arguments.buffer,
+-                result_formats: &[PgValueFormat::Binary],
++                result_formats: &[result_format],
+             })?;
+ 
+             // executes the portal up to the passed limit
+@@ -278,7 +284,7 @@ impl PgConnection {
+             self.write_sync();
+ 
+             // prepared statements are binary
+-            PgValueFormat::Binary
++            result_format
+         } else {
+             // Query will trigger a ReadyForQuery
+             self.queue_simple_query(sql)?;
+diff --git a/src/connection/mod.rs b/src/connection/mod.rs
+index d594585..5b28433 100755
+--- a/src/connection/mod.rs
++++ b/src/connection/mod.rs
+@@ -16,7 +16,7 @@ use crate::message::{
+ use crate::statement::PgStatementMetadata;
+ use crate::transaction::Transaction;
+ use crate::types::Oid;
+-use crate::{PgConnectOptions, PgTypeInfo, Postgres};
++use crate::{PgConnectOptions, PgTypeInfo, PgValueFormat, Postgres};
+ 
+ pub(crate) use sqlx_core::connection::*;
+ use sqlx_core::sql_str::SqlSafeStr;
+@@ -75,6 +75,8 @@ pub struct PgConnectionInner {
+     transaction_status: TransactionStatus,
+     pub(crate) transaction_depth: usize,
+ 
++    pub(crate) next_query_result_format: Option<(String, PgValueFormat)>,
++
+     log_settings: LogSettings,
+ }
+ 
+@@ -85,6 +87,10 @@ pub(crate) struct TableData {
+ }
+ 
+ impl PgConnection {
++    pub fn set_next_query_result_format(&mut self, query: &str, format: PgValueFormat) {
++        self.inner.next_query_result_format = Some((query.to_owned(), format));
++    }
++
+     /// the version number of the server in `libpq` format
+     pub fn server_version_num(&self) -> Option<u32> {
+         self.inner.stream.server_version_num
 diff --git a/src/connection/resolve.rs b/src/connection/resolve.rs
 index e47c318..1fb818a 100755
 --- a/src/connection/resolve.rs

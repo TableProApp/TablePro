@@ -20,6 +20,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Browse filters can be saved, applied, renamed and deleted per connection, schema and table.
 - MySQL and MariaDB connections can use a local Unix socket file, saved with the connection and exported in version 3 connection bundles.
 - Query history now opens in a docked panel beneath the workspace, which stays visible while you search and reopen queries.
+- Connection subtitles use readable database engine names and avoid repeating the engine when the server version already includes it.
 - SQL result grids can sort supported, homogeneous typed columns in memory without re-running the SQL statement; SQL NULL values stay last in either direction.
 - SQL editors can show a second side-by-side view of the same query, with independent scrolling and shared edits.
 - PostgreSQL schema groups can now be hidden per connection and restored from the schema filter menu.

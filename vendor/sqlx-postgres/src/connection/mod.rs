@@ -16,7 +16,7 @@ use crate::message::{
 use crate::statement::PgStatementMetadata;
 use crate::transaction::Transaction;
 use crate::types::Oid;
-use crate::{PgConnectOptions, PgTypeInfo, Postgres};
+use crate::{PgConnectOptions, PgTypeInfo, PgValueFormat, Postgres};
 
 pub(crate) use sqlx_core::connection::*;
 use sqlx_core::sql_str::SqlSafeStr;
@@ -75,6 +75,8 @@ pub struct PgConnectionInner {
     transaction_status: TransactionStatus,
     pub(crate) transaction_depth: usize,
 
+    pub(crate) next_query_result_format: Option<(String, PgValueFormat)>,
+
     log_settings: LogSettings,
 }
 
@@ -85,6 +87,10 @@ pub(crate) struct TableData {
 }
 
 impl PgConnection {
+    pub fn set_next_query_result_format(&mut self, query: &str, format: PgValueFormat) {
+        self.inner.next_query_result_format = Some((query.to_owned(), format));
+    }
+
     /// the version number of the server in `libpq` format
     pub fn server_version_num(&self) -> Option<u32> {
         self.inner.stream.server_version_num

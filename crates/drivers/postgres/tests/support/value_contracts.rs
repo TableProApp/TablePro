@@ -273,6 +273,65 @@ async fn value_contract_geometric_types_keep_native_oracles_when_projection_is_r
 
 #[tokio::test]
 #[ignore = "requires docker"]
+async fn value_contract_scalar_types_with_server_text_are_read_as_text() {
+    let (_container, opts) = start_pg().await;
+    let connection = connect(opts).await;
+    connection.execute("CREATE EXTENSION hstore").await.unwrap();
+    connection.execute("CREATE EXTENSION ltree").await.unwrap();
+    let cases = [
+        ("oid", "5::oid", Some("oid")),
+        ("xml", "'<a/>'::xml", Some("xml")),
+        ("tsvector", "to_tsvector('simple', 'one two')", Some("tsvector")),
+        ("regclass", "'pg_class'::regclass", Some("regclass")),
+        ("char", "'A'::\"char\"", Some("\"char\"")),
+        ("record", "ROW(1, 'a')", None),
+        ("hstore", "'a=>1'::hstore", Some("hstore")),
+        ("ltree", "'Top.Science'::ltree", Some("ltree")),
+    ];
+
+    for (native_type, expression, cast_type) in cases {
+        let result = connection
+            .query(&format!(
+                "SELECT 42::int4 AS ordinary_value, ({expression})::text AS exact_text, {expression} AS value"
+            ))
+            .await
+            .unwrap_or_else(|error| panic!("{native_type} should be readable through server text: {error:?}"));
+        assert_eq!(result.rows.len(), 1, "{native_type}");
+        assert_eq!(
+            result.rows[0][0],
+            Value::Int(42),
+            "{native_type} keeps ordinary columns decodable"
+        );
+        let expected = result.rows[0][1].clone();
+        assert!(
+            matches!(expected, Value::Text(_)),
+            "{native_type} text oracle: {expected:?}"
+        );
+        assert_eq!(
+            result.rows[0][2], expected,
+            "{native_type} should preserve its server text representation"
+        );
+        if let Some(cast_type) = cast_type {
+            let rebound = connection
+                .query_params(
+                    &format!("SELECT $1::{cast_type}::text AS value"),
+                    std::slice::from_ref(&expected),
+                )
+                .await
+                .unwrap_or_else(|error| panic!("{native_type} text should bind back to its native type: {error:?}"));
+            assert_eq!(rebound.rows, vec![vec![expected]], "{native_type} text round trip");
+        }
+    }
+
+    let parameterized = connection
+        .query_params("SELECT $1::regclass AS value", &[Value::Text("pg_class".into())])
+        .await
+        .unwrap();
+    assert_eq!(parameterized.rows, vec![vec![Value::Text("pg_class".into())]]);
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
 async fn value_contract_citext_preserves_label_and_case_insensitive_comparison() {
     let (_container, opts) = start_pg().await;
     let connection = connect(opts).await;
