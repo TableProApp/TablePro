@@ -680,7 +680,7 @@ pub(crate) enum BrowseTabInput {
         column: usize,
         edit: TrackerEdit,
     },
-    /// A preset from a cell's menu or Ctrl+Shift+N. The tab resolves it
+    /// A preset from a cell's menu or Ctrl+Backspace. The tab resolves it
     /// against the column, so both paths reach the same value.
     GridSetCellValue {
         row: RowObject,
