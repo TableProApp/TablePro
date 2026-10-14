@@ -103,14 +103,16 @@ Where they would pay off for BookiE, in order of value for effort:
 3. **RegreSQL on the SQL we generate.** BookiE builds SQL itself: browse paging, keyed updates, catalog and foreign key queries. Baseline their EXPLAIN plans against a seeded database so a change that turns an index scan into a sequential scan fails a test. The open many-schema catalog performance work ([#580](https://github.com/cozyGarage/BookiE/issues/580)) needs exactly this.
 4. **DBLab itself**, only when we need large realistic datasets and many parallel clones. It adds operational complexity and is not justified for the current fixture sizes.
 
-## Order of work
+## Remaining proposed work
 
-1. Failure classifier and job-level retry (days).
-1a. Prebaked fixture images and a lab registry (days; removes the most common infrastructure failure).
-2. Crash note and `--diagnostics` (days).
-3. Pull request template and issue fields (hours).
-4. `nextest` isolation and retries, changelog fragments (a week).
-5. Release-candidate CI build (a week).
+The classifier and gate queue are shipped. Nothing else in this proposal is approved until it is selected through Project #3.
+
+1. Retry known infrastructure failures once at the job level; keep code failures unchanged.
+2. Prebaked fixture images and a lab registry to reduce repeated pulls and startup failures.
+3. A local crash note and `--diagnostics` command.
+4. Pull request template and issue fields that connect fixes to their regression tests.
+5. `nextest` isolation and retries, plus changelog fragments.
+6. Release-candidate CI builds for Arch and Debian packages.
 
 ## What this does not change
 
