@@ -69,7 +69,6 @@ The linked issue records each theme's scope or acceptance decision. Project #3 o
 | [#561](https://github.com/cozyGarage/BookiE/issues/561) | Accessibility pass and value comparison (DOC-3, DOC-5) |
 | [#562](https://github.com/cozyGarage/BookiE/issues/562) | SonarCloud and CodeQL findings (TEST-30) |
 | [#563](https://github.com/cozyGarage/BookiE/issues/563) | Comment lines into docs (AUD-5) |
-| [#564](https://github.com/cozyGarage/BookiE/issues/564) | Generated ignored-test inventory |
 | [#565](https://github.com/cozyGarage/BookiE/issues/565) | Where per-crate integration tests live |
 | [#566](https://github.com/cozyGarage/BookiE/issues/566) | B4 acceptance evidence (B4-9, 11, 17, 21) |
 | [#567](https://github.com/cozyGarage/BookiE/issues/567) | MongoDB metadata sample consistency (TEST-12) |
@@ -81,10 +80,5 @@ The linked issue records each theme's scope or acceptance decision. Project #3 o
 | [#579](https://github.com/cozyGarage/BookiE/issues/579) | MySQL/MariaDB Unix socket endpoint (Omarchy-relevant); merged; installed-form acceptance remaining |
 | [#580](https://github.com/cozyGarage/BookiE/issues/580) | Filter Schemas and PostgreSQL many-schema catalog performance |
 | [#609](https://github.com/cozyGarage/BookiE/issues/609) | Local filtering and sorting for loaded SQL and pinned results (UI-38) |
-| [#632](https://github.com/cozyGarage/BookiE/issues/632) | Paste TSV strips a leading quote from ordinary text |
-| [#633](https://github.com/cozyGarage/BookiE/issues/633) | Docked history panel is stale after reopening |
 | [#634](https://github.com/cozyGarage/BookiE/issues/634) | CSV import always skips auto-increment columns |
-| [#635](https://github.com/cozyGarage/BookiE/issues/635) | PostgreSQL pooler hint on genuine user errors |
-| [#636](https://github.com/cozyGarage/BookiE/issues/636) | agentd SessionConnection misses four trait forwards |
 | [#638](https://github.com/cozyGarage/BookiE/issues/638) | MySQL supports_local_socket accepts a socket_dir |
-| [#640](https://github.com/cozyGarage/BookiE/issues/640) | Packaging and About metadata point at the old repository |
