@@ -131,6 +131,16 @@ jobs:
             echo "::error::add window actions with add_action_entries on the window, not a group inserted as win"
             exit 1
           fi
+      - name: Docs name paths and types that exist
+        # A renamed type or a moved file stays named in prose until
+        # something asks. GTK and GLib names resolve against the GIR
+        # files the -dev packages install.
+        run: |
+          ../scripts/check-doc-symbols.sh \
+            linux/ARCHITECTURE.md \
+            linux/docs/state-management.md \
+            linux/docs/testing.md \
+            linux/docs/decisions/0012-window-per-session.md
       - name: Clippy
         run: meson devenv -C _build cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Clippy without default features
