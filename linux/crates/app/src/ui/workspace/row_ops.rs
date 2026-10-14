@@ -1,8 +1,8 @@
-use relm4::adw::prelude::*;
+use gtk4::prelude::*;
 
-use super::App;
+use super::WorkspaceModel;
 
-impl App {
+impl WorkspaceModel {
     pub(super) fn set_row_op_in_flight(&self, in_flight: bool) {
         self.row_op_spinner.set_visible(in_flight);
     }
@@ -11,7 +11,7 @@ impl App {
         match clipboard_refusal(&text) {
             Some(refusal) => self.show_toast(&refusal),
             None => {
-                self.window.clipboard().set_text(&text);
+                self.toast_overlay.clipboard().set_text(&text);
                 self.show_toast(&crate::i18n::gettext("Copied to clipboard"));
             }
         }

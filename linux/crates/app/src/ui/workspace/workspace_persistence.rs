@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
 
-use relm4::adw;
-use relm4::adw::prelude::*;
-use relm4::gtk::glib;
+use gtk4::glib;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 use tablepro_session::SessionKey;
 use uuid::Uuid;
 
@@ -178,13 +178,13 @@ pub(super) fn reopen(
 mod tests {
     use std::time::Duration;
 
-    use relm4::gtk;
+    use gtk4 as gtk;
     use tablepro_storage::DraftId;
 
     use super::*;
     use crate::test_support::{finish_on_main, wait_until};
-    use crate::ui::app::{EditorTabSlot, write_workspace_tab_id};
     use crate::ui::editor::{SqlEditor, SqlEditorInit};
+    use crate::ui::workspace::{EditorTabSlot, write_workspace_tab_id};
     use crate::workspace::WorkspaceLoad;
 
     const WAIT: Duration = Duration::from_secs(5);
@@ -300,7 +300,7 @@ mod tests {
             write_workspace_tab_id(&page, id);
             fixture.tabs.borrow_mut().insert(
                 id,
-                WorkspaceTab::Structure(crate::ui::app::StructureTabSlot {
+                WorkspaceTab::Structure(crate::ui::workspace::StructureTabSlot {
                     id,
                     structure,
                     page,

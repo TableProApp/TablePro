@@ -1,11 +1,11 @@
-//! App-side handlers for the Structure (DDL) workspace tab: opening
+//! Workspace handlers for the Structure (DDL) tab: opening
 //! one, dropping a table, and following a save that landed. The save
 //! itself runs through the workspace handle, like a row save.
 
 use std::sync::Arc;
 
-use relm4::adw::prelude::*;
-use relm4::{ComponentSender, adw};
+use libadwaita as adw;
+use libadwaita::prelude::*;
 use uuid::Uuid;
 
 use tablepro_core::ddl::{BuildDdlError, DdlOperation, DropTableOptions, TableDefinition};
@@ -16,19 +16,14 @@ use tablepro_session::{OperationError, OperationKind, Session};
 use tokio_util::sync::CancellationToken;
 
 use crate::runtime::DeliverInput;
-use crate::services::from_session::FromSession;
-use crate::ui::app::{App, AppMsg, WorkspaceTab};
 use crate::ui::error_text;
 use crate::ui::structure_tab::{StructureMode, StructureTabInput};
+use crate::ui::workspace::{WorkspaceInput, WorkspaceModel, WorkspaceTab};
 use crate::workspace::run_schema_plan;
 
-impl App {
+impl WorkspaceModel {
     /// Sidebar right-click → "New Table…" or schema-header "+" button.
-    pub(super) fn on_new_table_tab(&mut self, schema: Option<String>, sender: ComponentSender<Self>) {
-        if !self.connected {
-            self.show_toast(&crate::i18n::gettext("Connect to a database first."));
-            return;
-        }
+    pub(super) fn on_new_table_tab(&mut self, schema: Option<String>) {
         let creates_tables = self
             .context
             .active
@@ -42,21 +37,12 @@ impl App {
             ));
             return;
         }
-        self.append_new_structure_tab(schema, sender);
+        self.append_new_structure_tab(schema);
     }
 
     /// Select the table's Structure tab, or open one. Its Table tab
     /// stays open beside it.
-    pub(super) fn on_edit_structure_tab(
-        &mut self,
-        schema: Option<String>,
-        table: String,
-        sender: ComponentSender<Self>,
-    ) {
-        if !self.connected {
-            self.show_toast(&crate::i18n::gettext("Connect to a database first."));
-            return;
-        }
+    pub(super) fn on_edit_structure_tab(&mut self, schema: Option<String>, table: String) {
         let existing_structure = self.workspace_tabs.borrow().iter().find_map(|(_, tab)| match tab {
             WorkspaceTab::Structure(slot)
                 if slot.mode == StructureMode::Edit && slot.schema == schema && slot.table == table =>
@@ -71,16 +57,11 @@ impl App {
             tab_view.set_selected_page(&page);
             return;
         }
-        self.append_existing_structure_tab(schema, table, sender);
+        self.append_existing_structure_tab(schema, table);
     }
 
     /// Right-click → "Drop Table…", or in-tab destructive button.
-    pub(super) fn on_drop_table_prompt(
-        &mut self,
-        schema: Option<String>,
-        table: String,
-        sender: ComponentSender<Self>,
-    ) {
+    pub(super) fn on_drop_table_prompt(&mut self, schema: Option<String>, table: String) {
         let title = crate::i18n::gettext_f("Drop {table}?", &[("table", &table)]);
         let body = crate::i18n::gettext(
             "All rows and the table definition will be removed. This can't be undone from inside TablePro.",
@@ -91,19 +72,19 @@ impl App {
         dialog.set_response_appearance("drop", adw::ResponseAppearance::Destructive);
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");
-        let sender_for_resp = sender.clone();
+        let input = self.input.clone();
         let schema_for_resp = schema.clone();
         let table_for_resp = table.clone();
         dialog.connect_response(None, move |dlg, response| {
             dlg.close();
             if response == "drop" {
-                sender_for_resp.deliver(AppMsg::DropTableConfirmed {
+                input.deliver(WorkspaceInput::DropTableConfirmed {
                     schema: schema_for_resp.clone(),
                     table: table_for_resp.clone(),
                 });
             }
         });
-        dialog.present(Some(&self.window));
+        dialog.present(self.dialog_parent().as_ref());
     }
 
     /// User confirmed the drop. Run DROP TABLE async; only close any
@@ -111,12 +92,7 @@ impl App {
     /// returns Ok. Tabs stay open if DROP fails (FK violation,
     /// privileges) so the user doesn't lose their state on a failed
     /// destructive action.
-    pub(super) fn on_drop_table_confirmed(
-        &mut self,
-        schema: Option<String>,
-        table: String,
-        sender: ComponentSender<Self>,
-    ) {
+    pub(super) fn on_drop_table_confirmed(&mut self, schema: Option<String>, table: String) {
         let Some(session) = self.context.active.get() else {
             self.show_error_alert(
                 &crate::i18n::gettext("Cannot drop table"),
@@ -129,7 +105,6 @@ impl App {
             if_exists: true,
             cascade: false,
         };
-        let origin = Arc::downgrade(&session);
         let table = dropped.clone();
         let work = async move {
             run_schema_plan(
@@ -141,10 +116,13 @@ impl App {
             )
             .await
         };
+        // The answer goes through the workspace's input, so one that
+        // lands after a disconnect is dropped with the workspace.
+        let input = self.input.clone();
         crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |result| {
             match settled(result).and_then(|(_, written)| written) {
-                Ok(_) => sender.deliver(AppMsg::DropTableSucceeded(FromSession::new(origin, dropped))),
-                Err(error) => sender.deliver(AppMsg::ShowAlert {
+                Ok(_) => input.deliver(WorkspaceInput::DropTableSucceeded(dropped)),
+                Err(error) => input.deliver(WorkspaceInput::ShowAlert {
                     title: crate::i18n::gettext("Drop failed"),
                     body: error_text::operation_error_message(&error),
                 }),
@@ -152,9 +130,9 @@ impl App {
         });
     }
 
-    pub(super) fn on_drop_table_succeeded(&mut self, table: TableRef, sender: ComponentSender<Self>) {
+    pub(super) fn on_drop_table_succeeded(&mut self, table: TableRef) {
         self.close_tabs_for_table(table.schema.as_deref(), &table.name);
-        sender.deliver(AppMsg::SchemaChanged {
+        self.input.deliver(WorkspaceInput::SchemaChanged {
             schema: table.schema,
             table: Some(table.name),
         });
@@ -188,12 +166,7 @@ impl App {
     /// 2. **Edit-mode tab**: the slot stays put, taking the new name
     ///    when the save renamed the table; `SaveCompleted` makes the
     ///    tab clear its pending ops and read the table again.
-    pub(super) fn on_structure_save_completed(
-        &mut self,
-        tab_id: Uuid,
-        new_table_name: Option<String>,
-        sender: ComponentSender<Self>,
-    ) {
+    pub(super) fn on_structure_save_completed(&mut self, tab_id: Uuid, new_table_name: Option<String>) {
         // Decided first, so the tabs are not borrowed while they change.
         enum SaveKind {
             PromoteNewToTable(Option<String>, String),
@@ -225,23 +198,16 @@ impl App {
                     self.finish_close_workspace_tab(tab_id, &tab_view);
                 }
                 // A table just designed is filled in next.
-                super::App::append_table_tab(
-                    self,
-                    schema.clone(),
-                    name.clone(),
-                    0,
-                    u64::from(self.settings.default_page_size()),
-                    None,
-                    sender.clone(),
-                );
-                sender.deliver(AppMsg::SchemaChanged {
+                let page_size = u64::from(self.settings.default_page_size());
+                self.append_table_tab(schema.clone(), name.clone(), 0, page_size, None);
+                self.input.deliver(WorkspaceInput::SchemaChanged {
                     schema,
                     table: Some(name),
                 });
             }
             SaveKind::UpdateInPlace(schema, table) => {
                 self.send_to_structure_tab(tab_id, StructureTabInput::SaveCompleted { new_table_name });
-                sender.deliver(AppMsg::SchemaChanged {
+                self.input.deliver(WorkspaceInput::SchemaChanged {
                     schema,
                     table: Some(table),
                 });
@@ -254,18 +220,18 @@ impl App {
     /// table as it is defined now, from the dialect's
     /// `create_table_script`. The result lands in a fresh editor tab; no
     /// Structure tab is touched.
-    pub(super) fn on_show_create_table(&self, schema: Option<String>, table: String, sender: ComponentSender<Self>) {
+    pub(super) fn on_show_create_table(&self, schema: Option<String>, table: String) {
         let Some(session) = self.context.active.get() else {
             self.show_toast(&crate::i18n::gettext("No active connection."));
             return;
         };
-        let origin = Arc::downgrade(&session);
         let work = read_definition(session, TableRef::new(schema, table.clone()));
+        let input = self.input.clone();
         crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |result| {
             let message = match settled(result) {
                 Ok((definition, dialect)) => match create_table_sql(&definition, &*dialect) {
                     Ok(Some(sql)) => {
-                        sender.deliver(AppMsg::ShowCreateTableLoaded(FromSession::new(origin, sql)));
+                        input.deliver(WorkspaceInput::ShowCreateTableLoaded(sql));
                         return;
                     }
                     Ok(None) => crate::i18n::gettext_f("Table {table} has no columns.", &[("table", &table)]),
@@ -279,7 +245,7 @@ impl App {
                     &[("error", &error_text::operation_error_message(&error))],
                 ),
             };
-            sender.deliver(AppMsg::ShowToast(message));
+            input.deliver(WorkspaceInput::ShowToast(message));
         });
     }
 

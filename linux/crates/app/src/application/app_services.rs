@@ -15,7 +15,7 @@ use crate::config;
 use crate::runtime::GioProcessHold;
 use crate::services::active_session::ActiveSession;
 use crate::services::history_service::{HistoryService, publish_retention};
-use crate::services::session_context::SessionContext;
+use crate::services::session_context::{CredentialSourceFactory, KeyringSources, SessionContext};
 use crate::storage::{AppStorage, SharedStorage};
 use crate::ui::credential_prompt::{GtkCredentialPrompter, PromptQueue};
 
@@ -29,8 +29,12 @@ pub struct AppServices {
     pub settings: Rc<AppSettings>,
     pub storage: SharedStorage,
     pub tasks: Tasks,
+    /// Where each session's secrets come from.
+    credentials: Rc<dyn CredentialSourceFactory>,
     /// Bound to the application once it exists, which is after this.
-    hold: Rc<GioProcessHold>,
+    application_hold: Rc<GioProcessHold>,
+    /// What keeps the process alive while a close or a save finishes.
+    hold: Rc<dyn ProcessHold>,
     history: OnceCell<HistoryService>,
     ssh: Option<SshServices>,
 }
@@ -58,6 +62,7 @@ impl AppServices {
             storage,
             tasks,
         } = parts;
+        let application_hold = Rc::new(GioProcessHold::default());
         Self {
             drivers: Arc::new(drivers),
             connector,
@@ -65,9 +70,11 @@ impl AppServices {
             liveness,
             sessions: SessionRegistry::new(),
             settings,
+            credentials: Rc::new(KeyringSources::new(storage.secrets().clone())),
             storage: Rc::new(storage),
             tasks,
-            hold: Rc::new(GioProcessHold::default()),
+            hold: application_hold.clone(),
+            application_hold,
             history: OnceCell::new(),
             ssh: None,
         }
@@ -142,7 +149,20 @@ impl AppServices {
     }
 
     pub(crate) fn bind_application(&self, application: &impl IsA<gio::Application>) {
-        self.hold.bind(application);
+        self.application_hold.bind(application);
+    }
+
+    /// A test reads the holds, or stands in for the keyring.
+    #[cfg(test)]
+    pub(crate) fn with_hold(mut self, hold: Rc<dyn ProcessHold>) -> Self {
+        self.hold = hold;
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_credentials(mut self, credentials: Rc<dyn CredentialSourceFactory>) -> Self {
+        self.credentials = credentials;
+        self
     }
 
     /// One window's view of the shared services: its own session slot,
@@ -159,6 +179,7 @@ impl AppServices {
             hold: self.hold(),
             tasks: self.tasks.clone(),
             liveness: self.liveness,
+            credentials: self.credentials.clone(),
             active: ActiveSession::new(),
         };
         (Rc::new(context), prompts)

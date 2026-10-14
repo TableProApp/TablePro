@@ -5,13 +5,18 @@
     <file compressed="true" preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/browse-tab.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/connect-dialog.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/connect-failed-page.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/connecting-page.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/picker-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-dialog.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/results-pane.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/session-window.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/sql-editor.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/sqlite-file-row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/ssh-section.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/structure-tab.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/tls-section.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/workspace.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/table-relation-symbolic.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/statement-pending-symbolic.svg</file>
   </gresource>

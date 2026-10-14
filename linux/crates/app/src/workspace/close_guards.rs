@@ -63,17 +63,21 @@ impl CloseGuards {
 
     /// The window closes only once its prompts approve; `on_close` runs
     /// as it does. A close request while they decide is dropped, since
-    /// their dialog is already on screen.
+    /// their dialog is already on screen. `handle` gives the workspace
+    /// the window shows at the time, and a window with none closes at
+    /// once.
     pub(crate) fn connect_window<W: IsA<gtk::Window>>(
         self: &Rc<Self>,
         window: &W,
-        handle: WorkspaceHandle,
+        handle: impl Fn() -> Option<WorkspaceHandle> + 'static,
         on_close: impl Fn(&W) + 'static,
     ) {
         let guards = self.clone();
         window.connect_close_request(move |window| {
             guards.requests.set(guards.requests.get() + 1);
-            if !guards.window_may_close(window.upcast_ref(), &handle) {
+            if let Some(handle) = handle()
+                && !guards.window_may_close(window.upcast_ref(), &handle)
+            {
                 return glib::Propagation::Stop;
             }
             on_close(window);
@@ -220,7 +224,8 @@ mod tests {
         let window = window();
         let closes = Rc::new(Cell::new(0));
         let sink = closes.clone();
-        guards.connect_window(&window, workspace.handle.clone(), move |_| sink.set(sink.get() + 1));
+        let handle = workspace.handle.clone();
+        guards.connect_window(&window, move || Some(handle.clone()), move |_| sink.set(sink.get() + 1));
         (window, closes)
     }
 
@@ -264,6 +269,20 @@ mod tests {
         workspace.handle.discard(&[workspace.tab], false);
         let guards = CloseGuards::new();
         let (window, closes) = guarded_window(&guards, &workspace);
+
+        window.close();
+
+        assert_eq!(closes.get(), 1);
+        assert!(visible_alert(&window).is_none());
+    }
+
+    #[gtk4::test]
+    fn a_window_with_no_workspace_closes_without_asking() {
+        let guards = CloseGuards::new();
+        let window = window();
+        let closes = Rc::new(Cell::new(0));
+        let sink = closes.clone();
+        guards.connect_window(&window, || None, move |_| sink.set(sink.get() + 1));
 
         window.close();
 

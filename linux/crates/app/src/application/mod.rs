@@ -17,7 +17,6 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
-use relm4::Component;
 
 pub use app_actions::{APP_ACCELS, install_app_actions};
 pub use app_services::{AppServices, AppServicesParts};
@@ -28,7 +27,7 @@ pub use window_launch::WindowLaunch;
 pub(crate) use window_registry::WindowRegistry;
 
 use crate::config;
-use crate::ui::{App, AppInit};
+use crate::ui::{SessionWindow, SessionWindowInit};
 
 glib::wrapper! {
     pub struct TableProApplication(ObjectSubclass<imp::TableProApplication>)
@@ -61,10 +60,9 @@ impl TableProApplication {
             tracing::warn!("no window opened: the application has no services");
             return None;
         };
-        let builder = App::builder();
-        let window = builder.root.clone();
-        // The window gets its id when it is added, and the component
-        // claims its session under that id from init on.
+        let window = SessionWindow::new();
+        // The window gets its id when it is added, and it claims its
+        // session under that id from start on.
         self.add_window(&window);
         if window.application().is_none() {
             tracing::warn!("no window opened: the application has not started");
@@ -72,10 +70,10 @@ impl TableProApplication {
             return None;
         }
         let host: Rc<dyn WindowHost> = Rc::new(AppWindowHost::new(self));
-        let controller = builder.launch(AppInit { services, host, launch }).detach();
-        self.imp().windows.insert(window.id(), controller);
+        self.imp().windows.insert(window.id(), window.clone());
+        window.start(SessionWindowInit { services, host, launch });
         window.present();
-        Some(window)
+        Some(window.upcast())
     }
 
     /// False when no window has that id.

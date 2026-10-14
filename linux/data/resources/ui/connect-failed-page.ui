@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProConnectFailedPage" parent="AdwBin">
+    <property name="child">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="AdwHeaderBar"/>
+        </child>
+        <property name="content">
+          <object class="AdwStatusPage" id="status_page">
+            <property name="icon-name">dialog-error-symbolic</property>
+            <property name="title" translatable="yes">Could Not Connect</property>
+            <property name="child">
+              <object class="GtkBox">
+                <property name="orientation">vertical</property>
+                <property name="spacing">12</property>
+                <property name="halign">center</property>
+                <child>
+                  <object class="GtkButton">
+                    <property name="label" translatable="yes">Retry</property>
+                    <property name="action-name">win.retry-connect</property>
+                    <style>
+                      <class name="pill"/>
+                      <class name="suggested-action"/>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <!-- Shown for a connection the connect dialog can
+                       edit, labelled with the setting that fixes the
+                       failure when there is one. -->
+                  <object class="GtkButton" id="edit_button">
+                    <property name="visible">false</property>
+                    <property name="label" translatable="yes">Edit Connection…</property>
+                    <property name="action-name">win.edit-connection</property>
+                    <style>
+                      <class name="pill"/>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton">
+                    <property name="label" translatable="yes">Choose Connection</property>
+                    <property name="action-name">win.cancel-connect</property>
+                    <style>
+                      <class name="pill"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </property>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>
