@@ -72,6 +72,16 @@ impl SessionWindow {
             state.services.open_sessions().remove(key);
         }
     }
+
+    /// Forget a key this window has no claim on, unless another window
+    /// shows that session.
+    pub(super) fn forget_unclaimed(&self, key: &SessionKey) {
+        if let Some(state) = self.state()
+            && state.context.sessions.window_for(key).is_none()
+        {
+            state.services.open_sessions().remove(key);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -236,6 +246,27 @@ mod tests {
             test.connector.calls().is_empty(),
             "a deleted connection was connected to"
         );
+    }
+
+    #[gtk4::test]
+    fn a_failed_open_of_a_file_another_window_shows_keeps_it_recorded() {
+        let test = TestWindow::picker("OpenGoneFile");
+        let path = test.dir().join("local.db");
+        std::fs::write(&path, b"").expect("seed");
+        let key = test.file_key("local.db");
+        test.window
+            .send(SessionWindowInput::OpenFile(gio::File::for_path(&path)));
+        test.wait_for_page("workspace");
+        std::fs::remove_file(&path).expect("delete the file");
+        let SessionKey::File(uri) = &key else {
+            panic!("{key:?} is not a file key");
+        };
+        test.window.set_visible(false);
+
+        test.app.open_window(WindowLaunch::OpenFile(gio::File::for_uri(uri)));
+        wait_until(WAIT, || test.window.is_visible()).expect("the window showing the file to come forward");
+
+        assert_eq!(test.recorded(), [key]);
     }
 
     #[gtk4::test]

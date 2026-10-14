@@ -542,12 +542,12 @@ impl SessionWindow {
         let arrived = SessionKey::File(uri.clone());
         match target {
             Ok(FileTarget::Saved(saved)) => {
-                self.forget_session(&arrived);
+                self.forget_unclaimed(&arrived);
                 self.on_open_saved(*saved);
             }
             Ok(FileTarget::File(identity)) => {
                 if identity.uri != uri {
-                    self.forget_session(&arrived);
+                    self.forget_unclaimed(&arrived);
                 }
                 if let Some(claim) = self.claim(SessionKey::File(identity.uri.clone())) {
                     self.begin_connect(claim, ConnectSource::File(identity));
@@ -555,7 +555,7 @@ impl SessionWindow {
             }
             Err(error) => {
                 tracing::warn!(%error, %uri, "could not open the file");
-                self.forget_session(&arrived);
+                self.forget_unclaimed(&arrived);
                 let Some(claim) = self.claim(SessionKey::File(uri.clone())) else {
                     return;
                 };
