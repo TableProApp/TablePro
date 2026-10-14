@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Open SQLite files from the file manager's Open With, or with `tablepro file.sqlite3`.
 - Review before a structure save that drops data, rebuilds the table or can stop halfway, with the SQL it runs.
 - Arrow keys move between grid cells; F2 or Return edits one, Tab carries an edit to the next cell, and Shift+F10 opens the cell menu.
-- Screen readers say when a grid cell is modified and when a row is new or marked for deletion.
+- Screen readers name check box cells and say when a grid cell is modified or NULL and a row new or marked for deletion.
 - Connections open when TablePro quits open again at the next launch; Restore session in Preferences turns it off.
 - Save query history in Preferences turns the query history off and keeps the entries already saved.
 - Try Again on a table tab's error page, and Retry on a banner over rows or a structure that could not be read again.
@@ -42,10 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sort an editor result by clicking a column header, with text in your language's alphabetical order.
 - Copy as puts CSV, JSON, Markdown, SQL and tab-separated rows on the clipboard as their own type beside plain text.
 - Shift+F10 opens the menu of a sidebar table or a query history entry, as the Menu key does.
-- Screen readers announce the keyboard shortcut of the table, SQL editor and filter buttons that have one.
-- An icon beside each table row with a pending change, and bold text in edited cells, so a change reads without colour.
-- Screen readers tell a NULL cell from the text NULL, and name a check box cell by its column.
-- Screen readers name the icon-only buttons of table and structure tabs, filters and dialogs.
+- Screen readers name icon-only buttons, and announce the shortcut of the table, SQL editor and filter buttons that have one.
+- An icon beside each table row with a pending change, and bold text in edited cells.
 - Troubleshooting in About TablePro, with the app, toolkit and driver versions to copy into a bug report.
 - Licenses of the third-party crates TablePro is built with, in About TablePro and installed with the app.
 - F9 and the sidebar button show and hide the table sidebar.
