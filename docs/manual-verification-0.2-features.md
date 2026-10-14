@@ -1,10 +1,10 @@
-# Manual verification: the 0.2 upstream feature sprint
+# Manual verification: 0.2.0 features
 
-This checklist records installed acceptance for the 0.2.0 target. GTK unit and widget tests do not qualify installed workflows, layouts or light/dark appearance. An unchecked item remains pending; a failure recorded from an earlier run is historical and must be rerun after its fix.
+This checklist records manual acceptance for the 0.2.0 target. GTK unit and widget tests do not qualify installed workflows, layouts or light/dark appearance. An unchecked item remains pending; a failure recorded from an earlier run is historical and must be rerun after its fix.
 
 The 0.2.0 desktop target is **Arch Linux / Omarchy / Hyprland, native Wayland**. Debian and Ubuntu GNOME desktop acceptance follows 0.2.0 and is tracked under PKG-2. Use the [active sprint packets](bookie-0.2-sprint.md#arch--omarchy--wayland-ui-packets); Xvfb success does not establish native Wayland behavior.
 
-Record the full binary/package SHA, package checksum when installed, GTK backend, OS/Hyprland/GTK/libadwaita versions, display scale, light/dark mode, result and screenshot paths. Test both normal size and a narrow/resized window, keyboard focus, clipboard and popover/dialog placement. Mark blocked and not-run items explicitly. No boxes were checked by the September 28 documentation review.
+Record the full binary/package SHA, package checksum when installed, GTK backend, OS/Hyprland/GTK/libadwaita versions, display scale, light/dark mode, result and screenshot paths. Test both normal size and a narrow/resized window, keyboard focus, clipboard and popover/dialog placement. Mark blocked and not-run items explicitly.
 
 Take light and dark screenshots for each section, per `AGENTS.md`. Record a result beside each item rather than leaving it blank, because a blank line here reads as "passed" to the next person.
 
