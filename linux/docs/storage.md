@@ -179,6 +179,26 @@ When it deleted anything it runs FTS5 `optimize`, because the delete
 triggers otherwise leave tombstones that grow the index as the table
 shrinks. It returns a `PruneReport { expired, over_cap }`.
 
+### What goes into the history
+
+`HistoryService::record` is the one way in, for editor runs, saves and
+imports. It records nothing while `save-query-history` is off, or when the
+connection has no dialect, such as while its link is down. Otherwise the
+dialect's `history_recording` decides, reading the SQL with the editor's own
+script lexer:
+
+- A statement that can carry a credential withholds the whole entry. Each
+  engine lists its own in a `CredentialRules`: logins, roles, keys and links
+  to other servers (`CREATE USER`, `CHANGE MASTER`), statements that do so
+  only with a given word (`GRANT ... IDENTIFIED`), and functions or engines
+  that take a password (`dblink`, `OPENROWSET`, `s3`). A dollar-quoted body
+  is read for the statements inside it.
+- A string, quoted name or comment that never closes withholds it too, since
+  what is inside a literal is then a guess.
+
+An entry is kept whole or not at all, never rewritten to cut a secret out.
+Turning the setting off keeps what is already there; Clear removes it.
+
 ## App preferences with `gio::Settings`
 
 `data/app.tablepro.TablePro.gschema.xml` holds every app-wide preference and the window geometry. Meson installs it to `$datadir/glib-2.0/schemas` and compiles it; see [ADR 0007](decisions/0007-gsettings-preferences.md).
@@ -193,6 +213,7 @@ Schema id and path: `app.tablepro.TablePro`.
 | `default-page-size` | `u` | `1000` | 100 to 100000 |
 | `confirm-destructive` | `b` | `true` | |
 | `restore-session` | `b` | `true` | |
+| `save-query-history` | `b` | `true` | |
 | `history-retention-days` | `u` | `30` | 0 to 365 |
 | `query-timeout-secs` | `u` | `60` | 0 to 3600 |
 | `use-system-font` | `b` | `true` | |

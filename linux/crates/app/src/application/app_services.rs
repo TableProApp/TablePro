@@ -16,7 +16,8 @@ use crate::config;
 use crate::runtime::GioProcessHold;
 use crate::services::active_session::ActiveSession;
 use crate::services::connection_deletion::ConnectionDeletion;
-use crate::services::history_service::{HistoryService, publish_retention};
+use crate::services::history_preferences::HistoryPreferences;
+use crate::services::history_service::HistoryService;
 use crate::services::session_context::{CredentialSourceFactory, KeyringSources, SessionContext};
 use crate::storage::{AppStorage, SharedStorage};
 use crate::ui::credential_prompt::{GtkCredentialPrompter, PromptQueue};
@@ -145,8 +146,8 @@ impl AppServices {
     pub(crate) fn history(&self) -> HistoryService {
         self.history
             .get_or_init(|| {
-                let retention = publish_retention(&self.settings);
-                HistoryService::start(self.storage.paths().clone(), retention, &self.tasks)
+                let preferences = HistoryPreferences::follow(&self.settings);
+                HistoryService::start(self.storage.paths().clone(), preferences, &self.tasks)
             })
             .clone()
     }

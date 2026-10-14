@@ -49,6 +49,10 @@ impl PreferencesDialog {
         gio_settings
             .bind(keys::CONFIRM_DESTRUCTIVE, &imp.confirm_row.get(), "active")
             .build();
+        // Off stops new records only; Clear is what removes the old ones.
+        gio_settings
+            .bind(keys::SAVE_QUERY_HISTORY, &imp.save_history_row.get(), "active")
+            .build();
         gio_settings
             .bind(keys::HISTORY_RETENTION_DAYS, &imp.retention_row.get(), "value")
             .build();
@@ -248,6 +252,22 @@ mod tests {
         assert!(!settings.get().restore_session());
 
         settings.get().set_restore_session(true).expect("store the flag");
+        assert!(row.is_active());
+    }
+
+    #[gtk4::test]
+    fn preferences_history_switch_bound_to_setting() {
+        let settings = MemorySettings::new();
+        let runtime = test_runtime();
+        let storage = test_storage(&runtime.tasks());
+        let dialog = new_dialog(&settings, &storage, None, &runtime.tasks());
+        let row = dialog.imp().save_history_row.get();
+        assert!(row.is_active(), "the row does not show the default");
+
+        row.set_active(false);
+        assert!(!settings.get().save_query_history());
+
+        settings.get().set_save_query_history(true).expect("store the flag");
         assert!(row.is_active());
     }
 

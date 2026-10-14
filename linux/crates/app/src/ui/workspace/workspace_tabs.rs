@@ -46,7 +46,7 @@ impl WorkspaceModel {
 
     fn build_workspace_root(&mut self) {
         let settings = self.settings.clone();
-        let history = self.history.store();
+        let history = Some(self.history.clone());
         let tasks = self.tasks.clone();
         let session = self.context.active.clone();
         let hold = self.context.hold.clone();
@@ -383,7 +383,7 @@ impl WorkspaceModel {
         let editor = SqlEditor::new(SqlEditorInit {
             initial_query,
             settings: self.settings.clone(),
-            history: self.history.store(),
+            history: Some(self.history.clone()),
             tasks: self.tasks.clone(),
             session: self.context.active.clone(),
             hold: self.context.hold.clone(),

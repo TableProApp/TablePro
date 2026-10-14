@@ -49,7 +49,12 @@
         <child>
           <object class="AdwPreferencesGroup">
             <property name="title" translatable="yes">Query history</property>
-            <property name="description" translatable="yes">Persistent record of every SQL query you run.</property>
+            <child>
+              <object class="AdwSwitchRow" id="save_history_row">
+                <property name="title" translatable="yes">Save query history</property>
+                <property name="subtitle" translatable="yes">Keep a searchable record of the SQL you run. Statements that contain passwords or connection secrets are never saved.</property>
+              </object>
+            </child>
             <child>
               <object class="AdwSpinRow" id="retention_row">
                 <property name="title" translatable="yes">Retention (days)</property>

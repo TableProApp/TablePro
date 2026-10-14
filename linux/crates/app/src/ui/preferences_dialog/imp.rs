@@ -17,6 +17,8 @@ pub struct PreferencesDialog {
     #[template_child]
     pub confirm_row: TemplateChild<adw::SwitchRow>,
     #[template_child]
+    pub save_history_row: TemplateChild<adw::SwitchRow>,
+    #[template_child]
     pub retention_row: TemplateChild<adw::SpinRow>,
     #[template_child]
     pub clear_row: TemplateChild<adw::ActionRow>,

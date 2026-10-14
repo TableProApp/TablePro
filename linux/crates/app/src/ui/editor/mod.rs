@@ -23,6 +23,7 @@ mod tests;
 mod transaction_dirty;
 
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use gtk4::glib;
@@ -31,6 +32,7 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sourceview5::prelude::*;
+use tablepro_core::dialect::SqlDialect;
 use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::{QueryResult, RowLimit};
 use tablepro_session::runtime::{ProcessHold, Tasks};
@@ -44,6 +46,7 @@ use self::script_runner::{ScriptRun, plan_batches, run_in_tab};
 use super::grid::{GridMsg, GridSink};
 use super::handler_guard::HandlerGuard;
 use crate::services::active_session::ActiveSession;
+use crate::services::history_service::HistoryService;
 
 glib::wrapper! {
     pub struct SqlEditor(ObjectSubclass<imp::SqlEditor>)
@@ -54,7 +57,7 @@ glib::wrapper! {
 pub struct SqlEditorInit {
     pub initial_query: Option<String>,
     pub settings: Rc<tablepro_storage::AppSettings>,
-    pub history: Option<tablepro_storage::QueryHistory>,
+    pub history: Option<HistoryService>,
     pub tasks: Tasks,
     /// The window's session, which the tab opens its own connection
     /// from on the first run.
@@ -66,7 +69,7 @@ pub struct SqlEditorInit {
 
 pub(crate) struct EditorDeps {
     settings: Rc<tablepro_storage::AppSettings>,
-    history: Option<tablepro_storage::QueryHistory>,
+    history: Option<HistoryService>,
     tasks: Tasks,
     session: ActiveSession,
     hold: Rc<dyn ProcessHold>,
@@ -368,6 +371,7 @@ impl SqlEditor {
             row_limit: RowLimit::EDITOR_DEFAULT,
         };
         let metadata = session.metadata().clone();
+        let dialect = session.current_dialect();
         let started_at = SystemTime::now();
         let cancel = CancellationToken::new();
         let (events, mut received) = tokio::sync::mpsc::channel(8);
@@ -399,7 +403,7 @@ impl SqlEditor {
                 let finished = matches!(event, RunEvent::Finished);
                 editor.apply_event(event);
                 if finished {
-                    editor.finish_run(query, &metadata, started_at);
+                    editor.finish_run(query, &metadata, started_at, dialect);
                     return;
                 }
             }
@@ -407,7 +411,7 @@ impl SqlEditor {
             // does; the list still has to end and the tab unlock.
             if let Some(editor) = weak.upgrade() {
                 editor.apply_event(RunEvent::Finished);
-                editor.finish_run(query, &metadata, started_at);
+                editor.finish_run(query, &metadata, started_at, dialect);
             }
         });
         imp.running.replace(Some(RunningScript { cancel, drain }));
@@ -443,7 +447,13 @@ impl SqlEditor {
         }))
     }
 
-    fn finish_run(&self, query: String, metadata: &tablepro_session::ConnectionMetadata, started_at: SystemTime) {
+    fn finish_run(
+        &self,
+        query: String,
+        metadata: &tablepro_session::ConnectionMetadata,
+        started_at: SystemTime,
+        dialect: Option<Arc<dyn SqlDialect>>,
+    ) {
         let imp = self.imp();
         drop(imp.running.take());
         imp.run_button.set_sensitive(true);
@@ -470,22 +480,21 @@ impl SqlEditor {
         if imp.transaction_dirty.replace(dirty) != dirty {
             self.emit_by_name::<()>("transaction-changed", &[&dirty]);
         }
-        self.record_history(entry);
+        self.record_history(entry, dialect);
         self.emit_by_name::<()>("run-state-changed", &[&false]);
     }
 
-    fn record_history(&self, entry: tablepro_storage::query_history::NewEntry) {
+    /// `dialect` is the one the run started on, which still names the
+    /// engine when the connection dropped during the run.
+    fn record_history(&self, entry: tablepro_storage::query_history::NewEntry, dialect: Option<Arc<dyn SqlDialect>>) {
         let Some(deps) = self.deps() else {
             return;
         };
-        let Some(history) = deps.history.clone() else {
+        let Some(history) = deps.history.as_ref() else {
             return;
         };
-        drop(deps.tasks.spawn_task(async move {
-            if let Err(error) = history.record(entry).await {
-                tracing::warn!(%error, "history record failed");
-            }
-        }));
+        let dialect = dialect.or_else(|| deps.session.get().and_then(|session| session.current_dialect()));
+        drop(deps.tasks.spawn_task(history.record(entry, dialect)));
     }
 
     /// Put the cursor where the server says a statement went wrong.
