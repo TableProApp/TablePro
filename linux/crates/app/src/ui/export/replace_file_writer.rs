@@ -13,6 +13,13 @@ pub(crate) enum AbortOutcome {
     Incomplete,
 }
 
+/// A close that failed, and what it left of the file.
+#[derive(Debug)]
+pub(crate) struct FinishError {
+    pub error: glib::Error,
+    pub file: AbortOutcome,
+}
+
 /// How the writer came to hold the file.
 #[derive(Debug, Clone)]
 enum Strategy {
@@ -79,11 +86,21 @@ impl ReplaceFileWriter {
     }
 
     /// Close the file, which for a replaced one puts the new content in
-    /// its place.
-    pub(crate) async fn finish(mut self) -> Result<(), glib::Error> {
-        match self.stream.take() {
-            Some(stream) => stream.close_future(glib::Priority::DEFAULT).await,
-            None => Err(closed()),
+    /// its place. A close can still fail, on a network or full disk, and
+    /// the file is then cleaned up as a stopped export's is.
+    pub(crate) async fn finish(mut self) -> Result<(), FinishError> {
+        let Some(stream) = self.stream.take() else {
+            return Err(FinishError {
+                error: closed(),
+                file: AbortOutcome::Incomplete,
+            });
+        };
+        match stream.close_future(glib::Priority::DEFAULT).await {
+            Ok(()) => Ok(()),
+            Err(error) => Err(FinishError {
+                error,
+                file: left_behind(&self.file, &self.strategy).await,
+            }),
         }
     }
 
@@ -111,6 +128,13 @@ impl Drop for ReplaceFileWriter {
 
 async fn abort(file: &gio::File, stream: &gio::FileOutputStream, strategy: &Strategy) -> AbortOutcome {
     close_cancelled(stream).await;
+    left_behind(file, strategy).await
+}
+
+/// Remove a file the export made, and tell whether one it replaced is
+/// as it was. A replace stream whose close failed before its rename has
+/// dropped its temporary file, so the old file can still be whole.
+async fn left_behind(file: &gio::File, strategy: &Strategy) -> AbortOutcome {
     match strategy {
         Strategy::Created => match file.delete_future(glib::Priority::DEFAULT).await {
             Ok(()) => AbortOutcome::Removed,

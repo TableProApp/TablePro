@@ -400,7 +400,8 @@ async fn save_with_file_dialog(parent: adw::ApplicationWindow, exports: Rc<Expor
         return;
     };
     let expected_rows = Some(ExpectedRows::Exact(source.row_count() as u64));
-    exports.begin(ExportJob {
+    // The ledger reports how the job ends, or logs why it never began.
+    let _ = exports.begin(ExportJob {
         destination,
         format: job_format,
         source,

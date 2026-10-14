@@ -734,7 +734,7 @@ impl WorkspaceModel {
         self.close_tabs();
         // The close asked about them already; one started since has no
         // window left to finish in.
-        self.exports.cancel_all();
+        self.exports.shut_down();
         self.context.active.take();
     }
 

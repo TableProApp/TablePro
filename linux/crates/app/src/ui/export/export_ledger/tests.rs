@@ -134,7 +134,7 @@ fn snapshot_export_of_10k_rows_keeps_main_loop_responsive() {
         glib::ControlFlow::Continue
     });
 
-    let handle = harness.ledger.begin(job(&path, 10_000));
+    let handle = harness.ledger.begin(job(&path, 10_000)).expect("started");
     let outcome = harness.finish(handle);
     ticking.remove();
 
@@ -162,7 +162,7 @@ fn stop_button_cancels_job_and_removes_row() {
     button.bind(&harness.ledger.jobs());
     assert!(!button.is_visible(), "the button showed with nothing running");
 
-    let handle = harness.ledger.begin(job(&path, 10_000));
+    let handle = harness.ledger.begin(job(&path, 10_000)).expect("started");
     assert!(button.is_visible());
     let row = button.job_list().row_at_index(0).expect("the job's row");
     let stop = first_descendant_of_type::<gtk::Button>(&row).expect("the stop button");
@@ -183,7 +183,10 @@ fn ledger_holds_inhibit_cookie_while_exporting() {
     let harness = Harness::new();
     assert!(!harness.ledger.is_inhibiting());
 
-    let handle = harness.ledger.begin(job(&harness.path("held.csv"), 100));
+    let handle = harness
+        .ledger
+        .begin(job(&harness.path("held.csv"), 100))
+        .expect("started");
     assert!(harness.ledger.is_inhibiting());
     assert_eq!(
         harness.session.held.borrow().as_slice(),
@@ -205,7 +208,10 @@ fn close_blocker_reports_running_exports_and_stop_waits_for_idle() {
     let harness = Harness::new();
     assert_eq!(harness.ledger.blocking(), None);
 
-    let handle = harness.ledger.begin(job(&harness.path("blocked.csv"), 10_000));
+    let handle = harness
+        .ledger
+        .begin(job(&harness.path("blocked.csv"), 10_000))
+        .expect("started");
     let prompt = harness.ledger.blocking().expect("a running export blocks the close");
     assert_eq!(prompt.heading, "Stop Exports?");
     assert!(prompt.body.starts_with("1 export is still running"), "{}", prompt.body);
@@ -223,7 +229,7 @@ fn failed_export_presents_alert() {
     let harness = Harness::new();
     let path = harness.path("missing").join("rows.csv");
 
-    let outcome = harness.finish(harness.ledger.begin(job(&path, 10)));
+    let outcome = harness.finish(harness.ledger.begin(job(&path, 10)).expect("started"));
 
     assert!(
         matches!(
@@ -246,7 +252,7 @@ fn a_window_close_asks_to_stop_running_exports() {
     let test = crate::ui::session_window::tests::TestWindow::connected("ExportClose");
     let exports = test.workspace().exports().expect("the workspace's exports");
     let path = test.dir().join("closing.csv");
-    let _running = exports.begin(job(&path, 10_000));
+    let _running = exports.begin(job(&path, 10_000)).expect("started");
 
     test.window.close();
     wait_until(WAIT, || {
@@ -257,4 +263,40 @@ fn a_window_close_asks_to_stop_running_exports() {
 
     wait_until(WAIT, || !test.window.is_visible()).expect("the window to close once the export stopped");
     assert_eq!(exports.in_flight(), 0);
+}
+
+#[gtk4::test]
+fn a_shut_down_ledger_refuses_new_exports() {
+    let harness = Harness::new();
+    let path = harness.path("late.csv");
+
+    harness.ledger.shut_down();
+    let refused = harness.ledger.begin(job(&path, 10));
+    crate::test_support::drain_main_context();
+
+    assert!(refused.is_none(), "an export began after the shutdown");
+    assert_eq!(harness.ledger.in_flight(), 0);
+    assert_eq!(harness.hold.live(), 0);
+    assert!(!path.exists(), "the refused export made its file");
+}
+
+#[gtk4::test]
+fn a_new_file_shows_under_its_display_name() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let harness = Harness::new();
+    // Not UTF-8, so the name GIO shows differs from the bytes on disk.
+    let path = harness.dir.path().join(std::ffi::OsStr::from_bytes(b"caf\xe9.csv"));
+    let handle = harness.ledger.begin(job(&path, 10)).expect("started");
+    let item = harness
+        .ledger
+        .jobs()
+        .item(0)
+        .and_downcast::<ExportJobItem>()
+        .expect("the job's row");
+
+    let outcome = harness.finish(handle);
+
+    assert!(matches!(outcome, ExportOutcome::Exported { rows: 10 }), "{outcome:?}");
+    assert!(item.title().ends_with("(invalid encoding)"), "{}", item.title());
 }

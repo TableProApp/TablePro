@@ -87,6 +87,41 @@ fn abort_on_regular_file_leaves_content_and_reports_untouched() {
     );
 }
 
+/// GLib renames its temporary file over the destination as the stream
+/// closes. With that file gone the rename fails after every chunk was
+/// written, the way a close on a full or network disk does.
+#[gtk4::test]
+fn failed_finish_on_regular_file_reports_untouched() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("export.csv");
+    seed(&path, "old");
+
+    let writer = write(open(&path), &["new"]);
+    let temporary = entries(dir.path())
+        .into_iter()
+        .find(|name| name != "export.csv")
+        .expect("the temporary file");
+    std::fs::remove_file(dir.path().join(temporary)).expect("the temporary file removed");
+    let failed = run(async move { writer.finish().await }).expect_err("the rename to fail");
+
+    assert_eq!(failed.file, AbortOutcome::Untouched);
+    assert_eq!(std::fs::read_to_string(&path).expect("read back"), "old");
+    assert_eq!(entries(dir.path()), ["export.csv"]);
+}
+
+#[gtk4::test]
+fn file_made_by_export_whose_close_failed_is_removed() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("export.csv");
+    std::fs::write(&path, "partial").expect("a partial file");
+    let file = gio::File::for_path(&path);
+
+    let outcome = run(async move { left_behind(&file, &Strategy::Created).await });
+
+    assert_eq!(outcome, AbortOutcome::Removed);
+    assert!(entries(dir.path()).is_empty(), "{:?}", entries(dir.path()));
+}
+
 #[gtk4::test]
 fn finish_through_symlink_keeps_link_and_writes_target() {
     let dir = tempfile::tempdir().expect("tempdir");

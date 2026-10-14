@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 use super::export_producer::{start_document_producer, start_rows_producer};
 use super::{
     ExportFailure, ExportFormat, ExportJob, ExportJobId, ExportJobItem, ExportMessage, ExportOutcome, ExportReporter,
-    ExportSinkParts, ExportSource, ReplaceFileWriter,
+    ExportSinkParts, ExportSource, FinishError, ReplaceFileWriter,
 };
 use crate::i18n::{gettext, ngettext_f};
 use crate::ui::count_text::plural_count;
@@ -45,6 +45,9 @@ struct LedgerState {
     next: u64,
     running: BTreeMap<ExportJobId, Running>,
     waiters: Vec<oneshot::Sender<()>>,
+    /// The workspace shut down: its close already asked about the
+    /// exports, and a new one would run with no window to report to.
+    shut_down: bool,
 }
 
 struct Running {
@@ -92,7 +95,13 @@ impl ExportLedger {
         self.jobs.clone()
     }
 
-    pub(crate) fn begin(self: &Rc<Self>, job: ExportJob) -> ExportJobHandle {
+    /// Start `job`, unless the workspace has shut down. A file chooser
+    /// still open when the window closed can hand one over after that.
+    pub(crate) fn begin(self: &Rc<Self>, job: ExportJob) -> Option<ExportJobHandle> {
+        if self.state.borrow().shut_down {
+            tracing::debug!("an export began after its workspace shut down, and was not started");
+            return None;
+        }
         let cancel = CancellationToken::new();
         let name = file_name(&job.destination);
         let item = ExportJobItem::new(&name, job.expected_rows, cancel.clone());
@@ -111,7 +120,6 @@ impl ExportLedger {
         };
         self.jobs.append(&item);
         self.refresh_inhibitor();
-        show_display_name(&job.destination, &item);
 
         let (reply, outcome) = oneshot::channel();
         let ledger = self.clone();
@@ -122,7 +130,7 @@ impl ExportLedger {
             ledger.reporter.report(&destination, &item.title(), &ended);
             let _ = reply.send(ended);
         });
-        ExportJobHandle { outcome }
+        Some(ExportJobHandle { outcome })
     }
 
     pub(crate) fn in_flight(&self) -> usize {
@@ -153,6 +161,13 @@ impl ExportLedger {
         for running in self.state.borrow().running.values() {
             running.cancel.cancel();
         }
+    }
+
+    /// Stop every running export and refuse new ones, for a workspace
+    /// that is going away.
+    pub(crate) fn shut_down(&self) {
+        self.state.borrow_mut().shut_down = true;
+        self.cancel_all();
     }
 
     fn settle(&self, id: ExportJobId, item: &ExportJobItem) {
@@ -227,20 +242,19 @@ fn file_name(file: &gio::File) -> String {
         .unwrap_or_else(|| file.parse_name().to_string())
 }
 
-fn show_display_name(file: &gio::File, item: &ExportJobItem) {
-    let (file, item) = (file.clone(), item.downgrade());
-    glib::spawn_future_local(async move {
-        let info = file
-            .query_info_future(
-                gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
-                gio::FileQueryInfoFlags::NONE,
-                glib::Priority::DEFAULT,
-            )
-            .await;
-        if let (Ok(info), Some(item)) = (info, item.upgrade()) {
-            item.set_title(info.display_name());
-        }
-    });
+/// Asked once the file exists: a file not yet made has no display name.
+async fn show_display_name(file: &gio::File, item: &ExportJobItem) {
+    let info = file
+        .query_info_future(
+            gio::FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME,
+            gio::FileQueryInfoFlags::NONE,
+            glib::Priority::DEFAULT,
+        )
+        .await;
+    match info {
+        Ok(info) => item.set_title(info.display_name()),
+        Err(error) => tracing::debug!(%error, "an export's file has no display name"),
+    }
 }
 
 /// Write the job's file: open it, start the encoder, and take its
@@ -255,6 +269,7 @@ async fn run(tasks: &Tasks, job: ExportJob, cancel: &CancellationToken, item: &E
             };
         }
     };
+    show_display_name(&job.destination, item).await;
     if cancel.is_cancelled() {
         return ExportOutcome::Stopped(writer.abort().await);
     }
@@ -284,9 +299,9 @@ async fn run(tasks: &Tasks, job: ExportJob, cancel: &CancellationToken, item: &E
             Some(Some(ExportMessage::Finished { rows })) => {
                 return match writer.finish().await {
                     Ok(()) => ExportOutcome::Exported { rows },
-                    Err(error) => ExportOutcome::Failed {
+                    Err(FinishError { error, file }) => ExportOutcome::Failed {
                         failure: error.into(),
-                        file: Some(super::AbortOutcome::Incomplete),
+                        file: Some(file),
                     },
                 };
             }

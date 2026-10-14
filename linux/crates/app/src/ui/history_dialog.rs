@@ -7,12 +7,12 @@ use relm4::prelude::*;
 use relm4::{adw, gtk};
 
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::QueryHistory;
 use tablepro_storage::query_history::{Entry, SearchFilter};
+use tablepro_storage::{QueryHistory, StorageError};
 
 use uuid::Uuid;
 
-use super::export::ReplaceFileWriter;
+use super::export::{ExportFailure, FinishError, ReplaceFileWriter, failure_text};
 use crate::runtime::DeliverInput;
 
 pub struct HistoryDialog {
@@ -94,7 +94,7 @@ pub enum HistoryDialogCmd {
     Loaded(Vec<Entry>),
     Cleared,
     ExportReady(String, String),
-    ExportFailed(String),
+    ExportFailed(StorageError),
 }
 
 impl Component for HistoryDialog {
@@ -621,9 +621,9 @@ impl Component for HistoryDialog {
                 sender.deliver(HistoryDialogInput::Refresh);
             }
             HistoryDialogCmd::ExportReady(content, suggested_name) => self.save_export(content, suggested_name),
-            HistoryDialogCmd::ExportFailed(msg) => {
-                tracing::warn!(error = %msg, "history export failed");
-                show_export_failure(self.root.upcast_ref(), &msg);
+            HistoryDialogCmd::ExportFailed(error) => {
+                tracing::warn!(%error, "history export failed");
+                show_export_failure(self.root.upcast_ref(), &history_export_failure_text(&error));
             }
         }
     }
@@ -984,7 +984,7 @@ impl HistoryDialog {
                     };
                     let msg = match result {
                         Ok(text) => HistoryDialogCmd::ExportReady(text, suggested),
-                        Err(e) => HistoryDialogCmd::ExportFailed(e.to_string()),
+                        Err(e) => HistoryDialogCmd::ExportFailed(e),
                     };
                     out.send(msg).ok()
                 })
@@ -1032,31 +1032,36 @@ impl HistoryDialog {
     }
 }
 
-/// Write the exported history to `file`, replacing it only once the
-/// whole export is written, and say so over `parent` when it fails.
+/// Write the exported history to `file`, and say over `parent` when it
+/// fails and what it left of the file.
 async fn write_history_export(parent: &gtk::Widget, file: &gio::File, content: String) {
     let written = async {
-        let writer = ReplaceFileWriter::open(file).await?;
+        let writer = ReplaceFileWriter::open(file).await.map_err(|error| (error, None))?;
         if let Err(error) = writer.write(content.into_bytes()).await {
-            writer.abort().await;
-            return Err(error);
+            return Err((error, Some(writer.abort().await)));
         }
-        writer.finish().await
+        writer
+            .finish()
+            .await
+            .map_err(|FinishError { error, file }| (error, Some(file)))
     }
     .await;
-    if let Err(error) = written {
+    if let Err((error, left)) = written {
         tracing::warn!(%error, path = %file.parse_name(), "history export write failed");
         let name = file.basename().map_or_else(
             || file.parse_name().to_string(),
             |name| name.to_string_lossy().into_owned(),
         );
-        show_export_failure(
-            parent,
-            &crate::i18n::gettext_f(
-                "Writing {name} failed: {error}",
-                &[("name", &name), ("error", error.message())],
-            ),
-        );
+        show_export_failure(parent, &failure_text(&ExportFailure::File(error), left, &name));
+    }
+}
+
+/// Why the entries could not be read for an export. The storage error
+/// is logged; its text is not translated.
+fn history_export_failure_text(error: &StorageError) -> String {
+    match error {
+        StorageError::Encode(_) => crate::i18n::gettext("The selected entries couldn't be written as CSV."),
+        _ => crate::i18n::gettext("The selected entries couldn't be read from the query history."),
     }
 }
 
@@ -1181,5 +1186,20 @@ mod tests {
             "the alert does not name the file: {}",
             alert.body()
         );
+        assert!(!alert.body().contains("incomplete"), "{}", alert.body());
+    }
+
+    #[test]
+    fn history_export_failure_text_is_not_the_storage_error() {
+        let errors = [
+            StorageError::NotInitialised,
+            StorageError::Encode(tablepro_core::export::RenderError::Flush(std::io::Error::other("full"))),
+        ];
+
+        for error in errors {
+            let text = history_export_failure_text(&error);
+            assert!(!text.contains(&error.to_string()), "{text}");
+            assert!(text.starts_with("The selected entries couldn't"), "{text}");
+        }
     }
 }
