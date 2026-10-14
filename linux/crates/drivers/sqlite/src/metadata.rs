@@ -112,6 +112,20 @@ pub(crate) async fn fetch_foreign_keys(
     connection: &mut SqlxConnection,
     table: &TableRef,
 ) -> Result<Vec<ForeignKeyInfo>, DriverError> {
+    let keys = foreign_key_rows(connection, table).await?;
+    let create = match keys.is_empty() {
+        true => None,
+        false => create_statement(connection, table).await?,
+    };
+    resolve_foreign_keys(connection, table, keys, create.as_deref()).await
+}
+
+/// The table's foreign keys by pragma id, each with whether it points
+/// at the parent's primary key without naming its columns.
+async fn foreign_key_rows(
+    connection: &mut SqlxConnection,
+    table: &TableRef,
+) -> Result<BTreeMap<i64, (ForeignKeyInfo, bool)>, DriverError> {
     let schema = schema_of(table);
     let rows = sqlx::query(catalog::FOREIGN_KEY_LIST_SQL)
         .bind(table.name.as_str())
@@ -144,19 +158,22 @@ pub(crate) async fn fetch_foreign_keys(
             None => *to_primary = true,
         }
     }
-    let declared = match keys.is_empty() {
-        true => None,
-        false => create_statement(connection, table)
-            .await?
-            .as_deref()
-            .and_then(declared_foreign_key_names),
-    };
+    Ok(keys)
+}
+
+/// Name the keys from the table's CREATE TABLE, and give a key that
+/// names no parent columns the parent's primary key.
+async fn resolve_foreign_keys(
+    connection: &mut SqlxConnection,
+    table: &TableRef,
+    keys: BTreeMap<i64, (ForeignKeyInfo, bool)>,
+    create_statement: Option<&str>,
+) -> Result<Vec<ForeignKeyInfo>, DriverError> {
+    let declared = create_statement.and_then(declared_foreign_key_names);
     let mut names = foreign_key_names(&table.name, declared, keys.len()).into_iter();
     let mut resolved = Vec::with_capacity(keys.len());
     for (mut key, to_primary) in keys.into_values() {
         key.name = names.next().unwrap_or_default();
-        // A key that names no parent columns points at the parent's
-        // primary key.
         if to_primary {
             let parent = TableRef::new(table.schema.clone(), key.ref_table.clone());
             key.ref_columns = table_shape(connection, &parent).await?.primary_key();
@@ -275,7 +292,8 @@ pub(crate) async fn fetch_table_definition(
         columns: key_columns.clone(),
     });
     let indexes = indexes(connection, table, &shape).await?;
-    let foreign_keys = fetch_foreign_keys(connection, table).await?;
+    let foreign_keys = foreign_key_rows(connection, table).await?;
+    let foreign_keys = resolve_foreign_keys(connection, table, foreign_keys, create_statement.as_deref()).await?;
 
     let inbound_rows = sqlx::query(AssertSqlSafe(catalog::inbound_keys_sql(&schema_sql)))
         .bind(table.name.as_str())
@@ -288,6 +306,7 @@ pub(crate) async fn fetch_table_definition(
             Ok(InboundKeyRow {
                 child: text(row, "child")?,
                 child_sql: row.try_get("child_sql").map_err(map_error)?,
+                child_keys: usize::try_from(row.try_get::<i64, _>("child_keys").map_err(map_error)?).unwrap_or(0),
                 id: row.try_get("id").map_err(map_error)?,
                 from: text(row, "from")?,
                 to: row.try_get("to").map_err(map_error)?,

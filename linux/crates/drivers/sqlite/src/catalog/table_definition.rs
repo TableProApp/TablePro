@@ -16,6 +16,8 @@ pub(crate) struct InboundKeyRow {
     pub child: String,
     /// The child's CREATE TABLE, where the key's declared name is.
     pub child_sql: Option<String>,
+    /// How many foreign keys the child has, here or elsewhere.
+    pub child_keys: usize,
     pub id: i64,
     pub from: String,
     /// `None` when the key names no columns, which means the parent's
@@ -37,8 +39,7 @@ pub(crate) fn inbound_foreign_keys(
     for row in rows {
         let child_names = names.entry(row.child.clone()).or_insert_with(|| {
             let declared = row.child_sql.as_deref().and_then(declared_foreign_key_names);
-            let count = declared.as_ref().map_or(0, Vec::len);
-            foreign_key_names(&row.child, declared, count)
+            foreign_key_names(&row.child, declared, row.child_keys)
         });
         let name = usize::try_from(row.id)
             .ok()
@@ -137,6 +138,7 @@ mod tests {
         InboundKeyRow {
             child: child.to_owned(),
             child_sql: None,
+            child_keys: 3,
             id,
             from: from.to_owned(),
             to: to.map(str::to_owned),
@@ -174,6 +176,22 @@ mod tests {
 
         let names: Vec<&str> = keys.iter().map(|key| key.name.as_str()).collect();
         assert_eq!(names, ["to_orders", "fk_lines_1", "fk_lines_2"]);
+        let miscounted: Vec<InboundKeyRow> = rows
+            .iter()
+            .map(|row| InboundKeyRow {
+                child_keys: 4,
+                ..row.clone()
+            })
+            .collect();
+        let unsure: Vec<String> = inbound_foreign_keys(None, miscounted, &["id".to_owned()])
+            .into_iter()
+            .map(|key| key.name)
+            .collect();
+        assert_eq!(
+            unsure,
+            ["fk_lines_0", "fk_lines_1", "fk_lines_2"],
+            "names read from text that declares fewer keys than the child has"
+        );
         assert_eq!(
             foreign_key_names("t", Some(vec![Some("x".to_owned())]), 2),
             ["fk_t_0", "fk_t_1"],

@@ -69,9 +69,13 @@ pub(crate) fn dependents_sql(schema_sql: &str) -> String {
     )
 }
 
+/// `child_keys` counts every key of the child, wherever it points, since
+/// the ids number them all.
 pub(crate) fn inbound_keys_sql(schema_sql: &str) -> String {
     format!(
-        "SELECT m.name AS child, m.sql AS child_sql, f.id AS id, f.\"from\" AS \"from\", f.\"to\" AS \"to\" \
+        "SELECT m.name AS child, m.sql AS child_sql, \
+         (SELECT count(DISTINCT k.id) FROM pragma_foreign_key_list(m.name, ?2) k) AS child_keys, \
+         f.id AS id, f.\"from\" AS \"from\", f.\"to\" AS \"to\" \
          FROM {schema_sql}.sqlite_schema m, pragma_foreign_key_list(m.name, ?2) f \
          WHERE m.type = 'table' AND f.\"table\" = ?1 COLLATE NOCASE ORDER BY m.name, f.id, f.seq"
     )
