@@ -1,8 +1,8 @@
 # Manual verification: the 0.2 upstream feature sprint
 
-The features below have logic tests. Four isolated GTK widget regressions passed on 2026-09-26, including long-cell edit seeding; this does not qualify the full installed workflows, layouts or light/dark appearance below. Unchecked items remain pending.
+This checklist records installed acceptance for the 0.2.0 target. GTK unit and widget tests do not qualify installed workflows, layouts or light/dark appearance. An unchecked item remains pending; a failure recorded from an earlier run is historical and must be rerun after its fix.
 
-Current target (2026-09-28): **Arch Linux / Omarchy / Hyprland, native Wayland**, after the B3/B4 continuation tasks. Repeat applicable installed checks on GNOME desktop under Debian Wayland immediately after the Arch pass; this phase is required. Use the [active sprint packets](bookie-0.2-sprint.md#arch--omarchy--wayland-ui-packets); Xvfb success does not establish native Wayland behavior.
+The 0.2.0 desktop target is **Arch Linux / Omarchy / Hyprland, native Wayland**. Debian and Ubuntu GNOME desktop acceptance follows 0.2.0 and is tracked under PKG-2. Use the [active sprint packets](bookie-0.2-sprint.md#arch--omarchy--wayland-ui-packets); Xvfb success does not establish native Wayland behavior.
 
 Record the full binary/package SHA, package checksum when installed, GTK backend, OS/Hyprland/GTK/libadwaita versions, display scale, light/dark mode, result and screenshot paths. Test both normal size and a narrow/resized window, keyboard focus, clipboard and popover/dialog placement. Mark blocked and not-run items explicitly. No boxes were checked by the September 28 documentation review.
 
@@ -69,6 +69,7 @@ Right-click a table in the sidebar, then Import CSV. Separately, use the second 
 - [ ] Connections are grouped, with one section per group and an ungrouped section.
 - [ ] A group that appears twice in the ordering still renders one section.
 - [ ] The colour swatch shows on a tagged row and the picker sets it. **2026-10-12 Hyprland dark:** the picker saved the colour; the swatch was not checked.
+- [ ] After connecting to a tagged connection, the workspace tab strip shows its colour. Changing or clearing the tag updates the strip, and disconnecting clears it. The GTK regression passes; the installed retest after [#768](https://github.com/cozyGarage/BookiE/pull/768) is pending.
 - [ ] With Orca, open Group and tags, navigate to Colour, open the named button, choose a palette colour, and confirm the selected colour is announced and saved. Sidebar table search and the saved-filter name field announce their purpose. Native Wayland screen-reader check pending.
 - [ ] Duplicate produces a new row with a distinct name, and connecting to it asks for credentials rather than reusing the original's. **2026-10-12 Hyprland dark:** distinct name passed ("(copy)"); the copy did not reuse the password but did not ask for one either, it failed and offered Edit Connection, [#660](https://github.com/cozyGarage/BookiE/issues/660).
 - [ ] The Name field in the connect dialog is used when set, and the derived `user@host` label still appears when it is blank.
