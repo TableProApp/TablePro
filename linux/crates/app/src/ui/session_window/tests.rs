@@ -414,6 +414,26 @@ fn a_failed_connect_shows_why_and_choose_connection_returns_to_the_picker() {
 }
 
 #[gtk4::test]
+fn a_close_while_the_page_is_read_does_not_panic() {
+    let test = TestWindow::with_script(
+        "CloseWhileRead",
+        Script {
+            establish: vec![refused()],
+            ..Script::default()
+        },
+    );
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("connect-failed");
+
+    let page = test.window.imp().page.borrow();
+    test.window.release_session();
+    drop(page);
+
+    assert_eq!(test.window.page_name(), "connect-failed");
+}
+
+#[gtk4::test]
 fn retry_rereads_credentials() {
     let credentials = FakeCredentialSource::new();
     let test = TestWindow::with_script(

@@ -701,7 +701,14 @@ impl SessionWindow {
         if self.page_is(|page| matches!(page, SessionPage::Connecting { .. })) {
             stop_connecting(&self.imp().attempts);
         }
-        drop(self.imp().page.replace(SessionPage::Picker));
+        let left = match self.imp().page.try_borrow_mut() {
+            Ok(mut page) => std::mem::take(&mut *page),
+            Err(_) => {
+                tracing::warn!("the window closed while its page was in use");
+                return;
+            }
+        };
+        drop(left);
     }
 
     fn refresh_inhibitor(&self) {
