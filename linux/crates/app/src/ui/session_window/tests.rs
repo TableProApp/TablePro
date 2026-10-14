@@ -45,6 +45,8 @@ pub(crate) struct Script {
     /// The saved connection logs in to a server with a password, rather
     /// than opening a file.
     pub network: bool,
+    /// The connection list on disk cannot be read, so it holds nothing.
+    pub unreadable_list: bool,
 }
 
 /// A TablePro over fakes with one window open on the picker and `saved`
@@ -81,6 +83,7 @@ impl TestWindow {
         let settings = MemorySettings::new();
         let dir = tempfile::tempdir().expect("a temporary directory");
         let paths = StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID);
+        let list_file = paths.connections_file();
         let vault = Arc::new(FakeSecretVault::new());
         let storage = AppStorage::new(paths, vault.clone(), &runtime.tasks());
         let Script {
@@ -88,16 +91,24 @@ impl TestWindow {
             establish,
             credentials,
             network,
+            unreadable_list,
         } = script;
         let saved = if network {
             network_connection()
         } else {
             saved_connection(&dir.path().join("fake.db"))
         };
-        storage
-            .connections()
-            .upsert_blocking(saved.clone())
-            .expect("save the test's connection");
+        if unreadable_list {
+            if let Some(parent) = list_file.parent() {
+                std::fs::create_dir_all(parent).expect("the config directory");
+            }
+            std::fs::write(&list_file, b"{ not json").expect("the unreadable list");
+        } else {
+            storage
+                .connections()
+                .upsert_blocking(saved.clone())
+                .expect("save the test's connection");
+        }
         connection.probe.always(FakeReply::ok(()));
         connection.list_schemas.always(FakeReply::ok(Vec::new()));
         connection.list_objects.always(FakeReply::ok(Vec::new()));

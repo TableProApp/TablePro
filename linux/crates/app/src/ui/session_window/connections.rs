@@ -537,9 +537,6 @@ impl SessionWindow {
     }
 
     pub(super) fn on_reset_connection_list(&self) {
-        let (Some(state), Some(input), Some(picker)) = (self.state(), self.input(), self.imp().picker.get()) else {
-            return;
-        };
         let dialog = adw::AlertDialog::new(
             Some(&crate::i18n::gettext("Reset Saved Connections?")),
             Some(&crate::i18n::gettext(
@@ -551,41 +548,53 @@ impl SessionWindow {
         dialog.set_response_appearance("reset", adw::ResponseAppearance::Destructive);
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");
-
-        let store = state.services.storage.connections().clone();
-        let tasks = state.services.tasks.clone();
-        let banner = picker.banner();
-        let toasts = self.imp().toast_overlay.get();
+        let window = self.downgrade();
         dialog.connect_response(None, move |dialog, response| {
             dialog.close();
-            if response != "reset" {
-                return;
+            if response == "reset"
+                && let Some(window) = window.upgrade()
+            {
+                window.reset_connection_list();
             }
-            let store = store.clone();
-            let resetting =
-                tasks.spawn_blocking_task(move || store.reset_unreadable_blocking(std::time::SystemTime::now()));
-            let (banner, toasts, input) = (banner.clone(), toasts.clone(), input.clone());
-            glib::spawn_future_local(async move {
-                let error = match resetting.await {
-                    Ok(Ok(moved)) => {
-                        banner.set_revealed(false);
-                        toasts.add_toast(adw::Toast::new(&crate::ui::connection_list_banner::reset_toast_text(
-                            &moved,
-                        )));
-                        input.deliver(SessionWindowInput::ReloadConnections);
-                        return;
-                    }
-                    Ok(Err(error)) => error.to_string(),
-                    Err(error) => error.to_string(),
-                };
-                tracing::warn!(%error, "could not reset the saved connections");
-                toasts.add_toast(adw::Toast::new(&crate::i18n::gettext_f(
-                    "Could not reset the saved connections: {error}",
-                    &[("error", &error)],
-                )));
-            });
         });
         dialog.present(Some(self));
+    }
+
+    /// Move the unreadable list aside, holding the process until the
+    /// rename lands so a quit right after Reset keeps it.
+    pub(super) fn reset_connection_list(&self) {
+        let (Some(state), Some(input), Some(picker)) = (self.state(), self.input(), self.imp().picker.get()) else {
+            return;
+        };
+        let store = state.services.storage.connections().clone();
+        let held = state.services.hold().acquire();
+        let resetting = state
+            .services
+            .tasks
+            .spawn_blocking_task(move || store.reset_unreadable_blocking(std::time::SystemTime::now()));
+        let banner = picker.banner();
+        let toasts = self.imp().toast_overlay.get();
+        glib::spawn_future_local(async move {
+            let reset = resetting.await;
+            drop(held);
+            let error = match reset {
+                Ok(Ok(moved)) => {
+                    banner.set_revealed(false);
+                    toasts.add_toast(adw::Toast::new(&crate::ui::connection_list_banner::reset_toast_text(
+                        &moved,
+                    )));
+                    input.deliver(SessionWindowInput::ReloadConnections);
+                    return;
+                }
+                Ok(Err(error)) => error.to_string(),
+                Err(error) => error.to_string(),
+            };
+            tracing::warn!(%error, "could not reset the saved connections");
+            toasts.add_toast(adw::Toast::new(&crate::i18n::gettext_f(
+                "Could not reset the saved connections: {error}",
+                &[("error", &error)],
+            )));
+        });
     }
 }
 
@@ -890,5 +899,28 @@ mod tests {
         assert_eq!(test.hold.live(), 1, "the delete ran without a hold");
         wait_until(WAIT, || test.hold.live() == 0).expect("the hold to end");
         assert!(!listed(&test, copy.id), "the hold ended before the delete");
+    }
+
+    #[gtk4::test]
+    fn reset_holds_the_process_until_the_list_is_moved_aside() {
+        let test = TestWindow::with_script(
+            "ResetHeld",
+            crate::ui::session_window::tests::Script {
+                unreadable_list: true,
+                ..Default::default()
+            },
+        );
+        let state = || test.services.storage.connections().snapshot().state;
+        wait_until(WAIT, || matches!(state(), ConnectionListState::Unavailable(_))).expect("the unreadable list");
+        wait_until(WAIT, || test.hold.live() == 0).expect("nothing else to hold the process");
+
+        test.window.reset_connection_list();
+        assert_eq!(test.hold.live(), 1, "the reset ran without a hold");
+        wait_until(WAIT, || test.hold.live() == 0).expect("the hold to end");
+
+        assert!(
+            matches!(state(), ConnectionListState::Ready(_)),
+            "the hold ended before the list was moved aside"
+        );
     }
 }
