@@ -382,6 +382,27 @@ fn a_failed_read_after_a_save_keeps_the_saved_draft_locked() {
     );
 }
 
+/// The save landed, so waiting for it is no help: the edit waits for a
+/// read of the table that only Retry starts.
+#[gtk4::test]
+fn an_edit_after_a_failed_read_after_a_save_says_to_retry() {
+    let harness = Harness::open(StructureMode::Edit, readable_once(), []);
+    wait_until(WAIT, || harness.page().as_deref() == Some("editor")).expect("the structure");
+    harness
+        .tab()
+        .send(StructureTabInput::SaveCompleted { new_table_name: None });
+    wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed read was not shown");
+    let toasts = toasts(harness.tab());
+
+    harness.tab().send(StructureTabInput::AddColumn);
+
+    assert_eq!(
+        *toasts.borrow(),
+        ["The table couldn't be read after the save. Retry, then make the change again."]
+    );
+    assert_eq!(harness.column_names(), ["id"]);
+}
+
 #[gtk4::test]
 fn structure_first_load_failure_shows_error_page() {
     let mut script = ConnectionScript::default();

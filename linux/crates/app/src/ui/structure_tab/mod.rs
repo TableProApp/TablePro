@@ -1228,9 +1228,16 @@ impl StructureModel {
         {
             self.columns.splice(position, 1, std::slice::from_ref(column));
         }
-        fx.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
-            "Wait for the save to finish, then make the change again.",
-        )));
+        // The save landed and the read after it failed, so only Retry
+        // unlocks the draft.
+        let read_failed = self.refetching && !self.saving && !self.tracker.is_saving() && !self.load.is_running();
+        let text = match read_failed {
+            true => {
+                crate::i18n::gettext("The table couldn't be read after the save. Retry, then make the change again.")
+            }
+            false => crate::i18n::gettext("Wait for the save to finish, then make the change again."),
+        };
+        fx.output(StructureTabOutput::ShowToast(text));
     }
 
     fn save_completed(&mut self, new_table_name: Option<String>, fx: &mut StructureEffects) {
