@@ -309,6 +309,37 @@ async fn batch_query_error_records_unknown_and_poisons_state() {
 }
 
 #[tokio::test]
+async fn disconnected_batch_outcome_is_audited_unknown_and_blocks_redispatch() {
+    let state = Arc::new(AuditState::new());
+    let audit = Arc::new(SequenceAuditSink::new(vec![]));
+    let connection = DisconnectedConn::default();
+    let batch_dispatches = connection.batch_dispatches.clone();
+    let guard = gui_guard(Arc::new(connection), audit.clone(), state.clone());
+    let statements = vec![("UPDATE jobs SET value = 2 WHERE id = 1".into(), vec![])];
+
+    let error = guard
+        .execute_in_transaction(&statements)
+        .await
+        .expect_err("a lost commit acknowledgement leaves the batch outcome uncertain");
+
+    assert!(matches!(error, DriverError::Disconnected));
+    assert!(state.governed_writes_disabled());
+    {
+        let events = audit.events.lock().expect("audit events");
+        let outcome = events.last().expect("batch terminal event");
+        assert_eq!(outcome.terminal_status, AuditTerminalStatus::Unknown);
+        assert_eq!(outcome.transaction_outcome, AuditTransactionOutcome::Unknown);
+        assert_eq!(outcome.error_category, Some(AuditErrorCategory::Connection));
+    }
+
+    guard
+        .execute_in_transaction(&statements)
+        .await
+        .expect_err("the poisoned connection generation must refuse a later batch");
+    assert_eq!(batch_dispatches.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn interactive_transaction_query_error_does_not_poison_later_governed_writes() {
     let state = Arc::new(AuditState::new());
     let audit = Arc::new(SequenceAuditSink::new(vec![]));
@@ -901,7 +932,7 @@ async fn an_operation_that_does_not_panic_reports_no_fault() {
 
 fn disconnected_guard(reports: Arc<AtomicUsize>) -> PolicyGuard {
     PolicyGuard::new(
-        Arc::new(DisconnectedConn),
+        Arc::new(DisconnectedConn::default()),
         context(
             Principal::human_gui(),
             Environment::Prod,
