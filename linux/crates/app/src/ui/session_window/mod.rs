@@ -56,7 +56,7 @@ use self::sqlite_location_dialog::FileCheck;
 use crate::application::{AppServices, WindowHost, WindowLaunch};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::session_context::SessionContext;
-use crate::ui::connect_dialog::ConnectSubmission;
+use crate::ui::connect_dialog::{ConnectDialogMode, ConnectSubmission};
 use crate::ui::welcome_view::WelcomeView;
 use crate::ui::workspace::{Workspace, WorkspaceInit, WorkspaceInput};
 use crate::workspace::{
@@ -288,13 +288,17 @@ impl SessionWindow {
             SessionWindowInput::FileResolved(resolved) => self.on_file_resolved(*resolved),
             SessionWindowInput::Restore(key) => self.on_restore(key),
             SessionWindowInput::RestoreSaved { id, saved } => self.on_restore_saved(id, saved.map(|saved| *saved)),
-            SessionWindowInput::OpenConnectDialog => self.present_connect_dialog(None, None),
+            SessionWindowInput::OpenConnectDialog => {
+                self.present_connect_dialog(ConnectDialogMode::Create, None, None);
+            }
             SessionWindowInput::ConnectFromDialog(submission) => self.on_connect_from_dialog(*submission),
             SessionWindowInput::DialogClosed => drop(self.imp().dialog.take()),
             SessionWindowInput::CancelConnect => self.on_cancel_connect(),
             SessionWindowInput::RetryConnect => self.on_retry_connect(),
             SessionWindowInput::RetryWithNewSecret(kind) => self.on_retry_with_new_secret(kind),
             SessionWindowInput::EditConnection => self.on_edit_connection(),
+            SessionWindowInput::EditSavedConnection(id) => self.on_edit_saved_connection(id),
+            SessionWindowInput::ConnectionSaved(id) => self.on_connection_saved(id),
             SessionWindowInput::Disconnect => self.on_disconnect(),
             SessionWindowInput::TeardownApproved => {
                 if self.tear_down() {
@@ -351,7 +355,7 @@ impl SessionWindow {
             SessionWindowInput::SecretDeleteFailed(id, options) => self.on_secret_delete_failed(id, options),
             SessionWindowInput::DeleteConnection(id) => self.on_delete_connection(id),
             SessionWindowInput::ConfirmDelete(id, options) => self.on_confirm_delete(id, options),
-            SessionWindowInput::DuplicateConnection(saved) => self.on_duplicate_connection(*saved),
+            SessionWindowInput::DuplicateConnection(id) => self.on_duplicate_connection(id),
             SessionWindowInput::SetConnectionColor(id, color) => self.on_set_connection_color(id, color),
             SessionWindowInput::SetConnectionGroup(id, group) => self.on_set_connection_group(id, group),
             SessionWindowInput::ExportConnections => self.on_export_connections(),
@@ -799,14 +803,28 @@ impl SessionWindow {
         }
     }
 
+    /// The failed page's Edit Connection. A saved connection opens as an
+    /// Edit of the entry as saved now, whose Save connects again; a new
+    /// one reopens the connect dialog on what was typed.
     fn on_edit_connection(&self) {
-        let prefill = match &*self.imp().page.borrow() {
-            SessionPage::ConnectFailed { source, failure, .. } => connections::prefill_for(source)
-                .map(|prefill| (prefill, failure.remedy.map(crate::ui::connect_dialog::remedy_field))),
-            _ => None,
+        let (saved, prefill, focus) = match &*self.imp().page.borrow() {
+            SessionPage::ConnectFailed { source, failure, .. } => (
+                match source {
+                    ConnectSource::Saved(saved) => Some((**saved).clone()),
+                    _ => None,
+                },
+                connections::prefill_for(source),
+                failure.remedy.map(crate::ui::connect_dialog::remedy_field),
+            ),
+            _ => return,
         };
-        if let Some((prefill, focus)) = prefill {
-            self.present_connect_dialog(Some(prefill), focus);
+        match (saved, prefill) {
+            (Some(saved), _) => match self.saved_as_stored(&saved) {
+                Some(current) => self.present_connect_dialog(ConnectDialogMode::Edit(Box::new(current)), None, focus),
+                None => self.show_toast(&crate::i18n::gettext("The connection was deleted.")),
+            },
+            (None, Some(prefill)) => self.present_connect_dialog(ConnectDialogMode::Create, Some(prefill), focus),
+            (None, None) => {}
         }
     }
 

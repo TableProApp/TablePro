@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
-use tablepro_storage::{ConnectionListState, ConnectionStore, SavedConnection};
+use tablepro_storage::{ConnectionGroupName, ConnectionListState, ConnectionStore, SavedConnection};
 use uuid::Uuid;
 
 use super::saved_connection_object::SavedConnectionObject;
@@ -82,7 +82,7 @@ impl SavedConnectionList {
     }
 
     /// The groups the list files connections under, in display order.
-    pub fn groups(&self) -> Vec<String> {
+    pub fn groups(&self) -> Vec<ConnectionGroupName> {
         saved_connection_order::groups(&self.connections.borrow())
     }
 
@@ -299,11 +299,11 @@ mod tests {
         let before = objects(&list);
 
         let mut filed = beta;
-        filed.group = Some("Work".to_owned());
+        filed.group = Some(ConnectionGroupName::new("Work").expect("a group name"));
         list.apply(ready(&[alpha, filed]));
 
         let after = objects(&list);
-        assert_eq!(list.groups(), ["Work"]);
+        assert_eq!(list.groups(), [ConnectionGroupName::new("Work").expect("a group name")]);
         assert_ne!(after[0], before[0], "Alpha's menu does not offer the new group");
     }
 

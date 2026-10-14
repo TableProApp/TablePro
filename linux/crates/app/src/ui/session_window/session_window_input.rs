@@ -1,6 +1,6 @@
 use tablepro_core::credentials::SecretKind;
 use tablepro_session::SessionKey;
-use tablepro_storage::{ConnectionColor, SavedConnection};
+use tablepro_storage::{ConnectionColor, ConnectionGroupName, SavedConnection};
 use uuid::Uuid;
 
 use super::resolve_file_identity::ResolvedFile;
@@ -44,6 +44,10 @@ pub(crate) enum SessionWindowInput {
     /// Open the connect dialog on a connection that failed to connect,
     /// with the focus on the setting that fixes it.
     EditConnection,
+    /// Open the connect dialog on a saved connection to change it.
+    EditSavedConnection(Uuid),
+    /// The connect dialog saved its changes to a saved connection.
+    ConnectionSaved(Uuid),
     /// Close the workspace through its prompts and return to the
     /// picker.
     Disconnect,
@@ -88,13 +92,13 @@ pub(crate) enum SessionWindowInput {
     DeleteConnection(Uuid),
     /// The user confirmed the delete.
     ConfirmDelete(Uuid, DeletionOptions),
-    DuplicateConnection(Box<SavedConnection>),
+    DuplicateConnection(Uuid),
     /// A colour picked from a connection row's menu, or `None` when the
     /// user cleared it.
     SetConnectionColor(Uuid, Option<ConnectionColor>),
     /// A group picked from a connection row's menu, or `None` when the
     /// user took it out of one.
-    SetConnectionGroup(Uuid, Option<String>),
+    SetConnectionGroup(Uuid, Option<ConnectionGroupName>),
     ExportConnections,
     ImportConnections,
     /// The file the user picked to import, read off the GTK thread.

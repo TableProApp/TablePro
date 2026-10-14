@@ -10,6 +10,7 @@ use libadwaita::subclass::prelude::*;
 use tablepro_core::{AuthMode, TlsConfig};
 use tablepro_session::ConnectAttempts;
 
+use super::connect_dialog_mode::ConnectDialogMode;
 use super::connect_submission::ConnectSubmission;
 use super::pem_validation::PemValidation;
 use super::sqlite_file_row::SqliteFileRow;
@@ -26,6 +27,8 @@ pub struct ConnectDialog {
     pub connect_button: TemplateChild<gtk4::Button>,
     #[template_child]
     pub toast_overlay: TemplateChild<adw::ToastOverlay>,
+    #[template_child]
+    pub name_row: TemplateChild<adw::EntryRow>,
     #[template_child]
     pub driver_row: TemplateChild<adw::ComboRow>,
     #[template_child]
@@ -68,6 +71,10 @@ pub struct ConnectDialog {
     /// The entry the dialog was reopened on, which a submission updates
     /// even when the user changed the host it was found by.
     pub prefill_id: Cell<Option<uuid::Uuid>>,
+    /// Create, or Edit with the saved connection as it was opened.
+    pub mode: RefCell<ConnectDialogMode>,
+    /// An Edit's save in flight, which keeps Save from running twice.
+    pub saving: Cell<bool>,
     pub pem: PemValidation,
     /// The TLS settings the last file check read, so a keystroke in an
     /// unrelated row does not read the files again.
@@ -106,6 +113,8 @@ impl ObjectImpl for ConnectDialog {
                 Signal::builder("submitted")
                     .param_types([ConnectSubmission::static_type()])
                     .build(),
+                // An Edit's Save landed. Carries the connection's id.
+                Signal::builder("saved").param_types([String::static_type()]).build(),
             ]
         })
     }

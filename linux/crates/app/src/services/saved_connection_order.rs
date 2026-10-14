@@ -1,6 +1,6 @@
 //! The order every connection picker shows the saved connections in.
 
-use tablepro_storage::SavedConnection;
+use tablepro_storage::{ConnectionGroupName, SavedConnection};
 
 /// Sort the list the way every picker shows it.
 ///
@@ -22,8 +22,8 @@ pub(crate) fn sort(connections: &mut [SavedConnection]) {
 /// Ungrouped sorts before every group, and groups sort by name
 /// regardless of how they were capitalised.
 fn group_key(connection: &SavedConnection) -> (bool, String) {
-    match group_of(connection) {
-        Some(group) => (true, group.to_lowercase()),
+    match &connection.group {
+        Some(group) => (true, group.as_str().to_lowercase()),
         None => (false, String::new()),
     }
 }
@@ -38,25 +38,12 @@ fn recency_key(connection: &SavedConnection) -> (bool, i64) {
     }
 }
 
-/// The group as it is shown, which is `None` for a name that is empty
-/// or only spaces. A group nobody can see is not a group.
-pub(crate) fn group_of(connection: &SavedConnection) -> Option<&str> {
-    connection
-        .group
-        .as_deref()
-        .map(str::trim)
-        .filter(|group| !group.is_empty())
-}
-
 /// Every group in `sorted`, in the order the list shows them, once each.
-pub(crate) fn groups(sorted: &[SavedConnection]) -> Vec<String> {
-    let mut found: Vec<String> = Vec::new();
-    for connection in sorted {
-        let Some(group) = group_of(connection) else {
-            continue;
-        };
-        if !found.iter().any(|seen| seen == group) {
-            found.push(group.to_owned());
+pub(crate) fn groups(sorted: &[SavedConnection]) -> Vec<ConnectionGroupName> {
+    let mut found: Vec<ConnectionGroupName> = Vec::new();
+    for group in sorted.iter().filter_map(|connection| connection.group.as_ref()) {
+        if !found.contains(group) {
+            found.push(group.clone());
         }
     }
     found
@@ -87,7 +74,7 @@ mod tests {
                     .expect("a time")
             }),
             color: None,
-            group: group.map(str::to_owned),
+            group: group.map(|group| ConnectionGroupName::new(group).expect("a group name")),
         }
     }
 
@@ -143,19 +130,6 @@ mod tests {
     }
 
     #[test]
-    fn a_group_of_only_spaces_is_no_group_at_all() {
-        let mut list = vec![
-            connection("blank", Some("   "), Some(1)),
-            connection("real", None, Some(2)),
-        ];
-
-        sort(&mut list);
-
-        assert_eq!(group_of(&list[0]), None);
-        assert_eq!(names(&list), vec!["blank", "real"]);
-    }
-
-    #[test]
     fn the_group_list_holds_each_name_once_in_list_order() {
         let mut list = vec![
             connection("a", Some("Work"), Some(1)),
@@ -165,6 +139,7 @@ mod tests {
         ];
         sort(&mut list);
 
-        assert_eq!(groups(&list), vec!["Archive".to_owned(), "Work".to_owned()]);
+        let names: Vec<String> = groups(&list).into_iter().map(String::from).collect();
+        assert_eq!(names, ["Archive", "Work"]);
     }
 }

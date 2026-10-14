@@ -41,11 +41,10 @@ pub struct SavedConnection {
     /// apart from staging at a glance. `None` until they pick one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<crate::ConnectionColor>,
-    /// The folder the user filed this connection under, as they typed
-    /// it. `None` means it sits on its own, which is where every
-    /// connection starts.
+    /// The folder the user filed this connection under. `None` means it
+    /// sits on its own, which is where every connection starts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub group: Option<String>,
+    pub group: Option<crate::ConnectionGroupName>,
 }
 
 impl SavedConnection {
@@ -288,6 +287,31 @@ impl ConnectionStore {
         Ok(RemoveOutcome::Removed)
     }
 
+    /// Change the entry `id` as the list holds it at the moment of the
+    /// write, so a stamp or an edit from another window in between is
+    /// kept. Returns the entry as it now is, or `None` when the list has
+    /// no such entry. A change that changes nothing writes nothing.
+    pub fn update_blocking(
+        &self,
+        id: Uuid,
+        change: impl FnOnce(&mut SavedConnection),
+    ) -> Result<Option<SavedConnection>, StorageError> {
+        let mut state = self.lock();
+        let mut list = self.ensure_loaded(&mut state)?.to_vec();
+        let Some(entry) = list.iter_mut().find(|saved| saved.id == id) else {
+            return Ok(None);
+        };
+        let before = entry.clone();
+        change(entry);
+        // The keyring files the entry's secrets under its id.
+        entry.id = id;
+        let updated = entry.clone();
+        if updated != before {
+            self.commit(&mut state, list)?;
+        }
+        Ok(Some(updated))
+    }
+
     /// Stamp the last-opened time so the welcome view can sort
     /// recency-first. An id that is not in the list writes nothing:
     /// a connection opened without saving has nothing to update.
@@ -470,36 +494,14 @@ fn read_document(path: &Path) -> Result<Vec<SavedConnection>, DocumentProblem> {
     crate::document::decode_document::<ConnectionsDocument>(path, &bytes).map(|document| document.connections)
 }
 
-/// A copy of `source` under a name no other connection holds.
-///
-/// The copy is a new connection, not a second reference to the same
-/// one: it takes a fresh id, so its secrets are its own and deleting
-/// either leaves the other alone.
-pub fn duplicate(source: &SavedConnection, taken: &[SavedConnection]) -> SavedConnection {
-    SavedConnection {
-        id: Uuid::new_v4(),
-        name: suffixed_name(
-            &source.name,
-            "copy",
-            &taken.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
-        ),
-        // A copy has never been opened, whatever the original did, so
-        // it sorts by name rather than claiming the original's recency.
-        // The colour and the group do carry: a copy points at the same
-        // server, so it belongs with the original.
-        last_opened_at: None,
-        ..source.clone()
-    }
-}
-
-/// `name (copy)`, then `name (copy 2)` and on, until one is free.
+/// `name (suffix)`, then `name (suffix 2)` and on, until one is free.
 fn suffixed_name(name: &str, suffix: &str, taken: &[&str]) -> String {
     let first = format!("{name} ({suffix})");
     if !taken.contains(&first.as_str()) {
         return first;
     }
     // A name is short and the list is a person's own connections, so
-    // counting up from two is bounded by how many copies they made.
+    // counting up from two is bounded by how many imports took it.
     (2..)
         .map(|n| format!("{name} ({suffix} {n})"))
         .find(|candidate| !taken.contains(&candidate.as_str()))
@@ -527,60 +529,6 @@ mod tests {
             color: None,
             group: None,
         }
-    }
-
-    #[test]
-    fn a_copy_keeps_everything_that_says_where_to_connect() {
-        let source = saved("production");
-
-        let copy = duplicate(&source, std::slice::from_ref(&source));
-
-        assert_eq!(copy.host, source.host);
-        assert_eq!(copy.port, source.port);
-        assert_eq!(copy.database, source.database);
-        assert_eq!(copy.username, source.username);
-        assert_eq!(copy.tls, source.tls);
-        assert_eq!(copy.driver_id, source.driver_id);
-    }
-
-    #[test]
-    fn a_copy_keeps_the_colour_because_it_points_at_the_same_server() {
-        let mut source = saved("production");
-        source.color = Some(crate::ConnectionColor::Red);
-
-        let copy = duplicate(&source, std::slice::from_ref(&source));
-
-        assert_eq!(copy.color, Some(crate::ConnectionColor::Red));
-    }
-
-    #[test]
-    fn a_copy_is_its_own_connection_not_a_second_name_for_one() {
-        let source = saved("production");
-
-        let copy = duplicate(&source, std::slice::from_ref(&source));
-
-        assert_ne!(copy.id, source.id, "the copy shares the original's secrets");
-        assert_eq!(copy.last_opened_at, None, "the copy claimed the original's recency");
-    }
-
-    #[test]
-    fn copies_count_up_rather_than_colliding() {
-        let first = saved("production");
-        let mut taken = vec![first.clone()];
-
-        for expected in ["production (copy)", "production (copy 2)", "production (copy 3)"] {
-            let copy = duplicate(&first, &taken);
-            assert_eq!(copy.name, expected);
-            taken.push(copy);
-        }
-    }
-
-    #[test]
-    fn a_free_numbered_name_is_taken_before_counting_past_it() {
-        let source = saved("db");
-        let taken = vec![source.clone(), saved("db (copy)"), saved("db (copy 3)")];
-
-        assert_eq!(duplicate(&source, &taken).name, "db (copy 2)");
     }
 
     use tempfile::TempDir;
@@ -1234,5 +1182,101 @@ mod tests {
             panic!("expected a document problem, got {error:?}");
         };
         assert!(problem.is_newer_version(), "{problem:?}");
+    }
+
+    fn connections_json(group: Option<&str>) -> String {
+        let group = group.map_or_else(String::new, |group| format!(r#","group":{group}"#));
+        format!(
+            r#"{{"version": 1, "connections": [{{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","tls":{{"mode":"disable"}}{group}}}]}}"#
+        )
+    }
+
+    #[test]
+    fn group_round_trips_through_connections_document() {
+        let root = TempDir::new().expect("tempdir");
+        seed(&root, &connections_json(None));
+        assert_eq!(store(&root).load_blocking().expect("load")[0].group, None);
+
+        let root = TempDir::new().expect("tempdir");
+        seed(&root, &connections_json(Some(r#"" Work ""#)));
+        let opened = store(&root);
+        let list = opened.load_blocking().expect("load");
+        assert_eq!(
+            list[0].group.as_ref().map(crate::ConnectionGroupName::as_str),
+            Some("Work")
+        );
+        opened.upsert_blocking(list[0].clone()).expect("rewrite");
+        let raw: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(opened.path()).expect("read")).expect("json");
+        assert_eq!(raw["connections"][0]["group"], "Work");
+
+        for blank in [r#""""#, r#""   ""#] {
+            let root = TempDir::new().expect("tempdir");
+            seed(&root, &connections_json(Some(blank)));
+
+            let error = store(&root).load_blocking().expect_err("a blank group");
+
+            let StorageError::DocumentUnavailable(problem) = error else {
+                panic!("expected a document problem, got {error:?}");
+            };
+            assert!(
+                problem.to_string().contains(&crate::GroupNameError::Empty.to_string()),
+                "{blank}: {problem}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_update_keeps_what_another_writer_changed_meanwhile() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let connection = sample_connection();
+        store.upsert_blocking(connection.clone()).expect("upsert");
+        store.touch_last_opened_blocking(connection.id).expect("touch");
+        let work = crate::ConnectionGroupName::new("Work").expect("a name");
+
+        let updated = store
+            .update_blocking(connection.id, |entry| entry.group = Some(work.clone()))
+            .expect("update")
+            .expect("the entry");
+
+        assert_eq!(updated.group, Some(work));
+        assert!(updated.last_opened_at.is_some(), "the update undid the stamp");
+        assert_eq!(store.load_blocking().expect("load")[0], updated);
+    }
+
+    #[test]
+    fn an_update_never_moves_the_entry_to_another_id() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let connection = sample_connection();
+        store.upsert_blocking(connection.clone()).expect("upsert");
+
+        let updated = store
+            .update_blocking(connection.id, |entry| {
+                entry.id = Uuid::new_v4();
+                entry.name = "Renamed".to_owned();
+            })
+            .expect("update")
+            .expect("the entry");
+
+        assert_eq!(updated.id, connection.id);
+        assert_eq!(store.load_blocking().expect("load")[0].name, "Renamed");
+    }
+
+    #[test]
+    fn an_update_that_changes_nothing_or_finds_nothing_writes_nothing() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let connection = sample_connection();
+        store.upsert_blocking(connection.clone()).expect("upsert");
+        let revision = store.snapshot().revision;
+
+        assert_eq!(
+            store.update_blocking(connection.id, |_| {}).expect("update"),
+            Some(connection)
+        );
+        assert_eq!(store.update_blocking(Uuid::new_v4(), |_| {}).expect("update"), None);
+        assert_eq!(store.snapshot().revision, revision);
     }
 }

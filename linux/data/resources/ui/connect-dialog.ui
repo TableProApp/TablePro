@@ -35,6 +35,14 @@
                   <object class="AdwPreferencesGroup">
                     <property name="title" translatable="yes">Connection</property>
                     <child>
+                      <!-- Left empty, the list names the connection by
+                           where it connects. -->
+                      <object class="AdwEntryRow" id="name_row">
+                        <property name="title" translatable="yes">Name</property>
+                        <property name="activates-default">true</property>
+                      </object>
+                    </child>
+                    <child>
                       <object class="AdwComboRow" id="driver_row">
                         <property name="title" translatable="yes">Driver</property>
                         <property name="model">

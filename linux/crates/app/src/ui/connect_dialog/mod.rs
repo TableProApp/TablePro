@@ -2,6 +2,7 @@
 //! window a `ConnectSubmission`; the window connects and saves. The
 //! Test button is the one place it connects, and it disconnects again.
 
+mod connect_dialog_mode;
 mod connect_form;
 mod connect_submission;
 mod form_errors;
@@ -15,6 +16,7 @@ mod sqlite_file_row;
 mod tests;
 mod tls_section;
 
+use std::rc::Rc;
 use std::sync::Arc;
 
 use gtk4::glib;
@@ -28,19 +30,23 @@ use tablepro_core::{
     AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, TlsConfig, TransportClass,
     WorkspaceSettings,
 };
-use tablepro_session::runtime::Tasks;
-use tablepro_session::{ConnectError, ConnectRequest, ConnectionMetadata, Connector, PendingSave};
-use tablepro_storage::SavedConnection;
+use tablepro_session::runtime::{ProcessHold, Tasks};
+use tablepro_session::{ConnectError, ConnectRequest, ConnectionMetadata, Connector, CredentialSource, PendingSave};
+use tablepro_storage::{CredentialDemand, SavedConnection};
 use uuid::Uuid;
 
+pub use self::connect_dialog_mode::ConnectDialogMode;
 pub use self::connect_form::ConnectForm;
-use self::connect_form::match_saved_connection;
+use self::connect_form::{ValidatedForm, match_saved_connection};
 pub use self::connect_submission::ConnectSubmission;
 pub use self::form_errors::FormErrors;
 pub use self::form_field::FormField;
 use self::pem_validation::{PemState, PemValidation};
 pub use self::row_problem::show_problem;
 pub(crate) use self::sqlite_file_row::sqlite_file_dialog;
+use crate::services::saved_connection_editor::SavedConnectionEditor;
+use crate::services::secret_changes::SecretChanges;
+use crate::services::session_context::CredentialSourceFactory;
 use crate::ui::error_text::TlsRemedy;
 use crate::ui::ssh_inputs::SshEnvironment;
 
@@ -61,7 +67,15 @@ pub struct ConnectDialogInit {
     pub saved_connections: Arc<[SavedConnection]>,
     pub remembered_driver: String,
     pub ssh_environment: SshEnvironment,
+    /// What a Create opens on after a connect from it failed.
     pub prefill: Option<ConnectPrefill>,
+    pub mode: ConnectDialogMode,
+    /// Writes an Edit's Save, secrets first.
+    pub editor: SavedConnectionEditor,
+    /// Where an Edit's Test reads the secrets it keeps.
+    pub credentials: Rc<dyn CredentialSourceFactory>,
+    /// Keeps the process alive while an Edit's Save is written.
+    pub hold: Rc<dyn ProcessHold>,
 }
 
 /// A connection to show again, after a connect from this dialog failed.
@@ -77,6 +91,16 @@ pub(crate) struct DialogServices {
     interaction: CredentialInteraction,
     tasks: Tasks,
     saved_connections: Arc<[SavedConnection]>,
+    editor: SavedConnectionEditor,
+    credentials: Rc<dyn CredentialSourceFactory>,
+    hold: Rc<dyn ProcessHold>,
+}
+
+/// A form that passed every check, with the driver it is for.
+struct CheckedForm {
+    entry: DriverEntry,
+    form: ConnectForm,
+    valid: ValidatedForm,
 }
 
 #[derive(Clone)]
@@ -114,24 +138,35 @@ impl ConnectDialog {
             interaction: init.interaction,
             tasks: init.tasks,
             saved_connections: init.saved_connections,
+            editor: init.editor,
+            credentials: init.credentials,
+            hold: init.hold,
         });
         imp.ssh_section.apply_environment(&init.ssh_environment);
 
-        let wanted = init
-            .prefill
-            .as_ref()
-            .map_or(init.remembered_driver.as_str(), |prefill| {
-                prefill.connection.driver_id.as_str()
-            });
+        // An Edit opens on what is saved; a Create reopened after a
+        // failed connect opens on what was typed.
+        let prefill = match &init.mode {
+            ConnectDialogMode::Edit(saved) => Some(ConnectPrefill {
+                connection: (**saved).clone(),
+                password: None,
+            }),
+            ConnectDialogMode::Create => init.prefill,
+        };
+        let wanted = prefill.as_ref().map_or(init.remembered_driver.as_str(), |prefill| {
+            prefill.connection.driver_id.as_str()
+        });
         let index = driver_index(&drivers, wanted);
         imp.prefill_id
-            .set(init.prefill.as_ref().map(|prefill| prefill.connection.id));
+            .set(prefill.as_ref().map(|prefill| prefill.connection.id));
         imp.drivers.replace(drivers);
         imp.updating.set(true);
         imp.driver_row.set_selected(index as u32);
         imp.updating.set(false);
+        dialog.show_mode(&init.mode);
+        imp.mode.replace(init.mode);
 
-        let form = match (init.prefill, dialog.entry_at(index)) {
+        let form = match (prefill, dialog.entry_at(index)) {
             (Some(prefill), Some(entry)) => {
                 let mut form = ConnectForm::from_saved(&prefill.connection, entry.capabilities());
                 if let Some(password) = prefill.password {
@@ -157,6 +192,36 @@ impl ConnectDialog {
                 f(dialog, submission);
             }),
         )
+    }
+
+    /// An Edit's Save wrote the connection with id `id`.
+    pub fn connect_saved<F: Fn(&Self, Uuid) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "saved",
+            false,
+            glib::closure_local!(move |dialog: &Self, id: String| match Uuid::parse_str(&id) {
+                Ok(id) => f(dialog, id),
+                Err(error) => tracing::warn!(%error, "the connect dialog saved an id it cannot read"),
+            }),
+        )
+    }
+
+    /// The saved connection an Edit changes, as it was opened.
+    pub fn editing(&self) -> Option<SavedConnection> {
+        self.imp().mode.borrow().editing().cloned()
+    }
+
+    /// An Edit saves where a Create connects, and says the password rows
+    /// may stay empty.
+    fn show_mode(&self, mode: &ConnectDialogMode) {
+        let imp = self.imp();
+        if mode.editing().is_none() {
+            return;
+        }
+        imp.connect_button.set_label(&crate::i18n::gettext("Save"));
+        imp.auth_group.set_description(Some(&crate::i18n::gettext(
+            "Leave password fields empty to keep the saved passwords.",
+        )));
     }
 
     /// Show a row and put the focus in it, for an error that names the
@@ -220,7 +285,7 @@ impl ConnectDialog {
                 dialog.refresh();
             }
         });
-        let entries: [&adw::EntryRow; 3] = [&imp.host_row, &imp.database_row, &imp.username_row];
+        let entries: [&adw::EntryRow; 4] = [&imp.name_row, &imp.host_row, &imp.database_row, &imp.username_row];
         for row in entries {
             let weak = self.downgrade();
             row.connect_changed(move |_| {
@@ -282,6 +347,7 @@ impl ConnectDialog {
             .copied()
             .unwrap_or_default();
         ConnectForm {
+            name: imp.name_row.text().to_string(),
             driver_id: entry.map(|entry| entry.id).unwrap_or_default(),
             host: imp.host_row.text().to_string(),
             port: imp.port_row.value() as u16,
@@ -328,6 +394,9 @@ impl ConnectDialog {
         let caps = entry.capabilities();
         let file_based = caps.is_file_based();
         imp.updating.set(true);
+        if imp.name_row.text() != form.name {
+            imp.name_row.set_text(&form.name);
+        }
         imp.host_row.set_text(&form.host);
         imp.port_row.set_value(f64::from(form.port));
         imp.port_edited.set(form.port_edited);
@@ -370,10 +439,11 @@ impl ConnectDialog {
         imp.read_only_row
             .set_subtitle(&read_only_row::read_only_subtitle(caps.read_only));
         self.show_auth_rows();
-        self.set_title(&crate::i18n::gettext_f(
-            "Connect to {name}",
-            &[("name", &entry.display_name)],
-        ));
+        self.set_title(&if imp.mode.borrow().editing().is_some() {
+            crate::i18n::gettext("Edit Connection")
+        } else {
+            crate::i18n::gettext_f("Connect to {name}", &[("name", &entry.display_name)])
+        });
     }
 
     fn show_auth_rows(&self) {
@@ -479,27 +549,33 @@ impl ConnectDialog {
             (PemState::Pending, None) => Some(crate::i18n::gettext("Checking the certificate files…")),
             (PemState::Valid, None) => None,
         };
-        imp.connect_button.set_sensitive(blocker.is_none());
+        imp.connect_button.set_sensitive(blocker.is_none() && !imp.saving.get());
         imp.connect_button.set_tooltip_text(blocker.as_deref());
         imp.test_button.set_sensitive(blocker.is_none() || imp.testing.get());
     }
 
-    /// Everything a Connect or a Test sends, or the reason there is
-    /// nothing to send yet.
-    fn build_submission(&self) -> Result<ConnectSubmission, String> {
+    /// The form, checked, or the reason it cannot be used yet.
+    fn checked_form(&self) -> Result<CheckedForm, String> {
         let entry = self
             .current_entry()
             .ok_or_else(|| crate::i18n::gettext("No driver selected"))?;
-        let caps = entry.capabilities();
         let form = self.form();
         let valid = form
-            .validate(caps)
+            .validate(entry.capabilities())
             .map_err(|errors| errors.message().unwrap_or_default().to_owned())?;
         match self.imp().pem.state() {
             PemState::Valid => {}
             PemState::Pending => return Err(crate::i18n::gettext("Checking the certificate files…")),
             PemState::Invalid(error) => return Err(crate::ui::error_text::config_message(&error)),
         }
+        Ok(CheckedForm { entry, form, valid })
+    }
+
+    /// Everything a Connect or a Test sends, or the reason there is
+    /// nothing to send yet.
+    fn build_submission(&self) -> Result<ConnectSubmission, String> {
+        let CheckedForm { entry, form, valid } = self.checked_form()?;
+        let caps = entry.capabilities();
         let saved_connections = self
             .services()
             .map(|services| services.saved_connections.clone())
@@ -515,16 +591,7 @@ impl ConnectDialog {
             });
         let id = existing.map_or(candidate.id, |saved| saved.id);
         let connection = form.saved_connection(caps, &valid, id, existing);
-        let request = ConnectRequest {
-            metadata: ConnectionMetadata {
-                id,
-                name: connection.name.clone(),
-                driver_id: entry.id.clone(),
-            },
-            driver: entry.driver.clone(),
-            target: valid.target.clone(),
-            workspace_settings: WorkspaceSettings::workspace(form.read_only),
-        };
+        let request = connect_request(&entry, &form, &valid, &connection);
         let pending_save = PendingSave {
             secrets: form.secrets_to_store(&valid, &connection),
             forget: form.secrets_to_forget(&valid),
@@ -534,9 +601,31 @@ impl ConnectDialog {
         Ok(ConnectSubmission { request, pending_save })
     }
 
+    /// The saved connection an Edit's form describes, under its own id,
+    /// and what saving it does to each secret.
+    fn edited(&self, original: &SavedConnection, checked: &CheckedForm) -> (SavedConnection, SecretChanges) {
+        let CheckedForm { entry, form, valid } = checked;
+        let original_caps = self
+            .imp()
+            .drivers
+            .borrow()
+            .iter()
+            .find(|candidate| candidate.id == original.driver_id)
+            .map_or(&NO_DRIVER, DriverEntry::capabilities);
+        let changes = form.secret_changes(original, original_caps, valid);
+        let mut connection = form.saved_connection(entry.capabilities(), valid, original.id, Some(original));
+        changes.settle_passphrase(&mut connection, original);
+        (connection, changes)
+    }
+
     /// Hand the window what to connect to, and close. The window shows
-    /// the connect and saves the entry once it works.
+    /// the connect and saves the entry once it works. An Edit saves
+    /// instead, and closes once the save lands.
     fn submit(&self) {
+        if let Some(original) = self.editing() {
+            self.save_edit(&original);
+            return;
+        }
         match self.build_submission() {
             Ok(submission) => {
                 self.stop_test();
@@ -547,13 +636,79 @@ impl ConnectDialog {
         }
     }
 
+    /// Write an Edit, secrets first, and close once it lands. A failure
+    /// keeps the dialog open with what the user typed, to try again.
+    fn save_edit(&self, original: &SavedConnection) {
+        let imp = self.imp();
+        if imp.saving.get() {
+            return;
+        }
+        let checked = match self.checked_form() {
+            Ok(checked) => checked,
+            Err(message) => {
+                self.show_toast(&message, None);
+                return;
+            }
+        };
+        let Some(services) = self.services() else {
+            return;
+        };
+        let (connection, changes) = self.edited(original, &checked);
+        self.stop_test();
+        imp.saving.set(true);
+        self.refresh();
+        let editor = services.editor.clone();
+        let hold = services.hold.acquire();
+        let weak = self.downgrade();
+        crate::runtime::spawn_and_deliver(
+            &services.tasks,
+            async move { editor.update(connection, changes).await },
+            move |outcome| {
+                drop(hold);
+                let Some(dialog) = weak.upgrade() else {
+                    return;
+                };
+                dialog.imp().saving.set(false);
+                dialog.refresh();
+                match outcome {
+                    Ok(Ok(saved)) => {
+                        dialog.emit_by_name::<()>("saved", &[&saved.id.to_string()]);
+                        dialog.close();
+                    }
+                    Ok(Err(error)) => {
+                        tracing::warn!(%error, "could not save the edited connection");
+                        dialog.show_toast(&crate::ui::error_text::saved_connection_error_message(&error), None);
+                    }
+                    Err(failure) => dialog.show_toast(&crate::ui::error_text::task_failure_message(&failure), None),
+                }
+            },
+        );
+    }
+
+    /// What a Test connects with: the request, and for an Edit, where
+    /// the secrets its empty rows keep are read from.
+    fn test_request(&self) -> Result<(ConnectRequest, Option<Arc<dyn CredentialSource>>), String> {
+        let Some(original) = self.editing() else {
+            return self.build_submission().map(|submission| (submission.request, None));
+        };
+        let checked = self.checked_form()?;
+        let (connection, changes) = self.edited(&original, &checked);
+        let request = connect_request(&checked.entry, &checked.form, &checked.valid, &connection);
+        let kept = self.services().map(|services| {
+            services
+                .credentials
+                .for_connection(Some(&connection), &changes.replaced())
+        });
+        Ok((request, kept))
+    }
+
     fn toggle_test(&self) {
         if self.imp().testing.get() {
             self.stop_test();
             return;
         }
-        let submission = match self.build_submission() {
-            Ok(submission) => submission,
+        let (request, kept) = match self.test_request() {
+            Ok(test) => test,
             Err(message) => {
                 self.show_toast(&message, None);
                 return;
@@ -572,7 +727,7 @@ impl ConnectDialog {
         self.refresh();
 
         // A test entry is never saved, so it gets an id of its own.
-        let mut request = submission.request;
+        let mut request = request;
         request.metadata.id = Uuid::new_v4();
         let connector = services.connector.clone();
         let interaction = services.interaction.clone();
@@ -580,6 +735,17 @@ impl ConnectDialog {
         // Closing happens in the same task, so a connect that finishes
         // after the user stopped waiting is still closed.
         let work = async move {
+            let request = match kept {
+                Some(source) => {
+                    let refreshing = source.refresh(request, interaction.clone(), CredentialDemand::default());
+                    cancel
+                        .run_until_cancelled(refreshing)
+                        .await
+                        .ok_or(ConnectError::Cancelled)??
+                        .request
+                }
+                None => request,
+            };
             let pending = connector.establish(request, interaction, cancel).await?;
             let report = pending.discard().await;
             tracing::debug!(?report, "closed the test connection");
@@ -634,6 +800,25 @@ impl ConnectDialog {
         #[cfg(test)]
         self.imp().toasts.borrow_mut().push(message.to_owned());
         self.imp().toast_overlay.add_toast(toast);
+    }
+}
+
+/// What a connect to `connection`, as the form describes it, sends.
+fn connect_request(
+    entry: &DriverEntry,
+    form: &ConnectForm,
+    valid: &ValidatedForm,
+    connection: &SavedConnection,
+) -> ConnectRequest {
+    ConnectRequest {
+        metadata: ConnectionMetadata {
+            id: connection.id,
+            name: connection.name.clone(),
+            driver_id: entry.id.clone(),
+        },
+        driver: entry.driver.clone(),
+        target: valid.target.clone(),
+        workspace_settings: WorkspaceSettings::workspace(form.read_only),
     }
 }
 

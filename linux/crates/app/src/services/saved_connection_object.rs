@@ -100,7 +100,7 @@ mod tests {
     #[gtk4::test]
     fn the_object_carries_the_connection_as_properties() {
         let mut connection = saved("sa", AuthMode::Password);
-        connection.group = Some("  Work ".to_owned());
+        connection.group = Some(tablepro_storage::ConnectionGroupName::new("Work").expect("a group name"));
         connection.last_opened_at = Utc.timestamp_opt(1_700_000_000, 0).single();
 
         let object = SavedConnectionObject::new(connection.clone());
