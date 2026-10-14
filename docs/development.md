@@ -15,7 +15,7 @@ Use the fast checks while iterating:
 cargo run -p tablepro-app
 ```
 
-`preflight.sh` checks non-GTK crates. `ci-local.sh` adds the GTK app's library and binary tests, but excludes the optional DuckDB driver and Docker-backed integration fixtures. Integration mode runs the Docker-backed driver and transport fixtures and requires Docker or a compatible Podman socket.
+`preflight.sh` runs repository guards, formatting, Clippy, unit tests for non-GTK crates and the sandbox tier. `ci-local.sh` adds the GTK app's library and binary tests, but excludes the optional DuckDB driver and Docker-backed integration fixtures. Integration mode runs the Docker-backed driver and transport fixtures and requires Docker or a compatible Podman socket. See the [validation playbook](validation-playbook.md) for the complete layer map.
 
 ## Code style
 
