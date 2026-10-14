@@ -95,6 +95,10 @@ impl fmt::Display for SshDestination {
 /// command that `sh -c` runs, so one of these would run as a command.
 const SHELL_CHARACTERS: &[char] = &['\'', '`', '"', '$', ';', '&', '<', '>', '|', '(', ')', '{', '}', ','];
 
+/// What the shell globs in that proxy command, and where OpenSSH cuts a
+/// ProxyJump value as a comment.
+const GLOB_AND_COMMENT_CHARACTERS: &[char] = &['*', '?', '[', ']', '#'];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Part {
     Host,
@@ -114,6 +118,12 @@ impl Part {
     fn allows_backslash(self) -> bool {
         self == Self::User
     }
+
+    /// A jump host whose own configuration would trust a key without
+    /// asking is named in a `Host` line, where `!` negates the pattern.
+    fn allows_bang(self) -> bool {
+        self == Self::User
+    }
 }
 
 fn check_part(part: Part, value: &str) -> Result<(), SshFailure> {
@@ -127,7 +137,9 @@ fn check_part(part: Part, value: &str) -> Result<(), SshFailure> {
     if value.chars().any(|c| c.is_whitespace() || c.is_control()) {
         return Err(invalid(&format!("the {name} contains spaces or control characters")));
     }
-    if let Some(found) = value.chars().find(|c| SHELL_CHARACTERS.contains(c)) {
+    if let Some(found) = value.chars().find(|c| {
+        SHELL_CHARACTERS.contains(c) || GLOB_AND_COMMENT_CHARACTERS.contains(c) || (*c == '!' && !part.allows_bang())
+    }) {
         return Err(invalid(&format!("the {name} contains '{found}'")));
     }
     // A trailing backslash would escape whatever ssh appends after it.
@@ -169,6 +181,12 @@ mod tests {
             SshDestination::new("bastion\\x", None, None),
             SshDestination::new("bastion", None, Some("ops'x".to_owned())),
             SshDestination::new("bastion", None, Some("ops\\".to_owned())),
+            SshDestination::new("jump*", None, None),
+            SshDestination::new("jump?", None, None),
+            SshDestination::new("!jump", None, None),
+            SshDestination::new("jump#1", None, None),
+            SshDestination::new("bastion", None, Some("#ops".to_owned())),
+            SshDestination::new("bastion", None, Some("ops*".to_owned())),
         ];
         for result in rejected {
             assert!(

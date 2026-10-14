@@ -104,4 +104,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL run in the editor, a typed filter or a column default, and the values in them, reached the journal at debug level.
 - Column types and defaults typed in the Structure tab reached the SQL after a text filter instead of the database's own parser.
 - Changing a SQL Server column's type or nullability in the Structure tab removed its data mask.
+- A jump host whose ssh_config sets StrictHostKeyChecking to accept-new or no was trusted without the host key dialog.
 - Editor SQL saved by an earlier build stayed on disk in a tab file nothing reads any more.

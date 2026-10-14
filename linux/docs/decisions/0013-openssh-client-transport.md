@@ -22,6 +22,7 @@ People reach their databases through bastions configured in `~/.ssh/config`: `Pr
 
 - openssh-client 8.4 or later is a runtime dependency; the GNOME 50 Flatpak runtime ships it.
 - The helper is installed to libexecdir next to the app.
+- A jump host runs in a second ssh that gets only `-l`, `-p`, `-J` and `-F` from the master (ssh.c turns ProxyJump into a ProxyCommand), never its `-o` options. When a hop's configuration sets `StrictHostKeyChecking accept-new` or `no`, the master gets a generated `-F` file that sets `ask` for that host and then includes `~/.ssh/config` and `/etc/ssh/ssh_config`, so the hop asks through the same dialog. Every other connection reads the configuration as before.
 - Failures are classified from OpenSSH's stderr, pinned by captured fixtures. A change to those strings in a later OpenSSH release shows up as a failing fixture test.
 - russh, ssh-key and internal-russh-forked-ssh-key leave the dependency graph when the app moves to this transport.
 

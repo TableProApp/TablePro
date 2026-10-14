@@ -72,6 +72,7 @@ async fn start() -> TestResult<Fixture> {
         ssh_program: wrapper,
         ssh_keygen_program: PathBuf::from("ssh-keygen"),
         askpass_program: PathBuf::from(env!("CARGO_BIN_EXE_tablepro-askpass")),
+        config_file: None,
     };
     Ok(Fixture {
         container,
@@ -404,6 +405,64 @@ async fn first_hop_is_the_destination_ssh_resolved() {
 
     assert_eq!(first_hop.port(), fixture.port);
     assert_eq!(first_hop.host(), fixture.host);
+}
+
+/// OpenSSH runs a jump host through a second ssh that never sees the
+/// master's `-o` options, so a configuration that trusts new keys for
+/// every host would trust the jump host's without the dialog.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_jump_host_whose_config_skips_the_host_key_check_still_asks() {
+    let fixture = start().await.unwrap();
+    write_config(&fixture.config, &fixture.known_hosts, "accept-new").unwrap();
+    let services = SshServices {
+        ssh_program: PathBuf::from("ssh"),
+        config_file: Some(fixture.config.clone()),
+        ..fixture.services.clone()
+    };
+    let config = SshConfig {
+        // sshd reaches itself on its own port, so one container is both
+        // the jump host and the destination behind it.
+        destination: SshDestination::new("127.0.0.1", Some(2222), Some("deploy".to_owned())).unwrap(),
+        jump_hosts: vec![SshDestination::new(&fixture.host, Some(fixture.port), Some("deploy".to_owned())).unwrap()],
+        auth: SshAuth::Agent,
+    };
+    let prompter = Arc::new(FakePrompter::new(vec![
+        accept(),
+        answer("s3cret"),
+        accept(),
+        answer("s3cret"),
+    ]));
+
+    let session = SshSession::connect(
+        &config,
+        &services,
+        &LivenessPolicy::DESKTOP,
+        CredentialInteraction::Attended(prompter.clone()),
+        CancellationToken::new(),
+    )
+    .await;
+
+    let purposes: Vec<PromptPurpose> = prompter.requests().into_iter().map(|request| request.purpose).collect();
+    let jump = format!("]:{}", fixture.port);
+    assert!(
+        matches!(
+            purposes.as_slice(),
+            [
+                PromptPurpose::SshHostKeyConfirmation { host, .. },
+                PromptPurpose::SshPassword { .. },
+                PromptPurpose::SshHostKeyConfirmation { .. },
+                PromptPurpose::SshPassword { .. },
+            ] if host.ends_with(&jump)
+        ),
+        "{purposes:?}"
+    );
+    let session = session.unwrap();
+    assert_eq!(
+        session.first_hop_endpoint(),
+        Some(&NetworkEndpoint::new(&fixture.host, fixture.port).unwrap())
+    );
+    session.shutdown(Duration::from_secs(5)).await;
 }
 
 #[tokio::test]

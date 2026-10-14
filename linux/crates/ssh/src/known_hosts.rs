@@ -10,6 +10,10 @@ use crate::{SshConfig, SshServices};
 
 pub async fn forget_host_key(services: &SshServices, config: &SshConfig, known_hosts: &Path) -> Result<(), SshFailure> {
     let mut args: Vec<OsString> = vec!["-G".into()];
+    if let Some(config_file) = &services.config_file {
+        args.push("-F".into());
+        args.push(config_file.as_os_str().to_owned());
+    }
     if let Some(port) = config.destination.port() {
         args.push("-p".into());
         args.push(port.to_string().into());

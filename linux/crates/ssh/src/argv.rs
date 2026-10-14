@@ -38,13 +38,21 @@ pub(crate) enum ControlOp<'a> {
     Exit,
 }
 
+/// `config_file` is the ssh_config the master and every jump host's ssh
+/// read in place of OpenSSH's own, which ssh.c hands on to each hop.
 pub(crate) fn master_args(
     config: &SshConfig,
     control: &Path,
     liveness: &LivenessPolicy,
     host_keys: Option<HostKeyChecking>,
+    config_file: Option<&Path>,
 ) -> Vec<OsString> {
-    let mut args: Vec<OsString> = ["-M", "-N", "-T"].into_iter().map(OsString::from).collect();
+    let mut args: Vec<OsString> = Vec::new();
+    if let Some(config_file) = config_file {
+        args.push("-F".into());
+        args.push(config_file.as_os_str().to_owned());
+    }
+    args.extend(["-M", "-N", "-T"].into_iter().map(OsString::from));
     push_option(&mut args, control_path_option(control));
     for option in &FORCED_OPTIONS[..FORCED_OPTIONS.len() - 1] {
         push_option(&mut args, OsString::from(option));
@@ -174,6 +182,7 @@ mod tests {
             Path::new("/run/user/1000/app/ssh/0123456789abcdef/89abcdef/control"),
             &LivenessPolicy::DESKTOP,
             None,
+            None,
         );
         assert_eq!(
             strings(&args),
@@ -250,6 +259,7 @@ mod tests {
                     Path::new("/tmp/control"),
                     &LivenessPolicy::DESKTOP,
                     host_keys,
+                    None,
                 );
                 let strict: Vec<&str> = strings(&args)
                     .into_iter()
@@ -268,6 +278,7 @@ mod tests {
             control,
             &LivenessPolicy::DESKTOP,
             None,
+            None,
         ))
         .join(" ");
         assert!(!without.contains(" -p ") && !without.contains(" -l "));
@@ -275,6 +286,7 @@ mod tests {
             &config(Some(2222), Some("deploy"), SshAuth::Agent),
             control,
             &LivenessPolicy::DESKTOP,
+            None,
             None,
         );
         assert_eq!(
@@ -287,11 +299,31 @@ mod tests {
     fn jump_hosts_render_one_minus_j() {
         let mut with_jumps = config(None, None, SshAuth::Agent);
         with_jumps.jump_hosts = SshDestination::parse_jump_list("ops@jump1:2200,[fd00::1]").unwrap();
-        let args = master_args(&with_jumps, Path::new("/tmp/control"), &LivenessPolicy::DESKTOP, None);
+        let args = master_args(
+            &with_jumps,
+            Path::new("/tmp/control"),
+            &LivenessPolicy::DESKTOP,
+            None,
+            None,
+        );
         let args = strings(&args);
         assert_eq!(args.iter().filter(|arg| **arg == "-J").count(), 1);
         let position = args.iter().position(|arg| *arg == "-J").unwrap();
         assert_eq!(args[position + 1], "ops@jump1:2200,[fd00::1]");
+    }
+
+    #[test]
+    fn a_config_file_comes_first_so_every_hop_gets_it() {
+        let args = master_args(
+            &config(None, None, SshAuth::Agent),
+            Path::new("/tmp/control"),
+            &LivenessPolicy::DESKTOP,
+            None,
+            Some(Path::new("/run/user/1000/m/ssh_config")),
+        );
+
+        assert_eq!(strings(&args)[..3], ["-F", "/run/user/1000/m/ssh_config", "-M"]);
+        assert_eq!(strings(&args).iter().filter(|arg| **arg == "-F").count(), 1);
     }
 
     #[test]
@@ -304,6 +336,7 @@ mod tests {
             &config(None, None, auth),
             Path::new("/tmp/control"),
             &LivenessPolicy::DESKTOP,
+            None,
             None,
         );
         let joined = strings(&args).join(" ");
@@ -320,6 +353,7 @@ mod tests {
             &config(None, None, without_path),
             Path::new("/tmp/control"),
             &LivenessPolicy::DESKTOP,
+            None,
             None,
         );
         assert!(!strings(&args).contains(&"-i"));
@@ -345,6 +379,7 @@ mod tests {
                 &config(None, None, auth),
                 Path::new("/tmp/control"),
                 &LivenessPolicy::DESKTOP,
+                None,
                 None,
             );
             let preferred = strings(&args)
