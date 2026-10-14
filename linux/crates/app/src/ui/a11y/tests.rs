@@ -51,8 +51,10 @@ fn app_templates() -> Vec<(String, String)> {
 /// The template's class, and its markup with the root turned into a
 /// plain object of the parent class, which a GtkBuilder builds without
 /// the class, so what the template alone says can be read back. A
-/// binding names the class's own properties, which the parent lacks, and
-/// says nothing about a label, so it goes.
+/// binding names the class's own properties and a signal the class's own
+/// handler, which the parent lacks, and neither says anything about a
+/// label, so both go. A property of the class itself set on the root
+/// still fails the parse, with an error that names it.
 fn plain_template(markup: &str) -> Option<(String, String)> {
     let start = markup.find("<template ")?;
     let end = start + markup[start..].find('>')?;
@@ -67,7 +69,25 @@ fn plain_template(markup: &str) -> Option<(String, String)> {
     for binding in ["bind-source", "bind-property", "bind-flags"] {
         plain = without_attribute(&plain, binding);
     }
-    Some((class.to_owned(), plain))
+    Some((class.to_owned(), without_element(&plain, "signal")))
+}
+
+fn without_element(markup: &str, name: &str) -> String {
+    let open = format!("<{name} ");
+    let close = format!("</{name}>");
+    let mut kept = String::with_capacity(markup.len());
+    let mut rest = markup;
+    while let Some(start) = rest.find(&open) {
+        kept.push_str(&rest[..start]);
+        let element = &rest[start..];
+        rest = match element.find('>') {
+            Some(end) if element[..end].ends_with('/') => &element[end + 1..],
+            Some(_) => element.find(&close).map_or("", |end| &element[end + close.len()..]),
+            None => "",
+        };
+    }
+    kept.push_str(rest);
+    kept
 }
 
 fn without_attribute(markup: &str, name: &str) -> String {
@@ -240,13 +260,13 @@ fn the_walk_reports_an_unlabelled_icon_button() {
 
 #[test]
 fn a_template_is_read_as_an_object_of_its_parent_class() {
-    let markup = r#"<interface><template class="TableProThing" parent="AdwBin"><property name="active" bind-source="TableProThing" bind-property="on" bind-flags="sync-create"/></template></interface>"#;
+    let markup = r#"<interface><template class="TableProThing" parent="AdwBin"><property name="active" bind-source="TableProThing" bind-property="on" bind-flags="sync-create"/><signal name="notify" handler="on_notify"/><child><object class="GtkButton"><signal name="clicked" handler="on_clicked" swapped="no"></signal></object></child></template></interface>"#;
 
     assert_eq!(
         plain_template(markup),
         Some((
             "TableProThing".to_owned(),
-            r#"<interface><object class="AdwBin"><property name="active"/></object></interface>"#.to_owned()
+            r#"<interface><object class="AdwBin"><property name="active"/><child><object class="GtkButton"></object></child></object></interface>"#.to_owned()
         ))
     );
     assert_eq!(plain_template("<interface/>"), None);
