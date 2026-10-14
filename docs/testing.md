@@ -4,8 +4,6 @@ The [active sprint](bookie-0.2-sprint.md) owns current acceptance. Start with th
 
 ## Executable gates
 
-Use the [validation playbook](validation-playbook.md) for the command catalog, layer boundaries and CI ownership.
-
 `scripts/ci-local.sh` remains the shared local/CI entry for full, widgets and integration modes. Registrations for isolated GTK and keyring tests live in `scripts/isolated-tests.json`; zero selected tests is a failure. Every `ci-local.sh` run saves exact-tree evidence under `target/quality/`. Release mode does not certify package installation, Wayland, upgrade/rollback or retry-free candidate soak. See the [packaging guide](../apps/linux/packaging/README.md) and [manual checklist](manual-verification-0.2-features.md).
 
 ## What a container run proves
