@@ -171,7 +171,6 @@ Terminal audit states: `succeeded`, `failed`, `denied`, `cancelled`, `timed_out`
 ## Edge cases
 
 - `full_access` on a stored token deserializes as `read_write`.
-- Listing connections with an empty allowlist returns no rows (`McpBridge::list_connections`); using a connection with an empty allowlist errors. The list path has no dedicated test.
 - Shared-connection decisions short-circuit categorical evaluation (`shared_connection_decision` in `crates/policy/src/guard.rs`).
 - A dropped UI future is not proof the driver stopped. Cancellation must reach the database (ADR 0005).
 
