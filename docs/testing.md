@@ -16,7 +16,7 @@ Database fixtures, the GTK scenarios and the distro-floor jobs run in containers
 
 ## Local checks and fixtures
 
-Use `./scripts/preflight.sh` for the quick non-GTK gate and `python3 scripts/run-test-layer.py quick` / `full` for the playbook layers. Keep both `--lib` and `--bins` when invoking Cargo unit tests directly. `tablepro-app` puts UI and service tests in the `tablepro_app` library; `agentd` still has tests in both targets. DuckDB stays out of the default gate because its optional native build is large.
+Use `./scripts/preflight.sh` for the quick non-GTK gate and `python3 scripts/run-test-layer.py quick` / `full` for the playbook layers. Select Cargo test targets deliberately: `tablepro-app` puts UI and service tests in the `tablepro_app` library, while `agentd` has library, binary and integration tests. DuckDB stays out of the default gate because its optional native build is large.
 
 The workspace lints deny `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, the `print!` family and `dbg!`. Unit tests inside a `#[cfg(test)]` module are exempt through `clippy.toml`. A new standalone Cargo test target under `tests/` must start with:
 
@@ -231,7 +231,7 @@ cargo mutants --package tablepro-core --test-tool cargo -- --lib
 cargo mutants --package tablepro-core --file crates/core/src/sql_lex.rs --test-tool cargo -- --lib
 ```
 
-Prefer `core` and `policy`. CI also covers `ssh` and `driver-redis`. The PostgreSQL mutation job covers numeric, array, temporal and binary-text decoders with unit tests; Docker-backed value regressions stay in the driver layers. Follow [ADR 0007](decisions/0007-type-and-value-preservation.md) and the [B3 board](type-contract-strategy.md). Equivalent mutants and timeout findings are discussed in the archived first-run notes above.
+Prefer `core` and `policy`. The nightly mutation job also covers `ssh`, `driver-redis` and `agentd`; agentd mutations run against its library, binaries and integration tests, including saved-connection lookup. The PostgreSQL mutation job covers numeric, array, temporal and binary-text decoders with unit tests; Docker-backed value regressions stay in the driver layers. Follow [ADR 0007](decisions/0007-type-and-value-preservation.md) and the [B3 board](type-contract-strategy.md). Equivalent mutants and timeout findings are discussed in the archived first-run notes above.
 
 ### Coverage
 
