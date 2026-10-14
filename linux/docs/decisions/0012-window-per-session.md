@@ -17,7 +17,7 @@ The process is one `TableProApplication`, an `adw::Application` subclass that ow
 
 - A workspace that never changes session has nothing to reset. Its teardown writes what it shows, closes its input queue and drops it before the session closes, so a late reply has nowhere to land.
 - Every connect claims the session's key in the `SessionRegistry` first, so a second window asking for the same database brings the first forward instead of connecting.
-- GApplication hands a second launch's command line and files to the running process, so `--new-window` and Open With reach the windows that already exist, and Quit can ask each window through its own prompts.
+- A second launch forwards an activate, the files it was given or `app.new-window` to the running process over D-Bus, so Open With and `--new-window` reach the windows that already exist, and Quit can ask each window through its own prompts.
 - Subclasses with templates are what GNOME's Rust apps and the gtk-rs book use. The input queue keeps what Relm4 gave: one message at a time, never handled inside the signal or action that sent it, and dropped once the widget is gone.
 
 ## Consequences
@@ -35,6 +35,6 @@ The process is one `TableProApplication`, an `adw::Application` subclass that ow
 
 **One process-wide session service shared by every window.** Ties every window to one session's lifetime and brings back the reset problem one level up.
 
-**A `RelmApp` root.** It builds an application of its own around one root component, which knows neither the other windows nor the app actions, so every second window, Quit and D-Bus activation would work around it.
+**A `relm4::RelmApp` root.** It builds an application of its own around one root component, which knows neither the other windows nor the app actions, so every second window, Quit and D-Bus activation would work around it.
 
-**A `flock` for one instance.** A hand-written gate for what GApplication already does, and it only refuses a second launch: that launch's command line and files still have to reach the running process.
+**A `flock` for one instance.** A hand-written gate for what GApplication already does, and it only refuses a second launch: that launch's files and `--new-window` still have to reach the running process.

@@ -72,7 +72,7 @@ The components that remain follow these conventions until a rewrite turns them i
 
 - Input reaches them through `deliver`, and their output reaches the subclass that hosts them through `connect_receiver` or `runtime::relm4_bridge`, which put it on that subclass's queue.
 - Their commands (`sender.command`, `oneshot_command`) run on Relm4's own runtime, not on `Tasks`. The history and saved-queries dialogs still load that way; new work goes through `spawn_and_deliver`.
-- They present their dialogs on the window they belong to. `ComponentBuilder::transient_for` is banned, because Relm4 applies it only from `RelmApp`, which this app does not use.
+- They present their dialogs on the window they belong to. `ComponentBuilder::transient_for` is banned, because Relm4 applies it only from `relm4::RelmApp`, which this app does not use.
 
 ## Naming
 
@@ -84,6 +84,7 @@ The components that remain follow these conventions until a rewrite turns them i
 ## Alert dialogs
 
 - `AdwAlertDialog` closes itself before it emits `response`. A response handler that calls `close()` again finds the dialog gone, and libadwaita logs a critical when animations are off.
+- That close emits `closed` before the `response` the click chose. A `closed` handler that answers at once turns every click into the close response. `workspace::respond` defers its close response to an idle callback, so the click's response comes first.
 - To wait for an answer, use `workspace::respond`, which also answers when the dialog goes without a response. `choose_future` is not used: its callback aborts the process in that case.
 
 ## Anti-patterns to flag in review

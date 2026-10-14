@@ -4,7 +4,7 @@ Three layers, three tools. Each crate's test policy follows from its position in
 
 | Crate | Layer | Tools | Required for merge? |
 |---|---|---|---|
-| `core` | Pure traits + types | Unit tests in `src/`, table-driven for type mappers | Yes |
+| `core` | Pure traits + types | Unit tests in `crates/core/src/`, table-driven for type mappers | Yes |
 | `storage` | Filesystem + libsecret + GSchema | Unit tests + integration tests with `tempfile` | Yes |
 | `session` | Sessions, connect, health | Unit tests with the `fakes` feature + `testcontainers-rs` tests | Yes |
 | `drivers/<engine>` | Real engines | Unit tests, the conformance suites, `testcontainers-rs` integration tests | Yes |
@@ -234,7 +234,7 @@ CI sets `GTK_A11Y=test` so results never depend on an AT-SPI bus. With `GTK_A11Y
 
 Two harnesses build the app's real objects over fakes:
 
-- `TestWindow` (`ui/session_window/tests.rs`) starts a `TableProApplication` with one window on the picker, a saved connection in its list and a `FakeConnector`. `TestWindow::connected` opens that connection and waits for its workspace. Each test registers an application id of its own, so it never meets another test, or a TablePro the developer has open, on the session bus. `test.hold` is the application's `CountingHold`.
+- `TestWindow` (`crates/app/src/ui/session_window/tests.rs`) starts a `TableProApplication` with one window on the picker, a saved connection in its list and a `FakeConnector`. `TestWindow::connected` opens that connection and waits for its workspace. Each test registers an application id of its own, so it never meets another test, or a TablePro the developer has open, on the session bus. `test.hold` is the application's `CountingHold`.
 - `workspace::test_workspace::Workspace` builds a `WorkspaceHandle` with one tab over a scripted connection, for the save and close prompt tests.
 
 Both turn GTK animations off, so a dialog or a page change finishes before the next line runs.
@@ -250,7 +250,7 @@ A `#[gtk4::test]` has no tokio runtime. `test_runtime()` builds an `AppRuntime` 
 ### Dialogs
 
 - `workspace::answer(window, response)` clicks the button of the alert `window` shows, so the alert closes itself and emits its response in the order a user's click does. `workspace::visible_alert(window)` returns that alert.
-- `test_support::respond(dialog, response)` emits a response on a dialog the test holds, then force-closes it.
+- `test_support::respond(dialog, response)` clicks the button of a presented alert the test holds. Never emit `response` by name: that skips the close a click makes first, so a `closed` handler sees the signals in an order no user can produce.
 
 A test that a step logs no GLib critical turns criticals fatal around that step and restores the old mask after:
 
@@ -261,7 +261,7 @@ crate::test_support::drain_main_context();
 glib::log_set_always_fatal(previous);
 ```
 
-A critical then aborts the test process, and the runner reports the test as failed with the message, for example libadwaita's "Trying to close AdwAlertDialog ... that's not presented".
+A critical then aborts the process with the message, for example libadwaita's "Trying to close AdwAlertDialog ... that's not presented". cargo-nextest runs each test in a process of its own, so it reports that one test as failed. `cargo test`, which the Meson `gtk` suite runs, has every test of the `tablepro` library in one process: the abort ends the whole binary and the tests after it never run.
 
 ### Fakes
 
@@ -273,7 +273,7 @@ The tests in `crates/app/tests` that start TablePro run without the test harness
 
 | Test | What it checks |
 |---|---|
-| `application_uniqueness` | a second launch hands its command line to the running instance and exits without opening a window, and `--new-window` opens one there |
+| `application_uniqueness` | a second plain launch activates the running instance and exits without opening a window, and `--new-window` opens one there |
 | `application_lifecycle` | Quit waits for a session's close within the close timeout and gives up on a close that hangs, a cancelled close keeps the app running, and an editor session's close holds the process |
 | `application_session_restore` | the windows open at quit open again at the next launch, and a window closed first does not |
 | `open_files` | a file handed over D-Bus opens a window on it, the same file brings that window forward, and another file opens a second window |
