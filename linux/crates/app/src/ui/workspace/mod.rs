@@ -98,10 +98,8 @@ pub(crate) struct WorkspaceModel {
     table_search: gtk::SearchEntry,
     /// `"empty"` while no tab is open, `"tabs"` otherwise.
     workspace_outer_stack: gtk::Stack,
-    /// AdwTabOverview wrapping the unified AdwTabBar + AdwTabView.
     workspace_root: Option<adw::TabOverview>,
     workspace_tab_view: Option<adw::TabView>,
-    /// Idempotency flag for `ensure_workspace_root`.
     workspace_root_added: Cell<bool>,
     /// Per-tab state, by tab id. Display order is read from the tab
     /// view's pages.
@@ -266,7 +264,6 @@ pub(super) fn read_workspace_tab_id(page: &adw::TabPage) -> Option<Uuid> {
 
 #[derive(Debug)]
 pub(crate) enum WorkspaceInput {
-    /// The session's health moved.
     HealthChanged(SessionHealth),
     /// The session's object list for the sidebar changed: a reconnect
     /// read it again, or a schema change refreshed it.
@@ -276,9 +273,7 @@ pub(crate) enum WorkspaceInput {
         name: String,
         open_mode: OpenMode,
     },
-    /// "+ New query" button or Ctrl+T → append a new editor tab.
     NewEditorTab,
-    /// Ctrl+W → close active workspace tab (browse or editor).
     CloseActiveWorkspaceTab,
     EditorTabRunStateChanged(Uuid, bool),
     EditorTabContentChanged(Uuid),
@@ -290,14 +285,11 @@ pub(crate) enum WorkspaceInput {
     WorkspaceLayoutReset(Result<Option<std::path::PathBuf>, crate::workspace::WorkspaceSaveError>),
     ShowHistory,
     ShowSavedQueries,
-    /// Keep the active editor tab's SQL under a name the user picks.
     SaveActiveQuery,
     SaveQueryNamed {
         name: String,
         query: String,
     },
-    /// "Import CSV…" from a table's own menu: ask for a file, then
-    /// open the mapping dialog against that table's columns.
     ImportCsvRequested {
         schema: Option<String>,
         table: String,
@@ -310,11 +302,9 @@ pub(crate) enum WorkspaceInput {
         columns: Vec<tablepro_core::ColumnInfo>,
         bytes: Vec<u8>,
     },
-    /// The mapping is settled, so the rows can be written.
     ImportCsvRun(Box<super::import_dialog::CsvImport>),
     OpenHistoryQuery(String),
     ReplaceActiveTabQuery(String),
-    /// The close prompts decided about one tab's close.
     TabCloseDecided {
         id: Uuid,
         approved: bool,
@@ -326,31 +316,22 @@ pub(crate) enum WorkspaceInput {
         target: Option<super::export_dialog::SqlTarget>,
     },
     CopyToClipboard(String),
-    /// User clicked the close-X on any workspace tab.
     WorkspaceTabClosed(Uuid),
-    /// Tab right-click "Close Other Tabs": each tab still asks about
-    /// its own unsaved changes.
+    /// Each tab still asks about its own unsaved changes.
     CloseOtherWorkspaceTabs(Uuid),
-    /// Tab right-click "Close Tabs to the Right", in tab order.
     CloseWorkspaceTabsToRight(Uuid),
     /// The tab order, the selection or a tab's state changed, so the
     /// workspace is saved.
     WorkspaceTabsChanged,
-    /// A tab's own Save: write what its tracker holds.
     SaveTab(Uuid),
-    /// A tab's Stop Saving.
     StopSaving(Uuid),
     /// A save started or settled, or tabs' changes were dropped.
     Workspace(crate::workspace::WorkspaceEvent),
-    /// The number of saves running in this workspace changed.
     SavesInFlightChanged(usize),
     /// An editor tab's transaction opened or ended.
     EditorTransactionChanged,
-    /// Ctrl+S, for the active tab.
     SaveActiveTab,
-    /// Ctrl+Z, for the active Table tab.
     UndoActiveBrowseTab,
-    /// Ctrl+Y, for the active Table tab.
     RedoActiveBrowseTab,
     ShowAlert {
         title: String,
@@ -361,50 +342,34 @@ pub(crate) enum WorkspaceInput {
     /// title gains or loses the "•" GNOME Text Editor puts on unsaved
     /// documents.
     BrowseTabDirtyChanged(Uuid, bool),
-    /// Sidebar right-click → "New Table…" or schema-header "+" button.
-    /// Always appends a fresh draft Structure tab.
     NewTableTab {
         schema: Option<String>,
     },
-    /// Sidebar right-click → "Edit Structure". Switches to the table's
-    /// open Structure tab, or appends one.
     EditStructureTab {
         schema: Option<String>,
         table: String,
     },
-    /// Sidebar right-click → "Show CREATE TABLE". The SQL opens in a
-    /// fresh editor tab.
     ShowCreateTableForExisting {
         schema: Option<String>,
         table: String,
     },
-    /// The CREATE statement `ShowCreateTableForExisting` built, for a
-    /// new editor tab.
     ShowCreateTableLoaded(String),
-    /// Sidebar right-click → "Drop Table…", or in-tab Drop button.
     DropTablePrompt {
         schema: Option<String>,
         table: String,
     },
-    /// The user confirmed the drop.
     DropTableConfirmed {
         schema: Option<String>,
         table: String,
     },
     /// The table is gone, so its tabs close without asking.
     DropTableSucceeded(tablepro_core::TableRef),
-    /// A Structure tab's tracker crossed the empty / non-empty line.
     StructureTabDirtyChanged(Uuid, bool),
-    /// Schema state changed (table created / dropped / altered): the
-    /// catalog reads the sidebar's list again and drops the table's
-    /// columns, and the tabs open on the table read it again.
     SchemaChanged {
         schema: Option<String>,
         table: Option<String>,
     },
-    /// Ctrl+Shift+T → reopen the most recently closed tab.
     ReopenClosedTab,
-    /// Ctrl+F → open the filter strip for the active Browse tab.
     ShowFilterDialog,
 }
 
