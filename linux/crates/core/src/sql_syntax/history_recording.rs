@@ -18,9 +18,9 @@ pub enum WithholdReason {
     Untokenizable,
 }
 
-/// Dollar-quoted bodies are read for the statements inside them this
-/// many levels deep: a DO block in a function body is as far as real
-/// scripts nest.
+/// Routine bodies are read for the statements inside them this many
+/// levels deep: a DO block in a function body is as far as real scripts
+/// nest.
 const MAX_BODY_DEPTH: u8 = 4;
 
 /// Whether `sql` may be kept, split the way the editor splits it for
@@ -44,17 +44,75 @@ fn carries_credentials(
     statements: &[Vec<StatementToken<'_>>],
     depth: u8,
 ) -> bool {
+    // A body that does not lex cleanly is text in a literal, not a
+    // routine, so only the statements it does hold count.
+    let body_carries = |body: &str| {
+        depth < MAX_BODY_DEPTH
+            && carries_credentials(grammar, rules, &lex_statements(body, grammar).statements, depth + 1)
+    };
     statements.iter().any(|tokens| {
-        rules.matches(tokens)
-            || tokens.iter().any(|token| match token {
-                // A body that does not lex cleanly is text in a literal,
-                // not a routine, so only the statements it does hold count.
-                StatementToken::DollarBody(body) if depth < MAX_BODY_DEPTH => {
-                    carries_credentials(grammar, rules, &lex_statements(body, grammar).statements, depth + 1)
+        rules.matches(grammar, tokens)
+            || tokens.iter().enumerate().any(|(at, token)| match token {
+                StatementToken::DollarBody(body) => body_carries(body),
+                StatementToken::StringLiteral(text) if quoted_routine_body(grammar, tokens, at) => {
+                    body_carries(&string_value(text))
                 }
                 _ => false,
             })
     })
+}
+
+/// PostgreSQL also takes a DO block or a function body as a plain
+/// string: `DO 'BEGIN ... END'`, `CREATE FUNCTION f() ... AS 'SELECT 1'`.
+fn quoted_routine_body(grammar: SqlGrammar, tokens: &[StatementToken<'_>], at: usize) -> bool {
+    if grammar != SqlGrammar::PostgreSql {
+        return false;
+    }
+    let before = |back: usize| at.checked_sub(back).and_then(|index| tokens.get(index));
+    let is_word = |back: usize, word: &str| before(back).is_some_and(|token| token.is_word(word));
+    if is_word(1, "DO") || (is_word(3, "DO") && is_word(2, "LANGUAGE")) {
+        return true;
+    }
+    is_word(1, "AS") && defines_routine(tokens.get(..at).unwrap_or_default())
+}
+
+fn defines_routine(tokens: &[StatementToken<'_>]) -> bool {
+    tokens.windows(2).any(|pair| {
+        let creates = pair[0].is_word("CREATE") || pair[0].is_word("REPLACE");
+        creates && (pair[1].is_word("FUNCTION") || pair[1].is_word("PROCEDURE"))
+    })
+}
+
+/// The text a PostgreSQL string literal stands for: `'it''s'` and
+/// `E'it\'s'` both give `it's`.
+fn string_value(text: &str) -> String {
+    let (escapes, quoted) = match text.strip_prefix(['E', 'e']) {
+        Some(rest) => (true, rest),
+        None => (false, text),
+    };
+    let inner = quoted
+        .strip_prefix('\'')
+        .and_then(|rest| rest.strip_suffix('\''))
+        .unwrap_or_default();
+    let mut value = String::with_capacity(inner.len());
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' => {
+                chars.next();
+                value.push('\'');
+            }
+            '\\' if escapes => match chars.next() {
+                Some('n') => value.push('\n'),
+                Some('t') => value.push('\t'),
+                Some('r') => value.push('\r'),
+                Some(escaped) => value.push(escaped),
+                None => {}
+            },
+            _ => value.push(c),
+        }
+    }
+    value
 }
 
 #[cfg(test)]
@@ -70,7 +128,7 @@ mod tests {
             &["CREATE", "NAMED", "COLLECTION"],
         ],
         conditional_prefixes: &[(&["GRANT"], &["IDENTIFIED"])],
-        carriers: &["dblink_connect", "sp_addlogin", "s3"],
+        carriers: &["dblink_connect", "sp_addlogin", "s3", "OPENROWSET"],
     };
 
     const WITHHELD: HistoryRecording = HistoryRecording::Withhold(WithholdReason::CredentialStatement);
@@ -225,9 +283,84 @@ mod tests {
     }
 
     #[test]
-    fn a_procedure_mid_batch_needs_exec() {
+    fn a_procedure_named_mid_batch_without_arguments_is_not_a_call() {
         assert_eq!(
             classify(SqlGrammar::MsSql, "SELECT 1\nPRINT sp_addlogin"),
+            HistoryRecording::Record
+        );
+    }
+
+    #[test]
+    fn a_procedure_mid_batch_with_its_arguments_is_a_call() {
+        for sql in [
+            "SELECT 1;\nsp_addlogin 'l', 'p'",
+            "SELECT 1;\nsp_addlogin",
+            "SELECT 1\nsp_addlogin 'l', 'p'",
+            "SELECT 1\nsp_addlogin N'l', N'p'",
+            "SELECT 1\nsp_addlogin @loginame = 'l', @passwd = 'p'",
+        ] {
+            assert_eq!(classify(SqlGrammar::MsSql, sql), WITHHELD, "{sql}");
+        }
+    }
+
+    #[test]
+    fn a_reserved_carrier_is_a_call_where_a_table_name_would_go() {
+        assert_eq!(
+            classify(
+                SqlGrammar::MsSql,
+                "INSERT INTO OPENROWSET('SQLNCLI', 'Server=s;Uid=sa;Pwd=secret;', 'SELECT * FROM t') SELECT * FROM t"
+            ),
+            WITHHELD
+        );
+        assert_eq!(
+            classify(SqlGrammar::MsSql, "INSERT INTO [OPENROWSET] (c) VALUES (1)"),
+            HistoryRecording::Record
+        );
+        assert_eq!(
+            classify(SqlGrammar::ClickHouse, "INSERT INTO s3 (id) VALUES (1)"),
+            HistoryRecording::Record
+        );
+    }
+
+    #[test]
+    fn a_quoted_postgres_routine_body_is_read_for_statements() {
+        for sql in [
+            "DO 'BEGIN CREATE USER u PASSWORD ''p''; END'",
+            "DO LANGUAGE plpgsql 'BEGIN CREATE USER u PASSWORD ''p''; END'",
+            "CREATE FUNCTION f() RETURNS void AS 'SELECT dblink_connect(''password=x'')' LANGUAGE sql",
+            r"CREATE OR REPLACE PROCEDURE p() LANGUAGE sql AS E'SELECT dblink_connect(\'password=x\')'",
+        ] {
+            assert_eq!(classify(SqlGrammar::PostgreSql, sql), WITHHELD, "{sql}");
+        }
+        assert_eq!(
+            classify(
+                SqlGrammar::PostgreSql,
+                "CREATE FUNCTION f() RETURNS text AS 'SELECT ''CREATE USER u''' LANGUAGE sql"
+            ),
+            HistoryRecording::Record
+        );
+        assert_eq!(
+            classify(SqlGrammar::MySql, "DO 'CREATE USER u'"),
+            HistoryRecording::Record
+        );
+    }
+
+    #[test]
+    fn a_mysql_executable_comment_is_read() {
+        for sql in [
+            "/*!80000 CREATE USER u IDENTIFIED BY 'p' */",
+            "SELECT 1;\n/*!80000 CREATE USER u IDENTIFIED BY 'p' */;",
+            "GRANT ALL ON *.* TO u /*!50000 IDENTIFIED BY 'p' */",
+            "/*M!100100 CREATE USER u IDENTIFIED BY 'p' */",
+        ] {
+            assert_eq!(classify(SqlGrammar::MySql, sql), WITHHELD, "{sql}");
+        }
+        assert_eq!(
+            classify(SqlGrammar::MySql, "SELECT 1 /* CREATE USER u */"),
+            HistoryRecording::Record
+        );
+        assert_eq!(
+            classify(SqlGrammar::PostgreSql, "SELECT 1 /*! CREATE USER u */"),
             HistoryRecording::Record
         );
     }

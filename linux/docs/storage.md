@@ -191,8 +191,10 @@ script lexer:
   engine lists its own in a `CredentialRules`: logins, roles, keys and links
   to other servers (`CREATE USER`, `CHANGE MASTER`), statements that do so
   only with a given word (`GRANT ... IDENTIFIED`), and functions or engines
-  that take a password (`dblink`, `OPENROWSET`, `s3`). A dollar-quoted body
-  is read for the statements inside it.
+  that take a password (`dblink`, `OPENROWSET`, `s3`). A routine body is
+  read for the statements inside it, whether dollar-quoted or, on
+  PostgreSQL, a plain string after `DO` or `AS`. So is a MySQL `/*!`
+  comment, which the server runs.
 - A string, quoted name or comment that never closes withholds it too, since
   what is inside a literal is then a guess.
 

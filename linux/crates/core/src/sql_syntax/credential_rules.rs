@@ -1,3 +1,4 @@
+use super::SqlGrammar;
 use super::statement_tokens::StatementToken;
 
 /// What marks a statement as one whose text can hold a password or a
@@ -22,13 +23,15 @@ pub struct CredentialRules {
 
 /// The word before a name being declared or written to, where a carrier
 /// name followed by a parenthesis is a table and its column list, not a
-/// call: `CREATE TABLE s3 (id int)`.
+/// call: `CREATE TABLE s3 (id int)`. A carrier the engine reserves, such
+/// as T-SQL's OPENROWSET, cannot name a table, so there it is a call.
 const NAME_POSITIONS: [&str; 6] = ["TABLE", "INTO", "VIEW", "REFERENCES", "EXISTS", "ON"];
 
 impl CredentialRules {
-    pub(crate) fn matches(&self, tokens: &[StatementToken<'_>]) -> bool {
-        (0..tokens.len())
-            .any(|at| self.prefix_at(tokens, at) || self.conditional_at(tokens, at) || self.carrier_at(tokens, at))
+    pub(crate) fn matches(&self, grammar: SqlGrammar, tokens: &[StatementToken<'_>]) -> bool {
+        (0..tokens.len()).any(|at| {
+            self.prefix_at(tokens, at) || self.conditional_at(tokens, at) || self.carrier_at(grammar, tokens, at)
+        })
     }
 
     fn prefix_at(&self, tokens: &[StatementToken<'_>], at: usize) -> bool {
@@ -49,8 +52,11 @@ impl CredentialRules {
         })
     }
 
-    fn carrier_at(&self, tokens: &[StatementToken<'_>], at: usize) -> bool {
-        let Some(name) = tokens.get(at).and_then(StatementToken::name) else {
+    fn carrier_at(&self, grammar: SqlGrammar, tokens: &[StatementToken<'_>], at: usize) -> bool {
+        let Some(token) = tokens.get(at) else {
+            return false;
+        };
+        let Some(name) = token.name() else {
             return false;
         };
         if !self.carriers.iter().any(|carrier| carrier.eq_ignore_ascii_case(name)) {
@@ -61,12 +67,33 @@ impl CredentialRules {
             return false;
         }
         let start = qualified_name_start(tokens, at);
-        if next == Some(&StatementToken::OpenParen) && !names_an_object(tokens, start) {
-            return true;
+        if next == Some(&StatementToken::OpenParen) {
+            let reserved = matches!(token, StatementToken::Word(_)) && grammar.is_reserved(name);
+            if reserved || !names_an_object(tokens, start) {
+                return true;
+            }
         }
-        // T-SQL runs the first statement of a batch as a procedure call
-        // without EXEC.
-        start == 0 || follows_exec(tokens, start)
+        // T-SQL runs a procedure without EXEC only as the first statement
+        // of a batch. At the start of a later statement, or anywhere with
+        // its arguments, the batch fails, and history keeps failed runs.
+        starts_statement(tokens, start) || follows_exec(tokens, start) || arguments_start(tokens, at + 1)
+    }
+}
+
+fn starts_statement(tokens: &[StatementToken<'_>], start: usize) -> bool {
+    start == 0 || tokens.get(start - 1).is_some_and(|token| token.is_punct(';'))
+}
+
+/// A string, T-SQL's `N'...'` or a `@parameter`, which only a call puts
+/// straight after a name.
+fn arguments_start(tokens: &[StatementToken<'_>], at: usize) -> bool {
+    match tokens.get(at) {
+        Some(StatementToken::StringLiteral(_)) => true,
+        Some(StatementToken::Word(word)) if word.starts_with('@') => true,
+        Some(token) if token.is_word("N") => {
+            matches!(tokens.get(at + 1), Some(StatementToken::StringLiteral(_)))
+        }
+        _ => false,
     }
 }
 

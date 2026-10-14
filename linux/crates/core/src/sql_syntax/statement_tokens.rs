@@ -13,9 +13,13 @@ pub(crate) enum StatementToken<'a> {
     QuotedName(&'a str),
     /// What a dollar quote holds, which is usually a routine body.
     DollarBody(&'a str),
+    /// A string as written, quotes and any `E` prefix included.
+    StringLiteral(&'a str),
     OpenParen,
+    /// Punctuation, and `;` wherever a statement keeps one, as a T-SQL
+    /// batch does.
     Punct(char),
-    /// A string, a number or a closing parenthesis.
+    /// A number or a closing parenthesis.
     Other,
 }
 
@@ -48,40 +52,75 @@ pub(crate) struct LexedScript<'a> {
 
 pub(crate) fn lex_statements(sql: &str, grammar: SqlGrammar) -> LexedScript<'_> {
     let plan = ScriptPlan::build(sql, grammar, LexicalSettings::default_for(grammar));
-    let statements = plan
-        .statements()
-        .iter()
-        .map(|statement| {
-            plan.tokens(statement.range.clone())
-                .filter_map(|token| significant(sql, token.kind, token.range))
-                .collect()
-        })
-        .collect();
+    // Split at the terminators rather than taken statement by statement,
+    // so a comment the plan leaves outside every statement still counts:
+    // MySQL runs a `/*!` comment with whatever stands between the same
+    // two terminators, and the history keeps the whole text.
+    let mut statements = Vec::new();
+    let mut current = Vec::new();
+    for token in plan.tokens(0..sql.len()) {
+        let ends_statement = match token.kind {
+            ScriptTokenKind::Directive => true,
+            ScriptTokenKind::Semicolon => !plan
+                .statement_at(token.range.start)
+                .is_some_and(|statement| statement.range.contains(&token.range.start)),
+            _ => false,
+        };
+        if ends_statement {
+            if !current.is_empty() {
+                statements.push(std::mem::take(&mut current));
+            }
+            continue;
+        }
+        push_significant(sql, grammar, token.kind, token.range, &mut current);
+    }
+    if !current.is_empty() {
+        statements.push(current);
+    }
     LexedScript {
         statements,
         unterminated: !plan.diagnostics().is_empty(),
     }
 }
 
-fn significant(sql: &str, kind: ScriptTokenKind, range: Range<usize>) -> Option<StatementToken<'_>> {
+fn push_significant<'a>(
+    sql: &'a str,
+    grammar: SqlGrammar,
+    kind: ScriptTokenKind,
+    range: Range<usize>,
+    tokens: &mut Vec<StatementToken<'a>>,
+) {
     let text = sql.get(range).unwrap_or_default();
     let token = match kind {
-        ScriptTokenKind::Whitespace
-        | ScriptTokenKind::LineComment
-        | ScriptTokenKind::BlockComment
-        | ScriptTokenKind::Directive => return None,
+        ScriptTokenKind::BlockComment => {
+            // MySQL and MariaDB run what a `/*!` comment holds as part of
+            // the statement around it.
+            if let Some(inner) = executable_comment(grammar, text) {
+                tokens.extend(lex_statements(inner, grammar).statements.into_iter().flatten());
+            }
+            return;
+        }
+        ScriptTokenKind::Whitespace | ScriptTokenKind::LineComment | ScriptTokenKind::Directive => return,
         ScriptTokenKind::Word => StatementToken::Word(text),
         ScriptTokenKind::QuotedIdentifier => StatementToken::QuotedName(unquoted(text)),
         ScriptTokenKind::DollarQuoted => StatementToken::DollarBody(dollar_body(text)),
+        ScriptTokenKind::StringLiteral => StatementToken::StringLiteral(text),
         ScriptTokenKind::OpenParen => StatementToken::OpenParen,
+        ScriptTokenKind::Semicolon => StatementToken::Punct(';'),
         ScriptTokenKind::Punct => text.chars().next().map_or(StatementToken::Other, StatementToken::Punct),
-        ScriptTokenKind::StringLiteral
-        | ScriptTokenKind::Number
-        | ScriptTokenKind::Semicolon
-        | ScriptTokenKind::CloseParen
-        | ScriptTokenKind::Unterminated => StatementToken::Other,
+        ScriptTokenKind::Number | ScriptTokenKind::CloseParen | ScriptTokenKind::Unterminated => StatementToken::Other,
     };
-    Some(token)
+    tokens.push(token);
+}
+
+/// `/*!50100 text */` or MariaDB's `/*M!100100 text */` gives `text`.
+fn executable_comment(grammar: SqlGrammar, text: &str) -> Option<&str> {
+    if grammar != SqlGrammar::MySql {
+        return None;
+    }
+    let body = text.strip_prefix("/*!").or_else(|| text.strip_prefix("/*M!"))?;
+    let body = body.strip_suffix("*/")?;
+    Some(body.trim_start_matches(|c: char| c.is_ascii_digit()))
 }
 
 /// Every quote the lexer accepts for a name (`"`, `` ` ``, `[` and `]`)
@@ -110,12 +149,70 @@ mod tests {
             script.statements,
             vec![vec![
                 StatementToken::Word("SELECT"),
-                StatementToken::Other,
+                StatementToken::StringLiteral("'USER'"),
                 StatementToken::Word("FROM"),
                 StatementToken::Word("t"),
             ]]
         );
         assert!(!script.unterminated);
+    }
+
+    #[test]
+    fn a_mysql_executable_comment_is_part_of_its_statement() {
+        assert_eq!(
+            lex_statements("CREATE /*!50100 TEMPORARY */ TABLE t", SqlGrammar::MySql).statements,
+            vec![vec![
+                StatementToken::Word("CREATE"),
+                StatementToken::Word("TEMPORARY"),
+                StatementToken::Word("TABLE"),
+                StatementToken::Word("t"),
+            ]]
+        );
+        assert_eq!(
+            lex_statements("SELECT /*M!100100 1 */ x", SqlGrammar::MySql).statements,
+            vec![vec![
+                StatementToken::Word("SELECT"),
+                StatementToken::Other,
+                StatementToken::Word("x"),
+            ]]
+        );
+        assert_eq!(
+            lex_statements("SELECT /*! TEMPORARY */ x", SqlGrammar::PostgreSql).statements,
+            vec![vec![StatementToken::Word("SELECT"), StatementToken::Word("x")]]
+        );
+    }
+
+    #[test]
+    fn a_mysql_executable_comment_between_statements_is_a_statement() {
+        let script = lex_statements("SELECT 1;\n/*!40101 SET NAMES utf8 */;", SqlGrammar::MySql);
+
+        assert_eq!(
+            script.statements,
+            vec![
+                vec![StatementToken::Word("SELECT"), StatementToken::Other],
+                vec![
+                    StatementToken::Word("SET"),
+                    StatementToken::Word("NAMES"),
+                    StatementToken::Word("utf8"),
+                ],
+            ]
+        );
+    }
+
+    #[test]
+    fn a_batch_keeps_its_semicolons() {
+        let script = lex_statements("SELECT 1; SELECT 2", SqlGrammar::MsSql);
+
+        assert_eq!(
+            script.statements,
+            vec![vec![
+                StatementToken::Word("SELECT"),
+                StatementToken::Other,
+                StatementToken::Punct(';'),
+                StatementToken::Word("SELECT"),
+                StatementToken::Other,
+            ]]
+        );
     }
 
     #[test]
