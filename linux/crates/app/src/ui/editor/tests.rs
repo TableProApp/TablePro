@@ -520,6 +520,15 @@ impl InWindow {
         window.set_child(Some(editor));
         Self(window)
     }
+
+    /// Shown, and holding the keyboard focus.
+    fn presented(editor: &SqlEditor) -> Self {
+        let shown = Self::new(editor);
+        shown.0.set_default_size(480, 320);
+        crate::test_support::KeyInjector::focus_only(&shown.0);
+        wait_until(Duration::from_secs(2), || shown.0.is_active()).expect("the window to take the focus");
+        shown
+    }
 }
 
 impl Drop for InWindow {
@@ -658,4 +667,30 @@ fn the_editor_menu_shows_the_tables_local_keys() {
         }
     }
     assert!(checked > 0, "no menu item has a local key, so the check reads nothing");
+}
+
+/// These press real keys on the X display every test shares; nextest runs
+/// them with no other test beside them.
+mod real_keys {
+    use super::*;
+
+    /// A real key press, so the editor's controller meets GtkTextView's own
+    /// Ctrl+/ binding in the order GTK runs them.
+    #[gtk4::test]
+    fn ctrl_slash_toggles_comment_instead_of_selecting_all() {
+        let harness = editor_with(answering(), "select 1");
+        let _window = InWindow::presented(&harness.editor);
+        let buffer = harness.editor.buffer();
+        buffer.place_cursor(&buffer.start_iter());
+        harness.editor.imp().source_view.grab_focus();
+
+        crate::test_support::KeyInjector::connect()
+            .expect("an X11 display")
+            .press(gtk4::gdk::Key::slash, gtk4::gdk::ModifierType::CONTROL_MASK)
+            .expect("the key press");
+
+        wait_until(Duration::from_secs(2), || buffer_text(&buffer) == "-- select 1")
+            .expect("Ctrl+/ to comment the line");
+        assert!(!buffer.has_selection(), "Ctrl+/ selected the text");
+    }
 }

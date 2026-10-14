@@ -1745,6 +1745,59 @@ fn browse_actions_follow_the_tab() {
     assert!(!action_enabled(harness.tab(), "save"));
 }
 
+/// These press real keys on the X display every test shares; nextest runs
+/// them with no other test beside them.
+mod real_keys {
+    use super::*;
+
+    /// A real key press: the field's own undo runs before the tab's, so
+    /// Ctrl+Z in a filter field takes back typing, not a row edit.
+    #[gtk4::test]
+    fn ctrl_z_in_filter_entry_undoes_text_not_rows() {
+        use gtk4::gdk::{Key, ModifierType};
+        // A key reaches a top bar only once its reveal has ended.
+        if let Some(settings) = gtk4::Settings::default() {
+            settings.set_gtk_enable_animations(false);
+        }
+        let mut script = serving_table();
+        script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+        let harness = Harness::open(script, []);
+        wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+        let shown = Shown::new(harness.tab());
+        crate::test_support::KeyInjector::focus_only(&shown.0);
+        wait_until(Duration::from_secs(2), || shown.0.is_active()).expect("the window to take the focus");
+        harness
+            .tab()
+            .send(BrowseTabInput::DeleteRows(vec![harness.grid_row(0)]));
+        assert_eq!(harness.tracker.pending_count(), 1);
+        let strip = {
+            use gtk4::subclass::prelude::ObjectSubclassIsExt;
+            let model = harness.tab().imp().model.borrow();
+            let strip = model.as_ref().and_then(|model| model.filter_strip.as_ref());
+            strip.expect("the filter strip").widget.clone()
+        };
+
+        harness.tab().send(BrowseTabInput::ToggleFilterStrip);
+        let mut field = None;
+        wait_until(Duration::from_secs(2), || {
+            field = gtk4::prelude::GtkWindowExt::focus(&shown.0)
+                .filter(|focus| focus.is_ancestor(&strip))
+                .and_then(|focus| focus.downcast::<gtk4::Text>().ok());
+            field.is_some()
+        })
+        .expect("the strip's field takes the focus");
+        let field = field.expect("the focused field");
+        let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
+
+        keys.press(Key::x, ModifierType::empty()).expect("the key press");
+        wait_until(Duration::from_secs(2), || field.text() == "x").expect("the typing to land");
+        keys.press(Key::z, ModifierType::CONTROL_MASK).expect("the key press");
+
+        wait_until(Duration::from_secs(2), || field.text().is_empty()).expect("Ctrl+Z to take back the typing");
+        assert_eq!(harness.tracker.pending_count(), 1, "Ctrl+Z undid the row edit");
+    }
+}
+
 #[gtk4::test]
 fn refresh_asks_the_window_and_filter_opens_the_strip() {
     let mut script = serving_table();
