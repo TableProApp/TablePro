@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tablepro_core::ColumnInfo;
+use tablepro_core::{ColumnInfo, import::supports_explicit_auto_increment_values};
 use uuid::Uuid;
 
 use super::config_io::xdg_config_path;
@@ -80,7 +80,7 @@ impl CsvMappingStore {
         has_header: bool,
     ) -> Result<(), String> {
         validate_scope(scope)?;
-        validate_inputs(headers, columns, mapping, has_header)?;
+        validate_inputs(&scope.driver_id, headers, columns, mapping, has_header)?;
         let stored = StoredMapping {
             columns: columns
                 .iter()
@@ -153,8 +153,11 @@ impl CsvMappingStore {
                 return Err("A saved destination column is missing or ambiguous. Review the mapping manually.".into());
             };
             if let Some(source) = stored_column.source {
-                if server_managed(&columns[*target]) {
-                    return Err("A saved mapping targets a database-generated column.".into());
+                if is_generated(&columns[*target])
+                    || (columns[*target].is_auto_increment
+                        && !supports_explicit_auto_increment_values(&scope.driver_id))
+                {
+                    return Err("A saved mapping targets a column that cannot accept explicit values.".into());
                 }
                 result[*target] = Some(resolve_header(headers, &source)?);
             }
@@ -187,6 +190,7 @@ fn validate_scope(scope: &CsvMappingScope) -> Result<(), String> {
 }
 
 fn validate_inputs(
+    driver_id: &str,
     headers: &[String],
     columns: &[ColumnInfo],
     mapping: &[Option<usize>],
@@ -204,7 +208,11 @@ fn validate_inputs(
         if column.name.is_empty() || !targets.insert(&column.name) {
             return Err("Destination column names are empty or ambiguous.".into());
         }
-        if source.is_some_and(|index| index >= headers.len()) || (source.is_some() && server_managed(column)) {
+        if source.is_some_and(|index| index >= headers.len())
+            || (source.is_some()
+                && (is_generated(column)
+                    || (column.is_auto_increment && !supports_explicit_auto_increment_values(driver_id))))
+        {
             return Err("The selected mapping is invalid for this table.".into());
         }
     }
@@ -243,8 +251,8 @@ fn resolve_header(headers: &[String], source: &StoredHeader) -> Result<usize, St
         .ok_or_else(|| format!("CSV header '{}' is missing. Review the mapping manually.", source.name))
 }
 
-fn server_managed(column: &ColumnInfo) -> bool {
-    column.is_auto_increment || column.is_generated
+fn is_generated(column: &ColumnInfo) -> bool {
+    column.is_generated
 }
 
 #[cfg(test)]
@@ -305,6 +313,106 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(restored, [None, Some(0), None]);
+    }
+
+    #[test]
+    fn explicit_auto_increment_values_can_be_saved_and_restored() {
+        let headers = headers(&["id", "name"]);
+        let columns = [
+            ColumnInfo {
+                is_auto_increment: true,
+                ..column("id")
+            },
+            column("name"),
+            ColumnInfo {
+                is_generated: true,
+                ..column("computed")
+            },
+        ];
+        let mapping = [Some(0), Some(1), None];
+        let options = tablepro_core::import::CsvImportOptions::default();
+        let sheet = tablepro_core::import::read_csv(b"id,name\n901,alpha\n", &options, None).unwrap();
+
+        for driver_id in ["postgres", "mysql", "sqlite"] {
+            let directory = tempfile::tempdir().unwrap();
+            let store = CsvMappingStore::load_at(directory.path().join("mappings.json"));
+            let mut scope = scope(Uuid::new_v4(), "appdb", "users");
+            scope.driver_id = driver_id.into();
+
+            store.save(&scope, &headers, &columns, &mapping, true).unwrap();
+            let restored = store.restore(&scope, &headers, &columns, true).unwrap().unwrap();
+            assert_eq!(restored, mapping, "{driver_id}");
+
+            let plan = tablepro_core::import::build_insert_plan(
+                &tablepro_core::import::ImportTarget {
+                    driver_id,
+                    schema: None,
+                    table: "users",
+                    columns: &columns,
+                    mapping: &restored,
+                },
+                &sheet,
+                &options,
+            )
+            .unwrap();
+
+            assert_eq!(
+                plan.columns
+                    .iter()
+                    .map(|column| column.name.as_str())
+                    .collect::<Vec<_>>(),
+                ["id", "name"],
+                "{driver_id}"
+            );
+            assert_eq!(
+                plan.rows,
+                [[
+                    tablepro_core::Value::Text("901".into()),
+                    tablepro_core::Value::Text("alpha".into())
+                ]],
+                "{driver_id}"
+            );
+            if driver_id == "postgres" {
+                assert!(plan.statement.contains("OVERRIDING SYSTEM VALUE"));
+            }
+        }
+    }
+
+    #[test]
+    fn generated_values_remain_excluded_from_saved_mappings() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = CsvMappingStore::load_at(directory.path().join("mappings.json"));
+        let scope = scope(Uuid::new_v4(), "appdb", "users");
+        let headers = headers(&["computed"]);
+        let generated = [ColumnInfo {
+            is_generated: true,
+            ..column("computed")
+        }];
+
+        assert!(store.save(&scope, &headers, &generated, &[Some(0)], true).is_err());
+
+        store
+            .save(&scope, &headers, &[column("computed")], &[Some(0)], true)
+            .unwrap();
+        assert!(store.restore(&scope, &headers, &generated, true).is_err());
+    }
+
+    #[test]
+    fn mssql_identity_values_cannot_be_saved_as_explicit_mappings() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = CsvMappingStore::load_at(directory.path().join("mappings.json"));
+        let mut scope = scope(Uuid::new_v4(), "appdb", "users");
+        scope.driver_id = "mssql".into();
+        let columns = [ColumnInfo {
+            is_auto_increment: true,
+            ..column("id")
+        }];
+
+        assert!(
+            store
+                .save(&scope, &headers(&["id"]), &columns, &[Some(0)], true)
+                .is_err()
+        );
     }
 
     #[test]
@@ -414,7 +522,7 @@ mod tests {
     }
 
     #[test]
-    fn mappings_without_headers_and_generated_column_values_are_refused() {
+    fn mappings_without_headers_and_generated_values_are_refused() {
         let directory = tempfile::tempdir().unwrap();
         let store = CsvMappingStore::load_at(directory.path().join("mappings.json"));
         let scope = scope(Uuid::new_v4(), "appdb", "users");
@@ -428,8 +536,10 @@ mod tests {
                 .restore(&scope, &headers(&["Column 1"]), &[column("name")], false)
                 .is_err()
         );
-        let mut generated = column("id");
-        generated.is_auto_increment = true;
+        let generated = ColumnInfo {
+            is_generated: true,
+            ..column("id")
+        };
         assert!(
             store
                 .save(&scope, &headers(&["id"]), &[generated], &[Some(0)], true)

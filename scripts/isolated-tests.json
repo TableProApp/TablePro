@@ -103,6 +103,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::browse_tab::value_parse::postgres_identity_csv_import::value_contract_postgres_csv_import_preserves_explicit_identity_values"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::browse_tab::value_parse::mysql_enum_set_contract::value_contract_mysql_enum_set_keyed_edits_preserve_native_values_across_sql_modes"
     ],
     [

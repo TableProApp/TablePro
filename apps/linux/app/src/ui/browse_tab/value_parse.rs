@@ -916,6 +916,10 @@ mod mssql_max_value_contract;
 mod mssql_server_owned_columns;
 
 #[cfg(test)]
+#[path = "../../../tests/support/postgres_identity_csv_import.rs"]
+mod postgres_identity_csv_import;
+
+#[cfg(test)]
 #[path = "../../../tests/support/mysql_spatial_contract.rs"]
 mod mysql_spatial_contract;
 

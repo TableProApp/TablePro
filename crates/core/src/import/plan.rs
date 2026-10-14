@@ -4,7 +4,7 @@ use crate::import::cell::{CsvRowError, row_to_values_for_driver};
 use crate::import::csv_import::{CsvImportOptions, CsvSheet};
 use crate::query::{ColumnInfo, Value};
 use crate::sql_dialect::{
-    BuildSqlError, IdentError, build_insert_from_draft, placeholder_for, postgres_array_cast_type,
+    BuildSqlError, IdentError, build_insert_from_draft_touched, placeholder_for, postgres_array_cast_type,
     postgres_native_text_cast_type, postgres_numeric_cast_type, postgres_temporal_cast_type, quote_ident,
     validate_ident,
 };
@@ -15,6 +15,12 @@ pub const DEFAULT_IMPORT_BATCH_ROWS: usize = 500;
 
 /// Row failures the user is shown. The rest are counted, not listed.
 pub const MAX_REPORTED_ROW_ERRORS: usize = 20;
+
+pub fn supports_explicit_auto_increment_values(driver_id: &str) -> bool {
+    ["postgres", "mysql", "sqlite"]
+        .iter()
+        .any(|supported| driver_id.eq_ignore_ascii_case(supported))
+}
 
 #[derive(Debug, PartialEq, Eq, Error)]
 pub enum PlanError {
@@ -128,7 +134,9 @@ fn insert_columns(target: &ImportTarget<'_>) -> Result<(Vec<ColumnInfo>, Vec<Opt
         let Some(field) = field else {
             continue;
         };
-        if column.is_auto_increment || column.is_generated {
+        if column.is_generated
+            || (column.is_auto_increment && !supports_explicit_auto_increment_values(target.driver_id))
+        {
             continue;
         }
         validate_ident(&column.name)?;
@@ -204,14 +212,19 @@ fn insert_statement(
             }
         })
         .collect::<Vec<_>>();
-    let (statement, _) = build_insert_from_draft(
+    let touched = vec![true; shape_columns.len()];
+    let (mut statement, _) = build_insert_from_draft_touched(
         target.driver_id,
         target.schema,
         target.table,
         &shape_columns,
         &shape_values,
+        &touched,
     )
     .map_err(|error: BuildSqlError| PlanError::Sql(error.to_string()))?;
+    if target.driver_id.eq_ignore_ascii_case("postgres") && columns.iter().any(|column| column.is_auto_increment) {
+        statement = statement.replacen(" VALUES", " OVERRIDING SYSTEM VALUE VALUES", 1);
+    }
     Ok(statement)
 }
 
@@ -662,16 +675,64 @@ mod tests {
     }
 
     #[test]
-    fn a_column_the_engine_fills_itself_is_never_written() {
-        let mut columns = vec![
-            column("id", "bigint"),
-            column("computed", "text"),
-            column("name", "text"),
-        ];
+    fn a_mapped_auto_increment_column_keeps_explicit_values() {
+        let mut columns = vec![column("id", "bigint"), column("name", "text")];
         columns[0].is_auto_increment = true;
-        columns[1].is_generated = true;
-        let mapping = vec![Some(0), Some(1), Some(2)];
-        let sheet = sheet(&[&["1", "must be skipped", "ada"]], &["id", "computed", "name"]);
+        let mapping = vec![Some(0), Some(1)];
+        let sheet = sheet(&[&["901", "ada"]], &["id", "name"]);
+
+        let plan = build_insert_plan(&target(&columns, &mapping), &sheet, &CsvImportOptions::default()).expect("plan");
+
+        assert_eq!(
+            plan.statement,
+            "INSERT INTO \"people\" (\"id\", \"name\") OVERRIDING SYSTEM VALUE VALUES ($1, $2)"
+        );
+        assert_eq!(
+            plan.columns
+                .iter()
+                .map(|column| column.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["id", "name"]
+        );
+        assert_eq!(plan.rows, vec![vec![Value::Int(901), Value::Text("ada".into())]]);
+    }
+
+    #[test]
+    fn a_mapped_mysql_auto_increment_column_keeps_explicit_values() {
+        let mut columns = vec![column("id", "bigint"), column("name", "text")];
+        columns[0].is_auto_increment = true;
+        let mapping = vec![Some(0), Some(1)];
+        let sheet = sheet(&[&["901", "ada"]], &["id", "name"]);
+        let mut target = target(&columns, &mapping);
+        target.driver_id = "mysql";
+
+        let plan = build_insert_plan(&target, &sheet, &CsvImportOptions::default()).expect("plan");
+
+        assert_eq!(plan.statement, "INSERT INTO `people` (`id`, `name`) VALUES (?, ?)");
+        assert_eq!(plan.rows, vec![vec![Value::Int(901), Value::Text("ada".into())]]);
+    }
+
+    #[test]
+    fn a_mssql_identity_column_remains_server_owned() {
+        let mut columns = vec![column("id", "int"), column("name", "text")];
+        columns[0].is_auto_increment = true;
+        let mapping = vec![Some(0), Some(1)];
+        let sheet = sheet(&[&["901", "ada"]], &["id", "name"]);
+        let mut target = target(&columns, &mapping);
+        target.driver_id = "mssql";
+
+        let plan = build_insert_plan(&target, &sheet, &CsvImportOptions::default()).expect("plan");
+
+        assert_eq!(plan.statement, "INSERT INTO [people] ([name]) VALUES (@P1)");
+        assert_eq!(plan.rows, vec![vec![Value::Text("ada".into())]]);
+    }
+
+    #[test]
+    fn a_generated_column_is_never_written() {
+        let mut columns = vec![column("computed", "text"), column("name", "text")];
+        columns[0].is_generated = true;
+        let mapping = vec![Some(0), Some(1)];
+        let sheet = sheet(&[&["must be skipped", "ada"]], &["computed", "name"]);
 
         let plan = build_insert_plan(&target(&columns, &mapping), &sheet, &CsvImportOptions::default()).expect("plan");
 

@@ -171,7 +171,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Reopening query history refreshes the list so queries run while it was closed appear immediately.
 - PostgreSQL connections accept a bracketed IPv6 host such as `[::1]`.
 - A PostgreSQL login the server refuses (wrong password or missing database) is reported at once instead of being retried, and a pooler in transaction mode gets an explanatory hint on prepared-statement errors.
-- CSV import previews now keep auto-increment and generated columns on Skip and explain that the database supplies their values.
+- CSV imports can map explicit auto-increment values on PostgreSQL, MySQL/MariaDB and SQLite while generated columns remain excluded.
 - Grid edits and spreadsheet paste preserve line breaks inside text values.
 
 - MySQL and MariaDB connections with TLS Disabled no longer use a saved client certificate or key
