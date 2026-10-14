@@ -23,7 +23,8 @@ internal struct MCPServerComposition {
         let authenticator = MCPBearerTokenAuthenticator(tokenStore: tokenStore, rateLimiter: rateLimiter)
         let transport = MCPHttpServerTransport(
             configuration: .loopback(port: port),
-            authenticator: authenticator
+            authenticator: authenticator,
+            pairingService: .shared
         )
         let subscriptions = MCPSubscriptionRegistry()
         let services = MCPToolServices(

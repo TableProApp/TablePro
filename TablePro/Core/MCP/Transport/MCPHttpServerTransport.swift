@@ -18,6 +18,7 @@ public actor MCPHttpServerTransport {
 
     private let configuration: MCPHttpServerConfiguration
     private let authenticator: any MCPAuthenticator
+    private let pairingService: MCPPairingService
     private let clock: any MCPClock
 
     private var listener: NWListener?
@@ -33,13 +34,15 @@ public actor MCPHttpServerTransport {
     nonisolated public let listenerState: AsyncStream<MCPHttpServerState>
     nonisolated private let stateContinuation: AsyncStream<MCPHttpServerState>.Continuation
 
-    public init(
+    init(
         configuration: MCPHttpServerConfiguration,
         authenticator: any MCPAuthenticator,
+        pairingService: MCPPairingService,
         clock: any MCPClock = MCPSystemClock()
     ) {
         self.configuration = configuration
         self.authenticator = authenticator
+        self.pairingService = pairingService
         self.clock = clock
 
         let (exchanges, exchangesContinuation) = AsyncStream<MCPInboundExchange>.makeStream(
@@ -232,6 +235,7 @@ public actor MCPHttpServerTransport {
         let continuation = exchangesContinuation
         return MCPHttpRequestRouter(
             authenticator: authenticator,
+            pairingService: pairingService,
             clock: clock,
             boundPort: boundPort == 0 ? configuration.port : boundPort,
             emitInbound: { exchange in

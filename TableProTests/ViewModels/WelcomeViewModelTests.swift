@@ -36,15 +36,17 @@ final class WelcomeViewModelTests {
             at: connectionFileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        connectionStorage = ConnectionStorage(
+        let connectionStorage = ConnectionStorage(
             fileURL: connectionFileURL,
             userDefaults: defaults,
             syncTracker: tracker
         )
+        self.connectionStorage = connectionStorage
+        // The parameter is an @escaping @autoclosure: `self.connectionStorage` would capture self.
         groupStorage = GroupStorage(
             userDefaults: defaults,
             syncTracker: tracker,
-            connectionStorage: self.connectionStorage
+            connectionStorage: connectionStorage
         )
         welcomeRouter = WelcomeRouter()
         recents = RecentConnectionsStore(defaults: defaults, appEvents: AppEvents())

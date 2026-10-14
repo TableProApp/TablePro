@@ -61,6 +61,12 @@ final class OfflineRegistry {
         OfflineRegistryProtocol.requestCount(for: manifestURL)
     }
 
+    /// A Plugins pane's fetch writes defaults and the cache file when it lands, and a write after
+    /// deinit recreates both directories. A fresh manifest also makes a fetch still queued a no-op.
+    func settle() async {
+        await client.ensureManifest(.ifStale)
+    }
+
     deinit {
         try? FileManager.default.removeItem(at: directory)
     }

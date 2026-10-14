@@ -65,11 +65,7 @@ private func bytes(hex: String) -> PluginCellValue {
 /// The point `hexIsDrawn` reads as text, here as the bytes a driver hands over.
 private let ewkbPoint = "0101000020E610000050FC1873D79A5EC0D0D556EC2FE34240"
 
-/// Names the fixture's column directly rather than going through `SpatialColumn.columns(in:)`.
-///
-/// The projector's job is to project whatever column it is handed, and which columns are offered is
-/// a separate decision with its own tests above. Those two have to stay separate here, because the
-/// gate refuses a column no reader can read and that is exactly the fixture several of these need.
+/// Skips `SpatialColumn.columns(in:)`, whose gate refuses a column no reader can read, the fixture several cases need.
 private func onlyColumn(_ tableRows: TableRows) -> SpatialColumn {
     SpatialColumn(
         id: SpatialColumnID(name: tableRows.columns[0], occurrence: 1),
@@ -221,14 +217,14 @@ struct SpatialColumnTests {
     /// label distinguishes them. Naming rather than indexing is what lets a choice survive a
     /// re-execution that reorders the SELECT list.
     @Test("Duplicate column names stay distinguishable")
-    func duplicateNames() {
+    func duplicateNames() throws {
         let duplicated = TableRows(
             rows: [],
             columns: ["geom", "geom"],
             columnTypes: [.spatial(rawType: "geometry"), .spatial(rawType: "geometry")]
         )
         let columns = SpatialColumn.columns(in: duplicated)
-        #expect(columns.count == 2)
+        try #require(columns.count == 2)
         #expect(columns[0].id != columns[1].id)
         #expect(columns[0].displayName == "geom (1)")
         #expect(columns[1].displayName == "geom (2)")
@@ -237,7 +233,7 @@ struct SpatialColumnTests {
 
 struct SpatialResultProjectorTests {
     @Test("EWKT points project to shapes tagged with their row")
-    func projectsPoints() async {
+    func projectsPoints() async throws {
         let table = rows([
             "SRID=4326;POINT(-122.4194 37.7749)",
             "SRID=4326;POINT(-0.1276 51.5072)",
@@ -247,16 +243,16 @@ struct SpatialResultProjectorTests {
             displayIDs: nil,
             column: onlyColumn(table)
         )
-        #expect(projection.shapes.count == 2)
+        try #require(projection.shapes.count == 2)
         #expect(projection.diagnostics.drawnRows == 2)
         #expect(projection.diagnostics.drawnSRID == wgs84)
         #expect(projection.shapes[0].rowID == .existing(0))
         #expect(projection.shapes[0].kind == .point)
-        #expect(projection.shapes[0].rings[0][0].longitude == -122.4194)
+        #expect(projection.shapes[0].rings.first?.first?.longitude == -122.4194)
     }
 
     /// A map cannot show two coordinate systems at once, so the majority is drawn and the rest are
-    /// counted. Drawing fewer shapes with no explanation is the failure every competitor ships.
+    /// counted.
     @Test("A minority SRID is reported rather than silently dropped")
     func minoritySRIDIsCounted() async {
         let table = rows([
@@ -276,7 +272,7 @@ struct SpatialResultProjectorTests {
     }
 
     @Test("Web Mercator is inverted rather than refused")
-    func webMercatorIsDrawn() async {
+    func webMercatorIsDrawn() async throws {
         let table = rows(["SRID=3857;POINT(-13627665.271218073 4547675.354340557)"])
         let projection = await SpatialResultProjector.shared.project(
             tableRows: table,
@@ -284,7 +280,7 @@ struct SpatialResultProjectorTests {
             column: onlyColumn(table)
         )
         #expect(projection.diagnostics.projectability == .webMercator)
-        let coordinate = projection.shapes[0].rings[0][0]
+        let coordinate = try #require(projection.shapes.first?.rings.first?.first)
         #expect(abs(coordinate.longitude - -122.4194) < 1e-9)
         #expect(abs(coordinate.latitude - 37.7749) < 1e-9)
     }
@@ -341,14 +337,14 @@ struct SpatialResultProjectorTests {
     }
 
     @Test("A polygon keeps its holes")
-    func polygonKeepsHoles() async {
+    func polygonKeepsHoles() async throws {
         let table = rows(["POLYGON((0 0,4 0,4 4,0 4,0 0),(1 1,2 1,2 2,1 2,1 1))"])
         let projection = await SpatialResultProjector.shared.project(
             tableRows: table,
             displayIDs: nil,
             column: onlyColumn(table)
         )
-        #expect(projection.shapes.count == 1)
+        try #require(projection.shapes.count == 1)
         #expect(projection.shapes[0].rings.count == 2)
     }
 
@@ -393,14 +389,14 @@ struct SpatialResultProjectorTests {
     /// The map draws the display order, so a value filter narrows it without any extra wiring, and
     /// the shapes come back in the order the grid is showing.
     @Test("Only the display order is drawn")
-    func honoursDisplayOrder() async {
+    func honoursDisplayOrder() async throws {
         let table = rows(["POINT(1 1)", "POINT(2 2)", "POINT(3 3)"])
         let projection = await SpatialResultProjector.shared.project(
             tableRows: table,
             displayIDs: [.existing(2), .existing(0)],
             column: onlyColumn(table)
         )
-        #expect(projection.shapes.count == 2)
+        try #require(projection.shapes.count == 2)
         #expect(projection.shapes[0].rowID == .existing(2))
         #expect(projection.shapes[1].rowID == .existing(0))
     }

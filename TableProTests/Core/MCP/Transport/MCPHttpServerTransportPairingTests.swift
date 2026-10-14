@@ -4,7 +4,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MCP HTTP Server Transport Pairing", .serialized)
 struct MCPHttpServerTransportPairingTests {
     private static let exchangePath = "/v1/integrations/exchange"
 
@@ -17,18 +16,23 @@ struct MCPHttpServerTransportPairingTests {
         "test-code-\(UUID().uuidString)"
     }
 
-    private func store() async -> PairingExchangeStore {
-        await MainActor.run { MCPPairingService.shared.store }
+    private func withServer(
+        store: PairingExchangeStore,
+        body: (UInt16) async throws -> Void
+    ) async throws {
+        let service = await MCPPairingService(store: store)
+        try await MCPTransportTestHarness.withServer(pairingService: service, body: body)
     }
 
     private func insertPairingCode(
+        into store: PairingExchangeStore,
         code: String,
         plaintextToken: String,
         verifier: String,
         expiresIn: TimeInterval,
         grantedScopes: Set<MCPScope> = MCPScope.readOnlySet
     ) async throws {
-        try await store().insert(
+        try await store.insert(
             code: code,
             record: PairingExchangeRecord(
                 plaintextToken: plaintextToken,
@@ -38,10 +42,6 @@ struct MCPHttpServerTransportPairingTests {
                 expiresAt: Date.now.addingTimeInterval(expiresIn)
             )
         )
-    }
-
-    private func discard(code: String) async {
-        await store().discard(code: code)
     }
 
     private func exchangeRequest(port: UInt16, body: Data?) -> Data {
@@ -111,11 +111,13 @@ struct MCPHttpServerTransportPairingTests {
 
     @Test("A valid code and verifier exchange for the paired token")
     func successfulExchangeReturnsTheToken() async throws {
-        try await MCPTransportTestHarness.withServer { port in
+        let store = PairingExchangeStore()
+        try await withServer(store: store) { port in
             let code = uniqueCode()
             let verifier = uniqueVerifier()
             let plaintext = "tp_test-token-\(UUID().uuidString)"
             try await insertPairingCode(
+                into: store,
                 code: code,
                 plaintextToken: plaintext,
                 verifier: verifier,
@@ -130,17 +132,19 @@ struct MCPHttpServerTransportPairingTests {
             #expect(try response.plainJsonField("token") == plaintext)
             #expect(try response.plainJsonField("scope") == "resources:read tools:read")
 
-            let stillPending = await store().contains(code: code)
+            let stillPending = await store.contains(code: code)
             #expect(!stillPending, "a pairing code is single-use")
         }
     }
 
     @Test("The exchange names every granted scope, the display scope included")
     func exchangeReportsGrantedScopes() async throws {
-        try await MCPTransportTestHarness.withServer { port in
+        let store = PairingExchangeStore()
+        try await withServer(store: store) { port in
             let code = uniqueCode()
             let verifier = uniqueVerifier()
             try await insertPairingCode(
+                into: store,
                 code: code,
                 plaintextToken: "tp_test-token-\(UUID().uuidString)",
                 verifier: verifier,
@@ -171,15 +175,16 @@ struct MCPHttpServerTransportPairingTests {
 
     @Test("A verifier that does not match the challenge answers 403 and burns the code")
     func mismatchedVerifierIsForbidden() async throws {
-        try await MCPTransportTestHarness.withServer { port in
+        let store = PairingExchangeStore()
+        try await withServer(store: store) { port in
             let code = uniqueCode()
             try await insertPairingCode(
+                into: store,
                 code: code,
                 plaintextToken: "tp_test",
                 verifier: uniqueVerifier(),
                 expiresIn: 60
             )
-            defer { Task { await discard(code: code) } }
 
             let payload = ["code": code, "code_verifier": uniqueVerifier()]
             let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
@@ -188,23 +193,24 @@ struct MCPHttpServerTransportPairingTests {
             #expect(response.statusCode == 403)
             #expect(try response.plainJsonField("error") == "Challenge mismatch")
 
-            let stillPending = await store().contains(code: code)
+            let stillPending = await store.contains(code: code)
             #expect(!stillPending, "a failed verification burns the code")
         }
     }
 
     @Test("An expired code is unredeemable")
     func expiredCodeIsUnredeemable() async throws {
-        try await MCPTransportTestHarness.withServer { port in
+        let store = PairingExchangeStore()
+        try await withServer(store: store) { port in
             let code = uniqueCode()
             let verifier = uniqueVerifier()
             try await insertPairingCode(
+                into: store,
                 code: code,
                 plaintextToken: "tp_test",
                 verifier: verifier,
                 expiresIn: -60
             )
-            defer { Task { await discard(code: code) } }
 
             let payload = ["code": code, "code_verifier": verifier]
             let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
@@ -213,6 +219,25 @@ struct MCPHttpServerTransportPairingTests {
             #expect(response.statusCode == 410 || response.statusCode == 404)
             let message = try response.plainJsonField("error")
             #expect(message == "Pairing code expired" || message == "Pairing code not found")
+        }
+    }
+
+    @Test("Failed exchanges past the limit lock the address out with 429 and Retry-After")
+    func repeatedFailuresAreRateLimited() async throws {
+        let allowedFailures = await MCPPairingService.exchangeRateLimitPolicy.maxFailedAttempts
+        try await MCPTransportTestHarness.withServer { port in
+            for _ in 0..<allowedFailures {
+                let payload = ["code": uniqueCode(), "code_verifier": uniqueVerifier()]
+                let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+                #expect(try await post(port: port, body: body).statusCode == 404)
+            }
+
+            let payload = ["code": uniqueCode(), "code_verifier": uniqueVerifier()]
+            let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            let response = try await post(port: port, body: body)
+
+            #expect(response.statusCode == 429)
+            #expect(response.header("Retry-After") != nil)
         }
     }
 

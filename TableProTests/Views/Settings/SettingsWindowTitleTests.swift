@@ -23,19 +23,20 @@ final class SettingsWindowTitleTests: XCTestCase {
         storedPane = AppStorageEnvironment.shared.defaults.string(forKey: PreferenceKeys.selectedSettingsPane.name)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         for window in windows {
             window.contentViewController = nil
             window.close()
         }
         windows = []
+        await registry?.settle()
         registry = nil
         if let storedPane {
             AppStorageEnvironment.shared.defaults.set(storedPane, forKey: PreferenceKeys.selectedSettingsPane.name)
         } else {
             AppStorageEnvironment.shared.defaults.removeObject(forKey: PreferenceKeys.selectedSettingsPane.name)
         }
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // The Plugins pane fetches the registry manifest when it appears.

@@ -11,6 +11,7 @@ struct MCPHttpRequestRouter: Sendable {
     static let pairingPath = "/v1/integrations/exchange"
 
     let authenticator: any MCPAuthenticator
+    let pairingService: MCPPairingService
     let clock: any MCPClock
     let boundPort: UInt16
     let emitInbound: InboundEmitter

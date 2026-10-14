@@ -50,7 +50,7 @@ internal extension MCPHttpRequestRouter {
         }
 
         do {
-            let record = try await MCPPairingService.shared.exchange(
+            let record = try await pairingService.exchange(
                 PairingExchange(code: parsed.code, verifier: parsed.codeVerifier),
                 clientAddress: clientAddress
             )
