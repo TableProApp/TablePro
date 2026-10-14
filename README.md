@@ -2,7 +2,7 @@
 
 BookiE is a native Linux database client built with Rust, GTK4, libadwaita, GtkSourceView, and Relm4. It was previously called TablePro on this branch. The product repository is [`cozyGarage/BookiE`](https://github.com/cozyGarage/BookiE); current development is on the `linux` branch. The Cargo workspace lives at the repository root (`crates/`, `apps/linux/`, `tests/`, `scripts/`, `docs/`) and requires Rust 1.98.
 
-Current delivery scope and evidence: [active sprint](docs/bookie-0.2-sprint.md). The [October 3 consistency review](docs/archive/architecture-consistency-review-2026-10-03.md) reconciles the accumulated documentation. Earlier audits prove their recorded source trees; package release approval remains separate.
+Current delivery scope and evidence: [active sprint](docs/bookie-0.2-sprint.md). The [documentation map](docs/README.md) identifies the current source for each topic; dated reviews in the archive prove only the trees they examined. Package release approval remains separate.
 
 The rename covers the display name, packaging install names (`bookie`, `bookie-agentd`, with `tablepro*` aliases) and branding assets only. Cargo package and binary names stay `tablepro-app` / `tablepro-agentd`. App ID, config and data paths, keyring schema, UUIDs, audit format and protocol contracts stay `tablepro` / `com.tablepro.linux`. Crate names remain `tablepro-*`.
 
