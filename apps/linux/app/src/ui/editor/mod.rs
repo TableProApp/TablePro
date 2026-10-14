@@ -253,156 +253,166 @@ impl SimpleComponent for SqlEditor {
     type Output = SqlEditorOutput;
 
     view! {
-        adw::ToolbarView {
-            add_top_bar = &gtk::Box {
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 8,
-                set_margin_top: 8,
-                set_margin_bottom: 8,
-                set_margin_start: 8,
-                set_margin_end: 8,
-
-                gtk::Box {
-                    set_hexpand: true,
-                },
-
-                gtk::Button {
-                    set_label: &crate::tr!("Fold block"),
-                    set_tooltip_text: Some(crate::tr!("Fold the SQL block at the cursor").as_str()),
-                    add_css_class: "flat",
-                    connect_clicked => SqlEditorInput::ToggleFold,
-                },
-
-                gtk::Button {
-                    set_label: &crate::tr!("Unfold all"),
-                    set_tooltip_text: Some(crate::tr!("Show all folded SQL blocks").as_str()),
-                    add_css_class: "flat",
-                    connect_clicked => SqlEditorInput::UnfoldAll,
-                },
-
-                #[name = "cursor_info"]
-                gtk::Label {
-                    set_halign: gtk::Align::End,
-                    add_css_class: "dim-label",
-                    add_css_class: "monospace",
-                    set_margin_end: 8,
-                },
-
-                #[name = "warnings_button"]
-                gtk::MenuButton {
-                    set_label: &crate::tr!("SQL warnings"),
-                    set_tooltip_text: Some(crate::tr!("Character suggestions; SQL is not changed").as_str()),
-                    set_visible: false,
-                },
-
-                #[name = "running_spinner"]
-                gtk::Spinner {
-                    set_visible: false,
-                    set_spinning: true,
-                    set_size_request: (20, 20),
-                },
-
-                #[name = "status"]
-                gtk::Label {
-                    set_halign: gtk::Align::End,
-                    add_css_class: "dim-label",
-                },
-
-                #[name = "pin_button"]
-                gtk::Button {
-                    set_label: &crate::tr!("Pin results"),
-                    set_tooltip_text: Some(crate::tr!("Keep these results above the results of the next run").as_str()),
-                    set_sensitive: false,
-                    add_css_class: "flat",
-                    connect_clicked => SqlEditorInput::TogglePin,
-                },
-
-                #[name = "cancel_button"]
-                gtk::Button {
-                    set_label: &crate::tr!("Cancel"),
-                    set_tooltip_text: Some(crate::tr!("Cancel running query (Esc)").as_str()),
-                    set_visible: false,
-                    add_css_class: "flat",
-                    connect_clicked => SqlEditorInput::Cancel,
-                },
-
-                #[name = "session_button"]
-                gtk::ToggleButton {
-                    set_label: &crate::tr!("Session"),
-                    set_tooltip_text: Some(crate::tr!("Run this tab on its own connection, so settings, temporary tables and transactions carry over between runs").as_str()),
-                    add_css_class: "flat",
-                    connect_toggled[sender] => move |button| {
-                        sender.input(SqlEditorInput::SessionToggled(button.is_active()));
-                    },
-                },
-
-                #[name = "explain_button"]
-                gtk::Button {
-                    set_label: &crate::tr!("Explain"),
-                    set_tooltip_text: Some(crate::tr!("Explain query plan").as_str()),
-                    add_css_class: "flat",
-                    connect_clicked => SqlEditorInput::Explain,
-                },
-
-                #[name = "run_button"]
-                gtk::Button {
-                    set_label: &crate::tr!("Run"),
-                    set_tooltip_text: Some(crate::tr!("Run query (Ctrl+Return)").as_str()),
-                    add_css_class: "suggested-action",
-                    connect_clicked => SqlEditorInput::Run,
-                },
-
-                #[name = "split_button"]
-                gtk::ToggleButton {
-                    set_label: &crate::tr!("Split"),
-                    set_tooltip_text: Some(crate::tr!("Show or hide a second SQL editor pane").as_str()),
-                    add_css_class: "flat",
-                    connect_toggled[sender] => move |button| {
-                        sender.input(SqlEditorInput::SplitToggled(button.is_active()));
-                    },
-                },
-            },
+        #[root]
+        adw::BreakpointBin {
+            set_width_request: 640,
+            set_height_request: 240,
 
             #[wrap(Some)]
-            set_content = &gtk::Paned {
-                set_orientation: gtk::Orientation::Vertical,
-                set_position: 280,
-                set_vexpand: true,
-                set_hexpand: true,
+            #[name = "toolbar_view"]
+            set_child = &adw::ToolbarView {
+                add_top_bar = &gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+                    set_margin_top: 8,
+                    set_margin_bottom: 8,
+                    set_margin_start: 8,
+                    set_margin_end: 8,
 
-                #[wrap(Some)]
-                #[name = "editor_holder"]
-                set_start_child = &gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_vexpand: true,
-                    set_hexpand: true,
+                    gtk::Box {
+                        set_hexpand: true,
+                    },
 
-                    #[name = "source_scroll"]
-                    gtk::ScrolledWindow {
-                        set_min_content_height: 200,
+                    #[name = "fold_button"]
+                    gtk::Button {
+                        set_label: &crate::tr!("Fold block"),
+                        set_tooltip_text: Some(crate::tr!("Fold the SQL block at the cursor").as_str()),
+                        add_css_class: "flat",
+                        connect_clicked => SqlEditorInput::ToggleFold,
+                    },
 
-                        #[wrap(Some)]
-                        #[name = "source_view"]
-                        set_child = &sourceview5::View {
-                            set_show_line_numbers: true,
-                            set_monospace: true,
-                            set_auto_indent: true,
-                            set_highlight_current_line: true,
-                            set_tab_width: 4,
-                            set_top_margin: 8,
-                            set_bottom_margin: 8,
-                            set_left_margin: 8,
-                            set_right_margin: 8,
+                    #[name = "unfold_button"]
+                    gtk::Button {
+                        set_label: &crate::tr!("Unfold all"),
+                        set_tooltip_text: Some(crate::tr!("Show all folded SQL blocks").as_str()),
+                        add_css_class: "flat",
+                        connect_clicked => SqlEditorInput::UnfoldAll,
+                    },
+
+                    #[name = "cursor_info"]
+                    gtk::Label {
+                        set_halign: gtk::Align::End,
+                        add_css_class: "dim-label",
+                        add_css_class: "monospace",
+                        set_margin_end: 8,
+                    },
+
+                    #[name = "warnings_button"]
+                    gtk::MenuButton {
+                        set_label: &crate::tr!("SQL warnings"),
+                        set_tooltip_text: Some(crate::tr!("Character suggestions; SQL is not changed").as_str()),
+                        set_visible: false,
+                    },
+
+                    #[name = "running_spinner"]
+                    gtk::Spinner {
+                        set_visible: false,
+                        set_spinning: true,
+                        set_size_request: (20, 20),
+                    },
+
+                    #[name = "status"]
+                    gtk::Label {
+                        set_halign: gtk::Align::End,
+                        add_css_class: "dim-label",
+                    },
+
+                    #[name = "pin_button"]
+                    gtk::Button {
+                        set_label: &crate::tr!("Pin results"),
+                        set_tooltip_text: Some(crate::tr!("Keep these results above the results of the next run").as_str()),
+                        set_sensitive: false,
+                        add_css_class: "flat",
+                        connect_clicked => SqlEditorInput::TogglePin,
+                    },
+
+                    #[name = "cancel_button"]
+                    gtk::Button {
+                        set_label: &crate::tr!("Cancel"),
+                        set_tooltip_text: Some(crate::tr!("Cancel running query (Esc)").as_str()),
+                        set_visible: false,
+                        add_css_class: "flat",
+                        connect_clicked => SqlEditorInput::Cancel,
+                    },
+
+                    #[name = "session_button"]
+                    gtk::ToggleButton {
+                        set_label: &crate::tr!("Session"),
+                        set_tooltip_text: Some(crate::tr!("Run this tab on its own connection, so settings, temporary tables and transactions carry over between runs").as_str()),
+                        add_css_class: "flat",
+                        connect_toggled[sender] => move |button| {
+                            sender.input(SqlEditorInput::SessionToggled(button.is_active()));
+                        },
+                    },
+
+                    #[name = "explain_button"]
+                    gtk::Button {
+                        set_label: &crate::tr!("Explain"),
+                        set_tooltip_text: Some(crate::tr!("Explain query plan").as_str()),
+                        add_css_class: "flat",
+                        connect_clicked => SqlEditorInput::Explain,
+                    },
+
+                    #[name = "run_button"]
+                    gtk::Button {
+                        set_label: &crate::tr!("Run"),
+                        set_tooltip_text: Some(crate::tr!("Run query (Ctrl+Return)").as_str()),
+                        add_css_class: "suggested-action",
+                        connect_clicked => SqlEditorInput::Run,
+                    },
+
+                    #[name = "split_button"]
+                    gtk::ToggleButton {
+                        set_label: &crate::tr!("Split"),
+                        set_tooltip_text: Some(crate::tr!("Show or hide a second SQL editor pane").as_str()),
+                        add_css_class: "flat",
+                        connect_toggled[sender] => move |button| {
+                            sender.input(SqlEditorInput::SplitToggled(button.is_active()));
                         },
                     },
                 },
 
                 #[wrap(Some)]
-                #[name = "results_holder"]
-                set_end_child = &gtk::Box {
+                set_content = &gtk::Paned {
                     set_orientation: gtk::Orientation::Vertical,
+                    set_position: 280,
+                    set_vexpand: true,
+                    set_hexpand: true,
+
+                    #[wrap(Some)]
+                    #[name = "editor_holder"]
+                    set_start_child = &gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_vexpand: true,
+                        set_hexpand: true,
+
+                        #[name = "source_scroll"]
+                        gtk::ScrolledWindow {
+                            set_min_content_height: 200,
+
+                            #[wrap(Some)]
+                            #[name = "source_view"]
+                            set_child = &sourceview5::View {
+                                set_show_line_numbers: true,
+                                set_monospace: true,
+                                set_auto_indent: true,
+                                set_highlight_current_line: true,
+                                set_tab_width: 4,
+                                set_top_margin: 8,
+                                set_bottom_margin: 8,
+                                set_left_margin: 8,
+                                set_right_margin: 8,
+                            },
+                        },
+                    },
+
+                    #[wrap(Some)]
+                    #[name = "results_holder"]
+                    set_end_child = &gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                    },
                 },
-            },
+            }
         }
     }
 
@@ -443,9 +453,17 @@ impl SimpleComponent for SqlEditor {
                 }
             });
         }
+        let narrow = adw::Breakpoint::new(adw::BreakpointCondition::new_length(
+            adw::BreakpointConditionLengthType::MaxWidth,
+            900.0,
+            adw::LengthUnit::Px,
+        ));
+        narrow.add_setter(&widgets.fold_button, "visible", Some(&false.into()));
+        narrow.add_setter(&widgets.unfold_button, "visible", Some(&false.into()));
+        root.add_breakpoint(narrow);
         let find = find_bar::FindBar::new(&widgets.source_view);
         if let Some(find) = &find {
-            root.add_top_bar(find.widget());
+            widgets.toolbar_view.add_top_bar(find.widget());
         }
         apply_editor_scheme(&widgets.source_view);
         let view_for_theme = widgets.source_view.clone();
