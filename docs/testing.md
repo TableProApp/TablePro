@@ -204,7 +204,7 @@ Where each check runs is owned by [CI tiers in the validation playbook](validati
 
 ### Gating several pull requests at once
 
-Gates are serialised by a host lock and one full run takes 10 to 20 minutes, so a queue of N pull requests costs N runs. `scripts/forgejo-train.sh BRANCH BRANCH...` merges the named remote branches onto `origin/linux` in a throwaway worktree, skips any that conflict, and gates the result as a single run. A pass proves the combination; a fail means gating the branches one at a time. `FORGEJO_TRAIN_DRY=1` only builds the train. `CHANGELOG.md` and the PostgreSQL `connection_paths.rs` registry merge by union (`.gitattributes`), because every pull request appends to them and they were the usual cause of conflicts.
+`scripts/forgejo-train.sh BRANCH BRANCH...` merges the named remote branches onto `origin/linux` in a throwaway worktree, skips any that conflict, and gates the combined result once. A pass proves that combination only; each pull request still needs its required gate on the head to be merged, as described in the [validation playbook](validation-playbook.md#hosted-checks). A failed train can help isolate conflicts or interactions; gate its branches individually to locate the cause. `FORGEJO_TRAIN_DRY=1` only builds the train. `CHANGELOG.md` and the PostgreSQL `connection_paths.rs` registry merge by union (`.gitattributes`), because every pull request appends to them and they were the usual cause of conflicts.
 
 ### Reading a red run
 

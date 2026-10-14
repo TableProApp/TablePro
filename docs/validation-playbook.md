@@ -104,7 +104,7 @@ Build/package, mutation, coverage and acceptance retain their existing entrypoin
 
 ## Hosted checks
 
-Check every required result against the exact commit under review. A skipped check is not a pass, and a green fast tier does not certify tests that only run in a separate acceptance tier. The current workflow files and [AGENTS.md](../AGENTS.md) define which checks run for each change and where acceptance happens.
+Check every required result against the exact commit under review. A skipped check is not a pass, and a green fast tier does not certify tests that only run in a separate acceptance tier. A `forgejo-train.sh` pass validates only the combined train SHA; it does not satisfy the required gate for each pull request's own head. The current workflow files and [AGENTS.md](../AGENTS.md) define which checks run for each change and where acceptance happens.
 
 Treat static-analysis findings as evidence to review. Fix valid findings in a focused change. For a confirmed false positive or accepted exception, record a short reason in the tool; keep a reusable explanation here only when it helps other contributors.
 
