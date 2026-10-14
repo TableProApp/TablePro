@@ -55,7 +55,7 @@ evidence and a finite contract board; the remaining native-type matrix and
 session reconnect follow-up stay open. Continue with one bounded
 engine/type/consumer case at a time using the
 [agent task template](../validation-playbook.md#agent-task-template).
-The clean LT-TRUNG full gate passed on `8e7766c`; the strict GTK+DuckDB
+The clean local full gate passed on `8e7766c`; the strict GTK+DuckDB
 values layer passed 190 tests across 11 suites, including 28 DuckDB contracts,
 on code commit `67f5857`. The runner reused 746 fresh artifacts and rebuilt
 only the ClickHouse package. The local quick gate passed outside the sandbox
@@ -72,7 +72,7 @@ fold contract passes the focused unit/server checks, strict 190-test values run
 and local quick gate on the tested `b4fd0e7` worktree; Build `37039255022`,
 Security `37039255289` and Flatpak `37039255134` all passed. Validation reused
 all 747 Cargo artifacts. See the
-[validation playbook](../validation-playbook.md#lt-trung-pre-push-gate) for the
+[validation playbook](../validation-playbook.md#local-pre-push-gate) for the
 repeatable local gate and retained reports.
 
 1. **B3:** finish the remaining value and consumer contracts, one reproducible case

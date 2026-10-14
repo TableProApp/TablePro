@@ -65,7 +65,7 @@ Source: `PolicyGuard` authorize family in `crates/policy/src/guard.rs`.
 2. On a shared connection, `authorize_analysis` may return early from `shared_connection_decision` before categorical rules. Session mode calls `authorize_classified`, which skips that short-circuit and goes to `authorize_with_bound`.
 3. On `Allow`, continue to execute and mask (`should_mask` is agent-only).
 4. On `Deny`, write audit terminal `denied` with `AuditErrorCategory::Policy`, then return `DriverError::PolicyDenied`.
-5. On `RequireApproval`, call `ApprovalSink::request` and wait. `ApprovalOutcome` is `AllowOnce` or `Deny` (`crates/policy/src/approval.rs`). Cancellation during the wait writes terminal `cancelled`. There is no approval-timeout variant.
+5. On `RequireApproval`, call `ApprovalSink::request` and wait. `ApprovalOutcome` is `AllowOnce` or `Deny` (`crates/policy/src/approval.rs`). `OperationControl` interrupts the wait on cancellation or deadline; the guard records the matching `cancelled` or `timed_out` audit outcome.
 
 Audit intent is written before driver execution when `intent_is_required` is true. A failed required intent write returns `DriverError::PolicyDenied` mentioning that audit intent could not be persisted (`required_intent_failure_prevents_driver_execution`). Local or Dev human principals with `human_allow_unaudited_writes` may continue after a warning (`handle_intent_failure`).
 
@@ -120,6 +120,7 @@ Audit intent is written before driver execution when `intent_is_required` is tru
 | awaiting-approval | allowed | approval accepted | approval sink |
 | awaiting-approval | denied | approval rejected | audit terminal `denied` |
 | awaiting-approval | cancelled | `OperationControl` cancelled during wait | audit terminal `cancelled` |
+| awaiting-approval | timed_out | `OperationControl` deadline during wait | audit terminal `timed_out` |
 | allowed | intent-recorded | audit intent write | fail closed if the write fails |
 | intent-recorded | succeeded | driver returns | audit `succeeded` |
 | intent-recorded | failed | driver error | audit `failed` |

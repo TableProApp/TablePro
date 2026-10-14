@@ -12,7 +12,7 @@ Run commands from the repository root with the toolchain required by the reposit
 
 ### Local pre-push gate
 
-On a strong local host with Docker, run the available hosted-equivalent layers before pushing:
+On a local machine with Docker and the required native libraries, run the available hosted-equivalent layers before pushing:
 
 ```bash
 python3 scripts/run-test-layer.py full app-server values drivers tls \
@@ -20,7 +20,7 @@ python3 scripts/run-test-layer.py full app-server values drivers tls \
   workflow-lint harness packaging-contracts change-contracts
 ```
 
-This runs the fast workspace gate, app-server and cross-driver value contracts, Docker driver/TLS/PostgreSQL fixtures, keyring and dependency policy checks. The runner saves a commit-pinned report and logs under `target/quality/`. Fresh local results and remaining gaps are owned by [the release audit](archive/release-audit-2026-10-03.md); prior October 1–2 counts and cache measurements are in [validation history](archive/validation-history.md).
+This runs the fast workspace gate, app-server and cross-driver value contracts, Docker driver/TLS/PostgreSQL fixtures, keyring and dependency policy checks. The runner saves a commit-pinned report and logs under `target/quality/`. Current milestone acceptance is in the [active sprint](bookie-0.2-sprint.md) and owning boards. Dated release audits and validation history are source-pinned records, not current status.
 
 Run `quick` for a short edit loop. Run the pre-push gate after changes that touch shared core/value paths or before handing a B3 slice to review. Keep the hosted workflow as the recorded platform/packaging check.
 

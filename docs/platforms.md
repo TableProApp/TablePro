@@ -6,7 +6,7 @@ One page for what runs where. The [sprint](bookie-0.2-sprint.md) owns release ap
 
 Two native-library floors are defined in [ADR 0002](decisions/0002-rust-gtk4-libadwaita.md): the **build / CI floor** and the **GNOME 50 package line**.
 
-The build floor is the Ubuntu 24.04 stack: GTK 4.14, GLib 2.80, libadwaita 1.5 and GtkSourceView 5.12. Debian 13 (GTK 4.18, libadwaita 1.7) and newer are above it. `scripts/test-distro-floor.sh` builds and runs the unit and widget tiers on both in containers, and the Forgejo job `distro-floor` runs it on every push. The installed AT-SPI pass on those distros is still open (PKG-2 in the [ledger](known-issues.md)).
+The build floor is the Ubuntu 24.04 stack: GTK 4.14, GLib 2.80, libadwaita 1.5 and GtkSourceView 5.12. Debian 13 (GTK 4.18, libadwaita 1.7) and newer are above it. `scripts/test-distro-floor.sh` runs the app unit and widget tiers in containers; the Forgejo `distro-floor` job also runs installed GTK safety there on every push. Native installed-package AT-SPI acceptance remains open (PKG-2 in the [ledger](known-issues.md)).
 
 The GitHub Release `.deb` that needs GNOME 50 libraries follows the higher package line (GTK 4.22, GLib 2.88, libadwaita 1.9, GtkSourceView 5.18). Arch and Omarchy packages track current GNOME. Neither floor replaces the other.
 
@@ -34,7 +34,7 @@ The Arch package is an internal candidate, not an AUR or Flathub release. It ins
 - Build from a clean tree at a recorded commit: `scripts/build-arch-rc.sh` refuses a dirty tree or a SHA that is not `HEAD`, then runs `makepkg --cleanbuild`, `namcap` and package-content checks.
 - Saved connections, drafts, favorites and the audit journal live in `~/.config/tablepro` and `~/.local/share/tablepro`. Stop the app before an upgrade or rollback and never delete those directories or the keyring records.
 - The package replaces and conflicts with `tablepro`. Install, upgrade and removal must keep user XDG data (PKG-6).
-- Release evidence for 0.1.4: [archive/release-0.1.4.md](archive/release-0.1.4.md).
+- The current released package is 0.1.5 ([release notes](../CHANGELOG.md#015---2026-09-27)); the 0.1.4 report is historical evidence only.
 
 ## Flathub
 

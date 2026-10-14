@@ -6,7 +6,7 @@ Status: proposal, 2026-10-12. Nothing here is accepted until the owner picks it 
 
 One month into the 0.2.0 work, most elapsed time goes into waiting on and rerunning gates, finding crashes by hand, and rediscovering the same classes of bug. The loop is open at three points: failures are not classified, crashes leave no usable trace, and a fixed bug does not always leave a test behind.
 
-## What the data says (Forgejo, runs 200 to 304, 2026-10-12)
+## What the validation data showed (runs 200 to 304, 2026-10-12)
 
 | Measure | Value |
 |---|---|
@@ -14,7 +14,7 @@ One month into the 0.2.0 work, most elapsed time goes into waiting on and rerunn
 | Failure rate | 27 percent |
 | Passing run, median | 18.6 minutes (90th percentile 22) |
 | Failing run, median | 10.1 minutes |
-| Runner minutes spent on failed runs | about 259 of about 1,600 |
+| Time spent on failed runs | about 259 of about 1,600 minutes |
 | Unit tier (`cargo test --lib --bins`) | about 27 seconds for 2,224 tests |
 
 Failures fall into three kinds: real defects the gate was right to catch, infrastructure (image pull and fixture start timeouts, compiler crashes, a runner starting before it could reach Docker), and GUI timing under load (TEST-31). The unit tier is not the slow part; the Docker suites, the GUI scenarios and the queue are.
@@ -23,18 +23,18 @@ A pilot of `cargo-nextest` (0.9.148) on the unit tier measured 28 to 30 seconds 
 
 ## Done since the proposal
 
-Updated 2026-10-13.
+Updated 2026-10-14.
 
 - Failure classifier: `scripts/classify-ci-failure.py` (#678). It tags a failed job `infra`, `gui-timing`, `gui`, `code` or `unknown`; a job log with no result line (a runner or Forgejo connection lost) is also `infra`.
 - Gate queue: gates are serialised on one host lock and a run takes 10 to 20 minutes, so a queue of N pull requests costs N runs. `scripts/forgejo-train.sh` gates several branches as one run (#718), and `.gitattributes` merges `CHANGELOG.md` and the PostgreSQL `connection_paths.rs` registry by union. The gate script retries its API calls and push after a Forgejo outage crashed two gates on 2026-10-13.
 - Still open from stage 1: `scripts/isolated-tests.json` cannot merge by union, and on 2026-10-13 two registrations merged into one list entry without a comma and broke Preflight for every pull request until it was repaired. That is the strongest case for moving registration into test attributes or nextest groups. Branch protection that requires a branch to be up to date would also have caught it.
-- Coverage gap found on 2026-10-13: the coverage run measures the unit and sandbox tiers only, so the driver query paths (PostgreSQL `query.rs` 3 percent, `session.rs` and `transaction.rs` 0 percent) show as uncovered although the Docker suites exercise them. A per-file coverage run over the Docker suites would show the real gaps.
+- Coverage is split by test tier. The unit report does not cover driver integration paths; the nightly workflow now measures Docker suites for PostgreSQL, MySQL, SQLite, MongoDB, Redis and ClickHouse against per-crate floors. Use those reports for driver coverage rather than inferring gaps from the unit report.
 
 ## The loop, stage by stage
 
 ### 1. Develop
 
-Today: parallel agents on branches, a squash merge by the gate owner, a local worktree per lane, a local test bench with Postgres, LDAP and mock files.
+Today: parallel contributors use separate branches and worktrees, with isolated database and protocol fixtures for integration work.
 
 Gaps: the same few files conflict on every merge (`CHANGELOG.md`, `scripts/isolated-tests.json`, `baselines/*`); workspace-wide edits collide with agents' branches.
 
@@ -98,10 +98,10 @@ All three are PostgreSQL-only. We have six engines, so they help one of them, th
 
 Where they would pay off for BookiE, in order of value for effort:
 
-1. **Prebaked fixture images from a local registry.** The most common infrastructure failures are image pulls timing out and fixtures not becoming ready. Build each engine's fixture image once with its schema and seed data already inside, push it to a registry on the lab network, and have the Docker suites pull from there. This removes the Docker Hub dependency and most of the start-up time, with no new tool. It is the same idea as a thin clone, at our data size.
-2. **Seed once, clone by reflink on a developer machine.** The local test bench can keep a stopped PostgreSQL data directory and clone it with `cp --reflink` on btrfs (the developer machine already snapshots with btrfs), giving each experiment a fresh seeded copy instantly.
+1. **Reuse pinned fixture images with seeded schemas.** Repeated pulls and fixture startup are common sources of delay. Prepare immutable engine fixtures with their schema and seed data ready, then measure their effect on startup time and reproducibility before adopting them across test layers.
+2. **Seed once, create isolated copies for experiments.** Where the storage platform supports safe copy-on-write snapshots, an immutable seeded PostgreSQL template can provide a fresh database per experiment. Verify isolation, reset behavior and cleanup before relying on it in shared validation.
 3. **RegreSQL on the SQL we generate.** BookiE builds SQL itself: browse paging, keyed updates, catalog and foreign key queries. Baseline their EXPLAIN plans against a seeded database so a change that turns an index scan into a sequential scan fails a test. The open many-schema catalog performance work ([#580](https://github.com/cozyGarage/BookiE/issues/580)) needs exactly this.
-4. **DBLab itself**, only when we need large realistic datasets and many parallel clones; it needs ZFS or LVM and a server to run. Not worth it for fixtures of our size.
+4. **DBLab itself**, only when we need large realistic datasets and many parallel clones. It adds operational complexity and is not justified for the current fixture sizes.
 
 ## Order of work
 

@@ -22,7 +22,7 @@ Walked against the code and living docs after [#532](https://github.com/cozyGara
 | Datastore & persistence model | Decided | Desktop client, not a hosted store. XDG files plus Secret Service. [ADR 0004](0004-libsecret-secret-storage.md), [ADR 0009](0009-persistence-and-identity-compatibility.md). |
 | Schema evolution & migrations | Decided | Compatible adapters and recoverable migrations for saved state. [ADR 0009](0009-persistence-and-identity-compatibility.md). |
 | Async, eventing & background jobs | Decided | Relm4 messages and component-scoped commands. No product job queue. [ADR 0003](0003-relm4-architecture.md). |
-| Caching | N/A | No application cache layer. Query results are bounded pages, not a cache. |
+| Caching | N/A | No general application cache layer. Browse pages and SQL results remain owned by their tabs under separate bounds. |
 | Numerical / semantic compatibility | Decided | Native type and value preservation. [ADR 0007](0007-type-and-value-preservation.md). |
 
 ## Interfaces and contracts
