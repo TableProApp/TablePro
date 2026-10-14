@@ -2,10 +2,9 @@
 //  EtcdCommandParserTests.swift
 //  TableProTests
 //
-//  Tests for EtcdCommandParser (compiled via symlink from EtcdDriverPlugin).
-//
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
 
