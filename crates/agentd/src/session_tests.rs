@@ -291,3 +291,47 @@ async fn session_forwards_checked_writes_and_result_sets_to_the_driver() {
         .unwrap();
     assert_eq!(sets.result_sets[0].rows, vec![vec![Value::Text("b".into())]]);
 }
+
+fn method_names(source: &str) -> std::collections::BTreeSet<String> {
+    source
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim_start();
+            let rest = line.strip_prefix("async fn ").or_else(|| line.strip_prefix("fn "))?;
+            Some(rest.split(['(', '<']).next()?.to_string())
+        })
+        .collect()
+}
+
+fn block_after<'a>(source: &'a str, start_marker: &str) -> &'a str {
+    let start = source.find(start_marker).expect("the block exists");
+    let rest = &source[start..];
+    &rest[..rest.find("\n}\n").expect("the block ends")]
+}
+
+#[test]
+fn the_session_wrapper_forwards_every_connection_method_except_the_documented_ones() {
+    const NOT_FORWARDED: [&str; 1] = ["attach_fault_notify"];
+    let declared = method_names(block_after(
+        include_str!("../../core/src/connection.rs"),
+        "pub trait Connection",
+    ));
+    let forwarded = method_names(block_after(
+        include_str!("lib.rs"),
+        "impl Connection for SessionConnection",
+    ));
+
+    let missing: Vec<_> = declared
+        .iter()
+        .filter(|name| !forwarded.contains(*name) && !NOT_FORWARDED.contains(&name.as_str()))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "SessionConnection falls back to the trait default for {missing:?}; forward them or list them in NOT_FORWARDED with a reason"
+    );
+    assert!(
+        declared.len() > 30,
+        "the parser found only {} trait methods",
+        declared.len()
+    );
+}

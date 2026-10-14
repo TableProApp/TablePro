@@ -122,8 +122,28 @@ where
 /// human approves something other than what they read.
 fn sanitize_for_terminal(text: &str) -> String {
     text.chars()
-        .map(|c| if c.is_control() { '\u{FFFD}' } else { c })
+        .map(|c| {
+            if c.is_control() || is_invisible_format(c) {
+                '\u{FFFD}'
+            } else {
+                c
+            }
+        })
         .collect()
+}
+
+fn is_invisible_format(c: char) -> bool {
+    matches!(
+        c,
+        '\u{061C}'
+            | '\u{180E}'
+            | '\u{200B}'..='\u{200F}'
+            | '\u{2028}'..='\u{202E}'
+            | '\u{2060}'..='\u{2064}'
+            | '\u{2066}'..='\u{2069}'
+            | '\u{FEFF}'
+            | '\u{FFF9}'..='\u{FFFB}'
+    )
 }
 
 fn ask_on_controlling_terminal(prompt: &str) -> ApprovalOutcome {
@@ -157,7 +177,7 @@ fn ask_on_controlling_terminal(prompt: &str) -> ApprovalOutcome {
 
 fn write_token_file(path: &std::path::Path, plaintext: &str) -> Result<(), String> {
     use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
     let mut handle = std::fs::OpenOptions::new()
         .write(true)
@@ -165,6 +185,9 @@ fn write_token_file(path: &std::path::Path, plaintext: &str) -> Result<(), Strin
         .truncate(true)
         .mode(0o600)
         .open(path)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    handle
+        .set_permissions(std::fs::Permissions::from_mode(0o600))
         .map_err(|e| format!("{}: {e}", path.display()))?;
     handle
         .write_all(plaintext.as_bytes())
@@ -389,6 +412,42 @@ mod tests {
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "token file mode was {mode:o}");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "secret");
+    }
+
+    #[test]
+    fn an_existing_loose_token_file_is_made_owner_only_before_the_token_is_written() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("token");
+        std::fs::write(&path, "old").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        write_token_file(&path, "secret").unwrap();
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "the token was left readable with mode {mode:o}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "secret");
+    }
+
+    #[test]
+    fn sanitize_for_terminal_removes_text_direction_overrides_and_invisible_characters() {
+        let hostile = "DROP TABLE a\u{202E}; SELECT 1 --\u{2066}x\u{2069}\u{200B}y\u{2028}z\u{FEFF}\u{061C}\u{2060}";
+        let sanitized = sanitize_for_terminal(hostile);
+        for c in sanitized.chars() {
+            assert!(
+                !matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{200B}'..='\u{200F}' | '\u{2028}' | '\u{2029}' | '\u{FEFF}' | '\u{061C}' | '\u{2060}'),
+                "{:?} survived in {sanitized:?}",
+                c
+            );
+        }
+        assert!(sanitized.contains("DROP TABLE a") && sanitized.contains("SELECT 1"));
+    }
+
+    #[test]
+    fn sanitize_for_terminal_keeps_ordinary_unicode_text() {
+        for text in ["SELECT 'café', '日本語', '😀' FROM t", "名前 = 'Zoë'"] {
+            assert_eq!(sanitize_for_terminal(text), text);
+        }
     }
 
     #[test]
