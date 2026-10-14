@@ -5,10 +5,9 @@ use tablepro_core::Value;
 use crate::services::change_tracker::RowKey;
 use crate::ui::grid::{GridRowId, RowObject};
 
-/// What one Delete does to the rows it was given.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct RowDeletion {
-    /// Saved rows to mark, each with the row as it was read.
+    /// Each with the row as it was read.
     pub persisted: Vec<(RowKey, Arc<[Value]>)>,
     pub drafts: Vec<u64>,
     /// Rows a DELETE has no key to name by.
@@ -22,6 +21,22 @@ impl RowDeletion {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    /// A draft is dropped at once with its undo history, so a set that
+    /// holds one cannot be described as waiting for Save.
+    pub fn confirmation_body(&self) -> String {
+        match (self.persisted.is_empty(), self.drafts.is_empty()) {
+            (_, true) => crate::i18n::gettext(
+                "These rows will be marked for deletion. They aren't removed until you click Save.",
+            ),
+            (true, false) => crate::i18n::gettext(
+                "These rows were never saved. They're removed now, and Undo won't bring them back.",
+            ),
+            (false, false) => crate::i18n::gettext(
+                "Saved rows will be marked for deletion and aren't removed until you click Save. Rows never saved are removed now, and Undo won't bring them back.",
+            ),
+        }
     }
 }
 
@@ -65,5 +80,23 @@ mod tests {
         );
         assert_eq!(deletion.unkeyed, 2);
         assert_eq!(deletion.len(), 3);
+    }
+
+    #[test]
+    fn the_confirmation_says_drafts_go_at_once() {
+        let saved = RowObject::persisted(
+            Some(RowKey::from_pk_values(&[Value::Int(1)]).expect("a key")),
+            vec![Value::Int(1)].into(),
+        );
+
+        let only_saved = plan_row_deletion(std::slice::from_ref(&saved)).confirmation_body();
+        let only_drafts = plan_row_deletion(&[RowObject::draft(1)]).confirmation_body();
+        let mixed = plan_row_deletion(&[saved, RowObject::draft(1)]).confirmation_body();
+
+        assert!(only_saved.contains("click Save"), "{only_saved}");
+        assert!(!only_saved.contains("removed now"), "{only_saved}");
+        assert!(only_drafts.contains("removed now"), "{only_drafts}");
+        assert!(!only_drafts.contains("click Save"), "{only_drafts}");
+        assert!(mixed.contains("click Save") && mixed.contains("removed now"), "{mixed}");
     }
 }

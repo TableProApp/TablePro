@@ -1790,8 +1790,7 @@ impl BrowseModel {
             u32::try_from(count).unwrap_or(u32::MAX),
             &[("n", &count.to_string())],
         );
-        let body =
-            crate::i18n::gettext("These rows will be marked for deletion. They aren't removed until you click Save.");
+        let body = deletion.confirmation_body();
         let dialog = adw::AlertDialog::new(Some(&title), Some(&body));
         dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
         dialog.add_response("delete", &crate::i18n::gettext("Delete"));
