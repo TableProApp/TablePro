@@ -19,3 +19,10 @@ option(
   value: false,
   description: 'Install the files a Flatpak build needs, such as the Kerberos configuration.',
 )
+
+option(
+  'cargo_config',
+  type: 'string',
+  value: '',
+  description: 'A Cargo configuration file, relative to the source root, for every cargo call. Packages point it at their vendored crates.',
+)

@@ -14,6 +14,18 @@ if not get_option('kerberos')
   cargo_options += ['--no-default-features']
 endif
 
+cargo_config = get_option('cargo_config')
+if cargo_config != ''
+  cargo_config = meson.project_source_root() / cargo_config
+  if not fs.is_file(cargo_config)
+    error('cargo_config names @0@, which is not a file'.format(cargo_config))
+  endif
+  # Cargo resolves the relative paths inside the file against the parent
+  # of the file's directory, which for vendor/cargo-config.toml is the
+  # source root vendor/ sits in.
+  cargo_options += ['--config', cargo_config]
+endif
+
 cargo_built = cargo_target_dir / cargo_profile_dir
 
 # The About dialog embeds the metainfo Meson installs, with its
