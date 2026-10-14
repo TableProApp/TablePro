@@ -66,7 +66,7 @@ Every registered driver reports a `DriverMaturity` (`Stable` or `Experimental`).
 | PostgreSQL | Stable | yes | yes | SQL | yes | yes | yes | Five TLS modes; release fixture covers certificate verification and SSH routes |
 | MySQL | Stable | yes | yes | SQL | yes | yes | yes | DDL not transactional; driver TLS fixture |
 | SQLite | Stable | yes | yes | SQL | yes | yes | yes | File-based |
-| SQL Server | Stable | yes | yes | SQL | yes | yes | no interactive begin | Tiberius; custom CA implemented; Verify Ca and Verify Full are identical; server cancellation unsupported |
+| SQL Server | Stable | yes | yes | SQL | yes | yes | no interactive begin | Tiberius; custom CA implemented; driver TLS fixture; Verify CA and Verify Full are identical; server cancellation unsupported |
 | ClickHouse | Stable | yes | yes | SQL | yes | yes | no | Waits for asynchronous mutations to finish; no row counts; driver TLS fixture |
 | Redis | Experimental | yes | DBs / SCAN | Redis CLI | via query | no | no | Single host/port endpoint only; Sentinel and Cluster topologies are unsupported; driver TLS fixture; Verify Ca behaves as Verify Full |
 | MongoDB | Experimental | yes | collections | find / aggregate | insertOne / deleteMany / drop; keyed grid edits use bound values | no | no | TLS fixture coverage; Verify CA behaves as Verify Full; integration coverage includes browse, find, aggregate, stale-edit and stale-delete checks |
