@@ -579,6 +579,34 @@ fn late_show_create_reply_after_disconnect_is_dropped() {
 }
 
 #[gtk4::test]
+fn an_edit_kept_for_its_next_connect_is_written_under_a_hold() {
+    let test = TestWindow::picker("PersistHeld");
+    wait_until(WAIT, || test.hold.live() == 0).expect("nothing else to hold the process");
+    let mut edited = test.saved.clone();
+    edited.name = "Edited".to_owned();
+
+    test.window.persist_pending_save(tablepro_session::PendingSave {
+        connection: edited,
+        secrets: Vec::new(),
+        forget: Vec::new(),
+        is_new: false,
+    });
+    assert_eq!(test.hold.live(), 1, "the write started without holding the process");
+    wait_until(WAIT, || test.hold.live() == 0).expect("the hold to end");
+
+    let stored = test
+        .services
+        .storage
+        .connections()
+        .load_blocking()
+        .expect("the connection list");
+    assert!(
+        stored.iter().any(|saved| saved.name == "Edited"),
+        "the hold ended before the write"
+    );
+}
+
+#[gtk4::test]
 fn quit_closes_a_connected_window_and_its_session() {
     let test = TestWindow::connected("Quit");
     let counters = test.connection().counters();

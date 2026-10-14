@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use tablepro_session::runtime::{TaskFailure, Tasks};
+use tablepro_session::runtime::{ProcessHold, TaskFailure, Tasks};
 
 /// Run `work` on the app runtime and hand its result to `deliver` on the
 /// GTK thread.
@@ -21,12 +21,49 @@ where
     })
 }
 
+/// Run `work` on the app runtime with the process held until it ends,
+/// so a quit right after a write started waits for it instead of
+/// cutting it off.
+pub fn spawn_held<W>(tasks: &Tasks, hold: &dyn ProcessHold, work: W)
+where
+    W: Future<Output = ()> + Send + 'static,
+{
+    let token = hold.acquire();
+    let running = tasks.spawn_task(work);
+    glib::spawn_future_local(async move {
+        if let Err(failure) = running.await {
+            tracing::warn!(%failure, "a held background task failed");
+        }
+        drop(token);
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
+    use tablepro_session::runtime::CountingHold;
+
     use super::*;
+
+    #[gtk4::test]
+    fn held_work_keeps_the_process_until_it_ends() {
+        let runtime = crate::test_support::test_runtime();
+        let hold = CountingHold::new();
+        let (finish, finished) = tokio::sync::oneshot::channel::<()>();
+
+        spawn_held(&runtime.tasks(), &hold, async move {
+            let _ = finished.await;
+        });
+        crate::test_support::drain_main_context();
+        assert_eq!(hold.live(), 1, "the work was not held");
+
+        let _ = finish.send(());
+        crate::test_support::wait_until(std::time::Duration::from_secs(5), || hold.live() == 0)
+            .expect("the hold to end with the work");
+        runtime.shutdown();
+    }
 
     #[gtk4::test]
     fn the_result_arrives_on_the_main_thread() {

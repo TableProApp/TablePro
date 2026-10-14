@@ -132,7 +132,7 @@ impl WorkspaceModel {
         // The save lands even when the workspace is gone by then; only
         // its toast is dropped.
         let input = self.input.clone();
-        drop(self.tasks.spawn_task(async move {
+        crate::runtime::spawn_held(&self.tasks, &*self.context.hold, async move {
             let message = match store.save(new_query).await {
                 Ok(outcome) if outcome.replaced => crate::i18n::gettext_f("Replaced “{name}”.", &[("name", &name)]),
                 Ok(_) => crate::i18n::gettext_f("Saved “{name}”.", &[("name", &name)]),
@@ -142,7 +142,7 @@ impl WorkspaceModel {
                 }
             };
             input.deliver(WorkspaceInput::ShowToast(message));
-        }));
+        });
     }
 }
 
@@ -169,6 +169,33 @@ fn suggested_query_name(query: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::suggested_query_name;
+    use crate::test_support::{finish_on_main, wait_until};
+    use crate::ui::session_window::tests::{TestWindow, WAIT};
+
+    #[gtk4::test]
+    fn a_saved_query_is_written_under_a_hold() {
+        let test = TestWindow::connected("SaveQueryHeld");
+        let history = test.services.history();
+        let availability = history.availability();
+        wait_until(WAIT, || availability.borrow().is_ready()).expect("the query database to open");
+        wait_until(WAIT, || test.hold.live() == 0).expect("nothing else to hold the process");
+
+        test.workspace()
+            .with_model(|model| model.on_save_query_named("Orders".to_owned(), "SELECT 1".to_owned()));
+        assert_eq!(test.hold.live(), 1, "the save started without holding the process");
+        wait_until(WAIT, || test.hold.live() == 0).expect("the hold to end");
+
+        let store = history.store().expect("the query database").saved_queries();
+        let listing = test.services.tasks.spawn_task(async move { store.list(None).await });
+        let saved = finish_on_main(WAIT, listing)
+            .expect("the list to load")
+            .expect("the listing task")
+            .expect("the saved queries");
+        assert!(
+            saved.iter().any(|query| query.name == "Orders"),
+            "the hold ended before the save"
+        );
+    }
 
     #[test]
     fn the_suggested_name_is_the_first_real_line() {

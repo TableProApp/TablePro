@@ -10,7 +10,7 @@ mod request_ticket;
 mod stamped;
 
 pub use app_runtime::AppRuntime;
-pub use deliver::spawn_and_deliver;
+pub use deliver::{spawn_and_deliver, spawn_held};
 pub use deliver_input::{DeliverInput, Delivery};
 pub use failed_requests::FailedRequests;
 pub use gio_process_hold::GioProcessHold;

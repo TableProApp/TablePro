@@ -121,7 +121,7 @@ impl SessionWindow {
             state.services.storage.connections().clone(),
             state.services.tasks.clone(),
         );
-        drop(state.services.tasks.spawn_task(async move {
+        crate::runtime::spawn_held(&state.services.tasks, &*state.services.hold(), async move {
             match tablepro_session::persist_pending_save(&*secrets, &writes, save).await {
                 Ok(report) => {
                     for (_, error) in &report.secret_failures {
@@ -139,7 +139,7 @@ impl SessionWindow {
                 }
             }
             input.deliver(SessionWindowInput::ReloadConnections);
-        }));
+        });
     }
 
     /// Stamp the connection's last-opened time, then read the list again

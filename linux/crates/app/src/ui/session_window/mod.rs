@@ -732,13 +732,9 @@ fn unadopted(message: SessionWindowInput) -> Option<PendingSession> {
 /// Throw away a connection nobody adopted, closing it under the close
 /// deadline while the process stays alive for it.
 fn discard_pending(pending: PendingSession, tasks: &tablepro_session::runtime::Tasks, hold: &dyn ProcessHold) {
-    let hold = hold.acquire();
-    let closing = tasks.spawn_task(pending.discard());
-    glib::spawn_future_local(async move {
-        if let Ok(report) = closing.await {
-            tracing::debug!(?report, "closed a connection that was not adopted");
-        }
-        drop(hold);
+    crate::runtime::spawn_held(tasks, hold, async move {
+        let report = pending.discard().await;
+        tracing::debug!(?report, "closed a connection that was not adopted");
     });
 }
 
