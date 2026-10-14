@@ -150,6 +150,7 @@ impl SessionWindow {
             return;
         };
         let connections = state.services.storage.connections().clone();
+        let hold = state.services.hold().acquire();
         let touching = state
             .services
             .tasks
@@ -160,6 +161,7 @@ impl SessionWindow {
                 Err(error) => tracing::warn!(%error, "the last-opened task failed"),
                 Ok(Ok(())) => {}
             }
+            drop(hold);
             input.deliver(SessionWindowInput::ReloadConnections);
         });
     }
@@ -274,7 +276,7 @@ impl SessionWindow {
         let connections = state.services.storage.connections().clone();
         let secrets = state.services.storage.secrets().clone();
         let tasks = state.services.tasks.clone();
-        drop(state.services.tasks.spawn_task(async move {
+        crate::runtime::spawn_held(&state.services.tasks, &*state.services.hold(), async move {
             let copy_id = copy.id;
             let saved = tasks
                 .spawn_blocking_task(move || connections.upsert_blocking(copy))
@@ -299,7 +301,7 @@ impl SessionWindow {
                     &[("name", &name)],
                 )
             }));
-        }));
+        });
     }
 
     /// File a connection under a group, or take it out of the one it
@@ -333,14 +335,15 @@ impl SessionWindow {
     }
 
     /// Write one connection back and reload the list from disk, so the
-    /// picker redraws from what was actually saved.
+    /// picker redraws from what was actually saved. The process is held
+    /// until the write lands, so a quit right after it keeps it.
     fn write_connection(&self, saved: SavedConnection, failure: String) {
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
             return;
         };
         let connections = state.services.storage.connections().clone();
         let tasks = state.services.tasks.clone();
-        drop(state.services.tasks.spawn_task(async move {
+        crate::runtime::spawn_held(&state.services.tasks, &*state.services.hold(), async move {
             let written = tasks
                 .spawn_blocking_task(move || connections.upsert_blocking(saved))
                 .await;
@@ -349,7 +352,7 @@ impl SessionWindow {
                 input.deliver(SessionWindowInput::ShowToast(failure));
             }
             input.deliver(SessionWindowInput::ReloadConnections);
-        }));
+        });
     }
 
     /// Write the connection list to a file the user picks.
@@ -414,7 +417,7 @@ impl SessionWindow {
         };
         let connections = state.services.storage.connections().clone();
         let tasks = state.services.tasks.clone();
-        drop(state.services.tasks.spawn_task(async move {
+        crate::runtime::spawn_held(&state.services.tasks, &*state.services.hold(), async move {
             let imported = tasks
                 .spawn_blocking_task(move || connections.import_blocking(&path, &bytes))
                 .await;
@@ -437,7 +440,7 @@ impl SessionWindow {
             };
             input.deliver(SessionWindowInput::ReloadConnections);
             input.deliver(SessionWindowInput::ShowToast(message));
-        }));
+        });
     }
 
     /// The list could not be read, so the user is told rather than shown
@@ -652,7 +655,11 @@ fn json_filters() -> gio::ListStore {
 mod tests {
     use std::time::Duration;
 
+    use tablepro_storage::ConnectionColor;
+
     use super::*;
+    use crate::test_support::wait_until;
+    use crate::ui::session_window::tests::{TestWindow, WAIT};
 
     fn read(path: &std::path::Path) -> Result<Vec<u8>, String> {
         let file = gio::File::for_path(path);
@@ -696,5 +703,36 @@ mod tests {
         std::fs::write(&path, br#"{"connections":[]}"#).expect("write");
 
         assert_eq!(read(&path).as_deref(), Ok(&br#"{"connections":[]}"#[..]));
+    }
+
+    /// The picker lists the test's connection, which its menu acts on.
+    fn wait_for_list(window: &SessionWindow) {
+        wait_until(WAIT, || !window.imp().saved_connections.borrow().is_empty()).expect("the connection list");
+    }
+
+    #[gtk4::test]
+    fn connection_list_writes_hold_the_process_until_they_land() {
+        let test = TestWindow::picker("ListWritesHeld");
+        wait_for_list(&test.window);
+        wait_until(WAIT, || test.hold.live() == 0).expect("nothing else to hold the process");
+        let id = test.saved.id;
+        let stored = || test.services.storage.connections().load_blocking().expect("the list");
+
+        test.window.on_set_connection_color(id, Some(ConnectionColor::Red));
+        assert_eq!(test.hold.live(), 1, "the colour was written without a hold");
+        wait_until(WAIT, || test.hold.live() == 0).expect("the hold to end");
+        assert_eq!(
+            stored()[0].color,
+            Some(ConnectionColor::Red),
+            "the hold ended before the write"
+        );
+
+        test.window.on_duplicate_connection(test.saved.clone());
+        assert_eq!(test.hold.live(), 1, "the copy was written without a hold");
+        wait_until(WAIT, || test.hold.live() == 0).expect("the hold to end");
+        assert!(
+            stored().iter().any(|saved| saved.id != id),
+            "the copy, written before the hold ended"
+        );
     }
 }
