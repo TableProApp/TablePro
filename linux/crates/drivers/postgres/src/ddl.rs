@@ -3,7 +3,7 @@ use tablepro_core::ddl::ddl_sql::{column_list, create_index_sql, default_sql, fo
 use tablepro_core::ddl::{
     BuildDdlError, CollationName, ColumnAttributes, ColumnCapabilities, ColumnCompression, ColumnDefinition,
     ColumnStorage, DdlCapabilities, DdlDialect, DdlOperation, DdlPlan, DraftColumn, GeneratedStorage, IdentityStyle,
-    Permission, RefusalReason, TableChanges, TableDefinition, TableDraft,
+    Permission, RefusalReason, ResolvedType, TableChanges, TableDefinition, TableDraft,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
@@ -187,11 +187,7 @@ impl DdlDialect for PgDialect {
                     "ALTER COLUMN {name} TYPE {}{collation} USING {name}::{}",
                     resolved.sql, resolved.sql
                 ));
-                actions.extend(restated_storage(
-                    &name,
-                    &alteration.original.attributes,
-                    &resolved.column_type.kind,
-                ));
+                actions.extend(restated_storage(&name, &alteration.original.attributes, &resolved));
             }
             // An identity column is NOT NULL whatever the switch said, and
             // turning one on sets that below.
@@ -401,13 +397,13 @@ fn identity_permission(column: &ColumnDefinition) -> Permission {
 }
 
 /// A type change resets SET STORAGE and SET COMPRESSION to the new
-/// type's own, so a column that set either has it restated. A
-/// fixed-width type keeps its values inline and uncompressed and refuses
-/// both, so the settings go with the old type. A type this build cannot
-/// place is restated, and the server refuses the change if it cannot
+/// type's own, so a column that set either has it restated. A type that
+/// keeps every value inline refuses both, so the settings go with the
+/// old type. A type this build cannot place, such as a domain or an
+/// enum, is restated, and the server refuses the change if it cannot
 /// take them.
-fn restated_storage(name: &str, attributes: &ColumnAttributes, kind: &ColumnKind) -> Vec<String> {
-    if fixed_width(kind) {
+fn restated_storage(name: &str, attributes: &ColumnAttributes, new_type: &ResolvedType) -> Vec<String> {
+    if plain_storage(new_type) {
         return Vec::new();
     }
     let storage = attributes.storage.map(|storage| {
@@ -429,23 +425,108 @@ fn restated_storage(name: &str, attributes: &ColumnAttributes, kind: &ColumnKind
     storage.into_iter().chain(compression).collect()
 }
 
-/// Whether PostgreSQL stores the type at a fixed width, which takes
-/// only PLAIN storage and no compression.
-fn fixed_width(kind: &ColumnKind) -> bool {
-    matches!(
-        kind,
-        ColumnKind::Bool(_)
-            | ColumnKind::Integer(_)
-            | ColumnKind::Float(_)
-            | ColumnKind::Money { .. }
-            | ColumnKind::Date
-            | ColumnKind::Time { .. }
-            | ColumnKind::Timestamp { .. }
-            | ColumnKind::Interval
-            | ColumnKind::Uuid
-            | ColumnKind::Enum { .. }
-            | ColumnKind::Network(NetworkFamily::MacAddr | NetworkFamily::MacAddr8)
-    )
+/// The built-in types whose `pg_type.typstorage` is PLAIN in
+/// PostgreSQL 17, by `typname`.
+const PLAIN_STORAGE_TYPES: &[&str] = &[
+    "aclitem",
+    "bool",
+    "box",
+    "char",
+    "cid",
+    "circle",
+    "date",
+    "float4",
+    "float8",
+    "gtsvector",
+    "int2",
+    "int2vector",
+    "int4",
+    "int8",
+    "interval",
+    "line",
+    "lseg",
+    "macaddr",
+    "macaddr8",
+    "money",
+    "name",
+    "oid",
+    "oidvector",
+    "pg_lsn",
+    "point",
+    "regclass",
+    "regcollation",
+    "regconfig",
+    "regdictionary",
+    "regnamespace",
+    "regoper",
+    "regoperator",
+    "regproc",
+    "regprocedure",
+    "regrole",
+    "regtype",
+    "tid",
+    "time",
+    "timestamp",
+    "timestamptz",
+    "timetz",
+    "tsquery",
+    "uuid",
+    "xid",
+    "xid8",
+];
+
+/// Whether PostgreSQL keeps every value of the type inline, where SET
+/// STORAGE takes only PLAIN and SET COMPRESSION is refused. The kind
+/// covers the standard spellings, such as `double precision`, that are
+/// not a `typname`.
+fn plain_storage(new_type: &ResolvedType) -> bool {
+    catalog_type_name(&new_type.sql).is_some_and(|name| {
+        PLAIN_STORAGE_TYPES.contains(&name.as_str())
+            || matches!(
+                new_type.column_type.kind,
+                ColumnKind::Bool(_)
+                    | ColumnKind::Integer(_)
+                    | ColumnKind::Float(_)
+                    | ColumnKind::Money { .. }
+                    | ColumnKind::Date
+                    | ColumnKind::Time { .. }
+                    | ColumnKind::Timestamp { .. }
+                    | ColumnKind::Interval
+                    | ColumnKind::Uuid
+                    | ColumnKind::Network(NetworkFamily::MacAddr | NetworkFamily::MacAddr8)
+            )
+    })
+}
+
+/// The `typname` of the built-in type a declaration names: unquoted
+/// words fold to lower case and `char` alone means `bpchar`, while a
+/// quoted `"char"` is the one-byte type. `None` for an array or a type
+/// in a schema other than `pg_catalog`.
+fn catalog_type_name(declaration: &str) -> Option<String> {
+    let text = declaration.trim();
+    let lowered = text.to_ascii_lowercase();
+    if text.contains('[') || lowered.split_whitespace().next_back() == Some("array") {
+        return None;
+    }
+    let text = if lowered.starts_with("pg_catalog.") {
+        &text["pg_catalog.".len()..]
+    } else {
+        text.strip_prefix("\"pg_catalog\".").unwrap_or(text)
+    };
+    if let Some(quoted) = text.strip_prefix('"') {
+        let (name, rest) = quoted.split_once('"')?;
+        return (!rest.starts_with('.')).then(|| name.to_owned());
+    }
+    let word: String = text
+        .chars()
+        .take_while(|c| !c.is_whitespace() && *c != '(')
+        .collect::<String>()
+        .to_ascii_lowercase();
+    match word.as_str() {
+        "char" | "character" => Some("bpchar".to_owned()),
+        _ if word.contains(['.', '"']) => None,
+        _ => Some(word),
+    }
 }
 
 /// Whether a type takes a COLLATE clause: text, and arrays of it.
@@ -707,6 +788,50 @@ mod tests {
             sql(nullability_only),
             ["ALTER TABLE \"app\".\"users\" ALTER COLUMN \"email\" SET NOT NULL"]
         );
+    }
+
+    #[test]
+    fn only_a_type_that_keeps_its_values_inline_drops_the_settings() {
+        let plain = |declaration: &str| {
+            let resolved = DraftType::Typed(declaration.to_owned())
+                .resolve(&dialect(), "c")
+                .expect("a type");
+            plain_storage(&resolved)
+        };
+
+        for declaration in [
+            "point",
+            "pg_catalog.lseg",
+            "line",
+            "box",
+            "circle",
+            "pg_lsn",
+            "\"char\"",
+            "name",
+            "tsquery",
+            "oid",
+            "double precision",
+            "timestamp(3) with time zone",
+            "\"pg_catalog\".\"int4\"",
+        ] {
+            assert!(plain(declaration), "{declaration}");
+        }
+        for declaration in [
+            "char(2)",
+            "character",
+            "text",
+            "polygon",
+            "numeric(10, 2)",
+            "integer[]",
+            "geometry",
+            "public.point",
+            "\"Point\"",
+            "mood",
+            "int4range",
+            "tsvector",
+        ] {
+            assert!(!plain(declaration), "{declaration}");
+        }
     }
 
     #[test]

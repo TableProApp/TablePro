@@ -398,8 +398,9 @@ async fn type_change_keeps_c_collation() {
 }
 
 /// ALTER COLUMN ... TYPE resets SET STORAGE and SET COMPRESSION to the
-/// new type's own, so the change restates what the column had. An
-/// integer takes neither, so its column goes back to the type's.
+/// new type's own, so the change restates what the column had. A type
+/// that keeps its values inline, such as integer, point or "char",
+/// refuses both, so its column goes back to the type's.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn type_change_keeps_storage_and_compression() {
@@ -408,10 +409,12 @@ async fn type_change_keeps_storage_and_compression() {
     setup(
         connection.as_ref(),
         &[
-            "CREATE TABLE kept (id int PRIMARY KEY, body varchar(10), note text, code text)",
+            "CREATE TABLE kept (id int PRIMARY KEY, body varchar(10), note text, code text, spot text, flag text)",
             "ALTER TABLE kept ALTER COLUMN body SET STORAGE EXTERNAL, ALTER COLUMN body SET COMPRESSION pglz, \
-             ALTER COLUMN note SET STORAGE MAIN, ALTER COLUMN code SET STORAGE EXTERNAL",
-            "INSERT INTO kept VALUES (1, 'a', 'b', '7')",
+             ALTER COLUMN note SET STORAGE MAIN, ALTER COLUMN code SET STORAGE EXTERNAL, \
+             ALTER COLUMN spot SET STORAGE EXTERNAL, ALTER COLUMN flag SET STORAGE EXTERNAL, \
+             ALTER COLUMN flag SET COMPRESSION pglz",
+            "INSERT INTO kept VALUES (1, 'a', 'b', '7', '(1,2)', 'x')",
         ],
     )
     .await;
@@ -431,6 +434,8 @@ async fn type_change_keeps_storage_and_compression() {
             "body" => "varchar(40)",
             "note" => "varchar(100)",
             "code" => "integer",
+            "spot" => "point",
+            "flag" => "\"char\"",
             _ => return,
         };
         column.column_type = DraftType::Typed(retyped.to_owned());
@@ -444,6 +449,8 @@ async fn type_change_keeps_storage_and_compression() {
     );
     assert_eq!(column(&after, "note"), (Some(ColumnStorage::Main), None));
     assert_eq!(column(&after, "code"), (None, None));
+    assert_eq!(column(&after, "spot"), (None, None));
+    assert_eq!(column(&after, "flag"), (None, None));
     assert_eq!(
         value(
             connection.as_ref(),
@@ -451,11 +458,15 @@ async fn type_change_keeps_storage_and_compression() {
              '-'), ',' ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'kept'::regclass AND attnum > 0"
         )
         .await,
-        "id=p-,body=ep,note=m-,code=p-"
+        "id=p-,body=ep,note=m-,code=p-,spot=p-,flag=p-"
     );
     assert_eq!(
-        value(connection.as_ref(), "SELECT body || note || code FROM kept").await,
-        "ab7"
+        value(
+            connection.as_ref(),
+            "SELECT body || note || code || spot::text || flag::text FROM kept"
+        )
+        .await,
+        "ab7(1,2)x"
     );
     connection.close().await.expect("a close");
 }
