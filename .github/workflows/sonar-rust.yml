@@ -46,6 +46,15 @@ jobs:
           workspaces: .
           prefix-key: sonar-rust
 
+      - name: Run Python tests with coverage
+        env:
+          COVERAGE_FILE: target/sonar/.coverage
+        run: |
+          python3 -m venv target/sonar/venv
+          target/sonar/venv/bin/python -m pip install --disable-pip-version-check coverage==7.10.6
+          target/sonar/venv/bin/python -m coverage run --branch --source=scripts --omit='scripts/tests/*' -m unittest discover -s scripts/tests
+          target/sonar/venv/bin/python -m coverage xml -o target/sonar/python-coverage.xml
+
       - name: Install SonarScanner for Cargo
         run: cargo install cargo-sonar-scanner --locked --version 1.0.0
 
@@ -53,4 +62,4 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
-        run: cargo sonar-scanner
+        run: cargo sonar-scanner -Dsonar.python.coverage.reportPaths=target/sonar/python-coverage.xml
