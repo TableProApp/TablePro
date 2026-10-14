@@ -2,7 +2,7 @@
 
 Which product and architecture forks BookiE has already answered, and where. Silence is not an answer: each applicable fork is a link, N/A, or an open item. No new decisions are invented here.
 
-Walked against the code and living docs after [#532](https://github.com/cozyGarage/BookiE/pull/532) and the root-workspace restructure. The menu shape follows the [repository-standards decision checklist](https://repositorystandards.com/docs/checklist.html); living records stay in this directory and in [AGENTS.md](../../AGENTS.md).
+Reviewed against the current ADR index, code and living docs on 2026-10-14. The menu shape follows the [repository-standards decision checklist](https://repositorystandards.com/docs/checklist.html); living records stay in this directory and in [AGENTS.md](../../AGENTS.md). Open product and architecture decisions remain open until their named owners resolve them.
 
 ## Foundation
 
