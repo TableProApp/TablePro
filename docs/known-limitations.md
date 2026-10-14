@@ -13,9 +13,10 @@ What the application does not do, or does differently from what you might expect
 - **Large results are capped and held in memory** (PERF-2, PERF-8 / [#554](https://github.com/cozyGarage/BookiE/issues/554)). Results stop at
   1 million rows, 10 million cells or 64 MiB estimated size. The historical grid
   measurement was about 2.5 times the result memory; #518 now shares immutable
-  values with materialized rows, and comparable profiling remains open. Core and
-  PostgreSQL cursor APIs exist, but the guarded editor path is not integrated;
-  SQL editor results are still materialized under these caps (ADR 0011).
+  values with materialized rows, and comparable profiling remains open. Core,
+  PostgreSQL and PolicyGuard cursor paths now exist, including per-page masking
+  and audit; the SQL editor does not yet use them and remains materialized under
+  these caps (ADR 0011).
 - **SQL result filters apply only to loaded rows** ([#609](https://github.com/cozyGarage/BookiE/issues/609)). Filter and sort actions are local, show the visible and loaded counts, and do not re-run SQL. Clearing a filter restores loaded rows. Settings carry across reruns of the same statement and pin/unpin while the result remains current or pinned. Selection follows source-row identity when the same materialized result is rerendered; a fresh query resets selection. Settings do not survive an app restart.
 - **Long cells are shown as a preview** (PERF-10). A table cell over 8 KiB shows a
   typed preview and its byte count; View Value fetches the whole value by primary

@@ -26,11 +26,9 @@ Add an optional driver capability that opens a forward-only cursor over a single
 - A forward-only cursor cannot show earlier pages without keeping them. The retained-page budget decides what the user can scroll back to.
 - Engines without a cursor keep the current caps and the truncated banner.
 
-## Prerequisite
+## Implementation status
 
-A cursor needs a read-only transaction on the session. Today a guarded session records `BEGIN` as a write batch (`PolicySession::begin`), so a cursor opened through it would be audited as a write and could be refused on a read-only connection. The guard needs a read-snapshot start first: a read-only `BEGIN` audited as a read. The same change unblocks the snapshot export required by [ADR 0014](0014-full-table-export-snapshot.md) (UI-13b).
-
-Core cursor contracts and the PostgreSQL session implementation have landed. The prerequisite still blocks exposing them through `PolicyGuard` and the editor; results remain on the capped materialized path until that integration is complete.
+Core and PostgreSQL cursor support and the read-only snapshot session path have landed. `PolicyGuard` now authorizes one read statement in a read-only snapshot, masks each fetched page, and records page and terminal audit outcomes. PostgreSQL is the only driver with cursor support; other drivers return `Unsupported`. The SQL editor is not wired to this path yet, so its results remain materialized under the existing caps. The guarded cursor lifecycle is covered by policy tests; editor integration and its retained-page behavior remain open.
 
 ## Open questions
 

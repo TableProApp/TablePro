@@ -342,7 +342,7 @@ Each engine exports a type implementing `tablepro_core::DatabaseDriver`. Connect
 | Command scope | Component-scoped commands for tab/component lifetime. Detached Relm4 tasks only for independent persistence/cleanup. |
 | Tabs | `AdwTabView` workspaces; Relm4 controllers keyed by tab UUID. |
 | Browse grid | Bounded pages in `RowStore` (`gio::ListModel`); weakly cached `RowObject`s. |
-| SQL editor results | Core and PostgreSQL cursor APIs exist; the policy-governed editor path is incomplete, so results remain materialized up to caps ([ADR 0011](docs/decisions/0011-paged-query-results.md), PERF-2/PERF-8). |
+| SQL editor results | Core, PostgreSQL and PolicyGuard cursor paths exist, including per-page masking and audit; the editor does not yet use them, so results remain materialized up to caps ([ADR 0011](docs/decisions/0011-paged-query-results.md), PERF-2/PERF-8). |
 | Identity | Sidebar refresh tokens hold a weak session reference. Tab results keep their tab UUID across connection switches. |
 
 ## Persistence
