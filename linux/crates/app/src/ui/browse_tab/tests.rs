@@ -1468,3 +1468,53 @@ fn a_bulk_delete_waiting_while_a_column_is_added_marks_its_rows_under_the_new_co
     );
 }
 
+/// What this thread logs, as text.
+#[derive(Clone, Default)]
+struct LogLines(Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl LogLines {
+    fn text(&self) -> String {
+        let bytes = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+}
+
+impl std::io::Write for LogLines {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[gtk4::test]
+fn a_failed_row_count_logs_its_category_and_not_the_server_message() {
+    let lines = LogLines::default();
+    let subscriber = tracing_subscriber::fmt()
+        .with_ansi(false)
+        .with_max_level(tracing::Level::DEBUG)
+        .with_writer({
+            let lines = lines.clone();
+            move || lines.clone()
+        })
+        .finish();
+    let _logging = tracing::subscriber::set_default(subscriber);
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    script.count_rows.always(FakeReply::err(DriverError::reported(
+        tablepro_core::ServerDiagnostics::new(None, "You have an error in your SQL syntax near 'hunter2' at line 1"),
+    )));
+    let _harness = Harness::open(script, []);
+
+    wait_until(WAIT, || lines.text().contains("the row count could not be read")).expect("the failure is logged");
+
+    let text = lines.text();
+    assert!(!text.contains("hunter2"), "{text}");
+    assert!(text.contains("category=Some(Server)"), "{text}");
+}

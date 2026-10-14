@@ -242,7 +242,11 @@ impl BrowseModel {
                         }
                     }
                     Err(error) => {
-                        tracing::warn!(%error, "could not read the table's columns");
+                        tracing::warn!(
+                            kind = failure_kind(&error),
+                            category = ?error.category(),
+                            "could not read the table's columns"
+                        );
                         self.on_read_failed(&crate::ui::error_text::operation_error_message(&error), fx);
                         self.retry_if_link_moved(BrowseRequestKind::Columns, fx);
                     }
@@ -272,7 +276,11 @@ impl BrowseModel {
                 match value {
                     Ok(count) => self.on_row_count_loaded(count, fx),
                     Err(error) => {
-                        tracing::debug!(%error, "the row count could not be read");
+                        tracing::debug!(
+                            kind = failure_kind(&error),
+                            category = ?error.category(),
+                            "the row count could not be read"
+                        );
                         self.retry_if_link_moved(BrowseRequestKind::Count, fx);
                     }
                 }
@@ -321,5 +329,18 @@ impl BrowseModel {
                 }
             }
         }
+    }
+}
+
+/// What a failed read was, for the log. A server's message can quote
+/// the statement it rejected, and with it a literal from the user's
+/// filter, so the log names the failure and leaves its text to the UI.
+fn failure_kind(error: &OperationError) -> &'static str {
+    match error {
+        OperationError::Driver(_) => "driver",
+        OperationError::Sql(_) | OperationError::Browse(_) | OperationError::Build(_) => "statement",
+        OperationError::Panicked(_) => "panic",
+        OperationError::Cancelled => "cancelled",
+        OperationError::Closed => "closed",
     }
 }
