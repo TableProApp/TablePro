@@ -584,6 +584,27 @@ mod tests {
         );
     }
 
+    fn flag_rows() -> Grid {
+        Grid::open(
+            vec![named("id", "integer", true), named("flag", "boolean", false)],
+            vec![
+                vec![Value::Int(1), Value::Bool(false)],
+                vec![Value::Int(2), Value::Bool(false)],
+            ],
+        )
+    }
+
+    #[gtk4::test]
+    fn opening_a_boolean_cell_writes_nothing() {
+        let grid = flag_rows();
+        let cell = grid.cell_of(1, 1);
+
+        begin_edit(&cell);
+
+        assert!(grid.take_messages().is_empty(), "opening the cell flipped it");
+        assert!(!cell.check_button().expect("a check button").is_active());
+    }
+
     #[gtk4::test]
     fn a_saved_rows_key_is_locked_and_a_drafts_is_not() {
         let grid = two_text_rows();

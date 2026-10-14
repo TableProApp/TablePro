@@ -7,13 +7,15 @@ use super::cell_editor_kind::CellEditorKind;
 use super::edit_commit::empty_placeholder;
 use super::inline_editor::{InlineEditor, InlineOptions, finish_inline};
 use super::multiline_editor::MultilineEditor;
-use super::toggle_cell::ToggleCell;
 use super::{EditSnapshot, GridCell, GridMsg};
 use crate::ui::error_text::edit_parse_message;
 
 /// Open the editor the cell's column and value call for. It starts from
 /// the whole value with any pending edit, never from the text the cell
 /// draws, which is cut short or stands in for the value.
+///
+/// A boolean cell opens nothing: its check button is the editor, so
+/// opening it never writes a value.
 pub(crate) fn begin_edit(cell: &GridCell) {
     let (Some(row), Some(drawing)) = (cell.row(), cell.drawing()) else {
         return;
@@ -21,14 +23,9 @@ pub(crate) fn begin_edit(cell: &GridCell) {
     let Some(column) = drawing.catalog.as_ref() else {
         return;
     };
-    let editability = cell.lock().map_or(Ok(()), Err);
-    let kind = CellEditorKind::for_cell(column, editability);
+    let kind = CellEditorKind::for_cell(column, cell.lock().map_or(Ok(()), Err));
     match kind {
-        CellEditorKind::ReadOnly(_) => return,
-        CellEditorKind::Toggle(_) => {
-            ToggleCell::toggle(cell);
-            return;
-        }
+        CellEditorKind::ReadOnly(_) | CellEditorKind::Toggle(_) => return,
         CellEditorKind::Inline { .. } | CellEditorKind::Multiline { .. } | CellEditorKind::Calendar => {}
     }
     let original = drawing.tab_ctx.edit_input(&row, cell.column());

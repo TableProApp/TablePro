@@ -43,13 +43,6 @@ impl ToggleCell {
         });
     }
 
-    /// Flip the cell from the keyboard, as a click would.
-    pub(super) fn toggle(cell: &GridCell) {
-        if let Some(check) = cell.check_button() {
-            check.set_active(!check.is_active());
-        }
-    }
-
     pub(super) fn draw(cell: &GridCell, check: &gtk::CheckButton, state: &ToggleState) {
         // Suppressed, so drawing the value does not echo back as an edit.
         cell.suppress_toggle(true);
