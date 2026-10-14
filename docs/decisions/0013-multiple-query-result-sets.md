@@ -17,7 +17,7 @@ Drivers must drain the full response and surface late server errors. A query tha
 
 ## Consequences
 
-PR #228 implements this decision. The SQL Server batch API collects ordered sets under one shared budget; the guard, editor, MCP and JSON export retain the sets, while CSV refuses multi-set output. Docker tests cover ordering, an empty first set, late errors, truncation and connection reuse. Current acceptance status is recorded in TEST-10 in the [known-issues ledger](../known-issues.md).
+PR #228 implements this decision. The SQL Server batch API collects ordered sets under one shared budget; the guard, editor, MCP and JSON export retain the sets, while CSV refuses multi-set output. Docker tests cover ordering, an empty first set, late errors, truncation and connection reuse. The completed TEST-10 record remains in the [archived pre-migration ledger](../archive/known-issues-pre-project-migration-2026-10-12.md).
 
 - Existing browse, paging and single-result consumers keep using `QueryResult`.
 - Existing query callers retain their first-set behavior; callers that need all sets opt into the batch API.

@@ -46,9 +46,9 @@ Read [docs/storage.md](storage.md) before changing persisted data. Do not put pa
 
 ## GTK changes
 
-Keep UI state in Relm4 components and move testable rules into pure Rust services. Add unit tests for extracted logic. Safety-sensitive GTK flows need targeted tests when they can run deterministically. The current release blockers are listed in [docs/production-audit.md](archive/production-audit.md).
+Keep UI state in Relm4 components and move testable rules into pure Rust services. Add unit tests for extracted logic. Safety-sensitive GTK flows need targeted tests when they can run deterministically. Current release blockers and acceptance are listed in the [active sprint](bookie-0.2-sprint.md).
 
-Include before and after screenshots for visible changes. Test both light and dark themes when colors or contrast change. Current release blockers and acceptance live in the [active sprint](bookie-0.2-sprint.md), not in a dated audit.
+Include before and after screenshots for visible changes. Test both light and dark themes when colors or contrast change.
 
 ## Packaging
 

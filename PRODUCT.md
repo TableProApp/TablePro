@@ -8,7 +8,7 @@ BookiE is a native Linux database client. A person runs it on their machine, ope
 
 ## What people do today instead
 
-Another desktop database client, a vendor cloud console, or `psql` / `mysql` in a terminal. Those tools either skip a policy and audit path, or they require an account. BookiE's bet is a local GTK client that still wraps every consumer handle in `PolicyGuard`.
+Alternatives include other desktop database clients, vendor consoles, and command-line tools such as `psql` or `mysql`. BookiE's product bet is to combine a local GTK workflow with one governed and audited database path for the GUI and MCP consumers.
 
 ## Vision
 
