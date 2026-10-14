@@ -53,6 +53,17 @@ RUST_LOG=debug ./_build/crates/app/tablepro
 
 CI sets `GTK_A11Y=test` for GTK tests. With `GTK_A11Y=none` GTK records no accessible properties, and the accessibility helpers report that the test backend is missing.
 
+### Dependencies
+
+`data/licenses` holds the license notices of every crate the app ships, written from `Cargo.lock` by cargo-about. The About dialog embeds `third-party.json`, and both files install next to `LICENSE`. After a change to `Cargo.lock`, regenerate them and commit the result; the Third-party licenses CI job fails until they match:
+
+```bash
+cargo install --locked cargo-about@0.9.2 --features cli
+build-aux/update-third-party-licenses.sh
+```
+
+A license added to `[licenses].allow` in `deny.toml` goes into `accepted` in `about.toml` at the same position.
+
 ## Code style
 
 | Tool | Config | Notes |

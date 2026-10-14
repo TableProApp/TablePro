@@ -67,7 +67,7 @@ with `GSettings schema app.tablepro.TablePro is not installed`.
 
 Install with `meson install -C _build`, which places the binary, the
 askpass helper, the desktop entry, the D-Bus service, the AppStream
-metainfo and the icons. See
+metainfo, the icons and the third-party license notices. See
 [ADR 0006](docs/decisions/0006-meson-cargo-build.md).
 
 Before pushing, run the [fast-job commands](CONTRIBUTING.md#fast-job-commands).

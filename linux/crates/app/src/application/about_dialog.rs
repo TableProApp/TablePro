@@ -3,6 +3,7 @@ use tablepro_core::DriverRegistry;
 
 use super::debug_info::debug_info;
 use super::runtime_versions::RuntimeVersions;
+use super::third_party_licenses;
 use crate::config::{self, Profile};
 use crate::i18n::gettext;
 
@@ -21,6 +22,12 @@ pub fn build_about_dialog(drivers: &DriverRegistry) -> adw::AboutDialog {
     dialog.set_translator_credits(&gettext("translator-credits"));
     dialog.set_debug_info(&debug_info(&RuntimeVersions::current(), drivers));
     dialog.set_debug_info_filename(DEBUG_INFO_FILENAME);
+    match third_party_licenses::embedded_legal_sections() {
+        Ok(sections) => {
+            third_party_licenses::add_legal_sections(&dialog, &sections);
+        }
+        Err(error) => tracing::warn!(%error, "the About dialog lists no third-party licenses"),
+    }
     dialog
 }
 

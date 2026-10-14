@@ -68,6 +68,8 @@ install_data(
 
 install_data(
   meson.project_source_root() / 'LICENSE',
+  'licenses' / 'THIRD-PARTY-NOTICE.md',
+  'licenses' / 'third-party.json',
   install_dir: get_option('datadir') / 'licenses' / application_id,
 )
 

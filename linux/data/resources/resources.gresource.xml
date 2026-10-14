@@ -4,6 +4,8 @@
     <file compressed="true">style.css</file>
     <!-- Rendered from the metainfo template by crates/app/build.rs. -->
     <file compressed="true" preprocess="xml-stripblanks">metainfo.xml</file>
+    <!-- Written by build-aux/update-third-party-licenses.sh. -->
+    <file compressed="true" alias="licenses/third-party.json">../licenses/third-party.json</file>
     <file compressed="true" preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/browse-tab.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/connect-dialog.ui</file>

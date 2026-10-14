@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connections open when TablePro quits open again at the next launch; Restore session in Preferences turns it off.
 - Save query history in Preferences turns the query history off and keeps the entries already saved.
 - Troubleshooting in About TablePro, with the app, toolkit and driver versions to copy into a bug report.
+- Licenses of the third-party crates TablePro is built with, in About TablePro and installed with the app.
 
 ### Changed
 
