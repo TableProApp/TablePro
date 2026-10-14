@@ -9,8 +9,8 @@ const CREATE: &str = "create";
 /// Ask for the name of a new group. `None` when the user cancels.
 ///
 /// Create stays off until the name could be saved and names no group
-/// the list already has, so the dialog never closes on a name that is
-/// then refused or that files the connection somewhere it already was.
+/// the list already has, in any case, so the dialog never closes on a
+/// name that is then refused or that reads as a group already there.
 pub(crate) async fn ask_group_name(
     parent: &gtk::Widget,
     existing: &[ConnectionGroupName],
@@ -38,10 +38,11 @@ pub(super) fn new_group_dialog(existing: &[ConnectionGroupName]) -> (adw::AlertD
     dialog.set_default_response(Some(CREATE));
     dialog.set_close_response(CANCEL);
     dialog.set_response_enabled(CREATE, false);
-    let existing = existing.to_vec();
+    let taken: Vec<String> = existing.iter().map(|group| group.as_str().to_lowercase()).collect();
     let answering = dialog.downgrade();
     entry.connect_changed(move |entry| {
-        let usable = ConnectionGroupName::new(&entry.text()).is_ok_and(|name| !existing.contains(&name));
+        let usable =
+            ConnectionGroupName::new(&entry.text()).is_ok_and(|name| !taken.contains(&name.as_str().to_lowercase()));
         if let Some(dialog) = answering.upgrade() {
             dialog.set_response_enabled(CREATE, usable);
         }
@@ -65,6 +66,8 @@ mod tests {
             ("   ", false),
             ("Work", false),
             (" Work ", false),
+            ("work", false),
+            ("WORK", false),
             ("Archive", true),
             (&"x".repeat(ConnectionGroupName::MAX_CHARS + 1), false),
             ("Staging", true),

@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 use crate::services::saved_connection_list::{SavedConnectionList, StateObserverId};
 use crate::services::saved_connection_object::SavedConnectionObject;
-use crate::ui::picker::{connection_row, group_sections};
+use crate::ui::picker::connection_row;
 
 mod imp {
     use super::*;
@@ -211,7 +211,7 @@ impl WelcomeView {
         let Some(parts) = imp.parts.get() else {
             return;
         };
-        let names: Vec<ConnectionGroupName> = group_sections(&parts.list.model()).into_iter().flatten().collect();
+        let names = parts.list.groups();
         // Next to named groups, "Saved Connections" would read as all of them.
         imp.ungrouped.set_title(&if names.is_empty() {
             crate::i18n::gettext("Saved Connections")

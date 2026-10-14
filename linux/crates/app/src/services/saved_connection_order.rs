@@ -20,12 +20,13 @@ pub(crate) fn sort(connections: &mut [SavedConnection]) {
 }
 
 /// Ungrouped sorts before every group, and groups sort by name
-/// regardless of how they were capitalised.
-fn group_key(connection: &SavedConnection) -> (bool, String) {
-    match &connection.group {
-        Some(group) => (true, group.as_str().to_lowercase()),
-        None => (false, String::new()),
-    }
+/// regardless of how they were capitalised. Two names that differ only
+/// in case stay two blocks, in a fixed order.
+fn group_key(connection: &SavedConnection) -> Option<(String, &str)> {
+    connection
+        .group
+        .as_ref()
+        .map(|group| (group.as_str().to_lowercase(), group.as_str()))
 }
 
 /// Newest first, with never-opened last. The timestamp is negated
@@ -38,7 +39,8 @@ fn recency_key(connection: &SavedConnection) -> (bool, i64) {
     }
 }
 
-/// Every group in `sorted`, in the order the list shows them, once each.
+/// Every group in `sorted`, once each, in the order the list shows them:
+/// the order of the picker's sections and of every Move to Group menu.
 pub(crate) fn groups(sorted: &[SavedConnection]) -> Vec<ConnectionGroupName> {
     let mut found: Vec<ConnectionGroupName> = Vec::new();
     for group in sorted.iter().filter_map(|connection| connection.group.as_ref()) {
@@ -141,5 +143,21 @@ mod tests {
 
         let names: Vec<String> = groups(&list).into_iter().map(String::from).collect();
         assert_eq!(names, ["Archive", "Work"]);
+    }
+
+    #[test]
+    fn groups_that_differ_only_in_case_keep_blocks_of_their_own() {
+        let mut list = vec![
+            connection("a", Some("work"), Some(1)),
+            connection("b", Some("Work"), Some(3)),
+            connection("c", Some("work"), Some(5)),
+            connection("d", Some("Work"), Some(2)),
+        ];
+
+        sort(&mut list);
+
+        assert_eq!(names(&list), vec!["d", "b", "a", "c"]);
+        let groups: Vec<String> = groups(&list).into_iter().map(String::from).collect();
+        assert_eq!(groups, ["Work", "work"]);
     }
 }
