@@ -90,13 +90,22 @@ impl Fake {
             jump_hosts: SshDestination::parse_jump_list("ops@jump1").unwrap(),
             auth,
         };
-        OpenSshSession::connect(
-            &config,
-            &self.context,
-            Arc::new(UnattendedPrompter),
-            CancellationToken::new(),
-        )
-        .await
+        for _ in 0..50 {
+            match OpenSshSession::connect(
+                &config,
+                &self.context,
+                Arc::new(UnattendedPrompter),
+                CancellationToken::new(),
+            )
+            .await
+            {
+                Err(OpenSshError::Spawn { detail, .. }) if detail.contains("Text file busy") => {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+                outcome => return outcome,
+            }
+        }
+        panic!("the fake ssh script stayed busy for a second");
     }
 }
 
