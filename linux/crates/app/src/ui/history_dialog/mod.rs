@@ -477,14 +477,17 @@ impl HistoryDialog {
         let dialog = self.downgrade();
         drop(spawn_and_deliver(
             &tasks,
-            async move { history.delete_returning(&ids).await },
-            move |deleted| {
+            async move {
+                let deleted = history.delete_returning(&ids).await;
+                (ids, deleted)
+            },
+            move |done| {
                 let Some(dialog) = dialog.upgrade() else {
                     return;
                 };
-                match deleted {
-                    Ok(Ok(entries)) => dialog.entries_deleted(entries),
-                    Ok(Err(error)) => {
+                match done {
+                    Ok((ids, Ok(entries))) => dialog.entries_deleted(&ids, entries),
+                    Ok((_, Err(error))) => {
                         tracing::warn!(%error, "could not delete from the query history");
                         dialog.add_toast(&gettext("The queries could not be deleted."));
                     }
@@ -494,23 +497,32 @@ impl HistoryDialog {
         ));
     }
 
-    fn entries_deleted(&self, entries: Vec<Entry>) {
+    /// Every row asked for goes, including one the history no longer
+    /// had; only what was deleted here can be undone.
+    fn entries_deleted(&self, requested: &[i64], entries: Vec<Entry>) {
         let imp = self.imp();
         let Some(parts) = imp.parts.get() else {
             return;
         };
-        if entries.is_empty() {
-            return;
-        }
-        let gone: HashSet<i64> = entries.iter().map(|entry| entry.id).collect();
+        let gone: HashSet<i64> = requested.iter().copied().collect();
         parts.entries.retain(|object| {
             object
                 .downcast_ref::<HistoryEntryObject>()
                 .and_then(HistoryEntryObject::id)
                 .is_none_or(|id| !gone.contains(&id))
         });
+        // The next page loads when the list is scrolled to its end, which
+        // rows too few to fill it never are.
+        if parts.entries.n_items() < PAGE_SIZE as u32 {
+            self.load_more();
+        }
         self.selection_changed();
-        self.show_results();
+        if !imp.paging.borrow().is_loading_more() {
+            self.show_results();
+        }
+        if entries.is_empty() {
+            return;
+        }
 
         let count = entries.len() as u64;
         let toast = adw::Toast::new(&ngettext_f(
@@ -755,10 +767,10 @@ impl HistoryDialog {
 
     fn load_more(&self) {
         let imp = self.imp();
-        let Some((generation, after)) = imp.paging.borrow_mut().start_more() else {
+        let Some((history, tasks)) = self.storage() else {
             return;
         };
-        let Some((history, tasks)) = self.storage() else {
+        let Some((generation, after)) = imp.paging.borrow_mut().start_more() else {
             return;
         };
         let query = imp.query.borrow().clone();
@@ -787,12 +799,12 @@ impl HistoryDialog {
             Ok(Ok(page)) => page,
             Ok(Err(error)) => {
                 tracing::warn!(%error, "could not read the next page of the query history");
-                imp.paging.borrow_mut().more_failed(generation);
+                self.more_failed(generation);
                 return;
             }
             Err(failure) => {
                 tracing::warn!(%failure, "the next query history page failed");
-                imp.paging.borrow_mut().more_failed(generation);
+                self.more_failed(generation);
                 return;
             }
         };
@@ -801,6 +813,20 @@ impl HistoryDialog {
         }
         let objects: Vec<HistoryEntryObject> = page.entries.into_iter().map(HistoryEntryObject::new).collect();
         parts.entries.splice(parts.entries.n_items(), 0, &objects);
+        // A delete that emptied the list waits for this page to say
+        // whether anything is left.
+        self.show_results();
+    }
+
+    /// The next edge reached tries again. With no rows left on screen
+    /// there is no edge to reach, so the list says it could not read.
+    fn more_failed(&self, generation: u64) {
+        let imp = self.imp();
+        imp.paging.borrow_mut().more_failed(generation);
+        let empty = imp.parts.get().is_some_and(|parts| parts.entries.n_items() == 0);
+        if empty && imp.paging.borrow().is_current(generation) {
+            self.show_unavailable();
+        }
     }
 
     fn show_results(&self) {

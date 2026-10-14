@@ -15,6 +15,9 @@ impl HistoryPaging {
     pub(super) fn start_refresh(&mut self) -> u64 {
         self.generation += 1;
         self.loading_more = false;
+        // The cursor is the old search's: a next page read with it under
+        // the new search would skip rows or show some twice.
+        self.next = None;
         self.generation
     }
 
@@ -36,6 +39,10 @@ impl HistoryPaging {
 
     pub(super) fn is_current(&self, generation: u64) -> bool {
         generation == self.generation
+    }
+
+    pub(super) fn is_loading_more(&self) -> bool {
+        self.loading_more
     }
 
     /// The generation and cursor for the next page, unless one is on its
@@ -126,6 +133,19 @@ mod tests {
             Some((new, cursor(5))),
             "the old read kept the slot"
         );
+    }
+
+    #[test]
+    fn a_refresh_drops_the_old_searchs_cursor() {
+        let mut paging = HistoryPaging::default();
+        let old = paging.start_refresh();
+        assert!(paging.first_page_arrived(old, Some(cursor(10))));
+
+        let new = paging.start_refresh();
+
+        assert_eq!(paging.start_more(), None, "a next page read with the old cursor");
+        assert!(paging.first_page_arrived(new, Some(cursor(5))));
+        assert_eq!(paging.start_more(), Some((new, cursor(5))));
     }
 
     #[test]

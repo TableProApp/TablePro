@@ -609,3 +609,46 @@ fn menu_key_opens_the_menu_of_the_focused_row() {
     assert_eq!(target.and_then(|target| target.get::<i64>()), Some(first));
     menu.popdown();
 }
+
+#[gtk4::test]
+fn deleting_every_loaded_row_loads_the_rest() {
+    let harness = Harness::new();
+    for index in 0..PAGE_SIZE + 5 {
+        harness.record(&format!("SELECT {index}"));
+    }
+    let dialog = harness.dialog();
+    wait_until(WAIT, || entries(&dialog).len() == PAGE_SIZE).expect("the first page");
+    dialog.set_selecting(true);
+    dialog.imp().parts.get().expect("parts").multiple.select_all();
+
+    dialog
+        .activate_action("history.delete-selected", None)
+        .expect("the action");
+
+    wait_until(WAIT, || entries(&dialog).len() == 5).expect("the rest of the history");
+    assert_eq!(
+        entries(&dialog),
+        ["SELECT 4", "SELECT 3", "SELECT 2", "SELECT 1", "SELECT 0"]
+    );
+    assert_eq!(dialog.imp().stack.visible_child_name().as_deref(), Some("list"));
+}
+
+#[gtk4::test]
+fn deleting_a_row_already_gone_removes_it_without_undo() {
+    let harness = Harness::new();
+    harness.record("SELECT kept");
+    let gone = harness.record("SELECT gone");
+    let dialog = harness.presented_dialog();
+    wait_until(WAIT, || entries(&dialog).len() == 2).expect("the first page");
+    block_on(&harness.runtime, harness.store.delete_returning(&[gone])).expect("a delete elsewhere");
+
+    dialog
+        .activate_action("history.delete", Some(&gone.to_variant()))
+        .expect("the action");
+
+    wait_until(WAIT, || entries(&dialog) == ["SELECT kept"]).expect("the row to go");
+    assert!(
+        toast(&harness.window, "1 query deleted").is_none(),
+        "Undo offered for nothing deleted"
+    );
+}
