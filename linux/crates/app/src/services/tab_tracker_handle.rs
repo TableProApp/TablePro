@@ -6,7 +6,7 @@ use tablepro_core::edit::CellInput;
 use tablepro_core::{ColumnInfo, Value};
 
 use super::cell_overlay::CellOverlay;
-use super::change_tracker::{DraftRow, RowKey, RowState, TabChangeTracker, TrackedChanges};
+use super::change_tracker::{CellState, DraftRow, RowKey, RowState, TabChangeTracker, TrackedChanges};
 use super::save_batch::{SaveBatch, SaveTarget};
 use super::tracker_delta::TrackerDelta;
 use super::tracker_edit::TrackerEdit;
@@ -25,6 +25,18 @@ impl TabTrackerHandle {
 
     pub fn row_state(&self, row_key: &RowKey) -> RowState {
         self.0.borrow().row_state(row_key)
+    }
+
+    pub fn cell_state(&self, row_key: &RowKey, col: usize) -> CellState {
+        self.0.borrow().cell_state(row_key, col)
+    }
+
+    pub fn pending_input(&self, row_key: &RowKey, col: usize) -> Option<CellInput> {
+        self.0.borrow().pending_input(row_key, col)
+    }
+
+    pub fn is_error_row(&self, row_key: &RowKey) -> bool {
+        self.0.borrow().is_error_row(row_key)
     }
 
     #[must_use = "the grid shows stale rows until the delta is applied"]

@@ -236,7 +236,7 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
     // earlier "Filter rows" title — Apply / Clear / × already mark
     // this as the filter editor.
     let match_label = gtk::Label::builder().label(crate::i18n::gettext("Match")).build();
-    match_label.add_css_class("dim-label");
+    match_label.add_css_class("dimmed");
     let combinator_dropdown = gtk::DropDown::from_strings(&[
         &crate::i18n::pgettext("filter operator", "all"),
         &crate::i18n::pgettext("filter operator", "any"),
@@ -249,7 +249,7 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
     let match_suffix = gtk::Label::builder()
         .label(crate::i18n::gettext("of these rules"))
         .build();
-    match_suffix.add_css_class("dim-label");
+    match_suffix.add_css_class("dimmed");
     let match_row_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
@@ -315,7 +315,7 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
         .build();
     let where_label = gtk::Label::builder().label("WHERE").build();
     where_label.add_css_class("monospace");
-    where_label.add_css_class("dim-label");
+    where_label.add_css_class("dimmed");
     let raw_entry = gtk::Entry::builder()
         .placeholder_text(crate::i18n::gettext("e.g. created_at > now() - interval '1 day'"))
         .hexpand(true)

@@ -10,6 +10,7 @@ use super::cell_edit::install_edit_triggers;
 use super::cell_editability::column_takes_edits;
 use super::column_drawing::ColumnDrawing;
 use super::context_menu::attach_cell_gesture;
+use super::grid_attributes::GridAttributes;
 use super::grid_columns::GridColumns;
 use super::grid_keyboard::GridKeyboard;
 use super::grid_menus::{GridMenuInit, GridMenus, install_grid_context_menus};
@@ -42,6 +43,8 @@ pub fn build_column_view(
         .show_column_separators(true)
         .tab_behavior(gtk::ListTabBehavior::Cell)
         .build();
+    // GTK's own denser rows for a grid of data.
+    column_view.add_css_class("data-table");
     install_row_factory(&column_view, tab_ctx.clone());
 
     let grid_menus = install_grid_context_menus(GridMenuInit {
@@ -63,6 +66,7 @@ pub fn build_column_view(
     };
     let mut columns: Vec<gtk::ColumnViewColumn> = Vec::with_capacity(result.columns.len());
     let grid_columns = Rc::new(GridColumns::default());
+    let attributes = Rc::new(GridAttributes::new());
     for (i, column) in result.columns.iter().enumerate() {
         let col = build_column(ColumnInit {
             info: column,
@@ -75,6 +79,7 @@ pub fn build_column_view(
             column_view: column_view.downgrade(),
             grid_menus: grid_menus.clone(),
             grid_columns: grid_columns.clone(),
+            attributes: attributes.clone(),
         });
         column_view.append_column(&col);
         columns.push(col);
@@ -147,6 +152,7 @@ struct ColumnInit<'a> {
     column_view: glib::WeakRef<gtk::ColumnView>,
     grid_menus: GridMenus,
     grid_columns: Rc<GridColumns>,
+    attributes: Rc<GridAttributes>,
 }
 
 fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
@@ -161,6 +167,7 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
         column_view,
         grid_menus,
         grid_columns,
+        attributes,
     } = init;
     let factory = gtk::SignalListItemFactory::new();
 
@@ -178,9 +185,12 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
         .is_some_and(|column| column.is_auto_increment || column.is_generated);
     let drawing = Rc::new(ColumnDrawing {
         catalog,
+        column_type: info.column_type.clone(),
         tab_ctx: tab_ctx.clone(),
         auto_filled,
+        attributes,
     });
+    let numeric = info.column_type.kind.is_numeric();
 
     let setup_drawing = drawing.clone();
     let setup_columns = grid_columns.clone();
@@ -199,10 +209,10 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
         grid_cell.set_sink(sink.clone());
         grid_cell.set_columns(setup_columns.clone());
         match kind {
-            CellKind::ReadOnly => grid_cell.set_content(&text_display()),
+            CellKind::ReadOnly => grid_cell.set_content(&text_display(numeric)),
             CellKind::Toggle => ToggleCell::setup(&grid_cell),
             CellKind::Text => {
-                grid_cell.set_content(&text_display());
+                grid_cell.set_content(&text_display(numeric));
                 install_edit_triggers(&grid_cell);
             }
         }
@@ -261,15 +271,21 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
 }
 
 /// Every cell but a check box draws its value in an Inscription, which
-/// lays out only what fits and offers no text selection of its own.
-fn text_display() -> gtk::Inscription {
+/// lays out only what fits and offers no text selection of its own. A
+/// number lines up on its last digit in tabular figures.
+fn text_display(numeric: bool) -> gtk::Inscription {
     let display = gtk::Inscription::new(None);
-    display.set_xalign(0.0);
+    display.set_xalign(if numeric { 1.0 } else { 0.0 });
     display.set_hexpand(true);
     display.set_text_overflow(gtk::InscriptionOverflow::EllipsizeEnd);
+    display.set_min_chars(3);
+    display.set_nat_chars(14);
     display.set_margin_start(8);
     display.set_margin_end(8);
     display.add_css_class("tp-cell-text");
+    if numeric {
+        display.add_css_class("numeric");
+    }
     display
 }
 
@@ -815,6 +831,70 @@ mod tests {
 
         let alive = freed.iter().filter(|cell| cell.upgrade().is_some()).count();
         assert_eq!(alive, 0, "cells outlived their column view");
+    }
+
+    #[gtk4::test]
+    fn column_view_carries_data_table_class() {
+        let grid = two_text_rows();
+
+        assert!(grid.view.has_css_class("data-table"));
+    }
+
+    #[gtk4::test]
+    fn numeric_column_cells_align_end_with_numeric_class() {
+        let grid = Grid::open(
+            vec![
+                named("id", "integer", true),
+                named("name", "text", false),
+                named("price", "numeric(10,2)", false),
+            ],
+            vec![vec![
+                Value::Int(1),
+                Value::Text("tea".into()),
+                Value::Decimal("4.5".parse().expect("a decimal")),
+            ]],
+        );
+        let display = |column| grid.cell_of(1, column).display().expect("a text cell");
+
+        for column in [0, 2] {
+            assert_eq!(display(column).xalign(), 1.0, "column {column}");
+            assert!(display(column).has_css_class("numeric"), "column {column}");
+        }
+        assert_eq!(display(1).xalign(), 0.0);
+        assert!(!display(1).has_css_class("numeric"));
+        assert_eq!(display_text(&grid.cell_of(1, 2)), "4.50", "the column's scale");
+    }
+
+    #[gtk4::test]
+    fn pending_delete_row_uses_shared_strikethrough_attributes() {
+        let grid = two_text_rows();
+        let attributes = |id, column| {
+            grid.cell_of(id, column)
+                .display()
+                .and_then(|display| display.attributes())
+                .map(|attrs| attrs.as_ptr())
+        };
+        assert_eq!(attributes(1, 1), None, "plain text carries no attributes");
+
+        grid.redraw(&grid.tracker.apply(TrackerEdit::DeleteRows {
+            persisted: vec![(key(1), vec![Value::Int(1), Value::Text("A".into())].into())],
+            drafts: Vec::new(),
+        }));
+
+        let struck = attributes(1, 0).expect("the deleted row's text is struck through");
+        assert_eq!(attributes(1, 1), Some(struck), "each cell built its own list");
+        assert_eq!(attributes(2, 1), None);
+    }
+
+    #[gtk4::test]
+    fn a_null_placeholder_is_italic_and_a_locked_one_dimmed() {
+        let grid = name_rows(Value::Null);
+        let name = grid.cell_of(1, 1).display().expect("a text cell");
+
+        assert_eq!(name.text().as_deref(), Some(editable_null_sentinel().as_str()));
+        assert!(name.attributes().is_some(), "a placeholder reads like a value");
+        assert!(!name.has_css_class("dimmed"), "an editable NULL was dimmed");
+        assert!(name.tooltip_text().is_none());
     }
 
     #[test]

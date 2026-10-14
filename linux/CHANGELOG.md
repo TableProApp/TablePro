@@ -51,6 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deleting a connection asks once, offers its window when it is open, and can delete its query history too.
 - SQLite files shared through the document portal show their own path instead of the portal's.
 - Add Index and Add Foreign Key check the form as you type, and pick the referenced table and columns from the database.
+- Denser grid rows, with numbers aligned right in even-width digits at the precision their column declares.
+- A grid value too long to draw says how many bytes it leaves out, and its tooltip points to Show Row as JSON.
 
 ### Removed
 

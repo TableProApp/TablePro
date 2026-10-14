@@ -3,16 +3,8 @@ use tablepro_core::edit::CellInput;
 use tablepro_core::meta::RowIdentity;
 
 use super::{ColumnWidthBinding, GridRowId, RowObject};
-use crate::services::cell_overlay::CellOverlay;
 use crate::services::change_tracker::{CellState, RowKey, RowState};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct BoundCell {
-    pub input: CellInput,
-    pub classes: Vec<&'static str>,
-    pub state: CellState,
-}
 
 /// `tracker` and `column_widths` are `None` for a grid nothing tracks,
 /// such as editor results.
@@ -82,43 +74,48 @@ impl TabGridContext {
     /// What an editor opens on: a draft's cell as the tracker holds it,
     /// a saved row's pending value, else the value as it was read.
     pub(crate) fn edit_input(&self, row: &RowObject, col: usize) -> CellInput {
-        self.bind_state(row, col).input
+        self.with_effective_value(row, col, |value, default| match default {
+            true => CellInput::Default,
+            false => CellInput::Value(value.clone()),
+        })
     }
 
-    pub(super) fn bind_state(&self, row: &RowObject, col: usize) -> BoundCell {
-        let raw = row.cell(col).cloned().unwrap_or(Value::Null);
-        let Some((tracker, key)) = self.tracked_key(row) else {
-            return BoundCell {
-                input: CellInput::Value(raw),
-                classes: Vec::new(),
-                state: CellState::Clean,
-            };
-        };
-        let overlay = tracker.cell_overlay(&key, col, &raw);
-        let classes = pending_classes(tracker.row_state(&key), &overlay, col);
-        let input = match row.id() {
-            GridRowId::Draft(draft_id) => tracker
-                .draft_input(*draft_id, col)
-                .unwrap_or(CellInput::Value(overlay.value)),
-            GridRowId::Result | GridRowId::Unkeyed | GridRowId::Persisted(_) => CellInput::Value(overlay.value),
-        };
-        BoundCell {
-            input,
-            classes,
-            state: overlay.state,
+    /// Calls `f` with the value the cell shows, borrowed from the row
+    /// unless the tracker holds a pending one. `default` is set for a
+    /// draft's cell left to the server, whose value then reads as NULL.
+    pub(crate) fn with_effective_value<R>(&self, row: &RowObject, col: usize, f: impl FnOnce(&Value, bool) -> R) -> R {
+        let pending = self
+            .tracked_key(row)
+            .and_then(|(tracker, key)| tracker.pending_input(&key, col));
+        match (pending, row.cell(col)) {
+            (Some(CellInput::Value(value)), _) => f(&value, false),
+            (Some(CellInput::Default), _) => f(&Value::Null, true),
+            (None, Some(value)) => f(value, false),
+            (None, None) => f(&Value::Null, false),
         }
+    }
+
+    /// The classes that tint the cell for its row's pending change, and
+    /// the cell's own state.
+    pub(super) fn pending_marks(&self, row: &RowObject, col: usize) -> (Vec<&'static str>, CellState) {
+        let Some((tracker, key)) = self.tracked_key(row) else {
+            return (Vec::new(), CellState::Clean);
+        };
+        let state = tracker.cell_state(&key, col);
+        let error_flash = col == 0 && tracker.is_error_row(&key);
+        (pending_classes(tracker.row_state(&key), state, error_flash), state)
     }
 }
 
-fn pending_classes(row_state: RowState, overlay: &CellOverlay, col: usize) -> Vec<&'static str> {
+fn pending_classes(row_state: RowState, cell_state: CellState, error_flash: bool) -> Vec<&'static str> {
     let mut classes = Vec::new();
-    match (row_state, overlay.state) {
+    match (row_state, cell_state) {
         (RowState::PendingDelete, _) => classes.push("tp-row-pending-delete"),
         (RowState::InsertDraft, _) => classes.push("tp-row-pending-insert"),
         (_, CellState::Modified) => classes.push("tp-cell-modified"),
         _ => {}
     }
-    if col == 0 && overlay.error_flash {
+    if error_flash {
         classes.push("tp-row-leftmost-error-flash");
     }
     classes
@@ -156,28 +153,49 @@ mod tests {
         let tracker = TabTrackerHandle::default();
         let draft_id = insert_draft(&tracker, vec![Value::Int(4)]);
         let _ = tracker.flash_error_row(RowKey::Draft(draft_id));
+        let draft = RowObject::draft(draft_id);
 
-        let bound = context(&tracker).bind_state(&RowObject::draft(draft_id), 0);
+        let (classes, _) = context(&tracker).pending_marks(&draft, 0);
 
         assert_eq!(
-            bound.input,
+            context(&tracker).edit_input(&draft, 0),
             CellInput::Value(Value::Int(4)),
             "a draft's cells are read from the tracker"
         );
-        assert_eq!(
-            bound.classes,
-            vec!["tp-row-pending-insert", "tp-row-leftmost-error-flash"]
-        );
+        assert_eq!(classes, vec!["tp-row-pending-insert", "tp-row-leftmost-error-flash"]);
     }
 
     #[test]
     fn an_untracked_grid_draws_the_fetched_value_plainly() {
         let row = RowObject::result(vec![Value::Int(1)].into());
 
-        let bound = TabGridContext::default().bind_state(&row, 0);
+        let (classes, _) = TabGridContext::default().pending_marks(&row, 0);
 
-        assert_eq!(bound.input, CellInput::Value(Value::Int(1)));
-        assert!(bound.classes.is_empty());
+        assert_eq!(
+            TabGridContext::default().edit_input(&row, 0),
+            CellInput::Value(Value::Int(1))
+        );
+        assert!(classes.is_empty());
+    }
+
+    #[test]
+    fn a_clean_cell_is_drawn_from_the_row_itself() {
+        let tracker = TabTrackerHandle::default();
+        let key = RowKey::from_pk_values(&[Value::Int(1)]).expect("a key");
+        let _ = tracker.apply(TrackerEdit::Cell {
+            row_key: key.clone(),
+            col: 1,
+            original: Value::Text("old".into()),
+            value: Value::Text("new".into()),
+        });
+        let row = RowObject::persisted(Some(key), vec![Value::Int(1), Value::Text("old".into())].into());
+        let cells = row.cells().expect("a saved row's cells");
+
+        let borrowed = context(&tracker).with_effective_value(&row, 0, |value, _| std::ptr::eq(value, &cells[0]));
+        let pending = context(&tracker).with_effective_value(&row, 1, |value, default| (value.clone(), default));
+
+        assert!(borrowed, "an unedited cell was copied out of its row");
+        assert_eq!(pending, (Value::Text("new".into()), false));
     }
 
     #[test]

@@ -657,6 +657,29 @@ fn a_refresh_under_a_filter_that_no_longer_fits_keeps_the_rows() {
 }
 
 #[gtk4::test]
+fn no_dim_label_class_remains() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    let _shown = Shown::new(harness.tab());
+    wait_until(WAIT, || {
+        crate::test_support::descendants(harness.tab())
+            .iter()
+            .any(|widget| widget.is::<GridCell>())
+    })
+    .expect("the grid draws its cells");
+    harness.tab().send(BrowseTabInput::ToggleFilterStrip);
+
+    let dimmed: Vec<String> = crate::test_support::descendants(harness.tab())
+        .into_iter()
+        .filter(|widget| widget.has_css_class("dim-label"))
+        .map(|widget| widget.type_().name().to_owned())
+        .collect();
+
+    assert!(dimmed.is_empty(), "still dim-label: {dimmed:?}");
+}
+
+#[gtk4::test]
 fn export_and_save_reach_the_window_as_signals() {
     let mut script = serving_table();
     script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));

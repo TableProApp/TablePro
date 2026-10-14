@@ -501,7 +501,7 @@ impl TabChangeTracker {
         }
     }
 
-    fn cell_state(&self, row_key: &RowKey, col: usize) -> CellState {
+    pub fn cell_state(&self, row_key: &RowKey, col: usize) -> CellState {
         if matches!(row_key, RowKey::Draft(_)) {
             return CellState::InsertDraft;
         }
@@ -509,6 +509,22 @@ impl TabChangeTracker {
             return CellState::Modified;
         }
         CellState::Clean
+    }
+
+    /// A cell's pending value, `None` when it shows what was read. A
+    /// draft's cell is always the tracker's.
+    pub fn pending_input(&self, row_key: &RowKey, col: usize) -> Option<CellInput> {
+        match row_key {
+            RowKey::Draft(draft_id) => self.draft_input(*draft_id, col),
+            RowKey::Persisted(_) => self
+                .updates
+                .get(&(row_key.clone(), col))
+                .map(|edit| CellInput::Value(edit.pending.clone())),
+        }
+    }
+
+    pub fn is_error_row(&self, row_key: &RowKey) -> bool {
+        self.error_row.as_ref() == Some(row_key)
     }
 
     /// Coarse row state. PendingDelete wins over Modified.

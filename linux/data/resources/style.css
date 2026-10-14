@@ -24,12 +24,6 @@ textview.sql-editor, textview.sql-editor text {
   text-decoration: line-through;
 }
 
-/* Italic only: the dim-label Adwaita class added alongside already
-   supplies the opacity. */
-.tp-null-sentinel {
-  font-style: italic;
-}
-
 /* GtkColumnView's default cell focus is a 1px outline that vanishes
    against the selected-row highlight. A 2px inset accent ring is the
    spreadsheet-standard focused-cell signal, on the focused cell and on
