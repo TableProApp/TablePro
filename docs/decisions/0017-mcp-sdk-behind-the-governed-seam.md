@@ -26,6 +26,10 @@ Replace the protocol, transport and tool-schema layer of `crates/mcp` with `rmcp
 
 The migration is staged behind the existing MCP tests. The adoption is complete only when every current MCP test passes against the new layer, including the refusal without a token, the bad-token refusal, the disconnect-aware cancellation with no execution after a disconnect during approval, and the shutdown test.
 
+## Implementation status (2026-10-14)
+
+The production server has not migrated. The default stdio and streamable-HTTP entry points still use the hand-written server in `crates/mcp/src/server.rs`. `rmcp` remains optional behind `rmcp-prototype`, whose prototype serves stdio only. HTTP middleware, compatibility for every current token location, request-cancellation wiring and the full MCP regression suite against the SDK remain incomplete. The accepted direction is not yet a shipped capability.
+
 ## Prototype result (2026-10-12)
 
 `crates/mcp/src/rmcp_server.rs`, behind the off-by-default cargo feature `rmcp-prototype`, serves the existing `McpBridge` through `rmcp` over stdio. It implements `list_tools` and `call_tool` by hand so `tools::dispatch` and the existing tool descriptions and schemas are reused unchanged. Seven tests pass over the SDK's wire:
