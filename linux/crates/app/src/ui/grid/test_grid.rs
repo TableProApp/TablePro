@@ -168,7 +168,6 @@ impl Grid {
             .expect("a column")
     }
 
-    /// The grid cell the window's focus is on.
     pub(super) fn focused_cell(&self) -> Option<GridCell> {
         let focus = gtk::prelude::GtkWindowExt::focus(&self.window)?;
         GridCell::from_focus(&focus)
@@ -176,14 +175,17 @@ impl Grid {
 
     /// Focus the cell of the `column`th shown column at `position`, as
     /// the arrow keys do. `scroll_to` moves the focus only within a
-    /// focused list, so the view's grab carries it there.
+    /// focused list, so the view's grab carries it there. The view shows
+    /// the columns in result order.
     pub(super) fn focus(&self, position: u32, column: u32) -> GridCell {
         self.view
             .scroll_to(position, Some(&self.column(column)), gtk::ListScrollFlags::FOCUS, None);
         self.view.grab_focus();
         let mut focused = None;
         wait_until(WAIT, || {
-            focused = self.focused_cell().filter(|cell| cell.position() == Some(position));
+            focused = self
+                .focused_cell()
+                .filter(|cell| cell.position() == Some(position) && u32::try_from(cell.column()) == Ok(column));
             focused.is_some()
         })
         .expect("the cell takes the focus");
