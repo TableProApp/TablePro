@@ -7,6 +7,14 @@ use crate::services::cell_overlay::CellOverlay;
 use crate::services::change_tracker::{CellState, RowKey, RowState};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 
+/// What a cell draws for a row.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BoundCell {
+    pub input: CellInput,
+    pub classes: Vec<&'static str>,
+    pub state: CellState,
+}
+
 /// `tracker` and `column_widths` are `None` for a grid nothing tracks,
 /// such as editor results.
 #[derive(Debug, Clone)]
@@ -36,6 +44,12 @@ impl TabGridContext {
     /// `None` when nothing tracks the grid or the row has no key.
     fn tracked_key(&self, row: &RowObject) -> Option<(&TabTrackerHandle, RowKey)> {
         Some((self.tracker.as_ref()?, row.id().tracker_key()?))
+    }
+
+    /// `Clean` for a row nothing tracks.
+    pub(super) fn row_state(&self, row: &RowObject) -> RowState {
+        self.tracked_key(row)
+            .map_or(RowState::Clean, |(tracker, key)| tracker.row_state(&key))
     }
 
     /// Every copy and export path reads this rather than
@@ -69,13 +83,17 @@ impl TabGridContext {
     /// What an editor opens on: a draft's cell as the tracker holds it,
     /// a saved row's pending value, else the value as it was read.
     pub(crate) fn edit_input(&self, row: &RowObject, col: usize) -> CellInput {
-        self.bind_state(row, col).0
+        self.bind_state(row, col).input
     }
 
-    pub(super) fn bind_state(&self, row: &RowObject, col: usize) -> (CellInput, Vec<&'static str>) {
+    pub(super) fn bind_state(&self, row: &RowObject, col: usize) -> BoundCell {
         let raw = row.cell(col).cloned().unwrap_or(Value::Null);
         let Some((tracker, key)) = self.tracked_key(row) else {
-            return (CellInput::Value(raw), Vec::new());
+            return BoundCell {
+                input: CellInput::Value(raw),
+                classes: Vec::new(),
+                state: CellState::Clean,
+            };
         };
         let overlay = tracker.cell_overlay(&key, col, &raw);
         let classes = pending_classes(tracker.row_state(&key), &overlay, col);
@@ -85,7 +103,11 @@ impl TabGridContext {
                 .unwrap_or(CellInput::Value(overlay.value)),
             GridRowId::Result | GridRowId::Unkeyed | GridRowId::Persisted(_) => CellInput::Value(overlay.value),
         };
-        (input, classes)
+        BoundCell {
+            input,
+            classes,
+            state: overlay.state,
+        }
     }
 }
 
@@ -136,24 +158,27 @@ mod tests {
         let draft_id = insert_draft(&tracker, vec![Value::Int(4)]);
         let _ = tracker.flash_error_row(RowKey::Draft(draft_id));
 
-        let (value, classes) = context(&tracker).bind_state(&RowObject::draft(draft_id), 0);
+        let bound = context(&tracker).bind_state(&RowObject::draft(draft_id), 0);
 
         assert_eq!(
-            value,
+            bound.input,
             CellInput::Value(Value::Int(4)),
             "a draft's cells are read from the tracker"
         );
-        assert_eq!(classes, vec!["tp-row-pending-insert", "tp-row-leftmost-error-flash"]);
+        assert_eq!(
+            bound.classes,
+            vec!["tp-row-pending-insert", "tp-row-leftmost-error-flash"]
+        );
     }
 
     #[test]
     fn an_untracked_grid_draws_the_fetched_value_plainly() {
         let row = RowObject::result(vec![Value::Int(1)].into());
 
-        let (value, classes) = TabGridContext::default().bind_state(&row, 0);
+        let bound = TabGridContext::default().bind_state(&row, 0);
 
-        assert_eq!(value, CellInput::Value(Value::Int(1)));
-        assert!(classes.is_empty());
+        assert_eq!(bound.input, CellInput::Value(Value::Int(1)));
+        assert!(bound.classes.is_empty());
     }
 
     #[test]

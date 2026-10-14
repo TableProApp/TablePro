@@ -143,8 +143,8 @@ mod tests {
         bound.extend(bound_keys(browse.upcast_ref()));
         bound.extend(bound_keys(editor.upcast_ref()));
         assert!(
-            bound.contains(&parse("<Primary>BackSpace")),
-            "the grid's Set NULL key was not found, so the check reads nothing"
+            bound.contains(&parse("<Primary>n")),
+            "the tab's Insert Row key was not found, so the check reads nothing"
         );
 
         let reserved = APP_ACCELS

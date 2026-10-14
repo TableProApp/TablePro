@@ -1,8 +1,10 @@
 mod calendar_editor;
+mod cell_accessibility;
 mod cell_binding;
 mod cell_edit;
 mod cell_editability;
 mod cell_editor_kind;
+mod cell_focus;
 mod cell_lock;
 mod cell_preset;
 mod column_drawing;
@@ -12,8 +14,11 @@ mod context_menu;
 mod delete_availability;
 mod display_text;
 mod edit_commit;
+mod edit_navigation;
 mod edit_snapshot;
 mod grid_cell;
+mod grid_columns;
+mod grid_keyboard;
 mod grid_menus;
 mod grid_msg;
 mod grid_row_id;
@@ -21,14 +26,19 @@ mod grid_row_index;
 mod inline_editor;
 mod menu_rows;
 mod multiline_editor;
+mod row_factory;
 mod row_json_dialog;
 mod row_object;
 mod selection;
 mod tab_grid_context;
+#[cfg(test)]
+mod test_grid;
 mod toggle_cell;
 
+#[cfg(test)]
 pub(crate) use self::cell_edit::begin_edit;
 pub(crate) use self::cell_editability::cell_editability;
+pub(crate) use self::cell_focus::edit_row;
 pub(crate) use self::cell_lock::CellLock;
 pub(crate) use self::cell_preset::{CellPreset, cell_presets};
 pub(crate) use self::column_factory::build_column_view;

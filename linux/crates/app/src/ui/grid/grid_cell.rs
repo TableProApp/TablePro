@@ -6,8 +6,10 @@ use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib};
 use tablepro_core::edit::CellInput;
 
+use super::cell_accessibility::cell_description;
 use super::cell_binding::CellBinding;
 use super::column_drawing::ColumnDrawing;
+use super::grid_columns::GridColumns;
 use super::inline_editor::InlineEditor;
 use super::{CellLock, EditSnapshot, GridSink, RowObject};
 
@@ -34,6 +36,7 @@ mod imp {
         pub drawing: OnceCell<Rc<ColumnDrawing>>,
         /// Where the cell's editors send their edits.
         pub sink: OnceCell<GridSink>,
+        pub(super) columns: OnceCell<Rc<GridColumns>>,
         pub binding: RefCell<Option<CellBinding>>,
         #[cfg(test)]
         pub renders: Cell<u32>,
@@ -172,6 +175,18 @@ impl GridCell {
         self.imp().sink.get().cloned()
     }
 
+    pub(super) fn set_columns(&self, columns: Rc<GridColumns>) {
+        let _ = self.imp().columns.set(columns);
+    }
+
+    pub(super) fn columns(&self) -> Option<Rc<GridColumns>> {
+        self.imp().columns.get().cloned()
+    }
+
+    pub(super) fn column_view(&self) -> Option<gtk::ColumnView> {
+        self.ancestor(gtk::ColumnView::static_type()).and_downcast()
+    }
+
     pub(super) fn bind(&self, row: &RowObject) {
         let lock = match self.imp().drawing.get() {
             Some(drawing) => drawing.lock(row.id()),
@@ -187,6 +202,7 @@ impl GridCell {
     pub(super) fn unbind(&self) {
         self.imp().binding.take();
         self.cancel_edit();
+        self.reset_property(gtk::AccessibleProperty::Description);
     }
 
     /// The snapshot goes first, so an editor closing sends nothing.
@@ -212,7 +228,13 @@ impl GridCell {
         let (Some(row), Some(drawing)) = (row, self.drawing()) else {
             return;
         };
-        drawing.draw(self, &row);
+        let state = drawing.draw(self, &row);
+        // On the cell, since GtkColumnViewCell passes on no accessible
+        // property of its own.
+        match cell_description(state) {
+            Some(description) => self.update_property(&[gtk::accessible::Property::Description(&description)]),
+            None => self.reset_property(gtk::AccessibleProperty::Description),
+        }
     }
 
     #[cfg(test)]
@@ -295,8 +317,34 @@ impl GridCell {
 mod tests {
     use gtk4 as gtk;
     use gtk4::prelude::*;
+    use tablepro_core::Value;
 
     use super::GridCell;
+    use crate::services::tracker_edit::TrackerEdit;
+    use crate::ui::grid::test_grid::{key, two_text_rows};
+
+    fn described(widget: &impl IsA<gtk::Accessible>) -> bool {
+        gtk::test_accessible_has_property(widget, gtk::AccessibleProperty::Description)
+    }
+
+    #[gtk4::test]
+    fn pending_edit_sets_description_on_grid_cell() {
+        let grid = two_text_rows();
+        let cell = grid.cell_of(1, 1);
+        assert!(!described(&cell));
+
+        grid.redraw(&grid.tracker.apply(TrackerEdit::Cell {
+            row_key: key(1),
+            col: 1,
+            original: Value::Text("A".into()),
+            value: Value::Text("edited".into()),
+        }));
+        assert!(described(&cell), "an edited cell said nothing");
+        assert!(!described(&grid.cell_of(2, 1)));
+
+        grid.redraw(&grid.tracker.undo().expect("an edit to undo"));
+        assert!(!described(&cell), "an undone edit still read as modified");
+    }
 
     #[gtk4::test]
     fn from_focus_finds_the_cell_below_a_focused_cell_widget_or_above_its_editor() {

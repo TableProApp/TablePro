@@ -28,6 +28,10 @@ impl ToggleCell {
             .valign(gtk::Align::Center)
             .margin_start(8)
             .margin_end(8)
+            // The cell takes the focus, and toggles on F2 or Return, so
+            // Tab leaves the grid rather than stopping inside the cell.
+            .focusable(false)
+            .focus_on_click(false)
             .build();
         cell.set_content(&check);
         // The cell owns the check button, so the handler finds the cell
