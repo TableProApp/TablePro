@@ -257,8 +257,13 @@ fn a_dropped_writer_frees_its_file_once_cleaned_up() {
     let path = dir.path().join("export.csv");
 
     drop(write(open(&path), &["partial"]));
-    wait_until(WAIT, || entries(dir.path()).is_empty()).expect("the abandoned file to go");
-    crate::test_support::drain_main_context();
+    // The file goes on a GIO thread, and the claim on the GTK thread once
+    // that delete has answered, so the file can be gone a while first.
+    let uri = gio::File::for_path(&path).uri().to_string();
+    wait_until(WAIT, || {
+        entries(dir.path()).is_empty() && !CLAIMED.with_borrow(|claimed| claimed.contains(&uri))
+    })
+    .expect("the abandoned file to go, and its claim with it");
 
     let writer = write(open(&path), &["next"]);
     run(async move { writer.finish().await }).expect("closed");
