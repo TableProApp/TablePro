@@ -40,9 +40,10 @@ pub struct ScriptRun {
 
 /// The batches of the scoped text and what the plan warns about.
 ///
-/// Each statement goes on its own, as psql, mysql and sqlite3 send it:
-/// no multi-statement text reaches the server, so no implicit
-/// transaction can roll back statements that already reported success.
+/// Each statement goes on its own, as psql, mysql and sqlite3 send it,
+/// so no implicit transaction can roll back statements that already
+/// reported success. On SQL Server the unit is the `GO` batch, sent
+/// whole as sqlcmd sends it.
 pub fn plan_batches(
     scoped: &ScopedText,
     grammar: SqlGrammar,
