@@ -18,7 +18,7 @@
   ],
   "validation": {
     "bookiee_export": {
-      "command": "rtk proxy env BOOKIEE_XLSX_REIMPORT_ARTIFACT=/home/trung/Projects/tablepro/linux/docs/evidence/postgres-numeric-array-calc-reimport-results-2026-10-04/source.xlsx cargo test --locked --package tablepro-driver-postgres --test integration array_contract::value_contract_numeric_array_file_exports_preserve_exact_text -- --include-ignored --exact --test-threads=1",
+      "command": "rtk proxy env BOOKIEE_XLSX_REIMPORT_ARTIFACT=[user-home]/Projects/tablepro/linux/docs/evidence/postgres-numeric-array-calc-reimport-results-2026-10-04/source.xlsx cargo test --locked --package tablepro-driver-postgres --test integration array_contract::value_contract_numeric_array_file_exports_preserve_exact_text -- --include-ignored --exact --test-threads=1",
       "result": "1 passed, 0 failed",
       "log": "bookiee-export-test.txt"
     },

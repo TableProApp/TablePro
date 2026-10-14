@@ -1,4 +1,4 @@
-   Compiling tablepro-core v0.1.0 (/home/trung/Projects/tablepro/linux/crates/core)
+   Compiling tablepro-core v0.1.0 ([user-home]/Projects/tablepro/linux/crates/core)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.19s
      Running unittests src/lib.rs (linux/target/debug/deps/tablepro_core-cfcfb5702e5943f9)
 

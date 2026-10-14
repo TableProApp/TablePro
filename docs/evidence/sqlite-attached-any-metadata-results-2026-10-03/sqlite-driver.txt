@@ -1,4 +1,4 @@
-   Compiling tablepro-driver-sqlite v0.1.0 (/home/trung/Projects/tablepro/linux/crates/drivers/sqlite)
+   Compiling tablepro-driver-sqlite v0.1.0 ([user-home]/Projects/tablepro/linux/crates/drivers/sqlite)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.84s
      Running unittests src/lib.rs (linux/target/debug/deps/drivers_sqlite-f660bddac85ac240)
 

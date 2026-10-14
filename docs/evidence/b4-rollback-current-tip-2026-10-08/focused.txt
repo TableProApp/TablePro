@@ -19,7 +19,7 @@ Results:
   sequence advancement.
 
 Commands (run sequentially with
-`CARGO_TARGET_DIR=/home/trung/.cache/bookie-b4-target-0d5`):
+`CARGO_TARGET_DIR=[user-home]/.cache/bookie-b4-target-0d5`):
 
 ```sh
 cargo test --locked -p tablepro-driver-mysql --test integration mysql_atomic -- --include-ignored --test-threads=1

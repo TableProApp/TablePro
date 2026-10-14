@@ -1,5 +1,5 @@
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.39s
-     Running tests/integration.rs (/home/trung/.cache/bookie-b4-candidate-2026-10-08/target/debug/deps/integration-3f630a0a029525e7)
+     Running tests/integration.rs ([user-home]/.cache/bookie-b4-candidate-2026-10-08/target/debug/deps/integration-3f630a0a029525e7)
 
 running 18 tests
 test mysql_atomic::a_failed_mysql_dml_batch_confirms_rollback_and_preserves_neighbor_rows ... ok

@@ -1,4 +1,4 @@
-Change contract evidence: /home/trung/Projects/tablepro/linux/target/quality/20261003T181017428857Z-change-contracts/report.json
+Change contract evidence: [user-home]/Projects/tablepro/linux/target/quality/20261003T181017428857Z-change-contracts/report.json
 Mapped source files:
 - tablepro-driver-postgres: full --lib suite
   $ cargo test --locked -p tablepro-driver-postgres --lib -- --test-threads=1

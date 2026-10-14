@@ -1,7 +1,7 @@
     Finished `release` profile [optimized] target(s) in 0.35s
-dbus-daemon[2877435]: [session uid=1000 pid=2877435 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.8' (uid=1000 pid=2878150 comm="/home/trung/Projects/tablepro/linux/target/install")
+dbus-daemon[2877435]: [session uid=1000 pid=2877435 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.8' (uid=1000 pid=2878150 comm="[user-home]/Projects/tablepro/linux/target/install")
 dbus-daemon[2877435]: [session uid=1000 pid=2877435 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
-dbus-daemon[2877435]: [session uid=1000 pid=2877435 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.8' (uid=1000 pid=2878150 comm="/home/trung/Projects/tablepro/linux/target/install")
+dbus-daemon[2877435]: [session uid=1000 pid=2877435 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.8' (uid=1000 pid=2878150 comm="[user-home]/Projects/tablepro/linux/target/install")
 dbus-daemon[2877435]: [session uid=1000 pid=2877435 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.11' (uid=1000 pid=2878221 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[2877435]: [session uid=1000 pid=2877435 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
 dbus-daemon[2877435]: [session uid=1000 pid=2877435 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.11' (uid=1000 pid=2878221 comm="/usr/lib/xdg-desktop-portal")

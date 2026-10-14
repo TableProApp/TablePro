@@ -10,7 +10,7 @@ error[E0308]: mismatched types
      = note: expected struct `SqlStr`
                 found struct `AssertSqlSafe<&str>`
 note: method defined here
-    --> /home/trung/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sqlx-core-0.9.0/src/executor.rs:171:8
+    --> [user-home]/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sqlx-core-0.9.0/src/executor.rs:171:8
      |
  171 |     fn prepare<'e>(
      |        ^^^^^^^

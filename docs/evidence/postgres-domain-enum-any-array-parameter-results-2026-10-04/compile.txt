@@ -1,7 +1,7 @@
-   Compiling tablepro-driver-postgres v0.1.0 (/home/trung/Projects/tablepro/linux/crates/drivers/postgres)
-   Compiling tablepro-agentd v0.1.5 (/home/trung/Projects/tablepro/linux/crates/agentd)
-   Compiling tablepro-policy v0.1.0 (/home/trung/Projects/tablepro/linux/crates/policy)
-   Compiling tablepro-app v0.1.5 (/home/trung/Projects/tablepro/linux/crates/app)
-   Compiling tablepro-mcp v0.1.0 (/home/trung/Projects/tablepro/linux/crates/mcp)
-   Compiling tablepro-release-tests v0.1.0 (/home/trung/Projects/tablepro/linux/crates/release-tests)
+   Compiling tablepro-driver-postgres v0.1.0 ([user-home]/Projects/tablepro/linux/crates/drivers/postgres)
+   Compiling tablepro-agentd v0.1.5 ([user-home]/Projects/tablepro/linux/crates/agentd)
+   Compiling tablepro-policy v0.1.0 ([user-home]/Projects/tablepro/linux/crates/policy)
+   Compiling tablepro-app v0.1.5 ([user-home]/Projects/tablepro/linux/crates/app)
+   Compiling tablepro-mcp v0.1.0 ([user-home]/Projects/tablepro/linux/crates/mcp)
+   Compiling tablepro-release-tests v0.1.0 ([user-home]/Projects/tablepro/linux/crates/release-tests)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 5.58s

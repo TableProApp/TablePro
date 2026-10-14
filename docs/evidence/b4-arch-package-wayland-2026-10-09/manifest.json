@@ -22,7 +22,7 @@
     "command": "makepkg --cleanbuild --clean --nodeps --noconfirm",
     "reason_for_nodeps": "Rust 1.98.1 is installed through rustup and pacman does not recognize the declared rust build dependency; runtime and native build dependencies were already installed",
     "result": "release build and PKGBUILD check passed; validate-arch-package.sh passed",
-    "archive": "/home/trung/.cache/bookie-ui-main/linux/packaging/arch/bookie-0.1.7-1-x86_64.pkg.tar.zst"
+    "archive": "[user-home]/.cache/bookie-ui-main/linux/packaging/arch/bookie-0.1.7-1-x86_64.pkg.tar.zst"
   },
   "runtime": "Arch Linux on the active Hyprland Wayland session; GTK AT-SPI, private D-Bus, PostgreSQL 16 and SSH release fixtures in Docker Compose",
   "result": "passed",

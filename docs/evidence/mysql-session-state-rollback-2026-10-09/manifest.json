@@ -19,11 +19,11 @@
   "validation": {
     "format": "cargo fmt --all -- --check passed",
     "focused": {
-      "command": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target cargo test -p tablepro-driver-mysql --test integration failed_batch_preserves_last_insert_id_session_state -- --ignored --nocapture",
+      "command": "CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target cargo test -p tablepro-driver-mysql --test integration failed_batch_preserves_last_insert_id_session_state -- --ignored --nocapture",
       "result": "2 passed, 82 filtered out, 9.91 seconds"
     },
     "full_mysql_atomic_module": {
-      "command": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target cargo test -p tablepro-driver-mysql --test integration mysql_atomic:: -- --ignored --nocapture --test-threads=1",
+      "command": "CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target cargo test -p tablepro-driver-mysql --test integration mysql_atomic:: -- --ignored --nocapture --test-threads=1",
       "result": "16 passed, 68 filtered out, 176.36 seconds"
     }
   },

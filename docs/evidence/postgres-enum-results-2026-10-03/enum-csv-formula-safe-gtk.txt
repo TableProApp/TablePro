@@ -1,12 +1,12 @@
 dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.1' (uid=1000 pid=2630913 comm="gdbus call --session --dest org.a11y.Bus --object-")
 dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Successfully activated service 'org.a11y.Bus'
-dbus-daemon[2630924]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=2630926 comm="python3 /home/trung/Projects/tablepro/linux/crates")
+dbus-daemon[2630924]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=2630926 comm="python3 [user-home]/Projects/tablepro/linux/crates")
 dbus-daemon[2630924]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
-dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.6' (uid=1000 pid=2630932 comm="/home/trung/Projects/tablepro/linux/target/release")
+dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.6' (uid=1000 pid=2630932 comm="[user-home]/Projects/tablepro/linux/target/release")
 dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
 fusermount3: failed to access mountpoint /run/user/1000/gvfs: Permission denied
-dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.6' (uid=1000 pid=2630932 comm="/home/trung/Projects/tablepro/linux/target/release")
+dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.6' (uid=1000 pid=2630932 comm="[user-home]/Projects/tablepro/linux/target/release")
 dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.8' (uid=1000 pid=2631005 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
 dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.8' (uid=1000 pid=2631005 comm="/usr/lib/xdg-desktop-portal")
@@ -44,9 +44,9 @@ dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Successfully activa
 dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
 
 (process:2630926): dbind-WARNING **: 15:50:45.200: AT-SPI: Error in GetItems, sender=:1.3, error=Object does not exist at path “/org/a11y/atspi/cache”
-dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.6' (uid=1000 pid=2630932 comm="/home/trung/Projects/tablepro/linux/target/release")
+dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.6' (uid=1000 pid=2630932 comm="[user-home]/Projects/tablepro/linux/target/release")
 dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Successfully activated service 'org.gtk.vfs.UDisks2VolumeMonitor'
-dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Activating service name='org.gtk.vfs.MTPVolumeMonitor' requested by ':1.6' (uid=1000 pid=2630932 comm="/home/trung/Projects/tablepro/linux/target/release")
+dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Activating service name='org.gtk.vfs.MTPVolumeMonitor' requested by ':1.6' (uid=1000 pid=2630932 comm="[user-home]/Projects/tablepro/linux/target/release")
 dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Successfully activated service 'org.gtk.vfs.MTPVolumeMonitor'
 dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Activating service name='org.gtk.vfs.Metadata' requested by ':1.12' (uid=1000 pid=2631027 comm="/usr/lib/xdg-desktop-portal-gtk")
 dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Successfully activated service 'org.gtk.vfs.Metadata'

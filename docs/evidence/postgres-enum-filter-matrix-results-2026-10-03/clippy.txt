@@ -1,3 +1,3 @@
-    Checking tablepro-core v0.1.0 (/home/trung/Projects/tablepro/linux/crates/core)
-    Checking tablepro-driver-postgres v0.1.0 (/home/trung/Projects/tablepro/linux/crates/drivers/postgres)
+    Checking tablepro-core v0.1.0 ([user-home]/Projects/tablepro/linux/crates/core)
+    Checking tablepro-driver-postgres v0.1.0 ([user-home]/Projects/tablepro/linux/crates/drivers/postgres)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.79s

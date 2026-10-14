@@ -276,7 +276,7 @@ dbus-daemon[2232162]: [session uid=1000 pid=2232162 pidfd=5] Successfully activa
    Compiling recursive-proc-macro-impl v0.1.1
    Compiling openssl-sys v0.9.117
    Compiling atoi v2.0.0
-   Compiling tablepro-core v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/core)
+   Compiling tablepro-core v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/core)
    Compiling dotenvy v0.15.7
    Compiling httparse v1.10.1
    Compiling endi v1.1.1
@@ -412,7 +412,7 @@ dbus-daemon[2232162]: [session uid=1000 pid=2232162 pidfd=5] Successfully activa
    Compiling time v0.3.55
    Compiling derive_more-impl v2.1.1
    Compiling ssh-key v0.7.0-rc.11
-   Compiling tablepro-policy v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/policy)
+   Compiling tablepro-policy v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/policy)
    Compiling sha3 v0.12.0
    Compiling gdk-pixbuf v0.22.0
    Compiling pango v0.22.9
@@ -476,7 +476,7 @@ dbus-daemon[2232162]: [session uid=1000 pid=2232162 pidfd=5] Successfully activa
    Compiling futures-timer v3.0.4
    Compiling pretty-hex v0.4.2
    Compiling tiberius v0.13.0 (https://github.com/tiberius-rs/tiberius?rev=7fd75bb7070fe6ea41374698abf78928bb983bda#7fd75bb7)
-   Compiling tablepro-app v0.1.6-dev (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/app)
+   Compiling tablepro-app v0.1.6-dev ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/app)
    Compiling jiff v0.2.37
    Compiling axum v0.8.9
    Compiling locale_config v0.3.0
@@ -493,39 +493,39 @@ dbus-daemon[2232162]: [session uid=1000 pid=2232162 pidfd=5] Successfully activa
    Compiling gettext-rs v0.8.0
    Compiling whoami v1.6.1
    Compiling tracing-subscriber v0.3.23
-   Compiling tablepro-driver-mssql v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/mssql)
+   Compiling tablepro-driver-mssql v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/mssql)
    Compiling rustls-webpki v0.103.15
    Compiling russh v0.63.3
    Compiling sqlx-core v0.9.0
    Compiling tokio-rustls v0.26.5
    Compiling hyper-rustls v0.27.9
-   Compiling mongodb v3.9.1 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/vendor/mongodb)
-   Compiling redis v1.7.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/vendor/redis)
+   Compiling mongodb v3.9.1 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/vendor/mongodb)
+   Compiling redis v1.7.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/vendor/redis)
    Compiling clickhouse v0.15.2
-   Compiling tablepro-ssh v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/ssh)
-   Compiling sqlx-mysql v0.9.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/vendor/sqlx-mysql)
-   Compiling sqlx-postgres v0.9.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/vendor/sqlx-postgres)
+   Compiling tablepro-ssh v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/ssh)
+   Compiling sqlx-mysql v0.9.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/vendor/sqlx-mysql)
+   Compiling sqlx-postgres v0.9.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/vendor/sqlx-postgres)
    Compiling sqlx-sqlite v0.9.0
-   Compiling tablepro-driver-clickhouse v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/clickhouse)
+   Compiling tablepro-driver-clickhouse v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/clickhouse)
    Compiling libadwaita v0.9.2
    Compiling sourceview5 v0.11.2
    Compiling sqlx v0.9.0
-   Compiling tablepro-storage v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/storage)
-   Compiling tablepro-driver-sqlite v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/sqlite)
-   Compiling tablepro-driver-postgres v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/postgres)
-   Compiling tablepro-driver-mysql v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/mysql)
-   Compiling tablepro-driver-redis v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/redis)
-   Compiling tablepro-mcp v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/mcp)
+   Compiling tablepro-storage v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/storage)
+   Compiling tablepro-driver-sqlite v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/sqlite)
+   Compiling tablepro-driver-postgres v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/postgres)
+   Compiling tablepro-driver-mysql v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/mysql)
+   Compiling tablepro-driver-redis v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/redis)
+   Compiling tablepro-mcp v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/mcp)
    Compiling relm4 v0.11.0
-   Compiling tablepro-transport v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/transport)
-   Compiling tablepro-driver-mongodb v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/mongodb)
+   Compiling tablepro-transport v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/transport)
+   Compiling tablepro-driver-mongodb v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/mongodb)
     Finished `release` profile [optimized] target(s) in 3m 23s
-dbus-daemon[2233088]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=2246145 comm="python3 /home/trung/Projects/tablepro/.worktrees/b")
+dbus-daemon[2233088]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=2246145 comm="python3 [user-home]/Projects/tablepro/.worktrees/b")
 dbus-daemon[2233088]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
-dbus-daemon[2232162]: [session uid=1000 pid=2232162 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.8' (uid=1000 pid=2246146 comm="/home/trung/Projects/tablepro/.worktrees/b4-curren")
+dbus-daemon[2232162]: [session uid=1000 pid=2232162 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.8' (uid=1000 pid=2246146 comm="[user-home]/Projects/tablepro/.worktrees/b4-curren")
 dbus-daemon[2232162]: [session uid=1000 pid=2232162 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
-dbus-daemon[2232162]: [session uid=1000 pid=2232162 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.8' (uid=1000 pid=2246146 comm="/home/trung/Projects/tablepro/.worktrees/b4-curren")
+dbus-daemon[2232162]: [session uid=1000 pid=2232162 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.8' (uid=1000 pid=2246146 comm="[user-home]/Projects/tablepro/.worktrees/b4-curren")
 dbus-daemon[2232162]: [session uid=1000 pid=2232162 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.11' (uid=1000 pid=2246217 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[2232162]: [session uid=1000 pid=2232162 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
 dbus-daemon[2232162]: [session uid=1000 pid=2232162 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.11' (uid=1000 pid=2246217 comm="/usr/lib/xdg-desktop-portal")

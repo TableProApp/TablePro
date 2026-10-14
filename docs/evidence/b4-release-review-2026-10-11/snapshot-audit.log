@@ -1,5 +1,5 @@
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.22s
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_policy-b15a3e2bc3ea33c7)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_policy-b15a3e2bc3ea33c7)
 
 running 1 test
 

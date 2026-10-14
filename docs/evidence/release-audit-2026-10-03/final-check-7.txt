@@ -1,4 +1,4 @@
-   Compiling tablepro-policy v0.1.0 (/home/trung/Projects/tablepro/linux/crates/policy)
+   Compiling tablepro-policy v0.1.0 ([user-home]/Projects/tablepro/linux/crates/policy)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.48s
      Running unittests src/lib.rs (target/debug/deps/tablepro_policy-4900867f61f3f89e)
 

@@ -15,8 +15,8 @@ The full local B4 rollback layer passed:
 - PostgreSQL backend-termination rollback-failure selector: 1 passed, 0 failed.
 
 Commands:
-- `CARGO_TARGET_DIR=/home/trung/.cache/bookie-b4-target-0d5 cargo test --locked -p tablepro-driver-mysql --test integration mariadb_aria_nontransactional_effects_survive_failed_batches -- --include-ignored --test-threads=1`
-- `CARGO_TARGET_DIR=/home/trung/.cache/bookie-b4-target-0d5 python3 scripts/run-test-layer.py b4-rollback`
+- `CARGO_TARGET_DIR=[user-home]/.cache/bookie-b4-target-0d5 cargo test --locked -p tablepro-driver-mysql --test integration mariadb_aria_nontransactional_effects_survive_failed_batches -- --include-ignored --test-threads=1`
+- `CARGO_TARGET_DIR=[user-home]/.cache/bookie-b4-target-0d5 python3 scripts/run-test-layer.py b4-rollback`
 
 Layer report: `/tmp/bookie-ui-1b/linux/target/quality/20261008T123520080194Z-layers/report.json`. It was generated from base `9961e60` with the Aria test as its sole tracked source modification; the exact tested test change is included in merged commit `26d1355`. The full B4 rollback layer was rerun successfully at local tip `4db307780952ba4fbb191e8da1c021a57f833be9`; see `/tmp/bookie-ui-1b/linux/target/quality/20261008T132136234214Z-layers/report.json`.
 

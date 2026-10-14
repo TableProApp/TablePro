@@ -1,5 +1,5 @@
-   Compiling tablepro-core v0.1.0 (/home/trung/Projects/tablepro/linux/crates/core)
-   Compiling tablepro-driver-postgres v0.1.0 (/home/trung/Projects/tablepro/linux/crates/drivers/postgres)
+   Compiling tablepro-core v0.1.0 ([user-home]/Projects/tablepro/linux/crates/core)
+   Compiling tablepro-driver-postgres v0.1.0 ([user-home]/Projects/tablepro/linux/crates/drivers/postgres)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 3.49s
      Running tests/integration.rs (target/debug/deps/integration-ed30049cf07994c0)
 

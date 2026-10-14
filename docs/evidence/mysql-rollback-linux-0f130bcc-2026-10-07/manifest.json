@@ -7,7 +7,7 @@
     "crates/drivers/mysql/tests/shared/mysql_atomic.rs": "5883fb2d988ac862cb52eee91d6a4aac7df34f40d94b9ed55f98ed8d413b093f"
   },
   "fixture": "testcontainers MySQL 8.1",
-  "command": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target rtk cargo test --locked -p tablepro-driver-mysql --test integration mysql_atomic:: -- --ignored --test-threads=1",
+  "command": "CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target rtk cargo test --locked -p tablepro-driver-mysql --test integration mysql_atomic:: -- --ignored --test-threads=1",
   "result": "8 passed, 63 filtered out (1 suite, 92.57s)",
   "log": "focused.txt",
   "log_sha256": "edc4e28a92d827989eb2e5b8e2eb254b8b187fe63d81a2d5c57650cd767096e5",

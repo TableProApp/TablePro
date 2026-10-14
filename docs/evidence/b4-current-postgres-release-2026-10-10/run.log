@@ -1,4 +1,4 @@
-wrote fixture materials to /home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/tests/fixtures/postgres-release/materials
+wrote fixture materials to [user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/tests/fixtures/postgres-release/materials
 the SSH host key changed; the release script uses a fixture-local known_hosts file
  Image tablepro-postgres-release-db Building 
  Image tablepro-postgres-release-bastion Building 
@@ -56,7 +56,7 @@ the SSH host key changed; the release script uses a fixture-local known_hosts fi
 #12 transferring context: 683B done
 #12 DONE 0.0s
 
-#13 [relay 2/5] RUN apk add --no-cache openssh-server     && adduser -D -s /bin/sh tunnel     && sed -i 's/^tunnel:!:/tunnel:*:/' /etc/shadow     && mkdir -p /home/tunnel/.ssh
+#13 [relay 2/5] RUN apk add --no-cache openssh-server     && adduser -D -s /bin/sh tunnel     && sed -i 's/^tunnel:!:/tunnel:*:/' /etc/shadow     && mkdir -p [user-home]/.ssh
 #13 CACHED
 
 #14 [db 2/6] COPY materials/server.crt /certs/server.crt
@@ -71,28 +71,28 @@ the SSH host key changed; the release script uses a fixture-local known_hosts fi
 #17 [db 3/6] COPY materials/server.key /certs/server.key
 #17 DONE 0.1s
 
-#18 [relay 4/5] COPY materials/client_ed25519_key.pub /home/tunnel/.ssh/authorized_keys
+#18 [relay 4/5] COPY materials/client_ed25519_key.pub [user-home]/.ssh/authorized_keys
 #18 DONE 0.1s
 
-#19 [bastion 4/5] COPY materials/client_ed25519_key.pub /home/tunnel/.ssh/authorized_keys
+#19 [bastion 4/5] COPY materials/client_ed25519_key.pub [user-home]/.ssh/authorized_keys
 #19 DONE 0.1s
 
 #20 [db 4/6] COPY materials/ca.crt /certs/ca.crt
 #20 DONE 0.1s
 
-#21 [relay 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel /home/tunnel/.ssh     && chmod 700 /home/tunnel/.ssh     && chmod 600 /home/tunnel/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
+#21 [relay 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel [user-home]/.ssh     && chmod 700 [user-home]/.ssh     && chmod 600 [user-home]/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
 #21 ...
 
 #22 [db 5/6] COPY db/pg_hba.conf /certs/pg_hba.conf
 #22 DONE 0.1s
 
-#23 [bastion 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel /home/tunnel/.ssh     && chmod 700 /home/tunnel/.ssh     && chmod 600 /home/tunnel/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
+#23 [bastion 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel [user-home]/.ssh     && chmod 700 [user-home]/.ssh     && chmod 600 [user-home]/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
 #23 DONE 0.3s
 
 #24 [db 6/6] RUN chown -R postgres:postgres /certs     && chmod 600 /certs/server.key     && chmod 644 /certs/server.crt /certs/ca.crt
 #24 ...
 
-#21 [relay 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel /home/tunnel/.ssh     && chmod 700 /home/tunnel/.ssh     && chmod 600 /home/tunnel/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
+#21 [relay 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel [user-home]/.ssh     && chmod 700 [user-home]/.ssh     && chmod 600 [user-home]/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
 #21 DONE 0.3s
 
 #24 [db 6/6] RUN chown -R postgres:postgres /certs     && chmod 600 /certs/server.key     && chmod 644 /certs/server.crt /certs/ca.crt
@@ -330,7 +330,7 @@ the SSH host key changed; the release script uses a fixture-local known_hosts fi
    Compiling tokio-util v0.7.19
    Compiling ssh-key v0.7.0-rc.11
    Compiling russh v0.63.3
-   Compiling tablepro-ssh v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/ssh)
+   Compiling tablepro-ssh v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/ssh)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 23.78s
    Compiling serde_core v1.0.229
    Compiling serde v1.0.229
@@ -629,7 +629,7 @@ the SSH host key changed; the release script uses a fixture-local known_hosts fi
    Compiling cbc v0.1.2
    Compiling aes v0.8.4
    Compiling darling_macro v0.24.1
-   Compiling tablepro-core v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/core)
+   Compiling tablepro-core v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/core)
    Compiling kem v0.3.0
    Compiling module-lattice v0.2.3
    Compiling openssl-macros v0.1.1
@@ -684,7 +684,7 @@ the SSH host key changed; the release script uses a fixture-local known_hosts fi
    Compiling anstyle v1.0.14
    Compiling time v0.3.55
    Compiling hickory-net v0.26.3
-   Compiling tablepro-policy v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/policy)
+   Compiling tablepro-policy v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/policy)
    Compiling anstyle-query v1.1.5
    Compiling mime v0.3.17
    Compiling resolv-conf v0.7.6
@@ -742,31 +742,31 @@ the SSH host key changed; the release script uses a fixture-local known_hosts fi
    Compiling ashpd v0.13.13
    Compiling clap v4.6.7
    Compiling oo7 v0.6.0
-   Compiling tablepro-driver-mssql v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/mssql)
+   Compiling tablepro-driver-mssql v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/mssql)
    Compiling rustls-webpki v0.103.15
    Compiling russh v0.63.3
    Compiling sqlx-core v0.9.0
    Compiling tokio-rustls v0.26.5
    Compiling hyper-rustls v0.27.9
-   Compiling redis v1.7.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/redis)
-   Compiling mongodb v3.9.1 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/mongodb)
+   Compiling redis v1.7.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/redis)
+   Compiling mongodb v3.9.1 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/mongodb)
    Compiling clickhouse v0.15.2
-   Compiling tablepro-ssh v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/ssh)
-   Compiling sqlx-postgres v0.9.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/sqlx-postgres)
-   Compiling sqlx-mysql v0.9.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/sqlx-mysql)
+   Compiling tablepro-ssh v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/ssh)
+   Compiling sqlx-postgres v0.9.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/sqlx-postgres)
+   Compiling sqlx-mysql v0.9.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/sqlx-mysql)
    Compiling sqlx-sqlite v0.9.0
-   Compiling tablepro-driver-clickhouse v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/clickhouse)
+   Compiling tablepro-driver-clickhouse v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/clickhouse)
    Compiling sqlx v0.9.0
-   Compiling tablepro-storage v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/storage)
-   Compiling tablepro-driver-postgres v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/postgres)
-   Compiling tablepro-driver-mysql v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/mysql)
-   Compiling tablepro-driver-sqlite v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/sqlite)
-   Compiling tablepro-driver-redis v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/redis)
-   Compiling tablepro-transport v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/transport)
-   Compiling tablepro-mcp v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/mcp)
-   Compiling tablepro-release-tests v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/release-tests)
-   Compiling tablepro-driver-mongodb v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/mongodb)
-   Compiling tablepro-agentd v0.1.6-dev (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/agentd)
+   Compiling tablepro-storage v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/storage)
+   Compiling tablepro-driver-postgres v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/postgres)
+   Compiling tablepro-driver-mysql v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/mysql)
+   Compiling tablepro-driver-sqlite v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/sqlite)
+   Compiling tablepro-driver-redis v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/redis)
+   Compiling tablepro-transport v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/transport)
+   Compiling tablepro-mcp v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/mcp)
+   Compiling tablepro-release-tests v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/release-tests)
+   Compiling tablepro-driver-mongodb v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/mongodb)
+   Compiling tablepro-agentd v0.1.6-dev ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/agentd)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 21s
      Running tests/g5_system_openssh.rs (target/debug/deps/g5_system_openssh-0dfb09a5027e1a78)
 
@@ -775,7 +775,7 @@ test agentd_refuses_without_learning_an_unknown_system_openssh_key_then_queries_
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.64s
 
-   Compiling tablepro-agentd v0.1.6-dev (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/agentd)
+   Compiling tablepro-agentd v0.1.6-dev ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/agentd)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.21s
      Running tests/mtls.rs (target/debug/deps/mtls-3148b77f723889dc)
 
@@ -841,24 +841,24 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
    Compiling russh-util v0.52.0
    Compiling hyper v1.11.1
    Compiling tower v0.5.3
-   Compiling tablepro-core v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/core)
+   Compiling tablepro-core v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/core)
    Compiling sqlx-core v0.9.0
    Compiling hyper-util v0.1.20
    Compiling axum v0.8.9
-   Compiling sqlx-postgres v0.9.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/sqlx-postgres)
+   Compiling sqlx-postgres v0.9.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/sqlx-postgres)
    Compiling sqlx-sqlite v0.9.0
-   Compiling tablepro-policy v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/policy)
+   Compiling tablepro-policy v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/policy)
    Compiling ssh-key v0.7.0-rc.11
    Compiling russh v0.63.3
    Compiling ashpd v0.13.13
    Compiling sqlx v0.9.0
-   Compiling tablepro-driver-postgres v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/postgres)
+   Compiling tablepro-driver-postgres v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/postgres)
    Compiling oo7 v0.6.0
-   Compiling tablepro-storage v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/storage)
-   Compiling tablepro-ssh v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/ssh)
-   Compiling tablepro-mcp v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/mcp)
-   Compiling tablepro-transport v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/transport)
-   Compiling tablepro-release-tests v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/release-tests)
+   Compiling tablepro-storage v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/storage)
+   Compiling tablepro-ssh v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/ssh)
+   Compiling tablepro-mcp v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/mcp)
+   Compiling tablepro-transport v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/transport)
+   Compiling tablepro-release-tests v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/release-tests)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 24.05s
      Running unittests src/lib.rs (target/debug/deps/tablepro_release_tests-420e5f4db729d782)
 
@@ -1012,8 +1012,8 @@ test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
    Compiling gettext-sys v0.27.0
    Compiling parking_lot v0.12.5
    Compiling backon v1.6.0
-   Compiling tablepro-core v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/core)
-   Compiling tablepro-app v0.1.6-dev (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/app)
+   Compiling tablepro-core v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/core)
+   Compiling tablepro-app v0.1.6-dev ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/app)
    Compiling fragile v2.1.0
    Compiling async-channel v2.5.0
    Compiling idna_adapter v1.2.2
@@ -1029,7 +1029,7 @@ test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
    Compiling sqlx-core v0.9.0
    Compiling hickory-proto v0.26.3
    Compiling async-native-tls v0.6.0
-   Compiling redis v1.7.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/redis)
+   Compiling redis v1.7.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/redis)
    Compiling tiberius v0.13.0 (https://github.com/tiberius-rs/tiberius?rev=7fd75bb7070fe6ea41374698abf78928bb983bda#7fd75bb7)
    Compiling gdk4-sys v0.11.4
    Compiling gsk4-sys v0.11.4
@@ -1049,36 +1049,36 @@ test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
    Compiling clickhouse v0.15.2
    Compiling glib v0.22.9
    Compiling hickory-net v0.26.3
-   Compiling tablepro-policy v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/policy)
-   Compiling sqlx-mysql v0.9.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/sqlx-mysql)
+   Compiling tablepro-policy v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/policy)
+   Compiling sqlx-mysql v0.9.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/sqlx-mysql)
    Compiling sqlx-sqlite v0.9.0
-   Compiling sqlx-postgres v0.9.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/sqlx-postgres)
+   Compiling sqlx-postgres v0.9.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/sqlx-postgres)
    Compiling hickory-resolver v0.26.3
    Compiling regex v1.13.1
    Compiling matchers v0.2.0
    Compiling tracing-subscriber v0.3.23
-   Compiling tablepro-driver-mssql v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/mssql)
+   Compiling tablepro-driver-mssql v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/mssql)
    Compiling locale_config v0.3.0
-   Compiling tablepro-driver-clickhouse v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/clickhouse)
+   Compiling tablepro-driver-clickhouse v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/clickhouse)
    Compiling gettext-rs v0.8.0
-   Compiling mongodb v3.9.1 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/mongodb)
+   Compiling mongodb v3.9.1 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/vendor/mongodb)
    Compiling ashpd v0.13.13
    Compiling sqlx v0.9.0
-   Compiling tablepro-driver-mysql v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/mysql)
-   Compiling tablepro-driver-postgres v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/postgres)
-   Compiling tablepro-driver-sqlite v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/sqlite)
+   Compiling tablepro-driver-mysql v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/mysql)
+   Compiling tablepro-driver-postgres v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/postgres)
+   Compiling tablepro-driver-sqlite v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/sqlite)
    Compiling oo7 v0.6.0
    Compiling gio v0.22.9
    Compiling cairo-rs v0.22.9
    Compiling graphene-rs v0.22.8
-   Compiling tablepro-storage v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/storage)
-   Compiling tablepro-driver-redis v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/redis)
-   Compiling tablepro-transport v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/transport)
-   Compiling tablepro-mcp v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/mcp)
+   Compiling tablepro-storage v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/storage)
+   Compiling tablepro-driver-redis v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/redis)
+   Compiling tablepro-transport v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/transport)
+   Compiling tablepro-mcp v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/mcp)
    Compiling pango v0.22.9
    Compiling gdk-pixbuf v0.22.0
    Compiling gdk4 v0.11.4
-   Compiling tablepro-driver-mongodb v0.1.0 (/home/trung/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/mongodb)
+   Compiling tablepro-driver-mongodb v0.1.0 ([user-home]/Projects/tablepro/.worktrees/linux-current-b4-release/linux/crates/drivers/mongodb)
    Compiling gsk4 v0.11.4
    Compiling gtk4 v0.11.4
    Compiling libadwaita v0.9.2
@@ -1087,12 +1087,12 @@ test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 12s
 dbus-daemon[1891427]: [session uid=1000 pid=1891427 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.1' (uid=1000 pid=1891534 comm="gdbus call --session --dest org.a11y.Bus --object-")
 dbus-daemon[1891427]: [session uid=1000 pid=1891427 pidfd=5] Successfully activated service 'org.a11y.Bus'
-dbus-daemon[1891545]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=1891557 comm="python3 /home/trung/Projects/tablepro/.worktrees/l")
+dbus-daemon[1891545]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=1891557 comm="python3 [user-home]/Projects/tablepro/.worktrees/l")
 dbus-daemon[1891545]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
-dbus-daemon[1891427]: [session uid=1000 pid=1891427 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.10' (uid=1000 pid=1891573 comm="/home/trung/Projects/tablepro/.worktrees/linux-cur")
+dbus-daemon[1891427]: [session uid=1000 pid=1891427 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.10' (uid=1000 pid=1891573 comm="[user-home]/Projects/tablepro/.worktrees/linux-cur")
 dbus-daemon[1891427]: [session uid=1000 pid=1891427 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
-dbus-daemon[1891427]: [session uid=1000 pid=1891427 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.10' (uid=1000 pid=1891573 comm="/home/trung/Projects/tablepro/.worktrees/linux-cur")
+dbus-daemon[1891427]: [session uid=1000 pid=1891427 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.10' (uid=1000 pid=1891573 comm="[user-home]/Projects/tablepro/.worktrees/linux-cur")
 dbus-daemon[1891427]: [session uid=1000 pid=1891427 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.13' (uid=1000 pid=1891681 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[1891427]: [session uid=1000 pid=1891427 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
 dbus-daemon[1891427]: [session uid=1000 pid=1891427 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.13' (uid=1000 pid=1891681 comm="/usr/lib/xdg-desktop-portal")

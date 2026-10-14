@@ -1,1 +1,1 @@
-5a8cf04f6b23ee1e6688b4e14c6ebd276a452e255f85506dc31d371c8e3863d7  /home/trung/.cache/bookie-b4-target-0d5/installed/usr/bin/tablepro
+5a8cf04f6b23ee1e6688b4e14c6ebd276a452e255f85506dc31d371c8e3863d7  [user-home]/.cache/bookie-b4-target-0d5/installed/usr/bin/tablepro

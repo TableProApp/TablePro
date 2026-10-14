@@ -1,4 +1,4 @@
-Value-contract evidence: /home/trung/Projects/tablepro/linux/target/quality/20261004T232915250938Z-values
+Value-contract evidence: [user-home]/Projects/tablepro/linux/target/quality/20261004T232915250938Z-values
 crates/app/Cargo.toml: {'tests': 51, 'exit_code': 0, 'seconds': 118.062, 'log': 'crates-app.log'}
 crates/core/Cargo.toml: {'tests': 58, 'exit_code': 0, 'seconds': 3.269, 'log': 'crates-core.log'}
 crates/drivers/clickhouse/Cargo.toml: {'tests': 6, 'exit_code': 0, 'seconds': 29.239, 'log': 'crates-drivers-clickhouse.log'}
@@ -11,4 +11,4 @@ crates/drivers/redis/Cargo.toml: {'tests': 4, 'exit_code': 0, 'seconds': 1.567, 
 crates/drivers/sqlite/Cargo.toml: {'tests': 1, 'exit_code': 0, 'seconds': 0.016, 'log': 'crates-drivers-sqlite.log'}
 crates/mcp/Cargo.toml: {'tests': 1, 'exit_code': 0, 'seconds': 0.003, 'log': 'crates-mcp.log'}
 Compile: 2.629s; 746 fresh artifacts; 1 rebuilt packages
-Report: /home/trung/Projects/tablepro/linux/target/quality/20261004T232915250938Z-values/report.json
+Report: [user-home]/Projects/tablepro/linux/target/quality/20261004T232915250938Z-values/report.json

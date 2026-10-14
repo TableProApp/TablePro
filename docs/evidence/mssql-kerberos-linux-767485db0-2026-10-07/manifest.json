@@ -13,7 +13,7 @@
     "tests/fixtures/mssql-kerberos/mssql/Dockerfile": "c8f9eaeb72a86fbf027181d3e38e6260b5e42ec35a68331ebb46ccd13385bda1"
   },
   "engine": "SQL Server 2022 Developer plus pinned Samba AD DC test domain",
-  "command": "TMPDIR=/tmp CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target bash scripts/test-mssql-kerberos.sh",
+  "command": "TMPDIR=/tmp CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target bash scripts/test-mssql-kerberos.sh",
   "result": "2 passed; 0 failed; 0 ignored; process exit 0",
   "log": {
     "path": "focused.txt",

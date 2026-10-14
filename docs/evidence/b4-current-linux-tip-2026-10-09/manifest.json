@@ -4,7 +4,7 @@
   "scope": "B4 local current-tip GTK, PostgreSQL SSH and MySQL failed-batch rollback acceptance",
   "source_commit": "97e5f55bddacdfef427c51f162917fedcace3a9f",
   "product_binary_sha256": "3ec8076570742b953b450f30f97b7fe8207f53e7817f48f336f76f986131fe57",
-  "binary_path": "/home/trung/.local/opt/bookie/97e5f55bddac/usr/bin/bookie",
+  "binary_path": "[user-home]/.local/opt/bookie/97e5f55bddac/usr/bin/bookie",
   "install_kind": "Per-user source build in a package-layout directory; no system package manager install",
   "runtime": "Local Arch Linux host; Docker database and SSH fixtures; GTK safety under Xvfb/X11, private D-Bus and AT-SPI",
   "results": {

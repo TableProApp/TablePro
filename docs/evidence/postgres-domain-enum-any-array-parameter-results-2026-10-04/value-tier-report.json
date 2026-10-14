@@ -19,12 +19,12 @@
     "seconds": 5.66,
     "fresh_artifacts": 739,
     "rebuilt_packages": [
-      "path+file:///home/trung/Projects/tablepro/linux/crates/agentd#tablepro-agentd@0.1.5",
-      "path+file:///home/trung/Projects/tablepro/linux/crates/app#tablepro-app@0.1.5",
-      "path+file:///home/trung/Projects/tablepro/linux/crates/drivers/postgres#tablepro-driver-postgres@0.1.0",
-      "path+file:///home/trung/Projects/tablepro/linux/crates/mcp#tablepro-mcp@0.1.0",
-      "path+file:///home/trung/Projects/tablepro/linux/crates/policy#tablepro-policy@0.1.0",
-      "path+file:///home/trung/Projects/tablepro/linux/crates/release-tests#tablepro-release-tests@0.1.0"
+      "path+file://[user-home]/Projects/tablepro/linux/crates/agentd#tablepro-agentd@0.1.5",
+      "path+file://[user-home]/Projects/tablepro/linux/crates/app#tablepro-app@0.1.5",
+      "path+file://[user-home]/Projects/tablepro/linux/crates/drivers/postgres#tablepro-driver-postgres@0.1.0",
+      "path+file://[user-home]/Projects/tablepro/linux/crates/mcp#tablepro-mcp@0.1.0",
+      "path+file://[user-home]/Projects/tablepro/linux/crates/policy#tablepro-policy@0.1.0",
+      "path+file://[user-home]/Projects/tablepro/linux/crates/release-tests#tablepro-release-tests@0.1.0"
     ]
   },
   "missing_suites": [],

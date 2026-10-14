@@ -1,2 +1,2 @@
-    Checking tablepro-driver-sqlite v0.1.0 (/home/trung/Projects/tablepro/linux/crates/drivers/sqlite)
+    Checking tablepro-driver-sqlite v0.1.0 ([user-home]/Projects/tablepro/linux/crates/drivers/sqlite)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.51s

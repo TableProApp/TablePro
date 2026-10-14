@@ -10,10 +10,10 @@
     "crates/storage/src/audit_journal.rs": "0969c9170afcc833e852260ed80c0a7da853555846601aa508cad7dfd27fc391"
   },
   "commands": {
-    "outer_alias_regression": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target CARGO_BUILD_JOBS=2 cargo test --locked -p tablepro-policy --test session_postgres an_agent_cannot_expose_sensitive_json_through_an_outer_alias -- --include-ignored --exact --test-threads=1",
-    "aud11_policy": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target CARGO_BUILD_JOBS=2 cargo test --locked -p tablepro-policy --lib --test aud11_s6_s7",
-    "masking_and_durable_audit": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target CARGO_BUILD_JOBS=2 cargo test --locked -p tablepro-policy --test guard_transparency -p tablepro-storage --lib",
-    "preflight": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target CARGO_BUILD_JOBS=2 bash scripts/preflight.sh"
+    "outer_alias_regression": "CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target CARGO_BUILD_JOBS=2 cargo test --locked -p tablepro-policy --test session_postgres an_agent_cannot_expose_sensitive_json_through_an_outer_alias -- --include-ignored --exact --test-threads=1",
+    "aud11_policy": "CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target CARGO_BUILD_JOBS=2 cargo test --locked -p tablepro-policy --lib --test aud11_s6_s7",
+    "masking_and_durable_audit": "CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target CARGO_BUILD_JOBS=2 cargo test --locked -p tablepro-policy --test guard_transparency -p tablepro-storage --lib",
+    "preflight": "CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target CARGO_BUILD_JOBS=2 bash scripts/preflight.sh"
   },
   "results": {
     "outer_alias_regression": "passed, 1 test",

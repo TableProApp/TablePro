@@ -4,7 +4,7 @@
   "source_commit": "c6f25973ddd661a196a03538ba6d943de94c6d24",
   "source_tree": "4827663d5f934432a5fb350e290d1ddb07fcf524",
   "scope": "B4-17 current-Linux release-binary GTK trust flows for a saved two-hop SSH route",
-  "command": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target TABLEPRO_GTK_BINARY=/tmp/bookie-b4-11/linux/target/installed/usr/bin/tablepro TABLEPRO_GTK_SCENARIO=postgres_ssh_multihop_trusts_both_hops_and_queries,postgres_ssh_second_hop_decline_does_not_learn_key,postgres_ssh_changed_second_hop_key_is_refused TABLEPRO_GTK_ARTIFACT_DIR=docs/evidence/ssh-gtk-multihop-linux-6bd78baae/artifacts bash scripts/test-postgres-release.sh",
+  "command": "CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target TABLEPRO_GTK_BINARY=/tmp/bookie-b4-11/linux/target/installed/usr/bin/tablepro TABLEPRO_GTK_SCENARIO=postgres_ssh_multihop_trusts_both_hops_and_queries,postgres_ssh_second_hop_decline_does_not_learn_key,postgres_ssh_changed_second_hop_key_is_refused TABLEPRO_GTK_ARTIFACT_DIR=docs/evidence/ssh-gtk-multihop-linux-6bd78baae/artifacts bash scripts/test-postgres-release.sh",
   "binary": {
     "path": "target/installed/usr/bin/tablepro",
     "sha256": "3403c2a9b69134984c504de5657121ef4157d0953260f446c14d748eb9a274b3",

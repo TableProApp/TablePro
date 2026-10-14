@@ -6,7 +6,7 @@
   "binary_path": "linux/target/installed/usr/bin/tablepro",
   "binary_sha256": "5c25d47be3e97e8e5e1d63b4f5a055aa0863458553a5cee1053672dc25ba44b1",
   "build_command": "cargo build --release --locked -p tablepro-app --bin tablepro-app",
-  "command": "TABLEPRO_GTK_BINARY=/home/trung/Projects/tablepro/.worktrees/b4-ui1b-bundle-v2/linux/target/installed/usr/bin/tablepro TABLEPRO_GTK_SCENARIO=bundle_export_records_sanitized_audit_outcome,bundle_import_records_sanitized_audit_outcome,encrypted_bundle_round_trip_restores_credentials,a_bundle_from_one_profile_imports_unchanged_into_an_empty_second_profile TMPDIR=/home/trung/Projects/tablepro/.worktrees/b4-ui1b-bundle-v2/linux/target/tmp bash scripts/test-gtk-safety.sh",
+  "command": "TABLEPRO_GTK_BINARY=[user-home]/Projects/tablepro/.worktrees/b4-ui1b-bundle-v2/linux/target/installed/usr/bin/tablepro TABLEPRO_GTK_SCENARIO=bundle_export_records_sanitized_audit_outcome,bundle_import_records_sanitized_audit_outcome,encrypted_bundle_round_trip_restores_credentials,a_bundle_from_one_profile_imports_unchanged_into_an_empty_second_profile TMPDIR=[user-home]/Projects/tablepro/.worktrees/b4-ui1b-bundle-v2/linux/target/tmp bash scripts/test-gtk-safety.sh",
   "runtime": "Local Linux source build; isolated D-Bus, GTK AT-SPI, Xvfb X11",
   "result": "4 selected scenarios passed; process exited 0",
   "scenarios": [

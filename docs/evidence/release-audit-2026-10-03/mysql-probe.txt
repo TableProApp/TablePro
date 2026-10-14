@@ -1,6 +1,6 @@
-   Compiling tablepro-app v0.1.5 (/home/trung/Projects/tablepro/linux/crates/app)
+   Compiling tablepro-app v0.1.5 ([user-home]/Projects/tablepro/linux/crates/app)
 warning: function `build_sql_message` is never used
- --> /home/trung/Projects/tablepro/linux/crates/app/src/ui/error_text.rs:4:8
+ --> [user-home]/Projects/tablepro/linux/crates/app/src/ui/error_text.rs:4:8
   |
 4 | pub fn build_sql_message(error: &BuildSqlError) -> String {
   |        ^^^^^^^^^^^^^^^^^
@@ -8,7 +8,7 @@ warning: function `build_sql_message` is never used
   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
 
 warning: function `keyring_message` is never used
-  --> /home/trung/Projects/tablepro/linux/crates/app/src/ui/error_text.rs:66:8
+  --> [user-home]/Projects/tablepro/linux/crates/app/src/ui/error_text.rs:66:8
    |
 66 | pub fn keyring_message(failure: &tablepro_storage::KeyringFailure) -> String {
    |        ^^^^^^^^^^^^^^^

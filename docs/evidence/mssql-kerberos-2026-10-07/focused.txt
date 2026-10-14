@@ -95,10 +95,10 @@ Zone 50.30.172.in-addr.arpa created successfully
 Record added successfully
 Export one principal to /tmp/mssql-spn.keytab
 Export one principal to /tmp/mssql-account.keytab
- bookie-mssql-kerberos-ad-1 Copying bookie-mssql-kerberos-ad-1:/tmp/mssql-spn.keytab to /home/trung/Projects/tablepro/linux/tests/fixtures/mssql-kerberos/materials/mssql-spn.keytab
- bookie-mssql-kerberos-ad-1 Copied bookie-mssql-kerberos-ad-1:/tmp/mssql-spn.keytab to /home/trung/Projects/tablepro/linux/tests/fixtures/mssql-kerberos/materials/mssql-spn.keytab
- bookie-mssql-kerberos-ad-1 Copying bookie-mssql-kerberos-ad-1:/tmp/mssql-account.keytab to /home/trung/Projects/tablepro/linux/tests/fixtures/mssql-kerberos/materials/mssql-account.keytab
- bookie-mssql-kerberos-ad-1 Copied bookie-mssql-kerberos-ad-1:/tmp/mssql-account.keytab to /home/trung/Projects/tablepro/linux/tests/fixtures/mssql-kerberos/materials/mssql-account.keytab
+ bookie-mssql-kerberos-ad-1 Copying bookie-mssql-kerberos-ad-1:/tmp/mssql-spn.keytab to [user-home]/Projects/tablepro/linux/tests/fixtures/mssql-kerberos/materials/mssql-spn.keytab
+ bookie-mssql-kerberos-ad-1 Copied bookie-mssql-kerberos-ad-1:/tmp/mssql-spn.keytab to [user-home]/Projects/tablepro/linux/tests/fixtures/mssql-kerberos/materials/mssql-spn.keytab
+ bookie-mssql-kerberos-ad-1 Copying bookie-mssql-kerberos-ad-1:/tmp/mssql-account.keytab to [user-home]/Projects/tablepro/linux/tests/fixtures/mssql-kerberos/materials/mssql-account.keytab
+ bookie-mssql-kerberos-ad-1 Copied bookie-mssql-kerberos-ad-1:/tmp/mssql-account.keytab to [user-home]/Projects/tablepro/linux/tests/fixtures/mssql-kerberos/materials/mssql-account.keytab
 ktutil:
 </fixtures/mssql-kerberos/materials/mssql-spn.keytab
 ktutil:

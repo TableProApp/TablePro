@@ -11,7 +11,7 @@
     "scripts/tests/test_ci_workflow.py": "f30e56a34df9648a5a79e09c7ba926d80a1a296e96e096b748f7b33777ea748f"
   },
   "engine": "PostgreSQL 16 / OpenSSH Docker fixture; GTK under isolated D-Bus, Xvfb, and AT-SPI",
-  "command": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target TABLEPRO_GTK_BINARY=/home/trung/Projects/tablepro/linux/target/release/tablepro-app TABLEPRO_GTK_ARTIFACT_DIR=docs/evidence/ssh-gtk-audit-linux-fb82ea1-2026-10-07/artifacts bash scripts/test-postgres-release.sh",
+  "command": "CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target TABLEPRO_GTK_BINARY=[user-home]/Projects/tablepro/linux/target/release/tablepro-app TABLEPRO_GTK_ARTIFACT_DIR=docs/evidence/ssh-gtk-audit-linux-fb82ea1-2026-10-07/artifacts bash scripts/test-postgres-release.sh",
   "binary": {
     "path": "target/release/tablepro-app",
     "sha256": "3403c2a9b69134984c504de5657121ef4157d0953260f446c14d748eb9a274b3"

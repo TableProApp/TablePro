@@ -1,6 +1,6 @@
-   Compiling tablepro-ssh v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-session-refusal-audit/linux/crates/ssh)
+   Compiling tablepro-ssh v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-session-refusal-audit/linux/crates/ssh)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 5.17s
-     Running tests/agent_auth.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/agent_auth-079e5bc250e279d9)
+     Running tests/agent_auth.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/agent_auth-079e5bc250e279d9)
 
 running 1 test
 test declining_a_built_in_host_key_does_not_learn_it ... ok
@@ -8,7 +8,7 @@ test declining_a_built_in_host_key_does_not_learn_it ... ok
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 8.31s
 
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.25s
-     Running tests/agent_auth.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/agent_auth-079e5bc250e279d9)
+     Running tests/agent_auth.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/agent_auth-079e5bc250e279d9)
 
 running 1 test
 test a_two_hop_chain_reaches_the_final_host ... ok
@@ -16,7 +16,7 @@ test a_two_hop_chain_reaches_the_final_host ... ok
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 9.87s
 
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.22s
-     Running tests/agent_auth.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/agent_auth-079e5bc250e279d9)
+     Running tests/agent_auth.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/agent_auth-079e5bc250e279d9)
 
 running 1 test
 test cancelling_while_trusting_the_second_hop_does_not_learn_its_host_key ... ok
@@ -24,7 +24,7 @@ test cancelling_while_trusting_the_second_hop_does_not_learn_its_host_key ... ok
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 9.25s
 
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.22s
-     Running tests/agent_auth.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/agent_auth-079e5bc250e279d9)
+     Running tests/agent_auth.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/agent_auth-079e5bc250e279d9)
 
 running 1 test
 test a_changed_key_on_the_second_hop_is_reported_as_a_host_key_mismatch ... ok

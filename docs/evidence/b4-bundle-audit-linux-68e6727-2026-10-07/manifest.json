@@ -8,7 +8,7 @@
     "crates/app/tests/gtk_safety.py": "3f54c08e9964a9cf447c7f1ee21a0dc19cadacb4c5d0de17bdae1b1b5cab46f9",
     "scripts/test-gtk-safety.sh": "adec0b08de0d0d0d9545a868e858c667259b67eee78417b066f7b33ec0e528d7"
   },
-  "command": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target TABLEPRO_GTK_BINARY=/home/trung/Projects/tablepro/linux/target/release/tablepro-app TABLEPRO_GTK_SCENARIO=bundle_export_records_sanitized_audit_outcome,bundle_import_records_sanitized_audit_outcome,encrypted_bundle_round_trip_restores_credentials TABLEPRO_GTK_ARTIFACT_DIR=docs/evidence/b4-bundle-audit-linux-68e6727-2026-10-07/artifacts bash scripts/test-gtk-safety.sh",
+  "command": "CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target TABLEPRO_GTK_BINARY=[user-home]/Projects/tablepro/linux/target/release/tablepro-app TABLEPRO_GTK_SCENARIO=bundle_export_records_sanitized_audit_outcome,bundle_import_records_sanitized_audit_outcome,encrypted_bundle_round_trip_restores_credentials TABLEPRO_GTK_ARTIFACT_DIR=docs/evidence/b4-bundle-audit-linux-68e6727-2026-10-07/artifacts bash scripts/test-gtk-safety.sh",
   "binary": {
     "path": "target/release/tablepro-app",
     "sha256": "3403c2a9b69134984c504de5657121ef4157d0953260f446c14d748eb9a274b3",

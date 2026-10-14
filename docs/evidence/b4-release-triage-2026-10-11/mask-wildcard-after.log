@@ -1,6 +1,6 @@
-   Compiling tablepro-policy v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-mask-source-lineage/linux/crates/policy)
+   Compiling tablepro-policy v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-mask-source-lineage/linux/crates/policy)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.53s
-     Running tests/session_postgres.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/session_postgres-045535c311019cde)
+     Running tests/session_postgres.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/session_postgres-045535c311019cde)
 
 running 1 test
 test an_agent_cannot_expose_sensitive_sources_through_renamed_or_record_projections ... ok

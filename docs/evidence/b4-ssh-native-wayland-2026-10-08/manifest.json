@@ -18,7 +18,7 @@
     "xvfb-refusal.txt"
   ],
   "source_harness": {
-    "checkout": "/home/trung/.cache/bookie-b4-candidate-a7f14",
+    "checkout": "[user-home]/.cache/bookie-b4-candidate-a7f14",
     "commit": "a7f14faef07f05bd4a3d63a6ca31b60f2a4e0200",
     "files": [
       "linux/crates/app/tests/gtk_safety.py",

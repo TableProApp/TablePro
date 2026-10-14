@@ -19,17 +19,17 @@
   "fix": "Keep all EXPLAIN plan rows masked when lineage is unknown. The release test now requires a read-scoped agent to receive no plan details, and the MCP tool description documents that behavior.",
   "validation": {
     "preflight": {
-      "command": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target bash scripts/preflight.sh",
+      "command": "CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target bash scripts/preflight.sh",
       "result": "Passed on the current branch source.",
       "log": "preflight.log"
     },
     "policy_suite": {
-      "command": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target cargo test --locked -p tablepro-policy",
+      "command": "CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target cargo test --locked -p tablepro-policy",
       "result": "216 passed, 0 failed, 4 ignored across policy unit and integration suites on the updated source",
       "log": "policy-suite.log"
     },
     "postgres_release_fixture": {
-      "command": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target bash scripts/test-postgres-release.sh",
+      "command": "CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target bash scripts/test-postgres-release.sh",
       "result": "Passed; MCP release tests 9/9, including a_read_scoped_agent_cannot_read_a_query_plan and explain_analyze_is_denied_and_leaves_the_table_intact; seven PostgreSQL SSH/mTLS GTK scenarios passed.",
       "log": "postgres-release.log"
     }

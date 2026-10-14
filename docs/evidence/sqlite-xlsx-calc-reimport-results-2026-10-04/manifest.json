@@ -19,7 +19,7 @@
   ],
   "validation": {
     "bookiee_export": {
-      "command": "rtk proxy env BOOKIEE_XLSX_REIMPORT_ARTIFACT=/home/trung/Projects/tablepro/linux/docs/evidence/sqlite-xlsx-calc-reimport-results-2026-10-04/source.xlsx cargo test --manifest-path linux/Cargo.toml -p tablepro-app sqlite_compound_any_result_exports_csv_text_and_xlsx_cell_kinds -- --test-threads=1",
+      "command": "rtk proxy env BOOKIEE_XLSX_REIMPORT_ARTIFACT=[user-home]/Projects/tablepro/linux/docs/evidence/sqlite-xlsx-calc-reimport-results-2026-10-04/source.xlsx cargo test --manifest-path linux/Cargo.toml -p tablepro-app sqlite_compound_any_result_exports_csv_text_and_xlsx_cell_kinds -- --test-threads=1",
       "result": "1 passed, 0 failed",
       "log": "bookiee-export-test.txt"
     },

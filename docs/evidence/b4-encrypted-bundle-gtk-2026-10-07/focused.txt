@@ -1,11 +1,11 @@
 dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.1' (uid=1000 pid=1492034 comm="gdbus call --session --dest org.a11y.Bus --object-")
 dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Successfully activated service 'org.a11y.Bus'
-dbus-daemon[1492045]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=1492057 comm="python3 /home/trung/Projects/tablepro/linux/crates")
+dbus-daemon[1492045]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=1492057 comm="python3 [user-home]/Projects/tablepro/linux/crates")
 dbus-daemon[1492045]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
-dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.7' (uid=1000 pid=1492058 comm="/home/trung/Projects/tablepro/linux/target/debug/t")
+dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.7' (uid=1000 pid=1492058 comm="[user-home]/Projects/tablepro/linux/target/debug/t")
 dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
-dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.7' (uid=1000 pid=1492058 comm="/home/trung/Projects/tablepro/linux/target/debug/t")
+dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.7' (uid=1000 pid=1492058 comm="[user-home]/Projects/tablepro/linux/target/debug/t")
 dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.10' (uid=1000 pid=1492128 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
 dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.10' (uid=1000 pid=1492128 comm="/usr/lib/xdg-desktop-portal")
@@ -47,9 +47,9 @@ dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Successfully activa
 
 (/usr/lib/xdg-desktop-portal:1492128): xdg-desktop-portal-WARNING **: 07:27:14.664: Choosing gtk.portal for org.freedesktop.impl.portal.DynamicLauncher via the deprecated UseIn key
 dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
-dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.7' (uid=1000 pid=1492058 comm="/home/trung/Projects/tablepro/linux/target/debug/t")
+dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.7' (uid=1000 pid=1492058 comm="[user-home]/Projects/tablepro/linux/target/debug/t")
 dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Successfully activated service 'org.gtk.vfs.UDisks2VolumeMonitor'
-dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Activating service name='org.gtk.vfs.MTPVolumeMonitor' requested by ':1.7' (uid=1000 pid=1492058 comm="/home/trung/Projects/tablepro/linux/target/debug/t")
+dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Activating service name='org.gtk.vfs.MTPVolumeMonitor' requested by ':1.7' (uid=1000 pid=1492058 comm="[user-home]/Projects/tablepro/linux/target/debug/t")
 dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Successfully activated service 'org.gtk.vfs.MTPVolumeMonitor'
 dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Activating service name='org.gtk.vfs.Metadata' requested by ':1.14' (uid=1000 pid=1492150 comm="/usr/lib/xdg-desktop-portal-gtk")
 dbus-daemon[1491779]: [session uid=1000 pid=1491779 pidfd=5] Successfully activated service 'org.gtk.vfs.Metadata'

@@ -1,5 +1,5 @@
-   Compiling tablepro-driver-postgres v0.1.0 (/home/trung/Projects/tablepro/linux/crates/drivers/postgres)
-   Compiling tablepro-app v0.1.5 (/home/trung/Projects/tablepro/linux/crates/app)
+   Compiling tablepro-driver-postgres v0.1.0 ([user-home]/Projects/tablepro/linux/crates/drivers/postgres)
+   Compiling tablepro-app v0.1.5 ([user-home]/Projects/tablepro/linux/crates/app)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 5.91s
      Running unittests src/lib.rs (target/debug/deps/tablepro_app-dd913e1adcd462e4)
 

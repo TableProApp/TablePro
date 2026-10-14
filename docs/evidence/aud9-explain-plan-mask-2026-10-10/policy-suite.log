@@ -1,5 +1,5 @@
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.24s
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_policy-03807d1ad0da1992)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_policy-03807d1ad0da1992)
 
 running 197 tests
 test audit::tests::uncertainty_is_scoped_to_a_connection_generation_but_journal_failure_is_global ... ok
@@ -202,7 +202,7 @@ test rules::tests::shared_batches_must_not_leave_an_explicit_transaction_open ..
 
 test result: ok. 197 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
-     Running tests/administrative_dialects.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/administrative_dialects-6965fe8856d07788)
+     Running tests/administrative_dialects.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/administrative_dialects-6965fe8856d07788)
 
 running 15 tests
 test kill_is_administrative_on_every_engine_that_parses_it ... ok
@@ -223,14 +223,14 @@ test postgres_host_and_network_functions_are_administrative ... ok
 
 test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/generated_updates_classify.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/generated_updates_classify-2026761f614fa597)
+     Running tests/generated_updates_classify.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/generated_updates_classify-2026761f614fa597)
 
 running 1 test
 test the_update_a_grid_edit_generates_is_a_plain_update_on_every_sql_engine ... ok
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/guard_transparency.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/guard_transparency-9ba6f6c85171487a)
+     Running tests/guard_transparency.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/guard_transparency-9ba6f6c85171487a)
 
 running 3 tests
 test a_guard_does_not_invent_server_cancellation_the_driver_lacks ... ok
@@ -239,14 +239,14 @@ test an_agent_guard_masks_sensitive_columns_in_every_result_set ... ok
 
 test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/session_mssql.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/session_mssql-91e5986545a3dcd5)
+     Running tests/session_mssql.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/session_mssql-91e5986545a3dcd5)
 
 running 1 test
 test sql_server_batches_with_mutations_are_classified_and_denied_before_dispatch ... ignored, requires docker
 
 test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/session_postgres.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/session_postgres-9b88cbdd74bad322)
+     Running tests/session_postgres.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/session_postgres-9b88cbdd74bad322)
 
 running 3 tests
 test a_commit_failing_on_a_deferred_constraint_closes_the_batch ... ignored, requires docker

@@ -1,6 +1,6 @@
-   Compiling tablepro-policy v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-release-review-20261011/linux/crates/policy)
+   Compiling tablepro-policy v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-release-review-20261011/linux/crates/policy)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.85s
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_policy-b15a3e2bc3ea33c7)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_policy-b15a3e2bc3ea33c7)
 
 running 219 tests
 test audit::tests::uncertainty_is_scoped_to_a_connection_generation_but_journal_failure_is_global ... ok
@@ -225,7 +225,7 @@ test rules::tests::shared_batches_must_not_leave_an_explicit_transaction_open ..
 
 test result: ok. 219 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
-     Running tests/aud11_s6_s7.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/aud11_s6_s7-ea068c5508c728b4)
+     Running tests/aud11_s6_s7.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/aud11_s6_s7-ea068c5508c728b4)
 
 running 6 tests
 test unparseable_sql_needs_approval_even_when_local_writes_and_ddl_are_permissive ... ok
@@ -237,7 +237,7 @@ test merge_delete_needs_human_approval_in_local_and_staging ... ok
 
 test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/guard_transparency.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/guard_transparency-eb81b02117688599)
+     Running tests/guard_transparency.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/guard_transparency-eb81b02117688599)
 
 running 4 tests
 test a_guard_does_not_invent_server_cancellation_the_driver_lacks ... ok

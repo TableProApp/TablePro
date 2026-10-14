@@ -1,8 +1,8 @@
 Focused test: mysql_atomic::mysql_batch_rollback_preserves_trigger_session_variable_effects
-Command: CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target cargo test -p tablepro-driver-mysql --test integration mysql_batch_rollback_preserves_trigger_session_variable_effects -- --ignored --nocapture
+Command: CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target cargo test -p tablepro-driver-mysql --test integration mysql_batch_rollback_preserves_trigger_session_variable_effects -- --ignored --nocapture
 Result: passed; 1 passed, 71 filtered out, 12.40 seconds.
 
 The failed batch's InnoDB insert was rolled back. The AFTER INSERT trigger's MySQL session-variable increment remained observable on the same connection after rollback.
 
-Full MySQL atomicity group: `CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target cargo test -p tablepro-driver-mysql --test integration mysql_atomic:: -- --ignored --test-threads=1`
+Full MySQL atomicity group: `CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target cargo test -p tablepro-driver-mysql --test integration mysql_atomic:: -- --ignored --test-threads=1`
 Result: 9 passed, 0 failed, 63 filtered out, 105.80 seconds.

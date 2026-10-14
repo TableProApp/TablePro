@@ -18,7 +18,7 @@ failures:
 
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 33 filtered out; finished in 4.31s
 
-   Compiling tablepro-driver-mssql v0.1.0 (/home/trung/Projects/tablepro/linux/crates/drivers/mssql)
+   Compiling tablepro-driver-mssql v0.1.0 ([user-home]/Projects/tablepro/linux/crates/drivers/mssql)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.13s
      Running tests/integration.rs (linux/target/debug/deps/integration-96d8f26021e5cb8e)
 error: test failed, to rerun pass `-p tablepro-driver-mssql --test integration`

@@ -1,6 +1,6 @@
-   Compiling tablepro-driver-mysql v0.1.0 (/home/trung/.cache/bookie-b4-mysql-lock/linux/crates/drivers/mysql)
+   Compiling tablepro-driver-mysql v0.1.0 ([user-home]/.cache/bookie-b4-mysql-lock/linux/crates/drivers/mysql)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.65s
-     Running tests/integration.rs (/home/trung/.cache/bookie-b4-candidate-2026-10-08/target/debug/deps/integration-3f630a0a029525e7)
+     Running tests/integration.rs ([user-home]/.cache/bookie-b4-candidate-2026-10-08/target/debug/deps/integration-3f630a0a029525e7)
 
 running 18 tests
 test mysql_atomic::a_failed_mysql_dml_batch_confirms_rollback_and_preserves_neighbor_rows ... ok

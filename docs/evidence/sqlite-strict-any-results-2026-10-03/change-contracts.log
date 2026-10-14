@@ -1,4 +1,4 @@
-Change contract evidence: /home/trung/Projects/tablepro/linux/target/quality/20261003T182239343426Z-change-contracts/report.json
+Change contract evidence: [user-home]/Projects/tablepro/linux/target/quality/20261003T182239343426Z-change-contracts/report.json
 Mapped source files:
 - tablepro-app: exact regressions
   $ cargo test --locked -p tablepro-app --lib ui::browse_tab::row_ops::row_identity_tests::duplicating_a_row_blanks_database_owned_cells_and_preserves_exact_values -- --exact --test-threads=1

@@ -1,4 +1,4 @@
-Evidence: /home/trung/Projects/tablepro/linux/target/quality/20261006T132146546413Z-quick
+Evidence: [user-home]/Projects/tablepro/linux/target/quality/20261006T132146546413Z-quick
 ==> script harness
 ignored-test inventory and isolated registrations: OK
 ....................................usage: runner [-h] [--list] [layers ...]
@@ -37,7 +37,7 @@ panic-sites: ok (no new unwrap/expect/panic!/todo!/unimplemented!/unreachable! i
 function sizes within limits
 ==> cargo fmt --check (workspace)
 ==> cargo clippy (non-GTK crates)
-    Checking tablepro-driver-postgres v0.1.0 (/home/trung/Projects/tablepro/linux/crates/drivers/postgres)
+    Checking tablepro-driver-postgres v0.1.0 ([user-home]/Projects/tablepro/linux/crates/drivers/postgres)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.27s
 ==> cargo test --lib (non-GTK crates)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.35s

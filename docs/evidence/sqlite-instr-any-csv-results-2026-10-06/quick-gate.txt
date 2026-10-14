@@ -1,4 +1,4 @@
-Evidence: /home/trung/Projects/tablepro/linux/target/quality/20261006T135616794892Z-quick
+Evidence: [user-home]/Projects/tablepro/linux/target/quality/20261006T135616794892Z-quick
 ==> script harness
 ignored-test inventory and isolated registrations: OK
 ....................................usage: runner [-h] [--list] [layers ...]

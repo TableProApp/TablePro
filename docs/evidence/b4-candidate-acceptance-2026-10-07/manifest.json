@@ -118,7 +118,7 @@
     "commit": "236aaff49125349124d3faf2658d5d58012e0de9",
     "working_tree": "M linux/crates/app/tests/gtk_safety.py",
     "tracked_diff_sha256": "b7d2d22fc865aa0716139f69145265587db388c7501b7a610d4d930389f1c15c",
-    "command": "TABLEPRO_GTK_BINARY=/home/trung/Projects/tablepro/linux/target/debug/tablepro-app TABLEPRO_GTK_SCENARIO=audit_journal_loss_after_connection_denies_mutation python scripts/run-test-layer.py ui",
+    "command": "TABLEPRO_GTK_BINARY=[user-home]/Projects/tablepro/linux/target/debug/tablepro-app TABLEPRO_GTK_SCENARIO=audit_journal_loss_after_connection_denies_mutation python scripts/run-test-layer.py ui",
     "status": "passed",
     "seconds": 8.192,
     "report": "audit-journal-loss-report.json",

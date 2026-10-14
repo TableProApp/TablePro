@@ -1,4 +1,4 @@
-   Compiling tablepro-driver-mysql v0.1.0 (/home/trung/Projects/tablepro/linux/crates/drivers/mysql)
+   Compiling tablepro-driver-mysql v0.1.0 ([user-home]/Projects/tablepro/linux/crates/drivers/mysql)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.42s
      Running tests/integration.rs (linux/target/debug/deps/integration-245109a29f7e15d5)
 

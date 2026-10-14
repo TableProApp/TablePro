@@ -21,7 +21,7 @@
       "result": "passed"
     },
     "focused_test": {
-      "command": "rtk env CARGO_TARGET_DIR=/home/trung/.cache/bookie-b4-target-7eff CARGO_INCREMENTAL=0 rtk proxy cargo test --locked -p tablepro-driver-mysql --test integration mysql_failed_batch_keeps_direct_updates_and_deletes_on_nontransactional_engines -- --include-ignored --test-threads=1",
+      "command": "rtk env CARGO_TARGET_DIR=[user-home]/.cache/bookie-b4-target-7eff CARGO_INCREMENTAL=0 rtk proxy cargo test --locked -p tablepro-driver-mysql --test integration mysql_failed_batch_keeps_direct_updates_and_deletes_on_nontransactional_engines -- --include-ignored --test-threads=1",
       "result": "1 passed, 0 failed, 0 ignored, 74 filtered out",
       "log": "focused.txt"
     }

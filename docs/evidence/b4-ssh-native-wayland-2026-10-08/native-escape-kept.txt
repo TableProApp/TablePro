@@ -1,11 +1,11 @@
 dbus-daemon[2382865]: [session uid=1000 pid=2382865 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.2' (uid=1000 pid=2382877 comm="gdbus call --session --dest org.a11y.Bus --object-")
 dbus-daemon[2382865]: [session uid=1000 pid=2382865 pidfd=5] Successfully activated service 'org.a11y.Bus'
-dbus-daemon[2382888]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=2382866 comm="python3 /tmp/b4_native_wayland_keep.py /home/trung")
+dbus-daemon[2382888]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=2382866 comm="python3 /tmp/b4_native_wayland_keep.py [user-home]
 dbus-daemon[2382888]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
-dbus-daemon[2382865]: [session uid=1000 pid=2382865 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.9' (uid=1000 pid=2382988 comm="/home/trung/.cache/bookie-b4-target-0d5/installed/")
+dbus-daemon[2382865]: [session uid=1000 pid=2382865 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.9' (uid=1000 pid=2382988 comm="[user-home]/.cache/bookie-b4-target-0d5/installed/")
 dbus-daemon[2382865]: [session uid=1000 pid=2382865 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
-dbus-daemon[2382865]: [session uid=1000 pid=2382865 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.9' (uid=1000 pid=2382988 comm="/home/trung/.cache/bookie-b4-target-0d5/installed/")
+dbus-daemon[2382865]: [session uid=1000 pid=2382865 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.9' (uid=1000 pid=2382988 comm="[user-home]/.cache/bookie-b4-target-0d5/installed/")
 dbus-daemon[2382865]: [session uid=1000 pid=2382865 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.12' (uid=1000 pid=2383040 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[2382865]: [session uid=1000 pid=2382865 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
 dbus-daemon[2382865]: [session uid=1000 pid=2382865 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.12' (uid=1000 pid=2383040 comm="/usr/lib/xdg-desktop-portal")
@@ -99,13 +99,13 @@ dbus-daemon[2382865]: [session uid=1000 pid=2382865 pidfd=5] Successfully activa
 
 (process:2382866): dbind-WARNING **: 23:22:14.082: AT-SPI: Error in GetItems, sender=:1.3, error=Object does not exist at path “/org/a11y/atspi/cache”
 Traceback (most recent call last):
-  File "/home/trung/.cache/bookie-b4-candidate-a7f14/linux/crates/app/tests/gtk_safety.py", line 932, in run_scenario
+  File "[user-home]/.cache/bookie-b4-candidate-a7f14/linux/crates/app/tests/gtk_safety.py", line 932, in run_scenario
     scenario(database, base)
     ~~~~~~~~^^^^^^^^^^^^^^^^
-  File "/home/trung/.cache/bookie-b4-candidate-a7f14/linux/crates/app/tests/gtk_ux.py", line 616, in postgres_ssh_unknown_host_key_decline_is_durably_audited
+  File "[user-home]/.cache/bookie-b4-candidate-a7f14/linux/crates/app/tests/gtk_ux.py", line 616, in postgres_ssh_unknown_host_key_decline_is_durably_audited
     ui.wait_for_node(name="Trust this SSH host?", role=ssh_trust_prompt_roles, present=False)
     ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/trung/.cache/bookie-b4-candidate-a7f14/linux/crates/app/tests/gtk_safety.py", line 261, in wait_for_node
+  File "[user-home]/.cache/bookie-b4-candidate-a7f14/linux/crates/app/tests/gtk_safety.py", line 261, in wait_for_node
     raise AssertionError(f"expected accessible node {name!r} to {expectation}:\n{accessible_snapshot()}")
 AssertionError: expected accessible node 'Trust this SSH host?' to disappear:
 application: xdg-desktop-portal-gtk
@@ -162,10 +162,10 @@ Traceback (most recent call last):
   File "/tmp/b4_native_wayland_keep.py", line 7, in <module>
     gtk_safety.main()
     ~~~~~~~~~~~~~~~^^
-  File "/home/trung/.cache/bookie-b4-candidate-a7f14/linux/crates/app/tests/gtk_safety.py", line 1931, in main
+  File "[user-home]/.cache/bookie-b4-candidate-a7f14/linux/crates/app/tests/gtk_safety.py", line 1931, in main
     run_scenario(binary, scenario)
     ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
-  File "/home/trung/.cache/bookie-b4-candidate-a7f14/linux/crates/app/tests/gtk_safety.py", line 959, in run_scenario
+  File "[user-home]/.cache/bookie-b4-candidate-a7f14/linux/crates/app/tests/gtk_safety.py", line 959, in run_scenario
     raise AssertionError(f"{failure}\napplication stderr:\n{stderr}") from failure
 AssertionError: expected accessible node 'Trust this SSH host?' to disappear:
 application: xdg-desktop-portal-gtk

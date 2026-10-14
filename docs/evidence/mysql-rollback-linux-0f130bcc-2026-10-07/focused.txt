@@ -1,3 +1,3 @@
-Command: CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target rtk cargo test --locked -p tablepro-driver-mysql --test integration mysql_atomic:: -- --ignored --test-threads=1
+Command: CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target rtk cargo test --locked -p tablepro-driver-mysql --test integration mysql_atomic:: -- --ignored --test-threads=1
 Result: 8 passed, 63 filtered out (1 suite, 92.57s)
 Fixture: testcontainers MySQL 8.1; run locally against BookiE linux source commit fb82ea1c7e60e654da54d1fb31791a030524167e plus documentation-only commit 0f130bcc4a6c87568a804b9d94f1f0c4ed4301e9

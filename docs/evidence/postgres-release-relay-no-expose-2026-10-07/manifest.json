@@ -11,7 +11,7 @@
     "crates/app/tests/gtk_ux.py": "5782950623c4f15c98d31369a365ec519f7c02adc812ab46957a006d24ccb00b"
   },
   "purpose": "Verify PostgreSQL release harness connectivity after removing relay EXPOSE metadata flagged by SonarCloud.",
-  "command": "TMPDIR=/home/trung/t CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target bash scripts/test-postgres-release.sh",
+  "command": "TMPDIR=[user-home]/t CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target bash scripts/test-postgres-release.sh",
   "result": "passed; process exit 0",
   "gtk_scenarios": [
     "postgres_saved_mtls_connection_authenticates_and_queries",

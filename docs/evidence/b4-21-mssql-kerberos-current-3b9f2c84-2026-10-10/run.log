@@ -99,10 +99,10 @@ Zone 50.30.172.in-addr.arpa created successfully
 Record added successfully
 Export one principal to /tmp/mssql-spn.keytab
 Export one principal to /tmp/mssql-account.keytab
- bookie-mssql-kerberos-ad-1 Copying bookie-mssql-kerberos-ad-1:/tmp/mssql-spn.keytab to /home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/tests/fixtures/mssql-kerberos/materials/mssql-spn.keytab
- bookie-mssql-kerberos-ad-1 Copied bookie-mssql-kerberos-ad-1:/tmp/mssql-spn.keytab to /home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/tests/fixtures/mssql-kerberos/materials/mssql-spn.keytab
- bookie-mssql-kerberos-ad-1 Copying bookie-mssql-kerberos-ad-1:/tmp/mssql-account.keytab to /home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/tests/fixtures/mssql-kerberos/materials/mssql-account.keytab
- bookie-mssql-kerberos-ad-1 Copied bookie-mssql-kerberos-ad-1:/tmp/mssql-account.keytab to /home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/tests/fixtures/mssql-kerberos/materials/mssql-account.keytab
+ bookie-mssql-kerberos-ad-1 Copying bookie-mssql-kerberos-ad-1:/tmp/mssql-spn.keytab to [user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/tests/fixtures/mssql-kerberos/materials/mssql-spn.keytab
+ bookie-mssql-kerberos-ad-1 Copied bookie-mssql-kerberos-ad-1:/tmp/mssql-spn.keytab to [user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/tests/fixtures/mssql-kerberos/materials/mssql-spn.keytab
+ bookie-mssql-kerberos-ad-1 Copying bookie-mssql-kerberos-ad-1:/tmp/mssql-account.keytab to [user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/tests/fixtures/mssql-kerberos/materials/mssql-account.keytab
+ bookie-mssql-kerberos-ad-1 Copied bookie-mssql-kerberos-ad-1:/tmp/mssql-account.keytab to [user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/tests/fixtures/mssql-kerberos/materials/mssql-account.keytab
 ktutil:  </fixtures/mssql-kerberos/materials/mssql-spn.keytab
 ktutil:  <tures/mssql-kerberos/materials/mssql-account.keytab
 ktutil:  <ests/fixtures/mssql-kerberos/materials/mssql.keytab
@@ -138,29 +138,29 @@ ktutil:  quit
    Compiling hickory-net v0.26.3
    Compiling russh v0.63.3
    Compiling sqlx-core v0.9.0
-   Compiling tablepro-core v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/core)
+   Compiling tablepro-core v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/core)
    Compiling combine v4.6.8
    Compiling hyper-util v0.1.20
    Compiling hickory-resolver v0.26.3
    Compiling hyper-rustls v0.27.9
    Compiling clickhouse v0.15.2
-   Compiling mongodb v3.9.1 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/vendor/mongodb)
+   Compiling mongodb v3.9.1 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/vendor/mongodb)
    Compiling sqlx-sqlite v0.9.0
-   Compiling sqlx-mysql v0.9.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/vendor/sqlx-mysql)
-   Compiling tablepro-policy v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/policy)
-   Compiling tablepro-driver-mssql v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/mssql)
+   Compiling sqlx-mysql v0.9.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/vendor/sqlx-mysql)
+   Compiling tablepro-policy v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/policy)
+   Compiling tablepro-driver-mssql v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/mssql)
    Compiling sqlx v0.9.0
-   Compiling tablepro-driver-mysql v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/mysql)
-   Compiling redis v1.7.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/vendor/redis)
-   Compiling tablepro-driver-clickhouse v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/clickhouse)
-   Compiling tablepro-ssh v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/ssh)
+   Compiling tablepro-driver-mysql v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/mysql)
+   Compiling redis v1.7.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/vendor/redis)
+   Compiling tablepro-driver-clickhouse v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/clickhouse)
+   Compiling tablepro-ssh v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/ssh)
    Compiling ashpd v0.13.13
    Compiling oo7 v0.6.0
-   Compiling tablepro-storage v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/storage)
-   Compiling tablepro-transport v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/transport)
-   Compiling tablepro-driver-tls-tests v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/driver-tls-tests)
-   Compiling tablepro-driver-redis v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/redis)
-   Compiling tablepro-driver-mongodb v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/mongodb)
+   Compiling tablepro-storage v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/storage)
+   Compiling tablepro-transport v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/transport)
+   Compiling tablepro-driver-tls-tests v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/driver-tls-tests)
+   Compiling tablepro-driver-redis v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/redis)
+   Compiling tablepro-driver-mongodb v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/mongodb)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 28.49s
   Executable tests/mssql_kerberos.rs (target/debug/deps/mssql_kerberos-8e7afaf4ee6b7391)
  Container bookie-mssql-kerberos-mssql-1 Running 

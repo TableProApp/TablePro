@@ -34,10 +34,10 @@
       "compile_seconds": 9.647,
       "fresh_artifacts": 741,
       "rebuilt_packages": [
-        "path+file:///home/trung/Projects/tablepro/linux/crates/agentd#tablepro-agentd@0.1.5",
-        "path+file:///home/trung/Projects/tablepro/linux/crates/app#tablepro-app@0.1.5",
-        "path+file:///home/trung/Projects/tablepro/linux/crates/drivers/postgres#tablepro-driver-postgres@0.1.0",
-        "path+file:///home/trung/Projects/tablepro/linux/crates/drivers/sqlite#tablepro-driver-sqlite@0.1.0"
+        "path+file://[user-home]/Projects/tablepro/linux/crates/agentd#tablepro-agentd@0.1.5",
+        "path+file://[user-home]/Projects/tablepro/linux/crates/app#tablepro-app@0.1.5",
+        "path+file://[user-home]/Projects/tablepro/linux/crates/drivers/postgres#tablepro-driver-postgres@0.1.0",
+        "path+file://[user-home]/Projects/tablepro/linux/crates/drivers/sqlite#tablepro-driver-sqlite@0.1.0"
       ],
       "report_revision_before_commit": "7f807cd7cc000389db427aa4e2584ad7cbbbc305",
       "report_working_tree_dirty": true,

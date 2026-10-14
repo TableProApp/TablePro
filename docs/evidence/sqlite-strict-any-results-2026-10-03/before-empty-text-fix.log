@@ -18,7 +18,7 @@ failures:
 
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 457 filtered out; finished in 0.00s
 
-   Compiling tablepro-app v0.1.5 (/home/trung/Projects/tablepro/linux/crates/app)
+   Compiling tablepro-app v0.1.5 ([user-home]/Projects/tablepro/linux/crates/app)
 warning: unused import: `super::parse_input_for_grid_cell`
  --> crates/app/src/ui/browse_tab/../../../tests/support/duckdb_enum_contract.rs:1:5
   |

@@ -29,7 +29,7 @@
     ]
   },
   "postgres_release_layer": {
-    "command": "rtk proxy env CARGO_TARGET_DIR=/home/trung/.cache/bookie-b4-target-0d5 bash scripts/test-postgres-release.sh",
+    "command": "rtk proxy env CARGO_TARGET_DIR=[user-home]/.cache/bookie-b4-target-0d5 bash scripts/test-postgres-release.sh",
     "result": "passed with exit code 0; system OpenSSH, agentd mTLS, release integration, and seven selected GTK SSH trust/audit/reconnect scenarios passed",
     "agentd_system_openssh": "agentd_refuses_without_learning_an_unknown_system_openssh_key_then_queries_after_trust passed",
     "agentd_mtls": "3 passed: untrusted certificate refusal, saved client certificate session, saved SSH route client certificate session",

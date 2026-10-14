@@ -4,7 +4,7 @@ The SSH-only layer below ran on `fork/linux` commit `ca1dc6002cf269f1eb799fe9f04
 
 `bash scripts/test-ssh.sh` passed 22 tests: 10 built-in agent-auth and 12 system OpenSSH session tests. Coverage includes two-hop reachability, cancellation while the second-hop trust prompt is pending, second-hop key change, and system OpenSSH ProxyJump.
 
-`rtk proxy env CARGO_TARGET_DIR=/home/trung/.cache/bookie-b4-target-0d5 bash scripts/test-postgres-release.sh` returned exit code 0. The system OpenSSH agentd trust fixture passed, all three agentd mTLS tests passed, the release integration test suite completed successfully, and all seven selected GTK SSH trust/audit/reconnect scenarios reported passed:
+`rtk proxy env CARGO_TARGET_DIR=[user-home]/.cache/bookie-b4-target-0d5 bash scripts/test-postgres-release.sh` returned exit code 0. The system OpenSSH agentd trust fixture passed, all three agentd mTLS tests passed, the release integration test suite completed successfully, and all seven selected GTK SSH trust/audit/reconnect scenarios reported passed:
 
 - `postgres_ssh_unknown_host_key_decline_is_durably_audited`
 - `postgres_ssh_setup_failure_is_durably_audited`

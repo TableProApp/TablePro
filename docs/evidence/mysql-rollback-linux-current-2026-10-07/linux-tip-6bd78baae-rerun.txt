@@ -3,7 +3,7 @@
    Compiling sqlx v0.9.0
    Compiling tablepro-driver-mysql v0.1.0 (/tmp/bookie-b4-11/linux/crates/drivers/mysql)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 8.24s
-     Running tests/integration.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/integration-f0961337c4162ed9)
+     Running tests/integration.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/integration-f0961337c4162ed9)
 
 running 8 tests
 test mysql_atomic::a_failed_mysql_dml_batch_confirms_rollback_and_preserves_neighbor_rows ... ok

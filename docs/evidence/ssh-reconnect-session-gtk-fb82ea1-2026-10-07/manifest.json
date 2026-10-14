@@ -9,7 +9,7 @@
     "crates/app/tests/gtk_ux.py": "531c66c6d28377dbfc6b3294846f360d4a1625c86ceab92791143f7f69334213",
     "scripts/test-postgres-release.sh": "f1b865d96403ec596514e0edb2480ad0be3b906e4ab1523289e32621abd30b45"
   },
-  "command": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target TABLEPRO_GTK_SCENARIO=postgres_ssh_tunnel_loss_retires_session_and_reconnects TABLEPRO_GTK_BINARY=/home/trung/Projects/tablepro/linux/target/release/tablepro-app TABLEPRO_GTK_ARTIFACT_DIR=docs/evidence/ssh-reconnect-session-gtk-fb82ea1-2026-10-07/artifacts bash scripts/test-postgres-release.sh",
+  "command": "CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target TABLEPRO_GTK_SCENARIO=postgres_ssh_tunnel_loss_retires_session_and_reconnects TABLEPRO_GTK_BINARY=[user-home]/Projects/tablepro/linux/target/release/tablepro-app TABLEPRO_GTK_ARTIFACT_DIR=docs/evidence/ssh-reconnect-session-gtk-fb82ea1-2026-10-07/artifacts bash scripts/test-postgres-release.sh",
   "binary": {
     "path": "target/release/tablepro-app",
     "sha256": "3403c2a9b69134984c504de5657121ef4157d0953260f446c14d748eb9a274b3",

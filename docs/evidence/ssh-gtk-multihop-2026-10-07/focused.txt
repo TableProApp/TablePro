@@ -1,4 +1,4 @@
-wrote fixture materials to /home/trung/Projects/tablepro/linux/tests/fixtures/postgres-release/materials
+wrote fixture materials to [user-home]/Projects/tablepro/linux/tests/fixtures/postgres-release/materials
 the SSH host key changed; the release script uses a fixture-local known_hosts file
  Image tablepro-postgres-release-bastion Building
  Image tablepro-postgres-release-relay Building
@@ -73,7 +73,7 @@ the SSH host key changed; the release script uses a fixture-local known_hosts fi
 #17 resolve docker.io/library/alpine:3.21@sha256:ce64758a109eb420d874a118f87920e625e12d3634e03b4a5573fd9f6e5d3507 0.1s done
 #17 DONE 0.1s
 
-#18 [bastion 2/5] RUN apk add --no-cache openssh-server     && adduser -D -s /bin/sh tunnel     && sed -i 's/^tunnel:!:/tunnel:*:/' /etc/shadow     && mkdir -p /home/tunnel/.ssh
+#18 [bastion 2/5] RUN apk add --no-cache openssh-server     && adduser -D -s /bin/sh tunnel     && sed -i 's/^tunnel:!:/tunnel:*:/' /etc/shadow     && mkdir -p [user-home]/.ssh
 #18 CACHED
 
 #15 [relay internal] load build context
@@ -90,7 +90,7 @@ the SSH host key changed; the release script uses a fixture-local known_hosts fi
 #20 [relay 3/5] COPY materials/ssh_relay_host_ed25519_key /etc/ssh/ssh_host_ed25519_key
 #20 DONE 0.1s
 
-#21 [relay 4/5] COPY materials/client_ed25519_key.pub /home/tunnel/.ssh/authorized_keys
+#21 [relay 4/5] COPY materials/client_ed25519_key.pub [user-home]/.ssh/authorized_keys
 #21 DONE 0.1s
 
 #22 [db] exporting to image
@@ -102,10 +102,10 @@ the SSH host key changed; the release script uses a fixture-local known_hosts fi
 #22 naming to docker.io/library/tablepro-postgres-release-db:latest
 #22 ...
 
-#23 [bastion 4/5] COPY materials/client_ed25519_key.pub /home/tunnel/.ssh/authorized_keys
+#23 [bastion 4/5] COPY materials/client_ed25519_key.pub [user-home]/.ssh/authorized_keys
 #23 DONE 0.1s
 
-#24 [bastion 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel /home/tunnel/.ssh     && chmod 700 /home/tunnel/.ssh     && chmod 600 /home/tunnel/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
+#24 [bastion 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel [user-home]/.ssh     && chmod 700 [user-home]/.ssh     && chmod 600 [user-home]/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
 #24 DONE 1.1s
 
 #22 [db] exporting to image
@@ -113,7 +113,7 @@ the SSH host key changed; the release script uses a fixture-local known_hosts fi
 #22 unpacking to docker.io/library/tablepro-postgres-release-db:latest 0.1s done
 #22 DONE 1.3s
 
-#25 [relay 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel /home/tunnel/.ssh     && chmod 700 /home/tunnel/.ssh     && chmod 600 /home/tunnel/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
+#25 [relay 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel [user-home]/.ssh     && chmod 700 [user-home]/.ssh     && chmod 600 [user-home]/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
 #25 DONE 1.1s
 
 #26 [relay] exporting to image
@@ -327,16 +327,16 @@ test verify_full_through_ssh_uses_the_original_database_hostname ... ok
 
 test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.89s
 
-   Compiling tablepro-app v0.1.5 (/home/trung/Projects/tablepro/linux/crates/app)
+   Compiling tablepro-app v0.1.5 ([user-home]/Projects/tablepro/linux/crates/app)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.04s
 dbus-daemon[1514848]: [session uid=1000 pid=1514848 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.1' (uid=1000 pid=1515214 comm="gdbus call --session --dest org.a11y.Bus --object-")
 dbus-daemon[1514848]: [session uid=1000 pid=1514848 pidfd=5] Successfully activated service 'org.a11y.Bus'
-dbus-daemon[1515225]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=1515237 comm="python3 /home/trung/Projects/tablepro/linux/crates")
+dbus-daemon[1515225]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=1515237 comm="python3 [user-home]/Projects/tablepro/linux/crates")
 dbus-daemon[1515225]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
-dbus-daemon[1514848]: [session uid=1000 pid=1514848 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.10' (uid=1000 pid=1515272 comm="/home/trung/Projects/tablepro/linux/target/install")
+dbus-daemon[1514848]: [session uid=1000 pid=1514848 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.10' (uid=1000 pid=1515272 comm="[user-home]/Projects/tablepro/linux/target/install")
 dbus-daemon[1514848]: [session uid=1000 pid=1514848 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
-dbus-daemon[1514848]: [session uid=1000 pid=1514848 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.10' (uid=1000 pid=1515272 comm="/home/trung/Projects/tablepro/linux/target/install")
+dbus-daemon[1514848]: [session uid=1000 pid=1514848 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.10' (uid=1000 pid=1515272 comm="[user-home]/Projects/tablepro/linux/target/install")
 dbus-daemon[1514848]: [session uid=1000 pid=1514848 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.13' (uid=1000 pid=1515342 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[1514848]: [session uid=1000 pid=1514848 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
 dbus-daemon[1514848]: [session uid=1000 pid=1514848 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.13' (uid=1000 pid=1515342 comm="/usr/lib/xdg-desktop-portal")

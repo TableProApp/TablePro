@@ -1,4 +1,4 @@
-fixture materials already present in /home/trung/.cache/bookie-ui-linux-tip/linux/tests/fixtures/postgres-release/materials
+fixture materials already present in [user-home]/.cache/bookie-ui-linux-tip/linux/tests/fixtures/postgres-release/materials
  Image tablepro-postgres-release-db Building 
  Image tablepro-postgres-release-bastion Building 
  Image tablepro-postgres-release-relay Building 
@@ -82,22 +82,22 @@ fixture materials already present in /home/trung/.cache/bookie-ui-linux-tip/linu
 #20 [relay 3/5] COPY materials/ssh_relay_host_ed25519_key /etc/ssh/ssh_host_ed25519_key
 #20 CACHED
 
-#21 [relay 4/5] COPY materials/client_ed25519_key.pub /home/tunnel/.ssh/authorized_keys
+#21 [relay 4/5] COPY materials/client_ed25519_key.pub [user-home]/.ssh/authorized_keys
 #21 CACHED
 
-#22 [relay 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel /home/tunnel/.ssh     && chmod 700 /home/tunnel/.ssh     && chmod 600 /home/tunnel/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
+#22 [relay 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel [user-home]/.ssh     && chmod 700 [user-home]/.ssh     && chmod 600 [user-home]/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
 #22 CACHED
 
-#23 [bastion 4/5] COPY materials/client_ed25519_key.pub /home/tunnel/.ssh/authorized_keys
+#23 [bastion 4/5] COPY materials/client_ed25519_key.pub [user-home]/.ssh/authorized_keys
 #23 CACHED
 
-#24 [bastion 2/5] RUN apk add --no-cache openssh-server     && adduser -D -s /bin/sh tunnel     && sed -i 's/^tunnel:!:/tunnel:*:/' /etc/shadow     && mkdir -p /home/tunnel/.ssh
+#24 [bastion 2/5] RUN apk add --no-cache openssh-server     && adduser -D -s /bin/sh tunnel     && sed -i 's/^tunnel:!:/tunnel:*:/' /etc/shadow     && mkdir -p [user-home]/.ssh
 #24 CACHED
 
 #25 [bastion 3/5] COPY materials/ssh_host_ed25519_key /etc/ssh/ssh_host_ed25519_key
 #25 CACHED
 
-#26 [bastion 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel /home/tunnel/.ssh     && chmod 700 /home/tunnel/.ssh     && chmod 600 /home/tunnel/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
+#26 [bastion 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel [user-home]/.ssh     && chmod 700 [user-home]/.ssh     && chmod 600 [user-home]/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
 #26 CACHED
 
 #27 [relay] exporting to image
@@ -162,9 +162,9 @@ fixture materials already present in /home/trung/.cache/bookie-ui-linux-tip/linu
  Container tablepro-postgres-release-bastion-1 Healthy 
  Container tablepro-postgres-release-toxiproxy-1 Healthy 
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.20s
-   Compiling tablepro-transport v0.1.0 (/home/trung/.cache/bookie-ui-linux-tip/linux/crates/transport)
-   Compiling tablepro-agentd v0.1.6-dev (/home/trung/.cache/bookie-ui-linux-tip/linux/crates/agentd)
-   Compiling tablepro-release-tests v0.1.0 (/home/trung/.cache/bookie-ui-linux-tip/linux/crates/release-tests)
+   Compiling tablepro-transport v0.1.0 ([user-home]/.cache/bookie-ui-linux-tip/linux/crates/transport)
+   Compiling tablepro-agentd v0.1.6-dev ([user-home]/.cache/bookie-ui-linux-tip/linux/crates/agentd)
+   Compiling tablepro-release-tests v0.1.0 ([user-home]/.cache/bookie-ui-linux-tip/linux/crates/release-tests)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 2.57s
      Running tests/g5_system_openssh.rs (target/debug/deps/g5_system_openssh-0dfb09a5027e1a78)
 
@@ -173,7 +173,7 @@ test agentd_refuses_without_learning_an_unknown_system_openssh_key_then_queries_
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.63s
 
-   Compiling tablepro-agentd v0.1.6-dev (/home/trung/.cache/bookie-ui-linux-tip/linux/crates/agentd)
+   Compiling tablepro-agentd v0.1.6-dev ([user-home]/.cache/bookie-ui-linux-tip/linux/crates/agentd)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.04s
      Running tests/mtls.rs (target/debug/deps/mtls-3148b77f723889dc)
 
@@ -184,8 +184,8 @@ test agentd_uses_a_saved_client_certificate_through_its_saved_ssh_route ... ok
 
 test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.68s
 
-   Compiling tablepro-transport v0.1.0 (/home/trung/.cache/bookie-ui-linux-tip/linux/crates/transport)
-   Compiling tablepro-release-tests v0.1.0 (/home/trung/.cache/bookie-ui-linux-tip/linux/crates/release-tests)
+   Compiling tablepro-transport v0.1.0 ([user-home]/.cache/bookie-ui-linux-tip/linux/crates/transport)
+   Compiling tablepro-release-tests v0.1.0 ([user-home]/.cache/bookie-ui-linux-tip/linux/crates/release-tests)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 2.89s
      Running unittests src/lib.rs (target/debug/deps/tablepro_release_tests-420e5f4db729d782)
 
@@ -312,17 +312,17 @@ test verify_full_through_ssh_uses_the_original_database_hostname ... ok
 
 test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.88s
 
-   Compiling tablepro-transport v0.1.0 (/home/trung/.cache/bookie-ui-linux-tip/linux/crates/transport)
-   Compiling tablepro-app v0.1.6-dev (/home/trung/.cache/bookie-ui-linux-tip/linux/crates/app)
+   Compiling tablepro-transport v0.1.0 ([user-home]/.cache/bookie-ui-linux-tip/linux/crates/transport)
+   Compiling tablepro-app v0.1.6-dev ([user-home]/.cache/bookie-ui-linux-tip/linux/crates/app)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.44s
 dbus-daemon[265380]: [session uid=1000 pid=265380 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.1' (uid=1000 pid=265522 comm="gdbus call --session --dest org.a11y.Bus --object-")
 dbus-daemon[265380]: [session uid=1000 pid=265380 pidfd=5] Successfully activated service 'org.a11y.Bus'
-dbus-daemon[265532]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=265544 comm="python3 /home/trung/.cache/bookie-ui-linux-tip/lin")
+dbus-daemon[265532]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=265544 comm="python3 [user-home]/.cache/bookie-ui-linux-tip/lin")
 dbus-daemon[265532]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
-dbus-daemon[265380]: [session uid=1000 pid=265380 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.10' (uid=1000 pid=265560 comm="/home/trung/.local/opt/bookie/97e5f55bddac/test-ro")
+dbus-daemon[265380]: [session uid=1000 pid=265380 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.10' (uid=1000 pid=265560 comm="[user-home]/.local/opt/bookie/97e5f55bddac/test-ro")
 dbus-daemon[265380]: [session uid=1000 pid=265380 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
-dbus-daemon[265380]: [session uid=1000 pid=265380 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.10' (uid=1000 pid=265560 comm="/home/trung/.local/opt/bookie/97e5f55bddac/test-ro")
+dbus-daemon[265380]: [session uid=1000 pid=265380 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.10' (uid=1000 pid=265560 comm="[user-home]/.local/opt/bookie/97e5f55bddac/test-ro")
 dbus-daemon[265380]: [session uid=1000 pid=265380 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.13' (uid=1000 pid=265631 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[265380]: [session uid=1000 pid=265380 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
 dbus-daemon[265380]: [session uid=1000 pid=265380 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.13' (uid=1000 pid=265631 comm="/usr/lib/xdg-desktop-portal")

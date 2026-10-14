@@ -18,7 +18,7 @@
   ],
   "validation": {
     "bookiee_export": {
-      "command": "rtk proxy env BOOKIEE_XLSX_REIMPORT_ARTIFACT=/home/trung/Projects/tablepro/linux/docs/evidence/postgres-enum-scalar-calc-reimport-results-2026-10-04/source.xlsx cargo test --manifest-path linux/Cargo.toml --package tablepro-driver-postgres --test integration enum_file_export_contract::value_contract_custom_enum_xlsx_file_export_keeps_text_labels_and_refuses_empty_safely -- --include-ignored --exact --test-threads=1",
+      "command": "rtk proxy env BOOKIEE_XLSX_REIMPORT_ARTIFACT=[user-home]/Projects/tablepro/linux/docs/evidence/postgres-enum-scalar-calc-reimport-results-2026-10-04/source.xlsx cargo test --manifest-path linux/Cargo.toml --package tablepro-driver-postgres --test integration enum_file_export_contract::value_contract_custom_enum_xlsx_file_export_keeps_text_labels_and_refuses_empty_safely -- --include-ignored --exact --test-threads=1",
       "result": "1 passed, 0 failed",
       "log": "bookiee-export-test.txt"
     },

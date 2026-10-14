@@ -6,7 +6,7 @@ Source: `1ff2ff9cbbac10d6105554d7b964f87c562efd6f` (`fork/linux`)
 
 Script: `scripts/test-postgres-release.sh`
 
-Command: `CARGO_TARGET_DIR=/home/trung/Projects/bookie-b4-postgres-snapshot-pages/target rtk bash scripts/test-postgres-release.sh`
+Command: `CARGO_TARGET_DIR=[user-home]/Projects/bookie-b4-postgres-snapshot-pages/target rtk bash scripts/test-postgres-release.sh`
 
 ## Results
 

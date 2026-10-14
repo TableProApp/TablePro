@@ -9,7 +9,7 @@
   "engine": "PostgreSQL 16-alpine Docker testcontainers fixture",
   "case": "Latest Linux-tip exact-selector rerun of rollback failure after terminating the transaction backend.",
   "test": "rollback_failure::a_batch_reports_rollback_failure_after_postgres_terminates_its_backend",
-  "command": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target rtk cargo test --locked -p tablepro-driver-postgres --test integration rollback_failure::a_batch_reports_rollback_failure_after_postgres_terminates_its_backend -- --ignored --exact --test-threads=1",
+  "command": "CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target rtk cargo test --locked -p tablepro-driver-postgres --test integration rollback_failure::a_batch_reports_rollback_failure_after_postgres_terminates_its_backend -- --ignored --exact --test-threads=1",
   "result": "1 passed, 215 filtered out (1 suite, 2.91s)",
   "log": "focused.txt",
   "log_sha256": "37baf8b656e1720983fce6e6964280444d8013fb473a02ddc5fa08c9195f843a",

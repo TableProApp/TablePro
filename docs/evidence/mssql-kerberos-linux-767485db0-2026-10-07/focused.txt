@@ -126,7 +126,7 @@ ktutil:  quit
  Container bookie-mssql-kerberos-ad-1 Healthy
  Container bookie-mssql-kerberos-mssql-1 Healthy
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.32s
-  Executable tests/mssql_kerberos.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/mssql_kerberos-7327f479c4c3f8a0)
+  Executable tests/mssql_kerberos.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/mssql_kerberos-7327f479c4c3f8a0)
  Container bookie-mssql-kerberos-mssql-1 Running
  Container bookie-mssql-kerberos-ad-1 Running
  Container bookie-mssql-kerberos-ad-1 Waiting

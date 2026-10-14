@@ -2,5 +2,5 @@
     Blocking waiting for file lock on package cache
     Blocking waiting for file lock on package cache
     Blocking waiting for file lock on build directory
-    Checking tablepro-driver-mongodb v0.1.0 (/home/trung/Projects/tablepro/linux/crates/drivers/mongodb)
+    Checking tablepro-driver-mongodb v0.1.0 ([user-home]/Projects/tablepro/linux/crates/drivers/mongodb)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.26s

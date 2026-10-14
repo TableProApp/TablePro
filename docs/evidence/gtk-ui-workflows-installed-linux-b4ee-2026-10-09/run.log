@@ -1,11 +1,11 @@
 dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.1' (uid=1000 pid=3230692 comm="gdbus call --session --dest org.a11y.Bus --object-")
 dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Successfully activated service 'org.a11y.Bus'
-dbus-daemon[3230703]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=3230715 comm="python3 /home/trung/.cache/bookie-b4-linux-b4ee/li")
+dbus-daemon[3230703]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=3230715 comm="python3 [user-home]/.cache/bookie-b4-linux-b4ee/li")
 dbus-daemon[3230703]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
-dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.7' (uid=1000 pid=3230716 comm="/home/trung/.local/opt/bookie-main-b4ee/usr/bin/ta")
+dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.7' (uid=1000 pid=3230716 comm="[user-home]/.local/opt/bookie-main-b4ee/usr/bin/ta")
 dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
-dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.7' (uid=1000 pid=3230716 comm="/home/trung/.local/opt/bookie-main-b4ee/usr/bin/ta")
+dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.7' (uid=1000 pid=3230716 comm="[user-home]/.local/opt/bookie-main-b4ee/usr/bin/ta")
 dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.10' (uid=1000 pid=3230787 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
 dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.10' (uid=1000 pid=3230787 comm="/usr/lib/xdg-desktop-portal")
@@ -51,9 +51,9 @@ dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Successfully activa
 (process:3230715): dbind-WARNING **: 05:47:04.490: AT-SPI: Error in GetItems, sender=:1.3, error=Object does not exist at path “/org/a11y/atspi/cache”
 
 (process:3230715): dbind-WARNING **: 05:47:17.296: AT-SPI: Error in GetItems, sender=:1.7, error=Object does not exist at path “/org/a11y/atspi/cache”
-dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.33' (uid=1000 pid=3231649 comm="/home/trung/.local/opt/bookie-main-b4ee/usr/bin/ta")
+dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.33' (uid=1000 pid=3231649 comm="[user-home]/.local/opt/bookie-main-b4ee/usr/bin/ta")
 dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Successfully activated service 'org.gtk.vfs.UDisks2VolumeMonitor'
-dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Activating service name='org.gtk.vfs.MTPVolumeMonitor' requested by ':1.33' (uid=1000 pid=3231649 comm="/home/trung/.local/opt/bookie-main-b4ee/usr/bin/ta")
+dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Activating service name='org.gtk.vfs.MTPVolumeMonitor' requested by ':1.33' (uid=1000 pid=3231649 comm="[user-home]/.local/opt/bookie-main-b4ee/usr/bin/ta")
 dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Successfully activated service 'org.gtk.vfs.MTPVolumeMonitor'
 dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Activating service name='org.gtk.vfs.Metadata' requested by ':1.14' (uid=1000 pid=3230809 comm="/usr/lib/xdg-desktop-portal-gtk")
 dbus-daemon[3230436]: [session uid=1000 pid=3230436 pidfd=5] Successfully activated service 'org.gtk.vfs.Metadata'

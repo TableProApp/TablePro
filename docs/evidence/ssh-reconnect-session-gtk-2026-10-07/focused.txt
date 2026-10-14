@@ -1,4 +1,4 @@
-fixture materials already present in /home/trung/Projects/tablepro/linux/tests/fixtures/postgres-release/materials
+fixture materials already present in [user-home]/Projects/tablepro/linux/tests/fixtures/postgres-release/materials
  Image tablepro-postgres-release-db Building
  Image tablepro-postgres-release-bastion Building
 #1 [internal] load local bake definitions
@@ -76,13 +76,13 @@ fixture materials already present in /home/trung/Projects/tablepro/linux/tests/f
 #18 [bastion 3/5] COPY materials/ssh_host_ed25519_key /etc/ssh/ssh_host_ed25519_key
 #18 CACHED
 
-#19 [bastion 2/5] RUN apk add --no-cache openssh-server     && adduser -D -s /bin/sh tunnel     && sed -i 's/^tunnel:!:/tunnel:*:/' /etc/shadow     && mkdir -p /home/tunnel/.ssh
+#19 [bastion 2/5] RUN apk add --no-cache openssh-server     && adduser -D -s /bin/sh tunnel     && sed -i 's/^tunnel:!:/tunnel:*:/' /etc/shadow     && mkdir -p [user-home]/.ssh
 #19 CACHED
 
-#20 [bastion 4/5] COPY materials/client_ed25519_key.pub /home/tunnel/.ssh/authorized_keys
+#20 [bastion 4/5] COPY materials/client_ed25519_key.pub [user-home]/.ssh/authorized_keys
 #20 CACHED
 
-#21 [bastion 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel /home/tunnel/.ssh     && chmod 700 /home/tunnel/.ssh     && chmod 600 /home/tunnel/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
+#21 [bastion 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel [user-home]/.ssh     && chmod 700 [user-home]/.ssh     && chmod 600 [user-home]/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
 #21 CACHED
 
 #22 [bastion] exporting to image
@@ -274,12 +274,12 @@ test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.33s
 dbus-daemon[1474348]: [session uid=1000 pid=1474348 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.1' (uid=1000 pid=1474454 comm="gdbus call --session --dest org.a11y.Bus --object-")
 dbus-daemon[1474348]: [session uid=1000 pid=1474348 pidfd=5] Successfully activated service 'org.a11y.Bus'
-dbus-daemon[1474465]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=1474477 comm="python3 /home/trung/Projects/tablepro/linux/crates")
+dbus-daemon[1474465]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=1474477 comm="python3 [user-home]/Projects/tablepro/linux/crates")
 dbus-daemon[1474465]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
-dbus-daemon[1474348]: [session uid=1000 pid=1474348 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.10' (uid=1000 pid=1474493 comm="/home/trung/Projects/tablepro/linux/target/install")
+dbus-daemon[1474348]: [session uid=1000 pid=1474348 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.10' (uid=1000 pid=1474493 comm="[user-home]/Projects/tablepro/linux/target/install")
 dbus-daemon[1474348]: [session uid=1000 pid=1474348 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
-dbus-daemon[1474348]: [session uid=1000 pid=1474348 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.10' (uid=1000 pid=1474493 comm="/home/trung/Projects/tablepro/linux/target/install")
+dbus-daemon[1474348]: [session uid=1000 pid=1474348 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.10' (uid=1000 pid=1474493 comm="[user-home]/Projects/tablepro/linux/target/install")
 dbus-daemon[1474348]: [session uid=1000 pid=1474348 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.13' (uid=1000 pid=1474563 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[1474348]: [session uid=1000 pid=1474348 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
 dbus-daemon[1474348]: [session uid=1000 pid=1474348 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.13' (uid=1000 pid=1474563 comm="/usr/lib/xdg-desktop-portal")

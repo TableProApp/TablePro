@@ -1,6 +1,6 @@
-   Compiling tablepro-policy v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-session-refusal-audit/linux/crates/policy)
+   Compiling tablepro-policy v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-session-refusal-audit/linux/crates/policy)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 2.39s
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_policy-b15a3e2bc3ea33c7)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_policy-b15a3e2bc3ea33c7)
 
 running 1 test
 test guard::guard_tests::session::journal_lockdown_refusals_audit_without_dispatch_and_leave_rollback_available ... ok

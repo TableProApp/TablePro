@@ -1,1 +1,1 @@
-Evidence: /home/trung/Projects/tablepro/linux/target/quality/20261003T184141139700Z-layers/report.json\nchange-contracts/1: python3 scripts/run-change-contract-tests.py\n  passed: change-contracts-1.log\n
+Evidence: [user-home]/Projects/tablepro/linux/target/quality/20261003T184141139700Z-layers/report.json\nchange-contracts/1: python3 scripts/run-change-contract-tests.py\n  passed: change-contracts-1.log\n

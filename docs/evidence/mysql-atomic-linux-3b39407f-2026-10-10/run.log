@@ -99,12 +99,12 @@
    Compiling tokio-rustls v0.26.5
    Compiling sqlx-core v0.9.0
    Compiling axum v0.8.9
-   Compiling sqlx-mysql v0.9.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/vendor/sqlx-mysql)
-   Compiling tablepro-core v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/core)
+   Compiling sqlx-mysql v0.9.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/vendor/sqlx-mysql)
+   Compiling tablepro-core v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/core)
    Compiling hyper v1.11.1
    Compiling sqlx v0.9.0
    Compiling hyper-util v0.1.20
-   Compiling tablepro-driver-mysql v0.1.0 (/home/trung/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/mysql)
+   Compiling tablepro-driver-mysql v0.1.0 ([user-home]/Projects/tablepro/.worktrees/b4-current-linux-release-2026-10-10/linux/crates/drivers/mysql)
    Compiling hyper-timeout v0.5.2
    Compiling hyper-rustls v0.27.9
    Compiling hyperlocal v0.9.1

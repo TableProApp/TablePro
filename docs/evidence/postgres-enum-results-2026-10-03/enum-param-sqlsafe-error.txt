@@ -5,7 +5,7 @@ error[E0599]: no method named `into_sql_str` found for struct `AssertSqlSafe<T>`
 18 |     let sql = sqlx::AssertSqlSafe(sql).into_sql_str();
    |                                        ^^^^^^^^^^^^ method not found in `AssertSqlSafe<&str>`
    |
-  ::: /home/trung/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sqlx-core-0.9.0/src/sql_str.rs:49:8
+  ::: [user-home]/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sqlx-core-0.9.0/src/sql_str.rs:49:8
    |
 49 |     fn into_sql_str(self) -> SqlStr;
    |        ------------ the method is available for `AssertSqlSafe<&str>` here

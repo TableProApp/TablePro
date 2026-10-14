@@ -88,7 +88,7 @@
     "seconds": 2.629,
     "fresh_artifacts": 746,
     "rebuilt_packages": [
-      "path+file:///home/trung/Projects/tablepro/linux/crates/drivers/postgres#tablepro-driver-postgres@0.1.0"
+      "path+file://[user-home]/Projects/tablepro/linux/crates/drivers/postgres#tablepro-driver-postgres@0.1.0"
     ]
   },
   "logs_sha256": {

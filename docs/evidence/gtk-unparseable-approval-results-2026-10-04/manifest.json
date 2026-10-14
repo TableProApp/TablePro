@@ -15,7 +15,7 @@
     "All 29 GTK safety scenarios pass in the captured run. This exercises the shared GTK/policy approval route with a SQLite fixture, not execution of a stored routine on a MySQL server."
   ],
   "validation": {
-    "command": "rtk proxy env TMPDIR=/home/trung/Projects/tablepro/linux/target/tmp bash linux/scripts/test-gtk-safety.sh",
+    "command": "rtk proxy env TMPDIR=[user-home]/Projects/tablepro/linux/target/tmp bash linux/scripts/test-gtk-safety.sh",
     "result": "29 scenarios passed; exit status 0",
     "log": "gtk-safety.txt"
   },

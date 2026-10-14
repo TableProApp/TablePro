@@ -1,11 +1,11 @@
 dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.1' (uid=1000 pid=246758 comm="gdbus call --session --dest org.a11y.Bus --object-")
 dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Successfully activated service 'org.a11y.Bus'
-dbus-daemon[246768]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=246780 comm="python3 /home/trung/.cache/bookie-ui-linux-tip/lin")
+dbus-daemon[246768]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=246780 comm="python3 [user-home]/.cache/bookie-ui-linux-tip/lin")
 dbus-daemon[246768]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
-dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.7' (uid=1000 pid=246781 comm="/home/trung/.local/opt/bookie/97e5f55bddac/test-ro")
+dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.7' (uid=1000 pid=246781 comm="[user-home]/.local/opt/bookie/97e5f55bddac/test-ro")
 dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
-dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.7' (uid=1000 pid=246781 comm="/home/trung/.local/opt/bookie/97e5f55bddac/test-ro")
+dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.7' (uid=1000 pid=246781 comm="[user-home]/.local/opt/bookie/97e5f55bddac/test-ro")
 dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.10' (uid=1000 pid=246852 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
 dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.10' (uid=1000 pid=246852 comm="/usr/lib/xdg-desktop-portal")
@@ -67,9 +67,9 @@ dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Successfully activate
 (process:246780): dbind-WARNING **: 18:02:17.510: AT-SPI: Error in GetItems, sender=:1.12, error=Object does not exist at path “/org/a11y/atspi/cache”
 
 (process:246780): dbind-WARNING **: 18:02:21.865: AT-SPI: Error in GetItems, sender=:1.13, error=Object does not exist at path “/org/a11y/atspi/cache”
-dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.35' (uid=1000 pid=247792 comm="/home/trung/.local/opt/bookie/97e5f55bddac/test-ro")
+dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.35' (uid=1000 pid=247792 comm="[user-home]/.local/opt/bookie/97e5f55bddac/test-ro")
 dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Successfully activated service 'org.gtk.vfs.UDisks2VolumeMonitor'
-dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Activating service name='org.gtk.vfs.MTPVolumeMonitor' requested by ':1.35' (uid=1000 pid=247792 comm="/home/trung/.local/opt/bookie/97e5f55bddac/test-ro")
+dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Activating service name='org.gtk.vfs.MTPVolumeMonitor' requested by ':1.35' (uid=1000 pid=247792 comm="[user-home]/.local/opt/bookie/97e5f55bddac/test-ro")
 dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Successfully activated service 'org.gtk.vfs.MTPVolumeMonitor'
 dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Activating service name='org.gtk.vfs.Metadata' requested by ':1.14' (uid=1000 pid=246874 comm="/usr/lib/xdg-desktop-portal-gtk")
 dbus-daemon[246729]: [session uid=1000 pid=246729 pidfd=5] Successfully activated service 'org.gtk.vfs.Metadata'

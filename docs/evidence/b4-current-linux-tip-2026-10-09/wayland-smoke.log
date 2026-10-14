@@ -1,10 +1,10 @@
-dbus-daemon[272872]: [session uid=1000 pid=272872 pidfd=5] Activating service name='ca.desrt.dconf' requested by ':1.0' (uid=1000 pid=272873 comm="/home/trung/.local/opt/bookie/97e5f55bddac/usr/bin")
+dbus-daemon[272872]: [session uid=1000 pid=272872 pidfd=5] Activating service name='ca.desrt.dconf' requested by ':1.0' (uid=1000 pid=272873 comm="[user-home]/.local/opt/bookie/97e5f55bddac/usr/bin")
 dbus-daemon[272872]: [session uid=1000 pid=272872 pidfd=5] Successfully activated service 'ca.desrt.dconf'
 2026-10-09T16:11:39.701638Z  WARN preferences: legacy migration deferred; source retained error=GSettings migration marker did not persist
 2026-10-09T16:11:39.704254Z  INFO starting tablepro-app drivers=7
 2026-10-09T16:11:39.704318Z  INFO MCP HTTP server starting host=127.0.0.1 port=17432
 2026-10-09T16:11:39.704497Z  INFO MCP HTTP listening (loopback) addr=127.0.0.1:17432
-dbus-daemon[272872]: [session uid=1000 pid=272872 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.0' (uid=1000 pid=272873 comm="/home/trung/.local/opt/bookie/97e5f55bddac/usr/bin")
+dbus-daemon[272872]: [session uid=1000 pid=272872 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.0' (uid=1000 pid=272873 comm="[user-home]/.local/opt/bookie/97e5f55bddac/usr/bin")
 dbus-daemon[272872]: [session uid=1000 pid=272872 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.2' (uid=1000 pid=272896 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[272872]: [session uid=1000 pid=272872 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
 dbus-daemon[272872]: [session uid=1000 pid=272872 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.2' (uid=1000 pid=272896 comm="/usr/lib/xdg-desktop-portal")

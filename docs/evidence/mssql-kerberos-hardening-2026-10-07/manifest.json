@@ -15,7 +15,7 @@
   "engine": "SQL Server 2022 Developer plus pinned Samba AD DC test domain",
   "purpose": "Retest after container hardening and PR #157 Sonar findings were addressed.",
   "validation": {
-    "command": "TMPDIR=/home/trung/t CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target bash scripts/test-mssql-kerberos.sh",
+    "command": "TMPDIR=[user-home]/t CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target bash scripts/test-mssql-kerberos.sh",
     "result": "2 passed, 0 failed, 0 ignored; process exit 0",
     "log": "focused.txt"
   },

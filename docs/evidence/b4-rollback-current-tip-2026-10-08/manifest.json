@@ -45,7 +45,7 @@
     "scripts/test-layers.json": "b8010276325e55deb959f89c0d071bd6e746100658fe8cde79aba357bba8007b"
   },
   "environment": {
-    "cargo_target_dir": "/home/trung/.cache/bookie-b4-target-0d5",
+    "cargo_target_dir": "[user-home]/.cache/bookie-b4-target-0d5",
     "database_fixtures": "Testcontainers MySQL and PostgreSQL; MariaDB 11 fixture for Aria",
     "execution": "local Linux; selectors run sequentially"
   },

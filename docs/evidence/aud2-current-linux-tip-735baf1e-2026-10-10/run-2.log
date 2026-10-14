@@ -1,12 +1,12 @@
 dbus-daemon[2247015]: [session uid=1000 pid=2247015 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.3' (uid=1000 pid=2247700 comm="gdbus call --session --dest org.a11y.Bus --object-")
 dbus-daemon[2247015]: [session uid=1000 pid=2247015 pidfd=5] Successfully activated service 'org.a11y.Bus'
     Finished `release` profile [optimized] target(s) in 0.35s
-dbus-daemon[2247711]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=2247725 comm="python3 /home/trung/Projects/tablepro/.worktrees/b")
+dbus-daemon[2247711]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=2247725 comm="python3 [user-home]/Projects/tablepro/.worktrees/b")
 dbus-daemon[2247711]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
-dbus-daemon[2247015]: [session uid=1000 pid=2247015 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.8' (uid=1000 pid=2247726 comm="/home/trung/Projects/tablepro/.worktrees/b4-curren")
+dbus-daemon[2247015]: [session uid=1000 pid=2247015 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.8' (uid=1000 pid=2247726 comm="[user-home]/Projects/tablepro/.worktrees/b4-curren")
 dbus-daemon[2247015]: [session uid=1000 pid=2247015 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
-dbus-daemon[2247015]: [session uid=1000 pid=2247015 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.8' (uid=1000 pid=2247726 comm="/home/trung/Projects/tablepro/.worktrees/b4-curren")
+dbus-daemon[2247015]: [session uid=1000 pid=2247015 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.8' (uid=1000 pid=2247726 comm="[user-home]/Projects/tablepro/.worktrees/b4-curren")
 dbus-daemon[2247015]: [session uid=1000 pid=2247015 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.11' (uid=1000 pid=2247797 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[2247015]: [session uid=1000 pid=2247015 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
 dbus-daemon[2247015]: [session uid=1000 pid=2247015 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.11' (uid=1000 pid=2247797 comm="/usr/lib/xdg-desktop-portal")

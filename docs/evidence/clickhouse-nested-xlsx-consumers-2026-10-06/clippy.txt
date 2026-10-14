@@ -1,2 +1,2 @@
-    Checking tablepro-driver-clickhouse v0.1.0 (/home/trung/Projects/tablepro/linux/crates/drivers/clickhouse)
+    Checking tablepro-driver-clickhouse v0.1.0 ([user-home]/Projects/tablepro/linux/crates/drivers/clickhouse)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.84s

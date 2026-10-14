@@ -5,7 +5,7 @@
   "source_commit": "b7d80b2ddb1691a4566d9b2336130b2401152cd5",
   "linux_base_commit": "9f9d485a548453a56e05bb5527ad51e1dc20dbad",
   "b4_policy_commit": "fc82c289b15b7d165fe90bcf3a61aae2b4acd78b",
-  "binary_path": "/home/trung/Projects/tablepro/.worktrees/b4-s6-s7-joined-verdict/linux/target/debug/tablepro-app",
+  "binary_path": "[user-home]/Projects/tablepro/.worktrees/b4-s6-s7-joined-verdict/linux/target/debug/tablepro-app",
   "binary_sha256": "e92babae1a12b54a162466059a356c3505d1b1aa9b5349c3168850d103d6d936",
   "command": "python3 scripts/run-test-layer.py postgres-release (runs bash scripts/test-postgres-release.sh)",
   "run_started_utc": "2026-10-10T06:48:31.372513Z",

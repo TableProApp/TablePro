@@ -3,7 +3,7 @@ FFF
 FAIL: test_exact_regression_rejects_ignored_measured_and_multiple_summaries (before_change_tests.ChangeContractTests.test_exact_regression_rejects_ignored_measured_and_multiple_summaries) (summary='test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out\n')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/home/trung/Projects/tablepro/linux/scripts/tests/test_change_contracts.py", line 76, in test_exact_regression_rejects_ignored_measured_and_multiple_summaries
+  File "[user-home]/Projects/tablepro/linux/scripts/tests/test_change_contracts.py", line 76, in test_exact_regression_rejects_ignored_measured_and_multiple_summaries
     self.assertFalse(CHECKER.exact_test_evidence(line + summary, name))
     ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 AssertionError: True is not false
@@ -12,7 +12,7 @@ AssertionError: True is not false
 FAIL: test_exact_regression_rejects_ignored_measured_and_multiple_summaries (before_change_tests.ChangeContractTests.test_exact_regression_rejects_ignored_measured_and_multiple_summaries) (summary='test result: ok. 1 passed; 0 failed; 0 ignored; 1 measured; 0 filtered out\n')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/home/trung/Projects/tablepro/linux/scripts/tests/test_change_contracts.py", line 76, in test_exact_regression_rejects_ignored_measured_and_multiple_summaries
+  File "[user-home]/Projects/tablepro/linux/scripts/tests/test_change_contracts.py", line 76, in test_exact_regression_rejects_ignored_measured_and_multiple_summaries
     self.assertFalse(CHECKER.exact_test_evidence(line + summary, name))
     ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 AssertionError: True is not false
@@ -21,7 +21,7 @@ AssertionError: True is not false
 FAIL: test_exact_regression_rejects_ignored_measured_and_multiple_summaries (before_change_tests.ChangeContractTests.test_exact_regression_rejects_ignored_measured_and_multiple_summaries) (summary='test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "/home/trung/Projects/tablepro/linux/scripts/tests/test_change_contracts.py", line 76, in test_exact_regression_rejects_ignored_measured_and_multiple_summaries
+  File "[user-home]/Projects/tablepro/linux/scripts/tests/test_change_contracts.py", line 76, in test_exact_regression_rejects_ignored_measured_and_multiple_summaries
     self.assertFalse(CHECKER.exact_test_evidence(line + summary, name))
     ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 AssertionError: True is not false

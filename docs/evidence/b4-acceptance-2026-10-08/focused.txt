@@ -28,9 +28,9 @@ Local exact-runtime results on `a7f14fa`:
 A follow-up native Wayland probe used the same staged release binary (SHA-256 above) with `GDK_BACKEND=wayland` on `wayland-1`. The first probe exposed the `Export connections` alert but not its `Choose File…` button. PR #387 adds a test-harness fallback that invokes the alert's accessible `default.activate`; the focused Xvfb export scenario passed with this change. A second native Wayland probe exercised the fallback and advanced to file-chooser discovery, but the portal chooser did not appear on the isolated D-Bus session. The separate headless wrapper could not start because `gnome-shell` is absent, and the attempt using the desktop bus could not connect to its AT-SPI socket. These probes do not establish product failure or native acceptance. The original probe artifacts remain in `/tmp/bookie-b4-wayland-bundle-evidence/`.
 
 The local layer report is
-`/home/trung/.cache/bookie-b4-candidate-a7f14/linux/target/quality/20261008T113209359199Z-layers/report.json`.
+`[user-home]/.cache/bookie-b4-candidate-a7f14/linux/target/quality/20261008T113209359199Z-layers/report.json`.
 The staged release binary at
-`/home/trung/.cache/bookie-b4-target-0d5/installed/usr/bin/tablepro` has
+`[user-home]/.cache/bookie-b4-target-0d5/installed/usr/bin/tablepro` has
 SHA-256 `5a8cf04f6b23ee1e6688b4e14c6ebd276a452e255f85506dc31d371c8e3863d7`.
 The report records no tracked source diff; its worktree field notes the
 `linux/target` symlink used to put generated artifacts outside `/tmp`.

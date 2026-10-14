@@ -9,7 +9,7 @@
   },
   "binary_sha256": "50658f88ef18ccdf206a449cc6ea9df993e5db655156899932cd4fe72604d1db",
   "engine": "PostgreSQL 16 and OpenSSH bastion Docker fixture; BookiE GTK release binary under Xvfb",
-  "command": "TABLEPRO_GTK_BINARY=/home/trung/Projects/tablepro/linux/target/release/tablepro-app TABLEPRO_GTK_SCENARIO=postgres_ssh_unknown_host_key_accepts_and_queries bash scripts/test-postgres-release.sh",
+  "command": "TABLEPRO_GTK_BINARY=[user-home]/Projects/tablepro/linux/target/release/tablepro-app TABLEPRO_GTK_SCENARIO=postgres_ssh_unknown_host_key_accepts_and_queries bash scripts/test-postgres-release.sh",
   "result": "passed; release integration suites, SSH/mTLS release tests, and the selected GTK scenario",
   "assertions": [
     "The GTK saved-connection flow displays the unknown SSH host-key prompt for 127.0.0.1:2223.",

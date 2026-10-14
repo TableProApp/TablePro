@@ -1,2 +1,2 @@
-    Checking tablepro-app v0.1.5 (/home/trung/Projects/tablepro/linux/crates/app)
+    Checking tablepro-app v0.1.5 ([user-home]/Projects/tablepro/linux/crates/app)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.35s

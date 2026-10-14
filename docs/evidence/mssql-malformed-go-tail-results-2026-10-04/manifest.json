@@ -33,7 +33,7 @@
       "compile_seconds": 5.357,
       "fresh_artifacts": 746,
       "rebuilt_packages": [
-        "path+file:///home/trung/Projects/tablepro/linux/crates/app#tablepro-app@0.1.5"
+        "path+file://[user-home]/Projects/tablepro/linux/crates/app#tablepro-app@0.1.5"
       ],
       "suites": [
         {

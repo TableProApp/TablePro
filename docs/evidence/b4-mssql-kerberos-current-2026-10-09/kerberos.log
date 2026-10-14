@@ -135,7 +135,7 @@ ktutil:  quit
    Compiling tablepro-driver-tls-tests v0.1.0 (/tmp/bookie-ui-main/linux/crates/driver-tls-tests)
    Compiling tablepro-driver-mongodb v0.1.0 (/tmp/bookie-ui-main/linux/crates/drivers/mongodb)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 22.41s
-  Executable tests/mssql_kerberos.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/mssql_kerberos-f01db6ca3eb34e36)
+  Executable tests/mssql_kerberos.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/mssql_kerberos-f01db6ca3eb34e36)
  Container bookie-mssql-kerberos-mssql-1 Running 
  Container bookie-mssql-kerberos-ad-1 Running 
  Container bookie-mssql-kerberos-ad-1 Waiting 

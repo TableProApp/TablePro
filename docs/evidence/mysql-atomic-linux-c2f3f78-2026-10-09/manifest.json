@@ -8,7 +8,7 @@
     "crates/drivers/mysql/tests/shared/mysql_atomic_parts/advisory_lock.rs": "1709621fa0836cd7fc975bfc394d39543c23e798704d28a16bc0087995b7851a"
   },
   "test": "mysql_atomic::",
-  "command": "rtk proxy env CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target TABLEPRO_TEST_RUN_ID=b4-mysql-atomic-c2f3-capture-20261009 cargo test --locked --test integration -p tablepro-driver-mysql mysql_atomic:: -- --include-ignored --test-threads=1",
+  "command": "rtk proxy env CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target TABLEPRO_TEST_RUN_ID=b4-mysql-atomic-c2f3-capture-20261009 cargo test --locked --test integration -p tablepro-driver-mysql mysql_atomic:: -- --include-ignored --test-threads=1",
   "runtime": "Local Linux host with Docker 29.7.2 and the repository MySQL/MariaDB fixtures",
   "result": "18 passed; 0 failed; 0 ignored; 72 filtered out; 123.93 seconds; exit code 0",
   "coverage": [
@@ -31,7 +31,7 @@
       "crates/drivers/mysql/tests/shared/mysql_atomic_parts/advisory_lock.rs": "1709621fa0836cd7fc975bfc394d39543c23e798704d28a16bc0087995b7851a",
       "crates/drivers/mysql/tests/integration.rs": "e67c543f33e87cbe3c9f29ddef74f23a3ca07f4573671266c5f7ac8c65c3a636"
     },
-    "command": "CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target rtk cargo test --locked -p tablepro-driver-mysql --test integration mysql_atomic -- --include-ignored --test-threads=1",
+    "command": "CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target rtk cargo test --locked -p tablepro-driver-mysql --test integration mysql_atomic -- --include-ignored --test-threads=1",
     "runtime": "Local Linux host with Docker MySQL and MariaDB fixtures",
     "result": "18 passed; 0 failed; 0 ignored; 72 filtered out; 125.51 seconds; exit code 0",
     "limitation": "The source tree tip is two documentation commits after the nearest code tip; the test source hashes match the code-tip run above. This does not establish optional/vendor engines, other effect classes, frozen-candidate, hosted, package-installed or native acceptance."

@@ -1,5 +1,5 @@
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.22s
-     Running tests/agent_auth.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/agent_auth-079e5bc250e279d9)
+     Running tests/agent_auth.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/agent_auth-079e5bc250e279d9)
 
 running 10 tests
 test a_changed_key_on_the_second_hop_is_reported_as_a_host_key_mismatch ... ok
@@ -17,7 +17,7 @@ ok
 
 test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 101.98s
 
-     Running tests/openssh_session.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/openssh_session-04ca719ce67d016b)
+     Running tests/openssh_session.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/openssh_session-04ca719ce67d016b)
 
 running 12 tests
 test openssh_a_changed_host_key_is_reported_as_host_key_changed ... ok

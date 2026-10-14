@@ -34,26 +34,26 @@ panic-sites: ok (no new unwrap/expect/panic!/todo!/unimplemented!/unreachable! i
 function sizes within limits
 ==> cargo fmt --check (workspace)
 ==> cargo clippy (non-GTK crates)
-    Checking tablepro-policy v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/policy)
-    Checking tablepro-storage v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/storage)
-    Checking tablepro-driver-sqlite v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/drivers/sqlite)
-    Checking tablepro-transport v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/transport)
-    Checking tablepro-mcp v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/mcp)
-    Checking tablepro-release-tests v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/release-tests)
-    Checking tablepro-driver-tls-tests v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/driver-tls-tests)
-    Checking tablepro-agentd v0.1.6-dev (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/agentd)
+    Checking tablepro-policy v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/policy)
+    Checking tablepro-storage v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/storage)
+    Checking tablepro-driver-sqlite v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/drivers/sqlite)
+    Checking tablepro-transport v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/transport)
+    Checking tablepro-mcp v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/mcp)
+    Checking tablepro-release-tests v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/release-tests)
+    Checking tablepro-driver-tls-tests v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/driver-tls-tests)
+    Checking tablepro-agentd v0.1.6-dev ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/agentd)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.99s
 ==> cargo test --lib (non-GTK crates)
-   Compiling tablepro-policy v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/policy)
-   Compiling tablepro-storage v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/storage)
-   Compiling tablepro-driver-sqlite v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/drivers/sqlite)
-   Compiling tablepro-transport v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/transport)
-   Compiling tablepro-mcp v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/mcp)
-   Compiling tablepro-release-tests v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/release-tests)
-   Compiling tablepro-driver-tls-tests v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/driver-tls-tests)
-   Compiling tablepro-agentd v0.1.6-dev (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/agentd)
+   Compiling tablepro-policy v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/policy)
+   Compiling tablepro-storage v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/storage)
+   Compiling tablepro-driver-sqlite v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/drivers/sqlite)
+   Compiling tablepro-transport v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/transport)
+   Compiling tablepro-mcp v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/mcp)
+   Compiling tablepro-release-tests v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/release-tests)
+   Compiling tablepro-driver-tls-tests v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/driver-tls-tests)
+   Compiling tablepro-agentd v0.1.6-dev ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/agentd)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 4.72s
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_agentd-5ce6a99ddea5c84a)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_agentd-5ce6a99ddea5c84a)
 
 running 18 tests
 test session_tests::session_preserves_controlled_constraint_metadata ... ok
@@ -77,7 +77,7 @@ test audit_isolation_tests::an_interrupted_write_blocks_only_its_own_connection_
 
 test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_core-2b94cb5d4dca34bb)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_core-2b94cb5d4dca34bb)
 
 running 562 tests
 test driver::tests::a_driver_that_declares_nothing_claims_no_structure_metadata ... ok
@@ -645,7 +645,7 @@ test export::csv::tests::value_contract_csv_and_json_round_trip_seeded_finite_fl
 
 test result: ok. 562 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.98s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/drivers_clickhouse-b258fc48e61fc8ff)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/drivers_clickhouse-b258fc48e61fc8ff)
 
 running 42 tests
 test tests::datetime64_parameter_values_outside_the_nine_digit_range_are_refused ... ok
@@ -693,7 +693,7 @@ test temporal::tests::named_datetime_zones_decode_instants_and_refuse_dst_ambigu
 
 test result: ok. 42 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/drivers_mongodb-748230748478d8f5)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/drivers_mongodb-748230748478d8f5)
 
 running 41 tests
 test codec::tests::mongodb_date_grid_bindings_refuse_submillisecond_rounding ... ok
@@ -740,7 +740,7 @@ test tests::a_timed_out_read_reports_an_unknown_outcome ... ok
 
 test result: ok. 41 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/drivers_mssql-fa80c2def357d3fc)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/drivers_mssql-fa80c2def357d3fc)
 
 running 36 tests
 test codec::tests::a_null_numeric_column_stays_null ... ok
@@ -782,7 +782,7 @@ test zoned::tests::value_contract_datetimeoffset_renders_local_time_scale_and_of
 
 test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/drivers_mysql-5b677f3cbd5365e2)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/drivers_mysql-5b677f3cbd5365e2)
 
 running 14 tests
 test packed::tests::value_contract_bit_payloads_become_integers_until_they_pass_i64 ... ok
@@ -802,7 +802,7 @@ test tests::unexpected_io_eof_is_reported_as_disconnected ... ok
 
 test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/drivers_postgres-5a098877553968a6)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/drivers_postgres-5a098877553968a6)
 
 running 58 tests
 test array::tests::value_contract_array_null_empty_and_escaped_text_stay_distinct ... ok
@@ -866,7 +866,7 @@ test array::tests::value_contract_expanded_array_text_has_an_explicit_size_bound
 
 test result: ok. 58 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.78s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/drivers_redis-84ce2d4ac03d76e1)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/drivers_redis-84ce2d4ac03d76e1)
 
 running 38 tests
 test tests::a_malformed_database_index_is_refused_instead_of_defaulting_to_zero ... ok
@@ -910,7 +910,7 @@ test tests::redis_value_to_result_marks_a_truncated_map ... ok
 
 test result: ok. 38 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/drivers_sqlite-a1aaa7ed555b5d15)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/drivers_sqlite-a1aaa7ed555b5d15)
 
 running 13 tests
 test tests::driver_metadata ... ok
@@ -929,13 +929,13 @@ test tests::fetch_rows_paginates ... ok
 
 test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_driver_tls_tests-f83f45fab4756b2e)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_driver_tls_tests-f83f45fab4756b2e)
 
 running 0 tests
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_mcp-071a64d3d817bba4)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_mcp-071a64d3d817bba4)
 
 running 47 tests
 test auth::tests::a_stored_full_access_token_is_read_write ... ok
@@ -1000,7 +1000,7 @@ test rate_limit::tests::a_full_table_refuses_an_unknown_caller_instead_of_growin
 
 test result: ok. 46 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.24s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_policy-d8667ee4befd1758)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_policy-d8667ee4befd1758)
 
 running 197 tests
 test audit::tests::uncertainty_is_scoped_to_a_connection_generation_but_journal_failure_is_global ... ok
@@ -1203,13 +1203,13 @@ test sensitive_projection::tests::unrecognized_query_shapes_redact_their_result_
 
 test result: ok. 197 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_release_tests-94b154afec32c9de)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_release_tests-94b154afec32c9de)
 
 running 0 tests
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_ssh-4983abfb87ebf9c1)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_ssh-4983abfb87ebf9c1)
 
 running 91 tests
 test known_hosts::tests::verify_or_learn_reports_io_error_when_known_hosts_path_is_a_directory ... ok
@@ -1306,7 +1306,7 @@ test tests::relay_sends_one_eof_after_the_local_client_closes_and_does_not_spin 
 
 test result: ok. 91 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_storage-d1df3f62a48e8bdf)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_storage-d1df3f62a48e8bdf)
 
 running 185 tests
 test connection_bundle::tests::a_connection_with_no_stored_credentials_contributes_nothing_to_a_bundle ... ignored, requires a running Secret Service; scripts/test-secret-service.sh provides one
@@ -1497,7 +1497,7 @@ test connection_bundle::tests::a_wrong_passphrase_and_a_changed_file_report_the_
 
 test result: ok. 179 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 19.02s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_transport-f76c2dbc1e45e299)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_transport-f76c2dbc1e45e299)
 
 running 34 tests
 test route::sandbox_tests::the_refusal_names_the_remedy ... ok
@@ -1539,14 +1539,14 @@ test result: ok. 33 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; fin
 
 ==> sandbox integration tier
 ==> sandbox tier: cargo test --tests
-   Compiling tablepro-mcp v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/mcp)
-   Compiling tablepro-driver-sqlite v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/drivers/sqlite)
-   Compiling tablepro-transport v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/transport)
-   Compiling tablepro-policy v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/policy)
-   Compiling tablepro-storage v0.1.0 (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/storage)
-   Compiling tablepro-agentd v0.1.6-dev (/home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/crates/agentd)
+   Compiling tablepro-mcp v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/mcp)
+   Compiling tablepro-driver-sqlite v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/drivers/sqlite)
+   Compiling tablepro-transport v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/transport)
+   Compiling tablepro-policy v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/policy)
+   Compiling tablepro-storage v0.1.0 ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/storage)
+   Compiling tablepro-agentd v0.1.6-dev ([user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/crates/agentd)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 9.47s
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_agentd-b093a4ef0c82064a)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_agentd-b093a4ef0c82064a)
 
 running 18 tests
 test session_tests::session_forwards_catalog_listing_errors_and_controlled_dispatch ... ok
@@ -1570,7 +1570,7 @@ test audit_isolation_tests::an_interrupted_write_blocks_only_its_own_connection_
 
 test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
 
-     Running unittests src/main.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_agentd-9e31b71f7da1ba38)
+     Running unittests src/main.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_agentd-9e31b71f7da1ba38)
 
 running 7 tests
 test tests::a_token_file_is_written_owner_only ... ok
@@ -1583,14 +1583,14 @@ test tests::an_unanswered_prompt_is_denied_after_the_timeout_instead_of_hanging_
 
 test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
 
-     Running tests/g5_system_openssh.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/g5_system_openssh-36e5a9aee65d8447)
+     Running tests/g5_system_openssh.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/g5_system_openssh-36e5a9aee65d8447)
 
 running 1 test
 test agentd_refuses_without_learning_an_unknown_system_openssh_key_then_queries_after_trust ... ignored, requires the postgres release fixture, Secret Service, system OpenSSH, and tablepro-askpass
 
 test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/mtls.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/mtls-695e9bcc3a7fa4bd)
+     Running tests/mtls.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/mtls-695e9bcc3a7fa4bd)
 
 running 3 tests
 test agentd_refuses_a_saved_client_certificate_from_an_untrusted_authority ... ignored, requires the postgres release fixture and Secret Service
@@ -1599,7 +1599,7 @@ test agentd_uses_a_saved_client_certificate_through_its_saved_ssh_route ... igno
 
 test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/saved_transport.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/saved_transport-9217dbf7f3061029)
+     Running tests/saved_transport.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/saved_transport-9217dbf7f3061029)
 
 running 3 tests
 test a_saved_ssh_hop_is_used_instead_of_dialling_the_database_directly ... ignored, requires a running Secret Service; scripts/test-secret-service.sh provides one
@@ -1608,14 +1608,14 @@ test different_session_ids_can_connect_in_parallel ... ok
 
 test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.06s
 
-     Running tests/socket_local.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/socket_local-e647ae3a1e53b92a)
+     Running tests/socket_local.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/socket_local-e647ae3a1e53b92a)
 
 running 1 test
 test saved_socket_is_available_through_the_agent_provider ... ignored, requires scripts/test-postgres-socket.sh
 
 test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_core-2b94cb5d4dca34bb)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_core-2b94cb5d4dca34bb)
 
 running 562 tests
 test activity::tests::every_declared_kind_has_a_template_and_no_undeclared_kind_does ... ok
@@ -2183,7 +2183,7 @@ test export::csv::tests::value_contract_csv_and_json_round_trip_seeded_finite_fl
 
 test result: ok. 562 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.12s
 
-     Running tests/query_pipeline.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/query_pipeline-b2b884cbeefb0850)
+     Running tests/query_pipeline.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/query_pipeline-b2b884cbeefb0850)
 
 running 10 tests
 test a_dollar_quoted_body_survives_the_whole_editor_pipeline ... ok
@@ -2199,7 +2199,7 @@ test a_keyset_page_continues_the_placeholder_run_the_filter_started ... ok
 
 test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/drivers_sqlite-a1aaa7ed555b5d15)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/drivers_sqlite-a1aaa7ed555b5d15)
 
 running 13 tests
 test tests::driver_metadata ... ok
@@ -2218,7 +2218,7 @@ test tests::fetch_rows_paginates ... ok
 
 test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
 
-     Running tests/csv_import.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/csv_import-cc233418c586895d)
+     Running tests/csv_import.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/csv_import-cc233418c586895d)
 
 running 7 tests
 test a_cancelled_import_leaves_the_batches_that_already_committed_and_no_more ... ok
@@ -2231,7 +2231,7 @@ test value_contract_csv_binary_export_import_keeps_null_empty_and_every_byte ...
 
 test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
-     Running tests/integration.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/integration-2d8c3ff3127974b1)
+     Running tests/integration.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/integration-2d8c3ff3127974b1)
 
 running 28 tests
 test an_in_memory_database_refuses_a_session ... ok
@@ -2265,7 +2265,7 @@ test transaction_query_obeys_result_budget_and_remains_usable ... ok
 
 test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s
 
-     Running tests/runtime_typed_values.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/runtime_typed_values-fc7659c0e22a9d36)
+     Running tests/runtime_typed_values.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/runtime_typed_values-fc7659c0e22a9d36)
 
 running 4 tests
 test declared_boolean_and_temporal_values_keep_their_core_types ... ok
@@ -2275,7 +2275,7 @@ test declared_enum_values_follow_sqlite_numeric_affinity_and_keep_runtime_kinds 
 
 test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_mcp-f81af39576c623ea)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_mcp-f81af39576c623ea)
 
 running 47 tests
 test auth::tests::a_stored_full_access_token_is_read_write ... ok
@@ -2340,7 +2340,7 @@ test rate_limit::tests::a_full_table_refuses_an_unknown_caller_instead_of_growin
 
 test result: ok. 46 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.24s
 
-     Running tests/enforce_policy.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/enforce_policy-373f536d7b7c4b20)
+     Running tests/enforce_policy.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/enforce_policy-373f536d7b7c4b20)
 
 running 23 tests
 test count_rows_is_denied_for_a_token_with_an_empty_allowlist ... ok
@@ -2369,7 +2369,7 @@ test guarded_tool_path_journals_policy_decision ... ok
 
 test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
 
-     Running tests/local_bind_only.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/local_bind_only-9808339a7cabe53e)
+     Running tests/local_bind_only.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/local_bind_only-9808339a7cabe53e)
 
 running 2 tests
 test a_non_local_bind_host_is_refused_and_nothing_listens ... ok
@@ -2377,14 +2377,14 @@ test a_loopback_bind_host_keeps_serving ... ok
 
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.01s
 
-     Running tests/mongodb_extended_json.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/mongodb_extended_json-86e41749d5d25a6e)
+     Running tests/mongodb_extended_json.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/mongodb_extended_json-86e41749d5d25a6e)
 
 running 1 test
 test mongodb_extended_json_survives_the_mcp_query_tool_round_trip ... ignored, requires docker
 
 test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/postgres_custom_enum.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/postgres_custom_enum-c6799eee07e3931b)
+     Running tests/postgres_custom_enum.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/postgres_custom_enum-c6799eee07e3931b)
 
 running 2 tests
 test postgres_custom_enum_labels_and_sql_null_survive_mcp_query_tool ... ignored, requires docker
@@ -2392,14 +2392,14 @@ test postgres_domain_over_enum_values_survive_mcp_query_export_and_csv_import ..
 
 test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/shutdown_write_audit.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/shutdown_write_audit-444e23bc101f95a8)
+     Running tests/shutdown_write_audit.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/shutdown_write_audit-444e23bc101f95a8)
 
 running 1 test
 test shutdown_during_a_write_still_records_a_terminal_audit_outcome ... ok
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.81s
 
-     Running tests/timeout_audit.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/timeout_audit-f00da20c84296841)
+     Running tests/timeout_audit.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/timeout_audit-f00da20c84296841)
 
 running 9 tests
 test a_timed_out_metadata_read_is_refused_without_a_half_open_audit_operation ... ok
@@ -2414,7 +2414,7 @@ test successful_preview_rollback_records_a_terminal_success ... ok
 
 test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/timeout_bounds.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/timeout_bounds-e3a505646689c2c7)
+     Running tests/timeout_bounds.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/timeout_bounds-e3a505646689c2c7)
 
 running 7 tests
 test query_timeout_bounds_saved_connection_lookup ... ok
@@ -2427,7 +2427,7 @@ test query_timeout_bounds_every_metadata_phase_after_dispatch ... ok
 
 test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_policy-9eb129283e7730da)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_policy-9eb129283e7730da)
 
 running 197 tests
 test audit::tests::uncertainty_is_scoped_to_a_connection_generation_but_journal_failure_is_global ... ok
@@ -2630,7 +2630,7 @@ test rules::tests::shared_batches_must_not_leave_an_explicit_transaction_open ..
 
 test result: ok. 197 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
-     Running tests/administrative_dialects.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/administrative_dialects-3ba454b453adfea0)
+     Running tests/administrative_dialects.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/administrative_dialects-3ba454b453adfea0)
 
 running 15 tests
 test copy_through_the_client_is_a_write_but_not_administrative ... ok
@@ -2651,14 +2651,14 @@ test postgres_host_and_network_functions_are_administrative ... ok
 
 test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/generated_updates_classify.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/generated_updates_classify-15c13cf48a8718b2)
+     Running tests/generated_updates_classify.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/generated_updates_classify-15c13cf48a8718b2)
 
 running 1 test
 test the_update_a_grid_edit_generates_is_a_plain_update_on_every_sql_engine ... ok
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/guard_transparency.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/guard_transparency-920f14c01d1a6531)
+     Running tests/guard_transparency.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/guard_transparency-920f14c01d1a6531)
 
 running 3 tests
 test a_guard_reports_the_server_cancellation_its_driver_supports ... ok
@@ -2667,14 +2667,14 @@ test an_agent_guard_masks_sensitive_columns_in_every_result_set ... ok
 
 test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/session_mssql.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/session_mssql-b406df4681da0d6e)
+     Running tests/session_mssql.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/session_mssql-b406df4681da0d6e)
 
 running 1 test
 test sql_server_batches_with_mutations_are_classified_and_denied_before_dispatch ... ignored, requires docker
 
 test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/session_postgres.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/session_postgres-0f8c59597b3982ed)
+     Running tests/session_postgres.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/session_postgres-0f8c59597b3982ed)
 
 running 3 tests
 test a_commit_failing_on_a_deferred_constraint_closes_the_batch ... ignored, requires docker
@@ -2683,7 +2683,7 @@ test closing_a_session_with_an_open_transaction_rolls_it_back_on_real_postgres .
 
 test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_ssh-dbdb5ae800cc2c5f)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_ssh-dbdb5ae800cc2c5f)
 
 running 91 tests
 test openssh::argv::tests::control_commands_ignore_the_user_config_and_escape_percent ... ok
@@ -2780,13 +2780,13 @@ test tests::relay_sends_one_eof_after_the_local_client_closes_and_does_not_spin 
 
 test result: ok. 91 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
 
-     Running unittests src/bin/tablepro-askpass.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_askpass-950a2dc0f9aa66d5)
+     Running unittests src/bin/tablepro-askpass.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_askpass-950a2dc0f9aa66d5)
 
 running 0 tests
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/agent_auth.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/agent_auth-b07a0233754a39e8)
+     Running tests/agent_auth.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/agent_auth-b07a0233754a39e8)
 
 running 10 tests
 test a_changed_key_on_the_second_hop_is_reported_as_a_host_key_mismatch ... ignored, requires docker
@@ -2802,7 +2802,7 @@ test the_built_in_client_authenticates_with_a_key_held_by_ssh_agent ... ignored,
 
 test result: ok. 0 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/askpass_helper.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/askpass_helper-7110fbb937c892bd)
+     Running tests/askpass_helper.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/askpass_helper-7110fbb937c892bd)
 
 running 5 tests
 test no_socket_variable_exits_1 ... ok
@@ -2813,7 +2813,7 @@ test an_answer_is_printed_with_a_newline_and_exit_0 ... ok
 
 test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
-     Running tests/connect_timeout.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/connect_timeout-f6a44ef71b0ec4e5)
+     Running tests/connect_timeout.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/connect_timeout-f6a44ef71b0ec4e5)
 
 running 2 tests
 test a_host_that_accepts_and_never_answers_times_out ... ok
@@ -2821,7 +2821,7 @@ test a_timeout_names_the_host_it_could_not_reach ... ok
 
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.00s
 
-     Running tests/openssh_fake_ssh.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/openssh_fake_ssh-7e87f442e62c7bf0)
+     Running tests/openssh_fake_ssh.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/openssh_fake_ssh-7e87f442e62c7bf0)
 
 running 13 tests
 test a_refused_forward_is_classified ... ok
@@ -2840,7 +2840,7 @@ test a_master_that_never_finishes_authenticating_hits_the_connect_deadline ... o
 
 test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s
 
-     Running tests/openssh_pdeathsig.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/openssh_pdeathsig-55fdb6f547dc978c)
+     Running tests/openssh_pdeathsig.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/openssh_pdeathsig-55fdb6f547dc978c)
 
 running 2 tests
 test proc_zombies_are_not_reported_as_live_ssh_masters ... ok
@@ -2848,7 +2848,7 @@ test killing_the_parent_process_takes_the_ssh_master_down_with_it ... ok
 
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
 
-     Running tests/openssh_session.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/openssh_session-add6ca415e326ca9)
+     Running tests/openssh_session.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/openssh_session-add6ca415e326ca9)
 
 running 12 tests
 test openssh_a_changed_host_key_is_reported_as_host_key_changed ... ignored, requires docker
@@ -2866,7 +2866,7 @@ test openssh_wrong_password_is_authentication_rejected ... ignored, requires doc
 
 test result: ok. 0 passed; 0 failed; 12 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_storage-d1df3f62a48e8bdf)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_storage-d1df3f62a48e8bdf)
 
 running 185 tests
 test connection_bundle::tests::a_connection_with_no_stored_credentials_contributes_nothing_to_a_bundle ... ignored, requires a running Secret Service; scripts/test-secret-service.sh provides one
@@ -3057,7 +3057,7 @@ test connection_bundle_crypto::tests::a_wrong_passphrase_and_a_tampered_body_fai
 
 test result: ok. 179 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 17.94s
 
-     Running tests/audit_journal_concurrency.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/audit_journal_concurrency-88798327a59eedc9)
+     Running tests/audit_journal_concurrency.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/audit_journal_concurrency-88798327a59eedc9)
 
 running 4 tests
 test process_writer ... ok
@@ -3079,7 +3079,7 @@ test one_thousand_concurrent_appends_produce_one_chain ... ok
 
 test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 25.53s
 
-     Running tests/audit_journal_recovery.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/audit_journal_recovery-4773003448a13995)
+     Running tests/audit_journal_recovery.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/audit_journal_recovery-4773003448a13995)
 
 running 13 tests
 test interrupted_administrative_bundle_audit_recovers_as_unknown_write ... ok
@@ -3098,7 +3098,7 @@ test unresolved_recovery_remains_durable_without_duplicate_outcomes ... ok
 
 test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_transport-f76c2dbc1e45e299)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_transport-f76c2dbc1e45e299)
 
 running 34 tests
 test route::sandbox_tests::the_system_client_is_refused_only_inside_the_sandbox ... ok
@@ -3138,7 +3138,7 @@ test session_material::tests::material_file_exactly_at_the_limit_is_accepted ...
 
 test result: ok. 33 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.03s
 
-     Running tests/options.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/options-9bae46142f40f010)
+     Running tests/options.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/options-9bae46142f40f010)
 
 running 12 tests
 test a_saved_local_socket_reaches_gui_and_agent_connection_options ... ok
@@ -3156,7 +3156,7 @@ test an_agent_hop_uses_the_agent_on_either_client_and_needs_no_keyring ... ok
 
 test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/refusals.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/refusals-42662193c8c98d07)
+     Running tests/refusals.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/refusals-42662193c8c98d07)
 
 running 12 tests
 test a_local_socket_is_refused_by_a_driver_that_cannot_do_it ... ok
@@ -3175,7 +3175,7 @@ test missing_and_regular_file_socket_paths_are_refused_before_dialing ... ok
 test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.23s
-     Running tests/cancellation.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/cancellation-b56d1b7b4b2259b5)
+     Running tests/cancellation.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/cancellation-b56d1b7b4b2259b5)
 
 running 1 test
 test interrupted_browse_never_changes_normal_command_database ... ok

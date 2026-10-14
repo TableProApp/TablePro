@@ -1,4 +1,4 @@
-wrote fixture materials to /home/trung/.cache/bookie-ui-main/linux/tests/fixtures/postgres-release/materials
+wrote fixture materials to [user-home]/.cache/bookie-ui-main/linux/tests/fixtures/postgres-release/materials
 the SSH host key changed; the release script uses a fixture-local known_hosts file
  Image tablepro-postgres-release-db Building
  Image tablepro-postgres-release-bastion Building
@@ -75,7 +75,7 @@ the SSH host key changed; the release script uses a fixture-local known_hosts fi
 #17 transferring context: 683B done
 #17 DONE 0.0s
 
-#18 [relay 2/5] RUN apk add --no-cache openssh-server     && adduser -D -s /bin/sh tunnel     && sed -i 's/^tunnel:!:/tunnel:*:/' /etc/shadow     && mkdir -p /home/tunnel/.ssh
+#18 [relay 2/5] RUN apk add --no-cache openssh-server     && adduser -D -s /bin/sh tunnel     && sed -i 's/^tunnel:!:/tunnel:*:/' /etc/shadow     && mkdir -p [user-home]/.ssh
 #18 CACHED
 
 #19 [db] exporting to image
@@ -98,19 +98,19 @@ the SSH host key changed; the release script uses a fixture-local known_hosts fi
 #19 unpacking to docker.io/library/tablepro-postgres-release-db:latest 0.1s done
 #19 DONE 0.4s
 
-#22 [bastion 4/5] COPY materials/client_ed25519_key.pub /home/tunnel/.ssh/authorized_keys
+#22 [bastion 4/5] COPY materials/client_ed25519_key.pub [user-home]/.ssh/authorized_keys
 #22 DONE 0.1s
 
-#23 [relay 4/5] COPY materials/client_ed25519_key.pub /home/tunnel/.ssh/authorized_keys
+#23 [relay 4/5] COPY materials/client_ed25519_key.pub [user-home]/.ssh/authorized_keys
 #23 DONE 0.1s
 
-#24 [relay 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel /home/tunnel/.ssh     && chmod 700 /home/tunnel/.ssh     && chmod 600 /home/tunnel/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
+#24 [relay 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel [user-home]/.ssh     && chmod 700 [user-home]/.ssh     && chmod 600 [user-home]/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
 #24 DONE 0.3s
 
 #25 [db] resolving provenance for metadata file
 #25 DONE 0.0s
 
-#26 [bastion 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel /home/tunnel/.ssh     && chmod 700 /home/tunnel/.ssh     && chmod 600 /home/tunnel/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
+#26 [bastion 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel [user-home]/.ssh     && chmod 700 [user-home]/.ssh     && chmod 600 [user-home]/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
 #26 DONE 0.3s
 
 #27 [relay] exporting to image
@@ -329,7 +329,7 @@ the SSH host key changed; the release script uses a fixture-local known_hosts fi
    Compiling tokio-util v0.7.19
    Compiling ssh-key v0.7.0-rc.11
    Compiling russh v0.63.3
-   Compiling tablepro-ssh v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/ssh)
+   Compiling tablepro-ssh v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/ssh)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 21.50s
    Compiling serde_core v1.0.229
    Compiling serde v1.0.229
@@ -631,7 +631,7 @@ the SSH host key changed; the release script uses a fixture-local known_hosts fi
    Compiling kem v0.3.0
    Compiling module-lattice v0.2.3
    Compiling openssl-macros v0.1.1
-   Compiling tablepro-core v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/core)
+   Compiling tablepro-core v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/core)
    Compiling blake2 v0.10.6
    Compiling md-5 v0.10.6
    Compiling ahash v0.8.12
@@ -682,7 +682,7 @@ the SSH host key changed; the release script uses a fixture-local known_hosts fi
    Compiling bitvec v1.1.1
    Compiling simdutf8 v0.1.5
    Compiling hickory-net v0.26.3
-   Compiling tablepro-policy v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/policy)
+   Compiling tablepro-policy v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/policy)
    Compiling time v0.3.55
    Compiling is_terminal_polyfill v1.70.2
    Compiling core_detect v1.0.0
@@ -740,32 +740,32 @@ the SSH host key changed; the release script uses a fixture-local known_hosts fi
    Compiling tracing-subscriber v0.3.23
    Compiling ashpd v0.13.13
    Compiling clap v4.6.7
-   Compiling tablepro-driver-mssql v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/drivers/mssql)
+   Compiling tablepro-driver-mssql v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/drivers/mssql)
    Compiling oo7 v0.6.0
    Compiling rustls-webpki v0.103.15
    Compiling russh v0.63.3
    Compiling sqlx-core v0.9.0
    Compiling tokio-rustls v0.26.5
    Compiling hyper-rustls v0.27.9
-   Compiling mongodb v3.9.1 (/home/trung/.cache/bookie-ui-main/linux/vendor/mongodb)
-   Compiling redis v1.7.0 (/home/trung/.cache/bookie-ui-main/linux/vendor/redis)
+   Compiling mongodb v3.9.1 ([user-home]/.cache/bookie-ui-main/linux/vendor/mongodb)
+   Compiling redis v1.7.0 ([user-home]/.cache/bookie-ui-main/linux/vendor/redis)
    Compiling clickhouse v0.15.2
-   Compiling tablepro-ssh v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/ssh)
-   Compiling sqlx-postgres v0.9.0 (/home/trung/.cache/bookie-ui-main/linux/vendor/sqlx-postgres)
-   Compiling sqlx-mysql v0.9.0 (/home/trung/.cache/bookie-ui-main/linux/vendor/sqlx-mysql)
+   Compiling tablepro-ssh v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/ssh)
+   Compiling sqlx-postgres v0.9.0 ([user-home]/.cache/bookie-ui-main/linux/vendor/sqlx-postgres)
+   Compiling sqlx-mysql v0.9.0 ([user-home]/.cache/bookie-ui-main/linux/vendor/sqlx-mysql)
    Compiling sqlx-sqlite v0.9.0
-   Compiling tablepro-driver-clickhouse v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/drivers/clickhouse)
+   Compiling tablepro-driver-clickhouse v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/drivers/clickhouse)
    Compiling sqlx v0.9.0
-   Compiling tablepro-storage v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/storage)
-   Compiling tablepro-driver-postgres v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/drivers/postgres)
-   Compiling tablepro-driver-sqlite v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/drivers/sqlite)
-   Compiling tablepro-driver-mysql v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/drivers/mysql)
-   Compiling tablepro-driver-redis v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/drivers/redis)
-   Compiling tablepro-transport v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/transport)
-   Compiling tablepro-mcp v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/mcp)
-   Compiling tablepro-release-tests v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/release-tests)
-   Compiling tablepro-driver-mongodb v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/drivers/mongodb)
-   Compiling tablepro-agentd v0.1.6-dev (/home/trung/.cache/bookie-ui-main/linux/crates/agentd)
+   Compiling tablepro-storage v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/storage)
+   Compiling tablepro-driver-postgres v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/drivers/postgres)
+   Compiling tablepro-driver-sqlite v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/drivers/sqlite)
+   Compiling tablepro-driver-mysql v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/drivers/mysql)
+   Compiling tablepro-driver-redis v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/drivers/redis)
+   Compiling tablepro-transport v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/transport)
+   Compiling tablepro-mcp v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/mcp)
+   Compiling tablepro-release-tests v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/release-tests)
+   Compiling tablepro-driver-mongodb v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/drivers/mongodb)
+   Compiling tablepro-agentd v0.1.6-dev ([user-home]/.cache/bookie-ui-main/linux/crates/agentd)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 14s
      Running tests/g5_system_openssh.rs (packaging/arch/src/target/debug/deps/g5_system_openssh-e5738714a7a34c54)
 
@@ -774,7 +774,7 @@ test agentd_refuses_without_learning_an_unknown_system_openssh_key_then_queries_
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
 
-   Compiling tablepro-agentd v0.1.6-dev (/home/trung/.cache/bookie-ui-main/linux/crates/agentd)
+   Compiling tablepro-agentd v0.1.6-dev ([user-home]/.cache/bookie-ui-main/linux/crates/agentd)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.17s
      Running tests/mtls.rs (packaging/arch/src/target/debug/deps/mtls-a8d36154b50e9e1b)
 
@@ -840,24 +840,24 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
    Compiling russh-util v0.52.0
    Compiling hyper v1.11.1
    Compiling tower v0.5.3
-   Compiling tablepro-core v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/core)
+   Compiling tablepro-core v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/core)
    Compiling sqlx-core v0.9.0
    Compiling hyper-util v0.1.20
    Compiling axum v0.8.9
-   Compiling sqlx-postgres v0.9.0 (/home/trung/.cache/bookie-ui-main/linux/vendor/sqlx-postgres)
+   Compiling sqlx-postgres v0.9.0 ([user-home]/.cache/bookie-ui-main/linux/vendor/sqlx-postgres)
    Compiling sqlx-sqlite v0.9.0
    Compiling ssh-key v0.7.0-rc.11
-   Compiling tablepro-policy v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/policy)
+   Compiling tablepro-policy v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/policy)
    Compiling russh v0.63.3
    Compiling ashpd v0.13.13
    Compiling sqlx v0.9.0
-   Compiling tablepro-driver-postgres v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/drivers/postgres)
+   Compiling tablepro-driver-postgres v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/drivers/postgres)
    Compiling oo7 v0.6.0
-   Compiling tablepro-storage v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/storage)
-   Compiling tablepro-ssh v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/ssh)
-   Compiling tablepro-transport v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/transport)
-   Compiling tablepro-mcp v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/mcp)
-   Compiling tablepro-release-tests v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/release-tests)
+   Compiling tablepro-storage v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/storage)
+   Compiling tablepro-ssh v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/ssh)
+   Compiling tablepro-transport v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/transport)
+   Compiling tablepro-mcp v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/mcp)
+   Compiling tablepro-release-tests v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/release-tests)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 22.57s
      Running unittests src/lib.rs (packaging/arch/src/target/debug/deps/tablepro_release_tests-420e5f4db729d782)
 
@@ -1011,8 +1011,8 @@ test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
    Compiling gettext-sys v0.27.0
    Compiling parking_lot v0.12.5
    Compiling backon v1.6.0
-   Compiling tablepro-core v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/core)
-   Compiling tablepro-app v0.1.6-dev (/home/trung/.cache/bookie-ui-main/linux/crates/app)
+   Compiling tablepro-core v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/core)
+   Compiling tablepro-app v0.1.6-dev ([user-home]/.cache/bookie-ui-main/linux/crates/app)
    Compiling idna_adapter v1.2.2
    Compiling futures-intrusive v0.5.0
    Compiling cfg-expr v0.20.9
@@ -1028,7 +1028,7 @@ test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
    Compiling sqlx-core v0.9.0
    Compiling hickory-proto v0.26.3
    Compiling async-native-tls v0.4.0
-   Compiling redis v1.7.0 (/home/trung/.cache/bookie-ui-main/linux/vendor/redis)
+   Compiling redis v1.7.0 ([user-home]/.cache/bookie-ui-main/linux/vendor/redis)
    Compiling tiberius v0.12.3 (https://github.com/tiberius-rs/tiberius?rev=c1d2e741ee6fe0935091826d91fb5886b6a4082a#c1d2e741)
    Compiling gdk4-sys v0.11.4
    Compiling gsk4-sys v0.11.4
@@ -1048,36 +1048,36 @@ test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
    Compiling clickhouse v0.15.2
    Compiling glib v0.22.9
    Compiling hickory-net v0.26.3
-   Compiling sqlx-postgres v0.9.0 (/home/trung/.cache/bookie-ui-main/linux/vendor/sqlx-postgres)
-   Compiling sqlx-mysql v0.9.0 (/home/trung/.cache/bookie-ui-main/linux/vendor/sqlx-mysql)
+   Compiling sqlx-postgres v0.9.0 ([user-home]/.cache/bookie-ui-main/linux/vendor/sqlx-postgres)
+   Compiling sqlx-mysql v0.9.0 ([user-home]/.cache/bookie-ui-main/linux/vendor/sqlx-mysql)
    Compiling sqlx-sqlite v0.9.0
-   Compiling tablepro-policy v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/policy)
-   Compiling tablepro-driver-mssql v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/drivers/mssql)
+   Compiling tablepro-policy v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/policy)
+   Compiling tablepro-driver-mssql v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/drivers/mssql)
    Compiling hickory-resolver v0.26.3
    Compiling regex v1.13.1
    Compiling matchers v0.2.0
    Compiling tracing-subscriber v0.3.23
    Compiling locale_config v0.3.0
    Compiling gettext-rs v0.8.0
-   Compiling tablepro-driver-clickhouse v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/drivers/clickhouse)
-   Compiling mongodb v3.9.1 (/home/trung/.cache/bookie-ui-main/linux/vendor/mongodb)
+   Compiling tablepro-driver-clickhouse v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/drivers/clickhouse)
+   Compiling mongodb v3.9.1 ([user-home]/.cache/bookie-ui-main/linux/vendor/mongodb)
    Compiling ashpd v0.13.13
    Compiling oo7 v0.6.0
    Compiling sqlx v0.9.0
-   Compiling tablepro-driver-postgres v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/drivers/postgres)
-   Compiling tablepro-driver-mysql v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/drivers/mysql)
-   Compiling tablepro-driver-sqlite v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/drivers/sqlite)
-   Compiling tablepro-storage v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/storage)
+   Compiling tablepro-driver-postgres v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/drivers/postgres)
+   Compiling tablepro-driver-mysql v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/drivers/mysql)
+   Compiling tablepro-driver-sqlite v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/drivers/sqlite)
+   Compiling tablepro-storage v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/storage)
    Compiling gio v0.22.9
    Compiling cairo-rs v0.22.9
    Compiling graphene-rs v0.22.8
-   Compiling tablepro-driver-redis v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/drivers/redis)
-   Compiling tablepro-transport v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/transport)
-   Compiling tablepro-mcp v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/mcp)
+   Compiling tablepro-driver-redis v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/drivers/redis)
+   Compiling tablepro-transport v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/transport)
+   Compiling tablepro-mcp v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/mcp)
    Compiling gdk-pixbuf v0.22.0
    Compiling pango v0.22.9
    Compiling gdk4 v0.11.4
-   Compiling tablepro-driver-mongodb v0.1.0 (/home/trung/.cache/bookie-ui-main/linux/crates/drivers/mongodb)
+   Compiling tablepro-driver-mongodb v0.1.0 ([user-home]/.cache/bookie-ui-main/linux/crates/drivers/mongodb)
    Compiling gsk4 v0.11.4
    Compiling gtk4 v0.11.4
    Compiling libadwaita v0.9.2
@@ -1086,12 +1086,12 @@ test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 04s
 dbus-daemon[3725681]: [session uid=1000 pid=3725681 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.35' (uid=1000 pid=3758607 comm="gdbus call --session --dest org.a11y.Bus --object-")
 dbus-daemon[3725681]: [session uid=1000 pid=3725681 pidfd=5] Successfully activated service 'org.a11y.Bus'
-dbus-daemon[3758617]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=3758619 comm="python3 /home/trung/.cache/bookie-ui-main/linux/cr")
+dbus-daemon[3758617]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=3758619 comm="python3 [user-home]/.cache/bookie-ui-main/linux/cr")
 dbus-daemon[3758617]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
-dbus-daemon[3725681]: [session uid=1000 pid=3725681 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.43' (uid=1000 pid=3758635 comm="/home/trung/.local/opt/bookie-0.1.7/usr/bin/bookie")
+dbus-daemon[3725681]: [session uid=1000 pid=3725681 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.43' (uid=1000 pid=3758635 comm="[user-home]/.local/opt/bookie-0.1.7/usr/bin/bookie")
 dbus-daemon[3725681]: [session uid=1000 pid=3725681 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
-dbus-daemon[3725681]: [session uid=1000 pid=3725681 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.43' (uid=1000 pid=3758635 comm="/home/trung/.local/opt/bookie-0.1.7/usr/bin/bookie")
+dbus-daemon[3725681]: [session uid=1000 pid=3725681 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.43' (uid=1000 pid=3758635 comm="[user-home]/.local/opt/bookie-0.1.7/usr/bin/bookie")
 dbus-daemon[3725681]: [session uid=1000 pid=3725681 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.46' (uid=1000 pid=3758672 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[3725681]: [session uid=1000 pid=3725681 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
 dbus-daemon[3725681]: [session uid=1000 pid=3725681 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.46' (uid=1000 pid=3758672 comm="/usr/lib/xdg-desktop-portal")

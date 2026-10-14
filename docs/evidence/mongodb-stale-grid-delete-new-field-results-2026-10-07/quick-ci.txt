@@ -1,4 +1,4 @@
-Evidence: /home/trung/Projects/tablepro/linux/target/quality/20261006T223833063985Z-quick
+Evidence: [user-home]/Projects/tablepro/linux/target/quality/20261006T223833063985Z-quick
 ==> script harness
 ignored-test inventory and isolated registrations: OK
 doc links: ok
@@ -40,16 +40,16 @@ panic-sites: ok (no new unwrap/expect/panic!/todo!/unimplemented!/unreachable! i
 function sizes within limits
 ==> cargo fmt --check (workspace)
 ==> cargo clippy (non-GTK crates)
-    Checking tablepro-driver-mongodb v0.1.0 (/home/trung/Projects/tablepro/linux/crates/drivers/mongodb)
-    Checking tablepro-agentd v0.1.5 (/home/trung/Projects/tablepro/linux/crates/agentd)
-    Checking tablepro-mcp v0.1.0 (/home/trung/Projects/tablepro/linux/crates/mcp)
-    Checking tablepro-driver-tls-tests v0.1.0 (/home/trung/Projects/tablepro/linux/crates/driver-tls-tests)
+    Checking tablepro-driver-mongodb v0.1.0 ([user-home]/Projects/tablepro/linux/crates/drivers/mongodb)
+    Checking tablepro-agentd v0.1.5 ([user-home]/Projects/tablepro/linux/crates/agentd)
+    Checking tablepro-mcp v0.1.0 ([user-home]/Projects/tablepro/linux/crates/mcp)
+    Checking tablepro-driver-tls-tests v0.1.0 ([user-home]/Projects/tablepro/linux/crates/driver-tls-tests)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.12s
 ==> cargo test --lib (non-GTK crates)
-   Compiling tablepro-driver-mongodb v0.1.0 (/home/trung/Projects/tablepro/linux/crates/drivers/mongodb)
-   Compiling tablepro-mcp v0.1.0 (/home/trung/Projects/tablepro/linux/crates/mcp)
-   Compiling tablepro-driver-tls-tests v0.1.0 (/home/trung/Projects/tablepro/linux/crates/driver-tls-tests)
-   Compiling tablepro-agentd v0.1.5 (/home/trung/Projects/tablepro/linux/crates/agentd)
+   Compiling tablepro-driver-mongodb v0.1.0 ([user-home]/Projects/tablepro/linux/crates/drivers/mongodb)
+   Compiling tablepro-mcp v0.1.0 ([user-home]/Projects/tablepro/linux/crates/mcp)
+   Compiling tablepro-driver-tls-tests v0.1.0 ([user-home]/Projects/tablepro/linux/crates/driver-tls-tests)
+   Compiling tablepro-agentd v0.1.5 ([user-home]/Projects/tablepro/linux/crates/agentd)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.79s
      Running unittests src/lib.rs (target/debug/deps/tablepro_agentd-55b13fd83e304e61)
 
@@ -1456,8 +1456,8 @@ test result: ok. 25 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; fin
 
 ==> sandbox integration tier
 ==> sandbox tier: cargo test --tests
-   Compiling tablepro-mcp v0.1.0 (/home/trung/Projects/tablepro/linux/crates/mcp)
-   Compiling tablepro-agentd v0.1.5 (/home/trung/Projects/tablepro/linux/crates/agentd)
+   Compiling tablepro-mcp v0.1.0 ([user-home]/Projects/tablepro/linux/crates/mcp)
+   Compiling tablepro-agentd v0.1.5 ([user-home]/Projects/tablepro/linux/crates/agentd)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 3.73s
      Running unittests src/lib.rs (target/debug/deps/tablepro_agentd-9b70c7fe9458d295)
 

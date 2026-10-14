@@ -1,5 +1,5 @@
-    Checking sqlx-postgres v0.9.0 (/home/trung/Projects/tablepro/linux/vendor/sqlx-postgres)
-    Checking tablepro-policy v0.1.0 (/home/trung/Projects/tablepro/linux/crates/policy)
+    Checking sqlx-postgres v0.9.0 ([user-home]/Projects/tablepro/linux/vendor/sqlx-postgres)
+    Checking tablepro-policy v0.1.0 ([user-home]/Projects/tablepro/linux/crates/policy)
     Checking sqlx v0.9.0
-    Checking tablepro-driver-postgres v0.1.0 (/home/trung/Projects/tablepro/linux/crates/drivers/postgres)
+    Checking tablepro-driver-postgres v0.1.0 ([user-home]/Projects/tablepro/linux/crates/drivers/postgres)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.42s

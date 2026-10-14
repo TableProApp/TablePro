@@ -3,8 +3,8 @@
   "date": "2026-10-08",
   "purpose": "B4-12 PostgreSQL rollback-failure acceptance on the selected frozen candidate",
   "candidate_source_commit": "a7f14faef07f05bd4a3d63a6ca31b60f2a4e0200",
-  "candidate_checkout": "/home/trung/.cache/bookie-b4-candidate-a7f14",
-  "command": "CARGO_TARGET_DIR=/home/trung/.cache/bookie-b4-target-0d5 CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 cargo test -p tablepro-driver-postgres --test integration rollback_failure::a_batch_reports_rollback_failure_after_postgres_terminates_its_backend -- --include-ignored --test-threads=1",
+  "candidate_checkout": "[user-home]/.cache/bookie-b4-candidate-a7f14",
+  "command": "CARGO_TARGET_DIR=[user-home]/.cache/bookie-b4-target-0d5 CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0 cargo test -p tablepro-driver-postgres --test integration rollback_failure::a_batch_reports_rollback_failure_after_postgres_terminates_its_backend -- --include-ignored --test-threads=1",
   "result": "passed: 1 test, 0 failed, 221 filtered out",
   "assertions": [
     "terminating the active PostgreSQL backend makes the batch report TransactionRollbackFailed at statement index 1",

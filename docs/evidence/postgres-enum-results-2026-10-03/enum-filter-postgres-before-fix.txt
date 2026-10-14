@@ -16,7 +16,7 @@ failures:
 
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 73 filtered out; finished in 2.03s
 
-   Compiling tablepro-driver-postgres v0.1.0 (/home/trung/Projects/tablepro/linux/crates/drivers/postgres)
+   Compiling tablepro-driver-postgres v0.1.0 ([user-home]/Projects/tablepro/linux/crates/drivers/postgres)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.43s
      Running tests/integration.rs (linux/target/debug/deps/integration-992730161e0870da)
 error: test failed, to rerun pass `-p tablepro-driver-postgres --test integration`

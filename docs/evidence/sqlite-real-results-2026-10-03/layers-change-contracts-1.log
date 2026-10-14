@@ -1,4 +1,4 @@
-Change contract evidence: /home/trung/Projects/tablepro/linux/target/quality/20261003T174528900534Z-change-contracts/report.json
+Change contract evidence: [user-home]/Projects/tablepro/linux/target/quality/20261003T174528900534Z-change-contracts/report.json
 Mapped source files:
 - tablepro-core: full --lib suite
 - tablepro-driver-sqlite: full --lib suite

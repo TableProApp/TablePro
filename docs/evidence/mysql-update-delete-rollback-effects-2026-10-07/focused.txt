@@ -4,7 +4,7 @@ Command:
 rtk proxy cargo test --locked -p tablepro-driver-mysql --test integration mysql_atomic::mysql_batch_rollback_preserves_nontransactional_update_and_delete_trigger_effects -- --ignored --exact --test-threads=1
 
 Result (rerun after adding transactional trigger controls):
-   Compiling tablepro-driver-mysql v0.1.0 (/home/trung/Projects/tablepro/linux/crates/drivers/mysql)
+   Compiling tablepro-driver-mysql v0.1.0 ([user-home]/Projects/tablepro/linux/crates/drivers/mysql)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 2.16s
      Running tests/integration.rs (target/debug/deps/integration-b4b5a61da3f7f119)
 

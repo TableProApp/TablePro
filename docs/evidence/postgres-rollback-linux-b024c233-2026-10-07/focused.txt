@@ -1,5 +1,5 @@
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.21s
-     Running tests/integration.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/integration-ed30049cf07994c0)
+     Running tests/integration.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/integration-ed30049cf07994c0)
 
 running 1 test
 test rollback_failure::a_batch_reports_rollback_failure_after_postgres_terminates_its_backend ... ok

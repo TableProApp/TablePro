@@ -19,7 +19,7 @@
     "seconds": 1.723,
     "fresh_artifacts": 746,
     "rebuilt_packages": [
-      "path+file:///home/trung/Projects/tablepro/linux/crates/drivers/duckdb#tablepro-driver-duckdb@0.1.0"
+      "path+file://[user-home]/Projects/tablepro/linux/crates/drivers/duckdb#tablepro-driver-duckdb@0.1.0"
     ]
   },
   "missing_suites": [],

@@ -11,7 +11,7 @@
           "duration": 0.201234786,
           "process_status": "Success",
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--no-run",
             "--verbose",
@@ -23,7 +23,7 @@
           "duration": 0.201309481,
           "process_status": "Success",
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--verbose",
             "--package=tablepro-core@0.1.0",
@@ -76,7 +76,7 @@
           "duration": 1.553558411,
           "process_status": "Success",
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--no-run",
             "--verbose",
@@ -90,7 +90,7 @@
             "Failure": 101
           },
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--verbose",
             "--package=tablepro-core@0.1.0",
@@ -143,7 +143,7 @@
           "duration": 1.6034865649999999,
           "process_status": "Success",
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--no-run",
             "--verbose",
@@ -157,7 +157,7 @@
             "Failure": 101
           },
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--verbose",
             "--package=tablepro-core@0.1.0",
@@ -210,7 +210,7 @@
           "duration": 1.30313838,
           "process_status": "Success",
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--no-run",
             "--verbose",
@@ -224,7 +224,7 @@
             "Failure": 101
           },
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--verbose",
             "--package=tablepro-core@0.1.0",
@@ -277,7 +277,7 @@
           "duration": 1.6033907269999998,
           "process_status": "Success",
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--no-run",
             "--verbose",
@@ -291,7 +291,7 @@
             "Failure": 101
           },
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--verbose",
             "--package=tablepro-core@0.1.0",
@@ -344,7 +344,7 @@
           "duration": 2.264459995,
           "process_status": "Success",
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--no-run",
             "--verbose",
@@ -358,7 +358,7 @@
             "Failure": 101
           },
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--verbose",
             "--package=tablepro-core@0.1.0",
@@ -411,7 +411,7 @@
           "duration": 1.70356847,
           "process_status": "Success",
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--no-run",
             "--verbose",
@@ -425,7 +425,7 @@
             "Failure": 101
           },
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--verbose",
             "--package=tablepro-core@0.1.0",
@@ -478,7 +478,7 @@
           "duration": 2.055286015,
           "process_status": "Success",
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--no-run",
             "--verbose",
@@ -492,7 +492,7 @@
             "Failure": 101
           },
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--verbose",
             "--package=tablepro-core@0.1.0",
@@ -545,7 +545,7 @@
           "duration": 1.553523386,
           "process_status": "Success",
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--no-run",
             "--verbose",
@@ -559,7 +559,7 @@
             "Failure": 101
           },
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--verbose",
             "--package=tablepro-core@0.1.0",
@@ -612,7 +612,7 @@
           "duration": 1.252991215,
           "process_status": "Success",
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--no-run",
             "--verbose",
@@ -626,7 +626,7 @@
             "Failure": 101
           },
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--verbose",
             "--package=tablepro-core@0.1.0",
@@ -679,7 +679,7 @@
           "duration": 1.202802487,
           "process_status": "Success",
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--no-run",
             "--verbose",
@@ -693,7 +693,7 @@
             "Failure": 101
           },
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--verbose",
             "--package=tablepro-core@0.1.0",

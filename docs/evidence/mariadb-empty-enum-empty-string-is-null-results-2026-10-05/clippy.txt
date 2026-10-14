@@ -1,11 +1,11 @@
     Checking h2 v0.4.19
     Checking tower v0.5.3
     Checking sqlx-core v0.9.0
-    Checking tablepro-core v0.1.0 (/home/trung/Projects/tablepro/linux/crates/core)
+    Checking tablepro-core v0.1.0 ([user-home]/Projects/tablepro/linux/crates/core)
     Checking axum v0.8.9
     Checking sqlx-mysql v0.9.0
     Checking sqlx v0.9.0
-    Checking tablepro-driver-mysql v0.1.0 (/home/trung/Projects/tablepro/linux/crates/drivers/mysql)
+    Checking tablepro-driver-mysql v0.1.0 ([user-home]/Projects/tablepro/linux/crates/drivers/mysql)
     Checking hyper v1.11.1
     Checking hyper-util v0.1.20
     Checking hyper-timeout v0.5.2

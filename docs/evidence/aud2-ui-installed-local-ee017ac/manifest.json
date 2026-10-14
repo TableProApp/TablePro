@@ -3,7 +3,7 @@
   "date": "2026-10-09",
   "scope": "Local installed GTK acceptance for GUI approval and MCP HTTP disconnect cancellation",
   "source_commit": "ee017acb145a5b7e8a12eff05f2f65ff1742454f",
-  "binary_path": "/home/trung/.local/opt/bookie-fork-linux-ee017ac/bookie",
+  "binary_path": "[user-home]/.local/opt/bookie-fork-linux-ee017ac/bookie",
   "binary_sha256": "9251c929336286b3123ec52ecc9e81e67c6119d82ef1118ede6d7a0769dc15c1",
   "build": "cargo build --release --locked -p tablepro-app --bin tablepro-app",
   "runtime": "User-local release executable; GTK 4 under Xvfb X11 with private D-Bus and GTK AT-SPI automation",

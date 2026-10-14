@@ -10,11 +10,11 @@
   "result": "All seven local B4 layers passed on a7f14fa; the full B4 rollback layer also passed locally at 4db3077; five selected B4-22 GTK scenarios passed with a staged release binary from a7f14fa. Later Build Linux run #37797466945 completed successfully on c3122d9, but it is not a hosted acceptance run on the selected a7f14fa candidate and its installed GTK job was a generic safety smoke, not B4-22 bundle acceptance.",
   "release_binary": {
     "build_source": "a7f14faef07f05bd4a3d63a6ca31b60f2a4e0200",
-    "staged_path": "/home/trung/.cache/bookie-b4-target-0d5/installed/usr/bin/tablepro",
+    "staged_path": "[user-home]/.cache/bookie-b4-target-0d5/installed/usr/bin/tablepro",
     "sha256": "5a8cf04f6b23ee1e6688b4e14c6ebd276a452e255f85506dc31d371c8e3863d7"
   },
   "local_reports": [
-    "/home/trung/.cache/bookie-b4-candidate-a7f14/linux/target/quality/20261008T113209359199Z-layers/report.json"
+    "[user-home]/.cache/bookie-b4-candidate-a7f14/linux/target/quality/20261008T113209359199Z-layers/report.json"
   ],
   "local_bundle_gtk_scenarios": [
     "bundle_export_records_sanitized_audit_outcome",

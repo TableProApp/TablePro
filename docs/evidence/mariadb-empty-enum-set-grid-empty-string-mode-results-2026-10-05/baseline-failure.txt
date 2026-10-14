@@ -9,7 +9,7 @@ failures:
 
 test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 492 filtered out; finished in 7.65s
 
-   Compiling tablepro-app v0.1.5 (/home/trung/Projects/tablepro/linux/crates/app)
+   Compiling tablepro-app v0.1.5 ([user-home]/Projects/tablepro/linux/crates/app)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 4.05s
      Running unittests src/lib.rs (target/debug/deps/tablepro_app-d3f82a3d8397e81b)
 

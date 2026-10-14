@@ -1,5 +1,5 @@
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.22s
-     Running tests/integration.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/integration-f0961337c4162ed9)
+     Running tests/integration.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/integration-f0961337c4162ed9)
 
 running 8 tests
 test mysql_atomic::a_failed_mysql_dml_batch_confirms_rollback_and_preserves_neighbor_rows ... ok

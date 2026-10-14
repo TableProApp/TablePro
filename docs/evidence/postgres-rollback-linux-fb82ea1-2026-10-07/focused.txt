@@ -1,3 +1,3 @@
-Command: CARGO_TARGET_DIR=/home/trung/Projects/tablepro/linux/target rtk cargo test --locked -p tablepro-driver-postgres --test integration rollback_failure::a_batch_reports_rollback_failure_after_postgres_terminates_its_backend -- --ignored --exact --test-threads=1
+Command: CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target rtk cargo test --locked -p tablepro-driver-postgres --test integration rollback_failure::a_batch_reports_rollback_failure_after_postgres_terminates_its_backend -- --ignored --exact --test-threads=1
 Result: 1 passed, 215 filtered out (1 suite, 2.91s)
 Run scope: local PostgreSQL Docker fixture; source commit fb82ea1c7e60e654da54d1fb31791a030524167e

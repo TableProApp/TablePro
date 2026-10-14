@@ -3,7 +3,7 @@
   "date": "2026-10-09",
   "scope": "B4 post-PR-427 GTK SSH and PostgreSQL flows on fork/linux",
   "source_commit": "b4ee463a2603e7b1a28ebc4cef4a751d5aeab5fb",
-  "binary_path": "/home/trung/.local/opt/bookie-main-b4ee/bookie",
+  "binary_path": "[user-home]/.local/opt/bookie-main-b4ee/bookie",
   "binary_sha256": "7838f7c24bee6e18b4bce969a61766bd5c2967d86578f65b421952bd6d7c0d2d",
   "binary_build": "cargo build --locked --release -p tablepro-app --bin tablepro-app",
   "runtime": "User-local release executable; Xvfb X11, private D-Bus, GTK AT-SPI automation; Docker PostgreSQL and SSH fixtures",

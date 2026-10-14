@@ -6,7 +6,7 @@
   "binary_path": "linux/target/debug/tablepro-app",
   "binary_sha256": "a3d3c4ebf1db1df7b402a79f687588e999fe5a2ec10be8e5f35d11d7fb7dd267",
   "build_command": "cargo build --locked -p tablepro-app --bin tablepro-app",
-  "command": "TABLEPRO_GTK_BINARY=/home/trung/Projects/tablepro/.worktrees/mysql-aria-batch-effects/linux/target/debug/tablepro-app TABLEPRO_GTK_SCENARIO=bundle_export_records_sanitized_audit_outcome,bundle_import_records_sanitized_audit_outcome,encrypted_bundle_round_trip_restores_credentials,a_bundle_from_one_profile_imports_unchanged_into_an_empty_second_profile TMPDIR=/home/trung/Projects/tablepro/.worktrees/mysql-aria-batch-effects/.b4-tmp bash linux/scripts/test-gtk-safety.sh",
+  "command": "TABLEPRO_GTK_BINARY=[user-home]/Projects/tablepro/.worktrees/mysql-aria-batch-effects/linux/target/debug/tablepro-app TABLEPRO_GTK_SCENARIO=bundle_export_records_sanitized_audit_outcome,bundle_import_records_sanitized_audit_outcome,encrypted_bundle_round_trip_restores_credentials,a_bundle_from_one_profile_imports_unchanged_into_an_empty_second_profile TMPDIR=[user-home]/Projects/tablepro/.worktrees/mysql-aria-batch-effects/.b4-tmp bash linux/scripts/test-gtk-safety.sh",
   "runtime": "Local Linux source build; isolated D-Bus, GTK AT-SPI, Xvfb X11",
   "result": "4 selected scenarios passed; process exited 0",
   "scenarios": [

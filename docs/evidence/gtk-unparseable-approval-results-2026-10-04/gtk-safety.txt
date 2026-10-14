@@ -1,12 +1,12 @@
 dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.1' (uid=1000 pid=3606222 comm="gdbus call --session --dest org.a11y.Bus --object-")
 dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Successfully activated service 'org.a11y.Bus'
     Finished `release` profile [optimized] target(s) in 0.33s
-dbus-daemon[3606233]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=3606253 comm="python3 /home/trung/Projects/tablepro/linux/crates")
+dbus-daemon[3606233]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=3606253 comm="python3 [user-home]/Projects/tablepro/linux/crates")
 dbus-daemon[3606233]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
-dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.6' (uid=1000 pid=3606254 comm="/home/trung/Projects/tablepro/linux/target/install")
+dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.6' (uid=1000 pid=3606254 comm="[user-home]/Projects/tablepro/linux/target/install")
 dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
-dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.6' (uid=1000 pid=3606254 comm="/home/trung/Projects/tablepro/linux/target/install")
+dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.6' (uid=1000 pid=3606254 comm="[user-home]/Projects/tablepro/linux/target/install")
 dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.9' (uid=1000 pid=3606332 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
 dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.9' (uid=1000 pid=3606332 comm="/usr/lib/xdg-desktop-portal")
@@ -49,7 +49,7 @@ dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Successfully activa
 (/usr/lib/xdg-desktop-portal:3606332): xdg-desktop-portal-WARNING **: 04:28:52.348: Choosing gtk.portal for org.freedesktop.impl.portal.DynamicLauncher via the deprecated UseIn key
 dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Activating service name='org.freedesktop.secrets' requested by ':1.9' (uid=1000 pid=3606332 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
-** Message: 04:28:52.351: couldn't access control socket: /home/trung/Projects/tablepro/linux/target/tmp/tablepro-gtk.f1qjDs/keyring/control: No such file or directory
+** Message: 04:28:52.351: couldn't access control socket: [user-home]/Projects/tablepro/linux/target/tmp/tablepro-gtk.f1qjDs/keyring/control: No such file or directory
 discover_other_daemon: 0dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Successfully activated service 'org.freedesktop.secrets'
 
 (process:3606253): dbind-WARNING **: 04:28:55.788: AT-SPI: Error in GetItems, sender=:1.4, error=Object does not exist at path “/org/a11y/atspi/cache”
@@ -79,9 +79,9 @@ discover_other_daemon: 0dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidf
 (process:3606253): dbind-WARNING **: 04:29:42.109: AT-SPI: Error in GetItems, sender=:1.16, error=Object does not exist at path “/org/a11y/atspi/cache”
 
 (process:3606253): dbind-WARNING **: 04:29:45.949: AT-SPI: Error in GetItems, sender=:1.17, error=Object does not exist at path “/org/a11y/atspi/cache”
-dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.42' (uid=1000 pid=3607252 comm="/home/trung/Projects/tablepro/linux/target/install")
+dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Activating service name='org.gtk.vfs.UDisks2VolumeMonitor' requested by ':1.42' (uid=1000 pid=3607252 comm="[user-home]/Projects/tablepro/linux/target/install")
 dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Successfully activated service 'org.gtk.vfs.UDisks2VolumeMonitor'
-dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Activating service name='org.gtk.vfs.MTPVolumeMonitor' requested by ':1.42' (uid=1000 pid=3607252 comm="/home/trung/Projects/tablepro/linux/target/install")
+dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Activating service name='org.gtk.vfs.MTPVolumeMonitor' requested by ':1.42' (uid=1000 pid=3607252 comm="[user-home]/Projects/tablepro/linux/target/install")
 dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Successfully activated service 'org.gtk.vfs.MTPVolumeMonitor'
 dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Activating service name='org.gtk.vfs.Metadata' requested by ':1.13' (uid=1000 pid=3606354 comm="/usr/lib/xdg-desktop-portal-gtk")
 dbus-daemon[3606195]: [session uid=1000 pid=3606195 pidfd=5] Successfully activated service 'org.gtk.vfs.Metadata'

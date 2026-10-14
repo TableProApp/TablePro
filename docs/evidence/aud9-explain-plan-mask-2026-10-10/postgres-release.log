@@ -1,4 +1,4 @@
-fixture materials already present in /home/trung/.cache/bookie-b4-aud9-fix-20261009/linux/tests/fixtures/postgres-release/materials
+fixture materials already present in [user-home]/.cache/bookie-b4-aud9-fix-20261009/linux/tests/fixtures/postgres-release/materials
  Image tablepro-postgres-release-bastion Building 
  Image tablepro-postgres-release-relay Building 
  Image tablepro-postgres-release-db Building 
@@ -88,22 +88,22 @@ fixture materials already present in /home/trung/.cache/bookie-b4-aud9-fix-20261
 #20 [relay 3/5] COPY materials/ssh_relay_host_ed25519_key /etc/ssh/ssh_host_ed25519_key
 #20 CACHED
 
-#21 [relay 4/5] COPY materials/client_ed25519_key.pub /home/tunnel/.ssh/authorized_keys
+#21 [relay 4/5] COPY materials/client_ed25519_key.pub [user-home]/.ssh/authorized_keys
 #21 CACHED
 
-#22 [relay 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel /home/tunnel/.ssh     && chmod 700 /home/tunnel/.ssh     && chmod 600 /home/tunnel/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
+#22 [relay 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel [user-home]/.ssh     && chmod 700 [user-home]/.ssh     && chmod 600 [user-home]/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
 #22 CACHED
 
 #23 [bastion 3/5] COPY materials/ssh_host_ed25519_key /etc/ssh/ssh_host_ed25519_key
 #23 CACHED
 
-#24 [bastion 4/5] COPY materials/client_ed25519_key.pub /home/tunnel/.ssh/authorized_keys
+#24 [bastion 4/5] COPY materials/client_ed25519_key.pub [user-home]/.ssh/authorized_keys
 #24 CACHED
 
-#25 [bastion 2/5] RUN apk add --no-cache openssh-server     && adduser -D -s /bin/sh tunnel     && sed -i 's/^tunnel:!:/tunnel:*:/' /etc/shadow     && mkdir -p /home/tunnel/.ssh
+#25 [bastion 2/5] RUN apk add --no-cache openssh-server     && adduser -D -s /bin/sh tunnel     && sed -i 's/^tunnel:!:/tunnel:*:/' /etc/shadow     && mkdir -p [user-home]/.ssh
 #25 CACHED
 
-#26 [bastion 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel /home/tunnel/.ssh     && chmod 700 /home/tunnel/.ssh     && chmod 600 /home/tunnel/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
+#26 [bastion 5/5] RUN chmod 600 /etc/ssh/ssh_host_ed25519_key     && chown -R tunnel:tunnel [user-home]/.ssh     && chmod 700 [user-home]/.ssh     && chmod 600 [user-home]/.ssh/authorized_keys     && printf '%s\n'         'Port 22'         'HostKey /etc/ssh/ssh_host_ed25519_key'         'PermitRootLogin no'         'PasswordAuthentication no'         'KbdInteractiveAuthentication no'         'PubkeyAuthentication yes'         'AllowTcpForwarding yes'         'AllowUsers tunnel'         'PermitOpen any'         'X11Forwarding no'         'AllowAgentForwarding no'         > /etc/ssh/sshd_config
 #26 CACHED
 
 #27 [relay] exporting to image
@@ -169,7 +169,7 @@ fixture materials already present in /home/trung/.cache/bookie-b4-aud9-fix-20261
  Container tablepro-postgres-release-db-1 Healthy 
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.26s
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.33s
-     Running tests/g5_system_openssh.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/g5_system_openssh-0dfb09a5027e1a78)
+     Running tests/g5_system_openssh.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/g5_system_openssh-0dfb09a5027e1a78)
 
 running 1 test
 test agentd_refuses_without_learning_an_unknown_system_openssh_key_then_queries_after_trust ... ok
@@ -177,7 +177,7 @@ test agentd_refuses_without_learning_an_unknown_system_openssh_key_then_queries_
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
 
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.34s
-     Running tests/mtls.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/mtls-3148b77f723889dc)
+     Running tests/mtls.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/mtls-3148b77f723889dc)
 
 running 3 tests
 test agentd_refuses_a_saved_client_certificate_from_an_untrusted_authority ... ok
@@ -187,13 +187,13 @@ test agentd_uses_a_saved_client_certificate_through_its_saved_ssh_route ... ok
 test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.70s
 
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.26s
-     Running unittests src/lib.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tablepro_release_tests-420e5f4db729d782)
+     Running unittests src/lib.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tablepro_release_tests-420e5f4db729d782)
 
 running 0 tests
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/activity_locks.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/activity_locks-ea6cd61b31b79ab8)
+     Running tests/activity_locks.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/activity_locks-ea6cd61b31b79ab8)
 
 running 2 tests
 test activity_templates_run_against_a_verified_session ... ok
@@ -201,7 +201,7 @@ test blocking_lock_query_reports_a_contended_row ... ok
 
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.73s
 
-     Running tests/agent_transport.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/agent_transport-bf2442a145f30972)
+     Running tests/agent_transport.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/agent_transport-bf2442a145f30972)
 
 running 4 tests
 test a_direct_session_and_a_tunnelled_session_reach_the_same_database ... ok
@@ -211,7 +211,7 @@ test the_shared_transport_verifies_the_database_hostname_through_the_bastion ...
 
 test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s
 
-     Running tests/browse_filters.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/browse_filters-c85e202305772b3f)
+     Running tests/browse_filters.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/browse_filters-c85e202305772b3f)
 
 running 8 tests
 test a_composite_keyset_seeks_past_the_last_seen_pair ... ok
@@ -225,7 +225,7 @@ test postgres_patterns_search_non_text_columns_without_changing_comparisons ... 
 
 test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.09s
 
-     Running tests/mcp_tools.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/mcp_tools-a8a62087e79b826c)
+     Running tests/mcp_tools.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/mcp_tools-a8a62087e79b826c)
 
 running 9 tests
 test a_denied_agent_write_is_journalled ... ok
@@ -240,7 +240,7 @@ test explain_analyze_stays_denied_on_a_read_only_connection_with_write_scope ...
 
 test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.63s
 
-     Running tests/parameters.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/parameters-b03a2fa9d49104af)
+     Running tests/parameters.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/parameters-b03a2fa9d49104af)
 
 running 5 tests
 test a_copied_insert_round_trips_a_value_holding_a_backslash_and_a_quote ... ok
@@ -251,7 +251,7 @@ test repeated_parameters_bind_the_same_value_at_every_position ... ok
 
 test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.15s
 
-     Running tests/policy_transactions.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/policy_transactions-959689227b9f4371)
+     Running tests/policy_transactions.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/policy_transactions-959689227b9f4371)
 
 running 4 tests
 test batch_rollback_discards_every_statement_after_a_failure ... ok
@@ -261,7 +261,7 @@ test read_only_denies_an_administrative_function ... ok
 
 test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.86s
 
-     Running tests/reconnect.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/reconnect-5cb4eb2570763963)
+     Running tests/reconnect.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/reconnect-5cb4eb2570763963)
 
 running 2 tests
 test direct_reconnect_restores_a_verified_session ... ok
@@ -269,7 +269,7 @@ test ssh_reconnect_replaces_the_tunnel_and_the_session ... ok
 
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.85s
 
-     Running tests/saved_tls.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/saved_tls-07a10a7ebda0d886)
+     Running tests/saved_tls.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/saved_tls-07a10a7ebda0d886)
 
 running 9 tests
 test a_rotated_valid_client_certificate_is_used_by_the_saved_connection ... ok
@@ -284,7 +284,7 @@ test server_requiring_client_certificate_rejects_untrusted_identity ... ok
 
 test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.23s
 
-     Running tests/structure_ddl.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/structure_ddl-147e1f568bcbedf1)
+     Running tests/structure_ddl.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/structure_ddl-147e1f568bcbedf1)
 
 running 8 tests
 test a_created_table_matches_the_drafted_columns_indexes_and_keys ... ok
@@ -298,7 +298,7 @@ test structure_batches_do_not_commit_or_rollback_an_editor_transaction ... ok
 
 test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.57s
 
-     Running tests/tls_identity.rs (/home/trung/Projects/tablepro/linux/target/debug/deps/tls_identity-7c148f084d6e22c2)
+     Running tests/tls_identity.rs ([user-home]/Projects/tablepro/linux/target/debug/deps/tls_identity-7c148f084d6e22c2)
 
 running 8 tests
 test ssh_tunnel_reaches_a_database_with_no_published_port ... ok
@@ -315,12 +315,12 @@ test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.35s
 dbus-daemon[999404]: [session uid=1000 pid=999404 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.1' (uid=1000 pid=999748 comm="gdbus call --session --dest org.a11y.Bus --object-")
 dbus-daemon[999404]: [session uid=1000 pid=999404 pidfd=5] Successfully activated service 'org.a11y.Bus'
-dbus-daemon[999760]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=999772 comm="python3 /home/trung/.cache/bookie-b4-aud9-fix-2026")
+dbus-daemon[999760]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=1000 pid=999772 comm="python3 [user-home]/.cache/bookie-b4-aud9-fix-2026")
 dbus-daemon[999760]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
-dbus-daemon[999404]: [session uid=1000 pid=999404 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.10' (uid=1000 pid=999795 comm="/home/trung/Projects/tablepro/linux/target/debug/t")
+dbus-daemon[999404]: [session uid=1000 pid=999404 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.10' (uid=1000 pid=999795 comm="[user-home]/Projects/tablepro/linux/target/debug/t")
 dbus-daemon[999404]: [session uid=1000 pid=999404 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
-dbus-daemon[999404]: [session uid=1000 pid=999404 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.10' (uid=1000 pid=999795 comm="/home/trung/Projects/tablepro/linux/target/debug/t")
+dbus-daemon[999404]: [session uid=1000 pid=999404 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.10' (uid=1000 pid=999795 comm="[user-home]/Projects/tablepro/linux/target/debug/t")
 dbus-daemon[999404]: [session uid=1000 pid=999404 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.13' (uid=1000 pid=999896 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[999404]: [session uid=1000 pid=999404 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
 dbus-daemon[999404]: [session uid=1000 pid=999404 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.13' (uid=1000 pid=999896 comm="/usr/lib/xdg-desktop-portal")

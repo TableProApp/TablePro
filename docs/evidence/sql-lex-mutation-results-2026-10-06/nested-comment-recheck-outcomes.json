@@ -11,7 +11,7 @@
           "duration": 0.151108927,
           "process_status": "Success",
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--no-run",
             "--verbose",
@@ -23,7 +23,7 @@
           "duration": 0.201602462,
           "process_status": "Success",
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--verbose",
             "--package=tablepro-core@0.1.0",
@@ -76,7 +76,7 @@
           "duration": 1.303270521,
           "process_status": "Success",
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--no-run",
             "--verbose",
@@ -88,7 +88,7 @@
           "duration": 8.023333793,
           "process_status": "Timeout",
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--verbose",
             "--package=tablepro-core@0.1.0",
@@ -141,7 +141,7 @@
           "duration": 1.152969472,
           "process_status": "Success",
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--no-run",
             "--verbose",
@@ -155,7 +155,7 @@
             "Failure": 101
           },
           "argv": [
-            "/home/trung/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
+            "[user-home]/.rustup/toolchains/1.98-x86_64-unknown-linux-gnu/bin/cargo",
             "test",
             "--verbose",
             "--package=tablepro-core@0.1.0",

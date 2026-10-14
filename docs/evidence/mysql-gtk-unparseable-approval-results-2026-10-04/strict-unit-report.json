@@ -19,10 +19,10 @@
     "seconds": 8.425,
     "fresh_artifacts": 741,
     "rebuilt_packages": [
-      "path+file:///home/trung/Projects/tablepro/linux/crates/agentd#tablepro-agentd@0.1.5",
-      "path+file:///home/trung/Projects/tablepro/linux/crates/app#tablepro-app@0.1.5",
-      "path+file:///home/trung/Projects/tablepro/linux/crates/driver-tls-tests#tablepro-driver-tls-tests@0.1.0",
-      "path+file:///home/trung/Projects/tablepro/linux/crates/drivers/mysql#tablepro-driver-mysql@0.1.0"
+      "path+file://[user-home]/Projects/tablepro/linux/crates/agentd#tablepro-agentd@0.1.5",
+      "path+file://[user-home]/Projects/tablepro/linux/crates/app#tablepro-app@0.1.5",
+      "path+file://[user-home]/Projects/tablepro/linux/crates/driver-tls-tests#tablepro-driver-tls-tests@0.1.0",
+      "path+file://[user-home]/Projects/tablepro/linux/crates/drivers/mysql#tablepro-driver-mysql@0.1.0"
     ]
   },
   "missing_suites": [],
