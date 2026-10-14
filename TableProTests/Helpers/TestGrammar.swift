@@ -63,13 +63,6 @@ extension SQLStatementScanner {
     }
 }
 
-/// Autocomplete tests name no engine, so they read standard SQL like the rest.
-extension SQLContextAnalyzer {
-    func analyze(query: String, cursorPosition: Int) -> SQLContext {
-        analyze(query: query, cursorPosition: cursorPosition, grammar: TestGrammar.standard)
-    }
-}
-
 extension QueryStatementScanner {
     static func executableStatements(in text: String, model: QueryStatementModel) -> [SQLStatementScanner.ExecutableStatement] {
         executableStatements(in: text, model: model, grammar: TestGrammar.standard)

@@ -44,6 +44,8 @@ packages:
     path: Packages/TableProGrammars
   TableProCore:
     path: Packages/TableProCore
+  TableProMacCore:
+    path: Packages/TableProMacCore
   TableProOracle:
     path: Packages/TableProOracle
   Sparkle:
@@ -278,8 +280,7 @@ targets:
     sources:
       - path: TablePro
         excludes:
-          # main() lives here, and it belongs to the tablepro-mcp helper. The rest of
-          # CLI/ compiles into the app too, so TableProTests can drive the real proxy.
+          # main() for the tablepro-mcp helper.
           - CLI/BridgeMain.swift
           # main() for the tablepro-imagerender helper, which is a whole executable on
           # its own: nothing in it is reachable from the app.
@@ -403,6 +404,8 @@ targets:
       - package: Yams
       - package: TableProCore
         products: [TableProAnalytics, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProRedisCore, TableProSQLGrammar, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO]
+      - package: TableProMacCore
+        products: [TableProAutocomplete, TableProMCP, TableProSSHConfig, TableProUtilities]
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -495,31 +498,11 @@ targets:
   mcp-server:
     type: tool
     platform: macOS
-    # The helper shares the wire format and the per-request metadata types with the
-    # app but compiles its own entry point. Wire and Meta come in whole, so a file
-    # added to either directory reaches this target instead of silently breaking it.
     sources:
       - TablePro/CLI/BridgeMain.swift
-      - TablePro/CLI/BridgeProxy.swift
-      - TablePro/CLI/Handshake.swift
-      - TablePro/Core/Diagnostics/LogRedaction.swift
-      - TablePro/Core/MCP/Auth/MCPAuthChallenge.swift
-      - TablePro/Core/MCP/Auth/MCPScope.swift
-      - TablePro/Core/MCP/Lifecycle/MCPHandshakeFile.swift
-      - TablePro/Core/MCP/Meta
-      - TablePro/Core/MCP/Support/MCPBase64Sentinel.swift
-      - TablePro/Core/MCP/Transport/MCPBridgeLogger.swift
-      - TablePro/Core/MCP/Transport/MCPMessageTransport.swift
-      - TablePro/Core/MCP/Transport/MCPProtocolError.swift
-      - TablePro/Core/MCP/Transport/MCPStreamableHttpClientTransport.swift
-      - TablePro/Core/MCP/Transport/MCPUpstreamCredentials.swift
-      - TablePro/Core/MCP/Wire
-      - TablePro/Core/Process/DescriptorRead.swift
-      - TablePro/Core/Process/DescriptorWrite.swift
-      - TablePro/Core/Services/Infrastructure/BackgroundLaunchFlag.swift
     dependencies:
-      - package: TableProCore
-        product: TableProLogRedaction
+      - package: TableProMacCore
+        products: [TableProMCP, TableProUtilities]
     scheme: {}
     settings:
       base:
@@ -559,8 +542,11 @@ targets:
       - TableProTests
     dependencies:
       - target: TablePro
+      # The app's packages reach the tests through TEST_HOST, so only what the app does not link is listed.
       - package: TableProCore
-        products: [TableProConnectionLibrary, TableProGeometry, TableProNumberFormatting, TableProPostgreSQLCore, TableProSQLGrammar, TableProSSHTransport, TableProTabular, TableProTabularIO]
+        products: [TableProPostgreSQLCore, TableProTestSupport]
+      - package: TableProMacCore
+        products: [TableProMCPTestSupport]
     settings:
       base:
         CURRENT_PROJECT_VERSION: 1

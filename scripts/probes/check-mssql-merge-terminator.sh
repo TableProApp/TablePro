@@ -9,12 +9,13 @@
 # MERGE, and where one does not is the server's decision: a MERGE inside parentheses, a MERGE JOIN hint, and a name
 # such as @merge or x$merge need none, while a MERGE after a name and a space, or on a table named range, does.
 #
-# So this builds a harness from the real Plugins/MSSQLDriverPlugin sources, the TableProCore package, the app's
-# TablePro/Core/Utilities/SQL/SQLFileParser.swift and the shipped Libs/libsybdb.a. For each editor text it takes what
-# the scanner sends, as one batch cut from the first statement to the last the way the app's batch planner cuts it,
-# statement by statement, and what the import parser reads from the text saved as a file, and runs each through
-# MSSQLPluginDriver. Each must run and leave the rows expected. For a MERGE it also sends the batch without its last
-# `;`, which must still fail with Msg 10713: that is what the scanner used to send, and what shows the rule holds.
+# So this builds a harness from the real Plugins/MSSQLDriverPlugin sources, the TableProCore and TableProMacCore
+# packages, the app's TablePro/Core/Utilities/SQL/SQLFileParser.swift and the shipped Libs/libsybdb.a. For each
+# editor text it takes what the scanner sends, as one batch cut from the first statement to the last the way the
+# app's batch planner cuts it, statement by statement, and what the import parser reads from the text saved as a
+# file, and runs each through MSSQLPluginDriver. Each must run and leave the rows expected. For a MERGE it also sends
+# the batch without its last `;`, which must still fail with Msg 10713: that is what the scanner used to send, and
+# what shows the rule holds.
 #
 # Usage:
 #   scripts/probes/check-mssql-merge-terminator.sh [host] [port] [user]
@@ -77,9 +78,7 @@ fi
 
 mkdir -p "$WORK/Sources/Check"
 ln -s "$ROOT/Plugins/MSSQLDriverPlugin/CFreeTDS" "$WORK/CFreeTDS"
-for source in "$ROOT"/Plugins/MSSQLDriverPlugin/*.swift "$ROOT"/TablePro/Core/Utilities/SQL/SQLFileParser.swift \
-    "$ROOT"/TablePro/Core/Utilities/SQL/SQLFileBatchLines.swift \
-    "$ROOT"/TablePro/Core/Utilities/SQL/SQLChunkDecoder.swift "$ROOT"/TablePro/Core/Utilities/Text/ByteOrderMark.swift; do
+for source in "$ROOT"/Plugins/MSSQLDriverPlugin/*.swift "$ROOT"/TablePro/Core/Utilities/SQL/SQLFileParser.swift; do
     ln -s "$source" "$WORK/Sources/Check/$(basename "$source")"
 done
 echo 'enum DecompressionError: Error { case fileReadFailed(String) }' > "$WORK/Sources/Check/DecompressionError.swift"
@@ -91,7 +90,10 @@ import PackageDescription
 let package = Package(
     name: "MSSQLMergeTerminatorCheck",
     platforms: [.macOS(.v14)],
-    dependencies: [.package(path: "$ROOT/Packages/TableProCore")],
+    dependencies: [
+        .package(path: "$ROOT/Packages/TableProCore"),
+        .package(path: "$ROOT/Packages/TableProMacCore"),
+    ],
     targets: [
         .systemLibrary(name: "CFreeTDS", path: "CFreeTDS"),
         .executableTarget(
@@ -103,6 +105,7 @@ let package = Package(
                 .product(name: "TableProMSSQLCore", package: "TableProCore"),
                 .product(name: "TableProLogRedaction", package: "TableProCore"),
                 .product(name: "TableProSQLGrammar", package: "TableProCore"),
+                .product(name: "TableProUtilities", package: "TableProMacCore"),
             ],
             path: "Sources/Check",
             swiftSettings: [.swiftLanguageMode(.v6)],

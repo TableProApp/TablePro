@@ -49,7 +49,8 @@ let package = Package(
         .library(name: "TableProTabular", targets: ["TableProTabular"]),
         .library(name: "TableProMySQLCore", targets: ["TableProMySQLCore"]),
         .library(name: "TableProPostgreSQLCore", targets: ["TableProPostgreSQLCore"]),
-        .library(name: "TableProRedisCore", targets: ["TableProRedisCore"])
+        .library(name: "TableProRedisCore", targets: ["TableProRedisCore"]),
+        .library(name: "TableProTestSupport", targets: ["TableProTestSupport"])
     ],
     targets: [
         .target(
@@ -146,6 +147,11 @@ let package = Package(
             name: "TableProTLSTestFixtures",
             dependencies: [],
             path: "Tests/TableProTLSTestFixtures"
+        ),
+        .target(
+            name: "TableProTestSupport",
+            dependencies: [],
+            path: "Tests/TableProTestSupport"
         ),
         .target(
             name: "TableProGoogleCloud",

@@ -6,8 +6,8 @@
 # runtime checks that they still agree with ssh. Every case below is one that did not: each was a
 # real divergence, found by running these two side by side.
 #
-# Builds the real Core/SSH sources with swiftc into a small harness, runs each fixture through both
-# it and `ssh -G`, and reports every field that differs.
+# Builds a small harness against the TableProSSHConfig package product, runs each fixture through
+# both it and `ssh -G`, and reports every field that differs.
 #
 # Usage: scripts/probes/check-ssh-config-parity.sh [--keep]
 #
@@ -39,37 +39,33 @@ if [[ -z "${DEVELOPER_DIR:-}" ]]; then
     done
 fi
 
-SSH_DIR="$REPO_ROOT/TablePro/Core/SSH"
-MODELS_DIR="$REPO_ROOT/TablePro/Models/Connection"
+PACKAGE="$REPO_ROOT/Packages/TableProMacCore"
+if [[ ! -f "$PACKAGE/Package.swift" ]]; then
+    echo "FAIL: missing package $PACKAGE" >&2
+    exit 2
+fi
 
-# Only the files the resolution path needs; pulling in the whole target would drag in AppKit.
-SOURCES=(
-    "$SSH_DIR/SSHConfigParser.swift"
-    "$SSH_DIR/SSHConfigResolver.swift"
-    "$SSH_DIR/SSHConfigDocument.swift"
-    "$SSH_DIR/SSHConfigTokens.swift"
-    "$SSH_DIR/SSHPathUtilities.swift"
-    "$SSH_DIR/SSHHostPatternMatcher.swift"
-    "$SSH_DIR/SSHHostnameCanonicalizer.swift"
-    "$SSH_DIR/SSHMatchExecutor.swift"
-    "$SSH_DIR/SSHUnsupportedDirective.swift"
-    "$SSH_DIR/ResolvedSSHTarget.swift"
-    "$REPO_ROOT/TablePro/Extensions/Sequence+HexEncoded.swift"
-    "$MODELS_DIR/SSHTypes.swift"
-    "$MODELS_DIR/TOTPConfiguration.swift"
-    "$REPO_ROOT/TablePro/Core/Diagnostics/LogRedaction.swift"
+mkdir -p "$WORK/harness/Sources/ParityHarness"
+cat > "$WORK/harness/Package.swift" <<MANIFEST
+// swift-tools-version: 6.0
+import PackageDescription
+
+let package = Package(
+    name: "ParityHarness",
+    platforms: [.macOS(.v13)],
+    dependencies: [.package(path: "$PACKAGE")],
+    targets: [
+        .executableTarget(
+            name: "ParityHarness",
+            dependencies: [.product(name: "TableProSSHConfig", package: "TableProMacCore")]
+        )
+    ]
 )
-REDACTION_SOURCE="$REPO_ROOT/Packages/TableProCore/Sources/TableProLogRedaction/LogRedaction.swift"
+MANIFEST
 
-for source in "${SOURCES[@]}" "$REDACTION_SOURCE"; do
-    if [[ ! -f "$source" ]]; then
-        echo "FAIL: missing source $source" >&2
-        exit 2
-    fi
-done
-
-cat > "$WORK/harness.swift" <<'SWIFT'
+cat > "$WORK/harness/Sources/ParityHarness/ParityHarness.swift" <<'SWIFT'
 import Foundation
+import TableProSSHConfig
 
 @main
 enum ParityHarness {
@@ -97,20 +93,14 @@ enum ParityHarness {
 }
 SWIFT
 
-echo "Building the harness from the shipping sources…"
-# SSHMatchExecutor logs through the app's Error.publicLogShape, which imports the TableProLogRedaction
-# package target, so that target is built as a module of its own first.
-mkdir -p "$WORK/modules"
-if ! xcrun swiftc -O -parse-as-library -emit-library -static -module-name TableProLogRedaction \
-    -emit-module-path "$WORK/modules/TableProLogRedaction.swiftmodule" \
-    "$REDACTION_SOURCE" -o "$WORK/libTableProLogRedaction.a" 2> "$WORK/build.log" ||
-    ! xcrun swiftc -O -parse-as-library -I "$WORK/modules" -L "$WORK" -lTableProLogRedaction \
-        "${SOURCES[@]}" "$WORK/harness.swift" \
-        -o "$WORK/harness" 2>> "$WORK/build.log"; then
+echo "Building the harness against TableProSSHConfig…"
+BUILD_ARGS=(--package-path "$WORK/harness" --scratch-path "$WORK/build" -c release)
+if ! xcrun swift build "${BUILD_ARGS[@]}" > "$WORK/build.log" 2>&1; then
     echo "FAIL: harness did not build" >&2
     tail -40 "$WORK/build.log" >&2
     exit 2
 fi
+HARNESS="$(xcrun swift build "${BUILD_ARGS[@]}" --show-bin-path)/ParityHarness"
 
 FIXTURES="$WORK/fixtures"
 mkdir -p "$FIXTURES"
@@ -231,7 +221,7 @@ for conf in "$FIXTURES"/*.conf; do
     fi
 
     ssh_out="$(ssh -F "$conf" -G "$host" 2>/dev/null | grep -E "$fields" | grep -v '^identityfile ~/.ssh/id_' | grep -v "^user ${LOCAL_USER}\$" | sort || true)"
-    app_out="$("$WORK/harness" "$conf" "$host" 2>/dev/null | grep -E "$fields" | sort || true)"
+    app_out="$("$HARNESS" "$conf" "$host" 2>/dev/null | grep -E "$fields" | sort || true)"
 
     CHECKED=$((CHECKED + 1))
     if [[ "$ssh_out" == "$app_out" ]]; then

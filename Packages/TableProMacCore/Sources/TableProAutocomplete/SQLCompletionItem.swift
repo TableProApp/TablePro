@@ -5,7 +5,6 @@
 //  Model for SQL autocomplete suggestions
 //
 
-import AppKit
 import Foundation
 
 /// Category of completion item
@@ -32,22 +31,6 @@ enum SQLCompletionKind: String, CaseIterable {
         case .alias: return "a.circle.fill"
         case .operator: return "equal.circle.fill"
         case .favorite: return "star.circle.fill"
-        }
-    }
-
-    /// The badge sits in the completion panel, which is system chrome, so each kind keeps a system color of its own
-    /// whatever the editor theme.
-    var iconColor: NSColor {
-        switch self {
-        case .keyword: return .systemBlue
-        case .table: return .systemTeal
-        case .view: return .systemPurple
-        case .column: return .systemOrange
-        case .function: return .systemPink
-        case .schema: return .systemGreen
-        case .alias: return .systemGray
-        case .operator: return .systemIndigo
-        case .favorite: return .systemYellow
         }
     }
 

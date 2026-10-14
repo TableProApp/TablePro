@@ -104,6 +104,34 @@
         "identifier" : "TableProGrammarsTests",
         "name" : "TableProGrammarsTests"
       }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/TableProMacCore",
+        "identifier" : "TableProAutocompleteTests",
+        "name" : "TableProAutocompleteTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/TableProMacCore",
+        "identifier" : "TableProMCPTests",
+        "name" : "TableProMCPTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/TableProMacCore",
+        "identifier" : "TableProSSHConfigTests",
+        "name" : "TableProSSHConfigTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/TableProMacCore",
+        "identifier" : "TableProUtilitiesTests",
+        "name" : "TableProUtilitiesTests"
+      }
     }
   ],
   "version" : 1

@@ -27,7 +27,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("Establishing a session records the handshake it was created with")
     func establishRecordsTheHandshake() async {
-        let store = MCPLegacySessionStore(clock: LegacyEraTestClock())
+        let store = MCPLegacySessionStore(clock: MCPTestClock())
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
 
         let id = await store.establish(
@@ -50,7 +50,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("The same owner repeating the same handshake reuses its session")
     func theSameHandshakeReusesTheSession() async {
-        let store = MCPLegacySessionStore(clock: LegacyEraTestClock())
+        let store = MCPLegacySessionStore(clock: MCPTestClock())
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
 
         let first = await LegacyStoreFixtures.establish(in: store, owner: owner, clientName: "acme-cli")
@@ -63,7 +63,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("A reused session adopts the capabilities the new handshake declared")
     func reusedSessionAdoptsTheNewCapabilities() async {
-        let store = MCPLegacySessionStore(clock: LegacyEraTestClock())
+        let store = MCPLegacySessionStore(clock: MCPTestClock())
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
         _ = await LegacyStoreFixtures.establish(in: store, owner: owner, clientName: "acme-cli")
 
@@ -86,7 +86,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("A different client name is a different handshake and gets its own session")
     func differentHandshakeGetsItsOwnSession() async {
-        let store = MCPLegacySessionStore(clock: LegacyEraTestClock())
+        let store = MCPLegacySessionStore(clock: MCPTestClock())
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
 
         let first = await LegacyStoreFixtures.establish(in: store, owner: owner, clientName: "acme-cli")
@@ -99,7 +99,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("A different owner never reuses another owner's session")
     func differentOwnerGetsItsOwnSession() async {
-        let store = MCPLegacySessionStore(clock: LegacyEraTestClock())
+        let store = MCPLegacySessionStore(clock: MCPTestClock())
         let alice = LegacyStoreFixtures.owner(fingerprint: "alice", tokenId: UUID())
         let bob = LegacyStoreFixtures.owner(fingerprint: "bob", tokenId: UUID())
 
@@ -113,7 +113,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("A lookup touches the session so it counts as recently used")
     func lookupTouchesTheSession() async {
-        let clock = LegacyEraTestClock()
+        let clock = MCPTestClock()
         let store = MCPLegacySessionStore(clock: clock)
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
         let id = await LegacyStoreFixtures.establish(in: store, owner: owner)
@@ -129,7 +129,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("A session presented by a different principal reports a principal mismatch")
     func differentPrincipalIsAMismatch() async {
-        let store = MCPLegacySessionStore(clock: LegacyEraTestClock())
+        let store = MCPLegacySessionStore(clock: MCPTestClock())
         let alice = LegacyStoreFixtures.owner(fingerprint: "alice", tokenId: UUID())
         let mallory = LegacyStoreFixtures.owner(fingerprint: "mallory", tokenId: UUID())
         let id = await LegacyStoreFixtures.establish(in: store, owner: alice)
@@ -144,7 +144,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("A principal mismatch does not touch the session it failed to reach")
     func mismatchDoesNotTouchTheSession() async {
-        let clock = LegacyEraTestClock()
+        let clock = MCPTestClock()
         let store = MCPLegacySessionStore(clock: clock)
         let alice = LegacyStoreFixtures.owner(fingerprint: "alice", tokenId: UUID())
         let mallory = LegacyStoreFixtures.owner(fingerprint: "mallory", tokenId: UUID())
@@ -159,7 +159,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("An unknown or malformed session id is unknown, never someone else's session")
     func unknownIdsAreUnknown() async {
-        let store = MCPLegacySessionStore(clock: LegacyEraTestClock())
+        let store = MCPLegacySessionStore(clock: MCPTestClock())
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
         _ = await LegacyStoreFixtures.establish(in: store, owner: owner)
 
@@ -175,7 +175,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("Reaching the capacity limit evicts the least recently used session instead of refusing")
     func capacityEvictsTheLeastRecentlyUsedSession() async {
-        let clock = LegacyEraTestClock()
+        let clock = MCPTestClock()
         let store = MCPLegacySessionStore(policy: LegacyStoreFixtures.policy(maxSessions: 3), clock: clock)
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
 
@@ -203,7 +203,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("A client that keeps handshaking is always served, never refused for a quarter of an hour")
     func busyClientIsNeverRefused() async {
-        let clock = LegacyEraTestClock()
+        let clock = MCPTestClock()
         let store = MCPLegacySessionStore(policy: LegacyStoreFixtures.policy(maxSessions: 4), clock: clock)
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
 
@@ -224,7 +224,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("Eviction spares a session that still has work in flight")
     func evictionSparesABusySession() async {
-        let clock = LegacyEraTestClock()
+        let clock = MCPTestClock()
         let store = MCPLegacySessionStore(policy: LegacyStoreFixtures.policy(maxSessions: 2), clock: clock)
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
         let busy = await LegacyStoreFixtures.establish(in: store, owner: owner, clientName: "busy")
@@ -248,7 +248,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("An evicted session has its in-flight work cancelled as a shutdown")
     func evictionCancelsTheEvictedSessionsWork() async {
-        let clock = LegacyEraTestClock()
+        let clock = MCPTestClock()
         let store = MCPLegacySessionStore(policy: LegacyStoreFixtures.policy(maxSessions: 1), clock: clock)
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
         let doomed = await LegacyStoreFixtures.establish(in: store, owner: owner, clientName: "doomed")
@@ -268,7 +268,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("Terminating a session cancels every request it still has in flight")
     func terminateCancelsInFlightWork() async {
-        let store = MCPLegacySessionStore(clock: LegacyEraTestClock())
+        let store = MCPLegacySessionStore(clock: MCPTestClock())
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
         let id = await LegacyStoreFixtures.establish(in: store, owner: owner)
         let first = MCPCancellationToken()
@@ -288,7 +288,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("Terminating an unknown session is a no-op")
     func terminatingAnUnknownSessionIsANoOp() async {
-        let store = MCPLegacySessionStore(clock: LegacyEraTestClock())
+        let store = MCPLegacySessionStore(clock: MCPTestClock())
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
         _ = await LegacyStoreFixtures.establish(in: store, owner: owner)
 
@@ -309,7 +309,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("Revoking a token terminates only the sessions that token owns")
     func revokingATokenTerminatesOnlyItsOwnSessions() async {
-        let store = MCPLegacySessionStore(clock: LegacyEraTestClock())
+        let store = MCPLegacySessionStore(clock: MCPTestClock())
         let revokedTokenId = UUID()
         let revoked = LegacyStoreFixtures.owner(fingerprint: "alice", tokenId: revokedTokenId)
         let survivor = LegacyStoreFixtures.owner(fingerprint: "bob", tokenId: UUID())
@@ -331,7 +331,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("The idle sweep terminates a session that has been quiet past the idle timeout")
     func theIdleSweepTerminatesQuietSessions() async {
-        let clock = LegacyEraTestClock()
+        let clock = MCPTestClock()
         let store = MCPLegacySessionStore(policy: LegacyStoreFixtures.policy(idleTimeout: .seconds(900)), clock: clock)
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
         _ = await LegacyStoreFixtures.establish(in: store, owner: owner)
@@ -345,7 +345,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("The idle sweep leaves a session that was active inside the window")
     func theIdleSweepLeavesActiveSessions() async {
-        let clock = LegacyEraTestClock()
+        let clock = MCPTestClock()
         let store = MCPLegacySessionStore(policy: LegacyStoreFixtures.policy(idleTimeout: .seconds(900)), clock: clock)
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
         let id = await LegacyStoreFixtures.establish(in: store, owner: owner)
@@ -361,7 +361,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("The idle sweep never terminates a session with work in flight")
     func theIdleSweepSparesBusySessions() async {
-        let clock = LegacyEraTestClock()
+        let clock = MCPTestClock()
         let store = MCPLegacySessionStore(policy: LegacyStoreFixtures.policy(idleTimeout: .seconds(900)), clock: clock)
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
         let id = await LegacyStoreFixtures.establish(in: store, owner: owner)
@@ -376,7 +376,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("A request released before the idle sweep is never cancelled by it")
     func releasedRequestIsNotCancelledByTheIdleSweep() async {
-        let clock = LegacyEraTestClock()
+        let clock = MCPTestClock()
         let store = MCPLegacySessionStore(policy: LegacyStoreFixtures.policy(idleTimeout: .seconds(900)), clock: clock)
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
         let id = await LegacyStoreFixtures.establish(in: store, owner: owner)
@@ -395,7 +395,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("Releasing an in-flight request clears it from the session")
     func releaseClearsTheInFlightRequest() async {
-        let store = MCPLegacySessionStore(clock: LegacyEraTestClock())
+        let store = MCPLegacySessionStore(clock: MCPTestClock())
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
         let id = await LegacyStoreFixtures.establish(in: store, owner: owner)
         await store.trackInFlight(id: id, requestId: .number(1), token: MCPCancellationToken())
@@ -408,7 +408,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("Shutting down terminates every session and cancels their work")
     func shutdownTerminatesEverything() async {
-        let store = MCPLegacySessionStore(clock: LegacyEraTestClock())
+        let store = MCPLegacySessionStore(clock: MCPTestClock())
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
         let first = await LegacyStoreFixtures.establish(in: store, owner: owner, clientName: "first")
         let second = await LegacyStoreFixtures.establish(in: store, owner: owner, clientName: "second")
@@ -429,7 +429,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("Snapshots are ordered oldest first and carry the in-flight count")
     func snapshotsAreOrderedByCreation() async {
-        let clock = LegacyEraTestClock()
+        let clock = MCPTestClock()
         let store = MCPLegacySessionStore(clock: clock)
         let owner = LegacyStoreFixtures.owner(fingerprint: "alice")
         let first = await LegacyStoreFixtures.establish(in: store, owner: owner, clientName: "first")
@@ -464,7 +464,7 @@ struct MCPLegacySessionStoreTests {
 
     @Test("Stopping an idle sweep that never started is safe")
     func stoppingAnUnstartedSweepIsSafe() async {
-        let store = MCPLegacySessionStore(clock: LegacyEraTestClock())
+        let store = MCPLegacySessionStore(clock: MCPTestClock())
 
         await store.stopIdleSweep()
         await store.stopIdleSweep()
