@@ -4,10 +4,11 @@ What the application does not do, or does differently from what you might expect
 
 ## Data and values
 
-- **Full-table export is unavailable** (UI-13b / [#553](https://github.com/cozyGarage/BookiE/issues/553)). The current drivers do not have
+- **Full-table export is unavailable** ([ADR 0014](decisions/0014-full-table-export-snapshot.md)). The current drivers do not have
   a verified snapshot export path, so the application refuses full-table export
   before opening the destination dialog or publishing a file. Export the current
-  page or a loaded query result instead. Snapshot export support is planned.
+  page or a loaded query result instead. Per-engine snapshot support is an
+  unselected future candidate.
 - **Large results are capped and held in memory** (PERF-2, PERF-8 / [#554](https://github.com/cozyGarage/BookiE/issues/554)). Results stop at
   1 million rows, 10 million cells or 64 MiB estimated size. The historical grid
   measurement was about 2.5 times the result memory; #518 now shares immutable

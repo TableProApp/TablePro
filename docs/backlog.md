@@ -42,7 +42,6 @@ candidate inventory as a release commitment.
 | AUD-5 | About 4,700 comment lines in `src/` to move into docs, file by file |
 | DOC-3, DOC-5 | Orca and high contrast pass; value comparison with DBeaver and dbx |
 | B4-9, B4-11, B4-17, B4-21 | Route and TLS acceptance evidence, failed-batch rollback on optional MySQL engines and package acceptance, native multi-hop trust flow, SQL Server Kerberos Windows AD interoperability and package acceptance |
-| UI-13b | Add verified per-engine snapshot export paths (ADR 0014); unsupported full export is refused by the 0.2 path in #539 |
 
 ## Development tooling
 
@@ -60,7 +59,6 @@ The linked issue records each theme's scope or acceptance decision. Project #3 o
 | [#549](https://github.com/cozyGarage/BookiE/issues/549) | Foreign key value picker, estimated counts (UI-19); FK navigation, paste TSV and the ENUM and SET pickers are done |
 | [#550](https://github.com/cozyGarage/BookiE/issues/550) | Server output and timing breakdown (UI-20, PERF-4) |
 | [#552](https://github.com/cozyGarage/BookiE/issues/552) | Multi-cursor editing and the typed activity console remain; preview tabs, history panel, split panes and SQL code folding have landed (UI-17b, 18, 22, 23, 26; #754) |
-| [#553](https://github.com/cozyGarage/BookiE/issues/553) | Full-table export refusal is implemented; per-engine snapshot paths remain future work (UI-13b, ADR 0014) |
 | [#554](https://github.com/cozyGarage/BookiE/issues/554) | Streamed results (PERF-2, 7, 8) |
 | [#555](https://github.com/cozyGarage/BookiE/issues/555) | MongoDB browse on large collections (PERF-3) |
 | [#556](https://github.com/cozyGarage/BookiE/issues/556) | Intermittent installed GTK suite (TEST-31) |
