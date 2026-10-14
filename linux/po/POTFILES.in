@@ -300,6 +300,10 @@ crates/app/src/ui/picker/connection_row.rs
 crates/app/src/ui/picker/mod.rs
 crates/app/src/ui/picker/picker_actions.rs
 crates/app/src/ui/picker/tests.rs
+crates/app/src/ui/preferences_dialog/data_browser_group.rs
+crates/app/src/ui/preferences_dialog/editor_page.rs
+crates/app/src/ui/preferences_dialog/general_page.rs
+crates/app/src/ui/preferences_dialog/history_group.rs
 crates/app/src/ui/preferences_dialog/imp.rs
 crates/app/src/ui/preferences_dialog/mod.rs
 crates/app/src/ui/result_pane/mod.rs
@@ -472,7 +476,11 @@ data/resources/ui/find-bar.ui
 data/resources/ui/history-dialog.ui
 data/resources/ui/history-row.ui
 data/resources/ui/picker-page.ui
+data/resources/ui/preferences-data-browser-group.ui
 data/resources/ui/preferences-dialog.ui
+data/resources/ui/preferences-editor-page.ui
+data/resources/ui/preferences-general-page.ui
+data/resources/ui/preferences-history-group.ui
 data/resources/ui/results-pane.ui
 data/resources/ui/session-window.ui
 data/resources/ui/sql-editor.ui

@@ -7,8 +7,8 @@ use crate::test_support::{
     ButtonFace, button_face, descendants, has_accessible_label, test_backend_records_properties,
 };
 use crate::ui::{
-    PreferencesDialog, SessionWindow, browse_tab, connect_dialog, editor, export, history_dialog, session_window,
-    ssh_section, structure_tab, welcome_view, workspace,
+    PreferencesDialog, SessionWindow, browse_tab, connect_dialog, editor, export, history_dialog, preferences_dialog,
+    session_window, ssh_section, structure_tab, welcome_view, workspace,
 };
 
 /// Every class the app's templates build. A template whose class is
@@ -26,6 +26,10 @@ fn template_classes() -> Vec<glib::Type> {
         session_window::ConnectingPage::static_type(),
         session_window::PickerPage::static_type(),
         PreferencesDialog::static_type(),
+        preferences_dialog::DataBrowserGroup::static_type(),
+        preferences_dialog::EditorPage::static_type(),
+        preferences_dialog::GeneralPage::static_type(),
+        preferences_dialog::HistoryGroup::static_type(),
         SessionWindow::static_type(),
         ssh_section::SshSection::static_type(),
         structure_tab::StructureTab::static_type(),

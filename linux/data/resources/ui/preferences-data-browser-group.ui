@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProDataBrowserGroup" parent="AdwPreferencesGroup">
+    <property name="title" translatable="yes">Data browser</property>
+    <property name="description" translatable="yes">Tunes the row paginator and destructive-action confirmation.</property>
+    <child>
+      <object class="AdwSpinRow" id="page_size_row">
+        <property name="title" translatable="yes">Default page size</property>
+        <property name="subtitle" translatable="yes">Rows fetched per request when browsing a table</property>
+        <property name="adjustment">
+          <object class="GtkAdjustment">
+            <property name="lower">100</property>
+            <property name="upper">100000</property>
+            <property name="step-increment">100</property>
+            <property name="page-increment">1000</property>
+          </object>
+        </property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwSwitchRow" id="confirm_row">
+        <property name="title" translatable="yes">Confirm before deleting rows</property>
+        <property name="subtitle" translatable="yes">Show a confirmation dialog before each destructive action</property>
+      </object>
+    </child>
+  </template>
+</interface>
