@@ -368,7 +368,8 @@ fn integer_param_type(kind: IntegerKind) -> ParamType {
 }
 
 /// Statements whose text can hold a password or a connection string.
-/// The procedures run without EXEC as the first statement of a batch.
+/// The procedures run without EXEC as the first statement of a batch,
+/// and the crypto functions take the passphrase or key password itself.
 const CREDENTIAL_RULES: CredentialRules = CredentialRules {
     statement_prefixes: &[
         &["CREATE", "LOGIN"],
@@ -396,6 +397,8 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
     conditional_prefixes: &[
         (&["BACKUP"], &["PASSWORD", "MEDIAPASSWORD", "ENCRYPTION"]),
         (&["RESTORE"], &["PASSWORD", "MEDIAPASSWORD", "ENCRYPTION"]),
+        (&["ADD", "SIGNATURE"], &["PASSWORD"]),
+        (&["ADD", "COUNTER", "SIGNATURE"], &["PASSWORD"]),
     ],
     carriers: &[
         "sp_addlogin",
@@ -406,8 +409,17 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "sp_approlepassword",
         "sp_control_dbmasterkey_password",
         "sp_change_users_login",
+        "sp_addlinkedserver",
         "OPENROWSET",
         "OPENDATASOURCE",
+        "ENCRYPTBYPASSPHRASE",
+        "DECRYPTBYPASSPHRASE",
+        "DECRYPTBYASYMKEY",
+        "DECRYPTBYCERT",
+        "DECRYPTBYKEYAUTOASYMKEY",
+        "DECRYPTBYKEYAUTOCERT",
+        "SIGNBYASYMKEY",
+        "SIGNBYCERT",
     ],
 };
 
@@ -673,6 +685,13 @@ mod tests {
             "SELECT 1\nCREATE LOGIN l WITH PASSWORD = 'x'",
             "ALTER SERVICE MASTER KEY WITH OLD_ACCOUNT = 'a', OLD_PASSWORD = 'p'",
             "EXEC sp_change_users_login 'Auto_Fix', 'u', NULL, 'p'",
+            "INSERT INTO OPENROWSET('SQLNCLI', 'Server=s;Uid=sa;Pwd=secret;', 'SELECT * FROM db.dbo.t') SELECT * FROM t",
+            "INSERT INTO OPENDATASOURCE('SQLNCLI', 'Data Source=s;User ID=u;Password=p').db.dbo.t (c) VALUES (1)",
+            "SELECT 1;\nsp_addlogin 'l','p'",
+            "ADD SIGNATURE TO dbo.p BY CERTIFICATE c WITH PASSWORD = 'p'",
+            "SELECT ENCRYPTBYPASSPHRASE('passphrase', 'data')",
+            "SELECT DECRYPTBYPASSPHRASE('passphrase', secret) FROM t",
+            "EXEC sp_addlinkedserver @server = 's', @srvproduct = '', @provider = 'MSOLEDBSQL', @provstr = 'Server=h;Uid=u;Pwd=p;'",
         ] {
             assert_eq!(
                 dialect().history_recording(sql),
@@ -688,5 +707,12 @@ mod tests {
             tablepro_test_support::history_cases::unrecorded_plain_statements(&dialect()),
             Vec::<&str>::new()
         );
+        for sql in [
+            "ALTER TABLE users ADD password varchar(100)",
+            "INSERT INTO [OPENROWSET] (c) VALUES (1)",
+            "SELECT 1\nPRINT sp_addlogin",
+        ] {
+            assert_eq!(dialect().history_recording(sql), HistoryRecording::Record, "{sql}");
+        }
     }
 }

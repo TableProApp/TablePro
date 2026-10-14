@@ -349,7 +349,7 @@ fn float_literal(value: f64) -> Option<String> {
 /// Statements whose text can hold a password or an access key. The
 /// carriers are table functions and engines (`ENGINE = MySQL(...)`)
 /// whose arguments include the remote login; the Kafka, RabbitMQ and
-/// NATS engines take theirs as settings.
+/// NATS engines and a password-protected backup take theirs as settings.
 const CREDENTIAL_RULES: CredentialRules = CredentialRules {
     statement_prefixes: &[
         &["CREATE", "USER"],
@@ -359,6 +359,8 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
     ],
     conditional_prefixes: &[
         (&["CREATE", "DICTIONARY"], &["PASSWORD"]),
+        (&["BACKUP"], &["PASSWORD"]),
+        (&["RESTORE"], &["PASSWORD"]),
         (
             &["CREATE"],
             &["KAFKA_SASL_PASSWORD", "RABBITMQ_PASSWORD", "NATS_PASSWORD"],
@@ -394,6 +396,9 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "icebergAzureCluster",
         "hudi",
         "hudiCluster",
+        "url",
+        "odbc",
+        "jdbc",
     ],
 };
 
@@ -596,6 +601,12 @@ mod tests {
             "CREATE NAMED COLLECTION c AS password = 'p'",
             "SELECT * FROM deltaLake('url', 'key', 'secret')",
             "CREATE TABLE q (m String) ENGINE = Kafka SETTINGS kafka_sasl_password = 'p'",
+            "BACKUP TABLE t TO Disk('backups', 'b.zip') SETTINGS password = 'x'",
+            "RESTORE TABLE t FROM Disk('backups', 'b.zip') SETTINGS password = 'x'",
+            "SELECT * FROM url('http://u:p@h/f.csv', CSV)",
+            "CREATE TABLE t (id Int32) ENGINE = URL('http://u:p@h/f.csv', CSV)",
+            "SELECT * FROM odbc('DSN=d;UID=u;PWD=p', 't')",
+            "SELECT * FROM jdbc('jdbc:mysql://h/?user=u&password=p', 's', 't')",
         ] {
             assert_eq!(
                 dialect().history_recording(sql),
@@ -611,5 +622,12 @@ mod tests {
             tablepro_test_support::history_cases::unrecorded_plain_statements(&dialect()),
             Vec::<&str>::new()
         );
+        for sql in [
+            "SELECT url, domain(url) FROM visits",
+            "CREATE TABLE url (id Int32) ENGINE = Memory",
+            "BACKUP TABLE t TO Disk('backups', 'b.zip')",
+        ] {
+            assert_eq!(dialect().history_recording(sql), HistoryRecording::Record, "{sql}");
+        }
     }
 }

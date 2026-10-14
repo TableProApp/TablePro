@@ -344,7 +344,8 @@ fn quoted(text: &str) -> String {
 
 /// Statements whose text can hold a password or a connection string.
 /// `CREATE USER` also covers `CREATE USER MAPPING`, whose options carry
-/// the remote login.
+/// the remote login, and pgcrypto's `crypt` and passphrase functions take
+/// the password itself.
 const CREDENTIAL_RULES: CredentialRules = CredentialRules {
     statement_prefixes: &[
         &["CREATE", "ROLE"],
@@ -359,7 +360,19 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         &["ALTER", "SUBSCRIPTION"],
     ],
     conditional_prefixes: &[(&["ALTER", "SYSTEM"], &["PRIMARY_CONNINFO"])],
-    carriers: &["dblink", "dblink_connect", "dblink_connect_u", "dblink_exec"],
+    carriers: &[
+        "dblink",
+        "dblink_connect",
+        "dblink_connect_u",
+        "dblink_exec",
+        "crypt",
+        "pgp_sym_encrypt",
+        "pgp_sym_encrypt_bytea",
+        "pgp_sym_decrypt",
+        "pgp_sym_decrypt_bytea",
+        "pgp_pub_decrypt",
+        "pgp_pub_decrypt_bytea",
+    ],
 };
 
 #[cfg(test)]
@@ -608,6 +621,11 @@ mod tests {
             "ALTER SYSTEM SET primary_conninfo = 'password=x'",
             "SELECT 1; CREATE USER u PASSWORD 'p'",
             "DO $$ BEGIN CREATE ROLE app LOGIN PASSWORD 'p'; END $$",
+            "DO 'BEGIN CREATE ROLE r PASSWORD ''p''; END'",
+            "CREATE FUNCTION f() RETURNS text AS 'SELECT dblink_connect(''password=x'')' LANGUAGE sql",
+            "SELECT pgp_sym_encrypt('data', 'passphrase')",
+            "SELECT pgp_sym_decrypt(secret, 'passphrase') FROM t",
+            "UPDATE users SET pw = crypt('secret', gen_salt('bf'))",
         ] {
             assert_eq!(
                 dialect().history_recording(sql),

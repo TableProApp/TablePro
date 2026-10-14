@@ -370,7 +370,8 @@ fn string_literal(text: &str) -> String {
 }
 
 /// Statements whose text can hold a password or a connection string. A
-/// FEDERATED or CONNECT table keeps its remote login in `CONNECTION`.
+/// FEDERATED or CONNECT table keeps its remote login in `CONNECTION`, and
+/// `PASSWORD()` takes the password it hashes.
 const CREDENTIAL_RULES: CredentialRules = CredentialRules {
     statement_prefixes: &[
         &["CREATE", "USER"],
@@ -385,10 +386,11 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         (&["GRANT"], &["IDENTIFIED"]),
         (&["START", "SLAVE"], &["PASSWORD"]),
         (&["START", "REPLICA"], &["PASSWORD"]),
+        (&["START", "GROUP_REPLICATION"], &["PASSWORD"]),
         (&["CREATE"], &["CONNECTION"]),
         (&["ALTER"], &["CONNECTION"]),
     ],
-    carriers: &[],
+    carriers: &["PASSWORD", "OLD_PASSWORD"],
 };
 
 #[cfg(test)]
@@ -647,6 +649,10 @@ mod tests {
             "GRANT ALL ON *.* TO u IDENTIFIED BY 'p'",
             "START REPLICA USER='u' PASSWORD='p'",
             "CREATE TABLE t (id INT) ENGINE=FEDERATED CONNECTION='mysql://u:p@h:3306/d/t'",
+            "UPDATE mysql.user SET authentication_string = PASSWORD('x') WHERE User = 'root'",
+            "SELECT OLD_PASSWORD('x')",
+            "START GROUP_REPLICATION USER='u', PASSWORD='p'",
+            "CREATE TABLE t (id int) /*!50100 ENGINE=FEDERATED CONNECTION='mysql://u:p@h/d/t' */",
         ] {
             assert_eq!(
                 dialect(MySqlFlavour::MySql).history_recording(sql),
@@ -662,5 +668,17 @@ mod tests {
             tablepro_test_support::history_cases::unrecorded_plain_statements(&dialect(MySqlFlavour::MySql)),
             Vec::<&str>::new()
         );
+        for sql in [
+            "CREATE TABLE users (id INT, password VARCHAR(100))",
+            "INSERT INTO users (name, password) VALUES ('a', 'b')",
+            "SELECT start, password FROM sessions",
+            "START TRANSACTION",
+        ] {
+            assert_eq!(
+                dialect(MySqlFlavour::MySql).history_recording(sql),
+                HistoryRecording::Record,
+                "{sql}"
+            );
+        }
     }
 }
