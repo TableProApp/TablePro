@@ -1,9 +1,9 @@
-use tablepro_core::column::{ColumnKind, ColumnType, IntegerKind, IntegerWidth};
+use tablepro_core::column::{ColumnKind, ColumnType, IntegerKind, IntegerWidth, NetworkFamily};
 use tablepro_core::ddl::ddl_sql::{column_list, create_index_sql, default_sql, foreign_key_sql};
 use tablepro_core::ddl::{
-    BuildDdlError, CollationName, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlDialect, DdlOperation,
-    DdlPlan, DraftColumn, GeneratedStorage, IdentityStyle, Permission, RefusalReason, TableChanges, TableDefinition,
-    TableDraft,
+    BuildDdlError, CollationName, ColumnAttributes, ColumnCapabilities, ColumnCompression, ColumnDefinition,
+    ColumnStorage, DdlCapabilities, DdlDialect, DdlOperation, DdlPlan, DraftColumn, GeneratedStorage, IdentityStyle,
+    Permission, RefusalReason, TableChanges, TableDefinition, TableDraft,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
@@ -186,6 +186,11 @@ impl DdlDialect for PgDialect {
                 actions.push(format!(
                     "ALTER COLUMN {name} TYPE {}{collation} USING {name}::{}",
                     resolved.sql, resolved.sql
+                ));
+                actions.extend(restated_storage(
+                    &name,
+                    &alteration.original.attributes,
+                    &resolved.column_type.kind,
                 ));
             }
             // An identity column is NOT NULL whatever the switch said, and
@@ -393,6 +398,54 @@ fn identity_permission(column: &ColumnDefinition) -> Permission {
         }
         _ => Permission::Allowed,
     }
+}
+
+/// A type change resets SET STORAGE and SET COMPRESSION to the new
+/// type's own, so a column that set either has it restated. A
+/// fixed-width type keeps its values inline and uncompressed and refuses
+/// both, so the settings go with the old type. A type this build cannot
+/// place is restated, and the server refuses the change if it cannot
+/// take them.
+fn restated_storage(name: &str, attributes: &ColumnAttributes, kind: &ColumnKind) -> Vec<String> {
+    if fixed_width(kind) {
+        return Vec::new();
+    }
+    let storage = attributes.storage.map(|storage| {
+        let keyword = match storage {
+            ColumnStorage::Plain => "PLAIN",
+            ColumnStorage::Main => "MAIN",
+            ColumnStorage::External => "EXTERNAL",
+            ColumnStorage::Extended => "EXTENDED",
+        };
+        format!("ALTER COLUMN {name} SET STORAGE {keyword}")
+    });
+    let compression = attributes.compression.map(|compression| {
+        let method = match compression {
+            ColumnCompression::Pglz => "pglz",
+            ColumnCompression::Lz4 => "lz4",
+        };
+        format!("ALTER COLUMN {name} SET COMPRESSION {method}")
+    });
+    storage.into_iter().chain(compression).collect()
+}
+
+/// Whether PostgreSQL stores the type at a fixed width, which takes
+/// only PLAIN storage and no compression.
+fn fixed_width(kind: &ColumnKind) -> bool {
+    matches!(
+        kind,
+        ColumnKind::Bool(_)
+            | ColumnKind::Integer(_)
+            | ColumnKind::Float(_)
+            | ColumnKind::Money { .. }
+            | ColumnKind::Date
+            | ColumnKind::Time { .. }
+            | ColumnKind::Timestamp { .. }
+            | ColumnKind::Interval
+            | ColumnKind::Uuid
+            | ColumnKind::Enum { .. }
+            | ColumnKind::Network(NetworkFamily::MacAddr | NetworkFamily::MacAddr8)
+    )
 }
 
 /// Whether a type takes a COLLATE clause: text, and arrays of it.
@@ -626,6 +679,34 @@ mod tests {
         );
         assert!(collatable(&dialect().parse_type("text[]").expect("a type").kind));
         assert!(!collatable(&dialect().parse_type("uuid").expect("a type").kind));
+    }
+
+    #[test]
+    fn a_type_change_restates_storage_and_compression_the_new_type_takes() {
+        let mut original = users();
+        for column in &mut original.columns[1..] {
+            column.attributes.storage = Some(ColumnStorage::External);
+            column.attributes.compression = Some(ColumnCompression::Lz4);
+        }
+
+        let plan = alter(&original, |draft| {
+            draft.columns[1].column_type = DraftType::Typed("varchar(320)".to_owned());
+            draft.columns[2].column_type = DraftType::Typed("bigint".to_owned());
+        });
+        let nullability_only = alter(&original, |draft| draft.columns[1].nullable = false);
+
+        assert_eq!(
+            sql(plan),
+            [
+                "ALTER TABLE \"app\".\"users\" ALTER COLUMN \"email\" TYPE varchar(320) USING \
+                 \"email\"::varchar(320), ALTER COLUMN \"email\" SET STORAGE EXTERNAL, ALTER COLUMN \"email\" SET \
+                 COMPRESSION lz4, ALTER COLUMN \"status\" TYPE bigint USING \"status\"::bigint"
+            ]
+        );
+        assert_eq!(
+            sql(nullability_only),
+            ["ALTER TABLE \"app\".\"users\" ALTER COLUMN \"email\" SET NOT NULL"]
+        );
     }
 
     #[test]

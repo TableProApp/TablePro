@@ -9,7 +9,13 @@ use super::type_facts::{TypeFacts, TypeShape};
 /// The recursive CTE follows a domain to its base type, keeping the
 /// first modifier along the way, because a domain column's own
 /// `atttypmod` is -1 when the modifier was declared on the domain.
-pub(crate) const COLUMNS_SQL: &str = "\
+///
+/// The argument is the compression projection, since
+/// `attcompression` arrived in PostgreSQL 14.
+macro_rules! columns_sql {
+    ($compression:literal) => {
+        concat!(
+            "\
 WITH RECURSIVE resolved AS (
     SELECT a.attnum, a.atttypid AS type_oid, a.atttypmod AS typmod, 0 AS depth
     FROM pg_catalog.pg_attribute a
@@ -47,7 +53,11 @@ SELECT a.attname::text,
        a.attgenerated::text,
        pg_catalog.col_description(a.attrelid, a.attnum::int4)::text,
        CASE WHEN a.attcollation <> 0 AND a.attcollation <> at.typcollation THEN cn.nspname::text END,
-       CASE WHEN a.attcollation <> 0 AND a.attcollation <> at.typcollation THEN co.collname::text END
+       CASE WHEN a.attcollation <> 0 AND a.attcollation <> at.typcollation THEN co.collname::text END,
+       CASE WHEN a.attstorage <> at.typstorage THEN a.attstorage::text END,
+       ",
+            $compression,
+            "
 FROM pg_catalog.pg_attribute a
 JOIN base b ON b.attnum = a.attnum
 JOIN pg_catalog.pg_type at ON at.oid = a.atttypid
@@ -58,7 +68,13 @@ LEFT JOIN pg_catalog.pg_constraint pk ON pk.conrelid = a.attrelid AND pk.contype
 LEFT JOIN pg_catalog.pg_collation co ON co.oid = a.attcollation
 LEFT JOIN pg_catalog.pg_namespace cn ON cn.oid = co.collnamespace
 WHERE a.attrelid = $1::text::regclass AND a.attnum > 0 AND NOT a.attisdropped
-ORDER BY a.attnum";
+ORDER BY a.attnum"
+        )
+    };
+}
+
+pub(crate) const COLUMNS_SQL: &str = columns_sql!("NULLIF(a.attcompression::text, '')");
+pub(crate) const COLUMNS_SQL_BEFORE_14: &str = columns_sql!("NULL::text");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PgColumnRow {
@@ -76,6 +92,10 @@ pub(crate) struct PgColumnRow {
     pub(crate) generated: String,
     pub(crate) comment: Option<String>,
     pub(crate) collation: Option<(Option<String>, String)>,
+    /// `pg_attribute.attstorage` where it differs from the type's.
+    pub(crate) storage: Option<String>,
+    /// `pg_attribute.attcompression` where the column names a method.
+    pub(crate) compression: Option<String>,
 }
 
 impl PgColumnRow {
@@ -124,6 +144,8 @@ impl PgColumnRow {
             generated: row.try_get(15).map_err(field)?,
             comment: row.try_get(16).map_err(field)?,
             collation: collation_name.map(|name| (collation_schema, name)),
+            storage: row.try_get(19).map_err(field)?,
+            compression: row.try_get(20).map_err(field)?,
         })
     }
 }

@@ -6,7 +6,7 @@ mod pg_typmod;
 mod table_definition;
 mod type_facts;
 
-pub(crate) use pg_column_row::{COLUMNS_SQL, PgColumnRow};
+pub(crate) use pg_column_row::{COLUMNS_SQL, COLUMNS_SQL_BEFORE_14, PgColumnRow};
 pub(crate) use table_definition::{INBOUND_FOREIGN_KEYS_SQL, PRIMARY_KEY_NAME_SQL, inbound_foreign_key};
 pub(crate) use type_facts::TypeFacts;
 
@@ -14,7 +14,8 @@ use tablepro_core::column::{
     CatalogType, ColumnDefault, ColumnInfo, ColumnType, ResultColumn, SqlExpression, SqlTypeExpr, has_dynamic_storage,
 };
 use tablepro_core::ddl::{
-    CollationName, ColumnAttributes, ColumnDefinition, GeneratedColumn, GeneratedStorage, IdentityStyle,
+    CollationName, ColumnAttributes, ColumnCompression, ColumnDefinition, ColumnStorage, GeneratedColumn,
+    GeneratedStorage, IdentityStyle, UnmodeledAttribute,
 };
 use tablepro_core::edit::parse_literal_text;
 use tablepro_core::sql_syntax::{LiteralToken, MAX_EXPRESSION_LEN, SqlGrammar, parse_expression};
@@ -92,9 +93,38 @@ pub(crate) fn column_definition(row: &PgColumnRow) -> ColumnDefinition {
             })
         }),
         identity: identity_style(row),
+        storage: row.storage.as_deref().and_then(storage),
+        compression: row.compression.as_deref().and_then(compression),
+        // A method this build cannot name would be dropped by a type
+        // change, so the column refuses one instead.
+        unmodeled: row
+            .compression
+            .as_deref()
+            .filter(|code| compression(code).is_none())
+            .map(|_| vec![UnmodeledAttribute::new("COMPRESSION")])
+            .unwrap_or_default(),
         ..ColumnAttributes::default()
     };
     ColumnDefinition::new(column_info(row), attributes)
+}
+
+/// `pg_attribute.attstorage`, which every release spells the same.
+fn storage(code: &str) -> Option<ColumnStorage> {
+    match code {
+        "p" => Some(ColumnStorage::Plain),
+        "m" => Some(ColumnStorage::Main),
+        "e" => Some(ColumnStorage::External),
+        "x" => Some(ColumnStorage::Extended),
+        _ => None,
+    }
+}
+
+fn compression(code: &str) -> Option<ColumnCompression> {
+    match code {
+        "p" => Some(ColumnCompression::Pglz),
+        "l" => Some(ColumnCompression::Lz4),
+        _ => None,
+    }
 }
 
 fn identity_style(row: &PgColumnRow) -> IdentityStyle {

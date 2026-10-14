@@ -76,7 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Turning a column's primary key on or off in the Structure tab saved nothing.
 - Dropping a SQL Server column that has a default failed.
 - Creating a SQLite table with a foreign key failed.
-- Changing a column in the Structure tab lost its collation, SRID, SPARSE, CHECK or other attributes it had.
+- Changing a column in the Structure tab lost its collation, SRID, SPARSE, CHECK, storage, compression or other attributes it had.
 - Saving a MySQL column whose default or generated expression held a quoted string failed.
 - Save in a Structure tab's close prompt skipped the tab's checks and dropped a default that did not parse.
 - The Structure tab refused every save on a SQLite table keyed by INTEGER PRIMARY KEY.

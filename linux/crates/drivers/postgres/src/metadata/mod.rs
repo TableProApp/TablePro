@@ -23,8 +23,7 @@ use tablepro_core::meta::TableRef;
 use tokio_postgres::{Client, Row};
 
 use crate::catalog::{
-    COLUMNS_SQL, INBOUND_FOREIGN_KEYS_SQL, PRIMARY_KEY_NAME_SQL, PgColumnRow, column_definition, column_info,
-    inbound_foreign_key,
+    INBOUND_FOREIGN_KEYS_SQL, PRIMARY_KEY_NAME_SQL, PgColumnRow, column_definition, column_info, inbound_foreign_key,
 };
 use crate::errors::map_error;
 
@@ -50,14 +49,19 @@ pub(crate) fn decode_error(table: &'static str) -> impl Fn(tokio_postgres::Error
 
 /// `relation` is the table's quoted, qualified name, which `::regclass`
 /// resolves the same way the server resolves it in a query.
-pub(crate) async fn fetch_columns(client: &Client, relation: &str) -> Result<Vec<ColumnInfo>, DriverError> {
-    column_rows(client, relation)
+/// `columns_sql` is the column query for the server's release.
+pub(crate) async fn fetch_columns(
+    client: &Client,
+    columns_sql: &str,
+    relation: &str,
+) -> Result<Vec<ColumnInfo>, DriverError> {
+    column_rows(client, columns_sql, relation)
         .await
         .map(|rows| rows.iter().map(column_info).collect())
 }
 
-async fn column_rows(client: &Client, relation: &str) -> Result<Vec<PgColumnRow>, DriverError> {
-    text_rows(client, COLUMNS_SQL, &[relation])
+async fn column_rows(client: &Client, columns_sql: &str, relation: &str) -> Result<Vec<PgColumnRow>, DriverError> {
+    text_rows(client, columns_sql, &[relation])
         .await?
         .iter()
         .map(PgColumnRow::from_row)
@@ -66,6 +70,7 @@ async fn column_rows(client: &Client, relation: &str) -> Result<Vec<PgColumnRow>
 
 pub(crate) async fn fetch_table_definition(
     client: &Client,
+    columns_sql: &str,
     table: &TableRef,
     relation: &str,
 ) -> Result<TableDefinition, DriverError> {
@@ -73,7 +78,7 @@ pub(crate) async fn fetch_table_definition(
     // them run inside the flight's transaction, ahead of its COMMIT.
     let params = [relation];
     let (columns, primary_key, indexes, foreign_keys, inbound_foreign_keys) = futures_util::try_join!(
-        column_rows(client, relation),
+        column_rows(client, columns_sql, relation),
         text_rows(client, PRIMARY_KEY_NAME_SQL, &params),
         fetch_indexes(client, relation),
         fetch_foreign_keys(client, relation),

@@ -19,6 +19,7 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 use tokio_util::task::TaskTracker;
 
 use crate::cancel::{PgStop, StopProgress};
+use crate::catalog;
 use crate::commit_resolution::resolve_op;
 use crate::dialect::PgDialect;
 use crate::editor::PgEditorSession;
@@ -85,6 +86,13 @@ impl PgConnection {
     /// The table's name as `::regclass` resolves it.
     fn relation(&self, table: &TableRef) -> String {
         self.dialect.qualify(table)
+    }
+
+    fn columns_sql(&self) -> &'static str {
+        match self.server.at_least(14, 0, 0) {
+            true => catalog::COLUMNS_SQL,
+            false => catalog::COLUMNS_SQL_BEFORE_14,
+        }
     }
 
     /// Run one read in its own read-only transaction on a pooled
@@ -261,9 +269,12 @@ impl Connection for PgConnection {
 
     async fn fetch_columns(&self, table: &TableRef, options: CallOptions) -> Result<Vec<ColumnInfo>, DriverError> {
         let relation = self.relation(table);
+        let columns_sql = self.columns_sql();
         self.read(
             options,
-            read_op(move |client| Box::pin(async move { metadata::fetch_columns(client, &relation).await })),
+            read_op(move |client| {
+                Box::pin(async move { metadata::fetch_columns(client, columns_sql, &relation).await })
+            }),
         )
         .await
     }
@@ -296,11 +307,12 @@ impl Connection for PgConnection {
         options: CallOptions,
     ) -> Result<TableDefinition, DriverError> {
         let relation = self.relation(table);
+        let columns_sql = self.columns_sql();
         let table = table.clone();
         self.read(
             options,
             read_op(move |client| {
-                Box::pin(async move { metadata::fetch_table_definition(client, &table, &relation).await })
+                Box::pin(async move { metadata::fetch_table_definition(client, columns_sql, &table, &relation).await })
             }),
         )
         .await

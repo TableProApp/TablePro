@@ -2,7 +2,8 @@
 //! server.
 
 use tablepro_core::ddl::{
-    CollationName, DraftColumn, DraftType, IdentityStyle, PrimaryKeyConstraint, TableDefinition, TableDraft, diff_table,
+    CollationName, ColumnCompression, ColumnStorage, DraftColumn, DraftType, IdentityStyle, PrimaryKeyConstraint,
+    TableDefinition, TableDraft, diff_table,
 };
 use tablepro_core::meta::TableRef;
 use tablepro_core::{Connection, WriteKind};
@@ -393,5 +394,68 @@ async fn type_change_keeps_c_collation() {
     assert_eq!(column("tags").info.column_type.name, "character varying(20)[]");
     assert_eq!(column("amount").attributes.collation, None);
     assert_eq!(column("amount").info.column_type.name, "integer");
+    connection.close().await.expect("a close");
+}
+
+/// ALTER COLUMN ... TYPE resets SET STORAGE and SET COMPRESSION to the
+/// new type's own, so the change restates what the column had. An
+/// integer takes neither, so its column goes back to the type's.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn type_change_keeps_storage_and_compression() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE kept (id int PRIMARY KEY, body varchar(10), note text, code text)",
+            "ALTER TABLE kept ALTER COLUMN body SET STORAGE EXTERNAL, ALTER COLUMN body SET COMPRESSION pglz, \
+             ALTER COLUMN note SET STORAGE MAIN, ALTER COLUMN code SET STORAGE EXTERNAL",
+            "INSERT INTO kept VALUES (1, 'a', 'b', '7')",
+        ],
+    )
+    .await;
+    let before = read(connection.as_ref()).await;
+    let column = |definition: &TableDefinition, name: &str| {
+        let attributes = &definition.column(name).expect("the column").attributes;
+        (attributes.storage, attributes.compression)
+    };
+    assert_eq!(
+        column(&before, "body"),
+        (Some(ColumnStorage::External), Some(ColumnCompression::Pglz))
+    );
+    assert_eq!(column(&before, "id"), (None, None));
+
+    let after = change(connection.as_ref(), &kept(), |column| {
+        let retyped = match column.name.as_str() {
+            "body" => "varchar(40)",
+            "note" => "varchar(100)",
+            "code" => "integer",
+            _ => return,
+        };
+        column.column_type = DraftType::Typed(retyped.to_owned());
+    })
+    .await;
+
+    assert_eq!(type_of(&after, "body"), "character varying(40)");
+    assert_eq!(
+        column(&after, "body"),
+        (Some(ColumnStorage::External), Some(ColumnCompression::Pglz))
+    );
+    assert_eq!(column(&after, "note"), (Some(ColumnStorage::Main), None));
+    assert_eq!(column(&after, "code"), (None, None));
+    assert_eq!(
+        value(
+            connection.as_ref(),
+            "SELECT string_agg(attname::text || '=' || attstorage::text || coalesce(nullif(attcompression::text, ''), \
+             '-'), ',' ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'kept'::regclass AND attnum > 0"
+        )
+        .await,
+        "id=p-,body=ep,note=m-,code=p-"
+    );
+    assert_eq!(
+        value(connection.as_ref(), "SELECT body || note || code FROM kept").await,
+        "ab7"
+    );
     connection.close().await.expect("a close");
 }
