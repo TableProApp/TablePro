@@ -90,13 +90,10 @@ impl ChangeReview {
         plan.sql().into_iter().eq(self.statements.iter().map(String::as_str))
     }
 
-    /// The statements as the review shows them, each ended and set apart.
+    /// The statements as the review shows them, laid out as the
+    /// structure tab's preview.
     pub fn sql(&self) -> String {
-        self.statements
-            .iter()
-            .map(|statement| format!("{statement};"))
-            .collect::<Vec<_>>()
-            .join("\n\n")
+        super::ddl_plan::script(self.statements.iter().map(String::as_str))
     }
 }
 

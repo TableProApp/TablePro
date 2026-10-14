@@ -57,14 +57,9 @@ impl DdlPlan {
         self.statements.iter().map(Statement::sql).collect()
     }
 
-    /// The plan as the user reads it before Save: each statement ended
-    /// and set apart.
+    /// The plan as the user reads it before Save.
     pub fn preview(&self) -> String {
-        self.statements
-            .iter()
-            .map(|statement| format!("{};", statement.sql()))
-            .collect::<Vec<_>>()
-            .join("\n\n")
+        script(self.sql())
     }
 
     /// Schema statements have no row count to prove. The precondition
@@ -87,6 +82,15 @@ impl DdlPlan {
         let foreign_keys = self.foreign_keys.clone();
         WriteBatch::new(WriteKind::SchemaChanges, table, self.into_steps(), foreign_keys)
     }
+}
+
+/// Statements as the user reads them: each ended and set apart.
+pub(super) fn script<'a>(statements: impl IntoIterator<Item = &'a str>) -> String {
+    statements
+        .into_iter()
+        .map(|statement| format!("{statement};"))
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 #[cfg(test)]

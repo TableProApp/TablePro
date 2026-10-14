@@ -856,4 +856,8 @@ fn a_review_matches_only_the_plan_it_read() {
         "ALTER TABLE c".to_owned()
     ])));
     assert_eq!(reviewed.sql(), "ALTER TABLE a;\n\nALTER TABLE b;");
+    assert_eq!(
+        reviewed.sql(),
+        DdlPlan::from_sql(["ALTER TABLE a".to_owned(), "ALTER TABLE b".to_owned()]).preview()
+    );
 }
