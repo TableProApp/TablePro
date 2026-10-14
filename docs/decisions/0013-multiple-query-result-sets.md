@@ -13,7 +13,7 @@ Keep `QueryResult` as the representation of one result set and add an ordered `Q
 
 The guard authorizes and audits the submitted SQL once, applies masking to every set, and records the total retained row count. The editor exposes sets as ordered result tabs within the statement. MCP keeps its existing first-set `columns` and `rows` fields and adds `additional_result_sets`; JSON export returns every set, while CSV export refuses a multi-set result rather than silently dropping data.
 
-Drivers must drain the full response and surface late server errors. A query that fails after producing an earlier set returns an error with no partial batch. Cancellation and timeout keep the existing server-side cancellation contract. Reaching a batch budget marks the batch truncated but still drains the response so the connection is reusable and late errors remain visible.
+Drivers must drain the full response and surface late server errors. A query that fails after producing an earlier set returns an error with no partial batch. Cancellation and timeout keep each driver's existing contract, including SQL Server's unknown outcome and connection retirement; see [ADR 0005](0005-server-side-cancellation.md). Reaching a batch budget marks the batch truncated but still drains the response so the connection is reusable and late errors remain visible.
 
 ## Consequences
 
