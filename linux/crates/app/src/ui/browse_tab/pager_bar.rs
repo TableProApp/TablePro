@@ -1,0 +1,296 @@
+use std::sync::OnceLock;
+
+use glib::subclass::Signal;
+use gtk4 as gtk;
+use gtk4::glib;
+use gtk4::prelude::*;
+use gtk4::subclass::prelude::*;
+use libadwaita as adw;
+
+use super::browse_pager::BrowsePager;
+use super::page_label::page_range_label;
+use super::page_state::PageState;
+use super::row_total::RowTotal;
+use crate::i18n::gettext;
+use crate::ui::a11y::describe_icon_button;
+
+/// What a click in the bar asks the tab for, one signal each.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PagerRequest {
+    First,
+    Previous,
+    Next,
+    Last,
+    CountRows,
+}
+
+impl PagerRequest {
+    const ALL: [Self; 5] = [Self::First, Self::Previous, Self::Next, Self::Last, Self::CountRows];
+
+    fn signal(self) -> &'static str {
+        match self {
+            Self::First => "first",
+            Self::Previous => "previous",
+            Self::Next => "next",
+            Self::Last => "last",
+            Self::CountRows => "count-rows",
+        }
+    }
+}
+
+mod imp {
+    use super::*;
+
+    #[derive(Default, gtk::CompositeTemplate)]
+    #[template(resource = "/app/tablepro/TablePro/ui/pager-bar.ui")]
+    pub struct PagerBar {
+        #[template_child]
+        pub first_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub prev_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub next_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub last_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub paginator_label: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub count_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub count_spinner: TemplateChild<adw::Spinner>,
+        #[template_child]
+        pub count_label: TemplateChild<gtk::Label>,
+    }
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for PagerBar {
+        const NAME: &'static str = "TableProPagerBar";
+        type Type = super::PagerBar;
+        type ParentType = gtk::Box;
+
+        fn class_init(klass: &mut Self::Class) {
+            klass.bind_template();
+        }
+
+        fn instance_init(object: &glib::subclass::InitializingObject<Self>) {
+            object.init_template();
+        }
+    }
+
+    impl ObjectImpl for PagerBar {
+        fn constructed(&self) {
+            self.parent_constructed();
+            let bar = self.obj();
+            bar.describe_buttons();
+            bar.connect_buttons();
+        }
+
+        fn signals() -> &'static [Signal] {
+            static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
+            SIGNALS.get_or_init(|| {
+                PagerRequest::ALL
+                    .into_iter()
+                    .map(|request| Signal::builder(request.signal()).build())
+                    .collect()
+            })
+        }
+    }
+
+    impl WidgetImpl for PagerBar {}
+    impl BoxImpl for PagerBar {}
+}
+
+glib::wrapper! {
+    /// The browse tab's pager: First, Previous, Next and Last, the rows
+    /// on the page, and Count Rows. It shows what the tab tells it and
+    /// sends each click back as a signal.
+    pub struct PagerBar(ObjectSubclass<imp::PagerBar>)
+        @extends gtk::Box, gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Orientable;
+}
+
+impl Default for PagerBar {
+    fn default() -> Self {
+        glib::Object::new()
+    }
+}
+
+impl PagerBar {
+    pub(super) fn connect_request<F: Fn(&Self) + 'static>(&self, request: PagerRequest, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(request.signal(), false, glib::closure_local!(move |bar: &Self| f(bar)))
+    }
+
+    /// A page turn moves the pager before its read lands, so a failed
+    /// read leaves the pager on a page the grid does not show. The way
+    /// back goes from the pager, and Next waits for a page on screen.
+    pub(super) fn show_position(&self, pager: &BrowsePager, rows_on_page: u64) {
+        let imp = self.imp();
+        imp.first_button.set_sensitive(pager.first().is_some());
+        imp.prev_button.set_sensitive(pager.prev().is_some());
+        imp.next_button.set_sensitive(pager.next(rows_on_page).is_some());
+    }
+
+    /// The rows on the page, Count Rows and Last, which only an exact
+    /// total enables.
+    pub(super) fn show_total(&self, pager: &BrowsePager, shown: Option<&PageState>, total: &RowTotal) {
+        let imp = self.imp();
+        let label = shown
+            .map(|page| page_range_label(page.start_ordinal, page.row_count, total))
+            .unwrap_or_default();
+        imp.paginator_label.set_label(&label);
+        imp.last_button.set_sensitive(pager.last(total).is_some());
+        let last_tooltip = match total.exact() {
+            Some(_) => gettext("Last Page"),
+            None => gettext("Count rows to go to the last page"),
+        };
+        imp.last_button.set_tooltip_text(Some(&last_tooltip));
+
+        let counting = matches!(total, RowTotal::Counting { .. });
+        imp.count_button.set_visible(shown.is_some() && total.exact().is_none());
+        imp.count_button.set_sensitive(!counting);
+        imp.count_spinner.set_visible(counting);
+        let (label, tooltip) = match total {
+            RowTotal::Counting { .. } => (gettext("Counting…"), None),
+            RowTotal::Unavailable { reason, .. } => (gettext("Try Again"), Some(reason.as_str())),
+            RowTotal::Unknown | RowTotal::Estimated(_) | RowTotal::Exact(_) => (gettext("Count Rows"), None),
+        };
+        imp.count_label.set_label(&label);
+        imp.count_button.set_tooltip_text(tooltip);
+    }
+
+    /// Previous and Next carry the keys of the tab's actions for them,
+    /// which follow these buttons.
+    fn describe_buttons(&self) {
+        let imp = self.imp();
+        for (button, label, action) in [
+            (&imp.first_button, gettext("First Page"), None),
+            (&imp.prev_button, gettext("Previous Page"), Some("browse.previous-page")),
+            (&imp.next_button, gettext("Next Page"), Some("browse.next-page")),
+            (&imp.last_button, gettext("Last Page"), None),
+        ] {
+            describe_icon_button(&button.get(), &label, action);
+        }
+    }
+
+    fn connect_buttons(&self) {
+        let imp = self.imp();
+        for (button, request) in [
+            (&imp.first_button, PagerRequest::First),
+            (&imp.prev_button, PagerRequest::Previous),
+            (&imp.next_button, PagerRequest::Next),
+            (&imp.last_button, PagerRequest::Last),
+            (&imp.count_button, PagerRequest::CountRows),
+        ] {
+            let bar = self.downgrade();
+            button.connect_clicked(move |_| {
+                if let Some(bar) = bar.upgrade() {
+                    bar.emit_by_name::<()>(request.signal(), &[]);
+                }
+            });
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::test_support::SignalLog;
+
+    fn bar() -> PagerBar {
+        libadwaita::init().expect("libadwaita initialises under the test backend");
+        crate::register_test_resources();
+        PagerBar::default()
+    }
+
+    fn page(start_ordinal: u64, row_count: usize) -> PageState {
+        PageState {
+            result_columns: Arc::from([]),
+            row_count,
+            start_ordinal,
+        }
+    }
+
+    #[gtk4::test]
+    fn first_and_previous_insensitive_at_start() {
+        let bar = bar();
+        let imp = bar.imp();
+
+        bar.show_position(&BrowsePager::new(100, 0), 100);
+
+        assert!(!imp.first_button.is_sensitive());
+        assert!(!imp.prev_button.is_sensitive());
+        assert!(imp.next_button.is_sensitive(), "a full page has a next one");
+
+        bar.show_position(&BrowsePager::new(100, 200), 40);
+
+        assert!(imp.first_button.is_sensitive());
+        assert!(imp.prev_button.is_sensitive());
+        assert!(!imp.next_button.is_sensitive(), "a short page was the last one");
+    }
+
+    #[gtk4::test]
+    fn next_click_emits_next() {
+        let bar = bar();
+        let next = SignalLog::connect(&bar, "next", |_| ());
+        let previous = SignalLog::connect(&bar, "previous", |_| ());
+        bar.show_position(&BrowsePager::new(100, 0), 100);
+
+        bar.imp().next_button.emit_clicked();
+
+        assert_eq!(next.count(), 1);
+        assert_eq!(previous.count(), 0);
+    }
+
+    #[gtk4::test]
+    fn last_insensitive_until_total_is_exact() {
+        let bar = bar();
+        let last = bar.imp().last_button.get();
+        let pager = BrowsePager::new(100, 0);
+        let shown = page(0, 100);
+
+        bar.show_total(&pager, Some(&shown), &RowTotal::Estimated(5_000));
+
+        assert!(!last.is_sensitive());
+        assert_eq!(
+            last.tooltip_text().as_deref(),
+            Some("Count rows to go to the last page")
+        );
+
+        bar.show_total(&pager, Some(&shown), &RowTotal::Exact(5_000));
+
+        assert!(last.is_sensitive());
+        assert_eq!(last.tooltip_text().as_deref(), Some("Last Page"));
+        assert!(!bar.imp().count_button.is_visible(), "an exact total offers no count");
+    }
+
+    #[gtk4::test]
+    fn count_rows_click_emits_count_rows() {
+        let bar = bar();
+        let counts = SignalLog::connect(&bar, "count-rows", |_| ());
+        bar.show_total(&BrowsePager::new(100, 0), Some(&page(0, 100)), &RowTotal::Unknown);
+        let imp = bar.imp();
+        assert!(imp.count_button.is_visible() && imp.count_button.is_sensitive());
+        assert_eq!(imp.count_label.label(), "Count Rows");
+
+        imp.count_button.emit_clicked();
+
+        assert_eq!(counts.count(), 1);
+    }
+
+    #[gtk4::test]
+    fn the_range_label_waits_for_a_page_on_screen() {
+        let bar = bar();
+        let pager = BrowsePager::new(100, 0);
+
+        bar.show_total(&pager, None, &RowTotal::Exact(5));
+
+        assert_eq!(bar.imp().paginator_label.label(), "");
+        assert!(!bar.imp().count_button.is_visible());
+
+        bar.show_total(&pager, Some(&page(0, 5)), &RowTotal::Exact(5));
+
+        assert_eq!(bar.imp().paginator_label.label(), "Rows 1 – 5 of 5");
+    }
+}

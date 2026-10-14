@@ -1,5 +1,3 @@
-use crate::ui::format::format_thousands;
-
 /// What the tab knows of how many rows the table has under its filter.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) enum RowTotal {
@@ -21,11 +19,7 @@ pub(crate) enum RowTotal {
 
 impl RowTotal {
     /// "Rows 1 – 1,000 of 5,000", "of about 5,000,000", or no total.
-    pub(crate) fn paginator_label(&self, start: u64, end: u64) -> String {
-        self.label_with(start, end, format_thousands)
-    }
-
-    fn label_with(&self, start: u64, end: u64, format: impl Fn(u64) -> String) -> String {
+    pub(super) fn label_with(&self, start: u64, end: u64, format: impl Fn(u64) -> String) -> String {
         let (start, end) = (format(start), format(end));
         match self {
             Self::Exact(total) => crate::i18n::gettext_f(

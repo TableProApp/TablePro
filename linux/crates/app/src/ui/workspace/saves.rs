@@ -7,7 +7,7 @@ use tablepro_core::WriteKind;
 
 use super::{WorkspaceInput, WorkspaceModel};
 use crate::runtime::DeliverInput;
-use crate::ui::browse_tab::BrowseTabInput;
+use crate::ui::browse_tab;
 use crate::ui::structure_tab::StructureTabInput;
 use crate::workspace::{
     CloseScope, DirtyTab, SaveOutcome, SaveSettled, SaveStart, WorkKind, WorkOutcome, WorkspaceEvent,
@@ -44,15 +44,15 @@ impl WorkspaceModel {
     pub(super) fn on_workspace_event(&mut self, event: WorkspaceEvent) {
         match event {
             WorkspaceEvent::SaveStarted { tab } => {
-                self.dispatch_to_tab(tab, BrowseTabInput::SaveStarted);
+                self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveStarted);
                 self.send_to_structure_tab(tab, StructureTabInput::SaveStarted);
             }
             WorkspaceEvent::SaveSettled { settled, in_prompt } => self.on_save_settled(*settled, in_prompt),
             WorkspaceEvent::Discarded { tabs, reload } => {
                 for tab in tabs {
                     let browse = match reload {
-                        true => BrowseTabInput::DiscardAndRefresh,
-                        false => BrowseTabInput::DiscardAll,
+                        true => browse_tab::SaveInput::DiscardAndRefresh,
+                        false => browse_tab::SaveInput::DiscardAll,
                     };
                     self.dispatch_to_tab(tab, browse);
                     let structure = match reload {
@@ -96,19 +96,19 @@ impl WorkspaceModel {
                     .timeout(4)
                     .build();
                 self.toast_overlay.add_toast(toast);
-                self.dispatch_to_tab(tab, BrowseTabInput::SaveCommitted(origins));
+                self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveCommitted(origins));
             }
             (WriteKind::RowChanges, SaveOutcome::RolledBack(cause)) => {
                 // The row behind the failing step is flashed before the
                 // error shows, so the user sees which one it was.
                 if let Some(source) = failing {
-                    self.dispatch_to_tab(tab, BrowseTabInput::FlashErrorRow(source));
+                    self.dispatch_to_tab(tab, browse_tab::SaveInput::FlashErrorRow(source));
                 }
-                self.dispatch_to_tab(tab, BrowseTabInput::SaveFailed(cause.message()));
+                self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveFailed(cause.message()));
             }
             (WriteKind::RowChanges, SaveOutcome::Unknown(cause)) => {
                 let message = cause.sentence(&self.tab_name(tab));
-                self.dispatch_to_tab(tab, BrowseTabInput::SaveOutcomeUnknown(message));
+                self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveOutcomeUnknown(message));
             }
             (WriteKind::SchemaChanges, SaveOutcome::Committed { .. }) => {
                 self.on_structure_save_completed(tab, saved_table_name);

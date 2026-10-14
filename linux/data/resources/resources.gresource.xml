@@ -19,6 +19,8 @@
     <file compressed="true" preprocess="xml-stripblanks">ui/find-bar.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/history-dialog.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/history-row.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/pager-bar.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/pending-changes-bar.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/picker-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-data-browser-group.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-dialog.ui</file>

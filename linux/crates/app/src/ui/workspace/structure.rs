@@ -298,7 +298,7 @@ impl WorkspaceModel {
                 })
                 .unzip();
             for browse in browse_tabs.into_iter().flatten() {
-                browse.send(crate::ui::browse_tab::BrowseTabInput::SchemaChanged);
+                browse.send(crate::ui::browse_tab::DataInput::SchemaChanged);
             }
             for structure in structure_tabs.into_iter().flatten() {
                 structure.send(StructureTabInput::SchemaChanged);
