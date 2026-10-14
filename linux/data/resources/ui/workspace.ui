@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProWorkspace" parent="AdwBreakpointBin">
+    <!-- A breakpoint bin needs a minimum size to measure against. -->
+    <property name="width-request">360</property>
+    <property name="height-request">294</property>
+    <child>
+      <object class="AdwBreakpoint">
+        <condition>max-width: 600sp</condition>
+        <setter object="split_view" property="collapsed">true</setter>
+      </object>
+    </child>
+    <property name="child">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="AdwHeaderBar">
+            <property name="title-widget">
+              <object class="AdwWindowTitle" id="window_title">
+                <property name="title" translatable="yes">TablePro</property>
+              </object>
+            </property>
+            <child type="end">
+              <object class="GtkMenuButton" id="primary_menu_button">
+                <property name="icon-name">open-menu-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Main menu</property>
+                <property name="primary">true</property>
+                <property name="menu-model">primary_menu</property>
+                <accessibility>
+                  <property name="label" translatable="yes">Main menu</property>
+                </accessibility>
+              </object>
+            </child>
+            <child type="end">
+              <object class="AdwSpinner" id="row_op_spinner">
+                <property name="visible">false</property>
+                <property name="margin-end">6</property>
+                <property name="tooltip-text" translatable="yes">Saving…</property>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkLabel" id="read_only_badge">
+                <property name="visible">false</property>
+                <property name="label" translatable="yes">Read-only</property>
+                <property name="margin-end">6</property>
+                <style>
+                  <class name="warning"/>
+                  <class name="caption-heading"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+        <property name="content">
+          <object class="AdwOverlaySplitView" id="split_view">
+            <property name="min-sidebar-width">220</property>
+            <property name="max-sidebar-width">280</property>
+            <property name="sidebar">
+              <!-- The sidebar has its own header bar for the search
+                   toggle, as GNOME Files does; the window buttons are
+                   on the main one. -->
+              <object class="AdwToolbarView" id="sidebar_root">
+                <child type="top">
+                  <object class="AdwHeaderBar">
+                    <property name="show-start-title-buttons">false</property>
+                    <property name="show-end-title-buttons">false</property>
+                    <property name="title-widget">
+                      <object class="AdwWindowTitle" id="sidebar_title">
+                        <property name="title" translatable="yes">Tables</property>
+                      </object>
+                    </property>
+                    <child type="end">
+                      <object class="GtkToggleButton" id="table_search_toggle">
+                        <property name="icon-name">system-search-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Search tables</property>
+                        <accessibility>
+                          <property name="label" translatable="yes">Search tables</property>
+                        </accessibility>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <property name="content">
+                  <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <child>
+                      <object class="GtkSearchBar" id="table_search_bar">
+                        <property name="show-close-button">true</property>
+                        <property name="child">
+                          <object class="GtkSearchEntry" id="table_search">
+                            <property name="placeholder-text" translatable="yes">Filter tables…</property>
+                            <property name="hexpand">true</property>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkScrolledWindow" id="sidebar_scroll">
+                        <property name="hscrollbar-policy">never</property>
+                        <property name="vexpand">true</property>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </property>
+            <property name="content">
+              <object class="AdwToastOverlay" id="toast_overlay">
+                <property name="child">
+                  <object class="AdwToolbarView">
+                    <child type="top">
+                      <object class="AdwBanner" id="reconnect_banner">
+                        <property name="use-markup">false</property>
+                        <property name="button-label" translatable="yes">Retry</property>
+                        <property name="action-name">win.reconnect</property>
+                      </object>
+                    </child>
+                    <property name="content">
+                      <!-- "Select a table" until a tab is open, then the
+                           tab overview the workspace builds. -->
+                      <object class="GtkStack" id="workspace_outer_stack">
+                        <property name="transition-type">crossfade</property>
+                        <child>
+                          <object class="GtkStackPage">
+                            <property name="name">empty</property>
+                            <property name="child">
+                              <object class="AdwStatusPage">
+                                <property name="icon-name">view-grid-symbolic</property>
+                                <property name="title" translatable="yes">Select a table</property>
+                                <property name="description" translatable="yes">Pick a table from the sidebar, or use the button below (Ctrl+T).</property>
+                                <property name="child">
+                                  <!-- Without it the only way out of the empty
+                                       state was a shortcut: the tab bar is
+                                       hidden here. -->
+                                  <object class="GtkButton">
+                                    <property name="label" translatable="yes">Open SQL editor</property>
+                                    <property name="action-name">win.open-editor</property>
+                                    <property name="halign">center</property>
+                                    <style>
+                                      <class name="suggested-action"/>
+                                      <class name="pill"/>
+                                    </style>
+                                  </object>
+                                </property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </property>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+  <menu id="primary_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">New Window</attribute>
+        <attribute name="action">app.new-window</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Disconnect</attribute>
+        <attribute name="action">win.disconnect</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Query History</attribute>
+        <attribute name="action">win.show-history</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Saved Queries</attribute>
+        <attribute name="action">win.show-saved-queries</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Import Connections…</attribute>
+        <attribute name="action">win.import-connections</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Export Connections…</attribute>
+        <attribute name="action">win.export-connections</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Preferences</attribute>
+        <attribute name="action">app.preferences</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Keyboard Shortcuts</attribute>
+        <attribute name="action">app.shortcuts</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">About TablePro</attribute>
+        <attribute name="action">app.about</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Quit</attribute>
+        <attribute name="action">app.quit</attribute>
+      </item>
+    </section>
+  </menu>
+</interface>

@@ -9,7 +9,7 @@ use tablepro_session::connect::ConnectionWrites;
 use tablepro_session::{
     ConnectError, ConnectRequest, Connector, CredentialSource, PendingSave, PendingSession, PersistReport,
 };
-use tablepro_storage::{CredentialDemand, KeyringCredentials, SavedConnection, StorageError};
+use tablepro_storage::{CredentialDemand, SavedConnection, StorageError};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -75,7 +75,7 @@ async fn unsave(secrets: &dyn SecretVault, writes: &dyn ConnectionWrites, id: Uu
 pub(super) async fn connect_saved(
     saved: &SavedConnection,
     drivers: &DriverRegistry,
-    credentials: &KeyringCredentials,
+    credentials: &dyn CredentialSource,
     connector: &dyn Connector,
     interaction: CredentialInteraction,
     cancel: CancellationToken,
@@ -99,6 +99,18 @@ pub(super) async fn connect_saved(
     let pending = unless_cancelled(pending, &cancel).await?;
     let refused = credentials.remember(refreshed.remember).await;
     Ok((pending, refused))
+}
+
+/// Connect to a request that carries every secret it needs, such as a
+/// file nobody saved.
+pub(super) async fn connect_request(
+    connector: &dyn Connector,
+    request: ConnectRequest,
+    interaction: CredentialInteraction,
+    cancel: CancellationToken,
+) -> Result<PendingSession, ConnectError> {
+    let pending = connector.establish(request, interaction, cancel.clone()).await?;
+    unless_cancelled(pending, &cancel).await
 }
 
 /// A driver blocked in a C call can still connect after the user
@@ -126,7 +138,7 @@ mod tests {
     use tablepro_core::{AuthMode, TlsConfig};
     use tablepro_session::connect::StoreConnectionWrites;
     use tablepro_session::fakes::{FakeConnector, FakeEstablish};
-    use tablepro_storage::{ConnectionStore, StoragePaths};
+    use tablepro_storage::{ConnectionStore, KeyringCredentials, StoragePaths};
     use tablepro_test_support::{ConnectionScript, FakeDriver, FakeSecretVault};
 
     use super::*;

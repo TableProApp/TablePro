@@ -5,4 +5,6 @@ use tablepro_storage::SavedConnection;
 pub enum WindowLaunch {
     Picker,
     Connect(Box<SavedConnection>),
+    /// A database file, from the file manager or the command line.
+    OpenFile(gio::File),
 }

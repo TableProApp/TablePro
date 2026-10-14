@@ -165,8 +165,10 @@ impl ObjectImpl for BrowseTab {
         SIGNALS.get_or_init(|| {
             vec![
                 Signal::builder("state-changed").build(),
+                // Boxed: a GValue string ends at a NUL, and a copied cell
+                // can hold one.
                 Signal::builder("copy-to-clipboard")
-                    .param_types([String::static_type()])
+                    .param_types([glib::BoxedAnyObject::static_type()])
                     .build(),
                 Signal::builder("export-results")
                     .param_types([glib::BoxedAnyObject::static_type()])

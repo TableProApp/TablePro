@@ -325,7 +325,9 @@ impl BrowseTab {
         self.connect_closure(
             "copy-to-clipboard",
             false,
-            glib::closure_local!(move |tab: &Self, text: String| f(tab, text)),
+            glib::closure_local!(move |tab: &Self, text: glib::BoxedAnyObject| {
+                f(tab, text.borrow::<String>().clone());
+            }),
         )
     }
 
@@ -381,7 +383,9 @@ impl BrowseTab {
     fn emit_output(&self, output: BrowseTabOutput) {
         match output {
             BrowseTabOutput::StateChanged => self.emit_by_name::<()>("state-changed", &[]),
-            BrowseTabOutput::CopyToClipboard(text) => self.emit_by_name::<()>("copy-to-clipboard", &[&text]),
+            BrowseTabOutput::CopyToClipboard(text) => {
+                self.emit_by_name::<()>("copy-to-clipboard", &[&glib::BoxedAnyObject::new(text)]);
+            }
             BrowseTabOutput::ExportResults(request) => {
                 self.emit_by_name::<()>("export-results", &[&glib::BoxedAnyObject::new(request)]);
             }

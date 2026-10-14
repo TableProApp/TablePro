@@ -1,17 +1,16 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::sync::Arc;
 
-use relm4::adw::prelude::*;
-use relm4::gtk::{gio, glib};
-use relm4::{ComponentSender, adw, gtk};
+use gtk4 as gtk;
+use gtk4::{gio, glib};
+use libadwaita as adw;
+use libadwaita::prelude::*;
 
 use tablepro_session::SessionKey;
 use tablepro_storage::{DraftId, DraftScope};
 use uuid::Uuid;
 
-use crate::services::from_session::FromSession;
 use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput, ExportRequest};
 use crate::ui::editor::{SqlEditor, SqlEditorInit, derive_tab_label};
 use crate::ui::structure_tab::{StructureMode, StructureTab, StructureTabInit};
@@ -21,20 +20,20 @@ use crate::workspace::{
 
 use super::workspace_persistence::reopen;
 use super::{
-    App, AppMsg, CLOSED_TABS_CAPACITY, ClosedTabDescriptor, EditorTabSlot, OpenMode, WorkspaceTab,
-    read_workspace_tab_id, write_workspace_tab_id,
+    CLOSED_TABS_CAPACITY, ClosedTabDescriptor, EditorTabSlot, OpenMode, WorkspaceInput, WorkspaceModel,
+    WorkspaceSender, WorkspaceTab, read_workspace_tab_id, write_workspace_tab_id,
 };
 use crate::runtime::DeliverInput;
 
-impl App {
+impl WorkspaceModel {
     /// Builds the unified AdwTabOverview tree once per connection.
     /// Idempotent via `workspace_root_added`.
-    pub(super) fn ensure_workspace_root(&mut self, sender: ComponentSender<Self>) {
+    pub(super) fn ensure_workspace_root(&mut self) {
         if self.workspace_root_added.get() {
             return;
         }
         if self.workspace_root.is_none() {
-            self.build_workspace_root(sender);
+            self.build_workspace_root();
         }
         if let Some(root) = self.workspace_root.as_ref()
             && self.workspace_outer_stack.child_by_name("tabs").is_none()
@@ -44,7 +43,7 @@ impl App {
         self.workspace_root_added.set(true);
     }
 
-    fn build_workspace_root(&mut self, sender: ComponentSender<Self>) {
+    fn build_workspace_root(&mut self) {
         let settings = self.settings.clone();
         let history = self.history.store();
         let tasks = self.tasks.clone();
@@ -63,10 +62,10 @@ impl App {
         let create_tab = overview_editor_tab(
             self.workspace_tabs.clone(),
             editor_init,
-            sender.input_sender().clone(),
+            self.input.clone(),
             self.toast_overlay.downgrade(),
         );
-        let chrome = build_workspace_chrome(sender.input_sender(), create_tab);
+        let chrome = build_workspace_chrome(&self.input, create_tab);
         self.window_tabs.set_view(Some(&chrome.view));
         self.workspace_root = Some(chrome.overview);
         self.workspace_tab_view = Some(chrome.view);
@@ -74,11 +73,8 @@ impl App {
 
     /// Read the saved tabs of the session just adopted, and the editor
     /// text that goes with them, off the GTK thread.
-    pub(super) fn restore_workspace_tabs(&mut self, key: SessionKey, sender: ComponentSender<Self>) {
-        let Some(session) = self.context.active.get() else {
-            return;
-        };
-        let origin = Arc::downgrade(&session);
+    pub(super) fn restore_workspace_tabs(&mut self, key: SessionKey) {
+        let input = self.input.clone();
         let loading = self.storage.workspaces().load(&key);
         let store = self.drafts.store().clone();
         let scope = WorkspaceFileName::for_key(&key).draft_scope();
@@ -91,10 +87,7 @@ impl App {
             };
             let reading = tasks.spawn_blocking_task(move || RestoredDrafts::read_blocking(&store, &scope, referenced));
             let drafts = reading.await.unwrap_or_default();
-            sender.deliver(AppMsg::WorkspaceLoaded(FromSession::new(
-                origin,
-                LoadedWorkspace { key, load, drafts },
-            )));
+            input.deliver(WorkspaceInput::WorkspaceLoaded(LoadedWorkspace { key, load, drafts }));
         });
     }
 
@@ -102,14 +95,14 @@ impl App {
     ///
     /// Nothing is written for the session before this: a write would
     /// replace the saved tabs before they were read.
-    pub(super) fn on_workspace_loaded(&mut self, loaded: LoadedWorkspace, sender: ComponentSender<Self>) {
+    pub(super) fn on_workspace_loaded(&mut self, loaded: LoadedWorkspace) {
         let LoadedWorkspace { key, load, drafts } = loaded;
         let RestoredDrafts { mut texts, unreadable } = drafts;
         match load {
             WorkspaceLoad::Restored(record) => {
                 self.retain_drafts(&key, saved_drafts(&record));
                 if let Some(view) = self.workspace_tab_view.clone() {
-                    reopen(&view, record, |tab| self.reopen_tab(tab, &mut texts, sender.clone()));
+                    reopen(&view, record, |tab| self.reopen_tab(tab, &mut texts));
                 }
             }
             WorkspaceLoad::Empty => self.retain_drafts(&key, std::iter::empty()),
@@ -149,12 +142,7 @@ impl App {
         self.drafts.retain(&scope, keep);
     }
 
-    fn reopen_tab(
-        &mut self,
-        tab: TabRecord,
-        drafts: &mut HashMap<DraftId, String>,
-        sender: ComponentSender<Self>,
-    ) -> Option<adw::TabPage> {
+    fn reopen_tab(&mut self, tab: TabRecord, drafts: &mut HashMap<DraftId, String>) -> Option<adw::TabPage> {
         match tab {
             TabRecord::Table {
                 schema,
@@ -168,16 +156,14 @@ impl App {
                 offset,
                 page_size,
                 sort.map(|sort| (sort.column, sort.ascending)),
-                sender,
             ),
-            TabRecord::Structure { schema, table } => self.append_existing_structure_tab(schema, table, sender),
+            TabRecord::Structure { schema, table } => self.append_existing_structure_tab(schema, table),
             // Its text is on disk already, or there is none to keep, so
             // nothing is written until the user types.
             TabRecord::Editor { draft } => self.append_editor_tab_with_draft(
                 Some(drafts.remove(&draft).unwrap_or_default()),
                 draft,
                 DraftWrite::OnChange,
-                sender,
             ),
         }
     }
@@ -193,15 +179,12 @@ impl App {
 
     /// Move the unreadable saved tabs aside, so the open ones can be
     /// saved in their place.
-    pub(super) fn on_reset_workspace_layout(&self, sender: ComponentSender<Self>) {
-        let (Some(key), Some(session)) = (self.session_key().cloned(), self.context.active.get()) else {
-            return;
-        };
-        let origin = Arc::downgrade(&session);
-        let resetting = self.storage.workspaces().reset(&key);
+    pub(super) fn on_reset_workspace_layout(&self) {
+        let resetting = self.storage.workspaces().reset(&self.key);
+        let input = self.input.clone();
         glib::spawn_future_local(async move {
             let outcome = resetting.await;
-            sender.deliver(AppMsg::WorkspaceLayoutReset(FromSession::new(origin, outcome)));
+            input.deliver(WorkspaceInput::WorkspaceLayoutReset(outcome));
         });
     }
 
@@ -224,8 +207,8 @@ impl App {
     /// flow. Edit-mode is no longer reachable through this helper;
     /// use `append_table_tab` for the unified Browse + Structure
     /// view of an existing table.
-    pub(super) fn append_new_structure_tab(&mut self, schema: Option<String>, sender: ComponentSender<Self>) {
-        self.ensure_workspace_root(sender.clone());
+    pub(super) fn append_new_structure_tab(&mut self, schema: Option<String>) {
+        self.ensure_workspace_root();
         let Some(tab_view) = self.workspace_tab_view.clone() else {
             return;
         };
@@ -241,7 +224,7 @@ impl App {
             session,
             tasks: self.context.tasks.clone(),
         });
-        connect_structure(&structure, tab_id, sender.input_sender());
+        connect_structure(&structure, tab_id, &self.input);
 
         let page = tab_view.append(&structure);
         page.set_title(&crate::i18n::gettext("New Table"));
@@ -280,9 +263,8 @@ impl App {
         offset: u64,
         page_size: u64,
         sort: Option<(usize, bool)>,
-        sender: ComponentSender<Self>,
     ) -> Option<adw::TabPage> {
-        self.ensure_workspace_root(sender.clone());
+        self.ensure_workspace_root();
         let tab_view = self.workspace_tab_view.clone()?;
         let tab_id = Uuid::new_v4();
         let connection_id = self.context.active.metadata().map(|metadata| metadata.id);
@@ -302,7 +284,7 @@ impl App {
             session,
             tasks: self.context.tasks.clone(),
         });
-        connect_browse(&browse, tab_id, sender.input_sender());
+        connect_browse(&browse, tab_id, &self.input);
 
         let page = tab_view.append(&browse);
         let label = qualified_browse_tab_label(self.sidebar_schemas_distinct(), schema.as_deref(), &table);
@@ -338,9 +320,8 @@ impl App {
         &mut self,
         schema: Option<String>,
         table: String,
-        sender: ComponentSender<Self>,
     ) -> Option<adw::TabPage> {
-        self.ensure_workspace_root(sender.clone());
+        self.ensure_workspace_root();
         let tab_view = self.workspace_tab_view.clone()?;
         let tab_id = Uuid::new_v4();
         let session = self.context.active.get()?;
@@ -353,7 +334,7 @@ impl App {
             session,
             tasks: self.context.tasks.clone(),
         });
-        connect_structure(&structure, tab_id, sender.input_sender());
+        connect_structure(&structure, tab_id, &self.input);
 
         let page = tab_view.append(&structure);
         let title = qualified_browse_tab_label(self.sidebar_schemas_distinct(), schema.as_deref(), &table);
@@ -381,8 +362,8 @@ impl App {
     }
 
     /// Public entry: append an Editor tab with optional initial query.
-    pub(super) fn append_editor_tab(&mut self, initial_query: Option<String>, sender: ComponentSender<Self>) {
-        self.append_editor_tab_with_draft(initial_query, DraftId::new(), DraftWrite::Now, sender);
+    pub(super) fn append_editor_tab(&mut self, initial_query: Option<String>) {
+        self.append_editor_tab_with_draft(initial_query, DraftId::new(), DraftWrite::Now);
     }
 
     /// Append an Editor tab that writes to a given draft, so a restored
@@ -392,9 +373,8 @@ impl App {
         initial_query: Option<String>,
         draft: DraftId,
         write: DraftWrite,
-        sender: ComponentSender<Self>,
     ) -> Option<adw::TabPage> {
-        self.ensure_workspace_root(sender.clone());
+        self.ensure_workspace_root();
         let tab_view = self.workspace_tab_view.clone()?;
         let tab_id = Uuid::new_v4();
         // Such a tab shows the editor's sample query, which names nothing.
@@ -408,7 +388,7 @@ impl App {
             hold: self.context.hold.clone(),
             close_timeout: self.context.close_timeout(),
         });
-        connect_editor(&editor, tab_id, sender.input_sender(), &self.toast_overlay.downgrade());
+        connect_editor(&editor, tab_id, &self.input, &self.toast_overlay.downgrade());
         let page = tab_view.append(&editor);
         let preview = EditorPreview::read(&editor.buffer());
         let label = if opened_empty || preview.is_blank() {
@@ -444,9 +424,7 @@ impl App {
 
     /// The directory this session's editor drafts live in.
     fn draft_scope(&self) -> DraftScope {
-        self.session_key()
-            .map(|key| WorkspaceFileName::for_key(key).draft_scope())
-            .unwrap_or_default()
+        WorkspaceFileName::for_key(&self.key).draft_scope()
     }
 
     /// Tear down a tab without prompting. Internal helper called once
@@ -492,18 +470,24 @@ impl App {
         self.refresh_inhibitor();
     }
 
-    pub(super) fn close_active_workspace_tab(&mut self, sender: ComponentSender<Self>) {
-        let Some(tab_view) = self.workspace_tab_view.as_ref() else {
-            // No tabs at all (disconnected) → close window.
-            self.window.close();
-            return;
-        };
-        let Some(page) = tab_view.selected_page() else {
-            self.window.close();
-            return;
-        };
-        tab_view.close_page(&page);
-        let _ = sender;
+    /// With no tab open, Ctrl+W closes the window, as in GNOME Text
+    /// Editor.
+    pub(super) fn close_active_workspace_tab(&mut self) {
+        match self.workspace_tab_view.as_ref().and_then(adw::TabView::selected_page) {
+            Some(page) => {
+                if let Some(tab_view) = self.workspace_tab_view.as_ref() {
+                    tab_view.close_page(&page);
+                }
+            }
+            // The window's close asks this workspace what it would
+            // lose, which it cannot answer in the middle of handling
+            // this, so the close waits for the main loop.
+            None => {
+                if let Some(window) = self.window() {
+                    glib::idle_add_local_once(move || window.close());
+                }
+            }
+        }
     }
 
     /// Close every workspace tab except `keep_id`. Each close goes
@@ -511,7 +495,7 @@ impl App {
     /// trigger the unsaved-changes alert; the user can cancel the
     /// dialog and the tab stays open while the others continue
     /// closing in the background.
-    pub(super) fn close_other_workspace_tabs(&mut self, keep_id: Uuid, _sender: ComponentSender<Self>) {
+    pub(super) fn close_other_workspace_tabs(&mut self, keep_id: Uuid) {
         let Some(tab_view) = self.workspace_tab_view.clone() else {
             return;
         };
@@ -534,7 +518,7 @@ impl App {
     /// Close every workspace tab whose display position is greater
     /// than the targeted one. Useful for rapidly trimming a long
     /// session of throwaway tabs the user accumulated.
-    pub(super) fn close_workspace_tabs_to_right(&mut self, anchor_id: Uuid, _sender: ComponentSender<Self>) {
+    pub(super) fn close_workspace_tabs_to_right(&mut self, anchor_id: Uuid) {
         let Some(tab_view) = self.workspace_tab_view.clone() else {
             return;
         };
@@ -566,13 +550,7 @@ impl App {
 
     /// A sidebar click never replaces the active tab: AdwTabView's
     /// close animation overlapped the append and flashed both tabs.
-    pub(super) fn dispatch_select_table(
-        &mut self,
-        schema: Option<String>,
-        name: String,
-        open_mode: OpenMode,
-        sender: ComponentSender<Self>,
-    ) {
+    pub(super) fn dispatch_select_table(&mut self, schema: Option<String>, name: String, open_mode: OpenMode) {
         if matches!(open_mode, OpenMode::SwitchOrAppend) {
             // Multiple tabs may be open for the same (schema, table)
             // pair (Ctrl+click duplicates). Prefer the currently-
@@ -603,7 +581,7 @@ impl App {
         // for the same table opens as its own separate tab via the
         // sidebar right-click "Edit Structure" action.
         let page_size = u64::from(self.settings.default_page_size());
-        self.append_table_tab(schema, name, 0, page_size, None, sender);
+        self.append_table_tab(schema, name, 0, page_size, None);
     }
 
     /// Ctrl+F / Filter button: toggle the inline filter strip on the
@@ -656,7 +634,7 @@ impl App {
                 browse.send(BrowseTabInput::DiscardAndRefresh);
             }
         });
-        dialog.present(Some(&self.window));
+        dialog.present(self.window().as_ref());
     }
 
     /// Write the tab list a moment after the last change.
@@ -665,7 +643,7 @@ impl App {
     }
 }
 
-impl App {
+impl WorkspaceModel {
     /// Single handler for `WorkspaceTabsChanged`. Persists tab state,
     /// refreshes the window title (so tab switches update the subtitle),
     /// and syncs the sidebar selection to the active Browse tab's table.
@@ -758,13 +736,13 @@ impl App {
         self.refresh_window_title();
     }
 
-    pub(super) fn teardown_workspace_tabs(&mut self) {
-        self.flush_workspace_state();
-        self.cancel_all_editor_runs();
-        // The pending edits name rows of the connection going away, so
-        // they cannot be saved after it.
+    /// Stop every tab and let go of the tab view. The pending edits
+    /// name rows of the connection going away, so they cannot be saved
+    /// after it.
+    pub(super) fn close_tabs(&mut self) {
         for tab in self.workspace_tabs.borrow().values() {
             match tab {
+                WorkspaceTab::Editor(slot) => slot.editor.shutdown(),
                 WorkspaceTab::Structure(slot) => {
                     slot.structure.shutdown();
                     self.structure_trackers.unregister(slot.id);
@@ -773,54 +751,17 @@ impl App {
                     slot.browse.shutdown();
                     self.change_trackers.unregister(slot.id);
                 }
-                WorkspaceTab::Editor(_) => {}
             }
         }
         if let Some(root) = self.workspace_root.take()
-            && self.workspace_root_added.get()
+            && self.workspace_root_added.replace(false)
+            && self.workspace_outer_stack.child_by_name("tabs").is_some()
         {
-            if self.workspace_outer_stack.child_by_name("tabs").is_some() {
-                self.workspace_outer_stack.remove(&root);
-            }
-            self.workspace_root_added.set(false);
+            self.workspace_outer_stack.remove(&root);
         }
-        self.workspace_outer_stack.set_visible_child_name("empty");
         self.window_tabs.set_view(None);
         self.workspace_tab_view = None;
         self.workspace_tabs.borrow_mut().clear();
-        self.refresh_inhibitor();
-    }
-
-    /// Write the tabs and the editor text as they are now, before the
-    /// teardown frees them. The process is held until the writes land,
-    /// so quitting right after a disconnect does not lose them.
-    fn flush_workspace_state(&self) {
-        let tabs = self.workspace.detach();
-        let drafts = self.drafts.flush_all();
-        let writer = self.drafts.clone();
-        let hold = self.context.hold.acquire();
-        glib::spawn_future_local(async move {
-            for failure in drafts.await {
-                tracing::warn!(failure, "an editor draft was not saved");
-            }
-            writer.release_closed();
-            if let Some(tabs) = tabs
-                && let Err(error) = tabs.await
-            {
-                tracing::debug!(%error, "the open tabs were not saved");
-            }
-            drop(hold);
-        });
-    }
-
-    /// Stop every editor run and close each editor tab's connection,
-    /// for a disconnect that takes the tabs with it.
-    pub(super) fn cancel_all_editor_runs(&self) {
-        for tab in self.workspace_tabs.borrow().values() {
-            if let WorkspaceTab::Editor(s) = tab {
-                s.editor.shutdown();
-            }
-        }
     }
 
     /// Forward a per-tab Browse input to the right slot. Routes to the
@@ -867,14 +808,14 @@ impl App {
         }
     }
 
-    pub(super) fn on_replace_active_tab_query(&mut self, text: String, sender: ComponentSender<Self>) {
+    pub(super) fn on_replace_active_tab_query(&mut self, text: String) {
         if let Some(id) = self.selected_workspace_tab_id()
             && let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow().get(&id)
         {
             slot.editor.replace_query(&text);
             return;
         }
-        self.append_editor_tab(Some(text), sender);
+        self.append_editor_tab(Some(text));
     }
 
     /// The SQL in the editor tab the user is looking at, or `None`
@@ -906,7 +847,7 @@ struct WorkspaceChrome {
 /// Build the tab bar, view and overview. `create_tab` makes the page the
 /// overview's own new-tab button asks for, which it needs back at once.
 fn build_workspace_chrome(
-    input: &relm4::Sender<AppMsg>,
+    input: &WorkspaceSender,
     create_tab: impl Fn(&adw::TabView) -> adw::TabPage + 'static,
 ) -> WorkspaceChrome {
     let tab_view = adw::TabView::new();
@@ -941,14 +882,14 @@ fn build_workspace_chrome(
         .build();
     new_query_button.add_css_class("flat");
     let new_tab_input = input.clone();
-    new_query_button.connect_clicked(move |_| new_tab_input.emit(AppMsg::NewEditorTab));
+    new_query_button.connect_clicked(move |_| new_tab_input.deliver(WorkspaceInput::NewEditorTab));
     tab_bar.set_end_action_widget(Some(&new_query_button));
 
-    // A tab with unsaved work asks first, so the App finishes the close.
+    // A tab with unsaved work asks first, so the workspace finishes the close.
     let close_input = input.clone();
     tab_view.connect_close_page(move |_view, page| {
         if let Some(id) = read_workspace_tab_id(page) {
-            close_input.emit(AppMsg::WorkspaceTabClosed(id));
+            close_input.deliver(WorkspaceInput::WorkspaceTabClosed(id));
         }
         glib::Propagation::Stop
     });
@@ -969,7 +910,7 @@ fn build_workspace_chrome(
         if let Some(page) = target
             && let Some(id) = read_workspace_tab_id(&page)
         {
-            close_others_input.emit(AppMsg::CloseOtherWorkspaceTabs(id));
+            close_others_input.deliver(WorkspaceInput::CloseOtherWorkspaceTabs(id));
         }
     });
     action_group.add_action(&close_others_action);
@@ -981,7 +922,7 @@ fn build_workspace_chrome(
         if let Some(page) = target
             && let Some(id) = read_workspace_tab_id(&page)
         {
-            close_right_input.emit(AppMsg::CloseWorkspaceTabsToRight(id));
+            close_right_input.deliver(WorkspaceInput::CloseWorkspaceTabsToRight(id));
         }
     });
     action_group.add_action(&close_right_action);
@@ -1000,9 +941,9 @@ fn build_workspace_chrome(
 
     // A drag reorder changes only `pages`, and it has to persist too.
     let selected_input = input.clone();
-    tab_view.connect_selected_page_notify(move |_| selected_input.emit(AppMsg::WorkspaceTabsChanged));
+    tab_view.connect_selected_page_notify(move |_| selected_input.deliver(WorkspaceInput::WorkspaceTabsChanged));
     let pages_input = input.clone();
-    tab_view.connect_pages_notify(move |_| pages_input.emit(AppMsg::WorkspaceTabsChanged));
+    tab_view.connect_pages_notify(move |_| pages_input.deliver(WorkspaceInput::WorkspaceTabsChanged));
 
     let inner = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
     inner.append(&tab_bar);
@@ -1031,7 +972,7 @@ fn build_workspace_chrome(
 fn overview_editor_tab(
     workspace_tabs: Rc<RefCell<HashMap<Uuid, WorkspaceTab>>>,
     editor_init: impl Fn() -> SqlEditorInit + 'static,
-    input: relm4::Sender<AppMsg>,
+    input: WorkspaceSender,
     toasts: glib::WeakRef<adw::ToastOverlay>,
 ) -> impl Fn(&adw::TabView) -> adw::TabPage + 'static {
     move |tab_view| {
@@ -1052,7 +993,7 @@ fn overview_editor_tab(
             draft: DraftId::new(),
         };
         workspace_tabs.borrow_mut().insert(tab_id, WorkspaceTab::Editor(slot));
-        input.emit(AppMsg::WorkspaceTabsChanged);
+        input.deliver(WorkspaceInput::WorkspaceTabsChanged);
         page
     }
 }
@@ -1115,11 +1056,8 @@ fn push_closed_tab(
     q.push_back(descriptor);
 }
 
-impl App {
-    pub(super) fn on_reopen_closed_tab(&mut self, sender: ComponentSender<Self>) {
-        if !self.connected {
-            return;
-        }
+impl WorkspaceModel {
+    pub(super) fn on_reopen_closed_tab(&mut self) {
         let descriptor = self.closed_tabs_stack.borrow_mut().pop_back();
         let Some(descriptor) = descriptor else {
             // Without a toast the shortcut would read as broken.
@@ -1129,7 +1067,7 @@ impl App {
         match descriptor {
             ClosedTabDescriptor::Editor { query } => {
                 let initial = if query.is_empty() { None } else { Some(query) };
-                self.append_editor_tab(initial, sender);
+                self.append_editor_tab(initial);
             }
             ClosedTabDescriptor::Table {
                 schema,
@@ -1138,16 +1076,12 @@ impl App {
                 page_size,
                 sort,
             } => {
-                self.append_table_tab(schema, table, offset, page_size, sort, sender);
+                self.append_table_tab(schema, table, offset, page_size, sort);
             }
             ClosedTabDescriptor::Structure { schema, table } => {
-                self.append_existing_structure_tab(schema, table, sender);
+                self.append_existing_structure_tab(schema, table);
             }
         }
-    }
-
-    pub(super) fn clear_closed_tabs_stack(&self) {
-        self.closed_tabs_stack.borrow_mut().clear();
     }
 }
 
@@ -1213,69 +1147,74 @@ fn saved_drafts(record: &WorkspaceRecord) -> impl Iterator<Item = DraftId> + '_ 
     })
 }
 
-/// The structure tab's signals, as this window's inputs for the tab.
-fn connect_structure(structure: &StructureTab, tab_id: Uuid, input: &relm4::Sender<AppMsg>) {
+/// The structure tab's signals, as the workspace's inputs for the tab.
+fn connect_structure(structure: &StructureTab, tab_id: Uuid, input: &WorkspaceSender) {
     let dirty = input.clone();
-    structure.connect_dirty_changed(move |_, is_dirty| dirty.emit(AppMsg::StructureTabDirtyChanged(tab_id, is_dirty)));
+    structure.connect_dirty_changed(move |_, is_dirty| {
+        dirty.deliver(WorkspaceInput::StructureTabDirtyChanged(tab_id, is_dirty))
+    });
     let save = input.clone();
-    structure.connect_save_requested(move |_| save.emit(AppMsg::SaveTab(tab_id)));
+    structure.connect_save_requested(move |_| save.deliver(WorkspaceInput::SaveTab(tab_id)));
     let stop = input.clone();
-    structure.connect_stop_save_requested(move |_| stop.emit(AppMsg::StopSaving(tab_id)));
+    structure.connect_stop_save_requested(move |_| stop.deliver(WorkspaceInput::StopSaving(tab_id)));
     let drop_table = input.clone();
     structure.connect_drop_table_requested(move |_, schema, table| {
-        drop_table.emit(AppMsg::DropTablePrompt { schema, table });
+        drop_table.deliver(WorkspaceInput::DropTablePrompt { schema, table });
     });
     let toast = input.clone();
-    structure.connect_toast(move |_, text| toast.emit(AppMsg::ShowToast(text)));
+    structure.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
     let alert = input.clone();
-    structure.connect_alert(move |_, title, body| alert.emit(AppMsg::ShowAlert { title, body }));
+    structure.connect_alert(move |_, title, body| alert.deliver(WorkspaceInput::ShowAlert { title, body }));
 }
 
-/// The browse tab's signals, as this window's inputs for the tab.
-fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &relm4::Sender<AppMsg>) {
+/// The browse tab's signals, as the workspace's inputs for the tab.
+fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &WorkspaceSender) {
     let state = input.clone();
-    browse.connect_state_changed(move |_| state.emit(AppMsg::WorkspaceTabsChanged));
+    browse.connect_state_changed(move |_| state.deliver(WorkspaceInput::WorkspaceTabsChanged));
     let clipboard = input.clone();
-    browse.connect_copy_to_clipboard(move |_, text| clipboard.emit(AppMsg::CopyToClipboard(text)));
+    browse.connect_copy_to_clipboard(move |_, text| clipboard.deliver(WorkspaceInput::CopyToClipboard(text)));
     let export = input.clone();
     browse.connect_export_results(move |_, ExportRequest { result, name, target }| {
-        export.emit(AppMsg::ExportResults { result, name, target });
+        export.deliver(WorkspaceInput::ExportResults { result, name, target });
     });
     let alert = input.clone();
-    browse.connect_alert(move |_, title, body| alert.emit(AppMsg::ShowAlert { title, body }));
+    browse.connect_alert(move |_, title, body| alert.deliver(WorkspaceInput::ShowAlert { title, body }));
     let toast = input.clone();
-    browse.connect_toast(move |_, text| toast.emit(AppMsg::ShowToast(text)));
+    browse.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
     let dirty = input.clone();
-    browse.connect_dirty_changed(move |_, is_dirty| dirty.emit(AppMsg::BrowseTabDirtyChanged(tab_id, is_dirty)));
+    browse.connect_dirty_changed(move |_, is_dirty| {
+        dirty.deliver(WorkspaceInput::BrowseTabDirtyChanged(tab_id, is_dirty))
+    });
     let save = input.clone();
-    browse.connect_save_requested(move |_| save.emit(AppMsg::SaveTab(tab_id)));
+    browse.connect_save_requested(move |_| save.deliver(WorkspaceInput::SaveTab(tab_id)));
     let stop = input.clone();
-    browse.connect_stop_save_requested(move |_| stop.emit(AppMsg::StopSaving(tab_id)));
+    browse.connect_stop_save_requested(move |_| stop.deliver(WorkspaceInput::StopSaving(tab_id)));
 }
 
-/// Forward an editor tab's signals into the window. The toast overlay
-/// is the window's, so a replaced query's Undo button lives there.
+/// Forward an editor tab's signals into the workspace. The toast
+/// overlay is the workspace's, so a replaced query's Undo button lives
+/// there.
 fn connect_editor(
     editor: &SqlEditor,
     tab_id: Uuid,
-    input: &relm4::Sender<AppMsg>,
+    input: &WorkspaceSender,
     toasts: &glib::WeakRef<adw::ToastOverlay>,
 ) {
     let run_state = input.clone();
     editor.connect_run_state_changed(move |_, running| {
-        run_state.emit(AppMsg::EditorTabRunStateChanged(tab_id, running));
+        run_state.deliver(WorkspaceInput::EditorTabRunStateChanged(tab_id, running));
     });
     let content = input.clone();
-    editor.connect_content_changed(move |_| content.emit(AppMsg::EditorTabContentChanged(tab_id)));
+    editor.connect_content_changed(move |_| content.deliver(WorkspaceInput::EditorTabContentChanged(tab_id)));
     let transaction = input.clone();
-    editor.connect_transaction_changed(move |_, _| transaction.emit(AppMsg::EditorTransactionChanged));
+    editor.connect_transaction_changed(move |_, _| transaction.deliver(WorkspaceInput::EditorTransactionChanged));
     let clipboard = input.clone();
-    editor.connect_copy_to_clipboard(move |_, text| clipboard.emit(AppMsg::CopyToClipboard(text)));
+    editor.connect_copy_to_clipboard(move |_, text| clipboard.deliver(WorkspaceInput::CopyToClipboard(text)));
     let toast = input.clone();
-    editor.connect_toast(move |_, text| toast.emit(AppMsg::ShowToast(text)));
+    editor.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
     let export = input.clone();
     editor.connect_export_results(move |_, result, name| {
-        export.emit(AppMsg::ExportResults {
+        export.deliver(WorkspaceInput::ExportResults {
             result,
             name,
             target: None,
@@ -1325,7 +1264,7 @@ mod tests {
         settings: &crate::test_support::MemorySettings,
         tabs: &Rc<RefCell<HashMap<Uuid, WorkspaceTab>>>,
         toasts: &adw::ToastOverlay,
-        input: &relm4::Sender<AppMsg>,
+        input: &WorkspaceSender,
     ) -> WorkspaceChrome {
         adw::init().expect("libadwaita initialises under the test backend");
         crate::register_test_resources();
@@ -1350,7 +1289,7 @@ mod tests {
         let settings = crate::test_support::MemorySettings::new();
         let tabs = Rc::new(RefCell::new(HashMap::new()));
         let toasts = adw::ToastOverlay::new();
-        let (input, _receiver) = relm4::channel::<AppMsg>();
+        let (input, _receiver) = crate::runtime::input_queue::<WorkspaceInput>();
         let chrome = editor_chrome(&runtime, &settings, &tabs, &toasts, &input);
         toasts.set_child(Some(&chrome.overview));
 
@@ -1381,7 +1320,7 @@ mod tests {
         let settings = crate::test_support::MemorySettings::new();
         let tabs = Rc::new(RefCell::new(HashMap::new()));
         let toasts = adw::ToastOverlay::new();
-        let (input, _receiver) = relm4::channel::<AppMsg>();
+        let (input, _receiver) = crate::runtime::input_queue::<WorkspaceInput>();
         let chrome = editor_chrome(&runtime, &settings, &tabs, &toasts, &input);
         let stack = gtk::Stack::new();
         stack.add_named(&chrome.overview, Some("tabs"));
@@ -1416,7 +1355,7 @@ mod tests {
     #[gtk4::test]
     fn overview_button_shows_from_the_second_tab() {
         adw::init().expect("libadwaita initialises under the test backend");
-        let (input, _receiver) = relm4::channel::<AppMsg>();
+        let (input, _receiver) = crate::runtime::input_queue::<WorkspaceInput>();
         let chrome = build_workspace_chrome(&input, blank_page);
         let button = find_by_action_name(&chrome.overview, "overview.open").expect("the overview button");
         assert!(!button.is_visible(), "shown with no tabs");
@@ -1473,7 +1412,7 @@ mod tests {
         });
         let toasts = adw::ToastOverlay::new();
         toasts.set_child(Some(&editor));
-        let (input, _receiver) = relm4::channel::<AppMsg>();
+        let (input, _receiver) = crate::runtime::input_queue::<WorkspaceInput>();
         connect_editor(&editor, Uuid::new_v4(), &input, &toasts.downgrade());
         let overlay = toasts.downgrade();
 

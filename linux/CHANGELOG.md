@@ -37,12 +37,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Set Value in a grid cell's menu is Set to Empty, Set to NULL and Set to DEFAULT, each shown only where the column takes it.
 - Set a grid cell to NULL with Ctrl+Backspace instead of Ctrl+Shift+N.
 - Quit asks each window about its unsaved changes in turn, and waits for open connections to close.
+- Each window holds one connection: opening one already open brings its window forward, and Disconnect returns to the list.
+- Connecting shows in the window with Cancel, and a failed connect says why, with Retry, Edit Connection and Choose Connection.
+
+### Removed
+
+- Connection buttons in a connected window's header bar; New Window opens another connection.
 
 ### Fixed
 
 - Format, a query opened from history and a loaded SQL file could not be undone with Ctrl+Z.
 - Format could split `+=`, `b'01'` or `@@version`, or detach a MySQL function from its parenthesis, and change the statement.
 - Opening a SQL, CSV or connections file from a pipe or a device never finished, or read past its size limit.
+- Exporting results or query history, or opening the connect dialog, froze the window on a slow disk or network folder.
+- A query saved just before quitting could be lost.
+- The sidebar's table search button had no name for screen readers.
 - PostgreSQL statement timeouts showed as a plain server error when the server's messages were not in English.
 - MySQL and MariaDB connections that verify the certificate did not trust certificate authorities installed on the system.
 - SQL Server money and smallmoney in the SQL editor and query results showed as approximate floats.
@@ -63,7 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Setting a new row's cell to NULL saved the column's default instead.
 - Setting a NOT NULL cell to NULL was accepted and failed at save.
 - The Menu key on a read-only grid cell opened a text selection menu instead of the cell's menu.
-- Text with a NUL character showed cut short in the grid, and editing it saved the cut value.
+- Text with a NUL character showed cut short in the grid, copied cut short, and editing it saved the cut value.
 - An edit, Set Value or row action in the table grid could land on another row once a row above it came or went.
 - Editing, undoing or deleting a row in the table grid dropped it from a selection of several rows.
 - Copy as INSERT could copy the wrong row, drop the schema or unsaved edits, or write a value where the server fills one.

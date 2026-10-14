@@ -145,18 +145,24 @@ impl SqlEditor {
         }
     }
 
-    /// Close the tab's connection. The process is held until the close
-    /// ends, so quitting right after closing a tab does not cut it off.
-    pub fn shutdown(&self) {
+    /// Stop the running query and hand over the tab's connection, so a
+    /// teardown closes every tab's at once under one hold.
+    pub fn take_editor_session(&self) -> Option<std::sync::Arc<dyn tablepro_core::EditorSession>> {
         let imp = self.imp();
         if imp.shut_down.replace(true) {
-            return;
+            return None;
         }
         if let Some(running) = imp.running.take() {
             running.cancel.cancel();
             running.drain.abort();
         }
-        let (Some(editor), Some(deps)) = (imp.slot.close(), imp.deps.get()) else {
+        imp.slot.close()
+    }
+
+    /// Close the tab's connection. The process is held until the close
+    /// ends, so quitting right after closing a tab does not cut it off.
+    pub fn shutdown(&self) {
+        let (Some(editor), Some(deps)) = (self.take_editor_session(), self.deps()) else {
             return;
         };
         let hold = deps.hold.acquire();
@@ -266,7 +272,9 @@ impl SqlEditor {
         self.connect_closure(
             "copy-to-clipboard",
             false,
-            glib::closure_local!(move |editor: &Self, text: String| f(editor, text)),
+            glib::closure_local!(move |editor: &Self, text: glib::BoxedAnyObject| {
+                f(editor, text.borrow::<String>().clone());
+            }),
         )
     }
 
@@ -598,7 +606,9 @@ impl SqlEditor {
                 return;
             };
             match message {
-                GridMsg::CopyToClipboard(text) => editor.emit_by_name::<()>("copy-to-clipboard", &[&text]),
+                GridMsg::CopyToClipboard(text) => {
+                    editor.emit_by_name::<()>("copy-to-clipboard", &[&glib::BoxedAnyObject::new(text)]);
+                }
                 GridMsg::ShowToast(text) => editor.emit_by_name::<()>("toast", &[&text]),
                 GridMsg::ExportResults(result) => {
                     let name = export_name_for_query(&editor.selected_preview());

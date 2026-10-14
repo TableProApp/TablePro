@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use relm4::adw::prelude::*;
-use relm4::gtk::gio;
+use relm4::gtk::{gio, glib};
 use relm4::{adw, gtk};
 
 use tablepro_core::QueryResult;
@@ -377,7 +377,6 @@ fn save_with_file_dialog(parent: &adw::ApplicationWindow, toast_overlay: &adw::T
     let title = name.clone();
     file_dialog.save(Some(parent), gio::Cancellable::NONE, move |outcome| {
         let Ok(file) = outcome else { return };
-        let Some(path) = file.path() else { return };
         // Bytes rather than text, because a workbook is a zip archive.
         // The text formats hand over their own bytes unchanged.
         let encoded: Result<Vec<u8>, String> = match format {
@@ -403,26 +402,34 @@ fn save_with_file_dialog(parent: &adw::ApplicationWindow, toast_overlay: &adw::T
                 None => Err(crate::i18n::gettext("This result has no table to insert into.")),
             },
         };
-        let written = encoded.and_then(|bytes| std::fs::write(&path, bytes).map_err(|e| e.to_string()));
-        match written {
-            Ok(()) => toast_overlay.add_toast(adw::Toast::new(&crate::i18n::gettext_f(
-                "Exported to {path}",
-                &[("path", &path.display().to_string())],
-            ))),
-            Err(error) => {
-                let alert = adw::AlertDialog::new(
-                    Some(&crate::i18n::gettext("Couldn't export")),
-                    Some(&crate::i18n::gettext_f(
-                        "Writing {path} failed: {error}",
-                        &[("path", &path.display().to_string()), ("error", &error)],
-                    )),
-                );
-                alert.add_response("close", &crate::i18n::gettext("Close"));
-                alert.set_default_response(Some("close"));
-                alert.set_close_response("close");
-                alert.present(Some(&parent_for_alert));
+        glib::spawn_future_local(async move {
+            let written = match encoded {
+                Ok(bytes) => crate::ui::file_write::replace_file(&file, bytes)
+                    .await
+                    .map_err(|error| error.to_string()),
+                Err(error) => Err(error),
+            };
+            let path = file.parse_name().to_string();
+            match written {
+                Ok(()) => toast_overlay.add_toast(adw::Toast::new(&crate::i18n::gettext_f(
+                    "Exported to {path}",
+                    &[("path", &path)],
+                ))),
+                Err(error) => {
+                    let alert = adw::AlertDialog::new(
+                        Some(&crate::i18n::gettext("Couldn't export")),
+                        Some(&crate::i18n::gettext_f(
+                            "Writing {path} failed: {error}",
+                            &[("path", &path), ("error", &error)],
+                        )),
+                    );
+                    alert.add_response("close", &crate::i18n::gettext("Close"));
+                    alert.set_default_response(Some("close"));
+                    alert.set_close_response("close");
+                    alert.present(Some(&parent_for_alert));
+                }
             }
-        }
+        });
     });
 }
 

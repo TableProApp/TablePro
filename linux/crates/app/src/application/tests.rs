@@ -236,15 +236,14 @@ fn query_end_presents_inhibiting_window() {
     for window in [&idle, &busy] {
         window.set_visible(false);
     }
+    let mut inhibitor = WindowInhibitor::new(GrantingSession);
+    inhibitor.update(Some(InhibitReason::UnsavedChanges));
     test.app
         .imp()
         .windows
-        .with_model(busy.id(), |model| {
-            let mut inhibitor = WindowInhibitor::new(GrantingSession);
-            inhibitor.update(Some(InhibitReason::UnsavedChanges));
-            model.set_inhibitor(inhibitor);
-        })
-        .expect("the busy window's component");
+        .get(busy.id())
+        .expect("the busy window")
+        .set_inhibitor(inhibitor);
 
     test.app.emit_by_name::<()>("query-end", &[]);
 

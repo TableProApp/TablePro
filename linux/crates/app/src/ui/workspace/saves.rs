@@ -1,14 +1,15 @@
-use relm4::{ComponentSender, adw};
+use gtk4::prelude::*;
+use libadwaita as adw;
 use uuid::Uuid;
 
 use tablepro_core::WriteKind;
 
-use super::{App, WorkspaceTab};
+use super::WorkspaceModel;
 use crate::ui::browse_tab::BrowseTabInput;
 use crate::ui::structure_tab::StructureTabInput;
 use crate::workspace::{CloseScope, DirtyTab, SaveOutcome, SaveSettled, SaveStart, WorkspaceEvent};
 
-impl App {
+impl WorkspaceModel {
     /// Save one tab, from its own Save button or Ctrl+S.
     pub(super) fn request_save(&self, tab: Uuid) {
         for start in self.workspace_handle.save(&[tab]) {
@@ -26,13 +27,13 @@ impl App {
         self.workspace_handle.stop_saves(CloseScope::Tab(tab));
     }
 
-    pub(super) fn on_workspace_event(&mut self, event: WorkspaceEvent, sender: ComponentSender<Self>) {
+    pub(super) fn on_workspace_event(&mut self, event: WorkspaceEvent) {
         match event {
             WorkspaceEvent::SaveStarted { tab } => {
                 self.dispatch_to_tab(tab, BrowseTabInput::SaveStarted);
                 self.send_to_structure_tab(tab, StructureTabInput::SaveStarted);
             }
-            WorkspaceEvent::SaveSettled(settled) => self.on_save_settled(*settled, sender),
+            WorkspaceEvent::SaveSettled(settled) => self.on_save_settled(*settled),
             WorkspaceEvent::Discarded { tabs, reload } => {
                 for tab in tabs {
                     let browse = match reload {
@@ -53,10 +54,14 @@ impl App {
 
     pub(super) fn on_saves_in_flight_changed(&mut self, count: usize) {
         self.set_row_op_in_flight(count > 0);
+        if let Some(workspace) = self.this.upgrade() {
+            let count = u32::try_from(count).unwrap_or(u32::MAX);
+            workspace.emit_by_name::<()>("saves-in-flight-changed", &[&count]);
+        }
         self.refresh_inhibitor();
     }
 
-    fn on_save_settled(&mut self, settled: SaveSettled, sender: ComponentSender<Self>) {
+    fn on_save_settled(&mut self, settled: SaveSettled) {
         let SaveSettled {
             tab,
             kind,
@@ -89,7 +94,7 @@ impl App {
                 self.dispatch_to_tab(tab, BrowseTabInput::SaveOutcomeUnknown(message));
             }
             (WriteKind::SchemaChanges, SaveOutcome::Committed { .. }) => {
-                self.on_structure_save_completed(tab, saved_table_name, sender);
+                self.on_structure_save_completed(tab, saved_table_name);
             }
             (WriteKind::SchemaChanges, SaveOutcome::RolledBack(cause)) => {
                 let input = match cause.found_changes() {
@@ -109,12 +114,7 @@ impl App {
     /// it.
     fn tab_name(&self, tab: Uuid) -> String {
         let title = self.workspace_tabs.borrow().get(&tab).map(|slot| {
-            let page = match slot {
-                WorkspaceTab::Editor(slot) => &slot.page,
-                WorkspaceTab::Structure(slot) => &slot.page,
-                WorkspaceTab::Table(slot) => &slot.page,
-            };
-            let title = page.title();
+            let title = slot.page().title();
             title.strip_prefix("• ").unwrap_or(&title).to_owned()
         });
         DirtyTab::quote(&title.unwrap_or_default())

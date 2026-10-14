@@ -103,7 +103,7 @@ impl GtkApplicationImpl for TableProApplication {
             .map(|window| window.id());
         self.parent_window_removed(window);
         if let Some(id) = id {
-            drop(self.windows.remove(id));
+            self.windows.remove(id);
         }
     }
 }

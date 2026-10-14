@@ -1,4 +1,3 @@
-mod app;
 mod browse_tab;
 mod connect_dialog;
 mod connection_list;
@@ -10,6 +9,7 @@ mod editor_font_provider;
 pub(crate) mod error_text;
 mod export_dialog;
 mod file_read;
+mod file_write;
 mod filter_strip;
 mod grid;
 mod handler_guard;
@@ -18,6 +18,7 @@ pub(crate) mod icons;
 mod import_dialog;
 mod preferences_dialog;
 mod saved_queries_dialog;
+mod session_window;
 mod sidebar_row;
 mod ssh_inputs;
 mod ssh_section;
@@ -27,12 +28,13 @@ mod style_scheme_grid;
 mod style_scheme_resolver;
 mod welcome_view;
 mod window_geometry;
+mod workspace;
 
-#[cfg(test)]
-pub(crate) use app::install_window_shortcuts;
-pub use app::{App, AppInit, AppMsg};
 #[cfg(test)]
 pub(crate) use browse_tab::BrowseTab;
 #[cfg(test)]
 pub(crate) use editor::{SqlEditor, SqlEditorInit};
 pub(crate) use preferences_dialog::PreferencesDialog;
+#[cfg(test)]
+pub(crate) use session_window::install_window_shortcuts;
+pub(crate) use session_window::{SessionWindow, SessionWindowInit, SessionWindowInput};

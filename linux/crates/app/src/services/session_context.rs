@@ -6,13 +6,14 @@ use tablepro_core::credentials::{CredentialInteraction, CredentialPrompter, Secr
 use tablepro_core::{DriverRegistry, LivenessPolicy};
 use tablepro_session::operation::{DeadlinePolicy, OperationKind};
 use tablepro_session::runtime::{ProcessHold, Tasks};
-use tablepro_session::{Connector, CredentialSource, SessionDeps, SessionRegistry};
+use tablepro_session::{Connector, CredentialSource, NoStoredCredentials, SessionDeps, SessionRegistry};
 use tablepro_storage::{KeyringCredentials, SavedConnection};
 
 use super::active_session::ActiveSession;
 
 /// Everything a window needs to connect, run a session and close it,
 /// built once in `run()` and shared on the GTK thread.
+#[derive(Clone)]
 pub struct SessionContext {
     pub drivers: Arc<DriverRegistry>,
     pub connector: Arc<dyn Connector>,
@@ -23,7 +24,37 @@ pub struct SessionContext {
     pub hold: Rc<dyn ProcessHold>,
     pub tasks: Tasks,
     pub liveness: LivenessPolicy,
+    pub credentials: Rc<dyn CredentialSourceFactory>,
     pub active: ActiveSession,
+}
+
+/// Where a session's secrets come from at each connect and reconnect.
+pub trait CredentialSourceFactory {
+    /// A saved connection's keyring entries, or for a connection with no
+    /// saved entry, only what its request carries.
+    fn for_connection(&self, saved: Option<&SavedConnection>) -> Arc<dyn CredentialSource>;
+}
+
+/// The keyring, labelling what it remembers in the user's language.
+pub struct KeyringSources {
+    secrets: Arc<dyn SecretVault>,
+}
+
+impl KeyringSources {
+    pub fn new(secrets: Arc<dyn SecretVault>) -> Self {
+        Self { secrets }
+    }
+}
+
+impl CredentialSourceFactory for KeyringSources {
+    fn for_connection(&self, saved: Option<&SavedConnection>) -> Arc<dyn CredentialSource> {
+        match saved {
+            Some(saved) => Arc::new(
+                KeyringCredentials::for_saved(self.secrets.clone(), saved).with_labeler(translated_secret_label),
+            ),
+            None => Arc::new(NoStoredCredentials),
+        }
+    }
 }
 
 impl SessionContext {
@@ -32,10 +63,10 @@ impl SessionContext {
         CredentialInteraction::Attended(self.prompter.clone())
     }
 
-    /// A saved connection's secrets, read from the keyring at every
-    /// connect and labelled in the user's language when remembered.
-    pub fn keyring_credentials(&self, saved: &SavedConnection) -> KeyringCredentials {
-        KeyringCredentials::for_saved(self.secrets.clone(), saved).with_labeler(translated_secret_label)
+    /// What a session opened from `saved` reads its secrets from at
+    /// every connect, or one opened without a saved entry.
+    pub fn credentials_for(&self, saved: Option<&SavedConnection>) -> Arc<dyn CredentialSource> {
+        self.credentials.for_connection(saved)
     }
 
     /// What a started session reconnects with. A Retry the user presses

@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 
-use relm4::adw;
-use relm4::adw::prelude::*;
-use relm4::gtk::glib;
+use gtk4::glib;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 
 use super::workspace_persistence::WorkspaceTabs;
 use super::{WorkspaceTab, read_workspace_tab_id};

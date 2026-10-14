@@ -4,7 +4,8 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 
 use super::TableProApplication;
-use crate::ui::AppMsg;
+use crate::runtime::{DeliverInput, Delivery};
+use crate::ui::SessionWindowInput;
 use crate::workspace::{CloseDecision, CloseReason};
 
 /// Asks each window in turn whether it may close, the way closing it by
@@ -46,7 +47,7 @@ async fn ask(app: &TableProApplication, window: &gtk::Window) -> CloseDecision {
     }
     window.present();
     let (reply, answer) = oneshot::channel();
-    if sender.send(AppMsg::CloseRequested(CloseReason::Quit(reply))).is_err() {
+    if sender.try_deliver(SessionWindowInput::CloseRequested(CloseReason::Quit(reply))) == Delivery::ReceiverGone {
         return CloseDecision::Approved;
     }
     // A window torn down before it answered has nothing left to keep.

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProSessionWindow" parent="AdwApplicationWindow">
+    <property name="title" translatable="yes">TablePro</property>
+    <property name="default-width">1200</property>
+    <property name="default-height">760</property>
+    <property name="content">
+      <!-- The page the window is on: the connection picker, the
+           connect in progress or its failure, or the workspace. -->
+      <object class="AdwToastOverlay" id="toast_overlay"/>
+    </property>
+  </template>
+</interface>

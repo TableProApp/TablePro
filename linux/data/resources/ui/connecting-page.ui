@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProConnectingPage" parent="AdwBin">
+    <property name="child">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="AdwHeaderBar"/>
+        </child>
+        <property name="content">
+          <object class="AdwStatusPage" id="status_page">
+            <!-- libadwaita draws a status page's spinner as its
+                 paintable, the size of the icon it stands in for. -->
+            <property name="paintable">
+              <object class="AdwSpinnerPaintable">
+                <property name="widget">status_page</property>
+              </object>
+            </property>
+            <property name="child">
+              <object class="GtkButton">
+                <property name="label" translatable="yes">Cancel</property>
+                <property name="action-name">win.cancel-connect</property>
+                <property name="halign">center</property>
+                <style>
+                  <class name="pill"/>
+                </style>
+              </object>
+            </property>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

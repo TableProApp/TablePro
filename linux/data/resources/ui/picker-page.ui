@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProPickerPage" parent="AdwBin">
+    <property name="child">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="AdwHeaderBar">
+            <property name="title-widget">
+              <object class="AdwWindowTitle">
+                <property name="title" translatable="yes">TablePro</property>
+              </object>
+            </property>
+            <child type="end">
+              <object class="GtkMenuButton">
+                <property name="icon-name">open-menu-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Main menu</property>
+                <property name="primary">true</property>
+                <property name="menu-model">picker_menu</property>
+                <accessibility>
+                  <property name="label" translatable="yes">Main menu</property>
+                </accessibility>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child type="top">
+          <object class="AdwBanner" id="connection_list_banner">
+            <property name="use-markup">false</property>
+          </object>
+        </child>
+        <property name="content">
+          <object class="AdwBin" id="welcome_slot"/>
+        </property>
+      </object>
+    </property>
+  </template>
+  <menu id="picker_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">New Window</attribute>
+        <attribute name="action">app.new-window</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Import Connections…</attribute>
+        <attribute name="action">win.import-connections</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Export Connections…</attribute>
+        <attribute name="action">win.export-connections</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Preferences</attribute>
+        <attribute name="action">app.preferences</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Keyboard Shortcuts</attribute>
+        <attribute name="action">app.shortcuts</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">About TablePro</attribute>
+        <attribute name="action">app.about</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Quit</attribute>
+        <attribute name="action">app.quit</attribute>
+      </item>
+    </section>
+  </menu>
+</interface>

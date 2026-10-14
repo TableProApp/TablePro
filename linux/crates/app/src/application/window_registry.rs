@@ -1,70 +1,60 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use relm4::{ComponentController, Controller};
+use crate::runtime::InputSender;
+use crate::ui::{SessionWindow, SessionWindowInput};
 
-use crate::ui::{App, AppMsg};
-
-/// The controller of each window the application opened, by window id.
-/// GTK-thread only.
+/// Each window the application opened, by window id. GTK-thread only.
 #[derive(Default)]
 pub(crate) struct WindowRegistry {
-    controllers: RefCell<HashMap<u32, Controller<App>>>,
+    windows: RefCell<HashMap<u32, SessionWindow>>,
 }
 
 impl WindowRegistry {
-    pub(crate) fn insert(&self, id: u32, controller: Controller<App>) {
-        self.controllers.borrow_mut().insert(id, controller);
+    pub(crate) fn insert(&self, id: u32, window: SessionWindow) {
+        self.windows.borrow_mut().insert(id, window);
     }
 
-    /// The caller drops the controller after the map is released, since
-    /// dropping it stops the window's component.
-    pub(crate) fn remove(&self, id: u32) -> Option<Controller<App>> {
-        self.controllers.borrow_mut().remove(&id)
+    /// The window is shut down after the map is released: its teardown
+    /// may present another window, which reads the map.
+    pub(crate) fn remove(&self, id: u32) {
+        let removed = self.windows.borrow_mut().remove(&id);
+        if let Some(window) = removed {
+            window.shutdown();
+        }
     }
 
-    pub(crate) fn sender(&self, id: u32) -> Option<relm4::Sender<AppMsg>> {
-        self.controllers
-            .borrow()
-            .get(&id)
-            .map(|controller| controller.sender().clone())
+    pub(crate) fn sender(&self, id: u32) -> Option<InputSender<SessionWindowInput>> {
+        self.windows.borrow().get(&id).and_then(SessionWindow::input)
     }
 
     /// Whether the window holds logout back.
-    ///
-    /// The state is read outside any update: the components run their
-    /// updates without returning to the main loop, which is the only
-    /// place this is called from.
     pub(crate) fn holds_inhibit(&self, id: u32) -> bool {
-        self.controllers
-            .borrow()
-            .get(&id)
-            .is_some_and(|controller| controller.model().is_inhibiting())
+        self.windows.borrow().get(&id).is_some_and(SessionWindow::is_inhibiting)
     }
 
     #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
-        self.controllers.borrow().len()
+        self.windows.borrow().len()
     }
 
     #[cfg(test)]
-    pub(crate) fn with_model<R>(&self, id: u32, change: impl FnOnce(&mut App) -> R) -> Option<R> {
-        let controllers = self.controllers.borrow();
-        let controller = controllers.get(&id)?;
-        let mut parts = controller.state().get_mut();
-        Some(change(&mut parts.model))
+    pub(crate) fn get(&self, id: u32) -> Option<SessionWindow> {
+        self.windows.borrow().get(&id).cloned()
     }
 
     pub(crate) fn clear(&self) {
-        let controllers: Vec<Controller<App>> = self.controllers.borrow_mut().drain().map(|(_, c)| c).collect();
-        drop(controllers);
+        let windows: Vec<SessionWindow> = self.windows.borrow_mut().drain().map(|(_, window)| window).collect();
+        for window in windows {
+            window.shutdown();
+        }
     }
 }
 
 impl std::fmt::Debug for WindowRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WindowRegistry")
-            .field("windows", &self.controllers.borrow().keys().collect::<Vec<_>>())
+            .field("windows", &self.windows.borrow().keys().collect::<Vec<_>>())
             .finish()
     }
 }

@@ -853,6 +853,25 @@ fn copy_row_as_insert_uses_row_below_draft() {
     );
 }
 
+#[gtk4::test]
+fn a_copy_with_a_nul_reaches_the_window_whole() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
+    let copied = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let sink = copied.clone();
+    harness
+        .tab()
+        .connect_copy_to_clipboard(move |_, text| sink.borrow_mut().push(text));
+
+    harness
+        .tab()
+        .send(BrowseTabInput::GridCopyToClipboard("a\0b".to_owned()));
+
+    assert_eq!(*copied.borrow(), ["a\0b".to_owned()]);
+}
+
 fn key(id: i64) -> RowKey {
     RowKey::from_pk_values(&[Value::Int(id)]).expect("a key")
 }

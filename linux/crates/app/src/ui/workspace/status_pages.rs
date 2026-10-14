@@ -1,49 +1,14 @@
-use relm4::adw::prelude::*;
-use relm4::{Component, ComponentController, ComponentSender, adw};
+use libadwaita as adw;
+use libadwaita::prelude::*;
+use relm4::{Component, ComponentController};
 
 use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, HistoryDialogOutput};
 use crate::ui::saved_queries_dialog::{SavedQueriesDialog, SavedQueriesDialogInit, SavedQueriesDialogOutput};
 
-use super::{App, AppMsg};
+use super::{WorkspaceInput, WorkspaceModel};
 use crate::runtime::DeliverInput;
 
-impl App {
-    pub(super) fn show_welcome_page(&self, _sender: ComponentSender<Self>) {
-        self.content_holder.set_content(Some(self.welcome_view.widget()));
-    }
-
-    /// The toast stays until the connect resolves: a remote or tunnelled
-    /// connect can take longer than any timeout would.
-    pub(super) fn set_loading_page(&mut self, title: &str, description: &str, sender: &ComponentSender<Self>) {
-        if let Some(prev) = self.connect_progress_toast.take() {
-            prev.dismiss();
-        }
-        // GNOME inline-metadata separator (` · `) keeps the two
-        // strings reading as one phrase rather than two sentences
-        // colliding ("Connecting… Opening MyDB" → "Connecting… ·
-        // Opening MyDB"). Same convention used in the browse
-        // paginator label and the editor status line.
-        let body = if description.is_empty() {
-            title.to_string()
-        } else {
-            format!("{title} · {description}")
-        };
-        let toast = adw::Toast::builder().title(&body).timeout(0).build();
-        // A connect through SSH or to a server that drops packets can
-        // take the whole connect timeout, so it can be stopped here.
-        toast.set_button_label(Some(&crate::i18n::gettext("Cancel")));
-        let cancel = sender.clone();
-        toast.connect_button_clicked(move |_| cancel.deliver(AppMsg::CancelConnect));
-        self.toast_overlay.add_toast(toast.clone());
-        self.connect_progress_toast = Some(toast);
-    }
-
-    pub(super) fn dismiss_loading_page(&mut self) {
-        if let Some(toast) = self.connect_progress_toast.take() {
-            toast.dismiss();
-        }
-    }
-
+impl WorkspaceModel {
     pub(super) fn show_toast(&self, msg: &str) {
         self.toast_overlay.add_toast(adw::Toast::new(msg));
     }
@@ -56,36 +21,50 @@ impl App {
         dialog.add_response("close", &crate::i18n::gettext("Close"));
         dialog.set_default_response(Some("close"));
         dialog.set_close_response("close");
-        dialog.present(Some(&self.window));
+        dialog.present(self.dialog_parent().as_ref());
     }
 
-    pub(super) fn on_show_history(&mut self, sender: ComponentSender<Self>) {
+    pub(super) fn on_show_history(&mut self) {
         let dialog = HistoryDialog::builder()
             .launch(HistoryDialogInit {
                 history: self.history.clone(),
                 tasks: self.tasks.clone(),
             })
-            .forward(sender.input_sender(), |out| match out {
-                HistoryDialogOutput::OpenInNewTab(text) => AppMsg::OpenHistoryQuery(text),
-                HistoryDialogOutput::ReplaceCurrentTabQuery(text) => AppMsg::ReplaceActiveTabQuery(text),
+            .connect_receiver({
+                let input = self.input.clone();
+                move |_, out| {
+                    input.deliver(match out {
+                        HistoryDialogOutput::OpenInNewTab(text) => WorkspaceInput::OpenHistoryQuery(text),
+                        HistoryDialogOutput::ReplaceCurrentTabQuery(text) => {
+                            WorkspaceInput::ReplaceActiveTabQuery(text)
+                        }
+                    });
+                }
             });
-        dialog.model().dialog().present(Some(&self.window));
+        dialog.model().dialog().present(self.dialog_parent().as_ref());
         self.history_dialog = Some(dialog);
     }
 
-    pub(super) fn on_show_saved_queries(&mut self, sender: ComponentSender<Self>) {
+    pub(super) fn on_show_saved_queries(&mut self) {
         let dialog = SavedQueriesDialog::builder()
             .launch(SavedQueriesDialogInit {
                 store: self.history.store().map(|history| history.saved_queries()),
                 active_connection: self.context.active.metadata().map(|metadata| metadata.id),
             })
-            .forward(sender.input_sender(), |out| match out {
-                SavedQueriesDialogOutput::OpenInNewTab(text) => AppMsg::OpenHistoryQuery(text),
-                SavedQueriesDialogOutput::ReplaceCurrentTabQuery(text) => AppMsg::ReplaceActiveTabQuery(text),
-                SavedQueriesDialogOutput::CopyToClipboard(text) => AppMsg::CopyToClipboard(text),
-                SavedQueriesDialogOutput::ShowToast(text) => AppMsg::ShowToast(text),
+            .connect_receiver({
+                let input = self.input.clone();
+                move |_, out| {
+                    input.deliver(match out {
+                        SavedQueriesDialogOutput::OpenInNewTab(text) => WorkspaceInput::OpenHistoryQuery(text),
+                        SavedQueriesDialogOutput::ReplaceCurrentTabQuery(text) => {
+                            WorkspaceInput::ReplaceActiveTabQuery(text)
+                        }
+                        SavedQueriesDialogOutput::CopyToClipboard(text) => WorkspaceInput::CopyToClipboard(text),
+                        SavedQueriesDialogOutput::ShowToast(text) => WorkspaceInput::ShowToast(text),
+                    });
+                }
             });
-        dialog.model().dialog().present(Some(&self.window));
+        dialog.model().dialog().present(self.dialog_parent().as_ref());
         self.saved_queries_dialog = Some(dialog);
     }
 
@@ -93,19 +72,13 @@ impl App {
     ///
     /// The text is read now rather than when the dialog closes, so what
     /// is saved is what the user was looking at when they asked.
-    pub(super) fn on_save_active_query(&self, sender: ComponentSender<Self>) {
+    pub(super) fn on_save_active_query(&self) {
         let Some(query) = self.active_editor_query() else {
             self.show_toast(&crate::i18n::gettext("Open a SQL editor tab to save a query."));
             return;
         };
         if query.trim().is_empty() {
             self.show_toast(&crate::i18n::gettext("There is nothing in the editor to save."));
-            return;
-        }
-        if !self.context.active.is_connected() {
-            self.show_toast(&crate::i18n::gettext(
-                "Connect to a database first: a saved query is kept under its connection.",
-            ));
             return;
         }
 
@@ -121,7 +94,7 @@ impl App {
         dialog.set_default_response(Some("save"));
         dialog.set_close_response("cancel");
 
-        let sender = sender.input_sender().clone();
+        let input = self.input.clone();
         dialog.connect_response(None, move |dialog, response| {
             dialog.close();
             if response != "save" {
@@ -131,15 +104,15 @@ impl App {
             if name.trim().is_empty() {
                 return;
             }
-            let _ = sender.send(AppMsg::SaveQueryNamed {
+            input.deliver(WorkspaceInput::SaveQueryNamed {
                 name,
                 query: query.clone(),
             });
         });
-        dialog.present(Some(&self.window));
+        dialog.present(self.dialog_parent().as_ref());
     }
 
-    pub(super) fn on_save_query_named(&self, name: String, query: String, sender: ComponentSender<Self>) {
+    pub(super) fn on_save_query_named(&self, name: String, query: String) {
         let Some(store) = self.history.store().map(|history| history.saved_queries()) else {
             self.show_toast(&crate::i18n::gettext("The query database is not open yet."));
             return;
@@ -156,23 +129,19 @@ impl App {
             connection_id: metadata.id,
             connection_name: metadata.name,
         };
-        let sender_for_result = sender.clone();
-        sender.command(move |_, shutdown| {
-            shutdown
-                .register(async move {
-                    let message = match store.save(new_query).await {
-                        Ok(outcome) if outcome.replaced => {
-                            crate::i18n::gettext_f("Replaced “{name}”.", &[("name", &name)])
-                        }
-                        Ok(_) => crate::i18n::gettext_f("Saved “{name}”.", &[("name", &name)]),
-                        Err(error) => {
-                            tracing::warn!(%error, "could not save the query");
-                            crate::i18n::gettext("Could not save that query.")
-                        }
-                    };
-                    sender_for_result.deliver(AppMsg::ShowToast(message));
-                })
-                .drop_on_shutdown()
+        // The save lands even when the workspace is gone by then; only
+        // its toast is dropped.
+        let input = self.input.clone();
+        crate::runtime::spawn_held(&self.tasks, &*self.context.hold, async move {
+            let message = match store.save(new_query).await {
+                Ok(outcome) if outcome.replaced => crate::i18n::gettext_f("Replaced “{name}”.", &[("name", &name)]),
+                Ok(_) => crate::i18n::gettext_f("Saved “{name}”.", &[("name", &name)]),
+                Err(error) => {
+                    tracing::warn!(%error, "could not save the query");
+                    crate::i18n::gettext("Could not save that query.")
+                }
+            };
+            input.deliver(WorkspaceInput::ShowToast(message));
         });
     }
 }
@@ -200,6 +169,33 @@ fn suggested_query_name(query: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::suggested_query_name;
+    use crate::test_support::{finish_on_main, wait_until};
+    use crate::ui::session_window::tests::{TestWindow, WAIT};
+
+    #[gtk4::test]
+    fn a_saved_query_is_written_under_a_hold() {
+        let test = TestWindow::connected("SaveQueryHeld");
+        let history = test.services.history();
+        let availability = history.availability();
+        wait_until(WAIT, || availability.borrow().is_ready()).expect("the query database to open");
+        wait_until(WAIT, || test.hold.live() == 0).expect("nothing else to hold the process");
+
+        test.workspace()
+            .with_model(|model| model.on_save_query_named("Orders".to_owned(), "SELECT 1".to_owned()));
+        assert_eq!(test.hold.live(), 1, "the save started without holding the process");
+        wait_until(WAIT, || test.hold.live() == 0).expect("the hold to end");
+
+        let store = history.store().expect("the query database").saved_queries();
+        let listing = test.services.tasks.spawn_task(async move { store.list(None).await });
+        let saved = finish_on_main(WAIT, listing)
+            .expect("the list to load")
+            .expect("the listing task")
+            .expect("the saved queries");
+        assert!(
+            saved.iter().any(|query| query.name == "Orders"),
+            "the hold ended before the save"
+        );
+    }
 
     #[test]
     fn the_suggested_name_is_the_first_real_line() {

@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
-use relm4::adw::prelude::*;
-use relm4::gtk::{gio, glib};
-use relm4::{Component, ComponentController, ComponentSender, gtk};
+use gtk4 as gtk;
+use gtk4::{gio, glib};
+use libadwaita::prelude::*;
+use relm4::{Component, ComponentController};
 
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::edit::CellInput;
@@ -14,7 +15,7 @@ use tablepro_session::{OperationError, OperationKind, Session};
 use crate::ui::file_read::{FileReadError, read_capped_file};
 use crate::ui::import_dialog::{CsvImport, MAX_CSV_FILE_BYTES};
 
-use super::{App, AppMsg};
+use super::{WorkspaceInput, WorkspaceModel};
 use crate::runtime::DeliverInput;
 use crate::workspace::RanStatements;
 
@@ -22,10 +23,10 @@ use crate::workspace::RanStatements;
 /// announces it, so a failed import has something to read back.
 const IMPORT_LOG_SAMPLE: usize = 3;
 
-impl App {
+impl WorkspaceModel {
     /// Ask for a CSV, then read it and the table's columns together so
     /// the mapping dialog opens with both.
-    pub(super) fn on_import_csv_requested(&self, schema: Option<String>, table: String, sender: ComponentSender<Self>) {
+    pub(super) fn on_import_csv_requested(&self, schema: Option<String>, table: String) {
         let Some(session) = self.context.active.get() else {
             self.show_toast(&crate::i18n::gettext("Connect to a database first."));
             return;
@@ -49,9 +50,9 @@ impl App {
             .filters(&filters)
             .build();
 
-        let input = sender.input_sender().clone();
+        let input = self.input.clone();
         let tasks = self.context.tasks.clone();
-        dialog.open(Some(&self.window), gio::Cancellable::NONE, move |outcome| {
+        dialog.open(self.window().as_ref(), gio::Cancellable::NONE, move |outcome| {
             let Ok(file) = outcome else { return };
             let input = input.clone();
             let schema = schema.clone();
@@ -62,7 +63,7 @@ impl App {
                 let bytes = match read_csv_file(&file).await {
                     Ok(bytes) => bytes,
                     Err(message) => {
-                        let _ = input.send(AppMsg::ShowToast(message));
+                        input.deliver(WorkspaceInput::ShowToast(message));
                         return;
                     }
                 };
@@ -75,7 +76,7 @@ impl App {
                     Ok(Ok(columns)) => columns,
                     Ok(Err(error)) => {
                         tracing::warn!(%error, "could not read the table to import into");
-                        let _ = input.send(AppMsg::ShowToast(crate::i18n::gettext(
+                        input.deliver(WorkspaceInput::ShowToast(crate::i18n::gettext(
                             "The table's columns could not be read.",
                         )));
                         return;
@@ -85,7 +86,7 @@ impl App {
                         return;
                     }
                 };
-                let _ = input.send(AppMsg::ImportCsvReady {
+                input.deliver(WorkspaceInput::ImportCsvReady {
                     schema,
                     table,
                     columns,
@@ -101,7 +102,6 @@ impl App {
         table: String,
         columns: Vec<tablepro_core::ColumnInfo>,
         bytes: Vec<u8>,
-        sender: ComponentSender<Self>,
     ) {
         use crate::ui::import_dialog::{ImportCsvDialog, ImportCsvDialogInit, ImportCsvDialogOutput};
 
@@ -112,17 +112,22 @@ impl App {
                 columns,
                 bytes,
             })
-            .forward(sender.input_sender(), |out| match out {
-                ImportCsvDialogOutput::Import(import) => AppMsg::ImportCsvRun(import),
-                ImportCsvDialogOutput::ShowToast(text) => AppMsg::ShowToast(text),
+            .connect_receiver({
+                let input = self.input.clone();
+                move |_, out| {
+                    input.deliver(match out {
+                        ImportCsvDialogOutput::Import(import) => WorkspaceInput::ImportCsvRun(import),
+                        ImportCsvDialogOutput::ShowToast(text) => WorkspaceInput::ShowToast(text),
+                    });
+                }
             });
-        dialog.model().dialog().present(Some(&self.window));
+        dialog.model().dialog().present(self.dialog_parent().as_ref());
         self.import_dialog = Some(dialog);
     }
 
     /// Read the whole file, turn every row into an INSERT and write them
     /// as one batch, so a file either lands whole or not at all.
-    pub(super) fn on_import_csv_run(&self, import: CsvImport, sender: ComponentSender<Self>) {
+    pub(super) fn on_import_csv_run(&self, import: CsvImport) {
         let Some(session) = self.context.active.get() else {
             self.show_toast(&crate::i18n::gettext("Connect to a database first."));
             return;
@@ -143,7 +148,8 @@ impl App {
         let table = TableRef::new(import.schema.clone(), import.table.clone());
         let history = self.history.store();
         let connection = self.context.active.metadata();
-        self.context.tasks.spawn_task(async move {
+        let input = self.input.clone();
+        drop(self.context.tasks.spawn_task(async move {
             let written = write_import(&session, table, import.columns, rows).await;
             match written {
                 Ok((sql, report)) => {
@@ -153,8 +159,8 @@ impl App {
                     RanStatements::starting(history, connection, sql)
                         .finished(touched, tablepro_storage::query_history::Outcome::Success)
                         .await;
-                    sender.deliver(AppMsg::RefreshPage);
-                    sender.deliver(AppMsg::ShowToast(crate::i18n::ngettext_f(
+                    input.deliver(WorkspaceInput::RefreshPage);
+                    input.deliver(WorkspaceInput::ShowToast(crate::i18n::ngettext_f(
                         "Imported {n} row.",
                         "Imported {n} rows.",
                         u32::try_from(count).unwrap_or(u32::MAX),
@@ -163,13 +169,13 @@ impl App {
                 }
                 Err(error) => {
                     let message = crate::ui::error_text::operation_error_message(&error);
-                    sender.deliver(AppMsg::ShowAlert {
+                    input.deliver(WorkspaceInput::ShowAlert {
                         title: crate::i18n::gettext("Couldn't import"),
                         body: message,
                     });
                 }
             }
-        });
+        }));
     }
 }
 
