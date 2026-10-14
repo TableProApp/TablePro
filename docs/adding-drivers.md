@@ -7,7 +7,7 @@ Reviewed against Linux `dc1a32791` on 2026-10-14. Drivers are static Rust crates
 Read the actual traits before implementing a driver:
 
 - [DatabaseDriver](../crates/core/src/driver.rs): identity, defaults, maturity, metadata and transport capabilities, row-count and DDL guarantees.
-- [Connection](../crates/core/src/connection.rs): schema-aware reads, bound parameters, transactions, controlled calls and session creation.
+- [Connection](../crates/core/src/connection.rs): schema-aware reads, bound parameters, transactions, controlled calls, session creation and optional query cursors.
 - [Session](../crates/core/src/session.rs): dedicated connection lifetime, transactions, usability and awaited close.
 - [Values](../crates/core/src/query.rs), [errors](../crates/core/src/error.rs) and [operation control](../crates/core/src/operation.rs).
 
