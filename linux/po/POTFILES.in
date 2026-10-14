@@ -181,6 +181,8 @@ crates/app/src/ui/grid/tab_grid_context.rs
 crates/app/src/ui/grid/toggle_cell.rs
 crates/app/src/ui/handler_guard.rs
 crates/app/src/ui/history_dialog.rs
+crates/app/src/ui/host_key_failure.rs
+crates/app/src/ui/host_key_review.rs
 crates/app/src/ui/icons.rs
 crates/app/src/ui/import_dialog.rs
 crates/app/src/ui/mod.rs

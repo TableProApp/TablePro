@@ -8,7 +8,7 @@ mod close_guards;
 mod close_reason;
 mod close_scope;
 mod close_step;
-mod dialog_response;
+pub(crate) mod dialog_response;
 mod dirty_kind;
 mod dirty_tab;
 mod draft_writer;

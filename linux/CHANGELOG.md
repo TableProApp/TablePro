@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Set to DEFAULT in a new row's cell menu, for columns the server fills.
 - New Window (Ctrl+Shift+N, or `tablepro --new-window`) opens another window in the running TablePro.
 - Connections wait offline while the network can't reach their server, and reconnect once it can or after a suspend.
+- Review Key in a connection's banner when its SSH host key is refused, to trust a new key or replace a changed one.
 
 ### Changed
 

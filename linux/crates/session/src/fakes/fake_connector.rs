@@ -5,9 +5,10 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 use secrecy::SecretString;
-use tablepro_core::credentials::CredentialInteraction;
+use tablepro_core::credentials::{CredentialInteraction, CredentialPrompt, PromptPurpose, PromptReply};
 use tablepro_core::{
-    ConfigError, Credentials, FileEndpoint, LivenessPolicy, NetworkEndpoint, TlsConfig, WorkspaceSettings,
+    ConfigError, Credentials, DriverError, FileEndpoint, LivenessPolicy, NetworkEndpoint, SshFailure, TlsConfig,
+    TransportError, WorkspaceSettings,
 };
 use tablepro_test_support::{ConnectionScript, FakeConnection, FakeDriver};
 use tokio::time::Instant;
@@ -30,6 +31,29 @@ pub enum FakeEstablish {
     },
     /// Never connects; ends with `Cancelled` when cancelled.
     UntilCancelled,
+    /// Asks about an unknown host key the way ssh does: through the
+    /// prompter when attended, and never otherwise. A yes connects; a
+    /// no, or nobody to ask, fails as a declined host key.
+    AskHostKey {
+        host: String,
+        fingerprint: String,
+        script: ConnectionScript,
+    },
+}
+
+impl FakeEstablish {
+    /// The error ssh gives for an unknown host key nobody accepted.
+    pub fn declined_host_key(host: &str, fingerprint: &str) -> ConnectError {
+        ConnectError::Driver(DriverError::Transport(TransportError::Ssh(
+            SshFailure::HostKeyUnknown {
+                host: host.to_owned(),
+                algorithm: "ED25519".to_owned(),
+                sha256_fingerprint: fingerprint.to_owned(),
+                trust_allowed: true,
+                declined: true,
+            },
+        )))
+    }
 }
 
 /// What one `establish` call was asked.
@@ -173,6 +197,33 @@ impl Connector for FakeConnector {
                 Some(FakeEstablish::UntilCancelled) => {
                     cancel.cancelled().await;
                     Err(ConnectError::Cancelled)
+                }
+                Some(FakeEstablish::AskHostKey {
+                    host,
+                    fingerprint,
+                    script,
+                }) => {
+                    let reply = match interaction {
+                        CredentialInteraction::Attended(prompter) => {
+                            prompter
+                                .prompt(CredentialPrompt {
+                                    purpose: PromptPurpose::SshHostKeyConfirmation {
+                                        host: host.clone(),
+                                        algorithm: "ED25519".to_owned(),
+                                        fingerprint: fingerprint.clone(),
+                                    },
+                                    target: host.clone(),
+                                    fields: Vec::new(),
+                                    offer_remember: false,
+                                })
+                                .await
+                        }
+                        CredentialInteraction::Unattended => PromptReply::Cancelled,
+                    };
+                    match reply {
+                        PromptReply::Submitted { .. } => Ok(connector.adopt(request, script)),
+                        PromptReply::Cancelled => Err(FakeEstablish::declined_host_key(&host, &fingerprint)),
+                    }
                 }
                 None => Err(ConnectError::UnknownDriver(
                     "FakeConnector has no scripted establish result".to_owned(),

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use tablepro_core::credentials::{CredentialInteraction, CredentialPrompter};
 
+use super::TrustedHostKey;
 use crate::connect::{ConnectRequest, Connector, CredentialSource};
 
 /// How the monitor reconnects: the same request, with its secrets read
@@ -17,9 +18,14 @@ pub struct ReconnectPlan {
 }
 
 impl ReconnectPlan {
-    pub(crate) fn interaction(&self, user_asked: bool) -> CredentialInteraction {
-        match (&self.prompter, user_asked) {
-            (Some(prompter), true) => CredentialInteraction::Attended(prompter.clone()),
+    /// `trusted` is a host key fingerprint the user reviewed before
+    /// asking for this attempt, answered for them when ssh shows it.
+    pub(crate) fn interaction(&self, user_asked: bool, trusted: Option<String>) -> CredentialInteraction {
+        match (user_asked, trusted, &self.prompter) {
+            (true, Some(fingerprint), prompter) => {
+                CredentialInteraction::Attended(Arc::new(TrustedHostKey::new(fingerprint, prompter.clone())))
+            }
+            (true, None, Some(prompter)) => CredentialInteraction::Attended(prompter.clone()),
             _ => CredentialInteraction::Unattended,
         }
     }

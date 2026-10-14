@@ -14,6 +14,8 @@ mod filter_strip;
 mod grid;
 mod handler_guard;
 mod history_dialog;
+mod host_key_failure;
+mod host_key_review;
 pub(crate) mod icons;
 mod import_dialog;
 mod preferences_dialog;

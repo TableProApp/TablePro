@@ -39,6 +39,8 @@ use uuid::Uuid;
 use super::browse_tab::{BrowseTab, BrowseTabInput};
 use super::editor::SqlEditor;
 use super::history_dialog::HistoryDialog;
+use super::host_key_failure::HostKeyFailure;
+use super::host_key_review::HostKeyReviewOutcome;
 use super::sidebar_row::SidebarRow;
 use crate::application::AppServices;
 use crate::runtime::{DeliverInput, InputSender};
@@ -96,6 +98,10 @@ pub(crate) struct WorkspaceModel {
     row_op_spinner: adw::Spinner,
     read_only_badge: gtk::Label,
     table_search: gtk::SearchEntry,
+    /// Removes a changed host key from known_hosts. `None` without ssh.
+    ssh: Option<tablepro_ssh::SshServices>,
+    /// A host key review dialog is open.
+    reviewing_host_key: bool,
     /// `"empty"` while no tab is open, `"tabs"` otherwise.
     workspace_outer_stack: gtk::Stack,
     workspace_root: Option<adw::TabOverview>,
@@ -265,6 +271,17 @@ pub(super) fn read_workspace_tab_id(page: &adw::TabPage) -> Option<Uuid> {
 #[derive(Debug)]
 pub(crate) enum WorkspaceInput {
     HealthChanged(SessionHealth),
+    /// The banner's Review Key, for a session parked on a host key.
+    ReviewHostKey,
+    HostKeyReviewed {
+        failure: HostKeyFailure,
+        outcome: HostKeyReviewOutcome,
+    },
+    /// ssh-keygen removed the changed key, or says why it could not.
+    OldHostKeyForgotten {
+        failure: HostKeyFailure,
+        forgotten: Result<(), String>,
+    },
     /// The session's object list for the sidebar changed: a reconnect
     /// read it again, or a schema change refreshed it.
     CatalogChanged(ObjectListSnapshot),
@@ -477,6 +494,8 @@ impl Workspace {
             row_op_spinner: imp.row_op_spinner.get(),
             read_only_badge: imp.read_only_badge.get(),
             table_search: imp.table_search.get(),
+            ssh: services.ssh(),
+            reviewing_host_key: false,
             workspace_outer_stack: imp.workspace_outer_stack.get(),
             workspace_root: None,
             workspace_tab_view: None,
@@ -684,6 +703,11 @@ impl WorkspaceModel {
     fn update(&mut self, msg: WorkspaceInput) {
         match msg {
             WorkspaceInput::HealthChanged(health) => self.refresh_health_banner(&health),
+            WorkspaceInput::ReviewHostKey => self.on_review_host_key(),
+            WorkspaceInput::HostKeyReviewed { failure, outcome } => self.on_host_key_reviewed(failure, outcome),
+            WorkspaceInput::OldHostKeyForgotten { failure, forgotten } => {
+                self.on_old_host_key_forgotten(failure, forgotten);
+            }
             WorkspaceInput::CatalogChanged(snapshot) => self.on_catalog_changed(&snapshot),
             WorkspaceInput::TabCloseDecided { id, approved } => self.on_tab_close_decided(id, approved),
             WorkspaceInput::SelectTable {

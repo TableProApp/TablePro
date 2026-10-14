@@ -17,6 +17,7 @@ mod reachability_target;
 mod reconnect_plan;
 mod reconnect_result;
 mod session_health;
+mod trusted_host_key;
 
 pub use failure_cause::FailureCause;
 pub(crate) use health_monitor::{MonitorContext, run_monitor};
@@ -32,3 +33,4 @@ pub use reachability_target::ReachabilityTarget;
 pub use reconnect_plan::ReconnectPlan;
 pub use reconnect_result::ReconnectResult;
 pub use session_health::SessionHealth;
+pub(crate) use trusted_host_key::TrustedHostKey;
