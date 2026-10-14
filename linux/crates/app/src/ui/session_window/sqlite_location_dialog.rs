@@ -301,6 +301,11 @@ mod tests {
         test.window.imp().classify_location.set(Some(on_a_share));
         let mut saved = test.saved.clone();
         saved.read_only = true;
+        test.services
+            .storage
+            .connections()
+            .upsert_blocking(saved.clone())
+            .expect("save the entry read-only");
 
         test.window.send(SessionWindowInput::OpenSaved(Box::new(saved)));
         test.wait_for_page("workspace");
