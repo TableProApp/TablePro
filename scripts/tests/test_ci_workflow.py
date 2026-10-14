@@ -372,23 +372,29 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("-Dsonar.python.coverage.reportPaths=target/sonar/python-coverage.xml", workflow)
 
 
+    def test_forgejo_workflows_use_no_node_actions_on_host_executors(self):
+        for workflow in (ROOT / ".forgejo/workflows").glob("*.yml"):
+            self.assertNotIn("uses:", workflow.read_text(), workflow.name)
+
     def test_forgejo_distro_floor_reuses_one_package_across_bases(self):
         workflow = (ROOT / ".forgejo/workflows/ci.yml").read_text()
-        build = workflow.split("\n  distro-floor-build:\n", 1)[1].split("\n  distro-floor:\n", 1)[0]
+        self.assertNotIn("\n  distro-floor-build:\n", workflow)
         floor = workflow.split("\n  distro-floor:\n", 1)[1].split("\n  driver:\n", 1)[0]
-        self.assertIn("BASE=ubuntu:24.04", build)
-        self.assertIn("scripts/build-deb.sh", build)
-        self.assertIn("https://data.forgejo.org/actions/upload-artifact@v3", build)
-        self.assertIn("https://data.forgejo.org/actions/download-artifact@v3", floor)
-        self.assertIn("needs: [guards, clippy, unit, sandbox, widgets, distro-floor-build]", floor)
+        self.assertIn("scripts/distro-floor-package.sh", floor)
         self.assertIn("DISTRO_FLOOR_PACKAGE=", floor)
         self.assertIn("PREBUILT_DEB=", floor)
+        builder = (ROOT / "scripts/distro-floor-package.sh").read_text()
+        self.assertIn("BASE=ubuntu:24.04", builder)
+        self.assertIn("scripts/build-deb.sh", builder)
+        self.assertIn("flock", builder)
+        self.assertIn("chown", builder)
         floor_script = (ROOT / "scripts/test-distro-floor.sh").read_text()
         self.assertIn('apt-get install -y -qq "/package/$DISTRO_FLOOR_DEB_NAME"', floor_script)
         self.assertLess(floor_script.index('if [ -n "${DISTRO_FLOOR_DEB_NAME:-}" ]'), floor_script.index("pkg-config --modversion"))
         self.assertIn('cp "/prebuilt/$PREBUILT_DEB_NAME"', (ROOT / "scripts/test-deb-package.sh").read_text())
         runtime_image = (ROOT / "scripts/distro-floor/Dockerfile.runtime").read_text()
         self.assertIn("python3-pyatspi", runtime_image)
+        self.assertIn("gir1.2-gtk-4.0", runtime_image)
         self.assertNotIn("rustup", runtime_image)
 
 

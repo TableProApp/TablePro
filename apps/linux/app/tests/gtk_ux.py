@@ -260,7 +260,11 @@ GLib.MainLoop().run()
         )
         try:
             ready, _, _ = select.select([clipboard_owner.stdout], [], [], ui.WAIT_SECONDS)
-            assert ready and clipboard_owner.stdout.readline().strip() == b"ready", "the clipboard owner never took the clipboard"
+            announced = clipboard_owner.stdout.readline().strip() if ready else b""
+            if announced != b"ready":
+                clipboard_owner.terminate()
+                detail = clipboard_owner.stderr.read().decode(errors="replace")
+                raise AssertionError(f"the clipboard owner never took the clipboard: {announced!r} {detail}")
             assert clipboard_owner.poll() is None, clipboard_owner.stderr.read().decode()
             ui.press_x11_key("v", ("Control_L",))
             ui.wait_for_node(name="2 unsaved changes")
