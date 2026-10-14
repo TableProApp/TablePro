@@ -8,7 +8,7 @@ version = 2
 yanked = "deny"
 unmaintained = "workspace"
 ignore = [
-    { id = "RUSTSEC-2023-0071", reason = "Stage A until the OpenSSH transport replaces russh: rsa signs SSH RSA identities in process through russh, one blinded signature per authentication. sqlx-mysql uses rsa only to encrypt a password with the server public key. See docs/decisions/0009-crypto-provider-and-sources.md." },
+    { id = "RUSTSEC-2023-0071", reason = "rsa is reached only through sqlx-mysql, which encrypts the MySQL password with the server's public key; no private-key operation runs in process, and OpenSSH signs SSH identities. The rsa ban below holds that scope. See docs/decisions/0009-crypto-provider-and-sources.md." },
 ]
 
 [licenses]
@@ -49,6 +49,7 @@ deny = [
     { crate = "rust_decimal", reason = "decimals use tablepro_core::value::SqlDecimal; rust_decimal stops at 28 digits and has no NaN or infinity" },
     { crate = "backoff", reason = "unmaintained" },
     { crate = "instant", reason = "unmaintained" },
+    { crate = "rsa", wrappers = ["sqlx-mysql"], reason = "RUSTSEC-2023-0071 is accepted only for sqlx-mysql's public-key encryption; any other user of rsa needs a new decision in ADR 0009" },
     { crate = "tablepro-test-fixtures", wrappers = ["tablepro-driver-clickhouse", "tablepro-driver-mssql", "tablepro-driver-mysql", "tablepro-driver-postgres"], reason = "container fixtures are a dev-only leaf; extend the wrappers with each new dependent" },
     { crate = "libsqlite3-sys", deny-multiple-versions = true, reason = "two SQLite builds in one binary conflict" },
 ]
