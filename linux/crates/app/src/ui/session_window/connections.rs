@@ -12,7 +12,7 @@ use relm4::ComponentController;
 
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::{ConnectSource, PendingSave, RequestTarget};
-use tablepro_storage::SavedConnection;
+use tablepro_storage::{ConnectionListState, SavedConnection};
 use uuid::Uuid;
 
 use super::{SessionWindow, SessionWindowInput};
@@ -159,6 +159,19 @@ impl SessionWindow {
             welcome
                 .sender()
                 .deliver(crate::ui::welcome_view::WelcomeViewInput::SetConnections(connections));
+        }
+    }
+
+    /// `saved` as the connection list holds it now, or `None` once it is
+    /// deleted. The list every window shares is read without touching
+    /// the disk; before it is first read, `saved` is all there is.
+    pub(super) fn saved_as_stored(&self, saved: &SavedConnection) -> Option<SavedConnection> {
+        let Some(state) = self.state() else {
+            return Some(saved.clone());
+        };
+        match state.services.storage.connections().snapshot().state {
+            ConnectionListState::Ready(list) => list.iter().find(|entry| entry.id == saved.id).cloned(),
+            ConnectionListState::Loading | ConnectionListState::Unavailable(_) => Some(saved.clone()),
         }
     }
 

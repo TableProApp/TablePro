@@ -39,9 +39,10 @@ pub(crate) struct Script {
     pub credentials: Option<FakeCredentialSource>,
 }
 
-/// A TablePro over fakes with one window open on the picker. The
-/// application has an id of its own, so it never meets another test's,
-/// or a TablePro the developer has open, on the session bus.
+/// A TablePro over fakes with one window open on the picker and `saved`
+/// in its connection list. The application has an id of its own, so it
+/// never meets another test's, or a TablePro the developer has open, on
+/// the session bus.
 pub(crate) struct TestWindow {
     pub app: TableProApplication,
     pub window: SessionWindow,
@@ -70,6 +71,11 @@ impl TestWindow {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let paths = StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID);
         let storage = AppStorage::new(paths, Arc::new(FakeSecretVault::new()), &runtime.tasks());
+        let saved = saved_connection(&dir.path().join("fake.db"));
+        storage
+            .connections()
+            .upsert_blocking(saved.clone())
+            .expect("save the test's connection");
         let Script {
             mut connection,
             establish,
@@ -107,7 +113,6 @@ impl TestWindow {
             .and_then(|window| window.downcast::<SessionWindow>().ok())
             .expect("a session window");
         let services = app.services().expect("the application's services");
-        let saved = saved_connection(&dir.path().join("fake.db"));
         let test = Self {
             app,
             window,
@@ -294,6 +299,8 @@ fn cancel_connect_discards_late_attempt() {
     test.window
         .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
     test.wait_for_page("connecting");
+    // A cancel before the driver is asked builds no connection at all.
+    wait_until(WAIT, || !test.connector.calls().is_empty()).expect("the connect to reach the driver");
 
     test.window.send(SessionWindowInput::CancelConnect);
     test.wait_for_page("picker");
@@ -410,6 +417,57 @@ fn retry_rereads_credentials() {
     test.wait_for_page("workspace");
 
     assert_eq!(credentials.refreshes().len(), before + 1);
+}
+
+#[gtk4::test]
+fn retry_connects_to_the_entry_as_saved_now() {
+    let test = TestWindow::with_script(
+        "RetryEdited",
+        Script {
+            establish: vec![refused()],
+            ..Script::default()
+        },
+    );
+    let store = test.services.storage.connections().clone();
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("connect-failed");
+    let mut renamed = test.saved.clone();
+    renamed.name = "Renamed".to_owned();
+    store.upsert_blocking(renamed).expect("edit the entry");
+
+    test.window.send(SessionWindowInput::RetryConnect);
+    test.wait_for_page("workspace");
+
+    let names: Vec<String> = test
+        .connector
+        .calls()
+        .iter()
+        .map(|call| call.request.metadata.name.clone())
+        .collect();
+    assert_eq!(names, ["Fake", "Renamed"]);
+}
+
+#[gtk4::test]
+fn retry_after_the_entry_was_deleted_returns_to_the_picker() {
+    let test = TestWindow::with_script(
+        "RetryDeleted",
+        Script {
+            establish: vec![refused()],
+            ..Script::default()
+        },
+    );
+    let store = test.services.storage.connections().clone();
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("connect-failed");
+    store.remove_blocking(test.saved.id).expect("delete the entry");
+
+    test.window.send(SessionWindowInput::RetryConnect);
+    test.wait_for_page("picker");
+
+    assert_eq!(test.connector.calls().len(), 1, "the deleted entry was connected to");
+    assert_eq!(test.services.sessions.window_for(&test.key()), None);
 }
 
 #[gtk4::test]

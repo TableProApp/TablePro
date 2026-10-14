@@ -631,6 +631,16 @@ impl SessionWindow {
                 self.show_page(SessionPage::Picker);
                 self.on_open_file(gio::File::for_uri(&identity.uri));
             }
+            // The entry may have been edited or deleted in another window
+            // since the connect failed.
+            ConnectSource::Saved(saved) => match self.saved_as_stored(&saved) {
+                Some(current) => self.begin_connect(claim, ConnectSource::Saved(Box::new(current))),
+                None => {
+                    drop(claim);
+                    self.show_page(SessionPage::Picker);
+                    self.show_toast(&crate::i18n::gettext("The connection was deleted."));
+                }
+            },
             source => self.begin_connect(claim, source),
         }
     }
