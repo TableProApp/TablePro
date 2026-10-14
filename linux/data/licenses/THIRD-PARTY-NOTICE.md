@@ -7696,8 +7696,13 @@ authorization of the copyright holder.
 
 Used by:
 
+- fixed_decimal 0.7.2
 - icu_collections 2.3.0
+- icu_decimal 2.3.0
+- icu_decimal_data 2.3.0
 - icu_locale_core 2.3.0
+- icu_locale_fallback 2.3.0
+- icu_locale_fallback_data 2.3.0
 - icu_normalizer 2.3.0
 - icu_normalizer_data 2.3.0
 - icu_properties 2.3.0
