@@ -323,6 +323,10 @@ mod tests {
             .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
         test.wait_for_page("connecting");
         fits_the_floor(&content());
+        // A cancel before the driver is asked leaves the late connect for
+        // the next attempt.
+        wait_until(Duration::from_secs(10), || !test.connector.calls().is_empty())
+            .expect("the connect to reach the driver");
 
         test.window.send(SessionWindowInput::CancelConnect);
         test.wait_for_page("picker");
