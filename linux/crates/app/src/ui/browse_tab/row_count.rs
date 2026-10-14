@@ -1,6 +1,6 @@
 use gtk4::prelude::*;
 use tablepro_core::browse::build_count;
-use tablepro_core::meta::TableEstimate;
+use tablepro_core::meta::{RowCountEstimate, TableEstimate};
 use tablepro_session::{OperationError, OperationKind};
 
 use super::count_failure_text::count_failure_text;
@@ -37,6 +37,17 @@ impl BrowseModel {
             tracing::warn!(category = ?error.category(), "row estimate unavailable");
         });
         let filtered = !self.current_filter.is_empty();
+        // The count gives the total, so an estimate that lands while it
+        // runs only fills in what shows meanwhile.
+        if self.sequencer.is_pending(BrowseRequestKind::Count) {
+            let shown = estimate
+                .ok()
+                .and_then(RowCountEstimate::value)
+                .filter(|_| !filtered)
+                .or(self.total.estimate());
+            self.set_total(RowTotal::Counting { estimate: shown }, fx);
+            return;
+        }
         match decide(estimate, filtered) {
             CountAction::UseExact(rows) => self.set_total(RowTotal::Exact(rows), fx),
             CountAction::UseEstimate(rows) => self.set_total(RowTotal::Estimated(rows), fx),

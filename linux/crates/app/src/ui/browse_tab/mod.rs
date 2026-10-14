@@ -3,7 +3,8 @@
 //! The tab reads its own columns, pages and row count through the
 //! session, one request of each kind at a time: a newer request stops
 //! the one it replaces, and a reply to a replaced request is dropped.
-//! A read that failed is asked again once the session reconnects.
+//! A read that failed is asked again once the session reconnects. A
+//! count is not: it runs only when the estimate or the user asks.
 
 mod browse_command;
 mod browse_pager;
@@ -1721,6 +1722,10 @@ impl BrowseModel {
                 self.fetch(BrowseRequestKind::Page, fx);
             }
             BrowseTabInput::CountRows => {
+                if let Some(problem) = self.filter_problem() {
+                    fx.output(BrowseTabOutput::ShowToast(fetch::filter_failure(problem).message()));
+                    return;
+                }
                 if self.total.exact().is_none() && !self.sequencer.is_pending(BrowseRequestKind::Count) {
                     self.start_count(self.total.estimate(), fx);
                 }

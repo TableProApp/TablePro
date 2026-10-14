@@ -2,13 +2,15 @@ use std::time::Duration;
 
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
-use tablepro_core::DriverError;
 use tablepro_core::meta::RowCountEstimate;
+use tablepro_core::{DriverError, TimeoutPhase};
+use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 
 use super::BrowseTabInput;
 use super::tests::{
-    Harness, LogLines, WAIT, estimate, full_page, not_null_name, paging, rows, rows_from, serving_table, text,
+    Harness, LogLines, WAIT, estimate, full_page, not_null, not_null_name, paging, rows, rows_from, serving_table,
+    text, toasts,
 };
 use crate::services::change_origins::ChangeOrigins;
 use crate::test_support::{drain_main_context, wait_until};
@@ -132,18 +134,25 @@ fn count_rows_button_counts_and_shows_progress() {
     assert!(!count_button(&harness).is_visible());
 }
 
+/// The table is too large to count on its own, so under the filter
+/// nothing replaces the count: only the filter itself can stop it.
 #[gtk4::test]
 fn count_is_cancelled_when_filter_changes() {
-    let mut script = estimated(RowCountEstimate::Approximate(40));
+    let mut script = estimated(RowCountEstimate::Approximate(5_000_000));
     script.count_rows = Default::default();
     script.count_rows.always(FakeReply::UntilStopped);
     let harness = Harness::open(script, []);
+    wait_until(WAIT, || paginator(&harness).contains("of about")).expect("the estimate in the paginator");
+    count_button(&harness).emit_clicked();
     wait_until(WAIT, || count_calls(&harness) == 1).expect("the count was asked for");
     let counters = harness.connection.counters();
 
     harness.tab().send(BrowseTabInput::FilterApplied(not_null_name()));
 
-    wait_until(WAIT, || CallCounters::get(&counters.stopped) >= 1).expect("the filter left the count running");
+    wait_until(WAIT, || CallCounters::get(&counters.stopped) == 1).expect("the filter left the count running");
+    wait_until(WAIT, || count_label(&harness) == "Count Rows").expect("the stopped count still shows");
+    settle();
+    assert_eq!(count_calls(&harness), 1, "the filter counted on its own");
 }
 
 #[gtk4::test]
@@ -270,4 +279,85 @@ fn last_page_waits_for_an_exact_total() {
 
     wait_until(WAIT, || harness.shown() == text(&["Linus"])).expect("the last page");
     assert_eq!(harness.tab().current_offset(), 900);
+}
+
+fn timed_out() -> DriverError {
+    DriverError::Timeout {
+        phase: TimeoutPhase::Statement,
+        server_cancelled: true,
+    }
+}
+
+/// A count the user asked for ran out of time. Nothing counts again
+/// until they ask, a reconnect included, and least of all under the
+/// filter they applied since.
+#[gtk4::test]
+fn a_failed_count_does_not_run_again_after_a_reconnect() {
+    let mut first = estimated(RowCountEstimate::Approximate(5_000_000));
+    first.count_rows = Default::default();
+    first.count_rows.always(FakeReply::err(timed_out()));
+    let harness = Harness::open(
+        first,
+        [FakeEstablish::Connect(estimated(RowCountEstimate::Approximate(
+            5_000_000,
+        )))],
+    );
+    wait_until(WAIT, || paginator(&harness).contains("of about")).expect("the estimate in the paginator");
+    count_button(&harness).emit_clicked();
+    wait_until(WAIT, || count_label(&harness) == "Try Again").expect("the count that ran out of time");
+    harness.tab().send(BrowseTabInput::FilterApplied(not_null_name()));
+    wait_until(WAIT, || count_label(&harness) == "Count Rows").expect("the filtered total");
+
+    harness.connection.mark_lost();
+    wait_until(WAIT, || harness.session.link_generation().get() == 1).expect("the reconnect");
+    settle();
+    settle();
+
+    assert_eq!(
+        CallCounters::get(&harness.fake.replacement().counters().count_rows),
+        0,
+        "the reconnect counted the table without being asked"
+    );
+    assert_eq!(count_calls(&harness), 1);
+}
+
+/// The estimate can land after the user asked for a count. The count
+/// gives the total, so it keeps running and keeps its spinner.
+#[gtk4::test]
+fn an_estimate_that_lands_during_a_count_keeps_it_counting() {
+    let mut script = estimated(RowCountEstimate::Unknown);
+    script.table_estimate = Default::default();
+    script.table_estimate.always(FakeReply::Late {
+        after: Duration::from_millis(300),
+        outcome: Ok(estimate(RowCountEstimate::Approximate(5_000_000))),
+    });
+    script.count_rows = Default::default();
+    script.count_rows.always(FakeReply::UntilStopped);
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || count_button(&harness).is_visible()).expect("Count Rows offered");
+
+    count_button(&harness).emit_clicked();
+    wait_until(WAIT, || paginator(&harness).contains("of about")).expect("the estimate");
+
+    assert_eq!(count_label(&harness), "Counting…");
+    assert!(!count_button(&harness).is_sensitive());
+    assert!(harness.tab().imp().count_spinner.is_visible());
+    assert_eq!(count_calls(&harness), 1);
+    assert_eq!(CallCounters::get(&harness.connection.counters().stopped), 0);
+}
+
+#[gtk4::test]
+fn count_rows_under_a_filter_that_no_longer_fits_says_why() {
+    let harness = Harness::open(estimated(RowCountEstimate::Approximate(5_000_000)), []);
+    wait_until(WAIT, || paginator(&harness).contains("of about")).expect("the estimate in the paginator");
+    let toasts = toasts(harness.tab());
+    harness.tab().send(BrowseTabInput::FilterApplied(not_null("nickname")));
+    wait_until(WAIT, || toasts.borrow().len() == 1).expect("the filter that does not fit");
+
+    count_button(&harness).emit_clicked();
+
+    let shown = toasts.borrow().clone();
+    assert_eq!(shown.len(), 2, "Count Rows did nothing and said nothing");
+    assert_eq!(shown[1], shown[0]);
+    assert_eq!(count_calls(&harness), 0);
 }

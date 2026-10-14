@@ -1,13 +1,20 @@
 use std::time::Duration;
 
-use tablepro_core::DriverError;
+use tablepro_core::{DriverError, TimeoutPhase};
 use tablepro_session::OperationError;
 
 /// Why a count gave no total. A count stopped at its deadline names the
-/// deadline it ran into, which the policy sets, not the driver.
+/// deadline it ran into, which the policy sets, not the driver. A lock
+/// wait or a connect that ran out of time never reached that deadline.
 pub(crate) fn count_failure_text(error: &OperationError, count_deadline: Option<Duration>) -> String {
     match (error, count_deadline) {
-        (OperationError::Driver(DriverError::Timeout { .. }), Some(deadline)) => {
+        (
+            OperationError::Driver(DriverError::Timeout {
+                phase: TimeoutPhase::Statement,
+                ..
+            }),
+            Some(deadline),
+        ) => {
             let seconds = deadline.as_secs();
             crate::i18n::ngettext_f(
                 "Counting took longer than {seconds} second and was stopped.",
@@ -22,7 +29,7 @@ pub(crate) fn count_failure_text(error: &OperationError, count_deadline: Option<
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::{LossPhase, TimeoutPhase};
+    use tablepro_core::LossPhase;
 
     use super::*;
 
@@ -43,6 +50,22 @@ mod tests {
             count_failure_text(&timed_out(), Some(Duration::from_secs(1))),
             "Counting took longer than 1 second and was stopped."
         );
+    }
+
+    #[test]
+    fn a_timeout_before_the_count_ran_is_not_its_deadline() {
+        for phase in [TimeoutPhase::LockWait, TimeoutPhase::Connect, TimeoutPhase::Login] {
+            let error = OperationError::Driver(DriverError::Timeout {
+                phase,
+                server_cancelled: false,
+            });
+
+            assert_eq!(
+                count_failure_text(&error, Some(Duration::from_secs(45))),
+                crate::ui::error_text::operation_error_message(&error),
+                "{phase}"
+            );
+        }
     }
 
     #[test]

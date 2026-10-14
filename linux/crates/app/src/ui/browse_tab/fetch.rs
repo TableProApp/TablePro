@@ -29,15 +29,14 @@ pub(super) struct ReadPlan {
 }
 
 impl BrowseModel {
-    /// Ask for one kind of read. A page, an estimate or a count waits
-    /// for the columns, since the tab reads nothing of a table whose
-    /// columns it could not read.
+    /// Ask for one kind of read. A page or an estimate waits for the
+    /// columns, since the tab reads nothing of a table whose columns it
+    /// could not read. A count needs no such wait: it runs only once the
+    /// user or an estimate asks, after the columns.
     pub(super) fn fetch(&mut self, kind: BrowseRequestKind, fx: &mut Effects) {
         match kind {
             BrowseRequestKind::Columns => self.fetch_columns(ColumnFreshness::Cached),
-            BrowseRequestKind::Page | BrowseRequestKind::Estimate | BrowseRequestKind::Count
-                if self.identity.is_none() =>
-            {
+            BrowseRequestKind::Page | BrowseRequestKind::Estimate if self.identity.is_none() => {
                 self.after_columns.insert(kind);
                 if !self.sequencer.is_pending(BrowseRequestKind::Columns) {
                     self.fetch_columns(ColumnFreshness::Cached);
@@ -196,7 +195,7 @@ impl BrowseModel {
     /// without rows, the error page says why rather than a spinner that
     /// nothing will replace.
     fn on_filter_problem(&mut self, problem: BuildFilterError, fx: &mut Effects) {
-        let failure = LoadFailure::Page(Arc::new(OperationError::Browse(problem.into())));
+        let failure = filter_failure(problem);
         if !self.load.has_content() {
             self.on_load_failed(failure, fx);
             return;
@@ -252,11 +251,13 @@ impl BrowseModel {
                     self.retry_if_link_moved(BrowseRequestKind::Estimate, fx);
                 }
             }
+            // A failed count is not asked again on a reconnect: Try Again
+            // runs it, so a count that ran out of time does not run for
+            // another deadline, or under a filter applied since.
             BrowseCommand::Count(Stamped { stamp, value }) => {
                 if !self.sequencer.accept(BrowseRequestKind::Count, stamp) {
                     return;
                 }
-                self.failed.record(BrowseRequestKind::Count, &value);
                 if let Err(error) = &value {
                     tracing::debug!(
                         kind = failure_kind(error),
@@ -264,11 +265,7 @@ impl BrowseModel {
                         "the row count could not be read"
                     );
                 }
-                let failed = value.is_err();
                 self.on_count(value, fx);
-                if failed {
-                    self.retry_if_link_moved(BrowseRequestKind::Count, fx);
-                }
             }
         }
     }
@@ -336,6 +333,11 @@ impl BrowseModel {
             }
         }
     }
+}
+
+/// A filter the current server cannot write, as the tab reports it.
+pub(super) fn filter_failure(problem: BuildFilterError) -> LoadFailure {
+    LoadFailure::Page(Arc::new(OperationError::Browse(problem.into())))
 }
 
 /// Every row has the columns the page asked for, visible then identity,
