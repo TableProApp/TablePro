@@ -1,6 +1,7 @@
 import ctypes
 import json
 import os
+import select
 import subprocess
 import sys
 import time
@@ -212,16 +213,18 @@ gi.require_version('Gdk', '4.0')
 from gi.repository import Gdk, GLib, Gtk
 Gtk.init()
 Gdk.Display.get_default().get_clipboard().set(sys.argv[1])
+GLib.idle_add(lambda: print('ready', flush=True))
 GLib.MainLoop().run()
 """
         clipboard_owner = subprocess.Popen(
             [sys.executable, "-c", clipboard_code, clipboard_text],
             env=os.environ.copy(),
-            stdout=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
         try:
-            time.sleep(0.3)
+            ready, _, _ = select.select([clipboard_owner.stdout], [], [], ui.WAIT_SECONDS)
+            assert ready and clipboard_owner.stdout.readline().strip() == b"ready", "the clipboard owner never took the clipboard"
             assert clipboard_owner.poll() is None, clipboard_owner.stderr.read().decode()
             ui.press_x11_key("v", ("Control_L",))
             ui.wait_for_node(name="2 unsaved changes")
