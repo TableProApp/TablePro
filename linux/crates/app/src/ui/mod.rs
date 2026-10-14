@@ -28,6 +28,7 @@ mod ssh_section;
 mod structure_tab;
 mod style_scheme_grid;
 mod style_scheme_resolver;
+mod tab_load;
 mod welcome_view;
 mod window_geometry;
 mod workspace;

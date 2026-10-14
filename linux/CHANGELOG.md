@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Screen readers say when a grid cell is modified and when a row is new or marked for deletion.
 - Connections open when TablePro quits open again at the next launch; Restore session in Preferences turns it off.
 - Save query history in Preferences turns the query history off and keeps the entries already saved.
+- Try Again on a table tab's error page, and Retry on a banner over rows a refresh could not read again.
+- Table tabs show a spinner in the tab bar while they read.
 
 ### Changed
 
@@ -54,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add Index and Add Foreign Key check the form as you type, and pick the referenced table and columns from the database.
 - Denser grid rows, with numbers aligned right in even-width digits at the precision their column declares.
 - A grid value too long to draw says how many bytes it leaves out, and its tooltip points to Show Row as JSON.
+- Refresh keeps a table's rows, selection and focused cell on screen while it reads the table again.
 
 ### Removed
 
@@ -118,6 +121,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A table or structure tab whose read failed while the connection was lost kept its error page after the reconnect.
 - A refresh that failed replaced the rows in a table tab with an error page.
 - Switching connections could show the previous connection's tables in the sidebar, or its reconnect banner.
+- The sidebar lost the selected table each time the table list was read again.
 - Switching connections during a table drop could close the new connection's tabs on a table of the same name.
 - Renaming a MySQL table in another database moved it to the connection's database, and renaming a ClickHouse table failed.
 - Turning a column's primary key on or off in the Structure tab saved nothing.

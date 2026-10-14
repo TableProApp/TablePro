@@ -4,13 +4,14 @@ use std::sync::Arc;
 use tablepro_core::browse::{BrowseSqlError, PageLayout, PageRequest, SortKey, build_count, build_page};
 use tablepro_core::meta::{PagePosition, RowIdentity, TableRef};
 use tablepro_core::statement::StatementBuilder;
-use tablepro_core::{ColumnInfo, FilterSet, QueryResult, RowLimit};
+use tablepro_core::{BuildFilterError, ColumnInfo, FilterSet, QueryResult, RowLimit};
 use tablepro_session::{LinkGeneration, OperationError, OperationKind};
 
 use super::{
     BrowseCommand, BrowseModel, BrowseRequestKind, BrowseTabInput, BrowseTabOutput, ColumnsReply, Effects, PageReply,
 };
 use crate::runtime::{RequestTicket, Stamped};
+use crate::ui::tab_load::LoadFailure;
 
 /// What a page or a count reads, copied off the tab so the work owns
 /// it. The SQL is built inside the operation from the lease it runs on,
@@ -91,10 +92,11 @@ impl BrowseModel {
         let Some(plan) = self.read_plan() else {
             return;
         };
-        if let Some(message) = self.filter_problem() {
-            self.on_filter_problem(&message, fx);
+        if let Some(problem) = self.filter_problem() {
+            self.on_filter_problem(problem, fx);
             return;
         }
+        self.begin_read(fx);
         let ticket = self.issue(BrowseRequestKind::Page);
         let session = self.session.clone();
         let cancel = ticket.cancel.clone();
@@ -206,25 +208,27 @@ impl BrowseModel {
 
     /// Why the tab's filter cannot be written for the current server,
     /// if it cannot.
-    fn filter_problem(&self) -> Option<String> {
+    fn filter_problem(&self) -> Option<BuildFilterError> {
         let dialect = self.dialect.as_ref()?;
         let mut builder = StatementBuilder::new();
-        tablepro_core::build_filter(&mut builder, &**dialect, &self.current_columns, &self.current_filter)
-            .err()
-            .map(|error| error.to_string())
+        tablepro_core::build_filter(&mut builder, &**dialect, &self.current_columns, &self.current_filter).err()
     }
 
     /// A filter the dialect cannot write is the user's to fix, and no
-    /// page is read under it. A page already read under these columns
-    /// stays with a toast; without one, the error page says why rather
-    /// than a spinner that nothing will replace.
-    fn on_filter_problem(&mut self, message: &str, fx: &mut Effects) {
-        if self.page.is_some() {
-            self.refresh_inner_stack_visibility();
-            fx.output(BrowseTabOutput::ShowToast(message.to_owned()));
+    /// page is read under it. Rows already on screen stay with a toast,
+    /// and a page still on its way under the old filter is stopped;
+    /// without rows, the error page says why rather than a spinner that
+    /// nothing will replace.
+    fn on_filter_problem(&mut self, problem: BuildFilterError, fx: &mut Effects) {
+        let failure = LoadFailure::Page(Arc::new(OperationError::Browse(problem.into())));
+        if !self.load.has_content() {
+            self.on_load_failed(failure, fx);
             return;
         }
-        self.show_error(message);
+        self.sequencer.cancel(BrowseRequestKind::Page);
+        fx.output(BrowseTabOutput::ShowToast(failure.message()));
+        let presentation = self.load.abandon();
+        self.present(presentation, fx);
     }
 
     pub(super) fn on_command(&mut self, command: BrowseCommand, fx: &mut Effects) {
@@ -248,7 +252,7 @@ impl BrowseModel {
                             category = ?error.category(),
                             "could not read the table's columns"
                         );
-                        self.on_read_failed(&crate::ui::error_text::operation_error_message(&error), fx);
+                        self.on_load_failed(LoadFailure::Columns(error), fx);
                         self.retry_if_link_moved(BrowseRequestKind::Columns, fx);
                     }
                 }
@@ -264,7 +268,7 @@ impl BrowseModel {
                         self.on_rows_loaded(offset, reply, fx);
                     }
                     Err(error) => {
-                        self.on_read_failed(&crate::ui::error_text::operation_error_message(&error), fx);
+                        self.on_load_failed(LoadFailure::Page(Arc::new(error)), fx);
                         self.retry_if_link_moved(BrowseRequestKind::Page, fx);
                     }
                 }
@@ -316,7 +320,7 @@ impl BrowseModel {
         }
         let kinds = self.failed.take();
         if kinds.contains(&BrowseRequestKind::Page) || kinds.contains(&BrowseRequestKind::Columns) {
-            self.show_loading();
+            self.begin_read(fx);
         }
         match kinds.contains(&BrowseRequestKind::Columns) {
             true => {

@@ -214,8 +214,11 @@ fn browsable(objects: Vec<ObjectInfo>) -> Vec<ObjectInfo> {
 }
 
 impl WorkspaceModel {
+    /// The list is built anew, which drops its selection, so the row of
+    /// the table tab in front is selected again.
     pub(super) fn show_objects(&mut self, objects: &[ObjectInfo]) {
         self.repopulate_sidebar(browsable(objects.to_vec()));
+        self.sync_sidebar_selection();
     }
 
     fn repopulate_sidebar(&mut self, objects: Vec<ObjectInfo>) {
@@ -332,6 +335,63 @@ mod tests {
 
         assert_eq!(queue.borrow().len(), 1);
         assert_eq!(names(&queue.borrow()[0]), ["users"]);
+    }
+
+    fn sidebar_list(workspace: &Workspace) -> gtk::ListBox {
+        workspace
+            .imp()
+            .sidebar_scroll
+            .child()
+            .and_then(|child| {
+                child
+                    .downcast_ref::<gtk::ListBox>()
+                    .cloned()
+                    .or_else(|| child.first_child().and_downcast::<gtk::ListBox>())
+            })
+            .expect("the sidebar's list")
+    }
+
+    #[gtk4::test]
+    fn sidebar_selection_survives_tables_reload() {
+        use crate::test_support::wait_until;
+        use crate::ui::session_window::tests::{TestWindow, WAIT};
+
+        let test = TestWindow::connected_with("SidebarReload", |script| {
+            for _ in 0..4 {
+                script.list_objects.once(FakeReply::ok(vec![
+                    object("orders", ObjectKind::Table),
+                    object("users", ObjectKind::Table),
+                ]));
+            }
+        });
+        let workspace = test.workspace();
+        let list = sidebar_list(&workspace);
+        let input = workspace.input().expect("the workspace's input");
+        let read_tables = || {
+            input.deliver(WorkspaceInput::SchemaChanged {
+                schema: Some("public".to_owned()),
+                table: None,
+            });
+        };
+        read_tables();
+        wait_until(WAIT, || list.row_at_index(1).is_some()).expect("the tables are listed");
+        input.deliver(WorkspaceInput::SelectTable {
+            schema: Some("public".to_owned()),
+            name: "users".to_owned(),
+            open_mode: OpenMode::SwitchOrAppend,
+        });
+        let selected_name = || list.selected_row().map(|row| row.widget_name().to_string());
+        wait_until(WAIT, || selected_name().as_deref() == Some("users")).expect("the table's row is selected");
+        let before = list.row_at_index(1).expect("the users row");
+
+        read_tables();
+        wait_until(WAIT, || list.row_at_index(1).is_some_and(|row| row != before)).expect("the list was read again");
+
+        assert_eq!(
+            selected_name().as_deref(),
+            Some("users"),
+            "the reload dropped the selection"
+        );
     }
 
     #[test]

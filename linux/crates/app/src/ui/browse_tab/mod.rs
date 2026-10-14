@@ -10,13 +10,16 @@ mod browse_request_kind;
 mod confirming_delete;
 mod fetch;
 mod imp;
+#[cfg(test)]
+mod load_tests;
 mod page_reply;
 mod page_state;
 mod row_deletion;
+mod selection_snapshot;
 #[cfg(test)]
 mod tests;
 
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::collections::{BTreeSet, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -41,11 +44,13 @@ use self::confirming_delete::ConfirmingDelete;
 pub(crate) use self::page_reply::PageReply;
 use self::page_state::PageState;
 use self::row_deletion::{RowDeletion, plan_row_deletion};
+use self::selection_snapshot::SelectionSnapshot;
 use super::grid::{
     CellPreset, ColumnWidthBinding, DeleteAvailability, GridContent, GridMsg, GridRowId, GridRowIndex, GridSink,
     RowKeyBuilder, RowObject, TabGridContext, build_column_view, cell_editability, cell_presets, delete_availability,
     edit_context, edit_row, export_snapshot, snapshot_result,
 };
+use super::tab_load::{ContentLoad, ContentPage, LoadFailure, LoadPresentation, StaleBanner};
 use crate::runtime::{FailedRequests, RequestSequencer};
 use crate::services::change_tracker::{RowKey, StatementSource, new_draft_cell, pk_identity};
 use crate::services::column_relayout::ColumnRelayout;
@@ -146,6 +151,14 @@ impl BrowseTab {
         imp.toolbar.add_top_bar(&filter_strip.widget);
         tab.collapse_top_bars_with(&filter_strip.widget);
         tab.connect_widgets();
+        let stale_banner = StaleBanner::new(imp.stale_banner.get(), {
+            let tab = tab.downgrade();
+            move || {
+                if let Some(tab) = tab.upgrade() {
+                    tab.send(BrowseTabInput::Refresh);
+                }
+            }
+        });
         let delete_action = tab.install_delete_action();
 
         // Handled at once: a tracked change redraws the cells bound to its
@@ -189,17 +202,21 @@ impl BrowseTab {
             shown_view: None,
             current_selection: None,
             current_total_rows: None,
+            load: ContentLoad::default(),
+            tab_loading: false,
+            stale_banner,
             inner_stack: imp.inner_stack.get(),
             grid_holder: imp.grid_holder.get(),
             loading_page: imp.loading_page.get(),
             error_page: imp.error_page.get(),
             current_column_view: None,
+            view_columns: Vec::new(),
             row_index: GridRowIndex::default(),
             rendered_columns: Vec::new(),
             read_only_banner: imp.read_only_banner.get(),
             no_pk_banner: imp.no_pk_banner.get(),
             was_dirty: Cell::new(false),
-            pending_focus_restore: RefCell::new(None),
+            pending_restore: None,
             paginator_label: imp.paginator_label.get(),
             selection_label: imp.selection_label.get(),
             first_button: imp.first_button.get(),
@@ -316,6 +333,11 @@ impl BrowseTab {
         self.read(|model| model.current_sort).flatten()
     }
 
+    /// A read of the tab's rows is running.
+    pub fn is_loading(&self) -> bool {
+        self.read(|model| model.tab_loading).unwrap_or(false)
+    }
+
     pub fn connect_state_changed<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure("state-changed", false, glib::closure_local!(move |tab: &Self| f(tab)))
     }
@@ -379,6 +401,15 @@ impl BrowseTab {
         )
     }
 
+    /// A read of the tab's rows started or ended.
+    pub fn connect_loading_changed<F: Fn(&Self, bool) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "loading-changed",
+            false,
+            glib::closure_local!(move |tab: &Self, loading: bool| f(tab, loading)),
+        )
+    }
+
     fn emit_output(&self, output: BrowseTabOutput) {
         match output {
             BrowseTabOutput::StateChanged => self.emit_by_name::<()>("state-changed", &[]),
@@ -395,6 +426,7 @@ impl BrowseTab {
             BrowseTabOutput::DirtyChanged(dirty) => self.emit_by_name::<()>("dirty-changed", &[&dirty]),
             BrowseTabOutput::SaveRequested => self.emit_by_name::<()>("save-requested", &[]),
             BrowseTabOutput::StopSaveRequested => self.emit_by_name::<()>("stop-save-requested", &[]),
+            BrowseTabOutput::LoadingChanged(loading) => self.emit_by_name::<()>("loading-changed", &[&loading]),
         }
     }
 
@@ -403,29 +435,31 @@ impl BrowseTab {
     fn collapse_top_bars_with(&self, filter: &gtk::Revealer) {
         let imp = self.imp();
         // The banners and the strip hold this through their notify
-        // handlers, and the tab holds them, so it holds all four weakly.
+        // handlers, and the tab holds them, so it holds them all weakly.
         let sync: Rc<dyn Fn()> = {
             let toolbar = imp.toolbar.downgrade();
-            let read_only = imp.read_only_banner.downgrade();
-            let no_pk = imp.no_pk_banner.downgrade();
+            let banners = [
+                imp.stale_banner.downgrade(),
+                imp.read_only_banner.downgrade(),
+                imp.no_pk_banner.downgrade(),
+            ];
             let filter = filter.downgrade();
             Rc::new(move || {
-                let (Some(toolbar), Some(read_only), Some(no_pk), Some(filter)) = (
-                    toolbar.upgrade(),
-                    read_only.upgrade(),
-                    no_pk.upgrade(),
-                    filter.upgrade(),
-                ) else {
+                let (Some(toolbar), Some(filter)) = (toolbar.upgrade(), filter.upgrade()) else {
                     return;
                 };
-                toolbar.set_reveal_top_bars(read_only.is_revealed() || no_pk.is_revealed() || filter.reveals_child());
+                let banner_shown = banners
+                    .iter()
+                    .filter_map(glib::WeakRef::upgrade)
+                    .any(|banner| banner.is_revealed());
+                toolbar.set_reveal_top_bars(banner_shown || filter.reveals_child());
             })
         };
         sync();
-        let read_only_sync = sync.clone();
-        imp.read_only_banner.connect_revealed_notify(move |_| read_only_sync());
-        let no_pk_sync = sync.clone();
-        imp.no_pk_banner.connect_revealed_notify(move |_| no_pk_sync());
+        for banner in [&imp.stale_banner, &imp.read_only_banner, &imp.no_pk_banner] {
+            let sync = sync.clone();
+            banner.connect_revealed_notify(move |_| sync());
+        }
         filter.connect_reveal_child_notify(move |_| sync());
     }
 
@@ -448,6 +482,7 @@ impl BrowseTab {
         on_click(&imp.discard_button, || BrowseTabInput::DiscardAll);
         on_click(&imp.save_button, || BrowseTabInput::CommitSave);
         on_click(&imp.stop_button, || BrowseTabInput::StopSaving);
+        on_click(&imp.retry_button, || BrowseTabInput::Refresh);
         let tab = self.downgrade();
         imp.page_size_dropdown.connect_selected_notify(move |dropdown| {
             let index = usize::try_from(dropdown.selected()).unwrap_or(usize::MAX);
@@ -573,12 +608,19 @@ pub(crate) struct BrowseModel {
     shown_view: Option<PageView>,
     current_selection: Option<gtk::MultiSelection>,
     current_total_rows: Option<u64>,
+    load: ContentLoad,
+    /// What the tab bar was last told, so it hears only changes.
+    tab_loading: bool,
+    stale_banner: StaleBanner,
 
     inner_stack: gtk::Stack,
     grid_holder: gtk::Box,
     loading_page: adw::StatusPage,
     error_page: adw::StatusPage,
     current_column_view: Option<gtk::ColumnView>,
+    /// The view's columns in the order of a row's cells, which a drag in
+    /// the header leaves alone.
+    view_columns: Vec<gtk::ColumnViewColumn>,
     /// The store's rows by tracker key, so a tracked change finds the
     /// row to redraw without a scan of the page.
     row_index: GridRowIndex,
@@ -593,9 +635,9 @@ pub(crate) struct BrowseModel {
     /// Last-emitted dirty state, so App hears only real transitions and
     /// not every count change (2 → 3).
     was_dirty: Cell<bool>,
-    /// The focused row before a sort, save or refresh, so the reloaded
-    /// page selects it again.
-    pending_focus_restore: RefCell<Option<RowKey>>,
+    /// The selection and the focused cell before a sort, save or
+    /// refresh, so the page read again puts them back.
+    pending_restore: Option<SelectionSnapshot>,
     paginator_label: gtk::Label,
     selection_label: gtk::Label,
     first_button: gtk::Button,
@@ -724,6 +766,8 @@ pub(crate) enum BrowseTabOutput {
     DirtyChanged(bool),
     SaveRequested,
     StopSaveRequested,
+    /// A read of the tab's rows started or ended, for the tab bar.
+    LoadingChanged(bool),
 }
 
 impl BrowseModel {
@@ -930,11 +974,44 @@ impl BrowseModel {
     }
 
     /// F5: read the columns again, in case the table changed under the
-    /// tab, then the page and the count built from them.
-    fn reload(&mut self) {
-        self.capture_focus_for_restore();
-        self.show_loading();
+    /// tab, then the page and the count built from them. The rows on
+    /// screen stay until the new page lands.
+    fn reload(&mut self, fx: &mut Effects) {
+        self.capture_selection();
+        self.begin_read(fx);
         self.reload_from_columns(true);
+    }
+
+    /// A read of the page the tab asks for starts. Rows read under the
+    /// same filter, sort and offset stay through a failure; rows of
+    /// another page do not, since they are not what the tab shows.
+    fn begin_read(&mut self, fx: &mut Effects) {
+        let presentation = match self.shown_view.as_ref() == Some(&self.page_view()) {
+            true => self.load.begin(),
+            false => self.load.begin_replacing(),
+        };
+        self.present(presentation, fx);
+    }
+
+    /// Put the read's state on screen: the spinner, the grid or the
+    /// error page, the banner over rows that could not be read again,
+    /// and the tab bar's spinner.
+    fn present(&mut self, presentation: LoadPresentation, fx: &mut Effects) {
+        match &presentation.page {
+            ContentPage::Spinner => self.show_loading(),
+            ContentPage::Content => self.inner_stack.set_visible_child_name("grid"),
+            ContentPage::Error(failure) => {
+                // The status page reads its description as markup.
+                self.error_page
+                    .set_description(Some(&glib::markup_escape_text(&failure.message())));
+                self.inner_stack.set_visible_child_name("error");
+            }
+        }
+        self.stale_banner.show(presentation.stale.as_ref());
+        if self.tab_loading != presentation.tab_loading {
+            self.tab_loading = presentation.tab_loading;
+            fx.output(BrowseTabOutput::LoadingChanged(presentation.tab_loading));
+        }
     }
 
     /// Reveal at most ONE banner at a time. Read-only takes priority
@@ -994,27 +1071,22 @@ impl BrowseModel {
         });
     }
 
-    /// Snapshot the currently focused/first-selected row's identity
-    /// before an operation that reloads the page (sort flip, save, F5),
-    /// so the view re-anchors to the same row after the new page.
-    fn capture_focus_for_restore(&self) {
+    /// Keep the selection and the focused cell by row key before a sort,
+    /// save or refresh reads the page again.
+    fn capture_selection(&mut self) {
         // A capture still pending (sort and save in quick succession)
-        // is kept: the first visible focus should anchor to where the
-        // user was before the chain started.
-        if self.pending_focus_restore.borrow().is_some() {
+        // is kept: the user was where the chain started.
+        if self.pending_restore.is_some() {
             return;
         }
-        let Some(selection) = self.current_selection.as_ref() else {
+        let (Some(selection), Some(column_view)) = (self.current_selection.as_ref(), self.current_column_view.as_ref())
+        else {
             return;
         };
-        let bitset = selection.selection();
-        if bitset.size() == 0 {
-            return;
+        let snapshot = SelectionSnapshot::capture(selection, column_view);
+        if !snapshot.is_empty() {
+            self.pending_restore = Some(snapshot);
         }
-        let Some(row) = selection.item(bitset.nth(0)).and_downcast::<RowObject>() else {
-            return;
-        };
-        *self.pending_focus_restore.borrow_mut() = row.id().tracker_key();
     }
 
     /// Edit the first editable cell of the new draft, which is always
@@ -1028,32 +1100,35 @@ impl BrowseModel {
         };
         glib::idle_add_local_once(move || {
             // F5 between the insert and this idle detaches the column
-            // view. The row was inserted; only the edit is missed.
-            if cv.root().is_some() {
+            // view, and a failed read hides it behind the error page. The
+            // row was inserted; only the edit is missed.
+            if cv.is_mapped() {
                 edit_row(&cv, 0);
             }
         });
     }
 
-    /// Select the row captured before the reload again, if it is still on
-    /// the page. The capture is used up either way, so it cannot steer a
-    /// later reload.
-    fn restore_focused_row(&mut self) {
-        let Some(key) = self.pending_focus_restore.borrow_mut().take() else {
+    /// Put back the selection captured before the page was read again,
+    /// on the rows that are still on it. The capture is used up either
+    /// way, so it cannot steer a later read.
+    fn restore_selection(&mut self) {
+        let Some(snapshot) = self.pending_restore.take() else {
             return;
         };
-        let Some(store) = self.list_store() else {
+        let (Some(store), Some(selection), Some(column_view)) = (
+            self.list_store(),
+            self.current_selection.clone(),
+            self.current_column_view.clone(),
+        ) else {
             return;
         };
-        let Some(position) = self.row_index.position_in(&store, &key) else {
-            return;
-        };
-        if let Some(selection) = self.current_selection.as_ref() {
-            selection.select_item(position, true);
-        }
-        if let Some(cv) = self.current_column_view.as_ref() {
-            cv.scroll_to(position, None, gtk::ListScrollFlags::FOCUS, None);
-        }
+        snapshot.restore(
+            &mut self.row_index,
+            &store,
+            &selection,
+            &column_view,
+            &self.view_columns,
+        );
     }
 
     /// The columns came back the same, so the page on screen still
@@ -1063,7 +1138,6 @@ impl BrowseModel {
             return;
         }
         self.refresh_grid_chrome();
-        self.restore_focused_row();
         fx.output(BrowseTabOutput::StateChanged);
     }
 
@@ -1081,7 +1155,9 @@ impl BrowseModel {
             self.reindex_rows();
             self.sync_delete_action();
             self.refresh_grid_chrome();
-            self.restore_focused_row();
+            let presentation = self.load.succeed();
+            self.present(presentation, fx);
+            self.restore_selection();
             fx.output(BrowseTabOutput::StateChanged);
             return;
         }
@@ -1102,6 +1178,10 @@ impl BrowseModel {
         );
         self.current_selection = Some(selection);
         self.current_column_view = Some(column_view.clone());
+        let view_columns = column_view.columns();
+        self.view_columns = (0..view_columns.n_items())
+            .filter_map(|position| view_columns.item(position).and_downcast())
+            .collect();
         self.rendered_columns = self.current_columns.clone();
 
         // The selection model is new per rebuild, so the previous
@@ -1133,7 +1213,9 @@ impl BrowseModel {
             .build();
         self.grid_holder.append(&scrolled);
         self.refresh_grid_chrome();
-        self.restore_focused_row();
+        let presentation = self.load.succeed();
+        self.present(presentation, fx);
+        self.restore_selection();
         fx.output(BrowseTabOutput::StateChanged);
     }
 
@@ -1153,17 +1235,20 @@ impl BrowseModel {
 
     /// The grid was built for columns the table no longer has, so it
     /// goes before a click or a key in it lands on a moved column.
-    fn drop_grid(&mut self) {
+    fn drop_grid(&mut self, fx: &mut Effects) {
         if self.current_column_view.take().is_none() {
             return;
         }
         clear_box(&self.grid_holder);
         self.current_selection = None;
+        self.view_columns.clear();
         self.rendered_columns.clear();
         self.row_index = GridRowIndex::default();
+        self.pending_restore = None;
         update_selection_chrome(&self.selection_label, 0);
         self.sync_delete_action();
-        self.show_loading();
+        let presentation = self.load.drop_content();
+        self.present(presentation, fx);
     }
 
     fn reindex_rows(&mut self) {
@@ -1191,19 +1276,7 @@ impl BrowseModel {
             .map(|t| (t - 1) / self.page_size * self.page_size);
         self.last_button
             .set_sensitive(last_target.is_some_and(|target| self.current_offset != target));
-
-        self.refresh_inner_stack_visibility();
         self.suppress_combo_emit.set(false);
-    }
-
-    /// Switch the inner stack to the grid once the first page has
-    /// loaded, and stay there whatever the row count: an empty-list
-    /// status page hid the column view, and inserting a draft into it
-    /// then scrolled a view with no allocated adjustments.
-    fn refresh_inner_stack_visibility(&self) {
-        if self.page.is_some() {
-            self.inner_stack.set_visible_child_name("grid");
-        }
     }
 
     fn has_primary_key(&self) -> bool {
@@ -1292,22 +1365,6 @@ impl BrowseModel {
         self.inner_stack.set_visible_child_name("loading");
     }
 
-    /// Show why no rows could be read. The page and the count from
-    /// before are dropped, so a later reload does not render against
-    /// them before its own page arrives.
-    fn show_error(&mut self, message: &str) {
-        self.page = None;
-        self.shown_view = None;
-        self.current_total_rows = None;
-        self.paginator_label.set_label("");
-        self.first_button.set_sensitive(false);
-        self.prev_button.set_sensitive(false);
-        self.next_button.set_sensitive(false);
-        self.last_button.set_sensitive(false);
-        self.error_page.set_description(Some(message));
-        self.inner_stack.set_visible_child_name("error");
-    }
-
     /// Take the page apart into rows the store owns. Each row's cells
     /// move into it, and the identity cells after them name the row and
     /// are dropped, so nothing past the visible columns reaches a copy
@@ -1356,19 +1413,13 @@ impl BrowseModel {
         }
     }
 
-    /// A read failed. When it asked again for the page on screen, as F5
-    /// and a schema change do, the page stays and a toast says why; any
-    /// other page on screen no longer matches what the tab asks for.
-    fn on_read_failed(&mut self, message: &str, fx: &mut Effects) {
-        if self.page.is_some() && self.shown_view.as_ref() == Some(&self.page_view()) {
-            self.refresh_inner_stack_visibility();
-            fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext_f(
-                "Couldn't refresh the rows: {error}",
-                &[("error", message)],
-            )));
-            return;
-        }
-        self.show_error(message);
+    /// A read failed. Rows read again for the same page stay, under the
+    /// banner; with no rows, or rows of another page, the error page says
+    /// why. The paginator stays, so the user can go back.
+    fn on_load_failed(&mut self, failure: LoadFailure, fx: &mut Effects) {
+        self.pending_restore = None;
+        let presentation = self.load.fail(failure);
+        self.present(presentation, fx);
     }
 
     fn on_columns_loaded(&mut self, columns: Vec<ColumnInfo>, fx: &mut Effects) {
@@ -1377,7 +1428,7 @@ impl BrowseModel {
         if self.current_columns != columns {
             self.page = None;
             self.shown_view = None;
-            self.drop_grid();
+            self.drop_grid(fx);
         }
         self.current_columns = columns.clone();
         self.rebase_confirming_delete(fx);
@@ -1425,14 +1476,15 @@ impl BrowseModel {
             BrowseTabInput::Command(command) => self.on_command(command, fx),
             BrowseTabInput::LinkChanged(generation) => self.on_link_changed(generation, fx),
             BrowseTabInput::SchemaChanged => {
-                self.capture_focus_for_restore();
+                self.capture_selection();
+                self.begin_read(fx);
                 self.reload_from_columns(false);
             }
-            BrowseTabInput::Refresh => self.reload(),
+            BrowseTabInput::Refresh => self.reload(fx),
             BrowseTabInput::DiscardAndRefresh => {
                 let delta = self.tracker.discard();
                 self.apply_tracker_delta(&delta, fx);
-                self.reload();
+                self.reload(fx);
             }
             BrowseTabInput::ClearSelection => {
                 let Some(sel) = self.current_selection.as_ref() else {
@@ -1513,7 +1565,7 @@ impl BrowseModel {
                 }
                 self.current_sort = Some(next);
                 self.current_offset = 0;
-                self.capture_focus_for_restore();
+                self.capture_selection();
                 self.fetch(BrowseRequestKind::Page, fx);
                 fx.output(BrowseTabOutput::StateChanged);
             }
@@ -1553,7 +1605,6 @@ impl BrowseModel {
                     })
                     .collect();
                 self.apply_edit(TrackerEdit::InsertDrafts { rows: copies }, fx);
-                self.refresh_inner_stack_visibility();
                 fx.input(BrowseTabInput::FocusInsertedDraft);
             }
             BrowseTabInput::InsertRow => {
@@ -1562,7 +1613,6 @@ impl BrowseModel {
                 }
                 let cells = self.current_columns.iter().map(new_draft_cell).collect();
                 self.apply_edit(TrackerEdit::InsertDrafts { rows: vec![cells] }, fx);
-                self.refresh_inner_stack_visibility();
                 fx.input(BrowseTabInput::FocusInsertedDraft);
             }
             BrowseTabInput::DeleteRows(rows) => self.delete_rows(&rows, fx),
@@ -1681,7 +1731,7 @@ impl BrowseModel {
                 // reload replaces every row; dropping the saved drafts
                 // from the store first would blank them until it lands.
                 self.sync_pending_chrome(self.tracker.pending_count(), fx);
-                self.capture_focus_for_restore();
+                self.capture_selection();
                 self.fetch(BrowseRequestKind::Page, fx);
                 self.fetch(BrowseRequestKind::Count, fx);
             }
