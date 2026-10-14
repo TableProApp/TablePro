@@ -139,6 +139,17 @@ jobs:
             echo "::error::map a tab page to its tab through TabIndex, not set_qdata"
             exit 1
           fi
+      - name: No em dash in user-facing text
+        # The GNOME writing style leaves the em dash out. The paths are
+        # the ones po/POTFILES.in lists. The dash is spelt as its UTF-8
+        # bytes so this file holds none.
+        run: |
+          em_dash=$(printf '\342\200\224')
+          if git grep -nF "$em_dash" -- 'crates/app/src/*.rs' 'data/resources/*.ui' 'data/*.desktop.in.in' \
+            'data/*.gschema.xml' 'data/*.metainfo.xml.in.in'; then
+            echo "::error::write a comma, a colon or two sentences instead of an em dash"
+            exit 1
+          fi
       - name: Docs name paths and types that exist
         # A renamed type or a moved file stays named in prose until
         # something asks. GTK and GLib names resolve against the GIR
