@@ -266,7 +266,9 @@ impl SqlEditor {
         self.connect_closure(
             "copy-to-clipboard",
             false,
-            glib::closure_local!(move |editor: &Self, text: String| f(editor, text)),
+            glib::closure_local!(move |editor: &Self, text: glib::BoxedAnyObject| {
+                f(editor, text.borrow::<String>().clone());
+            }),
         )
     }
 
@@ -598,7 +600,9 @@ impl SqlEditor {
                 return;
             };
             match message {
-                GridMsg::CopyToClipboard(text) => editor.emit_by_name::<()>("copy-to-clipboard", &[&text]),
+                GridMsg::CopyToClipboard(text) => {
+                    editor.emit_by_name::<()>("copy-to-clipboard", &[&glib::BoxedAnyObject::new(text)]);
+                }
                 GridMsg::ShowToast(text) => editor.emit_by_name::<()>("toast", &[&text]),
                 GridMsg::ExportResults(result) => {
                     let name = export_name_for_query(&editor.selected_preview());

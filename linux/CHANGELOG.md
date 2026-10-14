@@ -64,7 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Setting a new row's cell to NULL saved the column's default instead.
 - Setting a NOT NULL cell to NULL was accepted and failed at save.
 - The Menu key on a read-only grid cell opened a text selection menu instead of the cell's menu.
-- Text with a NUL character showed cut short in the grid, and editing it saved the cut value.
+- Text with a NUL character showed cut short in the grid, copied cut short, and editing it saved the cut value.
 - An edit, Set Value or row action in the table grid could land on another row once a row above it came or went.
 - Editing, undoing or deleting a row in the table grid dropped it from a selection of several rows.
 - Copy as INSERT could copy the wrong row, drop the schema or unsaved edits, or write a value where the server fills one.

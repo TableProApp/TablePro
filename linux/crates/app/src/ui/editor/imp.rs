@@ -82,8 +82,10 @@ impl ObjectImpl for SqlEditor {
                 // No text: the buffer can be megabytes, and a listener
                 // reads only what it needs from it.
                 Signal::builder("content-changed").build(),
+                // Boxed: a GValue string ends at a NUL, and a copied cell
+                // can hold one.
                 Signal::builder("copy-to-clipboard")
-                    .param_types([String::static_type()])
+                    .param_types([glib::BoxedAnyObject::static_type()])
                     .build(),
                 Signal::builder("toast").param_types([String::static_type()]).build(),
                 Signal::builder("undoable-toast")
