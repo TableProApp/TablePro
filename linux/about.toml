@@ -26,3 +26,130 @@ ignore-build-dependencies = true
 ignore-dev-dependencies = true
 # The workspace's own crates are TablePro, under LICENSE.
 private = { ignore = true }
+
+# Without a license file cargo-about can read, a crate gets the SPDX
+# template text, which names no copyright holder. Each entry below names
+# the crate's own file: in the crate, or, for a crate that packages none
+# or only a symlink, in its repository at the published commit. An entry
+# whose checksum no longer matches is dropped, and
+# update-third-party-licenses.sh then names the crate.
+
+# The LICENSE lists the copyright of every bundled component.
+[aws-lc-sys.clarify]
+license = "ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)"
+[[aws-lc-sys.clarify.files]]
+path = "LICENSE"
+checksum = "728536b4160e051f86d7c9c388f704866b3d512cd7df97ac3516c65279523c4e"
+
+[aws-lc-rs.clarify]
+license = "ISC AND (Apache-2.0 OR ISC)"
+[[aws-lc-rs.clarify.files]]
+path = "LICENSE"
+checksum = "b50b376e7d24a0598488b730c3034ffcd0b58dd36c0913a24b9903a3cfd04bf7"
+
+# LICENSE.txt holds both licenses, each under its own copyright line.
+[chrono.clarify]
+license = "MIT OR Apache-2.0"
+[[chrono.clarify.files]]
+path = "LICENSE.txt"
+license = "MIT"
+start = "The MIT License (MIT)"
+end = "THE SOFTWARE."
+checksum = "332b974a713ff4e5536be4732fbffd1026694d4a1cbe8d832c969625d991f22c"
+
+# The copyright of the musl and FreeBSD code follows the license texts.
+[libm.clarify]
+license = "MIT"
+[[libm.clarify.files]]
+path = "LICENSE.txt"
+checksum = "3823dda7cf046602f4b4e77ec8e227863dc4736037cc85bb33d9f19febe16bb7"
+
+[ryu.clarify]
+license = "Apache-2.0 OR BSL-1.0"
+[[ryu.clarify.files]]
+path = "LICENSE-APACHE"
+license = "Apache-2.0"
+checksum = "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+
+[rust_xlsxwriter.clarify]
+license = "MIT OR Apache-2.0"
+[[rust_xlsxwriter.clarify.files]]
+path = "LICENSE_MIT"
+license = "MIT"
+checksum = "6719e95f813f9f93e1ae52f9c13b89b3766655d65620399638b3753fc24f4c56"
+
+[whoami.clarify]
+license = "Apache-2.0 OR BSL-1.0 OR MIT"
+[[whoami.clarify.files]]
+path = "LICENSE_MIT"
+license = "MIT"
+checksum = "508a77d2e7b51d98adeed32648ad124b7b30241a8e70b2e72c99f92d8e5874d1"
+
+[clickhouse-macros.clarify]
+license = "MIT OR Apache-2.0"
+[[clickhouse-macros.clarify.git]]
+path = "LICENSE-MIT"
+license = "MIT"
+checksum = "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+
+[clickhouse-types.clarify]
+license = "MIT OR Apache-2.0"
+[[clickhouse-types.clarify.git]]
+path = "LICENSE-MIT"
+license = "MIT"
+checksum = "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+
+[libgssapi.clarify]
+license = "MIT"
+[[libgssapi.clarify.git]]
+path = "LICENSE"
+checksum = "002c2696d92b5c8cf956c11072baa58eaf9f6ade995c031ea635c6a1ee342ad1"
+
+[libgssapi-sys.clarify]
+license = "MIT"
+[[libgssapi-sys.clarify.git]]
+path = "LICENSE"
+checksum = "002c2696d92b5c8cf956c11072baa58eaf9f6ade995c031ea635c6a1ee342ad1"
+
+[tiberius-macros.clarify]
+license = "MIT OR Apache-2.0"
+[[tiberius-macros.clarify.git]]
+path = "LICENSE-MIT.txt"
+license = "MIT"
+checksum = "2e9c4e8b1bb2e73696358b5b1d74d3d56403d33da333e70aa504c9b1d7b4bdd0"
+
+# The sqlx crates package LICENSE-MIT as a symlink to the workspace root's.
+[sqlx-core.clarify]
+license = "MIT OR Apache-2.0"
+[[sqlx-core.clarify.git]]
+path = "LICENSE-MIT"
+license = "MIT"
+checksum = "5abbdd842310c8f1650fcde3a5a51a3e09412b9e5a6eea87519e0db9e32b339d"
+
+[sqlx-macros.clarify]
+license = "MIT OR Apache-2.0"
+[[sqlx-macros.clarify.git]]
+path = "LICENSE-MIT"
+license = "MIT"
+checksum = "5abbdd842310c8f1650fcde3a5a51a3e09412b9e5a6eea87519e0db9e32b339d"
+
+[sqlx-macros-core.clarify]
+license = "MIT OR Apache-2.0"
+[[sqlx-macros-core.clarify.git]]
+path = "LICENSE-MIT"
+license = "MIT"
+checksum = "5abbdd842310c8f1650fcde3a5a51a3e09412b9e5a6eea87519e0db9e32b339d"
+
+[sqlx-mysql.clarify]
+license = "MIT OR Apache-2.0"
+[[sqlx-mysql.clarify.git]]
+path = "LICENSE-MIT"
+license = "MIT"
+checksum = "5abbdd842310c8f1650fcde3a5a51a3e09412b9e5a6eea87519e0db9e32b339d"
+
+[sqlx-sqlite.clarify]
+license = "MIT OR Apache-2.0"
+[[sqlx-sqlite.clarify.git]]
+path = "LICENSE-MIT"
+license = "MIT"
+checksum = "5abbdd842310c8f1650fcde3a5a51a3e09412b9e5a6eea87519e0db9e32b339d"

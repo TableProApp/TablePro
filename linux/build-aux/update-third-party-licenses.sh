@@ -19,11 +19,27 @@ cargo fetch --locked --manifest-path "$root/Cargo.toml"
 
 # The app manifest, not the workspace, so the test-only crates and their
 # dependencies stay out: tablepro-ssh, which builds the askpass helper,
-# is one of the app's own dependencies.
-for output in third-party.json THIRD-PARTY-NOTICE.md; do
-    cargo about generate --locked --offline --fail \
+# is one of the app's own dependencies. Not --offline: the git entries
+# in about.toml fetch a license file from the crate's repository.
+generate() {
+    cargo about generate --locked --fail \
         --config "$root/about.toml" \
         --manifest-path "$root/crates/app/Cargo.toml" \
-        --output-file "$root/data/licenses/$output" \
-        "$root/build-aux/about/$output.hbs"
+        --output-file "$2" \
+        "$1"
+}
+
+# A crate with no license file cargo-about can read gets the SPDX template
+# text, which names no copyright holder, and --fail lets that through.
+fallbacks="$(mktemp)"
+trap 'rm -f "$fallbacks"' EXIT
+generate "$root/build-aux/about/fallbacks.hbs" "$fallbacks"
+if grep -q '[^[:space:]]' "$fallbacks"; then
+    echo "update-third-party-licenses.sh: no license file read for these crates; add or fix their [<crate>.clarify] entry in about.toml:" >&2
+    cat "$fallbacks" >&2
+    exit 1
+fi
+
+for output in third-party.json THIRD-PARTY-NOTICE.md; do
+    generate "$root/build-aux/about/$output.hbs" "$root/data/licenses/$output"
 done

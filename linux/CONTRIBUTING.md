@@ -64,6 +64,8 @@ build-aux/update-third-party-licenses.sh
 
 A license added to `[licenses].allow` in `deny.toml` goes into `accepted` in `about.toml` at the same position.
 
+The script stops and names each crate it read no license file for, since the notice would carry the SPDX template text with no copyright holder. Give that crate a `[<crate>.clarify]` entry in `about.toml` with the file's path and SHA-256: under `files` for a file in the crate, under `git` for one in its repository at the published commit. An entry whose checksum no longer matches names its crate the same way. The script needs the network for the `git` entries.
+
 ## Code style
 
 | Tool | Config | Notes |
