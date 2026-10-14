@@ -106,7 +106,7 @@ jobs:
             echo "::error::crates/app/src/services must not hold thread_local! state"
             exit 1
           fi
-      - name: No blocking file I/O in the window and editor code
+      - name: No blocking file I/O in the UI code
         # This code runs on the GTK thread, where a slow disk or a
         # network mount freezes the window. A storage call ending in
         # _blocking is handed to spawn_blocking_task on the same line,
@@ -114,11 +114,20 @@ jobs:
         run: |
           # The $0 in the awk program is awk's record, not a shell variable.
           # shellcheck disable=SC2016
-          found=$(find crates/app/src/ui/app crates/app/src/ui/editor -name '*.rs' ! -name tests.rs -print0 \
+          found=$(find crates/app/src/ui -name '*.rs' ! -name tests.rs -print0 \
             | xargs -0 awk '/^mod tests \{/ { nextfile } /std::fs::/ || (/_blocking\(/ && !/spawn_blocking_task\(/) { print FILENAME ":" FNR ": " $0 }')
           if [ -n "$found" ]; then
             echo "$found"
-            echo "::error::crates/app/src/ui/app and crates/app/src/ui/editor must not call std::fs, or a _blocking function outside spawn_blocking_task"
+            echo "::error::crates/app/src/ui must not call std::fs, or a _blocking function outside spawn_blocking_task"
+            exit 1
+          fi
+      - name: Window actions on the window's own map
+        # GTK exports a window's own action map as win. A group inserted
+        # under that name hides it from the application's accelerators
+        # and from D-Bus.
+        run: |
+          if grep -rn 'insert_action_group("win"' crates/app/src; then
+            echo "::error::add window actions with add_action_entries on the window, not a group inserted as win"
             exit 1
           fi
       - name: Clippy
