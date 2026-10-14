@@ -35,9 +35,18 @@ pub(super) fn value_to_display_text(value: &Value) -> String {
         // Everything else renders the way it exports, so what the grid
         // shows and what a copy produces are the same text.
         other => match tablepro_core::export::value_to_text(other) {
-            Some(text) => truncate_for_display(&text),
+            Some(text) => truncate_for_display(&show_nul(text)),
             None => readonly_null_sentinel(),
         },
+    }
+}
+
+/// GTK takes C strings, which end at a NUL, so the cell shows U+2400
+/// in its place rather than a value cut short.
+fn show_nul(text: String) -> String {
+    match text.contains('\0') {
+        true => text.replace('\0', "\u{2400}"),
+        false => text,
     }
 }
 
@@ -74,6 +83,11 @@ mod tests {
         assert_eq!(value_to_display_text(&Value::Int(42)), "42");
         assert_eq!(value_to_display_text(&Value::Text("hello".into())), "hello");
         assert_eq!(value_to_display_text(&Value::Bytes(vec![0u8; 16])), "<16 bytes>");
+    }
+
+    #[test]
+    fn a_nul_in_text_shows_as_its_symbol() {
+        assert_eq!(value_to_display_text(&Value::Text("a\0b".into())), "a\u{2400}b");
     }
 
     fn date_value(year: i32, month: u32, day: u32) -> Value {

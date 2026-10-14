@@ -34,6 +34,16 @@ pub(crate) fn begin_edit(cell: &GridCell) {
         CellInput::Default => EditText::Editable(String::new()),
     };
     let editable = match &text {
+        // A GTK editor would hold the text only up to the NUL, and
+        // committing it would cut the value there.
+        EditText::Editable(editable) if editable.contains('\0') => {
+            if let Some(sink) = cell.sink() {
+                sink(GridMsg::ShowToast(crate::i18n::gettext(
+                    "Values with a NUL character can't be edited here",
+                )));
+            }
+            return;
+        }
         EditText::Editable(editable) => editable.clone(),
         EditText::ReadOnly(reason) => {
             if let Some(sink) = cell.sink() {

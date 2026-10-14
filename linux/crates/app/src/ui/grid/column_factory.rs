@@ -584,6 +584,27 @@ mod tests {
         );
     }
 
+    #[gtk4::test]
+    fn a_text_with_a_nul_draws_and_refuses_an_editor() {
+        let grid = Grid::open(
+            vec![named("id", "integer", true), named("name", "text", false)],
+            vec![vec![Value::Int(1), Value::Text("a\0b".into())]],
+        );
+        let cell = grid.cell_of(1, 1);
+        assert_eq!(display_text(&cell), "a\u{2400}b");
+
+        begin_edit(&cell);
+
+        assert!(
+            cell.inline_text().is_none(),
+            "an editor opened on a value it cannot hold"
+        );
+        assert!(
+            matches!(grid.take_messages().as_slice(), [GridMsg::ShowToast(_)]),
+            "the refusal was not explained"
+        );
+    }
+
     fn flag_rows() -> Grid {
         Grid::open(
             vec![named("id", "integer", true), named("flag", "boolean", false)],
