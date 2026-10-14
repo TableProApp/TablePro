@@ -885,7 +885,7 @@ impl Rebuild<'_> {
         let descending = self.key == Key::Kept
             && self
                 .kept(&only)
-                .is_some_and(|column| self.declared_descending(column.name()));
+                .is_some_and(|column| self.source.declares_descending_key(column.name()));
         (!descending).then_some(only)
     }
 
@@ -916,15 +916,7 @@ impl Rebuild<'_> {
             .catalog
             .as_ref()
             .map_or("", |catalog| catalog.declaration.as_sql());
-        (is_integer(declared) && !self.declared_descending(only.name())).then_some(only.name())
-    }
-
-    fn declared_descending(&self, column: &str) -> bool {
-        self.source
-            .columns()
-            .filter(|(_, source)| source.name.eq_ignore_ascii_case(column))
-            .flat_map(|(_, source)| &source.segments)
-            .any(|segment| matches!(segment.kind, ColumnConstraintKind::PrimaryKey { descending: true, .. }))
+        (is_integer(declared) && !self.source.declares_descending_key(only.name())).then_some(only.name())
     }
 
     /// Whether the copy gives the rows new rowids: a kept column that

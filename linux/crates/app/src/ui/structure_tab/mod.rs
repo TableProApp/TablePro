@@ -9,7 +9,7 @@
 //!   │ ┌─ ViewStack ─────────────────────────────────────────┐  │
 //!   │ │ Columns: boxed-list of AdwExpanderRow (per column,  │  │
 //!   │ │   header = Name + summary, body = Name/Type/Null/   │  │
-//!   │ │   Default/PK/AutoInc rows) + AdwButtonRow add row   │  │
+//!   │ │   Default/PK/AutoInc rows), then an Add Column row  │  │
 //!   │ │ Indexes: boxed-list (Name, Cols, Unique, trash)     │  │
 //!   │ │ FKs: boxed-list (Name, Cols, Refs, RefCols, trash)  │  │
 //!   │ │ SQL Preview: SourceView5 (read-only, sql highlight) │  │
@@ -17,14 +17,17 @@
 //!   ├─ ActionBar { pending count | Discard | Save | Drop } ────┤
 //!   └──────────────────────────────────────────────────────────┘
 //!
-//! The tab edits a `TableDraft` started from the table's definition as
-//! one read returned it. Every edit diffs the draft against that
-//! definition, plans the change through the connection's `DdlDialect`
-//! for the preview, and hands the pending structure to the tab's
-//! tracker, where the window's close and save paths read it. Each
-//! control is on only where the dialect allows its change, with the
-//! reason in its tooltip where it does not. Discard copies the
-//! definition back over the draft; there is no per-change undo.
+//! The tab edits a draft started from the table's definition as one
+//! read returned it. The draft's columns, indexes and foreign keys are
+//! the items of three list stores, each shown by a list bound to it, so
+//! an edit changes one item and its row, and every other row stays as
+//! it is. Every edit diffs the draft against the definition, plans the
+//! change through the connection's `DdlDialect` for the preview, and
+//! hands the pending structure to the tab's tracker, where the window's
+//! close and save paths read it. Each control is on only where the
+//! dialect allows its change, with the reason in its tooltip where it
+//! does not. Discard puts the definition's items back in the stores;
+//! there is no per-change undo.
 //!
 //! The tab reads the table's definition itself, one request at a time,
 //! and reads it again once the session reconnects if the last read
@@ -33,37 +36,41 @@
 //! writes the table again from the old definition refuses to save.
 
 mod columns;
+mod context;
+mod draft_column_object;
+mod draft_column_object_imp;
 mod fks;
+mod foreign_key_object;
 mod imp;
+mod index_object;
 mod indexes;
 mod structure_command;
 #[cfg(test)]
 mod tests;
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
 
 use gtk4 as gtk;
-use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
+use gtk4::{gio, glib};
 use libadwaita as adw;
 use sourceview5::prelude::BufferExt;
-use tablepro_core::column::ColumnDefault;
-use tablepro_core::ddl::{
-    ColumnCapabilities, DdlCapabilities, DdlDialect, DraftColumn, DraftType, Permission, RefusalReason, TableChanges,
-    TableDefinition, TableDraft, default_text, diff_table, parse_default, primary_key_permission,
-};
-use tablepro_core::dialect::SqlDialect;
+use tablepro_core::ddl::{DraftColumn, DraftType, TableChanges, TableDraft, diff_table};
 use tablepro_core::meta::TableRef;
 use tablepro_core::{ForeignKeyInfo, IndexInfo};
 use tablepro_session::runtime::{Tasks, WatchForwarder};
 use tablepro_session::{LinkGeneration, OperationError, OperationKind, Session};
 
-use self::columns::{ColumnRowContext, build_column_expander_row};
+use self::columns::build_column_row;
+use self::context::StructureContext;
+use self::draft_column_object::{DraftColumnObject, UnparsedDefault};
 use self::fks::build_fk_row;
+use self::foreign_key_object::ForeignKeyObject;
+use self::index_object::IndexObject;
 use self::indexes::build_index_row;
 pub(crate) use self::structure_command::{LoadedStructure, StructureCommand, StructureRequestKind};
 use crate::runtime::{FailedRequests, RequestSequencer, RequestTicket, Stamped};
@@ -157,34 +164,48 @@ impl StructureTab {
             StructureMode::New => "editor",
             StructureMode::Edit => "loading",
         });
-        tab.connect_widgets();
+        let name_changed = tab.connect_widgets();
 
-        let link_changes = init.session.link_changes();
-        let model = StructureModel {
-            this: tab.downgrade(),
-            link_generation: init.session.link_generation(),
+        let context = Rc::new(RefCell::new(StructureContext {
+            mode: init.mode,
             dialect: match init.mode {
                 // A draft has no table to read the dialect back with.
                 StructureMode::New => init.session.current_dialect(),
                 StructureMode::Edit => None,
             },
+            definition: None,
+        }));
+        let columns = gio::ListStore::new::<DraftColumnObject>();
+        let indexes = gio::ListStore::new::<IndexObject>();
+        let foreign_keys = gio::ListStore::new::<ForeignKeyObject>();
+        tab.bind_lists(&context, &columns, &indexes, &foreign_keys);
+
+        let link_changes = init.session.link_changes();
+        let model = StructureModel {
+            this: tab.downgrade(),
+            link_generation: init.session.link_generation(),
             session: init.session,
             tasks: init.tasks,
             sequencer: RequestSequencer::new(),
             failed: FailedRequests::new(),
             issued_on: BTreeMap::new(),
             tracker: init.tracker,
-            mode: init.mode,
-            definition: None,
-            draft: Rc::new(RefCell::new(TableDraft::new(TableRef::new(init.schema, init.table)))),
-            invalid_defaults: BTreeMap::new(),
+            context,
+            table: TableRef::new(init.schema, init.table),
+            columns,
+            indexes,
+            foreign_keys,
             inner_stack: imp.inner_stack.get(),
             error_status: imp.error_status.get(),
             name_entry: imp.name_entry.get(),
             name_row: imp.name_row.get(),
+            name_changed,
             columns_box: imp.columns_box.get(),
             indexes_box: imp.indexes_box.get(),
             fks_box: imp.fks_box.get(),
+            add_column_row: imp.add_column_row.get(),
+            add_index_row: imp.add_index_row.get(),
+            add_fk_row: imp.add_fk_row.get(),
             sql_buffer,
             pending_label: imp.pending_label.get(),
             save_button: imp.save_button.get(),
@@ -194,9 +215,6 @@ impl StructureTab {
             stop_button: imp.stop_button.get(),
             saving: false,
             last_dirty: false,
-            suppress_emit: imp.suppress_emit.clone(),
-            next_column_seq: 1,
-            column_popovers: Rc::new(RefCell::new(Vec::new())),
             refetching: false,
             definition_shown: false,
             definition_stale: false,
@@ -331,7 +349,9 @@ impl StructureTab {
         }
     }
 
-    fn connect_widgets(&self) {
+    /// Connects the template's controls, and gives back the name entry's
+    /// handler, which the tab blocks while it writes the name itself.
+    fn connect_widgets(&self) -> glib::SignalHandlerId {
         let imp = self.imp();
         let on_click = |button: &gtk::Button, msg: fn() -> StructureTabInput| {
             let sender = self.sender();
@@ -345,12 +365,62 @@ impl StructureTab {
         // would force the user to close the tab and open it again.
         on_click(&imp.retry_button, || StructureTabInput::Retry);
         let sender = self.sender();
-        let suppress = imp.suppress_emit.clone();
+        imp.add_column_row
+            .connect_activated(move |_| sender.input(StructureTabInput::AddColumn));
+        // An add row that is hidden would leave its list's frame behind.
+        for (row, list) in [
+            (&imp.add_column_row, &imp.add_column_list),
+            (&imp.add_index_row, &imp.add_index_list),
+            (&imp.add_fk_row, &imp.add_fk_list),
+        ] {
+            row.bind_property("visible", &**list, "visible").sync_create().build();
+        }
+        let sender = self.sender();
         imp.name_entry.connect_changed(move |entry| {
-            if suppress.get() {
-                return;
-            }
             sender.input(StructureTabInput::TableNameEdited(entry.text().to_string()));
+        })
+    }
+
+    /// Each list builds a row for an item from the item and the context
+    /// alone, since the stores change while the tab's model is borrowed.
+    fn bind_lists(
+        &self,
+        context: &Rc<RefCell<StructureContext>>,
+        columns: &gio::ListStore,
+        indexes: &gio::ListStore,
+        foreign_keys: &gio::ListStore,
+    ) {
+        let imp = self.imp();
+        let (context_for_columns, sender) = (context.clone(), self.sender());
+        bind_list(&imp.columns_list, columns, move |column: &DraftColumnObject| {
+            build_column_row(column, &context_for_columns.borrow(), &sender)
+        });
+        let (context_for_indexes, sender) = (context.clone(), self.sender());
+        bind_list(&imp.indexes_list, indexes, move |index: &IndexObject| {
+            let context = context_for_indexes.borrow();
+            let removable = context.table_permission(context.capabilities().drop_index);
+            build_index_row(index, &removable, &sender)
+        });
+        let (context_for_keys, sender) = (context.clone(), self.sender());
+        bind_list(&imp.fks_list, foreign_keys, move |key: &ForeignKeyObject| {
+            let context = context_for_keys.borrow();
+            let removable = context.table_permission(context.capabilities().drop_foreign_key);
+            build_fk_row(key, &removable, &sender)
+        });
+
+        // The dialogs list the columns the draft has when they open.
+        let (columns_for_index, sender) = (columns.downgrade(), self.sender());
+        imp.add_index_row.connect_activated(move |row| {
+            if let Some(columns) = columns_for_index.upgrade() {
+                present_index_dialog(row.upcast_ref(), &draft_columns(&columns), sender.clone());
+            }
+        });
+        let (columns_for_key, context_for_key, sender) = (columns.downgrade(), context.clone(), self.sender());
+        imp.add_fk_row.connect_activated(move |row| {
+            let actions = context_for_key.borrow().ddl().map(|ddl| ddl.referential_actions());
+            if let (Some(columns), Some(actions)) = (columns_for_key.upgrade(), actions) {
+                present_fk_dialog(row.upcast_ref(), &draft_columns(&columns), actions, sender.clone());
+            }
         });
     }
 }
@@ -384,19 +454,17 @@ pub(crate) struct StructureModel {
     /// The newest connection the tab has heard of.
     link_generation: LinkGeneration,
     tracker: StructureTrackerHandle,
-    mode: StructureMode,
-    /// The table as the last read returned it, which Save plans against
-    /// and Discard restores. `None` for a new table.
-    definition: Option<TableDefinition>,
-    /// What the user is editing. Shared with the dialogs, which list its
-    /// columns.
-    draft: Rc<RefCell<TableDraft>>,
-    /// Default text the engine's parser refused, by column, kept so a
-    /// rebuild shows what the user typed. Save waits until it is empty.
-    invalid_defaults: BTreeMap<usize, (String, String)>,
-    /// The connection's dialect, which plans the DDL. `None` until the
-    /// first read, and the SQL cannot be written before then.
-    dialect: Option<Arc<dyn SqlDialect>>,
+    /// Whether the table exists, its definition and the dialect, shared
+    /// with the lists, which read it as they build rows.
+    context: Rc<RefCell<StructureContext>>,
+    /// The table the draft names, renamed as the user types a new
+    /// table's name.
+    table: TableRef,
+    /// The draft's columns, indexes and foreign keys, which the lists
+    /// show. An edit finds its item here by identity.
+    columns: gio::ListStore,
+    indexes: gio::ListStore,
+    foreign_keys: gio::ListStore,
 
     inner_stack: gtk::Stack,
     /// The status page shown when the read fails, with the driver's
@@ -405,9 +473,15 @@ pub(crate) struct StructureModel {
     name_entry: adw::EntryRow,
     /// The group around `name_entry`, visible only in New mode.
     name_row: adw::PreferencesGroup,
+    /// Blocked while the tab writes the draft's name into the entry,
+    /// which is no edit.
+    name_changed: glib::SignalHandlerId,
     columns_box: gtk::Box,
     indexes_box: gtk::Box,
     fks_box: gtk::Box,
+    add_column_row: adw::ButtonRow,
+    add_index_row: adw::ButtonRow,
+    add_fk_row: adw::ButtonRow,
     sql_buffer: sourceview5::Buffer,
     pending_label: gtk::Label,
     save_button: gtk::Button,
@@ -419,22 +493,6 @@ pub(crate) struct StructureModel {
     saving: bool,
 
     last_dirty: bool,
-    /// Suppress reentrant rebuilds: programmatic `set_text` /
-    /// `set_active` while seeding row widgets fires `changed` /
-    /// `notify::active` signals synchronously. Without this guard,
-    /// the row's connect_* callbacks would treat seeding as a user
-    /// edit and shift the draft away from the definition, surfacing
-    /// phantom pending changes. `Cell` (not `RefCell`) because GTK can
-    /// fire those signals re-entrantly during `clear_box` while
-    /// another `borrow_mut` is still live on the stack.
-    suppress_emit: Rc<Cell<bool>>,
-    /// Monotonic counter for the "Add Column" placeholder name, so a
-    /// removed column does not leave its name to be handed out twice.
-    next_column_seq: usize,
-    /// The type suggestion popovers of the column rows. A rebuild pops
-    /// them down before it removes the rows, so no menu stays open over
-    /// a row that is gone.
-    column_popovers: Rc<RefCell<Vec<gtk::Popover>>>,
     /// True between `SaveCompleted` and the read that follows. The draft
     /// is already committed while the definition still holds the
     /// pre-save state, so diffing them would surface phantom pending
@@ -483,18 +541,16 @@ pub(crate) enum StructureTabInput {
     /// The save may have landed; the tracker refuses to save again until
     /// the table is read again or the draft is discarded.
     SaveOutcomeUnknown(String),
-    /// Rebuild the lists and the preview from the model.
-    Refresh,
     ColumnEdited {
-        index: usize,
+        column: DraftColumnObject,
         field: ColumnField,
     },
     AddColumn,
-    RemoveColumn(usize),
+    RemoveColumn(DraftColumnObject),
     AddIndex(IndexInfo),
-    RemoveIndex(usize),
+    RemoveIndex(IndexObject),
     AddForeignKey(ForeignKeyInfo),
-    RemoveForeignKey(usize),
+    RemoveForeignKey(ForeignKeyObject),
     TableNameEdited(String),
 }
 
@@ -544,31 +600,39 @@ pub(crate) enum StructureTabOutput {
 }
 
 impl StructureModel {
-    fn sender(&self) -> StructureTabSender {
-        StructureTabSender { tab: self.this.clone() }
+    fn mode(&self) -> StructureMode {
+        self.context.borrow().mode
     }
 
-    fn ddl(&self) -> Option<&dyn DdlDialect> {
-        self.dialect.as_deref().and_then(|dialect| dialect.ddl())
+    /// The draft as the lists hold it.
+    fn draft(&self) -> TableDraft {
+        TableDraft {
+            table: self.table.clone(),
+            columns: draft_columns(&self.columns),
+            indexes: items::<IndexObject>(&self.indexes)
+                .iter()
+                .map(|index| index.info().clone())
+                .collect(),
+            foreign_keys: items::<ForeignKeyObject>(&self.foreign_keys)
+                .iter()
+                .map(|key| key.info().clone())
+                .collect(),
+        }
     }
 
     /// What Save would write: a new table, or the changes between the
     /// definition and the draft.
     fn pending(&self) -> PendingStructure {
-        let draft = self.draft.borrow().clone();
-        let original = match self.mode {
-            StructureMode::New => None,
-            StructureMode::Edit => self.definition.clone(),
-        };
+        let draft = self.draft();
+        let original = self.context.borrow().original().cloned();
         let changes = match &original {
             Some(original) => diff_table(original, &draft),
             None => TableChanges::default(),
         };
-        let unparsed_defaults = self
-            .invalid_defaults
-            .keys()
-            .filter_map(|row| draft.columns.get(*row))
-            .map(|column| column.name.clone())
+        let unparsed_defaults = items::<DraftColumnObject>(&self.columns)
+            .iter()
+            .filter(|column| column.unparsed_default().is_some())
+            .map(DraftColumnObject::name)
             .collect();
         PendingStructure {
             original,
@@ -590,7 +654,7 @@ impl StructureModel {
         }
         let pending = self.pending();
         let dirty = pending.has_changes();
-        self.refresh_buttons(pending.change_count());
+        self.refresh_buttons(pending.change_count(), pending.unparsed_defaults.is_empty());
         self.regenerate_sql_preview(&pending);
         self.tracker.set_pending(Some(pending));
         if self.last_dirty != dirty {
@@ -599,10 +663,9 @@ impl StructureModel {
         }
     }
 
-    fn refresh_buttons(&self, pending_count: usize) {
+    fn refresh_buttons(&self, pending_count: usize, defaults_parsed: bool) {
         let has_pending = pending_count > 0 && !self.saving;
-        self.save_button
-            .set_sensitive(has_pending && self.invalid_defaults.is_empty());
+        self.save_button.set_sensitive(has_pending && defaults_parsed);
         self.discard_button.set_sensitive(has_pending);
         if has_pending {
             let label = crate::i18n::ngettext_f(
@@ -619,10 +682,11 @@ impl StructureModel {
     }
 
     fn regenerate_sql_preview(&self, pending: &PendingStructure) {
-        let text = match (&self.dialect, self.ddl()) {
+        let context = self.context.borrow();
+        let text = match (&context.dialect, context.ddl()) {
             (None, _) => crate::i18n::gettext("-- Connect to a database to see the SQL."),
             (Some(_), None) => crate::i18n::gettext("-- This database's structure can't be edited here."),
-            (Some(_), Some(_)) if !self.invalid_defaults.is_empty() => {
+            (Some(_), Some(_)) if !pending.unparsed_defaults.is_empty() => {
                 crate::i18n::gettext("-- Fix the highlighted fields to see the SQL.")
             }
             (Some(_), Some(_)) if !pending.has_changes() => crate::i18n::gettext("-- No pending changes."),
@@ -634,187 +698,55 @@ impl StructureModel {
         self.sql_buffer.set_text(&text);
     }
 
-    fn capabilities(&self) -> DdlCapabilities {
-        let Some(ddl) = self.ddl() else {
-            return DdlCapabilities::default();
-        };
-        match (self.mode, &self.definition) {
-            (StructureMode::Edit, Some(definition)) => ddl.table_capabilities(definition),
-            _ => *ddl.capabilities(),
-        }
+    /// The Add rows the engine allows on the table as it stands.
+    fn sync_add_rows(&self) {
+        let context = self.context.borrow();
+        self.add_column_row.set_visible(context.can_add_column());
+        self.add_index_row.set_visible(context.can_add_index());
+        self.add_fk_row.set_visible(context.can_add_foreign_key());
     }
 
-    /// Which changes the row of `column` offers. A column the user added
-    /// in this tab is only a draft, so everything about it can change,
-    /// apart from joining the primary key of a table whose key is held.
-    fn column_permissions(&self, column: &DraftColumn) -> ColumnCapabilities {
-        let capabilities = self.capabilities();
-        let (Some(ddl), Some(definition), Some(original)) = (
-            self.ddl(),
-            self.definition.as_ref().filter(|_| self.mode == StructureMode::Edit),
-            column.original.as_ref(),
-        ) else {
-            let primary_key = match (self.mode, &self.definition) {
-                (StructureMode::Edit, Some(definition)) => primary_key_permission(&capabilities, definition),
-                _ => Permission::Allowed,
-            };
-            return ColumnCapabilities {
-                rename: Permission::Allowed,
-                drop: Permission::Allowed,
-                alter_type: Permission::Allowed,
-                alter_nullability: Permission::Allowed,
-                alter_default: Permission::Allowed,
-                alter_primary_key: primary_key,
-                alter_auto_increment: Permission::Allowed,
-                alter_comment: Permission::unless(capabilities.column_comments, RefusalReason::EngineUnsupported),
-            };
-        };
-        ddl.column_capabilities(definition, original)
+    /// Put `draft` in the lists. Each store changes once, so each list
+    /// builds its rows once.
+    fn show_draft(&mut self, draft: TableDraft) {
+        self.table = draft.table;
+        replace_items(&self.columns, draft.columns.into_iter().map(DraftColumnObject::new));
+        replace_items(&self.indexes, draft.indexes.into_iter().map(IndexObject::new));
+        replace_items(
+            &self.foreign_keys,
+            draft.foreign_keys.into_iter().map(ForeignKeyObject::new),
+        );
     }
 
-    /// The type a default's literal is read against: the column's own, or
-    /// the one the user typed once it parses.
-    fn default_column_type(&self, column: &DraftColumn) -> Option<tablepro_core::column::ColumnType> {
-        let dialect = self.dialect.as_deref()?;
-        column.column_type.column_type(dialect, &column.name).ok()
+    /// The lists build every row again, keeping the items, for rows
+    /// whose controls depend on a context that changed.
+    fn rebuild_rows(&self) {
+        replace_items(&self.columns, items::<DraftColumnObject>(&self.columns));
+        replace_items(&self.indexes, items::<IndexObject>(&self.indexes));
+        replace_items(&self.foreign_keys, items::<ForeignKeyObject>(&self.foreign_keys));
     }
 
-    fn rebuild_columns_view(&self) {
-        // Seeding the new rows' widgets fires their change signals,
-        // which must not count as user edits; emit comes back on the
-        // next idle tick.
-        self.suppress_emit.set(true);
-        {
-            let mut popovers = self.column_popovers.borrow_mut();
-            for p in popovers.drain(..) {
-                p.popdown();
-            }
-        }
-        clear_box(&self.columns_box);
-        let capabilities = self.capabilities();
-        let type_suggestions = self.ddl().map(|ddl| ddl.type_suggestions()).unwrap_or_default();
-
-        let list = boxed_list();
-        let columns = self.draft.borrow().columns.clone();
-        for (i, col) in columns.iter().enumerate() {
-            let (default_text, default_error) = match self.invalid_defaults.get(&i) {
-                Some((text, error)) => (text.clone(), Some(error.clone())),
-                None => (self.default_text(col), None),
-            };
-            let context = ColumnRowContext {
-                permissions: self.column_permissions(col),
-                type_suggestions,
-                dialect: self.dialect.clone(),
-                default_text,
-                default_error,
-                numbering_follows_key: !capabilities.auto_increment_outside_primary_key,
-            };
-            list.append(&build_column_expander_row(
-                i,
-                col,
-                context,
-                self.sender(),
-                self.suppress_emit.clone(),
-                self.column_popovers.clone(),
-            ));
-        }
-        let can_add = match self.mode {
-            StructureMode::New => true,
-            StructureMode::Edit => capabilities.add_column,
-        };
-        if can_add {
-            let sender_for_add = self.sender();
-            append_add_button(&list, &crate::i18n::gettext("Add Column"), move || {
-                sender_for_add.input(StructureTabInput::AddColumn);
-            });
-        }
-        self.columns_box.append(&list);
-
-        let suppress = self.suppress_emit.clone();
-        glib::idle_add_local_once(move || {
-            suppress.set(false);
-        });
+    /// `column_N` with the first N that no column of the draft is named.
+    fn placeholder_column_name(&self) -> String {
+        let names: Vec<String> = items::<DraftColumnObject>(&self.columns)
+            .iter()
+            .map(DraftColumnObject::name)
+            .collect();
+        (1_usize..)
+            .map(|n| format!("column_{n}"))
+            .find(|candidate| !names.iter().any(|name| name.eq_ignore_ascii_case(candidate)))
+            .unwrap_or_default()
     }
 
-    fn default_text(&self, column: &DraftColumn) -> String {
-        match (self.dialect.as_deref(), self.default_column_type(column)) {
-            (Some(dialect), Some(column_type)) => default_text(dialect, &column.default, &column_type),
-            _ => match &column.default {
-                ColumnDefault::None => String::new(),
-                ColumnDefault::Literal(value) => tablepro_core::export::value_to_text(value).unwrap_or_default(),
-                ColumnDefault::Expression(expression) => expression.as_sql().to_owned(),
-            },
+    /// Write the draft's name into the entry without it reading as an
+    /// edit.
+    fn show_table_name(&self) {
+        if self.name_entry.text() == self.table.name {
+            return;
         }
-    }
-
-    /// A draft's indexes and foreign keys are only entries in it, so the
-    /// engine's limits apply to a table that exists.
-    fn table_permission(&self, allowed: bool) -> Permission {
-        match self.mode {
-            StructureMode::New => Permission::Allowed,
-            StructureMode::Edit => Permission::unless(allowed, RefusalReason::EngineUnsupported),
-        }
-    }
-
-    fn rebuild_indexes_view(&self) {
-        clear_box(&self.indexes_box);
-        let capabilities = self.capabilities();
-        let removable = self.table_permission(capabilities.drop_index);
-        let list = boxed_list();
-        for (i, idx) in self.draft.borrow().indexes.iter().enumerate() {
-            list.append(&build_index_row(i, idx, &removable, self.sender()));
-        }
-        if capabilities.create_index {
-            let draft_for_dialog = self.draft.clone();
-            let sender_for_add = self.sender();
-            let parent_box = self.indexes_box.downgrade();
-            append_add_button(&list, &crate::i18n::gettext("Add Index…"), move || {
-                if let Some(parent_box) = parent_box.upgrade() {
-                    present_index_dialog(
-                        parent_box.upcast_ref(),
-                        &draft_for_dialog.borrow().columns,
-                        sender_for_add.clone(),
-                    );
-                }
-            });
-        }
-        self.indexes_box.append(&list);
-    }
-
-    fn rebuild_fks_view(&self) {
-        clear_box(&self.fks_box);
-        let capabilities = self.capabilities();
-        let removable = self.table_permission(capabilities.drop_foreign_key);
-        let list = boxed_list();
-        for (i, fk) in self.draft.borrow().foreign_keys.iter().enumerate() {
-            list.append(&build_fk_row(i, fk, &removable, self.sender()));
-        }
-        // A new table declares its keys inside CREATE TABLE, which every
-        // engine that creates tables takes.
-        let can_add = match self.mode {
-            StructureMode::New => capabilities.create_table,
-            StructureMode::Edit => capabilities.add_foreign_key,
-        };
-        if let Some(actions) = self.ddl().map(|ddl| ddl.referential_actions()).filter(|_| can_add) {
-            let draft_for_dialog = self.draft.clone();
-            let sender_for_add = self.sender();
-            let parent_box = self.fks_box.downgrade();
-            append_add_button(&list, &crate::i18n::gettext("Add Foreign Key…"), move || {
-                if let Some(parent_box) = parent_box.upgrade() {
-                    present_fk_dialog(
-                        parent_box.upcast_ref(),
-                        &draft_for_dialog.borrow().columns,
-                        actions,
-                        sender_for_add.clone(),
-                    );
-                }
-            });
-        }
-        self.fks_box.append(&list);
-    }
-
-    fn table_ref(&self) -> TableRef {
-        self.draft.borrow().table.clone()
+        self.name_entry.block_signal(&self.name_changed);
+        self.name_entry.set_text(&self.table.name);
+        self.name_entry.unblock_signal(&self.name_changed);
     }
 
     /// Read the table's definition in one call, so the tab rebuilds
@@ -824,7 +756,7 @@ impl StructureModel {
             .insert(StructureRequestKind::Definition, self.session.link_generation());
         let RequestTicket { stamp, cancel } = self.sequencer.issue(StructureRequestKind::Definition);
         let session = self.session.clone();
-        let table = self.table_ref();
+        let table = self.table.clone();
         let work = async move {
             session
                 .run_cancellable(OperationKind::Metadata, &cancel, move |lease, options| {
@@ -856,10 +788,14 @@ impl StructureModel {
     }
 
     fn on_loaded(&mut self, loaded: LoadedStructure, fx: &mut StructureEffects) {
-        self.dialect = Some(loaded.dialect);
-        *self.draft.borrow_mut() = TableDraft::from_definition(&loaded.definition);
-        self.definition = Some(loaded.definition);
-        self.invalid_defaults.clear();
+        let draft = TableDraft::from_definition(&loaded.definition);
+        {
+            let mut context = self.context.borrow_mut();
+            context.dialect = Some(loaded.dialect);
+            context.definition = Some(loaded.definition);
+        }
+        self.show_draft(draft);
+        self.sync_add_rows();
         self.inner_stack.set_visible_child_name("editor");
         self.definition_shown = true;
         self.definition_stale = false;
@@ -867,7 +803,6 @@ impl StructureModel {
         self.refetching = false;
         self.sync_editable();
         self.recompute_dirty_state(fx);
-        fx.input(StructureTabInput::Refresh);
     }
 
     fn on_load_failed(&mut self, message: &str, fx: &mut StructureEffects) {
@@ -914,10 +849,11 @@ impl StructureModel {
             return;
         }
         self.link_generation = generation;
-        if self.mode == StructureMode::New {
-            self.dialect = self.session.current_dialect();
+        if self.mode() == StructureMode::New {
+            self.context.borrow_mut().dialect = self.session.current_dialect();
+            self.rebuild_rows();
+            self.sync_add_rows();
             self.recompute_dirty_state(fx);
-            fx.input(StructureTabInput::Refresh);
         }
         self.retry_failed();
     }
@@ -933,22 +869,23 @@ impl StructureModel {
 
     fn update(&mut self, msg: StructureTabInput, fx: &mut StructureEffects) {
         if msg.edits_draft() && self.edits_locked() {
-            self.refuse_edit(fx);
+            self.refuse_edit(&msg, fx);
             return;
         }
         match msg {
             StructureTabInput::Start => {
-                if self.mode == StructureMode::Edit {
+                if self.mode() == StructureMode::Edit {
                     self.fetch_definition();
                 }
-                fx.input(StructureTabInput::Refresh);
+                self.sync_add_rows();
+                self.regenerate_sql_preview(&self.pending());
             }
             StructureTabInput::Command(command) => self.on_command(command, fx),
             StructureTabInput::LinkChanged(generation) => self.on_link_changed(generation, fx),
             StructureTabInput::SchemaChanged => {
                 // Reading the table again replaces the draft, so a tab
                 // with edits of its own keeps them until Discard.
-                if self.mode == StructureMode::Edit {
+                if self.mode() == StructureMode::Edit {
                     match self.last_dirty {
                         true => self.definition_stale = true,
                         false => self.fetch_definition(),
@@ -961,79 +898,50 @@ impl StructureModel {
                 self.show_loading();
                 self.fetch_definition();
             }
-            StructureTabInput::Refresh => {
-                self.rebuild_columns_view();
-                self.rebuild_indexes_view();
-                self.rebuild_fks_view();
-                self.regenerate_sql_preview(&self.pending());
-            }
             StructureTabInput::TableNameEdited(text) => {
-                if self.draft.borrow().table.name == text {
+                if self.table.name == text {
                     return;
                 }
-                self.draft.borrow_mut().table.name = text;
+                self.table.name = text;
                 self.recompute_dirty_state(fx);
             }
-            StructureTabInput::ColumnEdited { index, field } => self.edit_column(index, field, fx),
+            StructureTabInput::ColumnEdited { column, field } => self.edit_column(&column, field, fx),
             StructureTabInput::AddColumn => {
-                let name = format!("column_{}", self.next_column_seq);
-                self.next_column_seq += 1;
-                let column_type = self.ddl().map_or("text", |ddl| ddl.default_column_type());
-                self.draft
-                    .borrow_mut()
-                    .columns
-                    .push(DraftColumn::new(name, DraftType::Typed(column_type.to_owned())));
+                let column_type = self
+                    .context
+                    .borrow()
+                    .ddl()
+                    .map_or("text", |ddl| ddl.default_column_type())
+                    .to_owned();
+                let column = DraftColumn::new(self.placeholder_column_name(), DraftType::Typed(column_type));
+                self.columns.append(&DraftColumnObject::new(column));
                 self.recompute_dirty_state(fx);
-                fx.input(StructureTabInput::Refresh);
             }
-            StructureTabInput::RemoveColumn(index) => {
-                {
-                    let mut draft = self.draft.borrow_mut();
-                    if index >= draft.columns.len() {
-                        return;
-                    }
-                    draft.columns.remove(index);
+            StructureTabInput::RemoveColumn(column) => {
+                if let Some(position) = self.columns.find(&column) {
+                    self.columns.remove(position);
+                    self.recompute_dirty_state(fx);
                 }
-                // The rows after it move up one.
-                self.invalid_defaults = std::mem::take(&mut self.invalid_defaults)
-                    .into_iter()
-                    .filter(|(row, _)| *row != index)
-                    .map(|(row, invalid)| (if row > index { row - 1 } else { row }, invalid))
-                    .collect();
-                self.recompute_dirty_state(fx);
-                fx.input(StructureTabInput::Refresh);
             }
             StructureTabInput::AddIndex(index) => {
-                self.draft.borrow_mut().indexes.push(index);
+                self.indexes.append(&IndexObject::new(index));
                 self.recompute_dirty_state(fx);
-                fx.input(StructureTabInput::Refresh);
             }
-            StructureTabInput::RemoveIndex(position) => {
-                {
-                    let mut draft = self.draft.borrow_mut();
-                    if position >= draft.indexes.len() {
-                        return;
-                    }
-                    draft.indexes.remove(position);
+            StructureTabInput::RemoveIndex(index) => {
+                if let Some(position) = self.indexes.find(&index) {
+                    self.indexes.remove(position);
+                    self.recompute_dirty_state(fx);
                 }
-                self.recompute_dirty_state(fx);
-                fx.input(StructureTabInput::Refresh);
             }
-            StructureTabInput::AddForeignKey(fk) => {
-                self.draft.borrow_mut().foreign_keys.push(fk);
+            StructureTabInput::AddForeignKey(key) => {
+                self.foreign_keys.append(&ForeignKeyObject::new(key));
                 self.recompute_dirty_state(fx);
-                fx.input(StructureTabInput::Refresh);
             }
-            StructureTabInput::RemoveForeignKey(position) => {
-                {
-                    let mut draft = self.draft.borrow_mut();
-                    if position >= draft.foreign_keys.len() {
-                        return;
-                    }
-                    draft.foreign_keys.remove(position);
+            StructureTabInput::RemoveForeignKey(key) => {
+                if let Some(position) = self.foreign_keys.find(&key) {
+                    self.foreign_keys.remove(position);
+                    self.recompute_dirty_state(fx);
                 }
-                self.recompute_dirty_state(fx);
-                fx.input(StructureTabInput::Refresh);
             }
             StructureTabInput::Save => self.save(fx),
             StructureTabInput::SaveStarted => self.show_saving(true),
@@ -1041,7 +949,7 @@ impl StructureModel {
             StructureTabInput::Reload => {
                 // A table the save may have created has nothing to read
                 // yet, so a new one is only cleared.
-                match self.mode {
+                match self.mode() {
                     StructureMode::Edit => {
                         self.show_loading();
                         self.fetch_definition();
@@ -1052,29 +960,23 @@ impl StructureModel {
             StructureTabInput::Discard => {
                 // This also lets go of a save whose outcome was unknown.
                 self.tracker.clear();
-                if self.mode == StructureMode::Edit && self.definition_stale {
+                if self.mode() == StructureMode::Edit && self.definition_stale {
                     fx.input(StructureTabInput::Reload);
                     return;
                 }
-                // New mode clears everything, since a new table starts
-                // empty.
-                let restored = match (self.mode, &self.definition) {
-                    (StructureMode::Edit, Some(definition)) => TableDraft::from_definition(definition),
-                    _ => {
-                        let mut draft = TableDraft::new(self.table_ref());
-                        draft.table.name = self.draft.borrow().table.name.clone();
-                        draft
-                    }
+                // New mode clears everything but the name, since a new
+                // table starts empty.
+                let restored = match self.context.borrow().original() {
+                    Some(definition) => TableDraft::from_definition(definition),
+                    None => TableDraft::new(self.table.clone()),
                 };
-                *self.draft.borrow_mut() = restored;
-                self.invalid_defaults.clear();
+                self.show_draft(restored);
                 self.recompute_dirty_state(fx);
-                fx.input(StructureTabInput::Refresh);
             }
             StructureTabInput::DropTableRequested => {
-                let table = match &self.definition {
+                let table = match &self.context.borrow().definition {
                     Some(definition) => definition.table.clone(),
-                    None => self.table_ref(),
+                    None => self.table.clone(),
                 };
                 fx.output(StructureTabOutput::DropTableRequested {
                     schema: table.schema,
@@ -1112,73 +1014,46 @@ impl StructureModel {
         }
     }
 
-    fn edit_column(&mut self, index: usize, field: ColumnField, fx: &mut StructureEffects) {
-        let Some(previous) = self.draft.borrow().columns.get(index).cloned() else {
+    fn edit_column(&mut self, column: &DraftColumnObject, field: ColumnField, fx: &mut StructureEffects) {
+        // A row of a column the draft no longer holds.
+        if self.columns.find(column).is_none() {
             return;
-        };
-        let mut column = previous.clone();
+        }
         match field {
-            ColumnField::Name(name) => column.name = name,
-            ColumnField::Type(text) => {
+            ColumnField::Name(name) => column.update(|draft| draft.name = name),
+            ColumnField::Type(text) => column.update(|draft| {
                 // Retyping the declaration keeps the catalogue's type,
                 // which is never parsed again.
-                column.column_type = match column.original.as_ref() {
+                draft.column_type = match draft.original.as_ref() {
                     Some(original) if DraftType::Catalog(original.info.column_type.clone()).text() == text => {
                         DraftType::Catalog(original.info.column_type.clone())
                     }
                     _ => DraftType::Typed(text),
                 };
-            }
-            ColumnField::Nullable(nullable) => column.nullable = nullable,
+            }),
+            ColumnField::Nullable(nullable) => column.update(|draft| draft.nullable = nullable),
             // The row's Nullable and Auto increment switches follow the
             // key and send their own edits.
-            ColumnField::PrimaryKey(primary_key) => column.primary_key = primary_key,
-            ColumnField::AutoIncrement(auto_increment) => column.auto_increment = auto_increment,
-            ColumnField::Default(text) => match self.parse_default(&column, &text) {
-                Ok(default) => {
-                    self.invalid_defaults.remove(&index);
-                    column.default = default;
+            ColumnField::PrimaryKey(primary_key) => column.update(|draft| draft.primary_key = primary_key),
+            ColumnField::AutoIncrement(auto_increment) => column.update(|draft| draft.auto_increment = auto_increment),
+            ColumnField::Default(text) => {
+                let parsed = self.context.borrow().parse_default(&column.column(), &text);
+                match parsed {
+                    Ok(default) => {
+                        column.set_unparsed_default(None);
+                        column.update(|draft| draft.default = default);
+                    }
+                    // No edit of the column, but the tracker has to learn
+                    // of it, or a close prompt would save without it.
+                    Err(error) => column.set_unparsed_default(Some(UnparsedDefault { text, error })),
                 }
-                Err(error) => {
-                    self.invalid_defaults.insert(index, (text, error));
-                }
-            },
-            ColumnField::Comment(comment) => column.comment = comment,
-        }
-        // A rebuild sets each widget to the value the model already has,
-        // which is no edit. A default the parser refused is no edit
-        // either, but the tracker has to learn of it, or a close prompt
-        // would save without it.
-        if column == previous {
-            self.recompute_dirty_state(fx);
-            return;
-        }
-        if let Some(slot) = self.draft.borrow_mut().columns.get_mut(index) {
-            *slot = column;
+            }
+            ColumnField::Comment(comment) => column.update(|draft| draft.comment = comment),
         }
         self.recompute_dirty_state(fx);
     }
 
-    /// The default the user typed, as the engine's parser reads it. The
-    /// text the row showed for the loaded default gives that default
-    /// back, so seeing it again is no edit.
-    fn parse_default(&self, column: &DraftColumn, text: &str) -> Result<ColumnDefault, String> {
-        if let Some(original) = column.original.as_ref().filter(|original| {
-            let loaded = DraftColumn::from_definition((*original).clone());
-            self.default_text(&loaded) == text
-        }) {
-            return Ok(original.info.default.clone());
-        }
-        let Some(dialect) = self.dialect.as_deref() else {
-            return Err(crate::i18n::gettext("Connect to a database to check the default."));
-        };
-        let column_type = self
-            .default_column_type(column)
-            .unwrap_or_else(|| tablepro_core::column::ColumnType::untyped_text(column.column_type.text()));
-        parse_default(dialect, text, &column_type).map_err(|error| error.to_string())
-    }
-
-    fn save(&mut self, fx: &mut StructureEffects) {
+    fn save(&self, fx: &mut StructureEffects) {
         let pending = self.pending();
         if let Err(blocker) = pending.check() {
             fx.output(StructureTabOutput::ShowToast(save_blocker_text(&blocker)));
@@ -1188,7 +1063,8 @@ impl StructureModel {
             fx.output(StructureTabOutput::ShowToast(crate::i18n::gettext("Nothing to save.")));
             return;
         }
-        let Some(ddl) = self.ddl() else {
+        let context = self.context.borrow();
+        let Some(ddl) = context.ddl() else {
             fx.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
                 "Connect to a database first.",
             )));
@@ -1241,30 +1117,30 @@ impl StructureModel {
     }
 
     /// An edit that reached the tab while its draft was locked, from a
-    /// dialog opened before the save: the widgets go back to the draft.
-    fn refuse_edit(&self, fx: &mut StructureEffects) {
-        let name = self.draft.borrow().table.name.clone();
-        if self.name_entry.text() != name {
-            self.suppress_emit.set(true);
-            self.name_entry.set_text(&name);
-            self.suppress_emit.set(false);
+    /// dialog opened before the save or a row the save had not turned
+    /// off yet: the controls go back to what the draft holds.
+    fn refuse_edit(&self, msg: &StructureTabInput, fx: &mut StructureEffects) {
+        self.show_table_name();
+        if let StructureTabInput::ColumnEdited { column, .. } = msg
+            && let Some(position) = self.columns.find(column)
+        {
+            self.columns.splice(position, 1, std::slice::from_ref(column));
         }
         fx.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
             "Wait for the save to finish, then make the change again.",
         )));
-        fx.input(StructureTabInput::Refresh);
     }
 
     fn save_completed(&mut self, new_table_name: Option<String>, fx: &mut StructureEffects) {
         self.show_saving(false);
         if let Some(name) = new_table_name {
-            self.mode = StructureMode::Edit;
-            self.draft.borrow_mut().table.name = name.clone();
-            self.name_entry.set_text(&name);
+            self.context.borrow_mut().mode = StructureMode::Edit;
+            self.table.name = name;
+            self.show_table_name();
             self.drop_button.set_visible(true);
             self.name_row.set_visible(false);
         }
-        if self.mode != StructureMode::Edit {
+        if self.mode() != StructureMode::Edit {
             return;
         }
         // The diff against the pre-save definition would show the changes
@@ -1273,7 +1149,7 @@ impl StructureModel {
         // dirty state goes to zero now, and so does a CREATE TABLE left
         // in the preview by a draft that just became the table.
         self.tracker.clear();
-        self.refresh_buttons(0);
+        self.refresh_buttons(0, true);
         self.sql_buffer
             .set_text(&crate::i18n::gettext("-- No pending changes."));
         if self.last_dirty {
@@ -1287,33 +1163,42 @@ impl StructureModel {
     }
 }
 
-fn boxed_list() -> gtk::ListBox {
-    let list = gtk::ListBox::builder()
-        .selection_mode(gtk::SelectionMode::None)
-        .margin_start(12)
-        .margin_end(12)
-        .margin_top(6)
-        .margin_bottom(6)
+/// Show `store` in `list`, a row for each item built by `build`. An empty
+/// boxed list would still draw its frame, so the list hides while the
+/// store is empty.
+fn bind_list<T, W>(list: &gtk::ListBox, store: &gio::ListStore, build: impl Fn(&T) -> W + 'static)
+where
+    T: IsA<glib::Object>,
+    W: IsA<gtk::Widget>,
+{
+    store
+        .bind_property("n-items", list, "visible")
+        .transform_to(|_, items: u32| Some(items > 0))
+        .sync_create()
         .build();
-    list.add_css_class("boxed-list");
-    list
+    list.bind_model(Some(store), move |item| match item.downcast_ref::<T>() {
+        Some(item) => build(item).upcast(),
+        // The store takes only `T`.
+        None => gtk::ListBoxRow::new().upcast(),
+    });
 }
 
-fn clear_box(b: &gtk::Box) {
-    while let Some(child) = b.first_child() {
-        b.remove(&child);
-    }
+fn items<T: IsA<glib::Object>>(store: &gio::ListStore) -> Vec<T> {
+    (0..store.n_items())
+        .filter_map(|position| store.item(position).and_downcast::<T>())
+        .collect()
 }
 
-/// A trailing `adw::ButtonRow`, the GNOME pattern for "Add another
-/// item" rows in Settings and Builder.
-fn append_add_button(list: &gtk::ListBox, label: &str, on_activate: impl Fn() + 'static) {
-    let row = adw::ButtonRow::builder()
-        .title(label)
-        .start_icon_name(crate::ui::icons::LIST_ADD)
-        .build();
-    row.connect_activated(move |_| on_activate());
-    list.append(&row);
+fn draft_columns(store: &gio::ListStore) -> Vec<DraftColumn> {
+    items::<DraftColumnObject>(store)
+        .iter()
+        .map(DraftColumnObject::column)
+        .collect()
+}
+
+fn replace_items<T: IsA<glib::Object>>(store: &gio::ListStore, items: impl IntoIterator<Item = T>) {
+    let items: Vec<T> = items.into_iter().collect();
+    store.splice(0, store.n_items(), &items);
 }
 
 fn apply_sql_scheme(buffer: &sourceview5::Buffer) {

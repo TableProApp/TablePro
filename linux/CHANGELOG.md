@@ -67,6 +67,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ClickHouse DateTime values showed as UTC text when the server profile or session set ISO output.
 - ClickHouse save with an unknown outcome could read as applied because of another table's mutation.
 - A new row removed with Delete stayed in the grid while the save left it out.
+- Structure tab collapsed open columns on each add or remove, and lost an edit typed right after one.
+- Structure tab column summary and the Default field's error did not update as the column was edited.
+- SQLite `INTEGER PRIMARY KEY DESC` columns showed as auto-increment in the Structure tab.
 - Undoing a delete of many rows took one Ctrl+Z per row and could not bring back more than 50.
 - Editing a number in the grid could round it: integers past 2^53 and floats past six decimal places.
 - Setting a new row's cell to NULL saved the column's default instead.

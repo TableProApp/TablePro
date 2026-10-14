@@ -235,6 +235,16 @@ impl<'a> CreateTableSource<'a> {
         })
     }
 
+    /// Whether `column` carries `PRIMARY KEY DESC` on itself, which keeps
+    /// an INTEGER column from being the rowid. The same order in a table
+    /// PRIMARY KEY does not (lang_createtable.html#rowid).
+    pub(crate) fn declares_descending_key(&self, column: &str) -> bool {
+        self.columns()
+            .filter(|(_, source)| source.name.eq_ignore_ascii_case(column))
+            .flat_map(|(_, source)| &source.segments)
+            .any(|segment| matches!(segment.kind, ColumnConstraintKind::PrimaryKey { descending: true, .. }))
+    }
+
     /// The names `range` mentions, lowercased and unquoted. A name inside
     /// a string literal is not a mention.
     pub(crate) fn mentions(&self, range: Range<usize>) -> HashSet<String> {
@@ -263,6 +273,12 @@ pub(crate) fn declared_foreign_key_names(sql: &str) -> Option<Vec<Option<String>
         .collect();
     names.reverse();
     Some(names)
+}
+
+/// Whether a CREATE TABLE declares `column` `PRIMARY KEY DESC`. Text
+/// that does not read declares nothing.
+pub(crate) fn declared_descending_key(sql: &str, column: &str) -> bool {
+    CreateTableSource::read(sql).is_ok_and(|source| source.declares_descending_key(column))
 }
 
 /// `"a""b"`, `` `a``b` ``, `[a b]` and `'a'` all name what SQLite
@@ -1087,6 +1103,26 @@ mod tests {
         for sql in cases {
             assert!(CreateTableSource::read(sql).is_err(), "{sql}");
         }
+    }
+
+    #[test]
+    fn only_desc_on_the_column_itself_is_a_descending_key() {
+        assert!(declared_descending_key(
+            "CREATE TABLE t (\"Id\" INTEGER PRIMARY KEY DESC, a TEXT)",
+            "id"
+        ));
+        assert!(!declared_descending_key(
+            "CREATE TABLE t (id INTEGER PRIMARY KEY ASC, a TEXT)",
+            "id"
+        ));
+        assert!(!declared_descending_key(
+            "CREATE TABLE t (id INTEGER, a TEXT, PRIMARY KEY (id DESC))",
+            "id"
+        ));
+        assert!(!declared_descending_key(
+            "CREATE TABLE t (id INTEGER PRIMARY KEY DESC",
+            "id"
+        ));
     }
 
     #[test]

@@ -93,6 +93,38 @@
                                     <property name="child">
                                       <object class="GtkBox" id="columns_box">
                                         <property name="orientation">vertical</property>
+                                        <child>
+                                          <object class="GtkListBox" id="columns_list">
+                                            <property name="selection-mode">none</property>
+                                            <property name="margin-start">12</property>
+                                            <property name="margin-end">12</property>
+                                            <property name="margin-top">6</property>
+                                            <property name="margin-bottom">6</property>
+                                            <style>
+                                              <class name="boxed-list"/>
+                                            </style>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <!-- Apart from the bound list, which takes no widget its
+                                               model did not make. -->
+                                          <object class="GtkListBox" id="add_column_list">
+                                            <property name="selection-mode">none</property>
+                                            <property name="margin-start">12</property>
+                                            <property name="margin-end">12</property>
+                                            <property name="margin-top">6</property>
+                                            <property name="margin-bottom">6</property>
+                                            <style>
+                                              <class name="boxed-list"/>
+                                            </style>
+                                            <child>
+                                              <object class="AdwButtonRow" id="add_column_row">
+                                                <property name="title" translatable="yes">Add Column</property>
+                                                <property name="start-icon-name">list-add-symbolic</property>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
                                       </object>
                                     </property>
                                   </object>
@@ -110,6 +142,38 @@
                                     <property name="child">
                                       <object class="GtkBox" id="indexes_box">
                                         <property name="orientation">vertical</property>
+                                        <child>
+                                          <object class="GtkListBox" id="indexes_list">
+                                            <property name="selection-mode">none</property>
+                                            <property name="margin-start">12</property>
+                                            <property name="margin-end">12</property>
+                                            <property name="margin-top">6</property>
+                                            <property name="margin-bottom">6</property>
+                                            <style>
+                                              <class name="boxed-list"/>
+                                            </style>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <!-- Apart from the bound list, which takes no widget its
+                                               model did not make. -->
+                                          <object class="GtkListBox" id="add_index_list">
+                                            <property name="selection-mode">none</property>
+                                            <property name="margin-start">12</property>
+                                            <property name="margin-end">12</property>
+                                            <property name="margin-top">6</property>
+                                            <property name="margin-bottom">6</property>
+                                            <style>
+                                              <class name="boxed-list"/>
+                                            </style>
+                                            <child>
+                                              <object class="AdwButtonRow" id="add_index_row">
+                                                <property name="title" translatable="yes">Add Index…</property>
+                                                <property name="start-icon-name">list-add-symbolic</property>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
                                       </object>
                                     </property>
                                   </object>
@@ -127,6 +191,38 @@
                                     <property name="child">
                                       <object class="GtkBox" id="fks_box">
                                         <property name="orientation">vertical</property>
+                                        <child>
+                                          <object class="GtkListBox" id="fks_list">
+                                            <property name="selection-mode">none</property>
+                                            <property name="margin-start">12</property>
+                                            <property name="margin-end">12</property>
+                                            <property name="margin-top">6</property>
+                                            <property name="margin-bottom">6</property>
+                                            <style>
+                                              <class name="boxed-list"/>
+                                            </style>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <!-- Apart from the bound list, which takes no widget its
+                                               model did not make. -->
+                                          <object class="GtkListBox" id="add_fk_list">
+                                            <property name="selection-mode">none</property>
+                                            <property name="margin-start">12</property>
+                                            <property name="margin-end">12</property>
+                                            <property name="margin-top">6</property>
+                                            <property name="margin-bottom">6</property>
+                                            <style>
+                                              <class name="boxed-list"/>
+                                            </style>
+                                            <child>
+                                              <object class="AdwButtonRow" id="add_fk_row">
+                                                <property name="title" translatable="yes">Add Foreign Key…</property>
+                                                <property name="start-icon-name">list-add-symbolic</property>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
                                       </object>
                                     </property>
                                   </object>

@@ -1,25 +1,23 @@
-//! Foreign-key row builder used by the Foreign Keys page of the
-//! Structure tab.
+//! The foreign key rows of the Structure tab's Foreign Keys page.
 
 use gtk4 as gtk;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
-use tablepro_core::ForeignKeyInfo;
 use tablepro_core::ddl::{Permission, ReferentialAction};
 
 use super::columns::gate;
+use super::foreign_key_object::ForeignKeyObject;
 use super::{StructureTabInput, StructureTabSender};
 
-/// Foreign-key row as a native `AdwActionRow`. Subtitle encodes both
-/// local columns and the reference target so users see the full
-/// relationship in a glance: `col_a, col_b → other_table (ref_a, ref_b)`.
+/// The subtitle reads the whole relationship at a glance:
+/// `col_a, col_b → other_table (ref_a, ref_b)`.
 pub(super) fn build_fk_row(
-    index: usize,
-    fk: &ForeignKeyInfo,
+    object: &ForeignKeyObject,
     removable: &Permission,
-    sender: StructureTabSender,
+    sender: &StructureTabSender,
 ) -> adw::ActionRow {
+    let fk = object.info();
     let qualified_ref = match &fk.ref_schema {
         Some(s) if !s.is_empty() => format!("{s}.{}", fk.ref_table),
         _ => fk.ref_table.clone(),
@@ -40,8 +38,9 @@ pub(super) fn build_fk_row(
     }
 
     let row = adw::ActionRow::builder()
-        .title(glib::markup_escape_text(&fk.name))
-        .subtitle(glib::markup_escape_text(&subtitle))
+        .use_markup(false)
+        .title(fk.name.as_str())
+        .subtitle(subtitle)
         .build();
 
     let remove_button = gtk::Button::builder()
@@ -50,10 +49,15 @@ pub(super) fn build_fk_row(
         .valign(gtk::Align::Center)
         .build();
     remove_button.add_css_class("flat");
-    remove_button.set_widget_name(&format!("fk-remove-{index}"));
+    remove_button.set_widget_name("fk-remove");
     gate(&remove_button, removable);
+    let key_for_remove = object.downgrade();
     let sender_for_remove = sender.clone();
-    remove_button.connect_clicked(move |_| sender_for_remove.input(StructureTabInput::RemoveForeignKey(index)));
+    remove_button.connect_clicked(move |_| {
+        if let Some(key) = key_for_remove.upgrade() {
+            sender_for_remove.input(StructureTabInput::RemoveForeignKey(key));
+        }
+    });
     row.add_suffix(&remove_button);
 
     row

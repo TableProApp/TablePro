@@ -20,7 +20,7 @@ use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{IndexInfo, TableRef};
 
 use self::create_table_source::CreateTableSource;
-pub(crate) use self::create_table_source::declared_foreign_key_names;
+pub(crate) use self::create_table_source::{declared_descending_key, declared_foreign_key_names};
 use self::declared_shape::readable;
 use crate::dialect::SqliteDialect;
 

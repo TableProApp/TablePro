@@ -31,6 +31,10 @@ pub(crate) struct TableFacts {
     pub autoincrement: bool,
     /// Exactly one column is in the primary key.
     pub single_column_key: bool,
+    /// The CREATE TABLE text declares the key column `PRIMARY KEY DESC`
+    /// on the column itself, which SQLite reads as an ordinary column
+    /// rather than the rowid (lang_createtable.html#rowid).
+    pub descending_key: bool,
 }
 
 impl SqliteColumnRow {
@@ -62,6 +66,13 @@ impl SqliteColumnRow {
     /// `INTEGER PRIMARY KEY`, spelled exactly so, names the rowid
     /// rather than adding a column, and only on a table that has one.
     pub(crate) fn is_rowid_alias(&self, table: &TableFacts) -> bool {
+        self.is_rowid_candidate(table) && !table.descending_key
+    }
+
+    /// The rowid as `pragma_table_xinfo` alone shows it. `PRIMARY KEY
+    /// DESC` on the column still makes it an ordinary column, which the
+    /// table's CREATE TABLE text tells.
+    pub(crate) fn is_rowid_candidate(&self, table: &TableFacts) -> bool {
         self.pk > 0
             && table.single_column_key
             && !table.without_rowid
@@ -127,6 +138,7 @@ mod tests {
             without_rowid: false,
             autoincrement: false,
             single_column_key,
+            descending_key: false,
         }
     }
 
@@ -160,6 +172,16 @@ mod tests {
                 .column_info(&without_rowid)
                 .is_auto_increment
         );
+        let descending = TableFacts {
+            descending_key: true,
+            ..facts(true)
+        };
+        let column = row("id", "INTEGER", 1, None);
+        assert!(
+            !column.column_info(&descending).is_auto_increment,
+            "INTEGER PRIMARY KEY DESC is an ordinary column, not the rowid"
+        );
+        assert_eq!(column.attributes(&descending).identity, IdentityStyle::None);
     }
 
     #[test]

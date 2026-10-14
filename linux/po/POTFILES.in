@@ -193,8 +193,13 @@ crates/app/src/ui/sidebar_row.rs
 crates/app/src/ui/ssh_inputs.rs
 crates/app/src/ui/ssh_section.rs
 crates/app/src/ui/structure_tab/columns.rs
+crates/app/src/ui/structure_tab/context.rs
+crates/app/src/ui/structure_tab/draft_column_object.rs
+crates/app/src/ui/structure_tab/draft_column_object_imp.rs
 crates/app/src/ui/structure_tab/fks.rs
+crates/app/src/ui/structure_tab/foreign_key_object.rs
 crates/app/src/ui/structure_tab/imp.rs
+crates/app/src/ui/structure_tab/index_object.rs
 crates/app/src/ui/structure_tab/indexes.rs
 crates/app/src/ui/structure_tab/mod.rs
 crates/app/src/ui/structure_tab/structure_command.rs

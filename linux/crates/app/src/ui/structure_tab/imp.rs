@@ -1,6 +1,5 @@
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
-use std::rc::Rc;
 use std::sync::OnceLock;
 
 use glib::subclass::Signal;
@@ -26,9 +25,27 @@ pub struct StructureTab {
     #[template_child]
     pub columns_box: TemplateChild<gtk::Box>,
     #[template_child]
+    pub columns_list: TemplateChild<gtk::ListBox>,
+    #[template_child]
+    pub add_column_list: TemplateChild<gtk::ListBox>,
+    #[template_child]
+    pub add_column_row: TemplateChild<adw::ButtonRow>,
+    #[template_child]
     pub indexes_box: TemplateChild<gtk::Box>,
     #[template_child]
+    pub indexes_list: TemplateChild<gtk::ListBox>,
+    #[template_child]
+    pub add_index_list: TemplateChild<gtk::ListBox>,
+    #[template_child]
+    pub add_index_row: TemplateChild<adw::ButtonRow>,
+    #[template_child]
     pub fks_box: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub fks_list: TemplateChild<gtk::ListBox>,
+    #[template_child]
+    pub add_fk_list: TemplateChild<gtk::ListBox>,
+    #[template_child]
+    pub add_fk_row: TemplateChild<adw::ButtonRow>,
     #[template_child]
     pub copy_sql_button: TemplateChild<gtk::Button>,
     #[template_child]
@@ -53,7 +70,6 @@ pub struct StructureTab {
     pub(super) model: RefCell<Option<StructureModel>>,
     pub(super) queue: RefCell<VecDeque<StructureTabInput>>,
     pub(super) dispatching: Cell<bool>,
-    pub(super) suppress_emit: Rc<Cell<bool>>,
     /// Delivers each reconnect, for as long as the tab is open.
     pub(super) link_watch: RefCell<Option<WatchForwarder>>,
 }

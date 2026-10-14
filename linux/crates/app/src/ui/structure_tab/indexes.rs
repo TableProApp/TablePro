@@ -1,5 +1,4 @@
-//! Index-row builder + tag widgets used by the Indexes page of the
-//! Structure tab.
+//! The index rows of the Structure tab's Indexes page.
 
 use gtk4 as gtk;
 use libadwaita as adw;
@@ -10,6 +9,7 @@ use tablepro_core::ddl::Permission;
 use tablepro_core::meta::IndexKey;
 
 use super::columns::gate;
+use super::index_object::IndexObject;
 use super::{StructureTabInput, StructureTabSender};
 
 fn index_badge(label: &str, accent_class: &str) -> gtk::Label {
@@ -20,15 +20,15 @@ fn index_badge(label: &str, accent_class: &str) -> gtk::Label {
 }
 
 pub(super) fn build_index_row(
-    index: usize,
-    idx: &IndexInfo,
+    object: &IndexObject,
     removable: &Permission,
-    sender: StructureTabSender,
+    sender: &StructureTabSender,
 ) -> adw::ActionRow {
-    let subtitle = index_key_summary(idx);
+    let idx = object.info();
     let row = adw::ActionRow::builder()
-        .title(glib::markup_escape_text(&idx.name))
-        .subtitle(glib::markup_escape_text(&subtitle))
+        .use_markup(false)
+        .title(idx.name.as_str())
+        .subtitle(index_key_summary(idx))
         .build();
 
     if idx.unique {
@@ -44,7 +44,7 @@ pub(super) fn build_index_row(
         .valign(gtk::Align::Center)
         .build();
     remove_button.add_css_class("flat");
-    remove_button.set_widget_name(&format!("index-remove-{index}"));
+    remove_button.set_widget_name("index-remove");
     // The primary key's constraint owns its index.
     if idx.primary {
         remove_button.set_sensitive(false);
@@ -54,8 +54,13 @@ pub(super) fn build_index_row(
     } else {
         gate(&remove_button, removable);
     }
+    let index_for_remove = object.downgrade();
     let sender_for_remove = sender.clone();
-    remove_button.connect_clicked(move |_| sender_for_remove.input(StructureTabInput::RemoveIndex(index)));
+    remove_button.connect_clicked(move |_| {
+        if let Some(index) = index_for_remove.upgrade() {
+            sender_for_remove.input(StructureTabInput::RemoveIndex(index));
+        }
+    });
     row.add_suffix(&remove_button);
 
     row

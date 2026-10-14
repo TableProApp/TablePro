@@ -22,7 +22,7 @@ use crate::catalog::{
     self, InboundKeyRow, MAIN_SCHEMA, SchemaRow, SqliteColumnRow, TableFacts, foreign_key_names, generated_expressions,
     inbound_foreign_keys, select_dependents,
 };
-use crate::ddl::declared_foreign_key_names;
+use crate::ddl::{declared_descending_key, declared_foreign_key_names};
 use crate::errors::{SQLITE_ERROR, map_error};
 use crate::index_sql::read_index_sql;
 
@@ -492,9 +492,15 @@ async fn table_shape(connection: &mut SqlxConnection, table: &TableRef) -> Resul
         without_rowid,
         autoincrement: false,
         single_column_key,
+        descending_key: false,
     };
-    if columns.iter().any(|column| column.is_rowid_alias(&facts)) {
-        facts.autoincrement = autoincrement(connection, schema, &table.name).await?;
+    if let Some(candidate) = columns.iter().find(|column| column.is_rowid_candidate(&facts)) {
+        facts.descending_key = create_statement(connection, table)
+            .await?
+            .is_some_and(|sql| declared_descending_key(&sql, &candidate.name));
+        if !facts.descending_key {
+            facts.autoincrement = autoincrement(connection, schema, &table.name).await?;
+        }
     }
     Ok(TableShape { kind, facts, columns })
 }
