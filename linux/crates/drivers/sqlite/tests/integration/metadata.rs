@@ -1,6 +1,6 @@
 //! The catalogue as the sidebar, the grid and the structure tab read it.
 
-use tablepro_core::ddl::ReferentialAction;
+use tablepro_core::ddl::{IdentityStyle, ReferentialAction};
 use tablepro_core::meta::{
     EngineRowId, IndexInfo, IndexKey, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef,
 };
@@ -217,6 +217,42 @@ async fn integer_primary_key_with_default_is_not_auto_increment() {
     let columns = connection.fetch_columns(&table("t"), call()).await.unwrap();
 
     assert!(!columns[0].is_auto_increment);
+    connection.close().await.unwrap();
+}
+
+/// SQLite stores NULL in a key it does not number, which shows the
+/// column is not the rowid. DESC in a table PRIMARY KEY keeps the alias.
+#[tokio::test]
+async fn integer_primary_key_desc_on_the_column_is_not_the_rowid() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE t (id INTEGER PRIMARY KEY DESC, name TEXT)",
+            "CREATE TABLE u (id INTEGER, name TEXT, PRIMARY KEY (id DESC))",
+            "INSERT INTO t (name) VALUES ('a')",
+            "INSERT INTO u (name) VALUES ('a')",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let descending = connection.fetch_table_definition(&table("t"), call()).await.unwrap();
+    let table_key = connection.fetch_table_definition(&table("u"), call()).await.unwrap();
+    let stored = query(connection.as_ref(), "SELECT (SELECT id FROM t), (SELECT id FROM u)").await;
+
+    assert_eq!(stored.rows[0], [Value::Null, Value::Int(1)]);
+    let id = &descending.columns[0];
+    assert!(
+        !id.info.is_auto_increment,
+        "PRIMARY KEY DESC was read as numbering itself"
+    );
+    assert_eq!(id.attributes.identity, IdentityStyle::None);
+    assert!(id.info.primary_key);
+    let alias = &table_key.columns[0];
+    assert!(alias.info.is_auto_increment);
+    assert_eq!(alias.attributes.identity, IdentityStyle::SqliteRowidAlias);
     connection.close().await.unwrap();
 }
 
