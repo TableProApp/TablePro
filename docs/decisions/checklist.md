@@ -32,7 +32,7 @@ Walked against the code and living docs after [#532](https://github.com/cozyGara
 | API / contract style & versioning | Decided | No public HTTP product API. MCP tools; `tablepro` protocol contracts stay on the rename boundary. [ARCHITECTURE](../../ARCHITECTURE.md). |
 | Auth & authorization model | Decided | Desktop: Secret Service. MCP: token scopes, connection allowlists, then `PolicyGuard`. [ADR 0004](0004-libsecret-secret-storage.md), [ADR 0008](0008-connection-and-session-ownership.md), [ADR 0016](0016-governed-consumer-seam.md), [AGENTS](../../AGENTS.md). |
 | Error & result modeling | Decided | Typed `thiserror` at crate boundaries. Panic containment: [ADR 0006](0006-driver-panic-containment.md). |
-| Config & secrets management | Decided | Secrets in Secret Service. Never in JSON, argv, traces, errors or audit fields. [ADR 0004](0004-libsecret-secret-storage.md), [AGENTS](../../AGENTS.md). |
+| Config & secrets management | Decided | Database and SSH credentials, plus GUI-issued MCP token plaintext, use Secret Service. Headless token issuance emits plaintext once through an explicit output path. Secrets never go in connection JSON, argv, traces, errors or audit fields. [ADR 0004](0004-libsecret-secret-storage.md), [AGENTS](../../AGENTS.md). |
 
 ## Quality and safety
 
