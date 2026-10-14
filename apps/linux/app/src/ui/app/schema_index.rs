@@ -83,6 +83,10 @@ impl App {
         {
             self.reset_schema_fetches();
         }
+        self.schema_index.borrow_mut().grammar = self
+            .current_driver_id
+            .as_deref()
+            .and_then(crate::ui::editor::grammar_for);
         let mut words: Vec<String> = self.table_names.clone();
         let tabs = self.workspace_tabs.borrow();
         for tab in tabs.values() {

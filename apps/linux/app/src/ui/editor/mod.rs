@@ -35,6 +35,7 @@ use crate::ui::grid::GridMsg;
 
 pub use completion::{SchemaIndex, SchemaRequest, candidate_words, referenced_tables, table_key};
 pub use schema::{SQL_KEYWORDS, build_schema_buffer, derive_tab_label, update_schema_buffer};
+pub use statement_cursor::grammar_for;
 
 use outcomes::{ScriptRunResult, clear_box, render_outcomes, run_statements};
 use run_generation::{RunGeneration, RunTerminal};
@@ -1158,7 +1159,7 @@ fn build_completion_refresh(
             return;
         };
         let words = candidate_words(&sql, cursor_byte, &index);
-        let missing: Vec<String> = referenced_tables(&sql, cursor_byte)
+        let missing: Vec<String> = referenced_tables(&sql, cursor_byte, index.grammar)
             .into_iter()
             .filter(|table| !index.knows_columns(table))
             .collect();

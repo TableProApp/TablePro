@@ -213,6 +213,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - SQL Server legacy `datetime` values decode only when their 1/300-second ticks map exactly to nanoseconds; inexact ticks remain undecodable.
 - Cancelling a connection attempt over the system OpenSSH client now stops its ssh master process and cleans up its private directory, instead of leaving it running in the background.
 - If the app is killed or crashes while using the system OpenSSH client, its ssh master process now exits with it instead of continuing to run in the background until the next launch.
+- SQL completion now finds the statement under the cursor correctly when a comment or a PostgreSQL `$$` body contains a semicolon.
 
 ### Security
 

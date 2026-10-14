@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 
+use tablepro_core::sql_syntax::SqlGrammar;
+
 #[derive(Default)]
 pub struct SchemaIndex {
     pub tables: Vec<String>,
     pub columns: HashMap<String, Vec<String>>,
+    pub grammar: Option<SqlGrammar>,
     connection: Option<crate::services::database_service::ConnectionIdentity>,
     generation: u64,
 }
@@ -98,7 +101,7 @@ fn bare_name(key: &str) -> &str {
 }
 
 pub fn candidate_words(sql: &str, cursor_byte: usize, index: &SchemaIndex) -> Vec<String> {
-    let statement = statement_around(sql, cursor_byte);
+    let statement = statement_around(sql, cursor_byte, index.grammar);
     let prefix = &statement.text[..statement.cursor];
     let scope = scope_for(prefix, statement.text, index);
     let mut out: Vec<String> = Vec::new();
@@ -134,8 +137,8 @@ pub fn candidate_words(sql: &str, cursor_byte: usize, index: &SchemaIndex) -> Ve
     out
 }
 
-pub fn referenced_tables(sql: &str, cursor_byte: usize) -> Vec<String> {
-    let statement = statement_around(sql, cursor_byte);
+pub fn referenced_tables(sql: &str, cursor_byte: usize, grammar: Option<SqlGrammar>) -> Vec<String> {
+    let statement = statement_around(sql, cursor_byte, grammar);
     table_references(statement.text)
         .into_iter()
         .map(|(table, _)| table)
@@ -156,15 +159,34 @@ struct StatementSpan<'a> {
     cursor: usize,
 }
 
-fn statement_around(sql: &str, cursor_byte: usize) -> StatementSpan<'_> {
-    let cursor = cursor_byte.min(sql.len());
-    let cursor = floor_char_boundary(sql, cursor);
-    let start = last_separator_before(sql, cursor).map_or(0, |offset| offset + 1);
-    let end = sql[cursor..].find(';').map_or(sql.len(), |offset| cursor + offset);
+fn statement_around(sql: &str, cursor_byte: usize, grammar: Option<SqlGrammar>) -> StatementSpan<'_> {
+    let cursor = floor_char_boundary(sql, cursor_byte.min(sql.len()));
+    let range = grammar.map_or(0..sql.len(), |grammar| statement_range(sql, cursor, grammar));
     StatementSpan {
-        text: &sql[start..end],
-        cursor: cursor - start,
+        text: &sql[range.start..range.end],
+        cursor: cursor - range.start,
     }
+}
+
+fn statement_range(sql: &str, cursor: usize, grammar: SqlGrammar) -> std::ops::Range<usize> {
+    let plan = super::statement_cursor::plan_for(sql, grammar);
+    let statements = plan.statements();
+    let following = statements.partition_point(|statement| statement.range.start <= cursor);
+    let next_end = statements
+        .get(following)
+        .map_or(sql.len(), |statement| statement.range.end);
+    let Some(current) = following.checked_sub(1).and_then(|index| statements.get(index)) else {
+        return 0..next_end;
+    };
+    let terminator_end = plan
+        .tokens(current.range.end..current.extent.end)
+        .filter(|token| !token.kind.is_trivia())
+        .map(|token| token.range.end)
+        .last();
+    if let Some(terminator_end) = terminator_end.filter(|end| cursor >= *end) {
+        return terminator_end..next_end;
+    }
+    current.range.start..current.range.end.max(cursor)
 }
 
 fn floor_char_boundary(text: &str, mut index: usize) -> usize {
@@ -172,21 +194,6 @@ fn floor_char_boundary(text: &str, mut index: usize) -> usize {
         index -= 1;
     }
     index
-}
-
-fn last_separator_before(sql: &str, cursor: usize) -> Option<usize> {
-    let mut in_single = false;
-    let mut in_double = false;
-    let mut found = None;
-    for (offset, character) in sql[..cursor].char_indices() {
-        match character {
-            '\'' if !in_double => in_single = !in_single,
-            '"' if !in_single => in_double = !in_double,
-            ';' if !in_single && !in_double => found = Some(offset),
-            _ => {}
-        }
-    }
-    found
 }
 
 fn scope_for(prefix: &str, statement: &str, index: &SchemaIndex) -> Scope {
@@ -351,7 +358,36 @@ mod tests {
         };
         index.set_columns("public.users", vec!["id".into(), "email".into(), "created_at".into()]);
         index.set_columns("public.orders", vec!["id".into(), "user_id".into(), "total".into()]);
+        index.grammar = Some(SqlGrammar::PostgreSql);
         index
+    }
+
+    #[test]
+    fn a_semicolon_inside_a_line_comment_does_not_split_the_statement() {
+        let words = candidates("SELECT * FROM public.users -- one; two\nWHERE |");
+        assert!(words.contains(&"email".to_string()));
+        assert!(!words.contains(&"total".to_string()));
+    }
+
+    #[test]
+    fn a_semicolon_inside_a_block_comment_does_not_split_the_statement() {
+        let words = candidates("SELECT * FROM public.users /* one; two */ WHERE |");
+        assert!(words.contains(&"email".to_string()));
+        assert!(!words.contains(&"total".to_string()));
+    }
+
+    #[test]
+    fn a_semicolon_inside_a_dollar_quoted_body_does_not_split_the_statement() {
+        let words = candidates("SELECT * FROM public.users WHERE email = $$a;b$$ AND |");
+        assert!(words.contains(&"created_at".to_string()));
+        assert!(!words.contains(&"total".to_string()));
+    }
+
+    #[test]
+    fn a_cursor_after_the_last_semicolon_starts_a_new_statement() {
+        let words = candidates("SELECT * FROM public.orders; SELECT * FROM |");
+        assert!(words.contains(&"public.users".to_string()));
+        assert!(!words.contains(&"total".to_string()));
     }
 
     #[test]
@@ -443,7 +479,7 @@ mod tests {
     fn referenced_tables_reports_what_needs_columns() {
         let sql = "SELECT * FROM public.users u JOIN orders o ON o.user_id = u.id";
         assert_eq!(
-            referenced_tables(sql, sql.len()),
+            referenced_tables(sql, sql.len(), Some(SqlGrammar::PostgreSql)),
             vec!["public.users".to_string(), "orders".into()]
         );
     }
