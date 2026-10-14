@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -49,6 +50,8 @@ pub struct WorkspaceHandle(Rc<Inner>);
 struct Inner {
     deps: WorkspaceDeps,
     ledger: SaveLedger,
+    /// The structure tabs whose save waits on a review.
+    reviewing: RefCell<HashSet<Uuid>>,
 }
 
 impl Inner {
@@ -58,6 +61,26 @@ impl Inner {
     fn settled(&self, id: SaveId, settled: SaveSettled) {
         self.ledger.settle(id);
         (self.deps.events)(WorkspaceEvent::SaveSettled(Box::new(settled)));
+    }
+}
+
+/// A structure tab's place in `Inner::reviewing`, given up however the
+/// save ends.
+struct ReviewClaim<'a> {
+    reviewing: &'a RefCell<HashSet<Uuid>>,
+    tab: Uuid,
+}
+
+impl<'a> ReviewClaim<'a> {
+    fn take(reviewing: &'a RefCell<HashSet<Uuid>>, tab: Uuid) -> Option<Self> {
+        let claimed = reviewing.borrow_mut().insert(tab);
+        claimed.then(|| Self { reviewing, tab })
+    }
+}
+
+impl Drop for ReviewClaim<'_> {
+    fn drop(&mut self) {
+        self.reviewing.borrow_mut().remove(&self.tab);
     }
 }
 
@@ -84,6 +107,7 @@ impl WorkspaceHandle {
         Self(Rc::new(Inner {
             deps,
             ledger: SaveLedger::new(),
+            reviewing: RefCell::default(),
         }))
     }
 
@@ -180,6 +204,11 @@ impl WorkspaceHandle {
             return self.save_rows(tab, &tracker);
         }
         if let Some(tracker) = self.0.deps.structures.get(tab) {
+            // Ctrl+S still reaches the window while a review is open, and
+            // the review on screen is the one to answer.
+            let Some(_claim) = ReviewClaim::take(&self.0.reviewing, tab) else {
+                return SaveStart::Rejected(SaveRejection::InReview);
+            };
             return match self.review_structure(parent, &tracker).await {
                 Ok(reviewed) => self.save_structure(tab, &tracker, reviewed),
                 Err(start) => start,

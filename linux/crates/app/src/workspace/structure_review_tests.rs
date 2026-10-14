@@ -169,3 +169,26 @@ fn a_draft_changed_during_the_review_is_not_saved() {
     assert_eq!(CallCounters::get(&workspace.counters().write_batch), 0);
     assert_eq!(workspace.structure.pending_state(), PendingState::Unsaved);
 }
+
+#[gtk4::test]
+fn a_save_asked_again_during_the_review_opens_no_second_one() {
+    let workspace = Workspace::open_structure(writing(), edited_table(without_n));
+    let window = window();
+
+    let first = workspace.start_on(&window);
+    let review = review_on(&window);
+    let again = workspace.start_on(&window);
+
+    assert_eq!(started(&again), [SaveStart::Rejected(SaveRejection::InReview)]);
+    assert_eq!(window.dialogs().n_items(), 1, "a second review opened");
+    assert!(answer(&window, "cancel"));
+    assert_eq!(started(&first), [SaveStart::Rejected(SaveRejection::ReviewDeclined)]);
+
+    let after = workspace.start_on(&window);
+    wait_until(WAIT, || visible_alert(&window).is_some_and(|shown| shown != review))
+        .expect("a review once the first was answered");
+    assert!(answer(&window, "apply"));
+    assert!(matches!(started(&after).as_slice(), [SaveStart::Started(_)]));
+    workspace.settle();
+    assert_eq!(CallCounters::get(&workspace.counters().write_batch), 1);
+}

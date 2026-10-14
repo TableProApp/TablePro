@@ -30,6 +30,8 @@ pub enum SaveRejection {
     Unplannable(BuildDdlError),
     /// The user read the review of a structure save and kept it.
     ReviewDeclined,
+    /// A review of the same changes is open.
+    InReview,
     NoConnection,
 }
 
@@ -59,15 +61,16 @@ impl SaveRejection {
             Self::Blocked(blocker) => crate::ui::error_text::save_blocker_text(blocker),
             Self::Unplannable(error) => crate::ui::error_text::build_error_text(error),
             Self::ReviewDeclined => crate::i18n::gettext("The changes were not applied."),
+            Self::InReview => crate::i18n::gettext("The review of these changes is still open."),
             Self::NoConnection => crate::i18n::gettext("No active connection."),
         }
     }
 
     /// A Save pressed again while the first runs needs no alert: the tab
-    /// already shows the save running. Nor does a review the user just
-    /// declined.
+    /// already shows the save running, or its review. Nor does a review
+    /// the user just declined.
     pub fn needs_alert(&self) -> bool {
-        !matches!(self, Self::AlreadySaving | Self::ReviewDeclined)
+        !matches!(self, Self::AlreadySaving | Self::InReview | Self::ReviewDeclined)
     }
 }
 
@@ -91,6 +94,7 @@ mod tests {
 
         assert!(told.iter().all(SaveRejection::needs_alert));
         assert!(!SaveRejection::AlreadySaving.needs_alert());
+        assert!(!SaveRejection::InReview.needs_alert());
         assert!(!SaveRejection::ReviewDeclined.needs_alert());
     }
 
