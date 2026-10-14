@@ -80,7 +80,7 @@ fn group_menu(target: &glib::Variant, groups: &[String]) -> gio::Menu {
     if !groups.is_empty() {
         let existing = gio::Menu::new();
         for group in groups {
-            existing.append_item(&item(group, ROW, ROW_GROUP, &group.to_variant()));
+            existing.append_item(&item(&menu_label(group), ROW, ROW_GROUP, &group.to_variant()));
         }
         menu.append_section(None, &existing);
     }
@@ -88,6 +88,12 @@ fn group_menu(target: &glib::Variant, groups: &[String]) -> gio::Menu {
     new.append_item(&item(&crate::i18n::gettext("New Group…"), PICKER, NEW_GROUP, target));
     menu.append_section(None, &new);
     menu
+}
+
+/// A GtkPopoverMenu reads an underscore in a label as a mnemonic, so a
+/// group the user named keeps its underscores by doubling them.
+fn menu_label(text: &str) -> String {
+    text.replace('_', "__")
 }
 
 pub(super) fn color_name(color: ConnectionColor) -> String {
@@ -169,6 +175,19 @@ mod tests {
         assert!(labels.contains(&"Work".to_owned()), "{labels:?}");
         assert!(labels.contains(&"No Group".to_owned()), "{labels:?}");
         assert!(labels.contains(&"New Group…".to_owned()), "{labels:?}");
+    }
+
+    #[test]
+    fn a_group_name_keeps_its_underscores_in_the_menu() {
+        let found = items(connection_menu(Uuid::new_v4(), &["dev_db".to_owned()]).upcast_ref());
+
+        let group = found
+            .iter()
+            .find(|(_, _, target)| {
+                target.as_ref().and_then(|target| target.get::<String>()).as_deref() == Some("dev_db")
+            })
+            .expect("the group's item");
+        assert_eq!(group.0, "dev__db");
     }
 
     #[test]

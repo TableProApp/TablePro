@@ -99,18 +99,28 @@ impl SavedConnectionList {
         self.observers.borrow_mut().retain(|(observer, _)| *observer != id.0);
     }
 
-    /// A ready list replaces every row in one splice. A list that is
-    /// loading or cannot be read keeps the rows it had, and only its
-    /// state changes, for the banner.
+    /// A ready list replaces the objects of the connections that changed
+    /// and keeps the rest, so a write from another window leaves a row's
+    /// open menu and the keyboard focus alone. A new set of groups
+    /// replaces every object, because every row's menu offers them. A
+    /// list that is loading or cannot be read keeps the rows it had, and
+    /// only its state changes, for the banner.
     pub(crate) fn apply(&self, state: ConnectionListState) {
         // The state first: the rows the splice builds read it.
         self.state.replace(state.clone());
         if let ConnectionListState::Ready(list) = &state {
             let mut sorted = list.to_vec();
             saved_connection_order::sort(&mut sorted);
-            let objects: Vec<SavedConnectionObject> = sorted.iter().cloned().map(SavedConnectionObject::new).collect();
-            self.connections.replace(Arc::from(sorted));
-            self.store.splice(0, self.store.n_items(), &objects);
+            let regrouped = saved_connection_order::groups(&sorted) != self.groups();
+            let sorted: Arc<[SavedConnection]> = Arc::from(sorted);
+            self.connections.replace(sorted.clone());
+            if regrouped || self.store.n_items() == 0 {
+                let objects: Vec<SavedConnectionObject> =
+                    sorted.iter().cloned().map(SavedConnectionObject::new).collect();
+                self.store.splice(0, self.store.n_items(), &objects);
+            } else {
+                patch(&self.store, &sorted);
+            }
         }
         let observers: Vec<StateObserver> = self
             .observers
@@ -121,6 +131,30 @@ impl SavedConnectionList {
         for observer in observers {
             observer(&state);
         }
+    }
+}
+
+/// Bring `store` to `wanted`, keeping each object whose connection is
+/// unchanged where it can.
+fn patch(store: &gio::ListStore, wanted: &[SavedConnection]) {
+    let mut position = 0;
+    for saved in wanted {
+        let kept = (position..store.n_items()).find(|&at| {
+            store
+                .item(at)
+                .and_downcast::<SavedConnectionObject>()
+                .is_some_and(|object| object.saved() == Some(saved))
+        });
+        match kept {
+            Some(at) if at > position => store.splice(position, at - position, &[] as &[SavedConnectionObject]),
+            Some(_) => {}
+            None => store.insert(position, &SavedConnectionObject::new(saved.clone())),
+        }
+        position += 1;
+    }
+    let extra = store.n_items().saturating_sub(position);
+    if extra > 0 {
+        store.splice(position, extra, &[] as &[SavedConnectionObject]);
     }
 }
 
@@ -170,12 +204,19 @@ mod tests {
         }
     }
 
-    fn names(list: &SavedConnectionList) -> Vec<String> {
+    fn objects(list: &SavedConnectionList) -> Vec<SavedConnectionObject> {
         let model = list.model();
         (0..model.n_items())
             .filter_map(|position| model.item(position).and_downcast::<SavedConnectionObject>())
-            .map(|object| object.name())
             .collect()
+    }
+
+    fn names(list: &SavedConnectionList) -> Vec<String> {
+        objects(list).iter().map(|object| object.name()).collect()
+    }
+
+    fn ready(connections: &[SavedConnection]) -> ConnectionListState {
+        ConnectionListState::Ready(Arc::from(connections.to_vec()))
     }
 
     #[gtk4::test]
@@ -223,6 +264,47 @@ mod tests {
         list.disconnect_state_changed(observer);
         list.apply(ConnectionListState::Loading);
         assert_eq!(seen.borrow().len(), 2, "a disconnected observer still ran");
+    }
+
+    #[gtk4::test]
+    fn a_write_keeps_the_objects_of_unchanged_connections() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
+        let list = SavedConnectionList::follow(&store);
+        let (alpha, beta, gamma) = (connection("Alpha"), connection("Beta"), connection("Gamma"));
+        list.apply(ready(&[alpha.clone(), beta.clone(), gamma.clone()]));
+        let before = objects(&list);
+
+        let mut stamped = gamma.clone();
+        stamped.last_opened_at = Some(chrono::Utc::now());
+        list.apply(ready(&[alpha.clone(), beta.clone(), stamped]));
+        let after = objects(&list);
+
+        assert_eq!(names(&list), ["Gamma", "Alpha", "Beta"]);
+        assert_eq!(after[1], before[0], "the stamp rebuilt Alpha's row");
+        assert_eq!(after[2], before[1], "the stamp rebuilt Beta's row");
+        assert_ne!(after[0], before[2], "the stamped row shows the old connection");
+
+        list.apply(ready(&[alpha, beta]));
+        assert_eq!(objects(&list), [after[1].clone(), after[2].clone()]);
+    }
+
+    #[gtk4::test]
+    fn a_new_group_replaces_every_object() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
+        let list = SavedConnectionList::follow(&store);
+        let (alpha, beta) = (connection("Alpha"), connection("Beta"));
+        list.apply(ready(&[alpha.clone(), beta.clone()]));
+        let before = objects(&list);
+
+        let mut filed = beta;
+        filed.group = Some("Work".to_owned());
+        list.apply(ready(&[alpha, filed]));
+
+        let after = objects(&list);
+        assert_eq!(list.groups(), ["Work"]);
+        assert_ne!(after[0], before[0], "Alpha's menu does not offer the new group");
     }
 
     #[gtk4::test]

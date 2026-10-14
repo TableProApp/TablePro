@@ -10,7 +10,7 @@ use super::saved_connection_object_imp as imp;
 
 glib::wrapper! {
     /// One saved connection as the pickers' shared model holds it. It
-    /// never changes: a new list replaces every object.
+    /// never changes: a changed connection gets a new object.
     pub struct SavedConnectionObject(ObjectSubclass<imp::SavedConnectionObject>);
 }
 
