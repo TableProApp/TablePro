@@ -21,7 +21,7 @@ final class MacAnalyticsProvider: AnalyticsEnvironmentProvider {
         static let firstQueryExecutedAt = "com.TablePro.analytics.firstQueryExecutedAt"
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
         self.defaults = defaults
     }
 

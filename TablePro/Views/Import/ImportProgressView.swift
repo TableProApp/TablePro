@@ -51,7 +51,6 @@ struct ImportProgressView: View {
         }
         .padding(24)
         .frame(minWidth: 500)
-        .background(Color(nsColor: .windowBackgroundColor))
         .onExitCommand { showStopConfirmation = true }
         .alert(String(localized: "Stop Import?"), isPresented: $showStopConfirmation) {
             Button(String(localized: "Continue"), role: .cancel) {}

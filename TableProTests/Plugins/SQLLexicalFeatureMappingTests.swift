@@ -3,7 +3,7 @@
 //  TableProTests
 //
 //  The kit carries its own copy of the lexical rules, because a plugin cannot link the app's package. These hold the
-//  two copies to one another: the feature bits, the grammars two plugins keep for themselves, and where each copy
+//  two copies to one another: the feature bits, the grammars the MySQL plugin keeps for itself, and where each copy
 //  splits the same text.
 //
 
@@ -50,13 +50,12 @@ struct SQLLexicalFeatureMappingTests {
         #expect(SQLLexicalGrammar(pluginFeatures: grammar.pluginFeatures) == grammar)
     }
 
-    @Test("The grammars the MySQL and DuckDB plugins keep are the curated ones")
+    @Test("The grammars the MySQL plugin keeps are the curated ones")
     func pluginGrammarsMatchTheCuratedTable() {
         #expect(SQLLexicalGrammar(pluginFeatures: MySQLLexicalFeatures.mySQL) == DatabaseType.mysql.lexicalGrammar)
         #expect(
             SQLLexicalGrammar(pluginFeatures: MySQLLexicalFeatures.databend) == DatabaseType.databend.lexicalGrammar
         )
-        #expect(SQLLexicalGrammar(pluginFeatures: DuckDBLexicalFeatures.features) == DatabaseType.duckdb.lexicalGrammar)
     }
 
     @Test("NO_BACKSLASH_ESCAPES from the server status turns the backslash off in both string quotes")

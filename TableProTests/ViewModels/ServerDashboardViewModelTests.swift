@@ -83,17 +83,11 @@ struct ServerDashboardViewModelTests {
         #expect(vm.supportedPanels == [.activeSessions, .serverMetrics, .slowQueries])
     }
 
-    @Test("SQLite dashboard exposes only server metrics")
-    func sqliteSupportedPanels() {
-        let vm = makeViewModel(databaseType: .sqlite)
-        #expect(vm.supportedPanels == [.serverMetrics])
-        #expect(!vm.supportedPanels.contains(.slowQueries))
-    }
-
-    @Test("DuckDB dashboard exposes only server metrics")
-    func duckDBSupportedPanels() {
-        let vm = makeViewModel(databaseType: .duckdb)
-        #expect(vm.supportedPanels == [.serverMetrics])
+    @Test("SQLite and DuckDB return no provider and an empty dashboard", arguments: [DatabaseType.sqlite, .duckdb])
+    func fileEnginesHaveNoDashboard(_ databaseType: DatabaseType) {
+        let vm = makeViewModel(databaseType: databaseType)
+        #expect(vm.supportedPanels.isEmpty)
+        #expect(!vm.isSupported)
     }
 
     @Test("Redis returns no provider and an empty dashboard")

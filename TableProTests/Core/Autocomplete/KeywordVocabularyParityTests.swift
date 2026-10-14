@@ -2,11 +2,8 @@
 //  KeywordVocabularyParityTests.swift
 //  TableProTests
 //
-//  Two lists decide what counts as a SQL keyword, and nothing made them agree. The completion
-//  provider offers keywords from clause-specific arrays written inline in `getCandidates`, while
-//  Auto-uppercase consults `SQLKeywords.keywordSet` alone, so a word the popup had offered a
-//  keystroke earlier was left in lower case: `alter table users add column note text;` came out as
-//  `ALTER TABLE users add COLUMN note TEXT;`.
+//  The completion provider and Auto-uppercase keep separate keyword lists. A word the popup
+//  offers but `SQLKeywords.keywordSet` lacks stays lower case while the words around it change.
 //
 
 import Foundation
@@ -17,12 +14,57 @@ struct KeywordVocabularyParityTests {
     /// The uppercaser only ever looks at one word at a time, so a multi-word entry such as
     /// `ORDER BY` can never match and is not expected in the set.
     @Test("Every single-word keyword the provider offers is one the uppercaser knows")
-    func offeredKeywordsAreUppercasable() throws {
-        let offered = try Self.providerOfferedKeywords()
-        #expect(offered.count > 50, "The provider source parsed to a real vocabulary")
+    func offeredKeywordsAreUppercasable() async {
+        let samples: [(text: String, clause: SQLClauseType)] = [
+            ("", .unknown),
+            ("SELECT ", .select),
+            ("SELECT COUNT(", .select),
+            ("SELECT * FROM users ", .from),
+            ("INSERT INTO ", .into),
+            ("SELECT * FROM users u ON ", .on),
+            ("SELECT * FROM users WHERE ", .where_),
+            ("SELECT * FROM users GROUP BY ", .groupBy),
+            ("SELECT * FROM users ORDER BY ", .orderBy),
+            ("UPDATE users SET ", .set),
+            ("INSERT INTO users VALUES (", .values),
+            ("SELECT CASE WHEN ", .caseExpression),
+            ("SELECT * FROM users WHERE id IN (", .inList),
+            ("SELECT * FROM users LIMIT ", .limit),
+            ("ALTER TABLE users ", .alterTable),
+            ("CREATE TABLE ", .createTable),
+            ("CREATE TABLE test (id ", .createTable),
+            ("ALTER TABLE users ADD COLUMN email ", .columnDef),
+            ("SELECT * FROM users RETURNING ", .returning),
+            ("SELECT 1 UNION ", .union),
+            ("SELECT ROW_NUMBER() OVER (", .window),
+            ("DROP TABLE ", .dropObject),
+            ("CREATE INDEX ", .createIndex),
+            ("CREATE INDEX idx ON users (", .createIndex),
+            ("CREATE VIEW ", .createView),
+        ]
+        let provider = SQLCompletionProvider(schemaProvider: nil)
+        // A table in scope ranks keywords ahead of functions, so none fall outside the candidate pool.
+        let scopes: [[TableReference]?] = [nil, [TableReference(tableName: "users", alias: nil)]]
 
-        let unknown = offered
-            .filter { $0.allSatisfy(\.isLetter) || $0.contains("_") }
+        var offered: Set<String> = []
+        for sample in samples {
+            for scope in scopes {
+                let session = await provider.completionSession(
+                    text: sample.text,
+                    cursorPosition: (sample.text as NSString).length,
+                    forcedTableReferences: scope
+                )
+                #expect(session.context.clauseType == sample.clause, "\"\(sample.text)\"")
+                offered.formUnion(session.candidates.filter { $0.kind == .keyword }.map(\.label))
+            }
+        }
+
+        let singleWords = offered.filter { label in
+            label.allSatisfy { $0.isLetter } || label.contains("_")
+        }
+        #expect(singleWords.count > 50, "The provider offered only \(singleWords.sorted())")
+
+        let unknown = singleWords
             .filter { !SQLKeywords.keywordSet.contains($0.lowercased()) }
             .sorted()
 
@@ -57,8 +99,7 @@ struct KeywordVocabularyParityTests {
         #expect(SQLKeywords.keywordSet.contains(keyword))
     }
 
-    /// The reported statement, walked word by word the way the uppercaser sees it. Every keyword in
-    /// it is now recognised; `users` and `note` are identifiers and stay untouched.
+    /// `users` and `note` are identifiers and stay untouched.
     @Test("The reported statement uppercases every keyword and nothing else")
     func reportedStatementUppercasesConsistently() {
         let statement = "alter table users add column note text"
@@ -72,46 +113,5 @@ struct KeywordVocabularyParityTests {
 
         let endOfUsers = text.range(of: "users").location + 5
         #expect(KeywordUppercaseHelper.keywordBeforePosition(text, at: endOfUsers) == nil)
-    }
-
-    private static func providerOfferedKeywords(file: StaticString = #filePath) throws -> Set<String> {
-        let source = try repositoryRoot(file: file)
-            .appendingPathComponent("TablePro/Core/Autocomplete/SQLCompletionProvider.swift")
-        let text = try String(contentsOf: source, encoding: .utf8)
-
-        var found: Set<String> = []
-        for marker in ["filterKeywords([", "boostedKeywords([", "statementStartKeywords = ["] {
-            var searchStart = text.startIndex
-            while let open = text.range(of: marker, range: searchStart..<text.endIndex) {
-                guard let close = text.range(of: "]", range: open.upperBound..<text.endIndex) else { break }
-                found.formUnion(Self.quotedStrings(in: text[open.upperBound..<close.lowerBound]))
-                searchStart = close.upperBound
-            }
-        }
-        guard !found.isEmpty else { throw ParityError.sourceNotFound }
-        return found
-    }
-
-    private static func quotedStrings(in fragment: Substring) -> [String] {
-        fragment
-            .split(separator: "\n")
-            .map { $0.components(separatedBy: "//").first ?? "" }
-            .flatMap { $0.components(separatedBy: ",") }
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: ["\""]) }
-            .filter { !$0.isEmpty }
-    }
-
-    private static func repositoryRoot(file: StaticString) throws -> URL {
-        var directory = URL(fileURLWithPath: "\(file)").deletingLastPathComponent()
-        while directory.path != "/" {
-            let candidate = directory.appendingPathComponent("TablePro/Core/Autocomplete/SQLKeywords.swift")
-            if FileManager.default.fileExists(atPath: candidate.path) { return directory }
-            directory = directory.deletingLastPathComponent()
-        }
-        throw ParityError.sourceNotFound
-    }
-
-    private enum ParityError: Error {
-        case sourceNotFound
     }
 }

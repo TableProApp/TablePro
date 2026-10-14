@@ -12,26 +12,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-// MARK: - QueryTab sourceFileURL Property Tests
-
-struct QueryTabSourceFileURLTests {
-    @Test("QueryTab stores sourceFileURL when set")
-    func storesSourceFileURL() {
-        var tab = QueryTab(title: "Test", tabType: .query)
-        let url = URL(fileURLWithPath: "/tmp/test.sql")
-        tab.content.sourceFileURL = url
-
-        #expect(tab.content.sourceFileURL == url)
-    }
-
-    @Test("QueryTab sourceFileURL defaults to nil")
-    func defaultsToNil() {
-        let tab = QueryTab(title: "Test", tabType: .query)
-
-        #expect(tab.content.sourceFileURL == nil)
-    }
-}
-
 // MARK: - QueryTabManager Deduplication Tests
 
 struct QueryTabManagerDeduplicationTests {

@@ -76,9 +76,12 @@ final class SyncTestEnvironment {
         )
     }
 
+    /// Licensed for sync by default, so no test depends on the license of the Mac running it.
     func makeCoordinator(
         transport: ScriptedSyncTransport,
-        favorites: SQLFavoriteManager? = nil
+        favorites: SQLFavoriteManager? = nil,
+        makeNetworkMonitor: @escaping () -> SyncNetworkMonitor? = { nil },
+        licenseGate: @escaping @MainActor () -> DisableReason? = { nil }
     ) -> SyncCoordinator {
         let live = AppServices.live
         let services = AppServices(
@@ -130,8 +133,9 @@ final class SyncTestEnvironment {
             services: services,
             recordCache: recordCache,
             transport: transport,
-            networkMonitor: nil,
-            columnLayouts: self.columnLayouts
+            makeNetworkMonitor: makeNetworkMonitor,
+            columnLayouts: self.columnLayouts,
+            licenseGate: licenseGate
         )
     }
 }

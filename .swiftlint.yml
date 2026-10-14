@@ -1,12 +1,11 @@
-# SwiftLint configuration
-# https://github.com/realm/SwiftLint
-
-# Paths to include during linting
 included:
   - TablePro
   - Packages
+  - Plugins
+  - TableProMobile
+  - TableProTests
+  - TableProUITests
 
-# Paths to exclude during linting.
 # `.build` has to be globbed: SwiftLint resolves an `excluded:` entry against this file's own
 # directory, so a bare `.build` misses `Packages/*/.build`, and linting a resolved dependency's
 # checkout reports tens of thousands of violations in code nobody here wrote.
@@ -17,7 +16,6 @@ excluded:
   - Carthage
   - vendor
 
-# Enabled rules (beyond default)
 opt_in_rules:
   - closure_end_indentation
   - collection_alignment
@@ -75,7 +73,6 @@ opt_in_rules:
   - xct_specific_matcher
   - yoda_condition
 
-# Disabled rules
 disabled_rules:
   - trailing_comma
   - todo
@@ -89,7 +86,6 @@ disabled_rules:
   - static_over_final_class
   - force_try
 
-# Rule configurations
 line_length:
   warning: 180
   error: 300
@@ -180,7 +176,6 @@ colon:
 
 comma: warning
 
-# No print statements is now disabled - use Logger in the future
 custom_rules:
   storage_environment_directory:
     name: "Storage Environment Directory"
@@ -198,4 +193,469 @@ custom_rules:
     name: "Error Text In The System Log"
     regex: '(\.(localizedDescription|errorDescription|failureReason)(\.prefix\(\d+\))?(\s*\?\?\s*"[^"]*")?|String\(describing:\s*\w*[eE]rr(or)?\)|\\\((?!(has|is|did|was|should)[A-Z])(\w*[eE]rr(or)?|e)(\.(message|description|debugDescription))?)\s*,\s*privacy:\s*\.public'
     message: "A driver or Foundation error's text carries row values, paths and server messages. Publish `error.publicLogShape`, or `LogRedaction.publicDescription(of: error)` in a plugin, and log the description at .private."
+    severity: error
+
+  # Storage and preferences
+  preference_key_namespace:
+    name: "Preference Key Namespace"
+    regex: '\bforKey:(?<!\b(?:removeValue|updateValue|add|animation|removeAnimation|values)\([^\n]{0,200}forKey:)\s*"(?!com\.TablePro)(?!(?:AppleLanguages|NSTableViewDefaultSizeMode)")[^"\\]+"'
+    excluded: ['.*/(Packages|Plugins)/']
+    excluded_match_kinds: [comment, doccomment]
+    message: "Route a UserDefaults key through PreferenceKeys, under com.TablePro."
+    severity: error
+  appstorage_key_namespace:
+    name: "AppStorage Key Namespace"
+    regex: '@AppStorage\(\s*"(?!com\.TablePro)(?!(?:hideExportSuccessDialog|skipSchemaPreview|structureCodeFontSize)")[^"\\]+"'
+    excluded: ['.*/(Packages|Plugins)/']
+    message: "Route an @AppStorage key through the preferences layer, under com.TablePro."
+    severity: error
+  connection_state_purge_owner:
+    name: "Connection State Purge Owner"
+    regex: '\b(?:removeFavoritesAndFolders|removeFavoritesAndFoldersWithoutSync)\(for:|\bdeleteEverything\(forConnection:'
+    excluded:
+      - '.*/(Packages|Plugins)/'
+      - '.*/(ConnectionLocalState|QueryHistoryManager|QueryHistoryStorage|SQLFavoriteManager)\.swift$'
+    excluded_match_kinds: [comment, doccomment]
+    message: "Clear a deleted connection's async stores through ConnectionLocalState.purge."
+    severity: error
+
+  # Concurrency
+  dispatch_handler_isolation:
+    name: "Dispatch Handler Isolation"
+    regex: '(?-s)\bset(?:Event|Cancel|Registration)Handler\b(?!.*@Sendable)[^\n]*\{(?!\s*@Sendable)'
+    excluded: ['.*/[^/]*Tests/', '.*Tests\.swift$']
+    excluded_match_kinds: [comment, doccomment]
+    message: "Dispatch runs a source handler on its own queue, so a closure written in a @MainActor type traps. Write `{ @Sendable in ... }` and hop to the main actor inside."
+    severity: error
+  fsevents_callback_isolation:
+    name: "FSEvents Callback Isolation"
+    regex: '\bFSEventStreamCallback[ \t]{0,4}=(?<!\bnonisolated\b[^\n]{0,200}FSEventStreamCallback[ \t]{0,4}=)|\bFSEventStreamCreate\((?:[^(){]|\((?:[^()]|\([^()]*\))*\))*\{(?!\s*@Sendable)'
+    excluded: ['.*/Tests/']
+    excluded_match_kinds: [comment, doccomment]
+    message: "Declare an FSEvents callback as a `nonisolated private static let` of type FSEventStreamCallback and pass that."
+    severity: error
+  date_formatter_locale:
+    name: "Fixed-Format Date Formatter Locale"
+    regex: 'DateFormatter\(\)(?:(?!\.locale\s*=|DateFormatter\(\))[\s\S]){0,800}?\.dateFormat\s*=\s*"(?!(?:[^\n]*\n){0,8}[^\n]*\.locale\s*=)'
+    excluded: ['.*/[^/]*Tests/', '.*Tests\.swift$']
+    message: "A fixed dateFormat needs `locale = Locale(identifier: \"en_US_POSIX\")`, or its year follows the user's calendar."
+    severity: error
+
+  # Query execution
+  query_cancel_route:
+    name: "Query Cancel Route"
+    regex: '\bcancelRunningQuery\('
+    excluded:
+      - '.*/(Packages|Plugins)/'
+      - '.*/(DatabaseManager\+ScopedDriver|MainContentCoordinator\+QueryTasks|DatabaseAccessBridge)\.swift$'
+    message: "A cancel names the lease that owns the work. Route it through MainContentCoordinator.cancelQueryTask(for:delivery:)."
+    severity: error
+  query_tasks_teardown:
+    name: "Query Tasks Teardown"
+    regex: '\bqueryTasks\.removeAll'
+    excluded: ['.*/(Packages|Plugins)/', '.*/MainContentCoordinator\+QueryTasks\.swift$']
+    message: "Only cancelAllQueryTasks() tears down every tab's task."
+    severity: error
+  tab_execution_settle_result:
+    name: "Settle Result Consumed"
+    regex: '(?-s)^\s*(?:_\s*=\s*)?(?:try\s+)?(?:await\s+)?(?:self\.)?(?:\w+\.)*tabExecution\.settle\('
+    excluded: ['.*/(Packages|Plugins)/']
+    message: "Write `guard tabExecution.settle(claim) else { return }` and put every write below it."
+    severity: error
+  tab_execution_claim_invalidate:
+    name: "Claim Holder Invalidate"
+    regex: '\bfunc\s+\w+(?:(?!\bfunc\b)[^{])*\bTabExecutionClaim\b(?:(?!\bfunc\b)[\s\S])*?\b(tabExecution\.invalidate\()'
+    capture_group: 1
+    excluded: ['.*/(Packages|Plugins)/']
+    message: "A function holding a TabExecutionClaim releases through `guard tabExecution.settle(claim)`, not invalidate."
+    severity: error
+  tab_execution_stop_invalidate_all:
+    name: "Stop Through The Tab's Own Stop"
+    regex: '\binvalidateAll\(reason:\s*\.cancelledByUser\)'
+    excluded: ['.*/(Packages|Plugins)/', '.*/TabExecutionRegistry\.swift$']
+    message: "The user's Stop reports tabExecution.stop(tabId), which keeps a claim whose commit is on the wire."
+    severity: error
+  schema_composition_scope:
+    name: "Scoped Schema Composition"
+    regex: '\bSchemaStatementGenerator\(|\bCreateTableStatementComposer\.compose\(|\bgenerateCreateTableStatements\('
+    excluded:
+      - '.*/(Packages|Plugins)/'
+      - '.*/(DatabaseManager\+SchemaComposition|StructureTableRebuildHandler|CreateTableStatementComposer|SchemaSyncScriptBuilder)\.swift$'
+    message: "Compose DDL only on a driver leased for the statement's own scope (DatabaseManager+SchemaComposition)."
+    severity: error
+  result_buffer_handoff:
+    name: "Result Buffer Handoff"
+    regex: '\A(?=[\s\S]*?\b(?:replaceResult|replaceUnpinnedResults)\()(?![\s\S]*?\bflushBufferToActiveResult\()[\s\S]*?^(?![ \t]*//)[^\n]*?(?<!func )\b((?:replaceResult|replaceUnpinnedResults)\()'
+    capture_group: 1
+    excluded: ['.*/(Packages|Plugins)/']
+    message: "Call flushBufferToActiveResult(tabId:pinnedOnly:) before replacing a tab's results."
+    severity: error
+  import_sink_gate:
+    name: "Import Sink Gate"
+    regex: '\A(?=[\s\S]*?\bImportDataSinkAdapter\()(?![\s\S]*?\bgate\.authorize\()[\s\S]*?^(?![ \t]*//)[^\n]*?\b(ImportDataSinkAdapter\()'
+    capture_group: 1
+    excluded: ['.*/(Packages|Plugins)/', '.*/ImportDataSinkAdapter\.swift$']
+    message: "Build the import sink only after gate.authorize(...)."
+    severity: error
+  occlusion_state_equality:
+    name: "Occlusion Membership"
+    regex: '\bocclusionState\s*[!=]=\s*\.visible\b'
+    excluded_match_kinds: [comment, doccomment]
+    message: "occlusionState carries other bits. Test membership with .contains(.visible)."
+    severity: error
+
+  # App shell
+  app_activation_owner:
+    name: "App Activation Owner"
+    regex: '\bNSApp\.activate\(|\bsetActivationPolicy\('
+    excluded: ['.*/(Packages|Plugins)/', '.*/AppActivationPolicyController\.swift$']
+    excluded_match_kinds: [comment, doccomment]
+    message: "Activate through AppActivationPolicyController.shared."
+    severity: error
+  prompt_takes_focus:
+    name: "Prompt Takes Focus"
+    included: ['.*/(AlertHelper|OperationConfirming)\.swift$']
+    regex: '\.activate\('
+    excluded_match_kinds: [comment, doccomment]
+    message: "A prompt asks for attention with requestAttention(), it does not take focus."
+    severity: error
+  toolbar_symbol_outline:
+    name: "Outline Toolbar Symbol"
+    regex: '\A(?=[\s\S]*?\b(?:NS(?:Menu)?ToolbarItem|enum SettingsTab)\b)[\s\S]*?^(?![ \t]*//)[^\n]*?"((?:[a-z0-9]+\.)+(?:circle|fill)(?:\.[a-z0-9]+)*|(?:circle|fill)(?:\.[a-z0-9]+)+)"'
+    capture_group: 1
+    excluded: ['.*/(Packages|Plugins)/']
+    message: "A toolbar glyph is outline. Take one from ToolbarSymbols."
+    severity: error
+  toolbar_item_visibility:
+    name: "Toolbar Item Visibility"
+    regex: '\.visibleItems\b|\.isVisible\b(?<=[Ii]tems?[ \t]{0,2}[?!]?[ \t]{0,2}\.isVisible)'
+    excluded: ['.*/(Packages|Plugins)/']
+    excluded_match_kinds: [comment, doccomment]
+    message: "NSToolbar.visibleItems and an item's isVisible are not a layout signal. Read the toolbar's own state."
+    severity: error
+  toolbar_files_visibility:
+    name: "Toolbar Files Read No Visibility"
+    included:
+      - '.*/TablePro/Core/Services/Infrastructure/(Toolbar/|MainWindowToolbar[^/]*\.swift$)'
+      - '.*/TablePro/Views/Toolbar/'
+      - '.*/TablePro/Views/(Components/PopoverPresenter|Compare/CompareEndpointToolbarController)\.swift$'
+    regex: '(?<!\btoolbar)\.(?:isVisible|visibleItems)\b'
+    excluded_match_kinds: [comment, doccomment]
+    message: "Toolbar code reads no visibility beyond whether the toolbar is shown."
+    severity: error
+  swiftui_toolbar_background:
+    name: "SwiftUI Toolbar Background"
+    regex: '\.toolbarBackground\('
+    excluded: ['.*/(Packages|Plugins)/']
+    excluded_match_kinds: [comment, doccomment]
+    message: "The app has no SwiftUI toolbar. The NSToolbar in MainWindowToolbar is the toolbar."
+    severity: error
+  reduce_motion_gate:
+    name: "Reduce Motion Gate"
+    regex: '\bwithAnimation\b(?!:|\(nil\))|(?<!motion|layer)\.animation\((?!\s*nil\b|forKey)'
+    excluded: ['.*/(Packages|Plugins)/', '.*/MotionAccessibility\.swift$']
+    excluded_match_kinds: [comment, doccomment]
+    message: "Animate through withMotion or .motionAnimation, which read Reduce Motion."
+    severity: error
+
+  # User-facing text
+  pricing_plan_wording:
+    name: "Plan Names"
+    regex: '(?<![A-Za-z])Pro (?:license|features?|plan)|"(?:Pro|PRO|Lifetime)"'
+    excluded: ['.*/(Packages|Plugins)/']
+    excluded_match_kinds: [comment, doccomment]
+    message: "Name the plan a feature needs, Starter or Team."
+    severity: error
+  usage_report_wording:
+    name: "Usage Report Wording"
+    regex: '(?i)anonymous (?:usage|statistics|analytics|report|heartbeat)'
+    excluded: ['.*/(Packages|Plugins)/']
+    excluded_match_kinds: [comment, doccomment]
+    message: "The usage report carries a hashed machine ID, so it is not anonymous."
+    severity: error
+  middle_dot_in_string:
+    name: "Middle Dot In A String"
+    regex: '·|\\u\{0*[bB]7\}'
+    excluded: ['.*/(Packages|Plugins)/']
+    match_kinds: [string]
+    message: "Separate details with a comma or space, not a middle dot."
+    severity: error
+  count_before_inflected_span:
+    name: "Count Before Inflected Span"
+    regex: '\\\([^()\n]*\)\s*\^\['
+    message: "Move the count inside the span, ^[\\(count) noun](inflect: true), so the noun agrees."
+    severity: error
+  pane_decorative_dot:
+    name: "Decorative Dot In A Pane"
+    included: ['.*/TablePro/Views/(RowInspector|DataFiles|AIChat|Agent|Editor/History)/']
+    regex: '\bCircle\(\)|"circle\.fill"'
+    excluded_match_kinds: [comment, doccomment]
+    message: "Mark state with an SF Symbol or spacing, not a dot."
+    severity: error
+  tab_strip_multi_click_gesture:
+    name: "Multi-Click Tap Gesture"
+    included: ['.*/TablePro/Views/(Main/EditorTabStrip\.swift$|Agent/)']
+    regex: 'TapGesture\(count:'
+    excluded_match_kinds: [comment, doccomment]
+    message: "A multi-click SwiftUI tap gesture delays every single click. Handle the click count in AppKit."
+    severity: error
+  transfer_alert_window:
+    name: "Transfer Alert Window"
+    included: ['.*/TablePro/Views/(Export|Import)/']
+    regex: '\bwindow:\s*(?:NSApp\.|nil\b)'
+    message: "Present a transfer alert on the dialog's own window."
+    severity: error
+  empty_title_control_name:
+    name: "Empty-Title Control Name"
+    included: ['.*/TablePro/Views/', '.*/Plugins/']
+    excluded: ['.*/Tests/']
+    regex: '\b(?:Picker|TextField|SecureField|Toggle|Stepper|DatePicker)\(""[ \t]{0,4},(?<!LabeledContent\([^\n]{0,300}\n[^\n]{0,300}\n[^\n]{0,300}\(""[ \t]{0,4},)(?<!LabeledContent\([^\n]{0,300}\n[^\n]{0,300}\(""[ \t]{0,4},)(?<!LabeledContent\([^\n]{0,300}\(""[ \t]{0,4},)(?!(?:[^\n]*\n){0,9}[^\n]*accessibilityLabel)'
+    message: "An empty-title control needs a title with .labelsHidden(), a LabeledContent row or an .accessibilityLabel()."
+    severity: error
+  icon_only_control_name:
+    name: "Icon-Only Control Name"
+    included: ['.*/TablePro/Views/']
+    regex: '\}\s*label:\s*\{(?:(?!\bText\(|\bLabel\(|\})[\s\S])*?\bImage\(systemName:(?:(?!\bText\(|\bLabel\(|\})[\s\S])*\}(?!(?:[^\n]*\n){0,18}?[^\n]*(?:\.help\(|accessibilityLabel|accessibilityHidden|accessibilityElement))'
+    message: "A control that shows only an SF Symbol needs .help() or .accessibilityLabel()."
+    severity: error
+  menu_draws_chevron:
+    name: "Menu Draws Its Own Chevron"
+    included: ['.*/TablePro/Views/']
+    regex: '(?<![\w.])Menu\([^\n]*systemImage:\s*"chevron|(?<![\w.])Menu\s*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}\s*label:\s*\{[^{}]*"chevron'
+    message: "A SwiftUI Menu draws its own indicator. Keep the name with Label { Text(name) } icon: { EmptyView() }."
+    severity: error
+
+  # Theme
+  literal_color:
+    name: "Literal Color"
+    regex: '\b(?:NS)?Color\((?:red|white):|\bNSColor\((?:srgbRed|calibratedRed|deviceRed|displayP3Red|calibratedWhite|deviceWhite):|\bColor\(\s*\.(?:sRGB|sRGBLinear|displayP3)\s*,'
+    excluded:
+      - '.*/Plugins/'
+      - '.*/Packages/(?!TableProEditor/Sources/)'
+      - '.*/TablePro/Theme/'
+      - '.*/(ConnectionURLParser|RGBAColor\+NSColor|NSColor\+Greyscale)\.swift$'
+      - '.*Fixture[^/]*\.swift$'
+    excluded_match_kinds: [comment, doccomment]
+    message: "Use a system color or, for the editor and the grid, a theme slot."
+    severity: error
+  literal_hex_color:
+    name: "Literal Hex Color"
+    regex: '"#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?(?![0-9A-Fa-f])(?<!brandColorHex[^\n]{0,200})'
+    match_kinds: [string]
+    excluded:
+      - '.*/Plugins/'
+      - '.*/Packages/(?!TableProEditor/Sources/)'
+      - '.*/TablePro/Theme/'
+      - '.*/(ConnectionURLParser|RGBAColor\+NSColor|NSColor\+Greyscale)\.swift$'
+      - '.*Fixture[^/]*\.swift$'
+    message: "Use a system color or, for the editor and the grid, a theme slot."
+    severity: error
+  pane_hidden_background:
+    name: "Pane Keeps Its Background"
+    regex: '\.scrollContentBackground\(\s*\.hidden\s*\)|\b[Tt]hemedContent|\.listRowBackground\('
+    excluded: ['.*/(Packages|Plugins)/']
+    excluded_match_kinds: [comment, doccomment]
+    message: "Let the List, Form or ScrollView draw its own background and rows."
+    severity: error
+  window_background_outside_backdrop:
+    name: "Window Background Outside The Backdrop"
+    regex: '\.backgroundColor[ \t]*=(?!=)(?<=(?:[Ww]indow|[Pp]anel|[Ss]heet)\w{0,40}[?!]?\.backgroundColor[ \t]{0,4}=|\b(?:w|win|wnd)[?!]?\.backgroundColor[ \t]{0,4}=)(?![ \t]*(?:NSColor)?\.clear\b)'
+    excluded: ['.*/(Packages|Plugins)/', '.*/TablePro/Theme/ThemeWindowBackdrop\.swift$']
+    excluded_match_kinds: [comment, doccomment]
+    message: "Hold a ThemeWindowBackdrop. It sets the window color only while a theme sets one."
+    severity: error
+  theme_read_outside_content:
+    name: "Theme Read Outside Content"
+    regex: '\bpalette\[|\bpalette\.color\(|\.resolved\[|\bresolved\[\s*\.|\bresolved\.(?:color|cgColor|isOverridden)\(|\bThemeSlot\b|\btheme(?:Background|Foreground)\(|\bvalueWell\(|\bCodeWell\b|\bstyle:\s*\.code\b|\bTheme(?:ShapeStyle|TextViewStyle|TableChrome|TableRowView|TableRowDrawing|WindowBackdrop)\b|\b(?:gridStandInBackground|diffLineForeground|makeEditorTheme)\(|\bCompareStatusStyle\.(?:lineTint|rowTint)|\bTableProEditorTheme\.make\(|\bEditorTabStripPalette\.trackFill\b|\b(?:TreeValueTone\.\w+|tone(?:\(for: \w+\))?)\.color\b|\b(?:ValueSourceEditor|ERDiagramPalette|DiagramCanvasBackdrop|HighlightedSQLTextView)\b'
+    excluded:
+      - '.*/(Packages|Plugins)/'
+      - '.*/TablePro/(Theme|Views/Settings/Appearance|Views/Results/Cells|Views/Results/Selection)/'
+      - '.*/TablePro/Views/Results/(DataGrid|SortableHeader|CellOverlay)[^/]*\.swift$'
+      - '.*/(SQLEditorView|TableProEditorTheme|HighlightedSQLTextView|SQLStatementPreview|SQLCodePreview|JSONCodeEditor|AIChatCodeBlockView|AIChatToolUseBlockView|AIChatToolResultBlockView|DDLTextView|TriggerEditorView|RewindReviewSheet|AgentProposedStatementsView|VimCursorManager|FoldPreviewView|CodeWell|ValueWell|TextValueEditor|ValueSourceEditor|TextViewerWindowController|SvgViewerContentView|CellImageWindowController|ServerOutputTextView|HexEditorContentView|PhpViewerView|FavoriteEditDialog|OptionsPaneView|SQLPreviewSheet|MaintenanceSheet|HistoryDetailPane)(\+[^/]*)?\.swift$'
+      - '.*/(TabWindowController|DataFileWindowController|CompareSyncWindowController|ValueViewerWindowController)(\+[^/]*)?\.swift$'
+      - '.*/(MainEditorContentView|GridStandInBackground|EditorTabStrip|EditorTabStripSurfaces|VersionHistoryTabView|ObjectSourceTabView|DataFileContentView|FilterPanelView|TableStructureView|TriggerDetailView|ClickHousePartsView|PrivilegeScopeOutlineView|TreeOutlineView|TreeOutlineCoordinator|TreeOutlineCellView|TreeValueStyle|TreeValueTone\+Theme|JSONRowInspectorView|JSONNodeRowView|JSONRowColors|SingleLineEditorView|FieldEditorContent|MultiLineEditorView|JsonEditorView|ImageFieldView|PhpSerializedFieldView|CompareStatusStyle|TextDiffView|FileConflictDiffSheet|AIChatWalkthroughBlockView|ERDiagramPalette|ERDiagramNodeRenderer|ERDiagramScene|ERDiagramSceneView|MagnifiableCanvasView|QueryPlanDiagramView|QueryPlanDetailPane|QueryPlanOutlineCoordinator|ResultChartCanvas|ThemePreviewCard)(\+[^/]*)?\.swift$'
+    excluded_match_kinds: [comment, doccomment]
+    message: "A theme colors content and the window backdrop only. Chrome uses a system color; a new content surface joins this rule's excluded list."
+    severity: error
+  field_editor_system_text_style:
+    name: "Field Editor Text Style"
+    included: ['.*/TablePro/Views/RowInspector/FieldEditors/[^/]+\.swift$']
+    regex: '\.font\(\.subheadline\)|preferredFont\(forTextStyle:|\.font\(\.system\('
+    message: "A field editor inherits the value font."
+    severity: error
+  grid_appkit_chrome:
+    name: "Grid Draws Its Own Chrome"
+    included: ['.*/TablePro/Views/Results/(DataGridView|KeyHandlingTableView)\.swift$']
+    regex: '\bsolidVerticalGridLineMask\b|\bsuper\.drawBackground\(inClipRect:'
+    excluded_match_kinds: [comment, doccomment]
+    message: "The data grid draws its own separators and background through DataGridBodyChrome."
+    severity: error
+
+  # MCP and scripting access control
+  mcp_log_token_material:
+    name: "MCP Log Token Material"
+    included: ['.*/TablePro/Core/MCP/']
+    regex: '(?i)(?-s)^(?=[^\n]*privacy:)[^\n]*?(\\\([^,)\n]*(?:fingerprint|plaintext|tokenhash|salt|verifier|prefix|password|secret))'
+    capture_group: 1
+    message: "A log line never carries token material, not even a prefix or a digest."
+    severity: error
+  mcp_reported_status:
+    name: "MCP Reported Status"
+    included: ['.*/TablePro/Core/MCP/']
+    regex: '\.status\.isConnected\b'
+    excluded_match_kinds: [comment, doccomment]
+    message: "MCP reports connection health through reportedStatus."
+    severity: error
+  mcp_pairing_revoke:
+    name: "Pairing Never Revokes"
+    included: ['.*/MCPPairingService\.swift$']
+    regex: '\brevokeExistingTokens\b|\.revoke\('
+    message: "Approving a pairing request never revokes a token that shares the client name."
+    severity: error
+  mcp_token_default_grant:
+    name: "Token Grant Has No Default"
+    included: ['.*/MCPTokenStore\.swift$']
+    regex: '\bfunc generate\([^)]*='
+    message: "Minting a token states its connection scope and expiry. No parameter of generate(...) takes a default."
+    severity: error
+  mcp_statement_principal:
+    name: "Statement Gate Names Its Principal"
+    included: ['.*/MCPStatementGate\.swift$']
+    regex: '\bcheckSafeModeDialog\((?![\s\S]{0,300}principal:)'
+    message: "Pass principal: to checkSafeModeDialog."
+    severity: error
+  scripting_visibility_check:
+    name: "Scripting Visibility Check"
+    included: ['.*/TablePro/Core/Scripting/ScriptingSnapshot\.swift$']
+    regex: '^( *)(?:\w+ +)*func +(?:tabs\(forConnection|currentTab\(|query\(ofTab|focus\(tab)(?!(?:(?!^\1\}$)[\s\S])*?\bisVisibleToScripts\b)'
+    message: "A path that reads a connection's live state checks isVisibleToScripts first."
+    severity: error
+  scripting_result_visibility_order:
+    name: "Scripting Result Visibility Order"
+    included: ['.*/TablePro/Core/Scripting/ScriptingSnapshot\.swift$']
+    regex: '^( *)(?:\w+ +)*func +result\((?:(?!^\1\}$|\bisVisibleToScripts\b)[\s\S])*?(DisplayedResultReader\.read)'
+    capture_group: 2
+    message: "Check isVisibleToScripts before reading a tab's rows."
+    severity: error
+  scripting_connect_gate:
+    name: "Scripting Connect Gate"
+    included: ['.*/TablePro/Core/Scripting/(ScriptQueryRunner|Commands/ScriptConnectionCommands)\.swift$']
+    regex: '\A(?![\s\S]*\bScriptConnectGate\.authorizeConnect\b)[\s\S]*?\b(bridge\.\w+\()'
+    capture_group: 1
+    message: "A script path that can connect asks ScriptConnectGate.authorizeConnect about unapproved extensions first."
+    severity: error
+
+  # Plugin loading
+  plugin_principal_class_gate:
+    name: "Principal Class Behind The Gate"
+    included: ['.*/TablePro/Core/Plugins/[^/]+\.swift$']
+    regex: '\bfunc\s+(?!(?:registerBundle|activateLazyBundle|validateDependencies)\b)\w+(?:(?!\bfunc\b)[\s\S])*?(\.principalClass\b)'
+    capture_group: 1
+    message: "Bundle.principalClass loads the executable. Read it only in a function that already called assertLoadable."
+    severity: error
+  plugin_load_gate:
+    name: "Plugin Load Gate"
+    included: ['.*/TablePro/Core/Plugins/[^/]+\.swift$']
+    regex: '^( *)(?:[\w()]+ +)*func +(?:activateLazyBundle|validateAndLoadBundle)\((?!(?:(?!^\1\}$)[\s\S])*?(?:\bassertLoadable\b|\bPluginCodeSignatureVerifier\b))'
+    message: "Every path that loads a plugin's executable goes through the signature gate first."
+    severity: error
+  plugin_signature_flags:
+    name: "Plugin Signature Flags"
+    included: ['.*/PluginCodeSignatureVerifier\.swift$']
+    regex: '(?-s)\bSecStaticCodeCheckValidity\((?![^\n]*\bflags\b)'
+    message: "Every validity check passes the shared flags."
+    severity: error
+
+  # Sync
+  sync_raw_record_field:
+    name: "Raw CKRecord Field"
+    included: ['.*/(TablePro/Core/Sync|Packages/TableProCore/Sources/TableProSync)/SyncRecordMapper\.swift$']
+    regex: '\brecord\["'
+    message: "Declare the field in its SyncSchemaField enum and go through record.fields(_:)."
+    severity: error
+  sync_record_id_construction:
+    name: "CKRecord.ID Construction"
+    regex: '\bCKRecord\.ID\(recordName:'
+    excluded:
+      - '.*/[^/]*Tests/'
+      - '.*Tests\.swift$'
+      - '.*/(TablePro/Core/Sync|Packages/TableProCore/Sources/TableProSync)/SyncRecordMapper\.swift$'
+    excluded_match_kinds: [comment, doccomment]
+    message: "CKRecord.ID raises past 255 UTF-16 units. Go through SyncRecordMapper.recordID(type:id:in:)."
+    severity: error
+
+  # Plugins (listed in Plugins/.swiftlint.yml)
+  ping_never_reconnects:
+    name: "Ping Never Reconnects"
+    included: ['.*/Plugins/[^/]+DriverPlugin/']
+    excluded: ['.*/SnowflakeConnection\.swift$']
+    regex: '^( *)(?:\w+ +)*func +ping\((?:(?!^\1\}$)[\s\S])*?\b(executeWithReconnect\(|SyncRetrying\(|boundedQueryWithReconnect\()'
+    capture_group: 2
+    message: "A ping reports a dropped connection, it does not repair it."
+    severity: error
+  ping_never_heals_through_execute:
+    name: "Ping Never Reconnects"
+    included: ['.*/Plugins/[^/]+DriverPlugin/']
+    excluded: ['.*/SnowflakeConnection\.swift$']
+    regex: '\A(?=[\s\S]*\bfunc executeWithReconnect\()[\s\S]*?^( *)(?:\w+ +)*func +ping\((?:(?!^\1\}$)[\s\S])*?\b(execute\(query:)'
+    capture_group: 2
+    message: "A ping reports a dropped connection. execute(query:) reconnects in this driver."
+    severity: error
+  plugin_logger_import:
+    name: "Plugin Logger Import"
+    included: ['.*/Plugins/']
+    regex: '\A(?=[\s\S]*?\b(?:Logger\s*\(|logger\s*\.\s*(?:debug|info|notice|warning|error|fault|critical|log)\b|os_log\b|OSLogType\b))(?![\s\S]*?^[ \t]*import[ \t]+(?:os|OSLog)[ \t]*$)[\s\S]*?\b(Logger\s*\(|logger\s*\.|os_log\b|OSLogType\b)'
+    capture_group: 1
+    message: "Plugins build with MemberImportVisibility. A file that logs imports os or OSLog."
+    severity: error
+  index_ddl_single_owner:
+    name: "Index DDL Single Owner"
+    included: ['.*/Plugins/[^/]+DriverPlugin/']
+    regex: '\A(?=[\s\S]*\bfunc fetchIndexDDL)[\s\S]*?\bfunc fetchTableDDL[\s\S]{0,6000}?(CREATE \\\(uniqueStr\)INDEX|"CREATE INDEX)'
+    capture_group: 1
+    message: "A driver that answers fetchIndexDDL does not write CREATE INDEX into its table DDL."
+    severity: error
+  vendored_sqlite_import:
+    name: "Vendored SQLite Import"
+    included: ['.*/(Plugins/(SQLiteDriverPlugin|LibSQLDriverPlugin)|Packages/TableProCore/Sources/TableProSQLiteCore)/']
+    regex: '(?-s)^[ \t]*(?:@\w+[ \t]+)*import[ \t]+SQLite3\b'
+    message: "A target on the vendored SQLite imports CSQLite, not the SDK's SQLite3."
+    severity: error
+  column_classification_declared_type:
+    name: "Classify By Classification Name"
+    excluded: ['.*/Packages/', '.*/Plugins/(?!ParquetExportPlugin/)']
+    regex: '(?-s)^(?=[^\n]*\.dataType)[^\n]*?(classify\(rawTypeName:|SQLTypeParser\.parse\(|EnumValueParser\.parseMySQLEnumOrSet\(|sourceType:|targetType:)'
+    capture_group: 1
+    message: "Hand classifiers the column's classification name, not its declared spelling."
+    severity: error
+  pg_hand_built_literal:
+    name: "Hand-Built PostgreSQL Literal"
+    included: ['.*/Plugins/PostgreSQLDriverPlugin/']
+    excluded: ['.*/(PostgreSQLObjectQueries|LibPQConnectionString)\.swift$']
+    regex: '(?-s)^(?!.*message:)[^\n]*?(''\\\()'
+    capture_group: 1
+    message: "Quote a literal with quoteLiteral."
+    severity: error
+  pg_session_schema_lookup:
+    name: "Session Schema Lookup"
+    included: ['.*/Plugins/PostgreSQLDriverPlugin/']
+    excluded: ['.*/PostgreSQLSchemaQueries\.swift$']
+    regex: 'nspname\s*=\s*current_schema\(\)'
+    message: "Resolve the schema the caller named, not the session's."
+    severity: error
+  pg_session_escape_helper:
+    name: "Session-Dependent Escape"
+    included: ['.*/Plugins/PostgreSQLDriverPlugin/']
+    excluded: ['.*/(LibPQDriverCore|LibPQStringConformance)\.swift$']
+    regex: '\b(?:escapeLiteral|escapeStringLiteral|LibPQStringConformance\.escape)\('
+    message: "Build catalog SQL with quoteLiteral, not a session-dependent escape helper."
+    severity: error
+
+  # Tests (listed in TableProTests/.swiftlint.yml and Plugins/.swiftlint.yml)
+  suite_without_trait:
+    name: "Suite Without A Trait"
+    included: ['.*/(TableProTests|Plugins/[A-Za-z]+Tests)/']
+    regex: '(?:^#if\b[^\n]*\n[ \t]*|^)(?:@\w+[ \t]+)*@(?:Testing\.)?Suite(?:[ \t]*\(\s*(?:"(?:[^"\\\n]|\\.)*"|#+"[^\n]*?"#+)?\s*\))?(?![ \t]*\()(?=\s)'
+    excluded_match_kinds: [comment, doccomment]
+    message: "Every top-level @Suite expansion walks every other one, so compile time grows with their square. Keep @Suite only to carry a trait such as .serialized."
     severity: error

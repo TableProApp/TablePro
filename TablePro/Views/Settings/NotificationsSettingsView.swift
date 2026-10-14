@@ -32,13 +32,6 @@ struct NotificationsSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("Notify about") {
-                ForEach(TrackedOperationKind.allCases, id: \.self) { kind in
-                    Toggle(kind.settingsLabel, isOn: binding(for: kind))
-                        .disabled(!settings.isEnabled)
-                }
-            }
-
             if authorizationStatus == .denied {
                 Section {
                     HStack(spacing: 8) {
@@ -57,13 +50,6 @@ struct NotificationsSettingsView: View {
         }
     }
 
-    private func binding(for kind: TrackedOperationKind) -> Binding<Bool> {
-        Binding(
-            get: { !settings.disabledKindIds.contains(kind.rawValue) },
-            set: { settings.setEnabled($0, for: kind) }
-        )
-    }
-
     private static let thresholdChoices = [5, 10, 20, 30, 60, 120, 300, 600]
 
     private static func thresholdLabel(_ seconds: Int) -> String {
@@ -77,23 +63,5 @@ struct NotificationsSettingsView: View {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")
         else { return }
         NSWorkspace.shared.open(url)
-    }
-}
-
-extension TrackedOperationKind {
-    var settingsLabel: String {
-        switch self {
-        case .query: return String(localized: "Queries")
-        case .queryBatch: return String(localized: "Statement batches")
-        case .rowSave: return String(localized: "Row edits")
-        case .schemaChange: return String(localized: "Structure changes")
-        case .dataImport: return String(localized: "Imports")
-        case .dataExport: return String(localized: "Exports")
-        case .objectCopy: return String(localized: "Object copies")
-        case .backup: return String(localized: "Backups")
-        case .fetchAll: return String(localized: "Fetch all rows")
-        case .mcpQuery: return String(localized: "AI and MCP queries")
-        case .scriptQuery: return String(localized: "AppleScript queries")
-        }
     }
 }

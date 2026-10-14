@@ -16,6 +16,7 @@ internal class ValueViewerWindowController {
     private static let styleMask: NSWindow.StyleMask = [.titled, .closable, .resizable, .miniaturizable]
 
     private var window: NSWindow?
+    private var windowBackdrop: ThemeWindowBackdrop?
     private var closeObserver: NSObjectProtocol?
 
     /// A popped-out editor commits through the display row it was opened from, so whoever opened
@@ -33,6 +34,7 @@ internal class ValueViewerWindowController {
         let window = Self.makeWindow(identifier: identifier, title: title, content: content)
 
         self.window = window
+        windowBackdrop = ThemeWindowBackdrop(window: window)
 
         let key = ObjectIdentifier(self)
         ValueViewerWindowController.activeWindows[key] = self
@@ -47,6 +49,7 @@ internal class ValueViewerWindowController {
                 self?.closeObserver.map { NotificationCenter.default.removeObserver($0) }
                 self?.closeObserver = nil
                 self?.window = nil
+                self?.windowBackdrop = nil
             }
         }
 

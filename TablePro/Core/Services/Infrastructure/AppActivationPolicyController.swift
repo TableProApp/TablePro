@@ -7,10 +7,10 @@ import AppKit
 import os
 
 /// The only place in the app that reads or writes `NSApplication.activationPolicy`, and the only
-/// place that calls `NSApplication.activate`. `AppActivationPolicySourceTests` enforces that, because
-/// the two are the same decision: bringing the app forward for a person is what makes it an app the
-/// person can see, and a background process that activates without a Dock icon or a menu bar leaves
-/// them a window with no Cmd+W, no Cmd+Q and no Edit menu.
+/// place that calls `NSApplication.activate`. The `app_activation_owner` SwiftLint rule enforces
+/// that, because the two are the same decision: bringing the app forward for a person is what makes
+/// it an app the person can see, and a background process that activates without a Dock icon or a
+/// menu bar leaves them a window with no Cmd+W, no Cmd+Q and no Edit menu.
 ///
 /// Three measured behaviours shape this (macOS 26, probe app observed through `lsappinfo`):
 /// the launch role has to be applied before `NSApplicationMain` or LaunchServices registers a
@@ -72,11 +72,33 @@ internal final class AppActivationPolicyController {
         }
     }
 
+    /// For a prompt another process caused. Taking focus would hand it the keystrokes the person
+    /// was typing elsewhere, so the app gets a Dock icon to bounce and waits to be chosen.
+    @discardableResult
+    internal func requestAttention() -> Int? {
+        enterForeground()
+        guard !NSApp.isActive else { return nil }
+        return NSApp.requestUserAttention(.criticalRequest)
+    }
+
+    internal func endAttentionRequest(_ request: Int?) {
+        guard let request else { return }
+        NSApp.cancelUserAttentionRequest(request)
+    }
+
     /// For a path that puts a window on screen without asking to come forward. The window does not
     /// exist yet at this point, so this promotes outright rather than counting windows.
     @discardableResult
     internal func enterForeground() -> Bool {
         apply(.foreground)
+    }
+
+    /// A process a machine launched that has nothing on screen for the person.
+    internal var isIdleMachineSession: Bool {
+        AppActivationPolicyDecision.role(
+            origin: origin,
+            hasUserFacingWindow: hasUserFacingWindow(excluding: nil)
+        ) == .background
     }
 
     /// A closing window is still visible and still in `NSApp.windows` while `willCloseNotification`

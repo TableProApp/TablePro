@@ -21,9 +21,21 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          sparse-checkout: scripts/ci
+          fetch-depth: 2
+          sparse-checkout: scripts
 
       - name: Check the title is a Conventional Commits subject within 72 characters
         env:
           TITLE: ${{ github.event.pull_request.title }}
         run: python3 scripts/ci/check-pr-title.py "$TITLE"
+
+      # The checkout is the merge commit, so its first parent is the base the pull request lands on.
+      - name: Check the added lines and the description against the banned words
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s\n' "$BODY" > "$RUNNER_TEMP/pr-body.md"
+          status=0
+          scripts/check-banned-words.sh --base HEAD^1 || status=1
+          scripts/check-banned-words.sh "$RUNNER_TEMP/pr-body.md" || status=1
+          exit "$status"

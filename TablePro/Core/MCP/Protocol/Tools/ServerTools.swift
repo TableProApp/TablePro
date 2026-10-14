@@ -6,7 +6,7 @@ public struct ServerDashboardTool: MCPToolImplementation {
     public static let description = String(
         localized: """
         Read the live server panels TablePro shows: active sessions, server metrics, and slow queries. \
-        Available on PostgreSQL, MySQL, SQL Server, ClickHouse, DuckDB, and SQLite.
+        Available on PostgreSQL, MySQL, SQL Server, ClickHouse, and Typesense.
         """
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]

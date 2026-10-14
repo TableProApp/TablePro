@@ -63,7 +63,7 @@ struct ResultChartSelectionCallout: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
         }
-        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+        .shadow(color: Color(nsColor: .shadowColor).opacity(0.12), radius: 6, y: 2)
         .accessibilityElement(children: .combine)
     }
 

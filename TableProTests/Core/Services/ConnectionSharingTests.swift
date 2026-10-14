@@ -355,70 +355,10 @@ struct ConnectionSharingTests {
         }
     }
 
-    // MARK: - Copy as JSON
+    // MARK: - Export envelope
 
-    @Suite("Copy as JSON")
-    struct BuildCompactJSONTests {
-        @Test("Returns valid JSON")
-        @MainActor
-        func testReturnsValidJSON() throws {
-            let conn = DatabaseConnection(
-                name: "Dev", host: "localhost", port: 3_306,
-                database: "mydb", username: "root", type: .mysql
-            )
-            let json = ConnectionShareLink.compactJSON(for: conn)
-            let data = try #require(json.data(using: .utf8))
-            let decoded = try? JSONDecoder().decode(ExportableConnection.self, from: data)
-            #expect(decoded != nil)
-            #expect(decoded?.name == "Dev")
-            #expect(decoded?.host == "localhost")
-            #expect(decoded?.type == "MySQL")
-        }
-
-        @Test("Excludes SSH profile ID")
-        @MainActor
-        func testExcludesSSHProfileId() throws {
-            let conn = DatabaseConnection(
-                name: "Dev", host: "localhost", port: 3_306,
-                database: "", username: "", type: .mysql
-            )
-            let json = ConnectionShareLink.compactJSON(for: conn)
-            let data = try #require(json.data(using: .utf8))
-            let decoded = try JSONDecoder().decode(ExportableConnection.self, from: data)
-            #expect(decoded.sshProfileId == nil)
-        }
-
-        @Test("Is compact (not pretty printed)")
-        @MainActor
-        func testIsCompact() {
-            let conn = DatabaseConnection(
-                name: "Dev", host: "localhost", port: 3_306,
-                database: "", username: "", type: .mysql
-            )
-            let json = ConnectionShareLink.compactJSON(for: conn)
-            #expect(!json.contains("\n  "))
-        }
-
-        @Test("Includes SSH config when enabled")
-        @MainActor
-        func testIncludesSSHInJSON() throws {
-            var ssh = SSHConfiguration()
-            ssh.enabled = true
-            ssh.host = "bastion.com"
-            ssh.port = 22
-            ssh.username = "admin"
-            let conn = DatabaseConnection(
-                name: "SSH", host: "db.com", port: 5_432,
-                database: "", username: "", type: .postgresql,
-                sshConfig: ssh
-            )
-            let json = ConnectionShareLink.compactJSON(for: conn)
-            let data = try #require(json.data(using: .utf8))
-            let decoded = try JSONDecoder().decode(ExportableConnection.self, from: data)
-            #expect(decoded.sshConfig != nil)
-            #expect(decoded.sshConfig?.host == "bastion.com")
-        }
-
+    @Suite("Export envelope")
+    struct ExportEnvelopeTests {
         @Test("Export files and the Team Library leave out the fields every importer drops")
         @MainActor
         func testEnvelopeLeavesOutImportBlockedFields() throws {

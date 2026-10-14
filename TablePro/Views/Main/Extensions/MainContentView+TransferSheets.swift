@@ -5,9 +5,9 @@
 
 import SwiftUI
 
-/// The sheets that move data in or out of a connection: export, import, transfer, backup, restore
-/// and server-side export. They live apart from the rest because together they were more than half
-/// of what `sheetContent(for:)` had to hold.
+/// The sheets that move data in or out of a connection: export, import, transfer, backup and
+/// restore. They live apart from the rest because together they were more than half of what
+/// `sheetContent(for:)` had to hold.
 extension MainContentView {
     @ViewBuilder
     func transferSheetContent(for sheet: ActiveSheet, dismiss dismissBinding: Binding<Bool>) -> some View {
@@ -83,12 +83,6 @@ extension MainContentView {
                 initialDatabase: DatabaseManager.shared.session(for: connection.id)?.browseDatabase
                     ?? connection.database,
                 sourceURL: fileURL
-            )
-        case .serverSideExport(let table):
-            ServerSideExportSheet(
-                isPresented: dismissBinding,
-                connection: connectionWithCurrentDatabase,
-                initialTable: table
             )
         default:
             EmptyView()

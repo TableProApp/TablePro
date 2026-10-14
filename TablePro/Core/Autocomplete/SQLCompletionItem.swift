@@ -35,7 +35,8 @@ enum SQLCompletionKind: String, CaseIterable {
         }
     }
 
-    /// Color for the icon
+    /// The badge sits in the completion panel, which is system chrome, so each kind keeps a system color of its own
+    /// whatever the editor theme.
     var iconColor: NSColor {
         switch self {
         case .keyword: return .systemBlue
@@ -268,7 +269,6 @@ extension SQLCompletionItem {
         )
     }
 
-    /// Create a column completion item
     static func column(
         _ name: String,
         dataType: String?,
@@ -278,12 +278,11 @@ extension SQLCompletionItem {
         defaultValue: String? = nil,
         comment: String? = nil
     ) -> SQLCompletionItem {
-        // Build detail string: "PK · NOT NULL · INT"
         var detailParts: [String] = []
         if isPrimaryKey { detailParts.append("PK") }
         if !isNullable { detailParts.append("NOT NULL") }
         if let dataType { detailParts.append(dataType) }
-        let detail = detailParts.isEmpty ? nil : detailParts.joined(separator: " · ")
+        let detail = detailParts.isEmpty ? nil : detailParts.joined(separator: ", ")
 
         var docParts: [String] = []
         if let tableName { docParts.append("Column from \(tableName)") }

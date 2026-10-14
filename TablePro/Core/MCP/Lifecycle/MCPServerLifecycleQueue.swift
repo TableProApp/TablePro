@@ -17,8 +17,15 @@ internal final class MCPServerLifecycleQueue {
         return task
     }
 
-    internal func run(_ work: @escaping @MainActor () async -> Void) async {
-        await enqueue(work).value
+    @discardableResult
+    internal func run<Value: Sendable>(_ work: @escaping @MainActor () async -> Value) async -> Value {
+        let previous = tail
+        let task = Task { @MainActor in
+            await previous?.value
+            return await work()
+        }
+        tail = Task { @MainActor in _ = await task.value }
+        return await task.value
     }
 
     internal func drain() async {

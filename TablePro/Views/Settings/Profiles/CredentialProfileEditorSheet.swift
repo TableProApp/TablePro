@@ -98,7 +98,6 @@ struct CredentialProfileEditorSheet: View {
                 secureFieldsSection
             }
             .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
 
             Divider()
             bottomBar

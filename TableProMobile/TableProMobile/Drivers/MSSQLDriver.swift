@@ -28,6 +28,7 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
 
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
+    var sendsBatchesWhole: Bool { true }
 
     nonisolated(unsafe) private(set) var currentSchema: String? = "dbo"
     nonisolated(unsafe) private(set) var serverVersion: String?

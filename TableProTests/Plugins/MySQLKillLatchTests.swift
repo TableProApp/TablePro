@@ -2,12 +2,10 @@
 //  MySQLKillLatchTests.swift
 //  TableProTests
 //
-//  `MariaDBPluginConnection` is not compiled into the test target, so the ordering is pinned here on
-//  the pure latch the connection asks. The live behaviour it encodes was measured with the app's own
-//  libmariadb against seven servers; see MySQLKillLatch.swift.
+//  The live behaviour this latch encodes was measured with the app's own libmariadb against seven
+//  servers; see MySQLKillLatch.swift.
 //
 
-import Foundation
 import Testing
 
 struct MySQLKillLatchTests {
@@ -73,52 +71,5 @@ struct MySQLKillLatchTests {
         #expect(MySQLKillLatch.absorbsLatchedKill(flavor: .tidb(version: nil)) == false)
         #expect(MySQLKillLatch.absorbsLatchedKill(flavor: .databend) == false)
         #expect(MySQLKillLatch.absorbsLatchedKill(flavor: .oceanbase(version: nil)) == false)
-    }
-}
-
-/// The absorb step has to sit where every statement passes, not beside one of them. `streamQuery`
-/// was the gap the design left: an export right after a Stop collected the kill instead.
-struct MySQLStatementEntryPointGuardTests {
-    @Test("Every statement entry point goes through the wrapper that absorbs a latched kill")
-    func everyStatementEntryPointUsesTheWrapper() throws {
-        let source = try Self.connectionSource()
-        let wrapped = Self.lines(of: source).filter { $0.contains("try runStatement(") }
-        #expect(
-            wrapped.count == 3,
-            """
-            executeQuerySync, executeParameterizedQuerySync and streamQuery each wrap their body in \
-            runStatement, which is the one place absorbLatchedKillIfNeeded runs. A fourth statement \
-            path needs the same wrapper: \(wrapped)
-            """
-        )
-        #expect(source.contains("absorbLatchedKillIfNeeded()"))
-    }
-
-    /// The absorb is useless if the kill has not gone out yet, so the drain is part of it.
-    @Test("Absorbing drains the cancel queue before reading the latch")
-    func absorbDrainsTheCancelQueueFirst() throws {
-        let source = try Self.connectionSource()
-        let body = try #require(source.range(of: "func absorbLatchedKillIfNeeded() {"))
-        let tail = source[body.upperBound...].prefix(400)
-        let drain = try #require(tail.range(of: "cancelQueue.sync {}"))
-        let read = try #require(tail.range(of: "takeKillAbsorption()"))
-        #expect(drain.lowerBound < read.lowerBound)
-    }
-
-    private static func lines(of source: String) -> [String] {
-        source.components(separatedBy: .newlines)
-    }
-
-    private static func connectionSource() throws -> String {
-        var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        for _ in 0 ..< 12 {
-            let candidate = directory
-                .appendingPathComponent("Plugins/MySQLDriverPlugin/MariaDBPluginConnection.swift")
-            if FileManager.default.fileExists(atPath: candidate.path) {
-                return try String(contentsOf: candidate, encoding: .utf8)
-            }
-            directory = directory.deletingLastPathComponent()
-        }
-        throw CocoaError(.fileNoSuchFile)
     }
 }

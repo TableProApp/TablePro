@@ -68,18 +68,15 @@ enum AIProviderRegistration {
         registry.register(AIProviderDescriptor(
             typeID: AIProviderType.xai.rawValue,
             capabilities: [.reasoning, .images, .endpointConfigurable, .maxOutputTokens, .modelListFetchable],
-            curatedModels: XAI.apiCuratedModels,
+            curatedModels: xaiCuratedModels,
             makeProvider: { config, apiKey in
-                if let apiKey, !apiKey.isEmpty {
-                    return OpenAIResponsesProvider(
-                        endpoint: config.endpoint,
-                        apiKey: apiKey,
-                        model: config.model,
-                        maxOutputTokens: config.maxOutputTokens,
-                        dialect: .xai
-                    )
-                }
-                return XAIGrokProvider(model: config.model)
+                OpenAIResponsesProvider(
+                    endpoint: config.endpoint,
+                    apiKey: apiKey,
+                    model: config.model,
+                    maxOutputTokens: config.maxOutputTokens,
+                    dialect: .xai
+                )
             }
         ))
 
@@ -111,18 +108,6 @@ enum AIProviderRegistration {
                 ChatGPTCodexProvider(model: config.model)
             }
         ))
-
-        registry.register(AIProviderDescriptor(
-            typeID: AIProviderType.cursor.rawValue,
-            capabilities: [.modelListFetchable],
-            curatedModels: cursorCuratedModels,
-            makeProvider: { config, apiKey in
-                if let apiKey, !apiKey.isEmpty {
-                    return CursorProvider(apiKey: apiKey, model: config.model)
-                }
-                return CursorAgentProvider(model: config.model)
-            }
-        ))
     }
 
     /// Reasoning and images are an envelope here, narrowed per model by what the server's own
@@ -139,10 +124,6 @@ enum AIProviderRegistration {
             capabilities.insert(.nameConfigurable)
         }
         return capabilities
-    }
-
-    private static let cursorCuratedModels: [CuratedModel] = CursorAI.curatedModels.map {
-        CuratedModel(id: $0.id, displayName: $0.name)
     }
 
     private static func curatedModel(
@@ -169,6 +150,21 @@ enum AIProviderRegistration {
         curatedModel(id: "gpt-5.6-terra", displayName: "GPT-5.6 Terra", provider: .openAI),
         curatedModel(id: "gpt-5.6-luna", displayName: "GPT-5.6 Luna", provider: .openAI),
         curatedModel(id: "gpt-5.5", displayName: "GPT-5.5", provider: .openAI)
+    ]
+
+    private static let xaiCuratedModels: [CuratedModel] = [
+        CuratedModel(
+            id: "grok-4.5",
+            displayName: "Grok 4.5",
+            supportedEffortLevels: [.low, .medium, .high],
+            defaultEffort: .medium
+        ),
+        CuratedModel(
+            id: "grok-4.3",
+            displayName: "Grok 4.3",
+            supportedEffortLevels: [.low, .medium, .high],
+            defaultEffort: .low
+        )
     ]
 
     private static let claudeCuratedModels: [CuratedModel] = [

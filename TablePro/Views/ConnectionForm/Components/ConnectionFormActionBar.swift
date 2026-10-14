@@ -25,7 +25,11 @@ struct ConnectionFormActionBar: View {
 
         return HStack(spacing: 12) {
             deleteButton
-            validationMessage(issues)
+            if issues.isEmpty {
+                testWarningMessage
+            } else {
+                validationMessage(issues)
+            }
             Spacer(minLength: 12)
             TestConnectionStatusButton(coordinator: coordinator)
             Button(String(localized: "Cancel")) {
@@ -101,6 +105,23 @@ struct ConnectionFormActionBar: View {
             .help(issues.joined(separator: "\n"))
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("connection-form-validation")
+        }
+    }
+
+    /// The warning the last test's login brought back, in the slot a validation issue would take. Test is off
+    /// while there is an issue, so the two never compete when the result arrives.
+    @ViewBuilder
+    private var testWarningMessage: some View {
+        if let warning = coordinator.testResult?.warning {
+            Label(warning, systemImage: "exclamationmark.triangle.fill")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .textSelection(.enabled)
+                .help(warning)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("connection-form-test-warning")
         }
     }
 

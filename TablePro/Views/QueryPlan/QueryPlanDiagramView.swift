@@ -10,6 +10,7 @@ import SwiftUI
 
 struct QueryPlanDiagramView: View {
     @Binding var selectedNodeId: UUID?
+    @Environment(\.colorScheme) private var colorScheme
 
     /// Owned by the plan's `QueryPlanViewState`, because this view goes away on every mode switch.
     let viewport: DiagramViewportController
@@ -69,9 +70,19 @@ struct QueryPlanDiagramView: View {
         )
     }
 
-    /// A non-interactive copy at natural scale, so an export never captures the current zoom,
-    /// scroll offset or selection.
-    private var exportCanvas: some View {
+    private var exportCanvas: QueryPlanDiagramExportCanvas {
+        QueryPlanDiagramExportCanvas(layout: layout, colorScheme: colorScheme)
+    }
+}
+
+/// A non-interactive copy at natural scale, so an export never captures the current zoom, scroll
+/// offset or selection. `ImageRenderer` draws in the light scheme whatever the window shows, so the
+/// canvas's own scheme is passed in.
+struct QueryPlanDiagramExportCanvas: View {
+    let layout: QueryPlanDiagramLayout
+    let colorScheme: ColorScheme
+
+    var body: some View {
         ZStack(alignment: .topLeading) {
             Canvas { context, _ in
                 for arrow in layout.arrows {
@@ -91,7 +102,8 @@ struct QueryPlanDiagramView: View {
             }
         }
         .frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .themeBackground(.windowBackdrop, native: Color(nsColor: .controlBackgroundColor))
+        .environment(\.colorScheme, colorScheme)
     }
 }
 
@@ -175,6 +187,8 @@ struct QueryPlanArrowsView: View {
 
 struct QueryPlanDiagramNodeView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @Environment(\.colorSchemeContrast) private var contrast
+    @ObservedObject private var themeEngine = ThemeEngine.shared
 
     let node: QueryPlanNode
     let isSelected: Bool
@@ -190,6 +204,7 @@ struct QueryPlanDiagramNodeView: View {
                 Text(node.operation)
                     .font(.system(.callout, weight: .semibold))
                     .lineLimit(1)
+                    .themeForeground(.gridText, native: .primary)
                 if let joinType = node.properties["Join Type"] {
                     Text(joinType)
                         .font(.caption2)
@@ -229,13 +244,24 @@ struct QueryPlanDiagramNodeView: View {
             RoundedRectangle(cornerRadius: QueryPlanDiagramMetrics.cornerRadius)
                 .fill(tint.opacity(0.12))
         )
+        .themeBackground(
+            .gridBackground,
+            native: Color.clear,
+            in: RoundedRectangle(cornerRadius: QueryPlanDiagramMetrics.cornerRadius)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: QueryPlanDiagramMetrics.cornerRadius)
-                .stroke(isSelected ? Color.accentColor : tint, lineWidth: isSelected ? 2 : 1)
+                .stroke(stroke, lineWidth: isSelected ? 2 : 1)
         )
     }
 
     private var tint: Color {
         node.severity?.tint(differentiateWithoutColor: differentiateWithoutColor) ?? .secondary
+    }
+
+    /// The grid outlines its own selection with the focus border, so a selected step does too.
+    private var stroke: AnyShapeStyle {
+        guard isSelected else { return AnyShapeStyle(tint) }
+        return ThemeShapeStyle.style(.gridFocusBorder, native: Color.accentColor, engine: themeEngine, contrast: contrast)
     }
 }

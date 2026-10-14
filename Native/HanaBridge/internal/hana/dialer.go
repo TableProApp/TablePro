@@ -72,12 +72,6 @@ func (d *trackingDialer) isSevered() bool {
 	return d.severed
 }
 
-func (d *trackingDialer) liveConnections() int {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return len(d.live)
-}
-
 func (d *trackingDialer) sever() {
 	d.mu.Lock()
 	d.severed = true

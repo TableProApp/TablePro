@@ -32,9 +32,14 @@ struct QueryPlanNodeChange: Identifiable, Hashable, Sendable {
 
     var id: String { "\(kind.rawValue):\(path)" }
 
+    var relationName: String? {
+        guard let relation, !relation.isEmpty else { return nil }
+        return relation
+    }
+
     var title: String {
-        guard let relation, !relation.isEmpty else { return operation }
-        return "\(operation) · \(relation)"
+        guard let relationName else { return operation }
+        return "\(operation), \(relationName)"
     }
 }
 

@@ -5,12 +5,6 @@
 
 import Foundation
 
-/// Where a new enum label goes relative to an existing one. Absent, the label is appended.
-struct EnumLabelPlacement: Hashable, Sendable {
-    let anchor: String
-    let placesBefore: Bool
-}
-
 struct UserDefinedTypeInfo: Identifiable, Hashable, Sendable {
     enum Kind: String, Codable, Sendable, CaseIterable {
         case enumeration = "enum"

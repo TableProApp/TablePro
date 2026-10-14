@@ -117,7 +117,7 @@ extension TableStructureView {
                 .buttonStyle(.bordered)
             }
             .padding()
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(.bar)
 
             Divider()
 

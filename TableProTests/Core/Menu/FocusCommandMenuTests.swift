@@ -10,7 +10,7 @@ import Testing
 @MainActor
 private func focusSubmenu() throws -> NSMenu {
     let view = try #require(
-        MainMenuBuilder.build(keyboard: KeyboardSettings())
+        MainMenuBuilder.build(keyboard: KeyboardSettings()).bar
             .items
             .first { $0.title == ViewMenuBuilder.title }?
             .submenu

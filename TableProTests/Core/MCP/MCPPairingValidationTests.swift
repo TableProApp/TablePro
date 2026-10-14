@@ -5,8 +5,7 @@
 //  The redirect decides who ends up holding the pairing code, so only the two shapes that reach the
 //  machine the user is sitting at are accepted: a loopback HTTP listener (RFC 8252) and a
 //  private-use scheme an installed app registered. Anything else is a web page. PKCE is checked
-//  against RFC 7636 on both halves before either value reaches a comparison, and approving a
-//  request never touches a token that happens to share the requester's client name.
+//  against RFC 7636 on both halves before either value reaches a comparison.
 //
 
 import Foundation
@@ -252,25 +251,5 @@ struct MCPPairingValidationTests {
         ] {
             #expect(error.localizedMessage.isEmpty == false)
         }
-    }
-
-    @Test("Approving a pairing request never revokes a token that shares the client name")
-    func approvingNeverRevokesBySharedName() throws {
-        let source = try Self.pairingServiceSource()
-
-        #expect(source.contains("revokeExistingTokens") == false)
-        #expect(source.contains(".revoke(") == false)
-    }
-
-    private static func pairingServiceSource() throws -> String {
-        var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        for _ in 0..<12 {
-            let candidate = directory.appendingPathComponent("TablePro/Core/MCP/MCPPairingService.swift")
-            if FileManager.default.fileExists(atPath: candidate.path) {
-                return try String(contentsOf: candidate, encoding: .utf8)
-            }
-            directory = directory.deletingLastPathComponent()
-        }
-        throw CocoaError(.fileNoSuchFile)
     }
 }

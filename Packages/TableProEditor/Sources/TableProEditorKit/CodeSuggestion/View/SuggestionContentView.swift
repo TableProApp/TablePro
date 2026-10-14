@@ -32,7 +32,7 @@ struct SuggestionContentView: View {
             }
         }
         .frame(width: contentWidth)
-        .background(Color(nsColor: model.themeBackground))
+        .background(SuggestionPanelBackground())
         .clipShape(RoundedRectangle(cornerRadius: 8.5))
         .contentShape(Rectangle())
         .onTapGesture {
@@ -67,8 +67,6 @@ struct SuggestionContentView: View {
     private func suggestionRow(index: Int, item: CodeSuggestionEntry) -> some View {
         CodeSuggestionLabelView(
             suggestion: item,
-            labelColor: model.themeTextColor,
-            secondaryLabelColor: model.themeTextColor.withAlphaComponent(0.5),
             font: model.activeTextView?.font ?? .systemFont(ofSize: 12),
             isSelected: index == model.selectedIndex
         )
@@ -124,4 +122,27 @@ struct SuggestionContentView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
     }
+}
+
+/// The panel's window is clear, so a SwiftUI material would have nothing behind it to blur. A visual effect view
+/// blending behind the window samples the desktop and the editor the way a menu does.
+struct SuggestionPanelBackground: NSViewRepresentable {
+    static func makeView() -> NSVisualEffectView {
+        let view = DecorativeVisualEffectView()
+        view.material = .menu
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        Self.makeView()
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+}
+
+/// A click on the panel's background belongs to the SwiftUI tap that dismisses the panel, not to this view.
+private final class DecorativeVisualEffectView: NSVisualEffectView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

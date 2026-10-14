@@ -134,8 +134,58 @@ final class TableTransferService: ObservableObject {
         }
     }
 
-    /// Runs the whole transfer inside leases on both drivers, so every statement lands on the
-    /// database the sheet named rather than wherever either shared driver was last parked.
+    /// Authorizes the transfer once through the execution gate, then runs it inside leases on both
+    /// drivers, so every statement lands on the database the sheet named rather than wherever
+    /// either shared driver was last parked. The gate asks before either lease is taken, so a
+    /// prompt nobody has answered yet holds no connection. `confirmedByCaller` is a delete of the
+    /// destination's rows the sheet already confirmed in its own words; Touch ID still applies.
+    func run(
+        request: Request,
+        source: DatabaseScope,
+        destination: DatabaseScope,
+        operationDescription: String,
+        confirmedByCaller: Bool,
+        manager: DatabaseManager = .shared,
+        gate: ExecutionGate = ExecutionGateProvider.shared
+    ) async throws {
+        var capabilities = CallerCapabilities.interactiveUser
+        if confirmedByCaller {
+            capabilities.insert(.confirmationPreCleared)
+        }
+        let decision = await gate.authorize(
+            OperationRequest(
+                connectionId: destination.connectionId,
+                databaseType: request.destinationType,
+                sql: nil,
+                kind: request.deleteExistingRows ? .destructiveQuery : .importData,
+                caller: .importPipeline,
+                capabilities: capabilities,
+                operationDescription: operationDescription
+            )
+        )
+        if let denial = decision.denialError { throw denial }
+
+        let destinationRoute = manager.executionRoute(for: destination)
+        try await manager.withMetadataDriver(scope: source, workload: .bulk) { sourceDriver in
+            /// A transfer writes, inside its own transaction, across many statements. Left
+            /// untracked it registers nothing, so an unrelated Stop falls back to the session
+            /// driver and aborts it part-applied, and the health check counts the connection as
+            /// idle and pings straight into it.
+            try await manager.withScopedDriver(
+                scope: destination,
+                route: destinationRoute,
+                workload: .bulk,
+                cancellation: .protectedWrite
+            ) { destinationDriver in
+                try await self.transfer(
+                    request: request,
+                    sourceDriver: sourceDriver,
+                    destinationDriver: destinationDriver
+                )
+            }
+        }
+    }
+
     func transfer(
         request: Request,
         sourceDriver: DatabaseDriver,

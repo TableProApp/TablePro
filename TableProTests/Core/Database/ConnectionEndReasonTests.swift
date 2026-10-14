@@ -42,15 +42,15 @@ struct ConnectionEndReasonTests {
         )
     }
 
-    @Test("A connect that found its plugin switched off records the fix and the window offers it")
-    func disabledPluginReachesTheWindowAsItsFix() {
+    @Test("A connect whose plugin failed to load records the fix and the window offers it")
+    func failedPluginReachesTheWindowAsItsFix() {
         let id = injectConnectingSession()
-        let error = PluginError.pluginDisabled(pluginId: "com.TablePro.SQLiteDriver", pluginName: "SQLite")
+        let error = PluginError.pluginLoadFailed(pluginId: "com.TablePro.SQLiteDriver", pluginName: "SQLite", reason: nil)
 
         DatabaseManager.shared.finalizeConnectionFailure(for: id, cancelled: false, error: error)
 
         let info = ConnectionFailureClassifier.info(for: error)
-        let action = ConnectionRecoveryAction.enablePlugin(pluginId: "com.TablePro.SQLiteDriver")
+        let action = ConnectionRecoveryAction.openPluginSettings(pluginId: "com.TablePro.SQLiteDriver")
         #expect(DatabaseManager.shared.disconnectReason(for: id) == .connectFailed(info, action))
         #expect(phaseAfterSessionEnds(id) == .unavailable(.actionRequired(info, action)))
     }

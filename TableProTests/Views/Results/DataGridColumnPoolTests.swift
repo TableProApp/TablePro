@@ -449,6 +449,79 @@ struct DataGridColumnPoolTests {
         }
     }
 
+    private func minimumWidthsByName(in tableView: NSTableView) -> [String: CGFloat] {
+        Dictionary(uniqueKeysWithValues: dataColumns(in: tableView).map { ($0.headerCell.stringValue, $0.minWidth) })
+    }
+
+    @Test("A column named in the minimum widths gets that floor and the others keep the default")
+    func reconcile_appliesPerColumnMinimumWidths() {
+        let pool = DataGridColumnPool()
+        let tableView = makeTableView()
+
+        pool.reconcile(
+            tableView: tableView,
+            schema: ColumnIdentitySchema(columns: ["id", "name"]),
+            columnTypes: makeColumnTypes(count: 2),
+            savedLayout: nil,
+            isEditable: true,
+            hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
+            minimumWidths: ["name": 140],
+            widthCalculator: defaultWidthCalculator
+        )
+
+        #expect(minimumWidthsByName(in: tableView) == ["id": DataGridMetrics.dataColumnMinWidth, "name": 140])
+    }
+
+    /// Raising `minWidth` past `width` first moves the width without moving the table's column
+    /// geometry, so the column would report one width and draw at another.
+    @Test("A width below the column's floor opens at the floor, and the table's geometry follows")
+    func reconcile_raisesWidthToTheFloor() throws {
+        let pool = DataGridColumnPool()
+        let tableView = makeTableView()
+        let schema = ColumnIdentitySchema(columns: ["id", "name"])
+
+        pool.reconcile(
+            tableView: tableView, schema: schema, columnTypes: makeColumnTypes(count: 2), savedLayout: nil,
+            isEditable: true, hiddenColumnNames: [], firstClickSortDirection: .ascending,
+            widthCalculator: defaultWidthCalculator
+        )
+        pool.reconcile(
+            tableView: tableView, schema: schema, columnTypes: makeColumnTypes(count: 2), savedLayout: nil,
+            isEditable: true, hiddenColumnNames: [], firstClickSortDirection: .ascending,
+            minimumWidths: ["name": 140],
+            widthCalculator: defaultWidthCalculator
+        )
+
+        let name = try #require(dataColumns(in: tableView).first { $0.headerCell.stringValue == "name" })
+        let index = tableView.column(withIdentifier: name.identifier)
+        #expect(name.width == 140)
+        #expect(name.minWidth == 140)
+        #expect(tableView.rect(ofColumn: index).width == 140 + tableView.intercellSpacing.width)
+    }
+
+    @Test("A reused slot drops the floor of the result it showed before")
+    func reconcile_resetsTheFloorOfAReusedSlot() {
+        let pool = DataGridColumnPool()
+        let tableView = makeTableView()
+
+        pool.reconcile(
+            tableView: tableView, schema: ColumnIdentitySchema(columns: ["name"]), columnTypes: makeColumnTypes(count: 1),
+            savedLayout: nil, isEditable: true, hiddenColumnNames: [], firstClickSortDirection: .ascending,
+            minimumWidths: ["name": 140],
+            widthCalculator: defaultWidthCalculator
+        )
+        pool.reconcile(
+            tableView: tableView, schema: ColumnIdentitySchema(columns: ["id"]), columnTypes: makeColumnTypes(count: 1),
+            savedLayout: nil, isEditable: true, hiddenColumnNames: [], firstClickSortDirection: .ascending,
+            widthCalculator: { _, _ in 50 }
+        )
+
+        let column = dataColumns(in: tableView).first
+        #expect(column?.minWidth == DataGridMetrics.dataColumnMinWidth)
+        #expect(column?.width == 50)
+    }
+
     @Test("reconcile publishes column comments to the header view")
     func reconcile_publishesColumnCommentsToHeaderView() throws {
         let pool = DataGridColumnPool()

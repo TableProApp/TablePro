@@ -1,92 +1,81 @@
-import AppKit
 import XCTest
 
-/// Issue #2235. Clicking a table opens it in a preview tab that the next click reuses, so browsing
-/// several tables used to leave them all fighting over one tab. Double-clicking one keeps it.
+// #2235 and #2436: a single click opens a table in a preview tab the next click reuses; a double-click
+// on the sidebar row or on the tab keeps it. The restored query tab keeps the tab strip on screen.
+// Consecutive clicks never land on the same spot, so none can be coalesced into a double-click.
 final class SidebarTableTabUITests: UITestCase {
-    func testDoubleClickingATableKeepsItsTabSoTheNextTableGetsItsOwn() throws {
-        let app = try launchWithSampleDatabase()
-        let window = try readyWindow(of: app)
+    func testAPreviewTabIsReusedUntilItIsKept() throws {
+        let launch = try launchWithFixture()
+        let window = launch.window
 
-        /// Establishes the state the issue describes: a preview tab showing Album. Whether the
-        /// sample database left a tab of its own open does not matter, because the assertion is
-        /// about the change in the count rather than its value.
-        click(row("Album", in: window))
-        let beforeKeeping = tabCount(in: window)
+        clickAtCenter(sidebarRow("album", in: window))
+        XCTAssertTrue(waitForTabs(["album"], in: window), "A click must open the table in a tab")
+        let previewing = tabCount(in: window)
 
-        doubleClick(row("Album", in: window))
-        click(row("Artist", in: window))
-
+        clickAtCenter(sidebarRow("artist", in: window))
         XCTAssertTrue(
-            waitForPredicate(timeout: 20) { tabCount(in: window) > beforeKeeping },
-            """
-            A double-clicked table keeps its tab, so clicking a second table must open a second tab \
-            rather than replacing the first. Tabs before: \(beforeKeeping), after: \
-            \(tabCount(in: window)).
-            """
+            waitForTabs(["artist"], without: ["album"], in: window),
+            "A second click must reuse the preview tab rather than open another"
         )
+        XCTAssertEqual(tabCount(in: window), previewing)
+
+        doubleClickAtCenter(sidebarRow("genre", in: window))
+        XCTAssertTrue(waitForTabs(["genre"], without: ["artist"], in: window), "A double-click opens in the preview tab")
+        clickAtCenter(sidebarRow("track", in: window))
+        XCTAssertTrue(
+            waitForTabs(["genre", "track"], in: window),
+            "A double-clicked table keeps its tab, so the next table must get a tab of its own"
+        )
+        XCTAssertEqual(tabCount(in: window), previewing + 1)
+
+        clickAtCenter(tab("track", in: window))
+        clickAtCenter(sidebarRow("note", in: window))
+        XCTAssertTrue(
+            waitForTabs(["note"], without: ["track"], in: window),
+            "Selecting a preview tab must not keep it, so the next table still reuses it"
+        )
+        XCTAssertEqual(tabCount(in: window), previewing + 1)
+
+        doubleClickAtCenter(tab("note", in: window))
+        clickAtCenter(sidebarRow("document", in: window))
+        XCTAssertTrue(
+            waitForTabs(["note", "document"], in: window),
+            "Double-clicking a preview tab keeps it, so the next table must get a tab of its own"
+        )
+        XCTAssertEqual(tabCount(in: window), previewing + 2)
     }
 
-    func testClickingASecondTableStillReusesThePreviewTab() throws {
-        let app = try launchWithSampleDatabase()
-        let window = try readyWindow(of: app)
-
-        click(row("Album", in: window))
-        let beforeSecondClick = tabCount(in: window)
-
-        click(row("Artist", in: window))
-
-        XCTAssertTrue(
-            waitForPredicate(timeout: 10) { tabCount(in: window) == beforeSecondClick },
-            """
-            A single click still opens into the preview tab, which the next click reuses. \
-            Tabs before: \(beforeSecondClick), after: \(tabCount(in: window)).
-            """
-        )
+    private func sidebarRow(_ name: String, in window: XCUIElement) -> XCUIElement {
+        let row = objectBrowserRow(name, in: window)
+        XCTAssertTrue(row.waitToExist(timeout: 20), "The object browser must list \(name)")
+        return row
     }
 
-    private func readyWindow(of app: XCUIApplication) throws -> XCUIElement {
-        let window = app.windows.firstMatch
-        XCTAssertTrue(window.waitToExist(timeout: 30))
-        XCTAssertTrue(
-            waitForPredicate(timeout: 30) { window.outlines.firstMatch.outlineRows.count > 1 },
-            "The object browser must list the sample database's tables"
-        )
-        return window
-    }
-
-    /// The tree draws its rows as hosted cells, so the name arrives as the static text's `value`
-    /// rather than as a label or an identifier, and AppKit reports the rows themselves as disabled.
-    /// Matching on `value` is what finds them; clicking through a coordinate is what reaches them.
-    private func row(_ name: String, in window: XCUIElement) -> XCUIElement {
-        let match = window.outlines.firstMatch.staticTexts
-            .matching(NSPredicate(format: "value == %@", "Table: \(name)"))
-            .firstMatch
-        XCTAssertTrue(match.waitToExist(timeout: 20), "The object browser must list \(name)")
+    private func tab(_ title: String, in window: XCUIElement) -> XCUIElement {
+        let match = tabs(in: window).matching(NSPredicate(format: "label == %@", title)).firstMatch
+        XCTAssertTrue(match.waitToExist(timeout: 20), "The tab strip must show \(title)")
         return match
     }
 
-    private func click(_ element: XCUIElement) {
-        clickAtCenter(element)
-        settleBetweenClicks()
+    private func tabs(in window: XCUIElement) -> XCUIElementQuery {
+        window.descendants(matching: .any).matching(identifier: "editor-tab")
     }
 
-    private func doubleClick(_ element: XCUIElement) {
-        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleClick()
-        settleBetweenClicks()
-    }
-
-    /// A genuine delay, not a poll: there is no state to observe between two clicks, and the only
-    /// thing being waited out is the window in which macOS would coalesce the next click into this
-    /// one. `waitForPredicate(timeout:) { false }` was three seconds of the same thing written as a
-    /// condition that cannot succeed.
-    private func settleBetweenClicks() {
-        Thread.sleep(forTimeInterval: NSEvent.doubleClickInterval)
-    }
-
-    /// The strip is drawn only once a connection holds more than one tab, so one tab reads as zero
-    /// here. The tests compare counts rather than read a total, which holds either way.
     private func tabCount(in window: XCUIElement) -> Int {
-        window.descendants(matching: .any).matching(identifier: "editor-tab").count
+        tabs(in: window).count
+    }
+
+    private func hasTab(_ title: String, in window: XCUIElement) -> Bool {
+        tabs(in: window).matching(NSPredicate(format: "label == %@", title)).firstMatch.exists
+    }
+
+    private func waitForTabs(_ present: [String], without absent: [String] = [], in window: XCUIElement) -> Bool {
+        waitForPredicate(timeout: 20) {
+            present.allSatisfy { self.hasTab($0, in: window) } && !absent.contains { self.hasTab($0, in: window) }
+        }
+    }
+
+    private func doubleClickAtCenter(_ element: XCUIElement) {
+        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleClick()
     }
 }

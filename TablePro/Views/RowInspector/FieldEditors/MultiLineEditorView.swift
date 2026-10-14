@@ -24,10 +24,10 @@ internal struct MultiLineEditorView: View {
                 text: context.value,
                 isEditable: !context.isReadOnly,
                 font: themeEngine.valueFont,
-                movesFocusOnTab: true
+                movesFocusOnTab: true,
+                style: .code
             )
-            .clipShape(RoundedRectangle(cornerRadius: 5))
-            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
+            .valueWell(clipsContent: true)
             .overlay(alignment: .topLeading) { placeholder }
             .overlay(alignment: .bottomTrailing) { popOutButton }
         }

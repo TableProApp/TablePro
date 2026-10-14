@@ -29,6 +29,11 @@ final class DiagramViewportController: ObservableObject {
         scrollView?.documentVisibleRect ?? .zero
     }
 
+    /// What an export renders in, so it shows the colors the canvas shows.
+    var effectiveAppearance: NSAppearance {
+        scrollView?.effectiveAppearance ?? NSApp?.effectiveAppearance ?? NSAppearance.currentDrawing()
+    }
+
     var canZoomIn: Bool { DiagramZoom.canStepUp(from: magnification) }
     var canZoomOut: Bool { DiagramZoom.canStepDown(from: magnification) }
 
@@ -207,6 +212,7 @@ struct MagnifiableCanvasView<Document: NSView>: NSViewRepresentable {
 
         context.coordinator.document = document
         context.coordinator.viewport = viewport
+        context.coordinator.backdrop = DiagramCanvasBackdrop(scrollView: scrollView)
         viewport.attach(to: scrollView)
         return scrollView
     }
@@ -230,6 +236,7 @@ struct MagnifiableCanvasView<Document: NSView>: NSViewRepresentable {
             coordinator.viewport?.detach(from: scrollView)
             coordinator.viewport = nil
             coordinator.document = nil
+            coordinator.backdrop = nil
         }
     }
 
@@ -252,5 +259,48 @@ struct MagnifiableCanvasView<Document: NSView>: NSViewRepresentable {
     final class Coordinator {
         var document: Document?
         var viewport: DiagramViewportController?
+        var backdrop: DiagramCanvasBackdrop?
+    }
+}
+
+/// The canvas draws no background, so the pane behind it shows through. A theme that sets the window
+/// background paints it here as well, the same color a diagram export fills behind its tables.
+@MainActor
+final class DiagramCanvasBackdrop {
+    private weak var scrollView: NSScrollView?
+    private var original: (color: NSColor, drawsBackground: Bool)?
+    private var themeCancellable: AnyCancellable?
+
+    init(scrollView: NSScrollView) {
+        self.scrollView = scrollView
+        apply()
+        themeCancellable = AppEvents.shared.themeChanged
+            .sink { [weak self] _ in self?.apply() }
+    }
+
+    var isThemed: Bool {
+        original != nil
+    }
+
+    func apply() {
+        guard let scrollView else { return }
+        let appearance = scrollView.effectiveAppearance
+        let theme = ThemeEngine.shared.pair[ThemeAppearance(matching: appearance)]
+        guard theme.isOverridden(.windowBackdrop, in: appearance) else {
+            restore(scrollView)
+            return
+        }
+        if original == nil {
+            original = (scrollView.backgroundColor, scrollView.drawsBackground)
+        }
+        scrollView.backgroundColor = ThemeEngine.shared.palette[.windowBackdrop]
+        scrollView.drawsBackground = true
+    }
+
+    private func restore(_ scrollView: NSScrollView) {
+        guard let original else { return }
+        scrollView.backgroundColor = original.color
+        scrollView.drawsBackground = original.drawsBackground
+        self.original = nil
     }
 }

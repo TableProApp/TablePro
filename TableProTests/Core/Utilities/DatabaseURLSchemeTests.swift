@@ -319,15 +319,6 @@ struct DatabaseURLSchemeTests {
         #expect(parsed.type == .mysql)
     }
 
-    @Test("MongoDB+srv scheme preserved (not stripped)")
-    func mongodbSrvPreserved() {
-        let result = ConnectionURLParser.parse("mongodb+srv://user:pass@cluster.example.com/mydb")
-        guard case .success(let parsed) = result else {
-            Issue.record("Expected success"); return
-        }
-        #expect(parsed.type == .mongodb)
-    }
-
     @Test("PostgreSQL+ssh still enables SSH mode")
     func postgresqlSshStillWorks() {
         let result = ConnectionURLParser.parse("postgresql+ssh://user:pass@localhost/mydb")

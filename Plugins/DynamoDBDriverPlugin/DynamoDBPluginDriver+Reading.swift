@@ -212,7 +212,8 @@ extension DynamoDBPluginDriver {
             let units = formatter.string(from: NSNumber(value: stats.readUnits)) ?? "\(stats.readUnits)"
             parts.append(String(format: String(localized: "%@ RCU"), units))
         }
-        return (parts + extra).joined(separator: " · ")
+        // A note is a clause with commas of its own, so it follows the counts as a sentence.
+        return ([parts.joined(separator: ", ")] + extra).joined(separator: ". ")
     }
 
     static func queryResult(

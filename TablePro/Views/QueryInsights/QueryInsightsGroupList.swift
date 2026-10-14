@@ -126,7 +126,7 @@ struct QueryInsightsGroupList: View {
                 group.failureCount.formatted()
             ))
         }
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: ", ")
     }
 
     private var isFailurePanel: Bool {
@@ -190,7 +190,7 @@ struct QueryInsightsRegressionList: View {
     private func detail(_ regression: QueryInsightsRegression) -> String {
         String(
             format: String(
-                localized: "%1$@ → %2$@ · %3$@ runs before, %4$@ now",
+                localized: "%1$@ → %2$@, %3$@ runs before, %4$@ now",
                 comment: "Regression detail: prior duration, recent duration, prior count, recent count"
             ),
             QueryDurationFormatter.string(from: regression.priorMeanDuration),

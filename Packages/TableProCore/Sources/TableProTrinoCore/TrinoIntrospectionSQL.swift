@@ -68,6 +68,19 @@ public enum TrinoIntrospectionSQL {
         """
     }
 
+    /// One relation's `table_type`, which says `VIEW` for a view. A materialized view is not told
+    /// apart here: ``materializedView(catalog:schema:name:)`` answers for it.
+    public static func relationType(catalog: String, schema: String, table: String) -> String {
+        """
+        SELECT table_type FROM \(quoteIdentifier(catalog)).information_schema.tables \
+        WHERE table_schema = \(quoteLiteral(schema)) AND table_name = \(quoteLiteral(table))
+        """
+    }
+
+    public static func materializedView(catalog: String, schema: String, name: String) -> String {
+        listMaterializedViews(catalog: catalog, schema: schema) + " AND name = \(quoteLiteral(name))"
+    }
+
     public static func approximateRowCount(catalog: String?, schema: String?, table: String) -> String {
         "SHOW STATS FOR \(qualifiedName(catalog: catalog, schema: schema, table: table))"
     }
@@ -78,5 +91,9 @@ public enum TrinoIntrospectionSQL {
 
     public static func showCreateView(catalog: String?, schema: String?, view: String) -> String {
         "SHOW CREATE VIEW \(qualifiedName(catalog: catalog, schema: schema, table: view))"
+    }
+
+    public static func showCreateMaterializedView(catalog: String?, schema: String?, view: String) -> String {
+        "SHOW CREATE MATERIALIZED VIEW \(qualifiedName(catalog: catalog, schema: schema, table: view))"
     }
 }

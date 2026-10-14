@@ -78,17 +78,18 @@ struct KeychainHelperTests {
 
     @Test("password sync flag defaults to false when unset")
     func passwordSyncFlagDefaultsFalse() {
+        let defaults = AppStorageEnvironment.shared.defaults
         let defaultsKey = KeychainHelper.passwordSyncEnabledKey
-        let previous = UserDefaults.standard.object(forKey: defaultsKey)
+        let previous = defaults.object(forKey: defaultsKey)
         defer {
             if let previous {
-                UserDefaults.standard.set(previous, forKey: defaultsKey)
+                defaults.set(previous, forKey: defaultsKey)
             } else {
-                UserDefaults.standard.removeObject(forKey: defaultsKey)
+                defaults.removeObject(forKey: defaultsKey)
             }
         }
 
-        UserDefaults.standard.removeObject(forKey: defaultsKey)
-        #expect(UserDefaults.standard.bool(forKey: defaultsKey) == false)
+        defaults.removeObject(forKey: defaultsKey)
+        #expect(defaults.bool(forKey: defaultsKey) == false)
     }
 }

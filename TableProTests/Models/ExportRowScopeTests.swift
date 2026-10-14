@@ -59,14 +59,6 @@ struct ExportRowScopeTests {
         #expect(PluginExportRowScope.unrestricted.summary.isEmpty)
     }
 
-    @Test("A scope survives a round trip through Codable")
-    func scopeRoundTrips() throws {
-        let scope = PluginExportRowScope(filter: "id > 5", rowLimit: 42, columns: ["a", "b"])
-        let decoded = try JSONDecoder().decode(
-            PluginExportRowScope.self, from: JSONEncoder().encode(scope))
-        #expect(decoded == scope)
-    }
-
     @Test("An export item carries an unrestricted scope unless one is given")
     func exportTableDefaultsToUnrestricted() {
         let table = PluginExportTable(

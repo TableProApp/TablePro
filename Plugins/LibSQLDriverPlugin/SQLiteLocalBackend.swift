@@ -116,6 +116,7 @@ actor SQLiteLocalBackend {
 
         try bind(parameters, to: statement, db: db)
 
+        let totalChangesBefore = sqlite3_total_changes64(db)
         let firstStep = runtime.stepFirst(statement)
         let columnCount = firstStep.count
         let columns = firstStep.names
@@ -139,8 +140,9 @@ actor SQLiteLocalBackend {
             try validateCompletion(stepResult, on: db)
         }
 
-        if columns.isEmpty {
-            rowsAffected = Int(sqlite3_changes(db))
+        // `sqlite3_changes64` keeps the last write's count, so a statement that wrote nothing would repeat it.
+        if columns.isEmpty, sqlite3_total_changes64(db) != totalChangesBefore {
+            rowsAffected = Int(sqlite3_changes64(db))
         }
 
         return LibSQLLocalRawResult(

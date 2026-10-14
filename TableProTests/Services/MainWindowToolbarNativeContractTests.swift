@@ -418,7 +418,7 @@ struct MainWindowToolbarNativeContractTests {
     /// Session Context list, which legitimately holds a placeholder until a driver publishes one.
     @Test("The sidebar lists the toolbar used to own are menu-bar commands")
     func relocatedCommandsReachTheMenuBar() {
-        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings())
+        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings()).bar
         var found: Set<Selector> = []
         collectSelectors(from: menu, into: &found)
 
@@ -436,7 +436,7 @@ struct MainWindowToolbarNativeContractTests {
     /// this same title, so the menu bar carries its twin, filled by the same class.
     @Test("File > Import offers the command and, right under it, the list of formats")
     func fileImportOffersTheFormatList() throws {
-        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings())
+        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings()).bar
         let file = try #require(menu.items.first { $0.submenu?.title == String(localized: "File") }?.submenu)
         let importMenu = try #require(file.items.first { $0.title == String(localized: "Import") }?.submenu)
         let leaf = try #require(importMenu.items.first { $0.title == String(localized: "Import Data…") })
@@ -453,7 +453,7 @@ struct MainWindowToolbarNativeContractTests {
     /// menu-bar route to it.
     @Test("The Safe Mode submenu offers every level")
     func safeModeSubmenuOffersEveryLevel() throws {
-        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings())
+        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings()).bar
         let database = try #require(menu.items.first { $0.submenu?.title == String(localized: "Database") }?.submenu)
         let safeMode = try #require(
             database.items.first { $0.title == String(localized: "Safe Mode Level") }?.submenu
@@ -471,7 +471,7 @@ struct MainWindowToolbarNativeContractTests {
     /// submenu had no Open Schema Switcher command at all.
     @Test("The Schema submenu still offers its switcher after the delegate fills it")
     func schemaSubmenuSurvivesItsDelegate() throws {
-        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings())
+        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings()).bar
         let database = try #require(menu.items.first { $0.submenu?.title == String(localized: "Database") }?.submenu)
         let schema = try #require(
             database.items.first { $0.title == String(localized: "Schema") }?.submenu
@@ -489,7 +489,7 @@ struct MainWindowToolbarNativeContractTests {
     /// is permanently empty and reads as a broken command.
     @Test("The relocated commands' submenus have a delegate to fill them")
     func dynamicSubmenusHaveDelegates() throws {
-        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings())
+        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings()).bar
         let database = try #require(menu.items.first { $0.submenu?.title == String(localized: "Database") }?.submenu)
 
         for title in [String(localized: "Safe Mode Level"), String(localized: "Session Context")] {

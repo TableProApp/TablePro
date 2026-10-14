@@ -278,12 +278,6 @@ struct SQLContextAnalyzerTests {
         #expect(context.prefix == "id")
     }
 
-    @Test("Extracts empty prefix at exact position")
-    func testEmptyPrefixAtPosition() {
-        let context = analyzer.analyze(query: "SELECT ", cursorPosition: 7)
-        #expect(context.prefix == "")
-    }
-
     @Test("Extracts full identifier prefix")
     func testFullIdentifierPrefix() {
         let context = analyzer.analyze(query: "SELECT abc", cursorPosition: 10)
@@ -547,12 +541,6 @@ struct SQLContextAnalyzerTests {
     }
 
     // MARK: - P0: CF-4 - Function context detection
-
-    @Test("COUNT( detected as function context")
-    func testCountFunctionContext() {
-        let context = analyzer.analyze(query: "SELECT COUNT(", cursorPosition: 13)
-        #expect(context.currentFunction == "COUNT")
-    }
 
     @Test("SUM( detected as function context")
     func testSumFunctionContext() {

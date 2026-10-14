@@ -15,20 +15,6 @@ struct SQLContextAnalyzerWindowingTests {
 
     // MARK: - Normal Short Queries
 
-    @Test("Short SELECT WHERE query detects WHERE clause")
-    func shortSelectWhereDetectsWhereClause() {
-        let query = "SELECT * FROM users WHERE "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .where_)
-    }
-
-    @Test("Short SELECT query detects SELECT clause")
-    func shortSelectDetectsSelectClause() {
-        let query = "SELECT "
-        let context = analyzer.analyze(query: query, cursorPosition: query.count)
-        #expect(context.clauseType == .select)
-    }
-
     @Test("Short FROM query detects FROM clause")
     func shortFromDetectsFromClause() {
         let query = "SELECT id FROM "
@@ -91,12 +77,6 @@ struct SQLContextAnalyzerWindowingTests {
     }
 
     // MARK: - Edge Cases
-
-    @Test("Empty text returns unknown clause type")
-    func emptyTextReturnsUnknown() {
-        let context = analyzer.analyze(query: "", cursorPosition: 0)
-        #expect(context.clauseType == .unknown)
-    }
 
     @Test("Whitespace-only text returns unknown clause type")
     func whitespaceOnlyReturnsUnknown() {

@@ -7,50 +7,75 @@ import CryptoKit
 import Foundation
 import os
 
+struct CopilotBinaryDigests: Sendable, Equatable {
+    let tarballSHA256: String
+    let binarySHA256: String
+}
+
 actor CopilotBinaryManager {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CopilotBinary")
     static let shared = CopilotBinaryManager()
 
+    /// Bumped by an app release, never resolved at runtime, so what runs is what was reviewed.
+    static let pinnedVersion = "1.551.2"
+
+    static let defaultPinnedDigests: [String: CopilotBinaryDigests] = [
+        "darwin-arm64": CopilotBinaryDigests(
+            tarballSHA256: "3dd2f395464629759bdb149af4c1551c0b1282d1183956d5cac56e1238863e02",
+            binarySHA256: "8e13bc14e015eb77a85bff574ee3c1b29a6d87577d9ab09c95f44ed200d166f2"
+        ),
+        "darwin-x64": CopilotBinaryDigests(
+            tarballSHA256: "8b47ac2d86b36a4298b65dfa6661cb118c9bf64b114d8a0f7e502633c6a6ea0d",
+            binarySHA256: "864336325b534b22c4851d7b056ddf4daaf057ee70ac504d33f6db168ca7f4dc"
+        )
+    ]
+
     private let baseDirectory: URL
+    private let pinnedDigests: [String: CopilotBinaryDigests]
+    private let fetch: @Sendable (URL) async throws -> Data
     private var downloadTask: Task<Void, Error>?
 
-    init(baseDirectory: URL? = nil) {
+    init(
+        baseDirectory: URL? = nil,
+        pinnedDigests: [String: CopilotBinaryDigests] = CopilotBinaryManager.defaultPinnedDigests,
+        fetch: @escaping @Sendable (URL) async throws -> Data = { try await URLSession.shared.data(from: $0).0 }
+    ) {
         let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
         self.baseDirectory = baseDirectory
             ?? appSupport.appendingPathComponent("TablePro/copilot-language-server", isDirectory: true)
+        self.pinnedDigests = pinnedDigests
+        self.fetch = fetch
     }
 
-    /// Whether the installed binary still matches the digest recorded when it was extracted.
-    ///
-    /// This catches a truncated download, a half-finished extraction and a file left behind by a
-    /// failed install, and it makes those reinstall instead of being executed.
-    ///
-    /// It is deliberately **not** an integrity control against a deliberate swap, and must not be
-    /// described as one. `sha256.txt` sits in the same user-writable directory as the binary it
-    /// attests to, so anything able to replace the binary can rewrite the digest in the same
-    /// breath. A real control needs an attestation the app can pin, and npm has none to pin
-    /// against: this package is fetched from the `latest` tag, so the version is whatever the
-    /// registry served that day. Compare `CloudSQLProxyBinaryManager`, where the version and the
-    /// checksum are both pinned in source and the check does carry weight.
-    func installedBinaryIsIntact() -> Bool {
+    static var tarballURL: URL? {
+        URL(string: "https://registry.npmjs.org/@github/copilot-language-server-\(platform)/-/copilot-language-server-\(platform)-\(pinnedVersion).tgz")
+    }
+
+    /// Re-read on every launch: the binary lives in a user-writable directory, so the pinned
+    /// digest is the only thing attesting to what is about to run.
+    func installedBinaryIsCurrent() -> Bool {
         guard FileManager.default.isExecutableFile(atPath: binaryExecutablePath) else { return false }
 
-        guard let recorded = recordedDigest() else {
-            Self.logger.info("Copilot language server has no recorded digest, reinstalling")
+        guard installedVersion() == Self.pinnedVersion else {
+            Self.logger.info("Copilot language server on disk is not the pinned version, reinstalling")
             return false
         }
 
-        guard DownloadedBinary.sha256Hex(ofFileAt: binaryExecutablePath) == recorded else {
-            Self.logger.error("Copilot language server does not match its recorded digest, reinstalling")
+        guard let expected = pinnedDigests[Self.platform]?.binarySHA256 else {
+            Self.logger.error("No pinned Copilot language server digest for \(Self.platform, privacy: .public)")
+            return false
+        }
+
+        guard DownloadedBinary.sha256Hex(ofFileAt: binaryExecutablePath) == expected else {
+            Self.logger.error("Copilot language server on disk does not match its pinned digest, reinstalling")
             return false
         }
         return true
     }
 
     func ensureBinary() async throws -> String {
-        let path = binaryExecutablePath
-        if installedBinaryIsIntact() {
-            return path
+        if installedBinaryIsCurrent() {
+            return binaryExecutablePath
         }
 
         if let existing = downloadTask {
@@ -68,49 +93,60 @@ actor CopilotBinaryManager {
             }
         }
 
-        guard installedBinaryIsIntact() else {
+        guard installedBinaryIsCurrent() else {
             throw CopilotError.binaryNotFound
         }
-        return path
+        return binaryExecutablePath
+    }
+
+    func installedVersion() -> String? {
+        try? String(contentsOf: versionFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func downloadBinary() async throws {
-        try FileManager.default.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
-
-        let platform = self.platform
-        let optionalDep = "@github/copilot-language-server-\(platform)"
-
-        guard let registryURL = URL(string: "https://registry.npmjs.org/\(optionalDep)/latest") else {
-            throw CopilotError.binaryNotFound
-        }
-        let (data, _) = try await URLSession.shared.data(from: registryURL)
-
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let dist = json["dist"] as? [String: Any],
-              let tarballURLString = dist["tarball"] as? String,
-              let tarballURL = URL(string: tarballURLString) else {
+        guard let digests = pinnedDigests[Self.platform], let url = Self.tarballURL else {
             throw CopilotError.binaryNotFound
         }
 
-        let (tarballData, _) = try await URLSession.shared.data(from: tarballURL)
-
-        guard let integrityValue = dist["integrity"] as? String else {
-            Self.logger.error("No integrity hash in npm registry response")
+        let tarball = try await fetch(url)
+        guard Self.sha256Hex(of: tarball) == digests.tarballSHA256 else {
+            Self.logger.error("Copilot language server download does not match its pinned digest, refusing to install")
             throw CopilotError.binaryNotFound
         }
 
-        let actualHash = "sha512-" + tarballData.sha512Base64String()
-        if actualHash != integrityValue {
-            Self.logger.error("Binary integrity mismatch")
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
+        let staging = baseDirectory.appendingPathComponent("staging-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: staging, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: staging) }
+
+        let archive = staging.appendingPathComponent("download.tgz")
+        try tarball.write(to: archive)
+        try await Self.extractBinary(from: archive, into: staging)
+
+        let extracted = staging.appendingPathComponent("copilot-language-server")
+        guard DownloadedBinary.sha256Hex(ofFileAt: extracted.path) == digests.binarySHA256 else {
+            Self.logger.error("Extracted Copilot language server does not match its pinned digest, refusing to install")
             throw CopilotError.binaryNotFound
         }
 
-        let tempTar = baseDirectory.appendingPathComponent("download.tar.gz")
-        try tarballData.write(to: tempTar)
+        if fileManager.fileExists(atPath: binaryExecutablePath) {
+            try fileManager.removeItem(atPath: binaryExecutablePath)
+        }
+        try fileManager.moveItem(atPath: extracted.path, toPath: binaryExecutablePath)
+        try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binaryExecutablePath)
+        DownloadedBinary.stripQuarantine(at: URL(fileURLWithPath: binaryExecutablePath))
 
+        try Self.pinnedVersion.write(to: versionFile, atomically: true, encoding: .utf8)
+        Self.logger.info("Installed Copilot language server \(Self.pinnedVersion, privacy: .public)")
+    }
+
+    private static func extractBinary(from archive: URL, into directory: URL) async throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-        process.arguments = ["xzf", tempTar.path, "-C", baseDirectory.path, "--strip-components=1", "package/copilot-language-server"]
+        process.arguments = [
+            "xzf", archive.path, "-C", directory.path, "--strip-components=1", "package/copilot-language-server"
+        ]
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             process.terminationHandler = { proc in
@@ -126,75 +162,25 @@ actor CopilotBinaryManager {
                 continuation.resume(throwing: error)
             }
         }
-
-        try? FileManager.default.removeItem(at: tempTar)
-
-        if !FileManager.default.fileExists(atPath: binaryExecutablePath) {
-            let enumerator = FileManager.default.enumerator(at: baseDirectory, includingPropertiesForKeys: nil)
-            while let fileURL = enumerator?.nextObject() as? URL {
-                if fileURL.lastPathComponent == "copilot-language-server" {
-                    let foundPath = fileURL.path
-                    if foundPath != binaryExecutablePath {
-                        try FileManager.default.moveItem(atPath: foundPath, toPath: binaryExecutablePath)
-                        Self.logger.info("Moved binary from \(foundPath) to expected location")
-                    }
-                    break
-                }
-            }
-        }
-
-        try FileManager.default.setAttributes(
-            [.posixPermissions: 0o755],
-            ofItemAtPath: binaryExecutablePath
-        )
-
-        DownloadedBinary.stripQuarantine(at: URL(fileURLWithPath: binaryExecutablePath))
-
-        guard let digest = DownloadedBinary.sha256Hex(ofFileAt: binaryExecutablePath) else {
-            throw CopilotError.binaryNotFound
-        }
-        try digest.write(to: digestFile, atomically: true, encoding: .utf8)
-
-        if let version = json["version"] as? String {
-            try version.write(to: versionFile, atomically: true, encoding: .utf8)
-            Self.logger.info("Installed Copilot language server version \(version, privacy: .public)")
-        }
-
-        Self.logger.info("Downloaded Copilot language server binary")
     }
 
-    func installedVersion() -> String? {
-        try? String(contentsOf: versionFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func recordedDigest() -> String? {
-        try? String(contentsOf: digestFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+    private static func sha256Hex(of data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     private var versionFile: URL {
         baseDirectory.appendingPathComponent("version.txt")
     }
 
-    private var digestFile: URL {
-        baseDirectory.appendingPathComponent("sha256.txt")
-    }
-
     private var binaryExecutablePath: String {
         baseDirectory.appendingPathComponent("copilot-language-server").path
     }
 
-    private var platform: String {
+    static var platform: String {
         #if arch(arm64)
         return "darwin-arm64"
         #else
         return "darwin-x64"
         #endif
-    }
-}
-
-private extension Data {
-    func sha512Base64String() -> String {
-        let digest = SHA512.hash(data: self)
-        return Data(digest).base64EncodedString()
     }
 }

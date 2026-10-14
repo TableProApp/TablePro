@@ -91,18 +91,18 @@ final class AlertHelper {
         in window: NSWindow?,
         completion: @escaping @MainActor (NSApplication.ModalResponse) -> Void = { _ in }
     ) {
+        let attention = AppActivationPolicyController.shared.requestAttention()
         guard let parent = resolveWindow(window) else {
-            /// The two sibling detached-modal paths already come forward before they block, and this
-            /// one did not. An alert nobody can see still holds a nested modal run loop, and a
-            /// process serving MCP in the background has no window to click and no Dock icon to
-            /// reach for, so the caller waits on an answer that can never be given.
-            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             let response = alert.runModal()
+            AppActivationPolicyController.shared.endAttentionRequest(attention)
             AppActivationPolicyController.shared.reevaluate()
             completion(response)
             return
         }
-        alert.beginSheetModal(for: parent, completionHandler: completion)
+        alert.beginSheetModal(for: parent) { response in
+            AppActivationPolicyController.shared.endAttentionRequest(attention)
+            completion(response)
+        }
     }
 
     static func response(to alert: NSAlert, in window: NSWindow?) async -> NSApplication.ModalResponse {
@@ -167,22 +167,29 @@ final class AlertHelper {
 
     // MARK: - Cross-Process Approval
 
-    static func runApprovalModal(
+    /// Return and Escape both refuse. `NSAlert` gives a button one key equivalent, so no alert can
+    /// bind both to Deny; the decision window takes Escape and the view gives Deny Return.
+    static func runCrossProcessApproval(
         title: String,
         message: String,
         confirm: String,
         cancel: String
     ) async -> Bool {
-        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = message
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: confirm)
-        alert.addButton(withTitle: cancel)
-        let response = alert.runModal()
-        AppActivationPolicyController.shared.reevaluate()
-        return response == .alertFirstButtonReturn
+        let gate = ModalDecisionGate<Bool>.confirmation()
+        let allowed = try? await runHostedDecision(
+            title: title,
+            fittingWidth: CrossProcessApprovalView.width,
+            gate: gate,
+            window: nil,
+            rootView: CrossProcessApprovalView(
+                title: title,
+                message: message,
+                allowTitle: confirm,
+                denyTitle: cancel,
+                onDecide: { gate.deliver(.success($0)) }
+            )
+        )
+        return allowed ?? false
     }
 
     /// Pairing is a security decision, so the attached case uses a critical sheet: it must not
@@ -290,37 +297,52 @@ final class AlertHelper {
             size: ModalDecisionWindowSizing.contentSize(fitting: fitted, within: budget)
         )
 
-        host.title = title
-        let sheetWindow = ModalDecisionWindow(contentViewController: host)
-        sheetWindow.styleMask = styleMask
-        sheetWindow.isReleasedWhenClosed = false
-        /// The HIG gives Escape to Cancel on every alert and sheet, and a confirmation that came
-        /// forward over the user's own work is exactly the one that has to stay dismissable.
-        sheetWindow.onCancel = { [weak gate] in gate?.cancel() }
-
-        let delegate = ModalDecisionWindowDelegate { [weak gate] in gate?.cancel() }
-        gate.windowDelegate = delegate
-        sheetWindow.delegate = delegate
+        let sheetWindow = decisionWindow(hosting: host, title: title, styleMask: styleMask, gate: gate)
+        let attention = AppActivationPolicyController.shared.requestAttention()
 
         guard let parent else {
             gate.onResolve = { [weak sheetWindow] in
+                AppActivationPolicyController.shared.endAttentionRequest(attention)
                 guard let sheetWindow else { return }
                 sheetWindow.close()
                 AppActivationPolicyController.shared.reevaluate(excluding: sheetWindow)
             }
-            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
+            /// The level an app-modal alert runs at, so the decision shows over other apps while
+            /// the keyboard stays with the one the person is using.
+            sheetWindow.level = .modalPanel
             sheetWindow.center()
             sheetWindow.makeKeyAndOrderFront(nil)
             return try await gate.value()
         }
 
         gate.onResolve = { [weak sheetWindow] in
+            AppActivationPolicyController.shared.endAttentionRequest(attention)
             guard let sheetWindow else { return }
             parent.endSheet(sheetWindow)
             sheetWindow.close()
         }
         parent.beginCriticalSheet(sheetWindow, completionHandler: nil)
         return try await gate.value()
+    }
+
+    static func decisionWindow<Value: Sendable>(
+        hosting host: NSViewController,
+        title: String,
+        styleMask: NSWindow.StyleMask,
+        gate: ModalDecisionGate<Value>
+    ) -> ModalDecisionWindow {
+        host.title = title
+        let window = ModalDecisionWindow(contentViewController: host)
+        window.styleMask = styleMask
+        window.isReleasedWhenClosed = false
+        /// The HIG gives Escape to Cancel on every alert and sheet, and a confirmation that came
+        /// forward over the user's own work is exactly the one that has to stay dismissable.
+        window.onCancel = { [weak gate] in gate?.cancel() }
+
+        let delegate = ModalDecisionWindowDelegate { [weak gate] in gate?.cancel() }
+        gate.windowDelegate = delegate
+        window.delegate = delegate
+        return window
     }
 
     // MARK: - Save Changes Confirmation

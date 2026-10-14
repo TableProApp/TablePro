@@ -40,8 +40,25 @@ jobs:
     outputs:
       matrix: ${{ steps.tags.outputs.matrix }}
       currentPluginKitVersion: ${{ steps.pkv.outputs.version }}
+      runner: ${{ steps.runner.outputs.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The build job runs the setup-xcode action of the ref it builds. A ref from before Xcode 27
+      # pins 26.x there, and the xcode-27 image has no Xcode 26.
+      - name: Pick the runner for the ref being built
+        id: runner
+        env:
+          REF: ${{ inputs.baseRef || github.ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$REF"
+          ACTION="$(git show FETCH_HEAD:.github/actions/setup-xcode/action.yml)"
+          if grep -qE '(default: "|Xcode_)26\.' <<< "$ACTION"; then
+            echo "runner=macos-26" >> "$GITHUB_OUTPUT"
+          else
+            echo "runner=xcode-27" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Validate registry update script
         run: python3 .github/scripts/test_update_registry.py
@@ -118,7 +135,7 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: write
-    runs-on: macos-26
+    runs-on: ${{ needs.resolve-tags.outputs.runner }}
     timeout-minutes: 30
     strategy:
       matrix: ${{ fromJson(needs.resolve-tags.outputs.matrix) }}
@@ -185,6 +202,12 @@ jobs:
       - name: Build the SAP HANA helper
         if: ${{ contains(matrix.tag, 'plugin-hana-') }}
         run: ./scripts/build-hana.sh both
+
+      # The helper ships inside the plugin, and only a release changes what users run.
+      - name: Check the SAP HANA helper for known vulnerabilities
+        if: ${{ contains(matrix.tag, 'plugin-hana-') }}
+        working-directory: Native/HanaBridge
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
       # NOTARIZE is not optional. Gatekeeper refuses to load an unnotarized plugin bundle
       # into TablePro, so a build that skips it publishes a driver no user can open.
@@ -310,7 +333,7 @@ jobs:
           Plugin release for TablePro (PluginKit $PKV).
 
           ### Installation
-          TablePro will prompt you to install this plugin automatically when you select the database type. You can also install manually via Settings > Plugins > Browse.
+          TablePro offers to install this plugin where it is needed. To install it by hand, add the zip below in Settings > Plugins.
 
           ### SHA-256
           - ARM64: \`$ARM64_SHA\`

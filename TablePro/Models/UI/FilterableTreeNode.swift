@@ -3,7 +3,6 @@
 //  TablePro
 //
 
-import AppKit
 import Foundation
 
 internal protocol FilterableTreeNode: Identifiable {
@@ -170,6 +169,7 @@ internal struct TreeSiblingCounter {
 // MARK: - Row Content
 
 internal enum TreeValueTone: Equatable, Sendable {
+    case key
     case container
     case string
     case number
@@ -177,18 +177,6 @@ internal enum TreeValueTone: Equatable, Sendable {
     case serialized
     case reference
     case muted
-
-    var color: NSColor {
-        switch self {
-        case .container: return .systemBlue
-        case .string: return .systemRed
-        case .number: return .systemPurple
-        case .literal: return .systemOrange
-        case .serialized: return .systemTeal
-        case .reference: return .systemGray
-        case .muted: return .secondaryLabelColor
-        }
-    }
 }
 
 internal struct TreeRowContent: Equatable, Sendable {

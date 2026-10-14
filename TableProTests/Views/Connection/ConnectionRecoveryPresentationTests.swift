@@ -12,13 +12,12 @@ import Testing
 
 @MainActor
 struct ConnectionRecoveryPresentationTests {
-    private static let failure = ConnectionFailureInfo(message: "The plugin is turned off.")
+    private static let failure = ConnectionFailureInfo(message: "The plugin could not be loaded.")
 
     @Test("The pane's button names the fix for each action")
     func primaryTitleNamesTheFix() {
         let expected: [(ConnectionRecoveryAction, String)] = [
             (.installPlugin, String(localized: "Install Plugin…")),
-            (.enablePlugin(pluginId: "p"), String(localized: "Enable Plugin")),
             (.openPluginSettings(pluginId: nil), String(localized: "Open Plugin Settings")),
             (.editConnection, String(localized: "Edit Connection…"))
         ]
@@ -38,7 +37,6 @@ struct ConnectionRecoveryPresentationTests {
     @Test("Only a fix made in Settings offers a separate retry")
     func onlySettingsOffersRetry() {
         #expect(ConnectionUnavailableView.offersRetry(for: .actionRequired(Self.failure, .openPluginSettings(pluginId: nil))))
-        #expect(!ConnectionUnavailableView.offersRetry(for: .actionRequired(Self.failure, .enablePlugin(pluginId: "p"))))
         #expect(!ConnectionUnavailableView.offersRetry(for: .actionRequired(Self.failure, .installPlugin)))
         #expect(!ConnectionUnavailableView.offersRetry(for: .actionRequired(Self.failure, .editConnection)))
     }

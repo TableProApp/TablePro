@@ -23,14 +23,7 @@ enum MCPGrantSubject: Sendable, Equatable {
 }
 
 extension MCPPrincipal {
-    /// The subject a durable grant belongs to, or nil when this caller may not earn one.
-    ///
-    /// An anonymous loopback caller collapses to a single shared identity with nothing to
-    /// distinguish one local process from the next, so remembering its answer would silently
-    /// approve every future unauthenticated caller. It keeps the session-only approval it has today.
-    var grantSubject: MCPGrantSubject? {
-        if metadata.isBridgeCredential { return .bridge }
-        guard let tokenId else { return nil }
-        return .token(tokenId)
+    var grantSubject: MCPGrantSubject {
+        metadata.isBridgeCredential ? .bridge : .token(tokenId)
     }
 }

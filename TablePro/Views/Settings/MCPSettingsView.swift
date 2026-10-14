@@ -9,7 +9,6 @@ struct MCPSettingsView: View {
             MCPOutsideServersSection()
         }
         .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
     }
 }
 

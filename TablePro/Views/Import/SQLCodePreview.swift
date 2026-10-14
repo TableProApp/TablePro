@@ -12,27 +12,21 @@ import TableProGrammars
 /// Read-only SQL code preview with syntax highlighting powered by TableProEditorKit
 struct SQLCodePreview: View {
     @ObservedObject private var settingsManager = AppSettingsManager.shared
-    @ObservedObject private var themeEngine = ThemeEngine.shared
     @Binding var text: String
 
     @State private var editorState = SourceEditorState()
     @State private var editorConfiguration = makeConfiguration()
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        if text.isEmpty {
-            Color(nsColor: .textBackgroundColor)
-        } else {
-            SourceEditor(
-                $text,
-                language: .sql,
-                configuration: editorConfiguration,
-                state: $editorState,
-                foldProvider: FoldProviderResolver.provider(for: CodeLanguage.sql)
-            )
-            .onChange(of: colorScheme) { _ in
-                editorConfiguration = Self.makeConfiguration()
-            }
+        SourceEditor(
+            $text,
+            language: .sql,
+            configuration: editorConfiguration,
+            state: $editorState,
+            foldProvider: FoldProviderResolver.provider(for: CodeLanguage.sql)
+        )
+        .onReceive(AppEvents.shared.themeChanged) { _ in
+            editorConfiguration = Self.makeConfiguration()
         }
     }
 

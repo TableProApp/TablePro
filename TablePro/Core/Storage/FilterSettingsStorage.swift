@@ -185,7 +185,7 @@ final class FilterSettingsStorage: TableScopedSettingsStore {
     private var browseSearchCache: [String: BrowseSearchState] = [:]
 
     private convenience init() {
-        self.init(filterStateDirectory: Self.resolvedFilterStateDirectory(), defaults: .standard)
+        self.init(filterStateDirectory: Self.resolvedFilterStateDirectory(), defaults: AppStorageEnvironment.shared.defaults)
     }
 
     init(filterStateDirectory: URL, defaults: UserDefaults) {

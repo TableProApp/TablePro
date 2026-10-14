@@ -45,8 +45,7 @@ internal struct JsonEditorView: View {
                 isEditable: !context.isReadOnly,
                 accessibilityIdentifier: "inspector-json-field"
             )
-                .clipShape(RoundedRectangle(cornerRadius: 5))
-                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
+                .valueWell(clipsContent: true)
                 .overlay(alignment: .bottomTrailing) { actionButtons }
         }
         /// `newValue`, never a re-read of `context.value.wrappedValue`. An `onChange` action

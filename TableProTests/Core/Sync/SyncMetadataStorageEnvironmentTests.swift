@@ -14,7 +14,7 @@ struct SyncMetadataStorageEnvironmentTests {
         #expect(SyncMetadataStorage.appDefault.userDefaults === AppStorageEnvironment.shared.defaults)
     }
 
-    @Test("A storage built for a suite never touches the standard domain")
+    @Test("A storage built for a suite never touches the app's defaults")
     func injectedStorageStaysInItsSuite() throws {
         let suiteName = "syncmetadata-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
@@ -28,7 +28,7 @@ struct SyncMetadataStorageEnvironmentTests {
         #expect(storage.dirtyIds(for: .settings).contains(id))
         #expect(storage.tombstones(for: .settings).contains { $0.id == id })
 
-        let standardDirty = UserDefaults.standard.stringArray(forKey: "com.TablePro.sync.dirty.settings") ?? []
-        #expect(!standardDirty.contains(id))
+        #expect(!SyncMetadataStorage.appDefault.dirtyIds(for: .settings).contains(id))
+        #expect(!SyncMetadataStorage.appDefault.tombstones(for: .settings).contains { $0.id == id })
     }
 }

@@ -58,11 +58,6 @@ extension MainWindowToolbar {
         coordinator?.commandActions?.toggleResults()
     }
 
-    @objc func performShowDashboard(_ sender: Any?) {
-        coordinator?.commandActions?.showServerDashboard()
-    }
-
-
     @objc func performToggleHistory(_ sender: Any?) {
         coordinator?.commandActions?.toggleHistoryPanel()
     }

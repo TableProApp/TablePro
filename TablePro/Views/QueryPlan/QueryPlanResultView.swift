@@ -305,7 +305,7 @@ struct QueryPlanResultView: View {
     private func baselineLabel(_ baseline: QueryPlanSnapshotSummary) -> String {
         let stamp = baseline.capturedAt.formatted(date: .abbreviated, time: .shortened)
         let duration = QueryDurationFormatter.string(from: baseline.executionTime)
-        return String(format: String(localized: "%1$@ · %2$@"), stamp, duration)
+        return String(format: String(localized: "%1$@ (%2$@)"), stamp, duration)
     }
 
     private var fontSizeStepper: some View {

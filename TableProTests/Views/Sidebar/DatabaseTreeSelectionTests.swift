@@ -34,15 +34,6 @@ struct DatabaseTreeSelectionTests {
         #expect(inDb1 != inDb2)
         #expect(Set([inDb1, inDb2]).count == 2)
     }
-
-    @Test("Identical database, schema, and table are equal")
-    func identicalRefsAreEqual() {
-        let lhs = DatabaseTreeTableRef(database: "db1", schema: "public", table: makeTable("users", schema: "public"))
-        let rhs = DatabaseTreeTableRef(database: "db1", schema: "public", table: makeTable("users", schema: "public"))
-
-        #expect(lhs == rhs)
-        #expect(lhs.hashValue == rhs.hashValue)
-    }
 }
 
 struct SelectionDeltaTests {

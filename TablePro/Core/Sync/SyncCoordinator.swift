@@ -21,22 +21,22 @@ final class SyncCoordinator: ObservableObject {
     @Published private(set) var lastSyncDate: Date?
 
     let services: AppServices
-    private let transport: any SyncTransport
+    private let makeTransport: () -> any SyncTransport
+    /// Created on the first run, so no CloudKit container exists while sync stays off.
+    private lazy var transport: any SyncTransport = makeTransport()
     let changeTracker: SyncChangeTracker
     let metadataStorage: SyncMetadataStorage
     let recordCache: SyncRecordCache
     let columnLayouts: () -> FileColumnLayoutPersister
-    private let networkMonitor: SyncNetworkMonitor?
-    private let accountObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
-    private var changeCancellable: AnyCancellable?
+    private let makeNetworkMonitor: () -> SyncNetworkMonitor?
+    /// Why the license keeps sync off, or nil while it allows sync.
+    private let licenseGate: @MainActor () -> DisableReason?
+    private var triggers: SyncTriggers?
     private var licenseCancellable: AnyCancellable?
     private var debounceTask: Task<Void, Never>?
     private var retryTask: Task<Void, Never>?
     private var hasStarted = false
     private var isRunning = false
-    private var isRunningCycle = false
-    private var hasDeferredNotificationPull = false
-    private var notificationPull: Task<Void, Never>?
 
     /// Triggers that arrived while a run was in flight. One more run follows it rather than the
     /// trigger cancelling it: a cancelled run reported itself as a failure.
@@ -62,17 +62,23 @@ final class SyncCoordinator: ObservableObject {
     init(
         services: AppServices = .live,
         recordCache: SyncRecordCache = SyncCoordinator.makeRecordCache(),
-        transport: any SyncTransport = CloudKitSyncEngine(),
-        networkMonitor: SyncNetworkMonitor? = SyncNetworkMonitor(),
-        columnLayouts: @escaping @autoclosure () -> FileColumnLayoutPersister = .shared
+        transport: @escaping @autoclosure () -> any SyncTransport = CloudKitSyncEngine(),
+        makeNetworkMonitor: @escaping () -> SyncNetworkMonitor? = { SyncNetworkMonitor() },
+        columnLayouts: @escaping @autoclosure () -> FileColumnLayoutPersister = .shared,
+        licenseGate: (@MainActor () -> DisableReason?)? = nil
     ) {
         self.services = services
-        self.transport = transport
-        self.networkMonitor = networkMonitor
+        self.makeTransport = transport
+        self.makeNetworkMonitor = makeNetworkMonitor
         self.changeTracker = services.syncTracker
         self.metadataStorage = services.syncMetadataStorage
         self.recordCache = recordCache
         self.columnLayouts = columnLayouts
+        let licenseManager = services.licenseManager
+        self.licenseGate = licenseGate ?? {
+            guard !licenseManager.isFeatureAvailable(.iCloudSync) else { return nil }
+            return SyncCoordinator.licenseDisableReason(for: licenseManager.status)
+        }
         lastSyncDate = metadataStorage.lastSyncDate
     }
 
@@ -85,40 +91,19 @@ final class SyncCoordinator: ObservableObject {
     }
 
     deinit {
-        if let observer = accountObserver.withLockUnchecked({ $0 }) { NotificationCenter.default.removeObserver(observer) }
         debounceTask?.cancel()
         retryTask?.cancel()
     }
 
     // MARK: - Lifecycle
 
-    /// Call from AppDelegate at launch
+    /// Call from AppDelegate at launch. Only the license is observed while sync is off: it decides
+    /// whether sync can turn on, and the Welcome window shows a license that does not cover it.
     func start() {
         guard !hasStarted else { return }
         hasStarted = true
 
-        observeAccountChanges()
-        observeLocalChanges()
         observeLicenseChanges()
-        observeNetwork()
-
-        // If local storage is empty (fresh install or wiped), clear the sync token
-        // to force a full fetch instead of a delta that returns nothing
-        if services.connectionStorage.loadConnections().isEmpty {
-            metadataStorage.saveToken(nil)
-            Self.logger.info("No local connections — cleared sync token for full fetch")
-        }
-
-        /// A pull returns only what changed since the token, so records of a type an earlier build
-        /// did not sync were passed over for good. The first run of a build that syncs more types
-        /// fetches the zone again, which is how table folders made on an upgraded Mac reach one that
-        /// upgrades later. Counted over the types verified in Production, because an unverified type
-        /// has no records on the server to fetch.
-        if metadataStorage.adoptReadableRecordTypes(Set(SyncRecordType.verifiedInProduction.map(\.rawValue))) {
-            metadataStorage.saveToken(nil)
-            Self.logger.info("This build reads record types the last one did not: cleared sync token for full fetch")
-        }
-
         evaluateStatus()
         guard syncStatus.isEnabled else { return }
         Task { await sync(.launch) }
@@ -172,7 +157,7 @@ final class SyncCoordinator: ObservableObject {
         if previousError == nil || trigger == .userRequest {
             syncStatus = .syncing
         }
-        let result = await performCycle(admission)
+        let result = await accountThenPushThenPull(admission)
         isRunning = false
         finish(result, previousError: previousError, from: generation)
         if uploadAgainRequested {
@@ -183,24 +168,12 @@ final class SyncCoordinator: ObservableObject {
     }
 
     internal func runSyncCycle(_ admission: SyncAdmission = .full) async -> SyncError? {
-        await performCycle(admission).failure?.error
+        await accountThenPushThenPull(admission).failure?.error
     }
 
     private struct CycleResult {
         var admission: SyncAdmission
         var failure: SyncStepFailure?
-    }
-
-    private func performCycle(_ admission: SyncAdmission) async -> CycleResult {
-        isRunningCycle = true
-        await notificationPull?.value
-        let result = await accountThenPushThenPull(admission)
-        isRunningCycle = false
-        if hasDeferredNotificationPull {
-            hasDeferredNotificationPull = false
-            await pullForRemoteNotification()
-        }
-        return result
     }
 
     private func accountThenPushThenPull(_ requested: SyncAdmission) async -> CycleResult {
@@ -229,10 +202,6 @@ final class SyncCoordinator: ObservableObject {
 
         let push = admission == .full ? await performPush() : PushReport()
         let pullFailure = await performPull(echoGuard: push.echoGuard)
-        while hasDeferredNotificationPull {
-            hasDeferredNotificationPull = false
-            await performPull(echoGuard: push.echoGuard)
-        }
 
         let zone = metadataStorage.zoneState
         let download = zone.reconciled(downloadFailure: pullFailure)
@@ -396,32 +365,6 @@ final class SyncCoordinator: ObservableObject {
         await sync(next)
     }
 
-    /// Triggered by remote push notification
-    func handleRemoteNotification() {
-        guard syncStatus.isEnabled else { return }
-
-        Task {
-            await pullForRemoteNotification()
-        }
-    }
-
-    internal func pullForRemoteNotification() async {
-        guard !isRunningCycle else {
-            hasDeferredNotificationPull = true
-            return
-        }
-        let previous = notificationPull
-        let pull = Task {
-            await previous?.value
-            await performPull()
-        }
-        notificationPull = pull
-        await pull.value
-        if notificationPull == pull {
-            notificationPull = nil
-        }
-    }
-
     /// Called when user enables sync in settings
     func enableSync() {
         Self.logger.info("enableSync() called")
@@ -540,10 +483,8 @@ final class SyncCoordinator: ObservableObject {
     // MARK: - Status
 
     private func evaluateStatus() {
-        let licenseManager = services.licenseManager
-
-        guard licenseManager.isFeatureAvailable(.iCloudSync) else {
-            decide(.disabled(Self.licenseDisableReason(for: licenseManager.status)))
+        if let reason = licenseGate() {
+            decide(.disabled(reason))
             return
         }
 
@@ -568,7 +509,11 @@ final class SyncCoordinator: ObservableObject {
     private func decide(_ status: SyncStatus) {
         statusGeneration += 1
         syncStatus = status
-        guard !status.isEnabled else { return }
+        guard !status.isEnabled else {
+            arm()
+            return
+        }
+        triggers = nil
         resetRetryState()
         pendingTriggers = []
         debounceTask?.cancel()
@@ -593,8 +538,7 @@ final class SyncCoordinator: ObservableObject {
     }
 
     private func canSync() -> Bool {
-        let licenseManager = services.licenseManager
-        guard licenseManager.isFeatureAvailable(.iCloudSync) else {
+        guard licenseGate() == nil else {
             Self.logger.trace("Sync skipped: license not available")
             return false
         }
@@ -712,8 +656,7 @@ final class SyncCoordinator: ObservableObject {
 
     /// Reports a failed download instead of passing over it: a run whose pull failed did not bring
     /// this Mac up to date, and must not say Synced or move Last Synced.
-    @discardableResult
-    private func performPull(echoGuard: SyncEchoGuard? = nil) async -> SyncStepFailure? {
+    private func performPull(echoGuard: SyncEchoGuard?) async -> SyncStepFailure? {
         let token = metadataStorage.loadToken()
         let tokenStatus = token == nil ? "nil (full fetch)" : "present (delta)"
         Self.logger.info("Pull starting, token: \(tokenStatus)")
@@ -1126,10 +1069,38 @@ final class SyncCoordinator: ObservableObject {
 
     // MARK: - Observers
 
+    /// Runs on each turn from off to on. `decide` drops the triggers on the turn back, so nothing
+    /// listens while sync is off.
+    private func arm() {
+        guard triggers == nil else { return }
+        triggers = SyncTriggers(
+            accountObserver: observeAccountChanges(),
+            localChanges: observeLocalChanges(),
+            networkMonitor: observeNetwork()
+        )
+
+        /// Empty local storage (a fresh install or a wipe) needs a full fetch: a delta returns nothing.
+        if services.connectionStorage.loadConnections().isEmpty {
+            metadataStorage.saveToken(nil)
+            Self.logger.info("No local connections: cleared sync token for full fetch")
+        }
+
+        /// A pull returns only what changed since the token, so records of a type an earlier build
+        /// did not sync were passed over for good. The first run of a build that syncs more types
+        /// fetches the zone again, which is how table folders made on an upgraded Mac reach one that
+        /// upgrades later. Counted over the types verified in Production, because an unverified type
+        /// has no records on the server to fetch. Checked on every turn to on, because a sync turned
+        /// on mid-session after an upgrade would otherwise keep a token from before it.
+        if metadataStorage.adoptReadableRecordTypes(Set(SyncRecordType.verifiedInProduction.map(\.rawValue))) {
+            metadataStorage.saveToken(nil)
+            Self.logger.info("This build reads record types the last one did not: cleared sync token for full fetch")
+        }
+    }
+
     /// The run that follows reads the account and adopts its id, so a sign-out, a switch to another
     /// account, and an account becoming ready are all handled where every other run handles them.
-    private func observeAccountChanges() {
-        let observer = NotificationCenter.default.addObserver(
+    private func observeAccountChanges() -> any NSObjectProtocol {
+        NotificationCenter.default.addObserver(
             forName: .CKAccountChanged,
             object: nil,
             queue: .main
@@ -1138,13 +1109,12 @@ final class SyncCoordinator: ObservableObject {
                 self?.requestSync(.accountChange)
             }
         }
-        accountObserver.withLockUnchecked { $0 = observer }
     }
 
     /// A debounce that has elapsed is never cancelled: an edit made while its run is in flight queues
     /// one more run instead, because cancelling the run mid-request reported a failure.
-    private func observeLocalChanges() {
-        changeCancellable = services.appEvents.syncChangeTracked
+    private func observeLocalChanges() -> AnyCancellable {
+        services.appEvents.syncChangeTracked
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 guard let self, syncStatus.isEnabled else { return }
@@ -1175,8 +1145,9 @@ final class SyncCoordinator: ObservableObject {
     /// The path can come back while a run is still retrying, before that run reports it could not
     /// reach iCloud, and the monitor reports the return only once. So a return during a run is kept
     /// for when it ends.
-    private func observeNetwork() {
-        networkMonitor?.start { [weak self] in
+    private func observeNetwork() -> SyncNetworkMonitor? {
+        let monitor = makeNetworkMonitor()
+        monitor?.start { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if isRunning {
@@ -1188,5 +1159,24 @@ final class SyncCoordinator: ObservableObject {
                 }
             }
         }
+        return monitor
+    }
+}
+
+/// What starts a run while sync is on. Releasing it detaches every observer; the network monitor
+/// stops in its own deinit.
+private final class SyncTriggers {
+    private let accountObserver: any NSObjectProtocol
+    private let localChanges: AnyCancellable
+    private let networkMonitor: SyncNetworkMonitor?
+
+    init(accountObserver: any NSObjectProtocol, localChanges: AnyCancellable, networkMonitor: SyncNetworkMonitor?) {
+        self.accountObserver = accountObserver
+        self.localChanges = localChanges
+        self.networkMonitor = networkMonitor
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(accountObserver)
     }
 }

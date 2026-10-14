@@ -239,13 +239,14 @@ struct MainContentView: View {
         case .documentEditor(let request):
             DocumentEditorSheet(request: request, databaseType: connection.type)
         case .exportDialog, .exportQueryResults, .importDialog, .rowImport,
-             .transferTables, .backupDatabase, .restoreDatabase, .serverSideExport:
+             .transferTables, .backupDatabase, .restoreDatabase:
             transferSheetContent(for: sheet, dismiss: dismissBinding)
         case .maintenance(let operation, let tableName, let database, let schema):
             MaintenanceSheet(
                 operation: operation,
                 tableName: tableName,
                 databaseName: database ?? coordinator.browseDatabaseName,
+                databaseType: connection.type,
                 preview: { options in
                     coordinator.maintenancePreview(
                         operation: operation,
@@ -447,8 +448,23 @@ struct MainContentView: View {
 
     // MARK: - Main Content
 
-    @ViewBuilder
     private var mainContentView: some View {
+        VStack(spacing: 0) {
+            if let warning = toolbarState.connectionWarning {
+                ConnectionWarningBanner(message: warning) {
+                    DatabaseManager.shared.dismissConnectionWarning(for: connection.id)
+                }
+                Divider()
+            }
+            editorContentView
+        }
+        .onChange(of: toolbarState.connectionWarning) { warning in
+            announceConnectionWarning(warning)
+        }
+    }
+
+    @ViewBuilder
+    private var editorContentView: some View {
         MainEditorContentView(
             tabManager: tabManager,
             coordinator: coordinator,

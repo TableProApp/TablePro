@@ -55,7 +55,6 @@ struct PairingApprovalSheet: View {
                 expirySection
             }
             .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
             /// The one greedy child, and the reason the sheet needs a bound at all. A grouped
             /// `Form` is a scroll container, so it answers any proposal with the whole proposed
             /// height: unbounded, it measured `CGFloat.greatestFiniteMagnitude`, and the window
@@ -268,11 +267,6 @@ struct PairingApprovalSheet: View {
 
     private var actionBar: some View {
         DialogFooter {
-            Button(String(localized: "Deny"), role: .cancel) {
-                onComplete(.failure(DatabaseAccessError.userCancelled))
-            }
-            .keyboardShortcut(.cancelAction)
-
             Button(String(localized: "Approve")) {
                 let approval = PairingApproval(
                     grantedPermissions: permissions,
@@ -282,9 +276,12 @@ struct PairingApprovalSheet: View {
                 )
                 onComplete(.success(approval))
             }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.defaultAction)
             .disabled(approveDisabled)
+
+            Button(String(localized: "Deny"), role: .cancel) {
+                onComplete(.failure(DatabaseAccessError.userCancelled))
+            }
+            .keyboardShortcut(.defaultAction)
         }
     }
 

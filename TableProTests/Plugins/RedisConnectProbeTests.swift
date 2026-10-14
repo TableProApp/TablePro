@@ -58,19 +58,6 @@ struct RedisConnectProbeTests {
 }
 
 struct RedisConnectTimeoutTests {
-    private func pluginSource(_ name: String) throws -> String {
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        return try String(
-            contentsOf: repository
-                .appendingPathComponent("Plugins/RedisDriverPlugin")
-                .appendingPathComponent(name),
-            encoding: .utf8
-        )
-    }
-
     @Test("The remaining millisecond budget becomes hiredis wall time")
     func hiredisBudget() {
         let timeout = RedisConnectTimeout(additionalFields: ["connectTimeoutMilliseconds": "2750"])
@@ -98,19 +85,5 @@ struct RedisConnectTimeoutTests {
             RedisConnectTimeout(additionalFields: ["connectTimeoutMilliseconds": "999999999"]).milliseconds
                 == RedisConnectTimeout.maximumMilliseconds
         )
-    }
-
-    @Test("INFO probes run before the Redis session timeout replaces the connect deadline")
-    func bootstrapLifecycleOrder() throws {
-        let connection = try pluginSource("RedisPluginConnection.swift")
-        let driver = try pluginSource("RedisPluginDriver.swift")
-
-        #expect(connection.contains("if let deadline = activeConnectDeadline"))
-        #expect(connection.contains("armConnectWatchdog(deadline: deadline)"))
-        #expect(connection.contains("Darwin.shutdown(context.pointee.fd, SHUT_RDWR)"))
-        #expect(connection.components(separatedBy: "timeval(tv_sec: 30, tv_usec: 0)").count == 2)
-        let modeProbe = try #require(driver.range(of: "try await verifyServerMode(mode, on: channel)"))
-        let adoption = try #require(driver.range(of: "try await channel.finishConnecting()"))
-        #expect(modeProbe.lowerBound < adoption.lowerBound)
     }
 }

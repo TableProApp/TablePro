@@ -2,8 +2,6 @@
 //  ExplainRequestTests.swift
 //  TableProTests
 //
-//  Tests for choosing which EXPLAIN variant runs and what format its output is read as.
-//
 
 import Foundation
 @testable import TablePro
@@ -216,17 +214,4 @@ struct ExplainRequestTests {
     }
 
     private let connectionId = UUID()
-
-    private func repositoryRoot() -> URL {
-        var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        while directory.path != "/" {
-            if FileManager.default.fileExists(
-                atPath: directory.appendingPathComponent("TablePro.xcodeproj").path
-            ) {
-                return directory
-            }
-            directory.deleteLastPathComponent()
-        }
-        return directory
-    }
 }

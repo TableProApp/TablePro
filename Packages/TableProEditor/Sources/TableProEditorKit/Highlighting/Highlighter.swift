@@ -128,9 +128,16 @@ class Highlighter: NSObject {
 
     // MARK: - Public
 
-    /// Invalidates all text in the editor. Useful for updating themes.
+    /// Invalidates all text in the editor, so every provider is asked for its captures again.
     func invalidate() {
         highlightProviders.forEach { $0.invalidate() }
+    }
+
+    /// A theme change moves no capture, so the captures already found are styled again in place. Asking the providers
+    /// again would leave the text unstyled until they answer.
+    func restyle() {
+        guard let textView else { return }
+        styleContainerDidUpdate(in: NSRange(location: 0, length: textView.textStorage.length))
     }
 
     func invalidate(_ set: IndexSet) {

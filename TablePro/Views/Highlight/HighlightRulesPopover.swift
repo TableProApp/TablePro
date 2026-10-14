@@ -94,7 +94,6 @@ struct HighlightRulesPopover: View {
             .onMove(perform: move)
         }
         .listStyle(.plain)
-        .scrollContentBackground(.hidden)
         .frame(height: min(CGFloat(rules.count) * Self.rowHeight + 8, Self.maximumListHeight))
     }
 

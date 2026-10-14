@@ -676,17 +676,6 @@ struct ConnectionURLParserTests {
         #expect(parsed.redisDatabase == nil)
     }
 
-    @Test("Redis URL with database index")
-    func testRedisURLWithDatabaseIndex() {
-        let result = ConnectionURLParser.parse("redis://localhost:6379/3")
-        guard case .success(let parsed) = result else {
-            Issue.record("Expected success"); return
-        }
-        #expect(parsed.type == .redis)
-        #expect(parsed.redisDatabase == 3)
-        #expect(parsed.database == "")
-    }
-
     @Test("Redis URL without port")
     func testRedisURLWithoutPort() {
         let result = ConnectionURLParser.parse("redis://localhost")

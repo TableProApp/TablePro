@@ -19,7 +19,7 @@ struct QueryPlanDetailPane: View {
             } description: {
                 Text(String(localized: "Select a step in the plan to see what it does."))
             }
-            .background(Color(nsColor: .controlBackgroundColor))
+            .themeBackground(.gridBackground, native: Color(nsColor: .controlBackgroundColor))
         }
     }
 
@@ -29,6 +29,7 @@ struct QueryPlanDetailPane: View {
                 HStack(spacing: 6) {
                     Text(node.operation)
                         .font(.headline)
+                        .themeForeground(.gridText, native: .primary)
                     Spacer(minLength: 8)
                     Button {
                         ClipboardService.shared.writeText(QueryPlanNodeSummary.text(for: node))
@@ -47,7 +48,7 @@ struct QueryPlanDetailPane: View {
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .themeBackground(.gridBackground, native: Color(nsColor: .controlBackgroundColor))
         .accessibilityIdentifier("query-plan-detail-pane")
     }
 
@@ -98,6 +99,7 @@ struct QueryPlanDetailPane: View {
                 .frame(width: 90, alignment: .trailing)
             Text(value)
                 .font(.system(.caption, design: .monospaced))
+                .themeForeground(.gridText, native: .primary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }

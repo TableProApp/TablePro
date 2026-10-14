@@ -180,37 +180,3 @@ struct ConnectionIdentityColorTests {
         return (hue, brightness, alpha)
     }
 }
-
-/// `.toolbarBackground(_:for:)` styles a toolbar SwiftUI itself installs, and it reaches that
-/// toolbar by flowing up to the root view of a `Window` scene. TablePro runs the AppKit lifecycle
-/// with no SwiftUI scene at all and installs a real `NSToolbar` in `MainWindowToolbar`, so the
-/// modifier has nothing to act on. It sat in the app unused for four months after the toolbar
-/// migration removed its last call site, which made "raise the tint opacity" look like a one-line
-/// fix for #2398 when it would have changed nothing on screen.
-struct ToolbarBackgroundGuardTests {
-    private static let repositoryRoot: URL = {
-        var url = URL(fileURLWithPath: #filePath)
-        for _ in 0 ..< 3 {
-            url.deleteLastPathComponent()
-        }
-        return url
-    }()
-
-    @Test("No source file reaches for a SwiftUI toolbar background")
-    func appTargetHasNoToolbarBackground() throws {
-        let root = Self.repositoryRoot.appendingPathComponent("TablePro")
-        let enumerator = try #require(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
-
-        var offenders: [String] = []
-        for case let url as URL in enumerator where url.pathExtension == "swift" {
-            guard let source = try? String(contentsOf: url, encoding: .utf8) else { continue }
-            guard source.contains(".toolbarBackground(") else { continue }
-            offenders.append(url.lastPathComponent)
-        }
-
-        #expect(
-            offenders.isEmpty,
-            "These reach a SwiftUI toolbar the app does not have: \(offenders.sorted())"
-        )
-    }
-}

@@ -50,17 +50,18 @@ struct SyncSettings: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        enabled = try container.decode(Bool.self, forKey: .enabled)
-        syncConnections = try container.decode(Bool.self, forKey: .syncConnections)
-        syncGroupsAndTags = try container.decode(Bool.self, forKey: .syncGroupsAndTags)
-        syncSettings = try container.decode(Bool.self, forKey: .syncSettings)
-        syncPasswords = try container.decodeIfPresent(Bool.self, forKey: .syncPasswords) ?? false
-        syncSSHProfiles = try container.decodeIfPresent(Bool.self, forKey: .syncSSHProfiles) ?? true
-        syncCredentialProfiles = try container.decodeIfPresent(Bool.self, forKey: .syncCredentialProfiles) ?? true
-        syncTableFavorites = try container.decodeIfPresent(Bool.self, forKey: .syncTableFavorites) ?? true
-        syncDatabaseFavorites = try container.decodeIfPresent(Bool.self, forKey: .syncDatabaseFavorites) ?? true
-        syncSQLFavorites = try container.decodeIfPresent(Bool.self, forKey: .syncSQLFavorites) ?? true
-        syncTableFolders = try container.decodeIfPresent(Bool.self, forKey: .syncTableFolders) ?? true
+        let fallback = Self.default
+        enabled = container.decodeSetting(.enabled, default: fallback.enabled)
+        syncConnections = container.decodeSetting(.syncConnections, default: fallback.syncConnections)
+        syncGroupsAndTags = container.decodeSetting(.syncGroupsAndTags, default: fallback.syncGroupsAndTags)
+        syncSettings = container.decodeSetting(.syncSettings, default: fallback.syncSettings)
+        syncPasswords = container.decodeSetting(.syncPasswords, default: fallback.syncPasswords)
+        syncSSHProfiles = container.decodeSetting(.syncSSHProfiles, default: fallback.syncSSHProfiles)
+        syncCredentialProfiles = container.decodeSetting(.syncCredentialProfiles, default: fallback.syncCredentialProfiles)
+        syncTableFavorites = container.decodeSetting(.syncTableFavorites, default: fallback.syncTableFavorites)
+        syncDatabaseFavorites = container.decodeSetting(.syncDatabaseFavorites, default: fallback.syncDatabaseFavorites)
+        syncSQLFavorites = container.decodeSetting(.syncSQLFavorites, default: fallback.syncSQLFavorites)
+        syncTableFolders = container.decodeSetting(.syncTableFolders, default: fallback.syncTableFolders)
     }
 
     static let `default` = SyncSettings(

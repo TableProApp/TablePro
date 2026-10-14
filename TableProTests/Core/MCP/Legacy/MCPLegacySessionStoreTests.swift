@@ -477,7 +477,7 @@ struct MCPLegacySessionStoreTests {
 enum LegacyStoreFixtures {
     static let start = Date(timeIntervalSince1970: 1_700_000_000)
 
-    static func owner(fingerprint: String, tokenId: UUID? = nil) -> MCPLegacySessionOwner {
+    static func owner(fingerprint: String, tokenId: UUID = UUID()) -> MCPLegacySessionOwner {
         MCPLegacySessionOwner(tokenId: tokenId, tokenFingerprint: fingerprint)
     }
 

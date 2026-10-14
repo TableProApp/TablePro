@@ -225,7 +225,7 @@ internal struct CompareResultsView: View {
             } icon: {
                 Image(systemName: symbolName(for: result))
             }
-            .foregroundStyle(tint(for: result))
+            .selectionAwareTint(tint(for: result))
         }
     }
 

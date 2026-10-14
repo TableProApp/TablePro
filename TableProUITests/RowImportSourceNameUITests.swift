@@ -1,24 +1,17 @@
 import XCTest
 
-/// Import into Table hands the rows over through a snapshot the data file window writes under a
-/// generated name. The sheet and the table name it proposes have to come from the file the user
-/// opened, not from that snapshot.
-///
-/// Every query is rooted at a window or its sheet, because the sample database's grid publishes
-/// thousands of elements.
+// Import into Table reads the rows from a snapshot the data file window writes under a generated name.
+// The sheet, the proposed table and the table the import creates have to follow the file the user opened.
 final class RowImportSourceNameUITests: UITestCase {
     private let fileName = "genres.csv"
     private let genres = Data("GenreId,Title\n9001,Imported genre\n".utf8)
 
-    func testTheSheetNamesTheDataFileAndProposesATableAfterIt() throws {
-        let app = try launchWithSampleDatabase(andDataFile: fileName, contents: genres)
-        let windows = rowImportWindows(in: app, dataFileTitle: fileName)
-        let sheet = openRowImportSheet(
-            from: windows.dataFile,
-            titled: fileName,
-            into: windows.connection,
-            in: app
-        )
+    func testImportingADataFileAddsItsRowsToANewTable() throws {
+        let launch = try launchWithFixture(openingDataFile: fileName, contents: genres)
+        let app = launch.app
+        let dataWindow = dataFileWindow(in: app)
+        XCTAssertTrue(dataWindow.waitToExist(timeout: 30), "\(fileName) produced no data file window")
+        let sheet = openRowImportSheet(from: dataWindow, titled: fileName, into: launch.window, in: app)
 
         let title = sheet.staticTexts.matching(NSPredicate(format: "value == %@", fileName)).firstMatch
         XCTAssertTrue(title.waitToExist(timeout: 10), "The sheet must be titled after \(fileName)")
@@ -34,6 +27,19 @@ final class RowImportSourceNameUITests: UITestCase {
             "The proposed table must be named after \(fileName), got \(name.value ?? "nothing")"
         )
 
-        sheet.buttons["Cancel"].firstMatch.click()
+        let importButton = sheet.buttons["Import"].firstMatch
+        XCTAssertTrue(
+            waitForPredicate(timeout: 15) { importButton.exists && importButton.isEnabled },
+            "A named new table must be ready to import"
+        )
+        importButton.click()
+
+        XCTAssertTrue(
+            waitForPredicate(timeout: 30) {
+                FixtureFile.rows("SELECT * FROM genres", in: launch.database) == [["9001", "Imported genre"]]
+            },
+            "The import must create genres holding the file's row, the file holds "
+                + "\(FixtureFile.rows("SELECT * FROM genres", in: launch.database) ?? [])"
+        )
     }
 }

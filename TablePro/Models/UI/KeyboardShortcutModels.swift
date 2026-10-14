@@ -449,13 +449,14 @@ struct KeyboardSettings: Codable, Equatable {
         // BoundKey requires `keyCode` and LegacyKeyCombo requires `key`, and
         // neither field exists in the other shape, so the two never decode each
         // other's payload. Modern data is tried first; a legacy file fails that
-        // decode and falls through to migration.
+        // decode and falls through to migration. Only then are unreadable
+        // entries dropped one by one, or a legacy file would lose every entry.
         if let modern = try? container.decodeIfPresent([String: BoundKey].self, forKey: .shortcuts) {
             shortcuts = modern ?? [:]
-        } else if let legacy = try container.decodeIfPresent([String: LegacyKeyCombo].self, forKey: .shortcuts) {
+        } else if let legacy = try? container.decode([String: LegacyKeyCombo].self, forKey: .shortcuts) {
             shortcuts = legacy.compactMapValues { $0.migrated() }
         } else {
-            shortcuts = [:]
+            shortcuts = container.decodeSettingEntries(.shortcuts)
         }
     }
 

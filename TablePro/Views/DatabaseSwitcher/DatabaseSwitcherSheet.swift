@@ -134,7 +134,6 @@ struct DatabaseSwitcherSheet: View {
                 }
             }
             .listStyle(.inset)
-            .scrollContentBackground(.hidden)
             .focused($focus, equals: .list)
             .onChange(of: viewModel.selectedDatabase) { newValue in
                 guard let item = newValue else { return }

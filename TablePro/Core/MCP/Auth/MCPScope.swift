@@ -7,15 +7,6 @@ public enum MCPScope: String, Sendable, Equatable, Hashable, CaseIterable {
     case admin
     case connectionsDisplay = "connections:display"
 
-    public var requiresIssuedToken: Bool {
-        switch self {
-        case .toolsRead, .resourcesRead:
-            return false
-        case .toolsWrite, .admin, .connectionsDisplay:
-            return true
-        }
-    }
-
     public static let readOnlySet: Set<MCPScope> = [.toolsRead, .resourcesRead]
     public static let readWriteSet: Set<MCPScope> = [.toolsRead, .toolsWrite, .resourcesRead]
     public static let fullAccessSet: Set<MCPScope> = [.toolsRead, .toolsWrite, .resourcesRead, .admin]

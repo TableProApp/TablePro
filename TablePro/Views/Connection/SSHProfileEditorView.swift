@@ -83,7 +83,6 @@ struct SSHProfileEditorView: View {
                 jumpHostsSection
             }
             .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
 
             Divider()
             bottomBar

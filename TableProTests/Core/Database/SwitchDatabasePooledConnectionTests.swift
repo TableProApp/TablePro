@@ -16,8 +16,7 @@ import Testing
 @Suite("Switch database and pooled connections", .serialized)
 @MainActor
 struct SwitchDatabasePooledConnectionTests {
-    /// Reopens its connection to change database and has no driver plugin registered, so every switch
-    /// reaches the reconnect and fails there with no network and no waiting.
+    // No driver plugin and no plugin load in the test host, so every switch's reconnect fails at once, with no network.
     private static let typeId = "PooledSwitchReconnectFake"
 
     private func registerTypeIfNeeded() {

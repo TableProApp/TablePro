@@ -7,7 +7,6 @@ struct MCPSettings: Codable, Equatable {
     var maxRowLimit: Int
     var queryTimeoutSeconds: Int
     var logQueriesInHistory: Bool
-    var requireAuthentication: Bool
     var connectionApproval: MCPConnectionApproval
     var allowsHiddenConnectionListing: Bool
 
@@ -18,7 +17,6 @@ struct MCPSettings: Codable, Equatable {
         maxRowLimit: 10_000,
         queryTimeoutSeconds: 30,
         logQueriesInHistory: true,
-        requireAuthentication: true,
         connectionApproval: .oncePerConnection,
         allowsHiddenConnectionListing: false
     )
@@ -30,7 +28,6 @@ struct MCPSettings: Codable, Equatable {
         maxRowLimit: Int = 10_000,
         queryTimeoutSeconds: Int = 30,
         logQueriesInHistory: Bool = true,
-        requireAuthentication: Bool = true,
         connectionApproval: MCPConnectionApproval = .oncePerConnection,
         allowsHiddenConnectionListing: Bool = false
     ) {
@@ -40,27 +37,24 @@ struct MCPSettings: Codable, Equatable {
         self.maxRowLimit = maxRowLimit
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.logQueriesInHistory = logQueriesInHistory
-        self.requireAuthentication = requireAuthentication
         self.connectionApproval = connectionApproval
         self.allowsHiddenConnectionListing = allowsHiddenConnectionListing
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
-        let rawPort = try container.decodeIfPresent(Int.self, forKey: .port) ?? 23_508
-        port = (1...65_535).contains(rawPort) ? rawPort : 23_508
-        defaultRowLimit = try container.decodeIfPresent(Int.self, forKey: .defaultRowLimit) ?? 500
-        maxRowLimit = try container.decodeIfPresent(Int.self, forKey: .maxRowLimit) ?? 10_000
-        queryTimeoutSeconds = try container.decodeIfPresent(Int.self, forKey: .queryTimeoutSeconds) ?? 30
-        logQueriesInHistory = try container.decodeIfPresent(Bool.self, forKey: .logQueriesInHistory) ?? true
-        requireAuthentication = try container.decodeIfPresent(Bool.self, forKey: .requireAuthentication) ?? true
-        connectionApproval = try container.decodeIfPresent(
-            MCPConnectionApproval.self, forKey: .connectionApproval
-        ) ?? .oncePerConnection
-        allowsHiddenConnectionListing = try container.decodeIfPresent(
-            Bool.self, forKey: .allowsHiddenConnectionListing
-        ) ?? false
+        let fallback = Self.default
+        enabled = container.decodeSetting(.enabled, default: fallback.enabled)
+        let rawPort = container.decodeSetting(.port, default: fallback.port)
+        port = (1...65_535).contains(rawPort) ? rawPort : fallback.port
+        defaultRowLimit = container.decodeSetting(.defaultRowLimit, default: fallback.defaultRowLimit)
+        maxRowLimit = container.decodeSetting(.maxRowLimit, default: fallback.maxRowLimit)
+        queryTimeoutSeconds = container.decodeSetting(.queryTimeoutSeconds, default: fallback.queryTimeoutSeconds)
+        logQueriesInHistory = container.decodeSetting(.logQueriesInHistory, default: fallback.logQueriesInHistory)
+        connectionApproval = container.decodeSetting(.connectionApproval, default: fallback.connectionApproval)
+        allowsHiddenConnectionListing = container.decodeSetting(
+            .allowsHiddenConnectionListing, default: fallback.allowsHiddenConnectionListing
+        )
 
         maxRowLimit = validatedMaxRowLimit
         defaultRowLimit = validatedDefaultRowLimit

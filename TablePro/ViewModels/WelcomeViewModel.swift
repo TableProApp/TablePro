@@ -157,6 +157,7 @@ final class WelcomeViewModel: ObservableObject {
     private let importableAppDetector: @MainActor () -> Bool
     private let groupExpansionStore: WelcomeGroupExpansionStore
     private let hasStoredGroupExpansion: Bool
+    let isUITestSandbox: Bool
 
     // MARK: - Initialization
 
@@ -169,13 +170,15 @@ final class WelcomeViewModel: ObservableObject {
         importableAppDetector: @escaping @MainActor () -> Bool = WelcomeViewModel.detectImportableApp,
         groupExpansionStore: WelcomeGroupExpansionStore = WelcomeGroupExpansionStore(),
         recentConnections: RecentConnectionsStore = .shared,
-        listPreferences: ConnectionListPreferences = .shared
+        listPreferences: ConnectionListPreferences = .shared,
+        isUITestSandbox: Bool = AppStorageEnvironment.shared.isIsolated
     ) {
         self.services = services
         self.importableAppDetector = importableAppDetector
         self.groupExpansionStore = groupExpansionStore
         self.recentConnections = recentConnections
         self.listPreferences = listPreferences
+        self.isUITestSandbox = isUITestSandbox
         self.sortMode = listPreferences.sortMode
         self.showsRecent = listPreferences.showsRecent
         let storedExpansion = groupExpansionStore.load()
@@ -699,9 +702,7 @@ final class WelcomeViewModel: ObservableObject {
     func performConnectionErrorRecovery() {
         guard let recovery = connectionErrorRecovery else { return }
         dismissConnectionError()
-        ConnectionRecoveryPerformer.perform(recovery.action, for: recovery.connection) { [weak self] in
-            self?.connectToDatabase(recovery.connection)
-        }
+        ConnectionRecoveryPerformer.perform(recovery.action, for: recovery.connection)
     }
 
     func dismissConnectionError() {

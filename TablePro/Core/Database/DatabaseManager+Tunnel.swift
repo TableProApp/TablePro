@@ -181,8 +181,11 @@ extension DatabaseManager {
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
 
             do {
-                try await connectToSession(session.connection)
+                try await connectToSession(session.connection, trigger: .background)
                 Self.logger.info("Successfully reconnected \(kind, privacy: .public) tunnel for: \(session.connection.name)")
+                return
+            } catch is PreConnectScriptConsentError {
+                /// The refusal is already the session's recorded reason, and a retry gets the same one.
                 return
             } catch {
                 Self.logger.warning("\(kind, privacy: .public) reconnect attempt \(retryCount + 1) failed: \(error.localizedDescription)")

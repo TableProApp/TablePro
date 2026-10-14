@@ -54,109 +54,57 @@ struct AppLanguageTests {
     }
 }
 
-struct GeneralSettingsTests {
-    @Test("Defaults to off")
-    func defaultsOff() {
-        #expect(GeneralSettings.default.showRecentTables == false)
-        #expect(GeneralSettings().showRecentTables == false)
+struct GeneralSettingsBoolSettingTests {
+    struct BoolSetting: Sendable, CustomTestStringConvertible {
+        let key: String
+        let defaultValue: Bool
+
+        var testDescription: String { key }
     }
 
-    @Test("Decoding settings without the key keeps recent tables off")
-    func decodesMissingKeyAsOff() throws {
-        let json = Data(#"{"startupBehavior":"showWelcome"}"#.utf8)
-        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: json)
-        #expect(decoded.showRecentTables == false)
-    }
+    static let settings = [
+        BoolSetting(key: "shareAnalytics", defaultValue: true),
+        BoolSetting(key: "showRecentTables", defaultValue: false),
+        BoolSetting(key: "showObjectComments", defaultValue: true),
+        BoolSetting(key: "showObjectIcons", defaultValue: true),
+        BoolSetting(key: "showSystemContainers", defaultValue: false),
+        BoolSetting(key: "showPartitions", defaultValue: true),
+        BoolSetting(key: "showWorkspaceRail", defaultValue: true),
+        BoolSetting(key: "showWelcomeVersionInfo", defaultValue: true)
+    ]
 
-    @Test("Round-trips when enabled")
-    func roundTripsEnabled() throws {
-        var settings = GeneralSettings()
-        settings.showRecentTables = true
+    private static func encoded(_ settings: GeneralSettings) throws -> [String: Any] {
         let data = try JSONEncoder().encode(settings)
-        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: data)
-        #expect(decoded.showRecentTables == true)
-    }
-}
-
-struct GeneralSettingsObjectIconsTests {
-    @Test("Defaults to on")
-    func defaultsOn() {
-        #expect(GeneralSettings.default.showObjectIcons == true)
-        #expect(GeneralSettings().showObjectIcons == true)
+        return try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
-    @Test("Decoding settings saved before the key existed keeps icons on")
-    func decodesMissingKeyAsOn() throws {
-        let json = Data(#"{"startupBehavior":"showWelcome"}"#.utf8)
-        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: json)
-        #expect(decoded.showObjectIcons == true)
+    private static func decoded(_ object: [String: Any]) throws -> GeneralSettings {
+        try JSONDecoder().decode(GeneralSettings.self, from: JSONSerialization.data(withJSONObject: object))
     }
 
-    @Test("Round-trips when disabled")
-    func roundTripsDisabled() throws {
-        var settings = GeneralSettings()
-        settings.showObjectIcons = false
-        let data = try JSONEncoder().encode(settings)
-        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: data)
-        #expect(decoded.showObjectIcons == false)
+    @Test("Starts at its default", arguments: settings)
+    func startsAtDefault(_ setting: BoolSetting) throws {
+        #expect(try Self.encoded(.default)[setting.key] as? Bool == setting.defaultValue)
+        #expect(try Self.encoded(GeneralSettings())[setting.key] as? Bool == setting.defaultValue)
     }
 
-    @Test("Icons and comments are independent")
-    func independentFromComments() throws {
-        var settings = GeneralSettings()
-        settings.showObjectIcons = false
-        let data = try JSONEncoder().encode(settings)
-        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: data)
-        #expect(decoded.showObjectIcons == false)
-        #expect(decoded.showObjectComments == true)
-    }
-}
-
-struct GeneralSettingsWorkspaceRailTests {
-    @Test("Defaults to on")
-    func defaultsOn() {
-        #expect(GeneralSettings.default.showWorkspaceRail)
-        #expect(GeneralSettings().showWorkspaceRail)
+    @Test("Settings saved before the key existed decode to the default", arguments: settings)
+    func decodesMissingKeyAsDefault(_ setting: BoolSetting) throws {
+        let decoded = try Self.decoded(["startupBehavior": "showWelcome"])
+        #expect(try Self.encoded(decoded)[setting.key] as? Bool == setting.defaultValue)
     }
 
-    @Test("Settings saved before the rail existed keep it on")
-    func decodesMissingKeyAsOn() throws {
-        let json = Data(#"{"startupBehavior":"showWelcome"}"#.utf8)
-        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: json)
-        #expect(decoded.showWorkspaceRail)
-    }
+    @Test("Round-trips the other value and leaves every other setting alone", arguments: settings)
+    func roundTripsTheOtherValue(_ setting: BoolSetting) throws {
+        var object = try Self.encoded(.default)
+        object[setting.key] = !setting.defaultValue
 
-    @Test("Round-trips when turned off")
-    func roundTripsDisabled() throws {
-        var settings = GeneralSettings()
-        settings.showWorkspaceRail = false
-        let data = try JSONEncoder().encode(settings)
-        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: data)
-        #expect(!decoded.showWorkspaceRail)
-    }
-}
+        let roundTripped = try Self.encoded(Self.decoded(object))
 
-struct GeneralSettingsSystemContainersTests {
-    @Test("Defaults to off")
-    func defaultsOff() {
-        #expect(GeneralSettings.default.showSystemContainers == false)
-        #expect(GeneralSettings().showSystemContainers == false)
-    }
-
-    @Test("Settings saved before the key existed keep system databases hidden in the sidebar")
-    func decodesMissingKeyAsOff() throws {
-        let json = Data(#"{"startupBehavior":"showWelcome"}"#.utf8)
-        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: json)
-        #expect(decoded.showSystemContainers == false)
-    }
-
-    @Test("Round-trips when turned on")
-    func roundTripsEnabled() throws {
-        var settings = GeneralSettings()
-        settings.showSystemContainers = true
-        let data = try JSONEncoder().encode(settings)
-        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: data)
-        #expect(decoded.showSystemContainers)
+        #expect(roundTripped[setting.key] as? Bool == !setting.defaultValue)
+        for other in Self.settings where other.key != setting.key {
+            #expect(roundTripped[other.key] as? Bool == other.defaultValue, "\(other.key)")
+        }
     }
 }
 
@@ -177,29 +125,5 @@ struct GeneralSettingsUpdatePreferenceTests {
         let object = try #require(deserialized as? [String: Any])
 
         #expect(object["automaticallyCheckForUpdates"] == nil)
-    }
-}
-
-struct GeneralSettingsPartitionsTests {
-    @Test("Defaults to on")
-    func defaultsOn() {
-        #expect(GeneralSettings.default.showPartitions == true)
-        #expect(GeneralSettings().showPartitions == true)
-    }
-
-    @Test("Settings saved before the key existed keep partitions listed")
-    func decodesMissingKeyAsOn() throws {
-        let json = Data(#"{"startupBehavior":"showWelcome"}"#.utf8)
-        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: json)
-        #expect(decoded.showPartitions == true)
-    }
-
-    @Test("Round-trips when turned off")
-    func roundTripsDisabled() throws {
-        var settings = GeneralSettings()
-        settings.showPartitions = false
-        let data = try JSONEncoder().encode(settings)
-        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: data)
-        #expect(decoded.showPartitions == false)
     }
 }

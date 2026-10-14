@@ -13,14 +13,6 @@ import Testing
 struct CountedNounAgreementTests {
     private static let english = Locale(identifier: "en_US")
 
-    private static let repositoryRoot: URL = {
-        var url = URL(fileURLWithPath: #filePath)
-        for _ in 0 ..< 3 {
-            url.deleteLastPathComponent()
-        }
-        return url
-    }()
-
     /// `Text` takes the attributed path, so this is what a SwiftUI label renders.
     private static func rendered(_ value: String.LocalizationValue) -> String {
         String(AttributedString(localized: value, locale: english).characters)
@@ -49,32 +41,5 @@ struct CountedNounAgreementTests {
         #expect(Self.rendered("\(1)-\(2) of ^[\(2) row](inflect: true)") == "1-2 of 2 rows")
         #expect(Self.rendered("\(1) of ^[\(1) row](inflect: true) selected") == "1 of 1 row selected")
         #expect(Self.rendered("Executed ^[\(1) statement](inflect: true)") == "Executed 1 statement")
-    }
-
-    @Test("No view writes a count in front of an inflected span")
-    func noCountSitsOutsideItsSpan() throws {
-        let pattern = try NSRegularExpression(pattern: #"\\\([^()]*\)\s*\^\["#)
-        let roots = ["TablePro", "TableProMobile", "Plugins"]
-        var offenders: [String] = []
-        for root in roots {
-            let directory = Self.repositoryRoot.appendingPathComponent(root)
-            guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil) else {
-                continue
-            }
-            for case let url as URL in enumerator where url.pathExtension == "swift" {
-                let source = try String(contentsOf: url, encoding: .utf8)
-                for (index, line) in source.components(separatedBy: "\n").enumerated() {
-                    let range = NSRange(line.startIndex..., in: line)
-                    if pattern.firstMatch(in: line, range: range) != nil {
-                        offenders.append("\(url.lastPathComponent):\(index + 1)")
-                    }
-                }
-            }
-        }
-
-        #expect(
-            offenders.isEmpty,
-            "Move the count inside the span, ^[\\(count) noun](inflect: true), so the noun agrees: \(offenders)"
-        )
     }
 }

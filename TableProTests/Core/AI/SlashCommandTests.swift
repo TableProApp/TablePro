@@ -109,4 +109,13 @@ struct SlashCommandTests {
             #expect(AIChatViewModel.helpMarkdown.contains("/\(command.name)"))
         }
     }
+
+    @Test("Each help line pairs a command with its description through a colon")
+    @MainActor
+    func helpLinePairsCommandWithDescription() {
+        let lines = AIChatViewModel.helpMarkdown.components(separatedBy: "\n")
+        for command in SlashCommand.allCommands {
+            #expect(lines.contains("- `/\(command.name)`: \(command.description)"))
+        }
+    }
 }

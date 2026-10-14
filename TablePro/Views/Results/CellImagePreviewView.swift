@@ -106,7 +106,7 @@ private struct CheckerboardBackground: View {
 
     var body: some View {
         Canvas { context, size in
-            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.white))
+            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(nsColor: .textBackgroundColor)))
             let columns = Int((size.width / squareSize).rounded(.up))
             let rows = Int((size.height / squareSize).rounded(.up))
             for row in 0..<max(rows, 0) {
@@ -117,7 +117,7 @@ private struct CheckerboardBackground: View {
                         width: squareSize,
                         height: squareSize
                     )
-                    context.fill(Path(rect), with: .color(Color(white: 0.88)))
+                    context.fill(Path(rect), with: .color(Color(nsColor: .quaternaryLabelColor)))
                 }
             }
         }

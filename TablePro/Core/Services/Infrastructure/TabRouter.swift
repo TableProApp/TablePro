@@ -302,7 +302,7 @@ internal final class TabRouter {
         }
 
         let preview = previewForSQL(sql)
-        let confirmed = await AlertHelper.runApprovalModal(
+        let confirmed = await AlertHelper.runCrossProcessApproval(
             title: String(localized: "Open Query from Link"),
             message: String(
                 format: String(localized: "An external link wants to open a query on \"%@\":\n\n%@"),

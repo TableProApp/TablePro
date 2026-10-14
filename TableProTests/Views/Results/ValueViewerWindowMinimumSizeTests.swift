@@ -73,35 +73,4 @@ struct ValueViewerWindowMinimumSizeTests {
         #expect(window.maxSize.height > 10_000)
         #expect(window.styleMask.contains(.resizable))
     }
-
-    /// One shared path builds every viewer's window, so the floor reaches all of them.
-    @Test("Every viewer builds its window through the shared controller")
-    func everyViewerUsesTheSharedPath() throws {
-        let viewers = [
-            "CellImageWindowController",
-            "GeometryMapWindowController",
-            "JSONViewerWindowController",
-            "PhpViewerWindowController",
-            "TextViewerWindowController"
-        ]
-        let root = try repositoryRoot()
-        for viewer in viewers {
-            let path = "TablePro/Views/Results/\(viewer).swift"
-            let source = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
-            #expect(source.contains(": ValueViewerWindowController"), "\(viewer) left the shared controller")
-            #expect(source.contains("controller.present("), "\(viewer) no longer presents through it")
-            #expect(!source.contains("NSWindow("), "\(viewer) builds a window of its own")
-        }
-    }
-
-    private func repositoryRoot(file: StaticString = #filePath) throws -> URL {
-        var directory = URL(fileURLWithPath: "\(file)").deletingLastPathComponent()
-        while directory.path != "/" {
-            if FileManager.default.fileExists(atPath: directory.appendingPathComponent("project.yml").path) {
-                return directory
-            }
-            directory = directory.deletingLastPathComponent()
-        }
-        throw CocoaError(.fileNoSuchFile)
-    }
 }

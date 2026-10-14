@@ -6,29 +6,10 @@
 import Foundation
 import TableProSQLGrammar
 
-/// The statements the server receives in one request, and the text they are sent as.
-///
-/// SQL Server scopes a local variable, a table variable and a `TRY...CATCH` to one batch, and its own tools cut a script
-/// into batches only at a line holding `GO`. A text with no such line is one batch, and only a driver that sends
-/// batches whole runs it as one: every other run takes its statements one by one.
-struct ExecutableBatch: Sendable {
-    /// The source between the first statement's start and the last one's end, inner `;` and comments included.
-    let sql: String
+/// Defined with the scanner because the iOS editor groups SQL Server batches by the same rules.
+typealias ExecutableBatch = SQLStatementBatch
 
-    /// The statements inside, in tab coordinates, as the statement scanner found them.
-    let statements: [SQLStatementScanner.ExecutableStatement]
-
-    /// How many times the script asks for the batch to run: `GO 5` runs it five times.
-    let repeatCount: Int
-
-    /// The batch's span in tab coordinates.
-    var range: NSRange {
-        guard let first = statements.first, let last = statements.last else {
-            return NSRange(location: NSNotFound, length: 0)
-        }
-        return NSRange(location: first.range.location, length: last.range.upperBound - first.range.location)
-    }
-
+extension SQLStatementBatch {
     /// Every statement the server ran for the batch, in the order it ran them: `GO 3` runs all of them three
     /// times, and a rename chain run twice leaves each table where it started.
     var executedStatementTexts: [String] {
@@ -70,34 +51,7 @@ enum QueryBatchPlanner {
         separators: [SQLBatchSeparator],
         sourceOffset: Int
     ) -> [ExecutableBatch] {
-        let source = text as NSString
-        var batches: [ExecutableBatch] = []
-        var pending: [SQLStatementScanner.ExecutableStatement] = []
-        var remaining = statements[...]
-
-        func close(repeatCount: Int) {
-            guard let first = pending.first, let last = pending.last else { return }
-            let span = NSRange(location: first.range.location, length: last.range.upperBound - first.range.location)
-            batches.append(
-                ExecutableBatch(
-                    sql: source.substring(with: span),
-                    statements: pending.map { $0.offset(by: sourceOffset) },
-                    repeatCount: repeatCount
-                )
-            )
-            pending = []
-        }
-
-        for separator in separators {
-            while let next = remaining.first, next.range.location < separator.range.location {
-                pending.append(next)
-                remaining = remaining.dropFirst()
-            }
-            close(repeatCount: separator.repeatCount)
-        }
-        pending.append(contentsOf: remaining)
-        close(repeatCount: 1)
-        return batches
+        SQLStatementScanner.batches(in: text, statements: statements, separators: separators, sourceOffset: sourceOffset)
     }
 }
 

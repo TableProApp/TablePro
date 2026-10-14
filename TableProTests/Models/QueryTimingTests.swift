@@ -52,7 +52,7 @@ struct QueryTimingTests {
 
         let firstRow = folded?.firstRow ?? -1
         #expect(folded?.total == 3.0)
-        #expect(abs(firstRow - 0.3) < 0.000_001)
+        #expect(abs(firstRow - 0.3) < 1e-6)
         #expect(folded?.server == nil)
     }
 
@@ -90,5 +90,19 @@ struct QueryTimingBreakdownTests {
 
         #expect(breakdown.rows.count == 1)
         #expect(breakdown.rows[0].id == "elapsed")
+    }
+
+    @Test("The tooltip summary separates the measured parts with a comma")
+    func summarySeparatesPartsWithComma() {
+        let breakdown = QueryTimingBreakdown(
+            timing: PluginQueryTiming(total: 3.4, firstRow: 0.012, server: 0.009)
+        )
+        let rows = breakdown.rows
+
+        #expect(rows.count == 4)
+        #expect(breakdown.summary == """
+            \(rows[0].label) \(rows[0].value), \(rows[1].label) \(rows[1].value), \
+            \(rows[2].label) \(rows[2].value), \(rows[3].label) \(rows[3].value)
+            """)
     }
 }

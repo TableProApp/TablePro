@@ -2,57 +2,11 @@
 //  CellPositionTests.swift
 //  TableProTests
 //
-//  Tests for CellPosition and RowVisualState value types.
-//
 
 import Foundation
 import TableProPluginKit
 @testable import TablePro
 import Testing
-
-struct CellPositionTests {
-    @Test("Equal positions are equal")
-    func equalPositionsAreEqual() {
-        let a = CellPosition(row: 5, column: 3)
-        let b = CellPosition(row: 5, column: 3)
-        #expect(a == b)
-    }
-
-    @Test("Different row produces unequal positions")
-    func differentRowUnequal() {
-        let a = CellPosition(row: 0, column: 3)
-        let b = CellPosition(row: 1, column: 3)
-        #expect(a != b)
-    }
-
-    @Test("Different column produces unequal positions")
-    func differentColumnUnequal() {
-        let a = CellPosition(row: 5, column: 0)
-        let b = CellPosition(row: 5, column: 1)
-        #expect(a != b)
-    }
-
-    @Test("Both fields different produces unequal positions")
-    func bothFieldsDifferent() {
-        let a = CellPosition(row: 0, column: 0)
-        let b = CellPosition(row: 1, column: 1)
-        #expect(a != b)
-    }
-
-    @Test("Zero position stores correctly")
-    func zeroPosition() {
-        let pos = CellPosition(row: 0, column: 0)
-        #expect(pos.row == 0)
-        #expect(pos.column == 0)
-    }
-
-    @Test("Large indices stored correctly")
-    func largeIndices() {
-        let pos = CellPosition(row: 1_000_000, column: 500)
-        #expect(pos.row == 1_000_000)
-        #expect(pos.column == 500)
-    }
-}
 
 struct RowVisualStateTests {
     @Test("Empty state has all flags false and empty modifiedColumns")

@@ -100,7 +100,7 @@ struct ConnectionActionsMenuResolverTests {
     @MainActor
     func menuBarTitlesAreInTheMenuBar() {
         var drawn: Set<String> = []
-        collectTitles(from: MainMenuBuilder.build(keyboard: KeyboardSettings()), into: &drawn)
+        collectTitles(from: MainMenuBuilder.build(keyboard: KeyboardSettings()).bar, into: &drawn)
 
         #expect(drawn.count > 50, "Only \(drawn.count) titles collected; the walk missed the menus")
         for title in Self.menuBarTitles {

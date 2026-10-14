@@ -29,7 +29,6 @@ struct HistorySelectedDetailPane: View {
 }
 
 struct HistoryDetailPane: View {
-    @ObservedObject private var themeEngine = ThemeEngine.shared
     let entry: QueryHistoryEntry?
     let connectionLabel: HistoryConnectionLabel?
     let canRunInNewTab: Bool
@@ -65,7 +64,6 @@ struct HistoryDetailPane: View {
                 databaseType: entry.databaseType,
                 accessibilityIdentifier: "query-history-detail-query"
             )
-            .background(Color(nsColor: themeEngine.colors.editor.background))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()

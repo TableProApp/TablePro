@@ -53,7 +53,7 @@ internal extension TableStructureView {
                     .accessibilityIdentifier("structure-table-comment")
             }
             .padding()
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(.bar)
 
             Divider()
         }

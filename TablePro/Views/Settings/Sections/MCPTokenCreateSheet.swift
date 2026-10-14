@@ -26,7 +26,6 @@ struct MCPTokenCreateSheet: View {
                 expirationSection
             }
             .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
 
             Divider()
 

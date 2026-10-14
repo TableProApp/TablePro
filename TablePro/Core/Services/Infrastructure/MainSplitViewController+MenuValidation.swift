@@ -139,7 +139,6 @@ struct MenuValidationContext: Equatable {
     var supportsContainerSwitching = false
     var supportsBackup = false
     var supportsRestore = false
-    var supportsServerSideExport = false
     var supportsServerDashboard = false
     var supportsUserManagement = false
     var supportsSchemaSwitching = false
@@ -248,10 +247,6 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.supportsBackup
         case #selector(restoreDatabase(_:)):
             return context.isConnected && context.supportsRestore && !context.isReadOnly
-        case #selector(serverSideExport(_:)):
-            /// The server does the writing, so this is a write on the connection and a read-only
-            /// Safe Mode has to stop it the same way Restore is stopped.
-            return context.isConnected && context.supportsServerSideExport && !context.isReadOnly
 
         /// Reachable while the connection is still dialling: agent mode draws the prompt the user
         /// typed, which is exactly what they are waiting with, so gating on `isConnected` would make
@@ -420,11 +415,6 @@ extension MainSplitViewController: NSMenuItemValidation {
         /// Escape clears the selection wherever one is, so the command needs a window showing a
         /// connection and something that can hold a selection, not merely a window.
         case #selector(clearSelection(_:)): return context.isConnected
-
-        /// Unconditional on purpose, and stated rather than left to the fall-through. The window is
-        /// the last responder to answer these, and what it does with them is change the editor font
-        /// size, which is an app setting and needs no session. A focused diagram claims them first.
-        case #selector(zoomIn(_:)), #selector(zoomOut(_:)): return true
 
         default: return isAgentSessionCommandEnabled(selector, context: context)
         }
@@ -695,7 +685,6 @@ extension MainSplitViewController: NSMenuItemValidation {
             supportsContainerSwitching: actions.supportsContainerSwitching,
             supportsBackup: actions.supportsBackup,
             supportsRestore: actions.supportsRestore,
-            supportsServerSideExport: actions.supportsServerSideExport,
             supportsServerDashboard: actions.supportsServerDashboard,
             supportsUserManagement: actions.supportsUserManagement,
             supportsSchemaSwitching: actions.supportsSchemaSwitching,
@@ -724,6 +713,9 @@ extension MainSplitViewController: NSMenuItemValidation {
         if action == #selector(setSafeModeLevel(_:)) { return canChooseSafeModeLevel(menuItem) }
         if action == #selector(requestDisconnect) { return canDisconnect }
         if action == #selector(retryConnection) { return canReconnect }
+        if let zoom = Self.zoomEnablement(action, typography: AppSettingsManager.shared.typography) {
+            return zoom
+        }
         return Self.isEnabled(action, context: menuValidationContext(naming: menuItem))
     }
 

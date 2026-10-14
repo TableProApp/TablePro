@@ -177,7 +177,7 @@ internal extension MainSplitViewController {
     }
 
     private static func recentTabDetail(container: String?, connectionName: String?) -> String {
-        [container, connectionName].compactMap { $0 }.joined(separator: " \u{00B7} ")
+        [container, connectionName].compactMap { $0 }.joined(separator: ", ")
     }
 
     private static func recentTabSymbol(for tab: QueryTab) -> String {

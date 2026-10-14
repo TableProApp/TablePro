@@ -62,6 +62,15 @@ public enum GoogleApplicationDefaultCredentials: Sendable, Equatable {
         }
     }
 
+    public var quotaProject: String? {
+        switch self {
+        case .serviceAccount:
+            return nil
+        case .authorizedUser(_, _, _, let quotaProjectId), .impersonatedServiceAccount(_, _, let quotaProjectId, _):
+            return quotaProjectId
+        }
+    }
+
     private static func configuredPath(explicit: String?, environment: [String: String]) -> String? {
         let candidates = [explicit, environment[environmentVariable]]
         return candidates

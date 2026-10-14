@@ -35,7 +35,7 @@ enum MongoScriptResultBuilder {
                 outcome.documents.holdsStoredDocuments ? read.texts.map(MongoDocumentIdentity.locator(inDocument:)) : nil
             )
             guard !outcome.printedLines.isEmpty else { return grid }
-            return grid.withStatus(printedSummary(outcome.printedLines))
+            return grid.withStatus(MongoScriptText.printedSummary(outcome.printedLines))
         }
 
         if !outcome.printedLines.isEmpty {
@@ -68,11 +68,5 @@ enum MongoScriptResultBuilder {
 
     private static func note(_ text: String, startTime: Date) -> PluginQueryResult {
         values([text], column: MongoScriptText.outputColumn, startTime: startTime)
-    }
-
-    private static func printedSummary(_ lines: [String]) -> String {
-        let joined = lines.joined(separator: " · ")
-        guard joined.count > 400 else { return joined }
-        return String(joined.prefix(400)) + "…"
     }
 }

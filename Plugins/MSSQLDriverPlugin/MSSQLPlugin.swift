@@ -320,12 +320,11 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func editViewFallbackTemplate(viewName: String) -> String? {
-        let quoted = quoteIdentifier(viewName)
-        if MSSQLCapabilities.parse(serverVersion).hasCreateOrAlterView {
-            return "CREATE OR ALTER VIEW \(quoted) AS\nSELECT * FROM table_name;"
-        }
-        let viewLiteral = MSSQLStringLiteral.quoted(viewName)
-        return "IF OBJECT_ID(\(viewLiteral), 'V') IS NOT NULL DROP VIEW \(quoted);\nCREATE VIEW \(quoted) AS\nSELECT * FROM table_name;"
+        MSSQLObjectQueries.editViewTemplate(
+            schema: effectiveSchema(nil),
+            view: viewName,
+            createOrAlter: MSSQLCapabilities.parse(serverVersion).hasCreateOrAlterView
+        )
     }
 
     func castColumnToText(_ column: String) -> String {

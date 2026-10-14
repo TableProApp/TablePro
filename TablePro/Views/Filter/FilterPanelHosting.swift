@@ -31,6 +31,7 @@ internal extension FilterPanelActions {
 
 @MainActor
 internal protocol FilterSQLPreviewing: AnyObject {
+    var filterPreviewDatabaseType: DatabaseType { get }
     func filterPreviewSQL() -> String
 }
 

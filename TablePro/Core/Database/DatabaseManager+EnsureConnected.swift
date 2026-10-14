@@ -10,7 +10,8 @@ extension DatabaseManager {
     func ensureConnected(
         _ connection: DatabaseConnection,
         passwordOverride: String? = nil,
-        sshPasswordOverride: String? = nil
+        sshPasswordOverride: String? = nil,
+        trigger: ConnectTrigger = .request
     ) async throws {
         /// An installed driver is only a reason to skip while it still answers. A reconnect that
         /// gave up leaves one behind, and returning here made Reconnect a button that did nothing
@@ -24,7 +25,8 @@ extension DatabaseManager {
             try await self.connectToSession(
                 connection,
                 passwordOverride: passwordOverride,
-                sshPasswordOverride: sshPasswordOverride
+                sshPasswordOverride: sshPasswordOverride,
+                trigger: trigger
             )
         }
     }
@@ -32,6 +34,7 @@ extension DatabaseManager {
     func invalidateConnectionAttempt(_ connectionId: UUID) {
         connectionAttempts.invalidate(for: connectionId)
         clearConnectionStage(for: connectionId)
+        preConnectScriptConsent.withdrawApproval(for: connectionId)
     }
 
     func cancelEnsureConnected(_ connectionId: UUID) async {

@@ -14,7 +14,7 @@ extension DatabaseManager {
         if let session = activeSessions[id], let driver = session.driver, session.liveness == .live {
             return .live(driver, session)
         }
-        if let connection = ConnectionStorage.shared.loadConnections().first(where: { $0.id == id }) {
+        if let connection = connectionStorage.loadConnections().first(where: { $0.id == id }) {
             return .stored(connection)
         }
         return .unknown

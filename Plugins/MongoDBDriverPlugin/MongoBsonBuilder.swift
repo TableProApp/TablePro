@@ -8,9 +8,6 @@ import CLibMongoc
 import Foundation
 
 /// Builds the BSON document `MongoBsonAssembly` plans for one JSON text.
-///
-/// Kept apart from `MongoDBConnection` so `scripts/check-mongodb-filter-shapes.sh` compiles this
-/// same code against the libbson the plugin links, rather than a copy of what it is meant to do.
 enum MongoBsonBuilder {
     /// A new document the caller destroys, or nil after `onParseFailure` has been given libbson's
     /// reason for the text it refused.

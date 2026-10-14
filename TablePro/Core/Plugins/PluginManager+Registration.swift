@@ -176,7 +176,7 @@ extension PluginManager {
     /// All database types with loaded plugins, ordered by display name.
     var availableDatabaseTypes: [DatabaseType] {
         var types: [DatabaseType] = []
-        for entry in plugins where entry.isEnabled {
+        for entry in plugins {
             if let typeId = entry.databaseTypeId {
                 types.append(DatabaseType(rawValue: typeId))
             }
@@ -757,11 +757,7 @@ extension PluginManager {
         if let existingEntry = plugins.first(where: { entry in
             entry.databaseTypeId == pluginTypeId || entry.additionalTypeIds.contains(pluginTypeId)
         }) {
-            if !existingEntry.isEnabled {
-                setEnabled(true, pluginId: existingEntry.id)
-            }
-            if driverPlugins[pluginTypeId] != nil {
-                Self.logger.info("Re-enabled existing plugin '\(existingEntry.name)' for '\(databaseType.rawValue)'")
+            if driverPlugin(for: databaseType) != nil {
                 return
             }
             Self.logger.warning("Plugin '\(existingEntry.id)' exists but driver not registered, reinstalling")
@@ -774,12 +770,35 @@ extension PluginManager {
             }
         }
 
+        let entry = try await installFromManifest(registryClient: registryClient, progress: progress) { manifest in
+            Self.registryPlugin(forTypeId: pluginTypeId, in: manifest)
+        }
+        Self.logger.info("Installed missing plugin '\(entry.name)' for database type '\(databaseType.rawValue)'")
+    }
+
+    func installMissingExportFormat(
+        _ format: InstallableExportFormat,
+        registryClient: RegistryClient = .shared,
+        progress: @escaping @MainActor @Sendable (Double) -> Void
+    ) async throws {
+        guard !plugins.contains(where: { $0.id == format.registryPluginId }) else { return }
+        let entry = try await installFromManifest(registryClient: registryClient, progress: progress) { manifest in
+            manifest?.plugins.first { $0.id == format.registryPluginId }
+        }
+        Self.logger.info("Installed missing plugin '\(entry.name)' for export format '\(format.formatId)'")
+    }
+
+    private func installFromManifest(
+        registryClient: RegistryClient,
+        progress: @escaping @MainActor @Sendable (Double) -> Void,
+        lookup: (RegistryManifest?) -> RegistryPlugin?
+    ) async throws -> PluginEntry {
         await registryClient.ensureManifest(.ifStale)
-        var registryPlugin = Self.registryPlugin(forTypeId: pluginTypeId, in: registryClient.manifest)
+        var registryPlugin = lookup(registryClient.manifest)
 
         if registryPlugin == nil {
             await registryClient.ensureManifest(.mustBeCurrent)
-            registryPlugin = Self.registryPlugin(forTypeId: pluginTypeId, in: registryClient.manifest)
+            registryPlugin = lookup(registryClient.manifest)
         }
 
         guard let registryPlugin else {
@@ -789,10 +808,7 @@ extension PluginManager {
             throw PluginError.notFound
         }
 
-        /// Published to the tracker as well as to the caller's handler. `PluginInstallStatusRow`
-        /// is built to draw the fraction and reaches it only through the tracker, so without this
-        /// every install started from a connection or a file fell back to its indeterminate
-        /// spinner while the determinate bar beside it was never fed.
+        // PluginInstallStatusRow reads the fraction only through the tracker.
         let tracker = PluginInstallTracker.shared
         tracker.beginInstall(pluginId: registryPlugin.id)
         do {
@@ -805,7 +821,7 @@ extension PluginManager {
                 }
             )
             tracker.completeInstall(pluginId: registryPlugin.id)
-            Self.logger.info("Installed missing plugin '\(entry.name)' for database type '\(databaseType.rawValue)'")
+            return entry
         } catch {
             tracker.failInstall(pluginId: registryPlugin.id, error: error.localizedDescription)
             throw error

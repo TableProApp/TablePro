@@ -7,10 +7,7 @@ import AppKit
 
 @MainActor
 enum AppMenuBuilder {
-    static func build() -> NSMenuItem {
-        let servicesMenu = NSMenu(title: String(localized: "Services"))
-        NSApp.servicesMenu = servicesMenu
-
+    static func build(servicesMenu: NSMenu) -> NSMenuItem {
         let services = NSMenuItem(title: String(localized: "Services"), action: nil, keyEquivalent: "")
         services.submenu = servicesMenu
 

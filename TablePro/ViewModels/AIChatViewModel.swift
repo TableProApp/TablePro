@@ -391,6 +391,8 @@ final class AIChatViewModel: ObservableObject {
                         return (config.id, models.map(\.id))
                     } catch is CancellationError {
                         return (config.id, nil)
+                    } catch CopilotError.serverNotRunning {
+                        return (config.id, nil)
                     } catch {
                         return (config.id, [])
                     }

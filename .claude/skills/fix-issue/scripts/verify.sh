@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 #
-# Run one TablePro verification step, store the full output on disk, and print a short verdict.
+# Run one TablePro verification step, keep the full output on disk, and print a short verdict.
 #
-# The point is context economy: a Debug build prints thousands of lines and a test run enumerates
-# every case, which is unreadable and crowds out the work. This keeps the full log on disk and
-# prints at most ~30 lines: status, the real errors, test counts, and whether a failing case is
-# quarantined.
+# A Debug build prints thousands of lines and a test run lists every case. This keeps that log on
+# disk and prints about 30 lines: the status, the real errors and the executed counts. A test
+# verdict comes from the result bundle or the xunit file, never from the console banner.
 #
 # Usage:
 #   verify.sh [options] <step> [args]           # a step of the platform, listed below
@@ -22,16 +21,14 @@
 #   --no-wait       do not wait for a concurrent build of the same checkout to finish
 #   --offline       resolve dependencies without the network
 #
-# Exit: 0 pass, 1 fail, 2 inconclusive (environment, not the change), 3 usage error.
+# Exit: 0 pass, 1 fail, 2 inconclusive (a named environment cause, not the change), 3 usage error.
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
-# Run from inside a worktree, the absolute path of the main checkout's copy of this script used to
-# verify the main checkout instead, which produced green runs of the wrong tree. When the current
-# directory is a checkout of this same repository, that checkout is the default.
+# Called by absolute path from a worktree, this script would otherwise verify the main checkout.
 caller_root="$(git rev-parse --show-toplevel 2> /dev/null)"
 if [ -n "$caller_root" ] && [ "$caller_root" != "$REPO_ROOT" ] \
     && [ "$(git -C "$caller_root" rev-parse --path-format=absolute --git-common-dir 2> /dev/null)" \
@@ -46,9 +43,7 @@ HELP=0
 WAIT_FOR_BUILD=1
 OFFLINE=0
 
-# Asking for help is not a usage error, so -h exits 0. Anything else exits 3, which a caller
-# running under `set -e` can distinguish from a real verdict. The steps are the platform's, so
-# they are printed from its backend, when one was found.
+# -h exits 0; any other usage error exits 3, which a caller can tell apart from a verdict.
 header_of() {
     awk 'NR > 2 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$1"
 }
@@ -63,18 +58,13 @@ need_value() {
     [ "$1" -ge 2 ] || { echo "$2 needs a value" >&2; usage; }
 }
 
-# Options are read wherever they appear, not only before the step. The loop used to stop at the
-# first non-option, so everything after the step name reached the step as an argument: `verify.sh
-# build --offline` built a scheme named `--offline` and reported FAIL rather than a usage error,
-# which reads like the change broke the build.
+# Options are read before or after the step, so a trailing option never becomes a step argument.
 POSITIONAL=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --run) need_value $# "--run"; RUN_DIR="$2"; shift 2 ;;
         --root)
             need_value $# "--root"
-            # Without this check a bad path leaves REPO_ROOT empty, and the run then builds and
-            # reports on a tree that is not the one asked for.
             REPO_ROOT="$(cd "$2" 2> /dev/null && pwd)" || { echo "--root: no such directory: $2" >&2; exit 3; }
             [ -n "$REPO_ROOT" ] || { echo "--root: no such directory: $2" >&2; exit 3; }
             shift 2
@@ -90,8 +80,7 @@ done
 # bash 3.2 treats an unset array as unbound under `set -u`, so an options-only run needs the guard.
 set -- ${POSITIONAL[@]+"${POSITIONAL[@]}"}
 
-# A step belongs to a platform: xcodebuild cannot build the Linux app and meson cannot build the
-# macOS one. The default is the platform this machine can build, which is its operating system.
+# The default platform is the one this machine can build, which is its operating system.
 if [ -z "$PLATFORM" ]; then
     case "$(uname -s)" in
         Darwin) PLATFORM=apple ;;
@@ -110,8 +99,7 @@ if [ -z "$RUN_DIR" ]; then
     RUN_DIR="$REPO_ROOT/.analysis/${branch//\//-}"
 fi
 LOG_DIR="$RUN_DIR/logs"
-# Only the steps that produce a log create the directory. `parse` and `tail` read an existing
-# log and used to leave an empty logs/ tree wherever --run pointed.
+# `parse` and `tail` read an existing log, so they create no logs/ directory.
 case "$STEP" in
     parse | tail) ;;
     *) mkdir -p "$LOG_DIR" ;;
@@ -124,9 +112,7 @@ NOTES=("")
 
 note() { NOTES=("${NOTES[@]}" "$1"); }
 
-# The verdict is also written beside the log, because some of what decides it (the exit code, the
-# root, the agent-docs result) is not in the log, and `parse` replaying the log alone reached a
-# different verdict than the live run more than once.
+# The verdict is written beside the log: part of what decides it, like the exit code, is not in the log.
 emit() {
     local log="$1" exit_code="$2" receipt=""
     [ -n "$log" ] && [ "$STEP" != "parse" ] && receipt="$log.verdict"
@@ -150,8 +136,7 @@ emit() {
     esac
 }
 
-# Two quick steps can start in the same second, and the second one used to overwrite the first
-# one's log and receipt, so the earlier verdict could no longer be re-read.
+# Two steps can start in the same second; neither may overwrite the other's log.
 new_log() {
     local base n=1
     base="$LOG_DIR/$1-$(date +%H%M%S)"
@@ -160,7 +145,6 @@ new_log() {
     printf '%s-%s.log' "$base" "$n"
 }
 
-# What a backend asks about the options, so it never reads the option variables themselves.
 waits_for_other_builds() { [ "$WAIT_FOR_BUILD" -eq 1 ]; }
 is_offline() { [ "$OFFLINE" -eq 1 ]; }
 
@@ -170,8 +154,7 @@ run_logged() {
     return $?
 }
 
-# A tool this machine does not have is the machine, not the change. Without this the step ran
-# anyway, the shell printed "command not found", and the verdict was FAIL with exit 127.
+# A missing tool is the machine, not the change.
 require_tool() {
     command -v "$1" > /dev/null 2>&1 && return 0
     STATUS=INCONCLUSIVE
@@ -189,9 +172,8 @@ available_platforms() {
     printf '%s' "${names# }"
 }
 
-# A platform named on the command line that has no backend is a typo, so it is a usage error. One
-# picked from the operating system is a checkout that cannot be verified on this machine, which
-# says nothing about the change.
+# A platform named on the command line with no backend is a typo; one picked from the operating
+# system is a checkout this machine cannot verify, which says nothing about the change.
 load_platform() {
     if [ ! -f "$BACKEND" ]; then
         if [ "$PLATFORM_GIVEN" -eq 1 ]; then
@@ -212,7 +194,6 @@ load_platform() {
 case "$STEP" in
     tail)
         [ $# -ge 1 ] || usage
-        # A mistyped path used to print the shell's error and still exit 0, which reads as success.
         [ -f "$1" ] || { echo "no such log: $1" >&2; exit 3; }
         tail -n "${2:-60}" "$1"
         exit 0
@@ -236,9 +217,7 @@ case "$STEP" in
         ;;
 
     agent-docs)
-        # CLAUDE.md, .claude/rules and this skill, checked for paths, symbols and skills that no
-        # longer exist. It used to run inside every `lint`, which made
-        # every code lint red whenever main carried one stale reference nobody on the branch wrote.
+        # Kept out of `lint`, so one stale reference on main never turns a code lint red.
         log="$(new_log agent-docs)"
         run_logged "$log" "$REPO_ROOT/scripts/check-doc-symbols.sh"
         code=$?

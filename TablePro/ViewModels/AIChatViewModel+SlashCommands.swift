@@ -9,7 +9,7 @@ import os
 extension AIChatViewModel {
     static let helpMarkdown: String = {
         let lines = SlashCommand.allCommands
-            .map { "- `/\($0.name)` · \($0.description)" }
+            .map { "- `/\($0.name)`: \($0.description)" }
             .joined(separator: "\n")
         return String(localized: "**Available commands:**") + "\n\n" + lines
     }()

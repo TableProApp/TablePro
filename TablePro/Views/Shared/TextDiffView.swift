@@ -18,6 +18,9 @@ internal struct TextDiffView: View {
     internal var textFont: Font = .system(.caption, design: .monospaced)
 
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @ObservedObject private var themeEngine = ThemeEngine.shared
+
+    private static let outline = RoundedRectangle(cornerRadius: 4)
 
     internal var body: some View {
         switch layout {
@@ -41,7 +44,8 @@ internal struct TextDiffView: View {
                 }
             }
         }
-        .background(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.2)))
+        .background(Self.outline.stroke(Color.secondary.opacity(0.2)))
+        .themeBackground(.editorBackground, native: Color.clear, in: Self.outline)
     }
 
     private var unifiedBody: some View {
@@ -59,12 +63,14 @@ internal struct TextDiffView: View {
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 1)
+                .diffLineForeground(Self.lineKind(line.kind))
                 .background(background(for: line.kind))
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(accessibilityLabel(for: line))
             }
         }
-        .background(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.2)))
+        .background(Self.outline.stroke(Color.secondary.opacity(0.2)))
+        .themeBackground(.editorBackground, native: Color.clear, in: Self.outline)
     }
 
     private func columnHeader(_ title: String) -> some View {
@@ -90,6 +96,7 @@ internal struct TextDiffView: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 1)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .diffLineForeground(Self.lineKind(kind, side: side))
         .background(splitBackground(kind: kind, side: side, isEmpty: text == nil))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel(for: text, kind: kind, side: side))
@@ -123,21 +130,29 @@ internal struct TextDiffView: View {
     private func splitBackground(kind: DiffPair.Kind, side: SqlWalkthroughAnchor.Side, isEmpty: Bool) -> Color {
         guard !differentiateWithoutColor else { return .clear }
         guard !isEmpty else { return Color.secondary.opacity(0.05) }
-        switch (kind, side) {
-        case (.unchanged, _): return .clear
-        case (.changed, _): return CompareStatusStyle.rowTint(for: .update)
-        case (.added, .after): return CompareStatusStyle.rowTint(for: .insert)
-        case (.removed, .before): return CompareStatusStyle.rowTint(for: .delete)
-        default: return .clear
-        }
+        guard let lineKind = Self.lineKind(kind, side: side) else { return .clear }
+        return CompareStatusStyle.rowTint(for: lineKind, palette: themeEngine.palette)
     }
 
     private func background(for kind: DiffUnifiedLine.Kind) -> Color {
-        guard !differentiateWithoutColor else { return .clear }
+        guard !differentiateWithoutColor, let lineKind = Self.lineKind(kind) else { return .clear }
+        return CompareStatusStyle.rowTint(for: lineKind, palette: themeEngine.palette)
+    }
+
+    internal static func lineKind(_ kind: DiffPair.Kind, side: SqlWalkthroughAnchor.Side) -> RowDiffKind? {
+        switch (kind, side) {
+        case (.changed, _): return .update
+        case (.added, .after): return .insert
+        case (.removed, .before): return .delete
+        default: return nil
+        }
+    }
+
+    internal static func lineKind(_ kind: DiffUnifiedLine.Kind) -> RowDiffKind? {
         switch kind {
-        case .context: return .clear
-        case .added: return CompareStatusStyle.rowTint(for: .insert)
-        case .removed: return CompareStatusStyle.rowTint(for: .delete)
+        case .context: return nil
+        case .added: return .insert
+        case .removed: return .delete
         }
     }
 }

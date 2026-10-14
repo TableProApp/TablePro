@@ -39,7 +39,7 @@ struct SessionsTableView: View {
 
                 TableColumn(String(localized: "State"), value: \.state) { session in
                     Text(session.state)
-                        .foregroundStyle(stateColor(session.state))
+                        .selectionAwareTint(stateColor(session.state))
                 }
                 .width(min: 60, ideal: 80)
 

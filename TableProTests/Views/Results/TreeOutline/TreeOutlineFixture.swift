@@ -42,6 +42,18 @@ internal enum TreeOutlineFixture {
     "theme":{"ink":"#1e1e1e","deep":{"leaf":1}},"count":42}
     """
 
+    /// One distinct color for each slot a tree reads.
+    static let tones: [ThemeSlot: String] = [
+        .syntaxString: "#B00001",
+        .syntaxNumber: "#B00002",
+        .syntaxNull: "#B00003",
+        .syntaxType: "#B00004",
+        .syntaxComment: "#B00005",
+        .syntaxKeyword: "#B00006",
+        .editorText: "#B00007",
+        .editorLineNumber: "#B00008"
+    ]
+
     static func parse(_ json: String) throws -> JSONTreeNode {
         try JSONTreeParser.parse(json, formats: .english).get()
     }
@@ -156,6 +168,11 @@ internal final class TreeOutlineHarness {
 
     func row(_ key: String) throws -> Int {
         try #require(items.firstIndex { $0.node.key == key }, "no visible row has the key \(key)")
+    }
+
+    func cell(_ key: String) throws -> TreeOutlineCellView {
+        let view = outline.view(atColumn: 0, row: try row(key), makeIfNecessary: false)
+        return try #require(view as? TreeOutlineCellView)
     }
 
     func item(_ key: String) throws -> Item {

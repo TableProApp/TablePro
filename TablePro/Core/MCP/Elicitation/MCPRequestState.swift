@@ -37,7 +37,7 @@ public enum MCPRequestState {
         let envelope = Envelope(
             version: 1,
             principal: principal.tokenFingerprint,
-            tokenId: principal.tokenId?.uuidString,
+            tokenId: principal.tokenId.uuidString,
             method: method,
             digest: paramsDigest,
             expiresAt: Int(expiresAt.timeIntervalSince1970.rounded()),
@@ -70,7 +70,7 @@ public enum MCPRequestState {
             throw MCPRequestStateError.malformed
         }
         guard envelope.principal == principal.tokenFingerprint,
-              envelope.tokenId == principal.tokenId?.uuidString
+              envelope.tokenId == principal.tokenId.uuidString
         else {
             throw MCPRequestStateError.principalMismatch
         }
@@ -103,7 +103,7 @@ private extension MCPRequestState {
     struct Envelope: Codable {
         let version: Int
         let principal: String
-        let tokenId: String?
+        let tokenId: String
         let method: String
         let digest: String
         let expiresAt: Int

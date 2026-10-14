@@ -919,6 +919,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             if fieldCount == 0 {
                 let affected = mysql_affected_rows(mysql)
                 let insertId = mysql_insert_id(mysql)
+                try consumeTrailingResults(on: mysql, generation: generation)
                 return MariaDBPluginQueryResult(
                     columns: [], columnTypes: [], columnTypeNames: [],
                     rows: [], affectedRows: affected, insertId: insertId, isTruncated: false,
@@ -952,6 +953,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             if cancellationGate.isCancelled(generation) {
                 while mysql_fetch_row(resultPtr) != nil {}
                 mysql_free_result(resultPtr)
+                discardTrailingResults(on: mysql, generation: generation)
                 throw CancellationError()
             }
 
@@ -982,6 +984,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
         if cancellationGate.isCancelled(generation) {
             mysql_free_result(resultPtr)
+            discardTrailingResults(on: mysql, generation: generation)
             throw CancellationError()
         }
 
@@ -997,6 +1000,13 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
 
         mysql_free_result(resultPtr)
+        do {
+            try consumeTrailingResults(on: mysql, generation: generation)
+        } catch let error as MariaDBPluginError where isExpectedInterruption(
+            errno: error.code, message: error.message, wasTruncated: outcome.serverIgnoredLimit
+        ) {
+            // The row cap's own kill stopped the routine after its first result set, the truncation already reported.
+        }
 
         if sessionFlavor.isDatabend, let affected = DatabendResultShape.affectedRowCount(columns: columns.names, rows: rows) {
             return MariaDBPluginQueryResult(
@@ -1277,6 +1287,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         if fieldCount == 0 {
             let affected = mysql_stmt_affected_rows(stmt)
             let insertId = mysql_stmt_insert_id(stmt)
+            try consumeTrailingResults(of: stmt, generation: generation)
             return MariaDBPluginQueryResult(
                 columns: [], columnTypes: [], columnTypeNames: [],
                 rows: [], affectedRows: UInt64(affected), insertId: UInt64(insertId), isTruncated: false,
@@ -1306,6 +1317,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             from: stmt, metadata: metadata,
             columns: columns, rowCap: rowCap, generation: generation, sentAt: sentAt
         )
+        try consumeTrailingResults(of: stmt, generation: generation)
 
         return MariaDBPluginQueryResult(
             columns: columns.names, columnTypes: columns.typeCodes, columnTypeNames: columns.typeNames,
@@ -1365,6 +1377,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
         if resultPtr == nil {
             guard mysql_field_count(mysql) == 0 else { throw noting(getError(), generation: generation) }
+            try consumeTrailingResults(on: mysql, generation: generation)
             return
         }
 
@@ -1393,6 +1406,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 killStatementOnServer(on: mysql, generation: generation)
                 while mysql_fetch_row(resultPtr) != nil {}
                 mysql_free_result(resultPtr)
+                discardTrailingResults(on: mysql, generation: generation)
                 throw CancellationError()
             }
 
@@ -1413,6 +1427,43 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
 
         mysql_free_result(resultPtr)
+        try consumeTrailingResults(on: mysql, generation: generation)
+    }
+
+    // MARK: - Trailing Results
+
+    /// The first result set is the statement's answer. A later one, such as a `CALL` that selects twice, is read and
+    /// dropped because the session refuses the next statement with `2014` until it is, and an error in one fails this one.
+    private func consumeTrailingResults(on mysql: UnsafeMutablePointer<MYSQL>, generation: Int) throws {
+        while mysql_more_results(mysql) != 0 {
+            let status = mysql_next_result(mysql)
+            if status > 0 { throw noting(readError(from: mysql), generation: generation) }
+            if status < 0 { return }
+            guard let result = mysql_use_result(mysql) else {
+                if mysql_field_count(mysql) != 0 { throw noting(readError(from: mysql), generation: generation) }
+                continue
+            }
+            while mysql_fetch_row(result) != nil {}
+            let failure = mysql_errno(mysql) != 0 ? noting(readError(from: mysql), generation: generation) : nil
+            mysql_free_result(result)
+            if let failure { throw failure }
+        }
+    }
+
+    /// A stopped statement answers with the stop, so these are read only to free the session. A kill's `1317` among
+    /// them is still noted, so the latch does not absorb that kill a second time.
+    private func discardTrailingResults(on mysql: UnsafeMutablePointer<MYSQL>, generation: Int) {
+        try? consumeTrailingResults(on: mysql, generation: generation)
+    }
+
+    /// `mysql_stmt_close` reads these on its own but drops an error among them, so they are read here first.
+    /// `mysql_stmt_next_result` skips any rows a capped fetch left unread.
+    private func consumeTrailingResults(of stmt: UnsafeMutablePointer<MYSQL_STMT>, generation: Int) throws {
+        while mysql_stmt_more_results(stmt) != 0 {
+            let status = mysql_stmt_next_result(stmt)
+            if status > 0 { throw noting(getStmtError(stmt), generation: generation) }
+            if status < 0 { return }
+        }
     }
 
     // MARK: - Server Information

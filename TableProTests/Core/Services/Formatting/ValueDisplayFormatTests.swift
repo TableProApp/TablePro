@@ -29,15 +29,6 @@ struct ValueDisplayFormatTests {
         #expect(!ValueDisplayFormat.json.rendersBinaryAsText)
     }
 
-    @Test("Codable round-trip preserves value")
-    func codableRoundTrip() throws {
-        for format in ValueDisplayFormat.allCases {
-            let encoded = try JSONEncoder().encode(format)
-            let decoded = try JSONDecoder().decode(ValueDisplayFormat.self, from: encoded)
-            #expect(decoded == format)
-        }
-    }
-
     @Test("text column applicable formats include json and phpSerialized")
     func applicableForText() {
         let formats = ValueDisplayFormat.applicableFormats(for: .text(rawType: "TEXT"))

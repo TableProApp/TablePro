@@ -38,7 +38,8 @@ struct QueryPlanOutlineView: NSViewRepresentable {
         // anything it has never seen, so the bar would have arrived stranded past Actual Time for
         // everyone who had ever resized a plan column. A new name starts from the declared order.
         outlineView.autosaveName = SplitViewAutosaveName.current("com.TablePro.queryPlanOutline.v2")
-        outlineView.autosaveTableColumns = true
+        // Without a name AppKit still saves, under "NSTableView Columns v3 (null)" in the standard domain.
+        outlineView.autosaveTableColumns = outlineView.autosaveName != nil
 
         // Every EXPLAIN run mints fresh node identities, so persisted expansion would key off
         // items that no longer exist.
@@ -51,17 +52,18 @@ struct QueryPlanOutlineView: NSViewRepresentable {
         outlineView.coordinator = context.coordinator
         outlineView.menu = makeMenu(coordinator: context.coordinator)
 
-        context.coordinator.onSelect = { selectedNodeId = $0 }
-        context.coordinator.update(
-            plan: plan, metric: metric, differentiateWithoutColor: differentiateWithoutColor
-        )
-
         let scrollView = NSScrollView()
         scrollView.documentView = outlineView
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
+        context.coordinator.attachThemeChrome(to: outlineView)
+
+        context.coordinator.onSelect = { selectedNodeId = $0 }
+        context.coordinator.update(
+            plan: plan, metric: metric, differentiateWithoutColor: differentiateWithoutColor
+        )
         return scrollView
     }
 

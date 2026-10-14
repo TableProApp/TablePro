@@ -58,15 +58,13 @@ extension MCPProtocolDispatcher {
     private func admitted(
         method: String,
         principal: MCPPrincipal,
-        address: MCPClientAddress,
         operation: () async -> MCPHandlerOutcome
     ) async -> MCPHandlerOutcome {
         guard let rateLimiter, !Self.deadlineExemptMethods.contains(method) else {
             return await operation()
         }
-        let subject: MCPRateLimitSubject = principal.tokenId.map { .token($0) } ?? .address(address)
         do {
-            return try await rateLimiter.withRequestSlot(subject: subject) {
+            return try await rateLimiter.withRequestSlot(subject: .token(principal.tokenId)) {
                 await operation()
             }
         } catch let error as MCPProtocolError {
@@ -159,11 +157,7 @@ extension MCPProtocolDispatcher {
                 cancellation: cancellation
             )
         }
-        let outcome = await admitted(
-            method: request.method,
-            principal: principal,
-            address: exchange.context.clientAddress
-        ) {
+        let outcome = await admitted(method: request.method, principal: principal) {
             await self.execute(handler, request: request, context: context, cancellation: cancellation)
         }
         if let legacySessionId {

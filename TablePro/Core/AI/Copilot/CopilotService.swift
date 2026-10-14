@@ -37,6 +37,7 @@ final class CopilotService: ObservableObject {
     private var lspClient: LSPClient?
     private var transport: LSPTransport?
     private var serverGeneration: Int = 0
+    private var startTask: Task<Void, Never>?
     private var restartTask: Task<Void, Never>?
     private var restartAttempt: Int = 0
     private let authManager = CopilotAuthManager()
@@ -63,19 +64,54 @@ final class CopilotService: ObservableObject {
 
     // MARK: - Lifecycle
 
+    /// Concurrent callers share one launch, so a caller that arrives mid-start waits for it rather
+    /// than finding no client. `stop()` drops the shared launch, so a caller after it starts afresh.
     func start() async {
-        guard status != .starting, status != .running else { return }
+        if let startTask {
+            await startTask.value
+            return
+        }
+        guard status != .running else { return }
+        let task = Task { await launch() }
+        startTask = task
+        await task.value
+        if startTask == task {
+            startTask = nil
+        }
+    }
+
+    /// The client, starting the language server first when this is its first use. A turn that was
+    /// queued before AI was turned off or Copilot removed must not bring the server back.
+    func runningClient() async throws -> LSPClient {
+        guard CopilotLifecycle.allowsRunning(AppSettingsManager.shared.ai) else {
+            throw CopilotError.serverNotRunning
+        }
+        await start()
+        guard let lspClient else { throw CopilotError.serverNotRunning }
+        return lspClient
+    }
+
+    func stopIfDisallowed(by settings: AISettings) {
+        guard CopilotLifecycle.shouldStop(settings, status: status) else { return }
+        Self.logger.info("Copilot is no longer allowed by AI settings, stopping")
+        Task { await stop() }
+    }
+
+    private func launch() async {
         serverGeneration += 1
         let generation = serverGeneration
         status = .starting
+        var newTransport: LSPTransport?
 
         do {
             let binaryPath = try await CopilotBinaryManager.shared.ensureBinary()
+            guard generation == serverGeneration else { return }
 
-            let newTransport = LSPTransport()
-            try await newTransport.start(executablePath: binaryPath, arguments: ["--stdio"], environment: [:])
+            let launched = LSPTransport()
+            newTransport = launched
+            try await launched.start(executablePath: binaryPath, arguments: ["--stdio"], environment: [:])
 
-            let client = LSPClient(transport: newTransport)
+            let client = LSPClient(transport: launched)
             let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
             _ = try await client.initialize(
                 clientInfo: LSPClientInfo(name: "TablePro", version: appVersion),
@@ -90,7 +126,12 @@ final class CopilotService: ObservableObject {
                 "telemetry": AnyCodable(["telemetryLevel": telemetryLevel])
             ])
 
-            guard generation == serverGeneration else { return }
+            // A stop() that ran while this launch was in flight owns the outcome, and the process
+            // it never saw must not outlive it.
+            guard generation == serverGeneration else {
+                await launched.stop()
+                return
+            }
 
             await client.onNotification(method: "didChangeStatus") { [weak self] data in
                 Task { @MainActor [weak self] in
@@ -98,7 +139,7 @@ final class CopilotService: ObservableObject {
                 }
             }
 
-            self.transport = newTransport
+            self.transport = launched
             self.lspClient = client
             status = .running
             restartAttempt = 0
@@ -108,6 +149,7 @@ final class CopilotService: ObservableObject {
             await checkAuthStatus()
             scheduleUnauthenticatedStopIfNeeded()
         } catch {
+            await newTransport?.stop()
             guard generation == serverGeneration else { return }
             status = .error(error.localizedDescription)
             Self.logger.error("Failed to start Copilot: \(error.localizedDescription)")
@@ -122,6 +164,7 @@ final class CopilotService: ObservableObject {
     func stop() async {
         restartTask?.cancel()
         restartTask = nil
+        startTask = nil
         unauthenticatedStop.cancel()
         serverGeneration += 1
 
@@ -152,9 +195,7 @@ final class CopilotService: ObservableObject {
     // MARK: - Authentication
 
     func signIn() async throws {
-        if status == .stopped {
-            await start()
-        }
+        await start()
         guard let transport else {
             throw CopilotError.serverNotRunning
         }

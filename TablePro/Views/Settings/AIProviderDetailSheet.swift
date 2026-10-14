@@ -34,10 +34,7 @@ struct AIProviderDetailSheet: View {
 
     @ObservedObject private var chatGPTCodexService = ChatGPTCodexService.shared
 
-    @ObservedObject private var cursorAgentService = CursorAgentService.shared
     @ObservedObject private var claudeAgentService = ClaudeAgentService.shared
-
-    @ObservedObject private var xaiService = XAIService.shared
 
     @State private var showRemoveConfirmation = false
 
@@ -106,20 +103,17 @@ struct AIProviderDetailSheet: View {
                     if draft.type == .chatgptCodex {
                         Task { await chatGPTCodexService.refreshAuthState() }
                     }
-                    if draft.type == .cursor {
-                        Task { await cursorAgentService.refreshStatus() }
-                    }
                     if draft.type == .claudeAgent {
                         Task { await claudeAgentService.performRefresh() }
-                    }
-                    if draft.type == .xai {
-                        Task { await xaiService.refreshAuthState() }
                     }
                     fetchModels()
                 }
             }
             .onDisappear {
                 cancelTasks()
+                if draft.type == .copilot {
+                    copilotService.stopIfDisallowed(by: AppSettingsManager.shared.ai)
+                }
             }
         }
         .frame(minWidth: 520, minHeight: 480)
@@ -171,13 +165,7 @@ struct AIProviderDetailSheet: View {
     private var authSection: some View {
         switch draft.authStyle {
         case .apiKey, .optionalApiKey:
-            if draft.type == .cursor {
-                cursorAuthSection
-            } else if draft.type == .xai {
-                xaiAuthSection
-            } else {
-                apiKeyAuthSection
-            }
+            apiKeyAuthSection
         case .oauth:
             switch descriptor?.oauthFlowKind {
             case .deviceCode:
@@ -267,243 +255,6 @@ struct AIProviderDetailSheet: View {
             }
         } header: {
             Text("Authentication")
-        }
-    }
-
-    @ViewBuilder
-    private var cursorAuthSection: some View {
-        cursorAPIKeySection
-        cursorSignInSection
-    }
-
-    private var cursorAPIKeySection: some View {
-        Section {
-            SecureField(String(localized: "API Key"), text: $apiKey)
-                .onChange(of: apiKey) { _ in
-                    scheduleFetchModels()
-                    testResult = nil
-                }
-            HStack {
-                Spacer()
-                Button {
-                    testProvider()
-                } label: {
-                    HStack(spacing: 6) {
-                        if isTesting { ProgressView().controlSize(.small) }
-                        Text("Test Connection")
-                    }
-                }
-                .disabled(isTesting || apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            if case .success = testResult {
-                Label(String(localized: "Connection successful"), systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                    .font(.caption)
-            } else if case .failure(let message) = testResult {
-                Label(message, systemImage: "xmark.circle.fill")
-                    .foregroundStyle(.red)
-                    .font(.caption)
-                    .lineLimit(3)
-            }
-        } header: {
-            Text("API Key")
-        } footer: {
-            Text("Optional. A key from the Cursor dashboard is used instead of signing in.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    @ViewBuilder
-    private var cursorSignInSection: some View {
-        Section {
-            cursorSignInContent
-            if let message = cursorAgentService.errorMessage {
-                Label(message, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                    .font(.caption)
-                    .lineLimit(3)
-            }
-        } header: {
-            Text("Sign in with Cursor")
-        } footer: {
-            Text("Use your Cursor subscription with no API key. Requires the Cursor CLI.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    @ViewBuilder
-    private var cursorSignInContent: some View {
-        switch cursorAgentService.authState {
-        case .notInstalled:
-            LabeledContent {
-                Button {
-                    copyToPasteboard(CursorAgentCLI.installCommand)
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                }
-                .buttonStyle(.borderless)
-                .help(String(localized: "Copy install command"))
-                .accessibilityLabel(String(localized: "Copy install command"))
-            } label: {
-                Text(CursorAgentCLI.installCommand)
-                    .font(.system(.body, design: .monospaced))
-                    .textSelection(.enabled)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            HStack {
-                Text("The Cursor CLI is not installed.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button(String(localized: "Recheck")) {
-                    Task { await cursorAgentService.refreshStatus() }
-                }
-                .controlSize(.small)
-            }
-
-        case .signedOut:
-            HStack {
-                Text("Not signed in")
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button(String(localized: "Sign in with Cursor")) {
-                    cursorAgentService.signIn()
-                }
-                .buttonStyle(.borderedProminent)
-            }
-
-        case .signingIn:
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text("Opening your browser to sign in…")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button(String(localized: "Cancel")) {
-                    cursorAgentService.cancelSignIn()
-                }
-                .controlSize(.small)
-            }
-
-        case .signedIn(let account):
-            LabeledContent {
-                Button(String(localized: "Sign Out")) {
-                    Task { await cursorAgentService.signOut() }
-                }
-            } label: {
-                Label(
-                    account.isEmpty
-                        ? String(localized: "Signed in")
-                        : String(format: String(localized: "Signed in as %@"), account),
-                    systemImage: "checkmark.circle.fill"
-                )
-                .foregroundStyle(.green)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var xaiAuthSection: some View {
-        xaiAPIKeySection
-        xaiSignInSection
-    }
-
-    private var xaiAPIKeySection: some View {
-        Section {
-            SecureField(String(localized: "API Key"), text: $apiKey)
-                .onChange(of: apiKey) { _ in
-                    scheduleFetchModels()
-                    testResult = nil
-                }
-            HStack {
-                Spacer()
-                Button {
-                    testProvider()
-                } label: {
-                    HStack(spacing: 6) {
-                        if isTesting { ProgressView().controlSize(.small) }
-                        Text("Test Connection")
-                    }
-                }
-                .disabled(isTesting || apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            if case .success = testResult {
-                Label(String(localized: "Connection successful"), systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                    .font(.caption)
-            } else if case .failure(let message) = testResult {
-                Label(message, systemImage: "xmark.circle.fill")
-                    .foregroundStyle(.red)
-                    .font(.caption)
-                    .lineLimit(3)
-            }
-        } header: {
-            Text("API Key")
-        } footer: {
-            Text("A key from the xAI Console bills xAI API credits. Grok 4.5 and Grok 4.3 are available.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    @ViewBuilder
-    private var xaiSignInSection: some View {
-        Section {
-            xaiSignInContent
-            if let message = xaiService.errorMessage {
-                Label(message, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                    .font(.caption)
-                    .lineLimit(3)
-            }
-        } header: {
-            Text("Sign in with xAI")
-        } footer: {
-            Text("Use your SuperGrok or X Premium+ subscription with no API key. Sign-in opens the Grok Build consent screen. This is an unofficial interface that may change.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    @ViewBuilder
-    private var xaiSignInContent: some View {
-        switch xaiService.authState {
-        case .signedOut:
-            HStack {
-                Text("Not signed in")
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button(String(localized: "Sign in with xAI")) {
-                    Task { await xaiService.signIn() }
-                }
-                .buttonStyle(.borderedProminent)
-            }
-
-        case .signingIn:
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text("Opening your browser to sign in…")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-        case .signedIn(let email):
-            LabeledContent {
-                Button(String(localized: "Sign Out")) {
-                    Task { await xaiService.signOut() }
-                }
-            } label: {
-                Label(
-                    email.isEmpty
-                        ? String(localized: "Signed in")
-                        : String(format: String(localized: "Signed in as %@"), email),
-                    systemImage: "checkmark.circle.fill"
-                )
-                .foregroundStyle(.green)
-            }
         }
     }
 
@@ -759,15 +510,7 @@ struct AIProviderDetailSheet: View {
     }
 
     private var allowsEndpointField: Bool {
-        descriptor?.allowsEndpointConfiguration == true && endpointDrivesRequests
-    }
-
-    /// xAI reaches its own proxy rather than the configured base while it is running on a
-    /// subscription sign-in, so the field and the URL under it would both describe a request the
-    /// app is not going to make.
-    private var endpointDrivesRequests: Bool {
-        guard draft.type == .xai else { return true }
-        return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        descriptor?.allowsEndpointConfiguration == true
     }
 
     private var shouldShowConnectionSection: Bool {
@@ -1005,9 +748,7 @@ struct AIProviderDetailSheet: View {
     }
 
     private func ensureCopilotRunning() async {
-        if copilotService.status == .stopped {
-            await copilotService.start()
-        }
+        await copilotService.start()
     }
 
     private func copilotSignIn() async {

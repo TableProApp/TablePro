@@ -7,6 +7,120 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Header, grid line, selection and focus colors in the theme editor.
+- Light theme and Dark theme pickers, and New Theme Based On, Rename and Show in Finder for custom themes in Settings > Appearance.
+- Reason shown in Settings > Appearance for a theme file that could not be loaded.
+- Window background color in themes. On macOS 26 and later the sidebar, inspector and toolbar take it on.
+- Setting in Settings > General to hide the version and Check for Updates on the Welcome window.
+- Install Parquet… in the Export dialog's format menu when the Parquet plugin is not installed.
+- Cloud Firestore and Firebase Realtime Database as a registry plugin over their REST APIs. (#2504)
+- Warning banner and Test Connection notice for a server warning at login, such as an Oracle password about to expire. (#3401)
+
+### Changed
+
+- Default Light and Default Dark draw the editor and data grid in the system colors and use Xcode's default syntax colors.
+- Themes color every content view, including trees, diffs, diagrams and charts. Controls and Settings keep the system look.
+- JSON and PHP tree values use the editor's syntax colors, matching the same value shown as text.
+- Theme file format 3, where every color is optional. Themes written for earlier versions are not read and need to be recreated.
+- Triggers and ClickHouse Parts in table structure shown as data grids, with multiple selection and Copy.
+- Filter and maintenance SQL previews highlighted as SQL in the editor font.
+- Details in Quick Switcher, autocomplete, Settings, query plans, tooltips and the result bar separated by commas or space instead of a dot.
+- Filter and maintenance previews highlighted in the editor font, DynamoDB's as JSON.
+- Settings > Editor grouped into Display, Gutter and Editing.
+- Editor Font and Data Grid Font moved to Settings > Editor and Settings > Data, and kept per Mac.
+- Editor font size range of 10 to 24 points everywhere, including zoom.
+- Pre-connect script and SQLite extension prompts close as Cancel after 60 seconds without an answer.
+- Connections with a pre-connect script no longer reconnect a dropped tunnel on their own.
+- iCloud Sync watches the network and the iCloud account only while it is turned on.
+- tablepro command ships inside the app. Settings > General shows the Terminal line that links it; no administrator prompt.
+- MCP server runs only while Enable MCP Server is on in Settings > MCP. Clients and pairing no longer start it while it is off.
+- Edit > Data shown only in data file windows.
+- Smaller updates: about 6 MB from any of the last five releases and 21 MB from older ones, down from 34 MB.
+- Several statements run together on PostgreSQL from iPhone and iPad commit one at a time, and a failure keeps the ones before it. (#3399)
+
+### Removed
+
+- Interface, Sidebar and Toolbar color groups from the theme editor and the theme file.
+- Fonts from the theme file.
+- Clipboard URL banner in the New Connection form. Import from URL fills the form from a pasted link.
+- Share > Copy as JSON in the connection list. Copy as JSON in the data grid stays.
+- Export as SQL in the ER diagram. File > Export > Export Tables… to SQL with Structure writes the DDL.
+- Enum label editing and New Type… for PostgreSQL types. Run `ALTER TYPE` or `CREATE TYPE` in a query tab.
+- Server Dashboard for SQLite and DuckDB.
+- Dashboard button from Customize Toolbar. Open the Server Dashboard from the Database menu or Actions.
+- Loading plugins signed by other developers, and Trusted Plugin Developers in Settings > Plugins.
+- Browse tab and plugin download counts in Settings > Plugins.
+- On/off switch for each plugin in Settings > Plugins.
+- Theme install from the plugin registry.
+- HTML and XML export.
+- File > Server-Side Export… for Oracle, Snowflake and BigQuery. Run the unload statement in a query tab instead.
+- Cursor AI provider. A saved Cursor provider is dropped; Cursor still reaches TablePro through the MCP server.
+- Sign in with xAI. An xAI provider now needs an xAI API key.
+- Per-kind toggles in Settings > Notifications. Kinds you turned off notify again while notifications are on.
+- Require authentication switch in Settings > MCP. Every MCP request needs a token, including one from this Mac.
+
+### Fixed
+
+- Interface, Sidebar and Toolbar colors having no effect anywhere in the app.
+- Line Number color having no effect on the editor gutter.
+- Default Light used for the dark theme when the chosen dark theme could not be loaded.
+- Editor zoom lost on the next appearance or theme change.
+- DDL, trigger and SQL import previews keeping the previous theme's colors.
+- Query history preview ignoring the theme and the editor font.
+- Theme editor changing the active theme instead of the theme selected for the slot being edited.
+- Malformed theme files loading as Default Light under their own name.
+- Color with a typo in it rendering as a different color instead of being reported.
+- Editor and data grid colors not following a change to the Accent color, Highlight color or Increase Contrast.
+- Selected text in the editor ignoring the Highlight color, and the cursor ignoring the Accent color.
+- Zoom In and Zoom Out staying enabled at the largest and smallest font size.
+- JSON and PHP tree values colored differently from the same values in the row inspector.
+- Theme color wells and the theme preview unreadable to VoiceOver.
+- Query plan image export coming out light in Dark mode.
+- Favorite query field turning straight quotes into curly quotes.
+- Reopen Last Session forgetting its connections after an MCP client launched TablePro in the background.
+- GitHub Copilot starting at launch when not in use, and running on after AI was turned off or Copilot was removed.
+- Settings > AI reading sign-in tokens and running command line tools for providers that were never added.
+- Database type icon and checkmark hard to see on the selected row in Choose a Database.
+- Oracle connection timing out after 30 seconds when the password is about to expire. (#3401)
+- Oracle session left open on the server when a connect was canceled during login.
+- Only the first statement running on iPhone and iPad when the query holds several. (#3399)
+- Query on iPhone and iPad appearing to do nothing after CREATE, DROP or a write that changed no rows, including every Oracle write. (#3399)
+- SQLite on iPhone and iPad reporting a CHECK or UNIQUE violation as a saved row in Add Row, the row editor and Shortcuts. (#3399)
+- Previous write's row count shown after a SQLite CREATE, DROP or ALTER. (#3399)
+- SQLite, PostgreSQL, MySQL and DuckDB query on iPhone and iPad hiding an error raised after the first rows. (#3399)
+- Stop on iPhone and iPad letting a running SQLite or PostgreSQL statement finish and commit, and running a DuckDB query again from the start. (#3399)
+- Query run right after Stop on iPhone and iPad showing no rows. (#3399)
+- PostgreSQL query on iPhone and iPad downloading the whole table before showing the first 10,000 rows. (#3399)
+- DuckDB result on iPhone and iPad cut at 10,000 rows without the notice that more rows exist. (#3399)
+- MySQL connection failing every query after calling a procedure that returns rows, and a procedure that failed after its first rows reported as a success. (#3399)
+- Redis command on iPhone and iPad reading a line break as part of a value, and dropping an empty quoted value. (#3399)
+- View DDL shown as a made-up CREATE TABLE on SQL Server, Oracle, Dameng, DuckDB, Redshift and Cassandra. (#3402)
+- Show DDL and Copy DDL failing on every view on SQLite, libSQL, Cloudflare D1, SAP HANA, Spanner, Trino and Teradata.
+- SQL Server view definitions naming the view's old name after a rename, and blank for an encrypted view or a name with a period.
+- SQL Server Edit View Definition template creating the view in the default schema instead of the view's own.
+- Oracle view DDL losing the view's column names, and cut off after 4000 bytes without saying so.
+- Trino materialized views left out of SQL exports.
+- Return in Switch Connection reopening the current connection after typing another connection's name.
+
+### Security
+
+- GitHub Copilot language server pinned to a reviewed version and checksum instead of the latest npm release.
+- One unreadable setting, or one unknown AI provider, resetting its whole settings group to defaults.
+
+### Security
+
+- Prompts from MCP clients, pairing and query links taking focus from other apps, and Return approving them.
+
+### Security
+
+- Pre-connect scripts running without a prompt when MCP, AppleScript, the AI assistant, Compare or Copy To opened the connection.
+
+### Security
+
+- Import and Transfer To writing rows without Safe Mode's confirmation, Touch ID or audit log entry.
+
 ## [0.80.0] - 2026-10-11
 
 Google Cloud IAM sign-in for MySQL and PostgreSQL on Cloud SQL, with no Cloud SQL Auth Proxy.

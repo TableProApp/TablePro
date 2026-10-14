@@ -6,6 +6,7 @@ import TableProDatabase
 import TableProModels
 import TableProMSSQLCore
 import TableProPluginKit
+import TableProSQLGrammar
 
 nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     private let actor = MySQLActor()
@@ -147,20 +148,21 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         let actor = self.actor
         return AsyncThrowingStream { continuation in
             let task = Task {
+                var openStream: MySQLStreamID?
                 do {
-                    let beginResult = try await actor.beginStream(query: query)
-                    switch beginResult {
+                    switch try await actor.beginStream(query: query) {
                     case .noResult(let affectedRows):
                         if affectedRows != 0 {
                             continuation.yield(.rowsAffected(affectedRows))
                         }
-                        continuation.finish()
-                        return
-                    case .rowSet(let columns):
+                    case .rowSet(let stream, let columns):
+                        openStream = stream
                         continuation.yield(.columns(columns))
                         var emitted = 0
                         while !Task.isCancelled, emitted < options.maxRows {
-                            guard let cells = await actor.fetchNextRow(options: options, columns: columns) else {
+                            guard let cells = try await actor.fetchNextRow(
+                                stream, options: options, columns: columns
+                            ) else {
                                 break
                             }
                             continuation.yield(.row(Row(cells: cells)))
@@ -171,15 +173,17 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
                         } else if emitted >= options.maxRows {
                             continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
                         }
-                        await actor.endStream()
-                        continuation.finish()
+                        openStream = nil
+                        try await actor.endStream(stream)
                     }
+                    continuation.finish()
                 } catch is CancellationError {
-                    await actor.endStream()
+                    if let openStream { try? await actor.endStream(openStream) }
                     continuation.yield(.truncated(reason: .cancelled))
                     continuation.finish()
                 } catch {
-                    await actor.endStream()
+                    // The statement already failed with `error`; releasing its result cannot add a second one.
+                    if let openStream { try? await actor.endStream(openStream) }
                     continuation.finish(throwing: error)
                 }
             }
@@ -356,6 +360,12 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     func sessionTransactionState() async -> DriverTransactionState {
         await actor.transactionState()
     }
+
+    /// Databend reports no `NO_BACKSLASH_ESCAPES` flag, so its session says nothing.
+    func sessionLexicalFacts() async -> SQLSessionLexicalFacts? {
+        guard !Self.serverFlavor(for: databaseType, banner: serverVersion).isDatabend else { return nil }
+        return await actor.lexicalFacts()
+    }
 }
 
 nonisolated enum MySQLSessionTransaction {
@@ -384,7 +394,7 @@ private actor MySQLActor {
         self.encoding = encoding
         errorLanguage = nil
         showTextIsBinary = false
-        if let mysql { mysql_close(mysql); self.mysql = nil }
+        close()
 
         guard let handle = mysql_init(nil) else {
             throw MySQLError.connectionFailed("Failed to initialize MySQL client")
@@ -466,10 +476,16 @@ private actor MySQLActor {
     }
 
     func close() {
-        if let mysql {
-            mysql_close(mysql)
-            self.mysql = nil
+        guard let mysql else { return }
+        if let result = streamingResult {
+            // An open result points at the handle `mysql_close` frees, so it goes first; shutting the socket
+            // makes `mysql_free_result` stop reading the rows it would otherwise skip one by one.
+            mariadb_cancel(mysql)
+            mysql_free_result(result)
+            clearStream()
         }
+        mysql_close(mysql)
+        self.mysql = nil
     }
 
     func ping() throws -> Bool {
@@ -518,6 +534,25 @@ private actor MySQLActor {
         return MySQLSessionTransaction.state(infoResult: infoResult, serverStatus: serverStatus)
     }
 
+    /// `NO_BACKSLASH_ESCAPES` from the status flags of the last reply turns the backslash off in both string quotes.
+    /// With it off, a double-quoted token is a string or an identifier depending on `ANSI_QUOTES`, which MySQL reports
+    /// nowhere, so only the single quote is settled then.
+    func lexicalFacts() -> SQLSessionLexicalFacts? {
+        guard let mysql else { return nil }
+        var serverStatus: UInt32 = 0
+        guard mariadb_get_info(mysql, MARIADB_CONNECTION_SERVER_STATUS, &serverStatus) == 0 else { return nil }
+        guard serverStatus & UInt32(SERVER_STATUS_NO_BACKSLASH_ESCAPES) != 0 else {
+            return SQLSessionLexicalFacts(
+                determined: .backslashEscapesInSingleQuotes,
+                enabled: .backslashEscapesInSingleQuotes
+            )
+        }
+        return SQLSessionLexicalFacts(
+            determined: [.backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes],
+            enabled: []
+        )
+    }
+
     func execute(_ query: String) throws -> RawMySQLResult {
         guard let mysql else { throw MySQLError.notConnected }
 
@@ -533,12 +568,12 @@ private actor MySQLActor {
             }
             let raw = mysql_affected_rows(mysql)
             let affected = raw == .max ? 0 : Int(clamping: raw)
+            try consumeTrailingResults(of: mysql)
             return RawMySQLResult(
                 columns: [], columnTypes: [], rows: [],
                 rowsAffected: affected, executionTime: Date().timeIntervalSince(start), isTruncated: false
             )
         }
-        defer { mysql_free_result(result) }
 
         let fieldCount = Int(mysql_num_fields(result))
         let described = MariaDBCharacterSet.describeColumns(
@@ -562,6 +597,7 @@ private actor MySQLActor {
                 return UnsafeRawBufferPointer(start: value, count: Int(clamping: lengths?[index] ?? 0))
             }.map(legacyText))
         }
+        mysql_free_result(result)
 
         let isTruncated = rows.count >= maxRows
         let affected: Int
@@ -571,6 +607,7 @@ private actor MySQLActor {
         } else {
             affected = 0
         }
+        try consumeTrailingResults(of: mysql)
         return RawMySQLResult(
             columns: columns, columnTypes: columnTypes, rows: rows,
             rowsAffected: affected, executionTime: Date().timeIntervalSince(start), isTruncated: isTruncated
@@ -579,15 +616,19 @@ private actor MySQLActor {
 
     // MARK: - Streaming
 
+    private static let logger = Logger(subsystem: "com.TablePro", category: "MySQLDriver")
+
+    /// `streamingResult`, while set, belongs to the stream `streamGeneration` names.
     private var streamingResult: UnsafeMutablePointer<MYSQL_RES>?
+    private var streamGeneration: UInt64 = 0
     private var streamingColumns: [ColumnInfo] = []
     private var streamingDecoding = MySQLResultColumns()
 
     func beginStream(query: String) throws -> MySQLBeginStreamResult {
         guard let mysql else { throw MySQLError.notConnected }
-        if streamingResult != nil {
-            endStream()
-        }
+        endLeftoverStream(of: mysql)
+        streamGeneration &+= 1
+        let stream = MySQLStreamID(generation: streamGeneration)
 
         guard mysql_real_query(mysql, query, UInt(query.utf8.count)) == 0 else {
             throw MySQLError.queryFailed(message(from: mysql))
@@ -599,6 +640,7 @@ private actor MySQLActor {
             }
             let raw = mysql_affected_rows(mysql)
             let affected = raw == .max ? 0 : Int(clamping: raw)
+            try consumeTrailingResults(of: mysql)
             return .noResult(affectedRows: affected)
         }
 
@@ -622,12 +664,20 @@ private actor MySQLActor {
             )
         }
         streamingColumns = columns
-        return .rowSet(columns)
+        return .rowSet(stream: stream, columns: columns)
     }
 
-    func fetchNextRow(options: StreamOptions, columns: [ColumnInfo]) -> [Cell]? {
-        guard let result = streamingResult else { return nil }
-        guard let row = mysql_fetch_row(result) else { return nil }
+    /// A stream that a newer `beginStream` or a close has ended stops short, so it reports as cut off rather
+    /// than complete.
+    func fetchNextRow(_ stream: MySQLStreamID, options: StreamOptions, columns: [ColumnInfo]) throws -> [Cell]? {
+        guard let mysql, stream.generation == streamGeneration, let result = streamingResult else {
+            throw CancellationError()
+        }
+        let errorBefore = mysql_errno(mysql)
+        guard let row = mysql_fetch_row(result) else {
+            if let failure = fetchFailure(of: mysql, errorBefore: errorBefore) { throw failure }
+            return nil
+        }
 
         let lengths = mysql_fetch_lengths(result)
         let values = streamingDecoding.row(encoding: encoding) { index in
@@ -655,13 +705,65 @@ private actor MySQLActor {
         }
     }
 
-    func endStream() {
+    func endStream(_ stream: MySQLStreamID) throws {
+        guard let mysql, stream.generation == streamGeneration else { return }
+        try releaseStream(of: mysql)
+    }
+
+    /// The producer of a superseded stream only learns that its rows were cut off, so an error in the rest of
+    /// its statement has no one to reach and is logged.
+    private func endLeftoverStream(of mysql: UnsafeMutablePointer<MYSQL>) {
+        do {
+            try releaseStream(of: mysql)
+        } catch {
+            Self.logger.warning(
+                "A superseded statement failed after its stream ended: \(error.localizedDescription, privacy: .private)"
+            )
+        }
+    }
+
+    private func releaseStream(of mysql: UnsafeMutablePointer<MYSQL>) throws {
         guard let result = streamingResult else { return }
-        while mysql_fetch_row(result) != nil {}
-        mysql_free_result(result)
+        clearStream()
+        try drain(result, of: mysql)
+        try consumeTrailingResults(of: mysql)
+    }
+
+    private func clearStream() {
         streamingResult = nil
         streamingColumns = []
         streamingDecoding = MySQLResultColumns()
+    }
+
+    /// The first result set is the statement's answer, as before. A later one, such as a `CALL` that selects
+    /// twice, is read and dropped so the session can take the next command, and an error in one fails the statement.
+    private func consumeTrailingResults(of mysql: UnsafeMutablePointer<MYSQL>) throws {
+        while mysql_more_results(mysql) != 0 {
+            let status = mysql_next_result(mysql)
+            if status > 0 { throw MySQLError.queryFailed(message(from: mysql)) }
+            if status < 0 { return }
+            if let result = mysql_use_result(mysql) {
+                try drain(result, of: mysql)
+            } else if mysql_field_count(mysql) != 0 {
+                throw MySQLError.queryFailed(message(from: mysql))
+            }
+        }
+    }
+
+    private func drain(_ result: UnsafeMutablePointer<MYSQL_RES>, of mysql: UnsafeMutablePointer<MYSQL>) throws {
+        let errorBefore = mysql_errno(mysql)
+        while mysql_fetch_row(result) != nil {}
+        let failure = fetchFailure(of: mysql, errorBefore: errorBefore)
+        mysql_free_result(result)
+        if let failure { throw failure }
+    }
+
+    /// `mysql_fetch_row` returns nil both at the end and on an error, and a command refused while the result
+    /// was open leaves its own code on the handle, so only a code the fetch set means the rows ended in an error.
+    private func fetchFailure(of mysql: UnsafeMutablePointer<MYSQL>, errorBefore: UInt32) -> MySQLError? {
+        let code = mysql_errno(mysql)
+        guard code != 0, code != errorBefore else { return nil }
+        return .queryFailed(message(from: mysql))
     }
 
     private func makeCellRef(column: String, row: MYSQL_ROW, options: StreamOptions, columns: [ColumnInfo]) -> CellRef? {
@@ -678,8 +780,12 @@ private actor MySQLActor {
     }
 }
 
-nonisolated enum MySQLBeginStreamResult: Sendable {
-    case rowSet([ColumnInfo])
+nonisolated private struct MySQLStreamID: Sendable {
+    let generation: UInt64
+}
+
+nonisolated private enum MySQLBeginStreamResult: Sendable {
+    case rowSet(stream: MySQLStreamID, columns: [ColumnInfo])
     case noResult(affectedRows: Int)
 }
 

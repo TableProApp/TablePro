@@ -29,7 +29,7 @@ internal extension QuickSwitcherViewModel {
             guard let target = targets[targetConnectionId] else { return nil }
             let subtitle = [favorite.keyword, connectionPath(for: target)]
                 .compactMap { value in value.flatMap { $0.isEmpty ? nil : $0 } }
-                .joined(separator: " · ")
+                .joined(separator: ", ")
             return QuickSwitcherItem(
                 frecencyKey: QuickSwitcherFrecencyKey.savedQuery(favorite.id),
                 name: favorite.name,
@@ -63,7 +63,7 @@ internal extension QuickSwitcherViewModel {
                     entry.hasMeasuredDuration ? entry.formattedExecutionTime : ""
                 ]
                     .filter { !$0.isEmpty }
-                    .joined(separator: " · "),
+                    .joined(separator: ", "),
                 payload: entry.query,
                 target: target
             )

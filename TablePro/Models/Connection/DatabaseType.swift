@@ -51,6 +51,8 @@ extension DatabaseType {
     static let teradata = DatabaseType(rawValue: "Teradata")
     static let trino = DatabaseType(rawValue: "Trino")
     static let weaviate = DatabaseType(rawValue: "Weaviate")
+    static let firestore = DatabaseType(rawValue: "Firestore")
+    static let firebaseRealtimeDatabase = DatabaseType(rawValue: "Firebase Realtime Database")
     static let kafka = DatabaseType(rawValue: "Kafka")
     static let sapHana = DatabaseType(rawValue: "SAP HANA")
 }

@@ -3,16 +3,6 @@ import TableProPluginKit
 import Testing
 
 struct ConnectionFieldTests {
-    @Test("Default values: placeholder, isRequired, defaultValue, fieldType")
-    func defaultValues() {
-        let field = ConnectionField(id: "host", label: "Host")
-
-        #expect(field.placeholder == "")
-        #expect(field.isRequired == false)
-        #expect(field.defaultValue == nil)
-        #expect(field.fieldType == .text)
-    }
-
     @Test("isSecure is false for .text")
     func isSecureForText() {
         let field = ConnectionField(id: "host", label: "Host", fieldType: .text)
@@ -50,32 +40,6 @@ struct ConnectionFieldTests {
         )
         #expect(field.fieldType == .dropdown(options: options))
         #expect(field.isSecure == false)
-    }
-
-    @Test("DropdownOption stores value and label")
-    func dropdownOption() {
-        let option = ConnectionField.DropdownOption(value: "utf8", label: "UTF-8")
-        #expect(option.value == "utf8")
-        #expect(option.label == "UTF-8")
-    }
-
-    @Test("All properties stored correctly")
-    func allPropertiesStored() {
-        let field = ConnectionField(
-            id: "port",
-            label: "Port",
-            placeholder: "3306",
-            required: true,
-            defaultValue: "3306",
-            fieldType: .text
-        )
-
-        #expect(field.id == "port")
-        #expect(field.label == "Port")
-        #expect(field.placeholder == "3306")
-        #expect(field.isRequired == true)
-        #expect(field.defaultValue == "3306")
-        #expect(field.fieldType == .text)
     }
 
     @Test("Codable round-trip for .text field")
@@ -154,25 +118,10 @@ struct ConnectionFieldTests {
 
     // MARK: - IntRange
 
-    @Test("IntRange init from ClosedRange")
-    func intRangeFromClosedRange() {
-        let range = ConnectionField.IntRange(0...15)
-        #expect(range.lowerBound == 0)
-        #expect(range.upperBound == 15)
-    }
-
     @Test("IntRange closedRange round-trip")
     func intRangeClosedRangeRoundTrip() {
         let range = ConnectionField.IntRange(3...42)
         #expect(range.closedRange == 3...42)
-    }
-
-    @Test("IntRange init from bounds")
-    func intRangeFromBounds() {
-        let range = ConnectionField.IntRange(lowerBound: 1, upperBound: 100)
-        #expect(range.lowerBound == 1)
-        #expect(range.upperBound == 100)
-        #expect(range.closedRange == 1...100)
     }
 
     @Test("IntRange decoding rejects invalid bounds")

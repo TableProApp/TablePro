@@ -302,13 +302,20 @@ extension DamengPluginDriver {
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let result = try await executeParameterized(
+        try viewDefinition(from: try await storedView(view, schema: effectiveSchema(schema)))
+    }
+
+    private func storedView(_ view: String, schema: String) async throws -> PluginQueryResult {
+        try await executeParameterized(
             query: """
                 SELECT CAST(TEXT AS VARCHAR(8188)), LENGTHB(TEXT) FROM SYS.ALL_VIEWS
                 WHERE OWNER = ? AND VIEW_NAME = ?
                 """,
-            parameters: [.text(effectiveSchema(schema)), .text(view)]
+            parameters: [.text(schema), .text(view)]
         )
+    }
+
+    private func viewDefinition(from result: PluginQueryResult) throws -> String {
         guard let row = result.rows.first, let definition = row[safe: 0]?.asText else {
             throw DamengError(message: String(localized: "Dameng did not return the view definition."))
         }
@@ -322,8 +329,14 @@ extension DamengPluginDriver {
         return definition
     }
 
+    /// `ALL_TAB_COLUMNS` lists a view's columns as it lists a table's, so a view is looked up first:
+    /// without it Show DDL rebuilt a view as a `CREATE TABLE` of its columns.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let owner = effectiveSchema(schema)
+        let view = try await storedView(table, schema: owner)
+        if !view.rows.isEmpty {
+            return try viewDefinition(from: view)
+        }
         let columns = try await fetchColumns(table: table, schema: owner)
         guard !columns.isEmpty else {
             throw DamengError(message: String(localized: "Dameng did not return the table definition."))

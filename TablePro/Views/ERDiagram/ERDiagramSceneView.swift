@@ -24,6 +24,7 @@
 //
 
 import AppKit
+import Combine
 
 /// Everything the canvas can ask of the diagram, in one place, so the view that owns the pointer
 /// never reaches into a model of its own.
@@ -69,6 +70,15 @@ final class ERDiagramSceneView: NSView {
     private var press: Press?
     private var isShowingHandCursor = false
     private let accessibilityTree = ERDiagramAccessibilityTree()
+    private var bakedPalette: ERDiagramPalette?
+    private var themeCancellable: AnyCancellable?
+
+    var palette: ERDiagramPalette {
+        if let bakedPalette { return bakedPalette }
+        let baked = ERDiagramPalette(appearance: effectiveAppearance)
+        bakedPalette = baked
+        return baked
+    }
 
     override var isFlipped: Bool { true }
 
@@ -88,6 +98,8 @@ final class ERDiagramSceneView: NSView {
             owner: self,
             userInfo: nil
         ))
+        themeCancellable = AppEvents.shared.themeChanged
+            .sink { [weak self] _ in self?.discardPalette() }
     }
 
     @available(*, unavailable)
@@ -97,7 +109,17 @@ final class ERDiagramSceneView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
-        ERDiagramSceneRenderer.draw(scene, dirtyRect: dirtyRect, in: context)
+        ERDiagramSceneRenderer.draw(scene, palette: palette, dirtyRect: dirtyRect, in: context)
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        discardPalette()
+    }
+
+    private func discardPalette() {
+        bakedPalette = nil
+        needsDisplay = true
     }
 
     /// An ER diagram tab has nothing else to type into, so the canvas takes focus when nothing holds

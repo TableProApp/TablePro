@@ -21,6 +21,7 @@ struct SQLStatementPreview: View {
     let databaseType: DatabaseType
 
     @State private var editorState: SourceEditorState?
+    @State private var editorConfiguration = makeConfiguration()
 
     var body: some View {
         switch prepared.mode {
@@ -39,10 +40,16 @@ struct SQLStatementPreview: View {
         return SourceEditor(
             .constant(text),
             language: PluginManager.shared.editorLanguage(for: databaseType).treeSitterLanguage,
-            configuration: SQLStatementPreview.makeConfiguration(),
+            configuration: editorConfiguration,
             state: stateBinding,
             foldProvider: FoldProviderResolver.provider(for: databaseType)
         )
+        .onReceive(AppEvents.shared.themeChanged) { _ in
+            editorConfiguration = Self.makeConfiguration()
+        }
+        .onChange(of: settingsManager.editor) { _ in
+            editorConfiguration = Self.makeConfiguration()
+        }
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
             RoundedRectangle(cornerRadius: 6)

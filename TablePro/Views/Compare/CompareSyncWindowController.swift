@@ -51,6 +51,7 @@ internal final class CompareSyncWindowController: NSWindowController,
     private weak var modeControl: NSSegmentedControl?
     private weak var searchToolbarItem: NSSearchToolbarItem?
     private var renderedEndpoints: String?
+    private let windowBackdrop: ThemeWindowBackdrop
 
     internal static func present(prefillSource connectionId: UUID?) {
         let controller = controllers[connectionId] ?? CompareSyncWindowController(prefillSource: connectionId)
@@ -73,6 +74,7 @@ internal final class CompareSyncWindowController: NSWindowController,
         window.keepsKeyViewLoopCurrent()
         window.isRestorable = false
         window.isReleasedWhenClosed = false
+        windowBackdrop = ThemeWindowBackdrop(window: window)
         super.init(window: window)
 
         applyPrefill(connectionId)

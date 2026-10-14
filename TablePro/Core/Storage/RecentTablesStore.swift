@@ -63,7 +63,7 @@ final class RecentTablesStore {
     private let defaults: UserDefaults
     private let legacyKeyPrefix = "RecentTables.v1."
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
         self.defaults = defaults
     }
 

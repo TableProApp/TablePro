@@ -17,11 +17,9 @@ enum ERDiagramEdgeRenderer {
         edges: [EREdge],
         nodeRects: [UUID: CGRect],
         nodeIndex: [String: UUID],
+        strokeColor: CGColor,
         in context: CGContext
     ) {
-        let strokeColor = NSColor.secondaryLabelColor.withAlphaComponent(0.7)
-
-        // Resolve edges to IDs and rects, assign port indices sorted by X to minimize crossings
         let resolved: [ResolvedEdge] = edges.compactMap { edge -> ResolvedEdge? in
             guard let fromId = nodeIndex[edge.fromTable],
                   let toId = nodeIndex[edge.toTable],
@@ -49,7 +47,7 @@ enum ERDiagramEdgeRenderer {
             dstCounts[item.toId, default: 0] += 1
         }
 
-        // Group by source, sort each group by destination X → left dest gets left port
+        // Ports ordered by the far end's X keep a node's edges from crossing each other.
         var edgesBySource: [UUID: [ResolvedEdge]] = [:]
         var edgesByDest: [UUID: [ResolvedEdge]] = [:]
         for item in pairs {
@@ -63,7 +61,6 @@ enum ERDiagramEdgeRenderer {
             edgesByDest[key]?.sort { $0.fromRect.midX < $1.fromRect.midX }
         }
 
-        // Build port indices from sorted order
         var srcPortIndex: [String: Int] = [:]
         var dstPortIndex: [String: Int] = [:]
         for (_, group) in edgesBySource {
@@ -78,7 +75,7 @@ enum ERDiagramEdgeRenderer {
         }
 
         context.saveGState()
-        context.setStrokeColor(strokeColor.cgColor)
+        context.setStrokeColor(strokeColor)
         context.setLineWidth(strokeWidth)
         context.setLineCap(.round)
         context.setLineJoin(.round)

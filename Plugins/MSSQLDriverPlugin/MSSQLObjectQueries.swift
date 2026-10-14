@@ -2,11 +2,12 @@
 //  MSSQLObjectQueries.swift
 //  MSSQLDriverPlugin
 //
-//  Catalog SQL for routines and triggers. Pure, so it is testable without a server.
+//  Catalog SQL for routines, triggers and views. Pure, so it is testable without a server.
 //
 
 import Foundation
 import TableProMSSQLCore
+import TableProPluginKit
 
 public enum MSSQLObjectQueries {
     public static func escapeLiteral(_ value: String) -> String {
@@ -46,7 +47,7 @@ public enum MSSQLObjectQueries {
     ///
     /// The body itself is deliberately not selected. A listing needs a name, a kind and a
     /// signature; fetching every body to show a row per routine pulls a whole schema's source over
-    /// the wire and drops it, and `routineDefinition` reads the one the reader opens anyway.
+    /// the wire and drops it, and `moduleDefinition` reads the one the reader opens anyway.
     ///
     /// This query uses an XML data type method, so it needs the session `MSSQLSessionOptions`
     /// establishes. Against db-lib's own defaults the server answers `Msg 1934` and the whole list
@@ -85,6 +86,10 @@ public enum MSSQLObjectQueries {
             """
     }
 
+    /// One object's stored source and kind, found by schema and name. Routines, triggers and views all
+    /// keep their text in `sys.sql_modules`, and a table has a `sys.objects` row with no module, so the
+    /// same row tells a view from a table and carries the view's text.
+    ///
     /// `definition` is NULL for two unrelated reasons, and the second one is the common one:
     /// `WITH ENCRYPTION`, and a caller without VIEW DEFINITION. Measured on SQL Server 2022, a user
     /// with only SELECT and EXECUTE still sees the `sys.sql_modules` row, so the row's presence
@@ -97,7 +102,7 @@ public enum MSSQLObjectQueries {
     /// returned zero rows for such an object, which the caller read as "no longer exists" for a
     /// routine sitting in the list in front of the reader. The object type comes back so the caller
     /// can say the source is not T-SQL rather than guess at a cause.
-    public static func routineDefinition(schema: String, name: String) -> String {
+    public static func moduleDefinition(schema: String, name: String) -> String {
         """
         SELECT m.definition, OBJECTPROPERTY(o.object_id, 'IsEncrypted') AS is_encrypted, o.type
         FROM sys.objects o
@@ -131,6 +136,45 @@ public enum MSSQLObjectQueries {
                 \(tablePredicate)
             ORDER BY parent.name, t.name, te.type_desc
             """
+    }
+
+    /// What Edit View opens when the definition cannot be read. Qualified, because a tab's schema
+    /// is not a search path on SQL Server: an unqualified name binds to the login's default schema,
+    /// so running the template for `sales.v` created `dbo.v` beside it. Before `CREATE OR ALTER`
+    /// (2016 SP1) the view is dropped first, and the `GO` line keeps `CREATE VIEW` first in its own
+    /// batch, which the server requires.
+    public static func editViewTemplate(schema: String, view: String, createOrAlter: Bool) -> String {
+        let qualified = MSSQLSchemaQueries.bracketed(schema: schema, table: view)
+        guard !createOrAlter else {
+            return "CREATE OR ALTER VIEW \(qualified) AS\nSELECT * FROM table_name;"
+        }
+        return """
+            IF OBJECT_ID(\(MSSQLStringLiteral.quoted(qualified)), 'V') IS NOT NULL DROP VIEW \(qualified);
+            GO
+            CREATE VIEW \(qualified) AS
+            SELECT * FROM table_name;
+            """
+    }
+
+    public static func isView(objectType type: String) -> Bool {
+        normalizedObjectType(type) == "V"
+    }
+
+    /// A view's source from its ``moduleDefinition(schema:name:)`` row. The stored text gets its
+    /// header naming the view as it is named now, since `sp_rename` leaves the old name in it. Its
+    /// verb needs nothing: measured on Azure SQL Edge, `ALTER VIEW` and `CREATE OR ALTER VIEW` are
+    /// both stored as `CREATE`. A missing definition is an encrypted view or one this login may not
+    /// read, and either is said rather than handed back as an empty definition.
+    public static func viewSource(row: [String?]?, schema: String, name: String) throws -> String {
+        guard let row, isView(objectType: row[safe: 2].flatMap { $0 } ?? "") else {
+            throw PluginObjectSourceError.notFound(name)
+        }
+        guard let definition = row[safe: 0].flatMap({ $0 }), !definition.isEmpty else {
+            throw row[safe: 1].flatMap({ $0 }) == "1"
+                ? PluginObjectSourceError.unsupported(name)
+                : PluginObjectSourceError.insufficientPrivilege(name)
+        }
+        return MSSQLModuleHeader.namingObject(in: definition, objectKeyword: "VIEW", schema: schema, name: name)
     }
 
     /// `sys.objects.type` is `char(2)`, so a one-letter code arrives padded. Anything unrecognised

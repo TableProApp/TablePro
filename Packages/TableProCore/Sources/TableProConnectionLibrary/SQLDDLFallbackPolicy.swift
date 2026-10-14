@@ -43,6 +43,8 @@ public enum SQLDDLFallbackPolicy {
         "SurrealDB",
         "DynamoDB",
         "Beancount",
+        "Firestore",
+        "Firebase Realtime Database",
     ]
 
     /// True when `DROP`/`TRUNCATE` built by the app is something this engine could run.

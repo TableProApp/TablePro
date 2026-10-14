@@ -95,11 +95,6 @@ struct SQLCompletionAdapterFuzzyTests {
         #expect(fuzzyMatch(pattern: "SELECT", target: "select") == false)
     }
 
-    @Test("Same case matches")
-    func sameCaseMatches() {
-        #expect(fuzzyMatch(pattern: "select", target: "select") == true)
-    }
-
     // MARK: - Unicode
 
     @Test("ASCII pattern against accented target")

@@ -95,21 +95,37 @@ fails with `tag v… does not match MARKETING_VERSION …` when they disagree. I
 `CURRENT_PROJECT_VERSION` is not above the newest published release's. That number is what Sparkle
 compares as `<sparkle:version>`, so a flat build number ships a release no installed app is offered.
 
-Four jobs gate the release: SwiftLint, macOS Tests, Build (a matrix over `arm64` and `x86_64`) and
-Registry Readiness. A red suite or a registry with no plugin binary compatible with the shipping
-app blocks the tag.
+`main` takes no direct push. The release commit is the one exception: it touches only
+`Configs/Version.xcconfig`, `CHANGELOG.md`, `TablePro/Resources/WhatsNew.md` and
+`.github/release-flags.json`, and goes up with the release deploy key, the only bypass in main's
+ruleset:
+
+```bash
+GIT_SSH_COMMAND='ssh -i ~/.ssh/tablepro_release -o IdentitiesOnly=yes' git push origin main
+```
+
+The key has a passphrase and is never added to ssh-agent, so nothing that runs on this Mac without
+you can push with it.
+
+The release job needs three jobs: Tested on main, Build (a matrix over `arm64` and `x86_64`) and
+Registry Readiness. Tested on main runs no suite. For `macOS Tests` and `iOS and Package Tests` each,
+it walks back the first-parent commits on `main` past those where the job skipped, waits for the
+newest run when it is still going, and fails when that run is red or when files the suite reads
+changed after it. The release commit changes no such file, so its own push skips both suites. A red
+suite or a registry with no plugin binary compatible with the shipping app blocks the tag.
 
 The release job then verifies the artifacts, signs both update archives with the Sparkle key and
 extracts the release notes from `CHANGELOG.md`. It creates the GitHub release as a draft with both
 DMGs and both ZIPs on it, publishes the draft in one step, and only then commits `appcast.xml`, whose
-download URLs 404 until the release is public. A tag containing `-alpha`, `-beta` or `-rc` publishes
-as a prerelease.
+download URLs 404 until the release is public. That push uses `APPCAST_DEPLOY_KEY`, a deploy key
+held by the `release` environment, which only `v*` tags can use. A tag containing `-alpha`, `-beta`
+or `-rc` publishes as a prerelease.
 
 A published release is immutable: GitHub refuses to add, replace or delete an asset, or to move the
 tag. When a run fails:
 
-- Before **Publish the release**, only a draft exists. Fix forward on `main`, move the tag and push it
-  again. The next run reuses the draft.
+- Before **Publish the release**, only a draft exists. Fix forward on `main` through a pull request,
+  move the tag to the commit it lands as and push it again. The next run reuses the draft.
 - After it, at the `appcast.xml` push for instance, use **Re-run failed jobs**. The release job finds
   the same files already published and carries on. **Re-run all jobs** rebuilds, and the release job
   refuses the new files.
@@ -149,7 +165,8 @@ Removing the items from `appcast.xml` is the only way to un-ship a Sparkle relea
 
 ```bash
 python3 scripts/ci/pull-release.py 0.75.0 --dry-run   # reports what it would remove
-python3 scripts/ci/pull-release.py 0.75.0             # edits, commits and pushes
+GIT_SSH_COMMAND='ssh -i ~/.ssh/tablepro_release -o IdentitiesOnly=yes' \
+    python3 scripts/ci/pull-release.py 0.75.0         # edits, commits and pushes with the release key
 ```
 
 The GitHub release stays up, so a direct download link still resolves. Anyone already on the bad

@@ -15,9 +15,8 @@ struct AISettingsView: View {
     @State private var addingProvider: AIProviderConfig?
     @State private var pendingDeleteID: UUID?
     @ObservedObject private var chatGPTCodexService = ChatGPTCodexService.shared
-    @ObservedObject private var cursorAgentService = CursorAgentService.shared
-    @ObservedObject private var xaiService = XAIService.shared
     @ObservedObject private var claudeAgentService = ClaudeAgentService.shared
+    @ObservedObject private var copilotService = CopilotService.shared
     @State private var providersWithKey: Set<UUID> = []
 
     var body: some View {
@@ -34,14 +33,9 @@ struct AISettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
-        .task { refreshKeyAvailability() }
-        .task { await chatGPTCodexService.refreshAuthState() }
-        .task { await cursorAgentService.refreshStatus() }
-        .task { await xaiService.refreshAuthState() }
-        .task { await claudeAgentService.performRefresh() }
-        .onChange(of: settings.providers.map(\.id)) { _ in
-            refreshKeyAvailability()
+        .task(id: settings.enabled ? settings.providers.map(\.id) : []) { refreshKeyAvailability() }
+        .task(id: AIProviderAccountProbes.types(toProbe: settings)) {
+            await refreshAccountStatus(of: AIProviderAccountProbes.types(toProbe: settings))
         }
         .sheet(item: editingProviderBinding) { provider in
             AIProviderDetailSheet(
@@ -192,6 +186,12 @@ struct AISettingsView: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 2)
+        .task {
+            // Sign-in state lives in the language server, so a configured Copilot row has nothing
+            // true to show until it runs.
+            guard provider.type == .copilot else { return }
+            await copilotService.start()
+        }
     }
 
     private var addProviderMenu: some View {
@@ -353,12 +353,6 @@ struct AISettingsView: View {
             if provider.type == .custom {
                 return customStatusText(for: provider)
             }
-            if provider.type == .cursor {
-                return cursorStatusText(for: provider)
-            }
-            if provider.type == .xai {
-                return xaiStatusText(for: provider)
-            }
             return apiKeyStatusText(for: provider)
         case .none:
             if provider.type == .claudeAgent {
@@ -392,26 +386,6 @@ struct AISettingsView: View {
         }
     }
 
-    private func cursorStatusText(for provider: AIProviderConfig) -> String {
-        if providersWithKey.contains(provider.id) {
-            return String(localized: "API key set")
-        }
-        if cursorAgentService.authState.isSignedIn {
-            return String(localized: "Signed in with Cursor")
-        }
-        return String(localized: "Not configured")
-    }
-
-    private func xaiStatusText(for provider: AIProviderConfig) -> String {
-        if providersWithKey.contains(provider.id) {
-            return String(localized: "API key set")
-        }
-        if xaiService.authState.isSignedIn {
-            return String(localized: "Signed in with xAI")
-        }
-        return String(localized: "Not configured")
-    }
-
     /// Claude Agent authenticates through the CLI rather than an endpoint or a key, so the endpoint
     /// arm this type used to fall into could only ever answer "Not configured", however well the
     /// provider was working. The sheet has always read the service; this row now reads the same one.
@@ -441,7 +415,21 @@ struct AISettingsView: View {
         return String(localized: "Not configured")
     }
 
+    private func refreshAccountStatus(of types: Set<AIProviderType>) async {
+        let chatGPT = chatGPTCodexService
+        let claudeAgent = claudeAgentService
+        await withTaskGroup(of: Void.self) { group in
+            if types.contains(.chatgptCodex) {
+                group.addTask { await chatGPT.refreshAuthState() }
+            }
+            if types.contains(.claudeAgent) {
+                group.addTask { await claudeAgent.performRefresh() }
+            }
+        }
+    }
+
     private func refreshKeyAvailability() {
+        guard settings.enabled else { return }
         var ids: Set<UUID> = []
         for provider in settings.providers where provider.authStyle.usesAPIKey {
             if let key = AIKeyStorage.shared.loadAPIKey(for: provider.id), !key.isEmpty {

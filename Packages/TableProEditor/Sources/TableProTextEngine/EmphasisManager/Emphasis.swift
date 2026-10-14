@@ -22,9 +22,8 @@ public struct Emphasis: Equatable {
 
     /// Set to `true` to style the emphasis as 'inactive'.
     ///
-    /// When ``style`` is ``EmphasisStyle/standard``, this reduces shadows and background color.
-    /// For all styles, if drawing text on top of them, this uses ``EmphasisManager/getInactiveTextColor`` instead of
-    /// the text view's text color to render the emphasized text.
+    /// When ``style`` is ``EmphasisStyle/standard``, this draws the unemphasized selection colors instead of the
+    /// find highlight, with no shadow.
     public let inactive: Bool
 
     /// Set to `true` if the emphasis manager should update the text view's selected range to match

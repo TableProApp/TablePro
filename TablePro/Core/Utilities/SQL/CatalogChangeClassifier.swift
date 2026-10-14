@@ -159,7 +159,7 @@ enum CatalogChangeClassifier {
     }
 
     private static let documentStoreTypes: Set<DatabaseType> = [
-        .mongodb, .elasticsearch, .typesense, .weaviate, .etcd
+        .mongodb, .elasticsearch, .typesense, .weaviate, .etcd, .firestore, .firebaseRealtimeDatabase
     ]
 
     private static let transactionEndKeywords: Set<String> = ["COMMIT", "END", "ROLLBACK", "ABORT"]

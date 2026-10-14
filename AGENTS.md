@@ -13,6 +13,21 @@ This file is the project guide for every agent, and it covers the macOS and iOS 
 5. **Tests define behavior.** Every testable change has a test. When a test fails, fix the code, never the test.
 6. **Open plugin domain.** `DatabaseType` is a string-backed struct, so unknown types from future plugins round-trip. A `switch` over an open type keeps a `default:`; a `switch` over a closed enum stays exhaustive so the compiler flags new cases.
 
+## Scope
+
+Every capability is core, a module or a plugin. The first rule that fits decides:
+
+1. Used weekly by an app or backend developer or an AI-first user, or only a row that runs nothing until clicked: **core**, with no toggle.
+2. UI for one engine: core, shown only for the drivers that support it.
+3. A database driver or a heavy native dependency: **plugin**, shipped through the plugin registry and signed by TablePro.
+4. Any other advanced tool that needs a session, the grid, the editor or native UI: **module**, compiled in and turned on or off as a unit.
+5. A duplicate, or not worth maintaining: delete it. Never move it to the registry as a halfway step.
+
+- A new database engine ships only as a registry plugin. Engine-specific code never goes into `TablePro/`; engine UI goes through a PluginKit capability or plugin metadata.
+- A new advanced tool ships as a module, off by default.
+- A module PR declares its module id, its default, the sink that refuses it while it is off, its residue test and its docs page.
+- An off module leaves nothing behind: no menu item, key equivalent, context item, Settings section or Keyboard row; no launch work, observer, timer, listener or child process; no Keychain read or network call. A URL, AppleScript or MCP request for it gets an error that says where to turn it on, and only a click in TablePro turns it on.
+
 ## Repository map
 
 - `TablePro/`: the app. `Core/` (services, business logic), `Views/`, `Models/`, `ViewModels/`, `Extensions/`, `Theme/`.
@@ -61,7 +76,7 @@ swiftlint lint --strict <files>
 
 **Change tracking.** A cell edit goes to `DataChangeManager`; Save turns it into statements through `SQLStatementGenerator`; `AnyChangeManager` abstracts the concrete managers. Undo comes from `StructureChangeManager`'s private `UndoManager` and `ConnectionWorkspace.undoManager`.
 
-**Editor.** `ThemeEngine` owns the active theme, editor colors and fonts. `CompletionEngine` is framework-agnostic and `QueryCompletionAdapter` bridges it to the editor. Editor tabs are drawn by `EditorTabStrip`, not native window tabs. Details: `.claude/rules/editor.md`.
+**Editor and theme.** `ThemeCatalog` owns the theme list, `ThemeResolver` picks the light and dark pair, and `ThemeEngine` holds the palette and the font caches; the fonts themselves are `TypographySettings`. A theme colors content and the window backdrop, never chrome or controls; see `.claude/rules/theme.md`. `CompletionEngine` is framework-agnostic and `QueryCompletionAdapter` bridges it to the editor. Editor tabs are drawn by `EditorTabStrip`, not native window tabs. Details: `.claude/rules/editor.md`.
 
 **Storage.** Passwords in the Keychain, preferences in UserDefaults, query history in SQLite FTS5, tab state as JSON. The full table of which store owns what is in `.claude/rules/data-sync-storage.md`.
 
@@ -110,7 +125,7 @@ For everything: docs, commits, CHANGELOG, UI strings, errors, PR descriptions. S
 ## CI
 
 - **PRs:** `macos-tests.yml`, `ios-tests.yml`, `swiftlint.yml` (pinned, `--strict`), `pr-title.yml` (Conventional Commits, at most 72 characters) and `repo-hygiene.yml` (actionlint, shellcheck and the repo's source-scanning checks).
-- **Releases:** `build.yml` runs on `v*` tags and produces the DMG, the ZIP and the Sparkle feed, with notes taken from `CHANGELOG.md`.
+- **Releases:** `build.yml` runs on `v*` tags and produces the DMG, the tar.xz update archive, its deltas and the Sparkle feed, with notes taken from `CHANGELOG.md`.
 - **Plugins:** `build-plugin.yml` runs on `plugin-<slug>-v*` tags, where the slug is a key in `.github/plugin-registry.json`.
 
 ## Area rules
@@ -122,13 +137,14 @@ For everything: docs, commits, CHANGELOG, UI strings, errors, PR descriptions. S
 | `connection-window.md` | connection windows, workspaces, sessions, `DatabaseManager` |
 | `data-grid.md` | the data grid under `TablePro/Views/Results` |
 | `data-sync-storage.md` | storage, CloudKit sync, the database core |
-| `editor.md` | `Packages/TableProEditor`, `TablePro/Theme`, editor views |
+| `editor.md` | `Packages/TableProEditor`, editor views, fonts |
 | `libs.md` | `Libs/` and the libs scripts |
 | `mongodb-driver.md`, `mysql-driver.md`, `redis-driver.md` | those drivers |
 | `native-bridges.md` | `Native/` and the Dameng and HANA plugins |
 | `plugin-system.md` | `Plugins/`, TableProPluginKit, `project.yml`, plugin CI |
 | `split-views.md` | split view controllers and workspace panes |
 | `tests.md` | `TableProTests`, `TableProUITests` |
+| `theme.md` | `TablePro/Theme`, every view a theme reaches, content windows |
 | `ui-lifecycle.md` | views, view models, UI tests |
 | `welcome-library.md` | the welcome window's connection list |
 

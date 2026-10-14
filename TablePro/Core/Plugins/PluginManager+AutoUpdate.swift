@@ -218,7 +218,6 @@ extension PluginManager {
         guard let installed = plugins.first(where: { $0.id == pluginId }) else { return nil }
         guard installed.source == .userInstalled else { return nil }
         guard let registryPlugin = manifest.plugins.first(where: { $0.id == pluginId }) else { return nil }
-        guard registryPlugin.category != .theme else { return nil }
         return registryPlugin.version.compare(installed.version, options: .numeric) == .orderedDescending
             ? registryPlugin : nil
     }

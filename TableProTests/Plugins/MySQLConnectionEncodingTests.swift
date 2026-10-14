@@ -61,28 +61,9 @@ struct MySQLConnectionEncodingTests {
         }
     }
 
-    @Test("The MySQL plugin declares the shared encoding field")
-    func pluginDeclaresTheField() throws {
-        let source = try String(contentsOf: Self.repositoryRoot().appendingPathComponent(
-            "Plugins/MySQLDriverPlugin/MySQLPlugin.swift"
-        ), encoding: .utf8)
-        #expect(source.contains("MySQLConnectionEncoding.connectionField"))
-    }
-
     private static func encoded(_ field: ConnectionField) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         return try encoder.encode(field)
-    }
-
-    private static func repositoryRoot(file: StaticString = #filePath) throws -> URL {
-        var directory = URL(fileURLWithPath: "\(file)").deletingLastPathComponent()
-        while directory.path != "/" {
-            if FileManager.default.fileExists(atPath: directory.appendingPathComponent("project.yml").path) {
-                return directory
-            }
-            directory = directory.deletingLastPathComponent()
-        }
-        throw CocoaError(.fileNoSuchFile)
     }
 }

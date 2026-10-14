@@ -88,25 +88,4 @@ struct ConnectionShareLinkTests {
 
         #expect(URLComponents(string: link)?.queryItems?.first { $0.name == "sslMode" }?.value == "Verify Identity")
     }
-
-    @Test("Copy as JSON is the settings object alone")
-    func compactJSONIsSettingsOnly() throws {
-        let library = try ImportLibraryFixture()
-        defer { library.cleanUp() }
-        let group = ConnectionGroup(name: "Production")
-        try library.groups.addGroup(group)
-        var connection = DatabaseConnection(name: "Orders", host: "db.example.com", port: 5_432, type: .postgresql)
-        connection.groupId = group.id
-
-        let json = ConnectionShareLink.compactJSON(for: connection, exporter: library.exporter)
-
-        let object = try #require(
-            try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any]
-        )
-        #expect(object["name"] as? String == "Orders")
-        #expect(object["groupName"] == nil)
-        #expect(object["groupRef"] == nil)
-        #expect(object["ref"] == nil)
-        #expect(!json.contains("\n"))
-    }
 }

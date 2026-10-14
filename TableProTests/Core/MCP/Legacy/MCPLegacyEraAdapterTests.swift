@@ -700,7 +700,7 @@ enum MCPLegacyTestSupport {
 
     static func principal(
         fingerprint: String = "test-fp",
-        tokenId: UUID? = nil,
+        tokenId: UUID = UUID(),
         scopes: Set<MCPScope> = MCPScope.readWriteSet
     ) -> MCPPrincipal {
         MCPPrincipal(

@@ -2,8 +2,6 @@
 //  SidebarViewModelTests.swift
 //  TableProTests
 //
-//  Tests for SidebarViewModel — the extracted business logic from SidebarView.
-//
 
 import AppKit
 import Combine
@@ -458,67 +456,71 @@ struct SidebarViewModelMultiSectionTests {
     @Test("expansion writes persist to per-kind UserDefaults keys")
     @MainActor
     func expansionWritesPersist() {
+        let defaults = AppStorageEnvironment.shared.defaults
         let connectionId = UUID()
         let vm = makeViewModel(connectionId: connectionId)
         let key = SidebarPersistenceKey.expanded(connectionId: connectionId, kind: .procedure)
-        UserDefaults.standard.removeObject(forKey: key)
+        defaults.removeObject(forKey: key)
 
         vm.expanded[.procedure] = true
 
-        #expect(UserDefaults.standard.bool(forKey: key) == true)
-        UserDefaults.standard.removeObject(forKey: key)
+        #expect(defaults.bool(forKey: key) == true)
+        defaults.removeObject(forKey: key)
     }
 
     @Test("recents expansion defaults to expanded and persists across init")
     @MainActor
     func recentsExpansionPersists() {
+        let defaults = AppStorageEnvironment.shared.defaults
         let connectionId = UUID()
         let key = SidebarPersistenceKey.recentsExpanded(connectionId: connectionId)
-        UserDefaults.standard.removeObject(forKey: key)
+        defaults.removeObject(forKey: key)
 
         let first = makeViewModel(connectionId: connectionId)
         #expect(first.isRecentsExpanded == true)
 
         first.isRecentsExpanded = false
-        #expect(UserDefaults.standard.bool(forKey: key) == false)
+        #expect(defaults.object(forKey: key) as? Bool == false)
 
         let second = makeViewModel(connectionId: connectionId)
         #expect(second.isRecentsExpanded == false)
 
-        UserDefaults.standard.removeObject(forKey: key)
+        defaults.removeObject(forKey: key)
     }
 
     @Test("expansion seeds .table from legacy per-connection key on first init")
     @MainActor
     func legacyMigrationFromPerConnectionKey() {
+        let defaults = AppStorageEnvironment.shared.defaults
         let connectionId = UUID()
         let perKindKey = SidebarPersistenceKey.expanded(connectionId: connectionId, kind: .table)
         let legacyKey = SidebarPersistenceKey.tablesExpanded(connectionId: connectionId)
-        UserDefaults.standard.removeObject(forKey: perKindKey)
-        UserDefaults.standard.set(false, forKey: legacyKey)
+        defaults.removeObject(forKey: perKindKey)
+        defaults.set(false, forKey: legacyKey)
 
         let vm = makeViewModel(connectionId: connectionId)
 
         #expect(vm.expanded[.table] == false)
-        UserDefaults.standard.removeObject(forKey: perKindKey)
-        UserDefaults.standard.removeObject(forKey: legacyKey)
+        defaults.removeObject(forKey: perKindKey)
+        defaults.removeObject(forKey: legacyKey)
     }
 
     @Test("expansion seeds .table from global legacy key when no per-connection key set")
     @MainActor
     func legacyMigrationFromGlobalKey() {
+        let defaults = AppStorageEnvironment.shared.defaults
         let connectionId = UUID()
         let perKindKey = SidebarPersistenceKey.expanded(connectionId: connectionId, kind: .table)
         let perConnLegacy = SidebarPersistenceKey.tablesExpanded(connectionId: connectionId)
-        UserDefaults.standard.removeObject(forKey: perKindKey)
-        UserDefaults.standard.removeObject(forKey: perConnLegacy)
-        UserDefaults.standard.set(false, forKey: SidebarPersistenceKey.legacyTablesExpanded)
+        defaults.removeObject(forKey: perKindKey)
+        defaults.removeObject(forKey: perConnLegacy)
+        defaults.set(false, forKey: SidebarPersistenceKey.legacyTablesExpanded)
 
         let vm = makeViewModel(connectionId: connectionId)
 
         #expect(vm.expanded[.table] == false)
-        UserDefaults.standard.removeObject(forKey: perKindKey)
-        UserDefaults.standard.removeObject(forKey: SidebarPersistenceKey.legacyTablesExpanded)
+        defaults.removeObject(forKey: perKindKey)
+        defaults.removeObject(forKey: SidebarPersistenceKey.legacyTablesExpanded)
     }
 }
 

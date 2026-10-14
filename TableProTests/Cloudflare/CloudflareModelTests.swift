@@ -71,14 +71,6 @@ struct CloudflareModelTests {
         #expect(decoded.resolvedCloudflareConfig == nil)
     }
 
-    @Test("CloudflaredPidRecord round-trips for the stale-PID sweep")
-    func pidRecordRoundTrip() throws {
-        let records = [CloudflaredPidRecord(pid: 4_242, binaryPath: "/opt/homebrew/bin/cloudflared")]
-        let data = try JSONEncoder().encode(records)
-        let decoded = try JSONDecoder().decode([CloudflaredPidRecord].self, from: data)
-        #expect(decoded == records)
-    }
-
     @Test("The cloudflared not-found error is plain text that names the install command")
     func binaryNotFoundIsPlainText() {
         let description = CloudflareTunnelError.binaryNotFound.errorDescription ?? ""

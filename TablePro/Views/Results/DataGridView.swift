@@ -70,8 +70,8 @@ extension RowVisualState {
     /// The wash a row in this state carries, read by the row and by the pinned row gutter over it so
     /// the two cannot disagree.
     @MainActor var tint: NSColor? {
-        if isDeleted { return ThemeEngine.shared.colors.dataGrid.deleted }
-        if isInserted { return ThemeEngine.shared.colors.dataGrid.inserted }
+        if isDeleted { return ThemeEngine.shared.resolved[.gridDeleted] }
+        if isInserted { return ThemeEngine.shared.resolved[.gridInserted] }
         return highlight.rowColor?.washColor
     }
 
@@ -162,7 +162,7 @@ struct DataGridView: NSViewRepresentable {
         tableView.intercellSpacing = NSSize(width: 1, height: 0)
         tableView.rowHeight = CGFloat(settings.rowHeight.rawValue)
         tableView.usesAutomaticRowHeights = false
-        DataGridBodyChrome.applyBackground(to: tableView)
+        DataGridBodyChrome.applyThemeColors(to: tableView)
 
         tableView.delegate = context.coordinator
         tableView.dataSource = context.coordinator
@@ -549,6 +549,7 @@ struct DataGridView: NSViewRepresentable {
             firstClickSortDirection: coordinator.firstClickSortDirection,
             supportsColumnSort: configuration.supportsColumnSort,
             supportsValueFilter: configuration.supportsValueFilter,
+            minimumWidths: configuration.columnMinimumWidths,
             widthCalculator: { columnName, slot in
                 coordinator.automaticColumnWidth(
                     for: columnName,

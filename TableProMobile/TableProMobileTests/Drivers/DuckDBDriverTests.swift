@@ -161,6 +161,80 @@ final class DuckDBDriverTests: XCTestCase {
         XCTAssertTrue(value.contains("42"), "expected rendered variant text, got \(value)")
     }
 
+    func testStreamThrowsAnErrorRaisedAfterItsFirstChunks() async throws {
+        let driver = try XCTUnwrap(driver)
+        // DuckDB buffers about 128k rows of a streaming result ahead of the reader, so the failing row has to lie
+        // past that for the error to come from a fetch rather than from executing the query.
+        let query = "SELECT CASE WHEN i = 250000 THEN error('boom at 250000') ELSE i END AS v FROM range(250001) t(i)"
+        var rows = 0
+        do {
+            for try await element in driver.executeStreaming(query: query, options: StreamOptions(maxRows: 1_000_000)) {
+                if case .row = element { rows += 1 }
+            }
+            XCTFail("a stream whose later rows fail must throw, not end after \(rows) rows")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("boom at 250000"), "unexpected error: \(error)")
+        }
+        XCTAssertGreaterThan(rows, 0, "the error must come from a later fetch for this test to cover it")
+    }
+
+    func testSupersededStreamCannotReadOrEndTheNextStream() async throws {
+        let actor = try XCTUnwrap(driver).actor
+        guard case .rowSet(_, let first) = try await actor.beginStream(
+            query: "SELECT i FROM range(5) t(i)", token: DuckDBStreamToken()
+        ) else {
+            return XCTFail("a SELECT must stream")
+        }
+        guard case .rowSet(_, let second) = try await actor.beginStream(
+            query: "SELECT i FROM range(100, 103) t(i)", token: DuckDBStreamToken()
+        ) else {
+            return XCTFail("a SELECT must stream")
+        }
+
+        do {
+            _ = try await actor.fetchStreamChunk(stream: first, options: .default)
+            XCTFail("a superseded stream must not read the stream that replaced it")
+        } catch is CancellationError {}
+
+        await actor.endStream(first)
+        let chunk = try await actor.fetchStreamChunk(stream: second, options: .default)
+        XCTAssertEqual(chunk?.map { $0.first?.displayString }, ["100", "101", "102"])
+        await actor.endStream(second)
+    }
+
+    func testAnotherStatementEndsTheOpenStreamAsCancelled() async throws {
+        let driver = try XCTUnwrap(driver)
+        guard case .rowSet(_, let stream) = try await driver.actor.beginStream(
+            query: "SELECT i FROM range(100000) t(i)", token: DuckDBStreamToken()
+        ) else {
+            return XCTFail("a SELECT must stream")
+        }
+        _ = try await driver.actor.fetchStreamChunk(stream: stream, options: .default)
+
+        _ = try await driver.execute(query: "SELECT 42")
+
+        do {
+            _ = try await driver.actor.fetchStreamChunk(stream: stream, options: .default)
+            XCTFail("a stream closed by another statement must end as cancelled")
+        } catch is CancellationError {}
+    }
+
+    func testCancellingTheConsumerInterruptsTheRunningQuery() async throws {
+        let driver = try XCTUnwrap(driver)
+        // About 30 seconds of work on ten cores, all of it before the first chunk is ready.
+        let query = "SELECT sum(i) FROM range(50000000000) t(i)"
+        let consumer = Task {
+            for try await _ in driver.executeStreaming(query: query, options: .default) {}
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        consumer.cancel()
+
+        let start = ContinuousClock.now
+        let alive = try await driver.ping()
+        XCTAssertTrue(alive)
+        XCTAssertLessThan(ContinuousClock.now - start, .seconds(5), "the cancel must interrupt the query, not queue behind it")
+    }
+
     func testCancelWithoutRunningQueryIsSafe() async throws {
         let driver = try XCTUnwrap(driver)
         try await driver.cancelCurrentQuery()

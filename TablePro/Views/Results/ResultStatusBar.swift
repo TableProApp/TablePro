@@ -12,9 +12,9 @@ import SwiftUI
 /// centre. Anchoring the readout to the leading edge and the controls to the trailing edge also
 /// keeps the controls still when a mode change removes one of them.
 ///
-/// The view switcher leads the bar, the way TablePlus and Postico place theirs. It was briefly a
-/// strip of its own above the result, which cost a band of height in every mode and left the
-/// structure editor with two segmented rows stacked, the child louder than the parent.
+/// The view switcher leads the bar. It was briefly a strip of its own above the result, which cost
+/// a band of height in every mode and left the structure editor with two segmented rows stacked,
+/// the child louder than the parent.
 ///
 /// Adding a row still belongs to the toolbar: it changes the document. The structure editor's
 /// add and remove pair is this bar's trailing cluster while the structure editor is the content,
@@ -160,7 +160,7 @@ struct ResultStatusBar: View {
     /// clusters on either side keep their intrinsic widths. Its three parts are the slots
     /// `ReadoutZoneLayout` sizes: the sentence, the actions beside it, and the report after them.
     private var readoutCluster: some View {
-        ReadoutZoneLayout(spacing: Self.readoutSpacing, sentenceIdealWidth: StatusBarLayoutMetrics.readoutIdealWidth) {
+        ReadoutZoneLayout(spacing: StatusBarChrome.clusterSpacing, sentenceIdealWidth: StatusBarLayoutMetrics.readoutIdealWidth) {
             HStack(spacing: Self.readoutSpacing) {
                 if model.controls.showsReadout {
                     readoutSentence
@@ -171,13 +171,12 @@ struct ResultStatusBar: View {
                     readoutActions
                 }
             }
-            HStack(spacing: Self.readoutSpacing) {
+            HStack(spacing: StatusBarChrome.clusterSpacing) {
                 if model.controls.showsSelectionSummary {
                     SelectionSummaryReadout(
                         state: selectionSummary,
                         scopeNote: selectionSummaryScopeNote,
-                        isPopoverPresented: $showSelectionSummaryPopover,
-                        leadsWithSeparator: true
+                        isPopoverPresented: $showSelectionSummaryPopover
                     )
                 }
                 if model.controls.showsReadout {
@@ -242,7 +241,6 @@ struct ResultStatusBar: View {
     @ViewBuilder
     private var readoutMessage: some View {
         if let statusMessage = model.statusMessage {
-            StatusBarSeparator()
             /// Yields its width before the execution report beside it does, so a wordy driver
             /// message truncates instead of squeezing anything else out. Which tier the bar draws
             /// is not its business: `ReadoutZoneLayout` leaves it out of the ideal width, so no
@@ -260,13 +258,9 @@ struct ResultStatusBar: View {
     private var executionReport: some View {
         let slot = ExecutionSlot(
             isOffered: model.controls.showsExecution,
-            followsReadout: model.controls.showsReadout,
             isRevealed: revealedExecutionTabId == execution.tabId,
             lastTiming: execution.lastTiming
         )
-        if slot.leadsWithSeparator {
-            StatusBarSeparator()
-        }
         if let report = slot.report {
             ExecutionIndicatorView(
                 report: report,

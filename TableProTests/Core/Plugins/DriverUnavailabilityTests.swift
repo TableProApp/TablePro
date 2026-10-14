@@ -60,7 +60,7 @@ struct DriverUnavailabilityTests {
         return (manager, root)
     }
 
-    private func makeEntry(id: String, name: String, typeId: String, isEnabled: Bool) -> PluginEntry {
+    private func makeEntry(id: String, name: String, typeId: String) -> PluginEntry {
         PluginEntry(
             id: id,
             bundle: Bundle.main,
@@ -70,7 +70,6 @@ struct DriverUnavailabilityTests {
             version: "1.0.0",
             pluginDescription: "",
             capabilities: [.databaseDriver],
-            isEnabled: isEnabled,
             databaseTypeId: typeId,
             additionalTypeIds: [],
             pluginIconName: "puzzlepiece",
@@ -142,21 +141,12 @@ struct DriverUnavailabilityTests {
         #expect(manager.driverUnavailability(for: type, registryManifest: nil) == .unknownType)
     }
 
-    @Test("A plugin the user switched off is reported as off, not as missing")
-    func disabledPlugin() throws {
-        let (manager, root) = try makeManager()
-        defer { try? FileManager.default.removeItem(at: root) }
-        manager.plugins = [makeEntry(id: "com.example.mssql", name: "SQL Server Driver", typeId: "SQL Server", isEnabled: false)]
-
-        #expect(manager.driverUnavailability(for: .mssql) == .disabled(pluginId: "com.example.mssql", pluginName: "SQL Server Driver"))
-    }
-
-    @Test("An installed, enabled plugin with no driver failed to load, with the recorded reason")
-    func enabledPluginThatFailedToLoad() throws {
+    @Test("An installed plugin with no driver failed to load, with the recorded reason")
+    func installedPluginThatFailedToLoad() throws {
         let (manager, root) = try makeManager()
         defer { try? FileManager.default.removeItem(at: root) }
         let typeId = "LoadFailDB-\(UUID().uuidString)"
-        manager.plugins = [makeEntry(id: "com.example.loadfail", name: "Load Fail", typeId: typeId, isEnabled: true)]
+        manager.plugins = [makeEntry(id: "com.example.loadfail", name: "Load Fail", typeId: typeId)]
         manager.rejectedPlugins = [makeRejection(typeId: typeId, isOutdated: false, reason: "bad signature")]
 
         #expect(manager.driverUnavailability(for: DatabaseType(rawValue: typeId)) == .failedToLoad(
@@ -164,6 +154,15 @@ struct DriverUnavailabilityTests {
             pluginName: "Load Fail",
             reason: "bad signature"
         ))
+    }
+
+    @Test("Every installed driver plugin offers its database types")
+    func installedPluginTypesAreAvailable() throws {
+        let (manager, root) = try makeManager()
+        defer { try? FileManager.default.removeItem(at: root) }
+        manager.plugins = [makeEntry(id: "com.example.mssql", name: "SQL Server Driver", typeId: "SQL Server")]
+
+        #expect(manager.availableDatabaseTypes == [.mssql])
     }
 
     @Test("A rejected plugin that is not listed is still reported with its reason")
@@ -216,25 +215,11 @@ struct DriverUnavailabilityTests {
         #expect(pluginName == PluginManager.registryDisplayName(of: .mysql))
     }
 
-    @Test("Connecting never switches a disabled plugin back on or reinstalls it")
-    func connectingLeavesADisabledPluginOff() async throws {
-        let (manager, root) = try makeManager()
-        defer { try? FileManager.default.removeItem(at: root) }
-        manager.plugins = [makeEntry(id: "com.example.mssql", name: "SQL Server Driver", typeId: "SQL Server", isEnabled: false)]
-        let registry = try makeUnreachableRegistry(root: root)
-
-        try await manager.prepareForConnecting(to: .mssql, registryClient: registry)
-
-        #expect(manager.plugins.first?.isEnabled == false)
-        #expect(UnreachableRegistryProtocol.requestCount == 0)
-        #expect(manager.driverUnavailability(for: .mssql) == .disabled(pluginId: "com.example.mssql", pluginName: "SQL Server Driver"))
-    }
-
     @Test("Connecting never reinstalls a plugin that failed to load")
     func connectingLeavesAFailedPluginInPlace() async throws {
         let (manager, root) = try makeManager()
         defer { try? FileManager.default.removeItem(at: root) }
-        manager.plugins = [makeEntry(id: "com.example.mssql", name: "SQL Server Driver", typeId: "SQL Server", isEnabled: true)]
+        manager.plugins = [makeEntry(id: "com.example.mssql", name: "SQL Server Driver", typeId: "SQL Server")]
         manager.rejectedPlugins = [makeRejection(typeId: "SQL Server", isOutdated: false, reason: "bad signature")]
         let registry = try makeUnreachableRegistry(root: root)
 
@@ -243,48 +228,6 @@ struct DriverUnavailabilityTests {
         #expect(UnreachableRegistryProtocol.requestCount == 0)
         #expect(manager.plugins.map(\.id) == ["com.example.mssql"])
         #expect(manager.driverUnavailableError(for: .mssql).errorDescription?.contains("SQL Server Driver") == true)
-    }
-
-    @Test("A disabled plugin's code is never loaded to answer a driver lookup")
-    func disabledLazyBundleIsNeverLoaded() throws {
-        let (manager, root) = try makeManager()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let bundleURL = root.appendingPathComponent("Disabled.tableplugin", isDirectory: true)
-        let contentsURL = bundleURL.appendingPathComponent("Contents", isDirectory: true)
-        try FileManager.default.createDirectory(at: contentsURL, withIntermediateDirectories: true)
-        let bundleId = "com.TablePro.test.disabled.\(UUID().uuidString)"
-        let info: [String: Any] = [
-            "CFBundleIdentifier": bundleId,
-            "CFBundleName": "Disabled",
-            "CFBundleShortVersionString": "1.0.0"
-        ]
-        let infoData = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
-        try infoData.write(to: contentsURL.appendingPathComponent("Info.plist"))
-        let bundle = try #require(Bundle(url: bundleURL))
-        manager.plugins = [
-            PluginEntry(
-                id: bundleId,
-                bundle: bundle,
-                url: bundleURL,
-                source: .userInstalled,
-                name: "Disabled",
-                version: "1.0.0",
-                pluginDescription: "",
-                capabilities: [.databaseDriver],
-                isEnabled: false,
-                databaseTypeId: "DisabledDB",
-                additionalTypeIds: [],
-                pluginIconName: "puzzlepiece",
-                defaultPort: nil,
-                exportFormatId: nil,
-                importFormatId: nil
-            )
-        ]
-
-        manager.activateLazyBundle(at: bundleURL)
-
-        #expect(manager.rejectedPlugins.isEmpty)
-        #expect(manager.driverPlugins["DisabledDB"] == nil)
     }
 
     @Test("A rejected bundle that declares no database types takes them from its registry entry")

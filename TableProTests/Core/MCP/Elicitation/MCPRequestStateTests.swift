@@ -8,7 +8,7 @@ import Foundation
 import Testing
 
 struct MCPRequestStateTests {
-    private func principal(fingerprint: String = "fp-1", tokenId: UUID? = nil) -> MCPPrincipal {
+    private func principal(fingerprint: String = "fp-1", tokenId: UUID = MCPRequestStateTestIds.token) -> MCPPrincipal {
         MCPPrincipal(
             tokenFingerprint: fingerprint,
             tokenId: tokenId,
@@ -147,7 +147,7 @@ struct MCPRequestStateTests {
 struct MCPRequestStateReplayTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
-    private func principal(fingerprint: String = "fp-1", tokenId: UUID? = nil) -> MCPPrincipal {
+    private func principal(fingerprint: String = "fp-1", tokenId: UUID = MCPRequestStateTestIds.token) -> MCPPrincipal {
         MCPPrincipal(
             tokenFingerprint: fingerprint,
             tokenId: tokenId,
@@ -236,4 +236,8 @@ struct MCPRequestStateReplayTests {
         #expect(MCPRequestState.digest(ofParams: nil) == MCPRequestState.digest(ofParams: .object([:])))
         #expect(MCPRequestState.digest(ofParams: .string("not an object")) == MCPRequestState.digest(ofParams: nil))
     }
+}
+
+private enum MCPRequestStateTestIds {
+    static let token = UUID(uuid: (0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22))
 }

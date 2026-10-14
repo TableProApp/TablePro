@@ -117,8 +117,6 @@ public final class SuggestionController: NSWindowController {
             cursorPosition: cursorPosition,
             isManualTrigger: isManualTrigger
         ) { parentWindow, cursorRect in
-            self.model.updateTheme(from: textView)
-
             if asPopover {
                 self.popover?.close()
                 self.popover = nil

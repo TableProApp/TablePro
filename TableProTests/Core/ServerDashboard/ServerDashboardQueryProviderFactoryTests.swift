@@ -30,10 +30,18 @@ struct ServerDashboardQueryProviderFactoryTests {
         #expect(ServerDashboardQueryProviderFactory.provider(for: unknown) == nil)
     }
 
-    @Test("PostgreSQL, MySQL and SQLite each have one")
-    func knownEnginesHaveOne() {
-        for type in [DatabaseType.postgresql, .mysql, .mariadb, .sqlite, .redshift, .cockroachdb] {
+    @Test("Server engines each have one")
+    func serverEnginesHaveOne() {
+        for type in [DatabaseType.postgresql, .mysql, .mariadb, .redshift, .cockroachdb, .mssql, .clickhouse] {
             #expect(ServerDashboardQueryProviderFactory.supportsDashboard(for: type), "\(type.rawValue)")
+        }
+    }
+
+    @Test("SQLite and DuckDB have none")
+    func fileEnginesHaveNone() {
+        for type in [DatabaseType.sqlite, .duckdb] {
+            #expect(!ServerDashboardQueryProviderFactory.supportsDashboard(for: type), "\(type.rawValue)")
+            #expect(ServerDashboardQueryProviderFactory.provider(for: type) == nil, "\(type.rawValue)")
         }
     }
 }

@@ -9,13 +9,10 @@
 import SwiftUI
 
 struct JSONRowInspectorView: View {
-    @ObservedObject private var themeEngine = ThemeEngine.shared
     @ObservedObject var viewModel: JSONRowInspectorViewModel
 
     let snapshot: JSONRowSnapshot?
     let onOpenReferencedTable: (JSONForeignKeyRef, String) -> Void
-
-    @State private var colors = JSONRowColors.current()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,12 +20,12 @@ struct JSONRowInspectorView: View {
                 toolbar
                 Divider()
                 tree
+                    .themeBackground(.editorBackground, native: Color.clear, ignoresSafeAreaEdges: [])
             } else {
                 emptyState
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onReceive(AppEvents.shared.themeChanged) { _ in colors = JSONRowColors.current() }
     }
 
     // MARK: - Empty State
@@ -89,7 +86,6 @@ struct JSONRowInspectorView: View {
                     ForEach(rows) { row in
                         JSONNodeRowView(
                             row: row,
-                            colors: colors,
                             onToggle: { viewModel.toggle(row: row) },
                             onOpenReferencedTable: onOpenReferencedTable
                         )
@@ -99,7 +95,6 @@ struct JSONRowInspectorView: View {
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .background(Color(nsColor: themeEngine.colors.editor.background))
             .accessibilityLabel(String(localized: "Row as JSON"))
         }
     }

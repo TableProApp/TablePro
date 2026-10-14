@@ -8,7 +8,6 @@ import TableProPluginKit
 
 internal enum DriverUnavailability: Equatable, Sendable {
     case unknownType
-    case disabled(pluginId: String, pluginName: String)
     case failedToLoad(pluginId: String?, pluginName: String, reason: String?)
     case outdated(reason: String)
     case notInstalled
@@ -27,9 +26,6 @@ extension PluginManager {
     ) -> DriverUnavailability {
         let typeId = databaseType.pluginTypeId
         if let entry = installedEntry(servingTypeId: typeId) {
-            guard entry.isEnabled else {
-                return .disabled(pluginId: entry.id, pluginName: entry.name)
-            }
             let rejection = rejectedPlugins.first { $0.providedDatabaseTypeIds.contains(typeId) }
             return .failedToLoad(pluginId: entry.id, pluginName: entry.name, reason: rejection?.reason)
         }
@@ -56,8 +52,6 @@ extension PluginManager {
         switch driverUnavailability(for: databaseType) {
         case .unknownType:
             return .unknownDatabaseType(databaseType.rawValue)
-        case .disabled(let pluginId, let pluginName):
-            return .pluginDisabled(pluginId: pluginId, pluginName: pluginName)
         case .failedToLoad(let pluginId, let pluginName, let reason):
             return .pluginLoadFailed(pluginId: pluginId, pluginName: pluginName, reason: reason)
         case .outdated(let reason):

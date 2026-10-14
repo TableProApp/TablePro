@@ -25,7 +25,7 @@ final class AppSettingsManager: ObservableObject {
     @Published var appearance: AppearanceSettings {
         didSet {
             storage.saveAppearance(appearance)
-            themeEngine.updateAppearanceAndTheme(
+            themeEngine.apply(
                 mode: appearance.appearanceMode,
                 lightThemeId: appearance.preferredLightThemeId,
                 darkThemeId: appearance.preferredDarkThemeId
@@ -37,16 +37,18 @@ final class AppSettingsManager: ObservableObject {
     @Published var editor: EditorSettings {
         didSet {
             storage.saveEditor(editor)
-            themeEngine.updateEditorSettings(
-                highlightCurrentLine: editor.highlightCurrentLine,
-                highlightCurrentStatement: editor.highlightCurrentStatement,
-                showLineNumbers: editor.showLineNumbers,
-                tabWidth: editor.clampedTabWidth,
-
-                wordWrap: editor.wordWrap
-            )
             appEvents.editorSettingsChanged.send(())
             syncTracker.markDirty(.settings, id: AppSettingsCategory.editor)
+        }
+    }
+
+    /// Device-local: it is deliberately absent from `AppSettingsCategory.synced`, so a zoom press
+    /// never pushes an iCloud record and a Mac on an older build cannot reset it.
+    @Published var typography: TypographySettings {
+        didSet {
+            guard typography != oldValue else { return }
+            storage.saveTypography(typography)
+            themeEngine.apply(typography: typography)
         }
     }
 
@@ -125,17 +127,7 @@ final class AppSettingsManager: ObservableObject {
             storage.saveAI(ai)
             syncTracker.markDirty(.settings, id: AppSettingsCategory.ai)
             appEvents.aiSettingsChanged.send(())
-            let hadCopilot = oldValue.providers.contains(where: { $0.type == .copilot })
-            let hasCopilot = ai.providers.contains(where: { $0.type == .copilot })
-            if hasCopilot != hadCopilot {
-                Task { [copilotService] in
-                    if hasCopilot {
-                        await copilotService.start()
-                    } else {
-                        await copilotService.stop()
-                    }
-                }
-            }
+            copilotService.stopIfDisallowed(by: ai)
         }
     }
 
@@ -161,8 +153,7 @@ final class AppSettingsManager: ObservableObject {
             storage.saveMCP(validated)
             let enabledChanged = mcp.enabled != oldValue.enabled
             let portChanged = mcp.port != oldValue.port
-            let authChanged = mcp.requireAuthentication != oldValue.requireAuthentication
-            if enabledChanged || portChanged || authChanged {
+            if enabledChanged || portChanged {
                 if mcp.enabled {
                     mcpServerManager.scheduleRestart(port: UInt16(clamping: mcp.port))
                 } else {
@@ -170,36 +161,6 @@ final class AppSettingsManager: ObservableObject {
                 }
             }
         }
-    }
-
-    @MainActor
-    func setRequireAuthentication(_ value: Bool) async -> (token: MCPAuthToken, plaintext: String)? {
-        guard value, !mcp.requireAuthentication else {
-            mcp.requireAuthentication = value
-            return nil
-        }
-
-        let tokenStore = mcpServerManager.tokenStore ?? MCPTokenStore()
-        if mcpServerManager.tokenStore == nil {
-            await tokenStore.loadFromDisk()
-        }
-        let existing = await tokenStore.list().filter { !$0.isBridgeCredential }
-        guard existing.isEmpty else {
-            mcp.requireAuthentication = value
-            return nil
-        }
-
-        let defaultName = String(localized: "Default token")
-        let result = try? await tokenStore.generate(
-            name: defaultName,
-            permissions: .readWrite,
-            connectionAccess: .all,
-            expiresAt: nil,
-            isBridgeCredential: false,
-            extraScopes: []
-        )
-        mcp.requireAuthentication = value
-        return result
     }
 
     private let storage: AppSettingsStorage
@@ -245,28 +206,18 @@ final class AppSettingsManager: ObservableObject {
         self.sync = storage.loadSync()
         self.mcp = storage.loadMCP()
         self.notifications = storage.loadNotifications()
+        self.typography = storage.loadTypography(systemIsDark: NSApp?.effectiveAppearance.isDarkTheme ?? false)
 
         general.language.apply()
 
-        themeEngine.updateAppearanceAndTheme(
+        themeEngine.apply(typography: typography)
+        themeEngine.apply(
             mode: appearance.appearanceMode,
             lightThemeId: appearance.preferredLightThemeId,
             darkThemeId: appearance.preferredDarkThemeId
         )
 
-        themeEngine.updateEditorSettings(
-            highlightCurrentLine: editor.highlightCurrentLine,
-            highlightCurrentStatement: editor.highlightCurrentStatement,
-            showLineNumbers: editor.showLineNumbers,
-            tabWidth: editor.clampedTabWidth,
-            wordWrap: editor.wordWrap
-        )
-
         dateFormattingService.updateFormat(dataGrid.dateFormat)
-
-        if ai.enabled, ai.providers.contains(where: { $0.type == .copilot }) {
-            Task { [copilotService] in await copilotService.start() }
-        }
     }
 
     /// Auto-pick the first configured provider as active when nothing is selected.
@@ -302,6 +253,7 @@ final class AppSettingsManager: ObservableObject {
         ai = .default
         sync = .default
         mcp = .default
+        typography = .default
         storage.resetToDefaults()
         connectionListPreferences.resetShowsRecent()
         SoftwareUpdater.shared.resetUpdatePreferences()

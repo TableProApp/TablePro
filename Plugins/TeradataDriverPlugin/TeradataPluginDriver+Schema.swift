@@ -84,11 +84,24 @@ extension TeradataPluginDriver {
         []
     }
 
+    /// Teradata refuses `SHOW TABLE` on a view, so a refusal is answered with the view's own text. A
+    /// table costs no extra lookup.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let database = effectiveDatabase(schema)
-        let result = try await execute(
-            query: TeradataSchemaQueries.showTableDDL(database: database, table: table))
-        return result.rows.compactMap { text($0.first) }.joined()
+        do {
+            let result = try await execute(
+                query: TeradataSchemaQueries.showTableDDL(database: database, table: table))
+            return result.rows.compactMap { text($0.first) }.joined()
+        } catch {
+            guard (try? await isView(table, database: database)) == true else { throw error }
+            return try await fetchViewDefinition(view: table, schema: schema)
+        }
+    }
+
+    private func isView(_ name: String, database: String?) async throws -> Bool {
+        guard let database else { return false }
+        let result = try await execute(query: TeradataSchemaQueries.tableKind(database: database, table: name))
+        return text(result.rows.first?.first)?.trimmingCharacters(in: .whitespaces) == "V"
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {

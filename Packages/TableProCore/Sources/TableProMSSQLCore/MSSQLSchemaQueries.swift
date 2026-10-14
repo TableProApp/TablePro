@@ -11,8 +11,11 @@ public enum MSSQLSchemaQueries {
         MSSQLStringLiteral.escaped(value)
     }
 
+    /// By code unit, as ``MSSQLStringLiteral`` escapes a quote: a default replacement matches whole
+    /// grapheme clusters, so a `]` followed by a combining mark was never doubled and closed the
+    /// identifier early.
     public static func escapeBracket(_ value: String) -> String {
-        value.replacingOccurrences(of: "]", with: "]]")
+        value.replacingOccurrences(of: "]", with: "]]", options: .literal)
     }
 
     public static func bracketed(schema: String, table: String) -> String {

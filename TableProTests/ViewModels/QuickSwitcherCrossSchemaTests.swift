@@ -53,7 +53,7 @@ struct QuickSwitcherCrossSchemaTests {
     func viewNamesSchemaAndKind() {
         let rows = items([table("active", "attendance", type: .view), table("summary", "public", type: .materializedView)])
 
-        #expect(rows.map(\.subtitle) == ["attendance · View", "Materialized View"])
+        #expect(rows.map(\.subtitle) == ["attendance, View", "Materialized View"])
     }
 
     @Test("A table on an engine without schemas names nothing")

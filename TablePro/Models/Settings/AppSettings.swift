@@ -52,11 +52,10 @@ struct AppearanceSettings: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        appearanceMode = try container.decodeIfPresent(AppAppearanceMode.self, forKey: .appearanceMode) ?? .auto
-        preferredLightThemeId = try container.decodeIfPresent(String.self, forKey: .preferredLightThemeId)
-            ?? "tablepro.default-light"
-        preferredDarkThemeId = try container.decodeIfPresent(String.self, forKey: .preferredDarkThemeId)
-            ?? "tablepro.default-dark"
+        let fallback = Self.default
+        appearanceMode = container.decodeSetting(.appearanceMode, default: fallback.appearanceMode)
+        preferredLightThemeId = container.decodeSetting(.preferredLightThemeId, default: fallback.preferredLightThemeId)
+        preferredDarkThemeId = container.decodeSetting(.preferredDarkThemeId, default: fallback.preferredDarkThemeId)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -166,20 +165,25 @@ struct DataGridSettings: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        rowHeight = try container.decodeIfPresent(DataGridRowHeight.self, forKey: .rowHeight) ?? .normal
-        dateFormat = try container.decodeIfPresent(DateFormatOption.self, forKey: .dateFormat) ?? .iso8601
-        nullDisplay = try container.decodeIfPresent(String.self, forKey: .nullDisplay) ?? "NULL"
-        defaultPageSize = (try container.decodeIfPresent(Int.self, forKey: .defaultPageSize) ?? 1_000)
+        let fallback = Self.default
+        rowHeight = container.decodeSetting(.rowHeight, default: fallback.rowHeight)
+        dateFormat = container.decodeSetting(.dateFormat, default: fallback.dateFormat)
+        nullDisplay = container.decodeSetting(.nullDisplay, default: fallback.nullDisplay)
+        defaultPageSize = container.decodeSetting(.defaultPageSize, default: fallback.defaultPageSize)
             .clamped(to: SettingsValidationRules.defaultPageSizeRange)
-        showAlternateRows = try container.decodeIfPresent(Bool.self, forKey: .showAlternateRows) ?? true
-        showRowNumbers = try container.decodeIfPresent(Bool.self, forKey: .showRowNumbers) ?? true
-        autoShowInspector = try container.decodeIfPresent(Bool.self, forKey: .autoShowInspector) ?? false
-        enableSmartValueDetection = try container.decodeIfPresent(Bool.self, forKey: .enableSmartValueDetection) ?? true
-        countRowsIfEstimateLessThan = try container.decodeIfPresent(Int.self, forKey: .countRowsIfEstimateLessThan) ?? 100_000
-        queryResultRowCap = try container.decodeIfPresent(Int.self, forKey: .queryResultRowCap) ?? 10_000
-        truncateQueryResults = try container.decodeIfPresent(Bool.self, forKey: .truncateQueryResults) ?? true
-        defaultSortBehavior = try container.decodeIfPresent(DefaultSortBehavior.self, forKey: .defaultSortBehavior) ?? .none
-        defaultSortDirection = try container.decodeIfPresent(SortDirection.self, forKey: .defaultSortDirection) ?? .ascending
+        showAlternateRows = container.decodeSetting(.showAlternateRows, default: fallback.showAlternateRows)
+        showRowNumbers = container.decodeSetting(.showRowNumbers, default: fallback.showRowNumbers)
+        autoShowInspector = container.decodeSetting(.autoShowInspector, default: fallback.autoShowInspector)
+        enableSmartValueDetection = container.decodeSetting(
+            .enableSmartValueDetection, default: fallback.enableSmartValueDetection
+        )
+        countRowsIfEstimateLessThan = container.decodeSetting(
+            .countRowsIfEstimateLessThan, default: fallback.countRowsIfEstimateLessThan
+        )
+        queryResultRowCap = container.decodeSetting(.queryResultRowCap, default: fallback.queryResultRowCap)
+        truncateQueryResults = container.decodeSetting(.truncateQueryResults, default: fallback.truncateQueryResults)
+        defaultSortBehavior = container.decodeSetting(.defaultSortBehavior, default: fallback.defaultSortBehavior)
+        defaultSortDirection = container.decodeSetting(.defaultSortDirection, default: fallback.defaultSortDirection)
     }
 
     // MARK: - Validated Properties
@@ -275,10 +279,11 @@ struct HistorySettings: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        maxEntries = try container.decodeIfPresent(Int.self, forKey: .maxEntries) ?? 10_000
-        maxDays = try container.decodeIfPresent(Int.self, forKey: .maxDays) ?? 90
-        autoCleanup = try container.decodeIfPresent(Bool.self, forKey: .autoCleanup) ?? true
-        keepRewindHistory = try container.decodeIfPresent(Bool.self, forKey: .keepRewindHistory) ?? true
+        let fallback = Self.default
+        maxEntries = container.decodeSetting(.maxEntries, default: fallback.maxEntries)
+        maxDays = container.decodeSetting(.maxDays, default: fallback.maxDays)
+        autoCleanup = container.decodeSetting(.autoCleanup, default: fallback.autoCleanup)
+        keepRewindHistory = container.decodeSetting(.keepRewindHistory, default: fallback.keepRewindHistory)
     }
 
     // MARK: - Validated Properties
@@ -327,7 +332,8 @@ struct TabSettings: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        enablePreviewTabs = try container.decodeIfPresent(Bool.self, forKey: .enablePreviewTabs) ?? true
-        overflow = try container.decodeIfPresent(EditorTabStripOverflow.self, forKey: .overflow) ?? .scroll
+        let fallback = Self.default
+        enablePreviewTabs = container.decodeSetting(.enablePreviewTabs, default: fallback.enablePreviewTabs)
+        overflow = container.decodeSetting(.overflow, default: fallback.overflow)
     }
 }

@@ -4,6 +4,7 @@
 //
 
 @preconcurrency import AppKit
+import Combine
 import os
 import TableProEditorKit
 import TableProTextEngine
@@ -16,6 +17,7 @@ final class GhostTextRenderer {
     private var ghostLayer: CATextLayer?
     private var currentText: String?
     private var currentOffset: Int = 0
+    private var themeCancellable: AnyCancellable?
     private let _scrollObserver = OSAllocatedUnfairLock<Any?>(uncheckedState: nil)
 
     deinit {
@@ -24,6 +26,9 @@ final class GhostTextRenderer {
 
     func install(controller: TextViewController) {
         self.controller = controller
+        themeCancellable = AppEvents.shared.themeChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.redrawForThemeChange() }
     }
 
     func show(_ text: String, at offset: Int) {
@@ -43,7 +48,7 @@ final class GhostTextRenderer {
         let font = ThemeEngine.shared.editorFonts.font
         let attrs: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: NSColor.tertiaryLabelColor
+            .foregroundColor: NSColor.tertiaryLabelColor.resolved(in: textView.effectiveAppearance)
         ]
         layer.string = NSAttributedString(string: text, attributes: attrs)
 
@@ -78,7 +83,15 @@ final class GhostTextRenderer {
     func uninstall() {
         hide()
         removeScrollObserver()
+        themeCancellable = nil
         controller = nil
+    }
+
+    /// A `CATextLayer` draws outside AppKit's drawing pass and keeps the color it was built with, so a visible
+    /// suggestion is rebuilt for the new appearance and font.
+    private func redrawForThemeChange() {
+        guard let currentText else { return }
+        show(currentText, at: currentOffset)
     }
 
     // MARK: - Scroll Observer

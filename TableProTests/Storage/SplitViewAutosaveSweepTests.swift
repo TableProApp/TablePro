@@ -102,10 +102,7 @@ struct SplitViewAutosaveSweepTests {
         #expect(SplitViewAutosaveRecord.parse(key: key(drawer)) == .unrecognised)
     }
 
-    /// `SplitViewAutosaveName.resolved` appends a sandbox suffix under a UI test, and the suffix is
-    /// whatever the sandbox directory is called: measured on one machine as UUIDs and as `sandbox`,
-    /// `sb`, `pr2`, `shot` and `sb-repro1`. A suffixed record belongs to a test case and must not be
-    /// judged by a rule written for the real domain.
+    /// Older sandboxed runs suffixed records with their sandbox directory's name; those belong to a test, not to the user.
     @Test(
         "A sandbox-suffixed retired name is left alone",
         arguments: ["sandbox", "sb", "pr2", "shot", "sb-repro1", "0E5A1D48-1D0E-4F2E-9C21-2C19F0E3A77B"]

@@ -110,7 +110,7 @@ internal enum ToolbarContextResolver {
     /// behind the conversation, and the commit control over a gate frozen at the moment the mode
     /// changed.
     ///
-    /// Stated once rather than as a term in fourteen arms, because it is one rule. The menu bar's
+    /// Stated once rather than as a term in thirteen arms, because it is one rule. The menu bar's
     /// `browseContentSelectors` is the same list in its own vocabulary, and
     /// `MenuContentModeParityTests` derives this one back out of the toolbar and holds the two
     /// together, so an item added here without a menu twin fails rather than ships.
@@ -126,7 +126,6 @@ internal enum ToolbarContextResolver {
         MainWindowToolbar.quickSwitcher,
         MainWindowToolbar.exportTables,
         MainWindowToolbar.importTables,
-        MainWindowToolbar.dashboard,
         MainWindowToolbar.navigateBack,
         MainWindowToolbar.navigateForward,
     ]
@@ -183,8 +182,6 @@ internal enum ToolbarContextResolver {
             return context.isConnected && context.tabKind == .query
         case MainWindowToolbar.history:
             return context.isConnected
-        case MainWindowToolbar.dashboard:
-            return context.isConnected && context.supportsServerDashboard
         case MainWindowToolbar.exportTables, MainWindowToolbar.newTab, MainWindowToolbar.quickSwitcher:
             return context.isConnected
         case MainWindowToolbar.importTables:

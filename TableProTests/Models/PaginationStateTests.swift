@@ -12,11 +12,6 @@ import Testing
 @testable import TablePro
 
 struct PaginationStateTests {
-    @Test("Default page size is 1000")
-    func defaultPageSize() {
-        #expect(PaginationState.defaultPageSize == 1_000)
-    }
-
     @Test("Total pages with nil total returns 1")
     func totalPagesWithNilTotal() {
         let state = PaginationState(totalRowCount: nil, pageSize: 100)

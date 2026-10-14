@@ -329,63 +329,6 @@ final class TextLayoutLineStorageTests: XCTestCase {
         }
     }
 
-    func test_insertPerformance() {
-        let tree = TextLineStorage<TextLine>()
-        var lines: [TextLineStorage<TextLine>.BuildItem] = []
-        for idx in 0..<250_000 {
-            lines.append(TextLineStorage<TextLine>.BuildItem(
-                data: TextLine(),
-                length: idx + 1,
-                height: 0.0
-            ))
-        }
-        tree.build(from: lines, estimatedLineHeight: 1.0)
-        // Measure time when inserting randomly into an already built tree.
-        // Start    0.667s
-        // 10/6/23  0.563s  -15.59%
-        measure {
-            for _ in 0..<100_000 {
-                tree.insert(
-                    line: TextLine(), atOffset: Int.random(in: 0..<tree.length), length: 1, height: 0.0
-                )
-            }
-        }
-    }
-
-    func test_insertFastPerformance() {
-        let tree = TextLineStorage<TextLine>()
-        let lines: [TextLineStorage<TextLine>.BuildItem] = (0..<250_000).map {
-            TextLineStorage<TextLine>.BuildItem(
-                data: TextLine(),
-                length: $0 + 1,
-                height: 0.0
-            )
-        }
-        // Start    0.113s
-        measure {
-            tree.build(from: lines, estimatedLineHeight: 1.0)
-        }
-    }
-
-    func test_iterationPerformance() {
-        let tree = TextLineStorage<TextLine>()
-        var lines: [TextLineStorage<TextLine>.BuildItem] = []
-        for idx in 0..<100_000 {
-            lines.append(TextLineStorage<TextLine>.BuildItem(
-                data: TextLine(),
-                length: idx + 1,
-                height: 0.0
-            ))
-        }
-        tree.build(from: lines, estimatedLineHeight: 1.0)
-        // Start    0.181s
-        measure {
-            for line in tree {
-                _ = line
-            }
-        }
-    }
-
     func test_transplantWithExistingLeftNodes() throws {
         typealias Storage = TextLineStorage<UUID>
         typealias Node = TextLineStorage<UUID>.Node

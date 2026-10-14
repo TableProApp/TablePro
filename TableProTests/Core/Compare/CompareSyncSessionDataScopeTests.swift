@@ -25,13 +25,13 @@ final class CompareSyncSessionDataScopeTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
         guard let defaults = UserDefaults(suiteName: suiteName) else { return }
         storage = CompareSyncProfileStorage(defaults: defaults)
     }
 
     override func tearDown() {
-        UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
         storage = nil
         super.tearDown()
     }

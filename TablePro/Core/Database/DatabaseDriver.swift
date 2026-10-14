@@ -25,6 +25,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Optional - not all drivers may implement this
     var serverVersion: String? { get }
 
+    /// The warning the server sent with the last login that succeeded. See
+    /// `PluginDatabaseDriver.connectionWarning`.
+    var connectionWarning: String? { get }
+
     /// The lexical facts the server decided for this session and the driver has read. See
     /// `PluginDatabaseDriver.sessionLexicalState`.
     var sessionLexicalState: PluginSessionLexicalState? { get }
@@ -224,7 +228,7 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// pattern and type, rather than by table filters. Nil when the driver has no such count.
     func fetchExactRowCount(table: String, browseFilters: [PluginQueryFilter]) async throws -> Int?
 
-    /// Fetch the DDL (CREATE TABLE statement) for a specific table
+    /// The statement that creates the named relation: a view answers with its own `CREATE VIEW`.
     func fetchTableDDL(table: String) async throws -> String
 
     /// The CREATE INDEX statements this table needs that `fetchTableDDL` does not already declare.
@@ -278,10 +282,6 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Read one type again, definition and labels included. The type must be one this driver
     /// listed, because its `identity` is the driver's own key for finding it again.
     func fetchUserDefinedType(_ type: UserDefinedTypeInfo) async throws -> UserDefinedTypeInfo
-
-    func createTypeTemplate(schema: String?) -> String?
-    func generateAddEnumLabelSQL(type: UserDefinedTypeInfo, label: String, placement: EnumLabelPlacement?) -> String?
-    func generateRenameEnumLabelSQL(type: UserDefinedTypeInfo, from oldLabel: String, to newLabel: String) -> String?
 
     /// Fetch every trigger in the given schema, across all its tables.
     func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo]
@@ -452,6 +452,8 @@ extension DatabaseDriver {
     /// Default implementation returns nil
     /// Override in drivers that support version querying
     var serverVersion: String? { nil }
+
+    var connectionWarning: String? { nil }
 
     var sessionLexicalState: PluginSessionLexicalState? { nil }
 
@@ -832,16 +834,6 @@ extension DatabaseDriver {
             throw PluginObjectSourceError.unsupported(type.name)
         }
         return type
-    }
-
-    func createTypeTemplate(schema: String?) -> String? { nil }
-
-    func generateAddEnumLabelSQL(type: UserDefinedTypeInfo, label: String, placement: EnumLabelPlacement?) -> String? {
-        nil
-    }
-
-    func generateRenameEnumLabelSQL(type: UserDefinedTypeInfo, from oldLabel: String, to newLabel: String) -> String? {
-        nil
     }
 
     func fetchAllTriggers(schema: String?) async throws -> [TriggerInfo] { [] }

@@ -51,12 +51,6 @@ struct TabSessionRegistryTests {
         #expect(registry.session(for: session.id) == nil)
     }
 
-    @Test("unregister of an unknown id is a no-op")
-    func unregisterUnknownIdIsNoOp() {
-        let registry = TabSessionRegistry()
-        registry.unregister(id: UUID())
-    }
-
     @Test("removeAll clears every registered session")
     func removeAllClearsAll() {
         let registry = TabSessionRegistry()

@@ -68,8 +68,6 @@ struct ConnectionFailureClassifierTests {
     func driverFailuresMapToTheirFix() {
         let cases: [(PluginError, ConnectionRecoveryAction)] = [
             (.pluginNotInstalled("MongoDB"), .installPlugin),
-            (.pluginDisabled(pluginId: "com.TablePro.SQLiteDriver", pluginName: "SQLite Driver"),
-             .enablePlugin(pluginId: "com.TablePro.SQLiteDriver")),
             (.pluginLoadFailed(pluginId: "com.example.driver", pluginName: "Example", reason: "bad signature"),
              .openPluginSettings(pluginId: "com.example.driver")),
             (.pluginUpdateUnavailable(reason: "No compatible build"), .openPluginSettings(pluginId: nil)),

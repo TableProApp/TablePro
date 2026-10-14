@@ -222,6 +222,40 @@ struct ExportDialog: View {
         pluginManager.exportPlugin(forFormat: config.formatId)
     }
 
+    private var formatsToOffer: [InstallableExportFormat] {
+        let installed = Set(pluginManager.allExportPlugins().map { type(of: $0).formatId })
+        return ExportFormatCatalog.notInstalled(installedFormatIds: installed)
+    }
+
+    private static func offerTag(for format: InstallableExportFormat) -> String {
+        "install:\(format.formatId)"
+    }
+
+    // Choosing an offered format asks to install it and keeps the current format until it lands.
+    private var formatSelection: Binding<String> {
+        Binding(
+            get: { config.formatId },
+            set: { newValue in
+                guard let format = formatsToOffer.first(where: { Self.offerTag(for: $0) == newValue }) else {
+                    config.formatId = newValue
+                    return
+                }
+                Task { await installOfferedFormat(format) }
+            }
+        )
+    }
+
+    @MainActor
+    private func installOfferedFormat(_ format: InstallableExportFormat) async {
+        guard await MissingExportFormatPrompt.ensureInstalled(format, window: hostWindow),
+              let plugin = pluginManager.exportPlugin(forFormat: format.formatId)
+        else { return }
+        if let settable = plugin as? any SettablePluginDiscoverable {
+            settingsSnapshot?.include(settable)
+        }
+        config.formatId = format.formatId
+    }
+
     private var currentOptionColumnCount: Int {
         guard let plugin = currentPlugin else { return 0 }
         return type(of: plugin).perTableOptionColumns.count
@@ -389,7 +423,9 @@ struct ExportDialog: View {
         }
         // A profile picked while this one waited for its reads is the user's latest choice.
         guard application == profileApplication else { return }
-        config.formatId = profile.formatId
+        if availableFormatIds.contains(profile.formatId) {
+            config.formatId = profile.formatId
+        }
         databaseItems = normalizedForCurrentFormat(
             ExportProfileStorage.apply(profile, to: databaseItems)
                 .clearingRowScopes(unavailableOn: databaseType))
@@ -425,10 +461,10 @@ struct ExportDialog: View {
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
 
-                if availableFormats.isEmpty {
+                if availableFormats.isEmpty && formatsToOffer.isEmpty {
                     HStack {
                         Spacer()
-                        Text("No export formats available. Enable export plugins in Settings > Plugins.")
+                        Text("No export formats available.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -437,10 +473,18 @@ struct ExportDialog: View {
                     HStack {
                         Spacer()
 
-                        Picker(String(localized: "Format"), selection: $config.formatId) {
+                        Picker(String(localized: "Format"), selection: formatSelection) {
                             ForEach(availableFormatIds, id: \.self) { formatId in
                                 if let plugin = pluginManager.exportPlugin(forFormat: formatId) {
                                     Text(type(of: plugin).formatDisplayName).tag(formatId)
+                                }
+                            }
+                            let offered = formatsToOffer
+                            if !offered.isEmpty {
+                                Divider()
+                                ForEach(offered, id: \.formatId) { format in
+                                    Text(String(format: String(localized: "Install %@…"), format.displayName))
+                                        .tag(Self.offerTag(for: format))
                                 }
                             }
                         }

@@ -45,7 +45,8 @@ struct ScannedConnectionCandidate: Identifiable {
         self.sourceKey = sourceKey
         self.kind = kind
         self.tier = tier
-        self.warnings = warnings
+        var seen = Set<String>()
+        self.warnings = warnings.filter { seen.insert($0).inserted }
         self.placeholderSuspected = PlaceholderCredentialDetector.isPlaceholder(
             username: parsedURL.username,
             password: parsedURL.password,

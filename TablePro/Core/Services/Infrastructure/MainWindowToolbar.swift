@@ -395,7 +395,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         }
         return NSToolbarItem.Identifier("com.TablePro.toolbar.inspector")
     }()
-    nonisolated static let dashboard = NSToolbarItem.Identifier("com.TablePro.toolbar.dashboard")
     nonisolated static let history = NSToolbarItem.Identifier("com.TablePro.toolbar.history")
     nonisolated static let exportTables = NSToolbarItem.Identifier("com.TablePro.toolbar.export")
     nonisolated static let importTables = NSToolbarItem.Identifier("com.TablePro.toolbar.import")
@@ -472,7 +471,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         results,
         exportTables,
         importTables,
-        dashboard,
         history,
         addRow,
         restorePreviousValues,

@@ -151,20 +151,17 @@ struct DatabaseTypeChooserSheet: View {
     }
 }
 
-private struct DatabaseTypeChooserRow: View {
+internal struct DatabaseTypeChooserRow: View {
     @ObservedObject private var pluginManager = PluginManager.shared
     let type: DatabaseType
     let isCurrent: Bool
 
     var body: some View {
         HStack(spacing: 12) {
-            /// The row's icon is decoration the name already carries, and left unhidden it
-            /// publishes its own element, so VoiceOver reads "Cylinder Shape, Filled" ahead of the
-            /// driver. `Image(decorative:)` cannot cover it, because `DatabaseType.iconImage` also
-            /// returns an SF Symbol.
+            /// Hidden here because `Image(decorative:)` cannot cover the SF Symbol `iconImage` may return.
             type.iconImage
                 .renderingMode(.template)
-                .foregroundStyle(type.themeColor)
+                .selectionAwareTint(type.themeColor)
                 .frame(width: 26, height: 26)
                 .accessibilityHidden(true)
 
@@ -183,7 +180,7 @@ private struct DatabaseTypeChooserRow: View {
 
             if isCurrent {
                 Image(systemName: "checkmark")
-                    .foregroundStyle(.tint)
+                    .selectionAwareTint(Color.accentColor)
             }
 
             if shouldShowNotInstalledBadge {

@@ -52,12 +52,6 @@ struct ContainerEntityNameTests {
         #expect(PluginManager.shared.containerEntityNamePlural(for: .mysql) == "Databases")
     }
 
-    @Test("DriverPlugin defaults provide Database container")
-    func driverPluginDefaultIsDatabase() {
-        #expect(snapshot(forRegisteredTypeId: "MySQL")?.schema.containerEntityName == "Database")
-        #expect(PluginMetadataSnapshot.SchemaInfo.defaults.containerEntityName == "Database")
-    }
-
     // MARK: - Container switch target
 
     @Test("Database-switching engines target databases")

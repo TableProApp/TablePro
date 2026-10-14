@@ -473,12 +473,4 @@ struct SafeModeMigrationTests {
 
         #expect(manager.session(for: id)?.safeModeLevel == .silent)
     }
-
-    // MARK: - Default Level
-
-    @Test("New connection defaults to silent safe mode level")
-    func defaultLevel() {
-        let connection = TestFixtures.makeConnection()
-        #expect(connection.safeModeLevel == .silent)
-    }
 }

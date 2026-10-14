@@ -50,6 +50,6 @@ internal enum PostLaunchWork {
 
         let mcp = AppSettingsManager.shared.mcp
         guard mcp.enabled else { return }
-        Task { await MCPServerManager.shared.start(port: UInt16(clamping: mcp.port)) }
+        Task { try? await MCPServerManager.shared.start(port: UInt16(clamping: mcp.port)) }
     }
 }

@@ -79,6 +79,61 @@ struct ConnectionSwitcherSelectionTests {
         let (a, b, c) = (UUID(), UUID(), UUID())
         #expect(ConnectionSwitcherSelection.moved(in: [a, b, c], from: c, by: 1) == c)
     }
+
+    // MARK: - A new query
+
+    private func entry(_ connection: DatabaseConnection, isActive: Bool = false) -> ConnectionSwitcherEntry {
+        ConnectionSwitcherEntry(id: connection.id, connection: connection, isActive: isActive, isConnected: isActive)
+    }
+
+    @Test("A query selects the connection it names over the open one it matches only through a file path")
+    func aNameMatchBeatsAPathMatch() {
+        let folder = "/var/folders/5n/5t77mfb93jd70000gn/T/TableProUITests/c6da0d7486"
+        let open = TestFixtures.makeConnection(name: "Fixture", database: "\(folder)/seeded-0.sqlite", type: .sqlite)
+        let saved = TestFixtures.makeConnection(name: "Ledger", database: "\(folder)/seeded-1.sqlite", type: .sqlite)
+        let entries = [entry(open, isActive: true), entry(saved)]
+
+        #expect(ConnectionSwitcherFilter.matches(open, query: "Ledger"), "The open connection must still be listed")
+        for query in ["L", "Led", "Ledger"] {
+            #expect(ConnectionSwitcherSelection.preferred(in: entries, query: query, current: open.id) == saved.id)
+        }
+    }
+
+    @Test("A connection matched only through its database is still selected when no name matches")
+    func aDatabaseMatchIsSelectedWhenNoNameMatches() {
+        let open = TestFixtures.makeConnection(name: "Replica", database: "orders")
+        let saved = TestFixtures.makeConnection(name: "Primary", database: "analytics")
+
+        let selected = ConnectionSwitcherSelection.preferred(
+            in: [entry(open, isActive: true), entry(saved)], query: "analy", current: open.id
+        )
+
+        #expect(selected == saved.id)
+    }
+
+    @Test("Equal matches keep the order the list draws")
+    func equalMatchesKeepListOrder() {
+        let first = TestFixtures.makeConnection(name: "Replica")
+        let second = TestFixtures.makeConnection(name: "Replica")
+
+        let selected = ConnectionSwitcherSelection.preferred(
+            in: [entry(first), entry(second)], query: "rep", current: nil
+        )
+
+        #expect(selected == first.id)
+    }
+
+    @Test("A blank query selects the current connection, or the first row when it is not listed")
+    func blankQuerySelectsTheCurrentConnection() {
+        let open = TestFixtures.makeConnection(name: "Fixture")
+        let saved = TestFixtures.makeConnection(name: "Ledger")
+        let entries = [entry(saved), entry(open, isActive: true)]
+
+        #expect(ConnectionSwitcherSelection.preferred(in: entries, query: "", current: open.id) == open.id)
+        #expect(ConnectionSwitcherSelection.preferred(in: entries, query: "  ", current: open.id) == open.id)
+        #expect(ConnectionSwitcherSelection.preferred(in: entries, query: "", current: UUID()) == saved.id)
+        #expect(ConnectionSwitcherSelection.preferred(in: [], query: "Ledger", current: open.id) == nil)
+    }
 }
 
 struct ConnectionSwitcherSectionsTests {

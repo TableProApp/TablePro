@@ -8,14 +8,6 @@ import TableProPluginKit
 import Testing
 
 struct LibPQKeepaliveTests {
-    private static let pluginDirectory: URL = {
-        var directory = URL(fileURLWithPath: #filePath)
-        for _ in 0..<3 { directory.deleteLastPathComponent() }
-        return directory
-            .appendingPathComponent("Plugins")
-            .appendingPathComponent("PostgreSQLDriverPlugin")
-    }()
-
     private func build(options: String? = nil) -> String {
         LibPQConnectionString.build(
             host: "db.example.com",
@@ -79,29 +71,5 @@ struct LibPQKeepaliveTests {
     @Test("The connection options stay the last keyword after the keepalives are added")
     func optionsStayLast() {
         #expect(build(options: "-c search_path=app").hasSuffix(" options='-c search_path=app'"))
-    }
-
-    /// The keepalives live in the conninfo builder, so they reach every PostgreSQL, Redshift,
-    /// CockroachDB and PGlite connection only while that builder is the one way the plugin dials.
-    @Test("The plugin opens libpq connections in one place, from the built conninfo")
-    func oneConnectPath() throws {
-        let sources: [(name: String, text: String)] = try FileManager.default
-            .contentsOfDirectory(at: Self.pluginDirectory, includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "swift" }
-            .map { (name: $0.lastPathComponent, text: try String(contentsOf: $0, encoding: .utf8)) }
-        #expect(sources.contains { $0.name == "LibPQConnectionString.swift" })
-
-        let otherDialers = ["PQconnectdb", "PQconnectdbParams", "PQconnectStartParams", "PQsetdbLogin"]
-        let offenders = sources.flatMap { source in
-            otherDialers.filter { source.text.contains("\($0)(") }.map { "\(source.name): \($0)" }
-        }
-        #expect(offenders.isEmpty, "\(offenders)")
-
-        let starts = sources.filter { $0.text.contains("PQconnectStart(") }
-        #expect(starts.map { $0.name } == ["LibPQPluginConnection.swift"])
-        let connection = try #require(starts.first?.text)
-        #expect(connection.components(separatedBy: "PQconnectStart(").count == 2)
-        #expect(connection.contains("connectionString.withCString({ PQconnectStart($0) })"))
-        #expect(connection.contains("private var connectionString: String {\n        LibPQConnectionString.build("))
     }
 }

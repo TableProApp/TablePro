@@ -40,10 +40,6 @@ enum ServerDashboardQueryProviderFactory {
             return MSSQLDashboardProvider()
         case .clickhouse:
             return ClickHouseDashboardProvider(serverVersion: serverVersion)
-        case .duckdb:
-            return DuckDBDashboardProvider()
-        case .sqlite:
-            return SQLiteDashboardProvider()
         case .typesense:
             return TypesenseDashboardProvider()
         }
@@ -58,8 +54,6 @@ private enum DashboardEngine {
     case mysql
     case mssql
     case clickhouse
-    case duckdb
-    case sqlite
     case typesense
 
     init?(_ databaseType: DatabaseType) {
@@ -76,10 +70,6 @@ private enum DashboardEngine {
             self = .mssql
         case .clickhouse:
             self = .clickhouse
-        case .duckdb:
-            self = .duckdb
-        case .sqlite:
-            self = .sqlite
         case .typesense:
             self = .typesense
         default:

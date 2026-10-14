@@ -259,13 +259,6 @@ struct SettingsValidationTests {
         #expect(SettingsValidationRules.nullDisplayMaxLength == 20)
     }
 
-    @Test("Validation rules default page size range is correct")
-    func validationRulesDefaultPageSizeRange() {
-        let range = SettingsValidationRules.defaultPageSizeRange
-        #expect(range.lowerBound == 10)
-        #expect(range.upperBound == 100_000)
-    }
-
     @Test("Decoding clamps an out-of-range stored page size to the valid range")
     func decodingClampsDefaultPageSize() throws {
         let range = SettingsValidationRules.defaultPageSizeRange

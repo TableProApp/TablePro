@@ -11,19 +11,6 @@ struct MCPSettingsTests {
         #expect(decoded?.enabled == false)
     }
 
-    @Test("Default settings require authentication")
-    func defaultRequiresAuthentication() {
-        #expect(MCPSettings.default.requireAuthentication)
-        #expect(MCPSettings().requireAuthentication)
-    }
-
-    @Test("Settings JSON without the key decode to authentication required")
-    func decodesAbsentKeyAsRequired() throws {
-        let json = Data("{}".utf8)
-        let decoded = try JSONDecoder().decode(MCPSettings.self, from: json)
-        #expect(decoded.requireAuthentication)
-    }
-
     @Test("Listing connections hidden from AI is off until the user turns it on")
     func hiddenConnectionListingIsOffByDefault() throws {
         #expect(!MCPSettings.default.allowsHiddenConnectionListing)
@@ -37,16 +24,9 @@ struct MCPSettingsTests {
         #expect(stored.allowsHiddenConnectionListing)
     }
 
-    @Test("Explicit stored false is respected")
-    func decodesExplicitValue() throws {
-        let json = Data(#"{"requireAuthentication": false}"#.utf8)
-        let decoded = try JSONDecoder().decode(MCPSettings.self, from: json)
-        #expect(!decoded.requireAuthentication)
-    }
-
-    @Test("The settings carry no remote-access switch, because the server is loopback only")
+    @Test("The settings carry no remote-access or authentication switch")
     func thereIsNoRemoteAccessSwitch() throws {
-        let json = Data(#"{"allowRemoteConnections": true}"#.utf8)
+        let json = Data(#"{"allowRemoteConnections": true, "requireAuthentication": false}"#.utf8)
         let decoded = try JSONDecoder().decode(MCPSettings.self, from: json)
         let reencoded = try JSONEncoder().encode(decoded)
         let fields = try JSONSerialization.jsonObject(with: reencoded) as? [String: Any] ?? [:]
@@ -58,7 +38,6 @@ struct MCPSettingsTests {
             "maxRowLimit",
             "queryTimeoutSeconds",
             "logQueriesInHistory",
-            "requireAuthentication",
             "connectionApproval",
             "allowsHiddenConnectionListing"
         ])
@@ -85,7 +64,7 @@ struct MCPSettingsTests {
 
     @Test("A settings blob written before the approval setting existed keeps asking")
     func decodesLegacyBlobAsAsking() throws {
-        let json = Data(#"{"enabled": true, "requireAuthentication": true}"#.utf8)
+        let json = Data(#"{"enabled": true}"#.utf8)
         let decoded = try JSONDecoder().decode(MCPSettings.self, from: json)
         #expect(decoded.connectionApproval == .oncePerConnection)
         #expect(decoded.connectionApproval.asksBeforeReachingAConnection)
@@ -185,62 +164,11 @@ struct MCPSettingsTests {
             defaultRowLimit: 250,
             maxRowLimit: 2_000,
             queryTimeoutSeconds: 45,
-            logQueriesInHistory: false,
-            requireAuthentication: true
+            logQueriesInHistory: false
         )
 
         let decoded = try JSONDecoder().decode(MCPSettings.self, from: try JSONEncoder().encode(original))
 
         #expect(decoded == original)
-    }
-
-    @Test("Default settings deny anonymous loopback without a token")
-    func defaultDeniesAnonymousLoopback() async {
-        let composite = MCPCompositeAuthenticator(
-            bearer: MCPBearerTokenAuthenticator(
-                tokenStore: MCPSettingsTestTokenStore(),
-                rateLimiter: MCPRateLimiter()
-            ),
-            requireAuthentication: MCPSettings.default.requireAuthentication
-        )
-
-        let decision = await composite.authenticate(authorizationHeader: nil, clientAddress: .loopback)
-
-        guard case .deny(let reason) = decision else {
-            Issue.record("Expected deny for anonymous loopback under secure default, got \(decision)")
-            return
-        }
-        #expect(reason.httpStatus == 401)
-    }
-
-    @Test("Turning authentication off still only ever admits an anonymous loopback caller")
-    func relaxedAuthenticationStaysLoopbackOnly() async {
-        let composite = MCPCompositeAuthenticator(
-            bearer: MCPBearerTokenAuthenticator(
-                tokenStore: MCPSettingsTestTokenStore(),
-                rateLimiter: MCPRateLimiter()
-            ),
-            requireAuthentication: false
-        )
-
-        let loopback = await composite.authenticate(authorizationHeader: nil, clientAddress: .loopback)
-        let remote = await composite.authenticate(authorizationHeader: nil, clientAddress: .remote("10.0.0.5"))
-
-        guard case .allow(let principal) = loopback else {
-            Issue.record("Expected an anonymous loopback allow, got \(loopback)")
-            return
-        }
-        #expect(principal.isAnonymous)
-        #expect(principal.scopes == MCPScope.readOnlySet)
-        guard case .deny = remote else {
-            Issue.record("Expected a remote caller to be denied, got \(remote)")
-            return
-        }
-    }
-}
-
-actor MCPSettingsTestTokenStore: MCPTokenStoreProtocol {
-    func validateBearerToken(_ token: String) async -> Result<MCPValidatedToken, MCPTokenValidationError> {
-        .failure(.unknownToken)
     }
 }

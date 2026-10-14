@@ -226,7 +226,7 @@ struct CreateTableView: View {
             Spacer()
         }
         .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(.bar)
         .onChange(of: draft.tableOptions.charset) { newCharset in
             if let first = CreateTableOptions.collations[newCharset]?.first {
                 draft.tableOptions.collation = first

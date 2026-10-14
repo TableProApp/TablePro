@@ -32,7 +32,6 @@ struct NetworkPaneView: View {
             }
         }
         .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
     }
 
     private var sslModeBinding: Binding<SSLMode> {

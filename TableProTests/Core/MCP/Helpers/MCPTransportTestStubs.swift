@@ -1,7 +1,7 @@
 import Foundation
 import Network
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 
 actor StubAlwaysAllowAuthenticator: MCPAuthenticator {
     private let principal: MCPPrincipal
@@ -9,7 +9,7 @@ actor StubAlwaysAllowAuthenticator: MCPAuthenticator {
     init(scopes: Set<MCPScope> = [.toolsRead, .toolsWrite, .resourcesRead]) {
         principal = MCPPrincipal(
             tokenFingerprint: "stubtoken",
-            tokenId: UUID(uuidString: "00000000-0000-0000-0000-0000000057AB"),
+            tokenId: UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x57, 0xAB)),
             scopes: scopes,
             metadata: MCPPrincipalMetadata(
                 label: "stub",
@@ -38,7 +38,7 @@ actor StubBearerAuthenticator: MCPAuthenticator {
         self.maxAttempts = maxAttempts
         principal = MCPPrincipal(
             tokenFingerprint: "fingerprint",
-            tokenId: UUID(uuidString: "00000000-0000-0000-0000-0000000057AC"),
+            tokenId: UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x57, 0xAC)),
             scopes: [.toolsRead, .toolsWrite, .resourcesRead],
             metadata: MCPPrincipalMetadata(
                 label: "test",

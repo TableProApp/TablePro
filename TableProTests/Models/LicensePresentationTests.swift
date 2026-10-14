@@ -184,13 +184,14 @@ struct LicensePresentationTests {
         )
         #expect(line.contains("Yearly"))
         #expect(line.contains("12 Mar 2027"))
+        #expect(line == "Starter, Yearly, \(String(format: String(localized: "Expires %@"), "12 Mar 2027"))")
     }
 
     @Test("A license with no billing cycle still reads cleanly")
     func planWithoutCycle() {
         let line = LicensePresentation.planDescription(tier: "starter", billingCycle: nil, expiry: "1 Jan 2030")
         #expect(line.hasPrefix("Starter"))
-        #expect(line.contains(" ·  · ") == false, "No empty segment")
+        #expect(line.contains(", , ") == false, "No empty segment")
     }
 
     // MARK: - Key masking

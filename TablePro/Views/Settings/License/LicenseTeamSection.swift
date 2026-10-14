@@ -82,6 +82,6 @@ struct LicenseTeamSection: View {
     private func roleDescription(_ member: LicenseTeamMember) -> String {
         let role = TeamRole(rawValue: member.role).displayName
         guard isCurrentUser(member) else { return role }
-        return String(format: String(localized: "%@ · You"), role)
+        return String(format: String(localized: "%@ (You)"), role)
     }
 }

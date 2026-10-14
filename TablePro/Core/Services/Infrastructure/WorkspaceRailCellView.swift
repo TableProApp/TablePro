@@ -320,7 +320,7 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         if let identity = connection.identityColor {
             parts.append(String(format: String(localized: "Color: %@"), identity.displayName))
         }
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: ", ")
     }
 
     internal static func voiceOverLabel(for entry: WorkspaceRailEntry) -> String {

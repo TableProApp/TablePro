@@ -19,4 +19,10 @@ enum RecoveryConnectionList {
             .map(\.connectionId)
             .filter { seen.insert($0).inserted }
     }
+
+    /// A session a client launched that never showed a connection says nothing about the person's
+    /// last one, so quitting it leaves the recovery list as it found it.
+    static func shouldSaveOnQuit(_ connectionIds: [UUID], origin: AppSessionOrigin) -> Bool {
+        !connectionIds.isEmpty || origin == .user
+    }
 }

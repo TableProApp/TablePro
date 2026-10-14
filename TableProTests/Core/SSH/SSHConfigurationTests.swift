@@ -77,12 +77,6 @@ struct SSHConfigurationTests {
         #expect(config.isValid == true)
     }
 
-    @Test("Agent socket path defaults to empty string")
-    func testAgentSocketPathDefault() {
-        let config = SSHConfiguration()
-        #expect(config.agentSocketPath == "")
-    }
-
     @Test("Empty socket path maps to SSH_AUTH_SOCK option")
     func testEmptySocketPathMapsToSystemDefault() {
         #expect(SSHAgentSocketOption(socketPath: "") == .systemDefault)

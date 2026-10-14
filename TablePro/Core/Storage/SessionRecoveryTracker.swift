@@ -45,4 +45,12 @@ enum SessionRecoveryTracker {
         guard !MainContentCoordinator.isAppTerminating, let storage else { return }
         storage.save(connectionIds: connectionIds())
     }
+
+    static func saveOnQuit() {
+        let ids = connectionIds()
+        guard let storage,
+              RecoveryConnectionList.shouldSaveOnQuit(ids, origin: AppActivationPolicyController.shared.origin)
+        else { return }
+        storage.save(connectionIds: ids)
+    }
 }

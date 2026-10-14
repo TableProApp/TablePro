@@ -96,7 +96,7 @@ struct HistoryListPane: View {
             }
             .padding(.vertical, 6)
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(.bar)
     }
 
     private var emptyState: some View {

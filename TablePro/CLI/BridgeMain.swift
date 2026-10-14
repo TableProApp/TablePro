@@ -65,6 +65,8 @@ struct TableProMcpBridge {
             return "The local MCP endpoint did not prove it belongs to TablePro. Restart TablePro and try again."
         case MCPBridgeStartupError.unsupportedUpstreamVersion:
             return "This TablePro build does not speak \(MCPProtocolVersion.latest.rawValue). Update TablePro."
+        case MCPHandshakeAcquisitionError.serverTurnedOff:
+            return error.localizedDescription
         default:
             return "TablePro is not running. Launch the app and enable the MCP server."
         }

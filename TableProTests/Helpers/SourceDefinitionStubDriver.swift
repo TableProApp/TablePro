@@ -23,6 +23,8 @@ internal final class SourceDefinitionStubDriver: PluginDatabaseDriver, @unchecke
     internal var wholeSchemaTriggers: Result<[PluginTriggerInfo], any Error>?
     internal var tableTriggers: [String: Result<[PluginTriggerInfo], any Error>] = [:]
     internal var triggerDDL: [String: Result<String, any Error>] = [:]
+    internal var tableDDL: [String: String] = [:]
+    internal var indexDDL: [String: [String]] = [:]
 
     internal var recordedCalls: [String] {
         lock.withLock { calls }
@@ -76,7 +78,8 @@ internal final class SourceDefinitionStubDriver: PluginDatabaseDriver, @unchecke
     internal func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
     internal func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
     internal func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    internal func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
+    internal func fetchTableDDL(table: String, schema: String?) async throws -> String { tableDDL[table] ?? "" }
+    internal func fetchIndexDDL(table: String, schema: String?) async throws -> [String] { indexDDL[table] ?? [] }
 
     internal func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         PluginTableMetadata(tableName: table)

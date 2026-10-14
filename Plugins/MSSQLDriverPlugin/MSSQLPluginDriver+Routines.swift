@@ -41,7 +41,7 @@ extension MSSQLPluginDriver {
 
     func fetchRoutineDDL(_ routine: PluginRoutineInfo) async throws -> String {
         let resolvedSchema = effectiveSchema(routine.schema)
-        let query = MSSQLObjectQueries.routineDefinition(schema: resolvedSchema, name: routine.name)
+        let query = MSSQLObjectQueries.moduleDefinition(schema: resolvedSchema, name: routine.name)
         let result = try await execute(query: query)
         guard let row = result.rows.first else {
             throw PluginObjectSourceError.notFound(routine.name)

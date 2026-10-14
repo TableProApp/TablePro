@@ -91,14 +91,6 @@ struct CloudSQLProxyModelTests {
         #expect(!isValid(""))
     }
 
-    @Test("CloudSQLProxyPidRecord round-trips for the stale-PID sweep")
-    func pidRecordRoundTrip() throws {
-        let records = [CloudSQLProxyPidRecord(pid: 4_242, binaryPath: "/opt/homebrew/bin/cloud-sql-proxy")]
-        let data = try JSONEncoder().encode(records)
-        let decoded = try JSONDecoder().decode([CloudSQLProxyPidRecord].self, from: data)
-        #expect(decoded == records)
-    }
-
     @Test("supportsCloudSQLProxy is limited to Cloud SQL engines")
     func capabilityEngines() {
         #expect(DatabaseType.mysql.supportsCloudSQLProxy)

@@ -64,9 +64,17 @@ extension HanaPluginDriver {
         return HanaCatalogMapping.integer(result.rows.first?.first)
     }
 
+    /// `SYS.TABLES` has no row for a view, so a view answers with its own definition from `SYS.VIEWS`
+    /// instead of the error a missing table gets.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let owner = try effectiveSchema(schema)
         let store = try await execute(query: HanaCatalogQueries.tableStore(schema: owner, table: table))
+        if store.rows.isEmpty,
+           let definition = HanaCatalogMapping.nonEmptyText(
+               try await execute(query: HanaCatalogQueries.viewDefinition(schema: owner, view: table)).rows.first?.first
+           ) {
+            return HanaCatalogMapping.viewDDL(schema: owner, view: table, definition: definition)
+        }
         let columns = try await catalogColumns(table: table, schema: owner)
         guard let storeRow = store.rows.first, !columns.isEmpty else {
             throw HanaError(

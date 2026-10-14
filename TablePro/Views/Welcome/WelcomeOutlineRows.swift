@@ -45,8 +45,8 @@ internal struct ConnectionTile: View {
             .scaledToFit()
             .font(.system(size: size * 0.5, weight: .medium))
             .frame(width: size * 0.58, height: size * 0.58)
-        if identityColor != nil {
-            image.foregroundStyle(.white)
+        if let identityColor {
+            image.foregroundStyle(Color.legibleForeground(on: identityColor.color))
         } else {
             image.selectionAwareTint(type.themeColor)
         }

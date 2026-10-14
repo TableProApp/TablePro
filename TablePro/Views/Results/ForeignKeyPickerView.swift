@@ -189,7 +189,6 @@ struct ForeignKeyPickerView: View {
                     .accessibilityAction { commit(entry) }
             }
             .listStyle(.plain)
-            .scrollContentBackground(.hidden)
             .frame(height: Self.listHeight)
             .onChange(of: selection) { newValue in
                 guard let newValue else { return }

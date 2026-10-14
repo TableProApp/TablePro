@@ -10,38 +10,24 @@ import TableProPluginKit
 extension PluginManager {
     func validateDependencies() {
         let loadedIds = Set(plugins.map(\.id))
-        for plugin in plugins where plugin.isEnabled {
+        for plugin in plugins {
             guard plugin.bundle.isLoaded else { continue }
             guard let principalClass = plugin.bundle.principalClass as? any TableProPlugin.Type else { continue }
             let deps = principalClass.dependencies
             for dep in deps {
                 if !loadedIds.contains(dep) {
                     Self.logger.warning("Plugin '\(plugin.id)' requires '\(dep)' which is not installed")
-                } else if let depEntry = plugins.first(where: { $0.id == dep }), !depEntry.isEnabled {
-                    Self.logger.warning("Plugin '\(plugin.id)' requires '\(dep)' which is disabled")
                 }
             }
         }
     }
 
-    /// The one check in front of every path that can load a plugin's executable.
-    ///
-    /// `Bundle.principalClass` loads that executable, so a caller that only means to *enable* a
-    /// plugin is a code-loading path too and needs the same gate as `activateLazyBundle`. Discovery
-    /// and lazy registration publish an entry before its signature has been checked, so nothing may
-    /// reach the executable on the strength of being published.
+    /// `Bundle.principalClass` loads the executable too, so enabling a plugin needs this gate as
+    /// well. A built-in bundle is sealed inside the app's own signature.
     func assertLoadable(_ bundle: Bundle, source: PluginSource) throws {
         try Self.validateBundleVersions(bundle)
         guard source != .builtIn else { return }
-        try verifyCodeSignature(bundle: bundle)
-    }
-
-    func verifyCodeSignature(bundle: Bundle) throws {
-        let trust = try PluginCodeSignatureVerifier.evaluate(bundle: bundle)
-        guard case .developerID(let identity) = trust else { return }
-        guard PluginDeveloperTrustStore.shared.isTrusted(identity) else {
-            throw PluginError.developerNotTrusted(identity: identity)
-        }
+        try PluginCodeSignatureVerifier.verify(bundle: bundle)
     }
 
     /// Checks the signature of every discovered user plugin, off the main actor.
@@ -72,11 +58,7 @@ extension PluginManager {
             return PluginError.invalidBundle("Cannot create bundle from \(url.lastPathComponent)")
         }
         do {
-            let trust = try PluginCodeSignatureVerifier.evaluate(bundle: bundle)
-            guard case .developerID(let identity) = trust else { return nil }
-            guard PluginDeveloperTrustStore.shared.isTrusted(identity) else {
-                return PluginError.developerNotTrusted(identity: identity)
-            }
+            try PluginCodeSignatureVerifier.verify(bundle: bundle)
             return nil
         } catch {
             return error

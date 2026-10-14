@@ -194,9 +194,4 @@ struct DateEditingServiceTests {
             timeZone: .gmt
         ) == "2024-03-14")
     }
-
-    @Test("the picker opens in the user's own zone when the cell has no value to read one from")
-    func defaultZoneIsTheUsers() {
-        #expect(DateEditingService.defaultTimeZone == .current)
-    }
 }

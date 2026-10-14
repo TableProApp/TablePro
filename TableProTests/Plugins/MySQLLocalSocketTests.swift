@@ -9,13 +9,6 @@ import TableProPluginKit
 import Testing
 
 struct MySQLLocalSocketTests {
-    @Test("The field key and default path the app and driver share")
-    func constants() {
-        #expect(MySQLLocalSocket.fieldKey == "localSocketPath")
-        #expect(MySQLLocalSocket.defaultPath == "/tmp/mysql.sock")
-        #expect(MySQLLocalSocket.maximumPathBytes == 103)
-    }
-
     @Test("A missing, empty or blank field means no socket, and the path is trimmed")
     func pathFromFields() {
         #expect(MySQLLocalSocket.path(in: [:]) == nil)

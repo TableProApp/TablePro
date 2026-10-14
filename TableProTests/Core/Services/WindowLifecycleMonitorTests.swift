@@ -74,11 +74,6 @@ struct WindowLifecycleMonitorTests {
         #expect(monitor.windows(for: connectionId).isEmpty)
     }
 
-    @Test("unregisterWindow for unknown windowId — does not crash")
-    func unregisterUnknownWindowId() {
-        monitor.unregisterWindow(for: UUID())
-    }
-
     // MARK: - Multiple connections
 
     @Test("Multiple connections — windows are independent")

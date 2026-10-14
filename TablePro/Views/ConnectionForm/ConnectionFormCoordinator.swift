@@ -43,7 +43,10 @@ final class ConnectionFormCoordinator: ObservableObject {
     @Published var hasLoadedData: Bool = false
 
     @Published var isTesting: Bool = false
-    @Published var testSucceeded: Bool = false
+    /// The last Test Connection that reached the server, with the warning the login brought back. A new test, a
+    /// type change and a transport change clear it.
+    @Published var testResult: ConnectionTestResult?
+    var testSucceeded: Bool { testResult?.succeeded == true }
     @Published var testTask: Task<Void, Never>?
 
     @Published var isInstallingPlugin: Bool = false
@@ -52,9 +55,6 @@ final class ConnectionFormCoordinator: ObservableObject {
     @Published var pluginDiagnostic: PluginDiagnosticItem?
 
     @Published var saveError: String?
-
-    @Published var clipboardCandidate: ClipboardConnectionCandidate?
-    @Published var clipboardBannerDismissed: Bool = false
 
     @Published var isChoosingType: Bool = false
 
@@ -254,7 +254,7 @@ final class ConnectionFormCoordinator: ObservableObject {
     }
 
     func didChangeType(_ newType: DatabaseType) {
-        testSucceeded = false
+        testResult = nil
         if hasLoadedData {
             applyTypeDefaults(newType, includeNetwork: true)
             auth.resetForType(newType)
@@ -590,17 +590,15 @@ final class ConnectionFormCoordinator: ObservableObject {
             recoverySuggestion: info.recoverySuggestion,
             recoveryTitle: action.title,
             window: window
-        ) { [weak self] in
-            ConnectionRecoveryPerformer.perform(action, for: connection) {
-                self?.test()
-            }
+        ) {
+            ConnectionRecoveryPerformer.perform(action, for: connection)
         }
     }
 
     func test() {
         guard testTask == nil else { return }
         isTesting = true
-        testSucceeded = false
+        testResult = nil
         let window = NSApp.keyWindow
 
         var testConn = buildEdits().applied(to: DatabaseConnection(id: UUID(), name: ""))
@@ -672,7 +670,7 @@ final class ConnectionFormCoordinator: ObservableObject {
                     return
                 }
 
-                let success = try await services.databaseManager.testConnection(
+                let result = try await services.databaseManager.testConnection(
                     testConn,
                     sshPassword: sshPasswordForTest,
                     passwordOverride: testPwOverride
@@ -681,8 +679,13 @@ final class ConnectionFormCoordinator: ObservableObject {
                     self?.cleanupTestSecrets(for: testConn.id)
                     self?.isTesting = false
                     self?.testTask = nil
-                    if success {
-                        self?.testSucceeded = true
+                    if result.succeeded {
+                        self?.testResult = result
+                        if let warning = result.warning {
+                            AccessibilityAnnouncement.post(
+                                String(format: String(localized: "Connected with a warning. %@"), warning)
+                            )
+                        }
                     } else {
                         AlertHelper.showErrorSheet(
                             title: String(localized: "Connection Test Failed"),
@@ -700,7 +703,7 @@ final class ConnectionFormCoordinator: ObservableObject {
                 await MainActor.run {
                     self?.cleanupTestSecrets(for: testConn.id)
                     self?.isTesting = false
-                    self?.testSucceeded = false
+                    self?.testResult = nil
                     self?.testTask = nil
                     if case PluginError.pluginNotInstalled = error {
                         self?.pluginInstallConnection = testConn
@@ -1044,45 +1047,6 @@ final class ConnectionFormCoordinator: ObservableObject {
             network.additionalFieldValues[fieldId] = value
         case .advanced:
             advanced.additionalFieldValues[fieldId] = value
-        }
-    }
-
-    // MARK: - Clipboard
-
-    func detectClipboardConnectionStringIfNeeded(
-        connectionStorage: ConnectionStorage = .shared,
-        pasteboard: NSPasteboard = .general
-    ) {
-        guard isNew, !clipboardBannerDismissed, clipboardCandidate == nil else { return }
-        guard let raw = pasteboard.string(forType: .string),
-              let candidate = ClipboardConnectionCandidate(clipboardText: raw),
-              !matchesExistingConnection(candidate.parsed, connectionStorage: connectionStorage)
-        else { return }
-        clipboardCandidate = candidate
-    }
-
-    func applyClipboardCandidate(_ candidate: ClipboardConnectionCandidate) {
-        applyParsed(candidate.parsed)
-        auth.promptForPassword = false
-        normalizeTransport()
-        clipboardCandidate = nil
-    }
-
-    func dismissClipboardCandidate() {
-        clipboardCandidate = nil
-        clipboardBannerDismissed = true
-    }
-
-    private func matchesExistingConnection(
-        _ parsed: ParsedConnectionURL,
-        connectionStorage: ConnectionStorage
-    ) -> Bool {
-        connectionStorage.loadConnections().contains { saved in
-            guard saved.username == parsed.username, saved.localSocketPath == parsed.localSocketPath else {
-                return false
-            }
-            return parsed.localSocketPath != nil
-                || (saved.host == parsed.host && saved.port == parsed.resolvedPort)
         }
     }
 }

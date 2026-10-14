@@ -19,10 +19,6 @@ struct QueryEditorView: View {
     @State private var executionTime: TimeInterval?
     @State private var executeTask: Task<Void, Never>?
 
-    private var hasResult: Bool {
-        !viewModel.columns.isEmpty || viewModel.rowsAffected != nil
-    }
-
     private var resultRowCount: Int {
         viewModel.legacyRows.count
     }
@@ -127,7 +123,7 @@ struct QueryEditorView: View {
             for: DuoLayoutContext(
                 size: containerSize,
                 widthClass: duoWidthClass,
-                showsResult: hasResult || appError != nil
+                showsResult: viewModel.hasOutcome || appError != nil
             )
         )
     }
@@ -198,72 +194,140 @@ struct QueryEditorView: View {
             if isExecuting {
                 VStack(spacing: 12) {
                     ProgressView()
-                    Text("Executing...")
+                    Text(verbatim: viewModel.progressMessage)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .monospacedDigit()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let appError {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.red)
-                            Text(verbatim: appError.message)
-                                .font(.system(.footnote, design: .monospaced))
-                                .foregroundStyle(.red)
-                        }
-                        if let recovery = appError.recovery {
-                            Text(verbatim: recovery)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .padding(.leading, 28)
-                        }
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            } else if hasResult {
-                if viewModel.columns.isEmpty {
-                    VStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.largeTitle)
-                            .foregroundStyle(.green)
-                        Text(String(format: String(localized: "%d row(s) affected"), viewModel.rowsAffected ?? 0))
-                            .font(.body)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if viewModel.legacyRows.isEmpty {
-                    ContentUnavailableView(
-                        "No Results",
-                        systemImage: "tray",
-                        description: Text("The query returned no rows.")
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    VStack(spacing: 0) {
-                        if let message = viewModel.truncationMessage {
-                            truncationBanner(message)
-                            Divider()
-                        }
-                        resultList
-                    }
-                }
-            } else {
+                errorView(appError)
+            } else if !viewModel.hasOutcome {
                 ContentUnavailableView {
                     Label("Run a Query", systemImage: "terminal")
                 } description: {
                     Text("Write SQL and tap the play button.")
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if viewModel.columns.isEmpty || viewModel.legacyRows.isEmpty && !runCompleted {
+                commandOutcomeView
+            } else if viewModel.legacyRows.isEmpty {
+                VStack(spacing: 0) {
+                    resultNotices(includesTruncation: false)
+                    ContentUnavailableView(
+                        "No Results",
+                        systemImage: "tray",
+                        description: Text("The query returned no rows.")
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            } else {
+                VStack(spacing: 0) {
+                    resultNotices(includesTruncation: true)
+                    resultList
+                }
             }
         }
     }
 
-    private func truncationBanner(_ message: String) -> some View {
+    private func errorView(_ appError: AppError) -> some View {
+        let isScriptFailure = isScriptFailure
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.red)
+                        .accessibilityHidden(true)
+                    Text(verbatim: isScriptFailure ? viewModel.interruptionHeadline ?? appError.message : appError.message)
+                        .font(.system(.footnote, design: .monospaced))
+                        .foregroundStyle(.red)
+                }
+                if isScriptFailure, let note = viewModel.standingWorkNote {
+                    Text(verbatim: note)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 28)
+                }
+                if isScriptFailure, let sql = viewModel.failedSQL {
+                    Text(verbatim: sql)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                        .textSelection(.enabled)
+                        .padding(.leading, 28)
+                }
+                if let recovery = appError.recovery {
+                    Text(verbatim: recovery)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 28)
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// The error on screen is the run's own only while the view model still holds the failure that produced it.
+    private var isScriptFailure: Bool {
+        guard case .error = viewModel.phase else { return false }
+        return viewModel.interruption != nil
+    }
+
+    private var runCompleted: Bool {
+        QueryExecutionOutcome(phase: viewModel.phase) == .completed
+    }
+
+    /// A statement that returns no rows still ran, so it gets an outcome of its own rather than the empty placeholder.
+    private var commandOutcomeView: some View {
+        let outcome = QueryExecutionOutcome(phase: viewModel.phase)
+        let completed = outcome == .completed
+        return VStack(spacing: 8) {
+            Image(systemName: completed ? "checkmark.circle.fill" : "stop.circle.fill")
+                .font(.largeTitle)
+                .foregroundStyle(completed ? Color.green : Color.secondary)
+                .accessibilityHidden(true)
+            Text(verbatim: completed
+                ? viewModel.commandMessage
+                : viewModel.interruptionHeadline ?? outcome.historyMessage ?? viewModel.commandMessage)
+                .font(.body)
+                .multilineTextAlignment(.center)
+            if let detail = completed ? viewModel.scriptSummary : viewModel.standingWorkNote {
+                Text(verbatim: detail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding()
+        .accessibilityElement(children: .combine)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private func resultNotices(includesTruncation: Bool) -> some View {
+        if let headline = viewModel.interruptionHeadline {
+            noticeBanner(
+                [headline, viewModel.standingWorkNote].compactMap { $0 }.joined(separator: " "),
+                systemImage: "stop.circle.fill",
+                tint: .secondary
+            )
+            Divider()
+        } else if includesTruncation, let message = viewModel.truncationMessage {
+            noticeBanner(message, systemImage: "exclamationmark.triangle.fill", tint: .orange)
+            Divider()
+        }
+        if let summary = viewModel.scriptSummary {
+            noticeBanner(summary, systemImage: "checkmark.circle.fill", tint: .green)
+            Divider()
+        }
+    }
+
+    private func noticeBanner(_ message: String, systemImage: String, tint: Color) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+            Image(systemName: systemImage)
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
             Text(verbatim: message)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -421,6 +485,15 @@ struct QueryEditorView: View {
     private func executeQuery() async {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        guard let session else { return }
+        // Text that is only comments plans to nothing under any session setting, so this needs no driver round trip.
+        let outline = QueryScript.plan(
+            trimmed, databaseType: databaseType, sendsBatchesWhole: session.driver.sendsBatchesWhole
+        )
+        guard !outline.isEmpty else {
+            reportNothingToRun()
+            return
+        }
 
         if SQLWriteClassifier.isWriteQuery(trimmed, databaseType: databaseType) {
             switch safeModeLevel.writePermission {
@@ -439,14 +512,24 @@ struct QueryEditorView: View {
         await executeQueryDirect(trimmed)
     }
 
+    /// The run is claimed before the first await, so a second tap on Run while the session is asked how it reads
+    /// literals finds it running and does not start another.
     private func executeQueryDirect(_ trimmed: String) async {
-        guard let session else { return }
+        guard let session, !isExecuting else { return }
 
         editorFocused = false
         isExecuting = true
         let startedAt = Date()
         executionStartTime = startedAt
         appError = nil
+
+        let script = await plan(trimmed, on: session)
+        guard !script.isEmpty else {
+            isExecuting = false
+            executionStartTime = nil
+            reportNothingToRun()
+            return
+        }
 
         let token = await appState.queryActivities.start(
             connectionId: connectionId,
@@ -465,7 +548,7 @@ struct QueryEditorView: View {
 
         let progressUpdater = startActivityProgressUpdater(token: token)
 
-        await viewModel.run(driver: session.driver, query: trimmed)
+        await viewModel.run(driver: session.driver, script: script)
 
         progressUpdater.cancel()
         let phase = viewModel.phase
@@ -474,20 +557,50 @@ struct QueryEditorView: View {
         if case .error(let err) = phase {
             appError = err
             hapticError.toggle()
-            recordHistory(query: trimmed, outcome: outcome, errorMessage: err.localizedDescription)
+            recordHistory(
+                query: trimmed,
+                outcome: outcome,
+                errorMessage: viewModel.interruptionSummary ?? err.localizedDescription
+            )
         } else {
             executionTime = viewModel.executionTime
             if outcome == .completed {
                 hapticSuccess.toggle()
                 IOSAnalyticsProvider.shared.markFirstQueryExecuted()
             }
-            recordHistory(query: trimmed, outcome: outcome, errorMessage: outcome.historyMessage)
+            recordHistory(
+                query: trimmed,
+                outcome: outcome,
+                errorMessage: viewModel.interruptionSummary ?? outcome.historyMessage
+            )
         }
 
         isExecuting = false
         executionStartTime = nil
 
         await appState.queryActivities.end(token: token, outcome: outcome.activityOutcome)
+    }
+
+    private func plan(_ text: String, on session: ConnectionSession) async -> QueryScript {
+        QueryScript.plan(
+            text,
+            databaseType: databaseType,
+            sendsBatchesWhole: session.driver.sendsBatchesWhole,
+            session: await session.driver.sessionLexicalFacts()
+        )
+    }
+
+    /// Text that holds only comments reaches no driver, so the tap still gets an answer.
+    private func reportNothingToRun() {
+        viewModel.reset()
+        executionTime = nil
+        appError = AppError(
+            category: .query,
+            title: String(localized: "Nothing to Run"),
+            message: String(localized: "There is no statement to run."),
+            recovery: nil,
+            underlying: nil
+        )
     }
 
     private func recordHistory(query: String, outcome: QueryExecutionOutcome, errorMessage: String?) {

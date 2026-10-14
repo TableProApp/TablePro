@@ -46,13 +46,13 @@ GCC_WARN_UNUSED_VARIABLE = YES
 LOCALIZATION_PREFERS_STRING_CATALOGS = YES
 MTL_FAST_MATH = YES
 
-// Xcode 26 and later cache compiled output, which pays back on the workloads this repo runs most:
-// clean builds in CI and switching between the branches in .claude/worktrees.
+// Xcode 26 and later cache compiled output, which pays back when switching between the branches
+// in .claude/worktrees. macos-tests.yml turns it off: a runner starts with an empty cache.
 COMPILATION_CACHE_ENABLE_CACHING = YES
 // A `#available` check is a runtime question; the symbol still has to exist in the SDK that
-// compiles the file. CI builds with the macOS 26 SDK and this machine with the macOS 27 one, so
-// code that touches an API introduced in 27 states which SDK it needs. Xcode resolves the
-// condition per SDK, so nothing here changes what the app does at runtime.
+// compiles the file. Xcode 26 with the macOS 26 SDK still builds the app, and CI builds with the
+// macOS 27 one, so code that touches an API introduced in 27 states which SDK it needs. Xcode
+// resolves the condition per SDK, so nothing here changes what the app does at runtime.
 SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited)
 SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=macosx27*] = $(inherited) SDK_MACOS_27
 STRING_CATALOG_GENERATE_SYMBOLS = YES

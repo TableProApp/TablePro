@@ -85,7 +85,7 @@ struct TreeOutlineCellViewTests {
         #expect(field.isSelectable)
         #expect(!field.allowsEditingTextAttributes)
         #expect(field.stringValue == "\"Acme\"")
-        #expect(field.textColor == .systemRed)
+        #expect(field.textColor == TreeValueTone.string.color)
         #expect(field.font == TreeOutlineFixture.fonts.value)
         #expect(cell.accessibilityCustomActions()?.isEmpty ?? true)
     }
@@ -158,8 +158,8 @@ struct TreeOutlineCellViewTests {
         #expect(plain.valueField.textColor == .alternateSelectedControlTextColor)
         #expect(plain.keyField.textColor == .alternateSelectedControlTextColor)
         plain.backgroundStyle = .normal
-        #expect(plain.valueField.textColor == .systemPurple)
-        #expect(plain.keyField.textColor == .systemBlue)
+        #expect(plain.valueField.textColor == TreeValueTone.number.color)
+        #expect(plain.keyField.textColor == TreeValueTone.key.color)
 
         let link = try cell("site")
         link.backgroundStyle = .emphasized
@@ -168,7 +168,42 @@ struct TreeOutlineCellViewTests {
         link.backgroundStyle = .normal
         let normal = link.valueField.attributedStringValue
         #expect(normal.attribute(.foregroundColor, at: 3, effectiveRange: nil) as? NSColor == .linkColor)
-        #expect(normal.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == .systemRed)
+        #expect(normal.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == TreeValueTone.string.color)
+    }
+
+    @Test("Under a theme the key, value, colon and visibility take its colors, and an emphasized row turns them white")
+    func themedColors() throws {
+        try ThemeTestFixture.adopting(TreeOutlineFixture.tones, appearance: .light) {
+            let node = PhpTreeNode(
+                key: "secret",
+                keyPath: "$.secret",
+                path: TreeNodePath.root.appending(.key("secret", occurrence: 0)),
+                nodeType: .int,
+                displayValue: "7",
+                visibilityBadge: "protected"
+            )
+            let cell = configured(node.rowContent)
+
+            #expect(ThemeTestFixture.hex(cell.keyField.textColor) == TreeOutlineFixture.tones[.syntaxString])
+            #expect(ThemeTestFixture.hex(cell.valueField.textColor) == TreeOutlineFixture.tones[.syntaxNumber])
+            #expect(ThemeTestFixture.hex(cell.visibilityField.textColor) == TreeOutlineFixture.tones[.editorLineNumber])
+
+            cell.backgroundStyle = .emphasized
+            #expect(cell.keyField.textColor == .alternateSelectedControlTextColor)
+            #expect(cell.valueField.textColor == .alternateSelectedControlTextColor)
+        }
+    }
+
+    @Test("Under the default pair the colon and visibility keep the secondary label color")
+    func defaultSecondaryText() throws {
+        try ThemeTestFixture.adopting([:], appearance: .light) {
+            let cell = try cell("count")
+            #expect(ThemeTestFixture.hex(cell.visibilityField.textColor) == ThemeTestFixture.hex(.secondaryLabelColor))
+            #expect(
+                ThemeTestFixture.hex(cell.visibilityField.textColor, in: .darkAqua)
+                    == ThemeTestFixture.hex(.secondaryLabelColor, in: .darkAqua)
+            )
+        }
     }
 
     @Test("The accessibility action opens the link through the link policy")

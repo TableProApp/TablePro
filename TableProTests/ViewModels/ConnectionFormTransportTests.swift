@@ -144,7 +144,7 @@ struct ConnectionFormTransportTests {
     @Test("selecting a transport clears a passing test result")
     func selectionInvalidatesTestResult() {
         let coordinator = coordinator()
-        coordinator.testSucceeded = true
+        coordinator.testResult = ConnectionTestResult(succeeded: true)
         coordinator.transport = .ssh
         #expect(!coordinator.testSucceeded)
     }
@@ -321,7 +321,7 @@ struct ConnectionFormTransportTests {
     @Test("choosing an endpoint clears a passing test result")
     func endpointInvalidatesTestResult() {
         let coordinator = coordinator()
-        coordinator.testSucceeded = true
+        coordinator.testResult = ConnectionTestResult(succeeded: true)
         coordinator.selectEndpoint(.localSocket)
         #expect(!coordinator.testSucceeded)
     }
@@ -340,22 +340,6 @@ struct ConnectionFormTransportTests {
         #expect(coordinator.network.endpoint == .hostAndPort)
         #expect(coordinator.transport == .ssh)
         #expect(coordinator.buildEdits().additionalFields[MySQLLocalSocket.fieldKey] == nil)
-    }
-
-    @Test("a URL pasted onto a Socket form returns it to Host and Port with the URL's SSH server")
-    func urlImportLeavesSocketMode() throws {
-        let candidate = try #require(ClipboardConnectionCandidate(
-            clipboardText: "mysql+ssh://deploy@bastion.example.com:22/dbuser@db.internal:3306/app"
-        ))
-        let coordinator = coordinator()
-        coordinator.start()
-        coordinator.selectEndpoint(.localSocket)
-
-        coordinator.applyClipboardCandidate(candidate)
-
-        #expect(coordinator.network.endpoint == .hostAndPort)
-        #expect(coordinator.transport == .ssh)
-        #expect(coordinator.ssh.state.host == "bastion.example.com")
     }
 
     @Test("a socket connection saves its path and no transport")

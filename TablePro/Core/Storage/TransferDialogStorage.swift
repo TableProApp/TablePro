@@ -15,7 +15,7 @@ final class TransferDialogStorage: Sendable {
         static let lastImportEncoding = "com.TablePro.import.dialog.lastEncoding"
     }
 
-    init(userDefaults: UserDefaults = .standard) {
+    init(userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
         self.defaults = userDefaults
     }
 

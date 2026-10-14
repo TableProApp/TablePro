@@ -8,7 +8,6 @@ import Foundation
 enum PluginError: LocalizedError {
     case invalidBundle(String)
     case signatureInvalid(detail: String)
-    case developerNotTrusted(identity: PluginDeveloperIdentity)
     case checksumMismatch
     case incompatibleVersion(required: Int, current: Int)
     case pluginOutdated(pluginVersion: Int, requiredVersion: Int)
@@ -26,7 +25,6 @@ enum PluginError: LocalizedError {
     case incompatibleWithCurrentApp(minimumRequired: String)
     case invalidDescriptor(pluginId: String, reason: String)
     case unknownDatabaseType(String)
-    case pluginDisabled(pluginId: String, pluginName: String)
     case pluginLoadFailed(pluginId: String?, pluginName: String, reason: String?)
     case pluginInstallFailed(databaseType: String, reason: String)
 
@@ -36,11 +34,6 @@ enum PluginError: LocalizedError {
             return String(format: String(localized: "Invalid plugin bundle: %@"), reason)
         case .signatureInvalid(let detail):
             return String(format: String(localized: "Plugin code signature verification failed: %@"), detail)
-        case .developerNotTrusted(let identity):
-            return String(
-                format: String(localized: "This plugin is signed by %@, a developer you have not trusted yet."),
-                identity.name
-            )
         case .checksumMismatch:
             return String(localized: "Plugin checksum does not match expected value")
         case .incompatibleVersion(let required, let current):
@@ -76,8 +69,6 @@ enum PluginError: LocalizedError {
             return String(format: String(localized: "Plugin '%@' has an invalid descriptor: %@"), pluginId, reason)
         case .unknownDatabaseType(let databaseType):
             return String(format: String(localized: "TablePro doesn't recognize the database type “%@”."), databaseType)
-        case .pluginDisabled(_, let pluginName):
-            return String(format: String(localized: "The %@ plugin is turned off."), pluginName)
         case .pluginLoadFailed(_, let pluginName, _):
             return String(format: String(localized: "The %@ plugin could not be loaded."), pluginName)
         case .pluginInstallFailed(let databaseType, let reason):
@@ -98,8 +89,6 @@ enum PluginError: LocalizedError {
         switch self {
         case .unknownDatabaseType:
             return String(localized: "Edit the connection and choose its database type.")
-        case .pluginDisabled:
-            return String(localized: "Turn the plugin on to connect.")
         case .pluginLoadFailed:
             return String(localized: "Update or reinstall the plugin in Settings > Plugins.")
         case .pluginInstallFailed:

@@ -12,23 +12,21 @@ struct CodeSuggestionLabelView: View {
     static let horizontalPadding: CGFloat = 13
 
     let suggestion: CodeSuggestionEntry
-    let labelColor: NSColor
-    let secondaryLabelColor: NSColor
     let font: NSFont
     var isSelected: Bool = false
 
     private var effectiveLabelColor: Color {
         if isSelected {
-            return .white
+            return Color(nsColor: .alternateSelectedControlTextColor)
         }
-        return suggestion.deprecated ? Color(secondaryLabelColor) : Color(labelColor)
+        return Color(nsColor: suggestion.deprecated ? NSColor.secondaryLabelColor : NSColor.labelColor)
     }
 
     private var effectiveSecondaryColor: Color {
         if isSelected {
-            return Color.white.opacity(0.7)
+            return Color(nsColor: .alternateSelectedControlTextColor).opacity(0.7)
         }
-        return Color(secondaryLabelColor)
+        return Color(nsColor: .secondaryLabelColor)
     }
 
     // swiftlint:disable shorthand_operator

@@ -77,7 +77,7 @@ actor ToolTestQueryHistoryStore: QueryHistoryReading {
 }
 
 enum MCPToolTestHarness {
-    static let tokenId = UUID(uuidString: "0F2A6C41-1111-4222-8333-000000000001")
+    static let tokenId = UUID(uuid: (0x0F, 0x2A, 0x6C, 0x41, 0x11, 0x11, 0x42, 0x22, 0x83, 0x33, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01))
 
     static func principal(
         scopes: Set<MCPScope> = [.toolsRead, .toolsWrite],

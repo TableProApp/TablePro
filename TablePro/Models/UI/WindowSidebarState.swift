@@ -104,7 +104,7 @@ internal final class WindowSidebarState: ObservableObject {
         persistExpansion()
     }
 
-    init(connectionId: UUID? = nil, defaults: UserDefaults = .standard) {
+    init(connectionId: UUID? = nil, defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
         self.connectionId = connectionId
         self.defaults = defaults
         loadExpansion()

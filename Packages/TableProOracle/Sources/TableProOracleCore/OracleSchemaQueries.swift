@@ -436,12 +436,23 @@ public enum OracleSchemaQueries {
         return "SELECT NVL(SUM(BYTES), 0) FROM \(OracleDictionary.dbaSegments) WHERE \(scoped)OWNER = '\(owner)'"
     }
 
-    /// The view's `SELECT` text, without the LONG `TEXT` column OracleNIO cannot decode. `TEXT_VC` is `VARCHAR2(4000)`.
+    /// The view's `SELECT` text, without the LONG `TEXT` column OracleNIO cannot decode. `TEXT_VC` is `VARCHAR2(4000)`
+    /// and cuts a longer text, so its byte length comes back beside `TEXT_LENGTH` for
+    /// ``isViewTextTruncated(storedLength:returnedLength:)``.
     public static func viewDefinition(schema: String, view: String) -> String {
         """
-        SELECT TEXT_VC FROM \(OracleDictionary.allViews) \
+        SELECT TEXT_VC, TEXT_LENGTH, LENGTHB(TEXT_VC) FROM \(OracleDictionary.allViews) \
         WHERE VIEW_NAME = '\(escapeLiteral(view))' AND OWNER = '\(escapeLiteral(schema))'
         """
+    }
+
+    /// Measured on Oracle 23 Free: `TEXT_LENGTH` equals `LENGTHB(TEXT_VC)` for a whole text, a 58-byte multibyte one
+    /// included, and a 160-column view read 6892 against 4000.
+    public static func isViewTextTruncated(storedLength: String?, returnedLength: String?) -> Bool {
+        guard let stored = storedLength.flatMap(integer), let returned = returnedLength.flatMap(integer) else {
+            return false
+        }
+        return stored > returned
     }
 
     /// The tables of one schema for the object tree's bulk metadata read.

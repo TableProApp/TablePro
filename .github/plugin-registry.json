@@ -173,6 +173,21 @@
       "category": "database-driver",
       "homepage": "https://docs.tablepro.app/databases/etcd"
     },
+    "firebase": {
+      "target": "FirebaseDriverPlugin",
+      "bundleName": "FirebaseDriverPlugin",
+      "bundleId": "com.TablePro.FirebaseDriverPlugin",
+      "bundled": false,
+      "displayName": "Firebase Driver",
+      "summary": "Cloud Firestore and Firebase Realtime Database driver over their REST APIs",
+      "databaseTypeIds": [
+        "Firestore",
+        "Firebase Realtime Database"
+      ],
+      "icon": "firebase-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/firebase"
+    },
     "hana": {
       "target": "HanaDriver",
       "bundleName": "HanaDriver",
@@ -186,18 +201,6 @@
       "icon": "cylinder",
       "category": "database-driver",
       "homepage": "https://docs.tablepro.app/databases/sap-hana"
-    },
-    "html": {
-      "target": "HTMLExport",
-      "bundleName": "HTMLExport",
-      "bundleId": "com.TablePro.HTMLExportPlugin",
-      "bundled": true,
-      "displayName": "HTML Export",
-      "summary": "Export data as an HTML table",
-      "databaseTypeIds": null,
-      "icon": "chevron.left.forwardslash.chevron.right",
-      "category": "export-format",
-      "homepage": "https://docs.tablepro.app/features/import-export"
     },
     "kafka": {
       "target": "KafkaDriverPlugin",
@@ -466,18 +469,6 @@
       "databaseTypeIds": null,
       "icon": "tablecells",
       "category": "import-format",
-      "homepage": "https://docs.tablepro.app/features/import-export"
-    },
-    "xml": {
-      "target": "XMLExport",
-      "bundleName": "XMLExport",
-      "bundleId": "com.TablePro.XMLExportPlugin",
-      "bundled": true,
-      "displayName": "XML Export",
-      "summary": "Export data as XML",
-      "databaseTypeIds": null,
-      "icon": "doc.badge.gearshape",
-      "category": "export-format",
       "homepage": "https://docs.tablepro.app/features/import-export"
     }
   }

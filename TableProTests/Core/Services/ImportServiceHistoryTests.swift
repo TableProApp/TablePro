@@ -51,7 +51,7 @@ struct ImportServiceHistoryTests {
 
         let connection = TestFixtures.makeConnection(database: "shop")
         let history = RecordingHistory()
-        let service = ImportService(connection: connection, historyRecorder: history)
+        let service = ImportService(connection: connection, historyRecorder: history, gate: AlwaysAllowGate())
         let scope = DatabaseScope(connectionId: connection.id, database: "archive", schema: nil)
         let file = FileManager.default.temporaryDirectory
             .appendingPathComponent("import-history-\(UUID().uuidString)")
@@ -80,7 +80,7 @@ struct ImportServiceHistoryTests {
 
         let connection = TestFixtures.makeConnection(database: "shop")
         let history = RecordingHistory()
-        let service = ImportService(connection: connection, historyRecorder: history)
+        let service = ImportService(connection: connection, historyRecorder: history, gate: AlwaysAllowGate())
         let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: nil)
         let snapshot = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

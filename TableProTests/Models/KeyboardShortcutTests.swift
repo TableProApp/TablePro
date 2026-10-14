@@ -12,48 +12,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-struct ShortcutActionDefaultsTests {
-    @Test("Execute Query default is Cmd+Return")
-    func executeQueryDefault() {
-        #expect(KeyboardSettings.defaultShortcuts[.executeQuery] == .special(.return, command: true))
-    }
-
-    @Test("Execute All Statements default is Cmd+Shift+Return")
-    func executeAllStatementsDefault() {
-        #expect(KeyboardSettings.defaultShortcuts[.executeAllStatements] == .special(.return, command: true, shift: true))
-    }
-
-    @Test("Cancel Query default is Cmd+.")
-    func cancelQueryDefault() {
-        #expect(KeyboardSettings.defaultShortcuts[.cancelQuery] == .character(".", command: true))
-    }
-
-    @Test("New Connection default is Cmd+N")
-    func newConnectionDefault() {
-        #expect(KeyboardSettings.defaultShortcuts[.newConnection] == .character("n", command: true))
-    }
-
-    @Test("First and Last Page have defaults")
-    func paginationEdgeDefaults() {
-        #expect(KeyboardSettings.defaultShortcuts[.firstPage] != nil)
-        #expect(KeyboardSettings.defaultShortcuts[.lastPage] != nil)
-    }
-
-    @Test("Find Next and Find Previous have defaults")
-    func findDefaults() {
-        #expect(KeyboardSettings.defaultShortcuts[.findNext] == .character("g", command: true))
-        #expect(KeyboardSettings.defaultShortcuts[.findPrevious] == .character("g", command: true, shift: true))
-    }
-
-    @Test("Jump to Column default is Cmd+Shift+J and belongs to the data grid")
-    func jumpToColumnDefault() {
-        #expect(KeyboardSettings.defaultShortcuts[.jumpToColumn] == .character("j", command: true, shift: true))
-        #expect(ShortcutAction.jumpToColumn.context == .dataGrid)
-        #expect(ShortcutAction.jumpToColumn.category == .dataGrid)
-        #expect(ShortcutAction.reservedConflict(for: .character("j", command: true, shift: true), context: .dataGrid) == nil)
-    }
-}
-
 struct EditorBuiltInNameTests {
     @Test("Command-[ is Outdent and Command-] is Indent")
     func bracketsAreNamedAsTheEditorMapsThem() {

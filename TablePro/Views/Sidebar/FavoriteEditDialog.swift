@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import SwiftUI
 
 /// Wrapper for `.sheet(item:)` to ensure the query is passed reliably
@@ -11,7 +12,6 @@ internal struct FavoriteDialogQuery: Identifiable {
     let query: String
 }
 
-/// Dialog for creating or editing a SQL favorite
 internal struct FavoriteEditDialog: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -174,14 +174,18 @@ internal struct FavoriteEditDialog: View {
 
     private var querySection: some View {
         Section {
-            TextEditor(text: $query)
-                .font(.system(.body, design: .monospaced))
-                .frame(minHeight: 180)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color(nsColor: .separatorColor))
-                )
-                .accessibilityLabel(String(localized: "Query"))
+            TextValueEditor(
+                text: $query,
+                font: .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular),
+                textContainerInset: .zero,
+                style: .code
+            )
+            .frame(minHeight: 180)
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(Color(nsColor: .separatorColor))
+            )
+            .accessibilityLabel(String(localized: "Query"))
 
             if let message = draft.sizeValidation.displayText {
                 Text(message)

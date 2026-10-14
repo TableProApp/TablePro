@@ -302,11 +302,8 @@ struct TableTransferSheet: View {
 
     /// A transfer needs two live sessions, so only connections that are already open are offered.
     /// Opening one from here would mean a connect, a possible prompt and a possible failure inside
-    /// a sheet that is about to start writing rows.
-    ///
-    /// A read-only destination is left out rather than shown and refused later: this sheet writes
-    /// rows through the import sink, which reaches the driver directly rather than through the
-    /// execution gate, so the list is where that policy has to hold.
+    /// a sheet that is about to start writing rows. A read-only destination is left out rather than
+    /// offered and then refused by the execution gate.
     @MainActor
     private func load() async {
         availableDestinations = databaseManager.activeSessions.values
@@ -350,25 +347,19 @@ struct TableTransferSheet: View {
         }
     }
 
-    /// Emptying the destination's tables is not undoable, and a connection whose Safe Mode asks
-    /// before a write has to be asked here too, because these rows never pass the execution gate.
-    @MainActor
-    private func confirmIfNeeded(destination: DatabaseConnection) async -> Bool {
-        guard deleteExistingRows || destination.safeModeLevel.requiresConfirmation else { return true }
+    private func transferTitle(destination: DatabaseConnection) -> String {
         let template = selectedTables.count == 1
             ? String(localized: "Transfer %1$lld table into %2$@?")
             : String(localized: "Transfer %1$lld tables into %2$@?")
-        let title = String(format: template, Int64(selectedTables.count), destination.name)
-        guard deleteExistingRows else {
-            return await AlertHelper.confirm(
-                title: title,
-                message: String(localized: "Rows are written into tables that already exist on the destination."),
-                confirmButton: String(localized: "Transfer"),
-                window: hostWindow
-            )
-        }
-        return await AlertHelper.confirmCritical(
-            title: title,
+        return String(format: template, Int64(selectedTables.count), destination.name)
+    }
+
+    /// Emptying the destination's tables cannot be undone, so it is confirmed here in words that say
+    /// so. Every other confirmation a transfer needs is the execution gate's, from Safe Mode.
+    @MainActor
+    private func confirmDeletingExistingRows(destination: DatabaseConnection) async -> Bool {
+        await AlertHelper.confirmCritical(
+            title: transferTitle(destination: destination),
             message: String(localized: "Every row in each destination table is deleted first. This cannot be undone."),
             confirmButton: String(localized: "Transfer"),
             window: hostWindow
@@ -443,13 +434,9 @@ struct TableTransferSheet: View {
             errorMessage = TableTransferError.notConnected(connectionName: "").localizedDescription
             return
         }
-        guard !destinationConnection.safeModeLevel.blocksAllWrites else {
-            errorMessage = String(
-                format: String(localized: "%@ is read-only, so nothing can be written to it."),
-                destinationConnection.name)
-            return
+        if deleteExistingRows {
+            guard await confirmDeletingExistingRows(destination: destinationConnection) else { return }
         }
-        guard await confirmIfNeeded(destination: destinationConnection) else { return }
 
         errorMessage = nil
         service.prepareForRun()
@@ -486,28 +473,14 @@ struct TableTransferSheet: View {
         )
 
         let startedAt = ContinuousClock.Instant.now
-        let destinationRoute = DatabaseManager.shared.executionRoute(for: destinationScope)
         do {
-            try await DatabaseManager.shared.withMetadataDriver(
-                scope: sourceScope, workload: .bulk
-            ) { sourceDriver in
-                /// A transfer writes, inside its own transaction, across many statements. Left
-                /// untracked it registers nothing, so an unrelated Stop falls back to the session
-                /// driver and aborts it part-applied, and the health check counts the connection
-                /// as idle and pings straight into it.
-                try await DatabaseManager.shared.withScopedDriver(
-                    scope: destinationScope,
-                    route: destinationRoute,
-                    workload: .bulk,
-                    cancellation: .protectedWrite
-                ) { destinationDriver in
-                    try await service.transfer(
-                        request: request,
-                        sourceDriver: sourceDriver,
-                        destinationDriver: destinationDriver
-                    )
-                }
-            }
+            try await service.run(
+                request: request,
+                source: sourceScope,
+                destination: destinationScope,
+                operationDescription: transferTitle(destination: destinationConnection),
+                confirmedByCaller: deleteExistingRows
+            )
             reportFinished(
                 .succeeded(OperationSummary(rowsAffected: service.state.transferredRows)),
                 destination: destinationConnection,
@@ -516,6 +489,10 @@ struct TableTransferSheet: View {
         } catch is PluginImportCancellationError {
             errorMessage = nil
             reportFinished(.cancelled, destination: destinationConnection, since: startedAt)
+        } catch ExecutionGateError.cancelledByUser {
+            errorMessage = nil
+        } catch let refusal as ExecutionGateError {
+            errorMessage = refusal.localizedDescription
         } catch {
             errorMessage = error.localizedDescription
             reportFinished(

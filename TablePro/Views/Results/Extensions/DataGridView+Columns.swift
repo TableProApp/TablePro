@@ -114,6 +114,9 @@ extension TableViewCoordinator {
         let tableRows = tableRowsProvider()
         guard let displayRow = displayRow(at: row, in: tableRows),
               columnIndex < displayRow.values.count else { return nil }
+        if let spoken = delegate?.dataGridAccessibilityText(row: row, column: columnIndex) {
+            return spoken
+        }
         let rawValue = displayRow.values[columnIndex]
         let columnType = columnIndex < tableRows.columnTypes.count ? tableRows.columnTypes[columnIndex] : nil
         let text = displayValue(

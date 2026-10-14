@@ -66,7 +66,6 @@ struct ColumnCheckList: View {
             }
         }
         .listStyle(.plain)
-        .scrollContentBackground(.hidden)
         .frame(minHeight: listMinHeight, maxHeight: listMaxHeight)
     }
 

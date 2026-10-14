@@ -3,7 +3,6 @@ import Combine
 import Foundation
 import os
 import SwiftUI
-import TableProPluginKit
 
 @MainActor
 final class ERDiagramViewModel: ObservableObject {
@@ -76,8 +75,6 @@ final class ERDiagramViewModel: ObservableObject {
     var hasJunctionTables: Bool { !fullGraph.junctionTableIds.isEmpty }
 
     private var fullGraph: ERDiagramGraph = .empty
-    private var allColumns: [String: [ColumnInfo]] = [:]
-    private var allForeignKeys: [String: [ForeignKeyInfo]] = [:]
 
     // MARK: - Canvas Viewport
 
@@ -179,8 +176,6 @@ final class ERDiagramViewModel: ObservableObject {
                 return (cols, fks, idx)
             }
 
-            allColumns = columns
-            allForeignKeys = foreignKeys
             fullGraph = ERDiagramGraphBuilder.build(
                 allColumns: columns,
                 allForeignKeys: foreignKeys,
@@ -344,43 +339,6 @@ final class ERDiagramViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
             computedLayout = layout
             invalidateCachedRects()
-        }
-    }
-
-    // MARK: - SQL Export
-
-    func exportSchemaAsSQL() {
-        guard loadState == .loaded, !fullGraph.nodes.isEmpty else { return }
-        guard let driver = services.databaseManager.driver(for: connectionId) else { return }
-        let databaseType = driver.connection.type
-        do {
-            let dialect = try resolveSQLDialect(for: databaseType)
-            let quote = quoteIdentifierFromDialect(dialect)
-            let sql = ERDiagramSQLExporter.generate(
-                tableNames: fullGraph.nodes.map(\.tableName),
-                allColumns: allColumns,
-                allForeignKeys: allForeignKeys,
-                isSQLite: databaseType == .sqlite,
-                quoteIdentifier: quote
-            )
-            guard !sql.isEmpty else { return }
-
-            let payload = EditorTabPayload(
-                connectionId: connectionId,
-                tabType: .query,
-                databaseName: scope?.database ?? services.databaseManager.browseDatabaseName(for: driver.connection),
-                initialQuery: sql,
-                skipAutoExecute: true,
-                tabTitle: String(localized: "Schema SQL")
-            )
-            WindowManager.shared.openTab(payload: payload)
-        } catch {
-            Self.logger.error("Failed to export ER diagram as SQL: \(error.localizedDescription)")
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Export Failed"),
-                message: error.localizedDescription,
-                window: nil
-            )
         }
     }
 

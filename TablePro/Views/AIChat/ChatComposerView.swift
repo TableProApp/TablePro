@@ -232,15 +232,7 @@ struct ChatComposerView: View {
 }
 
 private enum IntelligenceShimmer {
-    static let palette: [Color] = [
-        Color(red: 1.0, green: 0.404, blue: 0.471),
-        Color(red: 1.0, green: 0.553, blue: 0.443),
-        Color(red: 1.0, green: 0.729, blue: 0.443),
-        Color(red: 0.961, green: 0.725, blue: 0.918),
-        Color(red: 0.776, green: 0.525, blue: 1.0),
-        Color(red: 0.737, green: 0.510, blue: 0.953),
-        Color(red: 0.553, green: 0.624, blue: 1.0)
-    ]
+    static let palette: [Color] = [.pink, .orange, .yellow, .pink, .purple, .indigo, .blue]
 
     struct Layer: Identifiable {
         let id: Int

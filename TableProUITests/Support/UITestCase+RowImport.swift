@@ -1,48 +1,35 @@
 import XCTest
 
-/// Reaches the row import sheet through the data file window's Import into Table, the one route to
-/// the sheet that needs no open panel.
-///
-/// On a 1024pt runner screen the data file window and the connection window open on the same frame,
-/// so a click aimed at the data file's grid lands on whichever window is in front, which after an
-/// import is the connection window. The data file window is brought forward through the Window menu
-/// instead, by its title.
 extension UITestCase {
-    internal func launchWithSampleDatabase(andDataFile name: String, contents: Data) throws -> XCUIApplication {
-        let root = try XCTUnwrap(sandboxRoot, "setUpWithError did not prepare a sandbox")
-        let fileURL = root.appendingPathComponent(name)
-        try contents.write(to: fileURL)
-        return try launchApp(environment: [
-            "TABLEPRO_UI_TEST_OPEN_SAMPLE": "1",
-            "TABLEPRO_UI_TEST_OPEN_FILE": fileURL.path
+    /// The fixture connection and a data file window, both open at launch. A launch intent skips the
+    /// session restore, so the connection opens through its `tablepro://connect/<id>` link instead.
+    @discardableResult
+    internal func launchWithFixture(openingDataFile name: String, contents: Data) throws -> FixtureLaunch {
+        let connections = try seedSQLiteSession([ConnectionSeed()])
+        let connection = try XCTUnwrap(connections.first)
+        let fileURL = try writeIntoSandbox(name, contents: contents)
+        let app = try launchApp(environment: [
+            "TABLEPRO_UI_TEST_OPEN_FILE": fileURL.path,
+            "TABLEPRO_UI_TEST_OPEN_URL": "tablepro://connect/\(connection.id.uuidString)",
         ])
+        let window = mainWindow(in: app)
+        XCTAssertTrue(waitForObjectBrowser(in: window), "The fixture connection never listed its tables")
+        return FixtureLaunch(app: app, window: window, connections: connections)
     }
 
-    internal func rowImportWindows(
-        in app: XCUIApplication,
-        dataFileTitle: String
-    ) -> (dataFile: XCUIElement, connection: XCUIElement) {
-        let dataWindow = app.windows.matching(identifier: "main-data-file").firstMatch
-        XCTAssertTrue(dataWindow.waitToExist(timeout: 30), "\(dataFileTitle) produced no data file window")
-        let connectionWindow = app.windows
-            .matching(NSPredicate(format: "identifier != %@", "main-data-file"))
-            .firstMatch
-        XCTAssertTrue(
-            waitForPredicate(timeout: 30) {
-                objectBrowser(in: connectionWindow).descendants(matching: .staticText).firstMatch.exists
-            },
-            "The sample database never finished opening"
-        )
-        return (dataWindow, connectionWindow)
+    internal func dataFileWindow(in app: XCUIApplication) -> XCUIElement {
+        window("main-data-file", in: app)
     }
 
+    // The one route to the sheet without an open panel. The data file and connection windows share a frame
+    // on the 1024pt runner, so the data file window is brought forward from the Window menu, by title.
     internal func openRowImportSheet(
         from dataWindow: XCUIElement,
         titled dataFileTitle: String,
         into connectionWindow: XCUIElement,
         in app: XCUIApplication
     ) -> XCUIElement {
-        let grid = dataWindow.tables.matching(identifier: "data-grid").firstMatch
+        let grid = dataGrid(in: dataWindow)
         XCTAssertTrue(grid.waitToExist(timeout: 30), "The data file window has no grid")
         XCTAssertTrue(waitForClickableRows(in: grid), "The data file must load rows")
 
@@ -72,13 +59,8 @@ extension UITestCase {
         return sheet
     }
 
-    /// A SwiftUI control with `labelsHidden()` and its own accessibility label publishes both,
-    /// joined, as `"Title, Import Title"` on the runner, so a subscript by the accessibility label
-    /// alone finds nothing there.
-    internal func element(
-        _ query: XCUIElementQuery,
-        labelEndingWith label: String
-    ) -> XCUIElement {
+    /// A SwiftUI control with `labelsHidden()` publishes both labels joined ("Title, Import Title") on the runner.
+    internal func element(_ query: XCUIElementQuery, labelEndingWith label: String) -> XCUIElement {
         query.matching(NSPredicate(format: "label ENDSWITH %@", label)).firstMatch
     }
 }

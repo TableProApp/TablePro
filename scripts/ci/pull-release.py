@@ -70,6 +70,21 @@ def require_publishable_checkout():
     return branch
 
 
+def require_in_step_with_origin():
+    """The release key skips every check, so the push may carry the withdrawal and nothing else."""
+    fetch = git("fetch", "origin", PUBLISHED_BRANCH, check=False)
+    if fetch.returncode != 0:
+        raise FeedError(f"could not fetch origin/{PUBLISHED_BRANCH}: {fetch.stderr.strip()}")
+    head = git("rev-parse", "HEAD").stdout.strip()
+    published = git("rev-parse", "FETCH_HEAD").stdout.strip()
+    if head != published:
+        raise FeedError(
+            f"local {PUBLISHED_BRANCH} is not origin/{PUBLISHED_BRANCH}, so the push would carry other "
+            f"commits past every check or be refused. Make {PUBLISHED_BRANCH} match "
+            f"origin/{PUBLISHED_BRANCH} and run this again"
+        )
+
+
 def withdraw(feed_path, version):
     """Returns (new_text, removed_count). Raises FeedError when the result would be wrong."""
     text = read(feed_path)
@@ -102,6 +117,7 @@ def main(argv=None):
     try:
         if not args.dry_run and not args.no_push:
             require_publishable_checkout()
+            require_in_step_with_origin()
         result, removed = withdraw(args.feed, args.version)
     except FeedError as error:
         print(f"error: {error}", file=sys.stderr)

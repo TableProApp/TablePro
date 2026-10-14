@@ -939,8 +939,9 @@ struct RowImportSheet: View {
 
         importTask = Task {
             do {
+                var authorization: OperationReceipt?
                 if let newTable = plan.newTable {
-                    try await prepareTable(newTable, scope: scope)
+                    authorization = try await prepareTable(newTable, scope: scope)
                 }
                 mapping.remember(
                     fields: plan.fields,
@@ -956,7 +957,8 @@ struct RowImportSheet: View {
                     scope: scope,
                     targetTable: targetTable,
                     columnMapping: plan.columnMapping,
-                    sourceFields: Set(plan.fields)
+                    sourceFields: Set(plan.fields),
+                    authorization: authorization
                 )
                 await MainActor.run {
                     showProgressDialog = false
@@ -978,6 +980,8 @@ struct RowImportSheet: View {
                         window: hostWindow
                     ) {}
                 }
+            } catch ExecutionGateError.cancelledByUser {
+                await MainActor.run { showProgressDialog = false }
             } catch {
                 await MainActor.run {
                     showProgressDialog = false
@@ -988,8 +992,12 @@ struct RowImportSheet: View {
         }
     }
 
+    /// Returns the gate's grant for the table's own statements, which the rows that follow reuse.
     @MainActor
-    private func prepareTable(_ definition: PluginCreateTableDefinition, scope: DatabaseScope) async throws {
+    private func prepareTable(
+        _ definition: PluginCreateTableDefinition,
+        scope: DatabaseScope
+    ) async throws -> OperationReceipt {
         guard ImportDataSinkAdapter.canWriteRows(into: connection.type) else {
             throw PluginImportError.importFailed(String(
                 format: String(localized: "%@ cannot take rows from this file, so no table was created."),
@@ -1007,10 +1015,11 @@ struct RowImportSheet: View {
         let sql = statements.joined(separator: "\n")
         switch newTablePlanner.plan(forTable: table, createTableSQL: sql) {
         case .create:
-            try await createTable(statements: statements, scope: scope)
+            let receipt = try await createTable(statements: statements, scope: scope)
             newTablePlanner.recordCreated(table, createTableSQL: sql)
+            return receipt
         case .reuseAfterClearing:
-            try await clearRows(of: tableName, scope: scope)
+            return try await clearRows(of: tableName, scope: scope)
         case .nameTakenWithDifferentColumns:
             throw PluginImportError.importFailed(
                 String(
@@ -1022,7 +1031,7 @@ struct RowImportSheet: View {
     }
 
     @MainActor
-    private func clearRows(of tableName: String, scope: DatabaseScope) async throws {
+    private func clearRows(of tableName: String, scope: DatabaseScope) async throws -> OperationReceipt {
         let generator = try SQLStatementGenerator(
             tableName: tableName,
             columns: [],
@@ -1030,17 +1039,18 @@ struct RowImportSheet: View {
             databaseType: connection.type
         )
         let sql = generator.deleteAllRowsStatement()
-        try await authorize(
+        let receipt = try await authorize(
             sql: sql, kind: .destructiveQuery, description: String(localized: "Clear Table")
         )
         try await runOnLeasedDriver(sql, scope: scope)
+        return receipt
     }
 
     /// One call per statement the driver wrote, because an engine that runs one statement per call refuses a table
     /// and its indexes sent together.
-    private func createTable(statements: [String], scope: DatabaseScope) async throws {
+    private func createTable(statements: [String], scope: DatabaseScope) async throws -> OperationReceipt {
         let script = SQLScriptText(databaseType: connection.type).script(statements)
-        try await authorize(
+        let receipt = try await authorize(
             sql: script, kind: .schemaMutation, description: String(localized: "Create Table")
         )
         for statement in statements {
@@ -1049,6 +1059,7 @@ struct RowImportSheet: View {
         CatalogChangeService.post(
             .changed(CatalogChange(connectionId: connection.id, database: scope.database, kinds: .tables))
         )
+        return receipt
     }
 
     /// The sheet's own statements take the same lease the import does, one at a time and always
@@ -1070,7 +1081,7 @@ struct RowImportSheet: View {
     /// Every statement this sheet issues on its own account goes through the gate. The retry path's
     /// `DELETE FROM` used to skip it while the `CREATE TABLE` beside it did not, so a connection
     /// set to confirm destructive statements emptied a table without asking.
-    private func authorize(sql: String, kind: OperationKind, description: String) async throws {
+    private func authorize(sql: String, kind: OperationKind, description: String) async throws -> OperationReceipt {
         let decision = await ExecutionGateProvider.shared.authorize(
             OperationRequest(
                 connectionId: connection.id,
@@ -1082,8 +1093,9 @@ struct RowImportSheet: View {
                 operationDescription: description
             )
         )
-        guard case .authorized = decision else {
-            throw PluginImportError.importFailed(decision.deniedReason ?? String(localized: "Operation not permitted"))
+        guard case .authorized(let receipt) = decision else {
+            throw decision.denialError ?? ExecutionGateError.denied(String(localized: "Operation not permitted"))
         }
+        return receipt
     }
 }

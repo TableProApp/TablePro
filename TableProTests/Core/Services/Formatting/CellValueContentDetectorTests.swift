@@ -138,16 +138,6 @@ struct CellValueContentDetectorImageTests {
         #expect(CellValueContentDetector.detect(PluginCellValue.null) == .plain)
     }
 
-    @Test("JSON still wins over image detection")
-    func jsonStillWins() {
-        #expect(CellValueContentDetector.detect(#"{"a":1}"#) == .json)
-    }
-
-    @Test("PHP serialized still wins over image detection")
-    func phpStillWins() {
-        #expect(CellValueContentDetector.detect("a:0:{}") == .phpSerialized)
-    }
-
     @Test("plain markup that is not an SVG document stays plain")
     func htmlStaysPlain() {
         #expect(CellValueContentDetector.detect("<html><body><svg/></body></html>") == .plain)

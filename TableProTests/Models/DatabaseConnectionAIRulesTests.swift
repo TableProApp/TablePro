@@ -10,29 +10,6 @@ import Testing
 @testable import TablePro
 
 struct DatabaseConnectionAIRulesTests {
-    @Test("aiRules defaults to nil")
-    func defaultsToNil() {
-        let conn = TestFixtures.makeConnection()
-        #expect(conn.aiRules == nil)
-    }
-
-    @Test("init populates aiRules")
-    func initPopulatesAIRules() {
-        let conn = DatabaseConnection(
-            name: "Test",
-            type: .mysql,
-            aiRules: "Always filter by tenant_id."
-        )
-        #expect(conn.aiRules == "Always filter by tenant_id.")
-    }
-
-    @Test("aiRules is mutable on var")
-    func aiRulesMutable() {
-        var conn = TestFixtures.makeConnection()
-        conn.aiRules = "Avoid users.ssn"
-        #expect(conn.aiRules == "Avoid users.ssn")
-    }
-
     @Test("Codable round-trip preserves aiRules")
     func codableRoundTripWithRules() throws {
         let original = DatabaseConnection(

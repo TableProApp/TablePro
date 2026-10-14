@@ -56,7 +56,7 @@ struct QueryTimingBreakdown: Equatable {
         }
 
         self.rows = rows
-        summary = rows.map { "\($0.label) \($0.value)" }.joined(separator: " · ")
+        summary = rows.map { "\($0.label) \($0.value)" }.joined(separator: ", ")
     }
 }
 

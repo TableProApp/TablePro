@@ -46,4 +46,7 @@ public struct OracleRawResult: Sendable {
 public enum OracleStreamElement: Sendable {
     case header(columns: [OracleColumnDescriptor])
     case rows([[OracleRawCell]])
+    /// Sent last, and only for a statement with no result columns: Oracle reports the count once the statement
+    /// has completed, so a write, DDL or PL/SQL block would otherwise stream nothing after its empty header.
+    case affectedRows(Int)
 }

@@ -10,12 +10,25 @@ import TableProConnectionLibrary
 import TableProPluginKit
 
 enum ConnectionSwitcherFilter {
+    // A file connection's database is a whole path, which a short query matches letter by letter.
+    private static let hostOrDatabaseWeight = 0.6
+
     static func matches(_ connection: DatabaseConnection, query: String) -> Bool {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return true }
         return FuzzyMatcher.matches(query: trimmed, candidate: connection.name)
             || FuzzyMatcher.matches(query: trimmed, candidate: connection.host)
             || FuzzyMatcher.matches(query: trimmed, candidate: connection.database)
+    }
+
+    static func score(_ connection: DatabaseConnection, query: String) -> Double? {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        let nameScore = FuzzyMatcher.match(query: trimmed, candidate: connection.name).map { Double($0.score) }
+        let otherScores = [connection.host, connection.database].compactMap { candidate in
+            FuzzyMatcher.match(query: trimmed, candidate: candidate).map { Double($0.score) * hostOrDatabaseWeight }
+        }
+        return ([nameScore].compactMap { $0 } + otherScores).max()
     }
 }
 
@@ -25,6 +38,20 @@ enum ConnectionSwitcherSelection {
         let currentIndex = current.flatMap { ids.firstIndex(of: $0) } ?? 0
         let newIndex = max(0, min(ids.count - 1, currentIndex + offset))
         return ids[newIndex]
+    }
+
+    // Never the row selected before the query: it can still match through its database path.
+    static func preferred(in entries: [ConnectionSwitcherEntry], query: String, current: UUID?) -> UUID? {
+        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
+            return entries.first { $0.id == current }?.id ?? entries.first?.id
+        }
+        var best: (id: UUID, score: Double)?
+        for entry in entries {
+            guard let score = ConnectionSwitcherFilter.score(entry.connection, query: query),
+                  score > (best?.score ?? -.infinity) else { continue }
+            best = (entry.id, score)
+        }
+        return best?.id ?? entries.first?.id
     }
 }
 
@@ -160,8 +187,7 @@ struct ConnectionSwitcherPopover: View {
         .onAppear {
             reload()
             if selectedConnectionId == nil {
-                selectedConnectionId = currentConnectionId.flatMap { id in orderedIds.contains(id) ? id : nil }
-                    ?? orderedIds.first
+                selectPreferred()
             }
         }
         /// The subject itself, not a `receive(on:)` wrapper: that builds a new publisher on every
@@ -183,7 +209,7 @@ struct ConnectionSwitcherPopover: View {
             settleSelection()
         }
         .onChange(of: searchText) { _ in
-            settleSelection()
+            selectPreferred()
         }
     }
 
@@ -368,6 +394,14 @@ struct ConnectionSwitcherPopover: View {
         let ids = orderedIds
         if let id = selectedConnectionId, ids.contains(id) { return }
         selectedConnectionId = ids.first
+    }
+
+    private func selectPreferred() {
+        selectedConnectionId = ConnectionSwitcherSelection.preferred(
+            in: sections.flatMap(\.items),
+            query: searchText,
+            current: currentConnectionId
+        )
     }
 
     private func moveSelection(by offset: Int) {

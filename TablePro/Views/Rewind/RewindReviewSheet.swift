@@ -101,22 +101,8 @@ struct RewindReviewSheet: View {
     }
 
     private var statementList: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(Array(displayStatements.enumerated()), id: \.offset) { _, statement in
-                    Text(statement)
-                        .font(Font(themeEngine.editorFonts.font))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .padding(12)
-        }
-        .frame(height: 140)
-    }
-
-    private var displayStatements: [String] {
-        plan.displayStatements
+        RewindStatementList(statements: plan.displayStatements)
+            .frame(height: 140)
     }
 
     private var footer: some View {
@@ -191,5 +177,26 @@ struct RewindReviewSheet: View {
         case .rowMissing, .notReversible:
             return .secondary
         }
+    }
+}
+
+internal struct RewindStatementList: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
+    let statements: [String]
+
+    internal var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(statements.enumerated()), id: \.offset) { _, statement in
+                    Text(statement)
+                        .font(Font(themeEngine.editorFonts.font))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .themeForeground(.editorText, native: .primary)
+            .padding(12)
+        }
+        .themeBackground(.editorBackground, native: Color.clear)
     }
 }

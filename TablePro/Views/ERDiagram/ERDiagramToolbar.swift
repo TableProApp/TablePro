@@ -40,14 +40,6 @@ struct ERDiagramToolbar: View {
             }
             .help(String(localized: "Export as PNG"))
             .accessibilityLabel(String(localized: "Export as PNG"))
-
-            Button {
-                viewModel.exportSchemaAsSQL()
-            } label: {
-                Image(systemName: "doc.plaintext")
-            }
-            .help(String(localized: "Export as SQL"))
-            .accessibilityLabel(String(localized: "Export as SQL"))
         }
         .padding(12)
     }

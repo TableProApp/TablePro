@@ -45,7 +45,6 @@ internal final class ConnectionFormWindowController: NSWindowController, NSWindo
         /// form's save, cancel and delete paths need an explicit way to close the window.
         coordinator.dismissAction = { ConnectionFormWindowController.close(request) }
         coordinator.start()
-        coordinator.detectClipboardConnectionStringIfNeeded()
 
         let split = ConnectionFormSplitViewController(coordinator: coordinator)
 

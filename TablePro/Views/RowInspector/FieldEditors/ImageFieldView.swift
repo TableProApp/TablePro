@@ -34,8 +34,7 @@ internal struct ImageFieldView: View {
             source: { source }
         )
         .frame(height: 220)
-        .clipShape(RoundedRectangle(cornerRadius: 5))
-        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
+        .valueWell(clipsContent: true)
         .task(id: context.value.wrappedValue) {
             data = context.value.wrappedValue.storedBytes
         }
@@ -55,7 +54,8 @@ internal struct ImageFieldView: View {
             TextValueEditor(
                 text: context.value,
                 isEditable: !context.isReadOnly,
-                font: themeEngine.valueFont
+                font: themeEngine.valueFont,
+                style: .code
             )
         case .hex:
             BlobHexEditorView(context: context)

@@ -11,13 +11,16 @@ import Testing
 @Suite("RegistryClient Configurable URL", .serialized)
 @MainActor
 struct RegistryClientURLTests {
-
-    private let defaults = UserDefaults.standard
+    private let suiteName = "com.TablePro.tests.RegistryClientURLTests.\(UUID().uuidString)"
     private let customURLKey = RegistryClient.customRegistryURLKey
 
-    private func setOrRemove(key: String, value: String?) {
-        if let value { defaults.set(value, forKey: key) }
-        else { defaults.removeObject(forKey: key) }
+    private func makeClient(customURL: String) throws -> (RegistryClient, UserDefaults) {
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.set(customURL, forKey: customURLKey)
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("registry-url-tests-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("registry-manifest.json")
+        return (RegistryClient(userDefaults: defaults, manifestCacheURL: cacheURL), defaults)
     }
 
     @Test("customRegistryURLKey has expected value")
@@ -26,37 +29,30 @@ struct RegistryClientURLTests {
     }
 
     @Test("setting a custom URL via UserDefaults is supported")
-    func settingCustomURL() {
-        let previousValue = defaults.string(forKey: customURLKey)
-        defer { setOrRemove(key: customURLKey, value: previousValue) }
-
+    func settingCustomURL() throws {
         let testURL = "https://custom.example.com/registry/manifest.json"
-        defaults.set(testURL, forKey: customURLKey)
+        let (client, defaults) = try makeClient(customURL: testURL)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let stored = defaults.string(forKey: customURLKey)
-        #expect(stored == testURL)
-
-        let url = URL(string: testURL)
-        #expect(url != nil)
-        #expect(url?.host() == "custom.example.com")
+        #expect(client.isUsingCustomRegistry)
+        let requested = client.makeManifestRequest(forceRefresh: false).url
+        #expect(requested?.absoluteString == testURL)
+        #expect(requested?.host() == "custom.example.com")
     }
 
     @Test("session has correct timeout configuration")
     func sessionConfiguration() {
-        let client = RegistryClient.shared
-        let config = client.session.configuration
+        let config = RegistryClient.makeDefaultSession().configuration
 
         #expect(config.timeoutIntervalForRequest == 15)
     }
 
     @Test("invalid custom URL string does not crash")
-    func invalidCustomURLFallsBackSafely() {
-        let previousValue = defaults.string(forKey: customURLKey)
-        defer { setOrRemove(key: customURLKey, value: previousValue) }
+    func invalidCustomURLFallsBackSafely() throws {
+        let (client, defaults) = try makeClient(customURL: "not a valid url %%%")
+        defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        defaults.set("not a valid url %%%", forKey: customURLKey)
-
-        let client = RegistryClient.shared
+        #expect(client.makeManifestRequest(forceRefresh: false).url != nil)
         #expect(client.session.configuration.timeoutIntervalForRequest == 15)
     }
 }

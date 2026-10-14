@@ -49,16 +49,6 @@ enum MCPAuditLogger {
         )
     }
 
-    static func logAuthAllowedAnonymous(ip: String) {
-        serverAuth.info("Auth allowed anonymously (loopback, requireAuthentication=false): ip=\(ip, privacy: .public)")
-        record(
-            category: .auth,
-            action: "auth.anonymousLoopback",
-            outcome: .success,
-            details: "ip=\(ip)"
-        )
-    }
-
     static func logAuthFailure(reason: String, ip: String) {
         serverAuth.warning("Auth failure: reason=\(reason, privacy: .public) ip=\(ip, privacy: .public)")
         record(
@@ -267,8 +257,8 @@ enum MCPAuditLogger {
     ) {
         let digest = SHA256.hash(data: payload).compactMap { String(format: "%02x", $0) }.joined()
         /// Named for what it digests. In this surface a fingerprint means a pairing token's, which
-        /// no log line may carry, and `MCPAuditLogStorageTests` reads that vocabulary rather than
-        /// the value.
+        /// no log line may carry, and the `mcp_log_token_material` SwiftLint rule reads that
+        /// vocabulary rather than the value.
         let payloadDigest = String(digest.prefix(16))
         serverTool.info(
             """

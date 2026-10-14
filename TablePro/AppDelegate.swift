@@ -69,7 +69,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         /// Only a screenshot run overrides the mode, so only a screenshot run resolves it twice.
         if let screenshotMode = ScreenshotEnvironment.appearanceMode {
             let appearanceSettings = AppSettingsManager.shared.appearance
-            ThemeEngine.shared.updateAppearanceAndTheme(
+            ThemeEngine.shared.apply(
                 mode: screenshotMode,
                 lightThemeId: appearanceSettings.preferredLightThemeId,
                 darkThemeId: appearanceSettings.preferredDarkThemeId
@@ -198,7 +198,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        persistOpenConnectionsForRecovery()
+        SessionRecoveryTracker.saveOnQuit()
         /// Synchronously, because an actor hop at terminate may never be scheduled: a session killed
         /// mid-reply used to come back with its last turn missing.
         AgentSessionRegistry.shared.persistSynchronouslyForTermination()
@@ -209,10 +209,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         CloudSQLProxyManager.shared.terminateAllProcessesSync()
         TunnelCommandManager.shared.terminateAllProcessesSync()
         RemoteSQLiteTransportManager.shared.terminateAllProcessesSync()
-    }
-
-    private func persistOpenConnectionsForRecovery() {
-        LastOpenConnectionsStorage.shared.save(connectionIds: SessionRecoveryTracker.connectionIds())
     }
 
     @objc func handleSystemDidWake(_ notification: Notification) {

@@ -33,8 +33,8 @@ struct TreeValueStyleTests {
 
         #expect(text.string == "\"https://example.com/docs\"")
         #expect(TreeValueStyle.linkRange(in: content) == NSRange(location: 1, length: length - 2))
-        #expect(color(text, at: 0) == .systemRed)
-        #expect(color(text, at: length - 1) == .systemRed)
+        #expect(color(text, at: 0) == TreeValueTone.string.color)
+        #expect(color(text, at: length - 1) == TreeValueTone.string.color)
         #expect(!isUnderlined(text, at: 0))
         #expect(!isUnderlined(text, at: length - 1))
         for index in 1 ..< length - 1 {
@@ -77,14 +77,15 @@ struct TreeValueStyleTests {
 
     @Test("A color and a plain value are one run in the tone color")
     func otherValuesAreOneRun() throws {
-        for (key, tone) in [("brand", NSColor.systemRed), ("name", .systemRed), ("count", .systemPurple), ("theme", .systemBlue)] {
+        let tones: [(String, TreeValueTone)] = [("brand", .string), ("name", .string), ("count", .number), ("theme", .container)]
+        for (key, tone) in tones {
             let content = try content(key)
             let text = TreeValueStyle.attributedValue(content, font: font, isEmphasized: false)
             var range = NSRange()
             let color = text.attribute(.foregroundColor, at: 0, effectiveRange: &range) as? NSColor
 
             #expect(TreeValueStyle.linkRange(in: content) == nil)
-            #expect(color == tone)
+            #expect(color == tone.color)
             #expect(range == NSRange(location: 0, length: text.length))
             #expect(!isUnderlined(text, at: 0))
         }
@@ -99,7 +100,7 @@ struct TreeValueStyleTests {
             }
         }
         #expect(TreeValueStyle.textColor(for: .number, isEmphasized: true) == .alternateSelectedControlTextColor)
-        #expect(TreeValueStyle.textColor(for: .number, isEmphasized: false) == .systemPurple)
+        #expect(TreeValueStyle.textColor(for: .number, isEmphasized: false) == TreeValueTone.number.color)
     }
 
     @Test("The value font and tail truncation are set on the whole string")

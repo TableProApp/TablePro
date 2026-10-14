@@ -42,15 +42,4 @@ struct CustomSlashCommandStorageSyncTests {
         #expect(storage.commands.map(\.name) == ["remote"])
         #expect(tracker.dirtyRecords(for: .settings).contains(CustomSlashCommandStorage.syncCategory) == false)
     }
-
-    @Test("Custom slash commands round-trip through Codable")
-    func codableRoundTrip() throws {
-        let commands = [
-            CustomSlashCommand(name: "explain", description: "Explain the query", promptTemplate: "Explain {{query}}"),
-            CustomSlashCommand(name: "optimize", promptTemplate: "Optimize {{query}}"),
-        ]
-        let data = try JSONEncoder().encode(commands)
-        let decoded = try JSONDecoder().decode([CustomSlashCommand].self, from: data)
-        #expect(decoded == commands)
-    }
 }

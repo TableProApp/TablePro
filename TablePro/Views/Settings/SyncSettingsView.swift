@@ -25,7 +25,6 @@ struct SyncSettingsView: View {
             SyncSection()
         }
         .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
     }
 }
 

@@ -42,20 +42,21 @@ echo "✅ DMG installer created successfully: $DMG_FILE"
 
 ls -lh build/Release/*.dmg
 
-# --- Create ZIP ---
-echo "Creating ZIP archive..."
+# --- Create the Sparkle update archive ---
+echo "Creating the update archive..."
 
 cd build/Release
 
-# Use ditto to preserve framework symlinks (zip -r resolves them,
-# which breaks code signature validation and Sparkle updates)
-if ! ditto -c -k --sequesterRsrc --keepParent "TablePro-${ARCH}.app" "TablePro-${ARCH}.zip"; then
-  echo "❌ ERROR: Failed to create ZIP archive"
+# tar keeps the framework symlinks, which codesign seals. A signed bundle needs no extended
+# attributes, and the build machine's owner means nothing on a user's Mac.
+if ! /usr/bin/tar --no-mac-metadata --no-xattrs --no-acls --uid 0 --gid 0 \
+    --options xz:compression-level=9 -cJf "TablePro-${ARCH}.tar.xz" "TablePro-${ARCH}.app"; then
+  echo "❌ ERROR: Failed to create the update archive"
   exit 1
 fi
 
-echo "✅ ZIP archive created"
-ls -lh "TablePro-${ARCH}.zip"
+echo "✅ Update archive created"
+ls -lh "TablePro-${ARCH}.tar.xz"
 
 cd - > /dev/null
 
@@ -63,7 +64,7 @@ cd - > /dev/null
 if [ -n "$STAGING" ]; then
   mkdir -p "$STAGING"
   cp build/Release/*.dmg "$STAGING/" 2>/dev/null || true
-  cp "build/Release/TablePro-${ARCH}.zip" "$STAGING/" 2>/dev/null || true
+  cp "build/Release/TablePro-${ARCH}.tar.xz" "$STAGING/" 2>/dev/null || true
   echo "Artifacts staged to $STAGING"
   ls -lh "$STAGING"
 fi

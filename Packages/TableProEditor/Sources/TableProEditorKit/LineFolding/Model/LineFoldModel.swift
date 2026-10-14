@@ -332,11 +332,11 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
 
 extension LineFoldModel: LineFoldPlaceholderDelegate {
     func placeholderBackgroundColor() -> NSColor {
-        controller?.configuration.appearance.theme.invisibles.color ?? .lightGray
+        controller?.configuration.appearance.theme.invisibles.color ?? .tertiaryLabelColor
     }
 
     func placeholderTextColor() -> NSColor {
-        controller?.configuration.appearance.theme.text.color.withAlphaComponent(0.35) ?? .tertiaryLabelColor
+        controller?.configuration.appearance.theme.text.color.withDynamicAlpha(0.35) ?? .tertiaryLabelColor
     }
 
     func placeholderSelectedColor() -> NSColor {

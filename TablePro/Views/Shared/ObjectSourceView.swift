@@ -70,7 +70,7 @@ struct ObjectSourceView: View {
             .disabled(!hasSource)
         }
         .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(.bar)
     }
 
     private var fontStepper: some View {
@@ -135,6 +135,6 @@ struct ObjectAttributeStrip: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(.bar)
     }
 }

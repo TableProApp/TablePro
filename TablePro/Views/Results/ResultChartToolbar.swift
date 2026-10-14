@@ -48,12 +48,8 @@ struct ResultChartToolbar: View {
 
             HStack(spacing: 6) {
                 ScrollView(.horizontal) {
-                    HStack(spacing: 5) {
-                        ForEach(Array(notices.enumerated()), id: \.offset) { index, notice in
-                            if index > 0 {
-                                Text("·")
-                                    .foregroundStyle(.quaternary)
-                            }
+                    HStack(spacing: 12) {
+                        ForEach(Array(notices.enumerated()), id: \.offset) { _, notice in
                             Text(notice)
                                 .foregroundStyle(.secondary)
                         }
@@ -73,7 +69,7 @@ struct ResultChartToolbar: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(.bar)
     }
 
     @ViewBuilder

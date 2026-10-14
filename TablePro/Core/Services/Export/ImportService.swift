@@ -33,11 +33,17 @@ final class ImportService: ObservableObject {
 
     private let connection: DatabaseConnection
     private let historyRecorder: QueryHistoryRecording
+    private let gate: ExecutionGate
     @Published private var currentProgress: PluginImportProgress?
 
-    init(connection: DatabaseConnection, historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared) {
+    init(
+        connection: DatabaseConnection,
+        historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared,
+        gate: ExecutionGate = ExecutionGateProvider.shared
+    ) {
         self.connection = connection
         self.historyRecorder = historyRecorder
+        self.gate = gate
     }
 
     // MARK: - Cancellation
@@ -49,7 +55,8 @@ final class ImportService: ObservableObject {
     // MARK: - Public API
 
     /// `sourceName` names the history row when the file is a copy the app wrote under a generated
-    /// name, so history shows the file the user imported.
+    /// name, so history shows the file the user imported. `authorization` is a grant the caller
+    /// already got from the gate in this run, so one import asks once.
     func importFile(
         from url: URL,
         sourceName: String? = nil,
@@ -61,7 +68,8 @@ final class ImportService: ObservableObject {
         knownStatementCount: Int? = nil,
         targetTable: String? = nil,
         columnMapping: [String: String] = [:],
-        sourceFields: Set<String> = []
+        sourceFields: Set<String> = [],
+        authorization: OperationReceipt? = nil
     ) async throws -> PluginImportResult {
         guard let plugin = PluginManager.shared.importPlugin(forFormat: formatId) else {
             throw PluginImportError.importFailed("Import format '\(formatId)' not found")
@@ -91,6 +99,8 @@ final class ImportService: ObservableObject {
         defer { source.cleanup() }
 
         let historyName = sourceName ?? url.lastPathComponent
+        /// After the source exists, so a refusal still removes the decompressed copy it was handed.
+        try await authorizeRun(named: historyName, given: authorization)
         let initialTotal = Int64(knownStatementCount ?? 0)
         let nsProgress = Progress(totalUnitCount: initialTotal)
         let progress = PluginImportProgress(progress: nsProgress)
@@ -204,6 +214,26 @@ final class ImportService: ObservableObject {
         )
 
         return result
+    }
+
+    /// Before the lease, because a confirmation or a Touch ID prompt answered while it is held keeps
+    /// every other tab on this connection waiting on the person.
+    private func authorizeRun(named fileName: String, given authorization: OperationReceipt?) async throws {
+        if let authorization, authorization.connectionId == connection.id, authorization.effectiveWrite {
+            return
+        }
+        let decision = await gate.authorize(
+            OperationRequest(
+                connectionId: connection.id,
+                databaseType: connection.type,
+                sql: nil,
+                kind: .importData,
+                caller: .importPipeline,
+                capabilities: .interactiveUser,
+                operationDescription: String(format: String(localized: "Import %@"), fileName)
+            )
+        )
+        if let denial = decision.denialError { throw denial }
     }
 
     /// The sink is built here rather than before the lease so it cannot outlive the driver it

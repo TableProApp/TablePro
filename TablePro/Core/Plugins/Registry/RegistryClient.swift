@@ -51,7 +51,7 @@ final class RegistryClient: ObservableObject {
     nonisolated private static let manifestCacheFileName = "registry-manifest.json"
 
     init(
-        userDefaults: UserDefaults = .standard,
+        userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
         session: URLSession = RegistryClient.makeDefaultSession(),
         manifestCacheURL: URL = RegistryClient.defaultManifestCacheURL()
     ) {
@@ -221,29 +221,6 @@ final class RegistryClient: ObservableObject {
         } else {
             fetchState = .failed(message)
         }
-    }
-
-    // MARK: - Search
-
-    func search(query: String, category: RegistryCategory?) -> [RegistryPlugin] {
-        guard let plugins = manifest?.plugins else { return [] }
-
-        var filtered = plugins
-
-        if let category {
-            filtered = filtered.filter { $0.category == category }
-        }
-
-        if !query.isEmpty {
-            let lowercased = query.lowercased()
-            filtered = filtered.filter { plugin in
-                plugin.name.lowercased().contains(lowercased)
-                    || plugin.summary.lowercased().contains(lowercased)
-                    || plugin.author.name.lowercased().contains(lowercased)
-            }
-        }
-
-        return filtered
     }
 }
 

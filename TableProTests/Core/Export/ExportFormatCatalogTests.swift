@@ -73,7 +73,6 @@ private final class StubAardvark: StubExportFormat, @unchecked Sendable {
 }
 
 struct ExportFormatCatalogTests {
-
     private func ids(_ plugins: [any ExportFormatPlugin]) -> [String] {
         plugins.map { type(of: $0).formatId }
     }

@@ -1,0 +1,62 @@
+{
+  "configurations" : [
+    {
+      "id" : "9ABF52B0-8D04-499F-8EF7-1582F28F11AE",
+      "name" : "Default",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : false,
+    "defaultTestExecutionTimeAllowance" : 60,
+    "environmentVariableEntries" : [
+      {
+        "key" : "TABLEPRO_UI_TEST_SANDBOX",
+        "value" : "$(TARGET_TEMP_DIR)\/UnitTestStorage"
+      }
+    ],
+    "language" : "en",
+    "maximumTestExecutionTimeAllowance" : 120,
+    "region" : "US",
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:TablePro.xcodeproj",
+      "identifier" : "A00B5640C06C891D2767016D",
+      "name" : "TablePro"
+    },
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:TablePro.xcodeproj",
+        "identifier" : "CEC11CA513810B23386CBECF",
+        "name" : "TableProTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/TableProEditor",
+        "identifier" : "TableProEditorKitTests",
+        "name" : "TableProEditorKitTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/TableProEditor",
+        "identifier" : "TableProTextEngineTests",
+        "name" : "TableProTextEngineTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/TableProGrammars",
+        "identifier" : "TableProGrammarsTests",
+        "name" : "TableProGrammarsTests"
+      }
+    }
+  ],
+  "version" : 1
+}

@@ -1,200 +1,109 @@
-name: iOS Tests
+name: iOS and Package Tests
 
 on:
-  # No paths filter here on purpose. See the note in macos-tests.yml: a workflow skipped by a
-  # paths filter never reports, so a required check would hang on every unrelated pull request.
   pull_request:
   push:
     branches: [main]
-    paths:
-      - "TableProMobile/**"
-      - "Configs/**"
-      - "Packages/TableProCore/**"
-      - "Libs/**"
-      - ".github/workflows/ios-tests.yml"
   workflow_dispatch:
 
-# One run per PR/branch at a time. On a pull request a new push cancels the run in flight, because
-# only the newest commit's verdict is wanted and the older one is about to be replaced anyway.
-#
-# A push to main is different: its run is the only verdict that commit will ever get, and cancelling
-# it leaves main untested. That is not hypothetical: 3 of the last 20 main runs of this workflow were
-# cancelled by the next merge. This suite is fast enough to usually finish first, so it loses fewer
-# than the macOS one does, but a lost verdict is a lost verdict.
-#
-# Queueing them does not pile up. With cancel-in-progress false GitHub still replaces the *pending*
-# run in the group: "any existing pending job or workflow in the same concurrency group will be
-# canceled and the new queued job or workflow will take its place." So a burst of merges holds at
-# most one running plus one queued, and the one that ends up queued is the newest.
 concurrency:
-  group: ios-tests-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: ios-tests-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# A downgrade or an exact match is always allowed for a called workflow; only asking for more than
-# the caller holds fails at run creation. Declaring read cannot break a caller, and it stops every
-# job here from inheriting a write token if the repository default is ever flipped.
 permissions:
   contents: read
 
-env:
-  XCODE_PROJECT: TableProMobile/TableProMobile.xcodeproj
-  XCODE_SCHEME: TableProMobile
-  TEST_DESTINATION: "platform=iOS Simulator,name=iPhone 17 Pro,OS=latest"
-
 jobs:
   changes:
-    name: Detect relevant changes
+    name: Changes (iOS)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       run: ${{ steps.decide.outputs.run }}
+      oracle: ${{ steps.decide.outputs.oracle }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - name: Decide whether the iOS suite needs to run
+      - name: Decide which suites run
         id: decide
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        # Shared with macos-tests.yml; see scripts/ci/detect-changed-paths.sh.
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           set -euo pipefail
-          RUN=$(scripts/ci/detect-changed-paths.sh \
-            --event "$EVENT_NAME" \
-            --base "$BASE_SHA" \
-            'TableProMobile/' 'Configs/' 'Packages/TableProCore/' 'Libs/' 'scripts/' \
-            '\.github/actions/' '\.github/workflows/ios-tests\.yml$')
-          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+          run=$(scripts/ci/detect-changed-paths.sh --base "$BASE" ios)
+          oracle=$(scripts/ci/detect-changed-paths.sh --base "$BASE" oracle)
+          { echo "run=$run"; echo "oracle=$oracle"; } >> "$GITHUB_OUTPUT"
 
-  test:
-    name: Run iOS Tests
+  # The required check, with no gate job: see macos-tests.yml. TableProCore and TableProOracle run
+  # here under swift test, never in an Xcode test plan: a plan target that depends on the package
+  # TableProPluginKit makes the app and plugins compile against its module, not the framework.
+  ios:
+    name: iOS and Package Tests
     needs: changes
-    if: needs.changes.outputs.run == 'true'
-    runs-on: macos-26
-    timeout-minutes: 25
-
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
+    runs-on: xcode-27
+    timeout-minutes: 50
+    env:
+      DESTINATION: platform=iOS Simulator,name=iPhone 18 Pro
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
-        with:
-          xcode-version: '26.4.1'
+      - uses: ./.github/actions/setup-xcode
 
-      - name: Install xcbeautify
-        run: brew list xcbeautify &>/dev/null || brew install xcbeautify
-
-      # macos-26 lazy-loads simulator runtimes; -downloadPlatform pulls the runtime
-      # matching Xcode's SDK and is a no-op when it is already present. The download
-      # endpoint flakes on hosted runners, so a failure falls back to checking whether
-      # the test device already exists before failing the job.
-      - name: Install iOS simulator runtime
-        run: |
-          if sudo xcodebuild -downloadPlatform iOS; then
-            exit 0
-          fi
-
-          echo "::warning::xcodebuild -downloadPlatform iOS failed; checking for an existing simulator"
-          device_name="$(echo "$TEST_DESTINATION" | sed -n 's/.*name=\([^,]*\).*/\1/p')"
-          if xcrun simctl list devices available | grep -qF "$device_name ("; then
-            echo "$device_name simulator is already available; continuing."
-            exit 0
-          fi
-
-          echo "::error::$device_name simulator is not available and the runtime download failed."
-          exit 1
-
-      - name: Setup XcodeGen
-        uses: ./.github/actions/setup-xcodegen
-
-      # The iOS project only. The macOS spec names Libs/dylibs/*.dylib by path and XcodeGen
-      # validates that at generation time, so generating it here failed before the static
-      # libraries were even downloaded, and nothing in this job builds it.
-      - name: Generate Xcode project
-        run: scripts/generate-project.sh ios
-
-      - name: Cache static libraries
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: Libs
-          # Include C bridge stub headers in the cache key so the iOS xcframework set
-          # refreshes whenever a bridge surface (e.g. a new driver's headers) changes.
-          key: ${{ runner.os }}-libs-${{ hashFiles('Libs/checksums.sha256', 'Plugins/MSSQLDriverPlugin/CFreeTDS/include/sybdb.h', 'TableProMobile/TableProMobile/CBridges/CDuckDB/CDuckDB.h') }}
+      - uses: ./.github/actions/setup-xcodegen
 
       - name: Download static libraries
         env:
           GH_TOKEN: ${{ github.token }}
         run: scripts/download-libs.sh
 
-      - name: Resolve Swift package dependencies
-        run: |
-          xcodebuild -resolvePackageDependencies \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
-            -skipPackagePluginValidation
+      - name: Generate the Xcode project
+        run: scripts/generate-project.sh ios
 
-      # One simulator, not clones. TableProMobileTests is one bundle and xcodebuild never split it:
-      # every test in every run so far, passing and failing, executed on "Clone 1 of iPhone 17 Pro".
-      # The extra clone only booted, and on a 3-core runner booting a second iOS 26 simulator is what
-      # killed three of the last twelve runs with "Failed to launch app ... (ipc/mig) server died"
-      # while Clone 1 had already finished the suite.
-      - name: Run unit tests
+      # The image ships the iOS 27.0 runtime. Downloading the one for Xcode's newer SDK costs minutes.
+      - name: Make sure the simulator exists
+        run: |
+          if ! xcrun simctl list devices available | grep -F "iPhone 18 Pro (" > /dev/null; then
+            sudo xcodebuild -downloadPlatform iOS
+          fi
+
+      # One simulator, not clones: on a 3-core runner a second booted simulator killed runs with
+      # "(ipc/mig) server died", and TableProMobileTests is one bundle that never split anyway.
+      - name: Run the iOS tests
         run: |
           set -o pipefail
           xcodebuild test \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
-            -destination "$TEST_DESTINATION" \
-            -only-testing:TableProMobileTests \
+            -project TableProMobile/TableProMobile.xcodeproj -scheme TableProMobile \
+            -destination "$DESTINATION" -only-testing:TableProMobileTests \
             -parallel-testing-enabled NO \
-            -skipPackagePluginValidation \
-            -resultBundlePath TestResults.xcresult \
-            CODE_SIGNING_ALLOWED=NO \
+            -skipPackagePluginValidation -resultBundlePath iOS.xcresult \
+            CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
             | xcbeautify --renderer github-actions
 
-      - name: Upload test results
-        if: always()
+      # --parallel is what makes swift test write the XCTest xunit file. Without it only the Swift
+      # Testing one appears, and TableProOracle's cases are all XCTest.
+      - name: Run the TableProCore package tests
+        if: ${{ !cancelled() }}
+        run: swift test --package-path Packages/TableProCore --parallel --xunit-output Core.xml
+
+      # Pinned to the tracked Package.resolved, so a manifest bump that forgets the lockfile fails.
+      - name: Run the TableProOracle package tests
+        if: ${{ !cancelled() && needs.changes.outputs.oracle != 'false' }}
+        run: swift test --package-path Packages/TableProOracle --force-resolved-versions --parallel --xunit-output Oracle.xml
+
+      # Fails the job when a bundle or a package ran zero tests, which both tools report as success.
+      - name: Summarize the results
+        if: ${{ !cancelled() }}
+        run: scripts/ci/summarize-xcresult.sh iOS.xcresult Core.xml Oracle.xml
+
+      - name: Upload the result bundle
+        if: ${{ failure() }}
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ios-test-results
-          path: TestResults.xcresult
+          name: ios-tests-${{ github.run_attempt }}
+          path: iOS.xcresult
+          if-no-files-found: ignore
           retention-days: 7
-
-      # Diagnostics only on failure so happy-path runs stay quiet.
-      - name: Show simulator state on failure
-        if: failure()
-        run: |
-          echo "=== iOS runtimes ==="
-          xcrun simctl list runtimes | grep -E "iOS|tvOS" || true
-          echo "=== Eligible scheme destinations ==="
-          xcodebuild -showdestinations \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
-            -skipPackagePluginValidation 2>&1 \
-            | grep -E "iOS Simulator.*iPhone" || true
-
-  # The one check to mark required on main. See the note in macos-tests.yml.
-  gate:
-    name: iOS Tests Gate
-    if: always()
-    needs: [changes, test]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Require the suite to have passed or been skipped
-        env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
-        run: |
-          set -euo pipefail
-          echo "suite results: $RESULTS"
-          for result in $RESULTS; do
-              case "$result" in
-                  success|skipped) ;;
-                  *)
-                      echo "The iOS suite reported '$result'." >&2
-                      exit 1
-                      ;;
-              esac
-          done

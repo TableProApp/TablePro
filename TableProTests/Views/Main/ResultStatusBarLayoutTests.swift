@@ -574,8 +574,7 @@ struct ResultStatusBarLayoutTests {
             let host = NSHostingView(rootView: SelectionSummaryReadout(
                 state: state,
                 scopeNote: nil,
-                isPopoverPresented: .constant(false),
-                leadsWithSeparator: true
+                isPopoverPresented: .constant(false)
             ))
             host.layoutSubtreeIfNeeded()
             return host.fittingSize.width

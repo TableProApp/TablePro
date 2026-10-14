@@ -36,6 +36,5 @@ struct AppearancePaneView: View {
             }
         }
         .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
     }
 }

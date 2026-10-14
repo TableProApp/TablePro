@@ -191,44 +191,4 @@ struct CancelledExecutionOwnershipTests {
         #expect(coordinator.queryTasks.hasTask(for: other))
         #expect(coordinator.tabExecution.isCurrent(otherClaim))
     }
-
-    /// The behaviour above is only reached if the close path asks for it, and driving
-    /// `closeTabsByUser` from a unit test would write to the reader's own recently-closed store.
-    @Test("The user close path releases the execution")
-    func closeTabsByUserReleasesTheExecution() throws {
-        let body = try Self.functionBody(named: "closeTabsByUser", in: "MainContentCoordinator+TabClosing.swift")
-        #expect(
-            body.contains("releaseExecution(of: tab)"),
-            "closeTabsByUser must release the tab's execution before removing the tab"
-        )
-    }
-
-    private static func functionBody(named name: String, in fileName: String) throws -> String {
-        let url = try repoRoot()
-            .appendingPathComponent("TablePro/Views/Main/Extensions")
-            .appendingPathComponent(fileName)
-        let lines = try String(contentsOf: url, encoding: .utf8).components(separatedBy: .newlines)
-        guard let start = lines.firstIndex(where: { $0.contains("func \(name)(") }) else {
-            throw CocoaError(.fileNoSuchFile)
-        }
-        var depth = 0
-        var body = ""
-        for line in lines[start...] {
-            body += line + "\n"
-            depth += line.filter { $0 == "{" }.count - line.filter { $0 == "}" }.count
-            if depth == 0, body.contains("{") { break }
-        }
-        return body
-    }
-
-    private static func repoRoot() throws -> URL {
-        var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        for _ in 0 ..< 12 {
-            if FileManager.default.fileExists(atPath: directory.appendingPathComponent("TablePro.xcodeproj").path) {
-                return directory
-            }
-            directory = directory.deletingLastPathComponent()
-        }
-        throw CocoaError(.fileNoSuchFile)
-    }
 }

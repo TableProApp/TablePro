@@ -24,6 +24,7 @@ final class DataFileWindowController: NSWindowController, NSWindowDelegate, NSTo
     private let splitController: DataFileSplitViewController
     private var searchItem: NSSearchToolbarItem?
     private var cancellables: Set<AnyCancellable> = []
+    private let windowBackdrop: ThemeWindowBackdrop
 
     init(document: DataFileDocument) {
         let window = NSWindow(
@@ -41,6 +42,7 @@ final class DataFileWindowController: NSWindowController, NSWindowDelegate, NSTo
 
         splitController = DataFileSplitViewController(document: document)
         dataFileDocument = document
+        windowBackdrop = ThemeWindowBackdrop(window: window)
         super.init(window: window)
         shouldCloseDocument = true
         window.delegate = self

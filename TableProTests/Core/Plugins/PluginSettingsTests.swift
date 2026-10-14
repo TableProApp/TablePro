@@ -109,7 +109,7 @@ struct PluginSettingsStorageTests {
         storage.save(true)
 
         let expectedKey = "com.TablePro.plugin.\(pluginId).settings"
-        let value = UserDefaults.standard.data(forKey: expectedKey)
+        let value = PluginHostStorage.resolveDefaults().data(forKey: expectedKey)
         #expect(value != nil)
     }
 
@@ -218,25 +218,11 @@ struct SettablePluginSnapshotTests {
 
 struct PluginCapabilityTests {
 
-    @Test("only has 3 cases: databaseDriver, exportFormat, importFormat")
-    func onlyThreeCases() {
-        let allCases: [PluginCapability] = [.databaseDriver, .exportFormat, .importFormat]
-        #expect(allCases.count == 3)
-    }
-
     @Test("raw values are stable integers")
     func rawValuesStable() {
         #expect(PluginCapability.databaseDriver.rawValue == 0)
         #expect(PluginCapability.exportFormat.rawValue == 1)
         #expect(PluginCapability.importFormat.rawValue == 2)
-    }
-
-    @Test("Codable round-trip preserves value")
-    func codableRoundTrip() throws {
-        let original = PluginCapability.exportFormat
-        let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(PluginCapability.self, from: data)
-        #expect(decoded == original)
     }
 
     /// `PluginCapability` is a growing set, so a raw value that means nothing today can mean
@@ -247,132 +233,5 @@ struct PluginCapabilityTests {
     func decodingUnknownRawValueFails() {
         let decoded = try? JSONDecoder().decode(PluginCapability.self, from: Data("9999".utf8))
         #expect(decoded == nil)
-    }
-
-    @Test("every declared capability round-trips")
-    func declaredCapabilitiesRoundTrip() {
-        for capability in [
-            PluginCapability.databaseDriver, .exportFormat, .importFormat, .documentInspector,
-        ] {
-            let data = try? JSONEncoder().encode(capability)
-            #expect(data.flatMap { try? JSONDecoder().decode(PluginCapability.self, from: $0) } == capability)
-        }
-    }
-}
-
-@Suite("DisabledPlugins Key Migration", .serialized)
-struct DisabledPluginsMigrationTests {
-
-    @Test("migration moves legacy key to namespaced key")
-    func migrationMovesKey() {
-        let testKey = "disabledPlugins"
-        let namespacedKey = "com.TablePro.disabledPlugins"
-        let defaults = UserDefaults.standard
-
-        // Save current state
-        let savedNamespaced = defaults.stringArray(forKey: namespacedKey)
-        let savedLegacy = defaults.stringArray(forKey: testKey)
-
-        defer {
-            // Restore original state
-            if let saved = savedNamespaced {
-                defaults.set(saved, forKey: namespacedKey)
-            } else {
-                defaults.removeObject(forKey: namespacedKey)
-            }
-            if let saved = savedLegacy {
-                defaults.set(saved, forKey: testKey)
-            } else {
-                defaults.removeObject(forKey: testKey)
-            }
-        }
-
-        // Set up legacy key
-        defaults.removeObject(forKey: namespacedKey)
-        defaults.set(["plugin.a", "plugin.b"], forKey: testKey)
-
-        // Simulate what migrateDisabledPluginsKey does
-        if let legacy = defaults.stringArray(forKey: testKey) {
-            if defaults.stringArray(forKey: namespacedKey) == nil {
-                defaults.set(legacy, forKey: namespacedKey)
-            }
-            defaults.removeObject(forKey: testKey)
-        }
-
-        #expect(defaults.stringArray(forKey: namespacedKey) == ["plugin.a", "plugin.b"])
-        #expect(defaults.stringArray(forKey: testKey) == nil)
-    }
-
-    @Test("migration is no-op when legacy key absent")
-    func migrationNoOpWhenAbsent() {
-        let testKey = "disabledPlugins"
-        let namespacedKey = "com.TablePro.disabledPlugins"
-        let defaults = UserDefaults.standard
-
-        let savedNamespaced = defaults.stringArray(forKey: namespacedKey)
-        let savedLegacy = defaults.stringArray(forKey: testKey)
-
-        defer {
-            if let saved = savedNamespaced {
-                defaults.set(saved, forKey: namespacedKey)
-            } else {
-                defaults.removeObject(forKey: namespacedKey)
-            }
-            if let saved = savedLegacy {
-                defaults.set(saved, forKey: testKey)
-            } else {
-                defaults.removeObject(forKey: testKey)
-            }
-        }
-
-        defaults.removeObject(forKey: testKey)
-        defaults.set(["existing.plugin"], forKey: namespacedKey)
-
-        // Simulate migration
-        if let legacy = defaults.stringArray(forKey: testKey) {
-            if defaults.stringArray(forKey: namespacedKey) == nil {
-                defaults.set(legacy, forKey: namespacedKey)
-            }
-            defaults.removeObject(forKey: testKey)
-        }
-
-        #expect(defaults.stringArray(forKey: namespacedKey) == ["existing.plugin"])
-    }
-
-    @Test("migration preserves namespaced key when both keys exist")
-    func migrationPreservesNamespacedWhenBothExist() {
-        let testKey = "disabledPlugins"
-        let namespacedKey = "com.TablePro.disabledPlugins"
-        let defaults = UserDefaults.standard
-
-        let savedNamespaced = defaults.stringArray(forKey: namespacedKey)
-        let savedLegacy = defaults.stringArray(forKey: testKey)
-
-        defer {
-            if let saved = savedNamespaced {
-                defaults.set(saved, forKey: namespacedKey)
-            } else {
-                defaults.removeObject(forKey: namespacedKey)
-            }
-            if let saved = savedLegacy {
-                defaults.set(saved, forKey: testKey)
-            } else {
-                defaults.removeObject(forKey: testKey)
-            }
-        }
-
-        defaults.set(["legacy.plugin"], forKey: testKey)
-        defaults.set(["current.plugin"], forKey: namespacedKey)
-
-        // Simulate migration
-        if let legacy = defaults.stringArray(forKey: testKey) {
-            if defaults.stringArray(forKey: namespacedKey) == nil {
-                defaults.set(legacy, forKey: namespacedKey)
-            }
-            defaults.removeObject(forKey: testKey)
-        }
-
-        #expect(defaults.stringArray(forKey: namespacedKey) == ["current.plugin"])
-        #expect(defaults.stringArray(forKey: testKey) == nil)
     }
 }

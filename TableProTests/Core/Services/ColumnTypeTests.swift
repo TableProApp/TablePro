@@ -300,12 +300,6 @@ struct ColumnTypeTests {
         #expect(type.displayName == "Enum")
     }
 
-    @Test("enumType badgeLabel is enum")
-    func enumBadgeLabel() {
-        let type = ColumnType.enumType(rawType: nil, values: nil)
-        #expect(type.badgeLabel == "enum")
-    }
-
     @Test("set displayName is Set")
     func setDisplayName() {
         let type = ColumnType.set(rawType: nil, values: nil)

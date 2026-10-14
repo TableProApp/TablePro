@@ -37,7 +37,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
 
     private var cache: [UUID: [String: PersistedColumnLayout]] = [:]
 
-    init(storageDirectory: URL? = nil, defaults: UserDefaults = .standard, syncTracker: SyncChangeTracker = .shared) {
+    init(storageDirectory: URL? = nil, defaults: UserDefaults = AppStorageEnvironment.shared.defaults, syncTracker: SyncChangeTracker = .shared) {
         self.storageDirectory = storageDirectory ?? Self.resolvedStorageDirectory()
         self.defaults = defaults
         self.syncTracker = syncTracker

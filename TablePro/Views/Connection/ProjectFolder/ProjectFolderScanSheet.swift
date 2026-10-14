@@ -112,19 +112,15 @@ struct ProjectFolderScanSheet: View {
     }
 
     private var detailStrip: some View {
-        Text(verbatim: selectedCandidate.map(Self.notes) ?? "")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
-            .frame(maxWidth: .infinity, minHeight: 30, alignment: .topLeading)
+        ProjectFolderScanNotes(notes: selectedCandidate.map(Self.notes) ?? [])
     }
 
-    private static func notes(for candidate: ScannedConnectionCandidate) -> String {
+    private static func notes(for candidate: ScannedConnectionCandidate) -> [String] {
         var notes = candidate.warnings
         if candidate.placeholderSuspected {
             notes.insert(String(localized: "Looks like a placeholder value"), at: 0)
         }
-        return notes.joined(separator: " · ")
+        return notes
     }
 
     private var selectedCandidate: ScannedConnectionCandidate? {
@@ -165,5 +161,20 @@ struct ProjectFolderScanSheet: View {
         case .failure(let error):
             step = .error(error.localizedDescription)
         }
+    }
+}
+
+internal struct ProjectFolderScanNotes: View {
+    let notes: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(notes.indices, id: \.self) { index in
+                Text(verbatim: notes[index])
+            }
+        }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, minHeight: 30, alignment: .topLeading)
     }
 }

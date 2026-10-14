@@ -48,12 +48,6 @@ struct SharedSidebarStateTests {
         SharedSidebarState.removeConnection(id)
     }
 
-    @Test("removeConnection for unknown ID does not crash")
-    @MainActor
-    func removeUnknownIdNoCrash() {
-        SharedSidebarState.removeConnection(UUID())
-    }
-
     // MARK: - Sidebar Tab Persistence
 
     @Test("selectedSidebarTab persists across registry lookups for same connection")

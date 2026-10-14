@@ -45,28 +45,35 @@ enum ERDiagramNodeRenderer {
         rect: CGRect,
         isSelected: Bool,
         clusterColor: NSColor?,
+        palette: ERDiagramPalette,
         in context: CGContext
     ) {
         let scale = ERDiagramLayout.typeScale
         let body = CGPath(roundedRect: rect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
 
         context.addPath(body)
-        context.setFillColor(NSColor.controlBackgroundColor.cgColor)
+        context.setFillColor(palette.nodeFill)
         context.fillPath()
 
         let headerHeight = ERDiagramLayout.headerHeight
         let headerRect = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: headerHeight)
-        let headerTint = clusterColor ?? NSColor.controlAccentColor
 
         context.saveGState()
         context.addPath(body)
         context.clip()
-        context.setFillColor(headerTint.withAlphaComponent(clusterColor == nil ? 0.15 : 0.22).cgColor)
-        context.fill(headerRect)
+        if let headerFill = palette.headerFill {
+            context.setFillColor(headerFill)
+            context.fill(headerRect)
+        }
+        // A cluster's hue groups related tables, so it still washes a themed header.
+        if palette.headerFill == nil || clusterColor != nil {
+            context.setFillColor(palette.headerWash(cluster: clusterColor))
+            context.fill(headerRect)
+        }
         context.restoreGState()
 
         context.addPath(body)
-        context.setStrokeColor((isSelected ? NSColor.controlAccentColor : NSColor.tertiaryLabelColor).cgColor)
+        context.setStrokeColor(isSelected ? palette.selectionRule : palette.rule)
         context.setLineWidth(isSelected ? 2 : 1)
         context.strokePath()
 
@@ -76,7 +83,7 @@ enum ERDiagramNodeRenderer {
         ERDiagramTextRenderer.draw(
             displayName,
             font: .monospacedSystemFont(ofSize: headerPointSize * scale, weight: .semibold),
-            color: .labelColor,
+            color: palette.headerText,
             at: CGPoint(x: rect.minX + headerTextXOffset, y: rect.minY + headerHeight / 2),
             anchor: .leading,
             in: context
@@ -85,13 +92,13 @@ enum ERDiagramNodeRenderer {
         ERDiagramSymbolRenderer.draw(
             named: node.isJunctionTable ? "arrow.left.arrow.right" : "tablecells",
             pointSize: iconPointSize * scale,
-            color: .secondaryLabelColor,
+            color: palette.secondaryText,
             at: CGPoint(x: rect.minX + iconXOffset, y: rect.minY + headerHeight / 2),
             anchor: .leading
         )
 
         let dividerY = rect.minY + headerHeight
-        context.setStrokeColor(NSColor.tertiaryLabelColor.cgColor)
+        context.setStrokeColor(palette.rule)
         context.setLineWidth(0.5)
         context.move(to: CGPoint(x: rect.minX, y: dividerY))
         context.addLine(to: CGPoint(x: rect.maxX, y: dividerY))
@@ -100,7 +107,7 @@ enum ERDiagramNodeRenderer {
         context.saveGState()
         context.addPath(body)
         context.clip()
-        drawColumns(node: node, rect: rect, dividerY: dividerY, scale: scale, in: context)
+        drawColumns(node: node, rect: rect, dividerY: dividerY, scale: scale, palette: palette, in: context)
         context.restoreGState()
     }
 
@@ -109,6 +116,7 @@ enum ERDiagramNodeRenderer {
         rect: CGRect,
         dividerY: CGFloat,
         scale: CGFloat,
+        palette: ERDiagramPalette,
         in context: CGContext
     ) {
         let rowHeight = ERDiagramLayout.columnRowHeight
@@ -140,7 +148,7 @@ enum ERDiagramNodeRenderer {
             ERDiagramTextRenderer.draw(
                 column.name,
                 font: nameFont,
-                color: .labelColor,
+                color: palette.text,
                 at: CGPoint(x: rect.minX + columnNameXOffset, y: rowY),
                 anchor: .leading,
                 maxWidth: widths.name,
@@ -150,7 +158,7 @@ enum ERDiagramNodeRenderer {
             ERDiagramTextRenderer.draw(
                 column.dataType,
                 font: typeFont,
-                color: .secondaryLabelColor,
+                color: palette.secondaryText,
                 at: CGPoint(x: rect.maxX - typeRightMargin, y: rowY),
                 anchor: .trailing,
                 maxWidth: widths.type,

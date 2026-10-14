@@ -16,11 +16,11 @@ final class CompareRowGridModelTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
     }
 
     override func tearDown() {
-        UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
         super.tearDown()
     }
 
@@ -579,8 +579,8 @@ final class CompareRowGridModelTests: XCTestCase {
                 mediumFont: .systemFont(ofSize: 13, weight: .medium),
                 text: .labelColor,
                 placeholderText: .secondaryLabelColor,
-                booleanTrueText: nil,
-                booleanFalseText: nil,
+                booleanTrueText: .labelColor,
+                booleanFalseText: .labelColor,
                 rowNumberText: .secondaryLabelColor,
                 deletedRowText: .systemRed,
                 modifiedColumnTint: .systemYellow,

@@ -48,7 +48,6 @@ struct LicenseSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
     }
 
     // MARK: - Licensed

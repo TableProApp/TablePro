@@ -37,7 +37,6 @@ struct MainWindowToolbarValidationTests {
         MainWindowToolbar.saveChanges,
         MainWindowToolbar.previewSQL,
         MainWindowToolbar.database,
-        MainWindowToolbar.dashboard,
         MainWindowToolbar.importTables,
         MainWindowToolbar.results,
         MainWindowToolbar.safeMode,
@@ -52,8 +51,7 @@ struct MainWindowToolbarValidationTests {
         blocksAllWrites: Bool = false,
         fileBased: Bool = false,
         supportsContainerSwitching: Bool = true,
-        supportsImport: Bool = true,
-        supportsServerDashboard: Bool = true
+        supportsImport: Bool = true
     ) -> ToolbarContext {
         ToolbarContext(
             tabKind: tabKind,
@@ -65,8 +63,7 @@ struct MainWindowToolbarValidationTests {
             blocksAllWrites: blocksAllWrites,
             isFileBased: fileBased,
             supportsContainerSwitching: supportsContainerSwitching,
-            supportsImport: supportsImport,
-            supportsServerDashboard: supportsServerDashboard
+            supportsImport: supportsImport
         )
     }
 
@@ -182,13 +179,6 @@ struct MainWindowToolbarValidationTests {
         let context = makeContext(pendingChange: .file, hasDataPendingChanges: false)
         #expect(isEnabled(MainWindowToolbar.saveChanges, context))
         #expect(isEnabled(MainWindowToolbar.previewSQL, context) == false)
-    }
-
-    @Test("Dashboard requires plugin support and connection")
-    func dashboardRequirements() {
-        #expect(isEnabled(MainWindowToolbar.dashboard, makeContext(supportsServerDashboard: false)) == false)
-        #expect(isEnabled(MainWindowToolbar.dashboard, makeContext(connected: false)) == false)
-        #expect(isEnabled(MainWindowToolbar.dashboard, makeContext()))
     }
 
     /// Switch Connection is the window's command and the route back from a connection that failed,

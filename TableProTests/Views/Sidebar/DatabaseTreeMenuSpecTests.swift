@@ -51,7 +51,6 @@ struct DatabaseTreeMenuSpecTests {
         supportsRename: Bool = true,
         canCopyObjects: Bool = true,
         canDuplicateDatabase: Bool = true,
-        canCreateType: Bool = false,
         canCreateTable: Bool = true,
         canCreateView: Bool = true,
         canCreateDatabase: Bool = false,
@@ -123,7 +122,6 @@ struct DatabaseTreeMenuSpecTests {
             hasSchemaFilter: hasSchemaFilter,
             canCopyObjects: canCopyObjects,
             canDuplicateDatabase: canDuplicateDatabase,
-            canCreateType: canCreateType,
             canCreateTable: canCreateTable,
             canCreateView: canCreateView,
             canCreateDatabase: canCreateDatabase,
@@ -999,37 +997,14 @@ struct DatabaseTreeMenuSpecTests {
         #expect(issued.filter { if case .copyText = $0 { return true } else { return false } }.count == 1)
     }
 
-    @Test("The Types section offers Create New Type when the driver has a template and writes are allowed")
-    func typesSectionOffersCreate() {
-        let flat = commands(DatabaseTreeMenuSpec.sections(
-            for: context(clicked: .objectKindSection(.type), activeSchema: "sales", canCreateType: true)
-        ))
-        #expect(flat.contains(.createType(database: "app", schema: "sales")))
+    @Test("The Types sections offer Refresh and nothing that creates a type")
+    func typesSectionsOfferOnlyRefresh() {
+        let flat = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .objectKindSection(.type))))
+        #expect(flat == [.refreshObjectKind(.type)])
 
-        /// A tree lists every database, so the section names its own rather than the browsed one:
-        /// PostgreSQL cannot reach another database by qualifying the type name.
         let group = DatabaseTreeObjectGroup(database: "warehouse", schema: "billing", kind: .type)
-        let tree = commands(DatabaseTreeMenuSpec.sections(
-            for: context(clicked: .containerObjectKindSection(group), canCreateType: true)
-        ))
-        #expect(tree.contains(.createType(database: "warehouse", schema: "billing")))
-        #expect(tree.contains(.refreshContainerObjectKind(group)))
-    }
-
-    @Test("Create New Type is omitted in read-only mode, without a template, and on other sections")
-    func createTypeIsOmittedWhereItCannotRun() {
-        let readOnly = commands(DatabaseTreeMenuSpec.sections(
-            for: context(clicked: .objectKindSection(.type), isReadOnly: true, canCreateType: true)
-        ))
-        #expect(!readOnly.contains { if case .createType = $0 { return true } else { return false } })
-
-        let noTemplate = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .objectKindSection(.type))))
-        #expect(!noTemplate.contains { if case .createType = $0 { return true } else { return false } })
-
-        let functions = commands(DatabaseTreeMenuSpec.sections(
-            for: context(clicked: .objectKindSection(.function), canCreateType: true)
-        ))
-        #expect(!functions.contains { if case .createType = $0 { return true } else { return false } })
+        let tree = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .containerObjectKindSection(group))))
+        #expect(tree == [.refreshContainerObjectKind(group)])
     }
 
     // MARK: - Copying

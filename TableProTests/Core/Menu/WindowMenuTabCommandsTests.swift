@@ -10,7 +10,7 @@ import Testing
 
 private func flattenItems(_ menu: NSMenu) -> [NSMenuItem] {
     menu.items.flatMap { item -> [NSMenuItem] in
-        guard let submenu = item.submenu, submenu !== NSApp.servicesMenu else { return [item] }
+        guard let submenu = item.submenu else { return [item] }
         return [item] + flattenItems(submenu)
     }
 }
@@ -106,7 +106,7 @@ struct WindowMenuTabCommandsTests {
     /// control, so a window with no tabs of either kind has to lose the key equivalents outright.
     @Test("Control-Tab is dropped where the key window holds no tabs, and kept where it does")
     func controlTabYieldsWithoutTabs() throws {
-        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings())
+        let menu = MainMenuBuilder.build(keyboard: KeyboardSettings()).bar
         let recent = MenuItemFactory.identifier(for: .switchToRecentTab)
         let findItem = { flattenItems(menu).first { $0.identifier == recent } }
 

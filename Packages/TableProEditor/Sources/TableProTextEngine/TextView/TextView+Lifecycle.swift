@@ -27,4 +27,10 @@ public extension TextView {
         super.viewDidEndLiveResize()
         updateFrameIfNeeded()
     }
+
+    /// AppKit redraws the text, but the emphasis layers hold colors resolved for the old appearance.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        emphasisManager?.refreshColors()
+    }
 }

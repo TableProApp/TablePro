@@ -113,7 +113,6 @@ struct ColumnValueFilterPopover: View {
             }
         }
         .listStyle(.plain)
-        .scrollContentBackground(.hidden)
         .frame(height: 200)
     }
 

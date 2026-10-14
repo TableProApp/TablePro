@@ -67,6 +67,64 @@ final class OracleAsyncTimeoutTests: XCTestCase {
             "onTimeout must release an operation that ignores cancellation, or the task group never unwinds"
         )
     }
+
+    /// A login does not observe task cancellation, so it can finish after its caller gave up. That
+    /// session reaches nobody, and only `onAbandoned` can close it.
+    func testValueArrivingAfterCancellationGoesToOnAbandoned() async {
+        let abandoned = Counter()
+        let task = Task {
+            try await withOracleTimeout(
+                seconds: 5,
+                onTimeout: {},
+                onAbandoned: { _ in abandoned.increment() },
+                operation: {
+                    await finishIgnoringCancellation(after: .milliseconds(200))
+                    return "late"
+                }
+            )
+        }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        task.cancel()
+
+        switch await task.result {
+        case .success:
+            XCTFail("a cancelled call must not return the late value")
+        case .failure(let error):
+            XCTAssertTrue(error is CancellationError, "expected CancellationError, got \(error)")
+        }
+        XCTAssertEqual(abandoned.value, 1)
+    }
+
+    func testValueArrivingAfterTheDeadlineGoesToOnAbandoned() async {
+        let abandoned = Counter()
+        do {
+            _ = try await withOracleTimeout(
+                seconds: 0.05,
+                onTimeout: {},
+                onAbandoned: { _ in abandoned.increment() },
+                operation: {
+                    await finishIgnoringCancellation(after: .milliseconds(300))
+                    return "late"
+                }
+            )
+            XCTFail("expected the deadline to fire")
+        } catch {
+            XCTAssertTrue(error is OracleTimeoutError, "expected OracleTimeoutError, got \(error)")
+        }
+        XCTAssertEqual(abandoned.value, 1)
+    }
+
+    func testValueReturnedInTimeIsNotAbandoned() async throws {
+        let abandoned = Counter()
+        let result = try await withOracleTimeout(
+            seconds: 5,
+            onTimeout: {},
+            onAbandoned: { _ in abandoned.increment() },
+            operation: { "done" }
+        )
+        XCTAssertEqual(result, "done")
+        XCTAssertEqual(abandoned.value, 0)
+    }
 }
 
 private final class Counter: @unchecked Sendable {
@@ -83,5 +141,13 @@ private final class Counter: @unchecked Sendable {
         lock.lock()
         count += 1
         lock.unlock()
+    }
+}
+
+private func finishIgnoringCancellation(after delay: DispatchTimeInterval) async {
+    await withCheckedContinuation { continuation in
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
+            continuation.resume()
+        }
     }
 }

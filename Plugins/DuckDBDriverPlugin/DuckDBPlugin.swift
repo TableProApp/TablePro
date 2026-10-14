@@ -869,6 +869,16 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return sql.hasSuffix(";") ? sql : sql + ";"
         }
 
+        /// `duckdb_tables()` has no row for a view while `duckdb_columns()` lists its columns, so
+        /// without this a view fell through to a `CREATE TABLE` rebuilt from them.
+        let viewResult = try await executeParameterized(
+            query: DuckDBSchemaQueries.viewDefinition,
+            parameters: [.text(try requireCatalog()), .text(schemaName), .text(table)]
+        )
+        if let definition = viewResult.rows.first?[safe: 0]?.asText?.nilIfEmpty {
+            return DuckDBViewDefinition.makeReplaceable(definition)
+        }
+
         // Fallback: synthesize DDL from schema metadata
         let columns = try await fetchColumns(table: table, schema: schemaName)
         let fks = try await fetchForeignKeys(table: table, schema: schemaName)

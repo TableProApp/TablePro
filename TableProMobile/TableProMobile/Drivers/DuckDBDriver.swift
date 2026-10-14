@@ -11,7 +11,6 @@ nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
     private let fileAccess = LocalDatabaseFileAccess()
     private let stateLock = NSLock()
     private var currentSchemaName = "main"
-    nonisolated(unsafe) private var interruptHandle: duckdb_connection?
 
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
@@ -41,11 +40,9 @@ nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
         }
         try? await actor.query("SET autoinstall_known_extensions=false")
         try? await actor.query("SET autoload_known_extensions=false")
-        setInterruptHandle(await actor.connectionHandle.connection)
     }
 
     func disconnect() async throws {
-        setInterruptHandle(nil)
         await actor.close()
         fileAccess.end()
     }
@@ -75,10 +72,9 @@ nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
         )
     }
 
+    /// Runs off the actor: the actor is busy inside the query for as long as it runs.
     func cancelCurrentQuery() async throws {
-        let handle = stateLock.withLock { interruptHandle }
-        guard let handle else { return }
-        duckdb_interrupt(handle)
+        actor.interruptHandle.interrupt()
     }
 
     // MARK: - Transactions
@@ -109,20 +105,58 @@ nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
         currentSchemaName = schema
         stateLock.unlock()
     }
+}
 
-    private func setInterruptHandle(_ handle: duckdb_connection?) {
-        stateLock.lock()
-        interruptHandle = handle
-        stateLock.unlock()
+// MARK: - Interrupt Handle
+
+/// The open connection, reachable without the actor so a cancel can interrupt the query the actor is running.
+/// `duckdb_interrupt` on a disconnected connection reads freed memory, so the interrupt and the detach that precedes
+/// `duckdb_disconnect` share one lock.
+nonisolated final class DuckDBInterruptHandle: @unchecked Sendable {
+    private let lock = NSLock()
+    private var connection: duckdb_connection?
+    private var runningStream: UInt64?
+
+    func attach(_ connection: duckdb_connection) {
+        lock.withLock { self.connection = connection }
+    }
+
+    func detach() {
+        lock.withLock {
+            connection = nil
+            runningStream = nil
+        }
+    }
+
+    /// The user's Stop, which ends whatever the connection is running.
+    func interrupt() {
+        lock.withLock {
+            guard let connection else { return }
+            duckdb_interrupt(connection)
+        }
+    }
+
+    /// The editor and the data browser share this connection, so a stream's consumer interrupts only while that
+    /// stream's own query is the one running.
+    func interrupt(stream: UInt64) {
+        lock.withLock {
+            guard runningStream == stream, let connection else { return }
+            duckdb_interrupt(connection)
+        }
+    }
+
+    func enter(_ stream: UInt64) {
+        lock.withLock { runningStream = stream }
+    }
+
+    func leave(_ stream: UInt64) {
+        lock.withLock {
+            if runningStream == stream { runningStream = nil }
+        }
     }
 }
 
 // MARK: - DuckDB Actor (thread-safe C API access)
-
-/// Hands the open connection pointer out of the actor so a cancel can interrupt the running query.
-nonisolated struct DuckDBInterruptHandle: @unchecked Sendable {
-    let connection: duckdb_connection?
-}
 
 actor DuckDBActor {
     static let maxRows = 100_000
@@ -131,18 +165,15 @@ actor DuckDBActor {
 
     nonisolated var unownedExecutor: UnownedSerialExecutor { queue.asUnownedSerialExecutor() }
 
+    nonisolated let interruptHandle = DuckDBInterruptHandle()
     private var database: duckdb_database?
     var connection: duckdb_connection?
 
+    /// One result streams at a time. Each `beginStream` gets a new generation, so the producer of a stream that a
+    /// later one replaced cannot fetch from or destroy the later result.
     var streamResult: duckdb_result?
     var streamColumns: [DuckDBStreamColumn] = []
-
-    var connectionHandle: DuckDBInterruptHandle { DuckDBInterruptHandle(connection: connection) }
-
-    func interrupt() {
-        guard let connection else { return }
-        duckdb_interrupt(connection)
-    }
+    var streamGeneration: UInt64 = 0
 
     func open(path: String) throws {
         var db: duckdb_database?
@@ -172,9 +203,12 @@ actor DuckDBActor {
 
         database = db
         connection = conn
+        if let conn { interruptHandle.attach(conn) }
     }
 
     func close() {
+        interruptHandle.detach()
+        closeStreamResult()
         if connection != nil {
             duckdb_disconnect(&connection)
             connection = nil
@@ -187,6 +221,9 @@ actor DuckDBActor {
 
     func query(_ sql: String) throws -> DuckDBRawResult {
         guard let connection else { throw DuckDBDriverError.notConnected }
+        // Another statement closes an open streaming result inside DuckDB, and its next fetch would fail with an
+        // internal error. Closing it here ends that stream as cancelled.
+        closeStreamResult()
 
         let startTime = Date()
         var result = duckdb_result()

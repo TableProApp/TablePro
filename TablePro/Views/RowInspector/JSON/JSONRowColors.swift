@@ -2,41 +2,26 @@
 //  JSONRowColors.swift
 //  TablePro
 //
-//  Syntax colours for the JSON inspector, taken from the active editor theme.
-//
 
 import SwiftUI
 
-/// The inspector shows stored values, so its font is the Data Grid Font (`ThemeEngine.valueFont`)
-/// while its colours come from the editor palette the SQL editor and the JSON preview already use.
-/// Naming a system text style here is what makes a value read differently in the grid and in the
-/// inspector the moment the two font settings differ.
-struct JSONRowColors {
-    let key: Color
-    let string: Color
-    let number: Color
-    let literal: Color
-    let punctuation: Color
-    let placeholder: Color
+/// The JSON inspector draws a value in the same tone as the JSON tree viewer, so the two never
+/// disagree.
+@MainActor
+internal enum JSONRowColors {
+    static var key: Color { Color(nsColor: TreeValueTone.key.color) }
+    static let punctuation = Color.primary
+    static var placeholder: Color { Color(nsColor: TreeValueTone.muted.color) }
 
-    @MainActor
-    static func current() -> JSONRowColors {
-        let colors = ThemeEngine.shared.colors.editor
-        return JSONRowColors(
-            key: colors.keywordSwiftUI,
-            string: colors.stringSwiftUI,
-            number: colors.numberSwiftUI,
-            literal: colors.nullSwiftUI,
-            punctuation: colors.textSwiftUI,
-            placeholder: colors.commentSwiftUI
-        )
+    static func tone(for scalar: JSONScalar) -> TreeValueTone {
+        switch scalar {
+        case .string, .binary: .string
+        case .number: .number
+        case .bool, .null: .literal
+        }
     }
 
-    func color(for scalar: JSONScalar) -> Color {
-        switch scalar {
-        case .string, .binary: string
-        case .number: number
-        case .bool, .null: literal
-        }
+    static func color(for scalar: JSONScalar) -> Color {
+        Color(nsColor: tone(for: scalar).color)
     }
 }

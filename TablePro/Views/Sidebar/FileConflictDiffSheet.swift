@@ -95,6 +95,9 @@ private struct DiffColumnView: View {
     let title: String
     let rows: [FileConflictRow]
 
+    @ObservedObject private var themeEngine = ThemeEngine.shared
+    @Environment(\.colorSchemeContrast) private var contrast
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title)
@@ -113,26 +116,41 @@ private struct DiffColumnView: View {
                         HStack(alignment: .top, spacing: 8) {
                             Text(verbatim: "\(row.id + 1)")
                                 .font(.system(.caption2, design: .monospaced))
-                                .foregroundStyle(.tertiary)
+                                .themeForeground(.editorLineNumber, native: .tertiary)
                                 .frame(width: 32, alignment: .trailing)
 
                             Text(row.text ?? " ")
                                 .font(.system(.body, design: .monospaced))
+                                .diffLineForeground(row.highlight.lineKind)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 1)
-                        .background(row.highlight.tint)
+                        .background(row.highlight.tint(engine: themeEngine, contrast: contrast))
                     }
                 }
             }
-            .background(Color(nsColor: .textBackgroundColor))
+            .themeBackground(.editorBackground, native: Color(nsColor: .textBackgroundColor))
         }
     }
 }
 
-private extension FileConflictRowHighlight {
-    var tint: Color {
+internal extension FileConflictRowHighlight {
+    var lineKind: RowDiffKind? {
+        switch self {
+        case .removed: return .delete
+        case .added: return .insert
+        case .plain, .filler: return nil
+        }
+    }
+
+    @MainActor
+    func tint(engine: ThemeEngine, contrast: ColorSchemeContrast) -> Color {
+        guard let lineKind else { return nativeTint }
+        return CompareStatusStyle.lineTint(for: lineKind, native: nativeTint, engine: engine, contrast: contrast)
+    }
+
+    private var nativeTint: Color {
         switch self {
         case .plain: return .clear
         case .removed: return .red.opacity(0.18)

@@ -29,7 +29,7 @@ struct MCPConnectionApprovalTests {
     }
 
     private func makePrincipal(
-        tokenId: UUID? = UUID(),
+        tokenId: UUID = UUID(),
         label: String = "token",
         fingerprint: String = "fp",
         isBridge: Bool = false
@@ -280,25 +280,12 @@ struct MCPConnectionApprovalTests {
         try await policy.resolveAndAuthorize(
             principal: principal, tool: "list_tables", connectionId: connectionA
         )
-        await policy.clearAllApprovals()
-        try await policy.resolveAndAuthorize(
+        let rebuilt = makePolicy(approval: .oncePerConnection, presenter: presenter, store: store)
+        try await rebuilt.resolveAndAuthorize(
             principal: principal, tool: "list_tables", connectionId: connectionA
         )
 
         #expect(await presenter.askedCount == 1)
-    }
-
-    @Test("An anonymous caller's approval is never written to disk")
-    func anonymousApprovalIsNotPersisted() async throws {
-        let store = MCPApprovalStore(defaults: Self.scratchDefaults())
-        let presenter = RecordingApprovalPresenter(answer: true)
-        let policy = makePolicy(approval: .oncePerConnection, presenter: presenter, store: store)
-
-        try await policy.resolveAndAuthorize(
-            principal: .anonymousLoopback, tool: "list_tables", connectionId: connectionA
-        )
-
-        #expect(await store.grants().isEmpty)
     }
 
     @Test("Forgetting a grant makes the next call ask again")
@@ -393,34 +380,6 @@ struct MCPConnectionApprovalTests {
         }
 
         #expect(await denying.grants().isEmpty)
-    }
-
-    @Test("An anonymous caller is told its approval lasts only for the session")
-    func anonymousPromptSaysSessionOnly() async throws {
-        let presenter = RecordingApprovalPresenter(answer: true)
-        let policy = makePolicy(approval: .oncePerConnection, presenter: presenter)
-
-        try await policy.resolveAndAuthorize(
-            principal: .anonymousLoopback, tool: "list_tables", connectionId: connectionA
-        )
-
-        #expect(await presenter.lastRequest?.memory == .thisSession)
-    }
-
-    @Test("An anonymous caller's refusal also stands for a cool-off")
-    func anonymousDenialIsRememberedBriefly() async throws {
-        let presenter = RecordingApprovalPresenter(answer: false)
-        let policy = makePolicy(approval: .oncePerConnection, presenter: presenter)
-
-        for _ in 0..<3 {
-            await #expect(throws: DatabaseAccessError.self) {
-                try await policy.resolveAndAuthorize(
-                    principal: .anonymousLoopback, tool: "list_tables", connectionId: connectionA
-                )
-            }
-        }
-
-        #expect(await presenter.askedCount == 1)
     }
 
     private static func scratchDefaults() -> UserDefaults {

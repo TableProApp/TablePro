@@ -145,23 +145,6 @@ struct StructureActionHandlerTests {
         #expect(counts["removeRow"] == 1)
     }
 
-    // MARK: - Nil Closures Are Safe
-
-    @Test("nil closures do not crash via optional chaining")
-    func nilClosures_areSafe() {
-        let handler = StructureViewActionHandler()
-
-        // All closures are nil by default; optional chaining should be a no-op
-        handler.refresh?()
-        handler.previewSQL?()
-        handler.copyRows?()
-        handler.pasteRows?()
-        handler.undo?()
-        handler.redo?()
-
-        // Reaching here without a crash is the assertion
-    }
-
     // MARK: - Coordinator Integration
 
     @Test("coordinator.structureActions dispatches refresh closure")

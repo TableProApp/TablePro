@@ -60,8 +60,6 @@ internal struct DatabaseTreeMenuContext {
     /// Whether this connection has a dump tool at all. Backing up writes nothing to the database,
     /// so safe mode does not gate it, which is the same rule File > Backup Dump follows.
     internal var canBackUp: Bool = false
-    /// Whether the driver can offer a CREATE TYPE template. Read-only mode still hides the item.
-    internal var canCreateType: Bool = false
     /// Whether the driver can create a table, from `CreateTableEligibility`.
     internal var canCreateTable: Bool = false
     internal var canCreateView: Bool = false

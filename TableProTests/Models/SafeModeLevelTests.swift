@@ -4,73 +4,12 @@
 //
 
 import AppKit
-import SwiftUI
 import TableProPluginKit
 import Testing
 
 @testable import TablePro
 
 struct SafeModeLevelTests {
-    // MARK: - Raw Values
-
-    @Test("Raw values match expected strings")
-    func rawValues() {
-        #expect(SafeModeLevel.silent.rawValue == "silent")
-        #expect(SafeModeLevel.alert.rawValue == "alert")
-        #expect(SafeModeLevel.alertFull.rawValue == "alertFull")
-        #expect(SafeModeLevel.safeMode.rawValue == "safeMode")
-        #expect(SafeModeLevel.safeModeFull.rawValue == "safeModeFull")
-        #expect(SafeModeLevel.readOnly.rawValue == "readOnly")
-    }
-
-    // MARK: - Identifiable
-
-    @Test("id returns rawValue for all cases")
-    func idMatchesRawValue() {
-        for level in SafeModeLevel.allCases {
-            #expect(level.id == level.rawValue)
-        }
-    }
-
-    // MARK: - CaseIterable
-
-    @Test("allCases contains exactly 6 cases")
-    func allCasesCount() {
-        #expect(SafeModeLevel.allCases.count == 6)
-    }
-
-    // MARK: - displayName
-
-    @Test("silent displayName")
-    func displayNameSilent() {
-        #expect(SafeModeLevel.silent.displayName == String(localized: "Silent"))
-    }
-
-    @Test("alert displayName")
-    func displayNameAlert() {
-        #expect(SafeModeLevel.alert.displayName == String(localized: "Alert"))
-    }
-
-    @Test("alertFull displayName")
-    func displayNameAlertFull() {
-        #expect(SafeModeLevel.alertFull.displayName == String(localized: "Alert (Full)"))
-    }
-
-    @Test("safeMode displayName")
-    func displayNameSafeMode() {
-        #expect(SafeModeLevel.safeMode.displayName == String(localized: "Safe Mode"))
-    }
-
-    @Test("safeModeFull displayName")
-    func displayNameSafeModeFull() {
-        #expect(SafeModeLevel.safeModeFull.displayName == String(localized: "Safe Mode (Full)"))
-    }
-
-    @Test("readOnly displayName")
-    func displayNameReadOnly() {
-        #expect(SafeModeLevel.readOnly.displayName == String(localized: "Read-Only"))
-    }
-
     // MARK: - blocksAllWrites
 
     @Test("only readOnly blocks all writes")
@@ -121,16 +60,6 @@ struct SafeModeLevelTests {
 
     // MARK: - iconName
 
-    @Test("each case has the correct SF Symbol icon name")
-    func iconNames() {
-        #expect(SafeModeLevel.silent.iconName == "lock.open")
-        #expect(SafeModeLevel.alert.iconName == "exclamationmark.triangle")
-        #expect(SafeModeLevel.alertFull.iconName == "exclamationmark.triangle.fill")
-        #expect(SafeModeLevel.safeMode.iconName == "lock.shield")
-        #expect(SafeModeLevel.safeModeFull.iconName == "lock.shield.fill")
-        #expect(SafeModeLevel.readOnly.iconName == "lock")
-    }
-
     /// The fill used to mark two of the four levels that gate reads and both of the two that do
     /// not, so it said nothing. The weakest level drew the heaviest glyph in the toolbar.
     @Test("An icon is filled exactly when its level applies to all queries", arguments: SafeModeLevel.allCases)
@@ -152,38 +81,7 @@ struct SafeModeLevelTests {
         }
     }
 
-    // MARK: - badgeColor
-
-    @Test("silent badge color is secondary")
-    func badgeColorSilent() {
-        #expect(SafeModeLevel.silent.badgeColor == .secondary)
-    }
-
-    @Test("alert and alertFull badge color is orange")
-    func badgeColorAlert() {
-        #expect(SafeModeLevel.alert.badgeColor == .orange)
-        #expect(SafeModeLevel.alertFull.badgeColor == .orange)
-    }
-
-    @Test("safeMode, safeModeFull, and readOnly badge color is red")
-    func badgeColorSafeAndReadOnly() {
-        #expect(SafeModeLevel.safeMode.badgeColor == .red)
-        #expect(SafeModeLevel.safeModeFull.badgeColor == .red)
-        #expect(SafeModeLevel.readOnly.badgeColor == .red)
-    }
-
     // MARK: - Codable
-
-    @Test("round-trips through JSON encoding and decoding")
-    func codableRoundTrip() throws {
-        let encoder = JSONEncoder()
-        let decoder = JSONDecoder()
-        for level in SafeModeLevel.allCases {
-            let data = try encoder.encode(level)
-            let decoded = try decoder.decode(SafeModeLevel.self, from: data)
-            #expect(decoded == level)
-        }
-    }
 
     @Test("A macOS wire value decodes to its own level", arguments: SafeModeLevel.allCases)
     func decodesOwnWireValues(_ level: SafeModeLevel) {

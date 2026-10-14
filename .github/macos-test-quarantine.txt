@@ -1,4 +1,0 @@
-# Unit test cases the macOS Tests workflow skips. One per line, as xcodebuild enumerates it:
-# Suite/case(), with the parentheses a Swift Testing case needs.
-# Write the reason, and what would lift it, on a comment line directly above the entry.
-# The job fails on an entry that matches no case. A failing case gets fixed, not listed.
