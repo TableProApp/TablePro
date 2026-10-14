@@ -1,6 +1,6 @@
 # Type and value evidence index
 
-The shared standard is [ADR 0007](decisions/0007-type-and-value-preservation.md). [The B3 board](type-contract-strategy.md) owns remaining tasks. This page is a bounded entry into case evidence, not another conversion policy or aggregate support claim. Updated 2026-10-09; this index links evidence but does not run tests.
+The shared standard is [ADR 0007](decisions/0007-type-and-value-preservation.md). [The B3 board](type-contract-strategy.md) owns remaining tasks. This page is a bounded entry into case evidence, not another conversion policy or aggregate support claim. Updated 2026-10-14 against the merged PostgreSQL result, formatting, filter and DDL regressions; source links are entry points, not execution evidence.
 
 Case narratives that previously lived above and below the Scope table are in [value-contract history](archive/value-contract-history.md#archived-value-contracts-narrative-2026-10-09-consolidation-pass-2). Prefer the Scope table and evidence manifests; do not copy counts into the sprint or B3 board. Open acceptance gaps stay on [Project #3](https://github.com/users/cozyGarage/projects/3) (Lane B3); the dated retest table is in the [archived B3 board](archive/type-contract-strategy-pre-project-migration-2026-10-12.md#retest-indicators).
 
@@ -51,6 +51,9 @@ Detailed native oracles, exact selectors and dated results are preserved in [val
 | PostgreSQL enum GTK grid edit | [Native enum and literal `NULL` label edits stay pending until Save; SQL NULL, empty label and sibling row remain distinct](../scripts/test-gtk-postgres.sh) |
 | PostgreSQL text-search arrays refusal | [`tsvector[]` and `tsquery[]` native JSON/wire snapshots, refused bindings and unchanged target/sibling rows](../crates/drivers/postgres/tests/support/unsupported_builtin_array_contract.rs) |
 | PostgreSQL JSON arrays | [`json[]` and `jsonb[]` native text/JSON/wire snapshots, read as the server text, and a write changing only its own row](../crates/drivers/postgres/tests/support/unsupported_builtin_array_contract.rs) |
+| PostgreSQL text-form scalar results | [`oid`, XML, `tsvector`, `regclass`, `char`, anonymous `record`, hstore and ltree match the server's `::text` output in mixed typed results; supported casts bind the text back](../crates/drivers/postgres/tests/support/value_contracts.rs) |
+| PostgreSQL interval and `timetz` display text | [Generated native values compare driver output with PostgreSQL `::text`, including signed fields, large values, fractions and zone formats](../crates/drivers/postgres/tests/support/decoded_text_oracle.rs) |
+| PostgreSQL typed filters and safe type narrowing | [Filters on native, enum and domain columns target the expected stored row](../crates/drivers/postgres/tests/support/filter_types.rs), [unsafe narrowing is refused and stored data remains unchanged](../crates/drivers/postgres/tests/support/alter_type_no_truncation.rs) |
 | PostgreSQL enum-array `array_to_string` | [NULL omission/replacement, empty labels, shadowed type resolution and native wire comparisons](evidence/postgres-enum-array-to-string-results-2026-10-05/manifest.json) |
 | PostgreSQL enum-array `array_fill` | [Polymorphic inference, dimensions, bounds, NULL values and native wire comparisons](evidence/postgres-enum-array-fill-results-2026-10-05/manifest.json) |
 | PostgreSQL enum multi-array `unnest` | [Heterogeneous enum/integer inputs, shorter-array NULL padding, order, and shadowed type resolution](evidence/postgres-enum-multi-array-unnest-results-2026-10-05/manifest.json) |
