@@ -276,6 +276,32 @@ mod tests {
     }
 
     #[test]
+    fn record_serialization_matching_requires_a_function_name_boundary_and_call() {
+        let patterns = sensitive_patterns();
+        assert_eq!(
+            sensitive_projection(
+                "SELECT pg_catalog.row_to_json(c) FROM cards c",
+                "postgres",
+                &patterns,
+                1
+            ),
+            vec![true]
+        );
+
+        for sql in [
+            "SELECT my_row_to_json(amount) FROM orders",
+            "SELECT userrow_to_json(amount) FROM orders",
+            "SELECT 'row_to_json' AS label FROM orders",
+        ] {
+            assert_eq!(
+                sensitive_projection(sql, "postgres", &patterns, 1),
+                vec![false],
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
     fn postgres_xml_serializers_are_treated_as_sensitive() {
         for sql in [
             "SELECT table_to_xml('cards'::regclass, true, false, '')",
