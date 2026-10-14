@@ -122,6 +122,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A refresh that failed replaced the rows in a table tab with an error page.
 - Switching connections could show the previous connection's tables in the sidebar, or its reconnect banner.
 - The sidebar lost the selected table each time the table list was read again.
+- A table tab with no columns the account can read showed a page error instead of saying why.
 - Switching connections during a table drop could close the new connection's tabs on a table of the same name.
 - Renaming a MySQL table in another database moved it to the connection's database, and renaming a ClickHouse table failed.
 - Turning a column's primary key on or off in the Structure tab saved nothing.

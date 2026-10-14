@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use tablepro_core::ErrorCategory;
 use tablepro_session::OperationError;
 
 /// Why a tab's read showed nothing new.
@@ -7,6 +8,11 @@ use tablepro_session::OperationError;
 pub(crate) enum LoadFailure {
     /// The table's columns, or what tells its rows apart.
     Columns(Arc<OperationError>),
+    /// The catalog lists no column the account can read.
+    NoColumns,
+    /// The page came back with other columns than the ones read for it,
+    /// and again after they were read again.
+    ColumnsChanged,
     Page(Arc<OperationError>),
 }
 
@@ -16,6 +22,21 @@ impl LoadFailure {
     pub(crate) fn message(&self) -> String {
         match self {
             Self::Columns(error) | Self::Page(error) => crate::ui::error_text::operation_error_message(error),
+            Self::NoColumns => crate::i18n::gettext(
+                "This table has no columns you can read. It may have been dropped, or your account can't read it.",
+            ),
+            Self::ColumnsChanged => crate::i18n::gettext(
+                "The table's columns changed while its rows were read. Try again to read it as it is now.",
+            ),
+        }
+    }
+
+    /// What kind of problem it was, for the log, which never takes the
+    /// server's text.
+    pub(crate) fn category(&self) -> Option<ErrorCategory> {
+        match self {
+            Self::Columns(error) | Self::Page(error) => error.category(),
+            Self::NoColumns | Self::ColumnsChanged => None,
         }
     }
 }
@@ -41,6 +62,15 @@ mod tests {
             timed_out.message(),
             "The statement ran past its time limit, so the server stopped it."
         );
+    }
+
+    #[test]
+    fn no_columns_failure_message() {
+        assert_eq!(
+            LoadFailure::NoColumns.message(),
+            "This table has no columns you can read. It may have been dropped, or your account can't read it."
+        );
+        assert_eq!(LoadFailure::NoColumns.category(), None);
     }
 
     #[test]

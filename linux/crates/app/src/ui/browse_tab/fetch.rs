@@ -7,6 +7,8 @@ use tablepro_core::statement::StatementBuilder;
 use tablepro_core::{BuildFilterError, ColumnInfo, FilterSet, QueryResult, RowLimit};
 use tablepro_session::{LinkGeneration, OperationError, OperationKind};
 
+use super::column_recheck::RecheckAction;
+use super::columns_fetch::{ColumnFreshness, load_columns};
 use super::{
     BrowseCommand, BrowseModel, BrowseRequestKind, BrowseTabInput, BrowseTabOutput, ColumnsReply, Effects, PageReply,
 };
@@ -32,11 +34,11 @@ impl BrowseModel {
     /// columns it is built from.
     pub(super) fn fetch(&mut self, kind: BrowseRequestKind, fx: &mut Effects) {
         match kind {
-            BrowseRequestKind::Columns => self.fetch_columns(false),
+            BrowseRequestKind::Columns => self.fetch_columns(ColumnFreshness::Cached),
             BrowseRequestKind::Page | BrowseRequestKind::Count if self.identity.is_none() => {
                 self.after_columns.insert(kind);
                 if !self.sequencer.is_pending(BrowseRequestKind::Columns) {
-                    self.fetch_columns(false);
+                    self.fetch_columns(ColumnFreshness::Cached);
                 }
             }
             BrowseRequestKind::Page => self.fetch_page(fx),
@@ -45,11 +47,13 @@ impl BrowseModel {
     }
 
     /// Read the columns, then the page and the count built from them.
-    /// `refresh` asks the server even when the catalog has the columns.
-    pub(super) fn reload_from_columns(&mut self, refresh: bool) {
+    /// No page is asked for before the columns land, since a page is
+    /// built from them, and a failure to read them fails the read at
+    /// once rather than leave the tab waiting.
+    pub(super) fn reload_from_columns(&mut self, freshness: ColumnFreshness) {
         self.after_columns.insert(BrowseRequestKind::Page);
         self.after_columns.insert(BrowseRequestKind::Count);
-        self.fetch_columns(refresh);
+        self.fetch_columns(freshness);
     }
 
     fn issue(&mut self, kind: BrowseRequestKind) -> RequestTicket {
@@ -57,7 +61,7 @@ impl BrowseModel {
         self.sequencer.issue(kind)
     }
 
-    fn fetch_columns(&mut self, refresh: bool) {
+    fn fetch_columns(&mut self, freshness: ColumnFreshness) {
         let ticket = self.issue(BrowseRequestKind::Columns);
         let session = self.session.clone();
         let table = self.table_ref();
@@ -66,13 +70,8 @@ impl BrowseModel {
             // The catalog's read is shared with other views, so a
             // replaced request stops waiting on it without stopping it.
             let columns = tokio::select! {
-                columns = async {
-                    match refresh {
-                        true => session.refresh_columns(table.clone()).await,
-                        false => session.columns(table.clone()).await,
-                    }
-                } => columns?,
-                () = cancel.cancelled() => return Err(Arc::new(OperationError::Cancelled)),
+                columns = load_columns(session.clone(), table.clone(), freshness) => columns?,
+                () = cancel.cancelled() => return Err(LoadFailure::Columns(Arc::new(OperationError::Cancelled))),
             };
             let identity = session
                 .run_cancellable(OperationKind::Metadata, &cancel, move |lease, options| {
@@ -80,11 +79,16 @@ impl BrowseModel {
                     async move { Ok(lease.row_identity(&table, options).await?) }
                 })
                 .await
-                .map_err(Arc::new)?;
+                .map_err(|error| {
+                    if error != OperationError::Cancelled {
+                        tracing::warn!(category = ?error.category(), "browse row identity failed");
+                    }
+                    LoadFailure::Columns(Arc::new(error))
+                })?;
             Ok(ColumnsReply { columns, identity })
         };
         self.deliver(ticket, work, BrowseCommand::Columns, |failure| {
-            Arc::new(OperationError::from(failure))
+            LoadFailure::Columns(Arc::new(OperationError::from(failure)))
         });
     }
 
@@ -246,13 +250,8 @@ impl BrowseModel {
                             self.fetch(kind, fx);
                         }
                     }
-                    Err(error) => {
-                        tracing::warn!(
-                            kind = failure_kind(&error),
-                            category = ?error.category(),
-                            "could not read the table's columns"
-                        );
-                        self.on_load_failed(LoadFailure::Columns(error), fx);
+                    Err(failure) => {
+                        self.on_load_failed(failure, fx);
                         self.retry_if_link_moved(BrowseRequestKind::Columns, fx);
                     }
                 }
@@ -263,10 +262,7 @@ impl BrowseModel {
                 }
                 self.failed.record(BrowseRequestKind::Page, &value);
                 match value {
-                    Ok(reply) => {
-                        let offset = reply.offset().unwrap_or(self.current_offset);
-                        self.on_rows_loaded(offset, reply, fx);
-                    }
+                    Ok(reply) => self.on_page_read(reply, fx),
                     Err(error) => {
                         self.on_load_failed(LoadFailure::Page(Arc::new(error)), fx);
                         self.retry_if_link_moved(BrowseRequestKind::Page, fx);
@@ -290,6 +286,27 @@ impl BrowseModel {
                     }
                 }
             }
+        }
+    }
+
+    /// A page read under columns the table no longer has would put cells
+    /// under the wrong headers, so the columns are read again once, then
+    /// the page; a second mismatch fails the read.
+    fn on_page_read(&mut self, reply: PageReply, fx: &mut Effects) {
+        match self
+            .recheck
+            .check(&self.current_columns, &reply.result.columns, &reply.layout)
+        {
+            RecheckAction::Accept => {
+                let offset = reply.offset().unwrap_or(self.current_offset);
+                self.on_rows_loaded(offset, reply, fx);
+            }
+            RecheckAction::Refetch => {
+                tracing::debug!("a page came back with other columns; reading the columns again");
+                self.after_columns.insert(BrowseRequestKind::Page);
+                self.fetch_columns(ColumnFreshness::Refetch);
+            }
+            RecheckAction::Fail => self.on_load_failed(LoadFailure::ColumnsChanged, fx),
         }
     }
 
@@ -326,7 +343,7 @@ impl BrowseModel {
             true => {
                 self.after_columns
                     .extend(kinds.into_iter().filter(|kind| *kind != BrowseRequestKind::Columns));
-                self.fetch_columns(false);
+                self.fetch_columns(ColumnFreshness::Cached);
             }
             false => {
                 for kind in kinds {

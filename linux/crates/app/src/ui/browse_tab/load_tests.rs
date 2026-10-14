@@ -5,11 +5,13 @@ use std::time::Duration;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
 use libadwaita as adw;
-use tablepro_core::{DriverError, LossPhase, QueryResult, Value};
+use tablepro_core::{ColumnInfo, DriverError, LossPhase, QueryResult, Value};
 use tablepro_test_support::{CallCounters, FakeReply};
 
 use super::BrowseTabInput;
-use super::tests::{Harness, Shown, WAIT, after_next_frame, column_view, key, rows, serving_table, text};
+use super::tests::{
+    Harness, Shown, WAIT, after_next_frame, column, column_view, header_titles, key, rows, serving_table, text,
+};
 use crate::test_support::{drain_main_context, wait_until};
 use crate::ui::grid::GridCell;
 
@@ -204,5 +206,117 @@ fn a_selection_is_not_put_back_after_a_failed_refresh() {
         selected,
         [Some(key(2))],
         "the selection from before the failed refresh came back"
+    );
+}
+
+fn error_text(harness: &Harness) -> String {
+    harness
+        .tab()
+        .imp()
+        .error_page
+        .description()
+        .map(|text| text.to_string())
+        .unwrap_or_default()
+}
+
+#[gtk4::test]
+fn columns_failure_shows_error_page_not_spinner() {
+    let mut script = serving_table();
+    script.fetch_columns = Default::default();
+    script
+        .fetch_columns
+        .always(FakeReply::err(DriverError::server("permission denied")));
+    let harness = Harness::open(script, []);
+
+    wait_until(WAIT, || harness.visible_page().as_deref() == Some("error")).expect("the tab stayed on its spinner");
+
+    assert!(
+        error_text(&harness).contains("permission denied"),
+        "{}",
+        error_text(&harness)
+    );
+    assert!(!harness.tab().is_loading());
+    assert_eq!(CallCounters::get(&harness.connection.counters().query_bound), 0);
+}
+
+#[gtk4::test]
+fn empty_column_list_is_a_load_failure() {
+    let mut script = serving_table();
+    script.fetch_columns = Default::default();
+    script.fetch_columns.always(FakeReply::ok(Vec::<ColumnInfo>::new()));
+    let harness = Harness::open(script, []);
+
+    wait_until(WAIT, || harness.visible_page().as_deref() == Some("error")).expect("the tab stayed on its spinner");
+
+    assert_eq!(
+        error_text(&harness),
+        gtk4::glib::markup_escape_text(&crate::ui::tab_load::LoadFailure::NoColumns.message()).as_str()
+    );
+    assert_eq!(CallCounters::get(&harness.connection.counters().query_bound), 0);
+}
+
+#[gtk4::test]
+fn refresh_after_columns_failure_refetches_columns() {
+    let mut script = serving_table();
+    script.fetch_columns = Default::default();
+    script
+        .fetch_columns
+        .once(FakeReply::err(DriverError::server("busy")))
+        .always(FakeReply::ok(vec![column("id", true), column("name", false)]));
+    script.query_bound.always(FakeReply::ok(rows(&["back"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.visible_page().as_deref() == Some("error")).expect("the error page");
+
+    harness.tab().imp().retry_button.emit_clicked();
+
+    wait_until(WAIT, || harness.shown() == text(&["back"])).expect("the grid after the columns were read again");
+    assert_eq!(CallCounters::get(&harness.connection.counters().fetch_columns), 2);
+    assert_eq!(harness.visible_page().as_deref(), Some("grid"));
+}
+
+#[gtk4::test]
+fn refresh_failure_of_columns_keeps_cached_columns() {
+    let mut script = serving_table();
+    script.fetch_columns = Default::default();
+    script
+        .fetch_columns
+        .once(FakeReply::ok(vec![column("id", true), column("name", false)]))
+        .always(FakeReply::err(DriverError::server("busy")));
+    script.query_bound.always(FakeReply::ok(rows(&["kept"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown() == text(&["kept"])).expect("the first page");
+
+    harness.tab().send(BrowseTabInput::Refresh);
+    wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed refresh was not shown");
+
+    assert_eq!(header_titles(harness.tab()), ["id", "name"]);
+    assert_eq!(harness.tab().columns(), [column("id", true), column("name", false)]);
+    assert_eq!(harness.shown(), text(&["kept"]));
+    assert_eq!(CallCounters::get(&harness.connection.counters().query_bound), 1);
+}
+
+#[gtk4::test]
+fn page_column_mismatch_refetches_columns_once() {
+    let renamed = [column("id", true), column("full_name", false)];
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(QueryResult::new(
+        renamed.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
+        vec![vec![Value::Int(0), Value::Text("Ada".to_owned())]],
+    )));
+    let harness = Harness::open(script, []);
+
+    wait_until(WAIT, || harness.visible_page().as_deref() == Some("error")).expect("the mismatched page was shown");
+
+    let counters = harness.connection.counters();
+    assert_eq!(CallCounters::get(&counters.fetch_columns), 2);
+    assert_eq!(CallCounters::get(&counters.query_bound), 2);
+    assert!(
+        harness.shown().is_empty(),
+        "rows read under other columns reached the grid"
+    );
+    assert!(
+        error_text(&harness).contains("columns changed"),
+        "{}",
+        error_text(&harness)
     );
 }

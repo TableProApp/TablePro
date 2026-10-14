@@ -7,6 +7,8 @@
 
 mod browse_command;
 mod browse_request_kind;
+mod column_recheck;
+mod columns_fetch;
 mod confirming_delete;
 mod fetch;
 mod imp;
@@ -40,6 +42,8 @@ use tablepro_session::{LinkGeneration, Session};
 
 pub(crate) use self::browse_command::{BrowseCommand, ColumnsReply};
 pub(crate) use self::browse_request_kind::BrowseRequestKind;
+use self::column_recheck::ColumnRecheck;
+use self::columns_fetch::ColumnFreshness;
 use self::confirming_delete::ConfirmingDelete;
 pub(crate) use self::page_reply::PageReply;
 use self::page_state::PageState;
@@ -182,6 +186,7 @@ impl BrowseTab {
             sequencer: RequestSequencer::new(),
             failed: FailedRequests::new(),
             after_columns: BTreeSet::new(),
+            recheck: ColumnRecheck::default(),
             issued_on: std::collections::BTreeMap::new(),
             link_generation,
             identity: None,
@@ -574,6 +579,7 @@ pub(crate) struct BrowseModel {
     /// Reads that wait for the columns, because a page and a count are
     /// built from them.
     after_columns: BTreeSet<BrowseRequestKind>,
+    recheck: ColumnRecheck,
     /// The connection each running request was issued on. A request
     /// that fails after the connection was replaced is asked again at
     /// once, since the reconnect it would wait for has already landed.
@@ -979,7 +985,7 @@ impl BrowseModel {
     fn reload(&mut self, fx: &mut Effects) {
         self.capture_selection();
         self.begin_read(fx);
-        self.reload_from_columns(true);
+        self.reload_from_columns(ColumnFreshness::Refetch);
     }
 
     /// A read of the page the tab asks for starts. Rows read under the
@@ -1471,14 +1477,15 @@ impl BrowseModel {
                 self.refresh_filter_chrome();
                 // DDL from the SQL editor or another client never reaches
                 // the catalog, so a tab that opens asks the server.
-                self.reload_from_columns(true);
+                self.begin_read(fx);
+                self.reload_from_columns(ColumnFreshness::Refetch);
             }
             BrowseTabInput::Command(command) => self.on_command(command, fx),
             BrowseTabInput::LinkChanged(generation) => self.on_link_changed(generation, fx),
             BrowseTabInput::SchemaChanged => {
                 self.capture_selection();
                 self.begin_read(fx);
-                self.reload_from_columns(false);
+                self.reload_from_columns(ColumnFreshness::Cached);
             }
             BrowseTabInput::Refresh => self.reload(fx),
             BrowseTabInput::DiscardAndRefresh => {
