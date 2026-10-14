@@ -75,7 +75,7 @@ A name is too long when a reader (or an agent) must re-parse it to find the verb
 
 ## GTK construction is the known exception
 
-Fifty-nine of the eighty-nine functions currently over the limit live in `apps/linux/app/src/ui`. Relm4 `init`, `update`, and `build_*` functions accumulate widget wiring that has no natural seam, and splitting them arbitrarily produces helpers that are called once and read worse than the original.
+Fifty-nine of the eighty-six functions currently over the limit live in `apps/linux/app/src/ui`, according to the ratchet. Relm4 `init`, `update`, and `build_*` functions accumulate widget wiring that has no natural seam, and splitting them arbitrarily produces helpers that are called once and read worse than the original.
 
 The exception is narrow. It covers only widget construction and message dispatch. It does not cover logic that happens to sit inside them. When an `update` arm computes something, that computation moves to a free function in a sibling module and gets a unit test, which is the rule `AGENTS.md` already states as "keep reusable logic outside widget construction".
 
