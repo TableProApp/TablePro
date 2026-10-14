@@ -12,6 +12,7 @@ The only path a consumer may hold to a live database. Token scopes and connectio
 
 - Wrapping a driver `Connection` in `PolicyGuard` before the GUI, MCP or `bookie-agentd` issues a handle to a consumer.
 - Per-statement order: classify, evaluate rules, request approval when required, apply masking, execute, write the audit outcome.
+- Optional session query cursors for one read statement in a read-only snapshot. `PolicyGuard` authorizes once, masks each page, and records page and terminal outcomes under one operation. PostgreSQL is the only driver that supports cursors; the SQL editor is not wired to this path yet.
 - MCP token scopes (`tools:read` / `tools:write` via `TokenPermissions`), per-token rate limits and connection allowlists.
 - Preview, transaction, retry and batch paths using the same rule, approval, intent and audit pipeline as direct execution. Session mode skips the shared-connection short-circuit.
 
@@ -19,7 +20,7 @@ The only path a consumer may hold to a live database. Token scopes and connectio
 
 - Opening SSH tunnels and host-key trust ([ssh-transport](../ssh-transport/spec.md)).
 - Secret Service storage of passwords and MCP plaintext tokens after issuance ([secret-storage](../secret-storage/spec.md)).
-- Grid display, browse paging and export snapshot rules (later specs; ADRs 0011 and 0014).
+- Grid page retention/display, browse paging and export snapshot rules (later specs; ADRs 0011 and 0014).
 
 ## Core concepts
 
@@ -51,7 +52,7 @@ RequireApproval { rule, reason, preview }
 Deny { rule, message }
 ```
 
-`AuditTerminalStatus` (`crates/policy/src/audit.rs`): `pending`, `succeeded`, `failed`, `denied`, `cancelled`, `timed_out`, `unknown`.
+`AuditTerminalStatus` (`crates/policy/src/audit.rs`): `pending` is used for intent and non-final cursor-page records; final outcomes are `succeeded`, `failed`, `denied`, `cancelled`, `timed_out` or `unknown`.
 
 `StatementClass` (`crates/policy/src/classify.rs`): `select`, `insert`, `update`, `delete`, `ddl`, `administrative`, `transaction`, `other`, `unparseable`. `is_write` is true for every class except `select` and `transaction`.
 
@@ -155,6 +156,10 @@ Terminal audit states: `succeeded`, `failed`, `denied`, `cancelled`, `timed_out`
 - `Unparseable` SQL MUST be treated as a write.
 - A failed audit-intent write MUST prevent execution when intent is required.
 
+## Guarded query cursors
+
+`PolicySession` admits a cursor only inside a read-only snapshot and for one read statement. It applies policy before opening the driver cursor, masks every fetched page, and writes the intent and page outcomes with one operation ID. A failed or cancelled fetch closes the driver cursor and records its outcome. Other drivers return `Unsupported`; the caller keeps the materialized path.
+
 ## Config & flags
 
 | Flag | Effect |
@@ -194,6 +199,8 @@ Each line names the tip proof. When the proof is code only, that is marked.
 - **Empty allowlist.** GIVEN a token whose `connection_allowlist` is empty WHEN `ensure_connection_allowed` runs THEN connection use is denied. Proof: `empty_allowlist_denies_connection_access` (asserts the error mentions `allowlist`). Code string: `token has an empty connection allowlist`.
 - **Unparseable is a write.** GIVEN SQL the parser rejects WHEN classify runs THEN `StatementClass` is `Unparseable` AND `is_write` is true. Proof: `parse_failure_fail_closed`.
 - **Cancel still audits.** GIVEN a pending approval or governed bulk finish WHEN work is cancelled THEN the journal records terminal `cancelled`. Proof: `cancelling_a_pending_approval_records_a_terminal_cancelled_outcome`; `a_cancelled_import_writes_the_cancelled_terminal_state`. Mapping `DriverError::Cancelled` after intent to journal `cancelled` is in `controlled_error_terminal_status` and has no dedicated post-intent execute test.
+- **Cursor pages stay governed.** GIVEN a single read in a read-only snapshot WHEN pages are fetched THEN every page is masked and all records share one operation ID. A page failure, cancellation or timeout closes the cursor and records the outcome. Proof: `cursor_masks_every_page_and_keeps_one_audit_operation_id`, `a_page_error_closes_the_cursor_and_records_failure_after_prior_pages`, `cancellation_after_a_delivered_page_closes_and_audits_the_cursor`, and `a_cursor_timeout_closes_and_audits_the_cursor`.
+- **Unsupported cursor stays refused.** GIVEN a driver without cursor support WHEN a cursor is opened THEN it returns `Unsupported` without materializing the query. Proof: `unsupported_cursor_is_refused_without_materializing_the_query`.
 
 ## Open questions
 
