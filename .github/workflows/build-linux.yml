@@ -158,6 +158,16 @@ jobs:
         run: meson compile -C _build
       - name: Tests
         run: xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs
+      # Meson prints only the last 100 lines of a failed suite, which leaves
+      # out the names of the tests that failed.
+      - name: Keep the Meson test log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: meson-testlog
+          path: linux/_build/meson-logs/testlog.txt
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Secret Service tests
         run: |
           dbus-run-session -- bash -c "gnome-keyring-daemon --components=secrets --daemonize --unlock <<< ci \
