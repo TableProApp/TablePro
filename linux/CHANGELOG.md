@@ -96,6 +96,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ctrl+S did nothing in a Structure tab.
 - Structure tab could not save two columns swapping names, or a column taking the name of one being removed.
 - Changing the type of a SQL Server column with a default failed.
+- A bulk delete confirmed after the table's primary key changed marked rows by their old key.
 
 ### Security
 

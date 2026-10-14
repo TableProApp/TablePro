@@ -1362,3 +1362,109 @@ fn a_grid_built_for_columns_the_table_lost_takes_no_edits() {
     );
     assert_eq!(harness.visible_page().as_deref(), Some("loading"));
 }
+
+/// More rows than a delete marks without asking first.
+const DOZEN: [&str; 12] = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"];
+
+/// The confirmation a bulk delete is waiting on, by its ticket.
+fn confirming(tab: &BrowseTab) -> Option<(u64, libadwaita::AlertDialog)> {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    tab.imp().model.borrow().as_ref().and_then(|model| {
+        model
+            .confirming_delete
+            .as_ref()
+            .map(|pending| (pending.ticket, pending.dialog.clone()))
+    })
+}
+
+/// Every row selected and Delete pressed, which asks before marking.
+fn ask_to_delete_every_row(harness: &Harness) -> libadwaita::AlertDialog {
+    wait_until(WAIT, || harness.shown().len() == DOZEN.len()).expect("the first page");
+    harness.tab().send(BrowseTabInput::SelectAllRows);
+    harness.tab().send(BrowseTabInput::DeleteSelectedRow);
+    let (_, dialog) = confirming(harness.tab()).expect("a bulk delete asks first");
+    assert_eq!(harness.tracker.pending_count(), 0);
+    dialog
+}
+
+fn answer_delete(dialog: &libadwaita::AlertDialog) {
+    dialog.emit_by_name::<()>("response", &[&"delete"]);
+    drain_main_context();
+}
+
+fn change_schema(harness: &Harness, done: impl Fn(&[ColumnInfo]) -> bool) {
+    harness
+        .session
+        .invalidate_table(&tablepro_core::TableRef::unqualified("users"));
+    harness.tab().send(BrowseTabInput::SchemaChanged);
+    wait_until(WAIT, || done(&harness.tab().columns())).expect("the new columns");
+}
+
+#[gtk4::test]
+fn a_confirmed_bulk_delete_marks_every_selected_row() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&DOZEN)));
+    let harness = Harness::open(script, []);
+    let _shown = Shown::new(harness.tab());
+    let dialog = ask_to_delete_every_row(&harness);
+
+    answer_delete(&dialog);
+
+    assert_eq!(harness.tracker.pending_count(), DOZEN.len());
+    assert!(confirming(harness.tab()).is_none());
+}
+
+#[gtk4::test]
+fn a_bulk_delete_waiting_while_the_primary_key_moves_is_cancelled() {
+    let mut script = serving_table();
+    script
+        .fetch_columns
+        .once(FakeReply::ok(vec![column("id", true), column("name", false)]))
+        .always(FakeReply::ok(vec![column("id", false), column("name", true)]));
+    script.query_bound.always(FakeReply::ok(rows(&DOZEN)));
+    let harness = Harness::open(script, []);
+    let _shown = Shown::new(harness.tab());
+    let toasts = toasts(harness.tab());
+    let dialog = ask_to_delete_every_row(&harness);
+
+    change_schema(&harness, |columns| {
+        columns.iter().any(|column| column.name == "name" && column.primary_key)
+    });
+    answer_delete(&dialog);
+
+    assert!(confirming(harness.tab()).is_none(), "the confirmation outlived the key");
+    assert_eq!(
+        harness.tracker.pending_count(),
+        0,
+        "rows were marked by the key they had before"
+    );
+    assert_eq!(toasts.borrow().len(), 1, "{:?}", toasts.borrow());
+}
+
+#[gtk4::test]
+fn a_bulk_delete_waiting_while_a_column_is_added_marks_its_rows_under_the_new_columns() {
+    let widened = [column("id", true), column("name", false), column("email", false)];
+    let mut script = serving_table();
+    script
+        .fetch_columns
+        .once(FakeReply::ok(vec![column("id", true), column("name", false)]))
+        .always(FakeReply::ok(widened.to_vec()));
+    script.query_bound.always(FakeReply::ok(rows(&DOZEN)));
+    let harness = Harness::open(script, []);
+    let _shown = Shown::new(harness.tab());
+    let dialog = ask_to_delete_every_row(&harness);
+
+    change_schema(&harness, |columns| columns.len() == widened.len());
+    assert!(
+        confirming(harness.tab()).is_some(),
+        "a change that keeps the key cancelled the delete"
+    );
+    answer_delete(&dialog);
+
+    assert_eq!(harness.tracker.pending_count(), DOZEN.len());
+    assert_eq!(
+        harness.tracker.row_state(&key(0)),
+        crate::services::change_tracker::RowState::PendingDelete
+    );
+}
+

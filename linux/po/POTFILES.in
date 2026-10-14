@@ -68,6 +68,7 @@ crates/app/src/ui/app/workspace_persistence.rs
 crates/app/src/ui/app/workspace_tabs.rs
 crates/app/src/ui/browse_tab/browse_command.rs
 crates/app/src/ui/browse_tab/browse_request_kind.rs
+crates/app/src/ui/browse_tab/confirming_delete.rs
 crates/app/src/ui/browse_tab/fetch.rs
 crates/app/src/ui/browse_tab/imp.rs
 crates/app/src/ui/browse_tab/mod.rs

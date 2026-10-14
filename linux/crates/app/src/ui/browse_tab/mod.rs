@@ -7,6 +7,7 @@
 
 mod browse_command;
 mod browse_request_kind;
+mod confirming_delete;
 mod fetch;
 mod imp;
 mod page_reply;
@@ -34,6 +35,7 @@ use tablepro_session::{LinkGeneration, Session};
 
 pub(crate) use self::browse_command::{BrowseCommand, ColumnsReply};
 pub(crate) use self::browse_request_kind::BrowseRequestKind;
+use self::confirming_delete::ConfirmingDelete;
 pub(crate) use self::page_reply::PageReply;
 use super::grid::{
     CellPreset, ColumnWidthBinding, GridCell, GridMsg, GridRowId, GridRowIndex, GridSink, RowObject, TabGridContext,
@@ -41,6 +43,7 @@ use super::grid::{
 };
 use crate::runtime::{FailedRequests, RequestSequencer};
 use crate::services::change_tracker::{RowKey, StatementSource, pk_identity};
+use crate::services::column_relayout::ColumnRelayout;
 use crate::services::save_batch::SaveTarget;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::{TrackerDelta, VisualChange};
@@ -209,6 +212,8 @@ impl BrowseTab {
             pending_label: imp.pending_label.get(),
             grid_sink,
             suppress_combo_emit: Cell::new(true),
+            confirming_delete: None,
+            next_confirmation: 0,
         };
         imp.model.replace(Some(model));
         imp.link_watch.replace(Some(WatchForwarder::new(
@@ -598,6 +603,8 @@ pub(crate) struct BrowseModel {
     /// Set until the first page lands, so the page-size dropdown being
     /// set from a restored state does not count as the user choosing.
     suppress_combo_emit: Cell<bool>,
+    confirming_delete: Option<ConfirmingDelete>,
+    next_confirmation: u64,
 }
 
 #[derive(Debug)]
@@ -673,6 +680,11 @@ pub(crate) enum BrowseTabInput {
     MarkRowsDeleted {
         rows: Vec<(RowKey, Vec<Value>)>,
         drafts: Vec<u64>,
+    },
+    /// The user answered the bulk delete confirmation `ticket` opened.
+    BulkDeleteAnswered {
+        ticket: u64,
+        confirmed: bool,
     },
     /// The save landed. Edits made while it ran stay pending.
     SaveCommitted,
@@ -1369,6 +1381,7 @@ impl BrowseModel {
             self.drop_grid();
         }
         self.current_columns = columns.clone();
+        self.rebase_confirming_delete(fx);
         let delta = self.tracker.set_target(SaveTarget {
             table: self.table_ref(),
             columns: columns.clone(),
@@ -1664,6 +1677,28 @@ impl BrowseModel {
                 self.apply_tracker_delta(&delta, fx);
                 self.fetch(BrowseRequestKind::Page, fx);
             }
+            BrowseTabInput::BulkDeleteAnswered { ticket, confirmed } => {
+                // An answer to a confirmation the tab already cancelled
+                // or replaced.
+                if self
+                    .confirming_delete
+                    .as_ref()
+                    .is_none_or(|pending| pending.ticket != ticket)
+                {
+                    return;
+                }
+                if !confirmed {
+                    self.confirming_delete = None;
+                    return;
+                }
+                self.rebase_confirming_delete(fx);
+                if let Some(pending) = self.confirming_delete.take() {
+                    fx.input(BrowseTabInput::MarkRowsDeleted {
+                        rows: pending.rows,
+                        drafts: pending.drafts,
+                    });
+                }
+            }
             BrowseTabInput::MarkRowsDeleted { rows, drafts } => {
                 for (row_key, original_values) in rows {
                     self.apply_edit(
@@ -1744,7 +1779,7 @@ impl BrowseModel {
 
     /// Mark the selected rows for deletion: persisted rows go to the
     /// tracker, drafts are dropped. Nothing leaves the tab until Save.
-    fn delete_selected_rows(&self, fx: &mut Effects) {
+    fn delete_selected_rows(&mut self, fx: &mut Effects) {
         let Some(selection) = self.current_selection.as_ref() else {
             return;
         };
@@ -1800,18 +1835,70 @@ impl BrowseModel {
         dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");
-        let pending = RefCell::new(Some((snapshot, draft_ids)));
+        // A second Delete while one waits replaces it.
+        self.cancel_confirming_delete();
+        let ticket = self.next_confirmation;
+        self.next_confirmation += 1;
         let tab = self.this.clone();
+        // Closing the dialog answers it again with its close response,
+        // so only the first answer counts.
+        let answered = Cell::new(false);
         dialog.connect_response(None, move |dlg, response| {
-            dlg.close();
-            if response == "delete"
-                && let Some((rows, drafts)) = pending.borrow_mut().take()
-                && let Some(tab) = tab.upgrade()
-            {
-                tab.send(BrowseTabInput::MarkRowsDeleted { rows, drafts });
+            if answered.replace(true) {
+                return;
             }
+            if let Some(tab) = tab.upgrade() {
+                tab.send(BrowseTabInput::BulkDeleteAnswered {
+                    ticket,
+                    confirmed: response == "delete",
+                });
+            }
+            dlg.close();
         });
         dialog.present(Some(&self.inner_stack));
+        self.confirming_delete = Some(ConfirmingDelete {
+            ticket,
+            rows: snapshot,
+            drafts: draft_ids,
+            columns: self.current_columns.clone(),
+            dialog,
+        });
+    }
+
+    fn cancel_confirming_delete(&mut self) {
+        if let Some(pending) = self.confirming_delete.take() {
+            pending.dialog.force_close();
+        }
+    }
+
+    /// Moves a waiting delete's rows onto the columns the tab read
+    /// since. A key read under another primary key can name another
+    /// row, so then the delete is cancelled rather than sent with it.
+    fn rebase_confirming_delete(&mut self, fx: &mut Effects) {
+        let Some(pending) = self.confirming_delete.as_mut() else {
+            return;
+        };
+        if pending.columns == self.current_columns {
+            return;
+        }
+        let layout = ColumnRelayout::new(&pending.columns, &self.current_columns);
+        let moved: Option<Vec<(RowKey, Vec<Value>)>> = pending
+            .rows
+            .iter()
+            .map(|(key, values)| layout.key(key).ok().map(|()| (key.clone(), layout.fetched(values))))
+            .collect();
+        match moved {
+            Some(rows) => {
+                pending.rows = rows;
+                pending.columns = self.current_columns.clone();
+            }
+            None => {
+                self.cancel_confirming_delete();
+                fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext(
+                    "The table's primary key changed, so no rows were marked for deletion. Select them again.",
+                )));
+            }
+        }
     }
 
     /// One row as an INSERT for the server the tab is connected to,
