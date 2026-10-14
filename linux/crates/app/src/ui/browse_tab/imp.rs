@@ -100,6 +100,11 @@ impl ObjectSubclass for BrowseTab {
 }
 
 impl ObjectImpl for BrowseTab {
+    fn constructed(&self) {
+        self.parent_constructed();
+        super::browse_actions::describe_buttons(&self.obj());
+    }
+
     fn signals() -> &'static [Signal] {
         static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
         SIGNALS.get_or_init(|| {

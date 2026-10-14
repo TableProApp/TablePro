@@ -327,10 +327,10 @@ impl SavedQueriesDialog {
         let button = gtk::MenuButton::builder()
             .icon_name(crate::ui::icons::VIEW_MORE)
             .valign(gtk::Align::Center)
-            .tooltip_text(crate::i18n::gettext("Saved query options"))
             .menu_model(&menu)
             .build();
         button.add_css_class("flat");
+        crate::ui::a11y::describe_icon_button(&button, &crate::i18n::gettext("Saved Query Options"), None);
         button.insert_action_group("saved", Some(&actions));
         row.add_suffix(&button);
 

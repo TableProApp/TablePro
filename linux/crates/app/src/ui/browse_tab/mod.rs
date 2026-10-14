@@ -65,7 +65,8 @@ use super::format::format_thousands;
 use super::grid::{
     CellPreset, ColumnWidthBinding, DeleteAvailability, GridContent, GridMsg, GridRowId, GridRowIndex, GridSink,
     GridSorting, RowJsonRequest, RowKeyBuilder, RowObject, RowSnapshot, TabGridContext, build_column_view,
-    cell_editability, cell_presets, delete_availability, edit_context, edit_row, export_snapshot, present_row_json,
+    cell_editability, cell_presets, data_columns, delete_availability, edit_context, edit_row, export_snapshot,
+    present_row_json,
 };
 use super::tab_load::{ContentLoad, ContentPage, LoadFailure, LoadPresentation, StaleBanner};
 use crate::runtime::{FailedRequests, RequestSequencer};
@@ -1139,8 +1140,12 @@ impl BrowseModel {
                 None,
             );
         }
-        let generation = self.tracker.flash_error_row(key.clone());
+        let flash = self.tracker.flash_error_row(key.clone());
         row.bump_revision();
+        if let Some(replaced) = flash.replaced.and_then(|replaced| self.row_index.get(&replaced)) {
+            replaced.bump_revision();
+        }
+        let generation = flash.generation;
         let tracker = self.tracker.clone();
         let tab = self.this.clone();
         // Matches the length of the flash animation in the stylesheet. The
@@ -1261,10 +1266,7 @@ impl BrowseModel {
         );
         self.current_selection = Some(selection);
         self.current_column_view = Some(column_view.clone());
-        let view_columns = column_view.columns();
-        self.view_columns = (0..view_columns.n_items())
-            .filter_map(|position| view_columns.item(position).and_downcast())
-            .collect();
+        self.view_columns = data_columns(&column_view);
         self.rendered_columns = self.current_columns.clone();
 
         // The selection model is new per rebuild, so the previous
@@ -1380,7 +1382,7 @@ impl BrowseModel {
             )));
         } else {
             self.insert_button
-                .set_tooltip_text(Some(&crate::i18n::gettext("Insert row")));
+                .set_tooltip_text(Some(&crate::i18n::gettext("Insert Row")));
         }
         self.refresh_banner_visibility();
     }
@@ -1984,7 +1986,7 @@ fn show_delete_availability(action: &gio::SimpleAction, button: &gtk::Button, ro
         DeleteAvailability::Unavailable(block) => block.explanation(),
         DeleteAvailability::Available => None,
     };
-    let tooltip = explanation.unwrap_or_else(|| crate::i18n::gettext("Delete selected rows"));
+    let tooltip = explanation.unwrap_or_else(|| crate::i18n::gettext("Delete Selected Rows"));
     button.set_tooltip_text(Some(&tooltip));
 }
 

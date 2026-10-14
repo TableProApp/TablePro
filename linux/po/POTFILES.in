@@ -94,6 +94,7 @@ crates/app/src/test_support/alert_response.rs
 crates/app/src/test_support/fake_clocks.rs
 crates/app/src/test_support/fake_reachability.rs
 crates/app/src/test_support/fake_session.rs
+crates/app/src/test_support/icon_buttons.rs
 crates/app/src/test_support/key_injection_error.rs
 crates/app/src/test_support/key_injector.rs
 crates/app/src/test_support/main_loop.rs
@@ -107,6 +108,7 @@ crates/app/src/test_support/widget_lookup.rs
 crates/app/src/ui/a11y/icon_button.rs
 crates/app/src/ui/a11y/key_shortcuts.rs
 crates/app/src/ui/a11y/mod.rs
+crates/app/src/ui/a11y/tests.rs
 crates/app/src/ui/browse_tab/browse_actions.rs
 crates/app/src/ui/browse_tab/browse_command.rs
 crates/app/src/ui/browse_tab/browse_pager.rs
@@ -266,6 +268,9 @@ crates/app/src/ui/grid/row_json_dialog.rs
 crates/app/src/ui/grid/row_key_builder.rs
 crates/app/src/ui/grid/row_object.rs
 crates/app/src/ui/grid/row_snapshot.rs
+crates/app/src/ui/grid/row_state_column.rs
+crates/app/src/ui/grid/row_state_icon.rs
+crates/app/src/ui/grid/row_watches.rs
 crates/app/src/ui/grid/selection.rs
 crates/app/src/ui/grid/tab_grid_context.rs
 crates/app/src/ui/grid/test_grid.rs

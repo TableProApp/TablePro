@@ -3,6 +3,7 @@ mod alert_response;
 mod fake_clocks;
 mod fake_reachability;
 mod fake_session;
+mod icon_buttons;
 mod key_injection_error;
 mod key_injector;
 mod main_loop;
@@ -14,11 +15,14 @@ mod unlabelled_widget;
 mod wait_timed_out;
 mod widget_lookup;
 
-pub(crate) use accessible_label::assert_labelled;
+pub(crate) use accessible_label::{assert_labelled, test_backend_records_properties};
 pub(crate) use alert_response::{click_response, respond};
 pub(crate) use fake_clocks::FakeClocks;
 pub(crate) use fake_reachability::{Attached, FakeProbe, attach_remote};
 pub(crate) use fake_session::FakeSession;
+pub(crate) use icon_buttons::{
+    ButtonFace, button_face, has_accessible_label, tooltips_with_keys, unlabelled_icon_buttons,
+};
 pub(crate) use key_injection_error::KeyInjectionError;
 pub(crate) use key_injector::KeyInjector;
 pub(crate) use main_loop::{drain_main_context, finish_on_main, wait_until};

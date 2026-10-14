@@ -43,7 +43,7 @@ pub(crate) fn assert_labelled(widget: &impl IsA<gtk4::Widget>) -> Result<(), Unl
     Ok(())
 }
 
-fn test_backend_records_properties() -> bool {
+pub(crate) fn test_backend_records_properties() -> bool {
     let probe = gtk4::Button::new();
     probe.update_property(&[gtk4::accessible::Property::Label("probe")]);
     gtk4::test_accessible_has_property(&probe, AccessibleProperty::Label)

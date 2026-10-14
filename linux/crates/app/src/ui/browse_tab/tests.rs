@@ -1128,10 +1128,9 @@ fn a_page_that_replaces_the_row_being_edited_keeps_the_edit_and_the_focus() {
     wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
     let shown = Shown::new(harness.tab());
     let view = column_view(harness.tab());
-    let name = view
-        .columns()
-        .item(1)
-        .and_downcast::<gtk4::ColumnViewColumn>()
+    let name = crate::ui::grid::data_columns(&view)
+        .into_iter()
+        .nth(1)
         .expect("the name column");
     view.scroll_to(1, Some(&name), gtk4::ListScrollFlags::FOCUS, None);
     view.grab_focus();
@@ -1409,6 +1408,46 @@ fn error_flash_sets_and_clears_on_the_failed_row() {
         "tp-row-leftmost-error-flash"
     ));
     wait_until(WAIT, || !has_class(&cell, "tp-row-leftmost-error-flash")).expect("the flash never ended");
+}
+
+/// The first flash's timer cannot clear a flash that is no longer its
+/// own, so the second one has to.
+#[gtk4::test]
+fn a_second_failed_row_takes_the_mark_off_the_first() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let _shown = Shown::new(harness.tab());
+    let first = grid_cell_of(harness.tab(), 1, 0);
+    let row = first.parent().and_then(|cell| cell.parent()).expect("the row widget");
+    let icon = crate::test_support::first_descendant_of_type::<gtk4::Image>(&row).expect("the row's state icon");
+    let fail = |id| {
+        harness
+            .tab()
+            .send(BrowseTabInput::FlashErrorRow(StatementSource::Update {
+                row_key: key(id),
+            }));
+    };
+
+    fail(1);
+    assert_eq!(icon.icon_name().as_deref(), Some("dialog-error-symbolic"));
+    fail(0);
+
+    assert!(
+        first.row().is_some_and(|row| row.key() == Some(&key(1))),
+        "the cell moved to another row"
+    );
+    assert!(has_class(
+        &grid_cell_of(harness.tab(), 0, 0),
+        "tp-row-leftmost-error-flash"
+    ));
+    assert!(!has_class(&first, "tp-row-leftmost-error-flash"));
+    assert_eq!(icon.icon_name(), None, "the first row still reads as not saved");
+    assert!(!gtk4::test_accessible_has_property(
+        &row,
+        gtk4::AccessibleProperty::Description
+    ));
 }
 
 #[gtk4::test]
@@ -2759,4 +2798,28 @@ fn insert_row_opens_the_new_rows_first_editable_cell() {
     assert_eq!(cell.column(), 0, "a new row sets its own key first");
     let focus = gtk4::prelude::GtkWindowExt::focus(&shown.0).expect("a focused widget");
     assert_eq!(GridCell::from_focus(&focus).as_ref(), Some(&cell));
+}
+
+#[gtk4::test]
+fn icon_buttons_are_labelled_without_accelerator_hints() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let harness = Harness::open(paging(full_page(0), rows_from(100, &["Linus"])), []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    let imp = harness.tab().imp();
+
+    assert_eq!(
+        crate::test_support::unlabelled_icon_buttons(harness.tab()),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        crate::test_support::tooltips_with_keys(harness.tab()),
+        Vec::<String>::new()
+    );
+    for button in [imp.insert_button.get(), imp.next_button.get(), imp.save_button.get()] {
+        assert!(
+            gtk4::test_accessible_has_property(&button, gtk4::AccessibleProperty::KeyShortcuts),
+            "{:?} does not announce its keys",
+            button.tooltip_text()
+        );
+    }
 }

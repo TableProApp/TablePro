@@ -11,6 +11,7 @@ use tablepro_core::{ColumnInfo, Value};
 
 use super::{
     GridCell, GridContent, GridMsg, GridSink, GridSorting, RowObject, TabGridContext, begin_edit, build_column_view,
+    data_columns,
 };
 use crate::services::change_tracker::RowKey;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
@@ -164,12 +165,10 @@ impl Grid {
         drain_main_context();
     }
 
+    /// The view's `index`th column of the result, past the state column.
     pub(super) fn column(&self, index: u32) -> gtk::ColumnViewColumn {
-        self.view
-            .columns()
-            .item(index)
-            .and_downcast::<gtk::ColumnViewColumn>()
-            .expect("a column")
+        let index = usize::try_from(index).expect("a column index");
+        data_columns(&self.view).into_iter().nth(index).expect("a column")
     }
 
     pub(super) fn focused_cell(&self) -> Option<GridCell> {

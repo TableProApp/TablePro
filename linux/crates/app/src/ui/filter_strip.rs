@@ -714,13 +714,12 @@ fn build_rule_row(
         }
     }
 
-    // Trash button — removes this rule.
     let remove = gtk::Button::builder()
         .icon_name(crate::ui::icons::USER_TRASH)
-        .tooltip_text(crate::i18n::gettext("Remove rule"))
         .valign(gtk::Align::Center)
         .build();
     remove.add_css_class("flat");
+    crate::ui::a11y::describe_icon_button(&remove, &crate::i18n::gettext("Remove Rule"), None);
     let state_for_remove = state.clone();
     let rebuild_for_remove = rebuild.clone();
     remove.connect_clicked(move |_| {
@@ -749,7 +748,9 @@ fn input_purpose_for(column: &ColumnInfo) -> gtk::InputPurpose {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{drain_main_context, first_descendant_of_type};
+    use crate::test_support::{
+        drain_main_context, first_descendant_of_type, tooltips_with_keys, unlabelled_icon_buttons,
+    };
 
     fn rule(column: &str) -> FilterRule {
         FilterRule {
@@ -854,6 +855,27 @@ mod tests {
 
         let alive = freed.iter().filter(|entry| entry.upgrade().is_some()).count();
         assert_eq!(alive, 0, "the From and To entries outlived the strip");
+    }
+
+    #[gtk4::test]
+    fn icon_buttons_are_labelled_without_accelerator_hints() {
+        let strip = strip_with(vec![rule("a")]);
+        let remove = crate::test_support::descendants(&strip.widget)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+            .find(|button| {
+                button
+                    .icon_name()
+                    .is_some_and(|icon| icon.as_str() == crate::ui::icons::USER_TRASH)
+            })
+            .expect("the rule's Remove Rule button");
+
+        assert!(gtk::test_accessible_has_property(
+            &remove,
+            gtk::AccessibleProperty::Label
+        ));
+        assert_eq!(unlabelled_icon_buttons(&strip.widget), Vec::<String>::new());
+        assert_eq!(tooltips_with_keys(&strip.widget), Vec::<String>::new());
     }
 
     #[gtk4::test]

@@ -231,6 +231,7 @@ Helpers live in `crates/app/src/test_support`, compiled only for tests:
   - an `adw::EntryRow` or `adw::PasswordEntryRow` must keep its inner text field labelled by that title;
   - an `adw::ActionRow` with an activatable widget must keep that widget labelled;
   - any other widget, such as an icon-only button or a bare entry, needs an accessible label or a labelled-by relation.
+- `unlabelled_icon_buttons(root)` lists the icon-only buttons under `root` that a screen reader reaches and cannot name, and `tooltips_with_keys(root)` the tooltips that spell out a key, which belongs on the accessible node. `ui::a11y::tests` walks every template in the GResource: an icon-only button the template does not label needs an id, and a label once its class is built, which is where `describe_icon_button` gives it one.
 
 CI sets `GTK_A11Y=test` so results never depend on an AT-SPI bus. With `GTK_A11Y=none`, GTK records no accessible properties and `assert_labelled` returns `TestBackendMissing` instead of a wrong verdict.
 

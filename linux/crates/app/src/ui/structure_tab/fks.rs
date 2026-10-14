@@ -46,10 +46,10 @@ pub(super) fn build_fk_row(
 
     let remove_button = gtk::Button::builder()
         .icon_name(crate::ui::icons::USER_TRASH)
-        .tooltip_text(crate::i18n::gettext("Remove foreign key"))
         .valign(gtk::Align::Center)
         .build();
     remove_button.add_css_class("flat");
+    crate::ui::a11y::describe_icon_button(&remove_button, &crate::i18n::gettext("Remove Foreign Key"), None);
     remove_button.set_widget_name("fk-remove");
     gate(&remove_button, removable);
     let key_for_remove = object.downgrade();

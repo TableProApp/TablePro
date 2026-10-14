@@ -36,6 +36,9 @@ mod row_json_dialog;
 mod row_key_builder;
 mod row_object;
 mod row_snapshot;
+mod row_state_column;
+mod row_state_icon;
+mod row_watches;
 mod selection;
 mod tab_grid_context;
 #[cfg(test)]
@@ -64,5 +67,6 @@ pub(crate) use self::row_json_dialog::{RowJsonRequest, present_row_json};
 pub(crate) use self::row_key_builder::RowKeyBuilder;
 pub(crate) use self::row_object::RowObject;
 pub(crate) use self::row_snapshot::RowSnapshot;
+pub(crate) use self::row_state_column::data_columns;
 pub(crate) use self::selection::{export_snapshot, selected_positions};
 pub(crate) use self::tab_grid_context::TabGridContext;

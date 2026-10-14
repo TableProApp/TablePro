@@ -2,6 +2,8 @@
 
 mod icon_button;
 mod key_shortcuts;
+#[cfg(test)]
+mod tests;
 
 pub(crate) use icon_button::{announce_key_shortcuts, describe_icon_button};
 pub(crate) use key_shortcuts::aria_key_shortcuts;

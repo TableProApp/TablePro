@@ -148,10 +148,9 @@ fn refresh_restores_multi_row_selection_and_focus_by_key() {
     wait_until(WAIT, || harness.shown().len() == 5).expect("the first page");
     let shown = Shown::new(harness.tab());
     let view = column_view(harness.tab());
-    let name = view
-        .columns()
-        .item(1)
-        .and_downcast::<gtk4::ColumnViewColumn>()
+    let name = crate::ui::grid::data_columns(&view)
+        .into_iter()
+        .nth(1)
         .expect("the name column");
     view.scroll_to(3, Some(&name), gtk4::ListScrollFlags::FOCUS, None);
     view.grab_focus();

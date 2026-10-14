@@ -386,6 +386,14 @@ fn the_icon_buttons_have_accessible_names() {
         harness.editor.imp().source_view.upcast_ref::<gtk4::Widget>(),
         gtk4::AccessibleProperty::Label
     ));
+    assert_eq!(
+        crate::test_support::unlabelled_icon_buttons(&harness.editor),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        crate::test_support::tooltips_with_keys(&harness.editor),
+        Vec::<String>::new()
+    );
 }
 
 #[gtk4::test]

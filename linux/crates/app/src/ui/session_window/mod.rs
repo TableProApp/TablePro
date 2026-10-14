@@ -45,9 +45,9 @@ use tablepro_session::{
 };
 use tablepro_storage::{CredentialDemand, SavedConnection};
 
-use self::connect_failed_page::ConnectFailedPage;
-use self::connecting_page::ConnectingPage;
-use self::picker_page::PickerPage;
+pub(super) use self::connect_failed_page::ConnectFailedPage;
+pub(super) use self::connecting_page::ConnectingPage;
+pub(super) use self::picker_page::PickerPage;
 use self::resolve_file_identity::{FileResolveError, FileTarget, ResolvedFile, resolve_file_blocking};
 use self::session_page::SessionPage;
 use self::session_window_command::{AttemptError, ConnectFailure, Connected, SessionWindowCommand};

@@ -47,7 +47,12 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for HistoryRow {}
+    impl ObjectImpl for HistoryRow {
+        fn constructed(&self) {
+            self.parent_constructed();
+            self.obj().show_pinned(false);
+        }
+    }
     impl WidgetImpl for HistoryRow {}
     impl BoxImpl for HistoryRow {}
 }
@@ -80,20 +85,25 @@ impl HistoryRow {
         imp.status_icon
             .update_property(&[gtk::accessible::Property::Label(&outcome_label(entry))]);
 
+        self.show_pinned(entry.pinned);
         let id = entry.id.to_variant();
-        let pin_label = if entry.pinned { gettext("Unpin") } else { gettext("Pin") };
-        describe_icon_button(&imp.pin_button.get(), &pin_label, None);
-        if entry.pinned {
-            imp.pin_button.add_css_class("accent");
-        } else {
-            imp.pin_button.remove_css_class("accent");
-        }
         // The target goes first: an action that takes an id, named on a
         // button without one, warns that it cannot be activated.
         imp.pin_button.set_action_target_value(Some(&id));
         imp.pin_button.set_action_name(Some("history.pin"));
         imp.delete_button.set_action_target_value(Some(&id));
         imp.delete_button.set_action_name(Some("history.delete"));
+    }
+
+    fn show_pinned(&self, pinned: bool) {
+        let button = self.imp().pin_button.get();
+        let label = if pinned { gettext("Unpin") } else { gettext("Pin") };
+        describe_icon_button(&button, &label, None);
+        if pinned {
+            button.add_css_class("accent");
+        } else {
+            button.remove_css_class("accent");
+        }
     }
 
     pub(super) fn unbind(&self) {
