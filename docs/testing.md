@@ -132,7 +132,7 @@ The script builds `tablepro-app`, always starts a private runtime directory, iso
 
 When `TABLEPRO_GTK_ARTIFACT_DIR` is set, every scenario writes a JSON result and application stderr, including successful scenarios. Failures additionally retain the accessibility tree and a screenshot when available. Successful runs therefore have uploadable evidence; a missing artifact still fails CI. Python regressions exercise both result paths without needing a display.
 
-The suite verifies:
+Representative end-to-end scenarios in the suite are listed below; the current registry, including scenarios from the GTK workbook, parameter, XML and UX modules, is in [`gtk_safety.py`](../apps/linux/app/tests/gtk_safety.py).
 
 1. Dismissing a production approval leaves SQLite unchanged.
 2. Approving once performs one mutation and prompts again for the next operation.
