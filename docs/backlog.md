@@ -77,7 +77,7 @@ The linked issue records each theme's scope or acceptance decision. Project #3 o
 | [#573](https://github.com/cozyGarage/BookiE/issues/573) | CI feedback time and reliability |
 | [#574](https://github.com/cozyGarage/BookiE/issues/574) | PKG-1 Arch / Omarchy / Hyprland Wayland acceptance |
 | [#575](https://github.com/cozyGarage/BookiE/issues/575) | TEST-6 manual verification checklist triage |
-| [#579](https://github.com/cozyGarage/BookiE/issues/579) | MySQL/MariaDB Unix socket endpoint (Omarchy-relevant); driver and form behavior are implemented, and installed GTK coverage is in #680; keep open until the Forgejo installed GTK gate passes |
+| [#579](https://github.com/cozyGarage/BookiE/issues/579) | MySQL/MariaDB Unix socket endpoint (Omarchy-relevant); driver and installed-form coverage are implemented in #680; keep open until the Forgejo GTK gate and native local-service connect/save/reopen/bundle check pass |
 | [#580](https://github.com/cozyGarage/BookiE/issues/580) | Filter Schemas and PostgreSQL many-schema catalog performance |
 | [#609](https://github.com/cozyGarage/BookiE/issues/609) | Local filtering and sorting for loaded SQL and pinned results (UI-38) |
 | [#634](https://github.com/cozyGarage/BookiE/issues/634) | CSV import always skips auto-increment columns |
