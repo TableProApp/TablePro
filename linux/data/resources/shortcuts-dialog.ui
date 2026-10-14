@@ -70,41 +70,65 @@
     </child>
     <child>
       <object class="AdwShortcutsSection">
-        <property name="title" translatable="yes">Browse table</property>
+        <property name="title" translatable="yes">Data grid</property>
         <child>
           <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Edit focused cell</property>
+            <property name="title" translatable="yes">Edit cell, or toggle a check box</property>
             <property name="accelerator">F2 Return</property>
           </object>
         </child>
         <child>
           <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Cancel edit</property>
+            <property name="title" translatable="yes">Toggle a check box</property>
+            <property name="accelerator">space</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Finish editing</property>
+            <property name="accelerator">Return</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Cancel editing</property>
             <property name="accelerator">Escape</property>
           </object>
         </child>
         <child>
           <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Move to next cell, committing an edit</property>
+            <property name="title" translatable="yes">Finish editing and edit the next cell</property>
             <property name="accelerator">Tab</property>
           </object>
         </child>
         <child>
           <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Move to previous cell, committing an edit</property>
+            <property name="title" translatable="yes">Finish editing and edit the previous cell</property>
             <property name="accelerator">&lt;Shift&gt;Tab</property>
           </object>
         </child>
         <child>
           <object class="AdwShortcutsItem">
             <property name="title" translatable="yes">Move between cells</property>
-            <property name="accelerator">Left Right</property>
+            <property name="accelerator">Up Down Left Right</property>
           </object>
         </child>
         <child>
           <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Toggle boolean cell</property>
-            <property name="accelerator">space</property>
+            <property name="title" translatable="yes">Show cell menu</property>
+            <property name="accelerator">Menu &lt;Shift&gt;F10</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Set cell to NULL</property>
+            <property name="accelerator">&lt;Primary&gt;BackSpace</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Mark rows for deletion</property>
+            <property name="accelerator">Delete</property>
           </object>
         </child>
         <child>
@@ -113,18 +137,11 @@
             <property name="accelerator">&lt;Primary&gt;n</property>
           </object>
         </child>
-        <child>
-          <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Delete selected row</property>
-            <property name="accelerator">Delete</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem">
-            <property name="title" translatable="yes">Set focused cell to NULL</property>
-            <property name="accelerator">&lt;Primary&gt;BackSpace</property>
-          </object>
-        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwShortcutsSection">
+        <property name="title" translatable="yes">Browse table</property>
         <child>
           <object class="AdwShortcutsItem">
             <property name="title" translatable="yes">Filter rows</property>

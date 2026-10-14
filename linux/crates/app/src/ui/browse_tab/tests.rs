@@ -2164,3 +2164,26 @@ fn a_second_delete_replaces_the_waiting_confirmation() {
     answer_delete(&dialog);
     assert_eq!(harness.tracker.pending_count(), DOZEN.len());
 }
+
+#[gtk4::test]
+fn insert_row_opens_the_new_rows_first_editable_cell() {
+    let (harness, shown) = one_cell(named_col("name", "text", true), Value::Text("Ada".into()));
+    grid_cell_of(harness.tab(), 0, 1);
+
+    harness.tab().send(BrowseTabInput::InsertRow);
+
+    let mut editing = None;
+    wait_until(WAIT, || {
+        editing = crate::test_support::descendants(harness.tab())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<GridCell>().ok())
+            .find(|cell| cell.inline_text().is_some());
+        editing.is_some()
+    })
+    .expect("the new row opens for editing");
+    let cell = editing.expect("an editing cell");
+    assert!(cell.row().is_some_and(|row| row.draft_id().is_some()));
+    assert_eq!(cell.column(), 0, "a new row sets its own key first");
+    let focus = gtk4::prelude::GtkWindowExt::focus(&shown.0).expect("a focused widget");
+    assert_eq!(GridCell::from_focus(&focus).as_ref(), Some(&cell));
+}

@@ -4,7 +4,9 @@ use std::rc::Rc;
 use gtk4::prelude::*;
 use gtk4::{self as gtk, glib};
 
+use super::cell_focus::{edit_next, return_focus};
 use super::edit_commit::{commit_edit, send_commit};
+use super::edit_navigation::EditDirection;
 use super::{EditSnapshot, GridCell};
 
 /// How the one-line editor treats what is typed into it.
@@ -67,7 +69,7 @@ impl InlineEditor {
 
 /// End the cell's one-line edit. The field leaves before the commit is
 /// sent, so the redraw the commit causes meets no open editor.
-pub(super) fn finish_inline(cell: &GridCell, commit: bool) {
+fn finish_inline(cell: &GridCell, commit: bool) {
     let Some(editor) = cell.take_inline() else {
         return;
     };
@@ -92,31 +94,45 @@ fn connect_commit(cell: &GridCell, text: &gtk::Text) {
     text.connect_activate(move |_| {
         if let Some(cell) = weak.upgrade() {
             finish_inline(&cell, true);
+            return_focus(&cell);
         }
     });
-
-    // Capture phase, so Escape cancels before the GtkText can take it to
-    // clear its own buffer.
-    let keys = gtk::EventControllerKey::new();
-    keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let weak = cell.downgrade();
-    keys.connect_key_pressed(move |_, keyval, _, _| {
-        if keyval != gtk::gdk::Key::Escape {
-            return glib::Propagation::Proceed;
-        }
-        let Some(cell) = weak.upgrade() else {
-            return glib::Propagation::Proceed;
-        };
-        finish_inline(&cell, false);
-        glib::Propagation::Stop
-    });
-    text.add_controller(keys);
 
     // Focus moving to an IME popover ends the edit mid-composition, and
     // committing then would send the text from before it, so the commit
     // waits for the preedit to clear.
     let composing = Rc::new(Cell::new(false));
     let commit_when_composed = Rc::new(Cell::new(false));
+
+    // Capture phase, so Escape cancels before the GtkText can take it to
+    // clear its own buffer, and Tab commits before the window moves the
+    // focus. While a preedit is open both keys are the input method's.
+    let keys = gtk::EventControllerKey::new();
+    keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let weak = cell.downgrade();
+    let keys_composing = composing.clone();
+    keys.connect_key_pressed(move |_, keyval, _, modifiers| {
+        let Some(cell) = weak.upgrade() else {
+            return glib::Propagation::Proceed;
+        };
+        if keys_composing.get() {
+            return glib::Propagation::Proceed;
+        }
+        match edit_key(keyval, modifiers) {
+            Some(EditKey::Cancel) => {
+                finish_inline(&cell, false);
+                return_focus(&cell);
+            }
+            Some(EditKey::Move(direction)) => {
+                finish_inline(&cell, true);
+                edit_next(&cell, direction);
+            }
+            None => return glib::Propagation::Proceed,
+        }
+        glib::Propagation::Stop
+    });
+    text.add_controller(keys);
+
     let weak = cell.downgrade();
     let preedit_composing = composing.clone();
     let preedit_commit = commit_when_composed.clone();
@@ -143,4 +159,53 @@ fn connect_commit(cell: &GridCell, text: &gtk::Text) {
         finish_inline(&cell, true);
     });
     text.add_controller(focus);
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EditKey {
+    Cancel,
+    /// Commit, then edit the next cell that way.
+    Move(EditDirection),
+}
+
+/// Ctrl+Tab and Alt+Tab belong to the window's tabs and switcher.
+fn edit_key(keyval: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> Option<EditKey> {
+    use gtk::gdk::{Key, ModifierType};
+    if modifiers.intersects(ModifierType::CONTROL_MASK | ModifierType::ALT_MASK) {
+        return None;
+    }
+    match keyval {
+        Key::Escape => Some(EditKey::Cancel),
+        Key::ISO_Left_Tab => Some(EditKey::Move(EditDirection::Backward)),
+        Key::Tab | Key::KP_Tab if modifiers.contains(ModifierType::SHIFT_MASK) => {
+            Some(EditKey::Move(EditDirection::Backward))
+        }
+        Key::Tab | Key::KP_Tab => Some(EditKey::Move(EditDirection::Forward)),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gtk4::gdk::{Key, ModifierType};
+
+    use super::{EditKey, edit_key};
+    use crate::ui::grid::edit_navigation::EditDirection;
+
+    #[test]
+    fn tab_moves_escape_cancels_and_window_keys_pass() {
+        let none = ModifierType::empty();
+        let shift = ModifierType::SHIFT_MASK;
+
+        assert_eq!(edit_key(Key::Escape, none), Some(EditKey::Cancel));
+        assert_eq!(edit_key(Key::Tab, none), Some(EditKey::Move(EditDirection::Forward)));
+        assert_eq!(
+            edit_key(Key::ISO_Left_Tab, shift),
+            Some(EditKey::Move(EditDirection::Backward))
+        );
+        assert_eq!(edit_key(Key::Tab, shift), Some(EditKey::Move(EditDirection::Backward)));
+        assert_eq!(edit_key(Key::Tab, ModifierType::CONTROL_MASK), None);
+        assert_eq!(edit_key(Key::Tab, ModifierType::ALT_MASK), None);
+        assert_eq!(edit_key(Key::Return, none), None, "Return is the field's activate");
+    }
 }

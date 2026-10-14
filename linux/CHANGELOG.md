@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Locate… for a saved SQLite connection whose file was moved or renamed.
 - Open SQLite files from the file manager's Open With, or with `tablepro file.sqlite3`.
 - Review before a structure save that drops data, rebuilds the table or can stop halfway, with the SQL it runs.
+- Arrow keys move between grid cells; F2 or Return edits one, Tab carries an edit to the next cell, and Shift+F10 opens the cell menu.
+- Screen readers say when a grid cell is modified and when a row is new or marked for deletion.
 
 ### Changed
 

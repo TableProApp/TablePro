@@ -6,8 +6,10 @@ use tablepro_core::edit::CellInput;
 use tablepro_core::{ColumnInfo, Value};
 
 use super::display_text::{auto_filled_sentinel, editable_null_sentinel, value_to_display_text};
+use super::tab_grid_context::BoundCell;
 use super::toggle_cell::{ToggleCell, toggle_state};
 use super::{CellLock, GridCell, GridRowId, RowObject, TabGridContext, cell_editability};
+use crate::services::change_tracker::CellState;
 
 const PENDING_CSS_CLASSES: &[&str] = &[
     "tp-cell-modified",
@@ -40,8 +42,12 @@ impl ColumnDrawing {
         }
     }
 
-    pub fn draw(&self, cell: &GridCell, row: &RowObject) {
-        let (input, pending_classes) = self.tab_ctx.bind_state(row, cell.column());
+    pub fn draw(&self, cell: &GridCell, row: &RowObject) -> CellState {
+        let BoundCell {
+            input,
+            classes: pending_classes,
+            state,
+        } = self.tab_ctx.bind_state(row, cell.column());
         // An edit opened on a value the row no longer has would, once it
         // ended, send that value back. An edit on the same value keeps
         // what was typed.
@@ -49,7 +55,7 @@ impl ColumnDrawing {
             cell.cancel_edit();
         }
         let Some(content) = cell.content() else {
-            return;
+            return state;
         };
         apply_pending_classes(content, &pending_classes);
         let pending_delete = pending_classes.contains(&"tp-row-pending-delete");
@@ -65,6 +71,7 @@ impl ColumnDrawing {
         } else if let Some(display) = content.downcast_ref::<gtk::Inscription>() {
             self.draw_text(display, &input, cell.lock().is_none(), pending_delete);
         }
+        state
     }
 
     /// An editable cell shows NULL as `<NULL>`, so it reads differently

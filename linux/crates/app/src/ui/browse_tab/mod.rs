@@ -40,8 +40,8 @@ use self::confirming_delete::ConfirmingDelete;
 pub(crate) use self::page_reply::PageReply;
 use self::row_deletion::{RowDeletion, plan_row_deletion};
 use super::grid::{
-    CellPreset, ColumnWidthBinding, DeleteAvailability, GridCell, GridMsg, GridRowId, GridRowIndex, GridSink,
-    RowObject, TabGridContext, build_column_view, cell_editability, cell_presets, delete_availability, edit_context,
+    CellPreset, ColumnWidthBinding, DeleteAvailability, GridMsg, GridRowId, GridRowIndex, GridSink, RowObject,
+    TabGridContext, build_column_view, cell_editability, cell_presets, delete_availability, edit_context, edit_row,
 };
 use crate::runtime::{FailedRequests, RequestSequencer};
 use crate::services::change_tracker::{RowKey, StatementSource, new_draft_cell, pk_identity};
@@ -482,28 +482,6 @@ impl BrowseTab {
         ));
         self.add_controller(shortcuts);
         action
-    }
-
-    /// Set the focused cell to NULL, for Ctrl+Backspace. A locked cell
-    /// lets the key go on.
-    fn set_focused_cell_null(&self) -> glib::Propagation {
-        // `RootExt::focus` would return the window itself.
-        let focus = self
-            .root()
-            .and_downcast::<gtk::Window>()
-            .and_then(|window| gtk::prelude::GtkWindowExt::focus(&window));
-        let Some(cell) = focus.as_ref().and_then(GridCell::from_focus) else {
-            return glib::Propagation::Proceed;
-        };
-        let (None, Some(row)) = (cell.lock(), cell.row()) else {
-            return glib::Propagation::Proceed;
-        };
-        self.send(BrowseTabInput::GridSetCellValue {
-            row,
-            column: cell.column(),
-            preset: CellPreset::Null,
-        });
-        glib::Propagation::Stop
     }
 }
 
@@ -1063,42 +1041,20 @@ impl BrowseModel {
         *self.pending_focus_restore.borrow_mut() = row.id().tracker_key();
     }
 
-    /// Scroll + focus + select the freshly-prepended draft row, then
-    /// open its first editable cell for input. Queued on idle so the
-    /// inner-stack flip (empty → grid) has time to allocate the
-    /// ScrolledWindow's adjustments before `cv.scroll_to(...)` runs:
-    /// in the same tick GTK aborts with
+    /// Edit the first editable cell of the new draft, which is always
+    /// the top row. Queued on idle so the inner-stack flip (empty to
+    /// grid) has allocated the ScrolledWindow's adjustments before the
+    /// grid scrolls: in the same tick GTK aborts with
     /// `gtk_list_base_update_adjustments: bounds.y == 0`.
     fn focus_inserted_draft(&self) {
         let Some(cv) = self.current_column_view.clone() else {
             return;
         };
-        let selection = self.current_selection.clone();
         glib::idle_add_local_once(move || {
-            // The column view may be detached by now (F5 between the
-            // insert and this idle). The row was inserted; only the
-            // auto-edit is missed.
-            if cv.root().is_none() {
-                return;
-            }
-            // New drafts always land at position 0 (prepended).
-            if let Some(sel) = selection.as_ref() {
-                sel.select_item(0, true);
-            }
-            cv.scroll_to(
-                0,
-                None,
-                gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
-                None,
-            );
-            let Some(window) = cv.root().and_then(|r| r.dynamic_cast::<gtk::Window>().ok()) else {
-                return;
-            };
-            let Some(focused) = gtk::prelude::GtkWindowExt::focus(&window) else {
-                return;
-            };
-            if let Some(cell) = GridCell::from_focus(&focused) {
-                super::grid::begin_edit(&cell);
+            // F5 between the insert and this idle detaches the column
+            // view. The row was inserted; only the edit is missed.
+            if cv.root().is_some() {
+                edit_row(&cv, 0);
             }
         });
     }
