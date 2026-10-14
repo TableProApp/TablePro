@@ -10,19 +10,34 @@ previous_mount=()
 if [ -n "${PREVIOUS_DEB:-}" ]; then
   previous_mount=(-v "$(dirname "$(realpath "$PREVIOUS_DEB")"):/previous:ro" -e "PREVIOUS_DEB_NAME=$(basename "$PREVIOUS_DEB")")
 fi
+prebuilt_mount=()
+if [ -n "${PREBUILT_DEB:-}" ]; then
+  test -s "$PREBUILT_DEB"
+  prebuilt_mount=(-v "$(dirname "$(realpath "$PREBUILT_DEB")"):/prebuilt:ro" -e "PREBUILT_DEB_NAME=$(basename "$PREBUILT_DEB")")
+fi
 
 for base in "${images[@]}"; do
   tag="bookie-floor-${base//[:\/]/-}"
   echo "== $base"
-  docker build -q -t "$tag" --build-arg "BASE=$base" scripts/distro-floor >/dev/null
-  docker run --rm "${previous_mount[@]}" -v "$PWD:/src:ro" -v "${tag}-target:/target" -v "${tag}-cargo:/opt/cargo/registry" -v "${tag}-git:/opt/cargo/git" -e CARGO_TARGET_DIR=/target "$tag" bash -ceu '
+  dockerfile=scripts/distro-floor/Dockerfile
+  if [ -n "${PREBUILT_DEB:-}" ]; then
+    dockerfile=scripts/distro-floor/Dockerfile.runtime
+  fi
+  docker build -q -t "$tag" --build-arg "BASE=$base" -f "$dockerfile" scripts/distro-floor >/dev/null
+  docker run --rm "${previous_mount[@]}" "${prebuilt_mount[@]}" -v "$PWD:/src:ro" -v "${tag}-target:/target" -v "${tag}-cargo:/opt/cargo/registry" -v "${tag}-git:/opt/cargo/git" -e CARGO_TARGET_DIR=/target "$tag" bash -ceu '
     apt-get update -qq
     apt-get install -y -qq --no-install-recommends desktop-file-utils >/dev/null
-    rm -rf /work && mkdir /work && cp -a /src/. /work/
-    cd /work
-    DEB_OUT=/work/out bash scripts/build-deb.sh >/tmp/build.log 2>&1 || { tail -40 /tmp/build.log; exit 1; }
-    tail -3 /tmp/build.log
-    deb=$(ls /work/out/tablepro_*.deb)
+    if [ -n "${PREBUILT_DEB_NAME:-}" ]; then
+      mkdir -p /work/out
+      cp "/prebuilt/$PREBUILT_DEB_NAME" /work/out/
+      deb="/work/out/$PREBUILT_DEB_NAME"
+    else
+      rm -rf /work && mkdir /work && cp -a /src/. /work/
+      cd /work
+      DEB_OUT=/work/out bash scripts/build-deb.sh >/tmp/build.log 2>&1 || { tail -40 /tmp/build.log; exit 1; }
+      tail -3 /tmp/build.log
+      deb=$(ls /work/out/tablepro_*.deb)
+    fi
     dpkg-deb --info "$deb" | sed -n "1,12p"
     mkdir -p ~/.config/tablepro ~/.local/share/tablepro
     echo keep > ~/.config/tablepro/connections.json

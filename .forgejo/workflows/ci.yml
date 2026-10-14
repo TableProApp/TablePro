@@ -106,9 +106,44 @@ jobs:
         run: |
           cd src && bash scripts/test-gtk-widgets.sh
 
-  distro-floor:
+  distro-floor-build:
     runs-on: any-host
     needs: [guards, clippy, unit, sandbox, widgets]
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 60
+    steps:
+      - name: Check out
+        env:
+          TOKEN: ${{ github.token }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          rm -rf src
+          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          git -C src checkout --quiet "${{ github.sha }}"
+      - name: Docker Hub login
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: bash src/scripts/docker-hub-login.sh
+      - name: Build package on Ubuntu 24.04
+        run: |
+          mkdir -p src/floor-artifact
+          docker build -q -t bookie-floor-ubuntu-24.04 --build-arg BASE=ubuntu:24.04 src/scripts/distro-floor >/dev/null
+          docker run --rm -v "$PWD/src:/src:ro" -v "$PWD/src/floor-artifact:/out" -v bookie-floor-build-target:/target bookie-floor-ubuntu-24.04 bash -ceu '
+            apt-get update -qq
+            apt-get install -y -qq --no-install-recommends desktop-file-utils >/dev/null
+            CARGO_TARGET_DIR=/target DEB_OUT=/out bash /src/scripts/build-deb.sh >/tmp/build.log 2>&1 || { tail -40 /tmp/build.log; exit 1; }
+            tail -3 /tmp/build.log
+          '
+      - name: Upload distro-floor package
+        uses: https://data.forgejo.org/actions/upload-artifact@v3
+        with:
+          name: distro-floor-package
+          path: src/floor-artifact/*.deb
+
+  distro-floor:
+    runs-on: any-host
+    needs: [guards, clippy, unit, sandbox, widgets, distro-floor-build]
     if: github.event_name != 'pull_request'
     timeout-minutes: 60
     env:
@@ -137,9 +172,14 @@ jobs:
         run: bash src/scripts/docker-hub-login.sh
       - name: Select isolated MCP HTTP port
         run: cd src && python3 scripts/ci-mcp-port.py "${{ matrix.mcp_port_slot }}"
+      - name: Download distro-floor package
+        uses: https://data.forgejo.org/actions/download-artifact@v3
+        with:
+          name: distro-floor-package
+          path: src/floor-artifact
       - name: Distro floor
         run: |
-          cd src && DISTRO_FLOOR_INSTALLED=1 bash scripts/test-distro-floor.sh ${{ matrix.base }}
+          cd src && package=$(find "$PWD/floor-artifact" -maxdepth 1 -name '*.deb' -print -quit) && DISTRO_FLOOR_PACKAGE="$package" bash scripts/test-distro-floor.sh ${{ matrix.base }}
       - name: Debian package build, install, upgrade from the released package and purge
         run: |
           released=/var/cache/ci/releases/tablepro_0.1.5-1_amd64.deb
@@ -148,7 +188,7 @@ jobs:
             curl -fsSL -o "$released.part" https://github.com/cozyGarage/BookiE/releases/download/linux-v0.1.5/tablepro_0.1.5-1_amd64.deb
             mv "$released.part" "$released"
           fi
-          cd src && PREVIOUS_DEB="$released" bash scripts/test-deb-package.sh ${{ matrix.base }}
+          cd src && package=$(find "$PWD/floor-artifact" -maxdepth 1 -name '*.deb' -print -quit) && PREVIOUS_DEB="$released" PREBUILT_DEB="$package" bash scripts/test-deb-package.sh ${{ matrix.base }}
   driver:
     runs-on: any-host
     needs: [guards, clippy, unit, sandbox, widgets]
