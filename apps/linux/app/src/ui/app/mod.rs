@@ -399,7 +399,7 @@ impl SimpleComponent for App {
 
                             #[name = "schema_filter_button"]
                             pack_end = &gtk::MenuButton {
-                                set_icon_name: "view-filter-symbolic",
+                                set_icon_name: crate::ui::icons::SCHEMA_FILTER_ICON_NAME,
                                 set_tooltip_text: Some(crate::tr!("Filter schemas").as_str()),
                                 set_visible: false,
 

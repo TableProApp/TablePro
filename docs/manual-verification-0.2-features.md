@@ -180,7 +180,7 @@ Build and install with the helper (`cargo build -p tablepro-ssh --bin tablepro-a
 
 ## Explain tree
 
-- [ ] On PostgreSQL, Explain a join: the dialog opens on a Tree tab with nested steps, a cost bar per step and the filter or condition lines under their step; the Text tab shows the raw plan. **2026-10-12 Hyprland dark:** tree, cost bars and condition lines passed; the Text tab not checked. The Tree and Text switcher shows missing icons, [#656](https://github.com/cozyGarage/BookiE/issues/656).
+- [ ] On PostgreSQL, Explain a join: the dialog opens on a Tree tab with nested steps, a cost bar per step and the filter or condition lines under their step; the Text tab shows the raw plan. **2026-10-12 Hyprland dark:** tree, cost bars and condition lines passed; the Text tab not checked. The Tree and Text switcher showed missing icons, [#656](https://github.com/cozyGarage/BookiE/issues/656); icon names now use icons present in Adwaita and Yaru, awaiting a Hyprland retest.
 - [ ] Press Escape while the Explain plan dialog is open: the dialog closes. The installed GTK scenario `explain_plan_window_closes_on_escape` covers this behavior ([#781](https://github.com/cozyGarage/BookiE/pull/781)); installed Wayland retest pending.
 - [ ] On SQLite, Explain a query that scans and searches: steps nest by their parent.
 - [ ] On MySQL, ClickHouse or DuckDB the dialog shows the text plan with no Tree tab.
