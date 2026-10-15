@@ -176,7 +176,7 @@ final class MainContentCoordinator: ObservableObject {
     /// lands after a newer request is stale and must not put back the entry the user already left.
     internal var pendingCursorRequest: Int?
     internal var cursorRequestCount = 0
-    internal var hasDeferredCursorFollow = false
+    internal var failedCursorFollow: String?
 
     // MARK: - Services
 
@@ -1272,7 +1272,7 @@ final class MainContentCoordinator: ObservableObject {
         databaseName: String? = nil,
         forceNewTab: Bool = false
     ) -> WindowTabOpenDisposition {
-        let targetDatabaseName = databaseName ?? browseDatabaseName
+        let targetDatabaseName = databaseName ?? newTabDatabaseName
         if !forceNewTab,
            let (tab, tabIndex) = tabManager.selectedTabAndIndex,
            tab.tabType == .query,
@@ -1312,7 +1312,7 @@ final class MainContentCoordinator: ObservableObject {
                 mutTab.hasUserInteraction = true
             }
         } else if tabManager.tabs.isEmpty {
-            tabManager.addTab(initialQuery: query, databaseName: browseDatabaseName)
+            tabManager.addTab(initialQuery: query, databaseName: newTabDatabaseName)
         } else {
             let payload = EditorTabPayload(
                 connectionId: connection.id,

@@ -17,6 +17,10 @@ extension MainContentCoordinator {
         return WorkspaceAnchoring.browsedContainer(of: session, target: tabManager.containerTarget)
     }
 
+    var newTabDatabaseName: String {
+        tabManager.openingDatabase(browsing: browseDatabaseName)
+    }
+
     /// Whether this window follows a cursor that something else moved. A connection a tab was torn
     /// off from is hosted by two windows that share one cursor, and only the one in front follows,
     /// so the window behind keeps the tabs it shows. Nil from the window manager means no window
@@ -60,26 +64,28 @@ extension MainContentCoordinator {
     /// A switch still on its way counts even when the cursor has not moved yet: picking a tab of the
     /// database being left, before the switch away lands, has to win over it.
     ///
-    /// A window that is not the connection's frontmost does not move the cursor, so a tab revealed
-    /// in a window that has not come forward yet is followed once that window becomes key.
+    /// A window that is not the connection's frontmost does not move the cursor; it does once it
+    /// becomes key.
     func followVisibleContainer() {
         guard let container = tabManager.visibleContainer,
               container != browsedContainer || pendingCursorRequest != nil,
-              services.databaseManager.session(for: connectionId)?.isConnected == true
+              services.databaseManager.session(for: connectionId)?.isConnected == true,
+              followsBrowseCursor
         else { return }
-        guard followsBrowseCursor else {
-            hasDeferredCursorFollow = true
-            return
-        }
-        hasDeferredCursorFollow = false
+        failedCursorFollow = nil
         Task { @MainActor [weak self] in
             await self?.switchContainer(to: container, persist: false)
+            guard let self, self.browsedContainer != container, self.pendingCursorRequest == nil else { return }
+            self.failedCursorFollow = container
         }
     }
 
-    func followDeferredVisibleContainer() {
-        guard hasDeferredCursorFollow else { return }
-        hasDeferredCursorFollow = false
+    /// Two windows of one connection share its cursor, so the one the user comes back to may show an
+    /// entry the other window has since moved the cursor away from. The window in front decides what
+    /// the connection browses. A container whose switch just failed is not asked for again on every
+    /// activation: dismissing the error makes the window key, and retrying there raised it again.
+    func followVisibleContainerOnActivation() {
+        guard tabManager.visibleContainer != failedCursorFollow else { return }
         followVisibleContainer()
     }
 

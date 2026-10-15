@@ -798,6 +798,14 @@ extension QueryTabManager {
         }
     }
 
+    /// Where a tab opened without naming a database goes: the entry on screen. The browse cursor
+    /// lags it while a switch to that entry is on its way, and a tab bound to the cursor then would
+    /// take the window straight back to the entry the user just left.
+    func openingDatabase(browsing browseDatabase: String) -> String {
+        guard containerTarget == .database, let visibleContainer else { return browseDatabase }
+        return visibleContainer
+    }
+
     /// Restored tabs from before tabs were bound to their entry: they ran against the container the
     /// connection was on, which is the one the restore lands in.
     func bindUnboundTabs() {

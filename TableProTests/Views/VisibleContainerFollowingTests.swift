@@ -141,6 +141,51 @@ struct VisibleContainerFollowingTests {
         }
     }
 
+    /// Going to an entry shows its tabs before the switch lands, and a tab opened in that moment
+    /// belongs to the entry on screen, not to the database the cursor is leaving.
+    @Test("A new tab opened while going to another entry lands in that entry")
+    func newTabDuringASwitchTakesTheShownEntry() async throws {
+        try await withConnectedCoordinator { coordinator, tabManager, _ in
+            tabManager.tabs = [queryTab(database: "db_a")]
+
+            coordinator.goToEntry("db_b")
+
+            #expect(coordinator.browsedContainer == "db_a")
+            #expect(coordinator.newTabDatabaseName == "db_b")
+            tabManager.addTab(initialQuery: "SELECT 1", databaseName: coordinator.newTabDatabaseName)
+            #expect(tabManager.visibleContainer == "db_b")
+            try await waitUntil { coordinator.browsedContainer == "db_b" }
+        }
+    }
+
+    /// Two windows of one connection share its cursor; the window the user comes back to decides.
+    @Test("A window coming to the front takes the connection to the entry it shows")
+    func activationMovesTheCursorToTheShownEntry() async throws {
+        try await withConnectedCoordinator { coordinator, tabManager, _ in
+            tabManager.tabs = [queryTab(database: "db_b")]
+            tabManager.show(container: "db_b")
+
+            coordinator.followVisibleContainerOnActivation()
+
+            try await waitUntil { coordinator.browsedContainer == "db_b" }
+        }
+    }
+
+    /// Dismissing the error makes the window key again, and asking again there raised it again.
+    @Test("Coming to the front does not retry a switch that just failed")
+    func activationSkipsAFailedSwitch() async throws {
+        try await withConnectedCoordinator { coordinator, tabManager, _ in
+            tabManager.tabs = [queryTab(database: "db_b")]
+            tabManager.show(container: "db_b")
+            coordinator.failedCursorFollow = "db_b"
+
+            coordinator.followVisibleContainerOnActivation()
+
+            #expect(coordinator.pendingCursorRequest == nil)
+            #expect(coordinator.browsedContainer == "db_a")
+        }
+    }
+
     @Test("A switch to the database already browsed still brings its entry forward")
     func satisfiedSwitchShowsTheEntry() async throws {
         try await withConnectedCoordinator { coordinator, tabManager, _ in

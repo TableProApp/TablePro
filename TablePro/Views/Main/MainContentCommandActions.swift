@@ -650,7 +650,7 @@ final class MainContentCommandActions: ObservableObject {
         guard let coordinator else { return }
         coordinator.tabManager.addTab(
             initialQuery: initialQuery,
-            databaseName: coordinator.browseDatabaseName,
+            databaseName: coordinator.newTabDatabaseName,
             claimFocus: true
         )
     }

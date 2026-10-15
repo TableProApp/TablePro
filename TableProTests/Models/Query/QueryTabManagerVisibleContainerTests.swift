@@ -102,6 +102,13 @@ struct QueryTabManagerVisibleContainerTests {
         #expect(manager.tabs.map(\.tableContext.databaseName) == ["tenant_b", ""])
     }
 
+    @Test("A tab opened without a database goes to the entry on screen, not the browse cursor")
+    func openingDatabaseIsTheShownEntry() {
+        #expect(makeManager().openingDatabase(browsing: "tenant_b") == "tenant_a")
+        #expect(makeManager(target: .schema, visible: "HR").openingDatabase(browsing: "ORCL") == "ORCL")
+        #expect(makeManager(target: nil, visible: nil).openingDatabase(browsing: "main") == "main")
+    }
+
     // MARK: - Selection carries the entry
 
     @Test("Selecting a tab of another entry puts that entry in front and says so once")

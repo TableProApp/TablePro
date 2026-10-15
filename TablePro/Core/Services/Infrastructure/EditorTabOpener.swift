@@ -19,7 +19,9 @@ internal enum EditorTabOpener {
         connection: DatabaseConnection,
         toolbarState: ConnectionToolbarState?
     ) {
-        let browseDatabaseName = DatabaseManager.shared.browseDatabaseName(for: connection)
+        let browseDatabaseName = tabManager.openingDatabase(
+            browsing: DatabaseManager.shared.browseDatabaseName(for: connection)
+        )
 
         switch payload.intent {
         case .openContent:
