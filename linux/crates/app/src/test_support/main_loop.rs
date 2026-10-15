@@ -1,15 +1,29 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::future::Future;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use gtk4::glib;
+use gtk4::prelude::*;
+use gtk4::{gdk, glib};
 
 use crate::test_support::WaitTimedOut;
 
 pub(crate) fn drain_main_context() {
     let context = glib::MainContext::default();
     while context.iteration(false) {}
+}
+
+/// Wait for the window `widget` is in to paint a frame. GTK leaves some
+/// work for after the paint: it moves a focus out of a removed widget
+/// then, and holds that widget until it has.
+pub(crate) fn after_next_frame(widget: &impl IsA<gtk4::Widget>) {
+    let clock = widget.frame_clock().expect("the window's frame clock");
+    let painted = Rc::new(Cell::new(false));
+    let flag = painted.clone();
+    let handler = clock.connect_after_paint(move |_| flag.set(true));
+    clock.request_phase(gdk::FrameClockPhase::AFTER_PAINT);
+    wait_until(Duration::from_secs(10), || painted.get()).expect("the window paints a frame");
+    clock.disconnect(handler);
 }
 
 pub(crate) fn wait_until(timeout: Duration, mut condition: impl FnMut() -> bool) -> Result<(), WaitTimedOut> {

@@ -112,8 +112,8 @@ mod tests {
     use gtk4::prelude::*;
 
     use crate::services::change_tracker::RowKey;
-    use crate::test_support::{FocusThief, descendants, drain_main_context, wait_until};
-    use crate::ui::grid::test_grid::{Grid, WAIT, after_next_frame, focus_in_grid, key, page, two_text_rows};
+    use crate::test_support::{FocusThief, after_next_frame, descendants, drain_main_context, wait_until};
+    use crate::ui::grid::test_grid::{Grid, WAIT, focus_in_grid, key, page, two_text_rows};
     use crate::ui::grid::{GridCell, GridMsg, RowObject};
 
     fn open_menu(cell: &GridCell) {
@@ -197,7 +197,7 @@ mod tests {
         grid.store.splice(0, grid.store.n_items(), &page(3..5));
         thief.give_back(&grid.window);
         drain_main_context();
-        after_next_frame(&grid);
+        after_next_frame(&grid.window);
 
         assert!(focus_in_grid(&grid), "the focus left the grid");
     }

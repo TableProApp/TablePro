@@ -131,8 +131,8 @@ mod tests {
     use tablepro_core::value::Temporal;
 
     use super::edit_row;
-    use crate::test_support::{FocusThief, drain_main_context, first_descendant_of_type, wait_until};
-    use crate::ui::grid::test_grid::{Grid, WAIT, after_next_frame, edited_rows, key, named, text};
+    use crate::test_support::{FocusThief, after_next_frame, drain_main_context, first_descendant_of_type, wait_until};
+    use crate::ui::grid::test_grid::{Grid, WAIT, edited_rows, key, named, text};
     use crate::ui::grid::{GridCell, begin_edit};
 
     /// Press `key` in the cell's open one-line editor, through the
@@ -258,11 +258,11 @@ mod tests {
         editor.set_text("typed");
 
         let thief = FocusThief::take_from(&grid.window).expect("another window takes the focus");
-        after_next_frame(&grid);
+        after_next_frame(&grid.window);
         assert!(name.is_editing(), "another window taking the focus ended the edit");
         thief.give_back(&grid.window);
         drain_main_context();
-        after_next_frame(&grid);
+        after_next_frame(&grid.window);
 
         assert!(name.is_editing(), "the edit ended when the window came back");
         assert!(grid.take_messages().is_empty(), "the half-typed value was sent");
@@ -355,7 +355,7 @@ mod tests {
         let calendar = first_descendant_of_type::<gtk::Calendar>(&popover).expect("the calendar");
 
         calendar.set_date(&glib::DateTime::from_utc(2024, 3, 16, 0, 0, 0.0).expect("a day"));
-        after_next_frame(&grid);
+        after_next_frame(&grid.window);
 
         assert!(!cell.is_editing());
         assert_eq!(grid.focused_cell().as_ref(), Some(&cell), "the focus left the grid");
@@ -373,7 +373,7 @@ mod tests {
 
         // As Escape does.
         popover.popdown();
-        after_next_frame(&grid);
+        after_next_frame(&grid.window);
 
         assert!(!cell.is_editing());
         assert_eq!(grid.focused_cell().as_ref(), Some(&cell), "the focus left the grid");
@@ -390,7 +390,7 @@ mod tests {
         let popover = open_popover(&grid, &cell);
 
         grid.store.remove(0);
-        after_next_frame(&grid);
+        after_next_frame(&grid.window);
 
         assert!(popover.parent().is_none(), "the popover outlived its row");
         assert!(!cell.is_editing());
@@ -412,7 +412,7 @@ mod tests {
 
         let popover = open_popover(&grid, &cell);
         button(&popover, "Cancel").emit_clicked();
-        after_next_frame(&grid);
+        after_next_frame(&grid.window);
         assert!(!cell.is_editing());
         assert_eq!(grid.focused_cell().as_ref(), Some(&cell), "Cancel left the grid");
 
@@ -420,7 +420,7 @@ mod tests {
         let view = first_descendant_of_type::<sourceview5::View>(&popover).expect("the multi-line editor");
         view.buffer().set_text("one\nthree");
         button(&popover, "Save").emit_clicked();
-        after_next_frame(&grid);
+        after_next_frame(&grid.window);
         assert!(!cell.is_editing());
         assert_eq!(grid.focused_cell().as_ref(), Some(&cell), "Save left the grid");
         assert_eq!(

@@ -1,3 +1,8 @@
+# Line tables, as the .deb keeps, are enough to symbolize a backtrace.
+# Full debuginfo adds to what each rustc of the app and the final link
+# need, and an 8 GB builder ran out of memory with it.
+%global rustflags_debuginfo 1
+
 Name:           tablepro
 Version:        0.1.0
 Release:        1%{?dist}
@@ -59,8 +64,8 @@ find vendor -type f -name '*.rs' -perm /111 -exec chmod a-x {} +
 
 %build
 # Cargo starts a rustc per CPU, and under Fedora's RUSTFLAGS (one codegen
-# unit, full debuginfo) one rustc of the app takes several GB, so the
-# jobs are also capped at one per 4 GB. %%check builds the tests the same.
+# unit) one rustc of the app takes several GB, so the jobs are also
+# capped at one per 4 GB. %%check builds the tests the same.
 %constrain_build -m 4096
 export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 # Fedora's rustc runs out of 8 GB in the release profile's fat LTO link of
@@ -72,7 +77,9 @@ export CARGO_PROFILE_RELEASE_LTO=thin
 # The app's manifest rather than the workspace, so the test-only crates
 # are left out.
 (cd crates/app && %{cargo_license}) > LICENSE.dependencies
-(cd crates/app && %{cargo_vendor_manifest})
+# From the root: cargo2rpm drops the workspace's own crates by the
+# working directory in their path, and lists every vendored crate.
+%{cargo_vendor_manifest}
 
 %install
 %meson_install
@@ -88,7 +95,7 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/app.tablepro.TablePro
 %{shrink:xvfb-run -a dbus-run-session -- %meson_test}
 
 %files
-%license LICENSE LICENSE.dependencies crates/app/cargo-vendor.txt
+%license LICENSE.dependencies cargo-vendor.txt
 %doc README.md
 %{_bindir}/tablepro
 %{_libexecdir}/tablepro-askpass
@@ -97,7 +104,12 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/app.tablepro.TablePro
 %{_datadir}/glib-2.0/schemas/app.tablepro.TablePro.gschema.xml
 %{_datadir}/icons/hicolor/scalable/apps/app.tablepro.TablePro.svg
 %{_datadir}/icons/hicolor/symbolic/apps/app.tablepro.TablePro-symbolic.svg
-%{_datadir}/licenses/app.tablepro.TablePro/
+# The About dialog reads these where Meson installs them, so the project
+# license is marked there rather than copied a second time.
+%dir %{_datadir}/licenses/app.tablepro.TablePro
+%license %{_datadir}/licenses/app.tablepro.TablePro/LICENSE
+%license %{_datadir}/licenses/app.tablepro.TablePro/THIRD-PARTY-NOTICE.md
+%{_datadir}/licenses/app.tablepro.TablePro/third-party.json
 %{_mandir}/man1/tablepro.1*
 %{_metainfodir}/app.tablepro.TablePro.metainfo.xml
 

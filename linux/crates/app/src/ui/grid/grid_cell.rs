@@ -418,10 +418,9 @@ mod tests {
 
     use super::GridCell;
     use crate::services::tracker_edit::TrackerEdit;
-    use crate::test_support::{FocusThief, descendants, drain_main_context, wait_until};
+    use crate::test_support::{FocusThief, after_next_frame, descendants, drain_main_context, wait_until};
     use crate::ui::grid::test_grid::{
-        Grid, WAIT, after_next_frame, edited_rows, flag_rows, focus_in_grid, key, named, page, recorder, text,
-        two_text_rows, type_into,
+        Grid, WAIT, edited_rows, flag_rows, focus_in_grid, key, named, page, recorder, text, two_text_rows, type_into,
     };
     use crate::ui::grid::{RowObject, build_result_grid};
 
@@ -562,7 +561,7 @@ mod tests {
         grid.store.splice(0, grid.store.n_items(), &page(3..5));
         thief.give_back(&grid.window);
         drain_main_context();
-        after_next_frame(&grid);
+        after_next_frame(&grid.window);
 
         assert!(focus_in_grid(&grid), "the focus left the grid");
     }

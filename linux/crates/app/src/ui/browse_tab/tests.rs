@@ -21,7 +21,7 @@ use crate::services::change_tracker::{RowKey, StatementSource};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
 use crate::services::tracker_edit::TrackerEdit;
-use crate::test_support::{FakeSession, drain_main_context, wait_until};
+use crate::test_support::{FakeSession, after_next_frame, drain_main_context, wait_until};
 use crate::ui::clipboard::InsertRow;
 use crate::ui::grid::{GridCell, GridRowIndex, RowObject};
 
@@ -1277,16 +1277,6 @@ fn a_page_that_replaces_the_focused_row_takes_the_focus_out_first() {
         focus().is_some_and(|focus| focus == *view.upcast_ref::<gtk4::Widget>() || focus.is_ancestor(&view)),
         "the focus left the grid"
     );
-}
-
-pub(super) fn after_next_frame(window: &gtk4::Window) {
-    let clock = window.frame_clock().expect("the window's frame clock");
-    let painted = std::rc::Rc::new(std::cell::Cell::new(false));
-    let flag = painted.clone();
-    let handler = clock.connect_after_paint(move |_| flag.set(true));
-    clock.request_phase(gtk4::gdk::FrameClockPhase::AFTER_PAINT);
-    wait_until(WAIT, || painted.get()).expect("the window paints a frame");
-    clock.disconnect(handler);
 }
 
 /// The cell showing `column` of the saved row keyed `id`, once drawn.

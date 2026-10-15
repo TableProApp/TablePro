@@ -218,18 +218,6 @@ impl Drop for Grid {
     }
 }
 
-/// GTK moves a focus it finds in a hidden popover or a removed row once
-/// the frame is painted, so the focus is checked after that.
-pub(super) fn after_next_frame(grid: &Grid) {
-    let clock = grid.window.frame_clock().expect("the window's frame clock");
-    let painted = Rc::new(std::cell::Cell::new(false));
-    let flag = painted.clone();
-    let handler = clock.connect_after_paint(move |_| flag.set(true));
-    clock.request_phase(gtk::gdk::FrameClockPhase::AFTER_PAINT);
-    wait_until(WAIT, || painted.get()).expect("the window paints a frame");
-    clock.disconnect(handler);
-}
-
 /// Saved rows keyed `ids`, as a page read from the table is.
 pub(super) fn page(ids: std::ops::Range<i64>) -> Vec<RowObject> {
     let rows: Vec<Vec<Value>> = ids

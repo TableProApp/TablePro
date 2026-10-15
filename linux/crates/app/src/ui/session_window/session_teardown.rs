@@ -168,9 +168,10 @@ mod tests {
             1,
             "the connection closed more than once"
         );
-        // A delivery still in flight holds the workspace until its aborted
-        // task's result reaches the main context, which a loaded runtime
-        // posts after the drain above.
+        // GTK holds a widget that had the focus until the window paints
+        // again, and a delivery still in flight holds the workspace until
+        // its aborted task's result reaches the main context.
+        crate::test_support::after_next_frame(&test.window);
         wait_until(WAIT, || workspace.upgrade().is_none()).expect("the workspace outlived its teardown");
         let claim = test
             .services
