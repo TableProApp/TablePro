@@ -46,8 +46,13 @@ maintainer="$(sed -n 's/^Maintainer: //p' "$src/debian/control")"
     DEBEMAIL="$maintainer" dch --create --package tablepro --newversion "$version-1" \
         --distribution resolute --force-distribution --urgency medium \
         "New upstream release $version."
-    dpkg-buildpackage -b -us -uc
 )
+# Meson prints only the end of a failed suite's log, so the whole log is
+# kept beside the packages.
+if ! (cd "$src" && dpkg-buildpackage -b -us -uc); then
+    find "$src" -path '*/meson-logs/testlog.txt' -exec cp {} "$out/" \;
+    exit 1
+fi
 
 lintian --fail-on error,warning --display-info "$work"/tablepro_"$version"-1_*.changes
 

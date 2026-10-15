@@ -25,7 +25,12 @@ rpmbuild --define "_topdir $top" -bs "$top/SPECS/tablepro.spec"
 srpm="$(find "$top/SRPMS" -name '*.src.rpm')"
 
 dnf builddep -y --setopt=install_weak_deps=False "$srpm"
-rpmbuild --define "_topdir $top" --rebuild "$srpm"
+# Meson prints only the end of a failed suite's log, so the whole log is
+# kept beside the packages.
+if ! rpmbuild --define "_topdir $top" --rebuild "$srpm"; then
+    find "$top/BUILD" -path '*/meson-logs/testlog.txt' -exec cp {} "$out/" \;
+    exit 1
+fi
 
 rpmlint \
     "$top/SPECS/tablepro.spec" "$srpm" "$top"/RPMS/*/*.rpm
