@@ -145,7 +145,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_table() {
+    fn every_mode_an_engine_offers_validates_on_every_route() {
         for caps in [POSTGRES, MYSQL, MSSQL] {
             for mode in ALL_MODES {
                 for route in ROUTES {
@@ -157,8 +157,25 @@ mod tests {
                 }
             }
         }
+    }
 
-        let cases = [
+    type Case = (
+        &'static str,
+        TlsConfig,
+        TlsCapabilities,
+        TransportClass,
+        Result<(), ConfigError>,
+    );
+
+    fn assert_validates(cases: Vec<Case>) {
+        for (name, config, caps, route, expected) in cases {
+            assert_eq!(config.validate(&caps, route), expected, "{name}");
+        }
+    }
+
+    #[test]
+    fn modes_and_server_names_follow_the_capabilities_and_route() {
+        assert_validates(vec![
             (
                 "mode outside the capabilities",
                 TlsConfig {
@@ -201,6 +218,12 @@ mod tests {
                     route: TransportClass::SshForward,
                 }),
             ),
+        ]);
+    }
+
+    #[test]
+    fn client_identities_follow_the_capabilities() {
+        assert_validates(vec![
             (
                 "mssql client identity",
                 with_identity("/etc/tls/client.pem", "/etc/tls/client.key"),
@@ -239,6 +262,12 @@ mod tests {
                 TransportClass::DirectTcp,
                 Err(ConfigError::RelativePath),
             ),
+        ]);
+    }
+
+    #[test]
+    fn ca_files_follow_the_capabilities() {
+        assert_validates(vec![
             (
                 "ca file with tls disabled",
                 with_ca_file(TlsMode::Disable, "/etc/tls/ca.pem"),
@@ -267,10 +296,7 @@ mod tests {
                 TransportClass::SshForward,
                 Ok(()),
             ),
-        ];
-        for (name, config, caps, route, expected) in cases {
-            assert_eq!(config.validate(&caps, route), expected, "{name}");
-        }
+        ]);
     }
 
     #[test]

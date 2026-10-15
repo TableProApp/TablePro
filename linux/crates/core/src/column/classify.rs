@@ -325,9 +325,15 @@ mod tests {
         }
     }
 
+    fn assert_classified(cases: Vec<(&str, ColumnKind)>) {
+        for (name, expected) in cases {
+            assert_eq!(classify_type_name(name), expected, "{name:?}");
+        }
+    }
+
     #[test]
-    fn classify_type_name_table() {
-        let cases = [
+    fn classifies_integers_booleans_and_floats() {
+        assert_classified(vec![
             ("bigint", int(IntegerWidth::W64, true)),
             ("int8", int(IntegerWidth::W64, true)),
             ("BIGSERIAL", int(IntegerWidth::W64, true)),
@@ -339,6 +345,12 @@ mod tests {
             ("boolean", ColumnKind::Bool(BoolStorage::Native)),
             ("real", ColumnKind::Float(FloatWidth::F32)),
             ("double precision", ColumnKind::Float(FloatWidth::F64)),
+        ]);
+    }
+
+    #[test]
+    fn classifies_decimals_and_money() {
+        assert_classified(vec![
             (
                 "numeric(10,2)",
                 ColumnKind::Decimal {
@@ -375,6 +387,12 @@ mod tests {
                 },
             ),
             ("money", ColumnKind::Money { scale: None }),
+        ]);
+    }
+
+    #[test]
+    fn classifies_text_and_bytes() {
+        assert_classified(vec![
             ("varchar(255)", text(TextLength::Varying(255))),
             ("character varying(255)", text(TextLength::Varying(255))),
             ("nvarchar(max)", text(TextLength::Unbounded)),
@@ -401,6 +419,12 @@ mod tests {
                     length: TextLength::Fixed(16),
                 },
             ),
+        ]);
+    }
+
+    #[test]
+    fn classifies_dates_times_and_timestamps() {
+        assert_classified(vec![
             ("date", ColumnKind::Date),
             (
                 "time(3)",
@@ -430,6 +454,12 @@ mod tests {
                 stamp(Some(3), TemporalZone::Named("Europe/Paris".to_owned())),
             ),
             ("DateTime('UTC')", stamp(None, TemporalZone::Named("UTC".to_owned()))),
+        ]);
+    }
+
+    #[test]
+    fn classifies_intervals_uuids_documents_and_labels() {
+        assert_classified(vec![
             ("interval", ColumnKind::Interval),
             ("uniqueidentifier", ColumnKind::Uuid),
             ("json", ColumnKind::Json { binary: false }),
@@ -437,6 +467,12 @@ mod tests {
             ("enum('Draft','It''s')", labels(&["Draft", "It's"], false)),
             ("Enum8('a' = 1, 'b(2)' = 2)", labels(&["a", "b(2)"], false)),
             ("set('x','y')", labels(&["x", "y"], true)),
+        ]);
+    }
+
+    #[test]
+    fn classifies_bits_networks_and_opaque_kinds() {
+        assert_classified(vec![
             (
                 "bit",
                 ColumnKind::BitString {
@@ -458,6 +494,12 @@ mod tests {
             ("geography", ColumnKind::Spatial),
             ("Map(String, UInt64)", ColumnKind::Composite),
             ("sql_variant", ColumnKind::Variant),
+        ]);
+    }
+
+    #[test]
+    fn classifies_wrappers_arrays_and_unknown_names() {
+        assert_classified(vec![
             ("Nullable(Int64)", int(IntegerWidth::W64, true)),
             ("integer[]", array_of(int(IntegerWidth::W32, true))),
             ("text[][]", array_of(array_of(text(TextLength::Unbounded)))),
@@ -466,11 +508,7 @@ mod tests {
             ("hstore", ColumnKind::Other),
             ("tsvector", ColumnKind::Other),
             ("", ColumnKind::Other),
-        ];
-
-        for (name, expected) in cases {
-            assert_eq!(classify_type_name(name), expected, "{name:?}");
-        }
+        ]);
     }
 
     #[test]
