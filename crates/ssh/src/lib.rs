@@ -668,7 +668,7 @@ fn map_connect_error(
 ) -> SshError {
     // Recover a poisoned mutex so a panic during host-key verification
     // never silently downgrades a HostKeyMismatch to a generic Connect error.
-    let captured = outcome.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
+    let captured = outcome.lock().unwrap_or_else(PoisonError::into_inner).clone();
     match captured {
         Some(HostKeyOutcome::Changed { fingerprint, line }) => SshError::HostKeyMismatch {
             host: host.to_string(),
