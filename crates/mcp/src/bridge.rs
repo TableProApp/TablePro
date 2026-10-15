@@ -13,6 +13,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::auth::{McpScope, authorize_scopes};
+use crate::errors::McpToolError;
 use crate::rate_limit::RateLimiter;
 use crate::tokens::{McpToken, TokenStore};
 
@@ -456,37 +457,62 @@ impl McpBridge {
         sql: &str,
         preview: bool,
     ) -> Result<WriteOutcome, String> {
-        authorize_scopes(token.permissions, McpScope::ToolsWrite)?;
+        self.execute_write_structured(token, connection_id, sql, preview)
+            .await
+            .map_err(|error| error.legacy_diagnostic())
+    }
+
+    pub async fn execute_write_structured(
+        &self,
+        token: &McpToken,
+        connection_id: Uuid,
+        sql: &str,
+        preview: bool,
+    ) -> Result<WriteOutcome, McpToolError> {
+        authorize_scopes(token.permissions, McpScope::ToolsWrite).map_err(McpToolError::from)?;
+        let control = self
+            .start_connection_operation(token, connection_id)
+            .map_err(McpToolError::from)?;
+        let principal = Principal::Agent {
+            token: token.id.to_string(),
+            client: Some(token.name.clone()),
+            model: None,
+        };
+        let connection = run_bounded(self.provider.connection(connection_id, principal), &control)
+            .await
+            .map_err(|_| McpToolError::request_failed())?
+            .map_err(McpToolError::from)?;
         let sql = sql.to_string();
-        self.with_connection(token, connection_id, move |conn, control| {
-            Box::pin(async move {
-                if preview {
-                    let mut tx = conn
-                        .begin_controlled(&control)
-                        .await
-                        .map_err(|error| error.to_string())?;
-                    let result = tx.execute_controlled(&sql, &control).await;
-                    let cleanup_control = operation_control_for(CancellationToken::new(), PREVIEW_CLEANUP_TIMEOUT);
-                    tx.rollback_controlled(&cleanup_control)
-                        .await
-                        .map_err(|error| format!("preview rollback could not be confirmed: {error}"))?;
-                    let result = result.map_err(|error| error.to_string())?;
-                    Ok(WriteOutcome::Preview {
-                        rows_affected: result.rows_affected,
-                        rolled_back: true,
-                    })
-                } else {
-                    let result = conn
-                        .execute_controlled(&sql, &control)
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    Ok(WriteOutcome::Committed {
-                        rows_affected: result.rows_affected,
-                    })
+        if preview {
+            let mut transaction = connection.begin_controlled(&control).await.map_err(|error| {
+                let mut outcome = McpToolError::from_write_error(&error);
+                if outcome.operation_outcome == crate::errors::OperationOutcome::Unknown {
+                    outcome.transaction_outcome = crate::errors::TransactionOutcome::Unknown;
                 }
-            })
+                outcome
+            })?;
+            let result = transaction.execute_controlled(&sql, &control).await;
+            let cleanup_control = operation_control_for(CancellationToken::new(), PREVIEW_CLEANUP_TIMEOUT);
+            if let Err(error) = transaction.rollback_controlled(&cleanup_control).await {
+                return Err(McpToolError::transaction_rollback_failed(&error));
+            }
+            let result = result.map_err(|error| {
+                let mut outcome = McpToolError::from_write_error(&error);
+                outcome.transaction_outcome = crate::errors::TransactionOutcome::RolledBack;
+                outcome
+            })?;
+            return Ok(WriteOutcome::Preview {
+                rows_affected: result.rows_affected,
+                rolled_back: true,
+            });
+        }
+        let result = connection
+            .execute_controlled(&sql, &control)
+            .await
+            .map_err(|error| McpToolError::from_write_error(&error))?;
+        Ok(WriteOutcome::Committed {
+            rows_affected: result.rows_affected,
         })
-        .await
     }
 }
 

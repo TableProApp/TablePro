@@ -22,9 +22,21 @@ use tablepro_core::export::{
 use uuid::Uuid;
 
 use crate::bridge::{McpBridge, TableSchema, WriteOutcome};
+use crate::errors::McpToolError;
 use crate::tokens::McpToken;
 
 pub async fn dispatch(bridge: &McpBridge, token: &McpToken, name: &str, args: JsonValue) -> Result<JsonValue, String> {
+    dispatch_structured(bridge, token, name, args)
+        .await
+        .map_err(|error| error.legacy_diagnostic())
+}
+
+pub(crate) async fn dispatch_structured(
+    bridge: &McpBridge,
+    token: &McpToken,
+    name: &str,
+    args: JsonValue,
+) -> Result<JsonValue, McpToolError> {
     match name {
         "list_connections" => {
             let list = bridge.list_connections(token).await?;
@@ -108,7 +120,7 @@ pub async fn dispatch(bridge: &McpBridge, token: &McpToken, name: &str, args: Js
                 .ok_or("missing sql")?
                 .to_string();
             let preview = args.get("preview").and_then(|v| v.as_bool()).unwrap_or(true);
-            let outcome = bridge.execute_write(token, id, &sql, preview).await?;
+            let outcome = bridge.execute_write_structured(token, id, &sql, preview).await?;
             Ok(match outcome {
                 WriteOutcome::Preview {
                     rows_affected,
@@ -235,7 +247,7 @@ pub async fn dispatch(bridge: &McpBridge, token: &McpToken, name: &str, args: Js
                 "truncated": result.truncated,
             }))
         }
-        other => Err(format!("unknown tool: {other}")),
+        other => Err(format!("unknown tool: {other}").into()),
     }
 }
 

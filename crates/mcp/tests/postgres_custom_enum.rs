@@ -1,12 +1,21 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use std::sync::Arc;
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+};
 
 use async_trait::async_trait;
 use drivers_postgres::PgDriver;
-use tablepro_core::{ConnectOptions, Connection, DatabaseDriver, Environment, TlsConfig, Value};
+use tablepro_core::{
+    ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, Environment, ExecResult, OperationControl,
+    QueryResult, TableInfo, TlsConfig, Value,
+};
 use tablepro_mcp::{ConnectionProvider, McpBridge, TokenPermissions, TokenStore};
-use tablepro_policy::Principal;
+use tablepro_policy::{
+    AuditError, AuditEvent, AuditRecordPhase, AuditSink, AuditState, AuditTerminalStatus, AutoApproveSink,
+    GuardContext, PolicyConfig, PolicyGuard, Principal, WritePolicy,
+};
 use tablepro_storage::SavedConnection;
 use testcontainers::{ContainerAsync, ImageExt};
 use testcontainers_modules::{postgres::Postgres, testcontainers::runners::AsyncRunner};
@@ -398,4 +407,231 @@ async fn postgres_domain_over_enum_values_survive_mcp_query_export_and_csv_impor
             ],
         ]
     );
+}
+
+struct LoseOneAcknowledgement {
+    connection: Arc<dyn Connection>,
+    lose_acknowledgement: AtomicBool,
+    attempts: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl Connection for LoseOneAcknowledgement {
+    async fn list_tables(&self) -> Result<Vec<TableInfo>, DriverError> {
+        self.connection.list_tables().await
+    }
+
+    async fn fetch_columns(&self, schema: Option<&str>, table: &str) -> Result<Vec<ColumnInfo>, DriverError> {
+        self.connection.fetch_columns(schema, table).await
+    }
+
+    async fn fetch_rows(
+        &self,
+        schema: Option<&str>,
+        table: &str,
+        offset: u64,
+        limit: u64,
+    ) -> Result<QueryResult, DriverError> {
+        self.connection.fetch_rows(schema, table, offset, limit).await
+    }
+
+    async fn query(&self, sql: &str) -> Result<QueryResult, DriverError> {
+        self.connection.query(sql).await
+    }
+
+    async fn execute(&self, sql: &str) -> Result<ExecResult, DriverError> {
+        self.connection.execute(sql).await
+    }
+
+    async fn execute_controlled(&self, sql: &str, control: &OperationControl) -> Result<ExecResult, DriverError> {
+        let result = self.connection.execute_controlled(sql, control).await?;
+        self.attempts.fetch_add(1, Ordering::SeqCst);
+        if self.lose_acknowledgement.swap(false, Ordering::SeqCst) {
+            return Err(DriverError::OperationOutcomeUnknown {
+                source: Box::new(DriverError::Disconnected),
+            });
+        }
+        Ok(result)
+    }
+
+    async fn execute_params(&self, sql: &str, params: &[Value]) -> Result<ExecResult, DriverError> {
+        self.connection.execute_params(sql, params).await
+    }
+
+    async fn execute_in_transaction(&self, statements: &[(String, Vec<Value>)]) -> Result<Vec<u64>, DriverError> {
+        self.connection.execute_in_transaction(statements).await
+    }
+
+    async fn ping(&self) -> Result<(), DriverError> {
+        self.connection.ping().await
+    }
+
+    async fn close(self: Box<Self>) -> Result<(), DriverError> {
+        Ok(())
+    }
+}
+
+struct OutcomeAudit(Mutex<Vec<AuditEvent>>);
+
+#[async_trait]
+impl AuditSink for OutcomeAudit {
+    async fn record(&self, event: AuditEvent) -> Result<(), AuditError> {
+        self.0.lock().expect("audit events lock").push(event);
+        Ok(())
+    }
+}
+
+struct WriteProvider {
+    connection_id: Uuid,
+    saved: SavedConnection,
+    connection: Arc<dyn Connection>,
+    audit: Arc<OutcomeAudit>,
+    audit_state: Arc<AuditState>,
+}
+
+#[async_trait]
+impl ConnectionProvider for WriteProvider {
+    async fn list_saved_connections(&self) -> Result<Vec<SavedConnection>, String> {
+        Ok(vec![self.saved.clone()])
+    }
+
+    async fn connection(&self, connection_id: Uuid, principal: Principal) -> Result<Arc<dyn Connection>, String> {
+        if connection_id != self.connection_id {
+            return Err("connection not found".into());
+        }
+        let mut policy = PolicyConfig::default();
+        policy.environments.entry("local".into()).or_default().agent_writes = Some(WritePolicy::Allow);
+        Ok(Arc::new(PolicyGuard::new(
+            self.connection.clone(),
+            GuardContext {
+                connection_id,
+                connection_name: self.saved.name.clone(),
+                driver_id: "postgres".into(),
+                environment: Environment::Local,
+                read_only: false,
+                principal,
+                policy: Arc::new(policy),
+                approval: Arc::new(AutoApproveSink),
+                audit: self.audit.clone(),
+                audit_state: self.audit_state.clone(),
+            },
+        )))
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn postgres_lost_write_ack_is_structured_and_never_retried() {
+    let (_container, host, port) = start_postgres().await;
+    let driver: Arc<dyn Connection> = Arc::from(
+        PgDriver
+            .connect(ConnectOptions {
+                host: host.clone(),
+                port,
+                database: "postgres".into(),
+                username: "postgres".into(),
+                password: secrecy::SecretString::new("postgres".to_string().into()),
+                tls: TlsConfig::disabled(),
+                ..Default::default()
+            })
+            .await
+            .expect("connect PostgreSQL driver"),
+    );
+    driver
+        .execute("CREATE TABLE mcp_lost_ack (id INT PRIMARY KEY)")
+        .await
+        .expect("create lost acknowledgement fixture");
+
+    let connection_id = Uuid::new_v4();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let connection: Arc<dyn Connection> = Arc::new(LoseOneAcknowledgement {
+        connection: driver.clone(),
+        lose_acknowledgement: AtomicBool::new(true),
+        attempts: attempts.clone(),
+    });
+    let audit = Arc::new(OutcomeAudit(Mutex::new(Vec::new())));
+    let audit_state = Arc::new(AuditState::new());
+    let saved = SavedConnection {
+        id: connection_id,
+        name: "PostgreSQL lost acknowledgement fixture".into(),
+        driver_id: "postgres".into(),
+        host,
+        port,
+        socket_dir: None,
+        socket_path: None,
+        database: "postgres".into(),
+        username: "postgres".into(),
+        use_tls: false,
+        tls_mode: None,
+        tls_root_cert: None,
+        tls_client_cert: None,
+        tls_client_key: None,
+        read_only: false,
+        auth_mode: Default::default(),
+        environment: Environment::Local,
+        ssh: None,
+        last_opened_at: None,
+        connect_timeout_secs: None,
+        query_timeout_secs: None,
+    };
+    let provider = Arc::new(WriteProvider {
+        connection_id,
+        saved,
+        connection,
+        audit: audit.clone(),
+        audit_state: audit_state.clone(),
+    });
+    let directory = tempfile::tempdir().expect("token directory");
+    let tokens = Arc::new(TokenStore::open(directory.path().join("tokens.json")).expect("token store"));
+    let (_metadata, plaintext) = tokens
+        .issue(
+            "PostgreSQL lost acknowledgement fixture".into(),
+            TokenPermissions::ReadWrite,
+            vec![connection_id],
+            None,
+        )
+        .expect("issue write-scoped MCP token");
+    let bridge = McpBridge::new(provider, tokens);
+    let token = bridge.authenticate(&plaintext).expect("authenticate MCP token");
+
+    let error = bridge
+        .execute_write_structured(&token, connection_id, "INSERT INTO mcp_lost_ack VALUES (1)", false)
+        .await
+        .expect_err("the committed write acknowledgement must be lost");
+    assert_eq!(error.code, "operation_outcome_unknown");
+    assert_eq!(error.operation_outcome, tablepro_mcp::OperationOutcome::Unknown);
+    assert_eq!(
+        error.transaction_outcome,
+        tablepro_mcp::TransactionOutcome::NotApplicable
+    );
+
+    let stored = driver
+        .query("SELECT COUNT(*) FROM mcp_lost_ack")
+        .await
+        .expect("read persisted write");
+    assert_eq!(stored.rows[0][0], Value::Int(1));
+    assert!(
+        audit_state.governed_writes_disabled(),
+        "unknown committed write must block future writes"
+    );
+    assert_eq!(
+        bridge
+            .execute_write_structured(&token, connection_id, "INSERT INTO mcp_lost_ack VALUES (2)", false)
+            .await
+            .expect_err("a later write must be refused")
+            .code,
+        "write_refused"
+    );
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        driver.query("SELECT COUNT(*) FROM mcp_lost_ack").await.unwrap().rows[0][0],
+        Value::Int(1)
+    );
+
+    let events = audit.0.lock().expect("audit events lock");
+    assert_eq!(events[0].phase, AuditRecordPhase::Intent);
+    assert_eq!(events[1].phase, AuditRecordPhase::Outcome);
+    assert_eq!(events[1].terminal_status, AuditTerminalStatus::Unknown);
+    assert_eq!(events[2].phase, AuditRecordPhase::Outcome);
+    assert_eq!(events[2].terminal_status, AuditTerminalStatus::Denied);
 }

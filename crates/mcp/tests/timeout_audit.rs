@@ -92,6 +92,7 @@ struct ControlledConnection {
     metadata_behavior: MetadataBehavior,
     rollback_behavior: RollbackBehavior,
     attempts: AtomicUsize,
+    committed_writes: AtomicUsize,
 }
 
 #[async_trait]
@@ -133,10 +134,16 @@ impl Connection for ControlledConnection {
         let attempt = self.attempts.fetch_add(1, Ordering::SeqCst);
         match self.behavior {
             ControlledWriteBehavior::ConfirmedTimeoutThenSuccess if attempt == 0 => Err(DriverError::TimedOut),
-            ControlledWriteBehavior::ConfirmedTimeoutThenSuccess => Ok(ExecResult { rows_affected: 1 }),
-            ControlledWriteBehavior::UnknownInterruption => Err(DriverError::OperationOutcomeUnknown {
-                source: Box::new(DriverError::TimedOut),
-            }),
+            ControlledWriteBehavior::ConfirmedTimeoutThenSuccess => {
+                self.committed_writes.fetch_add(1, Ordering::SeqCst);
+                Ok(ExecResult { rows_affected: 1 })
+            }
+            ControlledWriteBehavior::UnknownInterruption => {
+                self.committed_writes.fetch_add(1, Ordering::SeqCst);
+                Err(DriverError::OperationOutcomeUnknown {
+                    source: Box::new(DriverError::TimedOut),
+                })
+            }
         }
     }
 
@@ -291,15 +298,20 @@ async fn confirmed_timeout_records_terminal_event_and_allows_later_write() {
             metadata_behavior: MetadataBehavior::Complete,
             rollback_behavior: RollbackBehavior::Succeeds,
             attempts: AtomicUsize::new(0),
+            committed_writes: AtomicUsize::new(0),
         }),
     });
     let bridge = McpBridge::new(provider, tokens);
 
     let first = bridge
-        .execute_write(&token, connection_id, "INSERT INTO jobs(id) VALUES (1)", false)
+        .execute_write_structured(&token, connection_id, "INSERT INTO jobs(id) VALUES (1)", false)
         .await
         .expect_err("write must time out");
-    assert!(first.contains("timed out"));
+    assert_eq!(first.code, "operation_timed_out");
+    assert_eq!(
+        first.operation_outcome,
+        tablepro_mcp::OperationOutcome::ConfirmedFailure
+    );
     assert!(!audit_state.governed_writes_disabled());
 
     bridge
@@ -340,6 +352,7 @@ async fn unknown_interruption_records_unknown_outcome_and_blocks_later_writes() 
         metadata_behavior: MetadataBehavior::Complete,
         rollback_behavior: RollbackBehavior::Succeeds,
         attempts: AtomicUsize::new(0),
+        committed_writes: AtomicUsize::new(0),
     });
     let provider = Arc::new(GuardedProvider {
         connection_id,
@@ -351,18 +364,28 @@ async fn unknown_interruption_records_unknown_outcome_and_blocks_later_writes() 
     let bridge = McpBridge::new(provider, tokens);
 
     let first = bridge
-        .execute_write(&token, connection_id, "INSERT INTO jobs(id) VALUES (1)", false)
+        .execute_write_structured(
+            &token,
+            connection_id,
+            "INSERT INTO jobs(id) VALUES ('secret-sql-value')",
+            false,
+        )
         .await
         .expect_err("write outcome must be unknown");
-    assert!(first.contains("outcome is unknown"));
+    assert_eq!(first.code, "operation_outcome_unknown");
+    assert_eq!(first.operation_outcome, tablepro_mcp::OperationOutcome::Unknown);
+    assert!(!first.message.contains("secret-sql-value"));
+    assert_eq!(connection.committed_writes.load(Ordering::SeqCst), 1);
     assert!(audit_state.governed_writes_disabled());
 
     let second = bridge
-        .execute_write(&token, connection_id, "INSERT INTO jobs(id) VALUES (2)", false)
+        .execute_write_structured(&token, connection_id, "INSERT INTO jobs(id) VALUES (2)", false)
         .await
         .expect_err("later write must be blocked");
-    assert!(second.contains("governed writes are disabled"));
+    assert_eq!(second.code, "write_refused");
+    assert_eq!(second.operation_outcome, tablepro_mcp::OperationOutcome::NotStarted);
     assert_eq!(connection.attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(connection.committed_writes.load(Ordering::SeqCst), 1);
 
     let events = audit.events.lock().expect("event lock");
     assert_eq!(events.len(), 3);
@@ -404,6 +427,7 @@ fn preview_harness_with_audit(rollback_behavior: RollbackBehavior, audit: Arc<Re
             metadata_behavior: MetadataBehavior::Complete,
             rollback_behavior,
             attempts: AtomicUsize::new(0),
+            committed_writes: AtomicUsize::new(0),
         }),
     });
     MetadataHarness {
@@ -422,7 +446,7 @@ async fn successful_preview_rollback_records_a_terminal_success() {
 
     harness
         .bridge
-        .execute_write(
+        .execute_write_structured(
             &harness.token,
             harness.connection_id,
             "INSERT INTO jobs(id) VALUES (1)",
@@ -448,7 +472,7 @@ async fn delayed_rollback_intent_records_unknown_and_blocks_later_writes() {
 
     let error = harness
         .bridge
-        .execute_write(
+        .execute_write_structured(
             &harness.token,
             harness.connection_id,
             "INSERT INTO jobs(id) VALUES (1)",
@@ -457,13 +481,13 @@ async fn delayed_rollback_intent_records_unknown_and_blocks_later_writes() {
         .await
         .expect_err("preview rollback must exceed the cleanup deadline before dispatch");
 
-    assert!(error.contains("rollback could not be confirmed"), "{error}");
-    assert!(error.contains("timed out"), "{error}");
+    assert_eq!(error.code, "transaction_rollback_failed", "{error:?}");
+    assert_eq!(error.transaction_outcome, tablepro_mcp::TransactionOutcome::Unknown);
     assert!(harness.audit_state.governed_writes_disabled());
 
     let later_error = harness
         .bridge
-        .execute_write(
+        .execute_write_structured(
             &harness.token,
             harness.connection_id,
             "INSERT INTO jobs(id) VALUES (2)",
@@ -471,7 +495,11 @@ async fn delayed_rollback_intent_records_unknown_and_blocks_later_writes() {
         )
         .await
         .expect_err("later governed writes must be blocked");
-    assert!(later_error.contains("governed writes are disabled"), "{later_error}");
+    assert_eq!(later_error.code, "write_refused", "{later_error:?}");
+    assert_eq!(
+        later_error.operation_outcome,
+        tablepro_mcp::OperationOutcome::NotStarted
+    );
 
     let events = harness.audit.events.lock().expect("event lock");
     assert_eq!(events.len(), 5);
@@ -491,7 +519,7 @@ async fn hanging_preview_rollback_records_unknown_and_blocks_later_writes() {
 
     let error = harness
         .bridge
-        .execute_write(
+        .execute_write_structured(
             &harness.token,
             harness.connection_id,
             "INSERT INTO jobs(id) VALUES (1)",
@@ -500,13 +528,13 @@ async fn hanging_preview_rollback_records_unknown_and_blocks_later_writes() {
         .await
         .expect_err("preview rollback must reach the cleanup deadline");
 
-    assert!(error.contains("rollback could not be confirmed"), "{error}");
-    assert!(error.contains("outcome is unknown"), "{error}");
+    assert_eq!(error.code, "transaction_rollback_failed", "{error:?}");
+    assert_eq!(error.transaction_outcome, tablepro_mcp::TransactionOutcome::Unknown);
     assert!(harness.audit_state.governed_writes_disabled());
 
     let later_error = harness
         .bridge
-        .execute_write(
+        .execute_write_structured(
             &harness.token,
             harness.connection_id,
             "INSERT INTO jobs(id) VALUES (2)",
@@ -514,7 +542,11 @@ async fn hanging_preview_rollback_records_unknown_and_blocks_later_writes() {
         )
         .await
         .expect_err("later governed writes must be blocked");
-    assert!(later_error.contains("governed writes are disabled"), "{later_error}");
+    assert_eq!(later_error.code, "write_refused", "{later_error:?}");
+    assert_eq!(
+        later_error.operation_outcome,
+        tablepro_mcp::OperationOutcome::NotStarted
+    );
 
     let events = harness.audit.events.lock().expect("event lock");
     assert_eq!(events.len(), 5);
@@ -569,6 +601,7 @@ fn metadata_harness_with_behavior(
             metadata_behavior,
             rollback_behavior: RollbackBehavior::Succeeds,
             attempts: AtomicUsize::new(0),
+            committed_writes: AtomicUsize::new(0),
         }),
     });
     let mut bridge = McpBridge::new(provider, tokens);

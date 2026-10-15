@@ -8,6 +8,7 @@
 
 mod auth;
 mod bridge;
+mod errors;
 mod rate_limit;
 #[cfg(feature = "rmcp-prototype")]
 pub mod rmcp_server;
@@ -17,6 +18,7 @@ mod tools;
 
 pub use auth::{McpScope, TokenPermissions, authorize_scopes};
 pub use bridge::{ConnectionProvider, McpBridge, McpLimits, TableSchema};
+pub use errors::{McpToolError, OperationOutcome, TransactionOutcome};
 pub use rate_limit::RateLimiter;
 pub use server::{McpServerConfig, serve_stdio, serve_streamable_http, serve_streamable_http_until};
 pub use tokens::{McpToken, TokenStore, generate_token};

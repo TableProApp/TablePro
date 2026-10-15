@@ -197,13 +197,10 @@ where
                         "isError": false
                     }
                 }),
-                Err(e) => json!({
+                Err(error) => json!({
                     "jsonrpc": "2.0",
                     "id": id,
-                    "result": {
-                        "content": [{"type": "text", "text": e}],
-                        "isError": true
-                    }
+                    "result": tool_error_result(&error)
                 }),
             },
             "ping" => json!({"jsonrpc": "2.0", "id": id, "result": {}}),
@@ -228,12 +225,51 @@ fn extract_token_str(params: &JsonValue) -> Option<&str> {
         .or_else(|| params.pointer("/arguments/token").and_then(|v| v.as_str()))
 }
 
-async fn handle_tool_call(bridge: &McpBridge, params: JsonValue) -> Result<JsonValue, String> {
+async fn handle_tool_call(bridge: &McpBridge, params: JsonValue) -> Result<JsonValue, crate::errors::McpToolError> {
     let name = params.get("name").and_then(|v| v.as_str()).ok_or("missing tool name")?;
     let args = params.get("arguments").cloned().unwrap_or(json!({}));
-    let token_str = extract_token_str(&params).ok_or("missing token (pass params.token or arguments.token)")?;
-    let token = bridge.authenticate(token_str)?;
-    tools::dispatch(bridge, &token, name, args).await
+    let token_str = extract_token_str(&params).ok_or("missing token")?;
+    let token = bridge
+        .authenticate(token_str)
+        .map_err(crate::errors::McpToolError::from)?;
+    tools::dispatch_structured(bridge, &token, name, args).await
+}
+
+fn tool_error_result(error: &crate::errors::McpToolError) -> JsonValue {
+    json!({
+        "content": [{"type": "text", "text": error.message}],
+        "isError": true,
+        "structuredContent": error.structured_content(),
+    })
+}
+
+#[cfg(test)]
+mod structured_error_tests {
+    use serde_json::json;
+
+    use super::tool_error_result;
+    use crate::errors::McpToolError;
+
+    #[test]
+    fn legacy_transport_returns_the_shared_structured_error_shape() {
+        let error = McpToolError::from_write_error(&tablepro_core::DriverError::OperationOutcomeUnknown {
+            source: Box::new(tablepro_core::DriverError::Disconnected),
+        });
+
+        assert_eq!(
+            tool_error_result(&error),
+            json!({
+                "content": [{"type": "text", "text": error.message}],
+                "isError": true,
+                "structuredContent": {
+                    "code": "operation_outcome_unknown",
+                    "operation_outcome": "unknown",
+                    "transaction_outcome": "not_applicable",
+                    "message": error.message
+                }
+            })
+        );
+    }
 }
 
 /// `tools/list` names every tool this server exposes, including ones a
@@ -468,7 +504,13 @@ async fn process_http_request(bridge: Arc<McpBridge>, headers: HeaderMap, body: 
     let method = body.get("method").and_then(|m| m.as_str()).unwrap_or("");
     let params = body.get("params").cloned().unwrap_or(json!({}));
     let result = match method {
-        "tools/call" => handle_tool_call(&bridge, params).await,
+        "tools/call" => match handle_tool_call(&bridge, params).await {
+            Ok(content) => Ok(json!({
+                "content": [{"type": "text", "text": content.to_string()}],
+                "isError": false
+            })),
+            Err(error) => Ok(tool_error_result(&error)),
+        },
         "tools/list" => handle_tools_list(&bridge, &params),
         "initialize" => match initialize_result(&params) {
             Ok(result) => Ok(result),

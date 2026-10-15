@@ -41,6 +41,12 @@ fn json_object(value: JsonValue) -> Map<String, JsonValue> {
     }
 }
 
+fn tool_error_result(error: &crate::errors::McpToolError) -> CallToolResult {
+    let mut result = CallToolResult::error(vec![ContentBlock::text(error.message)]);
+    result.structured_content = Some(error.structured_content());
+    result
+}
+
 impl ServerHandler for BridgeHandler {
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
@@ -78,20 +84,20 @@ impl ServerHandler for BridgeHandler {
         let token = token_from_meta(&context)
             .or_else(|| arguments.get("token").and_then(JsonValue::as_str).map(str::to_string));
         let outcome = match token {
-            None => Err("missing token (pass _meta.authorization or arguments.token)".to_string()),
+            None => Err(crate::errors::McpToolError::from("missing token")),
             Some(token) => match self.bridge.authenticate(&token) {
-                Err(message) => Err(message),
+                Err(message) => Err(crate::errors::McpToolError::from(message)),
                 Ok(token) => {
                     if let Some(map) = arguments.as_object_mut() {
                         map.remove("token");
                     }
-                    tools::dispatch(&self.bridge, &token, &request.name, arguments).await
+                    tools::dispatch_structured(&self.bridge, &token, &request.name, arguments).await
                 }
             },
         };
         let result = match outcome {
             Ok(content) => CallToolResult::success(vec![ContentBlock::text(content.to_string())]),
-            Err(message) => CallToolResult::error(vec![ContentBlock::text(message)]),
+            Err(error) => tool_error_result(&error),
         };
         Ok(result.into())
     }
@@ -241,6 +247,23 @@ mod tests {
             .request("tools/call", json!({"name": "list_connections", "arguments": {}}))
             .await;
         assert_eq!(response["result"]["isError"], true, "{response}");
+        assert_eq!(response["result"]["structuredContent"]["code"], "request_failed");
+        assert_eq!(
+            response["result"]["structuredContent"]["operation_outcome"],
+            "not_started"
+        );
+    }
+
+    #[test]
+    fn rmcp_transport_serializes_the_same_structured_outcome() {
+        let error =
+            crate::errors::McpToolError::from_write_error(&tablepro_core::DriverError::OperationOutcomeUnknown {
+                source: Box::new(tablepro_core::DriverError::Disconnected),
+            });
+        let result = serde_json::to_value(tool_error_result(&error)).unwrap();
+
+        assert_eq!(result["isError"], true);
+        assert_eq!(result["structuredContent"], error.structured_content());
     }
 
     #[tokio::test]
