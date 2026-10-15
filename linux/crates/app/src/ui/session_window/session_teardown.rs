@@ -168,6 +168,9 @@ mod tests {
             1,
             "the connection closed more than once"
         );
+        // A focus inside the workspace has GTK hold it until the window
+        // paints again and the focus has moved out of it.
+        crate::test_support::after_next_frame(&test.window);
         assert!(workspace.upgrade().is_none(), "the workspace outlived its teardown");
         let claim = test
             .services

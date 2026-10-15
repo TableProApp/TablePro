@@ -10,10 +10,10 @@ use tablepro_test_support::{CallCounters, FakeReply};
 
 use super::BrowseTabInput;
 use super::tests::{
-    Harness, Shown, WAIT, after_next_frame, column, column_view, delete_action, full_page, header_titles, key,
-    not_null_name, rows, serving_table, text, toasts,
+    Harness, Shown, WAIT, column, column_view, delete_action, full_page, header_titles, key, not_null_name, rows,
+    serving_table, text, toasts,
 };
-use crate::test_support::{drain_main_context, wait_until};
+use crate::test_support::{after_next_frame, drain_main_context, wait_until};
 use crate::ui::grid::GridCell;
 
 fn banner(harness: &Harness) -> adw::Banner {
