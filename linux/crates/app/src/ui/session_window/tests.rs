@@ -480,7 +480,7 @@ fn claiming_open_key_presents_owner_window() {
 }
 
 #[gtk4::test]
-fn cancel_connect_discards_late_attempt() {
+fn f002_cancel_connect_discards_late_attempt() {
     let test = TestWindow::with_script(
         "CancelLate",
         Script {
@@ -967,7 +967,7 @@ fn a_file_window_that_could_not_show_the_owner_stays_open_from_then_on() {
 }
 
 #[gtk4::test]
-fn late_show_create_reply_after_disconnect_is_dropped() {
+fn f002_late_show_create_reply_after_disconnect_is_dropped() {
     let test = TestWindow::connected_with("LateShowCreate", |script| {
         script.dialect = Arc::new(drivers_postgres::PgDialect::new(&tablepro_core::ServerInfo::new(
             "PostgreSQL",

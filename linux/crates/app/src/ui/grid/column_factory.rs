@@ -368,7 +368,7 @@ mod tests {
     use crate::ui::grid::{CellPreset, ColumnWidthBinding, GridCell, GridMsg, RowObject, TabGridContext, begin_edit};
 
     #[gtk4::test]
-    fn edit_after_draft_insert_targets_edited_row() {
+    fn f004_edit_after_draft_insert_targets_edited_row() {
         let grid = two_text_rows();
         grid.insert_draft();
 
@@ -385,7 +385,7 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn menu_set_null_after_draft_removal_targets_clicked_row() {
+    fn f004_menu_set_null_after_draft_removal_targets_clicked_row() {
         let grid = two_text_rows();
         grid.insert_draft();
         let cell = grid.cell_of(2, 1);

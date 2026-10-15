@@ -480,7 +480,7 @@ async fn resolve_syntax_error_insert_not_applied() {
 
 #[tokio::test]
 #[ignore = "requires docker"]
-async fn read_only_insert_164() {
+async fn f001_read_only_insert_164() {
     let fixture = start().await;
     let owner = connect(&fixture, false).await;
     let qualified = quoted(&unique("read_only"));

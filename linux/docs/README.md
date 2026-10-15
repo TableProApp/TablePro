@@ -1,0 +1,39 @@
+# Linux docs
+
+The reference for working on the Linux app. Start with [ARCHITECTURE.md](../ARCHITECTURE.md) for the crate graph and [CONTRIBUTING.md](../CONTRIBUTING.md) for the build; [ROADMAP.md](../ROADMAP.md) says what is built and what is not.
+
+## Guides
+
+| Guide | What it covers |
+|---|---|
+| [adding-drivers.md](adding-drivers.md) | Adding an engine as a crate: the client library, capabilities, `Connection`, writes and editor sessions |
+| [error-handling.md](error-handling.md) | The error types each layer returns, their categories, and the text and logs the app makes of them |
+| [state-management.md](state-management.md) | Where the application, window, workspace and tab state lives, and the rules every view follows |
+| [storage.md](storage.md) | Which store holds which data: files, GSettings, the Secret Service and SQLite |
+| [testing.md](testing.md) | The test suites, the conformance and Docker tests, and the CI jobs |
+| [regression-tests.md](regression-tests.md) | The tests that guard each critical audit finding |
+| [po/README.md](../po/README.md) | Marking strings for translation and keeping the template current |
+
+## Drivers
+
+| Engine | Page |
+|---|---|
+| PostgreSQL | [drivers/postgresql.md](drivers/postgresql.md) |
+| MySQL and MariaDB | [drivers/mysql.md](drivers/mysql.md) |
+| SQL Server | [drivers/sql-server.md](drivers/sql-server.md) |
+| ClickHouse | [drivers/clickhouse.md](drivers/clickhouse.md) |
+| SQLite | [drivers/sqlite.md](drivers/sqlite.md) |
+
+## Decisions
+
+The architecture decision records, with a summary of each, are indexed in [decisions/README.md](decisions/README.md).
+
+## Dated audits and plans
+
+Snapshots, kept as they were written. The code has moved on since each date.
+
+| Date | Document |
+|---|---|
+| 2026-04-26 | [production-audit.md](production-audit.md): the production-readiness audit the roadmap's release criteria come from |
+| 2026-09-14 | [plan-2026-09-14-audit-remediation.md](plan-2026-09-14-audit-remediation.md): the plan that fixed the 2026-09-13 audit's findings, with its [details](plan-2026-09-14-audit-remediation-details.md) |
+| 2026-09-14 | [dependency-review-2026-09-14.md](dependency-review-2026-09-14.md): the dependency review whose amendments override that plan |

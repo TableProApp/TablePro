@@ -126,7 +126,7 @@ async fn int_unsigned_max_id_row_edits_through_plan_save() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
-async fn bigint_unsigned_max_id_edit_affects_one_row() {
+async fn f006_bigint_unsigned_max_id_edit_affects_one_row() {
     for flavour in FLAVOURS {
         let fixture = start(flavour).await;
         let connection = connect(&fixture, false).await;

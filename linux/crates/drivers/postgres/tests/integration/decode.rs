@@ -123,7 +123,7 @@ async fn save(connection: &dyn Connection, table: &TableRef, changes: &ChangeSet
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
-async fn round_trip_matrix() {
+async fn f006_round_trip_matrix() {
     let fixture = start().await;
     let connection = connect(&fixture, false).await;
     setup(connection.as_ref(), &[MATRIX]).await;

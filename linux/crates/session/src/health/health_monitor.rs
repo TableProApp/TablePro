@@ -759,7 +759,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn late_reconnect_after_cancel_is_discarded_and_closed() {
+    async fn f002_late_reconnect_after_cancel_is_discarded_and_closed() {
         let connector = FakeConnector::new([FakeEstablish::Late {
             after: Duration::from_secs(10),
             script: healthy(),

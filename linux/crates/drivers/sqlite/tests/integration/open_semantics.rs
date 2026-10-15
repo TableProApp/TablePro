@@ -120,7 +120,7 @@ async fn path_with_question_mark_and_percent41_opens_literal_file() {
 }
 
 #[tokio::test]
-async fn read_only_insert_is_read_only() {
+async fn f001_read_only_insert_is_read_only() {
     let file = TestFile::new().await;
     let owner = file.open().await;
     apply(owner.as_ref(), &["CREATE TABLE t (a)"]).await.unwrap();

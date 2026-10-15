@@ -903,7 +903,7 @@ fn duplicating_a_selection_is_one_undo_step() {
 }
 
 #[gtk4::test]
-fn copy_row_as_insert_uses_row_below_draft() {
+fn f004_copy_row_as_insert_uses_row_below_draft() {
     let mut script = serving_table();
     script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
     let harness = Harness::open(script, []);
@@ -2316,7 +2316,7 @@ fn calendar_of(cell: &GridCell) -> Option<gtk4::Calendar> {
 }
 
 #[gtk4::test]
-fn unchanged_40kb_multiline_text_records_no_edit() {
+fn f005_unchanged_40kb_multiline_text_records_no_edit() {
     let long = "lorem ipsum ".repeat(3_500);
     let (harness, _shown) = one_cell(named_col("note", "text", true), Value::Text(long.clone()));
     let cell = grid_cell_of(harness.tab(), 0, 1);
@@ -2364,7 +2364,7 @@ fn bigint_edit_is_exact() {
     clippy::approx_constant,
     reason = "a double with every digit it can hold, which is the point, not pi"
 )]
-fn pressing_enter_on_float_keeps_full_precision() {
+fn f005_pressing_enter_on_float_keeps_full_precision() {
     let fetched = Value::Float64(3.141_592_653_589_79);
     let (harness, _shown) = one_cell(named_col("x", "double precision", false), fetched);
     let cell = grid_cell_of(harness.tab(), 0, 1);
@@ -2436,7 +2436,7 @@ fn draft_not_null_with_default_placeholder_is_default() {
 }
 
 #[gtk4::test]
-fn pasted_newlines_in_text_cell_are_kept() {
+fn f005_pasted_newlines_in_text_cell_are_kept() {
     let fetched = Value::Text("a".into());
     let (harness, _shown) = one_cell(named_col("note", "text", true), fetched.clone());
     let cell = grid_cell_of(harness.tab(), 0, 1);

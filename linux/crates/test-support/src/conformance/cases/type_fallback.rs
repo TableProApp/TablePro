@@ -5,11 +5,11 @@ use crate::conformance::support::{
 };
 use crate::conformance::{ConformanceFailure, TypedConformanceEngine};
 
-const CASE: &str = "unsupported_types_never_decode_as_null";
+const CASE: &str = "f006_unsupported_types_never_decode_as_null";
 
 /// Case 13: a value of a type the driver has no decoder for still reads
 /// back as something, never as a NULL that would hide it.
-pub async fn unsupported_types_never_decode_as_null<E: TypedConformanceEngine>(
+pub async fn f006_unsupported_types_never_decode_as_null<E: TypedConformanceEngine>(
     engine: E,
 ) -> Result<(), ConformanceFailure> {
     let cases = engine.unsupported_type_cases();

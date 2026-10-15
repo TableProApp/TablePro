@@ -213,7 +213,7 @@ async fn sleep_30_cancelled_thread_idle() {
 /// is refused by the server with 1792, for a row change and DDL alike.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
-async fn read_only_insert_and_create_1792() {
+async fn f001_read_only_insert_and_create_1792() {
     for flavour in FLAVOURS {
         let fixture = start(flavour).await;
         let owner = connect(&fixture, false).await;
