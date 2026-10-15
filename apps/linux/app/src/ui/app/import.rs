@@ -192,6 +192,7 @@ impl App {
         });
         let mode = match preparation.table {
             Some(table) => ImportMode::ExistingTable {
+                driver_id: preparation.driver_id.clone(),
                 table,
                 columns: preparation.columns,
             },
@@ -629,8 +630,8 @@ mod tests {
         let bytes = b"id,name\n51,Ada\n52,Grace\n".to_vec();
         let options = CsvImportOptions::default();
         let sheet = read_csv(&bytes, &options, None).expect("read CSV");
-        let mapping = crate::ui::import_dialog::suggested_existing_mapping(&sheet.headers, &columns);
-        assert_eq!(mapping, [None, Some(1)]);
+        let mapping = crate::ui::import_dialog::suggested_existing_mapping("sqlite", &sheet.headers, &columns);
+        assert_eq!(mapping, [Some(0), Some(1)]);
         let choice = ImportChoice {
             schema: None,
             table: "people".into(),
@@ -646,7 +647,7 @@ mod tests {
                 .iter()
                 .map(|column| column.name.as_str())
                 .collect::<Vec<_>>(),
-            ["name"]
+            ["id", "name"]
         );
         let mut scope = guard
             .begin_bulk_insert(BulkInsertRequest {
@@ -686,8 +687,8 @@ mod tests {
         assert_eq!(
             result.rows,
             [
-                vec![Value::Int(1), Value::Text("Ada".into())],
-                vec![Value::Int(2), Value::Text("Grace".into())]
+                vec![Value::Int(51), Value::Text("Ada".into())],
+                vec![Value::Int(52), Value::Text("Grace".into())]
             ]
         );
     }

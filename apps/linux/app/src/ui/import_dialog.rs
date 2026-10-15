@@ -9,14 +9,21 @@ use tablepro_core::import::{
     suggest_mapping,
 };
 use tablepro_core::sql_ddl::DraftColumn;
-use tablepro_core::{ColumnInfo, sql_dialect};
+use tablepro_core::{ColumnInfo, import::supports_explicit_auto_increment_values, sql_dialect};
 use tokio_util::sync::CancellationToken;
 
 /// Whether the rows go into a table that is already there, or into one
 /// the import creates first.
 pub(crate) enum ImportMode {
-    ExistingTable { table: String, columns: Vec<ColumnInfo> },
-    NewTable { driver_id: String, suggested_table: String },
+    ExistingTable {
+        driver_id: String,
+        table: String,
+        columns: Vec<ColumnInfo>,
+    },
+    NewTable {
+        driver_id: String,
+        suggested_table: String,
+    },
 }
 
 /// What the app read from the file before it asked the user anything.
@@ -171,8 +178,13 @@ enum ColumnSection {
 impl ColumnSection {
     fn new(request: &ImportRequest) -> Self {
         match &request.mode {
-            ImportMode::ExistingTable { table, columns } => Self::Existing(ExistingColumns::new(
+            ImportMode::ExistingTable {
+                driver_id,
                 table,
+                columns,
+            } => Self::Existing(ExistingColumns::new(
+                table,
+                driver_id,
                 columns,
                 request.mapping_store.clone(),
                 request.mapping_scope.clone(),
@@ -214,6 +226,7 @@ impl ColumnSection {
 
 struct ExistingColumns {
     group: adw::PreferencesGroup,
+    driver_id: String,
     table: String,
     columns: Vec<ColumnInfo>,
     rows: Vec<adw::ComboRow>,
@@ -225,6 +238,7 @@ struct ExistingColumns {
 impl ExistingColumns {
     fn new(
         table: &str,
+        driver_id: &str,
         columns: &[ColumnInfo],
         store: Option<CsvMappingStore>,
         scope: Option<CsvMappingScope>,
@@ -240,38 +254,32 @@ impl ExistingColumns {
             .map(|column| {
                 let row = adw::ComboRow::builder()
                     .title(&column.name)
-                    .subtitle(column_subtitle(column))
+                    .subtitle(column_subtitle(driver_id, column))
                     .build();
-                row.set_sensitive(!server_managed(column));
+                row.set_sensitive(!server_managed(driver_id, column));
                 row
             })
             .collect();
         for row in &rows {
             group.add(row);
         }
-        let actions = gtk::Box::builder().spacing(6).build();
-        let remember = gtk::Button::with_label(&crate::tr!("Remember mapping"));
-        let restore = gtk::Button::with_label(&crate::tr!("Restore mapping"));
-        let forget = gtk::Button::with_label(&crate::tr!("Forget mapping"));
-        let status = gtk::Label::builder().xalign(0.0).wrap(true).build();
-        let available = store.is_some() && scope.is_some();
-        for button in [&remember, &restore, &forget] {
-            button.set_sensitive(available);
-        }
-        if !available {
-            status.set_text(&crate::tr!("Saved mappings are unavailable for this connection."));
-        }
-        for button in [&remember, &restore, &forget] {
-            actions.append(button);
-        }
-        group.add(&actions);
-        group.add(&status);
         let headers = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         let has_header = std::rc::Rc::new(std::cell::Cell::new(true));
-        MappingActions::new(&status, &rows, &headers, &has_header, columns, store, scope)
-            .connect(&remember, &restore, &forget);
+        add_mapping_controls(
+            &group,
+            MappingActionsParams {
+                driver_id: driver_id.to_owned(),
+                rows: rows.clone(),
+                headers: headers.clone(),
+                has_header: has_header.clone(),
+                columns: columns.to_vec(),
+                store,
+                scope,
+            },
+        );
         Self {
             group,
+            driver_id: driver_id.to_owned(),
             table: table.to_owned(),
             columns: columns.to_vec(),
             rows,
@@ -288,7 +296,7 @@ impl ExistingColumns {
         if preserve {
             return;
         }
-        let suggestion = suggested_existing_mapping(&sheet.headers, &self.columns);
+        let suggestion = suggested_existing_mapping(&self.driver_id, &sheet.headers, &self.columns);
         let mut labels = vec![SKIP_LABEL.to_string()];
         labels.extend(disambiguated_headers(&sheet.headers));
         for (row, field) in self.rows.iter().zip(suggestion) {
@@ -305,12 +313,13 @@ impl ExistingColumns {
             .iter()
             .map(|row| (row.selected() > 0).then(|| row.selected() as usize - 1))
             .collect();
-        editable_existing_mapping(&self.columns, selected)
+        editable_existing_mapping(&self.driver_id, &self.columns, selected)
     }
 }
 
 struct MappingActions {
     status: gtk::Label,
+    driver_id: String,
     rows: Vec<adw::ComboRow>,
     headers: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
     has_header: std::rc::Rc<std::cell::Cell<bool>>,
@@ -319,24 +328,46 @@ struct MappingActions {
     scope: Option<CsvMappingScope>,
 }
 
+struct MappingActionsParams {
+    driver_id: String,
+    rows: Vec<adw::ComboRow>,
+    headers: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+    has_header: std::rc::Rc<std::cell::Cell<bool>>,
+    columns: Vec<ColumnInfo>,
+    store: Option<CsvMappingStore>,
+    scope: Option<CsvMappingScope>,
+}
+
+fn add_mapping_controls(group: &adw::PreferencesGroup, params: MappingActionsParams) {
+    let actions = gtk::Box::builder().spacing(6).build();
+    let remember = gtk::Button::with_label(&crate::tr!("Remember mapping"));
+    let restore = gtk::Button::with_label(&crate::tr!("Restore mapping"));
+    let forget = gtk::Button::with_label(&crate::tr!("Forget mapping"));
+    let status = gtk::Label::builder().xalign(0.0).wrap(true).build();
+    let available = params.store.is_some() && params.scope.is_some();
+    for button in [&remember, &restore, &forget] {
+        button.set_sensitive(available);
+        actions.append(button);
+    }
+    if !available {
+        status.set_text(&crate::tr!("Saved mappings are unavailable for this connection."));
+    }
+    group.add(&actions);
+    group.add(&status);
+    MappingActions::new(&status, params).connect(&remember, &restore, &forget);
+}
+
 impl MappingActions {
-    fn new(
-        status: &gtk::Label,
-        rows: &[adw::ComboRow],
-        headers: &std::rc::Rc<std::cell::RefCell<Vec<String>>>,
-        has_header: &std::rc::Rc<std::cell::Cell<bool>>,
-        columns: &[ColumnInfo],
-        store: Option<CsvMappingStore>,
-        scope: Option<CsvMappingScope>,
-    ) -> Self {
+    fn new(status: &gtk::Label, params: MappingActionsParams) -> Self {
         Self {
             status: status.clone(),
-            rows: rows.to_vec(),
-            headers: headers.clone(),
-            has_header: has_header.clone(),
-            columns: columns.to_vec(),
-            store,
-            scope,
+            driver_id: params.driver_id,
+            rows: params.rows,
+            headers: params.headers,
+            has_header: params.has_header,
+            columns: params.columns,
+            store: params.store,
+            scope: params.scope,
         }
     }
 
@@ -357,7 +388,7 @@ impl MappingActions {
                 .iter()
                 .map(|row| (row.selected() > 0).then(|| row.selected() as usize - 1))
                 .collect();
-            let mapping = editable_existing_mapping(&actions.columns, selected);
+            let mapping = editable_existing_mapping(&actions.driver_id, &actions.columns, selected);
             let result = store.save(
                 scope,
                 &actions.headers.borrow(),
@@ -416,6 +447,7 @@ impl MappingActions {
     fn clone_for_signal(&self) -> Self {
         Self {
             status: self.status.clone(),
+            driver_id: self.driver_id.clone(),
             rows: self.rows.clone(),
             headers: self.headers.clone(),
             has_header: self.has_header.clone(),
@@ -442,12 +474,18 @@ fn disambiguated_headers(headers: &[String]) -> Vec<String> {
         .collect()
 }
 
-fn server_managed(column: &ColumnInfo) -> bool {
-    column.is_auto_increment || column.is_generated
+fn server_managed(driver_id: &str, column: &ColumnInfo) -> bool {
+    column.is_generated || (column.is_auto_increment && !supports_explicit_auto_increment_values(driver_id))
 }
 
-fn column_subtitle(column: &ColumnInfo) -> String {
-    if server_managed(column) {
+fn column_subtitle(driver_id: &str, column: &ColumnInfo) -> String {
+    if column.is_auto_increment && supports_explicit_auto_increment_values(driver_id) {
+        format!(
+            "{} · {}",
+            column.data_type,
+            crate::tr!("Auto-increment values are inserted when mapped.")
+        )
+    } else if server_managed(driver_id, column) {
         format!(
             "{} · {}",
             column.data_type,
@@ -458,15 +496,23 @@ fn column_subtitle(column: &ColumnInfo) -> String {
     }
 }
 
-pub(super) fn suggested_existing_mapping(headers: &[String], columns: &[ColumnInfo]) -> Vec<Option<usize>> {
-    editable_existing_mapping(columns, suggest_mapping(headers, columns))
+pub(super) fn suggested_existing_mapping(
+    driver_id: &str,
+    headers: &[String],
+    columns: &[ColumnInfo],
+) -> Vec<Option<usize>> {
+    editable_existing_mapping(driver_id, columns, suggest_mapping(headers, columns))
 }
 
-fn editable_existing_mapping(columns: &[ColumnInfo], mapping: Vec<Option<usize>>) -> Vec<Option<usize>> {
+fn editable_existing_mapping(
+    driver_id: &str,
+    columns: &[ColumnInfo],
+    mapping: Vec<Option<usize>>,
+) -> Vec<Option<usize>> {
     mapping
         .into_iter()
         .zip(columns)
-        .map(|(field, column)| if server_managed(column) { None } else { field })
+        .map(|(field, column)| if server_managed(driver_id, column) { None } else { field })
         .collect()
 }
 
@@ -795,7 +841,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_suggestions_skip_auto_increment_and_generated_columns() {
+    fn preview_suggestions_keep_explicit_auto_increment_and_skip_generated_columns() {
         let headers = vec!["id".into(), "name".into(), "computed".into()];
         let columns = vec![
             ColumnInfo {
@@ -812,11 +858,21 @@ mod tests {
             },
         ];
 
-        assert_eq!(suggested_existing_mapping(&headers, &columns), [None, Some(1), None]);
+        for driver_id in ["postgres", "mysql", "sqlite"] {
+            assert_eq!(
+                suggested_existing_mapping(driver_id, &headers, &columns),
+                [Some(0), Some(1), None],
+                "{driver_id}"
+            );
+        }
+        assert_eq!(
+            suggested_existing_mapping("mssql", &headers, &columns),
+            [None, Some(1), None]
+        );
     }
 
     #[test]
-    fn selected_preview_mapping_cannot_reenable_database_managed_columns() {
+    fn selected_preview_mapping_keeps_explicit_auto_increment_and_skips_generated_columns() {
         let columns = vec![
             ColumnInfo {
                 is_auto_increment: true,
@@ -830,9 +886,16 @@ mod tests {
         ];
 
         assert_eq!(
-            editable_existing_mapping(&columns, vec![Some(0), Some(1), Some(2)]),
+            editable_existing_mapping("postgres", &columns, vec![Some(0), Some(1), Some(2)]),
+            [Some(0), Some(1), None]
+        );
+        assert_eq!(
+            editable_existing_mapping("mssql", &columns, vec![Some(0), Some(1), Some(2)]),
             [None, Some(1), None]
         );
+        assert!(!server_managed("postgres", &columns[0]));
+        assert!(server_managed("mssql", &columns[0]));
+        assert!(server_managed("postgres", &columns[2]));
     }
 
     #[test]
