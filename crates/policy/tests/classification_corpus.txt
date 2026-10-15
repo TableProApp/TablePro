@@ -1,0 +1,97 @@
+postgres|SELECT 1|Select||true|false|false|false
+postgres|SELECT a.id, b.name FROM public.a JOIN b ON a.id = b.a_id WHERE a.x > 1|Select|public.a,b|true|false|false|false
+postgres|WITH t AS (SELECT id FROM users) SELECT * FROM t|Select|users,t|true|false|false|false
+postgres|WITH d AS (DELETE FROM users WHERE id = 1 RETURNING id) SELECT * FROM d|Other|users,d|true|false|false|false
+postgres|SELECT * FROM users WHERE id IN (SELECT user_id FROM orders)|Select|users|true|false|false|false
+postgres|SELECT * INTO backup FROM users|Other|users|true|false|false|false
+postgres|SELECT * FROM users FOR UPDATE|Other|users|true|false|false|false
+postgres|INSERT INTO users (id) VALUES (1)|Insert|users|true|false|false|false
+postgres|INSERT INTO users (id) VALUES (1) ON CONFLICT (id) DO NOTHING RETURNING id|Insert|users|true|false|false|false
+postgres|INSERT INTO users SELECT * FROM staging|Insert|users|true|false|false|false
+postgres|UPDATE users SET name = 'x' WHERE id = 1|Update|users|true|false|false|false
+postgres|UPDATE users SET name = 'x'|Update|users|false|true|false|false
+postgres|UPDATE users u SET name = o.n FROM other o WHERE u.id = o.id|Update|users|true|false|false|false
+postgres|UPDATE ONLY public.users SET active = false WHERE id < 10 RETURNING id|Unparseable||false|false|false|true
+postgres|DELETE FROM users WHERE id = 1|Delete|users|true|false|false|false
+postgres|DELETE FROM users|Delete|users|false|true|false|false
+postgres|DELETE FROM users USING banned WHERE users.id = banned.id|Delete|users|true|false|false|false
+postgres|MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET v = s.v WHEN NOT MATCHED THEN INSERT (id, v) VALUES (s.id, s.v)|Other|t|true|false|false|false
+postgres|TRUNCATE users|Ddl|users|true|true|false|false
+postgres|TRUNCATE TABLE a, b RESTART IDENTITY CASCADE|Ddl|a,b|true|true|false|false
+postgres|CREATE TABLE t (id int primary key)|Ddl|t|true|false|false|false
+postgres|CREATE TABLE t2 AS SELECT * FROM users|Ddl|t2|true|false|false|false
+postgres|CREATE VIEW v AS SELECT * FROM users|Ddl|v|true|false|false|false
+postgres|CREATE OR REPLACE VIEW public.v AS SELECT 1|Ddl|public.v|true|false|false|false
+postgres|CREATE INDEX idx ON users (name)|Ddl|idx|true|false|false|false
+postgres|ALTER TABLE users ADD COLUMN x int|Ddl|users|true|false|false|false
+postgres|ALTER TABLE public.users DROP COLUMN x|Ddl|public.users|true|false|false|false
+postgres|ALTER TABLE users RENAME TO people|Ddl|users|true|false|false|false
+postgres|DROP TABLE users|Ddl|users|true|false|false|false
+postgres|DROP TABLE IF EXISTS a, b CASCADE|Ddl|a,b|true|false|false|false
+postgres|DROP VIEW v|Ddl|v|true|false|false|false
+postgres|DROP INDEX idx|Ddl|idx|true|false|false|false
+postgres|GRANT SELECT ON users TO bob|Ddl|users|true|false|false|false
+postgres|GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO bob|Ddl||true|false|false|false
+postgres|REVOKE INSERT ON users FROM bob|Ddl|users|true|false|false|false
+postgres|BEGIN|Transaction||true|false|false|false
+postgres|COMMIT|Transaction||true|false|false|false
+postgres|ROLLBACK|Transaction||true|false|false|false
+postgres|START TRANSACTION|Transaction||true|false|false|false
+postgres|SAVEPOINT s1|Other||true|false|false|false
+postgres|SET search_path = public|Other||true|false|false|false
+postgres|SHOW search_path|Other||true|false|false|false
+postgres|EXPLAIN SELECT * FROM users|Select|users|true|false|false|false
+postgres|EXPLAIN ANALYZE DELETE FROM users|Delete|users|false|true|false|false
+postgres|CALL do_things()|Other||true|false|false|false
+postgres|COPY users TO STDOUT|Other|users|true|false|false|false
+postgres|COPY users FROM '/tmp/x.csv'|Administrative|users|true|false|false|false
+postgres|VACUUM users|Unparseable||false|false|false|true
+postgres|COMMENT ON TABLE users IS 'x'|Ddl||true|false|false|false
+postgres|DO $$ BEGIN DELETE FROM users; END $$|Unparseable||false|false|false|true
+postgres|SELECT pg_sleep(1)|Select||true|false|false|false
+postgres|SELECT 1; DELETE FROM users|Delete|users|false|true|true|false
+postgres|SELECT 1; SELECT 2|Select||true|false|true|false
+postgres|SELEC 1|Unparseable||false|false|false|true
+postgres|DELETE FROM|Unparseable||false|false|false|true
+mysql|SELECT * FROM `users` WHERE id = 1|Select|`users`|true|false|false|false
+mysql|INSERT INTO users SET name = 'x'|Insert|users|true|false|false|false
+mysql|INSERT INTO users (id) VALUES (1) ON DUPLICATE KEY UPDATE id = id|Insert|users|true|false|false|false
+mysql|REPLACE INTO users (id) VALUES (1)|Insert|users|true|false|false|false
+mysql|UPDATE users SET name = 'x' WHERE id = 1 LIMIT 1|Unparseable||false|false|false|true
+mysql|UPDATE a JOIN b ON a.id = b.id SET a.x = 1 WHERE b.y = 2|Update|a|true|false|false|false
+mysql|DELETE FROM users WHERE id = 1 LIMIT 1|Delete|users|true|false|false|false
+mysql|DELETE a FROM a JOIN b ON a.id = b.id WHERE b.x = 1|Delete|a|true|false|false|false
+mysql|TRUNCATE TABLE users|Ddl|users|true|true|false|false
+mysql|CREATE TABLE t (id int) ENGINE=InnoDB|Ddl|t|true|false|false|false
+mysql|ALTER TABLE users ADD INDEX i (name)|Ddl|users|true|false|false|false
+mysql|DROP DATABASE shop|Ddl|shop|true|false|false|false
+mysql|SHOW TABLES|Other||true|false|false|false
+mysql|USE shop|Other||true|false|false|false
+mysql|SET @a = 1|Other||true|false|false|false
+mysql|GRANT SELECT ON shop.* TO 'bob'@'%'|Ddl|shop.*|true|false|false|false
+mysql|LOCK TABLES users WRITE|Other||true|false|false|false
+mysql|LOAD DATA INFILE '/tmp/x' INTO TABLE users|Unparseable||false|false|false|true
+sqlite|SELECT * FROM "users"|Select|"users"|true|false|false|false
+sqlite|INSERT OR REPLACE INTO users (id) VALUES (1)|Insert|users|true|false|false|false
+sqlite|UPDATE users SET name = 'x' WHERE id = 1|Update|users|true|false|false|false
+sqlite|DELETE FROM users|Delete|users|false|true|false|false
+sqlite|CREATE TABLE t (id integer primary key)|Ddl|t|true|false|false|false
+sqlite|DROP TABLE t|Ddl|t|true|false|false|false
+sqlite|PRAGMA table_info(users)|Unparseable||false|false|false|true
+sqlite|PRAGMA writable_schema = 1|Other||true|false|false|false
+sqlite|ATTACH DATABASE 'x.db' AS x|Other||true|false|false|false
+sqlite|VACUUM|Unparseable||false|false|false|true
+sqlite|BEGIN IMMEDIATE|Transaction||true|false|false|false
+mssql|SELECT TOP 5 * FROM dbo.users|Select|dbo.users|true|false|false|false
+mssql|UPDATE dbo.users SET name = 'x' WHERE id = 1|Update|dbo.users|true|false|false|false
+mssql|DELETE FROM dbo.users|Delete|dbo.users|false|true|false|false
+mssql|EXEC sp_who|Administrative||true|false|false|false
+mssql|TRUNCATE TABLE dbo.users|Ddl|dbo.users|true|true|false|false
+mssql|CREATE TABLE dbo.t (id int)|Ddl|dbo.t|true|false|false|false
+mssql|MERGE dbo.t AS tgt USING dbo.s AS src ON tgt.id = src.id WHEN MATCHED THEN DELETE|Other|dbo.t|true|false|false|false
+mssql|BEGIN TRANSACTION|Transaction||true|false|false|false
+clickhouse|SELECT count() FROM events|Select|events|true|false|false|false
+clickhouse|INSERT INTO events VALUES (1)|Insert|events|true|false|false|false
+clickhouse|ALTER TABLE events DELETE WHERE id = 1|Unparseable||false|false|false|true
+clickhouse|OPTIMIZE TABLE events|Other||true|false|false|false
+clickhouse|DROP TABLE events|Ddl|events|true|false|false|false
