@@ -3,6 +3,9 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+#[path = "src/application/metainfo_release.rs"]
+mod metainfo_release;
+
 const METAINFO_TEMPLATE: &str = "../../data/app.tablepro.TablePro.metainfo.xml.in.in";
 /// The fallback `config::APP_ID` takes when Meson sets nothing.
 const DEFAULT_APP_ID: &str = "app.tablepro.TablePro.Devel";
@@ -56,7 +59,8 @@ fn render_template() -> Result<String, String> {
     let package = env::var("CARGO_PKG_NAME").map_err(|error| format!("CARGO_PKG_NAME: {error}"))?;
     let template = fs::read_to_string(METAINFO_TEMPLATE)
         .map_err(|error| format!("could not read {METAINFO_TEMPLATE}: {error}"))?;
-    let version = newest_release(&template).ok_or_else(|| format!("{METAINFO_TEMPLATE} lists no release"))?;
+    let version = metainfo_release::newest_release(&template)
+        .ok_or_else(|| format!("{METAINFO_TEMPLATE} lists no release with a version"))?;
     let screenshots =
         format!("https://raw.githubusercontent.com/TableProApp/TablePro/linux-v{version}/linux/data/screenshots");
     let rendered = template
@@ -70,15 +74,6 @@ fn render_template() -> Result<String, String> {
         ));
     }
     Ok(rendered)
-}
-
-/// Meson fills `@version@` with the project version, and a release
-/// commit lists that version first.
-fn newest_release(template: &str) -> Option<&str> {
-    let marker = "<release version=\"";
-    let start = template.find(marker)? + marker.len();
-    let length = template[start..].find('"')?;
-    Some(&template[start..start + length])
 }
 
 /// The name of a Meson `@name@` placeholder still in `text`.

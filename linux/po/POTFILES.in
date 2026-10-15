@@ -8,6 +8,7 @@ crates/app/src/application/app_window_host.rs
 crates/app/src/application/debug_info.rs
 crates/app/src/application/imp.rs
 crates/app/src/application/legal_section.rs
+crates/app/src/application/metainfo_release.rs
 crates/app/src/application/mod.rs
 crates/app/src/application/open_files.rs
 crates/app/src/application/quit_sequence.rs

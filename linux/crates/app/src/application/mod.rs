@@ -11,6 +11,8 @@ mod app_window_host;
 mod debug_info;
 mod imp;
 mod legal_section;
+#[cfg(test)]
+mod metainfo_release;
 mod open_files;
 mod quit_sequence;
 mod runtime_versions;

@@ -47,6 +47,7 @@ mod tests {
     use gtk4 as gtk;
 
     use super::*;
+    use crate::application::metainfo_release::newest_release;
 
     fn embedded_metainfo() -> String {
         crate::register_test_resources();
@@ -108,19 +109,12 @@ mod tests {
         );
     }
 
-    fn newest_release(xml: &str) -> &str {
-        let marker = "<release version=\"";
-        let start = xml.find(marker).expect("the metainfo lists a release") + marker.len();
-        let length = xml[start..].find('"').expect("the release version is quoted");
-        &xml[start..start + length]
-    }
-
     #[test]
     fn embedded_metainfo_pins_project_links_to_the_release_tag() {
         let xml = embedded_metainfo();
         let tree = format!(
             "https://github.com/TableProApp/TablePro/blob/linux-v{}/linux",
-            newest_release(&xml)
+            newest_release(&xml).expect("the metainfo lists a release")
         );
 
         assert_eq!(
