@@ -9,7 +9,7 @@ pub(crate) enum PagingInput {
     /// F5: the window asks first when the tab has unsaved changes.
     RequestRefresh,
     ToggleFilterStrip,
-    /// The strip's rules, or an empty set for "Clear all".
+    /// The strip's rules, or an empty set for Clear All.
     FilterApplied(FilterSet),
     FirstPage,
     PrevPage,

@@ -119,7 +119,7 @@ impl BrowseModel {
             .collect()
     }
 
-    /// Same request as the context menu's Copy as > Rows: one selection
+    /// Same request as the context menu's Copy As > Rows: one selection
     /// cannot produce two different clipboard payloads.
     fn copy_selected_rows(&self, fx: &mut Effects) {
         let (Some(selection), Some(_)) = (self.current_selection.as_ref(), self.shown_page()) else {

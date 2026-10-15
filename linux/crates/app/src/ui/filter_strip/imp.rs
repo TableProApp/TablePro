@@ -38,7 +38,6 @@ pub struct FilterStrip {
     #[template_child]
     pub add_rule_button: TemplateChild<gtk::Button>,
 
-    /// Slid into view. Escape, Close, Apply and Clear all slide it out.
     #[property(get, set)]
     pub revealed: Cell<bool>,
 

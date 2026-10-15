@@ -45,7 +45,7 @@ impl StructureModel {
                 };
             }),
             ColumnField::Nullable(nullable) => column.update(|draft| draft.nullable = nullable),
-            // The row's Nullable and Auto increment switches follow the
+            // The row's Nullable and Auto Increment switches follow the
             // key and send their own edits.
             ColumnField::PrimaryKey(primary_key) => column.update(|draft| draft.primary_key = primary_key),
             ColumnField::AutoIncrement(auto_increment) => column.update(|draft| draft.auto_increment = auto_increment),
