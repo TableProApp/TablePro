@@ -112,7 +112,7 @@ impl App {
         // a tab via sidebar click or Ctrl+T.
         self.ensure_workspace_root(sender.clone());
         self.show_in_content_holder(&self.workspace_outer_stack);
-        self.table_names = tables.iter().chain(views.iter()).map(|t| t.name.clone()).collect();
+        self.set_completion_tables(&tables, &views);
         tracing::info!(
             driver = %driver_id,
             table_count = tables.len(),

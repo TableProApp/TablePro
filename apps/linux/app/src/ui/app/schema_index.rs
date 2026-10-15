@@ -1,8 +1,22 @@
 use relm4::{ComponentController, ComponentSender};
 
 use super::{App, AppMsg};
+use crate::ui::editor::{catalog_reference, split_table_reference, table_key};
 
 impl App {
+    pub(super) fn set_completion_tables(
+        &mut self,
+        tables: &[tablepro_core::TableInfo],
+        views: &[tablepro_core::TableInfo],
+    ) {
+        let driver = self.current_driver_id.as_deref().unwrap_or("postgres");
+        self.table_names = tables
+            .iter()
+            .chain(views)
+            .map(|table| catalog_reference(driver, table.schema.as_deref(), &table.name))
+            .collect();
+    }
+
     pub(super) fn on_editor_needs_columns(&self, tables: Vec<String>, sender: ComponentSender<Self>) {
         let Some((conn, identity)) = self.connection_id.and_then(|id| self.database.get_with_identity(id)) else {
             return;
@@ -16,7 +30,7 @@ impl App {
             tables
                 .into_iter()
                 .filter(|table| !index.knows_columns(table))
-                .filter(|table| requested.insert(crate::ui::editor::table_key(table)))
+                .filter(|table| table_key(table, index.grammar).is_some_and(|key| requested.insert(key)))
                 .map(|table| index.request(table))
                 .collect()
         };
@@ -27,6 +41,7 @@ impl App {
             crate::services::operation_control::timeout_for(&self.preferences, &self.database, self.connection_id);
         let sender_clone = sender.clone();
         let token = self.schema_fetch_cancel.borrow().clone();
+        let grammar = self.schema_index.borrow().grammar;
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
@@ -34,7 +49,10 @@ impl App {
                         if token.is_cancelled() {
                             break;
                         }
-                        let (schema, table) = split_table_reference(&request.table);
+                        let Some((schema, table)) = split_table_reference(&request.table, grammar) else {
+                            sender_clone.input(AppMsg::SchemaColumnsFetched(request, Err(())));
+                            continue;
+                        };
                         let control = crate::services::operation_control::bounded_with(timeout_secs, token.clone());
                         let result = conn
                             .fetch_columns_controlled(schema.as_deref(), &table, &control)
@@ -61,7 +79,9 @@ impl App {
         let Some(identity) = self.connection_id.and_then(|id| self.database.identity(id)) else {
             return;
         };
-        let key = crate::ui::editor::table_key(&request.table);
+        let Some(key) = table_key(&request.table, self.schema_index.borrow().grammar) else {
+            return;
+        };
         let mut index = self.schema_index.borrow_mut();
         if index.sync_connection(&identity) {
             self.reset_schema_fetches();
@@ -109,64 +129,68 @@ impl App {
                 if columns.is_empty() {
                     continue;
                 }
-                let reference = match model.schema() {
-                    Some(schema) => format!("{schema}.{}", model.table()),
-                    None => model.table().to_string(),
-                };
+                let reference = catalog_reference(
+                    self.current_driver_id.as_deref().unwrap_or("postgres"),
+                    model.schema(),
+                    model.table(),
+                );
                 index.set_columns(&reference, columns);
             }
         }
     }
 }
 
-fn split_table_reference(reference: &str) -> (Option<String>, String) {
-    let mut parts: Vec<String> = crate::ui::editor::split_reference(reference)
-        .into_iter()
-        .map(|part| part.text)
-        .collect();
-    if parts.len() >= 2 && parts.iter().all(|part| !part.is_empty()) {
-        let table = parts.pop().unwrap_or_default();
-        return (parts.pop(), table);
-    }
-    (None, parts.join("."))
-}
-
 #[cfg(test)]
 mod tests {
     use super::split_table_reference;
+    use tablepro_core::sql_syntax::SqlGrammar;
 
     #[test]
-    fn a_qualified_reference_splits_into_schema_and_table() {
-        assert_eq!(
-            split_table_reference("public.users"),
-            (Some("public".to_string()), "users".to_string())
-        );
-        assert_eq!(
-            split_table_reference("\"public\".\"Users\""),
-            (Some("public".to_string()), "Users".to_string())
-        );
+    fn quoted_names_reach_metadata_without_losing_identity() {
+        for (sql, schema, table) in [
+            (r#""odd.schema"."a.b""#, Some("odd.schema"), "a.b"),
+            (r#"public."a""b""#, Some("public"), "a\"b"),
+            (r#""public"."Users""#, Some("public"), "Users"),
+            (r#"public."select""#, Some("public"), "select"),
+            (r#""東京"."with space""#, Some("東京"), "with space"),
+            ("PUBLIC.Users", Some("public"), "users"),
+            ("users", None, "users"),
+        ] {
+            assert_eq!(
+                split_table_reference(sql, Some(SqlGrammar::PostgreSql)),
+                Some((schema.map(str::to_string), table.into()))
+            );
+        }
     }
 
     #[test]
-    fn a_bare_reference_has_no_schema() {
-        assert_eq!(split_table_reference("users"), (None, "users".to_string()));
-        assert_eq!(split_table_reference("`orders`"), (None, "orders".to_string()));
+    fn invalid_references_do_not_route_metadata() {
+        for sql in [
+            "users.",
+            ".users",
+            "a.b.c",
+            r#"public."open"#,
+            "public..users",
+            "'users'",
+            r#"public."""#,
+            "users; DROP TABLE users",
+        ] {
+            assert!(
+                split_table_reference(sql, Some(SqlGrammar::PostgreSql)).is_none(),
+                "{sql}"
+            );
+        }
     }
 
     #[test]
-    fn dots_and_doubled_quotes_inside_quotes_stay_in_the_name() {
+    fn other_engines_keep_their_identifier_delimiters() {
         assert_eq!(
-            split_table_reference("\"odd.schema\".\"a.b\""),
-            (Some("odd.schema".to_string()), "a.b".to_string())
+            split_table_reference("`orders`", Some(SqlGrammar::MySql)),
+            Some((None, "orders".into()))
         );
         assert_eq!(
-            split_table_reference("public.\"a\"\"b\""),
-            (Some("public".to_string()), "a\"b".to_string())
+            split_table_reference("[dbo].[a]]b]", Some(SqlGrammar::MsSql)),
+            Some((Some("dbo".into()), "a]b".into()))
         );
-    }
-
-    #[test]
-    fn a_trailing_dot_is_not_a_schema_split() {
-        assert_eq!(split_table_reference("users."), (None, "users.".to_string()));
     }
 }

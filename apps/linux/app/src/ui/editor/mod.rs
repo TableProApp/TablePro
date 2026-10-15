@@ -1,4 +1,5 @@
 mod completion;
+mod completion_identifiers;
 mod diagnostics;
 mod error_location;
 mod find_bar;
@@ -33,7 +34,8 @@ use tablepro_storage::query_history::{HistoryStore, NewEntry, Outcome};
 use crate::services::database_service::ConnectionMetadata;
 use crate::ui::grid::GridMsg;
 
-pub use completion::{SchemaIndex, SchemaRequest, candidate_words, referenced_tables, split_reference, table_key};
+pub use completion::{SchemaIndex, SchemaRequest, candidate_words, referenced_tables};
+pub(crate) use completion_identifiers::{catalog_reference, split_table_reference, table_key};
 pub use schema::{SQL_KEYWORDS, build_schema_buffer, derive_tab_label, update_schema_buffer};
 pub use statement_cursor::grammar_for;
 

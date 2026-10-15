@@ -797,7 +797,7 @@ impl App {
         }
         match result {
             Ok((tables, views)) => {
-                self.table_names = tables.iter().chain(&views).map(|table| table.name.clone()).collect();
+                self.set_completion_tables(&tables, &views);
                 self.sidebar_views = views;
                 self.repopulate_sidebar(&tables);
                 self.rebuild_schema_buffer();

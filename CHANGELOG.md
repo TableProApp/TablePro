@@ -123,6 +123,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 
 ### Fixed
 
+- PostgreSQL completion keeps quoted case, dots, spaces and embedded quotes distinct when loading table columns.
 - PostgreSQL errors no longer replay queries or writes merely because their error code resembles a stale prepared plan.
 - The CSV import progress dialog now closes after the import completes or is cancelled.
 - Explain view tabs and the schema filter button now use icons available in Adwaita and Yaru themes.
