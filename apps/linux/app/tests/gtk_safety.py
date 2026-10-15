@@ -20,6 +20,7 @@ import gtk_parameters
 import gtk_xml
 import gtk_ux
 import gtk_input
+import gtk_runner
 import gtk_shard
 
 APP_NAME = "BookiE"
@@ -2375,17 +2376,9 @@ def main():
     # The merge gate sets TABLEPRO_GTK_SCENARIO_RETRIES=1 so one start-up flake (TEST-31) does not
     # fail a run; the nightly soak leaves it unset and stays retry-free. A retry is always printed.
     retries = int(os.environ.get("TABLEPRO_GTK_SCENARIO_RETRIES", "0"))
-    for scenario in scenarios:
-        for attempt in range(retries + 1):
-            try:
-                run_scenario(binary, scenario)
-                break
-            except AssertionError as error:
-                if attempt == retries:
-                    raise
-                first = str(error).splitlines()[0][:300]
-                print(f"RETRY: {scenario.__name__} failed once, running it again: {first}")
-        print(f"passed: {scenario.__name__}")
+    failures = gtk_runner.run_scenarios(scenarios, lambda scenario: run_scenario(binary, scenario), retries)
+    if failures:
+        raise SystemExit(gtk_runner.summary(failures))
 
 
 if __name__ == "__main__":

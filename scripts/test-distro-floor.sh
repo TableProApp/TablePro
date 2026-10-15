@@ -27,7 +27,7 @@ for base in "${images[@]}"; do
     if [ -n "${DISTRO_FLOOR_DEB_NAME:-}" ]; then
       apt-get update -qq
       apt-get install -y -qq "/package/$DISTRO_FLOOR_DEB_NAME" >/dev/null
-      TABLEPRO_GTK_BINARY=/usr/bin/bookie bash /src/scripts/test-gtk-safety.sh >/tmp/gtk-safety.log 2>&1 || { grep -aE "^passed:|^RETRY|^AssertionError|^  File .*gtk_[a-z]*\.py\", line [0-9]+, in " /tmp/gtk-safety.log | tail -30; tail -20 /tmp/gtk-safety.log | grep -av Adwaita; exit 1; }
+      TABLEPRO_GTK_BINARY=/usr/bin/bookie bash /src/scripts/test-gtk-safety.sh >/tmp/gtk-safety.log 2>&1 || { grep -aE "^passed:|^RETRY|^FAILED|scenario.s. failed|^AssertionError|^  File .*gtk_[a-z]*\.py\", line [0-9]+, in " /tmp/gtk-safety.log | tail -30; tail -20 /tmp/gtk-safety.log | grep -av Adwaita; exit 1; }
       grep -aE "^passed:|^gtk: .*executed successfully" /tmp/gtk-safety.log | tail -14
     else
       pkg-config --modversion gtk4 libadwaita-1 gtksourceview-5
@@ -41,7 +41,7 @@ for base in "${images[@]}"; do
       if [ "${DISTRO_FLOOR_INSTALLED:-0}" = 1 ]; then
         status=0
         bash /src/scripts/test-gtk-safety.sh >/tmp/gtk-safety.log 2>&1 || status=$?
-        grep -aE "^passed:|^AssertionError|^  File .*gtk_[a-z]*\.py\", line [0-9]+, in " /tmp/gtk-safety.log | tail -14
+        grep -aE "^passed:|^FAILED|scenario.s. failed|^AssertionError|^  File .*gtk_[a-z]*\.py\", line [0-9]+, in " /tmp/gtk-safety.log | tail -14
         echo "installed GTK suite exit status: $status"
         [ "$status" = 0 ]
       fi

@@ -110,7 +110,7 @@ Run the installed safety suite with:
 
 The script builds `tablepro-app`, always starts a private runtime directory, isolated D-Bus session and Xvfb display, and drives the real application through PyAT-SPI. Each scenario gets temporary XDG directories and a fixture SQLite database. A scenario may mark its saved fixture connection as production to test policy prompts; it never opens a user's saved connection or production database. The runner uses a standalone AT-SPI D-Bus daemon and passes the Xvfb display to D-Bus activation, so it does not reuse desktop accessibility or portal processes. GTK tests exercise the X11/GTK portal path; they do not replace installed Wayland package testing.
 
-After its configured retry, the current runner stops at the first failed scenario; it does not report later scenarios in that run. [#859](https://github.com/cozyGarage/BookiE/issues/859) tracks collecting and reporting all scenario failures.
+After its configured retry a failed scenario is recorded and the runner carries on with the rest. Each failure prints a `FAILED:` line and its assertion text, and the run ends with one line that lists every failed scenario and exits non-zero. A scenario that fails only because an earlier one left a shared fixture in a bad state can still fail alongside it, so read the first failure first.
 
 When `TABLEPRO_GTK_ARTIFACT_DIR` is set, every scenario writes a JSON result and application stderr, including successful scenarios. Failures additionally retain the accessibility tree and a screenshot when available. Successful runs therefore have uploadable evidence; a missing artifact still fails CI. Python regressions exercise both result paths without needing a display.
 
@@ -184,7 +184,7 @@ Sort each red job before touching code. The class decides what the fix and its r
 | --- | --- | --- |
 | Setup failure | The job fails before any test runs: a missing script or path, a wrong binary name, a package missing from an image, a port already in use | Fix the workflow or script, and add a contract test in `scripts/tests/test_ci_workflow.py` or next to the helper. A setup failure hides every later check in that job. |
 | Missed mutant | The log lists `NEW missed mutant` | Write a test that asserts the behaviour the mutant changes. Baseline only a mutant that no test can observe, with the reason in the file header. |
-| Scenario failure | The soak or an installed GTK shard names a scenario and an assertion | Read the assertion first. The runner stops at the first failing scenario ([#859](https://github.com/cozyGarage/BookiE/issues/859)), so fix one and expect the next to appear. |
+| Scenario failure | The soak or an installed GTK shard names a scenario and an assertion | Read the assertion first. The runner carries on after a failure and lists every failed scenario at the end, so start with the first one in the list. |
 | Known gap | `gtk-ubuntu` is allowed to fail ([TEST-28](backlog.md)) | Do not chase it from the nightly. |
 
 Every nightly finding that is a product or test gap gets a regression test in the lowest tier that can show it, and an issue when the fix is not immediate. Check a mutation change locally with `cargo mutants -p <crate> --file <file>` and then `python3 scripts/check-mutants-baseline.py <package> <output dir> 3`, which uses the nightly's own judgement. Run a few times: a mutant caught by a timing accident shows up as an occasional miss.

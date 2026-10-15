@@ -167,7 +167,7 @@ jobs:
           for attempt in 1 2 3 4 5; do
             echo "soak run ${{ matrix.run }} attempt $attempt at $(git rev-parse HEAD)"
             TABLEPRO_GTK_BINARY="$binary" bash scripts/test-gtk-safety.sh >"/tmp/soak-${{ matrix.run }}-$attempt.log" 2>&1 || {
-              grep -aE "^passed:|AssertionError" "/tmp/soak-${{ matrix.run }}-$attempt.log" | tail -20
+              grep -aE "^passed:|^FAILED|scenario.s. failed|AssertionError" "/tmp/soak-${{ matrix.run }}-$attempt.log" | tail -20
               exit 1
             }
           done
