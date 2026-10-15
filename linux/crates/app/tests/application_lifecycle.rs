@@ -31,6 +31,9 @@ use tablepro_test_support::{
     FakeSecretVault, Replies,
 };
 
+#[path = "support/settings_schema.rs"]
+mod settings_schema;
+
 const CASE: &str = "TABLEPRO_LIFECYCLE_CASE";
 const CASES: &[&str] = &[
     "quit_waits_for_300ms_close_within_timeout_budget",
@@ -474,23 +477,9 @@ fn saved_connection(database: &Path) -> SavedConnection {
 fn settings(dir: &Path) -> Result<AppSettings, String> {
     let schemas = dir.join("schemas");
     std::fs::create_dir_all(&schemas).map_err(|error| format!("could not create the schema directory: {error}"))?;
-    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../data")
-        .join("app.tablepro.TablePro.gschema.xml");
-    std::fs::copy(&source, schemas.join("app.tablepro.TablePro.gschema.xml"))
-        .map_err(|error| format!("could not stage the schema: {error}"))?;
-    let output = Command::new("glib-compile-schemas")
-        .arg(&schemas)
-        .output()
-        .map_err(|error| format!("could not run glib-compile-schemas: {error}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "glib-compile-schemas failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
+    settings_schema::compile(&schemas, &[tablepro_app::config::APP_ID])?;
     AppSettings::with_backend(
-        tablepro_app::config::SCHEMA_ID,
+        tablepro_app::config::APP_ID,
         &schemas,
         &gio::memory_settings_backend_new(),
     )

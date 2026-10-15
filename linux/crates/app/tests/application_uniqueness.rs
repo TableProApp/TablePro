@@ -13,6 +13,9 @@ use std::time::{Duration, Instant};
 
 use gio::prelude::*;
 
+#[path = "support/settings_schema.rs"]
+mod settings_schema;
+
 const APP_ID: &str = tablepro_app::config::APP_ID;
 /// Long enough for a cold start under a loaded CI runner.
 const WAIT: Duration = Duration::from_secs(30);
@@ -237,7 +240,7 @@ impl Sandbox {
             root,
         };
         private(&sandbox.runtime)?;
-        compile_schema(&sandbox.schemas)?;
+        settings_schema::compile(&sandbox.schemas, &[APP_ID])?;
         Ok(sandbox)
     }
 
@@ -271,23 +274,4 @@ fn private(path: &Path) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
         .map_err(|error| format!("could not make {} private: {error}", path.display()))
-}
-
-fn compile_schema(dir: &Path) -> Result<(), String> {
-    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../data")
-        .join("app.tablepro.TablePro.gschema.xml");
-    std::fs::copy(&source, dir.join("app.tablepro.TablePro.gschema.xml"))
-        .map_err(|error| format!("could not stage the schema: {error}"))?;
-    let output = Command::new("glib-compile-schemas")
-        .arg(dir)
-        .output()
-        .map_err(|error| format!("could not run glib-compile-schemas: {error}"))?;
-    if output.status.success() {
-        return Ok(());
-    }
-    Err(format!(
-        "glib-compile-schemas failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    ))
 }

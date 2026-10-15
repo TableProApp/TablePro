@@ -5,7 +5,6 @@ pub const LOCALEDIR: &str = default_env(option_env!("TABLEPRO_LOCALEDIR"), "/usr
 pub const LIBEXECDIR: &str = default_env(option_env!("TABLEPRO_LIBEXECDIR"), "/usr/libexec");
 
 pub const GETTEXT_PACKAGE: &str = env!("CARGO_PKG_NAME");
-pub const SCHEMA_ID: &str = "app.tablepro.TablePro";
 pub const RESOURCE_BASE_PATH: &str = "/app/tablepro/TablePro";
 
 const DEVELOPMENT_SUFFIX: &str = ".Devel";
@@ -54,17 +53,16 @@ mod tests {
     #[test]
     fn app_id_is_valid() {
         assert!(gtk4::gio::Application::id_is_valid(APP_ID));
-        assert!(gtk4::gio::Application::id_is_valid(SCHEMA_ID));
     }
 
     #[test]
-    fn app_id_extends_the_schema_id() {
-        assert!(APP_ID.starts_with(SCHEMA_ID));
-    }
+    fn resource_base_path_is_shared_by_every_profile() {
+        let app_path = format!("/{}", APP_ID.replace('.', "/"));
+        let suffix = app_path
+            .strip_prefix(RESOURCE_BASE_PATH)
+            .expect("the app ID extends the base ID");
 
-    #[test]
-    fn resource_base_path_derives_from_the_schema_id() {
-        assert_eq!(RESOURCE_BASE_PATH, format!("/{}", SCHEMA_ID.replace('.', "/")));
+        assert!(matches!(suffix, "" | "/Devel"), "{suffix}");
     }
 
     #[test]
@@ -83,9 +81,23 @@ mod tests {
     }
 
     #[test]
+    fn release_and_development_schemas_install_side_by_side_on_their_own_paths() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let (release, development) = ("app.tablepro.TablePro", "app.tablepro.TablePro.Devel");
+
+        if let Err(error) = crate::test_support::settings_schema::compile(dir.path(), &[release, development]) {
+            panic!("{error}");
+        }
+
+        let source = gio::SettingsSchemaSource::from_directory(dir.path(), None, true).expect("the compiled schemas");
+        let path = |id: &str| source.lookup(id, false).and_then(|schema| schema.path());
+        assert_eq!(path(release).as_deref(), Some("/app/tablepro/TablePro/"));
+        assert_eq!(path(development).as_deref(), Some("/app/tablepro/TablePro/Devel/"));
+    }
+
+    #[test]
     fn secret_schema_follows_the_app_id() {
         assert_eq!(secret_schema(), format!("{APP_ID}.Password"));
-        assert!(secret_schema().starts_with(SCHEMA_ID));
     }
 
     #[test]

@@ -2,7 +2,6 @@
 //! clicks drive it.
 
 use std::path::Path;
-use std::process::Command;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -57,7 +56,7 @@ impl World {
         let app = TableProApplication::new(services);
         app.set_application_id(Some(&format!(
             "{}.Test.Accessibility.{name}",
-            tablepro_app::config::SCHEMA_ID
+            tablepro_app::config::APP_ID
         )));
         app.register(gio::Cancellable::NONE)
             .map_err(|error| format!("could not register the application: {error}"))?;
@@ -135,23 +134,9 @@ fn saved_connection(database: &Path) -> SavedConnection {
 fn settings(dir: &Path) -> Result<AppSettings, String> {
     let schemas = dir.join("schemas");
     std::fs::create_dir_all(&schemas).map_err(|error| format!("could not create the schema directory: {error}"))?;
-    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../data")
-        .join("app.tablepro.TablePro.gschema.xml");
-    std::fs::copy(&source, schemas.join("app.tablepro.TablePro.gschema.xml"))
-        .map_err(|error| format!("could not stage the schema: {error}"))?;
-    let output = Command::new("glib-compile-schemas")
-        .arg(&schemas)
-        .output()
-        .map_err(|error| format!("could not run glib-compile-schemas: {error}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "glib-compile-schemas failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
+    crate::settings_schema::compile(&schemas, &[tablepro_app::config::APP_ID])?;
     AppSettings::with_backend(
-        tablepro_app::config::SCHEMA_ID,
+        tablepro_app::config::APP_ID,
         &schemas,
         &gio::memory_settings_backend_new(),
     )

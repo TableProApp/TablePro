@@ -34,37 +34,26 @@
   <translation type="gettext">@gettext-package@</translation>
   <branding>
     <color type="primary" scheme_preference="light">#99c1f1</color>
-    <color type="primary" scheme_preference="dark">#1a5fb4</color>
+    <color type="primary" scheme_preference="dark">#0d2a52</color>
   </branding>
   <screenshots>
     <screenshot type="default">
-      <image>@screenshots-base-url@/01-table.png</image>
+      <image>https://raw.githubusercontent.com/TableProApp/TablePro/linux-v@version@/linux/data/screenshots/01-table.png</image>
       <caption>Browse and edit table rows</caption>
     </screenshot>
     <screenshot>
-      <image>@screenshots-base-url@/02-editor.png</image>
+      <image>https://raw.githubusercontent.com/TableProApp/TablePro/linux-v@version@/linux/data/screenshots/02-editor.png</image>
       <caption>Run SQL in the editor</caption>
     </screenshot>
     <screenshot>
-      <image>@screenshots-base-url@/03-structure.png</image>
+      <image>https://raw.githubusercontent.com/TableProApp/TablePro/linux-v@version@/linux/data/screenshots/03-structure.png</image>
       <caption>Change a table's columns and indexes</caption>
     </screenshot>
     <screenshot>
-      <image>@screenshots-base-url@/04-connect.png</image>
+      <image>https://raw.githubusercontent.com/TableProApp/TablePro/linux-v@version@/linux/data/screenshots/04-connect.png</image>
       <caption>Connect through an SSH tunnel</caption>
     </screenshot>
   </screenshots>
-  <categories>
-    <category>Development</category>
-    <category>Database</category>
-  </categories>
-  <keywords>
-    <keyword>sql</keyword>
-    <keyword>postgres</keyword>
-    <keyword>mysql</keyword>
-    <keyword>sqlite</keyword>
-    <keyword>database</keyword>
-  </keywords>
   <content_rating type="oars-1.1" />
   <recommends>
     <control>keyboard</control>
@@ -75,12 +64,19 @@
   </requires>
   <provides>
     <binary>tablepro</binary>
-    <mediatype>application/vnd.sqlite3</mediatype>
   </provides>
   <releases>
     <release version="0.1.0" date="2026-04-26">
+      <url type="details">https://github.com/TableProApp/TablePro/releases/tag/linux-v0.1.0</url>
       <description>
-        <p>Initial pre-release tracking the production-hardening pass.</p>
+        <p>The first release of TablePro for Linux.</p>
+        <ul>
+          <li>Connect to PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse, directly or through an SSH tunnel</li>
+          <li>Browse tables and edit rows in place, with undo until you save</li>
+          <li>Run SQL with completion, find and replace, and a searchable query history</li>
+          <li>Change a table's columns, indexes and foreign keys</li>
+          <li>Export results and tables to CSV, JSON, SQL and other formats</li>
+        </ul>
       </description>
     </release>
   </releases>

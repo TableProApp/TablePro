@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
@@ -24,14 +24,13 @@ impl Fixture {
     }
 }
 
-fn source_schema_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data")
-}
-
 fn compile_schemas() -> Result<tempfile::TempDir, Box<dyn Error>> {
     let dir = tempfile::tempdir()?;
-    let schema = source_schema_dir().join("app.tablepro.TablePro.gschema.xml");
-    std::fs::copy(&schema, dir.path().join("app.tablepro.TablePro.gschema.xml"))?;
+    let template = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/app.tablepro.TablePro.gschema.xml.in");
+    let schema = std::fs::read_to_string(template)?
+        .replace("@app-id@", SCHEMA_ID)
+        .replace("@schema-path@", "/app/tablepro/TablePro/");
+    std::fs::write(dir.path().join(format!("{SCHEMA_ID}.gschema.xml")), schema)?;
     let output = Command::new("glib-compile-schemas").arg(dir.path()).output()?;
     if !output.status.success() {
         return Err(format!("glib-compile-schemas: {}", String::from_utf8_lossy(&output.stderr)).into());

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tablepro 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/TableProApp/TablePro/issues\n"
-"POT-Creation-Date: 2026-10-15 06:52+0000\n"
+"POT-Creation-Date: 2026-10-15 16:09+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -747,191 +747,191 @@ msgstr ""
 msgid "New Window"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Window width"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Width of the main window in logical pixels."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Window height"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Height of the main window in logical pixels."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Window is maximized"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Whether the main window was maximized when it last closed."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Rows per page"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "How many rows a table page fetches at a time."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Confirm destructive actions"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid ""
 "Ask before dropping a table, deleting rows, or discarding pending edits."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Save query history"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid ""
 "Whether the SQL you run is kept in the query history. Statements that "
 "contain passwords or connection secrets are never saved. Turning this off "
 "keeps the entries already saved."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Query history retention in days"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid ""
 "Unpinned history entries older than this are pruned at startup. Zero keeps "
 "everything."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Query timeout in seconds"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid ""
 "How long the editor waits before cancelling a running query. Zero disables "
 "the timeout."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Use the system monospace font"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid ""
 "Whether the SQL editor follows the desktop monospace font instead of a "
 "custom one."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Custom editor font"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid ""
 "Pango font description the SQL editor uses when the system font is turned "
 "off."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Editor style scheme"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "GtkSourceView style scheme id for the SQL editor."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Restore session"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid ""
 "Whether the connections open when TablePro quit are opened again at the next "
 "launch."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Driver the connect dialog opens with"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid ""
 "Id of the driver last connected to, so the dialog opens on it with its own "
 "default port."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Write NULL as an empty field"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid ""
 "Whether a CSV export writes NULL as an empty field rather than the text NULL."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Replace line breaks with spaces"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid ""
 "Whether a CSV export flattens line breaks inside a value into single spaces."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Write a header row"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Whether a CSV export starts with the column names."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Neutralise spreadsheet formulas"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid ""
 "Whether a CSV export prefixes values starting with =, +, - or @ so a "
 "spreadsheet does not run them."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "CSV field delimiter"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Character that separates fields in a CSV export."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "CSV quoting"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "When a CSV export wraps a field in quotes."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "CSV line ending"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "Line ending a CSV export writes between records."
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid "CSV decimal separator"
 msgstr ""
 
-#: data/app.tablepro.TablePro.gschema.xml
+#: data/app.tablepro.TablePro.gschema.xml.in
 msgid ""
 "Character a CSV export uses between the whole and fractional parts of a "
 "number."
@@ -989,27 +989,30 @@ msgid "Connect through an SSH tunnel"
 msgstr ""
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
-msgid "sql"
+msgid "The first release of TablePro for Linux."
 msgstr ""
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
-msgid "postgres"
+msgid ""
+"Connect to PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse, directly or "
+"through an SSH tunnel"
 msgstr ""
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
-msgid "mysql"
+msgid "Browse tables and edit rows in place, with undo until you save"
 msgstr ""
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
-msgid "sqlite"
+msgid ""
+"Run SQL with completion, find and replace, and a searchable query history"
 msgstr ""
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
-msgid "database"
+msgid "Change a table's columns, indexes and foreign keys"
 msgstr ""
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
-msgid "Initial pre-release tracking the production-hardening pass."
+msgid "Export results and tables to CSV, JSON, SQL and other formats"
 msgstr ""
 
 #: data/resources/gtk/menus.ui data/resources/shortcuts-dialog.ui

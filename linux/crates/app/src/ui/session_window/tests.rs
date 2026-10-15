@@ -274,7 +274,7 @@ fn scripted_services(
 
 fn open_picker_window(name: &str, services: AppServices) -> (TableProApplication, SessionWindow) {
     let app = TableProApplication::new(services);
-    app.set_application_id(Some(&format!("{}.Test.Window{name}", crate::config::SCHEMA_ID)));
+    app.set_application_id(Some(&format!("{}.Test.Window{name}", crate::config::APP_ID)));
     app.register(gio::Cancellable::NONE).expect("register the application");
     let window = app
         .open_window(WindowLaunch::Picker)

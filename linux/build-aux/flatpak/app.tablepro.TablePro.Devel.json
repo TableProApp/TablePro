@@ -1,7 +1,7 @@
 {
     "id": "app.tablepro.TablePro.Devel",
     "runtime": "org.gnome.Platform",
-    "runtime-version": "50",
+    "runtime-version": "51",
     "sdk": "org.gnome.Sdk",
     "sdk-extensions": [
         "org.freedesktop.Sdk.Extension.rust-stable",
@@ -29,7 +29,6 @@
             "--share=network"
         ],
         "env": {
-            "CARGO_HOME": "/run/build/tablepro/cargo",
             "LIBCLANG_PATH": "/usr/lib/sdk/llvm22/lib"
         },
         "test-args": [
@@ -37,6 +36,9 @@
             "--share=network"
         ]
     },
+    "cleanup": [
+        "/share/man"
+    ],
     "modules": [
         {
             "name": "tablepro",
@@ -53,7 +55,6 @@
                     "skip": [
                         ".flatpak-builder",
                         "_build",
-                        "_flatpak",
                         "flatpak_app",
                         "repo",
                         "target",

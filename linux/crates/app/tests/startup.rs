@@ -7,6 +7,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, Output, Stdio};
 use std::time::{Duration, Instant};
 
+#[path = "support/settings_schema.rs"]
+mod settings_schema;
+
 /// A run that has not finished by now is a run that never will: every
 /// case here exits on its own within milliseconds. Without this, a
 /// case that wrongly opens a window waits for a user who is not
@@ -45,23 +48,8 @@ fn target_tmp(name: &str) -> PathBuf {
 /// compiles it next to the test binary.
 fn compiled_schema_dir() -> Result<PathBuf, ()> {
     let dir = target_tmp("schemas");
-    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../data")
-        .join("app.tablepro.TablePro.gschema.xml");
-    std::fs::create_dir_all(&dir)
-        .and_then(|()| std::fs::copy(&source, dir.join("app.tablepro.TablePro.gschema.xml")).map(|_| ()))
-        .map_err(|error| eprintln!("could not stage the schema in {}: {error}", dir.display()))?;
-    let output = Command::new("glib-compile-schemas")
-        .arg(&dir)
-        .output()
-        .map_err(|error| eprintln!("could not run glib-compile-schemas: {error}"))?;
-    if !output.status.success() {
-        eprintln!(
-            "glib-compile-schemas failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        return Err(());
-    }
+    std::fs::create_dir_all(&dir).map_err(|error| eprintln!("could not create {}: {error}", dir.display()))?;
+    settings_schema::compile(&dir, &[tablepro_app::config::APP_ID]).map_err(|error| eprintln!("{error}"))?;
     Ok(dir)
 }
 
@@ -191,7 +179,7 @@ fn a_missing_schema_is_reported(sandbox: &Sandbox<'_>) -> Result<(), ()> {
         return Err(());
     }
     let reported = combined(&output);
-    if !reported.contains("app.tablepro.TablePro") {
+    if !reported.contains(tablepro_app::config::APP_ID) {
         eprintln!("the startup failure did not name the schema:\n{reported}");
         return Err(());
     }

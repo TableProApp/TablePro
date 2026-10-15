@@ -102,9 +102,8 @@ mod tests {
             metainfo_text(&xml, "<launchable", "</launchable>"),
             format!("{}.desktop", config::APP_ID)
         );
-        assert!(!xml.contains("@app-id@") && !xml.contains("@gettext-package@"), "{xml}");
         assert!(
-            !xml.contains("@version@") && !xml.contains("@screenshots-base-url@"),
+            !xml.contains("@app-id@") && !xml.contains("@gettext-package@") && !xml.contains("@version@"),
             "{xml}"
         );
     }
@@ -112,10 +111,11 @@ mod tests {
     #[test]
     fn embedded_metainfo_pins_project_links_to_the_release_tag() {
         let xml = embedded_metainfo();
-        let tree = format!(
-            "https://github.com/TableProApp/TablePro/blob/linux-v{}/linux",
-            newest_release(&xml).expect("the metainfo lists a release")
-        );
+        let version = newest_release(&xml).expect("the metainfo lists a release");
+        let tree = format!("https://github.com/TableProApp/TablePro/blob/linux-v{version}/linux");
+        let screenshots =
+            format!("https://raw.githubusercontent.com/TableProApp/TablePro/linux-v{version}/linux/data/screenshots/");
+        let releases = metainfo_text(&xml, "<releases", "</releases>");
 
         assert_eq!(
             metainfo_text(&xml, "<url type=\"translate\"", "</url>"),
@@ -125,6 +125,28 @@ mod tests {
             metainfo_text(&xml, "<url type=\"contribute\"", "</url>"),
             format!("{tree}/CONTRIBUTING.md")
         );
+        assert_eq!(
+            metainfo_text(releases, "<url type=\"details\"", "</url>"),
+            format!("https://github.com/TableProApp/TablePro/releases/tag/linux-v{version}")
+        );
+        for image in xml.split("<image").skip(1) {
+            let url = image
+                .split_once('>')
+                .and_then(|(_, rest)| rest.split_once("</image>"))
+                .map(|(url, _)| url.trim());
+            assert!(url.is_some_and(|url| url.starts_with(&screenshots)), "{image}");
+        }
+    }
+
+    /// AppStream takes these from the desktop entry, and a metainfo copy
+    /// would replace the entry's translated keywords and its MIME types.
+    #[test]
+    fn categories_keywords_and_media_types_come_from_the_desktop_entry() {
+        let xml = embedded_metainfo();
+
+        for element in ["<categories", "<keywords", "<mediatype"] {
+            assert!(!xml.contains(element), "the metainfo has {element}");
+        }
     }
 
     #[test]

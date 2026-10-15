@@ -530,7 +530,7 @@ crates/app/src/workspace/workspace_store.rs
 crates/app/src/workspace/write_job.rs
 crates/app/src/workspace/writes_in_flight.rs
 data/app.tablepro.TablePro.desktop.in.in
-data/app.tablepro.TablePro.gschema.xml
+data/app.tablepro.TablePro.gschema.xml.in
 data/app.tablepro.TablePro.metainfo.xml.in.in
 data/resources/gtk/menus.ui
 data/resources/shortcuts-dialog.ui

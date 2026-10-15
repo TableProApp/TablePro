@@ -12,6 +12,8 @@
 )]
 
 mod audit;
+#[path = "../support/settings_schema.rs"]
+mod settings_schema;
 mod world;
 
 use std::process::ExitCode;

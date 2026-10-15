@@ -61,13 +61,10 @@ fn render_template() -> Result<String, String> {
         .map_err(|error| format!("could not read {METAINFO_TEMPLATE}: {error}"))?;
     let version = metainfo_release::newest_release(&template)
         .ok_or_else(|| format!("{METAINFO_TEMPLATE} lists no release with a version"))?;
-    let screenshots =
-        format!("https://raw.githubusercontent.com/TableProApp/TablePro/linux-v{version}/linux/data/screenshots");
     let rendered = template
         .replace("@app-id@", &app_id)
         .replace("@gettext-package@", &package)
-        .replace("@version@", version)
-        .replace("@screenshots-base-url@", &screenshots);
+        .replace("@version@", version);
     if let Some(name) = unfilled_placeholder(&rendered) {
         return Err(format!(
             "{METAINFO_TEMPLATE} uses @{name}@, which build.rs does not fill"

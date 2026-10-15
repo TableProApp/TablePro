@@ -53,7 +53,6 @@ Kinds: `unit` runs in the Meson unit suite, `gtk` in the gtk suite, `docker` in 
 | F-006 | unit | `f006_count_sum_and_expression_columns_are_typed` | [crates/drivers/sqlite/tests/integration/decode.rs](../crates/drivers/sqlite/tests/integration/decode.rs) |
 | F-006 | docker | `f006_bigint_unsigned_max_id_edit_affects_one_row` | [crates/drivers/mysql/tests/integration/decode.rs](../crates/drivers/mysql/tests/integration/decode.rs) |
 | F-007 | ci-job | `flatpak-devel` | [.github/workflows/build-linux.yml](../../.github/workflows/build-linux.yml) |
-| F-007 | ci-job | `flatpak-flathub` | [.github/workflows/build-linux.yml](../../.github/workflows/build-linux.yml) |
 
 The read-only case runs on every engine. SQL Server leaves read-only to the login's privileges, so there it checks only the app's own refusal of a save. The type case runs on every network engine: every SQLite value is one of five storage classes, and the driver decodes all five.
 

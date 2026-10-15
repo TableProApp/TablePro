@@ -47,7 +47,7 @@ pub fn run() -> Result<glib::ExitCode, StartupError> {
 
     let runtime = runtime::AppRuntime::build().map_err(StartupError::Runtime)?;
     gio::resources_register_include!("tablepro.gresource").map_err(StartupError::Resources)?;
-    let settings = Rc::new(AppSettings::open(config::SCHEMA_ID)?);
+    let settings = Rc::new(AppSettings::open(config::APP_ID)?);
     let paths = StoragePaths::from_glib(config::storage_dir_name(), config::APP_ID);
     let drivers = build_registry();
     tracing::info!(drivers = drivers.len(), "starting tablepro");

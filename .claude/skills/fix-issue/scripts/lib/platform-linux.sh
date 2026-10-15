@@ -378,7 +378,7 @@ platform_step() {
                 # The same file list CI regenerates, compared without writing to the tree.
                 echo "== POTFILES.in against the tree"
                 (cd "$LINUX_DIR" && git ls-files 'crates/app/src/*.rs' 'data/resources/*.ui' 'data/*.desktop.in.in' \
-                    'data/*.gschema.xml' 'data/*.metainfo.xml.in.in' | diff - po/POTFILES.in) || code=1
+                    'data/*.gschema.xml.in' 'data/*.metainfo.xml.in.in' | diff - po/POTFILES.in) || code=1
                 echo "== cargo test -p tablepro --test i18n_catalog"
                 in_devenv cargo test --locked -p tablepro --test i18n_catalog || code=1
             } >> "$log" 2>&1

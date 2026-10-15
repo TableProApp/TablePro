@@ -1,30 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist gettext-domain="tablepro">
-  <enum id="app.tablepro.TablePro.CsvDelimiter">
+  <enum id="@app-id@.CsvDelimiter">
     <value nick="comma" value="0"/>
     <value nick="semicolon" value="1"/>
     <value nick="tab" value="2"/>
     <value nick="pipe" value="3"/>
   </enum>
 
-  <enum id="app.tablepro.TablePro.CsvQuote">
+  <enum id="@app-id@.CsvQuote">
     <value nick="always" value="0"/>
     <value nick="if-needed" value="1"/>
     <value nick="never" value="2"/>
   </enum>
 
-  <enum id="app.tablepro.TablePro.CsvLineBreak">
+  <enum id="@app-id@.CsvLineBreak">
     <value nick="lf" value="0"/>
     <value nick="crlf" value="1"/>
     <value nick="cr" value="2"/>
   </enum>
 
-  <enum id="app.tablepro.TablePro.CsvDecimal">
+  <enum id="@app-id@.CsvDecimal">
     <value nick="period" value="0"/>
     <value nick="comma" value="1"/>
   </enum>
 
-  <schema id="app.tablepro.TablePro" path="/app/tablepro/TablePro/">
+  <schema id="@app-id@" path="@schema-path@">
     <key name="window-width" type="i">
       <default>1200</default>
       <range min="360" max="32767"/>
@@ -132,25 +132,25 @@
       <description>Whether a CSV export prefixes values starting with =, +, - or @ so a spreadsheet does not run them.</description>
     </key>
 
-    <key name="csv-delimiter" enum="app.tablepro.TablePro.CsvDelimiter">
+    <key name="csv-delimiter" enum="@app-id@.CsvDelimiter">
       <default>'comma'</default>
       <summary>CSV field delimiter</summary>
       <description>Character that separates fields in a CSV export.</description>
     </key>
 
-    <key name="csv-quote" enum="app.tablepro.TablePro.CsvQuote">
+    <key name="csv-quote" enum="@app-id@.CsvQuote">
       <default>'if-needed'</default>
       <summary>CSV quoting</summary>
       <description>When a CSV export wraps a field in quotes.</description>
     </key>
 
-    <key name="csv-line-break" enum="app.tablepro.TablePro.CsvLineBreak">
+    <key name="csv-line-break" enum="@app-id@.CsvLineBreak">
       <default>'lf'</default>
       <summary>CSV line ending</summary>
       <description>Line ending a CSV export writes between records.</description>
     </key>
 
-    <key name="csv-decimal" enum="app.tablepro.TablePro.CsvDecimal">
+    <key name="csv-decimal" enum="@app-id@.CsvDecimal">
       <default>'period'</default>
       <summary>CSV decimal separator</summary>
       <description>Character a CSV export uses between the whole and fractional parts of a number.</description>

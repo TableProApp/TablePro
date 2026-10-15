@@ -9,6 +9,8 @@ mod key_injection_error;
 mod key_injector;
 mod main_loop;
 mod memory_settings;
+#[path = "../tests/support/settings_schema.rs"]
+pub(crate) mod settings_schema;
 pub(crate) mod shortcut_keys;
 mod signal_log;
 mod tests;

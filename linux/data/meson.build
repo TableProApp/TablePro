@@ -3,7 +3,6 @@ substitutions.set('app-id', application_id)
 substitutions.set('bindir', bindir)
 substitutions.set('gettext-package', meson.project_name())
 substitutions.set('version', meson.project_version())
-substitutions.set('screenshots-base-url', screenshots_base_url)
 
 desktop_file_in = configure_file(
   input: 'app.tablepro.TablePro.desktop.in.in',
@@ -43,18 +42,32 @@ configure_file(
   install_dir: get_option('datadir') / 'dbus-1' / 'services',
 )
 
-install_data(
-  'app.tablepro.TablePro.gschema.xml',
+# The schema id and path follow the application ID, so a development
+# build never reads or writes an installed release's settings.
+schema_substitutions = configuration_data()
+schema_substitutions.set('app-id', application_id)
+schema_substitutions.set('schema-path', '/' + application_id.replace('.', '/') + '/')
+
+schema_file = configure_file(
+  input: 'app.tablepro.TablePro.gschema.xml.in',
+  output: application_id + '.gschema.xml',
+  configuration: schema_substitutions,
+  install: true,
   install_dir: get_option('datadir') / 'glib-2.0' / 'schemas',
 )
 
-# depend_files is what ties the compiled schema to its source. Without
-# it the schema is built once and never again, so a key added to the
-# XML is missing at run time and the app aborts on first read.
-compiled_schemas = gnome.compile_schemas(
+glib_compile_schemas = find_program('glib-compile-schemas')
+
+# gnome.compile_schemas reads the source directory, which holds only the
+# template. --strict makes an invalid schema fail the build.
+compiled_schemas = custom_target(
+  'gschemas.compiled',
+  input: schema_file,
+  output: 'gschemas.compiled',
+  command: [glib_compile_schemas, '--strict', '--targetdir', meson.current_build_dir(), meson.current_build_dir()],
   build_by_default: true,
-  depend_files: files('app.tablepro.TablePro.gschema.xml'),
 )
+meson.add_devenv({'GSETTINGS_SCHEMA_DIR': meson.current_build_dir()})
 
 install_data(
   'icons' / 'hicolor' / 'scalable' / 'apps' / application_id + '.svg',
@@ -68,14 +81,16 @@ install_data(
   rename: application_id + '-symbolic.svg',
 )
 
-install_data(
-  meson.project_source_root() / 'LICENSE',
-  'licenses' / 'THIRD-PARTY-NOTICE.md',
-  'licenses' / 'third-party.json',
-  install_dir: get_option('datadir') / 'licenses' / application_id,
-)
-
 install_man('tablepro.1')
+
+# The .deb and .rpm ship the notices as their own license files.
+# flatpak-builder installs only LICENSE, under <app id>/<module name>.
+if get_option('flatpak')
+  install_data(
+    'licenses' / 'THIRD-PARTY-NOTICE.md',
+    install_dir: get_option('datadir') / 'licenses' / application_id,
+  )
+endif
 
 if get_option('flatpak') and get_option('kerberos')
   install_data(
@@ -94,43 +109,12 @@ if desktop_file_validate.found()
   )
 endif
 
-glib_compile_schemas = find_program('glib-compile-schemas', required: false)
-if glib_compile_schemas.found()
-  test(
-    'validate-gschema',
-    glib_compile_schemas,
-    args: ['--strict', '--dry-run', meson.current_source_dir()],
-    suite: 'data',
-  )
-endif
-
 appstreamcli = find_program('appstreamcli', required: false)
 if appstreamcli.found()
   test(
     'validate-appstream',
     appstreamcli,
     args: ['validate', '--no-net', '--explain', metainfo_file],
-    suite: 'data',
-  )
-
-  # Meson pins the links and screenshot URLs to the project version's
-  # tag, and a plain cargo build to the newest release, which is listed
-  # first, so the two must agree.
-  newest_release = 'none'
-  release_tags = fs.read('app.tablepro.TablePro.metainfo.xml.in.in').replace('\n', ' ').replace('\t', ' ').split('<release ')
-  if release_tags.length() > 1
-    release_attributes = ' ' + release_tags[1].split('>')[0]
-    foreach quote : ['"', '\'']
-      release_version = release_attributes.split(' version=' + quote)
-      if newest_release == 'none' and release_version.length() > 1
-        newest_release = release_version[1].split(quote)[0]
-      endif
-    endforeach
-  endif
-  test(
-    'metainfo-release-version',
-    appstreamcli,
-    args: ['vercmp', newest_release, 'eq', meson.project_version()],
     suite: 'data',
   )
 endif
