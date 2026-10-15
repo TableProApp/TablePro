@@ -115,6 +115,10 @@ The Flathub manifest is kept in Flathub's repository for the app, the way
 Fractal and Loupe keep theirs. It builds `-Dprofile=default` from the
 release tarball, with a `cargo-sources.json` that `flatpak-cargo-generator`
 writes from that release's `Cargo.lock`, since Flathub builds offline.
+Meson sets its own `CARGO_HOME`, so the manifest also passes
+`-Dcargo_config=cargo/config` for Cargo to find the crates
+`cargo-sources.json` unpacks. CI builds and lints the same shape on every
+pull request, from the tarball `meson dist` writes.
 
 ### Screenshots
 

@@ -180,8 +180,8 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 - [ ] 4–5 high-resolution screenshots showing key flows
 - [ ] Long description + short description polish in metainfo
 - [x] ContentRating (`oars-1.1` in the metainfo)
-- [ ] `cargo-sources.json` generation via `flatpak-builder-tools/cargo`
-- [ ] CI job: `flatpak-builder` builds the manifest end-to-end on each PR
+- [x] `cargo-sources.json` generation via `flatpak-builder-tools/cargo` (in CI, for the release-shaped build)
+- [x] CI job: `flatpak-builder` builds the Devel manifest with its tests and the release shape offline on each PR
 - [ ] Submit to Flathub `flathub/flathub` PR → review → first publish
 
 ### Observability (~0.5 weeks)
