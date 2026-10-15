@@ -123,6 +123,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AI chat not following a reply as it streams, and jumping to the end after scrolling up.
 - Scroll to latest message button in AI chat never appearing.
 - AI reasoning text not updating while it streams.
+- Clearing a date, number or boolean field on iPhone and iPad saving an empty string, stored as `0000-00-00 00:00:00` on MySQL, instead of NULL.
 
 ### Security
 

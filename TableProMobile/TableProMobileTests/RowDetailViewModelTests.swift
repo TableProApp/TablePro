@@ -389,6 +389,82 @@ struct RowDetailViewModelTests {
         #expect(vm.hasUnsavedEdits == false)
     }
 
+    private func makeDatedColumns() -> [ColumnInfo] {
+        makeColumns() + [
+            ColumnInfo(name: "deleted_at", typeName: "DATETIME", ordinalPosition: 2),
+            ColumnInfo(name: "created_at", typeName: "TIMESTAMP", isNullable: false, ordinalPosition: 3)
+        ]
+    }
+
+    private func makeDatedRows() -> [Row] {
+        [Row(cells: [.text("1"), .text("Alice"), .text("2024-01-01 10:00:00"), .text("2023-12-01 09:00:00")])]
+    }
+
+    @Test("Clearing a date field saves NULL, not an empty string")
+    func clearedDateSavesNull() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: [], rows: [], rowsAffected: 1, executionTime: 0))
+        ]
+        let vm = RowDetailViewModel(
+            columns: makeDatedColumns(), rows: makeDatedRows(), initialIndex: 0,
+            table: TableInfo(name: "users"), session: makeSession(driver: driver),
+            columnDetails: makeDatedColumns()
+        )
+        vm.startEditing()
+        vm.setEditedValue("", at: 2)
+
+        #expect(vm.writtenValue(at: 2) == nil)
+        #expect(await vm.saveChanges())
+        let query = driver.executedQueries.first ?? ""
+        #expect(query.contains("`deleted_at` = NULL") || query.contains("\"deleted_at\" = NULL"))
+        #expect(!query.contains("''"))
+    }
+
+    @Test("Clearing a text field still saves an empty string")
+    func clearedTextSavesEmpty() {
+        let vm = RowDetailViewModel(columns: makeDatedColumns(), rows: makeDatedRows(), initialIndex: 0)
+        vm.startEditing()
+        vm.setEditedValue("", at: 1)
+
+        #expect(vm.writtenValue(at: 1) == "")
+        #expect(vm.hasUnsavedEdits)
+    }
+
+    @Test("Clearing a NOT NULL timestamp is no edit, since that column holds neither value")
+    func clearedNotNullTimestampIsNoEdit() {
+        let vm = RowDetailViewModel(
+            columns: makeDatedColumns(), rows: makeDatedRows(), initialIndex: 0,
+            columnDetails: makeDatedColumns()
+        )
+        vm.startEditing()
+        vm.setEditedValue("", at: 3)
+
+        #expect(vm.writtenValue(at: 3) == "2023-12-01 09:00:00")
+        #expect(vm.hasUnsavedEdits == false)
+    }
+
+    @Test("A stored empty string in a date column is left alone when another field is saved")
+    func storedEmptyDateIsUntouched() {
+        let rows = [Row(cells: [.text("1"), .text("Alice"), .text(""), .text("2023-12-01 09:00:00")])]
+        let vm = RowDetailViewModel(columns: makeDatedColumns(), rows: rows, initialIndex: 0)
+        vm.startEditing()
+
+        #expect(vm.writtenValue(at: 2) == "")
+        #expect(vm.hasUnsavedEdits == false)
+    }
+
+    @Test("Turning NULL off on a NULL date without typing writes nothing")
+    func nullToggledOffOnDateIsNoEdit() {
+        let rows = [Row(cells: [.text("1"), .text("Alice"), .null, .text("2023-12-01 09:00:00")])]
+        let vm = RowDetailViewModel(columns: makeDatedColumns(), rows: rows, initialIndex: 0)
+        vm.startEditing()
+        vm.toggleNull(at: 2)
+
+        #expect(vm.editedValues[2] == "")
+        #expect(vm.hasUnsavedEdits == false)
+    }
+
     @Test("An edited primary key is never an unsaved edit")
     func primaryKeyEditIsIgnored() {
         let vm = RowDetailViewModel(

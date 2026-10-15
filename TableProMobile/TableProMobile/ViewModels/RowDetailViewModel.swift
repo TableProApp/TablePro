@@ -197,12 +197,38 @@ final class RowDetailViewModel {
                 return false
             }
             let oldValue = index < original.count ? original[index] : nil
-            return oldValue != editedValues[index]
+            return oldValue != writtenValue(at: index, stored: oldValue)
         }
     }
 
     private var editedChanges: [(column: String, value: String?)] {
-        editedColumnIndices.map { (column: columns[$0].name, value: editedValues[$0]) }
+        let original = currentRow
+        return editedColumnIndices.map { index in
+            (column: columns[index].name, value: writtenValue(at: index, stored: index < original.count ? original[index] : nil))
+        }
+    }
+
+    /// What Save writes for a field. An emptied date, number or boolean is NULL, since `''` is no
+    /// value of those types and MySQL without strict mode stores it as the zero date. In a NOT NULL
+    /// column, which holds neither, the field keeps the stored value and Save writes nothing for it.
+    /// A field left as it was is never read again: SQLite can hold `''` in a DATETIME column.
+    func writtenValue(at index: Int) -> String? {
+        let original = currentRow
+        return writtenValue(at: index, stored: index < original.count ? original[index] : nil)
+    }
+
+    /// Takes the stored value from the caller's snapshot of the row, which `currentRow` rebuilds on
+    /// every read, so a pass over every field stays linear.
+    private func writtenValue(at index: Int, stored: String?) -> String? {
+        guard index < editedValues.count else { return nil }
+        let value = editedValues[index]
+        guard value == "", stored != "", !holdsEmptyString(at: index) else { return value }
+        return isNullable(at: index) ? nil : stored
+    }
+
+    private func holdsEmptyString(at index: Int) -> Bool {
+        guard index >= 0, index < columns.count else { return true }
+        return (columnDetail(for: columns[index].name) ?? columns[index]).holdsEmptyString
     }
 
     // MARK: - Save
@@ -269,8 +295,10 @@ final class RowDetailViewModel {
     private func execute(sql: String, session: ConnectionSession) async -> Bool {
         isSaving = true
         defer { isSaving = false }
+        let original = currentRow
         let savedCells = Dictionary(uniqueKeysWithValues: editedColumnIndices.map { index in
-            (index, editedValues[index].map { Cell.text($0) } ?? .null)
+            let stored = index < original.count ? original[index] : nil
+            return (index, writtenValue(at: index, stored: stored).map { Cell.text($0) } ?? .null)
         })
 
         do {
