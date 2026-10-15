@@ -3,8 +3,8 @@ use crate::approval::AutoApproveSink;
 use crate::guard::ConnectionFaultSink;
 
 #[derive(Default)]
-struct RecordingFault {
-    operations: Mutex<Vec<String>>,
+pub(super) struct RecordingFault {
+    pub(super) operations: Mutex<Vec<String>>,
 }
 
 impl ConnectionFaultSink for RecordingFault {
@@ -73,4 +73,30 @@ async fn a_healthy_read_reports_nothing() {
     guard.list_tables().await.expect("healthy read");
 
     assert!(fault.operations.lock().expect("fault lock").is_empty());
+}
+
+fn codec_panic() -> DriverError {
+    panic!("codec read past the end of the buffer")
+}
+
+#[tokio::test]
+async fn a_panicking_blast_radius_count_is_contained_and_reports_the_connection() {
+    let fault = Arc::new(RecordingFault::default());
+    let guard = guard_with_fault(Arc::new(ErrorConn(codec_panic)), fault.clone());
+
+    let error = guard
+        .execute("UPDATE jobs SET status = 'done' WHERE id = 1")
+        .await
+        .expect_err("the driver also panics on the write itself");
+
+    assert!(
+        matches!(error, DriverError::OperationOutcomeUnknown { .. }),
+        "{error:?}"
+    );
+    let reported = fault.operations.lock().expect("fault lock").clone();
+    assert_eq!(
+        reported.first().map(String::as_str),
+        Some("BLAST RADIUS COUNT"),
+        "{reported:?}"
+    );
 }

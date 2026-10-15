@@ -217,6 +217,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - The structure editor now refuses column names that differ only in case on databases that ignore case, and refuses duplicate index names, before sending the change to the server.
 - The filter bar now offers comparison operators for MySQL `MEDIUMINT` and PostgreSQL `time without time zone` columns instead of text matching.
 - SQL completion now finds the statement under the cursor correctly when a comment or a PostgreSQL `$$` body contains a semicolon.
+- A database driver that crashes while a write's size is being estimated, or while a session closes, now produces an error and a connection replacement instead of leaving the window waiting.
 - MCP `export_data` with CSV now reports `truncated` when the row cap cut the result, as the JSON format already did.
 - Query history is left untouched and switched off, instead of being opened as if it were current, when its file was written by a newer version of the app.
 

@@ -380,7 +380,12 @@ impl PolicyGuard {
                 &owned_control
             }
         };
-        let result = self.inner.query_controlled(&rewrite.count_sql, control).await;
+        let result = self
+            .caught_read(
+                "BLAST RADIUS COUNT",
+                self.inner.query_controlled(&rewrite.count_sql, control),
+            )
+            .await;
         let rows = result.as_ref().ok().map(|value| value.rows.len() as u64);
         let audit_result = match &result {
             Ok(_) => {

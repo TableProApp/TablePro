@@ -7,6 +7,7 @@ struct SessionScript {
     fail_once_on: Option<&'static str>,
     disconnect_on: Option<&'static str>,
     query_error_on: Option<&'static str>,
+    panic_on_close: bool,
 }
 
 struct ScriptedSession {
@@ -50,6 +51,9 @@ impl tablepro_core::Session for ScriptedSession {
     }
 
     async fn close(self: Box<Self>) -> Result<(), DriverError> {
+        if self.script.panic_on_close {
+            panic!("codec read past the end of the buffer")
+        }
         Ok(())
     }
 }
@@ -904,4 +908,29 @@ async fn journal_lockdown_refusals_audit_without_dispatch_and_leave_rollback_ava
             assert!(!session.transaction_open());
         }
     }
+}
+
+#[tokio::test]
+async fn a_panicking_session_close_is_contained_and_reports_the_connection() {
+    let h = harness(
+        SessionScript {
+            panic_on_close: true,
+            ..SessionScript::default()
+        },
+        false,
+    );
+    let fault = Arc::new(super::fault::RecordingFault::default());
+    let session = h
+        .guard
+        .clone()
+        .with_fault_sink(fault.clone())
+        .open_session()
+        .await
+        .expect("open session");
+
+    let error = session.close().await.expect_err("a close panic becomes an error");
+
+    assert!(matches!(error, DriverError::Internal(_)), "{error:?}");
+    assert!(!error.to_string().contains("codec read past the end"));
+    assert_eq!(*fault.operations.lock().expect("fault lock"), vec!["SESSION CLOSE"]);
 }

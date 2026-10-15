@@ -303,7 +303,7 @@ impl Session for PolicySession {
         } else {
             Ok(())
         };
-        let close = self.inner.close().await;
+        let close = self.guard.caught_read("SESSION CLOSE", self.inner.close()).await;
         cursor_cleanup.and(cleanup).and(close)
     }
 }
