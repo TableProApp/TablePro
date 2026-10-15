@@ -2896,13 +2896,13 @@ fn filter_button_tooltip_counts_the_active_rules() {
     let button = harness.tab().imp().filter_button.get();
     assert_eq!(button.tooltip_text().as_deref(), Some("2 Filter Rules Active"));
 
-    harness.tab().send(BrowseTabInput::FilterApplied(not_null_name()));
+    harness.tab().send(PagingInput::FilterApplied(not_null_name()));
     wait_until(WAIT, || {
         button.tooltip_text().as_deref() == Some("1 Filter Rule Active")
     })
     .expect("the tooltip kept the old count");
 
-    harness.tab().send(BrowseTabInput::FilterApplied(FilterSet::default()));
+    harness.tab().send(PagingInput::FilterApplied(FilterSet::default()));
     wait_until(WAIT, || button.tooltip_text().as_deref() == Some("Filter Rows"))
         .expect("the tooltip still counted rules after they were cleared");
 }
