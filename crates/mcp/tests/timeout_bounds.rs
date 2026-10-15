@@ -277,6 +277,18 @@ async fn query_timeout_bounds_preview_begin_after_dispatch() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn an_interrupted_preview_begin_is_reported_as_an_unknown_outcome() {
+    let harness = harness(HangPhase::Begin, TokenPermissions::ReadWrite);
+    let error = harness
+        .bridge
+        .execute_write(&harness.token, harness.connection_id, "DELETE FROM items", true)
+        .await
+        .unwrap_err();
+    assert!(error.contains("outcome is unknown"), "{error}");
+    assert!(error.contains("timed out"), "{error}");
+}
+
+#[tokio::test(start_paused = true)]
 async fn preview_dispatches_rollback_after_execution_deadline_expiry() {
     let harness = harness(HangPhase::ExecutionDeadline, TokenPermissions::ReadWrite);
     let error = harness

@@ -461,9 +461,15 @@ impl McpBridge {
         self.with_connection(token, connection_id, move |conn, control| {
             Box::pin(async move {
                 if preview {
+                    check_pre_dispatch(&control).map_err(|error| error.to_string())?;
                     let mut tx = run_bounded(conn.begin(), &control)
                         .await
-                        .map_err(|error| error.to_string())?
+                        .map_err(|interruption| {
+                            DriverError::OperationOutcomeUnknown {
+                                source: Box::new(interruption),
+                            }
+                            .to_string()
+                        })?
                         .map_err(|error| error.to_string())?;
                     let result = tx.execute_controlled(&sql, &control).await;
                     let cleanup_control = operation_control_for(CancellationToken::new(), PREVIEW_CLEANUP_TIMEOUT);
