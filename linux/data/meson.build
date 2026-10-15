@@ -75,6 +75,8 @@ install_data(
   install_dir: get_option('datadir') / 'licenses' / application_id,
 )
 
+install_man('tablepro.1')
+
 if get_option('flatpak') and get_option('kerberos')
   install_data(
     meson.project_source_root() / 'build-aux' / 'flatpak' / 'krb5.conf',

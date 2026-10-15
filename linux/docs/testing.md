@@ -36,9 +36,14 @@ meson setup _build -Dprofile=development
 dbus-run-session -- meson test -C _build --print-errorlogs
 ```
 
-Three suites: `unit` is `cargo test --workspace --exclude tablepro`, `gtk`
+Four suites: `unit` is `cargo test --workspace --exclude tablepro`, `gtk`
 is `cargo test -p tablepro` with `GSK_RENDERER=cairo` and `GTK_A11Y=test`,
-and `data` runs `desktop-file-validate`, `glib-compile-schemas --strict` and `appstreamcli validate`.
+`data` runs `desktop-file-validate`, `glib-compile-schemas --strict` and `appstreamcli validate`,
+and `packaging` runs the unit tests in `build-aux/tests` and checks that
+`debian/copyright`, the RPM spec and the metainfo agree with `data/licenses`
+and the version Meson builds. In a `-Dprofile=default` build, which the
+packages run, the unit and gtk suites build with `--release` but without
+its fat LTO, which would cost gigabytes and minutes per test binary.
 Tests that need Docker or a Secret Service are ignored. Without a display
 (SSH, containers), prefix with xvfb the way the CI fast job does:
 
@@ -338,6 +343,8 @@ GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runner:
 2. **Docker tests**: runs after fast checks pass. One matrix entry per package with docker tests (the PostgreSQL, MySQL, SQL Server and ClickHouse drivers, `tablepro-ssh` against an OpenSSH server container, and `tablepro-test-fixtures` for the fixtures themselves) runs that package's ignored docker tests through cargo-nextest on the host runner's Docker. `tablepro-session` builds storage, which needs GLib 2.88, so its job runs in the fast job's `ubuntu:26.04` image with the host's Docker socket mounted. The app's docker tests (`crates/app/tests/tracker_save_postgres.rs`) run the same way, since the app links GTK; that job names its test targets, because the app's `startup` test needs Meson.
 
 A Translations job also checks `po/POTFILES.in` and extracts the POT template. PRs only merge when every job is green.
+
+`.github/workflows/linux-packages.yml` builds the .deb in `ubuntu:26.04` and the .rpm in `fedora:44` from the release source and vendor tarballs, running every Meson suite inside the package build, then installs each package in a fresh container and starts it. It runs on a pull request that touches the packaging or the Meson files; `build-aux/packaging/build-packages.sh` runs the same steps locally.
 
 ## Coverage
 

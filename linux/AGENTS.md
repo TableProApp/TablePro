@@ -58,6 +58,8 @@ From the repository root, through the verification wrapper, which keeps the full
 
 - **Fast checks**: format, both clippy runs, build, every Meson suite, the Secret Service tests, `meson dist`.
 - **Translations**: the POT template, with gettext 0.24.
-- **Third-party licenses**: reruns `build-aux/update-third-party-licenses.sh` and fails when `data/licenses` differs from what it writes, or when a crate has no license file cargo-about can read.
+- **Third-party licenses**: reruns `build-aux/update-third-party-licenses.sh` and fails when `data/licenses`, `build-aux/debian/copyright` or the spec's `License` tag differ from what it writes, or when a crate has no license file cargo-about can read.
 - **Docker tests** (`integration`): one matrix job per package on the host runner, for the PostgreSQL, MySQL, SQL Server and ClickHouse drivers, `tablepro-ssh` and `tablepro-test-fixtures`.
 - **Docker tests (tablepro-session)** (`integration-session`) and **Docker tests (tablepro)** (`integration-app`): in the fast job's `ubuntu:26.04` image with the host's Docker socket, because the session crate links GLib 2.88 and the app GTK 4.22, which the host runner lacks. The app job runs only its named test targets, since the `startup` test needs Meson.
+
+`.github/workflows/linux-packages.yml` runs on a pull request that touches the packaging (`build-aux/debian`, `build-aux/rpm`, `build-aux/packaging`, the Meson files): it builds the source and vendor tarballs, the .deb in `ubuntu:26.04` and the .rpm in `fedora:44`, each with lintian or rpmlint, then installs and starts each in a fresh container. `release-linux.yml` calls it on a `linux-v*` tag and publishes the result (ADR 0017).

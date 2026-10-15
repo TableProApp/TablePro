@@ -1232,6 +1232,53 @@ fn a_page_that_replaces_the_row_being_edited_keeps_the_edit_and_the_focus() {
     );
 }
 
+/// With no edit open the focus is on the column view's cell widget,
+/// around the grid cell rather than in it, and the row still takes it
+/// out of the window when the splice removes it.
+#[gtk4::test]
+fn a_page_that_replaces_the_focused_row_takes_the_focus_out_first() {
+    let harness = Harness::open(paging(full_page(0), rows_from(100, &["Linus"])), []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    let shown = Shown::new(harness.tab());
+    let view = column_view(harness.tab());
+    let name = crate::ui::grid::data_columns(&view)
+        .into_iter()
+        .nth(1)
+        .expect("the name column");
+    view.scroll_to(1, Some(&name), gtk4::ListScrollFlags::FOCUS, None);
+    view.grab_focus();
+    let focus = || gtk4::prelude::GtkWindowExt::focus(&shown.0);
+    wait_until(WAIT, || {
+        focus()
+            .and_then(|focus| GridCell::from_focus(&focus))
+            .is_some_and(|cell| cell.position() == Some(1))
+    })
+    .expect("a cell takes the focus");
+    assert!(
+        focus().is_some_and(|focus| focus.ancestor(GridCell::static_type()).is_none()),
+        "the focus is inside the grid cell, not on the cell widget around it"
+    );
+    let stranded = std::rc::Rc::new(std::cell::Cell::new(false));
+    let seen = stranded.clone();
+    let window = shown.0.downgrade();
+    harness.store().connect_items_changed(move |_, _, _, _| {
+        let focus = window
+            .upgrade()
+            .and_then(|window| gtk4::prelude::GtkWindowExt::focus(&window));
+        seen.set(seen.get() || focus.is_some_and(|focus| focus.root().is_none()));
+    });
+
+    harness.tab().send(BrowseTabInput::NextPage);
+    wait_until(WAIT, || harness.shown() == text(&["Linus"])).expect("the next page");
+    after_next_frame(&shown.0);
+
+    assert!(!stranded.get(), "the focus stayed in a row the page removed");
+    assert!(
+        focus().is_some_and(|focus| focus == *view.upcast_ref::<gtk4::Widget>() || focus.is_ancestor(&view)),
+        "the focus left the grid"
+    );
+}
+
 pub(super) fn after_next_frame(window: &gtk4::Window) {
     let clock = window.frame_clock().expect("the window's frame clock");
     let painted = std::rc::Rc::new(std::cell::Cell::new(false));

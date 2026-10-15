@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- .deb package for Ubuntu 26.04 and .rpm package for Fedora 44.
 - Password prompt on connect when the keyring holds no password or the server refused it, with a choice to remember it.
 - SSH tunnels through the system OpenSSH client, with your agent, host aliases and jump hosts, confirming new host keys.
 - Security group in the connect dialog: encryption mode, CA certificate, client certificate and TLS server name.
@@ -124,6 +125,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server money and smallmoney in the SQL editor and query results showed as approximate floats.
 - Saving a SQL Server row with a char or varchar key locked the whole table until the save ended.
 - Stop could not end a SQLite statement waiting for another connection's lock.
+- With SQLite 3.51, a file that is not a SQLite database failed to open with SQLite's raw error instead of saying so.
+- With SQLite 3.51, a SQLite connection waiting for another program's lock could be taken for lost after a suspend.
 - Launching TablePro while it was running did nothing instead of showing the open window.
 - Deleting a connection left its saved tabs and editor drafts on disk.
 - A change to the connection list made just before quitting could be lost.
@@ -202,6 +205,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ctrl+N added a row to a read-only table or a table without a primary key.
 - Two SQL editor tabs could both be named Query 3 after an earlier editor tab closed.
 - After Clear All, the filter strip could show Match any while the next filter combined its rules with all.
+- TablePro could crash when its window took the focus just as a new page replaced the focused cell's row.
 
 ### Security
 
