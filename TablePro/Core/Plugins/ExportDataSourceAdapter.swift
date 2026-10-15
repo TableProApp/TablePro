@@ -276,25 +276,13 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
             /// now says so and the export names the object it could not write.
             return try await pluginDriver.fetchViewDefinition(view: object.name, schema: schema)
         case .routine:
-            guard let routine = try await cachedRoutines(schema: schema, databaseName: object.databaseName)
-                .first(where: { $0.name == object.name && ($0.argumentSignature ?? "") == (object.identity ?? "") })
-            else {
-                throw PluginObjectSourceError.unsupported(object.name)
-            }
+            let routine = try await matchedRoutine(object, schema: schema)
             return try await pluginDriver.fetchRoutineDDL(routine)
         case .trigger:
-            guard let trigger = try await cachedTriggers(schema: schema, databaseName: object.databaseName)
-                .first(where: { $0.name == object.name && $0.table == object.parentTable })
-            else {
-                throw PluginObjectSourceError.unsupported(object.name)
-            }
+            let trigger = try await matchedTrigger(object, schema: schema)
             return try await pluginDriver.fetchTriggerDDL(trigger)
         case .event:
-            guard let event = try await cachedEvents(schema: schema, databaseName: object.databaseName)
-                .first(where: { $0.name == object.name })
-            else {
-                throw PluginObjectSourceError.unsupported(object.name)
-            }
+            let event = try await matchedEvent(object, schema: schema)
             return try await pluginDriver.fetchEventDDL(event)
         case .sequence:
             guard let sequence = try await cachedSequences(schema: schema, databaseName: object.databaseName)
@@ -317,6 +305,63 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         default:
             throw PluginObjectSourceError.unsupported(object.name)
         }
+    }
+
+    /// Matched to its info object the way `fetchObjectDDL` matches it, so the settings wrap the definition the dump
+    /// writes.
+    func fetchCreationScope(_ object: PluginExportTable) async throws -> PluginStatementScope? {
+        guard let pluginDriver else { return nil }
+        let schema = exportSchema(for: object.databaseName)
+        switch object.kind {
+        case .routine:
+            let routine = try await matchedRoutine(object, schema: schema)
+            return try await pluginDriver.fetchRoutineCreationScope(routine)
+        case .trigger:
+            let trigger = try await matchedTrigger(object, schema: schema)
+            return try await pluginDriver.fetchTriggerCreationScope(trigger)
+        case .event:
+            let event = try await matchedEvent(object, schema: schema)
+            return try await pluginDriver.fetchEventCreationScope(event)
+        default:
+            return nil
+        }
+    }
+
+    private func matchedRoutine(_ object: PluginExportTable, schema: String?) async throws -> PluginRoutineInfo {
+        guard let routine = try await cachedRoutines(schema: schema, databaseName: object.databaseName)
+            .first(where: { $0.name == object.name && ($0.argumentSignature ?? "") == (object.identity ?? "") })
+        else {
+            throw PluginObjectSourceError.unsupported(object.name)
+        }
+        return routine
+    }
+
+    private func matchedTrigger(_ object: PluginExportTable, schema: String?) async throws -> PluginTriggerInfo {
+        guard let trigger = try await cachedTriggers(schema: schema, databaseName: object.databaseName)
+            .first(where: { $0.name == object.name && $0.table == object.parentTable })
+        else {
+            throw PluginObjectSourceError.unsupported(object.name)
+        }
+        return trigger
+    }
+
+    private func matchedEvent(_ object: PluginExportTable, schema: String?) async throws -> PluginEventInfo {
+        guard let event = try await cachedEvents(schema: schema, databaseName: object.databaseName)
+            .first(where: { $0.name == object.name })
+        else {
+            throw PluginObjectSourceError.unsupported(object.name)
+        }
+        return event
+    }
+
+    // MARK: - Session Scope
+
+    func openSessionScope(for purpose: PluginSessionPurpose) async throws -> PluginSessionScope? {
+        try await driver.openSessionScope(for: purpose)
+    }
+
+    func closeSessionScope(_ scope: PluginSessionScope) async throws {
+        try await driver.closeSessionScope(scope)
     }
 
     /// The engine renders its own GRANT text, because only the driver knows how it spells a

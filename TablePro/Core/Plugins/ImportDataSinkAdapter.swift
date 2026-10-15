@@ -8,6 +8,22 @@ import os
 import TableProPluginKit
 import TableProSQLGrammar
 
+/// What became of the transaction an import opened, as far as the import saw.
+internal enum ImportTransactionOutcome: Equatable, Sendable {
+    /// No transaction of the import's own, or one it did not see end: what ran stays as it ran.
+    case untracked
+    case committed
+    case rolledBack
+    /// A statement that succeeded left no transaction open, as a `CREATE` or the file's own `COMMIT` does on MySQL, so
+    /// what ran up to then was not rolled back.
+    case committedBeforeRollback
+    /// The transaction had ended by the rollback with nothing before that naming how: a deadlock rolls it back, a
+    /// failing `CREATE` commits it, and the session reads the same after either.
+    case endedByServer
+    /// The file ran its own `ROLLBACK`, so what stays depends on what the file ran after it.
+    case endedByFile
+}
+
 final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     let databaseTypeId: String
     let targetTable: String?
@@ -33,6 +49,19 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     /// the user's own: a `BEGIN` there would join it, and the import's `COMMIT` would commit work the
     /// user never asked to commit, so the import then runs inside it and leaves ending it to them.
     private let ownsTransaction = OSAllocatedUnfairLock(initialState: false)
+    private let transactionRecord = OSAllocatedUnfairLock(initialState: TransactionRecord())
+
+    private struct TransactionRecord {
+        enum Ending {
+            case committed
+            case rolledBack
+            case endedByServer
+        }
+
+        var hasCommittedEarly = false
+        var isEndedByFile = false
+        var ending: Ending?
+    }
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ImportDataSinkAdapter")
 
@@ -79,6 +108,25 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         try await execute(statement: statement, line: 1)
     }
 
+    var transactionOutcome: ImportTransactionOutcome {
+        transactionRecord.withLock { record in
+            switch record.ending {
+            case .committed:
+                return .committed
+            case _ where record.hasCommittedEarly:
+                return .committedBeforeRollback
+            case _ where record.isEndedByFile:
+                return .endedByFile
+            case .rolledBack:
+                return .rolledBack
+            case .endedByServer:
+                return .endedByServer
+            case nil:
+                return .untracked
+            }
+        }
+    }
+
     /// What the file ran that changes where a name resolves for the rest of the session, such as a temporary table, so
     /// the catalog can stop following a later drop of that name onto the real table.
     var nameHazardStatements: [String] {
@@ -98,12 +146,17 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         nameHazards.withLock { $0 += hazards }
     }
 
+    func execute(statement: String, line: Int) async throws {
+        noteNameHazards(in: statement)
+        try await send(statement, line: line)
+        await noteTransactionEnd(after: statement)
+    }
+
     /// A SQL Server file arrives a batch at a time, as sqlcmd reads it, or a statement at a time when it holds no `GO`
     /// line, and each goes to the server whole: T-SQL scopes a variable, a table variable and a `TRY...CATCH` to one
     /// batch, and a routine's body runs to the end of its batch. A driver that cannot send a batch whole runs its
     /// statements one by one, as the editor does.
-    func execute(statement: String, line: Int) async throws {
-        noteNameHazards(in: statement)
+    private func send(_ statement: String, line: Int) async throws {
         guard grammar.contains(.batchSeparatorLines) else {
             _ = try await driver.execute(query: statement)
             return
@@ -262,6 +315,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             sessionState: await driver.heldSessionTransactionState()
         )
         ownsTransaction.withLock { $0 = owner.opensTransaction }
+        transactionRecord.withLock { $0 = TransactionRecord() }
         guard owner.opensTransaction else { return }
         try await driver.beginTransaction(mode: .readWrite)
     }
@@ -270,12 +324,64 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         guard ownsTransaction.withLock({ $0 }) else { return }
         try await driver.commitTransaction()
         ownsTransaction.withLock { $0 = false }
+        transactionRecord.withLock { $0.ending = .committed }
     }
 
     func rollbackTransaction() async throws {
         guard ownsTransaction.withLock({ $0 }) else { return }
+        guard await !sessionHoldsNoTransaction() else {
+            ownsTransaction.withLock { $0 = false }
+            transactionRecord.withLock { $0.ending = .endedByServer }
+            Self.logger.info("Import transaction was already ended by the server; no rollback sent")
+            return
+        }
         try await driver.rollbackTransaction()
         ownsTransaction.withLock { $0 = false }
+        transactionRecord.withLock { $0.ending = .rolledBack }
+    }
+
+    /// Only a statement that succeeded can show a commit: a failure that ends the transaction may have rolled it back.
+    /// The file's own `COMMIT` or `ROLLBACK` is read from its text on every engine, since the session reads the same
+    /// after either. The state is read after each other statement, because under `autocommit = 0` the statement
+    /// after a DDL opens a new transaction, and only where DDL commits: SQL Server reads its state with a query, which
+    /// per statement would double the round trips.
+    private func noteTransactionEnd(after statement: String) async {
+        guard ownsTransaction.withLock({ $0 }) else { return }
+        switch fileTransactionEnd(of: statement) {
+        case .commit:
+            transactionRecord.withLock { $0.hasCommittedEarly = true }
+        case .rollback:
+            transactionRecord.withLock { $0.isEndedByFile = true }
+        case nil:
+            guard !driver.supportsTransactionalDDL, await sessionHoldsNoTransaction() else { return }
+            transactionRecord.withLock { $0.hasCommittedEarly = true }
+        }
+    }
+
+    private enum FileTransactionEnd {
+        case commit
+        case rollback
+    }
+
+    /// `ROLLBACK TO SAVEPOINT` keeps the transaction, and the classifier already reads it as not ending one.
+    private func fileTransactionEnd(of statement: String) -> FileTransactionEnd? {
+        guard CatalogChangeClassifier.effect(of: statement, databaseType: databaseType).endsTransaction else {
+            return nil
+        }
+        return Self.rollbackKeywords.contains(QueryClassifier.leadingKeyword(of: statement)) ? .rollback : .commit
+    }
+
+    private static let rollbackKeywords: Set<String> = ["ROLLBACK", "ABORT"]
+
+    private func sessionHoldsNoTransaction() async -> Bool {
+        switch await driver.heldSessionTransactionState() {
+        case .idle, .holdsSessionLocks:
+            return true
+        case .inTransaction, .abortedTransaction, .unknown:
+            return false
+        @unknown default:
+            return false
+        }
     }
 
     func disableForeignKeyChecks() async throws {

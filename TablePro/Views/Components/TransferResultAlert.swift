@@ -91,22 +91,46 @@ internal enum TransferResultAlert {
         return String(format: template, Int64(rowCount), destinationName, Int64(tableCount))
     }
 
-    /// A stopped import leaves whatever it already ran committed, and used to close its progress
-    /// sheet without saying so. Stopping looked the same as importing nothing.
+    /// A stopped import used to close its progress sheet without saying what it left behind, so stopping looked the
+    /// same as importing nothing.
     internal static func presentImportCancelled(
         executedStatements: Int,
+        transaction: ImportTransactionOutcome,
         window: NSWindow?,
         completion: @escaping @MainActor () -> Void
     ) {
         let alert = NSAlert()
         alert.messageText = String(localized: "Import stopped")
         alert.alertStyle = .warning
-        let template = executedStatements == 1
-            ? String(localized: "%lld statement had already run and stays committed.")
-            : String(localized: "%lld statements had already run and stay committed.")
-        alert.informativeText = String(format: template, Int64(executedStatements))
+        alert.informativeText = importCancelledText(executedStatements: executedStatements, transaction: transaction)
         AlertHelper.addCancelButton(to: alert, title: String(localized: "Done"))
         AlertHelper.present(alert, in: window) { _ in completion() }
+    }
+
+    internal static func importCancelledText(executedStatements: Int, transaction: ImportTransactionOutcome) -> String {
+        let isOne = executedStatements == 1
+        let template: String
+        switch transaction {
+        case .rolledBack:
+            template = isOne
+                ? String(localized: "%lld statement had already run and was rolled back.")
+                : String(localized: "%lld statements had already run and were rolled back.")
+        case .committedBeforeRollback:
+            template = isOne
+                ? String(localized: """
+                    %lld statement had already run and was kept, because a statement in the file, such as COMMIT, \
+                    CREATE, ALTER or DROP, committed the import's transaction as it ran.
+                    """)
+                : String(localized: """
+                    %lld statements had already run. Some were kept, because a statement in the file, such as \
+                    COMMIT, CREATE, ALTER or DROP, committed the import's transaction as it ran.
+                    """)
+        case .untracked, .committed, .endedByServer, .endedByFile:
+            template = isOne
+                ? String(localized: "%lld statement had already run and stays committed.")
+                : String(localized: "%lld statements had already run and stay committed.")
+        }
+        return String(format: template, Int64(executedStatements))
     }
 
     internal static func presentImportSuccess(

@@ -52416,6 +52416,10 @@
         }
       }
     },
+    "Could not read the settings %@ was created with, so it restores under the dump's SQL mode." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Could not read the SurrealDB response: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -151332,6 +151336,10 @@
         }
       }
     },
+    "Runs every statement in one transaction, so a failure rolls back what the import changed. A database that commits CREATE, ALTER and DROP as they run, such as MySQL, keeps those statements and everything before them." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Runs on '%@'." : {
       "localizations" : {
         "fr" : {
@@ -176173,6 +176181,10 @@
           }
         }
       }
+    },
+    "TablePro is reading or writing rows on this connection with settings of its own." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro is still trying to reconnect." : {
       "localizations" : {

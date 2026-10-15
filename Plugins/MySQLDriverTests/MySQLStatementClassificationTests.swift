@@ -187,4 +187,20 @@ struct MySQLReplaySafetyTests {
             #expect(!mysqlConnectionLossMayReplay(code: code, outlastedSocketTimeout: false), "\(code)")
         }
     }
+
+    @Test("A transaction flag set before the server refused a statement is asked about again", arguments: [
+        UInt32(1_050), 1_062, 1_213, 1_317, 3_024, 4_025,
+    ])
+    func serverRefusalRefreshesTransactionFlag(_ code: UInt32) {
+        #expect(mysqlTransactionFlagMayBeStale(afterFailureCode: code, isFlagOpen: true, hasStatusFlags: true))
+    }
+
+    @Test("A client error, the driver's own error, a closed flag or a flavor without flags asks nothing")
+    func otherFailuresLeaveTransactionFlag() {
+        for code in [UInt32(2_006), 2_013, 2_055, 2_026, 0] {
+            #expect(!mysqlTransactionFlagMayBeStale(afterFailureCode: code, isFlagOpen: true, hasStatusFlags: true), "\(code)")
+        }
+        #expect(!mysqlTransactionFlagMayBeStale(afterFailureCode: 1_050, isFlagOpen: false, hasStatusFlags: true))
+        #expect(!mysqlTransactionFlagMayBeStale(afterFailureCode: 1_050, isFlagOpen: true, hasStatusFlags: false))
+    }
 }

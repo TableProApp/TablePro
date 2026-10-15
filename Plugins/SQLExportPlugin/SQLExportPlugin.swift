@@ -161,11 +161,21 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
             metadataWarnings.append(String(localized:
                 "A compressed export is written as one file, so the split size was not applied."))
         }
-        let writer = try SQLExportFileWriter(
-            destination: actualDestination,
-            splitSizeMegabytes: splitSize,
-            encodingDeclaration: .forDatabaseType(dataSource.databaseTypeId)
-        )
+        var readScope = await SQLExportReadScope.open(on: dataSource, for: tables)
+        let writer: SQLExportFileWriter
+        do {
+            writer = try SQLExportFileWriter(
+                destination: actualDestination,
+                splitSizeMegabytes: splitSize,
+                sessionDeclaration: .forDatabaseType(
+                    dataSource.databaseTypeId,
+                    readTimeZone: readScope.readTimeZone,
+                    readsWithANSIQuotes: readScope.readsWithANSIQuotes)
+            )
+        } catch {
+            await readScope.close(on: dataSource)
+            throw error
+        }
         var committed = false
         defer {
             if !committed { writer.rollback() }
@@ -224,6 +234,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
             if let snapshot {
                 await snapshot.end(on: dataSource)
             }
+            await readScope.close(on: dataSource)
             /// The publication point. Every phase above can suspend on a driver call, and the
             /// grant phase makes no cancellation check of its own, so a Stop arriving in one of
             /// them used to resume and replace the user's file anyway. Nothing is published past
@@ -245,6 +256,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
             if let snapshot {
                 await snapshot.end(on: dataSource)
             }
+            await readScope.close(on: dataSource)
             throw error
         }
 
@@ -676,7 +688,8 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 guard !ddl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     throw SQLExportObjectError.emptyDefinition
                 }
-                try writer.write(dataSource.scriptText(for: ddl) + dataSource.dumpStatementEnd)
+                let scope = try await creationScope(for: object, dataSource: dataSource, to: writer)
+                try writer.write(creationScript(ddl: ddl, scope: scope, dataSource: dataSource))
                 try writer.write("\n")
             } catch {
                 ddlFailures.append(sanitizedName)
@@ -687,6 +700,43 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
             }
             try await writeComments(for: object, dataSource: dataSource, to: writer)
         }
+    }
+
+    /// The kinds a server stores the creating session's settings with, such as MySQL's `sql_mode`.
+    private static let creationScopedKinds: Set<PluginExportObjectKind> = [.routine, .trigger, .event]
+
+    /// An unreadable scope still lets the definition be written, so it is recorded and commented into the file
+    /// rather than costing the object.
+    private func creationScope(
+        for object: PluginExportTable,
+        dataSource: any PluginExportDataSource,
+        to writer: SQLExportFileWriter
+    ) async throws -> PluginStatementScope? {
+        guard Self.creationScopedKinds.contains(object.kind) else { return nil }
+        do {
+            return try await dataSource.fetchCreationScope(object)
+        } catch {
+            let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(object.name)
+            Self.logger.warning("Failed to fetch the creation settings for \(sanitizedName): \(error)")
+            metadataWarnings.append(String(
+                format: String(localized: "Could not read the settings %@ was created with, so it restores under the dump's SQL mode."),
+                object.name))
+            let warning = "Warning: failed to fetch the creation settings for \(sanitizedName): \(error)"
+            try writer.write("-- \(PluginExportUtilities.sanitizeForSQLComment(warning))\n")
+            return nil
+        }
+    }
+
+    /// One string, so the writer cannot rotate between the settings and the definition they apply to.
+    private func creationScript(
+        ddl: String,
+        scope: PluginStatementScope?,
+        dataSource: any PluginExportDataSource
+    ) -> String {
+        let statements = (scope?.opening ?? []) + [ddl] + (scope?.closing ?? [])
+        return statements
+            .map { dataSource.scriptText(for: $0) + dataSource.dumpStatementEnd }
+            .joined()
     }
 
     /// Grants come last, because every object they name has to exist first.

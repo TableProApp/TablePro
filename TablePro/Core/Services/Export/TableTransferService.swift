@@ -205,7 +205,38 @@ final class TableTransferService: ObservableObject {
         }
 
         let source = ExportDataSourceAdapter(driver: sourceDriver, databaseType: request.sourceType)
+        /// The destination can be the user's own editor session, so the scopes close on every exit.
+        let scopes = await openSessionScopes(
+            for: request, objects: rowObjects, sourceDriver: sourceDriver, destinationDriver: destinationDriver)
+        do {
+            try await transferEach(
+                rowObjects, from: source, request: request, destinationDriver: destinationDriver)
+        } catch {
+            await scopes?.close()
+            throw error
+        }
+        await scopes?.close()
+        state.warnings.append(contentsOf: source.cappedTableWarnings)
+    }
 
+    private func openSessionScopes(
+        for request: Request,
+        objects: [ExportObjectItem],
+        sourceDriver: DatabaseDriver,
+        destinationDriver: DatabaseDriver
+    ) async -> VerbatimTransferScopes? {
+        guard VerbatimTransferScopes.isSameEngine(source: request.sourceType, target: request.destinationType),
+              !objects.contains(where: { VerbatimTransferScopes.filtersRows($0.rowScope) }) else { return nil }
+        return await VerbatimTransferScopes.open(
+            reading: SessionScopeHandle(sourceDriver), writing: SessionScopeHandle(destinationDriver))
+    }
+
+    private func transferEach(
+        _ rowObjects: [ExportObjectItem],
+        from source: ExportDataSourceAdapter,
+        request: Request,
+        destinationDriver: DatabaseDriver
+    ) async throws {
         for (index, object) in rowObjects.enumerated() {
             try checkCancellation()
             state.currentTable = object.name
@@ -223,7 +254,6 @@ final class TableTransferService: ObservableObject {
             )
             try await transferOne(object: object, from: source, into: sink, request: request)
         }
-        state.warnings.append(contentsOf: source.cappedTableWarnings)
     }
 
     /// Checked for every table before the first is written: the INSERT would name the contested

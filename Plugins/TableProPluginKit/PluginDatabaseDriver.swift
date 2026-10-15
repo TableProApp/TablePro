@@ -183,6 +183,12 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchEvents(schema: String?) async throws -> [PluginEventInfo]
     func fetchEventDDL(_ event: PluginEventInfo) async throws -> String
 
+    /// The settings the server recorded for an object when it was created and applies whenever it runs, such as a
+    /// MySQL routine's `sql_mode`, as statements a script writes around the object's `CREATE`. Nil when there are none.
+    func fetchRoutineCreationScope(_ routine: PluginRoutineInfo) async throws -> PluginStatementScope?
+    func fetchTriggerCreationScope(_ trigger: PluginTriggerInfo) async throws -> PluginStatementScope?
+    func fetchEventCreationScope(_ event: PluginEventInfo) async throws -> PluginStatementScope?
+
     /// Sequences that stand on their own rather than backing a column. `fetchDependentSequences`
     /// answers the ones a table owns; this answers the rest, which a dump would otherwise drop.
     func fetchSequences(schema: String?) async throws -> [PluginSequenceInfo]
@@ -227,6 +233,14 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     func cancelQuery() throws
     func applyQueryTimeout(_ seconds: Int) async throws
+
+    /// Saves the session settings `purpose` depends on and sets what it needs, all of them or none. Nil when the
+    /// engine has nothing to hold, and the work then runs under the session as it is. Its statements are driver setup,
+    /// not the user's.
+    func openSessionScope(for purpose: PluginSessionPurpose) async throws -> PluginSessionScope?
+
+    /// Puts back the settings `scope` saved that no longer hold their saved value.
+    func closeSessionScope(_ scope: PluginSessionScope) async throws
 
     /// What the command that hands this connection's held resource back should be called, or nil
     /// when the driver holds nothing it can give up.
@@ -720,6 +734,12 @@ public extension PluginDatabaseDriver {
         return definition
     }
 
+    func fetchRoutineCreationScope(_ routine: PluginRoutineInfo) async throws -> PluginStatementScope? { nil }
+
+    func fetchTriggerCreationScope(_ trigger: PluginTriggerInfo) async throws -> PluginStatementScope? { nil }
+
+    func fetchEventCreationScope(_ event: PluginEventInfo) async throws -> PluginStatementScope? { nil }
+
     func fetchSequences(schema: String?) async throws -> [PluginSequenceInfo] { [] }
 
     func fetchRoutineDDL(_ routine: PluginRoutineInfo) async throws -> String {
@@ -843,6 +863,10 @@ public extension PluginDatabaseDriver {
     func cancelQuery() throws {}
 
     func applyQueryTimeout(_ seconds: Int) async throws {}
+
+    func openSessionScope(for purpose: PluginSessionPurpose) async throws -> PluginSessionScope? { nil }
+
+    func closeSessionScope(_ scope: PluginSessionScope) async throws {}
 
     var releasableResourceCommandTitle: String? { nil }
 

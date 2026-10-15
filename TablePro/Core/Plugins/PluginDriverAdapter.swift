@@ -346,6 +346,14 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.applyQueryTimeout(seconds)
     }
 
+    func openSessionScope(for purpose: PluginSessionPurpose) async throws -> PluginSessionScope? {
+        try await pluginDriver.openSessionScope(for: purpose)
+    }
+
+    func closeSessionScope(_ scope: PluginSessionScope) async throws {
+        try await pluginDriver.closeSessionScope(scope)
+    }
+
     var releasableResourceCommandTitle: String? {
         pluginDriver.releasableResourceCommandTitle
     }

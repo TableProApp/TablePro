@@ -34,7 +34,7 @@ internal final class SQLExportFileWriter {
 
     private let destination: URL
     private let splitSizeBytes: Int
-    private let encodingDeclaration: SQLExportEncodingDeclaration
+    private let sessionDeclaration: SQLExportSessionDeclaration
     private let publish: (URL, URL) throws -> Void
 
     private var handle: FileHandle
@@ -59,12 +59,12 @@ internal final class SQLExportFileWriter {
     internal init(
         destination: URL,
         splitSizeMegabytes: Int,
-        encodingDeclaration: SQLExportEncodingDeclaration = .empty,
+        sessionDeclaration: SQLExportSessionDeclaration = .empty,
         publish: @escaping (URL, URL) throws -> Void = SQLExportFileWriter.publishAtomically
     ) throws {
         self.destination = destination
         self.splitSizeBytes = max(0, splitSizeMegabytes) * 1_024 * 1_024
-        self.encodingDeclaration = encodingDeclaration
+        self.sessionDeclaration = sessionDeclaration
         self.publish = publish
         let (handle, tempURL) = try PluginExportUtilities.beginAtomicWrite(for: destination)
         self.handle = handle
@@ -173,10 +173,10 @@ internal final class SQLExportFileWriter {
         try beginPart()
     }
 
-    /// Declares the encoding and re-opens every scope that is still open, so a part carries the
-    /// session state its own statements were written under.
+    /// Declares the session settings and re-opens every scope that is still open, so a part carries
+    /// the session state its own statements were written under.
     private func beginPart() throws {
-        try writeRaw(encodingDeclaration.prologue)
+        try writeRaw(sessionDeclaration.prologue)
         for scope in openScopes {
             try writeRaw(scope.opener)
         }
@@ -190,13 +190,13 @@ internal final class SQLExportFileWriter {
         for scope in openScopes.reversed() {
             try writeRaw(scope.closer)
         }
-        try writeRaw(encodingDeclaration.epilogue)
+        try writeRaw(sessionDeclaration.epilogue)
     }
 
     /// What the part still owes: the closer of every open scope and the closing declaration. Every
     /// write counts it, because a part that fits only until its own tail is added has not fitted.
     private var partTailBytes: Int {
-        openScopes.reduce(encodingDeclaration.epilogue.utf8.count) { $0 + $1.closer.utf8.count }
+        openScopes.reduce(sessionDeclaration.epilogue.utf8.count) { $0 + $1.closer.utf8.count }
     }
 
     private func writeRaw(_ text: String) throws {

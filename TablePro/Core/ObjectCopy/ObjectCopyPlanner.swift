@@ -55,6 +55,7 @@ internal struct ObjectCopyPlanner {
         /// Every scope is read and drafted before any index is named, because a table a later scope
         /// replaces frees its index names for an earlier one: every drop runs before any create.
         var passes: [ScopePass] = []
+        var isStructureReadPinned = true
 
         for scope in Self.scopes(of: request) {
             let names = Set(scope.objects.map(\.name))
@@ -64,9 +65,10 @@ internal struct ObjectCopyPlanner {
                 targetNamespaces.append(namespace)
             }
 
-            let sourceReads = try await metadata.tableReads(
-                for: sourceEndpoint, connection: connections.source, includeViews: true, names: names
+            let (sourceReads, isPinned) = try await sourceTableReads(
+                request, endpoint: sourceEndpoint, connection: connections.source, names: names
             )
+            isStructureReadPinned = isStructureReadPinned && isPinned
             let targetReads = try await existingTargetReads(
                 request, endpoint: targetEndpoint, connection: connections.target, names: names
             )
@@ -149,8 +151,35 @@ internal struct ObjectCopyPlanner {
             tableSteps: tableSteps,
             definitionSteps: definitionSteps,
             schemaStatements: try await buildSchemaStatements(request, namespaces: targetNamespaces),
-            skipped: skipped
+            skipped: skipped,
+            isStructureReadPinned: isStructureReadPinned
         )
+    }
+
+    private func sourceTableReads(
+        _ request: ObjectCopyRequest,
+        endpoint: DatabaseEndpoint,
+        connection: DatabaseConnection,
+        names: Set<String>
+    ) async throws -> (reads: [TableStructureRead], isPinned: Bool) {
+        guard request.content.includesStructure,
+              VerbatimTransferScopes.isSameEngine(
+                  source: request.source.databaseType, target: request.target.databaseType
+              ) else {
+            let reads = try await metadata.tableReads(
+                for: endpoint, connection: connection, includeViews: true, names: names
+            )
+            return (reads, false)
+        }
+        try await manager.ensureConnected(connection)
+        let schema = endpoint.schema
+        let databaseType = endpoint.databaseType
+        return try await manager.withMetadataDriver(scope: endpoint.scope) { driver in
+            guard let plugin = CompareMetadataService.pluginDriver(from: driver) else { return ([], false) }
+            return try await Self.pinnedTableReads(
+                names: names, schema: schema, databaseType: databaseType, using: plugin
+            )
+        }
     }
 
     /// The schemas a duplicated database needs before its first `CREATE TABLE` names one.
@@ -470,6 +499,7 @@ internal struct ObjectCopyPlanner {
                 conversionNotes: draft.conversionNotes,
                 coercer: draft.coercer,
                 serverSideInsert: draft.copiesData ? serverSide[draft.selection.id] : nil,
+                hasRowFilter: VerbatimTransferScopes.filtersRows(draft.rowScope),
                 note: draft.note
             )
         }
@@ -871,7 +901,7 @@ internal struct ObjectCopyPlanner {
             return []
         }
 
-        let definitionReads = try await sourceDefinitions(
+        let (definitionReads, creationScopes) = try await sourceDefinitions(
             sourceEndpoint: sourceEndpoint,
             selections: selections,
             sourceReads: sourceReads,
@@ -960,11 +990,14 @@ internal struct ObjectCopyPlanner {
             case .refused(let reason)?:
                 skipped.append(ObjectCopySkip(selection: item.selection, reason: reason))
             case .built(let drop, let create, let note)? where !create.isEmpty:
+                let settingsNote = creationScopes.unreadable.contains(item.selection.id)
+                    ? Self.creationSettingsUnreadable : nil
                 steps.append(ObjectCopyDefinitionStep(
                     selection: item.selection,
                     dropStatements: drop,
                     createStatements: create,
-                    note: note
+                    creationScope: creationScopes.scopes[item.selection.id],
+                    note: [note, settingsNote].compactMap { $0 }.joined(separator: " ").nilIfEmpty
                 ))
             case .built?, nil:
                 skipped.append(ObjectCopySkip(selection: item.selection, reason: Self.noDefinition))
@@ -978,7 +1011,7 @@ internal struct ObjectCopyPlanner {
         selections: [ObjectCopySelection],
         sourceReads: [TableStructureRead],
         connection: DatabaseConnection
-    ) async throws -> [String: RoutineSourceRead] {
+    ) async throws -> (reads: [String: RoutineSourceRead], creationScopes: ObjectCopyCreationScopes) {
         let views = sourceReads.filter { read in
             selections.contains { selection in
                 (selection.kind == .view || selection.kind == .materializedView)
@@ -991,8 +1024,10 @@ internal struct ObjectCopyPlanner {
         let endpointName = sourceEndpoint.qualifiedDescription
         try await manager.ensureConnected(connection)
         return try await manager.withMetadataDriver(scope: sourceEndpoint.scope) { driver in
-            guard let plugin = CompareMetadataService.pluginDriver(from: driver) else { return [:] }
-            return try await Self.sourceDefinitionReads(
+            guard let plugin = CompareMetadataService.pluginDriver(from: driver) else {
+                return ([:], ObjectCopyCreationScopes())
+            }
+            let reads = try await Self.sourceDefinitionReads(
                 for: selections,
                 views: views,
                 triggerTables: Array(triggerTables),
@@ -1000,6 +1035,10 @@ internal struct ObjectCopyPlanner {
                 endpointName: endpointName,
                 using: plugin
             )
+            let creationScopes = try await Self.creationScopes(
+                for: selections, triggerTables: Array(triggerTables), schema: schema, using: plugin
+            )
+            return (reads, creationScopes)
         }
     }
 
@@ -1094,6 +1133,9 @@ internal struct ObjectCopyPlanner {
         localized: "The target has it, but its structure could not be read."
     )
     nonisolated private static let alreadyThere = String(localized: "Already in the target.")
+    nonisolated private static let creationSettingsUnreadable = String(
+        localized: "The settings it was created with could not be read, so it gets the target's own."
+    )
     nonisolated internal static let noDefinition = String(
         localized: "The source reports no definition for it."
     )

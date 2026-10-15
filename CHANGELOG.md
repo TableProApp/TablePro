@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Edit > Data shown only in data file windows.
 - Smaller updates: about 6 MB from any of the last five releases and 21 MB from older ones, down from 34 MB.
 - Several statements run together on PostgreSQL from iPhone and iPad commit one at a time, and a failure keeps the ones before it. (#3399)
+- MySQL dumps write TIMESTAMP values in UTC and turn off foreign key checks while they load, as mysqldump does.
 
 ### Removed
 
@@ -85,6 +86,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Database type icon and checkmark hard to see on the selected row in Choose a Database.
 - Oracle connection timing out after 30 seconds when the password is about to expire. (#3401)
 - Oracle session left open on the server when a connect was canceled during login.
+- MySQL dumps failing to restore on zero dates such as `0000-00-00`, or renumbering an AUTO_INCREMENT value of 0. (#3414)
+- Strings with backslashes changing when a MySQL dump is restored on a server using NO_BACKSLASH_ESCAPES.
+- TIMESTAMP values shifting when a MySQL dump or copy moves between servers in different time zones.
+- MySQL dumps exported from an ANSI_QUOTES session failing to restore.
+- Restored MySQL routines, triggers and events losing the SQL mode they were created with.
+- MySQL dumps failing in the mysql client when a table references one created after it.
+- PostgreSQL dumps changing dates, intervals and floats exported from a session with non-default output settings.
+- Imported SQL files leaving their settings on the editor's connection, such as an empty search_path after a pg_dump file.
+- MySQL Object Copy and Import from connection failing on zero dates and renumbering AUTO_INCREMENT values of 0.
+- SQL import reporting a rollback after MySQL had already committed the file's schema changes.
 - Only the first statement running on iPhone and iPad when the query holds several. (#3399)
 - Query on iPhone and iPad appearing to do nothing after CREATE, DROP or a write that changed no rows, including every Oracle write. (#3399)
 - SQLite on iPhone and iPad reporting a CHECK or UNIQUE violation as a saved row in Add Row, the row editor and Shortcuts. (#3399)

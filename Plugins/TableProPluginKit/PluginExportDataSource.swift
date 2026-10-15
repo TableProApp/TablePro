@@ -65,6 +65,13 @@ public protocol PluginExportDataSource: AnyObject, Sendable {
     /// The object's rows, narrowed to its `rowScope`. Reading the whole object is what the default
     /// does, so a format that has not adopted row scope keeps behaving as it did.
     func streamRows(for object: PluginExportTable) -> AsyncThrowingStream<PluginStreamElement, Error>
+
+    /// Mirrors `PluginDatabaseDriver.openSessionScope(for:)` on the session the export reads from.
+    func openSessionScope(for purpose: PluginSessionPurpose) async throws -> PluginSessionScope?
+    func closeSessionScope(_ scope: PluginSessionScope) async throws
+
+    /// Mirrors the driver's creation scopes for a routine, trigger or event. Nil for every other kind.
+    func fetchCreationScope(_ object: PluginExportTable) async throws -> PluginStatementScope?
 }
 
 public extension PluginExportDataSource {
@@ -103,4 +110,10 @@ public extension PluginExportDataSource {
     func streamRows(for object: PluginExportTable) -> AsyncThrowingStream<PluginStreamElement, Error> {
         streamRows(table: object.name, databaseName: object.databaseName)
     }
+
+    func openSessionScope(for purpose: PluginSessionPurpose) async throws -> PluginSessionScope? { nil }
+
+    func closeSessionScope(_ scope: PluginSessionScope) async throws {}
+
+    func fetchCreationScope(_ object: PluginExportTable) async throws -> PluginStatementScope? { nil }
 }

@@ -94,7 +94,7 @@ struct ObjectCopyRowCopierTests {
         source.streamed = rows(5)
         let target = CopyDriver()
 
-        let outcome = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
+        let outcome = try await ObjectCopyRowCopier(step: step(), sourceDatabaseType: .mysql, targetDatabaseType: .mysql)
             .copy(from: source, to: target) { _ in }
 
         #expect(outcome.inserted == 5)
@@ -110,7 +110,7 @@ struct ObjectCopyRowCopierTests {
         source.streamed = rows(2_500)
         let target = CopyDriver()
 
-        _ = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
+        _ = try await ObjectCopyRowCopier(step: step(), sourceDatabaseType: .mysql, targetDatabaseType: .mysql)
             .copy(from: source, to: target) { _ in }
 
         #expect(target.executedQueries.count == 3, "1,000 rows per statement at the row cap")
@@ -126,7 +126,7 @@ struct ObjectCopyRowCopierTests {
         source.batchSize = 2
         let target = CopyDriver()
 
-        _ = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
+        _ = try await ObjectCopyRowCopier(step: step(), sourceDatabaseType: .mysql, targetDatabaseType: .mysql)
             .copy(from: source, to: target) { _ in }
 
         #expect(target.executedParameters.first?.map(\.sortKey) == ["1", "a", "2", "b"])
@@ -138,7 +138,7 @@ struct ObjectCopyRowCopierTests {
         source.streamed = rows(1)
         let target = CopyDriver()
 
-        _ = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
+        _ = try await ObjectCopyRowCopier(step: step(), sourceDatabaseType: .mysql, targetDatabaseType: .mysql)
             .copy(from: source, to: target) { _ in }
 
         #expect(target.executedQueries.first == "INSERT INTO `public`.`orders` (`id`, `name`) VALUES (?, ?), (?, ?)".replacingOccurrences(
@@ -152,7 +152,7 @@ struct ObjectCopyRowCopierTests {
         source.streamed = rows(1)
         let target = CopyDriver()
 
-        _ = try await ObjectCopyRowCopier(step: step(schema: nil), targetDatabaseType: .mysql)
+        _ = try await ObjectCopyRowCopier(step: step(schema: nil), sourceDatabaseType: .mysql, targetDatabaseType: .mysql)
             .copy(from: source, to: target) { _ in }
 
         #expect(target.executedQueries.first == "INSERT INTO `orders` (`id`, `name`) VALUES (?, ?)")
@@ -163,7 +163,7 @@ struct ObjectCopyRowCopierTests {
         let source = CopyDriver()
         let target = CopyDriver()
 
-        let outcome = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
+        let outcome = try await ObjectCopyRowCopier(step: step(), sourceDatabaseType: .mysql, targetDatabaseType: .mysql)
             .copy(from: source, to: target) { _ in }
 
         #expect(outcome.inserted == 0)
@@ -179,7 +179,7 @@ struct ObjectCopyRowCopierTests {
         let target = CopyDriver()
 
         do {
-            _ = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
+            _ = try await ObjectCopyRowCopier(step: step(), sourceDatabaseType: .mysql, targetDatabaseType: .mysql)
                 .copy(from: source, to: target) { _ in }
             Issue.record("A row of the wrong width must not be written")
         } catch {
@@ -194,7 +194,7 @@ struct ObjectCopyRowCopierTests {
         let target = CopyDriver()
         let reported = Reported()
 
-        _ = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
+        _ = try await ObjectCopyRowCopier(step: step(), sourceDatabaseType: .mysql, targetDatabaseType: .mysql)
             .copy(from: source, to: target) { reported.append($0) }
 
         #expect(reported.values == [1_000, 2_000, 2_500])
@@ -213,7 +213,7 @@ struct ObjectCopyRowCopierTests {
         source.batchSize = 6
         let target = CopyDriver()
 
-        _ = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
+        _ = try await ObjectCopyRowCopier(step: step(), sourceDatabaseType: .mysql, targetDatabaseType: .mysql)
             .copy(from: source, to: target) { _ in }
 
         #expect(target.executedQueries.count > 1, "one mebibyte holds two of these rows")
@@ -234,7 +234,7 @@ struct ObjectCopyRowCopierTests {
         source.batchSize = 1
         let target = CopyDriver()
 
-        let outcome = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
+        let outcome = try await ObjectCopyRowCopier(step: step(), sourceDatabaseType: .mysql, targetDatabaseType: .mysql)
             .copy(from: source, to: target) { _ in }
 
         #expect(outcome.inserted == 1)
@@ -259,7 +259,9 @@ struct ObjectCopyRowCopierTests {
         )
 
         _ = try await ObjectCopyRowCopier(
-            step: step(columns: ["id", "live"], coercer: coercer), targetDatabaseType: .mysql
+            step: step(columns: ["id", "live"], coercer: coercer),
+            sourceDatabaseType: .postgresql,
+            targetDatabaseType: .mysql
         ).copy(from: source, to: target) { _ in }
 
         #expect(target.executedParameters.first?.map(\.sortKey) == ["1", "1"])
@@ -280,7 +282,9 @@ struct ObjectCopyRowCopierTests {
         )
 
         let outcome = try await ObjectCopyRowCopier(
-            step: step(serverSideInsert: statement, estimatedRows: 5), targetDatabaseType: .mysql
+            step: step(serverSideInsert: statement, estimatedRows: 5),
+            sourceDatabaseType: .mysql,
+            targetDatabaseType: .mysql
         ).copy(from: source, to: target) { _ in }
 
         #expect(target.executedQueries == [statement.sql])
@@ -299,6 +303,7 @@ struct ObjectCopyRowCopierTests {
                 serverSideInsert: SyncStatement(sql: "INSERT INTO x SELECT 1;", objectName: "x", summary: ""),
                 estimatedRows: 42
             ),
+            sourceDatabaseType: .mysql,
             targetDatabaseType: .mysql
         ).copy(from: CopyDriver(), to: CopyDriver()) { _ in }
 

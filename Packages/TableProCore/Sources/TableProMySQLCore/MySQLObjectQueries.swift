@@ -287,6 +287,41 @@ public enum MySQLObjectQueries {
         return header
     }
 
+    // The creation-settings reads select the name too: the catalog compares names case-insensitively on MySQL 5.7
+    // and earlier and on MariaDB, while a trigger name is case-sensitive wherever table names are, so the driver
+    // keeps only the row named exactly.
+
+    /// The `sql_mode` the server recorded for one routine.
+    public static func routineCreationSettings(schema: String, name: String, kind: String) -> String {
+        """
+        SELECT ROUTINE_NAME, SQL_MODE
+        FROM information_schema.ROUTINES
+        WHERE ROUTINE_SCHEMA = '\(escapeLiteral(schema))'
+          AND ROUTINE_NAME = '\(escapeLiteral(name))'
+          AND ROUTINE_TYPE = '\(escapeLiteral(kind))'
+        """
+    }
+
+    /// The `sql_mode` the server recorded for one trigger.
+    public static func triggerCreationSettings(schema: String, name: String) -> String {
+        """
+        SELECT TRIGGER_NAME, SQL_MODE
+        FROM information_schema.TRIGGERS
+        WHERE TRIGGER_SCHEMA = '\(escapeLiteral(schema))'
+          AND TRIGGER_NAME = '\(escapeLiteral(name))'
+        """
+    }
+
+    /// The `sql_mode` and `time_zone` the server recorded for one event.
+    public static func eventCreationSettings(schema: String, name: String) -> String {
+        """
+        SELECT EVENT_NAME, SQL_MODE, TIME_ZONE
+        FROM information_schema.EVENTS
+        WHERE EVENT_SCHEMA = '\(escapeLiteral(schema))'
+          AND EVENT_NAME = '\(escapeLiteral(name))'
+        """
+    }
+
     /// A DEFINER arrives as `user@host` and both halves are identifiers, so quoting the whole
     /// string produces a name no server will accept.
     public static func quotedDefiner(_ definer: String) -> String {

@@ -49,12 +49,19 @@ struct MySQLSessionFootprint: Equatable {
     /// table, take a lock or open a transaction. Opaque is the only honest reading.
     private(set) var ranOpaqueRoutine = false
 
+    /// The driver's own session scopes still open. They set `sql_mode` and `time_zone` as driver setup, which never
+    /// passes through `observe`, and a reconnect would carry on without them.
+    private(set) var heldSessionScopes = 0
+
     var isClean: Bool {
         self == MySQLSessionFootprint()
     }
 
     /// Why the session cannot be released, in the user's language, or nil when it can.
     var blockingReason: String? {
+        if heldSessionScopes > 0 {
+            return String(localized: "TablePro is reading or writing rows on this connection with settings of its own.")
+        }
         if hasOpenTransaction {
             return String(localized: "This connection has an open transaction. Commit or roll it back first.")
         }
@@ -153,6 +160,23 @@ struct MySQLSessionFootprint: Equatable {
     /// that would have blocked it are tracked, so a clean footprint is the whole precondition.
     mutating func reset() {
         self = MySQLSessionFootprint()
+    }
+
+    mutating func holdSessionScope() {
+        heldSessionScopes += 1
+    }
+
+    /// A scope whose settings could not all be put back leaves the session carrying changed settings, so neither a
+    /// replay nor the idle release treats it as clean.
+    mutating func releaseSessionScope(isRestored: Bool) {
+        heldSessionScopes = max(0, heldSessionScopes - 1)
+        if !isRestored {
+            hasSessionSettings = true
+        }
+    }
+
+    mutating func noteUnrestoredSessionSettings() {
+        hasSessionSettings = true
     }
 
     private mutating func observeStatement(_ statement: String) {

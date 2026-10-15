@@ -244,11 +244,15 @@ internal struct ObjectCopyRunner {
         request: ObjectCopyRequest,
         progress: ObjectCopyProgress
     ) async throws -> DDLResult {
-        let groups = plan.cleanupGroups + plan.creationGroups
+        let tableGroups = plan.cleanupGroups + plan.tableCreationGroups
+        let definitionGroups = plan.definitionCreationGroups
         let errorHandling = request.errorHandling
         let scope = request.target.scope
         let hasCleanup = !plan.cleanupGroups.isEmpty
         let schemaStatements = plan.schemaStatements
+        let pinsSession = plan.isStructureReadPinned && VerbatimTransferScopes.isSameEngine(
+            source: request.source.databaseType, target: request.target.databaseType
+        )
 
         return try await manager.withMetadataDriver(scope: scope) { driver in
             guard let plugin = CompareMetadataService.pluginDriver(from: driver) else {
@@ -264,16 +268,24 @@ internal struct ObjectCopyRunner {
                 }
             }
 
-            /// Ahead of everything, and it throws rather than being attributed to an object: no
-            /// table, view or routine can be created if the schema naming it is not there, so
-            /// carrying on would report every one of them as its own failure for one cause.
-            for statement in schemaStatements {
-                _ = try await plugin.execute(query: statement.sql)
-            }
-
-            var result = await Self.execute(
-                groups, on: plugin, errorHandling: errorHandling, progress: progress
+            var result = try await Self.executeTableDDL(
+                schemaStatements: schemaStatements,
+                groups: tableGroups,
+                on: plugin,
+                pinsSession: pinsSession,
+                errorHandling: errorHandling,
+                progress: progress
             )
+            /// Outside the write scope, because a routine or trigger records the session's
+            /// `sql_mode`: it gets its own creation settings, or else the target's.
+            if !result.stopped {
+                let definitions = await Self.execute(
+                    definitionGroups, on: plugin, errorHandling: errorHandling, progress: progress
+                )
+                result.outcomes += definitions.outcomes
+                result.cancelled = definitions.cancelled
+                result.stopped = definitions.stopped
+            }
             result.joinedSessionTransaction = owner == .session
 
             if relaxesForeignKeys {
@@ -302,6 +314,37 @@ internal struct ObjectCopyRunner {
         return rolled
     }
 
+    /// The schemas, drops and tables, under the target's write scope on a same-engine copy: a
+    /// `CREATE TABLE` read from the source can carry a default, such as MySQL's `'0000-00-00'`, that
+    /// the target session's own mode refuses. The scope never outlives this lease.
+    nonisolated private static func executeTableDDL(
+        schemaStatements: [SyncStatement],
+        groups: [ObjectCopyStatementGroup],
+        on driver: any PluginDatabaseDriver,
+        pinsSession: Bool,
+        errorHandling: ImportErrorHandling,
+        progress: ObjectCopyProgress
+    ) async throws -> DDLResult {
+        let writesAnything = !schemaStatements.isEmpty || groups.contains { !$0.statements.isEmpty }
+        let scopes = pinsSession && writesAnything
+            ? await VerbatimTransferScopes.open(writing: SessionScopeHandle(driver))
+            : nil
+        do {
+            /// Ahead of everything, and it throws rather than being attributed to an object: no
+            /// table, view or routine can be created if the schema naming it is not there, so
+            /// carrying on would report every one of them as its own failure for one cause.
+            for statement in schemaStatements {
+                _ = try await driver.execute(query: statement.sql)
+            }
+            let result = await execute(groups, on: driver, errorHandling: errorHandling, progress: progress)
+            await scopes?.close()
+            return result
+        } catch {
+            await scopes?.close()
+            throw error
+        }
+    }
+
     nonisolated private static func execute(
         _ groups: [ObjectCopyStatementGroup],
         on driver: any PluginDatabaseDriver,
@@ -316,14 +359,17 @@ internal struct ObjectCopyRunner {
                 break
             }
             progress.startObject(group.selection.qualifiedName)
+            let opened = await openSettings(of: group, on: driver)
             do {
                 for statement in group.statements {
                     _ = try await driver.execute(query: statement.sql)
                 }
+                if opened { await closeSettings(of: group, on: driver) }
                 result.outcomes.append(ObjectCopyObjectOutcome(
                     selection: group.selection, rowsCopied: 0, error: nil
                 ))
             } catch {
+                if opened { await closeSettings(of: group, on: driver) }
                 logger.error(
                     "Copy DDL failed for \(group.selection.qualifiedName, privacy: .public): \(error.publicLogShape, privacy: .public)"
                 )
@@ -337,6 +383,44 @@ internal struct ObjectCopyRunner {
             }
         }
         return result
+    }
+
+    /// True once any opening statement ran, so the closing puts back what it changed. One that fails
+    /// leaves the object to be created under the session's own settings, as it was before these.
+    nonisolated private static func openSettings(
+        of group: ObjectCopyStatementGroup,
+        on driver: any PluginDatabaseDriver
+    ) async -> Bool {
+        var ranAny = false
+        for statement in group.opening {
+            do {
+                _ = try await driver.execute(query: statement.sql)
+                ranAny = true
+            } catch {
+                logger.warning(
+                    "Creation settings for \(group.selection.qualifiedName, privacy: .public) were not applied: \(error.publicLogShape, privacy: .public)"
+                )
+                break
+            }
+        }
+        return ranAny
+    }
+
+    /// Each statement shielded like a rollback: the connection goes back to the pool after this
+    /// lease, and a setting left behind would apply to whatever leases it next.
+    nonisolated private static func closeSettings(
+        of group: ObjectCopyStatementGroup,
+        on driver: any PluginDatabaseDriver
+    ) async {
+        for statement in group.closing {
+            do {
+                try await TaskCancellationShield.run { _ = try await driver.execute(query: statement.sql) }
+            } catch {
+                logger.error(
+                    "Restoring settings after \(group.selection.qualifiedName, privacy: .public) failed: \(error.publicLogShape, privacy: .public)"
+                )
+            }
+        }
     }
 
     private func runDDL(
@@ -403,6 +487,7 @@ internal struct ObjectCopyRunner {
         let manager = self.manager
         let clearGroups = plan.clearGroups
         let steps = plan.dataSteps
+        let sourceType = request.source.databaseType
         let targetType = request.target.databaseType
         let sourceScope = request.source.scope
         let errorHandling = request.errorHandling
@@ -435,6 +520,7 @@ internal struct ObjectCopyRunner {
                     from: sourceScope,
                     into: targetPlugin,
                     manager: manager,
+                    sourceType: sourceType,
                     targetType: targetType,
                     errorHandling: errorHandling,
                     progress: progress
@@ -474,6 +560,7 @@ internal struct ObjectCopyRunner {
         from sourceScope: DatabaseScope,
         into targetPlugin: any PluginDatabaseDriver,
         manager: any ScopedMetadataProviding,
+        sourceType: DatabaseType,
         targetType: DatabaseType,
         errorHandling: ImportErrorHandling,
         progress: ObjectCopyProgress
@@ -486,7 +573,9 @@ internal struct ObjectCopyRunner {
                 break
             }
             progress.startObject(step.qualifiedTargetName)
-            let copier = ObjectCopyRowCopier(step: step, targetDatabaseType: targetType)
+            let copier = ObjectCopyRowCopier(
+                step: step, sourceDatabaseType: sourceType, targetDatabaseType: targetType
+            )
             let completedBefore = result.rowsCopied
             do {
                 let outcome = try await manager.withMetadataDriver(
@@ -622,7 +711,9 @@ internal struct ObjectCopyRunner {
     ) async throws -> CopiedRows {
         let sourceScope = request.source.scope
         let targetScope = request.target.scope
-        let copier = ObjectCopyRowCopier(step: step, targetDatabaseType: targetType)
+        let copier = ObjectCopyRowCopier(
+            step: step, sourceDatabaseType: request.source.databaseType, targetDatabaseType: targetType
+        )
         let errorHandling = request.errorHandling
 
         /// The injected manager on both sides. Reaching for the singleton on the target bypassed

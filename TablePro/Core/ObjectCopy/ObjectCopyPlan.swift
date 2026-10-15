@@ -55,6 +55,9 @@ internal struct ObjectCopyTableStep: Identifiable, Sendable {
     /// The one statement that copies this table's rows without them leaving the server. Set only
     /// when both sides are the same connection; nil means the rows are streamed through the app.
     internal let serverSideInsert: SyncStatement?
+    /// True when the user narrowed the rows with a `WHERE` of their own, which reads them on the
+    /// sessions as they are (`VerbatimTransferScopes.filtersRows`).
+    internal let hasRowFilter: Bool
     /// Set when this table is in the plan but part of it cannot run, so the sheet can say why
     /// before the user presses Copy.
     internal let note: String?
@@ -79,6 +82,7 @@ internal struct ObjectCopyTableStep: Identifiable, Sendable {
         conversionNotes: [CrossEngineConversionNote] = [],
         coercer: CrossEngineValueCoercer? = nil,
         serverSideInsert: SyncStatement? = nil,
+        hasRowFilter: Bool = false,
         note: String?
     ) {
         self.selection = selection
@@ -97,6 +101,7 @@ internal struct ObjectCopyTableStep: Identifiable, Sendable {
         self.conversionNotes = conversionNotes
         self.coercer = coercer
         self.serverSideInsert = serverSideInsert
+        self.hasRowFilter = hasRowFilter
         self.note = note
     }
 
@@ -120,23 +125,38 @@ internal struct ObjectCopyDefinitionStep: Identifiable, Sendable {
     internal let selection: ObjectCopySelection
     internal let dropStatements: [SyncStatement]
     internal let createStatements: [SyncStatement]
+    /// The settings the source recorded for the object, such as a MySQL routine's `sql_mode`, set
+    /// around its `CREATE` so the target records the same ones rather than its own session's.
+    internal let creationOpening: [SyncStatement]
+    internal let creationClosing: [SyncStatement]
     internal let note: String?
 
     internal init(
         selection: ObjectCopySelection,
         dropStatements: [SyncStatement],
         createStatements: [SyncStatement],
+        creationScope: PluginStatementScope? = nil,
         note: String? = nil
     ) {
         self.selection = selection
         self.dropStatements = dropStatements
         self.createStatements = createStatements
+        let summary = createStatements.first?.summary ?? ""
+        let wrap = { (sql: String) in
+            SyncStatement(sql: sql, objectName: selection.qualifiedName, summary: summary)
+        }
+        self.creationOpening = (creationScope?.opening ?? []).map(wrap)
+        self.creationClosing = (creationScope?.closing ?? []).map(wrap)
         self.note = note
     }
 
     internal var id: String { selection.id }
 
     internal var statements: [SyncStatement] { dropStatements + createStatements }
+
+    internal var creationGroup: ObjectCopyStatementGroup {
+        ObjectCopyStatementGroup(selection, createStatements, opening: creationOpening, closing: creationClosing)
+    }
 
     /// A trigger fires on the rows the copy is about to write, so installing one before the data
     /// phase makes the copy trip it: an audit trigger writes a second row for every row copied,
@@ -150,10 +170,25 @@ internal struct ObjectCopyDefinitionStep: Identifiable, Sendable {
 internal struct ObjectCopyStatementGroup: Sendable {
     internal let selection: ObjectCopySelection
     internal let statements: [SyncStatement]
+    /// Run before `statements`, and `closing` after them even when one fails, so a setting the
+    /// opening changed never outlives the object it was set for.
+    internal let opening: [SyncStatement]
+    internal let closing: [SyncStatement]
 
-    internal init(_ selection: ObjectCopySelection, _ statements: [SyncStatement]) {
+    internal init(
+        _ selection: ObjectCopySelection,
+        _ statements: [SyncStatement],
+        opening: [SyncStatement] = [],
+        closing: [SyncStatement] = []
+    ) {
         self.selection = selection
         self.statements = statements
+        self.opening = opening
+        self.closing = closing
+    }
+
+    internal var scriptStatements: [SyncStatement] {
+        statements.isEmpty ? [] : opening + statements + closing
     }
 }
 
@@ -185,6 +220,10 @@ internal struct ObjectCopyPlan: Sendable {
     /// the schema it goes in could not be.
     internal let schemaStatements: [SyncStatement]
     internal let skipped: [ObjectCopySkip]
+    /// True when every source table the DDL was built from was read under the source's read scope,
+    /// so the run may write that DDL under the target's write scope. A definition read as the
+    /// session is runs as the session is, the way it did before scopes.
+    internal let isStructureReadPinned: Bool
 
     internal init(
         request: ObjectCopyRequest,
@@ -192,7 +231,8 @@ internal struct ObjectCopyPlan: Sendable {
         tableSteps: [ObjectCopyTableStep],
         definitionSteps: [ObjectCopyDefinitionStep],
         schemaStatements: [SyncStatement] = [],
-        skipped: [ObjectCopySkip] = []
+        skipped: [ObjectCopySkip] = [],
+        isStructureReadPinned: Bool = false
     ) {
         self.request = request
         self.createsDatabase = createsDatabase
@@ -200,6 +240,7 @@ internal struct ObjectCopyPlan: Sendable {
         self.definitionSteps = definitionSteps
         self.schemaStatements = schemaStatements
         self.skipped = skipped
+        self.isStructureReadPinned = isStructureReadPinned
     }
 
     /// Shown above the script, for the caveats the copy cannot do anything about: a key column the
@@ -281,9 +322,15 @@ internal struct ObjectCopyPlan: Sendable {
     }
 
     internal var creationGroups: [ObjectCopyStatementGroup] {
+        tableCreationGroups + definitionCreationGroups
+    }
+
+    internal var tableCreationGroups: [ObjectCopyStatementGroup] {
         tableSteps.map { ObjectCopyStatementGroup($0.selection, $0.sequenceStatements + $0.createStatements) }
-            + definitionSteps.filter { !$0.runsAfterData }
-                .map { ObjectCopyStatementGroup($0.selection, $0.createStatements) }
+    }
+
+    internal var definitionCreationGroups: [ObjectCopyStatementGroup] {
+        definitionSteps.filter { !$0.runsAfterData }.map(\.creationGroup)
     }
 
     /// Emptying the tables a data-only replace appends to, children first so a foreign key holds.
@@ -314,13 +361,12 @@ internal struct ObjectCopyPlan: Sendable {
     /// materialized view is filled at the moment it is created, so one built over an empty table
     /// stays empty.
     internal var afterDataGroups: [ObjectCopyStatementGroup] {
-        definitionSteps.filter(\.runsAfterData)
-            .map { ObjectCopyStatementGroup($0.selection, $0.createStatements) }
+        definitionSteps.filter(\.runsAfterData).map(\.creationGroup)
     }
 
     internal var cleanupStatements: [SyncStatement] { cleanupGroups.flatMap(\.statements) }
-    internal var creationStatements: [SyncStatement] { creationGroups.flatMap(\.statements) }
-    internal var afterDataStatements: [SyncStatement] { afterDataGroups.flatMap(\.statements) }
+    internal var creationStatements: [SyncStatement] { creationGroups.flatMap(\.scriptStatements) }
+    internal var afterDataStatements: [SyncStatement] { afterDataGroups.flatMap(\.scriptStatements) }
 
     internal var dataSteps: [ObjectCopyTableStep] {
         tableSteps.filter(\.copiesData)

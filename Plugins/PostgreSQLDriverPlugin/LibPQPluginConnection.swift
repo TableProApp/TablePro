@@ -630,6 +630,44 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private static let scopedReadSavepoint = "SAVEPOINT tablepro_scoped_read"
     private static let scopedReadRollback = "ROLLBACK TO SAVEPOINT tablepro_scoped_read; RELEASE SAVEPOINT tablepro_scoped_read"
 
+    /// Runs one of the driver's own session-setting statements so a failure cannot abort a transaction block the
+    /// user has open. Inside one, a savepoint holds the statement: rolled back when it fails, released when it
+    /// succeeds, which keeps what it set in the block. One dispatch, for the reason `executeTransactionScopedRead`
+    /// gives. In an aborted block the statement goes as it is and the server answers `25P02`. `requiresIdleSession`
+    /// refuses in the same dispatch, so no transaction can open between the check and the statement.
+    func executeSessionSetting(
+        _ statement: String,
+        parameters: [PluginCellValue],
+        requiresIdleSession: Bool
+    ) async throws -> LibPQPluginQueryResult {
+        let statementToRun = String(statement)
+        let params = parameters
+
+        return try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown else { throw LibPQPluginError.notConnected }
+            let state = transactionStateOnQueue()
+            if requiresIdleSession, state != .idle { throw PostgreSQLSessionScopeError.sessionNotIdle }
+            guard state == .inTransaction else {
+                return try executeParameterizedQuerySync(statementToRun, parameters: params)
+            }
+            _ = try executeQuerySync(Self.sessionSettingSavepoint)
+            let result: LibPQPluginQueryResult
+            do {
+                result = try executeParameterizedQuerySync(statementToRun, parameters: params)
+            } catch {
+                _ = try? executeQuerySync(Self.sessionSettingRollback)
+                throw error
+            }
+            _ = try executeQuerySync(Self.sessionSettingRelease)
+            return result
+        }
+    }
+
+    private static let sessionSettingSavepoint = "SAVEPOINT tablepro_session_setting"
+    private static let sessionSettingRelease = "RELEASE SAVEPOINT tablepro_session_setting"
+    private static let sessionSettingRollback =
+        "ROLLBACK TO SAVEPOINT tablepro_session_setting; RELEASE SAVEPOINT tablepro_session_setting"
+
     /// Whether the session is inside a transaction block, including one a failed statement has
     /// aborted, so a statement sent now joins it. Called on the connection's queue only: one `PGconn`
     /// may not be used from two threads at once, and the lock guards the pointer rather than the call.

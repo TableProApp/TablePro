@@ -56,6 +56,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Apply query execution timeout (seconds, 0 = no limit)
     func applyQueryTimeout(_ seconds: Int) async throws
 
+    /// Mirrors `PluginDatabaseDriver.openSessionScope(for:)` and `closeSessionScope(_:)`.
+    func openSessionScope(for purpose: PluginSessionPurpose) async throws -> PluginSessionScope?
+    func closeSessionScope(_ scope: PluginSessionScope) async throws
+
     /// What the command that hands this connection's held resource back should be called, or nil
     /// when the driver holds nothing it can give up. A per-connection answer, not a per-engine one.
     var releasableResourceCommandTitle: String? { get }
@@ -857,6 +861,10 @@ extension DatabaseDriver {
         // No-op: each plugin's PluginDatabaseDriver implements its own timeout command.
         // The PluginDriverAdapter bridges this call to the plugin.
     }
+
+    func openSessionScope(for purpose: PluginSessionPurpose) async throws -> PluginSessionScope? { nil }
+
+    func closeSessionScope(_ scope: PluginSessionScope) async throws {}
 }
 
 /// Which of the app's connections a driver is, so a plugin can name it to the server.

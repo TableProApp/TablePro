@@ -364,6 +364,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             result = try await conn.executeParameterizedQuery(query, parameters: parameters, rowCap: rowCap)
         } catch {
             noteFailure(query)
+            await refreshTransactionFlag(after: error, on: conn)
             throw error
         }
         return PluginQueryResult(
@@ -448,8 +449,23 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             if countsAsActivity {
                 noteFailure(query)
             }
+            await refreshTransactionFlag(after: error, on: conn)
             throw error
         }
+    }
+
+    /// One `DO 0` on the same connection, sent as driver setup, so the reply's status flags replace the ones the
+    /// failed statement's ERR packet left in place. Its own failure changes nothing the caller hears.
+    private func refreshTransactionFlag(after error: Error, on conn: MariaDBPluginConnection) async {
+        guard let failure = error as? MariaDBPluginError,
+              !failure.wasNotSentAfterSessionEnded,
+              mysqlTransactionFlagMayBeStale(
+                  afterFailureCode: failure.code,
+                  isFlagOpen: conn.isInTransaction,
+                  hasStatusFlags: flavor.reportsSessionStatusFlags
+              )
+        else { return }
+        _ = try? await conn.executeQuery("DO 0", rowCap: nil)
     }
 
     // MARK: - Idle connection release
@@ -473,6 +489,17 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func mayReplay(_ query: String) -> Bool {
         sessionLock.withLock { mysqlMayReplay(query, on: footprint) }
+    }
+
+    /// A statement the driver runs on its own behalf, like the query timeout's `SET`: spelled for this session, and
+    /// left out of the footprint and the idle clock.
+    func executeSetup(_ statement: String) async throws -> PluginQueryResult {
+        try await executeWithReconnect(query: literalSpelling.respelled(statement), isRetry: false, countsAsActivity: false)
+    }
+
+    /// For what `executeSetup` changed, which the footprint cannot read from the statements.
+    func adjustFootprint(_ change: (inout MySQLSessionFootprint) -> Void) {
+        sessionLock.withLock { change(&footprint) }
     }
 
     /// Takes a server connection again if the last one was handed back. A connection that was

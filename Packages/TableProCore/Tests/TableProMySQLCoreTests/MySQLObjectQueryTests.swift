@@ -220,4 +220,41 @@ struct MySQLObjectQueryTests {
         #expect(legacy.contains("WHERE r.ROUTINE_SCHEMA = 'app'"))
         #expect(MySQLObjectQueries.routineList(schema: "app", includesParameters: true).contains("information_schema.PARAMETERS"))
     }
+
+    @Test("A routine's recorded mode is read by schema, name and type, with the name selected for an exact match")
+    func routineCreationSettings() {
+        let sql = MySQLObjectQueries.routineCreationSettings(schema: "app", name: "add_course", kind: "PROCEDURE")
+        #expect(sql.contains("SELECT ROUTINE_NAME, SQL_MODE"))
+        #expect(sql.contains("FROM information_schema.ROUTINES"))
+        #expect(sql.contains("ROUTINE_SCHEMA = 'app'"))
+        #expect(sql.contains("ROUTINE_NAME = 'add_course'"))
+        #expect(sql.contains("ROUTINE_TYPE = 'PROCEDURE'"))
+    }
+
+    @Test("A trigger's recorded mode is read by its own schema and name")
+    func triggerCreationSettings() {
+        let sql = MySQLObjectQueries.triggerCreationSettings(schema: "app", name: "audit")
+        #expect(sql.contains("SELECT TRIGGER_NAME, SQL_MODE"))
+        #expect(sql.contains("FROM information_schema.TRIGGERS"))
+        #expect(sql.contains("TRIGGER_SCHEMA = 'app'"))
+        #expect(sql.contains("TRIGGER_NAME = 'audit'"))
+    }
+
+    @Test("An event's recorded mode comes with its time zone")
+    func eventCreationSettings() {
+        let sql = MySQLObjectQueries.eventCreationSettings(schema: "app", name: "nightly")
+        #expect(sql.contains("SELECT EVENT_NAME, SQL_MODE, TIME_ZONE"))
+        #expect(sql.contains("FROM information_schema.EVENTS"))
+        #expect(sql.contains("EVENT_SCHEMA = 'app'"))
+        #expect(sql.contains("EVENT_NAME = 'nightly'"))
+    }
+
+    @Test("Names in the creation-settings reads are escaped as literals")
+    func creationSettingsEscapeNames() {
+        let routine = MySQLObjectQueries.routineCreationSettings(schema: #"a'b"#, name: #"c\d"#, kind: "FUNCTION")
+        #expect(routine.contains(#"ROUTINE_SCHEMA = 'a''b'"#))
+        #expect(routine.contains(#"ROUTINE_NAME = 'c\\d'"#))
+        #expect(MySQLObjectQueries.triggerCreationSettings(schema: "app", name: "it's").contains("TRIGGER_NAME = 'it''s'"))
+        #expect(MySQLObjectQueries.eventCreationSettings(schema: "app", name: "it's").contains("EVENT_NAME = 'it''s'"))
+    }
 }

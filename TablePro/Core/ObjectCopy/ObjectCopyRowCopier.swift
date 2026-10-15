@@ -44,9 +44,40 @@ internal struct ObjectCopyRowCopier: Sendable {
     }
 
     internal let step: ObjectCopyTableStep
+    internal let sourceDatabaseType: DatabaseType
     internal let targetDatabaseType: DatabaseType
 
     internal func copy(
+        from sourceDriver: any PluginDatabaseDriver,
+        to targetDriver: any PluginDatabaseDriver,
+        onProgress: @Sendable (Int) -> Void
+    ) async throws -> Outcome {
+        let scopes = await openSessionScopes(source: sourceDriver, target: targetDriver)
+        do {
+            let outcome = try await transfer(from: sourceDriver, to: targetDriver, onProgress: onProgress)
+            await scopes?.close()
+            return outcome
+        } catch {
+            await scopes?.close()
+            throw error
+        }
+    }
+
+    private func openSessionScopes(
+        source: any PluginDatabaseDriver,
+        target: any PluginDatabaseDriver
+    ) async -> VerbatimTransferScopes? {
+        guard VerbatimTransferScopes.isSameEngine(source: sourceDatabaseType, target: targetDatabaseType),
+              !step.hasRowFilter else { return nil }
+        guard step.serverSideInsert == nil else {
+            return await VerbatimTransferScopes.open(writing: SessionScopeHandle(target))
+        }
+        return await VerbatimTransferScopes.open(
+            reading: SessionScopeHandle(source), writing: SessionScopeHandle(target)
+        )
+    }
+
+    private func transfer(
         from sourceDriver: any PluginDatabaseDriver,
         to targetDriver: any PluginDatabaseDriver,
         onProgress: @Sendable (Int) -> Void

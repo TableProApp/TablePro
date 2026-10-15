@@ -58,6 +58,20 @@ internal func mysqlMayReplay(_ query: String, on footprint: MySQLSessionFootprin
 /// The codes libmariadb reports when the connection under a statement is gone.
 internal let mysqlConnectionLossCodes: Set<UInt32> = [2_006, 2_013, 2_055]
 
+/// libmariadb's own errors, `CR_MIN_ERROR` to `CR_MAX_ERROR`. The server never sends one.
+internal let mysqlClientErrorCodes: ClosedRange<UInt32> = 2_000...2_999
+
+/// Whether a failed statement leaves the connection's transaction flag in doubt, so the server should be asked again.
+///
+/// An ERR packet carries no status flags, so after a failure the flag is still the last OK's. A failed `CREATE TABLE`
+/// inside a transaction has already committed it (`scripts/probes/check-mysql-dump-session.sh`, step f), and the
+/// flag goes on saying it is open. Only the server's own refusal counts: a client error leaves the session itself in
+/// doubt, and code 0 is the driver's own error, which never reached the server.
+internal func mysqlTransactionFlagMayBeStale(afterFailureCode code: UInt32, isFlagOpen: Bool, hasStatusFlags: Bool) -> Bool {
+    guard hasStatusFlags, isFlagOpen, code != 0 else { return false }
+    return !mysqlClientErrorCodes.contains(code)
+}
+
 /// Whether a lost connection may be retaken and the statement run again on the session that
 /// replaces it.
 ///

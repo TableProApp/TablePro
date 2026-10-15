@@ -525,6 +525,7 @@ struct ImportDialog: View {
                     showProgressDialog = false
                     TransferResultAlert.presentImportCancelled(
                         executedStatements: service.state.processedStatements,
+                        transaction: service.state.transactionOutcome,
                         window: hostWindow
                     ) {}
                 }

@@ -24,7 +24,9 @@ struct SQLImportOptionsView: View {
                 .disabled(plugin.settings.errorHandling == .skipAndContinue)
                 .help(plugin.settings.errorHandling == .skipAndContinue
                     ? String(localized: "Not available in skip-and-continue mode")
-                    : String(localized: "Execute all statements in a single transaction. If any statement fails, all changes are rolled back."))
+                    : String(
+                        localized: "Runs every statement in one transaction, so a failure rolls back what the import changed. A database that commits CREATE, ALTER and DROP as they run, such as MySQL, keeps those statements and everything before them."
+                    ))
 
             Toggle("Disable foreign key checks", isOn: $plugin.settings.disableForeignKeyChecks)
                 .font(.system(size: 13))

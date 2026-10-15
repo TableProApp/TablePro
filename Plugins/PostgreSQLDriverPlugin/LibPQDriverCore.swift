@@ -253,6 +253,17 @@ final class LibPQDriverCore: @unchecked Sendable {
         _ = try await execute(query: "SET statement_timeout = \(ms)")
     }
 
+    func executeSessionSetting(
+        _ statement: PostgreSQLBoundStatement,
+        requiresIdleSession: Bool = false
+    ) async throws -> [[PluginCellValue]] {
+        try await connection().executeSessionSetting(
+            statement.sql,
+            parameters: statement.parameters,
+            requiresIdleSession: requiresIdleSession
+        ).rows
+    }
+
     /// A connection that has gone away answers `.unknown` rather than `.idle`: a caller that reads
     /// "nothing open" opens a transaction of its own, and this is the one answer that must never be
     /// a guess.

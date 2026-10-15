@@ -2,9 +2,6 @@
 //  ImportService.swift
 //  TablePro
 //
-//  Plugin-driven import orchestrator. Resolves the import format plugin,
-//  creates the adapter/source objects, and wires progress to the UI.
-//
 
 import Combine
 import Foundation
@@ -21,6 +18,7 @@ struct ImportState {
     var estimatedTotalStatements: Int = 0
     var statusMessage: String = ""
     var errorMessage: String?
+    var transactionOutcome: ImportTransactionOutcome = .untracked
 }
 
 // MARK: - Import Service
@@ -256,8 +254,43 @@ final class ImportService: ObservableObject {
             sourceFields: sourceFields,
             isCancelled: { progress.isCancelled }
         )
-        defer { reportNameHazards(sink.nameHazardStatements) }
-        return try await plugin.performImport(source: source, sink: sink, progress: progress)
+        defer {
+            reportNameHazards(sink.nameHazardStatements)
+            state.transactionOutcome = sink.transactionOutcome
+        }
+        let sessionScope = await openPreservingScope(on: driver)
+        let result: PluginImportResult
+        do {
+            result = try await plugin.performImport(source: source, sink: sink, progress: progress)
+        } catch {
+            await closePreservingScope(sessionScope, on: driver)
+            guard sink.transactionOutcome == .committedBeforeRollback else { throw error }
+            throw ImportCommittedTransactionError.noting(error)
+        }
+        await closePreservingScope(sessionScope, on: driver)
+        return result
+    }
+
+    /// The file runs on the editor's own session, so whatever it sets is put back once the import ends, however it
+    /// ends.
+    private func openPreservingScope(on driver: DatabaseDriver) async -> PluginSessionScope? {
+        do {
+            return try await driver.openSessionScope(for: .preserve)
+        } catch {
+            Self.logger.warning("Import runs without saving the session settings: \(error.publicLogShape, privacy: .public)")
+            return nil
+        }
+    }
+
+    private func closePreservingScope(_ scope: PluginSessionScope?, on driver: DatabaseDriver) async {
+        guard let scope else { return }
+        do {
+            try await driver.closeSessionScope(scope)
+        } catch {
+            Self.logger.warning(
+                "Could not restore the session settings after the import: \(error.publicLogShape, privacy: .public)"
+            )
+        }
     }
 
     /// The file ran on the same session as the editor, so a temporary table it made shadows a real one there
@@ -290,5 +323,35 @@ final class ImportService: ObservableObject {
                 outcome: outcome
             )
         )
+    }
+}
+
+internal struct ImportCommittedTransactionError: LocalizedError {
+    internal let cause: any Error
+
+    internal static var note: String {
+        String(localized: """
+            The rollback did not undo everything. A statement in the file, such as COMMIT, CREATE, ALTER or DROP, \
+            committed the import's transaction as it ran, so some of the statements before the failure were kept.
+            """)
+    }
+
+    internal var errorDescription: String? {
+        "\(cause.localizedDescription)\n\(Self.note)"
+    }
+
+    /// A statement failure keeps its shape, because the alert reads its line and statement from it. A cancel stays a
+    /// cancel: its own alert already says what ran stays committed.
+    internal static func noting(_ error: any Error) -> any Error {
+        guard !(error is PluginImportCancellationError), !(error is CancellationError) else { return error }
+        if let pluginError = error as? PluginImportError,
+           case .statementFailed(let statement, let line, let underlyingError) = pluginError {
+            return PluginImportError.statementFailed(
+                statement: statement,
+                line: line,
+                underlyingError: ImportCommittedTransactionError(cause: underlyingError)
+            )
+        }
+        return ImportCommittedTransactionError(cause: error)
     }
 }
