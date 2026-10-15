@@ -52,6 +52,8 @@ pub struct AuditJournalRecovery {
     legacy_journal: Option<LegacyJournalRotation>,
     recovered_operation_ids: Vec<Uuid>,
     unresolved_operation_ids: Vec<Uuid>,
+    unresolved_connection_ids: Vec<Uuid>,
+    unresolved_global_write: bool,
 }
 
 impl AuditJournalRecovery {
@@ -65,6 +67,14 @@ impl AuditJournalRecovery {
 
     pub fn unresolved_operation_ids(&self) -> &[Uuid] {
         &self.unresolved_operation_ids
+    }
+
+    pub fn unresolved_connection_ids(&self) -> &[Uuid] {
+        &self.unresolved_connection_ids
+    }
+
+    pub fn has_unresolved_global_writes(&self) -> bool {
+        self.unresolved_global_write
     }
 
     pub fn has_unresolved_writes(&self) -> bool {
@@ -91,7 +101,7 @@ impl LegacyJournalRotation {
 struct VerifiedJournal {
     tail: JournalTail,
     pending_intents: Vec<AuditEvent>,
-    unresolved_operation_ids: Vec<Uuid>,
+    unresolved_operation_connections: HashMap<Uuid, Uuid>,
 }
 
 struct JournalTail {
@@ -230,7 +240,9 @@ fn initialize(path: &Path) -> Result<(AuditJournalRecovery, File), StorageError>
             AuditJournalRecovery {
                 legacy_journal: None,
                 recovered_operation_ids: Vec::new(),
-                unresolved_operation_ids: verified.unresolved_operation_ids,
+                unresolved_operation_ids: sorted_operation_ids(&verified.unresolved_operation_connections),
+                unresolved_connection_ids: unresolved_connection_ids(&verified),
+                unresolved_global_write: has_unresolved_global_write(&verified),
             },
             active_lock.file,
         ));
@@ -240,16 +252,19 @@ fn initialize(path: &Path) -> Result<(AuditJournalRecovery, File), StorageError>
     let mut opened = open_file(path)?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     let verified = verify_locked(&mut opened.file, true)?;
-    let unresolved_operation_ids = recover_pending_intents(&mut opened.file, verified)?;
+    let verified = recover_pending_intents(&mut opened.file, verified)?;
     opened.file.flush()?;
     sync_created_file_and_parent(&opened, path)?;
     acquire_shared_lock(&active_lock.file)?;
+    let unresolved_operation_ids = sorted_operation_ids(&verified.unresolved_operation_connections);
 
     Ok((
         AuditJournalRecovery {
             legacy_journal,
             recovered_operation_ids: unresolved_operation_ids.clone(),
             unresolved_operation_ids,
+            unresolved_connection_ids: unresolved_connection_ids(&verified),
+            unresolved_global_write: has_unresolved_global_write(&verified),
         },
         active_lock.file,
     ))
@@ -488,18 +503,16 @@ fn verify_locked(file: &mut File, recover_partial: bool) -> Result<VerifiedJourn
 
     let mut pending_intents: Vec<_> = pending.into_values().collect();
     pending_intents.sort_by_key(|event| event.operation_id);
-    let mut unresolved_operation_ids: Vec<_> = unresolved.into_keys().collect();
-    unresolved_operation_ids.sort_unstable();
     Ok(VerifiedJournal {
         tail,
         pending_intents,
-        unresolved_operation_ids,
+        unresolved_operation_connections: unresolved,
     })
 }
 
 fn track_operation_state(
     pending: &mut HashMap<Uuid, AuditEvent>,
-    unresolved: &mut HashMap<Uuid, ()>,
+    unresolved: &mut HashMap<Uuid, Uuid>,
     event: &AuditEvent,
 ) {
     match event.phase {
@@ -509,7 +522,7 @@ fn track_operation_state(
         AuditRecordPhase::Outcome => {
             pending.remove(&event.operation_id);
             if event.operation_class.is_write() && event.terminal_status == AuditTerminalStatus::Unknown {
-                unresolved.insert(event.operation_id, ());
+                unresolved.insert(event.operation_id, event.connection_id);
             } else {
                 unresolved.remove(&event.operation_id);
             }
@@ -521,32 +534,71 @@ fn reject_new_write_intent(event: &AuditEvent, verified: &VerifiedJournal) -> Re
     if event.phase != AuditRecordPhase::Intent || !event.operation_class.is_write() {
         return Ok(());
     }
-    let has_pending_write = verified
-        .pending_intents
-        .iter()
-        .any(|intent| intent.operation_class.is_write());
-    if !has_pending_write && verified.unresolved_operation_ids.is_empty() {
+    let blocked_by_pending_write = verified.pending_intents.iter().any(|intent| {
+        intent.operation_class.is_write() && write_scope_blocks(event.connection_id, intent.connection_id)
+    });
+    let blocked_by_unresolved_write = verified
+        .unresolved_operation_connections
+        .values()
+        .any(|connection_id| write_scope_blocks(event.connection_id, *connection_id));
+    if !blocked_by_pending_write && !blocked_by_unresolved_write {
         return Ok(());
     }
-    Err(StorageError::Schema(
-        "audit journal has unresolved write operations; new write intent rejected".into(),
-    ))
+    Err(StorageError::UnresolvedWrite)
 }
 
-fn recover_pending_intents(file: &mut File, verified: VerifiedJournal) -> Result<Vec<Uuid>, StorageError> {
+fn write_scope_blocks(request_connection_id: Uuid, blocking_connection_id: Uuid) -> bool {
+    request_connection_id.is_nil() || blocking_connection_id.is_nil() || request_connection_id == blocking_connection_id
+}
+
+fn recover_pending_intents(file: &mut File, mut verified: VerifiedJournal) -> Result<VerifiedJournal, StorageError> {
     let mut tail = verified.tail;
-    let mut unresolved = verified.unresolved_operation_ids;
-    for intent in verified.pending_intents {
+    for intent in std::mem::take(&mut verified.pending_intents) {
         let operation_id = intent.operation_id;
+        let connection_id = intent.connection_id;
         let is_write = intent.operation_class.is_write();
         tail = append_to_file(file, tail, recovery_outcome(intent), true)?;
         if is_write {
-            unresolved.push(operation_id);
+            verified
+                .unresolved_operation_connections
+                .insert(operation_id, connection_id);
         }
     }
-    unresolved.sort_unstable();
-    unresolved.dedup();
-    Ok(unresolved)
+    verified.tail = tail;
+    Ok(verified)
+}
+
+fn sorted_operation_ids(unresolved: &HashMap<Uuid, Uuid>) -> Vec<Uuid> {
+    let mut operation_ids: Vec<_> = unresolved.keys().copied().collect();
+    operation_ids.sort_unstable();
+    operation_ids
+}
+
+fn unresolved_connection_ids(verified: &VerifiedJournal) -> Vec<Uuid> {
+    let mut connection_ids: Vec<_> = verified
+        .unresolved_operation_connections
+        .values()
+        .copied()
+        .chain(
+            verified
+                .pending_intents
+                .iter()
+                .filter(|event| event.operation_class.is_write())
+                .map(|event| event.connection_id),
+        )
+        .filter(|connection_id| !connection_id.is_nil())
+        .collect();
+    connection_ids.sort_unstable();
+    connection_ids.dedup();
+    connection_ids
+}
+
+fn has_unresolved_global_write(verified: &VerifiedJournal) -> bool {
+    verified.unresolved_operation_connections.values().any(Uuid::is_nil)
+        || verified
+            .pending_intents
+            .iter()
+            .any(|event| event.operation_class.is_write() && event.connection_id.is_nil())
 }
 
 fn recovery_outcome(mut intent: AuditEvent) -> AuditEvent {
@@ -716,9 +768,10 @@ impl AuditSink for AuditJournal {
         let durable = event.phase == AuditRecordPhase::Intent
             || event.operation_class == AuditOperationClass::TransactionCommit
             || event.administrative_action.is_some();
-        self.append_record(event, durable)
-            .await
-            .map_err(|error| AuditError::Persistence(error.to_string()))
+        self.append_record(event, durable).await.map_err(|error| match error {
+            StorageError::UnresolvedWrite => AuditError::UnresolvedWrite,
+            error => AuditError::Persistence(error.to_string()),
+        })
     }
 }
 

@@ -11,6 +11,9 @@ pub enum StorageError {
     #[error("schema error: {0}")]
     Schema(String),
 
+    #[error("an unresolved write outcome blocks this connection")]
+    UnresolvedWrite,
+
     #[error("database error: {0}")]
     Database(#[from] sqlx::Error),
 

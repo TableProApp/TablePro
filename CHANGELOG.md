@@ -105,6 +105,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - The MCP tool list now carries read-only and destructive hints, so clients can tell the metadata tools from the ones that run SQL.
 
 ### Changed
+- An unresolved write outcome blocks governed writes only on its saved connection; a journal failure or unresolved process-wide operation still blocks writes everywhere.
 - The MCP token dialog reports whether the one-time token was saved in the system keyring and explains what to do if it was not.
 - The Keyboard Shortcuts window splits table browsing into shorter groups, describes mouse selection gestures separately and combines repeated context-sensitive save, undo and cancel actions.
 - About, Arch package, Flatpak, and translation metadata link to the BookiE repository.

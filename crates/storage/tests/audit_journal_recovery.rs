@@ -158,6 +158,32 @@ async fn unresolved_recovery_remains_durable_without_duplicate_outcomes() {
 }
 
 #[tokio::test]
+async fn recovered_unknown_write_blocks_only_the_owning_connection() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("audit.jsonl");
+    let connection_a = Uuid::from_u128(0xA);
+    let connection_b = Uuid::from_u128(0xB);
+    let journal = AuditJournal::open_validated(path.clone()).unwrap();
+    let mut intent = intent_event(Uuid::from_u128(0xC), AuditOperationClass::Mutation);
+    intent.connection_id = connection_a;
+    journal.append_durable(intent).await.unwrap();
+    drop(journal);
+
+    let journal = AuditJournal::open_validated(path).unwrap();
+    let mut other_connection_intent = intent_event(Uuid::from_u128(0xD), AuditOperationClass::Mutation);
+    other_connection_intent.connection_id = connection_b;
+
+    journal
+        .append_durable(other_connection_intent)
+        .await
+        .expect("an unresolved write must not block a different connection");
+
+    let mut same_connection_intent = intent_event(Uuid::from_u128(0xE), AuditOperationClass::Mutation);
+    same_connection_intent.connection_id = connection_a;
+    assert!(journal.append_durable(same_connection_intent).await.is_err());
+}
+
+#[tokio::test]
 async fn interrupted_administrative_bundle_audit_recovers_as_unknown_write() {
     let dir = tempfile::TempDir::new().unwrap();
     let path = dir.path().join("audit.jsonl");
@@ -179,6 +205,7 @@ async fn interrupted_administrative_bundle_audit_recovers_as_unknown_write() {
     let recovered = AuditJournal::open_validated(path).unwrap();
 
     assert!(recovered.recovery().has_unresolved_writes());
+    assert!(recovered.recovery().has_unresolved_global_writes());
     assert_eq!(recovered.recovery().recovered_operation_ids(), &[operation_id]);
     let records = recovered.recent(10).await.unwrap();
     let unknown = records
@@ -187,6 +214,31 @@ async fn interrupted_administrative_bundle_audit_recovers_as_unknown_write() {
         .expect("recovery records an unknown outcome");
     assert_eq!(unknown.terminal_status, AuditTerminalStatus::Unknown);
     assert_eq!(unknown.administrative_action.unwrap().affected_count, 2);
+}
+
+#[tokio::test]
+async fn unresolved_process_wide_write_blocks_every_connection() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("audit.jsonl");
+    let journal = AuditJournal::open_validated(path.clone()).unwrap();
+    journal
+        .record(AuditEvent::administrative_action(
+            Uuid::from_u128(0xB423),
+            AuditAdministrativeAction::ConnectionBundleImport,
+            AuditRecordPhase::Intent,
+            AuditTerminalStatus::Pending,
+            1,
+            None,
+        ))
+        .await
+        .unwrap();
+    drop(journal);
+
+    let recovered = AuditJournal::open_validated(path).unwrap();
+    assert!(recovered.recovery().has_unresolved_global_writes());
+    let mut connection_write = intent_event(Uuid::from_u128(0xB424), AuditOperationClass::Mutation);
+    connection_write.connection_id = Uuid::new_v4();
+    assert!(recovered.append_durable(connection_write).await.is_err());
 }
 
 #[tokio::test]

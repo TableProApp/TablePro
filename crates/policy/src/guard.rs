@@ -483,23 +483,44 @@ impl PolicyGuard {
     }
 
     async fn record_intent(&self, operation: &AuditOperation<'_>) -> Result<(), AuditError> {
-        self.record(
-            operation,
-            AuditRecordPhase::Intent,
-            AuditTerminalStatus::Pending,
-            if matches!(
-                operation.class,
-                AuditOperationClass::TransactionCommit | AuditOperationClass::TransactionRollback
-            ) {
-                AuditTransactionOutcome::Pending
-            } else {
-                AuditTransactionOutcome::NotApplicable
-            },
-            None,
-            None,
-            None,
-        )
-        .await
+        let result = self
+            .record(
+                operation,
+                AuditRecordPhase::Intent,
+                AuditTerminalStatus::Pending,
+                if matches!(
+                    operation.class,
+                    AuditOperationClass::TransactionCommit | AuditOperationClass::TransactionRollback
+                ) {
+                    AuditTransactionOutcome::Pending
+                } else {
+                    AuditTransactionOutcome::NotApplicable
+                },
+                None,
+                None,
+                None,
+            )
+            .await;
+        if matches!(result, Err(AuditError::UnresolvedWrite)) {
+            self.ctx.audit_state.disable_governed_writes();
+            if self
+                .record_outcome(
+                    operation,
+                    AuditOutcome {
+                        terminal_status: AuditTerminalStatus::Denied,
+                        transaction_outcome: AuditTransactionOutcome::NotApplicable,
+                        rows_affected: None,
+                        error_category: Some(AuditErrorCategory::Policy),
+                        duration_ms: 0,
+                    },
+                )
+                .await
+                .is_err()
+            {
+                self.ctx.audit_state.disable_after_audit_failure();
+            }
+        }
+        result
     }
 
     async fn record_outcome(&self, operation: &AuditOperation<'_>, outcome: AuditOutcome) -> Result<(), AuditError> {
@@ -610,6 +631,11 @@ impl PolicyGuard {
         let Err(error) = result else {
             return Ok(());
         };
+        if matches!(error, AuditError::UnresolvedWrite) {
+            return Err(DriverError::PolicyDenied(format!(
+                "operation denied because an unresolved write outcome blocks this connection: {error}"
+            )));
+        }
         if self.intent_is_required() {
             return Err(DriverError::PolicyDenied(format!(
                 "operation denied because audit intent could not be persisted: {error}"

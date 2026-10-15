@@ -63,6 +63,6 @@ crates/policy/src/classify.rs 1
 crates/policy/src/guard.rs 2
 tests/release/examples/browse_benchmark.rs 1
 crates/ssh/src/lib.rs 1
-crates/storage/src/audit_journal.rs 1
+crates/storage/src/audit_journal.rs 0
 crates/storage/src/connection_url.rs 1
 crates/storage/src/query_history.rs 1

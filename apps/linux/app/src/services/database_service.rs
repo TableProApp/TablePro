@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use tokio::sync::Notify;
@@ -81,6 +81,7 @@ pub struct CandidateGuardFactory {
     approval: Arc<dyn tablepro_policy::ApprovalSink>,
     audit: Arc<dyn tablepro_policy::AuditSink>,
     audit_state: Arc<AuditState>,
+    unresolved_connection_ids: Arc<HashSet<Uuid>>,
 }
 
 impl CandidateGuardFactory {
@@ -102,9 +103,16 @@ impl CandidateGuardFactory {
                 policy: self.policy.clone(),
                 approval: self.approval.clone(),
                 audit: self.audit.clone(),
-                audit_state: Arc::new(self.audit_state.new_connection_generation()),
+                audit_state: Arc::new(self.connection_audit_state(metadata.id)),
             },
         )
+    }
+}
+
+impl CandidateGuardFactory {
+    fn connection_audit_state(&self, id: Uuid) -> AuditState {
+        self.audit_state
+            .new_connection_generation_with_writes_disabled(self.unresolved_connection_ids.contains(&id))
     }
 }
 
@@ -143,6 +151,7 @@ struct AuditRuntime {
     sink: Arc<dyn tablepro_policy::AuditSink>,
     available: bool,
     state: Arc<AuditState>,
+    unresolved_connection_ids: Arc<HashSet<Uuid>>,
 }
 
 impl AuditRuntime {
@@ -158,14 +167,18 @@ impl AuditRuntime {
     fn from_journal(result: Result<AuditJournal, tablepro_storage::StorageError>) -> Self {
         match result {
             Ok(journal) => {
-                let has_unresolved_writes = journal.recovery().has_unresolved_writes();
+                let recovery = journal.recovery();
+                let has_unresolved_writes = recovery.has_unresolved_writes();
+                let unresolved_connection_ids: HashSet<Uuid> =
+                    recovery.unresolved_connection_ids().iter().copied().collect();
+                let has_unresolved_global_writes = recovery.has_unresolved_global_writes();
                 if has_unresolved_writes {
                     tracing::error!(
                         operations = journal.recovery().unresolved_operation_ids().len(),
-                        "unresolved audit operations detected; governed writes remain disabled"
+                        "unresolved audit write outcomes detected; affected connections remain blocked"
                     );
                 }
-                let state = if has_unresolved_writes {
+                let state = if has_unresolved_global_writes {
                     AuditState::with_governed_writes_disabled()
                 } else {
                     AuditState::new()
@@ -174,6 +187,7 @@ impl AuditRuntime {
                     sink: Arc::new(journal),
                     available: true,
                     state: Arc::new(state),
+                    unresolved_connection_ids: Arc::new(unresolved_connection_ids),
                 }
             }
             Err(error) => {
@@ -188,6 +202,7 @@ impl AuditRuntime {
             sink: Arc::new(NullAuditSink),
             available: false,
             state: Arc::new(AuditState::with_governed_writes_disabled()),
+            unresolved_connection_ids: Arc::new(HashSet::new()),
         }
     }
 }
@@ -199,6 +214,7 @@ pub struct DatabaseService {
     audit_available: bool,
     policy_available: bool,
     audit_state: Arc<AuditState>,
+    unresolved_connection_ids: Arc<HashSet<Uuid>>,
     approval: Mutex<Arc<dyn tablepro_policy::ApprovalSink>>,
     ssh_environment: Mutex<SshEnvironment>,
     #[cfg(test)]
@@ -240,6 +256,7 @@ impl DatabaseService {
             audit_available: audit.available,
             policy_available,
             audit_state: audit.state,
+            unresolved_connection_ids: audit.unresolved_connection_ids,
             approval: Mutex::new(Arc::new(DenyApprovalSink)),
             ssh_environment: Mutex::new(SshEnvironment::builtin(tablepro_ssh::UnknownHostKey::Refuse)),
             #[cfg(test)]
@@ -285,7 +302,7 @@ impl DatabaseService {
     /// uses this to stop a connection transition after cancelling running
     /// work: switching databases must not hide a newly ambiguous write.
     pub fn governed_writes_disabled(&self, id: Uuid) -> bool {
-        if self.audit_state.governed_writes_disabled() {
+        if self.audit_state.governed_writes_disabled() || self.unresolved_connection_ids.contains(&id) {
             return true;
         }
         self.connections
@@ -344,6 +361,7 @@ impl DatabaseService {
                 .clone(),
             audit: self.audit.clone(),
             audit_state: self.audit_state.clone(),
+            unresolved_connection_ids: self.unresolved_connection_ids.clone(),
         }
     }
 
@@ -433,7 +451,10 @@ impl DatabaseService {
             connection: arc,
             tunnel,
             health: ConnectionHealth::Healthy,
-            audit_state: Arc::new(self.audit_state.new_connection_generation()),
+            audit_state: Arc::new(
+                self.audit_state
+                    .new_connection_generation_with_writes_disabled(self.unresolved_connection_ids.contains(&id)),
+            ),
         }));
         let cancel = CancellationToken::new();
         let monitor = tokio::spawn(connection_monitor::run(
@@ -611,6 +632,35 @@ mod tests {
 
         assert!(!audit.available);
         assert!(audit.state.governed_writes_disabled());
+    }
+
+    #[tokio::test]
+    async fn recovered_unknown_write_blocks_only_its_saved_connection() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("audit.jsonl");
+        let connection_id = Uuid::new_v4();
+        let journal = AuditJournal::open_validated(path.clone()).unwrap();
+        let mut event = tablepro_storage::sample_event(Principal::human_gui());
+        event.connection_id = connection_id;
+        event.phase = AuditRecordPhase::Intent;
+        event.operation_class = tablepro_policy::AuditOperationClass::Mutation;
+        event.terminal_status = AuditTerminalStatus::Pending;
+        journal.append_durable(event).await.unwrap();
+        drop(journal);
+
+        let runtime = AuditRuntime::open_path(path);
+        let service = DatabaseService::with_audit(runtime, Some(dir));
+        let other_connection_id = Uuid::new_v4();
+        assert!(!service.audit_state.governed_writes_disabled());
+        assert!(service.governed_writes_disabled(connection_id));
+        assert!(!service.governed_writes_disabled(other_connection_id));
+        let factory = service.candidate_guard_factory();
+        assert!(factory.connection_audit_state(connection_id).governed_writes_disabled());
+        assert!(
+            !factory
+                .connection_audit_state(other_connection_id)
+                .governed_writes_disabled()
+        );
     }
 
     async fn open_memory_connection(service: &DatabaseService, name: &str) -> Uuid {

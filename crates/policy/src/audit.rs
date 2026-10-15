@@ -17,6 +17,8 @@ pub enum AuditError {
     Unavailable(String),
     #[error("audit record could not be persisted: {0}")]
     Persistence(String),
+    #[error("an unresolved write outcome blocks this connection")]
+    UnresolvedWrite,
     #[error("audit journal is corrupt: {0}")]
     Corrupt(String),
 }
@@ -352,9 +354,13 @@ impl AuditState {
     /// Call only after establishing a replacement connection; old guards keep
     /// their original state and cannot disable the replacement later.
     pub fn new_connection_generation(&self) -> Self {
+        self.new_connection_generation_with_writes_disabled(false)
+    }
+
+    pub fn new_connection_generation_with_writes_disabled(&self, disabled: bool) -> Self {
         Self {
             globally_disabled: self.globally_disabled.clone(),
-            connection_uncertain: AtomicBool::new(false),
+            connection_uncertain: AtomicBool::new(disabled),
         }
     }
 
