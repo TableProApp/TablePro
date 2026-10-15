@@ -178,8 +178,8 @@ macro_rules! connection_conformance_suite {
         $crate::__conformance_case! {
             $docker,
             $engine as ConformanceEngine,
-            read_only_connection_refuses_writes,
-            $crate::conformance::cases::read_only::read_only_connection_refuses_writes::<$engine>
+            f001_read_only_connection_refuses_writes,
+            $crate::conformance::cases::read_only::f001_read_only_connection_refuses_writes::<$engine>
         }
         $crate::__conformance_case! {
             $docker,
@@ -363,8 +363,8 @@ macro_rules! __conformance_types_case {
         $crate::__conformance_case! {
             $docker,
             $engine as ConformanceEngine,
-            unsupported_types_never_decode_as_null,
-            $crate::conformance::cases::type_fallback::unsupported_types_never_decode_as_null::<$engine>
+            f006_unsupported_types_never_decode_as_null,
+            $crate::conformance::cases::type_fallback::f006_unsupported_types_never_decode_as_null::<$engine>
         }
     };
     (false, $docker:tt, $engine:ty) => {};

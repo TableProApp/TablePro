@@ -600,7 +600,7 @@ mod tests {
     }
 
     #[test]
-    fn truncated_file_is_unavailable_and_upsert_leaves_bytes_identical() {
+    fn f003_truncated_file_is_unavailable_and_upsert_leaves_bytes_identical() {
         let root = TempDir::new().expect("tempdir");
         let path = seed(&root, r#"{"version": 1, "connections": [{"id":"#);
         let before = std::fs::read(&path).expect("read");
@@ -617,7 +617,7 @@ mod tests {
     }
 
     #[test]
-    fn version_2_is_newer_and_never_written() {
+    fn f003_version_2_is_newer_and_never_written() {
         let root = TempDir::new().expect("tempdir");
         let path = seed(&root, r#"{"version": 2, "connections": []}"#);
         let before = std::fs::read(&path).expect("read");

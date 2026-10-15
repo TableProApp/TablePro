@@ -64,7 +64,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_only_latest_generation() {
+    fn f002_accepts_only_latest_generation() {
         let attempts = ConnectAttempts::new();
         let first = attempts.begin();
         let second = attempts.begin();

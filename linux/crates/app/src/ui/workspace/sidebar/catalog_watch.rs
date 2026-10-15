@@ -114,7 +114,7 @@ mod tests {
     /// A workspace drops its catalog watch with itself, so a list read
     /// for its session after that reaches nothing.
     #[gtk4::test]
-    fn a_late_catalog_commit_after_the_watch_drops_is_not_delivered() {
+    fn f002_a_late_catalog_commit_after_the_watch_drops_is_not_delivered() {
         let runtime = crate::test_support::test_runtime();
         let mut script = ConnectionScript::default();
         script.list_objects.always(FakeReply::Late {

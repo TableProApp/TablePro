@@ -16,7 +16,7 @@ fn integer() -> ColumnKind {
 }
 
 #[tokio::test]
-async fn count_sum_and_expression_columns_are_typed() {
+async fn f006_count_sum_and_expression_columns_are_typed() {
     let file = TestFile::new().await;
     let connection = file.open().await;
     apply(

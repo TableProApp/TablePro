@@ -19,7 +19,7 @@ fn refused_by_server(end: &RunEnd) -> bool {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
-async fn editor_idle_delete_fails_25006() {
+async fn f001_editor_idle_delete_fails_25006() {
     let fixture = start().await;
     let owner = connect(&fixture, false).await;
     setup(owner.as_ref(), &["CREATE TABLE t (id int)", "INSERT INTO t VALUES (1)"]).await;
