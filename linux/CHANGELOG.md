@@ -121,6 +121,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server money and smallmoney in the SQL editor and query results showed as approximate floats.
 - Saving a SQL Server row with a char or varchar key locked the whole table until the save ended.
 - Stop could not end a SQLite statement waiting for another connection's lock.
+- With SQLite 3.51, a file that is not a SQLite database failed to open with SQLite's raw error instead of saying so.
 - Launching TablePro while it was running did nothing instead of showing the open window.
 - Deleting a connection left its saved tabs and editor drafts on disk.
 - A change to the connection list made just before quitting could be lost.

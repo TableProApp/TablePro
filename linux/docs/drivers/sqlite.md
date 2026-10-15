@@ -16,7 +16,7 @@ Every connection to the file opens with the same options:
 - The statement cache is off, because sqlx keeps a statement's columns from its first prepare and SQLite prepares it again with more columns after an `ALTER TABLE`.
 - sqlx's statement logging is off.
 
-The connect reads `sqlite_version()` from the file once, so a file that is not a database fails the connect (`NotADatabase`) rather than the first page. SQLite only says it could not open a file; the driver tells a moved file (`FileNotFound`) from one the user may not read (`FileAccessDenied`) by looking at the path.
+The connect reads `sqlite_version()` and counts `sqlite_schema` once, so a file that is not a database fails the connect (`NotADatabase`) rather than the first page. Either statement can be the one that finds out: SQLite 3.51 reads the schema before it compiles a connection's first SELECT, while 3.46 waits for a statement that names a table. SQLite only says it could not open a file; the driver tells a moved file (`FileNotFound`) from one the user may not read (`FileAccessDenied`) by looking at the path.
 
 ### New databases
 

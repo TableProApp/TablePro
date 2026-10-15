@@ -210,11 +210,15 @@ impl SqliteConnection {
 /// Read the file once, so a file that is not a database fails the
 /// connect rather than the first browse, and refuse a library older
 /// than the catalogue queries need.
+///
+/// Every statement here is part of the open, because which one reads
+/// the file first depends on the library: SQLite 3.51 reads the schema
+/// to compile `sqlite_version()`, 3.46 only for `sqlite_schema`.
 async fn check_file(pool: &SqlitePool, path: &Path) -> Result<SqliteVersion, DriverError> {
     let version: String = sqlx::query_scalar("SELECT sqlite_version()")
         .fetch_one(pool)
         .await
-        .map_err(map_error)?;
+        .map_err(|error| map_open_error(error, path))?;
     let version = SqliteVersion::parse(&version)
         .ok_or_else(|| DriverError::Protocol(format!("SQLite reported version {version:?}")))?;
     check_runtime_version(&version)?;
