@@ -143,6 +143,93 @@ struct CsvRows {
 }
 
 impl CsvRows {
+    fn new() -> Self {
+        Self {
+            null_to_empty: switch_row(&crate::i18n::gettext("Convert NULL to Empty"), None),
+            line_break_to_space: switch_row(&crate::i18n::gettext("Convert Line Breaks to Spaces"), None),
+            header_row: switch_row(&crate::i18n::gettext("Put Field Names in the First Row"), None),
+            sanitize_formulas: switch_row(
+                &crate::i18n::gettext("Sanitize Formula-Like Values"),
+                Some(&crate::i18n::gettext(
+                    "Prefix values starting with =, +, - or @ so spreadsheets do not run them",
+                )),
+            ),
+            delimiter: combo_row(
+                &crate::i18n::gettext("Delimiter"),
+                &[
+                    &crate::i18n::gettext("Comma (,)"),
+                    &crate::i18n::gettext("Semicolon (;)"),
+                    &crate::i18n::gettext("Tab"),
+                    &crate::i18n::gettext("Pipe (|)"),
+                ],
+            ),
+            quote: combo_row(
+                &crate::i18n::gettext("Quote"),
+                &[
+                    &crate::i18n::gettext("Always"),
+                    &crate::i18n::gettext("Quote if needed"),
+                    &crate::i18n::gettext("Never"),
+                ],
+            ),
+            line_break: combo_row(
+                &crate::i18n::gettext("Line break"),
+                &["LF (\\n)", "CRLF (\\r\\n)", "CR (\\r)"],
+            ),
+            decimal: combo_row(
+                &crate::i18n::gettext("Decimal separator"),
+                &[&crate::i18n::gettext("Period (.)"), &crate::i18n::gettext("Comma (,)")],
+            ),
+        }
+    }
+
+    fn switches(&self) -> [&adw::SwitchRow; 4] {
+        [
+            &self.null_to_empty,
+            &self.line_break_to_space,
+            &self.header_row,
+            &self.sanitize_formulas,
+        ]
+    }
+
+    fn combos(&self) -> [&adw::ComboRow; 4] {
+        [&self.delimiter, &self.quote, &self.line_break, &self.decimal]
+    }
+
+    fn group(&self) -> adw::PreferencesGroup {
+        let group = adw::PreferencesGroup::builder()
+            .title(crate::i18n::gettext("CSV Options"))
+            .build();
+        for row in self.switches() {
+            group.add(row);
+        }
+        for row in self.combos() {
+            group.add(row);
+        }
+        group
+    }
+
+    /// GSettings is the single copy, so two open dialogs converge instead
+    /// of overwriting each other.
+    fn save_changes_to(self: &Rc<Self>, settings: &Rc<tablepro_storage::AppSettings>) {
+        let persist = {
+            let rows = self.clone();
+            let settings = settings.clone();
+            Rc::new(move || {
+                if let Err(error) = settings.set_csv_options(&rows.read()) {
+                    tracing::warn!(%error, "could not save the CSV export options");
+                }
+            })
+        };
+        for row in self.switches() {
+            let persist = persist.clone();
+            row.connect_active_notify(move |_| persist());
+        }
+        for row in self.combos() {
+            let persist = persist.clone();
+            row.connect_selected_notify(move |_| persist());
+        }
+    }
+
     fn show(&self, opts: &CsvOptions) {
         self.null_to_empty.set_active(opts.null_to_empty);
         self.line_break_to_space.set_active(opts.line_break_to_space);
@@ -273,103 +360,62 @@ pub(crate) fn present(init: ExportDialogInit<'_>) {
     format_group.add(&format_row);
     page.add(&format_group);
 
-    let csv_group = adw::PreferencesGroup::builder()
-        .title(crate::i18n::gettext("CSV Options"))
-        .build();
-    let rows = Rc::new(CsvRows {
-        null_to_empty: switch_row(&crate::i18n::gettext("Convert NULL to Empty"), None),
-        line_break_to_space: switch_row(&crate::i18n::gettext("Convert Line Breaks to Spaces"), None),
-        header_row: switch_row(&crate::i18n::gettext("Put Field Names in the First Row"), None),
-        sanitize_formulas: switch_row(
-            &crate::i18n::gettext("Sanitize Formula-Like Values"),
-            Some(&crate::i18n::gettext(
-                "Prefix values starting with =, +, - or @ so spreadsheets do not run them",
-            )),
-        ),
-        delimiter: combo_row(
-            &crate::i18n::gettext("Delimiter"),
-            &[
-                &crate::i18n::gettext("Comma (,)"),
-                &crate::i18n::gettext("Semicolon (;)"),
-                &crate::i18n::gettext("Tab"),
-                &crate::i18n::gettext("Pipe (|)"),
-            ],
-        ),
-        quote: combo_row(
-            &crate::i18n::gettext("Quote"),
-            &[
-                &crate::i18n::gettext("Always"),
-                &crate::i18n::gettext("Quote if needed"),
-                &crate::i18n::gettext("Never"),
-            ],
-        ),
-        line_break: combo_row(
-            &crate::i18n::gettext("Line break"),
-            &["LF (\\n)", "CRLF (\\r\\n)", "CR (\\r)"],
-        ),
-        decimal: combo_row(
-            &crate::i18n::gettext("Decimal separator"),
-            &[&crate::i18n::gettext("Period (.)"), &crate::i18n::gettext("Comma (,)")],
-        ),
-    });
+    let rows = Rc::new(CsvRows::new());
     rows.show(&settings.csv_options());
-    for row in [
-        &rows.null_to_empty,
-        &rows.line_break_to_space,
-        &rows.header_row,
-        &rows.sanitize_formulas,
-    ] {
-        csv_group.add(row);
-    }
-    for row in [&rows.delimiter, &rows.quote, &rows.line_break, &rows.decimal] {
-        csv_group.add(row);
-    }
+    let csv_group = rows.group();
     page.add(&csv_group);
-
-    // GSettings is the single copy, so two open dialogs converge instead
-    // of overwriting each other.
-    let persist = {
-        let rows = rows.clone();
-        let settings = settings.clone();
-        Rc::new(move || {
-            if let Err(error) = settings.set_csv_options(&rows.read()) {
-                tracing::warn!(%error, "could not save the CSV export options");
-            }
-        })
-    };
-    for row in [
-        &rows.null_to_empty,
-        &rows.line_break_to_space,
-        &rows.header_row,
-        &rows.sanitize_formulas,
-    ] {
-        let persist = persist.clone();
-        row.connect_active_notify(move |_| persist());
-    }
-    for row in [&rows.delimiter, &rows.quote, &rows.line_break, &rows.decimal] {
-        let persist = persist.clone();
-        row.connect_selected_notify(move |_| persist());
-    }
-
-    let csv_group_for_format = csv_group.clone();
+    rows.save_changes_to(settings);
     format_row.connect_selected_notify(move |row| {
-        csv_group_for_format.set_visible(pick(formats, row.selected()) == Format::Csv);
-    });
-
-    let reset_button = gtk::Button::builder()
-        .label(crate::i18n::gettext("Reset to Defaults"))
-        .build();
-    reset_button.add_css_class("flat");
-    let rows_for_reset = rows.clone();
-    let settings_for_reset = settings.clone();
-    reset_button.connect_clicked(move |_| {
-        settings_for_reset.reset_csv_options();
-        rows_for_reset.show(&settings_for_reset.csv_options());
+        csv_group.set_visible(pick(formats, row.selected()) == Format::Csv);
     });
 
     let export_button = gtk::Button::builder().label(crate::i18n::gettext("Export…")).build();
     export_button.add_css_class("suggested-action");
+    let footer = footer(&reset_button(&rows, settings), &export_button);
 
+    let expected = scope.choices.iter().map(|choice| choice.expected).collect();
+    refuse_what_cannot_fit(&format_row, formats, &scope.row, expected, &export_button);
+
+    let dialog = dialog(&page, &footer, &export_button);
+    let form = ExportForm {
+        formats,
+        format_row,
+        rows,
+        scope,
+        name,
+        target,
+        tab,
+        unexported: RefCell::new(Some(Unexported { origin, session })),
+    };
+    let window = parent.clone();
+    let exports = exports.clone();
+    let dialog_for_export = dialog.clone();
+    export_button.connect_clicked(move |_| {
+        let Some(chosen) = form.take_chosen() else {
+            return;
+        };
+        dialog_for_export.close();
+        glib::spawn_future_local(save_with_file_dialog(window.clone(), exports.clone(), chosen));
+    });
+
+    dialog.present(Some(parent));
+}
+
+fn reset_button(rows: &Rc<CsvRows>, settings: &Rc<tablepro_storage::AppSettings>) -> gtk::Button {
+    let button = gtk::Button::builder()
+        .label(crate::i18n::gettext("Reset to Defaults"))
+        .build();
+    button.add_css_class("flat");
+    let rows = rows.clone();
+    let settings = settings.clone();
+    button.connect_clicked(move |_| {
+        settings.reset_csv_options();
+        rows.show(&settings.csv_options());
+    });
+    button
+}
+
+fn footer(reset_button: &gtk::Button, export_button: &gtk::Button) -> gtk::Box {
     let footer = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .margin_top(6)
@@ -377,61 +423,62 @@ pub(crate) fn present(init: ExportDialogInit<'_>) {
         .margin_start(12)
         .margin_end(12)
         .build();
-    footer.append(&reset_button);
+    footer.append(reset_button);
     footer.append(&gtk::Box::builder().hexpand(true).build());
-    footer.append(&export_button);
+    footer.append(export_button);
+    footer
+}
 
-    let expected = scope.choices.iter().map(|choice| choice.expected).collect();
-    refuse_what_cannot_fit(&format_row, formats, &scope.row, expected, &export_button);
-
+fn dialog(page: &adw::PreferencesPage, footer: &gtk::Box, export_button: &gtk::Button) -> adw::Dialog {
     let toolbar = adw::ToolbarView::new();
     toolbar.add_top_bar(&adw::HeaderBar::new());
-    toolbar.set_content(Some(&page));
-    toolbar.add_bottom_bar(&footer);
+    toolbar.set_content(Some(page));
+    toolbar.add_bottom_bar(footer);
 
     let dialog = adw::Dialog::builder()
         .title(crate::i18n::gettext("Export Rows"))
         .content_width(480)
         .child(&toolbar)
         .build();
-    dialog.set_default_widget(Some(&export_button));
+    dialog.set_default_widget(Some(export_button));
+    dialog
+}
 
-    // One dialog, one export: the rows go to the job rather than being
-    // copied for each click.
-    let unexported = Rc::new(RefCell::new(Some(Unexported { origin, session })));
-    let window = parent.clone();
-    let exports = exports.clone();
-    let dialog_for_export = dialog.clone();
-    export_button.connect_clicked(move |_| {
-        let format = pick(formats, format_row.selected());
-        let Some(job_format) = format.job_format(rows.read(), &name, target.as_ref()) else {
-            return;
-        };
-        let Some(choice) = scope.selected().cloned() else {
-            return;
-        };
+/// What Export reads from the dialog when it is clicked.
+struct ExportForm {
+    formats: &'static [Format],
+    format_row: adw::ComboRow,
+    rows: Rc<CsvRows>,
+    scope: ScopeRow,
+    name: String,
+    target: Option<InsertTarget>,
+    tab: Uuid,
+    /// One dialog, one export: the rows go to the job rather than being
+    /// copied for each click.
+    unexported: RefCell<Option<Unexported>>,
+}
+
+impl ExportForm {
+    /// The export the dialog holds, taken once, or `None` while the
+    /// chosen rows can't be written in the chosen format.
+    fn take_chosen(&self) -> Option<Chosen> {
+        let format = pick(self.formats, self.format_row.selected());
+        let job_format = format.job_format(self.rows.read(), &self.name, self.target.as_ref())?;
+        let choice = self.scope.selected().cloned()?;
         if format.refusal(choice.expected).is_some() {
-            return;
+            return None;
         }
-        let Some(Unexported { origin, session }) = unexported.borrow_mut().take() else {
-            return;
-        };
-        let Some(source) = origin.into_source(choice.source, session) else {
-            return;
-        };
-        dialog_for_export.close();
-        let chosen = Chosen {
+        let Unexported { origin, session } = self.unexported.borrow_mut().take()?;
+        let source = origin.into_source(choice.source, session)?;
+        Some(Chosen {
             format,
             job_format,
-            name: name.clone(),
+            name: self.name.clone(),
             source,
             expected_rows: choice.expected,
-            tab,
-        };
-        glib::spawn_future_local(save_with_file_dialog(window.clone(), exports.clone(), chosen));
-    });
-
-    dialog.present(Some(parent));
+            tab: self.tab,
+        })
+    }
 }
 
 /// Keeps Export off, with the reason under the format, while the chosen
