@@ -5,7 +5,7 @@ use super::{StructureOp, diff_to_ops, materialize_ops};
 fn index(name: &str, columns: &[&str], unique: bool) -> IndexInfo {
     IndexInfo {
         name: name.into(),
-        columns: columns.iter().map(|column| column.to_string()).collect(),
+        columns: columns.iter().map(ToString::to_string).collect(),
         unique,
         primary: false,
         predicate: None,

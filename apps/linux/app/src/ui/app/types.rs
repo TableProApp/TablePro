@@ -106,27 +106,6 @@ pub(super) fn preview_replacement(is_preview: bool, has_pending_changes: bool) -
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{PreviewReplacement, preview_replacement};
-
-    #[test]
-    fn a_clean_preview_can_be_replaced() {
-        assert_eq!(preview_replacement(true, false), PreviewReplacement::Replace);
-    }
-
-    #[test]
-    fn a_preview_with_pending_changes_is_promoted() {
-        assert_eq!(preview_replacement(true, true), PreviewReplacement::Promote);
-    }
-
-    #[test]
-    fn a_regular_tab_is_never_replaced_or_promoted() {
-        assert_eq!(preview_replacement(false, false), PreviewReplacement::None);
-        assert_eq!(preview_replacement(false, true), PreviewReplacement::None);
-    }
-}
-
 pub enum WorkspaceTab {
     Editor(EditorTabSlot),
     Structure(StructureTabSlot),
@@ -214,5 +193,26 @@ impl StatusKind {
             StatusKind::Info => "view-grid-symbolic",
             StatusKind::Error => "dialog-error-symbolic",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PreviewReplacement, preview_replacement};
+
+    #[test]
+    fn a_clean_preview_can_be_replaced() {
+        assert_eq!(preview_replacement(true, false), PreviewReplacement::Replace);
+    }
+
+    #[test]
+    fn a_preview_with_pending_changes_is_promoted() {
+        assert_eq!(preview_replacement(true, true), PreviewReplacement::Promote);
+    }
+
+    #[test]
+    fn a_regular_tab_is_never_replaced_or_promoted() {
+        assert_eq!(preview_replacement(false, false), PreviewReplacement::None);
+        assert_eq!(preview_replacement(false, true), PreviewReplacement::None);
     }
 }

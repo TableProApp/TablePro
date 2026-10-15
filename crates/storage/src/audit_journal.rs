@@ -400,7 +400,7 @@ fn append_to_file(
     event: AuditEvent,
     durable: bool,
 ) -> Result<JournalTail, StorageError> {
-    append_to_file_with_sync(file, tail, event, durable, |file| file.sync_data())
+    append_to_file_with_sync(file, tail, event, durable, File::sync_data)
 }
 
 fn append_to_file_with_sync(

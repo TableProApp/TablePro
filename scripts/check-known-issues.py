@@ -9,7 +9,7 @@ ID = re.compile(r"^[A-Z0-9]+-\d+[a-z]?$")
 ISSUE = re.compile(
     r"^\[#(\d+)\]\(https://github\.com/cozyGarage/BookiE/issues/\1\)$"
 )
-ROW = re.compile(r"^\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*$")
+ROW = re.compile(r"^\|([^|]+)\|([^|]+)\|([^|]+)\|\s*$")
 INDEX_HEADING = "## Open work index"
 
 

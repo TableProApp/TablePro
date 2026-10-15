@@ -2,8 +2,8 @@ ARG BASE
 FROM ${BASE}
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl xvfb xauth dbus dbus-x11 dbus-user-session \
-    python3 python3-pyatspi gir1.2-gtk-4.0 at-spi2-core gnome-keyring libsecret-tools \
-    scrot libglib2.0-bin fuse3 x11-utils openssh-client \
+    at-spi2-core ca-certificates curl dbus dbus-user-session dbus-x11 fuse3 \
+    gir1.2-gtk-4.0 gnome-keyring libglib2.0-bin libsecret-tools openssh-client \
+    python3 python3-pyatspi scrot x11-utils xauth xvfb \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src

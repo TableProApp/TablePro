@@ -81,8 +81,13 @@ def fetch(url, token):
         return response.read().decode("utf-8", "replace")
 
 
+def read_token():
+    default = Path.home() / ".config/forgejo/token"
+    return Path(os.environ.get("FORGEJO_TOKEN_FILE", default)).read_text().strip()
+
+
 def classify_run(run_id, tail=0):
-    token = Path(os.environ.get("FORGEJO_TOKEN_FILE", Path.home() / ".config/forgejo/token")).read_text().strip()
+    token = read_token()
     base = api_base()
     jobs = json.loads(fetch(f"{base}/actions/runs/{run_id}/jobs", token))
     jobs = jobs["jobs"] if isinstance(jobs, dict) else jobs
@@ -97,7 +102,7 @@ def classify_run(run_id, tail=0):
 
 
 def list_runs(limit):
-    token = Path(os.environ.get("FORGEJO_TOKEN_FILE", Path.home() / ".config/forgejo/token")).read_text().strip()
+    token = read_token()
     base = api_base()
     runs = json.loads(fetch(f"{base}/actions/runs?limit={limit}", token))
     runs = runs.get("workflow_runs", runs) if isinstance(runs, dict) else runs
@@ -107,7 +112,7 @@ def list_runs(limit):
 
 
 def run_jobs(run_id):
-    token = Path(os.environ.get("FORGEJO_TOKEN_FILE", Path.home() / ".config/forgejo/token")).read_text().strip()
+    token = read_token()
     base = api_base()
     jobs = json.loads(fetch(f"{base}/actions/runs/{run_id}/jobs", token))
     jobs = jobs["jobs"] if isinstance(jobs, dict) else jobs
@@ -126,18 +131,18 @@ def main():
     args = parser.parse_args()
     if args.list:
         list_runs(args.list)
-        return 0
+        return
     if args.jobs:
         run_jobs(args.jobs)
-        return 0
+        return
     if args.log:
         tag, label, evidence = classify_log(args.log.read_text(errors="replace"))
         print(f"{tag}: {label}" + (f"\n  {evidence}" if evidence else ""))
-        return 0
+        return
     results = classify_run(args.run, args.tail)
     if not results:
         print("no failed jobs")
-        return 0
+        return
     for name, tag, label, evidence, tail_lines in results:
         print(f"{tag:11} {name}: {label}")
         if evidence:
@@ -148,8 +153,7 @@ def main():
     for _, tag, _, _, _ in results:
         counts[tag] = counts.get(tag, 0) + 1
     print("summary: " + ", ".join(f"{count} {tag}" for tag, count in sorted(counts.items())))
-    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
