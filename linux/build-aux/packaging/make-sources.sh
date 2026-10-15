@@ -4,25 +4,28 @@
 # which holds vendor/ with every crate in Cargo.lock and
 # vendor/cargo-config.toml, so the packages build offline.
 #
-# --install-deps first installs, as root in a throwaway ubuntu:26.04, git,
-# the build dependencies in build-aux/debian/control and the pinned Rust
-# toolchain.
+# --install-deps first installs, as root in a throwaway ubuntu:26.04, git
+# and the build dependencies in build-aux/debian/control, the toolchain
+# from ppa:rust-toolchain/staging among them.
 # Usage: make-sources.sh [--install-deps] <output dir>
 set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
 
+container=""
 if [ "${1:-}" = "--install-deps" ]; then
     shift
+    container=1
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get install -y --no-install-recommends ca-certificates git xz-utils
     # The checkout belongs to another user, which git refuses to read.
     git config --global --add safe.directory '*'
-    apt-get build-dep -y --no-install-recommends "$root/build-aux"
-    RUSTUP_TOOLCHAIN="$("$here/rust-toolchain.sh" "$root")"
-    export RUSTUP_TOOLCHAIN
+    rust="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' "$root/Cargo.toml")"
+    "$here/add-rust-toolchain-ppa.sh" "$rust"
+    apt-get build-dep -y --no-install-recommends -P nocheck "$root/build-aux"
+    PATH="/usr/lib/rust-$rust/bin:$PATH"
 fi
 
 if [ $# -ne 1 ]; then
@@ -34,6 +37,11 @@ out="$(cd "$1" && pwd)"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+# In a container the crates go to the work directory, which build-packages.sh
+# puts on the build volume, rather than the container's own layer.
+if [ -n "$container" ]; then
+    export CARGO_HOME="$work/cargo-home"
+fi
 
 meson setup "$work/build" "$root"
 meson dist -C "$work/build" --no-tests --formats xztar

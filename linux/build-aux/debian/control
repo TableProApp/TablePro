@@ -1,14 +1,10 @@
 Source: tablepro
 Section: database
-Priority: optional
 Maintainer: TablePro Authors <hello@tablepro.app>
 Build-Depends:
  debhelper-compat (= 13),
- adwaita-icon-theme,
- appstream,
- cargo (>= 1.98) | rustup,
+ cargo-1.97,
  clang,
- dbus-daemon,
  desktop-file-utils,
  gettext,
  libadwaita-1-dev (>= 1.9),
@@ -20,22 +16,31 @@ Build-Depends:
  libkrb5-dev,
  libsqlite3-dev (>= 3.46),
  libxml2-utils,
- locales-all,
  meson (>= 1.4),
- openssh-client,
  pkgconf,
- xauth,
- xvfb,
-Standards-Version: 4.7.2
+ rustc-1.97,
+ adwaita-icon-theme <!nocheck>,
+ appstream <!nocheck>,
+ ca-certificates <!nocheck>,
+ dbus-daemon <!nocheck>,
+ locales-all <!nocheck>,
+ openssh-client <!nocheck>,
+ xauth <!nocheck>,
+ xvfb <!nocheck>,
+Standards-Version: 4.7.3
 Rules-Requires-Root: no
 Homepage: https://tablepro.app
+Vcs-Browser: https://github.com/TableProApp/TablePro/tree/linux/linux/build-aux/debian
+Vcs-Git: https://github.com/TableProApp/TablePro.git -b linux [linux/build-aux]
 
 Package: tablepro
 Architecture: any
 Depends:
- openssh-client,
+ openssh-client (>= 1:8.7),
  ${misc:Depends},
  ${shlibs:Depends},
+Recommends:
+ ca-certificates,
 Description: database client for GNOME
  TablePro connects to PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse.
  Browse tables, edit rows in place, run SQL with syntax highlighting, and

@@ -33,7 +33,6 @@ env:
   ZIZMOR_VERSION: 1.30.1
   LYCHEE_VERSION: 0.24.2
   LYCHEE_SHA256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
-  FLATPAK_BUILDER_TOOLS_REV: 41c20aa10819cdb2a4f3ca171758a96d1955c018
 
 jobs:
   # The same file runs on main, where linux/ does not exist until the
@@ -113,8 +112,7 @@ jobs:
         # install, then the meson toolchain, the -dev packages the
         # workspace links, the runtime pieces the test suites need (xvfb,
         # dbus, gnome-keyring for the Secret Service step, openssh-client
-        # for the SSH transport), and jq with the cargo-sources.json
-        # generator's modules for the Flatpak manifest.
+        # for the SSH transport).
         run: |
           apt-get install -y --no-install-recommends \
             build-essential \
@@ -140,10 +138,7 @@ jobs:
             openssh-client \
             xvfb \
             xauth \
-            dbus-daemon \
-            jq \
-            python3-aiohttp \
-            python3-tomlkit
+            dbus-daemon
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
         with:
           toolchain: "1.98"
@@ -212,7 +207,7 @@ jobs:
           em_dash=$(printf '\342\200\224')
           status=0
           git grep -nF "$em_dash" -- 'crates/app/src/*.rs' 'data/resources/*.ui' 'data/*.desktop.in.in' \
-            'data/*.gschema.xml' 'data/*.metainfo.xml.in.in' || status=$?
+            'data/*.gschema.xml.in' 'data/*.metainfo.xml.in.in' || status=$?
           case "$status" in
             0)
               echo "::error::write a comma, a colon or two sentences instead of an em dash"
@@ -259,55 +254,44 @@ jobs:
             && meson devenv -C _build cargo test --locked -p tablepro-storage --test secret_service -- --ignored"
       - name: Dist
         run: meson dist -C _build --no-tests --formats xztar
-      - name: Render the release-shaped Flatpak manifest
-        # Flathub keeps the app's manifest in its own repository and builds
-        # the release tarball with no network, the crates coming from a
-        # cargo-sources.json written from Cargo.lock. This is that shape,
-        # made from the Devel manifest. Meson sets its own CARGO_HOME, so
-        # Cargo finds the vendored crates through -Dcargo_config. The build
-        # form takes this commit's screenshots, since the release tag's
-        # do not exist yet; the lint form names the release asset.
-        env:
-          SOURCE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          version="$(meson introspect --projectinfo _build | jq -r .version)"
-          tarball="tablepro-$version.tar.xz"
-          mkdir -p _flatpak/build _flatpak/lint
-          cp "_build/meson-dist/$tarball" _flatpak/build/
-          sha256="$(sha256sum "_flatpak/build/$tarball" | cut -d ' ' -f 1)"
-          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/flatpak-cargo-generator.py" \
-            "https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/$FLATPAK_BUILDER_TOOLS_REV/cargo/flatpak-cargo-generator.py"
-          python3 "$RUNNER_TEMP/flatpak-cargo-generator.py" Cargo.lock -o _flatpak/build/cargo-sources.json
-          cp _flatpak/build/cargo-sources.json _flatpak/lint/
-          # $archive and $opts are jq variables, not shell ones.
-          # shellcheck disable=SC2016
-          release='
-            .id = "app.tablepro.TablePro"
-            | .["build-options"] |= (del(.["build-args"], .["test-args"]) | .env.CARGO_NET_OFFLINE = "true")
-            | .modules[-1] |= (
-                if [.sources[].type] != ["dir"] then error("the app module no longer builds one dir source") else . end
-                | del(.["run-tests"])
-                | .["config-opts"] = [.["config-opts"][] | sub("^-Dprofile=development$"; "-Dprofile=default")]
-                    + ["-Dcargo_config=cargo/config"] + $opts
-                | .sources = [$archive, "cargo-sources.json"]
-              )'
-          devel=build-aux/flatpak/app.tablepro.TablePro.Devel.json
-          jq --argjson archive "$(jq -n --arg path "$tarball" --arg sha256 "$sha256" \
-                '{type: "archive", path: $path, sha256: $sha256}')" \
-             --argjson opts "$(jq -n --arg url "https://raw.githubusercontent.com/$SOURCE_REPOSITORY/$SOURCE_SHA/linux/data/screenshots" \
-                '["-Dscreenshots_base_url=" + $url]')" \
-             "$release" "$devel" > _flatpak/build/app.tablepro.TablePro.json
-          jq --argjson archive "$(jq -n --arg url "https://github.com/TableProApp/TablePro/releases/download/linux-v$version/$tarball" \
-                --arg sha256 "$sha256" '{type: "archive", url: $url, sha256: $sha256}')" \
-             --argjson opts '[]' \
-             "$release" "$devel" > _flatpak/lint/app.tablepro.TablePro.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+
+  # Launchpad builds the PPA package with rustc-X.Y and cargo-X.Y, X.Y being
+  # the workspace rust-version, so the workspace is checked with that
+  # compiler and not with rustup's.
+  msrv:
+    name: Minimum Rust version
+    needs: detect
+    if: needs.detect.outputs.linux == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    container:
+      image: ubuntu:26.04
+      env:
+        DEBIAN_FRONTEND: noninteractive
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: flathub-shape
-          path: linux/_flatpak
-          if-no-files-found: error
-          retention-days: 7
+          persist-credentials: false
+      - name: Install the package's build dependencies
+        # The toolchain comes from ppa:rust-toolchain/staging, as on
+        # Launchpad. The test-only ones are left out: no test runs here.
+        # Cargo needs the CA certificates to fetch the crates.
+        id: toolchain
+        run: |
+          version="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)"
+          sh build-aux/packaging/add-rust-toolchain-ppa.sh "$version"
+          apt-get install -y --no-install-recommends ca-certificates
+          apt-get build-dep -y --no-install-recommends -P nocheck ./build-aux
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Check with and without default features
+        env:
+          RUST_VERSION: ${{ steps.toolchain.outputs.version }}
+        run: |
+          "cargo-$RUST_VERSION" check --workspace --all-targets --locked
+          "cargo-$RUST_VERSION" check --workspace --all-targets --locked --no-default-features
 
   docs:
     name: Documentation links
@@ -415,7 +399,7 @@ jobs:
       - name: POTFILES.in is current
         run: |
           git ls-files 'crates/app/src/*.rs' 'data/resources/*.ui' 'data/*.desktop.in.in' \
-            'data/*.gschema.xml' 'data/*.metainfo.xml.in.in' > po/POTFILES.in
+            'data/*.gschema.xml.in' 'data/*.metainfo.xml.in.in' > po/POTFILES.in
           git diff --exit-code po/POTFILES.in
       - name: Configure
         # Fatal, so an xgettext older than 0.24 fails here.
@@ -453,7 +437,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 180
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
       options: --privileged
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -468,43 +452,14 @@ jobs:
           run-tests: true
           build-bundle: false
           cache-key: flatpak-devel-${{ matrix.arch }}-${{ hashFiles('linux/Cargo.lock') }}
-
-  flatpak-flathub:
-    name: Flatpak release shape
-    needs: [detect, fast]
-    if: needs.detect.outputs.linux == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 180
-    container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
-      options: --privileged
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: flathub-shape
-          path: linux/_flatpak
-      # Offline and from the release tarball, as Flathub's builders run it,
-      # with the screenshots mirrored the way Flathub mirrors them.
-      - uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
-        with:
-          manifest-path: linux/_flatpak/build/app.tablepro.TablePro.json
-          arch: x86_64
-          mirror-screenshots-url: https://dl.flathub.org/media
-          run-tests: false
-          build-bundle: false
-          cache-key: flatpak-flathub-${{ hashFiles('linux/Cargo.lock') }}
-      # The image is built on the linter's own. Only the two findings in
-      # lint-exceptions.json may remain.
-      - name: Lint the manifest and the repository
+      # The image is built on the linter's own. Only the findings in
+      # lint-exceptions.json may remain. The repository is not linted: its
+      # screenshot checks need images mirrored from the release tag.
+      - name: Lint the manifest
+        if: ${{ !cancelled() && matrix.arch == 'x86_64' }}
         run: |
-          lint() {
-            flatpak-builder-lint --exceptions --user-exceptions linux/build-aux/flatpak/lint-exceptions.json "$@"
-          }
-          lint manifest linux/_flatpak/lint/app.tablepro.TablePro.json
-          lint repo repo
+          flatpak-builder-lint --exceptions --user-exceptions linux/build-aux/flatpak/lint-exceptions.json \
+            manifest linux/build-aux/flatpak/app.tablepro.TablePro.Devel.json
 
   integration:
     name: Docker tests (${{ matrix.package }})

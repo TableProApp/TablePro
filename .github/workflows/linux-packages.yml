@@ -1,10 +1,13 @@
 name: Linux packages
 
-# Builds the .deb and the .rpm from the release source tarballs, each in a
-# fresh container that installs only the build dependencies the package
-# declares, then installs each package in another fresh container with only
-# its runtime dependencies and starts it. release-linux.yml calls this
-# workflow and publishes what it builds.
+# Builds the Ubuntu and Fedora packages from the release source tarballs.
+# The Debian source package is built once for each Ubuntu series the PPA
+# builds for, and its binaries are built from it the way Launchpad builds
+# them: offline, in a fresh container with only the declared build
+# dependencies, then checked with lintian. The .rpm is built in a fresh
+# fedora:44 with only its BuildRequires. Each package is then installed in
+# another fresh container with only its runtime dependencies and started.
+# release-linux.yml calls this workflow and uploads the source packages.
 
 on:
   pull_request:
@@ -12,31 +15,26 @@ on:
       - "linux/build-aux/debian/**"
       - "linux/build-aux/rpm/**"
       - "linux/build-aux/packaging/**"
+      - "linux/Cargo.toml"
+      - "linux/Cargo.lock"
       - "linux/meson.build"
       - "linux/meson_options.txt"
-      - "linux/crates/app/meson.build"
-      - "linux/data/meson.build"
+      - "linux/crates/**/meson.build"
+      - "linux/data/**/meson.build"
       - "linux/po/meson.build"
-      - "linux/rust-toolchain.toml"
       - ".github/workflows/linux-packages.yml"
+  # After a merge every change runs, so a failure only one distribution's
+  # build shows turns up then and not at tag time.
   push:
     branches: [linux]
     paths:
-      - "linux/build-aux/debian/**"
-      - "linux/build-aux/rpm/**"
-      - "linux/build-aux/packaging/**"
-      - "linux/meson.build"
-      - "linux/meson_options.txt"
-      - "linux/crates/app/meson.build"
-      - "linux/data/meson.build"
-      - "linux/po/meson.build"
-      - "linux/rust-toolchain.toml"
+      - "linux/**"
       - ".github/workflows/linux-packages.yml"
   workflow_dispatch:
   workflow_call:
     inputs:
       deb-runners:
-        description: JSON list of runners; one .deb is built per runner architecture.
+        description: JSON list of runners; each series' .deb is built once per runner architecture.
         type: string
         default: '["ubuntu-24.04"]'
 
@@ -68,17 +66,18 @@ jobs:
           path: _packages/sources
           if-no-files-found: error
 
-  deb:
-    name: Debian package (${{ matrix.runner }})
+  source-package:
+    name: Debian source packages
     needs: sources
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: ${{ fromJSON(inputs.deb-runners || '["ubuntu-24.04"]') }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 300
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     container:
       image: ubuntu:26.04
+    env:
+      # Every Ubuntu series the PPA builds for.
+      UBUNTU_SERIES: resolute stonking
+    outputs:
+      series: ${{ steps.build.outputs.series }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -87,46 +86,69 @@ jobs:
         with:
           name: linux-sources
           path: _packages/sources
-      - name: Build, test and lint the package
+      - name: Build an unsigned source package for each series
+        id: build
         run: |
           dist="$(find _packages/sources -name 'tablepro-*.tar.xz' ! -name '*-vendor.tar.xz')"
           vendor="$(find _packages/sources -name 'tablepro-*-vendor.tar.xz')"
-          linux/build-aux/packaging/build-deb.sh "$dist" "$vendor" _packages/deb
-      - name: Keep the Meson test log
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: linux-deb-testlog-${{ runner.arch }}
-          path: _packages/deb/testlog.txt
-          if-no-files-found: ignore
-          retention-days: 7
+          # shellcheck disable=SC2086 # one word per series
+          linux/build-aux/packaging/build-source.sh --install-deps "$dist" "$vendor" _packages/source $UBUNTU_SERIES
+          series=""
+          for name in $UBUNTU_SERIES; do
+            series="$series${series:+, }\"$name\""
+          done
+          echo "series=[$series]" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: linux-deb-${{ runner.arch }}
-          path: _packages/deb
+          name: linux-source-package
+          path: _packages/source
           if-no-files-found: error
 
-  deb-install:
-    name: Install the Debian package (${{ matrix.runner }})
-    needs: deb
+  # On the runner itself rather than in a job container, so build-deb.sh
+  # can start the containers it builds in, the build one with no network.
+  deb:
+    name: Debian package (${{ matrix.series }}, ${{ matrix.runner }})
+    needs: source-package
     strategy:
       fail-fast: false
       matrix:
         runner: ${{ fromJSON(inputs.deb-runners || '["ubuntu-24.04"]') }}
+        series: ${{ fromJSON(needs.source-package.outputs.series) }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
-    container:
-      image: ubuntu:26.04
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: linux-deb-${{ runner.arch }}
+          name: linux-source-package
+          path: _packages/source
+      - name: Build offline, test and lint the package
+        env:
+          SERIES: ${{ matrix.series }}
+        run: |
+          changes="$(grep -l -x "Distribution: $SERIES" _packages/source/*_source.changes)"
+          linux/build-aux/packaging/build-deb.sh "${changes%_source.changes}.dsc" _packages/deb
+      - name: Keep the Meson test log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-deb-testlog-${{ matrix.series }}-${{ runner.arch }}
+          path: _packages/deb/testlog.txt
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Install, start and validate in a fresh container
+        env:
+          SERIES: ${{ matrix.series }}
+        run: |
+          docker run --rm -v "$PWD:$PWD" -w "$PWD" "ubuntu:$SERIES" \
+            linux/build-aux/packaging/smoke-test.sh "$(find _packages/deb -name 'tablepro_*.deb')"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-deb-${{ matrix.series }}-${{ runner.arch }}
           path: _packages/deb
-      - name: Install, start and validate
-        run: linux/build-aux/packaging/smoke-test.sh "$(find _packages/deb -name 'tablepro_*.deb')"
+          if-no-files-found: error
 
   rpm:
     name: RPM package

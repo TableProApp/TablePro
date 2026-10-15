@@ -1,0 +1,3 @@
+# cargo vendor ships each crate whole. These are the Windows test fixtures
+# of libloading, which the Linux build never reads.
+source-contains-prebuilt-windows-binary [vendor/libloading-*/tests/nagisa*.dll]

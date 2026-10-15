@@ -1,7 +1,26 @@
 #!/usr/bin/make -f
 
-# The crates come from the vendor tarball unpacked into vendor/.
+include /usr/share/dpkg/buildopts.mk
+
+# rustc-1.97 and cargo-1.97 install rustc, rustdoc and cargo here, and
+# Meson looks for cargo on PATH only. 1.97 is the workspace rust-version.
+export PATH := /usr/lib/rust-1.97/bin:$(PATH)
+
+# Launchpad builds have no network. The crates come from the vendor
+# component tarball, which dpkg-source unpacks into vendor/.
 export CARGO_NET_OFFLINE = true
+
+# Cargo starts one rustc per CPU unless told otherwise, and the largest
+# optimized crates take up to 3 GB each, so the jobs follow the memory as
+# well as DEB_BUILD_OPTIONS: one per 2 GiB.
+memory_jobs := $(shell awk '/^MemAvailable:/ { jobs = int($$2 / 2097152); print (jobs < 1 ? 1 : jobs) }' /proc/meminfo)
+parallel_jobs := $(or $(DEB_BUILD_OPTION_PARALLEL),1)
+export CARGO_BUILD_JOBS := $(shell if [ $(memory_jobs) -lt $(parallel_jobs) ]; then echo $(memory_jobs); else echo $(parallel_jobs); fi)
+
+# With the release profile's fat LTO, rustc 1.97 takes more than 7 GB to
+# link tablepro and an 8 GB machine kills it. With thin LTO the whole build
+# stays under 4 GB. The .rpm does the same.
+export CARGO_PROFILE_RELEASE_LTO = thin
 # The release profile carries no debug info, which leaves the dbgsym
 # package empty; line tables are enough to symbolize a backtrace.
 export CARGO_PROFILE_RELEASE_DEBUG = line-tables-only
@@ -15,9 +34,15 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 override_dh_clean:
 	dh_clean -Xvendor/
 
+# Meson runs cargo from the build directory under this tree, and Cargo
+# reads .cargo/config.toml from the directories above where it runs.
 override_dh_auto_configure:
-	dh_auto_configure -- -Dprofile=default -Dkerberos=true -Dcargo_config=vendor/cargo-config.toml
+	mkdir -p .cargo
+	cp vendor/cargo-config.toml .cargo/config.toml
+	dh_auto_configure -- -Dprofile=default -Dkerberos=true
 
 # The gtk suite opens windows on a display and owns D-Bus names.
 override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS) $(DEB_BUILD_PROFILES)))
 	xvfb-run -a dbus-run-session -- dh_auto_test
+endif

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs a built package, as root in a fresh ubuntu:26.04 or fedora:44,
+# Installs a built package, as root in a fresh Ubuntu or Fedora container,
 # with only the dependencies it declares, and checks that it starts and
 # that the files it installed validate.
 # Usage: smoke-test.sh <tablepro .deb or .rpm>

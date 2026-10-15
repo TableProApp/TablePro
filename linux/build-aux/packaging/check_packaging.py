@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 # Checks that the version Meson builds is the one the metainfo releases and
-# the RPM spec package, and that the spec collects translations exactly
-# when po/LINGUAS ships one. The release workflow adds the tag and its
-# date, and then CHANGELOG.md must carry that version's notes.
+# the RPM spec package, that the spec collects translations exactly when
+# po/LINGUAS ships one, and that the Debian package builds with the Rust
+# the workspace names as its rust-version. The release workflow adds the
+# tag and its date, and then CHANGELOG.md must carry that version's notes.
 
 import argparse
 import re
 import sys
+import tomllib
 import xml.etree.ElementTree as ElementTree
 from datetime import date
 from pathlib import Path
@@ -15,13 +17,24 @@ METAINFO = Path("data/app.tablepro.TablePro.metainfo.xml.in.in")
 SPEC = Path("build-aux/rpm/tablepro.spec")
 LINGUAS = Path("po/LINGUAS")
 CHANGELOG = Path("CHANGELOG.md")
+CARGO = Path("Cargo.toml")
+CONTROL = Path("build-aux/debian/control")
+RULES = Path("build-aux/debian/rules")
 
-# RPM forbids '-' in Version and git forbids '~' in a tag, so a release
-# version is plain X.Y.Z.
-RELEASE_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
+# X.Y.Z, or a pre-release such as X.Y.Z-rc.1 with no '-' after the first,
+# so the package version below stays a plain substitution.
+RELEASE_VERSION = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$")
 SPEC_VERSION = re.compile(r"^Version:\s*(\S+)\s*$", re.MULTILINE)
 SPEC_CHANGELOG = re.compile(r"^%changelog\s*\n\*[^\n]*\s-\s(\S+)\s*$", re.MULTILINE)
 FIND_LANG = re.compile(r"^%find_lang\b", re.MULTILINE)
+CONTROL_TOOLCHAIN = re.compile(r"\b(cargo|rustc)-(\d+\.\d+)\b")
+RULES_TOOLCHAIN = re.compile(r"/usr/lib/rust-(\d+\.\d+)/bin\b")
+
+
+def package_version(version):
+    # RPM forbids '-' in Version and git forbids '~' in a tag. Debian and
+    # Fedora both sort X.Y.Z~rc.1 below X.Y.Z.
+    return version.replace("-", "~", 1)
 
 
 def newest_release(metainfo):
@@ -51,10 +64,30 @@ def release_notes(changelog, version):
     return "\n".join(notes).strip()
 
 
+def toolchain_problems(root):
+    package = tomllib.loads((root / CARGO).read_text(encoding="utf-8")).get("workspace", {}).get("package", {})
+    rust_version = package.get("rust-version")
+    if rust_version is None:
+        return [f"{CARGO} names no workspace rust-version"]
+    found = []
+    expected = [("cargo", rust_version), ("rustc", rust_version)]
+    named = sorted(set(CONTROL_TOOLCHAIN.findall((root / CONTROL).read_text(encoding="utf-8"))))
+    if named != expected:
+        names = ", ".join(f"{name}-{number}" for name, number in named) or "no versioned rustc or cargo"
+        found.append(
+            f"{CONTROL} build-depends on {names}, not cargo-{rust_version} and rustc-{rust_version}, "
+            f"the rust-version in {CARGO}"
+        )
+    paths = sorted(set(RULES_TOOLCHAIN.findall((root / RULES).read_text(encoding="utf-8"))))
+    if paths != [rust_version]:
+        found.append(f"{RULES} must put /usr/lib/rust-{rust_version}/bin on PATH, and only that toolchain")
+    return found
+
+
 def problems(root, version, tag=None, tag_date=None):
     found = []
     if not RELEASE_VERSION.match(version):
-        found.append(f"version {version} is not X.Y.Z")
+        found.append(f"version {version} is neither X.Y.Z nor a pre-release such as X.Y.Z-rc.1")
     if tag is not None:
         if tag != f"linux-v{version}":
             found.append(f"tag {tag} does not name version {version}; expected linux-v{version}")
@@ -80,18 +113,20 @@ def problems(root, version, tag=None, tag_date=None):
                 f"the tagged commit {tag_date}"
             )
 
+    packaged = package_version(version)
     spec = (root / SPEC).read_text(encoding="utf-8")
     versions = SPEC_VERSION.findall(spec)
-    if versions != [version]:
-        found.append(f"{SPEC} packages version {', '.join(versions) or 'nothing'}, not {version}")
+    if versions != [packaged]:
+        found.append(f"{SPEC} packages version {', '.join(versions) or 'nothing'}, not {packaged}")
     changelog = SPEC_CHANGELOG.search(spec)
-    if changelog is None or not changelog.group(1).startswith(f"{version}-"):
-        found.append(f"the first %changelog entry in {SPEC} is not for {version}")
+    if changelog is None or not changelog.group(1).startswith(f"{packaged}-"):
+        found.append(f"the first %changelog entry in {SPEC} is not for {packaged}")
 
     if bool(linguas(root / LINGUAS)) != bool(FIND_LANG.search(spec)):
         found.append(
             f"{SPEC} must run %find_lang and list %{{name}}.lang exactly when {LINGUAS} names a language"
         )
+    found.extend(toolchain_problems(root))
     return found
 
 
@@ -112,7 +147,7 @@ def main(argv=None):
             args.notes.write_text(
                 release_notes(args.source_root / CHANGELOG, args.version) + "\n", encoding="utf-8"
             )
-    except (OSError, ElementTree.ParseError) as error:
+    except (OSError, ElementTree.ParseError, tomllib.TOMLDecodeError) as error:
         found = [str(error)]
     for problem in found:
         print(f"check_packaging.py: {problem}", file=sys.stderr)
