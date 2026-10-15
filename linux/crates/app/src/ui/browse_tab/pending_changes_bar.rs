@@ -2,9 +2,9 @@ use std::sync::OnceLock;
 
 use glib::subclass::Signal;
 use gtk4 as gtk;
-use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
+use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 
@@ -68,7 +68,6 @@ mod imp {
     impl ObjectImpl for PendingChangesBar {
         fn constructed(&self) {
             self.parent_constructed();
-            announce_key_shortcuts(&self.save_button.get(), "browse.save");
             self.obj().connect_buttons();
         }
 
@@ -109,6 +108,10 @@ impl PendingChangesBar {
         f: F,
     ) -> glib::SignalHandlerId {
         self.connect_closure(request.signal(), false, glib::closure_local!(move |bar: &Self| f(bar)))
+    }
+
+    pub(super) fn announce_save_keys(&self, group: &str, save: &gio::SimpleAction) {
+        announce_key_shortcuts(&self.imp().save_button.get(), &format!("{group}.{}", save.name()));
     }
 
     pub(super) fn show_pending(&self, count: usize) {
@@ -159,6 +162,8 @@ impl PendingChangesBar {
 
 #[cfg(test)]
 mod tests {
+    use gtk4::AccessibleProperty;
+
     use super::*;
     use crate::test_support::SignalLog;
 
@@ -180,6 +185,23 @@ mod tests {
 
         bar.show_pending(0);
         assert!(!imp.revealer.reveals_child());
+    }
+
+    #[gtk4::test]
+    fn save_announces_the_keys_of_the_action_it_is_given() {
+        let bar = bar();
+        let save = bar.imp().save_button.get();
+        assert!(!gtk::test_accessible_has_property(
+            &save,
+            AccessibleProperty::KeyShortcuts
+        ));
+
+        bar.announce_save_keys("browse", &gio::SimpleAction::new("save", None));
+
+        assert!(gtk::test_accessible_has_property(
+            &save,
+            AccessibleProperty::KeyShortcuts
+        ));
     }
 
     #[gtk4::test]

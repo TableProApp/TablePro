@@ -2,9 +2,9 @@ use std::sync::OnceLock;
 
 use glib::subclass::Signal;
 use gtk4 as gtk;
-use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
+use gtk4::{gio, glib};
 use libadwaita as adw;
 
 use super::browse_pager::BrowsePager;
@@ -12,7 +12,7 @@ use super::page_label::page_range_label;
 use super::page_state::PageState;
 use super::row_total::RowTotal;
 use crate::i18n::gettext;
-use crate::ui::a11y::describe_icon_button;
+use crate::ui::a11y::{announce_key_shortcuts, describe_icon_button};
 
 /// What a click in the bar asks the tab for, one signal each.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -158,17 +158,29 @@ impl PagerBar {
         imp.count_button.set_tooltip_text(tooltip);
     }
 
-    /// Previous and Next carry the keys of the tab's actions for them,
-    /// which follow these buttons.
+    /// The keys for Previous and Next turn a page only where the button
+    /// would, so the tab's actions follow the buttons, and the buttons
+    /// announce the actions' keys.
+    pub(super) fn follow_page_actions(&self, group: &str, previous: &gio::SimpleAction, next: &gio::SimpleAction) {
+        let imp = self.imp();
+        for (button, action) in [(&imp.prev_button, previous), (&imp.next_button, next)] {
+            button
+                .bind_property("sensitive", action, "enabled")
+                .sync_create()
+                .build();
+            announce_key_shortcuts(&button.get(), &format!("{group}.{}", action.name()));
+        }
+    }
+
     fn describe_buttons(&self) {
         let imp = self.imp();
-        for (button, label, action) in [
-            (&imp.first_button, gettext("First Page"), None),
-            (&imp.prev_button, gettext("Previous Page"), Some("browse.previous-page")),
-            (&imp.next_button, gettext("Next Page"), Some("browse.next-page")),
-            (&imp.last_button, gettext("Last Page"), None),
+        for (button, label) in [
+            (&imp.first_button, gettext("First Page")),
+            (&imp.prev_button, gettext("Previous Page")),
+            (&imp.next_button, gettext("Next Page")),
+            (&imp.last_button, gettext("Last Page")),
         ] {
-            describe_icon_button(&button.get(), &label, action);
+            describe_icon_button(&button.get(), &label, None);
         }
     }
 
@@ -194,6 +206,8 @@ impl PagerBar {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+
+    use gtk4::AccessibleProperty;
 
     use super::*;
     use crate::test_support::SignalLog;
@@ -228,6 +242,36 @@ mod tests {
         assert!(imp.first_button.is_sensitive());
         assert!(imp.prev_button.is_sensitive());
         assert!(!imp.next_button.is_sensitive(), "a short page was the last one");
+    }
+
+    #[gtk4::test]
+    fn page_actions_follow_the_buttons_and_announce_their_keys() {
+        let bar = bar();
+        let imp = bar.imp();
+        let previous = gio::SimpleAction::new("previous-page", None);
+        let next = gio::SimpleAction::new("next-page", None);
+        assert!(!gtk::test_accessible_has_property(
+            &imp.next_button.get(),
+            AccessibleProperty::KeyShortcuts
+        ));
+
+        bar.follow_page_actions("browse", &previous, &next);
+        bar.show_position(&BrowsePager::new(100, 0), 100);
+
+        assert!(!previous.is_enabled(), "Previous turned a page before the first");
+        assert!(next.is_enabled());
+        for button in [imp.prev_button.get(), imp.next_button.get()] {
+            assert!(
+                gtk::test_accessible_has_property(&button, AccessibleProperty::KeyShortcuts),
+                "{:?} announces no keys",
+                button.tooltip_text()
+            );
+        }
+
+        bar.show_position(&BrowsePager::new(100, 200), 40);
+
+        assert!(previous.is_enabled());
+        assert!(!next.is_enabled(), "Next turned past the last page");
     }
 
     #[gtk4::test]

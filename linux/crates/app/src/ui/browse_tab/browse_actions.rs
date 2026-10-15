@@ -11,6 +11,8 @@ use crate::i18n::gettext;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::ui::a11y::{announce_key_shortcuts, describe_icon_button};
 
+const ACTION_GROUP: &str = "browse";
+
 /// The `browse` actions whose state follows the tab. A disabled one lets
 /// its key go on, and greys out the button that names it.
 #[derive(Clone)]
@@ -57,19 +59,9 @@ pub(super) fn install_browse_actions(tab: &BrowseTab) -> BrowseActions {
     add("filter", || PagingInput::ToggleFilterStrip.into());
     add("refresh", || PagingInput::RequestRefresh.into());
     add("paste-rows", || ClipboardInput::PasteNotSupported.into());
-    let pager = tab.imp().pager_bar.imp();
     let previous = add("previous-page", || PagingInput::PrevPage.into());
-    pager
-        .prev_button
-        .bind_property("sensitive", &previous, "enabled")
-        .sync_create()
-        .build();
     let next = add("next-page", || PagingInput::NextPage.into());
-    pager
-        .next_button
-        .bind_property("sensitive", &next, "enabled")
-        .sync_create()
-        .build();
+    tab.imp().pager_bar.follow_page_actions(ACTION_GROUP, &previous, &next);
     let delete_rows = gio::SimpleAction::new("delete-rows", None);
     let weak = tab.downgrade();
     delete_rows.connect_activate(move |_, _| {
@@ -100,7 +92,8 @@ pub(super) fn install_browse_actions(tab: &BrowseTab) -> BrowseActions {
     ] {
         action.set_enabled(false);
     }
-    tab.insert_action_group("browse", Some(&group));
+    tab.imp().pending_bar.announce_save_keys(ACTION_GROUP, &actions.save);
+    tab.insert_action_group(ACTION_GROUP, Some(&group));
     tab.add_controller(local_shortcut_controller(ShortcutOwner::BrowseTab));
     actions
 }
