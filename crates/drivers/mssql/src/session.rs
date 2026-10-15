@@ -1,11 +1,13 @@
 use async_trait::async_trait;
 use tablepro_core::{
-    AuthMode, ConnectOptions, DriverError, MAX_QUERY_ROWS, OperationControl, QueryResult, Value, check_pre_dispatch,
-    run_server_cancellable,
+    AuthMode, ConnectOptions, DriverError, MAX_QUERY_ROWS, OperationControl, QueryResult, QueryResultBatch, Value,
+    check_pre_dispatch, run_server_cancellable,
 };
 
 use crate::variant_guard::is_unsupported_result;
-use crate::{CONNECT_TIMEOUT, MssqlClient, build_target, open_client, open_kerberos_client, run_batch, run_query};
+use crate::{
+    CONNECT_TIMEOUT, MssqlClient, build_target, open_client, open_kerberos_client, run_batch_sets, run_query_sets,
+};
 
 pub(crate) struct MssqlSession {
     client: Option<MssqlClient>,
@@ -22,14 +24,14 @@ pub(crate) async fn open(options: &ConnectOptions) -> Result<Box<dyn tablepro_co
     Ok(Box::new(MssqlSession { client: Some(client) }))
 }
 
-#[async_trait]
-impl tablepro_core::Session for MssqlSession {
-    async fn query_params_controlled(
+impl MssqlSession {
+    async fn run(
         &mut self,
         sql: &str,
         params: &[Value],
         control: &OperationControl,
-    ) -> Result<QueryResult, DriverError> {
+        retain_additional_sets: bool,
+    ) -> Result<QueryResultBatch, DriverError> {
         check_pre_dispatch(control)?;
         let mut client = self
             .client
@@ -37,8 +39,8 @@ impl tablepro_core::Session for MssqlSession {
             .ok_or_else(|| DriverError::Internal("the session's connection was lost".into()))?;
         let execution = async {
             match params.is_empty() {
-                true => run_batch(&mut client, sql, MAX_QUERY_ROWS).await,
-                false => run_query(&mut client, sql, params, MAX_QUERY_ROWS).await,
+                true => run_batch_sets(&mut client, sql, MAX_QUERY_ROWS, retain_additional_sets).await,
+                false => run_query_sets(&mut client, sql, params, MAX_QUERY_ROWS, retain_additional_sets).await,
             }
         };
         let result = run_server_cancellable(execution, async { Ok(()) }, |_| false, control).await;
@@ -50,6 +52,29 @@ impl tablepro_core::Session for MssqlSession {
             self.client = Some(client);
         }
         result
+    }
+}
+
+#[async_trait]
+impl tablepro_core::Session for MssqlSession {
+    async fn query_params_controlled(
+        &mut self,
+        sql: &str,
+        params: &[Value],
+        control: &OperationControl,
+    ) -> Result<QueryResult, DriverError> {
+        self.run(sql, params, control, false)
+            .await
+            .map(QueryResultBatch::into_first)
+    }
+
+    async fn query_result_sets_params_controlled(
+        &mut self,
+        sql: &str,
+        params: &[Value],
+        control: &OperationControl,
+    ) -> Result<QueryResultBatch, DriverError> {
+        self.run(sql, params, control, true).await
     }
 
     fn is_usable(&self) -> bool {

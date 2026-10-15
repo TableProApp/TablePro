@@ -1,4 +1,4 @@
-use tablepro_core::{QueryCursorId, QueryCursorPage, Session};
+use tablepro_core::{QueryCursorId, QueryCursorPage, QueryResultBatch, Session};
 
 use super::*;
 use crate::transaction_control::{TransactionControl, hides_transaction_control, transaction_control};
@@ -14,6 +14,7 @@ pub(crate) struct PolicySession {
     batch: Option<OpenBatch>,
     cursor: Option<ActiveCursor>,
     retired: bool,
+    extra: ExtraSets,
 }
 
 struct ActiveCursor {
@@ -46,6 +47,43 @@ impl CursorAudit {
             preview_state: self.preview_state.clone(),
         }
     }
+}
+
+#[derive(Default)]
+struct ExtraSets {
+    collect: bool,
+    sets: Vec<QueryResult>,
+}
+
+async fn inner_statement(
+    inner: &mut Box<dyn Session>,
+    extra: &mut ExtraSets,
+    guard: &PolicyGuard,
+    analysis: &crate::classify::StatementAnalysis,
+    sql: &str,
+    params: &[Value],
+    control: &OperationControl,
+) -> Result<QueryResult, DriverError> {
+    if !extra.collect {
+        return inner.query_params_controlled(sql, params, control).await;
+    }
+    let batch = inner.query_result_sets_params_controlled(sql, params, control).await?;
+    let truncated = batch.truncated;
+    let mut sets = batch.result_sets.into_iter();
+    let mut first = sets.next().unwrap_or(QueryResult {
+        columns: Vec::new(),
+        rows: Vec::new(),
+        truncated,
+    });
+    first.truncated |= truncated;
+    extra
+        .sets
+        .extend(sets.map(|set| guard.mask_result_for_analysis(Some(analysis), set)));
+    Ok(first)
+}
+
+fn rows_in(first: &QueryResult, extra_sets: &[QueryResult]) -> u64 {
+    first.rows.len() as u64 + extra_sets.iter().map(|set| set.rows.len() as u64).sum::<u64>()
 }
 
 #[derive(Clone, Copy)]
@@ -83,6 +121,7 @@ impl PolicyGuard {
             batch: None,
             cursor: None,
             retired: false,
+            extra: ExtraSets::default(),
         })
     }
 }
@@ -144,6 +183,23 @@ impl Session for PolicySession {
             }
             None => self.statement(sql, params, control).await,
         }
+    }
+
+    async fn query_result_sets_params_controlled(
+        &mut self,
+        sql: &str,
+        params: &[Value],
+        control: &OperationControl,
+    ) -> Result<QueryResultBatch, DriverError> {
+        self.extra.collect = true;
+        self.extra.sets.clear();
+        let first = self.query_params_controlled(sql, params, control).await;
+        self.extra.collect = false;
+        let extras = std::mem::take(&mut self.extra.sets);
+        let mut result_sets = vec![first?];
+        result_sets.extend(extras);
+        let truncated = result_sets.iter().any(|set| set.truncated);
+        Ok(QueryResultBatch { result_sets, truncated })
     }
 
     async fn open_query_cursor_controlled(
@@ -580,7 +636,15 @@ impl PolicySession {
             None
         };
         let start = Instant::now();
-        let execution = self.inner.query_params_controlled(sql, params, control);
+        let execution = inner_statement(
+            &mut self.inner,
+            &mut self.extra,
+            &self.guard,
+            &authorization.analysis,
+            sql,
+            params,
+            control,
+        );
         let result = match writes {
             true => self.guard.caught_write("SESSION QUERY", execution).await,
             false => self.guard.caught_read("SESSION QUERY", execution).await,
@@ -589,7 +653,7 @@ impl PolicySession {
             self.guard
                 .mask_result_for_analysis(Some(&authorization.analysis), value)
         });
-        let rows = result.as_ref().ok().map(|value| value.rows.len() as u64);
+        let rows = result.as_ref().ok().map(|value| rows_in(value, &self.extra.sets));
         self.guard
             .audit_transaction_result(&operation, start, &result, rows, TransactionAuditMode::Interactive)
             .await?;
@@ -623,14 +687,22 @@ impl PolicySession {
             .guard
             .caught_write(
                 "SESSION QUERY",
-                self.inner.query_params_controlled(sql, params, control),
+                inner_statement(
+                    &mut self.inner,
+                    &mut self.extra,
+                    &self.guard,
+                    &authorization.analysis,
+                    sql,
+                    params,
+                    control,
+                ),
             )
             .await
             .map(|value| {
                 self.guard
                     .mask_result_for_analysis(Some(&authorization.analysis), value)
             });
-        let rows = result.as_ref().ok().map(|value| value.rows.len() as u64);
+        let rows = result.as_ref().ok().map(|value| rows_in(value, &self.extra.sets));
         self.guard.audit_write_result(&operation, start, &result, rows).await?;
         pending_write.disarm();
         result
@@ -657,14 +729,22 @@ impl PolicySession {
             .guard
             .caught_read(
                 "SESSION QUERY",
-                self.inner.query_params_controlled(sql, params, control),
+                inner_statement(
+                    &mut self.inner,
+                    &mut self.extra,
+                    &self.guard,
+                    &authorization.analysis,
+                    sql,
+                    params,
+                    control,
+                ),
             )
             .await
             .map(|value| {
                 self.guard
                     .mask_result_for_analysis(Some(&authorization.analysis), value)
             });
-        let rows = result.as_ref().ok().map(|value| value.rows.len() as u64);
+        let rows = result.as_ref().ok().map(|value| rows_in(value, &self.extra.sets));
         self.guard
             .audit_controlled_read_result(&operation, start, &result, rows)
             .await?;

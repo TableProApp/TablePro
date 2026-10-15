@@ -108,3 +108,51 @@ async fn a_result_cut_at_the_memory_budget_reports_truncation_and_drains_the_bat
         vec![vec![Value::Int(4)]]
     );
 }
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_session_keeps_every_result_set_inside_a_transaction() {
+    let (_container, opts) = start_mssql().await;
+    let conn = connect(opts).await;
+    let mut session = conn.open_session().await.unwrap();
+    let control = OperationControl::with_timeout(std::time::Duration::from_secs(30));
+    session
+        .query_params_controlled("BEGIN TRANSACTION", &[], &control)
+        .await
+        .unwrap();
+
+    let batch = session
+        .query_result_sets_params_controlled("SELECT 1 AS first_set; SELECT 2 AS second_set", &[], &control)
+        .await
+        .unwrap();
+    let names: Vec<&str> = batch
+        .result_sets
+        .iter()
+        .map(|set| set.columns[0].name.as_str())
+        .collect();
+    assert_eq!(names, vec!["first_set", "second_set"]);
+    assert_eq!(batch.result_sets[1].rows, vec![vec![Value::Int(2)]]);
+
+    let parameterised = session
+        .query_result_sets_params_controlled(
+            "SELECT @P1 AS first_set; SELECT @P1 + 1 AS second_set",
+            &[Value::Int(10)],
+            &control,
+        )
+        .await
+        .unwrap();
+    assert_eq!(parameterised.result_sets.len(), 2);
+    assert_eq!(parameterised.result_sets[1].rows, vec![vec![Value::Int(11)]]);
+
+    let single = session
+        .query_params_controlled("SELECT 1 AS first_set; SELECT 2 AS second_set", &[], &control)
+        .await
+        .unwrap();
+    assert_eq!(single.columns[0].name, "first_set");
+    assert!(session.is_usable());
+    session
+        .query_params_controlled("ROLLBACK", &[], &control)
+        .await
+        .unwrap();
+    session.close().await.unwrap();
+}

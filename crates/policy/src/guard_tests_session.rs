@@ -8,6 +8,7 @@ struct SessionScript {
     disconnect_on: Option<&'static str>,
     query_error_on: Option<&'static str>,
     panic_on_close: bool,
+    result_sets_on: Option<&'static str>,
 }
 
 struct ScriptedSession {
@@ -44,6 +45,25 @@ impl tablepro_core::Session for ScriptedSession {
             return Err(DriverError::Cancelled);
         }
         Ok(empty_result())
+    }
+
+    async fn query_result_sets_params_controlled(
+        &mut self,
+        sql: &str,
+        params: &[Value],
+        control: &OperationControl,
+    ) -> Result<tablepro_core::QueryResultBatch, DriverError> {
+        if self.script.result_sets_on != Some(sql) {
+            return self
+                .query_params_controlled(sql, params, control)
+                .await
+                .map(tablepro_core::QueryResultBatch::single);
+        }
+        self.script.sent.lock().expect("sent lock").push(sql.to_string());
+        Ok(tablepro_core::QueryResultBatch {
+            result_sets: vec![secret_set("first-secret"), secret_set("second-secret")],
+            truncated: false,
+        })
     }
 
     fn is_usable(&self) -> bool {
@@ -933,4 +953,107 @@ async fn a_panicking_session_close_is_contained_and_reports_the_connection() {
     assert!(matches!(error, DriverError::Internal(_)), "{error:?}");
     assert!(!error.to_string().contains("codec read past the end"));
     assert_eq!(*fault.operations.lock().expect("fault lock"), vec!["SESSION CLOSE"]);
+}
+
+fn secret_set(value: &str) -> QueryResult {
+    QueryResult {
+        columns: vec![ColumnInfo {
+            name: "password".into(),
+            data_type: "text".into(),
+            nullable: true,
+            primary_key: false,
+            is_auto_increment: false,
+            default_value: None,
+            is_generated: false,
+            comment: None,
+            collation: None,
+            enum_type: None,
+            domain_type: None,
+        }],
+        rows: vec![vec![Value::Text(value.into())]],
+        truncated: false,
+    }
+}
+
+const TWO_SETS: &str = "SELECT password FROM accounts";
+
+async fn run_sets(
+    session: &mut Box<dyn tablepro_core::Session>,
+    sql: &str,
+) -> Result<tablepro_core::QueryResultBatch, DriverError> {
+    session
+        .query_result_sets_params_controlled(sql, &[], &OperationControl::with_timeout(Duration::from_secs(5)))
+        .await
+}
+
+#[tokio::test]
+async fn a_session_batch_returns_every_result_set_in_order() {
+    let h = harness(
+        SessionScript {
+            result_sets_on: Some(TWO_SETS),
+            ..SessionScript::default()
+        },
+        false,
+    );
+    let mut session = h.guard.open_session().await.expect("open session");
+
+    let batch = run_sets(&mut session, TWO_SETS).await.expect("batch");
+
+    assert_eq!(batch.result_sets.len(), 2);
+    assert_eq!(batch.result_sets[0].rows[0][0], Value::Text("first-secret".into()));
+    assert_eq!(batch.result_sets[1].rows[0][0], Value::Text("second-secret".into()));
+}
+
+#[tokio::test]
+async fn an_agent_sees_every_result_set_of_a_session_batch_masked() {
+    let agent = Principal::Agent {
+        token: "agent-token".into(),
+        client: None,
+        model: None,
+    };
+    let h = harness_with_principal(
+        SessionScript {
+            result_sets_on: Some(TWO_SETS),
+            ..SessionScript::default()
+        },
+        false,
+        "postgres",
+        agent,
+        Environment::Local,
+    );
+    let mut session = h.guard.open_session().await.expect("open session");
+
+    let batch = run_sets(&mut session, TWO_SETS).await.expect("batch");
+
+    for set in &batch.result_sets {
+        assert_eq!(set.rows[0][0], Value::Text("***REDACTED***".into()));
+    }
+}
+
+#[tokio::test]
+async fn the_audit_outcome_of_a_session_batch_counts_the_rows_of_every_set() {
+    let h = harness(
+        SessionScript {
+            result_sets_on: Some(TWO_SETS),
+            ..SessionScript::default()
+        },
+        false,
+    );
+    let mut session = h.guard.open_session().await.expect("open session");
+
+    run_sets(&mut session, TWO_SETS).await.expect("batch");
+
+    let reads = outcomes_of(&h.audit, AuditOperationClass::Read);
+    assert_eq!(reads.last().and_then(|event| event.rows_affected), Some(2));
+}
+
+#[tokio::test]
+async fn a_single_result_statement_in_a_session_batch_call_keeps_working() {
+    let h = harness(SessionScript::default(), false);
+    let mut session = h.guard.open_session().await.expect("open session");
+
+    let batch = run_sets(&mut session, "SELECT 1").await.expect("batch");
+
+    assert_eq!(batch.result_sets.len(), 1);
+    assert_eq!(*h.script.sent.lock().expect("sent lock"), vec!["SELECT 1"]);
 }

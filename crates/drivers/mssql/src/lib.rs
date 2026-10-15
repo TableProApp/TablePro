@@ -665,12 +665,15 @@ async fn run_query_sets(
 // A parameterized query travels through sp_executesql, whose scope drops a
 // #temp table and refuses a transaction left open when it returns. A
 // statement without parameters is sent as a plain batch so both survive.
-async fn run_batch(client: &mut MssqlClient, sql: &str, limit: usize) -> Result<QueryResult, DriverError> {
+async fn run_batch_sets(
+    client: &mut MssqlClient,
+    sql: &str,
+    limit: usize,
+    retain_additional_sets: bool,
+) -> Result<QueryResultBatch, DriverError> {
     variant_guard::catch_tiberius_variant_panic(async {
         let stream = client.simple_query(sql).await.map_err(map_tiberius_error)?;
-        collect_result_sets(stream, limit, false)
-            .await
-            .map(QueryResultBatch::into_first)
+        collect_result_sets(stream, limit, retain_additional_sets).await
     })
     .await
 }

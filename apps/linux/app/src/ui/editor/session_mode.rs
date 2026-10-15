@@ -47,10 +47,9 @@ impl StatementTarget {
         match self {
             Self::Pool(connection) => connection.query_result_sets_controlled(sql, params, control).await,
             Self::Session { shared, .. } => match shared.lock().await.as_mut() {
-                Some(session) if session.is_usable() => session
-                    .query_params_controlled(sql, params, control)
-                    .await
-                    .map(QueryResultBatch::single),
+                Some(session) if session.is_usable() => {
+                    session.query_result_sets_params_controlled(sql, params, control).await
+                }
                 Some(_) => Err(retired_session_error()),
                 None => Err(DriverError::Unsupported("the session was closed".into())),
             },
