@@ -2,25 +2,8 @@ import CryptoKit
 import Foundation
 import os
 import Security
-
-public enum ConnectionAccess: Sendable, Codable, Equatable {
-    case all
-    case limited(Set<UUID>)
-
-    var allowedIds: Set<UUID>? {
-        switch self {
-        case .all: return nil
-        case .limited(let ids): return ids
-        }
-    }
-
-    public func allows(_ connectionId: UUID) -> Bool {
-        switch self {
-        case .all: return true
-        case .limited(let ids): return ids.contains(connectionId)
-        }
-    }
-}
+import TableProMCP
+import TableProUtilities
 
 enum MCPTokenStoreError: Error, Sendable, Equatable {
     case randomGenerationFailed(OSStatus)

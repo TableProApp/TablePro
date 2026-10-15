@@ -10,6 +10,7 @@
 
 import Foundation
 import os
+import TableProRedisCore
 
 private let logger = Logger(subsystem: "com.TablePro.RedisDriver", category: "RedisMetadataRead")
 

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMCP
 
 protocol ChatTransport: AnyObject, Sendable {
     func streamChat(

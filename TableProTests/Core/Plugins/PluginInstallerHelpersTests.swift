@@ -8,7 +8,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("PluginInstaller helpers", .serialized)
 struct PluginInstallerHelpersTests {
 
     private func makeTempDir() throws -> URL {

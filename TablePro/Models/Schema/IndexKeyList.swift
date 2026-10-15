@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProSQLGrammar
+import TableProUtilities
 
 struct IndexKeyContext {
     let columnNames: [String]

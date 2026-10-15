@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import os
+import TableProUtilities
 
 /// Writing a query tab back to the `.sql` file it came from, and the conflict check that guards it.
 ///

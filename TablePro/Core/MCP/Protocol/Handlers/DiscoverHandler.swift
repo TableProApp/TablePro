@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 
 public struct DiscoverHandler: MCPMethodHandler {
     public static let method = "server/discover"

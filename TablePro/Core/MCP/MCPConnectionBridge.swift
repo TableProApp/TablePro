@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 import TableProPluginKit
 
 /// The MCP wire encoding over `DatabaseAccessBridge`.

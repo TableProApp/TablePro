@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProSQLGrammar
+import TableProUtilities
 
 /// The DynamoDB API actions the driver runs from the editor as `<Action> {request JSON}`, plus the `Browse` request a
 /// table tab sends. The driver matches the name ignoring case, and so does this.

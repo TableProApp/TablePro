@@ -21,7 +21,6 @@ private final class ReachabilityLayoutPersister: ColumnLayoutPersisting {
 /// nil. Twelve guards still asked it before opening an editor or a popover, and every one of them
 /// returned early: the JSON, blob, PHP, date, enum, set, array, dropdown and type-picker editors
 /// were all unreachable. `presentsCell(row:tableColumnIndex:)` is the single replacement (#2381).
-@Suite("Drawn cell reachability", .serialized)
 @MainActor
 struct DrawnCellReachabilityTests {
     /// Holds the window: `TableViewCoordinator.tableView` is weak both ways, so a suite that

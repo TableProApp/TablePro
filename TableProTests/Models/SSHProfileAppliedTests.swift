@@ -7,6 +7,7 @@ import Foundation
 import Testing
 
 @testable import TablePro
+import TableProSSHConfig
 
 @MainActor
 struct SSHProfileAppliedTests {

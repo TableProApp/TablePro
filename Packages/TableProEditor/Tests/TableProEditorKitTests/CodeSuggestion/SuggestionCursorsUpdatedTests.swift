@@ -1,10 +1,11 @@
 import AppKit
 @testable import TableProEditorKit
-import XCTest
+import Testing
 
-final class SuggestionCursorsUpdatedTests: XCTestCase {
+@MainActor
+struct SuggestionCursorsUpdatedTests {
     @MainActor
-    func test_cursorsUpdated_keepsWindowOpenWhileRequestIsInFlight() throws {
+    @Test func test_cursorsUpdated_keepsWindowOpenWhileRequestIsInFlight() throws {
         let model = SuggestionViewModel()
         let textViewController = Mock.textViewController(theme: Mock.theme())
         let delegate = FilteringStubDelegate(itemsOnCursorMove: nil)
@@ -23,12 +24,12 @@ final class SuggestionCursorsUpdatedTests: XCTestCase {
             position: CursorPosition(range: NSRange(location: 1, length: 0))
         ) { closeCount += 1 }
 
-        XCTAssertEqual(closeCount, 0)
-        XCTAssertNotNil(model.itemsRequestTask)
+        #expect(closeCount == 0)
+        #expect(model.itemsRequestTask != nil)
     }
 
     @MainActor
-    func test_cursorsUpdated_filtersItemsInPlaceWhenDelegateProvidesThem() throws {
+    @Test func test_cursorsUpdated_filtersItemsInPlaceWhenDelegateProvidesThem() throws {
         let model = SuggestionViewModel()
         let textViewController = Mock.textViewController(theme: Mock.theme())
         let filtered: [CodeSuggestionEntry] = [StubSuggestionEntry(label: "SELECT"), StubSuggestionEntry(label: "SET")]
@@ -47,13 +48,13 @@ final class SuggestionCursorsUpdatedTests: XCTestCase {
             position: CursorPosition(range: NSRange(location: 2, length: 0))
         ) { closeCount += 1 }
 
-        XCTAssertEqual(closeCount, 0)
-        XCTAssertEqual(model.items.map(\.label), ["SELECT", "SET"])
-        XCTAssertEqual(model.selectedIndex, 0)
+        #expect(closeCount == 0)
+        #expect(model.items.map(\.label) == ["SELECT", "SET"])
+        #expect(model.selectedIndex == 0)
     }
 
     @MainActor
-    func test_cursorsUpdated_closesWhenNoItemsAndNoRequestInFlight() throws {
+    @Test func test_cursorsUpdated_closesWhenNoItemsAndNoRequestInFlight() throws {
         let model = SuggestionViewModel()
         let textViewController = Mock.textViewController(theme: Mock.theme())
         let delegate = FilteringStubDelegate(itemsOnCursorMove: nil)
@@ -70,11 +71,11 @@ final class SuggestionCursorsUpdatedTests: XCTestCase {
             position: CursorPosition(range: NSRange(location: 0, length: 0))
         ) { closeCount += 1 }
 
-        XCTAssertEqual(closeCount, 1)
+        #expect(closeCount == 1)
     }
 
     @MainActor
-    func test_cursorsUpdated_cancelsRequestAndClosesForDifferentTextView() throws {
+    @Test func test_cursorsUpdated_cancelsRequestAndClosesForDifferentTextView() throws {
         let model = SuggestionViewModel()
         let activeController = Mock.textViewController(theme: Mock.theme())
         let otherController = Mock.textViewController(theme: Mock.theme())
@@ -91,8 +92,8 @@ final class SuggestionCursorsUpdatedTests: XCTestCase {
             position: CursorPosition(range: NSRange(location: 0, length: 0))
         ) { closeCount += 1 }
 
-        XCTAssertEqual(closeCount, 1)
-        XCTAssertNil(model.itemsRequestTask)
+        #expect(closeCount == 1)
+        #expect(model.itemsRequestTask == nil)
     }
 }
 

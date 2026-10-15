@@ -20,20 +20,17 @@ final class CompareRunClaimTests: XCTestCase {
     private let sourceConnection = UUID()
     private let targetConnection = UUID()
     private var storage: CompareSyncProfileStorage!
-    private var defaults: UserDefaults!
-    private let suiteName = "CompareRunClaimTests"
+    private var suite: EphemeralDefaults!
 
-    override func setUp() {
-        super.setUp()
-        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
-        defaults = UserDefaults(suiteName: suiteName)
-        storage = CompareSyncProfileStorage(defaults: defaults)
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        suite = try EphemeralDefaults()
+        storage = CompareSyncProfileStorage(defaults: suite.defaults)
     }
 
     override func tearDown() {
-        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
         storage = nil
-        defaults = nil
+        suite = nil
         super.tearDown()
     }
 

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSSHConfig
 
 @MainActor
 extension ConnectionFormCoordinator {

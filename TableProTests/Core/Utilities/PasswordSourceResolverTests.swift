@@ -1,13 +1,8 @@
-//
-//  PasswordSourceResolverTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
-@Suite("PasswordSourceResolver", .serialized)
 struct PasswordSourceResolverTests {
     @Test("Reads a password from a file")
     func fileHappyPath() async throws {
@@ -72,18 +67,17 @@ struct PasswordSourceResolverTests {
     @Test("Reads a password from an environment variable")
     func envHappyPath() async throws {
         let name = uniqueEnvName()
-        setenv(name, "envsecret", 1)
-        defer { unsetenv(name) }
-        let password = try await PasswordSourceResolver.resolve(.env(variable: name))
+        let password = try await PasswordSourceResolver.resolve(.env(variable: name), environment: [name: "envsecret"])
         #expect(password == "envsecret")
     }
 
     @Test("Trims whitespace from an environment variable value")
     func envTrimsWhitespace() async throws {
         let name = uniqueEnvName()
-        setenv(name, "  envsecret  ", 1)
-        defer { unsetenv(name) }
-        let password = try await PasswordSourceResolver.resolve(.env(variable: name))
+        let password = try await PasswordSourceResolver.resolve(
+            .env(variable: name),
+            environment: [name: "  envsecret  "]
+        )
         #expect(password == "envsecret")
     }
 
@@ -98,10 +92,8 @@ struct PasswordSourceResolverTests {
     @Test("Throws when the environment variable is empty")
     func envEmpty() async {
         let name = uniqueEnvName()
-        setenv(name, "", 1)
-        defer { unsetenv(name) }
         await #expect(throws: PasswordSourceResolver.ResolutionError.self) {
-            try await PasswordSourceResolver.resolve(.env(variable: name))
+            try await PasswordSourceResolver.resolve(.env(variable: name), environment: [name: ""])
         }
     }
 
@@ -174,8 +166,14 @@ struct PasswordSourceResolverTests {
 
     @Test("Times out a slow command")
     func commandTimesOut() async {
+        let clock = ManualClock()
+        let resolution = Task {
+            try await PasswordSourceResolver.resolveCommand(shell: "sleep 5", timeoutSeconds: 1, clock: clock)
+        }
+        await clock.waitUntilSleeping()
+        clock.advance(by: .seconds(1))
         do {
-            _ = try await PasswordSourceResolver.resolveCommand(shell: "sleep 5", timeoutSeconds: 1)
+            _ = try await resolution.value
             Issue.record("Expected resolveCommand to time out")
         } catch let error as PasswordSourceResolver.ResolutionError {
             guard case .commandTimedOut = error else {

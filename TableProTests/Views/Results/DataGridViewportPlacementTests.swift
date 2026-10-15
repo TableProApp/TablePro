@@ -17,7 +17,6 @@ private final class NoopViewportLayoutPersister: ColumnLayoutPersisting {
     func clear(for key: ColumnLayoutTableKey) {}
 }
 
-@Suite("Data grid viewport placement", .serialized)
 @MainActor
 struct DataGridViewportPlacementTests {
     private struct Grid {

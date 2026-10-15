@@ -1,13 +1,9 @@
-//
-//  ResultStatusBarLayoutTests.swift
-//  TableProTests
-//
-
 import AppKit
 import Foundation
 import SwiftUI
 import TableProNumberFormatting
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @testable import TablePro
@@ -391,13 +387,11 @@ struct ResultStatusBarLayoutTests {
     }
 
     private func settle(_ host: NSView, until condition: () -> Bool) async -> Bool {
-        for _ in 0 ..< 150 {
+        let met: Void? = try? await waitUntil {
             host.layoutSubtreeIfNeeded()
-            if condition() { return true }
-            try? await Task.sleep(for: .milliseconds(20))
+            return condition()
         }
-        host.layoutSubtreeIfNeeded()
-        return condition()
+        return met != nil
     }
 
     private func spinners(in view: NSView) -> [NSProgressIndicator] {

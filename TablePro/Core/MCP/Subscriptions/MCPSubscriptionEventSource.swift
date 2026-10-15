@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import os
+import TableProMCP
 
 @MainActor
 public final class MCPSubscriptionEventSource {

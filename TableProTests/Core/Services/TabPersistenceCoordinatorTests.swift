@@ -1,10 +1,3 @@
-//
-//  TabPersistenceCoordinatorTests.swift
-//  TableProTests
-//
-//  Tests for TabPersistenceCoordinator tab state persistence.
-//
-
 import Foundation
 import TableProPluginKit
 import Testing
@@ -13,8 +6,6 @@ import Testing
 
 @MainActor
 struct TabPersistenceCoordinatorTests {
-    // MARK: - Helpers
-
     /// A coordinator that has already consulted the disk, which is what every save path requires.
     /// The refusal to write before that is covered on its own by `TabPersistenceWriteGateTests`.
     private func makeCoordinator() -> TabPersistenceCoordinator {
@@ -28,12 +19,6 @@ struct TabPersistenceCoordinatorTests {
             QueryTab(id: UUID(), title: "Tab \(i)", query: "SELECT \(i)", tabType: .table)
         }
     }
-
-    private func sleep(milliseconds: Int = 200) async {
-        try? await Task.sleep(nanoseconds: UInt64(milliseconds) * 1_000_000)
-    }
-
-    // MARK: - Tests
 
     @Test("restoreFromDisk returns .none source when no saved state exists")
     func restoreFromDiskReturnsNoneWhenEmpty() async {
@@ -53,7 +38,7 @@ struct TabPersistenceCoordinatorTests {
         let selectedId = tabs[1].id
 
         coordinator.saveNow(tabs: tabs, selectedTabId: selectedId)
-        await sleep()
+        await coordinator.saveTask?.value
 
         let result = await coordinator.restoreFromDisk()
 
@@ -69,7 +54,6 @@ struct TabPersistenceCoordinatorTests {
         }
 
         coordinator.clearForUserClosedAllTabs()
-        await sleep()
     }
 
     @Test("clearSavedState + restoreFromDisk returns empty")
@@ -78,10 +62,9 @@ struct TabPersistenceCoordinatorTests {
         let tabs = makeTabs(count: 2)
 
         coordinator.saveNow(tabs: tabs, selectedTabId: tabs[0].id)
-        await sleep()
+        await coordinator.saveTask?.value
 
         coordinator.clearForUserClosedAllTabs()
-        await sleep()
 
         let result = await coordinator.restoreFromDisk()
 
@@ -105,7 +88,6 @@ struct TabPersistenceCoordinatorTests {
         #expect(result.source == .disk)
 
         coordinator.clearForUserClosedAllTabs()
-        await sleep()
     }
 
     @Test("A queued older snapshot cannot overwrite a newer synchronous save")
@@ -147,8 +129,9 @@ struct TabPersistenceCoordinatorTests {
         newTab.content.query = "SELECT 180"
 
         coordinator.saveNow(tabs: oldTabs, selectedTabId: oldTabs[0].id)
+        let queued = coordinator.saveTask
         coordinator.saveNowSync(tabs: [newTab], selectedTabId: newTab.id)
-        await Task.yield()
+        await queued?.value
 
         let state = await TabDiskActor.shared.load(connectionId: coordinator.connectionId)
         #expect(state?.tabs.count == 1)
@@ -184,7 +167,7 @@ struct TabPersistenceCoordinatorTests {
         tab.content.query = largeQuery
 
         coordinator.saveNow(tabs: [tab], selectedTabId: tab.id)
-        await sleep()
+        await coordinator.saveTask?.value
 
         let result = await coordinator.restoreFromDisk()
 
@@ -193,7 +176,6 @@ struct TabPersistenceCoordinatorTests {
         #expect(result.tabs[0].title == "Big")
 
         coordinator.clearForUserClosedAllTabs()
-        await sleep()
     }
 
     @Test("restoreFromDisk returns .disk source when state exists")
@@ -202,14 +184,13 @@ struct TabPersistenceCoordinatorTests {
         let tabs = makeTabs(count: 1)
 
         coordinator.saveNow(tabs: tabs, selectedTabId: nil)
-        await sleep()
+        await coordinator.saveTask?.value
 
         let result = await coordinator.restoreFromDisk()
 
         #expect(result.source == .disk)
 
         coordinator.clearForUserClosedAllTabs()
-        await sleep()
     }
 
     @Test("Multiple saves -- last save wins")
@@ -220,10 +201,10 @@ struct TabPersistenceCoordinatorTests {
         let selectedId = secondTabs[2].id
 
         coordinator.saveNow(tabs: firstTabs, selectedTabId: firstTabs[0].id)
-        await sleep()
+        await coordinator.saveTask?.value
 
         coordinator.saveNow(tabs: secondTabs, selectedTabId: selectedId)
-        await sleep()
+        await coordinator.saveTask?.value
 
         let result = await coordinator.restoreFromDisk()
 
@@ -235,7 +216,6 @@ struct TabPersistenceCoordinatorTests {
         }
 
         coordinator.clearForUserClosedAllTabs()
-        await sleep()
     }
 
     @Test("clearSavedState after saveNow clears state")
@@ -244,14 +224,12 @@ struct TabPersistenceCoordinatorTests {
         let tabs = makeTabs(count: 2)
 
         coordinator.saveNow(tabs: tabs, selectedTabId: tabs[0].id)
-        await sleep()
+        await coordinator.saveTask?.value
 
-        // Verify state exists
         let beforeClear = await coordinator.restoreFromDisk()
         #expect(beforeClear.tabs.count == 2)
 
         coordinator.clearForUserClosedAllTabs()
-        await sleep()
 
         let afterClear = await coordinator.restoreFromDisk()
         #expect(afterClear.tabs.isEmpty)
@@ -266,7 +244,7 @@ struct TabPersistenceCoordinatorTests {
         previewTab.isPreview = true
 
         coordinator.saveNow(tabs: [normalTab, previewTab], selectedTabId: normalTab.id)
-        await sleep()
+        await coordinator.saveTask?.value
 
         let result = await coordinator.restoreFromDisk()
 
@@ -275,7 +253,6 @@ struct TabPersistenceCoordinatorTests {
         #expect(result.tabs.allSatisfy { !$0.isPreview })
 
         coordinator.clearForUserClosedAllTabs()
-        await sleep()
     }
 
     @Test("A lone preview tab is persisted")
@@ -285,7 +262,7 @@ struct TabPersistenceCoordinatorTests {
         previewTab.isPreview = true
 
         coordinator.saveNow(tabs: [previewTab], selectedTabId: previewTab.id)
-        await sleep()
+        await coordinator.saveTask?.value
 
         let result = await coordinator.restoreFromDisk()
         #expect(result.tabs.count == 1)
@@ -293,7 +270,6 @@ struct TabPersistenceCoordinatorTests {
         #expect(result.tabs[0].isPreview == false)
 
         coordinator.clearForUserClosedAllTabs()
-        await sleep()
     }
 
     @Test("selectedTabId on a preview tab is preserved")
@@ -304,13 +280,12 @@ struct TabPersistenceCoordinatorTests {
         previewTab.isPreview = true
 
         coordinator.saveNow(tabs: [normalTab, previewTab], selectedTabId: previewTab.id)
-        await sleep()
+        await coordinator.saveTask?.value
 
         let result = await coordinator.restoreFromDisk()
         #expect(result.selectedTabId == previewTab.id)
 
         coordinator.clearForUserClosedAllTabs()
-        await sleep()
     }
 
     @Test("Linked-favorite tab with sourceFileURL round-trips through persistence")
@@ -321,7 +296,7 @@ struct TabPersistenceCoordinatorTests {
         tab.content.sourceFileURL = url
 
         coordinator.saveNow(tabs: [tab], selectedTabId: tab.id)
-        await sleep()
+        await coordinator.saveTask?.value
 
         let result = await coordinator.restoreFromDisk()
 
@@ -330,7 +305,6 @@ struct TabPersistenceCoordinatorTests {
         #expect(result.tabs[0].id == tab.id)
 
         coordinator.clearForUserClosedAllTabs()
-        await sleep()
     }
 
     @Test("Three linked-favorite tabs all round-trip with distinct sourceFileURLs")
@@ -344,7 +318,7 @@ struct TabPersistenceCoordinatorTests {
         }
 
         coordinator.saveNow(tabs: tabs, selectedTabId: tabs[1].id)
-        await sleep()
+        await coordinator.saveTask?.value
 
         let result = await coordinator.restoreFromDisk()
 
@@ -356,7 +330,6 @@ struct TabPersistenceCoordinatorTests {
         }
 
         coordinator.clearForUserClosedAllTabs()
-        await sleep()
     }
 
     @Test("Tab properties preserved: tableName, isView, databaseName")
@@ -368,7 +341,7 @@ struct TabPersistenceCoordinatorTests {
         tab.tableContext.databaseName = "production"
 
         coordinator.saveNow(tabs: [tab], selectedTabId: tab.id)
-        await sleep()
+        await coordinator.saveTask?.value
 
         let result = await coordinator.restoreFromDisk()
 
@@ -381,7 +354,6 @@ struct TabPersistenceCoordinatorTests {
         #expect(restored.tabType == .table)
 
         coordinator.clearForUserClosedAllTabs()
-        await sleep()
     }
 
     // MARK: - Empty tab lists must never delete saved work (#1997)
@@ -391,17 +363,16 @@ struct TabPersistenceCoordinatorTests {
         let coordinator = makeCoordinator()
         let tabs = makeTabs(count: 2)
         coordinator.saveNow(tabs: tabs, selectedTabId: tabs[0].id)
-        await sleep()
+        await coordinator.saveTask?.value
 
         coordinator.saveNow(tabs: [], selectedTabId: nil)
-        await sleep()
+        await coordinator.saveTask?.value
 
         let result = await coordinator.restoreFromDisk()
         #expect(result.tabs.count == 2)
         #expect(result.source == .disk)
 
         coordinator.clearForUserClosedAllTabs()
-        await sleep()
     }
 
     @Test("An empty quit-time save leaves saved tabs on disk")
@@ -417,7 +388,6 @@ struct TabPersistenceCoordinatorTests {
         #expect(result.selectedTabId == tabs[1].id)
 
         coordinator.clearForUserClosedAllTabs()
-        await sleep()
     }
 
     @Test("An unsaved query survives a quit-time save that follows an empty one")
@@ -429,14 +399,13 @@ struct TabPersistenceCoordinatorTests {
 
         coordinator.saveNowSync(tabs: [], selectedTabId: nil)
         coordinator.saveNow(tabs: [], selectedTabId: nil)
-        await sleep()
+        await coordinator.saveTask?.value
 
         let result = await coordinator.restoreFromDisk()
         #expect(result.tabs.count == 1)
         #expect(result.tabs[0].content.query == "SELECT * FROM never_saved_to_a_file")
 
         coordinator.clearForUserClosedAllTabs()
-        await sleep()
     }
 
     @Test("Closing every tab still discards the saved state")

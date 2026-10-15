@@ -17,7 +17,6 @@ private final class FilterConfigurationLayoutPersister: ColumnLayoutPersisting {
     func clear(for key: ColumnLayoutTableKey) {}
 }
 
-@Suite("Data grid filter configuration", .serialized)
 @MainActor
 struct DataGridFilterConfigurationTests {
     private static let textType = ColumnType.text(rawType: "TEXT")

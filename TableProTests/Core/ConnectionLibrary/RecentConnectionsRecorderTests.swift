@@ -11,7 +11,8 @@ import Testing
 
 @MainActor
 struct RecentConnectionsRecorderTests {
-    private let defaults: UserDefaults
+    private let suite: EphemeralDefaults
+    private var defaults: UserDefaults { suite.defaults }
     private let appEvents = AppEvents()
     private let storage: ConnectionStorage
     private let store: RecentConnectionsStore
@@ -19,7 +20,8 @@ struct RecentConnectionsRecorderTests {
 
     init() throws {
         let unique = UUID().uuidString
-        defaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.RecentConnections.\(unique)"))
+        suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("recent-connections_\(unique).json")

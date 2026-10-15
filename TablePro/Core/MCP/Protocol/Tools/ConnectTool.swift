@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 
 public struct ConnectTool: MCPToolImplementation {
     public static let name = "connect"

@@ -6,11 +6,11 @@
 //
 
 import Foundation
+import TableProAutocomplete
 import TableProPluginKit
 import Testing
 @testable import TablePro
 
-@Suite("Completion Engine", .serialized)
 struct CompletionEngineTests {
     private let schemaProvider: SQLSchemaProvider
     private let engine: CompletionEngine

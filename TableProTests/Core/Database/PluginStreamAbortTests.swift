@@ -1,8 +1,3 @@
-//
-//  PluginStreamAbortTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -12,6 +7,11 @@ struct PluginStreamAbortTests {
     @Test("Terminating the stream sets the flag, and a serial-queue producer stops early")
     func serialQueueProducerStopsEarly() async throws {
         let queue = DispatchQueue(label: "test.stream.abort.serial")
+        // Released by signals rather than created with a count: a semaphore freed below its
+        // starting value traps.
+        let step = DispatchSemaphore(value: 0)
+        step.signal()
+        step.signal()
         let counter = ProducedRowCounter()
         let totalBatches = 40
         let batchSize = 500
@@ -22,11 +22,11 @@ struct PluginStreamAbortTests {
                 queue.async {
                     continuation.yield(.header(PluginStreamHeader(columns: ["c"], columnTypeNames: ["TEXT"])))
                     for index in 0..<totalBatches {
+                        step.wait()
                         if abort.isAborted { break }
                         let batch: [PluginRow] = (0..<batchSize).map { [.text("row_\(index)_\($0)")] }
                         counter.add(batch.count)
                         continuation.yield(.rows(batch))
-                        usleep(20_000)
                     }
                     continuation.finish()
                 }
@@ -34,7 +34,8 @@ struct PluginStreamAbortTests {
         )
 
         #expect(consumed == 2 * batchSize)
-        try await Task.sleep(for: .seconds(1.5))
+        for _ in 2..<totalBatches { step.signal() }
+        await Self.drain(queue)
         #expect(counter.value < totalBatches * batchSize)
     }
 
@@ -60,7 +61,7 @@ struct PluginStreamAbortTests {
             }
         )
 
-        try await Task.sleep(for: .seconds(0.5))
+        await Self.drain(queue)
         #expect(counter.value == totalBatches * batchSize)
     }
 
@@ -82,7 +83,7 @@ struct PluginStreamAbortTests {
         }
 
         gate.signal()
-        try await Task.sleep(for: .seconds(0.5))
+        await Self.drain(queue)
         #expect(observed.value == true)
     }
 
@@ -92,16 +93,21 @@ struct PluginStreamAbortTests {
     )
     func holdingTheStreamKeepsItAlive() async throws {
         let queue = DispatchQueue(label: "test.stream.abort.held")
+        // Released by signals rather than created with a count: a semaphore freed below its
+        // starting value traps.
+        let step = DispatchSemaphore(value: 0)
+        step.signal()
+        step.signal()
         let counter = ProducedRowCounter()
         let producerFinished = ProducerCompletion()
 
         let stream = PluginRowStream.make { continuation, abort in
             queue.async {
                 for index in 0..<20 {
+                    step.wait()
                     if abort.isAborted { break }
                     counter.add(1)
                     continuation.yield(.rows([[.text("row_\(index)")]]))
-                    usleep(20_000)
                 }
                 continuation.finish()
                 producerFinished.signal()
@@ -114,13 +120,18 @@ struct PluginStreamAbortTests {
             if seen >= 2 { break }
         }
 
-        /// Waited on the producer rather than on the clock. It paces itself at 20ms a row, so a
-        /// fixed sleep asserts the runner's load as much as the stream's behaviour: CI saw 19 of 20.
-        /// An abort would leave the loop early, and the signal still arrives, so the count is what
-        /// says whether the stream stayed alive. The time limit is what fails a producer that hangs.
+        // The producer goes on only once the consumer has stopped, so an abort would end it early.
+        for _ in 2..<20 { step.signal() }
         await producerFinished.wait()
         #expect(counter.value == 20)
         _ = stream
+    }
+
+    /// A serial queue runs blocks in order, so one queued now runs after the producer has returned.
+    private static func drain(_ queue: DispatchQueue) async {
+        await withCheckedContinuation { continuation in
+            queue.async { continuation.resume() }
+        }
     }
 
     private func consumeFirstBatches(

@@ -20,23 +20,9 @@ struct CmdUpAtEndOfDocumentTests {
 
     // MARK: - Cmd+Up / Cmd+Down (destination .document)
 
-    @Test("Cmd+Up at end of single-line query goes to offset 0")
-    func cmdUpEndOfSingleLine() {
-        let textView = makeLaidOutTextView("SELECT * FROM users")
-        let length = (textView.string as NSString).length
-
-        let range = textView.selectionManager.rangeOfSelection(
-            from: length,
-            direction: .up,
-            destination: .document
-        )
-
-        #expect(range.location == 0)
-    }
-
-    @Test("Cmd+Up at end of multi-line query goes to offset 0")
-    func cmdUpEndOfMultiLine() {
-        let textView = makeLaidOutTextView("abc\ndef")
+    @Test("Cmd+Up at end of a single- or multi-line query goes to offset 0", arguments: ["SELECT * FROM users", "abc\ndef"])
+    func cmdUpEnd(_ query: String) {
+        let textView = makeLaidOutTextView(query)
         let length = (textView.string as NSString).length
 
         let range = textView.selectionManager.rangeOfSelection(

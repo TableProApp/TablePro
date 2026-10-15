@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSSHConfig
 
 /// Two forms of the same stage, and only one of them is drawn.
 ///

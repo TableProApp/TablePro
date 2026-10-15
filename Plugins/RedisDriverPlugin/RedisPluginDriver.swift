@@ -11,6 +11,7 @@ import Foundation
 import os
 import OSLog
 import TableProPluginKit
+import TableProRedisCore
 
 extension Array where Element == String? {
     var asCells: [PluginCellValue] { map(PluginCellValue.fromOptional) }

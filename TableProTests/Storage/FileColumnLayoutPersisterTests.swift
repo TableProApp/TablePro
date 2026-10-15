@@ -501,7 +501,8 @@ struct FileColumnLayoutPersisterTests {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("TableProTests-\(UUID().uuidString)", isDirectory: true)
         defer { cleanup(directory) }
-        let defaults = try #require(UserDefaults(suiteName: "colvis-\(UUID().uuidString)"))
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
         let tableKey = key("users", UUID())
         let legacyKey = "com.TablePro.columns.hiddenColumns." + tableKey.storageKey
         defaults.set(["email", "phone"], forKey: legacyKey)

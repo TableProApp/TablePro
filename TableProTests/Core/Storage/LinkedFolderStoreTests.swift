@@ -8,9 +8,11 @@ import Foundation
 import Testing
 
 struct LinkedFolderStoreTests {
+    private let pool = EphemeralDefaultsPool()
+
     @Test("LinkedFolderStorage adds and removes through the shared implementation")
     func linkedFolderRoundTrips() throws {
-        let defaults = try #require(UserDefaults(suiteName: "linkedfolder-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         let storage = LinkedFolderStorage(defaults: defaults)
         let folder = LinkedFolder(path: "/tmp/exports")
         storage.addFolder(folder)
@@ -21,7 +23,7 @@ struct LinkedFolderStoreTests {
 
     @Test("LinkedSQLFolderStorage updates through the shared implementation")
     func linkedSQLFolderUpdates() throws {
-        let defaults = try #require(UserDefaults(suiteName: "linkedsqlfolder-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         let storage = LinkedSQLFolderStorage(defaults: defaults)
         var folder = LinkedSQLFolder(path: "/tmp/queries")
         storage.addFolder(folder)

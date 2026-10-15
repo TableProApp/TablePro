@@ -1,38 +1,11 @@
-//
-//  SwitchSchemaTests.swift
-//  TableProTests
-//
-//  Tests for the "switch schema" flow: switching the active schema changes
-//  the connection's search_path but must not close or clear open tabs.
-//  Regression coverage for #1669: switching schemas wiped every tab,
-//  discarding unsaved SQL in query editor tabs.
-//
+// Switching the active schema changes the connection's search_path but must not close or clear
+// open tabs. A schema switch once wiped every tab, discarding unsaved SQL in query editor tabs.
 
 import Foundation
+import TableProTestSupport
 import Testing
 
 @testable import TablePro
-
-@MainActor
-private final class SchemaSwitchLatch {
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    private var isOpen = false
-
-    func open() {
-        guard !isOpen else { return }
-        isOpen = true
-        let pending = waiters
-        waiters = []
-        for waiter in pending {
-            waiter.resume()
-        }
-    }
-
-    func wait() async {
-        guard !isOpen else { return }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-}
 
 @MainActor
 struct SwitchSchemaTests {
@@ -57,13 +30,13 @@ struct SwitchSchemaTests {
         defer { coordinator.teardown() }
         coordinator.toolbarState.currentSchema = "public"
 
-        let acquired = SchemaSwitchLatch()
-        let release = SchemaSwitchLatch()
+        let acquired = AsyncGate()
+        let release = AsyncGate()
         /// PostgreSQL takes one turn per database, so the turn held is the browsed database's.
         let gateKey = DatabaseManager.shared.browsedGateKey(for: connection.id)
         let holder = Task { @MainActor in
             try await DatabaseManager.shared.sessionDriverGate.withExclusiveAccess(gateKey) {
-                acquired.open()
+                await acquired.open()
                 await release.wait()
             }
         }
@@ -72,9 +45,7 @@ struct SwitchSchemaTests {
         let switchTask = Task { @MainActor in
             await coordinator.switchSchema(to: "s2")
         }
-        for _ in 0..<10_000 where DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) < 1 {
-            await Task.yield()
-        }
+        _ = try? await waitUntil { DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) >= 1 }
         #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) == 1)
 
         DatabaseManager.shared.removeSession(for: connection.id)
@@ -82,7 +53,7 @@ struct SwitchSchemaTests {
         reopened.browseSchema = "reporting"
         DatabaseManager.shared.injectSession(reopened, for: connection.id)
 
-        release.open()
+        await release.open()
         try await holder.value
         await switchTask.value
 

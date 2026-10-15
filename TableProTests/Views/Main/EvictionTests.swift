@@ -8,22 +8,16 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+@testable import TableProUtilities
 import Testing
 
 @MainActor
 struct EvictionTests {
+    private let fixtures = CoordinatorFixtures()
+
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {
-        let tabManager = QueryTabManager()
-        let changeManager = DataChangeManager()
-        let toolbarState = ConnectionToolbarState()
-        let connection = TestFixtures.makeConnection()
-        let coordinator = MainContentCoordinator(
-            connection: connection,
-            tabManager: tabManager,
-            changeManager: changeManager,
-            toolbarState: toolbarState
-        )
-        return (coordinator, tabManager)
+        let fixture = fixtures.make()
+        return (fixture.coordinator, fixture.tabManager)
     }
 
     private func addLoadedTab(

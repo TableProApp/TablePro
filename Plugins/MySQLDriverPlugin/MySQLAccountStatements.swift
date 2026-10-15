@@ -2,7 +2,7 @@
 //  MySQLAccountStatements.swift
 //  MySQLDriverPlugin
 //
-//  The account grammar one server takes. Pure, so TableProTests compiles it.
+//  The account grammar one server takes.
 //
 
 import Foundation

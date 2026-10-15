@@ -225,18 +225,9 @@ struct CopyPasteTests {
         }
     }
 
-    @Test("A read-only view disables Paste, Cut and Delete but still allows Copy")
-    func readOnlyValidation() {
-        let result = validation(editable: false, selectionLength: 3, clipboardHasText: true)
-        #expect(result["paste"] == false)
-        #expect(result["cut"] == false)
-        #expect(result["delete"] == false)
-        #expect(result["copy"] == true)
-    }
-
-    @Test("A read-only view with no selection still disables everything but Copy")
-    func readOnlyEmptySelectionValidation() {
-        let result = validation(editable: false, selectionLength: 0, clipboardHasText: true)
+    @Test("A read-only view disables Paste, Cut and Delete but still allows Copy, with or without a selection", arguments: [3, 0])
+    func readOnlyValidation(_ selectionLength: Int) {
+        let result = validation(editable: false, selectionLength: selectionLength, clipboardHasText: true)
         #expect(result["paste"] == false)
         #expect(result["cut"] == false)
         #expect(result["delete"] == false)

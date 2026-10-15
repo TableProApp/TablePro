@@ -8,7 +8,6 @@ import SwiftUI
 @testable import TablePro
 import Testing
 
-@Suite("The tab strip track follows a theme's window color", .serialized)
 @MainActor
 struct EditorTabStripTrackThemeTests {
     private func resolved(_ color: Color, in name: NSAppearance.Name) throws -> NSColor {

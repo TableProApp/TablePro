@@ -9,6 +9,7 @@
 import AppKit
 import Combine
 import os
+import TableProAutocomplete
 import TableProEditorKit
 import TableProPluginKit
 import TableProSQLGrammar
@@ -26,8 +27,10 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     private static let languageServiceLengthLimit = EditorHighlighting.maxHighlightableCharacters
 
     weak var controller: TextViewController?
+    private let diagnosticsClock: any Clock<Duration>
     private lazy var diagnosticsController = QueryDiagnosticsController(
-        databaseType: databaseType
+        databaseType: databaseType,
+        clock: diagnosticsClock
     )
     private let statementRunController = StatementRunController()
     /// Shared schema provider for inline AI suggestions (avoids duplicate schema fetches)
@@ -61,6 +64,10 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     var pendingFocusClaim: Bool { focusClaimPending }
 
     var pendingCursorRestore: NSRange? { cursorRestorePending }
+
+    init(diagnosticsClock: any Clock<Duration> = ContinuousClock()) {
+        self.diagnosticsClock = diagnosticsClock
+    }
 
     func scheduleEditorFocusClaim() {
         focusClaimPending = true

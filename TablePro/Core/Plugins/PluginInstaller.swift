@@ -6,6 +6,7 @@
 import CryptoKit
 import Foundation
 import os
+import TableProUtilities
 
 actor PluginInstaller {
     static let shared = PluginInstaller()

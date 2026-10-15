@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 enum MCPArgumentDecoder {
     static func requireObject(_ args: JsonValue) throws -> [String: JsonValue] {

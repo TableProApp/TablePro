@@ -3,7 +3,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Reconnect credential recovery", .serialized)
 @MainActor
 struct ReconnectCredentialRecoveryTests {
     @Test("Authentication failures are detected from SQLSTATE")

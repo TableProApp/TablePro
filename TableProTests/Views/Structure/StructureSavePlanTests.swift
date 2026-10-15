@@ -1,37 +1,9 @@
-//
-//  StructureSavePlanTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import TableProPluginKit
 import Testing
 
-private class SavePlanBaseDriver {
-    var supportsTransactions: Bool { false }
-    var serverVersion: String? { nil }
-
-    func connect() async throws {}
-    func disconnect() {}
-
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
-    }
-}
-
-private final class SavePlanDriver: SavePlanBaseDriver, PluginDatabaseDriver, @unchecked Sendable {
+private final class SavePlanDriver: PluginDriverStub, @unchecked Sendable {
     private(set) var executedQueries: [String] = []
     var primaryKeyConstraints: [String: String] = [:]
     var rebuildPlan: PluginColumnReorderPlan?
@@ -39,12 +11,13 @@ private final class SavePlanDriver: SavePlanBaseDriver, PluginDatabaseDriver, @u
     private var schema: String?
 
     var supportsSchemas: Bool { hasSchemas }
+    var supportsTransactions: Bool { false }
+    var serverVersion: String? { nil }
     var currentSchema: String? { schema }
 
     init(currentSchema: String?, hasSchemas: Bool = true) {
         self.schema = currentSchema
         self.hasSchemas = hasSchemas
-        super.init()
     }
 
     func execute(query: String) async throws -> PluginQueryResult {

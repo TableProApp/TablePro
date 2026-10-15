@@ -9,7 +9,6 @@ import SwiftUI
 import TableProPluginKit
 import Testing
 
-@Suite("PluginSettingsSnapshot", .serialized)
 struct PluginSettingsSnapshotTests {
     private struct TestOptions: Codable, Equatable {
         var flag = false

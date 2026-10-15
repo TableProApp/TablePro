@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public struct ListRecentTabsTool: MCPToolImplementation {
     public static let name = "list_recent_tabs"

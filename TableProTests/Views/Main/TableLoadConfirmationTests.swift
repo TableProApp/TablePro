@@ -1,11 +1,7 @@
-//
-//  TableLoadConfirmationTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 /// Alert (Full) and Safe Mode (Full) confirm every table load, retargets included, because a
@@ -66,9 +62,8 @@ struct TableLoadConfirmationTests {
     /// second load reaching the gate settles instead of waiting forever.
     private actor HeldGate: ExecutionGate {
         private let firstAnswer: OperationDecision
-        private var held: CheckedContinuation<Void, Never>?
-        private var askedWaiters: [CheckedContinuation<Void, Never>] = []
-        private var isReleased = false
+        private let asked = AsyncGate()
+        private let released = AsyncGate()
         private var requestCount = 0
 
         init(firstAnswer: OperationDecision) {
@@ -78,23 +73,17 @@ struct TableLoadConfirmationTests {
         func authorize(_ request: OperationRequest) async -> OperationDecision {
             requestCount += 1
             guard requestCount == 1 else { return .denied(reason: "Later load") }
-            askedWaiters.forEach { $0.resume() }
-            askedWaiters = []
-            if !isReleased {
-                await withCheckedContinuation { held = $0 }
-            }
+            await asked.open()
+            await released.wait()
             return firstAnswer
         }
 
         func untilAsked() async {
-            guard requestCount == 0 else { return }
-            await withCheckedContinuation { askedWaiters.append($0) }
+            await asked.wait()
         }
 
-        func release() {
-            isReleased = true
-            held?.resume()
-            held = nil
+        func release() async {
+            await released.open()
         }
     }
 

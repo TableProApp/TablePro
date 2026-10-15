@@ -1,17 +1,15 @@
-//
-//  QueryTabManagerRecencyTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import Testing
 
 @MainActor
 struct QueryTabManagerRecencyTests {
-    /// A selection is recorded once the main queue turn it happened in has finished.
+    /// A selection is recorded by a block queued on the main queue, and the main queue runs blocks
+    /// in the order they were queued, so a block queued now runs after the record.
     private func settle() async {
-        try? await Task.sleep(for: .milliseconds(20))
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
     }
 
     private func makeManager(tabCount: Int) async -> QueryTabManager {

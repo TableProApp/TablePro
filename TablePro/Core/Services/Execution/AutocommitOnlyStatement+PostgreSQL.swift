@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProSQLGrammar
+import TableProUtilities
 
 internal extension AutocommitOnlyStatement {
     /// PostgreSQL 17.11, each statement run after `BEGIN`. Redshift and CockroachDB take the

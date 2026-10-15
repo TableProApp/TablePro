@@ -4,7 +4,10 @@ The macOS app and the iOS app, with everything they build from. Every profile ha
 
 ## Covers
 
-A report from macOS or iOS. The code is the repository root: `TablePro/`, `Plugins/`, `Packages/`, `Native/`, `TableProMobile/`, the tests in `TableProTests/` and `TableProUITests/`, and the build scripts under `scripts/`. A fix lands in the app, a bundled plugin, a registry-only plugin (name its target) or `TableProMobile`.
+- A report from macOS or iOS.
+- Code: `TablePro/`, `Plugins/`, `Packages/`, `Native/`, `TableProMobile/` and the build scripts in `scripts/`.
+- Tests: `TableProTests/`, `TableProUITests/`, `Plugins/*Tests/`, `Packages/*/Tests/` and `TableProMobile/TableProMobileTests/`. The plans are in `TestPlans/`.
+- A fix lands in the app, a bundled plugin, a registry-only plugin (name its target), a package or `TableProMobile/`.
 
 ## Base
 
@@ -13,39 +16,43 @@ A report from macOS or iOS. The code is the repository root: `TablePro/`, `Plugi
 
 ## Done
 
-`AGENTS.md` and the `.claude/rules/` files whose `paths:` match what you edit. The per-change checklist is its "Every change" section. Codex loads `AGENTS.md` and not the rules, so under Codex read the matching rules yourself.
+- The tree's `AGENTS.md` and every `.claude/rules/` file its Area rules table matches to what you edit (`SKILL.md`, Phase 2, Rules read). The per-change checklist is its Every change section.
+- Before naming a test in `plan.md`, read `.claude/rules/tests.md` (Where a test goes): a path rule loads only once a matching file is open. Add a UI flow only when `.claude/rules/ui-tests.md` (What earns a UI flow) says so.
 
 ## Native standard
 
-The AppKit or SwiftUI mechanism Apple documents, and the Human Interface Guidelines rule behind it. The version floor is the deployment target, macOS 13: an API introduced later needs an `if #available` branch, and the plan names the fallback.
-
-Sources, the API ground truth and how to build a probe: `references/research-apple.md`.
+- The AppKit or SwiftUI mechanism Apple documents, and the Human Interface Guidelines rule behind it.
+- The version floor is the deployment target: macOS 13 (`project.yml`) and iOS 18 (`TableProMobile/project.yml`). An API introduced later needs an `if #available` branch, and the plan names the fallback.
+- Sources, the API ground truth and how to build a probe: `references/research-apple.md`.
 
 ## Verify
 
-`verify.sh` runs these steps on a Mac without `--platform`:
+`verify.sh` runs these steps on a Mac without `--platform`. `build`, `test` and `lint` take the arguments in `AGENTS.md`, Commands.
 
-| Step | When |
-| --- | --- |
-| `generate` | a new tree; a new, moved or deleted file; `project.yml` |
-| `build`, `test <SuiteType>...` | always |
-| `uitest <SuiteType>...` | a user flow changed |
-| `package <Package> [filter]` | `Packages/` changed |
-| `ios <SuiteType>...` | `TableProMobile/` or a file it shares changed |
-| `plugins` | `Plugins/` changed |
-| `abi <merge-base>` | `TableProPluginKit` changed (commit first) |
-| `lint <file>...` | every changed Swift file |
-| `l10n` | strings or plugin messages changed |
-| `docs [<docs checkout>]` | a paired docs change, or a change to a menu, shortcut, driver list or docs.tablepro.app link |
+| Step | Arguments | When |
+| --- | --- | --- |
+| `generate` | none | a new tree; a new, moved or deleted file; a `project.yml` change; first after a merge from the base. Runs `scripts/generate-project.sh` for both projects |
+| `build` | AGENTS | always |
+| `test` | AGENTS | always, naming the suites that own the types you changed |
+| `uitest` | `[Test...]`; none runs the whole UI plan | an end-to-end flow changed or was added |
+| `package` | `<Package> [regex]` | `Packages/` changed and you want the whole package; `test <Suite>` already routes a package suite |
+| `ios` | `<Suite> [Suite...]`, at least one | `TableProMobile/` or a file it compiles changed |
+| `plugins` | none | anything under `Plugins/` changed. Builds `AllPlugins`, building the HANA helper first when it is missing and Go is installed |
+| `abi` | `<merge-base>` | PluginKit changed: after the commit, before the push (`.claude/rules/plugin-system.md`, ABI) |
+| `lint` | AGENTS | every changed Swift file |
+| `l10n` | none | strings, or plugin or package messages, changed. Passes only when every plugin and package string is in both the macOS and iOS catalogs, and prints the `--add` command for each target that failed |
+| `docs` | `[docs-checkout]`, default `tablepro-docs` beside the main checkout | AGENTS Every change 4 applies, or a menu, shortcut, driver list or docs.tablepro.app link changed |
 
-- The first step after a merge from the base is `generate`.
-- Pick suites by the types you changed: `grep -rl <TypeName> TableProTests`.
+- `agent-docs` runs on every platform; AGENTS Every change 5 says when.
+- Pick tests by the types you changed, not the test files you edited: `verify.sh` finds a type name in every test target of the tree.
 - Extra review pass: the ABI pass when PluginKit changed.
-- Traps and remedies: `references/verification-apple.md`.
+- Test names, verdicts, the remedies `verify.sh` does not print, and red CI checks: `references/verification-apple.md`.
 
 ## Screen
 
-Launch a Debug build with `TABLEPRO_UI_TEST_SANDBOX` set to a scratch directory, so it never touches real connections. Drive it with `osascript` and capture with `screencapture`; Screen Recording must be granted to whatever runs them. A registry-only plugin cannot load in a sandboxed Debug build; say so when that blocks a shot. Reuse the shots in `../tablepro-docs/images/` when a page shows that surface.
+- Launch a Debug build with `TABLEPRO_UI_TEST_SANDBOX` set to a scratch directory, so it never touches the real connections, defaults or keychain. Drive it with `osascript` and capture with `screencapture`; Screen Recording must be granted to whatever runs them.
+- A registry-only plugin from the `plugins` step is signed ad hoc, and the plugin signature check refuses it. The app then installs the published plugin in its place, so the shot shows the old behavior. Launch the Debug build with `TABLEPRO_ALLOW_UNSIGNED_PLUGINS=1`, or re-sign the copy in `<sandbox>/TablePro/Plugins/` with the identity `codesign -dvv` prints for the app.
+- Reuse the shots in `../tablepro-docs/images/` when a docs page shows that surface.
 
 ## Ship
 

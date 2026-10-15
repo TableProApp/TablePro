@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProRedisCore
 
 /// The commands the sidebar's key tree sends. Both name what they read explicitly, the database
 /// the tree lists and the key a row stands for, so neither depends on where the session was left.

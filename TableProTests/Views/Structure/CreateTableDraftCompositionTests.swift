@@ -1,47 +1,21 @@
-//
-//  CreateTableDraftCompositionTests.swift
-//  TableProTests
-//
-
 import Combine
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
-private class CompositionBaseDriver {
-    var supportsSchemas: Bool { true }
-    var supportsTransactions: Bool { false }
-    var serverVersion: String? { nil }
-
-    func connect() async throws {}
-    func disconnect() {}
-
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
-    }
-}
-
-private final class CompositionDriver: CompositionBaseDriver, PluginDatabaseDriver, @unchecked Sendable {
+private final class CompositionDriver: PluginDriverStub, @unchecked Sendable {
     private(set) var createTableRequests = 0
     private var schema: String?
 
+    var supportsSchemas: Bool { true }
+    var supportsTransactions: Bool { false }
+    var serverVersion: String? { nil }
     var currentSchema: String? { schema }
 
     init(currentSchema: String?) {
         self.schema = currentSchema
-        super.init()
     }
 
     func execute(query: String) async throws -> PluginQueryResult {
@@ -62,27 +36,6 @@ private final class CompositionDriver: CompositionBaseDriver, PluginDatabaseDriv
 
     func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
         "COMMENT ON \(objectType) \"\(schema ?? "")\".\"\(name)\" IS '\(comment ?? "")'"
-    }
-}
-
-@MainActor
-private final class CompositionLatch {
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    private var isOpen = false
-
-    func open() {
-        guard !isOpen else { return }
-        isOpen = true
-        let pending = waiters
-        waiters = []
-        for waiter in pending {
-            waiter.resume()
-        }
-    }
-
-    func wait() async {
-        guard !isOpen else { return }
-        await withCheckedContinuation { waiters.append($0) }
     }
 }
 
@@ -152,11 +105,11 @@ struct CreateTableDraftCompositionTests {
         await draft.recompose(databaseType: .pglite, scope: scope)
         #expect(draft.composed?.tableName == "sales")
 
-        let acquired = CompositionLatch()
-        let release = CompositionLatch()
+        let acquired = AsyncGate()
+        let release = AsyncGate()
         let holder = Task { @MainActor in
             try await DatabaseManager.shared.sessionDriverGate.withExclusiveAccess(connection.id) {
-                acquired.open()
+                await acquired.open()
                 await release.wait()
             }
         }
@@ -166,14 +119,12 @@ struct CreateTableDraftCompositionTests {
         let recomposition = Task { @MainActor in
             await draft.recompose(databaseType: .pglite, scope: scope)
         }
-        for _ in 0 ..< 5 {
-            await Task.yield()
-        }
+        _ = try? await waitUntil { DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) >= 1 }
 
         #expect(draft.composed?.tableName == "sales")
         #expect(draft.composed?.statements == ["CREATE TABLE \"reporting\".\"sales\" (\"id\" INT)"])
 
-        release.open()
+        await release.open()
         try await holder.value
         await recomposition.value
 

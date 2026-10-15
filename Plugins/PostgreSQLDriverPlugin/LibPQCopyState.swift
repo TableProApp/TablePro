@@ -5,6 +5,7 @@
 
 import CLibPQ
 import Foundation
+import TableProPostgreSQLCore
 
 nonisolated enum LibPQCopyState {
     static let unsentInputReason = "no COPY data was sent"

@@ -5,24 +5,8 @@
 
 import Foundation
 @testable import TablePro
+import TableProMCP
 import Testing
-
-private final class FakeKeychain: KeychainStoring, @unchecked Sendable {
-    private var values: [String: String] = [:]
-
-    func writeString(_ value: String, forKey key: String) -> Bool {
-        values[key] = value
-        return true
-    }
-
-    func readStringResult(forKey key: String) -> KeychainStringResult {
-        values[key].map { .found($0) } ?? .notFound
-    }
-
-    func delete(forKey key: String) {
-        values.removeValue(forKey: key)
-    }
-}
 
 private struct StubChatTool: ChatTool {
     let name: String
@@ -37,11 +21,14 @@ private struct StubChatTool: ChatTool {
 
 @MainActor
 struct MCPRemoteToolScopeTests {
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
     private func makeStore() -> MCPServerStore {
-        let suite = "MCPRemoteToolScopeTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite) ?? .standard
-        defaults.removePersistentDomain(forName: suite)
-        return MCPServerStore(defaults: defaults, keychain: FakeKeychain())
+        MCPServerStore(defaults: suite.defaults, keychain: InMemoryKeychain())
     }
 
     private func endpoint() -> URL {

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMCP
 
 /// What a session proposed, in the order it proposed it.
 internal struct ProposedStatement: Identifiable, Equatable {

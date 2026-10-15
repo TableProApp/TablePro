@@ -1,13 +1,9 @@
-//
-//  CloudflareTunnelManagerTests.swift
-//  TableProTests
-//
-
 import Darwin
 import Foundation
 import Testing
 
 @testable import TablePro
+import TableProTestSupport
 
 /// Fake cloudflared process. Depending on `behavior` it either opens a real
 /// loopback listener (so the manager's readiness probe succeeds), prints a
@@ -145,18 +141,6 @@ struct CloudflareTunnelManagerTests {
         CloudflareConfiguration(accessHostname: hostname, localPort: localPort, binaryPath: "/bin/echo")
     }
 
-    private func waitUntil(
-        timeout: Duration = .seconds(2),
-        _ condition: @escaping @Sendable () -> Bool
-    ) async -> Bool {
-        let deadline = ContinuousClock.now.advanced(by: timeout)
-        while ContinuousClock.now < deadline {
-            if condition() { return true }
-            try? await Task.sleep(for: .milliseconds(5))
-        }
-        return condition()
-    }
-
     @Test("createTunnel returns the allocated port once cloudflared is listening")
     func readinessSucceeds() async throws {
         let fake = FakeCloudflaredRunner(behavior: .ready)
@@ -215,7 +199,7 @@ struct CloudflareTunnelManagerTests {
             fake.stop()
         }
 
-        try #require(await waitUntil { fake.startCallCount > 0 })
+        try await waitUntil { fake.startCallCount > 0 }
         let result = try #require(await BoundedCall.result(within: .seconds(2)) {
             await creation.result
         })

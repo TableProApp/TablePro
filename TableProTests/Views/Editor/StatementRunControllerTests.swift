@@ -218,4 +218,25 @@ struct StatementRunControllerTests {
 
         #expect(!controller.statementRunControlsEnabled)
     }
+
+    // MARK: - Result jumps
+
+    @Test("Selecting a result moves the caret to its statement and leaves the query as it was")
+    func resultJumpMovesOnlyTheCaret() throws {
+        let controller = makeController(text: threeStatements)
+        let coordinator = SQLEditorCoordinator()
+        coordinator.controller = controller
+        let statements = SQLStatementScanner.executableStatements(in: threeStatements, grammar: .ansi)
+        try #require(statements.count == 3)
+
+        for index in [2, 0, 0] {
+            #expect(coordinator.jumpToStatement(StatementAnchor(statements[index])), "result \(index)")
+            #expect(
+                controller.textView.selectionManager.textSelections.first?.range
+                    == NSRange(location: statements[index].range.location, length: 0),
+                "result \(index)"
+            )
+            #expect(controller.textView.string == threeStatements, "result \(index)")
+        }
+    }
 }

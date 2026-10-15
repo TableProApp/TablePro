@@ -223,15 +223,9 @@ struct AccessibilityTests {
         #expect(range.length == 7)
     }
 
-    @Test
-    func accessibilityRangeForInvalidLine() {
-        let range = textView.accessibilityRange(forLine: 100)
-        #expect(range == .zero)
-    }
-
-    @Test
-    func accessibilityRangeForNegativeLine() {
-        let range = textView.accessibilityRange(forLine: -1)
+    @Test(arguments: [100, -1])
+    func accessibilityRangeForLineOutOfRange(_ line: Int) {
+        let range = textView.accessibilityRange(forLine: line)
         #expect(range == .zero)
     }
 

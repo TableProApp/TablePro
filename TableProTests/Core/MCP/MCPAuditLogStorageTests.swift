@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import TableProMCP
 import TableProPluginKit
 import Testing
 

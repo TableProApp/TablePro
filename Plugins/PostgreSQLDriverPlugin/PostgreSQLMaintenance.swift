@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 /// PostgreSQL's maintenance operations and the statements they produce.
 ///

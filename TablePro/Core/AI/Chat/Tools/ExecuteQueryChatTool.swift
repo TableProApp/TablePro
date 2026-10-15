@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMCP
 
 struct ExecuteQueryChatTool: ChatTool {
     let name = "execute_query"

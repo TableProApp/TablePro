@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMCP
 
 struct ListConnectionsChatTool: ChatTool {
     let name = "list_connections"

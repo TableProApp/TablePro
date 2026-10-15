@@ -7,6 +7,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProUtilities
 
 enum ExplainResultRouter {
     struct RoutedPlan {

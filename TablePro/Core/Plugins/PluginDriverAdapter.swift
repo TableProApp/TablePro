@@ -8,6 +8,7 @@ import os
 import TableProConnectionLibrary
 import TableProNumberFormatting
 import TableProPluginKit
+import TableProUtilities
 
 final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseReporting {
     private struct ConnectAttempt {

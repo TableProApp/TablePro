@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProSQLGrammar
+import TableProUtilities
 
 internal extension AutocommitOnlyStatement {
     /// SQLite 3.54.0, each statement run after `BEGIN`. `VACUUM` and a journal-mode or safety-level

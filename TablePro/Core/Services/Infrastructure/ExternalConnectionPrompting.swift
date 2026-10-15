@@ -5,6 +5,7 @@
 
 import AppKit
 import Foundation
+import TableProSSHConfig
 
 internal enum ExternalConnectionDecision: Sendable {
     case connect

@@ -7,6 +7,7 @@ import Foundation
 import Testing
 
 @testable import TablePro
+import TableProSSHConfig
 
 struct ConnectionTunnelKindTests {
     private func connection(

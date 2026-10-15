@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -146,7 +147,6 @@ struct PreConnectScriptConsentTests {
 
 /// Every route that can start a connect, driven against a real `DatabaseManager` and a fake driver,
 /// with a script that leaves a file behind if it ever runs.
-@Suite("Pre-connect script consent at every entry point", .serialized)
 @MainActor
 struct PreConnectScriptEntryPointTests {
     private struct Fixture {
@@ -166,9 +166,8 @@ struct PreConnectScriptEntryPointTests {
             .appendingPathComponent("tablepro-preconnect-consent-\(unique).json")
         let marker = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-preconnect-ran-\(unique)")
-        let suiteName = "com.TablePro.tests.PreConnectConsent.\(unique)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        let storage = ConnectionStorage(fileURL: fileURL, userDefaults: defaults, keychain: InMemoryKeychain())
+        let suite = try EphemeralDefaults()
+        let storage = ConnectionStorage(fileURL: fileURL, userDefaults: suite.defaults, keychain: InMemoryKeychain())
         let spy = ScriptQuestionSpy(answer: answer)
         let manager = DatabaseManager(
             connectionStorage: storage,
@@ -190,7 +189,7 @@ struct PreConnectScriptEntryPointTests {
                 manager.driver(for: connectionId)?.disconnect()
                 manager.removeSession(for: connectionId)
                 FakeMSSQLPlugin.clearConfigurations(for: connectionId)
-                defaults.removePersistentDomain(forName: suiteName)
+                suite.defaults.removePersistentDomain(forName: suite.suiteName)
                 try? FileManager.default.removeItem(at: fileURL)
                 try? FileManager.default.removeItem(at: marker)
             }

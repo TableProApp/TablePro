@@ -1,12 +1,12 @@
 import AppKit
 @testable import TableProEditorKit
+import TableProTestSupport
 import TableProTextEngine
 import Testing
 
 /// Replace and All in the find panel, driven through a real editor so the edit's own text change runs the panel's
 /// search the way it does in the app. The expected states are the native find bar's (`NSTextFinder` replaceAndFind and
 /// replaceAll), measured on a stock `NSTextView`.
-@Suite("Find panel replace", .serialized)
 @MainActor
 struct FindPanelReplaceTests {
     private func editor(
@@ -301,14 +301,14 @@ struct FindPanelReplaceTests {
     }
 
     @Test("Replacing the document drops the matches it held")
-    func replacedDocumentIsSearchedAgain() throws {
+    func replacedDocumentIsSearchedAgain() async throws {
         let (controller, model) = try editor("foo bar foo", find: "foo", replaceWith: "X")
 
         controller.setText("SELECT * FROM users")
         model.replaceAll()
         #expect(controller.textView.string == "SELECT * FROM users")
 
-        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        try await waitUntil { model.findMatches.isEmpty }
         #expect(model.findMatches.isEmpty)
         #expect(model.currentFindMatchIndex == nil)
     }

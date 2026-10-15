@@ -8,7 +8,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Inspector toolbar placement", .serialized)
 @MainActor
 struct InspectorToolbarPlacementTests {
     private static let pinnedWindowSize = CGSize(width: 1_512, height: 861)

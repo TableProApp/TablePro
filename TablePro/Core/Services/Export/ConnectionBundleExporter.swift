@@ -6,6 +6,7 @@
 import Foundation
 import os
 import TableProImport
+import TableProSSHConfig
 
 internal enum ConnectionBundleExportError: LocalizedError, Equatable {
     case savedQueriesUnreadable

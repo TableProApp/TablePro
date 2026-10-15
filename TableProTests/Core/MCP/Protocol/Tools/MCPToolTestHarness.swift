@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProMCP
 
 actor ToolTestResponderSink: MCPResponderSink {
     private(set) var jsonPayloads: [Data] = []

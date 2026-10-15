@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProUtilities
 
 /// What a tab backed by a `.sql` file on disk compares itself against.
 ///

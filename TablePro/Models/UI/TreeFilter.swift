@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProUtilities
 
 internal enum TreeNodeLimits {
     static let maxNodes = 5_000

@@ -8,7 +8,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Plugin lazy activation re-verification", .serialized)
 @MainActor
 struct PluginLazyActivationVerificationTests {
     @Test("user-installed lazy bundle that fails the signature re-check is rejected, never loaded")
@@ -33,9 +32,8 @@ struct PluginLazyActivationVerificationTests {
         let infoData = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
         try infoData.write(to: contentsURL.appendingPathComponent("Info.plist"))
 
-        let suiteName = "LazyActivationTest.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
 
         let manager = PluginManager(userDefaults: defaults, builtInPluginsURL: nil, userPluginsDir: userPluginsDir)
         let bundle = try #require(Bundle(url: bundleURL))
@@ -93,9 +91,8 @@ struct PluginLazyActivationVerificationTests {
         try infoData.write(to: contentsURL.appendingPathComponent("Info.plist"))
         try Data("not a mach-o binary".utf8).write(to: macosURL.appendingPathComponent("Broken"))
 
-        let suiteName = "LazyLoadFailTest.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
 
         let manager = PluginManager(userDefaults: defaults, builtInPluginsURL: nil, userPluginsDir: userPluginsDir)
         let bundle = try #require(Bundle(url: bundleURL))

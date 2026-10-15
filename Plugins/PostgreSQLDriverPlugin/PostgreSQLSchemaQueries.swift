@@ -8,6 +8,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 enum PostgreSQLSchemaProbe: Equatable {
     case schema(String)

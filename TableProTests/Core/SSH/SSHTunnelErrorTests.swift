@@ -9,6 +9,7 @@ import Foundation
 import os
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 struct SSHTunnelErrorTests {

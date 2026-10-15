@@ -5,6 +5,7 @@
 
 import SwiftUI
 import TableProPluginKit
+import TableProUtilities
 
 /// The rows a timing popover shows, resolved once so the view and its tests read the same list.
 ///

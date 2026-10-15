@@ -10,15 +10,17 @@ import Foundation
 @testable import TablePro
 import TableProPluginKit
 import TableProSyncTransport
+import TableProTestSupport
 import Testing
 
 @MainActor
 struct SafeModeMigrationTests {
+    private let pool = EphemeralDefaultsPool()
     private let storage: ConnectionStorage
     private let defaults: UserDefaults
     private let tracker: SyncChangeTracker
 
-    init() {
+    init() throws {
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
@@ -27,12 +29,8 @@ struct SafeModeMigrationTests {
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        let suiteName = "com.TablePro.tests.ConnectionStorage.\(unique)"
-        guard let defaults = UserDefaults(suiteName: suiteName),
-              let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.Sync.\(unique)")
-        else {
-            fatalError("Failed to create isolated test user defaults")
-        }
+        let defaults = try pool.make().defaults
+        let syncDefaults = try pool.make().defaults
         self.defaults = defaults
         let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
         self.tracker = SyncChangeTracker(metadataStorage: metadata)
@@ -451,7 +449,7 @@ struct SafeModeMigrationTests {
     }
 
     @Test("A connectionUpdated event reconciles the open session")
-    func connectionUpdatedEventReconcilesLiveSession() async {
+    func connectionUpdatedEventReconcilesLiveSession() async throws {
         let id = UUID()
         let connection = makeConnection(id: id, name: "Event Driven", safeModeLevel: .readOnly)
         storage.addConnection(connection)
@@ -466,10 +464,7 @@ struct SafeModeMigrationTests {
 
         AppEvents.shared.connectionUpdated.send(id)
 
-        let deadline = Date().addingTimeInterval(2)
-        while Date() < deadline, manager.session(for: id)?.safeModeLevel != .silent {
-            try? await Task.sleep(nanoseconds: 5_000_000)
-        }
+        try await waitUntil { manager.session(for: id)?.safeModeLevel == .silent }
 
         #expect(manager.session(for: id)?.safeModeLevel == .silent)
     }

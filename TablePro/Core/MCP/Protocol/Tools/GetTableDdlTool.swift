@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public struct GetTableDdlTool: MCPToolImplementation {
     public static let name = "get_table_ddl"

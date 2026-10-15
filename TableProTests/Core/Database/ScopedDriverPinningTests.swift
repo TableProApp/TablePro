@@ -99,7 +99,7 @@ struct ScopedDriverPinningTests {
 }
 
 /// Records the order of the two calls that decide where a statement lands.
-private final class CallRecordingPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class CallRecordingPluginDriver: PluginDriverStub, @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [String] = []
     private var database: String?
@@ -136,21 +136,5 @@ private final class CallRecordingPluginDriver: PluginDatabaseDriver, @unchecked 
     func execute(query: String) async throws -> PluginQueryResult {
         record("execute:\(query)")
         return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
-
-    func connect() async throws {}
-    func disconnect() {}
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 }

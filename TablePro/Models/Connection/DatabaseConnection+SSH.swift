@@ -5,6 +5,7 @@
 
 import Foundation
 
+import TableProSSHConfig
 import TableProSSHTransport
 
 extension DatabaseConnection {

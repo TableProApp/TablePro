@@ -7,6 +7,7 @@ import Combine
 import CoreServices
 import Foundation
 import os
+import TableProUtilities
 
 @MainActor
 internal final class SQLFolderWatcher: ObservableObject {

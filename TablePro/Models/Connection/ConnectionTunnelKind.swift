@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSSHConfig
 
 enum ConnectionTunnelKind: String, CaseIterable, Sendable {
     case ssh

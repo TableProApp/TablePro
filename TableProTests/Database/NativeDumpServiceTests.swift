@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSSHConfig
 import Testing
 
 @testable import TablePro
@@ -339,7 +340,6 @@ private final class FakeDumpRunner: NativeDumpRunner, @unchecked Sendable {
     }
 }
 
-@Suite("NativeDumpService state machine", .serialized)
 @MainActor
 struct NativeDumpServiceStateMachineTests {
     private func fakeJob(exitPolicy: NativeDumpExitPolicy = .zeroExitOnly) -> NativeDumpJob {

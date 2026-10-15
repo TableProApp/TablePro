@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import os
+import TableProMCP
 
 /// The outside MCP servers this Mac knows about, and their bearer tokens.
 ///

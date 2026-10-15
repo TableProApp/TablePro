@@ -14,10 +14,10 @@
 #      again, and it is registered on that connection only.
 #   3. No sqlite3_ symbol is exported, so a plugin bundle never offers a second sqlite3_open to the
 #      process that also links the system library.
-#   4. TablePro/Core/Utilities/SQL/SQLiteBuiltinNames.swift names exactly the functions, table-valued
-#      functions and keywords this SQLite provides. A statement from outside the app may call only
-#      those on a connection that loads extensions, so a stale list either refuses a built-in or
-#      lets an extension's function through.
+#   4. Packages/TableProMacCore/Sources/TableProUtilities/SQL/SQLiteBuiltinNames.swift names exactly the
+#      functions, table-valued functions and keywords this SQLite provides. A statement from outside
+#      the app may call only those on a connection that loads extensions, so a stale list either
+#      refuses a built-in or lets an extension's function through.
 #
 # Run after bumping SQLITE_VERSION or editing the options in build-sqlite.sh, and before
 # publishing a rebuilt libsqlite3_vendored.
@@ -238,7 +238,7 @@ swift_set() {
     printf '}\n'
 } > "$WORK_DIR/SQLiteBuiltinNames.swift"
 
-BUILTIN_NAMES="$ROOT/TablePro/Core/Utilities/SQL/SQLiteBuiltinNames.swift"
+BUILTIN_NAMES="$ROOT/Packages/TableProMacCore/Sources/TableProUtilities/SQL/SQLiteBuiltinNames.swift"
 if [ "${1:-}" = "--write-builtin-names" ]; then
     cp "$WORK_DIR/SQLiteBuiltinNames.swift" "$BUILTIN_NAMES"
     printf '%-64s written\n' "SQLiteBuiltinNames.swift"

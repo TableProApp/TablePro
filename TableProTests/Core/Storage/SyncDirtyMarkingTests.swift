@@ -7,6 +7,7 @@ import Testing
 @MainActor
 struct SyncDirtyMarkingTests {
     private let unique = UUID().uuidString
+    private let pool = EphemeralDefaultsPool()
     private let metadata: SyncMetadataStorage
     private let tracker: SyncChangeTracker
     private let keychain = InMemoryKeychain()
@@ -18,13 +19,11 @@ struct SyncDirtyMarkingTests {
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("dirty-marking-\(unique)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        metadata = SyncMetadataStorage(
-            userDefaults: try #require(UserDefaults(suiteName: "com.TablePro.tests.DirtyMarking.sync.\(unique)"))
-        )
+        metadata = SyncMetadataStorage(userDefaults: try pool.make().defaults)
         tracker = SyncChangeTracker(metadataStorage: metadata)
         connections = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),
-            userDefaults: try #require(UserDefaults(suiteName: "com.TablePro.tests.DirtyMarking.conn.\(unique)")),
+            userDefaults: try pool.make().defaults,
             syncTracker: tracker,
             keychain: keychain,
             integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
@@ -32,7 +31,7 @@ struct SyncDirtyMarkingTests {
     }
 
     private func defaults(_ name: String) throws -> UserDefaults {
-        try #require(UserDefaults(suiteName: "com.TablePro.tests.DirtyMarking.\(name).\(unique)"))
+        try pool.make(name).defaults
     }
 
     @Test("Saving the tag library marks the tag that changed and no other")

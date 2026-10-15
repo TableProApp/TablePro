@@ -27,8 +27,13 @@ internal final class SettingsWindowController: NSWindowController {
         contentViewController as? SettingsPaneTabViewController
     }
 
+    // A defaulted parameter would let `SettingsWindowController()` resolve to the inherited `init()`, which builds no window.
     internal convenience init() {
-        let panes = SettingsPaneTabViewController(nibName: nil, bundle: nil)
+        self.init(registryClient: .shared)
+    }
+
+    internal convenience init(registryClient: RegistryClient) {
+        let panes = SettingsPaneTabViewController(registryClient: registryClient)
 
         /// `NSWindow(contentViewController:)` binds the window title to the content view
         /// controller's own title, so the selected pane publishes the title and nothing writes
@@ -61,6 +66,17 @@ internal final class SettingsPaneTabViewController: NSTabViewController {
     internal static let paneOrder: [SettingsPane] = SettingsPane.allCases
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SettingsWindow")
+
+    private let registryClient: RegistryClient
+
+    internal init(registryClient: RegistryClient = .shared) {
+        self.registryClient = registryClient
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    internal required init?(coder: NSCoder) {
+        fatalError("SettingsPaneTabViewController does not support NSCoder init")
+    }
 
     private var persistedPane: SettingsPane {
         let stored = AppStorageEnvironment.shared.defaults.string(forKey: PreferenceKeys.selectedSettingsPane.name)
@@ -104,7 +120,7 @@ internal final class SettingsPaneTabViewController: NSTabViewController {
     }
 
     private func makeTabViewItem(for pane: SettingsPane) -> NSTabViewItem {
-        let content = SettingsPaneContent(pane: pane)
+        let content = SettingsPaneContent(pane: pane, registryClient: registryClient)
             .frame(
                 minWidth: Self.paneSize.width,
                 maxWidth: .infinity,
@@ -131,9 +147,11 @@ private struct SettingsPaneContent: View {
     @ObservedObject private var settingsManager = AppSettingsManager.shared
 
     private let pane: SettingsPane
+    private let registryClient: RegistryClient
 
-    fileprivate init(pane: SettingsPane) {
+    fileprivate init(pane: SettingsPane, registryClient: RegistryClient) {
         self.pane = pane
+        self.registryClient = registryClient
     }
 
     fileprivate var body: some View {
@@ -170,7 +188,7 @@ private struct SettingsPaneContent: View {
         case .mcp:
             MCPSettingsView(settings: $settingsManager.mcp)
         case .plugins:
-            InstalledPluginsView()
+            InstalledPluginsView(registryClient: registryClient)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .sync:
             SyncSettingsView()

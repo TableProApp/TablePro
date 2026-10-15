@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProUtilities
 
 /// Renders one raw cell value under one display format.
 ///

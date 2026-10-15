@@ -17,10 +17,9 @@ import Testing
 @MainActor
 struct SwitchDatabaseReconnectFailureTests {
     // No driver plugin and no plugin load in the test host, so the reconnect fails on its first step, with no network.
-    private static let typeId = "ReconnectSwitchFake"
-
-    private func registerTypeIfNeeded() {
-        guard PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: Self.typeId) == nil else { return }
+    /// A type of its own per case, so one case's cleanup never unregisters another's.
+    private func registerType() -> String {
+        let typeId = "ReconnectSwitchFake-\(UUID().uuidString)"
         var capabilities = PluginMetadataSnapshot.CapabilityFlags.defaults
         capabilities = PluginMetadataSnapshot.CapabilityFlags(
             supportsSchemaSwitching: true,
@@ -39,7 +38,7 @@ struct SwitchDatabaseReconnectFailureTests {
         /// than opening a connection of its own for the database.
         capabilities.supportsConnectionPooling = false
         let snapshot = PluginMetadataSnapshot(
-            displayName: Self.typeId, iconName: "cylinder", defaultPort: 1_234,
+            displayName: typeId, iconName: "cylinder", defaultPort: 1_234,
             requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
             isDownloadable: false, primaryUrlScheme: "reconnectswitchfake", parameterStyle: .questionMark,
             navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
@@ -48,16 +47,16 @@ struct SwitchDatabaseReconnectFailureTests {
             connectionMode: .network, supportsDatabaseSwitching: true,
             capabilities: capabilities, schema: .defaults, editor: .defaults, connection: .defaults
         )
-        PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: Self.typeId)
+        PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: typeId)
+        return typeId
     }
 
     /// The session carries a driver on purpose. Without one `switchDatabase` refuses at its
     /// `notConnected` guard and never reaches the reconnect branch, so every assertion below
     /// would pass against the unfixed code while proving nothing.
     private func makeSession() -> DatabaseConnection {
-        registerTypeIfNeeded()
         var connection = TestFixtures.makeConnection(database: "app")
-        connection.type = DatabaseType(rawValue: Self.typeId)
+        connection.type = DatabaseType(rawValue: registerType())
         var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
         session.status = .connected
         session.browseDatabase = "app"
@@ -69,11 +68,12 @@ struct SwitchDatabaseReconnectFailureTests {
 
     /// The fake type lives in the process-global registry, so it is withdrawn here rather than
     /// left for whatever runs next in the same process.
-    private func cleanUp(_ connectionId: UUID) {
+    private func cleanUp(_ connection: DatabaseConnection) {
+        let connectionId = connection.id
         DatabaseManager.shared.removeSession(for: connectionId)
         AppSettingsStorage.shared.saveLastDatabase(nil, for: connectionId)
         AppSettingsStorage.shared.saveLastSchema(nil, for: connectionId)
-        PluginMetadataRegistry.shared.unregister(typeId: Self.typeId)
+        PluginMetadataRegistry.shared.unregister(typeId: connection.type.rawValue)
     }
 
     /// Proves the reconnect branch is the one under test: the guard the previous version of this
@@ -81,7 +81,7 @@ struct SwitchDatabaseReconnectFailureTests {
     @Test("The failing switch really reaches the reconnect branch")
     func reachesTheReconnectBranch() async {
         let connection = makeSession()
-        defer { cleanUp(connection.id) }
+        defer { cleanUp(connection) }
 
         try? await DatabaseManager.shared.switchDatabase(
             to: "unreachable", for: connection.id, persist: false
@@ -97,7 +97,7 @@ struct SwitchDatabaseReconnectFailureTests {
     @Test("A database switch whose reconnect fails throws instead of reporting success")
     func failedReconnectThrows() async {
         let connection = makeSession()
-        defer { cleanUp(connection.id) }
+        defer { cleanUp(connection) }
 
         await #expect(throws: (any Error).self) {
             try await DatabaseManager.shared.switchDatabase(
@@ -109,7 +109,7 @@ struct SwitchDatabaseReconnectFailureTests {
     @Test("A failed switch never announces a container change")
     func failedSwitchAnnouncesNothing() async {
         let connection = makeSession()
-        defer { cleanUp(connection.id) }
+        defer { cleanUp(connection) }
 
         /// Counted for this connection only. Suites run side by side in one process, and a switch
         /// another suite completes on its own connection announces on the same subject.
@@ -133,7 +133,7 @@ struct SwitchDatabaseReconnectFailureTests {
     @Test("A failed switch leaves the connection on the database it came from")
     func failedSwitchRestoresTheConnectionDatabase() async {
         let connection = makeSession()
-        defer { cleanUp(connection.id) }
+        defer { cleanUp(connection) }
 
         try? await DatabaseManager.shared.switchDatabase(
             to: "unreachable", for: connection.id, persist: false
@@ -149,7 +149,7 @@ struct SwitchDatabaseReconnectFailureTests {
     @Test("A failed switch does not save the unreachable database as the default")
     func failedSwitchDoesNotPersist() async {
         let connection = makeSession()
-        defer { cleanUp(connection.id) }
+        defer { cleanUp(connection) }
 
         try? await DatabaseManager.shared.switchDatabase(
             to: "unreachable", for: connection.id, persist: true

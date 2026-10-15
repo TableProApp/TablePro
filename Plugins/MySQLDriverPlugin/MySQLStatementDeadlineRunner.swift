@@ -2,10 +2,11 @@
 //  MySQLStatementDeadlineRunner.swift
 //  MySQLDriverPlugin
 //
-//  The order a timed statement runs in. Every C call is injected, so TableProTests compiles it.
+//  The order a timed statement runs in. Every C call is injected, so it runs without a server.
 //
 
 import Foundation
+import TableProMySQLCore
 
 internal struct MySQLStatementFailure: Equatable {
     internal let code: UInt32

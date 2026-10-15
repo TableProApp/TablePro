@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProUtilities
 
 /// The subsystem work a launch has to do but the first window does not need.
 ///

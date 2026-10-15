@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProSSHConfig
 
 /// The SSH server half of a connection, as sections of the Network tab's form.
 ///

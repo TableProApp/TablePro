@@ -1,15 +1,17 @@
-//
-//  QuickSwitcherCrossSchemaTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+@testable import TableProUtilities
 import Testing
 
 @MainActor
 struct QuickSwitcherCrossSchemaTests {
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
     private func table(_ name: String, _ schema: String?, type: TableInfo.TableType = .table) -> TableInfo {
         TableInfo(name: name, type: type, rowCount: nil, schema: schema)
     }
@@ -29,10 +31,7 @@ struct QuickSwitcherCrossSchemaTests {
     }
 
     private func search(_ query: String, in catalog: [QuickSwitcherItem]) async -> [QuickSwitcherItem] {
-        guard let defaults = UserDefaults(suiteName: "QuickSwitcherCrossSchemaTests.\(UUID().uuidString)") else {
-            return []
-        }
-        let viewModel = QuickSwitcherViewModel(connectionId: UUID(), services: .live, defaults: defaults)
+        let viewModel = QuickSwitcherViewModel(connectionId: UUID(), services: .live, defaults: suite.defaults)
         viewModel.allItems = catalog
         viewModel.searchText = query
         await viewModel.flushPendingFilter()
@@ -316,11 +315,7 @@ struct QuickSwitcherCrossSchemaTests {
             target: target,
             connectionSwitchesDatabases: true
         )
-        guard let defaults = UserDefaults(suiteName: "QuickSwitcherCrossSchemaTests.\(UUID().uuidString)") else {
-            Issue.record("no defaults suite")
-            return
-        }
-        let viewModel = QuickSwitcherViewModel(connectionId: UUID(), services: .live, defaults: defaults)
+        let viewModel = QuickSwitcherViewModel(connectionId: UUID(), services: .live, defaults: suite.defaults)
         viewModel.crossConnectionItems = remote
         viewModel.scope = .connections
         viewModel.searchText = "attendance.timesheet"

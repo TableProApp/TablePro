@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProMCP
 
 internal struct MCPRemoteTool: Equatable, Sendable {
     internal let name: String

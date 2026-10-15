@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
 #
-# Runs a real OpenSSH server for the SFTP integration tests.
+# Runs a real OpenSSH server for scripts/probes/check-sftp-contract.sh.
 #
 # The SFTP transport's two most dangerous behaviours cannot be observed against a fake:
 # libssh2_sftp_write returns short constantly and silently truncates a file if the caller advances
 # by the requested length rather than the returned one, and libssh2_sftp_rename_ex fails onto an
 # existing file because its OVERWRITE flag is SFTP v5 and OpenSSH speaks v3. Both were measured
-# against this container, and LibSSH2SFTPSessionIntegrationTests keeps them measured.
+# against this container, and the probe keeps them measured.
 #
 # Usage:
 #   sftp-test-server.sh up       # start it, wait until it answers
 #   sftp-test-server.sh down     # remove it
 #   sftp-test-server.sh status   # report whether it is listening
 #
-# The tests find it by connecting, not by reading an environment variable: xcodebuild does not
-# pass the invoking shell's environment to the test host, so an exported variable arrives as
-# nothing and the suite silently reports zero cases.
+# The probe connects to 127.0.0.1:22022 and reads no environment variable, so it needs the
+# default TABLEPRO_SFTP_TEST_PORT.
 
 set -euo pipefail
 

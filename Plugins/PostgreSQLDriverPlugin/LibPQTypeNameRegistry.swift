@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProPostgreSQLCore
 
 /// The type names one connection has learned and the PostGIS types its probe found. They are read and
 /// written both on the connection's queue and off it, so they carry a lock of their own. A learned

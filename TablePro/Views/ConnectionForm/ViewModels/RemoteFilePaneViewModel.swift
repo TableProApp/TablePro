@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import TableProSSHConfig
 
 /// Validation for the Remote File pane.
 ///

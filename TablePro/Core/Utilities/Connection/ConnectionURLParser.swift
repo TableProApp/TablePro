@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 
 struct ParsedConnectionURL {
     let type: DatabaseType

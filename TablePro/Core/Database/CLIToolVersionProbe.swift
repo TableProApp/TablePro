@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProUtilities
 
 enum CLIToolVersionProbe {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CLIToolVersionProbe")

@@ -7,7 +7,6 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("PluginInstallTracker staged phase", .serialized)
 @MainActor
 struct PluginInstallTrackerStagedTests {
 

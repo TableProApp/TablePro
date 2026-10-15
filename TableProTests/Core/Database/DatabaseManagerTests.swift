@@ -8,6 +8,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -167,18 +168,14 @@ struct DatabaseManagerQueryTimeoutHandoffTests {
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-session-adoption-\(unique).json")
-        let suiteName = "com.TablePro.tests.SessionAdoption.\(unique)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let suite = try EphemeralDefaults()
         let storage = ConnectionStorage(
             fileURL: fileURL,
-            userDefaults: defaults,
+            userDefaults: suite.defaults,
             keychain: InMemoryKeychain()
         )
         let manager = DatabaseManager(connectionStorage: storage)
-        defer {
-            defaults.removePersistentDomain(forName: suiteName)
-            try? FileManager.default.removeItem(at: fileURL)
-        }
+        defer { try? FileManager.default.removeItem(at: fileURL) }
 
         let originalTag = UUID()
         let reconciledTag = UUID()

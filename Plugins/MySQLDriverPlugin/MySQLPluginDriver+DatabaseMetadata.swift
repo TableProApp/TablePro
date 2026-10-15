@@ -7,6 +7,7 @@
 
 import Foundation
 import os
+import TableProMySQLCore
 import TableProPluginKit
 
 internal extension MySQLPluginDriver {

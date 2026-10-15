@@ -143,4 +143,27 @@ struct CellFilterMenuBuilderTests {
         #expect(applied.first?.filterOperator == .notEqual)
         #expect(applied.first?.value == "paid")
     }
+
+    @Test("A data cell's menu offers Highlight, which ends with Highlight Rules… that opens the rules")
+    func highlightOffersTheRules() throws {
+        var opened = 0
+        let item = try #require(HighlightMenuBuilder.menuItem(
+            for: HighlightMenuBuilder.CellContext(
+                columnName: "Title",
+                columnOccurrence: 0,
+                columnType: .text(rawType: "NVARCHAR(160)"),
+                value: "For Those About To Rock",
+                existingRules: []
+            ),
+            actions: HighlightMenuBuilder.Actions(apply: { _ in }, remove: { _ in }, showRules: { opened += 1 })
+        ))
+        #expect(item.title == String(localized: "Highlight"))
+        let rules = try #require(item.submenu?.items.last)
+        #expect(rules.title == String(localized: "Highlight Rules…"))
+
+        let action = try #require(rules.action)
+        NSApp.sendAction(action, to: rules.target, from: rules)
+
+        #expect(opened == 1)
+    }
 }

@@ -10,12 +10,13 @@
 //  license, which is why the contract is checked here instead.
 //
 
+import Foundation
 @testable import TablePro
 import TableProPluginKit
-import XCTest
+import Testing
 
 @MainActor
-final class CompareSyncStartStateTests: XCTestCase {
+final class CompareSyncStartStateTests {
     private func endpoint(name: String, safeModeLevel: SafeModeLevel = .silent) -> DatabaseEndpoint {
         DatabaseEndpoint(
             scope: DatabaseScope(connectionId: UUID(), database: "app", schema: nil),
@@ -26,52 +27,58 @@ final class CompareSyncStartStateTests: XCTestCase {
         )
     }
 
-    func testNeitherEndpointIsPreselected() {
+    @Test
+    func neitherEndpointIsPreselected() {
         let session = CompareSyncSession()
 
-        XCTAssertNil(session.source)
-        XCTAssertNil(session.target, "the side that gets written to is never chosen for the user")
+        #expect(session.source == nil)
+        #expect(session.target == nil, "the side that gets written to is never chosen for the user")
     }
 
-    func testBothPickersReadAsUnchosen() {
-        XCTAssertEqual(DatabaseEndpointSide.source.placeholderTitle, "Choose Source")
-        XCTAssertEqual(DatabaseEndpointSide.target.placeholderTitle, "Choose Target")
+    @Test
+    func bothPickersReadAsUnchosen() {
+        #expect(DatabaseEndpointSide.source.placeholderTitle == "Choose Source")
+        #expect(DatabaseEndpointSide.target.placeholderTitle == "Choose Target")
     }
 
-    func testCompareRefusesUntilBothEndpointsAreChosen() {
+    @Test
+    func compareRefusesUntilBothEndpointsAreChosen() {
         let session = CompareSyncSession()
-        XCTAssertFalse(session.canCompare)
-        XCTAssertEqual(session.compareDisabledReason, "Choose a source to compare from.")
+        #expect(!session.canCompare)
+        #expect(session.compareDisabledReason == "Choose a source to compare from.")
 
         session.source = endpoint(name: "prod")
 
-        XCTAssertFalse(session.canCompare, "one endpoint is not a comparison")
-        XCTAssertEqual(session.compareDisabledReason, "Choose a target to compare against.")
+        #expect(!session.canCompare, "one endpoint is not a comparison")
+        #expect(session.compareDisabledReason == "Choose a target to compare against.")
 
         session.target = endpoint(name: "staging")
 
-        XCTAssertTrue(session.canCompare)
-        XCTAssertNil(session.compareDisabledReason)
+        #expect(session.canCompare)
+        #expect(session.compareDisabledReason == nil)
     }
 
-    func testSwapHasNothingToSwapUntilAnEndpointIsChosen() {
+    @Test
+    func swapHasNothingToSwapUntilAnEndpointIsChosen() {
         let session = CompareSyncSession()
-        XCTAssertFalse(session.canSwap)
+        #expect(!session.canSwap)
 
         session.target = endpoint(name: "staging")
 
-        XCTAssertTrue(session.canSwap, "one endpoint is enough to move it to the other side")
+        #expect(session.canSwap, "one endpoint is enough to move it to the other side")
     }
 
-    func testTheBannerStatesNothingHasBeenWrittenBeforeAnyRun() {
-        XCTAssertEqual(CompareSyncSession().bannerText, "Comparing only. Nothing has been written.")
+    @Test
+    func theBannerStatesNothingHasBeenWrittenBeforeAnyRun() {
+        #expect(CompareSyncSession().bannerText == "Comparing only. Nothing has been written.")
     }
 
     /// The window opens on Structure, so a comparison that has not run yet cannot offer a script.
-    func testNoScriptCanBeGeneratedBeforeAComparisonRuns() {
+    @Test
+    func noScriptCanBeGeneratedBeforeAComparisonRuns() {
         let session = CompareSyncSession()
 
-        XCTAssertFalse(session.canBuildScript)
-        XCTAssertEqual(session.scriptDisabledReason, "Compare the two databases first.")
+        #expect(!session.canBuildScript)
+        #expect(session.scriptDisabledReason == "Compare the two databases first.")
     }
 }

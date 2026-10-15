@@ -1,5 +1,6 @@
 import Foundation
 import TableProPluginKit
+import TableProUtilities
 
 /// Underlines what MongoDB will refuse to run.
 ///

@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import TableProMCP
 import TableProPluginKit
 @testable import TablePro
 import Testing

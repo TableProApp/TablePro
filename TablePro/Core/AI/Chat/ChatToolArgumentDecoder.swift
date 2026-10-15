@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMCP
 
 /// Typed decoders for `JsonValue` input arguments coming from the AI.
 /// Mirrors `MCPArgumentDecoder` for the MCP protocol but operates on the

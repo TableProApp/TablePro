@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public struct DescribeTableTool: MCPToolImplementation {
     public static let name = "describe_table"

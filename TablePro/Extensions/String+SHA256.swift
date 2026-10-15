@@ -7,6 +7,7 @@
 
 import CryptoKit
 import Foundation
+import TableProUtilities
 
 extension String {
     /// Returns the SHA256 hash of this string as a lowercase hex string

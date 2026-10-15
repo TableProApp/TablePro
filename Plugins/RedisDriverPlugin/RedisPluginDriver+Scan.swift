@@ -6,6 +6,7 @@
 import Foundation
 import OSLog
 import TableProPluginKit
+import TableProRedisCore
 
 extension RedisPluginDriver {
     func scanAllKeys(

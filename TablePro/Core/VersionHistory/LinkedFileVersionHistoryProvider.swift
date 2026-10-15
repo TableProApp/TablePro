@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProUtilities
 
 internal struct LinkedFileVersionHistoryProvider: VersionHistoryProvider {
     static let commitLimit = 200

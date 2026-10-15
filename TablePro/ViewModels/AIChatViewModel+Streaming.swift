@@ -6,6 +6,7 @@
 import Foundation
 import os
 import SwiftUI
+import TableProMCP
 import TableProPluginKit
 
 extension AIChatViewModel {

@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 struct PairingRequest: Sendable, Equatable {
     static let maximumStateBytes = 1_024

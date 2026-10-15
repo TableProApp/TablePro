@@ -47,7 +47,7 @@ diagnose_environment() {
         found=0
     fi
     if grep -q 'Timed out while enabling automation mode\|failed to initialize for UI testing' "$log" 2> /dev/null; then
-        note "cause: Automation Mode is off and XCTest could not turn it on. Check with automationmodetool; enabling it needs an admin password."
+        note "cause: Automation Mode is off and XCTest could not turn it on. automationmodetool prints whether enabling it needs an admin password; the remedy is in references/verification-apple.md, INCONCLUSIVE."
         found=0
     fi
     return $found

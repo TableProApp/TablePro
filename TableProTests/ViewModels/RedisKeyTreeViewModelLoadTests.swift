@@ -1,37 +1,13 @@
-//
-//  RedisKeyTreeViewModelLoadTests.swift
-//  TableProTests
-//
-//  The key tree used to catch every load failure, log it and clear itself, so a refused `SCAN` or a
-//  `MULTI` block left open on the session read as a database with no keys. It also ran each load as
-//  an unowned task, so a load for a database the user had already left could land over the one they
-//  had moved to.
-//
+// The key tree used to catch every load failure, log it and clear itself, so a refused `SCAN` or a
+// `MULTI` block left open on the session read as a database with no keys. It also ran each load as
+// an unowned task, so a load for a database the user had already left could land over the one they
+// had moved to.
 
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
-
-private actor KeyTreeLatch {
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    private var isOpen = false
-
-    func open() {
-        guard !isOpen else { return }
-        isOpen = true
-        let pending = waiters
-        waiters = []
-        for waiter in pending {
-            waiter.resume()
-        }
-    }
-
-    func wait() async {
-        guard !isOpen else { return }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-}
 
 private enum KeyTreeReply: Sendable {
     case keys([String])
@@ -39,6 +15,11 @@ private enum KeyTreeReply: Sendable {
 }
 
 private struct UnscriptedDatabase: Error {}
+
+// The shape the Redis plugin's RedisPluginError and RedisQueuedCommand reach the app in.
+private struct RedisReplyError: PluginDriverError {
+    let pluginErrorMessage: String
+}
 
 /// The statements the stub driver was asked to run. The driver runs off the main actor, so the log
 /// is locked rather than isolated.
@@ -60,8 +41,8 @@ private final class ExecutedQueryLog: @unchecked Sendable {
 @MainActor
 private final class ScriptedKeyTreeProvider: ScopedMetadataProviding {
     private struct Hold {
-        let reached: KeyTreeLatch
-        let release: KeyTreeLatch
+        let reached: AsyncGate
+        let release: AsyncGate
     }
 
     private let connection: DatabaseConnection
@@ -83,8 +64,8 @@ private final class ScriptedKeyTreeProvider: ScopedMetadataProviding {
     }
 
     /// The next read of `database` waits for `release`, after opening `reached`.
-    func hold(_ database: String) -> (reached: KeyTreeLatch, release: KeyTreeLatch) {
-        let hold = Hold(reached: KeyTreeLatch(), release: KeyTreeLatch())
+    func hold(_ database: String) -> (reached: AsyncGate, release: AsyncGate) {
+        let hold = Hold(reached: AsyncGate(), release: AsyncGate())
         holds[database] = hold
         return (hold.reached, hold.release)
     }
@@ -115,7 +96,6 @@ private final class ScriptedKeyTreeProvider: ScopedMetadataProviding {
     }
 }
 
-@Suite("Redis key tree load state", .serialized)
 @MainActor
 struct RedisKeyTreeViewModelLoadTests {
     private let connection = TestFixtures.makeConnection(database: "0", type: .redis)
@@ -149,8 +129,8 @@ struct RedisKeyTreeViewModelLoadTests {
     @Test("A refused scan, an open MULTI block and a lost session each commit their failure")
     func failuresCommitTheirMessage() async {
         let failures: [any Error] = [
-            RedisPluginError(code: 0, message: "NOPERM User noscan has no permissions to run the 'scan' command"),
-            RedisQueuedCommand(command: "SCAN"),
+            RedisReplyError(pluginErrorMessage: "NOPERM User noscan has no permissions to run the 'scan' command"),
+            RedisReplyError(pluginErrorMessage: "Redis queued SCAN instead of running it."),
             DatabaseError.notConnected
         ]
         for error in failures {
@@ -183,7 +163,7 @@ struct RedisKeyTreeViewModelLoadTests {
     func supersededLoadCommitsNothing() async {
         let outcomes: [KeyTreeReply] = [
             .keys(["stale:1"]),
-            .failure(RedisPluginError(code: 0, message: "ERR stale")),
+            .failure(RedisReplyError(pluginErrorMessage: "ERR stale")),
             .failure(CancellationError())
         ]
         for outcome in outcomes {
@@ -239,7 +219,7 @@ struct RedisKeyTreeViewModelLoadTests {
         provider.answer("0", with: .keys(["a"]))
         await load(viewModel, databaseIndex: 0)
 
-        provider.answer("0", with: .failure(RedisPluginError(code: 0, message: "ERR refused")))
+        provider.answer("0", with: .failure(RedisReplyError(pluginErrorMessage: "ERR refused")))
         let refresh = try #require(viewModel.reload())
         #expect(viewModel.state.value?.database == "0")
         await refresh.value
@@ -280,7 +260,7 @@ struct RedisKeyTreeViewModelLoadTests {
         await refresh.value
 
         let (moveReached, moveRelease) = provider.hold("6")
-        provider.answer("6", with: .failure(RedisPluginError(code: 0, message: "ERR refused")))
+        provider.answer("6", with: .failure(RedisReplyError(pluginErrorMessage: "ERR refused")))
         let move = viewModel.loadKeys(connectionId: connection.id, databaseIndex: 6, separator: ":")
         await moveReached.wait()
         #expect(viewModel.shownDatabaseIndex == nil)
@@ -293,7 +273,7 @@ struct RedisKeyTreeViewModelLoadTests {
     @Test("Refresh after a failed load retries it and shows the keys it gets")
     func refreshRecoversAFailedLoad() async throws {
         let (viewModel, provider) = makeViewModel()
-        provider.answer("0", with: .failure(RedisQueuedCommand(command: "SCAN")))
+        provider.answer("0", with: .failure(RedisReplyError(pluginErrorMessage: "Redis queued SCAN instead of running it.")))
         await load(viewModel, databaseIndex: 0)
         #expect(viewModel.state.value == nil)
 
@@ -315,7 +295,7 @@ struct RedisKeyTreeViewModelLoadTests {
     }
 }
 
-private final class KeyTreePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class KeyTreePluginDriver: PluginDriverStub, @unchecked Sendable {
     private let keys: [String]
     private let log: ExecutedQueryLog
 
@@ -335,20 +315,5 @@ private final class KeyTreePluginDriver: PluginDatabaseDriver, @unchecked Sendab
         )
     }
 
-    func connect() async throws {}
-    func disconnect() {}
     func ping() async throws {}
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
-    }
 }

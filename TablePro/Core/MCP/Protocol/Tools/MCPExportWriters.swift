@@ -1,5 +1,6 @@
 import Foundation
 import TableProPluginKit
+import TableProUtilities
 
 enum MCPExportFormat: String, Sendable, CaseIterable {
     case csv

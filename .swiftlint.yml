@@ -189,6 +189,15 @@ custom_rules:
     excluded: ".*/(AppStorageEnvironment|GeneralSettings|SoftwareUpdater|WorkspaceRailViewController|SplitViewAutosaveSweep)\\.swift"
     message: "Resolve preferences through AppStorageEnvironment.shared.defaults. Only a macOS-owned system preference reads the standard domain."
     severity: error
+  # Package code cannot reach AppStorageEnvironment and the iOS app has no sandbox, so `.standard` is
+  # their only default. ManagedPolicy reads MDM-managed keys, which live in the standard domain.
+  storage_environment_defaults_argument:
+    name: "Storage Environment Defaults Argument"
+    regex: '\bUserDefaults[?!]?\s*=\s*\.standard\b'
+    excluded: ['.*/(Packages|Plugins|TableProMobile)/', '.*/ManagedPolicy\.swift']
+    excluded_match_kinds: [comment, doccomment]
+    message: "Default a UserDefaults parameter to AppStorageEnvironment.shared.defaults, or a sandboxed run writes the developer's own com.TablePro."
+    severity: error
   public_error_text_in_log:
     name: "Error Text In The System Log"
     regex: '(\.(localizedDescription|errorDescription|failureReason)(\.prefix\(\d+\))?(\s*\?\?\s*"[^"]*")?|String\(describing:\s*\w*[eE]rr(or)?\)|\\\((?!(has|is|did|was|should)[A-Z])(\w*[eE]rr(or)?|e)(\.(message|description|debugDescription))?)\s*,\s*privacy:\s*\.public'
@@ -494,14 +503,14 @@ custom_rules:
   # MCP and scripting access control
   mcp_log_token_material:
     name: "MCP Log Token Material"
-    included: ['.*/TablePro/Core/MCP/']
+    included: ['.*/(TablePro/Core/MCP|Packages/TableProMacCore/Sources/TableProMCP)/']
     regex: '(?i)(?-s)^(?=[^\n]*privacy:)[^\n]*?(\\\([^,)\n]*(?:fingerprint|plaintext|tokenhash|salt|verifier|prefix|password|secret))'
     capture_group: 1
     message: "A log line never carries token material, not even a prefix or a digest."
     severity: error
   mcp_reported_status:
     name: "MCP Reported Status"
-    included: ['.*/TablePro/Core/MCP/']
+    included: ['.*/(TablePro/Core/MCP|Packages/TableProMacCore/Sources/TableProMCP)/']
     regex: '\.status\.isConnected\b'
     excluded_match_kinds: [comment, doccomment]
     message: "MCP reports connection health through reportedStatus."
@@ -654,7 +663,7 @@ custom_rules:
   # Tests (listed in TableProTests/.swiftlint.yml and Plugins/.swiftlint.yml)
   suite_without_trait:
     name: "Suite Without A Trait"
-    included: ['.*/(TableProTests|Plugins/[A-Za-z]+Tests)/']
+    included: ['.*/(TableProTests|Plugins/[A-Za-z]+Tests|Packages/TableProMacCore/Tests)/']
     regex: '(?:^#if\b[^\n]*\n[ \t]*|^)(?:@\w+[ \t]+)*@(?:Testing\.)?Suite(?:[ \t]*\(\s*(?:"(?:[^"\\\n]|\\.)*"|#+"[^\n]*?"#+)?\s*\))?(?![ \t]*\()(?=\s)'
     excluded_match_kinds: [comment, doccomment]
     message: "Every top-level @Suite expansion walks every other one, so compile time grows with their square. Keep @Suite only to carry a trait such as .serialized."

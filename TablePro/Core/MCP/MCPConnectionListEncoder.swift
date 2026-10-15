@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMCP
 
 internal enum MCPConnectionListPurpose: String, Sendable, CaseIterable {
     case agent

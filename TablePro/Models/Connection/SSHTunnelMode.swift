@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSSHConfig
 
 /// Single source of truth for how a connection handles SSH tunneling.
 enum SSHTunnelMode: Hashable, Sendable {

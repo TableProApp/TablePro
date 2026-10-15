@@ -10,6 +10,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProAutocomplete
 import Testing
 
 struct CachedColumnOrderTests {

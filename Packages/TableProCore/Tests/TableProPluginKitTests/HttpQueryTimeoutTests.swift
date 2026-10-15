@@ -1,0 +1,59 @@
+//
+//  HttpQueryTimeoutTests.swift
+//  TableProTests
+//
+
+import Foundation
+import TableProPluginKit
+import Testing
+
+struct HttpQueryTimeoutTests {
+    @Test("Positive server timeout adds grace to request interval")
+    func positiveServerTimeoutAddsGrace() {
+        let timeout = HttpQueryTimeout(serverTimeoutSeconds: 600, graceSeconds: 30)
+        #expect(timeout.requestTimeoutInterval == TimeInterval(630))
+    }
+
+    @Test("Custom grace is honored")
+    func customGrace() {
+        let timeout = HttpQueryTimeout(serverTimeoutSeconds: 120, graceSeconds: 5)
+        #expect(timeout.requestTimeoutInterval == TimeInterval(125))
+    }
+
+    @Test("A zero or negative server timeout is unlimited and falls back to the resource ceiling", arguments: [0, -1])
+    func unlimitedServerTimeoutUsesCeiling(_ seconds: Int) {
+        let timeout = HttpQueryTimeout(serverTimeoutSeconds: seconds)
+        #expect(timeout.requestTimeoutInterval == TimeInterval(HttpQueryTimeout.resourceCeilingSeconds))
+    }
+
+    @Test("Negative grace is clamped to zero")
+    func negativeGraceClamped() {
+        let timeout = HttpQueryTimeout(serverTimeoutSeconds: 60, graceSeconds: -10)
+        #expect(timeout.graceSeconds == 0)
+        #expect(timeout.requestTimeoutInterval == TimeInterval(60))
+    }
+
+    @Test("Unsafe server and grace timeouts are bounded before addition")
+    func unsafeTimeoutsAreBounded() {
+        let maximum = Int(Int32.max) / 1_000
+        let timeout = HttpQueryTimeout(serverTimeoutSeconds: Int.max, graceSeconds: Int.max)
+
+        #expect(timeout.serverTimeoutSeconds == maximum)
+        #expect(timeout.graceSeconds == maximum)
+        #expect(timeout.requestTimeoutInterval == TimeInterval(maximum * 2))
+    }
+
+    @Test("Static session timeouts expose the documented ceilings")
+    func staticSessionTimeouts() {
+        #expect(HttpQueryTimeout.sessionBootstrapRequestTimeout == TimeInterval(60))
+        #expect(HttpQueryTimeout.sessionResourceTimeout == TimeInterval(3_600))
+    }
+
+    @Test("URLRequest.timeoutInterval can be assigned from the helper")
+    func appliesToUrlRequest() {
+        var request = URLRequest(url: URL(string: "https://example.com")!)
+        let timeout = HttpQueryTimeout(serverTimeoutSeconds: 300)
+        request.timeoutInterval = timeout.requestTimeoutInterval
+        #expect(request.timeoutInterval == TimeInterval(330))
+    }
+}

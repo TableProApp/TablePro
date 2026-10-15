@@ -1,32 +1,34 @@
+import AppKit
 @testable import TableProTextEngine
-import XCTest
+import Testing
 
-class LineEndingTests: XCTestCase {
-    func test_lineEndingCreateUnix() {
+@MainActor
+struct LineEndingTests {
+    @Test func test_lineEndingCreateUnix() {
         // The \n character
-        XCTAssertNotNil(LineEnding(rawValue: "\n"), "Line ending failed to initialize with the \\n character")
+        #expect(LineEnding(rawValue: "\n") != nil, "Line ending failed to initialize with the \\n character")
 
         let line = "Loren Ipsum\n"
-        XCTAssertNotNil(LineEnding(line: line), "Line ending failed to initialize with a line ending in \\n")
+        #expect(LineEnding(line: line) != nil, "Line ending failed to initialize with a line ending in \\n")
     }
 
-    func test_lineEndingCreateCRLF() {
+    @Test func test_lineEndingCreateCRLF() {
         // The \r\n sequence
-        XCTAssertNotNil(LineEnding(rawValue: "\r\n"), "Line ending failed to initialize with the \\r\\n sequence")
+        #expect(LineEnding(rawValue: "\r\n") != nil, "Line ending failed to initialize with the \\r\\n sequence")
 
         let line = "Loren Ipsum\r\n"
-        XCTAssertNotNil(LineEnding(line: line), "Line ending failed to initialize with a line ending in \\r\\n")
+        #expect(LineEnding(line: line) != nil, "Line ending failed to initialize with a line ending in \\r\\n")
     }
 
-    func test_lineEndingCreateMacOS() {
+    @Test func test_lineEndingCreateMacOS() {
         // The \r character
-        XCTAssertNotNil(LineEnding(rawValue: "\r"), "Line ending failed to initialize with the \\r character")
+        #expect(LineEnding(rawValue: "\r") != nil, "Line ending failed to initialize with the \\r character")
 
         let line = "Loren Ipsum\r"
-        XCTAssertNotNil(LineEnding(line: line), "Line ending failed to initialize with a line ending in \\r")
+        #expect(LineEnding(line: line) != nil, "Line ending failed to initialize with a line ending in \\r")
     }
 
-    func test_detectLineEndingDefault() {
+    @Test func test_detectLineEndingDefault() {
         // There was a bug in this that caused it to flake sometimes, so we run this a couple times to ensure it's not
         // flaky.
         // The odds of it being bad with the earlier bug after running 20 times is incredibly small
@@ -35,7 +37,7 @@ class LineEndingTests: XCTestCase {
             let lineStorage = TextLineStorage<TextLine>()
             lineStorage.buildFromTextStorage(storage, estimatedLineHeight: 10)
             let detected = LineEnding.detectLineEnding(lineStorage: lineStorage, textStorage: storage)
-            XCTAssertEqual(detected, .lineFeed)
+            #expect(detected == .lineFeed)
         }
     }
 
@@ -48,7 +50,7 @@ class LineEndingTests: XCTestCase {
         }
     }
 
-    func test_detectLineEndingUnix() {
+    @Test func test_detectLineEndingUnix() {
         let goalLineEnding = LineEnding.lineFeed
 
         let storage = NSTextStorage(string: makeRandomText(goalLineEnding))
@@ -56,10 +58,10 @@ class LineEndingTests: XCTestCase {
         lineStorage.buildFromTextStorage(storage, estimatedLineHeight: 10)
 
         let detected = LineEnding.detectLineEnding(lineStorage: lineStorage, textStorage: storage)
-        XCTAssertEqual(detected, goalLineEnding)
+        #expect(detected == goalLineEnding)
     }
 
-    func test_detectLineEndingCLRF() {
+    @Test func test_detectLineEndingCLRF() {
         let goalLineEnding = LineEnding.carriageReturnLineFeed
 
         let storage = NSTextStorage(string: makeRandomText(goalLineEnding))
@@ -67,10 +69,10 @@ class LineEndingTests: XCTestCase {
         lineStorage.buildFromTextStorage(storage, estimatedLineHeight: 10)
 
         let detected = LineEnding.detectLineEnding(lineStorage: lineStorage, textStorage: storage)
-        XCTAssertEqual(detected, goalLineEnding)
+        #expect(detected == goalLineEnding)
     }
 
-    func test_detectLineEndingMacOS() {
+    @Test func test_detectLineEndingMacOS() {
         let goalLineEnding = LineEnding.carriageReturn
 
         let storage = NSTextStorage(string: makeRandomText(goalLineEnding))
@@ -78,6 +80,6 @@ class LineEndingTests: XCTestCase {
         lineStorage.buildFromTextStorage(storage, estimatedLineHeight: 10)
 
         let detected = LineEnding.detectLineEnding(lineStorage: lineStorage, textStorage: storage)
-        XCTAssertEqual(detected, goalLineEnding)
+        #expect(detected == goalLineEnding)
     }
 }

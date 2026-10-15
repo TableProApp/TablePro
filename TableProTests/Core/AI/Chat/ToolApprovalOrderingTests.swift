@@ -1,8 +1,3 @@
-//
-//  ToolApprovalOrderingTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import Testing
@@ -22,7 +17,7 @@ struct ToolApprovalOrderingTests {
         center.resolve(sessionId: session, toolUseId: "second", decision: .run)
 
         let first = Task { await center.awaitDecision(sessionId: session, toolUseId: "first") }
-        await Task.yield()
+        await runQueuedMainActorWork()
         center.resolve(sessionId: session, toolUseId: "first", decision: .cancel)
 
         if case .cancel = await first.value {} else { Issue.record("first should cancel") }
@@ -36,7 +31,7 @@ struct ToolApprovalOrderingTests {
         center.expect(sessionId: session, toolUseIds: ["stray"])
 
         let waiter = Task { await center.awaitDecision(sessionId: session, toolUseId: "stray") }
-        await Task.yield()
+        await runQueuedMainActorWork()
         center.resolve(sessionId: session, toolUseId: "stray", decision: .cancel)
         if case .cancel = await waiter.value {} else { Issue.record("the stray answer should not have survived") }
     }
@@ -53,7 +48,7 @@ struct ToolApprovalOrderingTests {
 
         center.expect(sessionId: session, toolUseIds: ["call_0"])
         let waiter = Task { await center.awaitDecision(sessionId: session, toolUseId: "call_0") }
-        await Task.yield()
+        await runQueuedMainActorWork()
         center.resolve(sessionId: session, toolUseId: "call_0", decision: .cancel)
         if case .cancel = await waiter.value {} else {
             Issue.record("the previous turn's answer was spent on this one")
@@ -69,7 +64,7 @@ struct ToolApprovalOrderingTests {
         center.expect(sessionId: session, toolUseIds: ["first", "second"])
 
         let firstWaiter = Task { await center.awaitDecision(sessionId: session, toolUseId: "first") }
-        await Task.yield()
+        await runQueuedMainActorWork()
         center.cancelAll(sessionId: session)
 
         if case .cancel = await firstWaiter.value {} else { Issue.record("first should cancel") }
@@ -88,8 +83,14 @@ struct ToolApprovalOrderingTests {
 
         center.expect(sessionId: session, toolUseIds: ["pending"])
         let waiter = Task { await center.awaitDecision(sessionId: session, toolUseId: "pending") }
-        await Task.yield()
+        await runQueuedMainActorWork()
         center.resolve(sessionId: session, toolUseId: "pending", decision: .cancel)
         if case .cancel = await waiter.value {} else { Issue.record("a cleared answer came back") }
+    }
+
+    /// The main queue runs its jobs in order, so a job queued now runs after every waiter the case
+    /// started has reached its await.
+    private func runQueuedMainActorWork() async {
+        await Task { @MainActor in }.value
     }
 }

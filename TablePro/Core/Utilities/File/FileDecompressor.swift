@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProUtilities
 
 enum DecompressionError: LocalizedError {
     case decompressFailed

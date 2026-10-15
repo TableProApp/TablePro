@@ -1,10 +1,6 @@
-//
-//  RecentTabSwitcherControllerTests.swift
-//  TableProTests
-//
-
 import AppKit
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -192,7 +188,7 @@ struct RecentTabSwitcherControllerTests {
         begin(controller, recorder, trigger: try controlTab())
         #expect(presenter.presented == nil)
 
-        try await Task.sleep(for: .milliseconds(200))
+        try await waitUntil { presenter.presented != nil }
 
         #expect(presenter.presented?.session.highlightedIndex == 1)
         controller.handleModifiersChanged([])
@@ -204,7 +200,7 @@ struct RecentTabSwitcherControllerTests {
         let recorder = Recorder()
         let controller = makeController(recorder, pickerDelay: 0)
         begin(controller, recorder, trigger: try controlTab())
-        try await Task.sleep(for: .milliseconds(200))
+        try await waitUntil { presenter.onClose != nil }
         let onClose = try #require(presenter.onClose)
 
         onClose()

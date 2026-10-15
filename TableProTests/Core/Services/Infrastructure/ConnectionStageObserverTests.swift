@@ -8,7 +8,6 @@ import Testing
 /// a connection dialling through an SSH jump host used to do, announcing "Opening the connection"
 /// for the whole of the tunnel handshake, because the surface that owns the observer was itself
 /// held back for the first half second of every connect.
-@Suite("Connection stage observer", .serialized)
 @MainActor
 struct ConnectionStageObserverTests {
     @Test("A step reported before the observer existed is still what it reports")

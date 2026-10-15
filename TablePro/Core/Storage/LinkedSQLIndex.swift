@@ -6,6 +6,7 @@
 import Foundation
 import os
 import SQLite3
+import TableProUtilities
 
 internal actor LinkedSQLIndex {
     static let shared = LinkedSQLIndex()

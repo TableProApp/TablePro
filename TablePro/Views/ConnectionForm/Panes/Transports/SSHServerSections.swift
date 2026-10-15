@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProSSHConfig
 
 /// Which SSH server to reach, and how to sign in to it.
 ///

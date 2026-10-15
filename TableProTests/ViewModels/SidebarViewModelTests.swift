@@ -1,36 +1,11 @@
-//
-//  SidebarViewModelTests.swift
-//  TableProTests
-//
-
 import AppKit
 import Combine
 import Foundation
 import SwiftUI
+import TableProTestSupport
 import Testing
 @testable import TablePro
 
-private final class SidebarMockClipboard: ClipboardProvider {
-    var lastWrittenText: String?
-
-    func readText() -> String? { lastWrittenText }
-    func readGridRows() -> GridRowsClipboardPayload? { nil }
-    func writeText(_ text: String) { lastWrittenText = text }
-    func writeCsv(_ csv: String) { lastWrittenText = csv }
-
-    var copiedImages: [NSImage] = []
-
-    func writeImage(_ image: NSImage) {
-        copiedImages.append(image)
-    }
-    func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload) { lastWrittenText = tsv }
-    var hasText: Bool { lastWrittenText != nil }
-    var hasGridRows: Bool { false }
-}
-
-// MARK: - Helper
-
-/// Creates a SidebarViewModel with controllable state bindings for testing
 @MainActor
 private func makeSUT(
     tables: [TableInfo] = [],
@@ -233,38 +208,33 @@ struct SidebarViewModelTests {
         #expect(vm.pendingOperationTables.isEmpty)
     }
 
-    // MARK: - Copy Table Names
+}
 
-    @Test("copySelectedTableNames copies sorted comma-separated names")
+extension GlobalStateSuites {
+    @Suite(.recordingClipboard)
     @MainActor
-    func copyTableNames() {
-        let original = ClipboardService.shared
-        defer { ClipboardService.shared = original }
-        let clipboard = SidebarMockClipboard()
-        ClipboardService.shared = clipboard
+    struct SidebarViewModelCopyTests {
+        @Test("copySelectedTableNames copies sorted comma-separated names")
+        func copyTableNames() throws {
+            let clipboard = try #require(RecordingClipboard.current)
+            let t1 = makeRef("zebra")
+            let t2 = makeRef("alpha")
+            let (vm, _, _, _, _, _) = makeSUT(selectedTables: [t1, t2])
 
-        let t1 = makeRef("zebra")
-        let t2 = makeRef("alpha")
-        let (vm, _, _, _, _, _) = makeSUT(selectedTables: [t1, t2])
+            vm.copySelectedTableNames()
 
-        vm.copySelectedTableNames()
+            #expect(clipboard.text == "alpha,zebra")
+        }
 
-        #expect(clipboard.lastWrittenText == "alpha,zebra")
-    }
+        @Test("copySelectedTableNames does nothing when no selection")
+        func copyTableNamesNoSelection() throws {
+            let clipboard = try #require(RecordingClipboard.current)
+            let (vm, _, _, _, _, _) = makeSUT()
 
-    @Test("copySelectedTableNames does nothing when no selection")
-    @MainActor
-    func copyTableNamesNoSelection() {
-        let original = ClipboardService.shared
-        defer { ClipboardService.shared = original }
-        let clipboard = SidebarMockClipboard()
-        ClipboardService.shared = clipboard
+            vm.copySelectedTableNames()
 
-        let (vm, _, _, _, _, _) = makeSUT()
-
-        vm.copySelectedTableNames()
-
-        #expect(clipboard.lastWrittenText == nil)
+            #expect(clipboard.text == nil)
+        }
     }
 }
 
@@ -273,7 +243,9 @@ struct SidebarViewModelTests {
 @MainActor
 private func makeViewModel(
     connectionId: UUID = UUID(),
-    databaseType: DatabaseType = .postgresql
+    databaseType: DatabaseType = .postgresql,
+    defaults: UserDefaults,
+    clock: any Clock<Duration> = ContinuousClock()
 ) -> SidebarViewModel {
     var selectedState: Set<DatabaseTreeTableRef> = []
     var truncates: Set<DatabaseTreeTableRef> = []
@@ -289,15 +261,23 @@ private func makeViewModel(
         pendingDeletes: deletesBinding,
         tableOperationOptions: optionsBinding,
         databaseType: databaseType,
-        connectionId: connectionId
+        connectionId: connectionId,
+        defaults: defaults,
+        clock: clock
     )
 }
 
+@MainActor
 struct SidebarViewModelMultiSectionTests {
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
     @Test("tables of kind splits by TableType raw value")
-    @MainActor
     func splitsTablesByKind() {
-        let vm = makeViewModel()
+        let vm = makeViewModel(defaults: suite.defaults)
         let userTable = TestFixtures.makeTableInfo(name: "users", type: .table)
         let profileView = TestFixtures.makeTableInfo(name: "profiles", type: .view)
         let mixed = [userTable, profileView]
@@ -312,9 +292,8 @@ struct SidebarViewModelMultiSectionTests {
     }
 
     @Test("system tables fall into the table bucket")
-    @MainActor
     func systemTablesBucketAsTables() {
-        let vm = makeViewModel()
+        let vm = makeViewModel(defaults: suite.defaults)
         let sysTable = TestFixtures.makeTableInfo(name: "pg_stat_user_tables", type: .systemTable)
 
         let tablesOnly = vm.tables(of: .table, from: [sysTable])
@@ -325,9 +304,8 @@ struct SidebarViewModelMultiSectionTests {
     }
 
     @Test("routine kinds return empty when querying tables(of:)")
-    @MainActor
     func routinesEmptyInTablesOf() {
-        let vm = makeViewModel()
+        let vm = makeViewModel(defaults: suite.defaults)
         let table = TestFixtures.makeTableInfo(name: "users", type: .table)
 
         #expect(vm.tables(of: .procedure, from: [table]).isEmpty)
@@ -335,9 +313,8 @@ struct SidebarViewModelMultiSectionTests {
     }
 
     @Test("filteredTables(of:) honors search across kinds")
-    @MainActor
     func filteredTablesAcrossKinds() {
-        let vm = makeViewModel()
+        let vm = makeViewModel(defaults: suite.defaults)
         let users = TestFixtures.makeTableInfo(name: "users", type: .table)
         let userView = TestFixtures.makeTableInfo(name: "user_profile_view", type: .view)
         let orders = TestFixtures.makeTableInfo(name: "orders", type: .table)
@@ -352,9 +329,8 @@ struct SidebarViewModelMultiSectionTests {
     }
 
     @Test("filteredRoutines filters by name across kinds")
-    @MainActor
     func filteredRoutinesByKind() {
-        let vm = makeViewModel()
+        let vm = makeViewModel(defaults: suite.defaults)
         let getUser = RoutineInfo(name: "get_user_by_id", kind: .procedure, schema: "public")
         let calcAge = RoutineInfo(name: "calculate_age", kind: .function, schema: "public")
         let mixed = [getUser, calcAge]
@@ -367,9 +343,8 @@ struct SidebarViewModelMultiSectionTests {
     }
 
     @Test("Sidebar filter uses substring matching, not fuzzy abbreviations")
-    @MainActor
     func sidebarFilterUsesSubstringNotAbbreviation() {
-        let vm = makeViewModel()
+        let vm = makeViewModel(defaults: suite.defaults)
         let userProfileView = TestFixtures.makeTableInfo(name: "user_profile_view", type: .view)
         let orders = TestFixtures.makeTableInfo(name: "orders", type: .view)
         vm.searchText = "upv"
@@ -380,9 +355,8 @@ struct SidebarViewModelMultiSectionTests {
     }
 
     @Test("Sidebar filter ranks prefix matches above interior-substring matches")
-    @MainActor
     func sidebarFilterRanksPrefixFirst() {
-        let vm = makeViewModel()
+        let vm = makeViewModel(defaults: suite.defaults)
         let auditUser = TestFixtures.makeTableInfo(name: "audit_user", type: .table)
         let users = TestFixtures.makeTableInfo(name: "users", type: .table)
         let userLog = TestFixtures.makeTableInfo(name: "user_log", type: .table)
@@ -394,9 +368,8 @@ struct SidebarViewModelMultiSectionTests {
     }
 
     @Test("filteredRoutines search matches name case insensitively")
-    @MainActor
     func filteredRoutinesSearch() {
-        let vm = makeViewModel()
+        let vm = makeViewModel(defaults: suite.defaults)
         let getUser = RoutineInfo(name: "GET_USER_BY_ID", kind: .procedure)
         let other = RoutineInfo(name: "log_event", kind: .procedure)
         vm.searchText = "user"
@@ -407,9 +380,8 @@ struct SidebarViewModelMultiSectionTests {
     }
 
     @Test("effectiveExpanded honors stored state when search empty")
-    @MainActor
     func effectiveExpandedRespectsStored() {
-        let vm = makeViewModel()
+        let vm = makeViewModel(defaults: suite.defaults)
         vm.expanded[.view] = false
 
         #expect(vm.effectiveExpanded(kind: .view, hasMatches: false) == false)
@@ -417,9 +389,8 @@ struct SidebarViewModelMultiSectionTests {
     }
 
     @Test("effectiveExpanded auto-expands when search has matches")
-    @MainActor
     func effectiveExpandedAutoExpandsOnSearch() {
-        let vm = makeViewModel()
+        let vm = makeViewModel(defaults: suite.defaults)
         vm.expanded[.procedure] = false
         vm.searchText = "user"
 
@@ -429,9 +400,8 @@ struct SidebarViewModelMultiSectionTests {
     }
 
     @Test("effectiveExpanded stays collapsed when search has no matches")
-    @MainActor
     func effectiveExpandedStaysCollapsedWithoutMatches() {
-        let vm = makeViewModel()
+        let vm = makeViewModel(defaults: suite.defaults)
         vm.expanded[.function] = false
         vm.searchText = "nonexistent"
 
@@ -441,9 +411,8 @@ struct SidebarViewModelMultiSectionTests {
     }
 
     @Test("default expansion is true for tables only")
-    @MainActor
     func defaultExpansionTablesOnly() {
-        let vm = makeViewModel()
+        let vm = makeViewModel(defaults: suite.defaults)
 
         #expect(vm.expanded[.table] == true)
         #expect(vm.expanded[.view] == false)
@@ -454,79 +423,60 @@ struct SidebarViewModelMultiSectionTests {
     }
 
     @Test("expansion writes persist to per-kind UserDefaults keys")
-    @MainActor
     func expansionWritesPersist() {
-        let defaults = AppStorageEnvironment.shared.defaults
+        let defaults = suite.defaults
         let connectionId = UUID()
-        let vm = makeViewModel(connectionId: connectionId)
+        let vm = makeViewModel(connectionId: connectionId, defaults: defaults)
         let key = SidebarPersistenceKey.expanded(connectionId: connectionId, kind: .procedure)
-        defaults.removeObject(forKey: key)
 
         vm.expanded[.procedure] = true
 
         #expect(defaults.bool(forKey: key) == true)
-        defaults.removeObject(forKey: key)
     }
 
     @Test("recents expansion defaults to expanded and persists across init")
-    @MainActor
     func recentsExpansionPersists() {
-        let defaults = AppStorageEnvironment.shared.defaults
+        let defaults = suite.defaults
         let connectionId = UUID()
         let key = SidebarPersistenceKey.recentsExpanded(connectionId: connectionId)
-        defaults.removeObject(forKey: key)
 
-        let first = makeViewModel(connectionId: connectionId)
+        let first = makeViewModel(connectionId: connectionId, defaults: defaults)
         #expect(first.isRecentsExpanded == true)
 
         first.isRecentsExpanded = false
         #expect(defaults.object(forKey: key) as? Bool == false)
 
-        let second = makeViewModel(connectionId: connectionId)
+        let second = makeViewModel(connectionId: connectionId, defaults: defaults)
         #expect(second.isRecentsExpanded == false)
-
-        defaults.removeObject(forKey: key)
     }
 
     @Test("expansion seeds .table from legacy per-connection key on first init")
-    @MainActor
     func legacyMigrationFromPerConnectionKey() {
-        let defaults = AppStorageEnvironment.shared.defaults
+        let defaults = suite.defaults
         let connectionId = UUID()
         let perKindKey = SidebarPersistenceKey.expanded(connectionId: connectionId, kind: .table)
         let legacyKey = SidebarPersistenceKey.tablesExpanded(connectionId: connectionId)
-        defaults.removeObject(forKey: perKindKey)
         defaults.set(false, forKey: legacyKey)
 
-        let vm = makeViewModel(connectionId: connectionId)
+        let vm = makeViewModel(connectionId: connectionId, defaults: defaults)
 
         #expect(vm.expanded[.table] == false)
-        defaults.removeObject(forKey: perKindKey)
-        defaults.removeObject(forKey: legacyKey)
+        #expect(defaults.object(forKey: perKindKey) as? Bool == false)
     }
 
     @Test("expansion seeds .table from global legacy key when no per-connection key set")
-    @MainActor
     func legacyMigrationFromGlobalKey() {
-        let defaults = AppStorageEnvironment.shared.defaults
+        let defaults = suite.defaults
         let connectionId = UUID()
-        let perKindKey = SidebarPersistenceKey.expanded(connectionId: connectionId, kind: .table)
-        let perConnLegacy = SidebarPersistenceKey.tablesExpanded(connectionId: connectionId)
-        defaults.removeObject(forKey: perKindKey)
-        defaults.removeObject(forKey: perConnLegacy)
         defaults.set(false, forKey: SidebarPersistenceKey.legacyTablesExpanded)
 
-        let vm = makeViewModel(connectionId: connectionId)
+        let vm = makeViewModel(connectionId: connectionId, defaults: defaults)
 
         #expect(vm.expanded[.table] == false)
-        defaults.removeObject(forKey: perKindKey)
-        defaults.removeObject(forKey: SidebarPersistenceKey.legacyTablesExpanded)
     }
 }
 
-/// The debounce runs on real time, so a test waits for the value it publishes and not for a
-/// sleep of its own to outlast it. `$filterQuery` replays its current value to a new subscriber,
-/// which `dropFirst` discards.
+/// `$filterQuery` replays its current value to a new subscriber, which `dropFirst` discards.
 @MainActor
 private final class DebouncedFilterQueries {
     private(set) var published: [String] = []
@@ -552,11 +502,26 @@ private final class DebouncedFilterQueries {
     }
 }
 
+@MainActor
 struct SidebarViewModelSearchDebounceTests {
+    private let suite: EphemeralDefaults
+    private let clock = ManualClock()
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
+    private func makeDebouncingViewModel() -> SidebarViewModel {
+        makeViewModel(defaults: suite.defaults, clock: clock)
+    }
+
+    private func debounceStarted() async throws {
+        try await waitUntil { clock.pendingSleeperCount > 0 }
+    }
+
     @Test("filterQuery updates immediately on first non-empty input")
-    @MainActor
     func filterQueryUpdatesImmediatelyOnFirstInput() {
-        let vm = makeViewModel()
+        let vm = makeDebouncingViewModel()
 
         vm.searchText = "user"
 
@@ -564,12 +529,11 @@ struct SidebarViewModelSearchDebounceTests {
     }
 
     @Test("filterQuery clears immediately when search becomes empty")
-    @MainActor
-    func filterQueryClearsImmediatelyOnEmpty() async {
-        let vm = makeViewModel()
+    func filterQueryClearsImmediatelyOnEmpty() async throws {
+        let vm = makeDebouncingViewModel()
         vm.searchText = "user"
         vm.searchText = "users"
-        await Task.yield()
+        try await debounceStarted()
 
         vm.searchText = ""
 
@@ -577,35 +541,34 @@ struct SidebarViewModelSearchDebounceTests {
     }
 
     @Test("filterQuery stays at previous value during debounce window")
-    @MainActor
-    func filterQueryHoldsPreviousValueDuringDebounce() async {
-        let vm = makeViewModel()
+    func filterQueryHoldsPreviousValueDuringDebounce() async throws {
+        let vm = makeDebouncingViewModel()
         vm.searchText = "user"
         #expect(vm.filterQuery == "user")
 
         vm.searchText = "users"
-        await Task.yield()
+        try await debounceStarted()
 
         #expect(vm.filterQuery == "user")
     }
 
     @Test("filterQuery catches up after debounce window elapses")
-    @MainActor
-    func filterQueryCatchesUpAfterDebounce() async {
-        let vm = makeViewModel()
+    func filterQueryCatchesUpAfterDebounce() async throws {
+        let vm = makeDebouncingViewModel()
         vm.searchText = "user"
         let debounced = DebouncedFilterQueries(of: vm)
 
         vm.searchText = "users"
+        try await debounceStarted()
+        clock.advance(by: .milliseconds(150))
 
         #expect(await debounced.first() == "users")
         #expect(vm.filterQuery == "users")
     }
 
     @Test("rapid consecutive keystrokes collapse to the final value")
-    @MainActor
-    func rapidKeystrokesCollapseToFinalValue() async {
-        let vm = makeViewModel()
+    func rapidKeystrokesCollapseToFinalValue() async throws {
+        let vm = makeDebouncingViewModel()
         vm.searchText = "u"
 
         let debounced = DebouncedFilterQueries(of: vm)
@@ -613,9 +576,10 @@ struct SidebarViewModelSearchDebounceTests {
         vm.searchText = "us"
         vm.searchText = "use"
         vm.searchText = "user"
-        await Task.yield()
+        try await debounceStarted()
 
         #expect(vm.filterQuery == "u")
+        clock.advance(by: .milliseconds(150))
 
         #expect(await debounced.first() == "user")
         #expect(debounced.published == ["user"])
@@ -623,9 +587,8 @@ struct SidebarViewModelSearchDebounceTests {
     }
 
     @Test("filter caches still serve filteredTables using filterQuery, not searchText")
-    @MainActor
-    func filteredTablesHonorsFilterQueryNotSearchText() async {
-        let vm = makeViewModel()
+    func filteredTablesHonorsFilterQueryNotSearchText() async throws {
+        let vm = makeDebouncingViewModel()
         let users = TestFixtures.makeTableInfo(name: "users", type: .table)
         let userLog = TestFixtures.makeTableInfo(name: "user_log", type: .table)
         let orders = TestFixtures.makeTableInfo(name: "orders", type: .table)
@@ -633,7 +596,7 @@ struct SidebarViewModelSearchDebounceTests {
 
         vm.searchText = "user"
         vm.searchText = "users"
-        await Task.yield()
+        try await debounceStarted()
 
         let matches = vm.filteredTables(of: .table, from: mixed)
 

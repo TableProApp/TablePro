@@ -11,9 +11,10 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Phase 2 row count guard", .serialized)
 @MainActor
 struct Phase2RowCountGuardTests {
+    private let fixtures = CoordinatorFixtures()
+
     /// The registry contract phase 2 depends on. A claim is dead the moment phase 1 settles it, so
     /// anything that runs afterwards and still belongs to the same content must ask about content.
     @Test("A settled claim is no longer current but its content identity holds")
@@ -35,7 +36,7 @@ struct Phase2RowCountGuardTests {
     /// synchronously, so the handle it registers is observable without waiting on anything.
     @Test("Phase 2 still requests a row count after phase 1 has settled the claim")
     func phase2RequestsRowCountAfterSettle() {
-        let (coordinator, tabManager) = Self.makeCoordinator()
+        let (coordinator, tabManager) = makeCoordinator()
         let tabId = Self.addTableTab(to: tabManager)
         let claim = coordinator.tabExecution.claim(tabId)
         let settled = coordinator.tabExecution.settle(claim)
@@ -63,14 +64,10 @@ struct Phase2RowCountGuardTests {
         #expect(registry.isSameContent(contentEpoch, for: tabId) == false)
     }
 
-    private static func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {
-        let tabManager = QueryTabManager()
-        let coordinator = MainContentCoordinator(
-            connection: TestFixtures.makeConnection(),
-            tabManager: tabManager,
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
+    private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {
+        let fixture = fixtures.make()
+        let tabManager = fixture.tabManager
+        let coordinator = fixture.coordinator
         return (coordinator, tabManager)
     }
 

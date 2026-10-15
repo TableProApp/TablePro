@@ -3,11 +3,12 @@
 //  TableProTests
 //
 
+import Foundation
 @testable import TablePro
 import TableProPluginKit
-import XCTest
+import Testing
 
-final class CompareSourceDefinitionReadTests: XCTestCase {
+struct CompareSourceDefinitionReadTests {
     private let endpointName = "Reporting / shop"
 
     private func trigger(
@@ -35,7 +36,8 @@ final class CompareSourceDefinitionReadTests: XCTestCase {
         )
     }
 
-    func testAViewTheDriverRefusesCarriesTheDriversReason() async throws {
+    @Test
+    func aViewTheDriverRefusesCarriesTheDriversReason() async throws {
         let driver = SourceDefinitionStubDriver()
         let refusal = PluginObjectSourceError.insufficientPrivilege("recent")
         driver.viewDefinitions = ["recent": .failure(refusal), "totals": .failure(refusal)]
@@ -46,12 +48,13 @@ final class CompareSourceDefinitionReadTests: XCTestCase {
             using: driver
         )
 
-        XCTAssertEqual(reads.map(\.failure), [refusal.errorDescription, refusal.errorDescription])
-        XCTAssertEqual(reads.map(\.source), ["", ""])
-        XCTAssertEqual(reads.map(\.kind), [.view, .materializedView])
+        #expect(reads.map(\.failure) == [refusal.errorDescription, refusal.errorDescription])
+        #expect(reads.map(\.source) == ["", ""])
+        #expect(reads.map(\.kind) == [.view, .materializedView])
     }
 
-    func testAReadableViewKeepsItsDefinition() async throws {
+    @Test
+    func aReadableViewKeepsItsDefinition() async throws {
         let driver = SourceDefinitionStubDriver()
         driver.viewDefinitions = ["recent": .success("CREATE VIEW recent AS SELECT 1")]
 
@@ -61,11 +64,12 @@ final class CompareSourceDefinitionReadTests: XCTestCase {
             using: driver
         )
 
-        XCTAssertNil(reads.first?.failure)
-        XCTAssertEqual(reads.first?.source, "CREATE VIEW recent AS SELECT 1")
+        #expect(reads.first?.failure == nil)
+        #expect(reads.first?.source == "CREATE VIEW recent AS SELECT 1")
     }
 
-    func testAMaterializedViewsIndexesTravelWithItsDefinition() async throws {
+    @Test
+    func aMaterializedViewsIndexesTravelWithItsDefinition() async throws {
         let driver = SourceDefinitionStubDriver()
         driver.viewDefinitions = [
             "totals": .success("CREATE MATERIALIZED VIEW shop.totals AS SELECT 1 AS id"),
@@ -85,17 +89,20 @@ final class CompareSourceDefinitionReadTests: XCTestCase {
         )
 
         guard case .read(let indexes)? = reads.first?.indexes else {
-            return XCTFail("the indexes read with the view must reach its definition read")
+            Issue.record("the indexes read with the view must reach its definition read")
+            return
         }
-        XCTAssertEqual(indexes.map(\.name), ["totals_id_idx"])
+        #expect(indexes.map(\.name) == ["totals_id_idx"])
         guard case .failed(let reason)? = reads.dropFirst().first?.indexes else {
-            return XCTFail("a failed index read must reach the definition read as a failure")
+            Issue.record("a failed index read must reach the definition read as a failure")
+            return
         }
-        XCTAssertEqual(reason, "permission denied")
-        XCTAssertNil(reads.last?.indexes)
+        #expect(reason == "permission denied")
+        #expect(reads.last?.indexes == nil)
     }
 
-    func testACancelledViewReadIsNotAFailure() async {
+    @Test
+    func aCancelledViewReadIsNotAFailure() async {
         let driver = SourceDefinitionStubDriver()
         driver.viewDefinitions = ["recent": .failure(CancellationError())]
 
@@ -105,15 +112,16 @@ final class CompareSourceDefinitionReadTests: XCTestCase {
                 schema: "shop",
                 using: driver
             )
-            XCTFail("a cancelled read must not become an unreadable object")
+            Issue.record("a cancelled read must not become an unreadable object")
         } catch {
-            XCTAssertTrue(error is CancellationError, "\(error)")
+            #expect(error is CancellationError, "\(error)")
         }
     }
 
     // MARK: - Routines
 
-    func testARoutineIsReadThroughItsDDLEvenWhenTheListingCarriesABody() async throws {
+    @Test
+    func aRoutineIsReadThroughItsDDLEvenWhenTheListingCarriesABody() async throws {
         let driver = SourceDefinitionStubDriver()
         driver.routines = .success([
             PluginRoutineInfo(name: "add", kind: .function, schema: "main", argumentSignature: "(a, b)", definition: "(a + b)")
@@ -124,11 +132,12 @@ final class CompareSourceDefinitionReadTests: XCTestCase {
             schema: "main", endpointName: endpointName, using: driver
         )
 
-        XCTAssertEqual(reads.map(\.source), ["CREATE OR REPLACE MACRO main.add(a, b) AS (a + b);"])
-        XCTAssertTrue(driver.recordedCalls.contains("fetchRoutineDDL:add"))
+        #expect(reads.map(\.source) == ["CREATE OR REPLACE MACRO main.add(a, b) AS (a + b);"])
+        #expect(driver.recordedCalls.contains("fetchRoutineDDL:add"))
     }
 
-    func testARoutineWhoseDDLCannotBeReadCarriesTheReason() async throws {
+    @Test
+    func aRoutineWhoseDDLCannotBeReadCarriesTheReason() async throws {
         let driver = SourceDefinitionStubDriver()
         let refusal = PluginObjectSourceError.insufficientPrivilege("p")
         driver.routines = .success([PluginRoutineInfo(name: "p", kind: .procedure, schema: "shop")])
@@ -138,13 +147,14 @@ final class CompareSourceDefinitionReadTests: XCTestCase {
             schema: "shop", endpointName: endpointName, using: driver
         )
 
-        XCTAssertEqual(reads.count, 1)
-        XCTAssertEqual(reads.first?.kind, .procedure)
-        XCTAssertEqual(reads.first?.failure, refusal.errorDescription)
-        XCTAssertEqual(reads.first?.source, "")
+        #expect(reads.count == 1)
+        #expect(reads.first?.kind == .procedure)
+        #expect(reads.first?.failure == refusal.errorDescription)
+        #expect(reads.first?.source == "")
     }
 
-    func testARoutineListingThatFailsStopsTheRead() async {
+    @Test
+    func aRoutineListingThatFailsStopsTheRead() async {
         let driver = SourceDefinitionStubDriver()
         driver.routines = .failure(DefinitionReadStubError(message: "Access denied to information_schema"))
 
@@ -152,19 +162,21 @@ final class CompareSourceDefinitionReadTests: XCTestCase {
             _ = try await CompareMetadataService.readRoutineDefinitions(
                 schema: "shop", endpointName: endpointName, using: driver
             )
-            XCTFail("an unlisted scope must not read as a scope with no routines")
+            Issue.record("an unlisted scope must not read as a scope with no routines")
         } catch {
             guard case CompareSyncError.readFailed(let message) = error else {
-                return XCTFail("expected readFailed, got \(error)")
+                Issue.record("expected readFailed, got \(error)")
+                return
             }
-            XCTAssertTrue(message.contains(endpointName), message)
-            XCTAssertTrue(message.contains("Access denied to information_schema"), message)
+            #expect(message.contains(endpointName), Comment(rawValue: message))
+            #expect(message.contains("Access denied to information_schema"), Comment(rawValue: message))
         }
     }
 
     // MARK: - Triggers
 
-    func testATriggerWithoutADefinitionIsReadThroughItsDDLAndNeverItsStatement() async throws {
+    @Test
+    func aTriggerWithoutADefinitionIsReadThroughItsDDLAndNeverItsStatement() async throws {
         let driver = SourceDefinitionStubDriver()
         driver.wholeSchemaTriggers = .success([
             trigger("stamped"),
@@ -179,15 +191,16 @@ final class CompareSourceDefinitionReadTests: XCTestCase {
             tables: ["orders"], schema: "shop", endpointName: endpointName, using: driver
         )
 
-        XCTAssertEqual(reads.map(\.name), ["stamped", "hidden"])
-        XCTAssertEqual(reads[0].source, "CREATE TRIGGER stamped BEFORE INSERT ON orders FOR EACH ROW SET NEW.n = 1")
-        XCTAssertNil(reads[0].failure)
-        XCTAssertEqual(reads[1].source, "")
-        XCTAssertEqual(reads[1].failure, PluginObjectSourceError.insufficientPrivilege("hidden").errorDescription)
-        XCTAssertEqual(reads.map(\.signature), ["orders", "orders"])
+        #expect(reads.map(\.name) == ["stamped", "hidden"])
+        #expect(reads[0].source == "CREATE TRIGGER stamped BEFORE INSERT ON orders FOR EACH ROW SET NEW.n = 1")
+        #expect(reads[0].failure == nil)
+        #expect(reads[1].source == "")
+        #expect(reads[1].failure == PluginObjectSourceError.insufficientPrivilege("hidden").errorDescription)
+        #expect(reads.map(\.signature) == ["orders", "orders"])
     }
 
-    func testATriggerWithADefinitionIsNotReadAgain() async throws {
+    @Test
+    func aTriggerWithADefinitionIsNotReadAgain() async throws {
         let driver = SourceDefinitionStubDriver()
         let definition = "CREATE TRIGGER stamped BEFORE INSERT ON orders FOR EACH ROW SET NEW.n = 1"
         driver.wholeSchemaTriggers = .success([trigger("stamped", definition: definition)])
@@ -196,11 +209,12 @@ final class CompareSourceDefinitionReadTests: XCTestCase {
             tables: ["orders"], schema: "shop", endpointName: endpointName, using: driver
         )
 
-        XCTAssertEqual(reads.map(\.source), [definition])
-        XCTAssertFalse(driver.recordedCalls.contains("fetchTriggerDDL:stamped"))
+        #expect(reads.map(\.source) == [definition])
+        #expect(!driver.recordedCalls.contains("fetchTriggerDDL:stamped"))
     }
 
-    func testAPerTableTriggerListingThatFailsStopsTheRead() async {
+    @Test
+    func aPerTableTriggerListingThatFailsStopsTheRead() async {
         let driver = SourceDefinitionStubDriver()
         driver.tableTriggers = [
             "customers": .success([]),
@@ -211,18 +225,20 @@ final class CompareSourceDefinitionReadTests: XCTestCase {
             _ = try await CompareMetadataService.readTriggerDefinitions(
                 tables: ["customers", "orders"], schema: "shop", endpointName: endpointName, using: driver
             )
-            XCTFail("a table whose triggers could not be listed must not read as a table with none")
+            Issue.record("a table whose triggers could not be listed must not read as a table with none")
         } catch {
             guard case CompareSyncError.readFailed(let message) = error else {
-                return XCTFail("expected readFailed, got \(error)")
+                Issue.record("expected readFailed, got \(error)")
+                return
             }
-            XCTAssertTrue(message.contains("orders"), message)
-            XCTAssertTrue(message.contains(endpointName), message)
-            XCTAssertTrue(message.contains("TRIGGER command denied"), message)
+            #expect(message.contains("orders"), Comment(rawValue: message))
+            #expect(message.contains(endpointName), Comment(rawValue: message))
+            #expect(message.contains("TRIGGER command denied"), Comment(rawValue: message))
         }
     }
 
-    func testAFailedWholeSchemaTriggerReadFallsBackPerTable() async throws {
+    @Test
+    func aFailedWholeSchemaTriggerReadFallsBackPerTable() async throws {
         let driver = SourceDefinitionStubDriver()
         let definition = "CREATE TRIGGER stamped BEFORE INSERT ON orders FOR EACH ROW SET NEW.n = 1"
         driver.wholeSchemaTriggers = .failure(DefinitionReadStubError(message: "bulk read refused"))
@@ -232,7 +248,7 @@ final class CompareSourceDefinitionReadTests: XCTestCase {
             tables: ["orders"], schema: "shop", endpointName: endpointName, using: driver
         )
 
-        XCTAssertEqual(reads.map(\.source), [definition])
-        XCTAssertTrue(driver.recordedCalls.contains("fetchTriggers:orders"))
+        #expect(reads.map(\.source) == [definition])
+        #expect(driver.recordedCalls.contains("fetchTriggers:orders"))
     }
 }

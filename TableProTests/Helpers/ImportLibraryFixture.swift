@@ -1,8 +1,3 @@
-//
-//  ImportLibraryFixture.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import TableProImport
@@ -29,7 +24,8 @@ final class ImportLibraryFixture {
     let sshProfiles: SSHProfileStorage
     let favorites: SQLFavoriteManager
 
-    private let suiteNames: [String]
+    private let syncSuite: EphemeralDefaults
+    private let storeSuite: EphemeralDefaults
 
     init(damage: Set<Damage> = []) throws {
         let unique = UUID().uuidString
@@ -43,14 +39,10 @@ final class ImportLibraryFixture {
         self.directory = directory
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
-        let syncSuite = "com.TablePro.tests.ImportLibrary.sync.\(unique)"
-        let storeSuite = "com.TablePro.tests.ImportLibrary.store.\(unique)"
-        suiteNames = [syncSuite, storeSuite]
-        guard let syncDefaults = UserDefaults(suiteName: syncSuite),
-              let defaults = UserDefaults(suiteName: storeSuite) else {
-            throw CocoaError(.featureUnsupported)
-        }
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
+        syncSuite = try EphemeralDefaults("ImportLibrary.sync")
+        storeSuite = try EphemeralDefaults("ImportLibrary.store")
+        let defaults = storeSuite.defaults
+        let metadata = SyncMetadataStorage(userDefaults: syncSuite.defaults)
         self.metadata = metadata
         let tracker = SyncChangeTracker(metadataStorage: metadata)
         let integrity = ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
@@ -160,8 +152,5 @@ final class ImportLibraryFixture {
     func cleanUp() {
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path)
         try? FileManager.default.removeItem(at: directory)
-        for suite in suiteNames {
-            UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
-        }
     }
 }

@@ -2,6 +2,7 @@ import Combine
 import Foundation
 import os
 import TableProPluginKit
+import TableProUtilities
 
 @MainActor
 final class UsersRolesViewModel: ObservableObject {

@@ -10,10 +10,12 @@ import Testing
 
 @MainActor
 struct ColumnLayoutSyncTests {
+    private let pool = EphemeralDefaultsPool()
+
     private func makePersister() throws -> (FileColumnLayoutPersister, SyncChangeTracker) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("cl-sync-\(UUID().uuidString)", isDirectory: true)
-        let meta = try #require(UserDefaults(suiteName: "cl-sync-meta-\(UUID().uuidString)"))
+        let meta = try pool.make().defaults
         let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: meta))
         return (FileColumnLayoutPersister(storageDirectory: directory, syncTracker: tracker), tracker)
     }
@@ -21,7 +23,7 @@ struct ColumnLayoutSyncTests {
     private func makeTrackedPersister() throws -> (FileColumnLayoutPersister, SyncMetadataStorage, URL) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("cl-sync-\(UUID().uuidString)", isDirectory: true)
-        let meta = try #require(UserDefaults(suiteName: "cl-sync-meta-\(UUID().uuidString)"))
+        let meta = try pool.make().defaults
         let metadata = SyncMetadataStorage(userDefaults: meta)
         let tracker = SyncChangeTracker(metadataStorage: metadata)
         return (FileColumnLayoutPersister(storageDirectory: directory, syncTracker: tracker), metadata, directory)

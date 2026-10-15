@@ -126,7 +126,10 @@ struct StructureCollationSpellingTests {
         let change = try #require(modifiedColumns(StructureDiffEngine().compareTable(source: source, target: target)).first)
         #expect(change.new.charset == nil)
         #expect(change.new.collation == nil)
-        #expect(mysqlColumnDefinitionSQL(change.new.toPlugin()) == "`code` INT NULL")
+        let written = change.new.toPlugin()
+        #expect(written.dataType == "INT")
+        #expect(written.charset == nil)
+        #expect(written.collation == nil)
     }
 
     @Test("Ignoring collation, a PostgreSQL text column retyped to integer writes no COLLATE")
@@ -136,7 +139,10 @@ struct StructureCollationSpellingTests {
 
         let change = try #require(modifiedColumns(StructureDiffEngine().compareTable(source: source, target: target)).first)
         #expect(change.new.ddlCollation == nil)
-        #expect(PostgreSQLColumnClauses.alterType(old: change.old.toPlugin(), new: change.new.toPlugin()) == "integer")
+        let written = change.new.toPlugin()
+        #expect(written.ddlSpelling == "integer")
+        #expect(written.ddlCollation == nil)
+        #expect(written.dataType != change.old.toPlugin().dataType)
     }
 
     @Test("Ignoring collation, a retyped column keeps the collation read on its own type")
@@ -148,10 +154,9 @@ struct StructureCollationSpellingTests {
 
         let change = try #require(modifiedColumns(StructureDiffEngine().compareTable(source: source, target: target)).first)
         #expect(change.new.ddlCollation == #"pg_catalog."C""#)
-        #expect(
-            PostgreSQLColumnClauses.alterType(old: change.old.toPlugin(), new: change.new.toPlugin())
-                == #"text COLLATE pg_catalog."C""#
-        )
+        let written = change.new.toPlugin()
+        #expect(written.ddlSpelling == "text")
+        #expect(written.ddlCollation == #"pg_catalog."C""#)
     }
 
     @Test("Comparing collation, one name in two schemas is no collation change and writes no retype")
@@ -163,7 +168,9 @@ struct StructureCollationSpellingTests {
         let change = try #require(modifiedColumns(result).first)
         #expect(!change.new.isNullable)
         #expect(change.new.ddlCollation == #"tgt."Case Insens""#)
-        #expect(PostgreSQLColumnClauses.alterType(old: change.old.toPlugin(), new: change.new.toPlugin()) == nil)
+        let (old, written) = (change.old.toPlugin(), change.new.toPlugin())
+        #expect(written.dataType.uppercased() == old.dataType.uppercased())
+        #expect(written.ddlCollation == old.ddlCollation)
     }
 
     @Test("Comparing collation, a retype with the same collation name carries the source's own spelling")

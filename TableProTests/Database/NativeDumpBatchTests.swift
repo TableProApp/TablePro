@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSSHConfig
 import Testing
 
 @testable import TablePro
@@ -68,7 +69,6 @@ private final class FakeDumpService: NativeDumpRunning {
     }
 }
 
-@Suite("Native dump batch", .serialized)
 @MainActor
 struct NativeDumpBatchTests {
     private let root = URL(fileURLWithPath: NSTemporaryDirectory())

@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProUtilities
 
 @MainActor
 internal final class FavoritesOutlineCoordinator<Row: View>: NSObject, NSOutlineViewDataSource,

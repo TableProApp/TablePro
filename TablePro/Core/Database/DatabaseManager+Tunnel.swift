@@ -6,6 +6,9 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProRedisCore
+import TableProSSHConfig
+import TableProUtilities
 
 // MARK: - Shared Tunnel Helpers
 

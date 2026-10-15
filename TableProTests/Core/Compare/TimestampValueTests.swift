@@ -9,108 +9,122 @@
 //  exact-integer range and puts the same class of precision loss back into the fixed path.
 //
 
+import Foundation
 @testable import TablePro
-import XCTest
+import Testing
 
-final class TimestampValueTests: XCTestCase {
+struct TimestampValueTests {
     private func value(_ text: String) throws -> TimestampValue {
-        try XCTUnwrap(TimestampValue.parse(text), "\(text) should parse as a timestamp")
+        try #require(TimestampValue.parse(text), "\(text) should parse as a timestamp")
     }
 
     // MARK: - Sub-second precision
 
-    func testMicrosecondDifferenceIsNotIdenticalAtSixDigits() throws {
+    @Test
+    func microsecondDifferenceIsNotIdenticalAtSixDigits() throws {
         let earlier = try value("2024-01-01 10:00:00.123456")
         let later = try value("2024-01-01 10:00:00.123457")
 
-        XCTAssertFalse(earlier.equals(later, fractionalDigits: 6))
+        #expect(!earlier.equals(later, fractionalDigits: 6))
     }
 
-    func testMicrosecondDifferenceIsIdenticalAtThreeDigits() throws {
+    @Test
+    func microsecondDifferenceIsIdenticalAtThreeDigits() throws {
         let earlier = try value("2024-01-01 10:00:00.123456")
         let later = try value("2024-01-01 10:00:00.123999")
 
-        XCTAssertTrue(earlier.equals(later, fractionalDigits: 3))
+        #expect(earlier.equals(later, fractionalDigits: 3))
     }
 
-    func testNanosecondDifferenceIsNotIdenticalAtNineDigits() throws {
+    @Test
+    func nanosecondDifferenceIsNotIdenticalAtNineDigits() throws {
         let earlier = try value("2024-01-01 10:00:00.123456789")
         let later = try value("2024-01-01 10:00:00.123456790")
 
-        XCTAssertFalse(earlier.equals(later, fractionalDigits: 9))
-        XCTAssertTrue(earlier.equals(later, fractionalDigits: 6))
+        #expect(!earlier.equals(later, fractionalDigits: 9))
+        #expect(earlier.equals(later, fractionalDigits: 6))
     }
 
-    func testWholeSecondsCompareEqualAtEveryPrecision() throws {
+    @Test
+    func wholeSecondsCompareEqualAtEveryPrecision() throws {
         let first = try value("2024-01-01 10:00:00")
         let second = try value("2024-01-01T10:00:00")
 
         for digits in 0 ... 9 {
-            XCTAssertTrue(first.equals(second, fractionalDigits: digits))
+            #expect(first.equals(second, fractionalDigits: digits))
         }
     }
 
-    func testFractionalDigitsAreReadExactlyRatherThanRounded() throws {
+    @Test
+    func fractionalDigitsAreReadExactlyRatherThanRounded() throws {
         let value = try value("2024-01-01 00:00:00.5")
 
-        XCTAssertEqual(value.nanosecondsSinceEpoch % 1_000_000_000, 500_000_000)
+        #expect(value.nanosecondsSinceEpoch % 1_000_000_000 == 500_000_000)
     }
 
-    func testMoreThanNineFractionalDigitsAreTruncatedNotMisread() throws {
+    @Test
+    func moreThanNineFractionalDigitsAreTruncatedNotMisread() throws {
         let value = try value("2024-01-01 00:00:00.1234567891234")
 
-        XCTAssertEqual(value.nanosecondsSinceEpoch % 1_000_000_000, 123_456_789)
+        #expect(value.nanosecondsSinceEpoch % 1_000_000_000 == 123_456_789)
     }
 
     // MARK: - Offsets
 
     /// The same instant written at two offsets is one instant, so it is never a difference.
-    func testEquivalentInstantsAtDifferentOffsetsCompareEqual() throws {
+    @Test
+    func equivalentInstantsAtDifferentOffsetsCompareEqual() throws {
         let utc = try value("2024-01-01 10:00:00+00:00")
         let offset = try value("2024-01-01 15:30:00+05:30")
 
-        XCTAssertTrue(utc.equals(offset, fractionalDigits: 6))
+        #expect(utc.equals(offset, fractionalDigits: 6))
     }
 
-    func testOffsetWithFractionalSecondsParses() throws {
+    @Test
+    func offsetWithFractionalSecondsParses() throws {
         let utc = try value("2024-01-01 10:00:00.250000+00:00")
 
-        XCTAssertEqual(utc.nanosecondsSinceEpoch % 1_000_000_000, 250_000_000)
+        #expect(utc.nanosecondsSinceEpoch % 1_000_000_000 == 250_000_000)
     }
 
     // MARK: - Non-timestamps
 
-    func testShortStringsAndPlainNumbersAreNotTimestamps() {
+    @Test
+    func shortStringsAndPlainNumbersAreNotTimestamps() {
         for text in ["", "abc", "12", "2024"] {
-            XCTAssertNil(TimestampValue.parse(text), "\(text) should not parse as a timestamp")
+            #expect(TimestampValue.parse(text) == nil, "\(text) should not parse as a timestamp")
         }
     }
 
-    func testDateOnlyParses() throws {
-        XCTAssertNoThrow(try value("2024-01-01"))
+    @Test
+    func dateOnlyParses() throws {
+        #expect(throws: Never.self) { try value("2024-01-01") }
     }
 }
 
-final class FractionalSecondTests: XCTestCase {
-    func testFractionIsSplitOffAndScaledToNanoseconds() {
+struct FractionalSecondTests {
+    @Test
+    func fractionIsSplitOffAndScaledToNanoseconds() {
         let split = FractionalSecond.split(from: "2024-01-01 10:00:00.123456")
 
-        XCTAssertEqual(split.withoutFraction, "2024-01-01 10:00:00")
-        XCTAssertEqual(split.nanoseconds, 123_456_000)
+        #expect(split.withoutFraction == "2024-01-01 10:00:00")
+        #expect(split.nanoseconds == 123_456_000)
     }
 
     /// A `+05:30` offset holds a colon, not a dot, so it must survive untouched.
-    func testOffsetSurvivesTheSplit() {
+    @Test
+    func offsetSurvivesTheSplit() {
         let split = FractionalSecond.split(from: "2024-01-01 10:00:00.5+05:30")
 
-        XCTAssertEqual(split.withoutFraction, "2024-01-01 10:00:00+05:30")
-        XCTAssertEqual(split.nanoseconds, 500_000_000)
+        #expect(split.withoutFraction == "2024-01-01 10:00:00+05:30")
+        #expect(split.nanoseconds == 500_000_000)
     }
 
-    func testTextWithNoFractionIsUnchanged() {
+    @Test
+    func textWithNoFractionIsUnchanged() {
         let split = FractionalSecond.split(from: "2024-01-01 10:00:00")
 
-        XCTAssertEqual(split.withoutFraction, "2024-01-01 10:00:00")
-        XCTAssertEqual(split.nanoseconds, 0)
+        #expect(split.withoutFraction == "2024-01-01 10:00:00")
+        #expect(split.nanoseconds == 0)
     }
 }

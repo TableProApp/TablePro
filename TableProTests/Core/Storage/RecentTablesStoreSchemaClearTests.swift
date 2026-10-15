@@ -12,6 +12,8 @@ import Testing
 /// because they persist per connection in UserDefaults.
 @MainActor
 struct RecentTablesStoreSchemaClearTests {
+    private let pool = EphemeralDefaultsPool()
+
     private func entry(database: String?, schema: String?, name: String) -> RecentTableEntry {
         RecentTableEntry(
             database: database,
@@ -39,7 +41,7 @@ struct RecentTablesStoreSchemaClearTests {
 
     @Test("Clearing one schema removes only its entries")
     func clearsOnlyTheNamedSchema() throws {
-        let defaults = try #require(UserDefaults(suiteName: "recent-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         let store = RecentTablesStore(defaults: defaults)
         let conn = UUID()
         seed(store, connectionId: conn, [
@@ -56,7 +58,7 @@ struct RecentTablesStoreSchemaClearTests {
 
     @Test("A same-named schema in another database keeps its entries")
     func leavesOtherDatabasesAlone() throws {
-        let defaults = try #require(UserDefaults(suiteName: "recent-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         let store = RecentTablesStore(defaults: defaults)
         let conn = UUID()
         seed(store, connectionId: conn, [
@@ -71,7 +73,7 @@ struct RecentTablesStoreSchemaClearTests {
 
     @Test("Clearing a schema nothing was opened in changes nothing")
     func clearingAnUnusedSchemaIsANoOp() throws {
-        let defaults = try #require(UserDefaults(suiteName: "recent-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         let store = RecentTablesStore(defaults: defaults)
         let conn = UUID()
         seed(store, connectionId: conn, [entry(database: "shop", schema: "public", name: "users")])

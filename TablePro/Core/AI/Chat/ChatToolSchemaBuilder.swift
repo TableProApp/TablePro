@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMCP
 
 enum ChatToolSchemaBuilder {
     static func object(

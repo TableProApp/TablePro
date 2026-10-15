@@ -6,14 +6,16 @@
 //  before the CREATE TABLE that references it runs.
 //
 
+import Foundation
 @testable import TablePro
-import XCTest
+import Testing
 
-final class ObjectCopySequenceStatementTests: XCTestCase {
+struct ObjectCopySequenceStatementTests {
     /// The driver returns the create and the reposition as one block, and the runner sends one
     /// statement per `execute`, so the block has to arrive already split, each piece as the driver
     /// takes it.
-    func testAMultiStatementSequenceDDLBecomesOneStatementEach() {
+    @Test
+    func aMultiStatementSequenceDDLBecomesOneStatementEach() {
         let statements = ObjectCopyPlanner.sequenceStatements(
             [
                 "CREATE SEQUENCE \"orders_id_seq\" INCREMENT BY 1 MINVALUE 1 MAXVALUE 100 START WITH 1",
@@ -21,7 +23,7 @@ final class ObjectCopySequenceStatementTests: XCTestCase {
             ],
             table: "orders"
         )
-        XCTAssertEqual(statements.map(\.sql), [
+        #expect(statements.map(\.sql) == [
             "CREATE SEQUENCE \"orders_id_seq\" INCREMENT BY 1 MINVALUE 1 MAXVALUE 100 START WITH 1",
             "SELECT pg_catalog.setval('\"orders_id_seq\"', 42, true)"
         ])
@@ -29,30 +31,31 @@ final class ObjectCopySequenceStatementTests: XCTestCase {
 
     /// A separator is the script's to write, never the statement's, so none is added to what goes
     /// to the driver.
-    func testASequenceStatementGetsNoSeparator() {
-        XCTAssertEqual(
-            ObjectCopyPlanner.sequenceStatements(["CREATE SEQUENCE \"s\""], table: "orders")
-                .map(\.sql),
-            ["CREATE SEQUENCE \"s\""]
-        )
+    @Test
+    func aSequenceStatementGetsNoSeparator() {
+        #expect(ObjectCopyPlanner.sequenceStatements(["CREATE SEQUENCE \"s\""], table: "orders")
+                .map(\.sql) == ["CREATE SEQUENCE \"s\""])
     }
 
     /// Named after the table, because the progress list and the outcome report are both grouped by
     /// the object the user selected.
-    func testTheStatementIsAttributedToTheTableThatNeedsIt() {
+    @Test
+    func theStatementIsAttributedToTheTableThatNeedsIt() {
         let statement = ObjectCopyPlanner.sequenceStatements(
             ["CREATE SEQUENCE \"s\""], table: "orders"
         ).first
-        XCTAssertEqual(statement?.objectName, "orders")
+        #expect(statement?.objectName == "orders")
     }
 
-    func testATableWithNoSequencesProducesNothing() {
-        XCTAssertTrue(ObjectCopyPlanner.sequenceStatements([], table: "orders").isEmpty)
+    @Test
+    func aTableWithNoSequencesProducesNothing() {
+        #expect(ObjectCopyPlanner.sequenceStatements([], table: "orders").isEmpty)
     }
 
     /// Ahead of the CREATE TABLE whose default references them, and behind the DROP that a
     /// replacement runs first.
-    func testSequencesRunBeforeTheTableTheyBelongTo() {
+    @Test
+    func sequencesRunBeforeTheTableTheyBelongTo() {
         let step = ObjectCopyTableStep(
             selection: ObjectCopySelection(kind: .table, name: "orders", schema: "public"),
             dropStatements: [SyncStatement(sql: "DROP TABLE \"orders\"", objectName: "orders", summary: "")],
@@ -71,7 +74,7 @@ final class ObjectCopySequenceStatementTests: XCTestCase {
             copiesIdentityColumn: false,
             note: nil
         )
-        XCTAssertEqual(step.ddl.map(\.sql), [
+        #expect(step.ddl.map(\.sql) == [
             "DROP TABLE \"orders\"",
             "CREATE SEQUENCE \"orders_id_seq\"",
             "CREATE TABLE \"orders\""

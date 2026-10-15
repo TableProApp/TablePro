@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 import TableProPluginKit
 
 public struct ExportDataTool: MCPToolImplementation {

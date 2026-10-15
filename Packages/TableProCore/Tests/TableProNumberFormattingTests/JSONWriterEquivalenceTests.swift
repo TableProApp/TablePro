@@ -1,5 +1,6 @@
+import Foundation
 @testable import TableProNumberFormatting
-import XCTest
+import Testing
 
 private struct Seeded: RandomNumberGenerator {
     private var state: UInt64
@@ -13,7 +14,7 @@ private struct Seeded: RandomNumberGenerator {
     }
 }
 
-final class JSONWriterEquivalenceTests: XCTestCase {
+struct JSONWriterEquivalenceTests {
     private let alphabet: [String] = [
         "", "a", "a/b", "q\"x", "back\\slash", "tab\there", "nl\nhere", "cr\rhere",
         "\u{08}\u{0C}", "\u{01}\u{1F}", "café → 日本", "\u{7F}", "emoji 🎉", "key.with.dots",
@@ -50,7 +51,7 @@ final class JSONWriterEquivalenceTests: XCTestCase {
     /// with one deliberate exception: escaping `/` is optional in JSON and the writer does not do
     /// it, so the reference encoder is asked not to either. A path, URL or MQTT topic reads and
     /// copies as it was stored instead of arriving as `device\/state\/up`.
-    func testWriterMatchesJSONEncoderByteForByte() throws {
+    @Test func testWriterMatchesJSONEncoderByteForByte() throws {
         var g = Seeded(seed: 0x5EED_1501_0000_0001)
         var compared = 0
         for _ in 0 ..< 4_000 {
@@ -58,9 +59,9 @@ final class JSONWriterEquivalenceTests: XCTestCase {
             guard let mine = NumberText.json(from: value) else { continue }
             guard let reference = referenceJSON(value) else { continue }
             compared += 1
-            XCTAssertEqual(mine, reference, "diverged for \(value)")
+            #expect(mine == reference, "diverged for \(value)")
         }
-        XCTAssertGreaterThan(compared, 1_000)
+        #expect(compared > 1_000)
     }
 
     private func referenceJSON(_ value: Any) -> String? {

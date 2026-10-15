@@ -6,11 +6,12 @@
 //  table that has to exist already, and a view selects from a table.
 //
 
+import Foundation
 @testable import TablePro
 import TableProPluginKit
-import XCTest
+import Testing
 
-final class ObjectCopyPlannerOrderingTests: XCTestCase {
+struct ObjectCopyPlannerOrderingTests {
     private func selection(
         _ name: String,
         kind: CompareObjectKind = .table,
@@ -47,7 +48,8 @@ final class ObjectCopyPlannerOrderingTests: XCTestCase {
         )
     }
 
-    func testAParentIsCreatedBeforeItsChild() {
+    @Test
+    func aParentIsCreatedBeforeItsChild() {
         let orders = selection("orders")
         let customers = selection("customers")
         let reads: [ObjectCopySelection: TableStructureRead] = [
@@ -59,13 +61,14 @@ final class ObjectCopyPlannerOrderingTests: XCTestCase {
             [orders, customers], reads: reads, effectiveSchema: "public"
         )
 
-        XCTAssertEqual(ordered.map(\.name), ["customers", "orders"])
+        #expect(ordered.map(\.name) == ["customers", "orders"])
     }
 
     /// The regression this guards: `fetchTables` reports no schema while the foreign key reports
     /// one, so a node keyed `orders` never matched the dependency `public.customers`. Every edge
     /// vanished and the sort fell through to alphabetical order, which puts the child first.
-    func testTheEffectiveSchemaIsUsedWhenTheTableReportsNone() {
+    @Test
+    func theEffectiveSchemaIsUsedWhenTheTableReportsNone() {
         let orders = selection("orders", schema: nil)
         let customers = selection("customers", schema: nil)
         let reads: [ObjectCopySelection: TableStructureRead] = [
@@ -77,15 +80,14 @@ final class ObjectCopyPlannerOrderingTests: XCTestCase {
             [orders, customers], reads: reads, effectiveSchema: "public"
         )
 
-        XCTAssertEqual(
-            ordered.map(\.name), ["customers", "orders"],
-            "the edge has to survive the schema the table itself does not report"
-        )
+        #expect(ordered.map(\.name) == ["customers", "orders"],
+            "the edge has to survive the schema the table itself does not report")
     }
 
     /// A cycle cannot be ordered, and dropping one of its tables would be worse than letting the
     /// server refuse the second CREATE, so every input still comes back exactly once.
-    func testACycleStillReturnsEveryTableOnce() {
+    @Test
+    func aCycleStillReturnsEveryTableOnce() {
         let first = selection("a")
         let second = selection("b")
         let reads: [ObjectCopySelection: TableStructureRead] = [
@@ -97,21 +99,20 @@ final class ObjectCopyPlannerOrderingTests: XCTestCase {
             [first, second], reads: reads, effectiveSchema: "public"
         )
 
-        XCTAssertEqual(Set(ordered.map(\.name)), ["a", "b"])
-        XCTAssertEqual(ordered.count, 2)
+        #expect(Set(ordered.map(\.name)) == ["a", "b"])
+        #expect(ordered.count == 2)
     }
 
-    func testASingleTableIsReturnedUnchanged() {
+    @Test
+    func aSingleTableIsReturnedUnchanged() {
         let only = selection("orders")
-        XCTAssertEqual(
-            ObjectCopyPlanner.orderedByDependency(
+        #expect(ObjectCopyPlanner.orderedByDependency(
                 [only], reads: [only: read("orders")], effectiveSchema: "public"
-            ).map(\.name),
-            ["orders"]
-        )
+            ).map(\.name) == ["orders"])
     }
 
-    func testViewsRunBeforeRoutinesAndTriggersRunLast() {
+    @Test
+    func viewsRunBeforeRoutinesAndTriggersRunLast() {
         let ordered = ObjectCopyPlanner.orderedByKind([
             selection("audit_trigger", kind: .trigger),
             selection("total_sales", kind: .procedure),
@@ -119,65 +120,53 @@ final class ObjectCopyPlannerOrderingTests: XCTestCase {
             selection("tax_rate", kind: .function)
         ])
 
-        XCTAssertEqual(ordered.map(\.name), ["active_users", "tax_rate", "total_sales", "audit_trigger"])
+        #expect(ordered.map(\.name) == ["active_users", "tax_rate", "total_sales", "audit_trigger"])
     }
 
-    func testTwoObjectsOfOneKindKeepTheirGivenOrder() {
+    @Test
+    func twoObjectsOfOneKindKeepTheirGivenOrder() {
         let ordered = ObjectCopyPlanner.orderedByKind([
             selection("second", kind: .view),
             selection("first", kind: .view)
         ])
 
-        XCTAssertEqual(ordered.map(\.name), ["second", "first"])
+        #expect(ordered.map(\.name) == ["second", "first"])
     }
 
     // MARK: - Matching what the target already has
 
     /// Engines fold identifier case differently, and a target that already has the object has to
     /// be recognised whichever way it spells it, or Skip does not skip and Replace does not drop.
-    func testAnExistingObjectMatchesWithoutRegardToCase() {
-        XCTAssertEqual(
-            ObjectCopyPlanner.objectKey(for: selection("Active_Users", kind: .view)),
-            ObjectCopyPlanner.objectKey(for: selection("active_users", kind: .view))
-        )
+    @Test
+    func anExistingObjectMatchesWithoutRegardToCase() {
+        #expect(ObjectCopyPlanner.objectKey(for: selection("Active_Users", kind: .view)) == ObjectCopyPlanner.objectKey(for: selection("active_users", kind: .view)))
     }
 
     /// A table and a trigger may share a name, and only the trigger's own presence decides the
     /// trigger's step.
-    func testTwoKindsSharingANameAreDifferentObjects() {
-        XCTAssertNotEqual(
-            ObjectCopyPlanner.objectKey(for: selection("audit", kind: .table)),
-            ObjectCopyPlanner.objectKey(for: selection("audit", kind: .trigger, owner: "orders"))
-        )
+    @Test
+    func twoKindsSharingANameAreDifferentObjects() {
+        #expect(ObjectCopyPlanner.objectKey(for: selection("audit", kind: .table)) != ObjectCopyPlanner.objectKey(for: selection("audit", kind: .trigger, owner: "orders")))
     }
 
     /// A materialized view occupies a view's name, and a function occupies a procedure's on
     /// several engines, so each pair is one object for the purpose of "is it already there".
-    func testViewsAndRoutinesFoldIntoOneFamilyEach() {
-        XCTAssertEqual(
-            ObjectCopyPlanner.objectKey(for: selection("sales", kind: .view)),
-            ObjectCopyPlanner.objectKey(for: selection("sales", kind: .materializedView))
-        )
-        XCTAssertEqual(
-            ObjectCopyPlanner.objectKey(for: selection("total", kind: .procedure)),
-            ObjectCopyPlanner.objectKey(for: selection("total", kind: .function))
-        )
+    @Test
+    func viewsAndRoutinesFoldIntoOneFamilyEach() {
+        #expect(ObjectCopyPlanner.objectKey(for: selection("sales", kind: .view)) == ObjectCopyPlanner.objectKey(for: selection("sales", kind: .materializedView)))
+        #expect(ObjectCopyPlanner.objectKey(for: selection("total", kind: .procedure)) == ObjectCopyPlanner.objectKey(for: selection("total", kind: .function)))
     }
 
     /// `f(integer)` and `f(text)` are two routines, and copying one must not be taken for the
     /// other already being there.
-    func testTwoOverloadsAreTwoObjects() {
-        XCTAssertNotEqual(
-            ObjectCopyPlanner.objectKey(for: selection("f", kind: .function, signature: "(integer)")),
-            ObjectCopyPlanner.objectKey(for: selection("f", kind: .function, signature: "(text)"))
-        )
+    @Test
+    func twoOverloadsAreTwoObjects() {
+        #expect(ObjectCopyPlanner.objectKey(for: selection("f", kind: .function, signature: "(integer)")) != ObjectCopyPlanner.objectKey(for: selection("f", kind: .function, signature: "(text)")))
     }
 
-    func testTwoTriggersOnDifferentTablesAreTwoObjects() {
-        XCTAssertNotEqual(
-            ObjectCopyPlanner.objectKey(for: selection("audit", kind: .trigger, owner: "orders")),
-            ObjectCopyPlanner.objectKey(for: selection("audit", kind: .trigger, owner: "customers"))
-        )
+    @Test
+    func twoTriggersOnDifferentTablesAreTwoObjects() {
+        #expect(ObjectCopyPlanner.objectKey(for: selection("audit", kind: .trigger, owner: "orders")) != ObjectCopyPlanner.objectKey(for: selection("audit", kind: .trigger, owner: "customers")))
     }
 
     // MARK: - Namespace scopes
@@ -206,38 +195,39 @@ final class ObjectCopyPlannerOrderingTests: XCTestCase {
 
     /// A database-level copy on PostgreSQL spans every schema, and each has to be read and written
     /// in its own scope: one read against a nil schema answers only whatever the connection is on.
-    func testObjectsAreGroupedByTheSchemaTheyWereFoundIn() {
+    @Test
+    func objectsAreGroupedByTheSchemaTheyWereFoundIn() {
         let scopes = ObjectCopyPlanner.scopes(of: request([
             selection("orders", schema: "sales"),
             selection("audit", schema: "logging"),
             selection("customers", schema: "sales")
         ]))
 
-        XCTAssertEqual(scopes.map(\.namespace), ["sales", "logging"])
-        XCTAssertEqual(scopes.first?.objects.map(\.name), ["orders", "customers"])
+        #expect(scopes.map(\.namespace) == ["sales", "logging"])
+        #expect(scopes.first?.objects.map(\.name) == ["orders", "customers"])
     }
 
     /// A duplicate keeps every schema name, so each schema's objects land in a schema of the same
     /// name in the new database. A copy to a chosen target puts them all in the schema chosen.
-    func testADuplicateKeepsEachSchemaNameAndACopyDoesNot() {
+    @Test
+    func aDuplicateKeepsEachSchemaNameAndACopyDoesNot() {
         let objects = [selection("orders", schema: "sales")]
         let duplicate = ObjectCopyPlanner.scopes(of: request(objects, duplicates: true))
         let copy = ObjectCopyPlanner.scopes(of: request(objects))
 
-        XCTAssertEqual(
-            duplicate.first?.targetNamespace(for: request(objects, duplicates: true)), "sales"
-        )
-        XCTAssertEqual(copy.first?.targetNamespace(for: request(objects)), "archive")
+        #expect(duplicate.first?.targetNamespace(for: request(objects, duplicates: true)) == "sales")
+        #expect(copy.first?.targetNamespace(for: request(objects)) == "archive")
     }
 
-    func testAnEngineWithoutSchemasIsOneScope() {
+    @Test
+    func anEngineWithoutSchemasIsOneScope() {
         let scopes = ObjectCopyPlanner.scopes(of: request([
             selection("orders", schema: nil),
             selection("customers", schema: nil)
         ]))
 
-        XCTAssertEqual(scopes.count, 1)
-        XCTAssertNil(scopes.first?.namespace)
+        #expect(scopes.count == 1)
+        #expect(scopes.first?.namespace == nil)
     }
 
     // MARK: - Retargeting foreign keys
@@ -262,46 +252,51 @@ final class ObjectCopyPlannerOrderingTests: XCTestCase {
 
     /// Left as it was, the copied child kept referencing the source's parent, so `prod_copy.orders`
     /// stayed wired to `prod.customers` and the duplicate was never independent of its original.
-    func testAForeignKeyIntoTheSourceIsMovedToTheTarget() {
+    @Test
+    func aForeignKeyIntoTheSourceIsMovedToTheTarget() {
         let moved = ObjectCopyPlanner.retargeted(
             snapshot(referencedSchema: "sales"), from: "sales", to: "archive", schema: "archive"
         )
 
-        XCTAssertEqual(moved.schema, "archive")
-        XCTAssertEqual(moved.foreignKeys.first?.referencedSchema, "archive")
+        #expect(moved.schema == "archive")
+        #expect(moved.foreignKeys.first?.referencedSchema == "archive")
     }
 
     /// A reference that names neither side's schema points at something the copy never touched.
-    func testAForeignKeyIntoAThirdSchemaIsLeftAlone() {
+    @Test
+    func aForeignKeyIntoAThirdSchemaIsLeftAlone() {
         let moved = ObjectCopyPlanner.retargeted(
             snapshot(referencedSchema: "reference"), from: "sales", to: "archive", schema: "archive"
         )
 
-        XCTAssertEqual(moved.foreignKeys.first?.referencedSchema, "reference")
+        #expect(moved.foreignKeys.first?.referencedSchema == "reference")
     }
 
     /// An unqualified reference means "my own schema", so it follows the table into the target.
-    func testAnUnqualifiedForeignKeyFollowsTheTable() {
+    @Test
+    func anUnqualifiedForeignKeyFollowsTheTable() {
         let moved = ObjectCopyPlanner.retargeted(
             snapshot(referencedSchema: nil), from: "sales", to: "archive", schema: "archive"
         )
 
-        XCTAssertEqual(moved.foreignKeys.first?.referencedSchema, "archive")
+        #expect(moved.foreignKeys.first?.referencedSchema == "archive")
     }
 
-    func testASchemaThatDoesNotChangeLeavesTheSnapshotAlone() {
+    @Test
+    func aSchemaThatDoesNotChangeLeavesTheSnapshotAlone() {
         let moved = ObjectCopyPlanner.retargeted(
             snapshot(referencedSchema: "sales"), from: "sales", to: "sales", schema: "sales"
         )
 
-        XCTAssertEqual(moved.foreignKeys.first?.referencedSchema, "sales")
+        #expect(moved.foreignKeys.first?.referencedSchema == "sales")
     }
 
     /// A table the sort could not place is appended in the caller's own order, which is why the
     /// caller has to hand one in. Seeded from `reads.keys` the tail came out in whatever order
     /// Swift's per-process hash seed gave the dictionary that launch, so the same copy produced a
     /// different approved script, progress order and outcome list from one run to the next.
-    func testTablesTheSortCannotPlaceFollowTheOrderTheyWereGivenIn() {
+    @Test
+    func tablesTheSortCannotPlaceFollowTheOrderTheyWereGivenIn() {
         let placed = selection("customers")
         let names = ["zulu", "alpha", "mike"]
         let unread = names.map { selection($0) }
@@ -311,12 +306,13 @@ final class ObjectCopyPlannerOrderingTests: XCTestCase {
             [placed] + unread, reads: reads, effectiveSchema: "public"
         )
 
-        XCTAssertEqual(ordered.map(\.name), ["customers"] + names)
+        #expect(ordered.map(\.name) == ["customers"] + names)
     }
 
     /// The same selections in the same order answer the same way every time, whatever order the
     /// reads were built in.
-    func testTheOrderDoesNotDependOnHowTheReadsWereBuilt() {
+    @Test
+    func theOrderDoesNotDependOnHowTheReadsWereBuilt() {
         let names = ["zulu", "alpha", "mike", "bravo", "yankee"]
         let selections = names.map { selection($0) }
         var forwards: [ObjectCopySelection: TableStructureRead] = [:]
@@ -331,13 +327,14 @@ final class ObjectCopyPlannerOrderingTests: XCTestCase {
             selections, reads: backwards, effectiveSchema: "public"
         )
 
-        XCTAssertEqual(first.map(\.name), second.map(\.name))
-        XCTAssertEqual(Set(first.map(\.name)), Set(names))
-        XCTAssertEqual(first.count, names.count)
+        #expect(first.map(\.name) == second.map(\.name))
+        #expect(Set(first.map(\.name)) == Set(names))
+        #expect(first.count == names.count)
     }
 
     /// The tie-break holds while a real dependency still moves the tables it names.
-    func testTheGivenOrderYieldsToAForeignKey() {
+    @Test
+    func theGivenOrderYieldsToAForeignKey() {
         let orders = selection("orders")
         let customers = selection("customers")
         let audit = selection("audit")
@@ -353,9 +350,10 @@ final class ObjectCopyPlannerOrderingTests: XCTestCase {
 
         guard let parent = ordered.firstIndex(of: customers),
               let child = ordered.firstIndex(of: orders) else {
-            return XCTFail("the sort dropped a table")
+            Issue.record("the sort dropped a table")
+            return
         }
-        XCTAssertLessThan(parent, child)
-        XCTAssertEqual(ordered.count, 3)
+        #expect(parent < child)
+        #expect(ordered.count == 3)
     }
 }

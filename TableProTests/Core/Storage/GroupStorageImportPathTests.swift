@@ -13,16 +13,15 @@ import Testing
 @MainActor
 struct GroupStorageImportPathTests {
     private let unique = UUID().uuidString
+    private let pool = EphemeralDefaultsPool()
     private let defaults: UserDefaults
     private let metadata: SyncMetadataStorage
     private let events: AppEvents
     private let storage: GroupStorage
 
     init() throws {
-        defaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.GroupImport.\(unique)"))
-        metadata = SyncMetadataStorage(
-            userDefaults: try #require(UserDefaults(suiteName: "com.TablePro.tests.GroupImport.sync.\(unique)"))
-        )
+        defaults = try pool.make().defaults
+        metadata = SyncMetadataStorage(userDefaults: try pool.make().defaults)
         let appEvents = AppEvents()
         events = appEvents
         let tracker = SyncChangeTracker(metadataStorage: metadata)

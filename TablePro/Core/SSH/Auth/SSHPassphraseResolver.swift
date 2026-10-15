@@ -10,6 +10,7 @@
 
 import Foundation
 import os
+import TableProSSHConfig
 
 internal enum SSHPassphraseResolver {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SSHPassphraseResolver")

@@ -1,10 +1,12 @@
 import AppKit
 @testable import TableProEditorKit
-import XCTest
+import TableProTestSupport
+import Testing
 
-final class SuggestionSessionLifetimeTests: XCTestCase {
+@MainActor
+struct SuggestionSessionLifetimeTests {
     @MainActor
-    func test_showCompletions_endsSessionWhenDelegateReturnsNilItems() async throws {
+    @Test func test_showCompletions_endsSessionWhenDelegateReturnsNilItems() async throws {
         let (window, textViewController) = Mock.windowedTextViewController(theme: Mock.theme())
         defer { window.close() }
         window.orderFrontRegardless()
@@ -20,22 +22,23 @@ final class SuggestionSessionLifetimeTests: XCTestCase {
 
         await model.itemsRequestTask?.value
 
-        XCTAssertNil(model.activeTextView)
-        XCTAssertNil(model.delegate)
-        XCTAssertFalse(model.isPresented)
-        XCTAssertEqual(delegate.didCloseCount, 1)
+        #expect(model.activeTextView == nil)
+        #expect(model.delegate == nil)
+        #expect(!model.isPresented)
+        #expect(delegate.didCloseCount == 1)
     }
 
     @MainActor
-    func test_showCompletions_endsSessionWhenFirstResponderChangedDuringFetch() async throws {
+    @Test func test_showCompletions_endsSessionWhenFirstResponderChangedDuringFetch() async throws {
         let (window, textViewController) = Mock.windowedTextViewController(theme: Mock.theme())
         defer { window.close() }
         window.orderFrontRegardless()
-        let textView = try XCTUnwrap(textViewController.textView)
-        XCTAssertTrue(window.makeFirstResponder(textView))
+        let textView = try #require(textViewController.textView)
+        #expect(window.makeFirstResponder(textView))
 
         let model = SuggestionViewModel()
-        let delegate = LifetimeStubDelegate(items: [StubSuggestionEntry(label: "SELECT")], sleepMilliseconds: 20)
+        let fetch = AsyncGate()
+        let delegate = LifetimeStubDelegate(items: [StubSuggestionEntry(label: "SELECT")], fetch: fetch)
 
         var presentationCount = 0
         model.showCompletions(
@@ -44,14 +47,16 @@ final class SuggestionSessionLifetimeTests: XCTestCase {
             cursorPosition: CursorPosition(range: NSRange(location: 0, length: 0))
         ) { _, _ in presentationCount += 1 }
 
+        await fetch.arrived(1)
         window.makeFirstResponder(nil)
+        await fetch.open()
         await model.itemsRequestTask?.value
 
-        XCTAssertEqual(presentationCount, 0)
-        XCTAssertNil(model.activeTextView)
-        XCTAssertNil(model.delegate)
-        XCTAssertFalse(model.isPresented)
-        XCTAssertEqual(delegate.didCloseCount, 1)
+        #expect(presentationCount == 0)
+        #expect(model.activeTextView == nil)
+        #expect(model.delegate == nil)
+        #expect(!model.isPresented)
+        #expect(delegate.didCloseCount == 1)
     }
 
     /// A session that never got a window must not absorb the keystroke that could open one.
@@ -59,7 +64,7 @@ final class SuggestionSessionLifetimeTests: XCTestCase {
     /// every later prefix the stale candidates could still rank updated an invisible panel, so
     /// the popup never came back.
     @MainActor
-    func test_cursorsUpdated_presentsRatherThanFilingItemsIntoAWindowThatIsNotShown() throws {
+    @Test func test_cursorsUpdated_presentsRatherThanFilingItemsIntoAWindowThatIsNotShown() throws {
         let model = SuggestionViewModel()
         let textViewController = Mock.textViewController(theme: Mock.theme())
         let delegate = LifetimeStubDelegate(items: nil, cursorMoveItems: [StubSuggestionEntry(label: "SELECT")])
@@ -76,52 +81,56 @@ final class SuggestionSessionLifetimeTests: XCTestCase {
             position: CursorPosition(range: NSRange(location: 1, length: 0))
         ) { closeCount += 1 }
 
-        XCTAssertEqual(closeCount, 1)
-        XCTAssertTrue(model.items.isEmpty)
+        #expect(closeCount == 1)
+        #expect(model.items.isEmpty)
     }
 
     @MainActor
-    func test_showCompletions_supersededRequestLeavesTheLiveRequestHandleAlone() async throws {
+    @Test func test_showCompletions_supersededRequestLeavesTheLiveRequestHandleAlone() async throws {
         let (window, textViewController) = Mock.windowedTextViewController(theme: Mock.theme())
         defer { window.close() }
         window.orderFrontRegardless()
 
         let model = SuggestionViewModel()
-        let slow = LifetimeStubDelegate(items: nil, sleepMilliseconds: 200)
-        let fast = LifetimeStubDelegate(items: nil, sleepMilliseconds: 400)
+        let slowFetch = AsyncGate()
+        let liveFetch = AsyncGate()
+        let slow = LifetimeStubDelegate(items: nil, fetch: slowFetch)
+        let fast = LifetimeStubDelegate(items: nil, fetch: liveFetch)
 
         model.showCompletions(
             textView: textViewController,
             delegate: slow,
             cursorPosition: CursorPosition(range: NSRange(location: 0, length: 0))
         ) { _, _ in }
-        let superseded = try XCTUnwrap(model.itemsRequestTask)
+        let superseded = try #require(model.itemsRequestTask)
 
-        try await Task.sleep(for: .milliseconds(20))
+        await slowFetch.arrived(1)
 
         model.showCompletions(
             textView: textViewController,
             delegate: fast,
             cursorPosition: CursorPosition(range: NSRange(location: 0, length: 0))
         ) { _, _ in }
-        let live = try XCTUnwrap(model.itemsRequestTask)
+        let live = try #require(model.itemsRequestTask)
 
+        await slowFetch.open()
         await superseded.value
 
-        XCTAssertNotNil(model.itemsRequestTask)
-        XCTAssertFalse(live.isCancelled)
+        #expect(model.itemsRequestTask != nil)
+        #expect(!live.isCancelled)
 
         model.willClose()
+        await liveFetch.open()
     }
 
     /// `completionWindowDidSelect` is public and fires synchronously from inside the presentation,
     /// so a conformer may dismiss from it. The panel must not go up anyway over a session that no
     /// longer exists.
     @MainActor
-    func test_showCompletions_doesNotPresentWhenTheSelectionCallbackDismissedTheSession() async throws {
+    @Test func test_showCompletions_doesNotPresentWhenTheSelectionCallbackDismissedTheSession() async throws {
         let (window, textViewController) = Mock.keyWindowedTextViewController()
         defer { window.close() }
-        XCTAssertIdentical(window.firstResponder, textViewController.textView)
+        #expect(window.firstResponder === textViewController.textView)
 
         let model = SuggestionViewModel()
         let delegate = LifetimeStubDelegate(items: [StubSuggestionEntry(label: "SELECT")])
@@ -136,16 +145,16 @@ final class SuggestionSessionLifetimeTests: XCTestCase {
 
         await model.itemsRequestTask?.value
 
-        XCTAssertEqual(presentationCount, 0)
-        XCTAssertFalse(model.isPresented)
-        XCTAssertNil(model.activeTextView)
+        #expect(presentationCount == 0)
+        #expect(!model.isPresented)
+        #expect(model.activeTextView == nil)
     }
 
     /// A shown panel posts `willCloseNotification` from inside `super.close()`, so the explicit
     /// call behind it must not run a second teardown over whatever that one's delegate callback
     /// started.
     @MainActor
-    func test_controllerClose_cleansUpOncePerCloseForAShownPanel() throws {
+    @Test func test_controllerClose_cleansUpOncePerCloseForAShownPanel() throws {
         let controller = SuggestionController()
         let textViewController = Mock.textViewController(theme: Mock.theme())
         let delegate = LifetimeStubDelegate(items: nil)
@@ -157,13 +166,13 @@ final class SuggestionSessionLifetimeTests: XCTestCase {
 
         controller.close()
 
-        XCTAssertEqual(delegate.didCloseCount, 1)
-        XCTAssertNil(controller.model.activeTextView)
-        XCTAssertFalse(controller.model.isPresented)
+        #expect(delegate.didCloseCount == 1)
+        #expect(controller.model.activeTextView == nil)
+        #expect(!controller.model.isPresented)
     }
 
     @MainActor
-    func test_controllerClose_endsTheSessionEvenWhenTheWindowWasNeverShown() throws {
+    @Test func test_controllerClose_endsTheSessionEvenWhenTheWindowWasNeverShown() throws {
         let controller = SuggestionController()
         let textViewController = Mock.textViewController(theme: Mock.theme())
         let delegate = LifetimeStubDelegate(items: nil)
@@ -174,18 +183,18 @@ final class SuggestionSessionLifetimeTests: XCTestCase {
 
         controller.close()
 
-        XCTAssertNil(controller.model.activeTextView)
-        XCTAssertNil(controller.model.delegate)
-        XCTAssertFalse(controller.model.isPresented)
-        XCTAssertEqual(delegate.didCloseCount, 1)
+        #expect(controller.model.activeTextView == nil)
+        #expect(controller.model.delegate == nil)
+        #expect(!controller.model.isPresented)
+        #expect(delegate.didCloseCount == 1)
 
         controller.model.activeTextView = textViewController
         controller.model.delegate = delegate
 
         controller.close()
 
-        XCTAssertNil(controller.model.activeTextView)
-        XCTAssertEqual(delegate.didCloseCount, 2)
+        #expect(controller.model.activeTextView == nil)
+        #expect(delegate.didCloseCount == 2)
     }
 }
 
@@ -193,18 +202,18 @@ final class SuggestionSessionLifetimeTests: XCTestCase {
 private final class LifetimeStubDelegate: CodeSuggestionDelegate {
     private let items: [CodeSuggestionEntry]?
     private let cursorMoveItems: [CodeSuggestionEntry]?
-    private let sleepMilliseconds: Int
+    private let fetch: AsyncGate?
     private(set) var didCloseCount = 0
     var onSelect: (() -> Void)?
 
     init(
         items: [CodeSuggestionEntry]?,
         cursorMoveItems: [CodeSuggestionEntry]? = nil,
-        sleepMilliseconds: Int = 0
+        fetch: AsyncGate? = nil
     ) {
         self.items = items
         self.cursorMoveItems = cursorMoveItems
-        self.sleepMilliseconds = sleepMilliseconds
+        self.fetch = fetch
     }
 
     func completionSuggestionsRequested(
@@ -212,13 +221,7 @@ private final class LifetimeStubDelegate: CodeSuggestionDelegate {
         cursorPosition: CursorPosition,
         isManualTrigger: Bool
     ) async -> CodeSuggestionResponse? {
-        if sleepMilliseconds > 0 {
-            do {
-                try await Task.sleep(for: .milliseconds(sleepMilliseconds))
-            } catch {
-                return nil
-            }
-        }
+        await fetch?.wait()
         guard let items else { return nil }
         return .answeringAnEmptyPrefix(items, at: cursorPosition)
     }

@@ -13,6 +13,7 @@ import Foundation
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProUtilities
 import UniformTypeIdentifiers
 
 /// Provides command actions for MainContentView, reached through `MainContentCoordinator.commandActions`.

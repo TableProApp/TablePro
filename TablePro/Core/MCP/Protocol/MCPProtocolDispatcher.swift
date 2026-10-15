@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 
 public actor MCPProtocolDispatcher {
     internal static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Dispatcher")

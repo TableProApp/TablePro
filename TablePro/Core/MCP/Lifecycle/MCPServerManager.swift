@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import os
+import TableProMCP
 
 internal enum MCPServerState: Sendable, Equatable {
     case stopped

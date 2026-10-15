@@ -7,14 +7,12 @@ import Foundation
 @testable import TablePro
 import Testing
 
-/// The app and the libpq plugin agree on these values only by spelling, the way they already do for
-/// `connectionId` and `queryTimeoutSeconds`, so a rename on either side is caught here.
+// The libpq plugin matches these spellings, the way it already does `connectionId` and `queryTimeoutSeconds`.
+// PostgreSQLDriverTests' LibPQConnectionStringTests pins its side to the same two values.
 struct DriverPurposeTests {
-    @Test("Each purpose the app sends is the one the libpq plugin names")
+    @Test("Each purpose the app sends is spelled the way the libpq plugin names it")
     func pluginNamesEachPurpose() {
-        #expect(LibPQConnectionString.applicationName(forPurpose: DriverPurpose.session.rawValue) == "TablePro")
-        #expect(
-            LibPQConnectionString.applicationName(forPurpose: DriverPurpose.metadata.rawValue) == "TablePro Metadata"
-        )
+        #expect(DriverPurpose.session.rawValue == "session")
+        #expect(DriverPurpose.metadata.rawValue == "metadata")
     }
 }

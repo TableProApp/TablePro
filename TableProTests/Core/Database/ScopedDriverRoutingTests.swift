@@ -11,7 +11,6 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-@Suite("Scoped driver routing", .serialized)
 @MainActor
 struct ScopedDriverRoutingTests {
     private static func makeSession(

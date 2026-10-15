@@ -7,6 +7,7 @@ import Foundation
 @testable import TablePro
 import TableProImport
 import TableProPluginKit
+@testable import TableProSSHConfig
 import Testing
 
 @MainActor
@@ -82,9 +83,11 @@ struct PortableConnectionMappingTests {
 
     // MARK: - Safe Mode
 
-    @Test("An iOS Confirm Writes connection imports as Alert")
-    func iOSConfirmWritesImportsAsAlert() {
-        #expect(imported(settings(safeModeLevel: "confirmWrites")).preferredSafeModeLevel == .alert)
+    @Test("An iOS Confirm Writes connection and an unrecognized level import as Alert, not Silent", arguments: [
+        "confirmWrites", "someFutureLevel",
+    ])
+    func importsAsAlert(_ level: String) {
+        #expect(imported(settings(safeModeLevel: level)).preferredSafeModeLevel == .alert)
     }
 
     @Test("An iOS Off connection and a file with no level import as Silent")
@@ -96,11 +99,6 @@ struct PortableConnectionMappingTests {
     @Test("A Mac level imports unchanged", arguments: SafeModeLevel.allCases)
     func macLevelImportsUnchanged(_ level: SafeModeLevel) {
         #expect(imported(settings(safeModeLevel: level.rawValue)).preferredSafeModeLevel == level)
-    }
-
-    @Test("An unrecognized level imports as Alert instead of Silent")
-    func unrecognizedLevelImportsAsAlert() {
-        #expect(imported(settings(safeModeLevel: "someFutureLevel")).preferredSafeModeLevel == .alert)
     }
 
     // MARK: - Links to local records

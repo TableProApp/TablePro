@@ -10,6 +10,7 @@ import Foundation
 import os
 import TableProLogRedaction
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     let core: LibPQDriverCore

@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import TablePro
+import TableProMCP
 
 struct MCPArgumentDecoderTests {
     private func expectInvalidParams(_ body: () throws -> some Any) {

@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProSSHConfig
 
 /// What a connection's working copy is, once it has one.
 struct MaterializedRemoteFile: Sendable {

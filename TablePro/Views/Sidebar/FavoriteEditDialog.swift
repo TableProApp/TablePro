@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProAutocomplete
 
 /// Wrapper for `.sheet(item:)` to ensure the query is passed reliably
 internal struct FavoriteDialogQuery: Identifiable {

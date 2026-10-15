@@ -7,7 +7,7 @@ import TableProSyncTransport
 @Suite("Sync metadata storage")
 struct SyncMetadataStorageTests {
     private func makeStorage() -> SyncMetadataStorage {
-        let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
+        let defaults = ScratchDefaults.make() ?? .standard
         return SyncMetadataStorage(userDefaults: defaults)
     }
 
@@ -79,7 +79,7 @@ struct SyncMetadataStorageTests {
 
     @Test("Pruning drops tombstones older than the cutoff and keeps newer ones")
     func pruningDropsOldTombstonesOnly() throws {
-        let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
+        let defaults = ScratchDefaults.make() ?? .standard
         let old = Tombstone(id: "old", deletedAt: Date(timeIntervalSinceNow: -60 * 60 * 24 * 40))
         let fresh = Tombstone(id: "fresh", deletedAt: Date())
         let data = try JSONEncoder().encode([old, fresh])
@@ -93,7 +93,7 @@ struct SyncMetadataStorageTests {
 
     @Test("Pruning keeps an old tombstone that cannot be pushed yet")
     func pruningKeepsUnpushableTombstones() throws {
-        let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
+        let defaults = ScratchDefaults.make() ?? .standard
         let heldOwner = UUID()
         let fortyDaysAgo = Date(timeIntervalSinceNow: -60 * 60 * 24 * 40)
         let held = Tombstone(id: "held", deletedAt: fortyDaysAgo, owner: heldOwner)
@@ -119,7 +119,7 @@ struct SyncMetadataStorageTests {
 
     @Test("A tombstone written before owners existed still decodes, with no owner")
     func legacyTombstoneDecodesWithoutOwner() throws {
-        let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
+        let defaults = ScratchDefaults.make() ?? .standard
         let legacy = Data(#"[{"id":"a","deletedAt":780000000}]"#.utf8)
         defaults.set(legacy, forKey: "com.TablePro.sync.tombstones.\(SyncRecordType.favoriteDatabase.rawValue)")
 
@@ -131,7 +131,7 @@ struct SyncMetadataStorageTests {
 
     @Test("Owners kept off sync survive a new storage instance and can be released one by one")
     func ownersKeptOffSyncPersist() {
-        let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
+        let defaults = ScratchDefaults.make() ?? .standard
         let first = UUID()
         let second = UUID()
         SyncMetadataStorage(userDefaults: defaults).keepOffSync(owners: [first, second])
@@ -181,7 +181,7 @@ struct SyncMetadataStorageTests {
 
     @Test("The first account seen on a device that never synced is recorded and nothing queued is dropped")
     func firstAccountIsRecorded() {
-        let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
+        let defaults = ScratchDefaults.make() ?? .standard
         let storage = SyncMetadataStorage(userDefaults: defaults)
         storage.markDirty("a", type: .connection)
         storage.addTombstone("b", type: .connection)
@@ -195,7 +195,7 @@ struct SyncMetadataStorageTests {
 
     @Test("An account recorded for the first time over an earlier sync starts sync over once and keeps what is queued")
     func unrecordedEarlierSyncStartsOverOnce() {
-        let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
+        let defaults = ScratchDefaults.make() ?? .standard
         let storage = SyncMetadataStorage(userDefaults: defaults)
         storage.markDirty("a", type: .connection)
         storage.addTombstone("b", type: .connection)
@@ -217,7 +217,7 @@ struct SyncMetadataStorageTests {
 
     @Test("The same account changes nothing")
     func sameAccountChangesNothing() {
-        let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
+        let defaults = ScratchDefaults.make() ?? .standard
         let storage = SyncMetadataStorage(userDefaults: defaults)
         storage.lastAccountId = "account-a"
         storage.markDirty("a", type: .connection)
@@ -233,7 +233,7 @@ struct SyncMetadataStorageTests {
 
     @Test("A different account clears the old account's token and deletions, and keeps edits waiting to go up")
     func differentAccountStartsOver() {
-        let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
+        let defaults = ScratchDefaults.make() ?? .standard
         let storage = SyncMetadataStorage(userDefaults: defaults)
         storage.lastAccountId = "account-a"
         storage.markDirty("a", type: .connection)
@@ -282,7 +282,7 @@ struct SyncMetadataStorageTests {
 
     @Test("Storage keys are the ones already on disk")
     func storageKeysAreStable() {
-        let defaults = UserDefaults(suiteName: "com.TablePro.tests.\(UUID().uuidString)") ?? .standard
+        let defaults = ScratchDefaults.make() ?? .standard
         let storage = SyncMetadataStorage(userDefaults: defaults)
         storage.markDirty("a", type: .connection)
         storage.addTombstone("b", type: .connection)

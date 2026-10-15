@@ -48,17 +48,17 @@ struct ContentModeTests {
     /// The result pane belongs to the mode, not to a command, so it must never land in the stored
     /// per-connection surface preference and displace what the user chose for browsing.
     @Test("The result surface is not user-selectable and is never stored")
-    func resultSurfaceIsModeOwned() {
+    func resultSurfaceIsModeOwned() throws {
         #expect(TrailingPaneSurface.agentResult.isUserSelectable == false)
         #expect(TrailingPaneSurface.inspector.isUserSelectable)
         #expect(TrailingPaneSurface.assistant.isUserSelectable)
 
-        let defaults = UserDefaults(suiteName: "ContentModeTests-\(UUID().uuidString)")
+        let suite = try EphemeralDefaults()
         let connectionId = UUID()
-        let state = TrailingPaneState(connectionId: connectionId, defaults: defaults ?? .standard)
+        let state = TrailingPaneState(connectionId: connectionId, defaults: suite.defaults)
         state.surface = .agentResult
 
-        #expect(defaults?.string(forKey: TrailingPaneState.surfaceKey(connectionId)) == nil)
+        #expect(suite.defaults.string(forKey: TrailingPaneState.surfaceKey(connectionId)) == nil)
     }
 
     @Test("Turning the AI feature off takes every AI surface with it")
@@ -81,55 +81,49 @@ struct ContentModeTests {
     /// session started or switched then would otherwise repaint panes nobody is looking at.
     @Test("The displayed agent session, and the render key, name a session only in Agent mode")
     func agentSessionIsNamedOnlyInAgentMode() {
-        AIFeatureScope.enabled {
-            let registry = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
-            let workspace = Self.makeWorkspace(phase: .idle, agentSessions: registry)
-            let session = registry.startSession(for: workspace.connectionId)
+        let registry = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
+        let workspace = Self.makeWorkspace(phase: .idle, agentSessions: registry)
+        let session = registry.startSession(for: workspace.connectionId)
 
-            #expect(workspace.displayedAgentSession == nil)
-            #expect(workspace.paneRenderKey.agentSessionId == nil)
+        #expect(workspace.displayedAgentSession == nil)
+        #expect(workspace.paneRenderKey.agentSessionId == nil)
 
-            workspace.contentMode = .agent
+        workspace.contentMode = .agent
 
-            #expect(workspace.displayedAgentSession === session)
-            #expect(workspace.paneRenderKey.agentSessionId == session.id)
-        }
+        #expect(workspace.displayedAgentSession === session)
+        #expect(workspace.paneRenderKey.agentSessionId == session.id)
     }
 
     @Test("A workspace reads its sessions from the registry it was given")
     func workspaceReadsItsOwnRegistry() {
-        AIFeatureScope.enabled {
-            let mine = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
-            let other = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
-            let workspace = Self.makeWorkspace(phase: .idle, agentSessions: mine)
-            workspace.contentMode = .agent
-            other.startSession(for: workspace.connectionId)
+        let mine = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
+        let other = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
+        let workspace = Self.makeWorkspace(phase: .idle, agentSessions: mine)
+        workspace.contentMode = .agent
+        other.startSession(for: workspace.connectionId)
 
-            #expect(workspace.displayedAgentSession == nil)
+        #expect(workspace.displayedAgentSession == nil)
 
-            let session = mine.startSession(for: workspace.connectionId)
-            #expect(workspace.displayedAgentSession === session)
-        }
+        let session = mine.startSession(for: workspace.connectionId)
+        #expect(workspace.displayedAgentSession === session)
     }
 
     /// The conversation is what Agent mode draws while the connection is up or coming up, and the
     /// unavailable screen, with its Retry, is what it draws over one that cannot be reached.
     @Test("The detail column follows the mode, except over a connection that cannot be reached")
     func detailModeFollowsTheModeAndThePane() {
-        AIFeatureScope.enabled {
-            let registry = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
-            let connecting = Self.makeWorkspace(phase: .connecting, agentSessions: registry)
-            let failed = Self.makeWorkspace(
-                phase: .unavailable(.failed(ConnectionFailureInfo(message: "refused"))),
-                agentSessions: registry
-            )
+        let registry = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
+        let connecting = Self.makeWorkspace(phase: .connecting, agentSessions: registry)
+        let failed = Self.makeWorkspace(
+            phase: .unavailable(.failed(ConnectionFailureInfo(message: "refused"))),
+            agentSessions: registry
+        )
 
-            #expect(connecting.detailMode == .browse)
-            connecting.contentMode = .agent
-            failed.contentMode = .agent
-            #expect(connecting.detailMode == .agent)
-            #expect(failed.detailMode == .browse)
-        }
+        #expect(connecting.detailMode == .browse)
+        connecting.contentMode = .agent
+        failed.contentMode = .agent
+        #expect(connecting.detailMode == .agent)
+        #expect(failed.detailMode == .browse)
     }
 
     /// The result column is one hosting controller per window, drawing whichever session is open, so
@@ -137,16 +131,14 @@ struct ContentModeTests {
     /// is opened on its statements.
     @Test("Which result view is showing belongs to the session")
     func resultSegmentBelongsToTheSession() {
-        AIFeatureScope.enabled {
-            let registry = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
-            let connectionId = UUID()
-            let first = registry.startSession(for: connectionId)
-            let second = registry.startSession(for: connectionId)
+        let registry = AgentSessionRegistry(store: AgentSessionStore(directory: Self.temporaryDirectory()))
+        let connectionId = UUID()
+        let first = registry.startSession(for: connectionId)
+        let second = registry.startSession(for: connectionId)
 
-            first.resultSegment = .results
+        first.resultSegment = .results
 
-            #expect(second.resultSegment == .sql)
-        }
+        #expect(second.resultSegment == .sql)
     }
 
     /// Nothing stores the choice, so a session comes back from disk on its statements.

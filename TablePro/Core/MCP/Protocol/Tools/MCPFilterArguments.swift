@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 enum MCPFilterArguments {
     static let operatorNames: [String] = FilterOperator.allCases.map(\.rawValue)

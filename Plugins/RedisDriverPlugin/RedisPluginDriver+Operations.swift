@@ -6,6 +6,7 @@
 import Foundation
 import OSLog
 import TableProPluginKit
+import TableProRedisCore
 
 extension RedisPluginDriver {
     /// The one door into an operation, so the paged read and the streamed read cannot disagree about

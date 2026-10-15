@@ -1,20 +1,17 @@
-//
-//  WelcomeViewModelTests.swift
-//  TableProTests
-//
-
+import Foundation
 @testable import TablePro
 import TableProConnectionLibrary
 import TableProImport
 import TableProPluginKit
 import TableProSyncTransport
-import XCTest
+import TableProTestSupport
+import Testing
 
 @MainActor
-final class WelcomeViewModelTests: XCTestCase {
-    private var suiteName: String!
+final class WelcomeViewModelTests {
+    private var suite: EphemeralDefaults!
+    private var syncSuite: EphemeralDefaults!
     private var defaults: UserDefaults!
-    private var syncSuiteName: String!
     private var syncDefaults: UserDefaults!
     private var connectionFileURL: URL!
     private var groupStorage: GroupStorage!
@@ -24,18 +21,12 @@ final class WelcomeViewModelTests: XCTestCase {
     private var preferences: ConnectionListPreferences!
     private var viewModel: WelcomeViewModel!
 
-    override func setUp() async throws {
-        try await super.setUp()
+    init() throws {
         let unique = UUID().uuidString
-        suiteName = "com.TablePro.tests.WelcomeViewModel.\(unique)"
-        syncSuiteName = "com.TablePro.tests.WelcomeViewModel.sync.\(unique)"
-        guard let defaults = UserDefaults(suiteName: suiteName),
-              let syncDefaults = UserDefaults(suiteName: syncSuiteName) else {
-            XCTFail("Could not create isolated UserDefaults suites")
-            return
-        }
-        self.defaults = defaults
-        self.syncDefaults = syncDefaults
+        suite = try EphemeralDefaults()
+        syncSuite = try EphemeralDefaults()
+        defaults = suite.defaults
+        syncDefaults = syncSuite.defaults
         let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults))
         connectionFileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
@@ -45,15 +36,17 @@ final class WelcomeViewModelTests: XCTestCase {
             at: connectionFileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        connectionStorage = ConnectionStorage(
+        let connectionStorage = ConnectionStorage(
             fileURL: connectionFileURL,
             userDefaults: defaults,
             syncTracker: tracker
         )
+        self.connectionStorage = connectionStorage
+        // The parameter is an @escaping @autoclosure: `self.connectionStorage` would capture self.
         groupStorage = GroupStorage(
             userDefaults: defaults,
             syncTracker: tracker,
-            connectionStorage: self.connectionStorage
+            connectionStorage: connectionStorage
         )
         welcomeRouter = WelcomeRouter()
         recents = RecentConnectionsStore(defaults: defaults, appEvents: AppEvents())
@@ -75,22 +68,8 @@ final class WelcomeViewModelTests: XCTestCase {
         )
     }
 
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
-        syncDefaults.removePersistentDomain(forName: syncSuiteName)
+    isolated deinit {
         try? FileManager.default.removeItem(at: connectionFileURL.deletingLastPathComponent())
-        viewModel = nil
-        preferences = nil
-        recents = nil
-        welcomeRouter = nil
-        groupStorage = nil
-        connectionStorage = nil
-        defaults = nil
-        syncDefaults = nil
-        suiteName = nil
-        syncSuiteName = nil
-        connectionFileURL = nil
-        super.tearDown()
     }
 
     private func makeServices() -> AppServices {
@@ -132,7 +111,7 @@ final class WelcomeViewModelTests: XCTestCase {
     }
 
     private func save(_ connections: [DatabaseConnection]) {
-        XCTAssertTrue(connectionStorage.saveConnections(connections))
+        #expect(connectionStorage.saveConnections(connections))
     }
 
     private func groupIds(in outline: LibraryOutline) -> [UUID] {
@@ -151,57 +130,57 @@ final class WelcomeViewModelTests: XCTestCase {
 
     // MARK: - Groups
 
-    func testCreateGroupShowsImmediatelyInTheOutline() throws {
-        XCTAssertTrue(groupIds(in: viewModel.outline).isEmpty)
+    @Test func testCreateGroupShowsImmediatelyInTheOutline() throws {
+        #expect(groupIds(in: viewModel.outline).isEmpty)
 
         try viewModel.createGroup(name: "Production", color: .red, iconName: nil, parentId: nil, moving: [])
 
-        let created = try XCTUnwrap(groupStorage.loadGroups().first { $0.name == "Production" })
-        XCTAssertTrue(groupIds(in: viewModel.outline).contains(created.id))
-        XCTAssertTrue(viewModel.expandedGroupIds.contains(created.id))
+        let created = try #require(groupStorage.loadGroups().first { $0.name == "Production" })
+        #expect(groupIds(in: viewModel.outline).contains(created.id))
+        #expect(viewModel.expandedGroupIds.contains(created.id))
     }
 
-    func testCreateSubgroupExpandsParentAndChild() throws {
+    @Test func testCreateSubgroupExpandsParentAndChild() throws {
         try viewModel.createGroup(name: "Parent", color: .none, iconName: nil, parentId: nil, moving: [])
-        let parentId = try XCTUnwrap(groupStorage.loadGroups().first { $0.name == "Parent" }?.id)
+        let parentId = try #require(groupStorage.loadGroups().first { $0.name == "Parent" }?.id)
 
         try viewModel.createGroup(name: "Child", color: .none, iconName: nil, parentId: parentId, moving: [])
-        let childId = try XCTUnwrap(groupStorage.loadGroups().first { $0.name == "Child" }?.id)
+        let childId = try #require(groupStorage.loadGroups().first { $0.name == "Child" }?.id)
 
-        XCTAssertTrue(groupIds(in: viewModel.outline).contains(parentId))
-        XCTAssertTrue(groupIds(in: viewModel.outline).contains(childId))
-        XCTAssertTrue(viewModel.expandedGroupIds.contains(parentId))
-        XCTAssertTrue(viewModel.expandedGroupIds.contains(childId))
+        #expect(groupIds(in: viewModel.outline).contains(parentId))
+        #expect(groupIds(in: viewModel.outline).contains(childId))
+        #expect(viewModel.expandedGroupIds.contains(parentId))
+        #expect(viewModel.expandedGroupIds.contains(childId))
     }
 
-    func testCreateDuplicateNameReportsWhyAndAddsNoSecondNode() throws {
+    @Test func testCreateDuplicateNameReportsWhyAndAddsNoSecondNode() throws {
         try viewModel.createGroup(name: "Staging", color: .orange, iconName: nil, parentId: nil, moving: [])
 
-        XCTAssertThrowsError(
+        let error = #expect(throws: (any Error).self) {
             try viewModel.createGroup(name: "staging", color: .blue, iconName: nil, parentId: nil, moving: [])
-        ) { error in
-            XCTAssertEqual(error as? GroupStorageError, .duplicateName("staging"))
         }
+        #expect(error as? GroupStorageError == .duplicateName("staging"))
 
-        XCTAssertEqual(groupIds(in: viewModel.outline).count, 1)
+        #expect(groupIds(in: viewModel.outline).count == 1)
     }
 
-    func testANewGroupTakesTheConnectionsItWasRequestedFor() throws {
+    @Test func testANewGroupTakesTheConnectionsItWasRequestedFor() throws {
         let prod = DatabaseConnection(name: "Prod", type: .mysql)
         save([prod])
         viewModel.loadConnections()
 
         viewModel.requestNewGroup(parentId: nil, movingConnectionIds: [prod.id])
         guard case .newGroup(let request) = viewModel.activeSheet else {
-            return XCTFail("Move to Group > New Group must open the new group sheet")
+            Issue.record("Move to Group > New Group must open the new group sheet")
+            return
         }
         try viewModel.createGroup(name: "Acme", color: .none, iconName: nil, parentId: nil, moving: request.movingConnectionIds)
 
-        let group = try XCTUnwrap(groupStorage.loadGroups().first)
-        XCTAssertEqual(connectionStorage.loadConnection(id: prod.id)?.groupId, group.id)
+        let group = try #require(groupStorage.loadGroups().first)
+        #expect(connectionStorage.loadConnection(id: prod.id)?.groupId == group.id)
     }
 
-    func testACancelledMoveToNewGroupIsNotReplayedByALaterSubgroup() throws {
+    @Test func testACancelledMoveToNewGroupIsNotReplayedByALaterSubgroup() throws {
         let archive = ConnectionGroup(name: "Archive")
         try groupStorage.addGroup(archive)
         let prod = DatabaseConnection(name: "Prod", type: .mysql)
@@ -212,7 +191,8 @@ final class WelcomeViewModelTests: XCTestCase {
         viewModel.activeSheet = nil
         viewModel.perform(.newSubgroup(archive.id))
         guard case .newGroup(let request) = viewModel.activeSheet else {
-            return XCTFail("New Subgroup must open the new group sheet")
+            Issue.record("New Subgroup must open the new group sheet")
+            return
         }
         try viewModel.createGroup(
             name: "2024",
@@ -222,27 +202,27 @@ final class WelcomeViewModelTests: XCTestCase {
             moving: request.movingConnectionIds
         )
 
-        XCTAssertNil(connectionStorage.loadConnection(id: prod.id)?.groupId)
+        #expect(connectionStorage.loadConnection(id: prod.id)?.groupId == nil)
     }
 
-    func testRenamingAGroupToASiblingsNameReportsWhy() throws {
+    @Test func testRenamingAGroupToASiblingsNameReportsWhy() throws {
         try viewModel.createGroup(name: "Production", color: .none, iconName: nil, parentId: nil, moving: [])
         try viewModel.createGroup(name: "Staging", color: .none, iconName: nil, parentId: nil, moving: [])
-        let staging = try XCTUnwrap(groupStorage.loadGroups().first { $0.name == "Staging" })
+        let staging = try #require(groupStorage.loadGroups().first { $0.name == "Staging" })
 
         viewModel.commitRename(.group(staging.id), to: "production")
 
-        XCTAssertNotNil(viewModel.libraryErrorMessage)
-        XCTAssertEqual(groupStorage.group(for: staging.id)?.name, "Staging")
+        #expect(viewModel.libraryErrorMessage != nil)
+        #expect(groupStorage.group(for: staging.id)?.name == "Staging")
     }
 
-    func testANewGroupKeepsTheIconItWasCreatedWith() throws {
+    @Test func testANewGroupKeepsTheIconItWasCreatedWith() throws {
         try viewModel.createGroup(name: "Production", color: .red, iconName: "server.rack", parentId: nil, moving: [])
 
-        XCTAssertEqual(groupStorage.loadGroups().first?.iconName, "server.rack")
+        #expect(groupStorage.loadGroups().first?.iconName == "server.rack")
     }
 
-    func testEditGroupOpensTheEditSheetForThatGroup() throws {
+    @Test func testEditGroupOpensTheEditSheetForThatGroup() throws {
         let group = ConnectionGroup(name: "Production", iconName: "server.rack")
         try groupStorage.addGroup(group)
         viewModel.loadConnections()
@@ -250,21 +230,22 @@ final class WelcomeViewModelTests: XCTestCase {
         viewModel.perform(.editGroup(group.id))
 
         guard case .editGroup(let editing) = viewModel.activeSheet else {
-            return XCTFail("Edit Group… must open the group editor")
+            Issue.record("Edit Group… must open the group editor")
+            return
         }
-        XCTAssertEqual(editing.id, group.id)
-        XCTAssertEqual(editing.iconName, "server.rack")
+        #expect(editing.id == group.id)
+        #expect(editing.iconName == "server.rack")
     }
 
-    func testEditGroupForAGroupThatIsGoneOpensNothing() {
+    @Test func testEditGroupForAGroupThatIsGoneOpensNothing() {
         viewModel.loadConnections()
 
         viewModel.requestEditGroup(UUID())
 
-        XCTAssertNil(viewModel.activeSheet)
+        #expect(viewModel.activeSheet == nil)
     }
 
-    func testSavingAGroupEditMovesItAndShowsItUnderItsNewParent() throws {
+    @Test func testSavingAGroupEditMovesItAndShowsItUnderItsNewParent() throws {
         let clients = ConnectionGroup(name: "Clients")
         let acme = ConnectionGroup(name: "Acme")
         try groupStorage.addGroup(clients)
@@ -278,53 +259,52 @@ final class WelcomeViewModelTests: XCTestCase {
             to: ConnectionGroupFields(name: "Acme Corp", color: .blue, iconName: "building.2", parentId: clients.id)
         )
 
-        let saved = try XCTUnwrap(groupStorage.group(for: acme.id))
-        XCTAssertEqual(saved.name, "Acme Corp")
-        XCTAssertEqual(saved.color, .blue)
-        XCTAssertEqual(saved.iconName, "building.2")
-        XCTAssertEqual(saved.parentId, clients.id)
-        XCTAssertTrue(viewModel.expandedGroupIds.contains(clients.id))
-        XCTAssertEqual(viewModel.groupsById[acme.id]?.name, "Acme Corp")
+        let saved = try #require(groupStorage.group(for: acme.id))
+        #expect(saved.name == "Acme Corp")
+        #expect(saved.color == .blue)
+        #expect(saved.iconName == "building.2")
+        #expect(saved.parentId == clients.id)
+        #expect(viewModel.expandedGroupIds.contains(clients.id))
+        #expect(viewModel.groupsById[acme.id]?.name == "Acme Corp")
     }
 
-    func testSavingAGroupEditUnderItsOwnSubgroupReportsWhyAndChangesNothing() throws {
+    @Test func testSavingAGroupEditUnderItsOwnSubgroupReportsWhyAndChangesNothing() throws {
         let parent = ConnectionGroup(name: "Parent")
         let child = ConnectionGroup(name: "Child", parentId: parent.id)
         try groupStorage.addGroup(parent)
         try groupStorage.addGroup(child)
         viewModel.loadConnections()
 
-        XCTAssertThrowsError(
+        let error = #expect(throws: (any Error).self) {
             try viewModel.saveGroup(
                 id: parent.id,
                 from: ConnectionGroupFields(parent),
                 to: ConnectionGroupFields(name: "Renamed", parentId: child.id)
             )
-        ) { error in
-            XCTAssertEqual(error as? GroupStorageError, .wouldCreateCycle)
         }
-        XCTAssertEqual(groupStorage.group(for: parent.id)?.name, "Parent")
-        XCTAssertNil(groupStorage.group(for: parent.id)?.parentId)
+        #expect(error as? GroupStorageError == .wouldCreateCycle)
+        #expect(groupStorage.group(for: parent.id)?.name == "Parent")
+        #expect(groupStorage.group(for: parent.id)?.parentId == nil)
     }
 
     // MARK: - List State
 
-    func testAnEmptyStoreOpensOnTheFirstRunState() {
+    @Test func testAnEmptyStoreOpensOnTheFirstRunState() {
         viewModel.loadConnections()
 
-        XCTAssertEqual(viewModel.listState, .firstRun)
-        XCTAssertFalse(viewModel.isSearchAvailable)
+        #expect(viewModel.listState == .firstRun)
+        #expect(!viewModel.isSearchAvailable)
     }
 
-    func testASavedConnectionReplacesTheFirstRunState() {
+    @Test func testASavedConnectionReplacesTheFirstRunState() {
         save([DatabaseConnection(name: "Local", type: .postgresql, sortOrder: 0)])
         viewModel.loadConnections()
 
-        XCTAssertEqual(viewModel.listState, .content)
-        XCTAssertTrue(viewModel.isSearchAvailable)
+        #expect(viewModel.listState == .content)
+        #expect(viewModel.isSearchAvailable)
     }
 
-    func testASearchMissIsReportedWhenAFavoriteIsStored() {
+    @Test func testASearchMissIsReportedWhenAFavoriteIsStored() {
         var favorite = DatabaseConnection(name: "Alpha", type: .mysql, sortOrder: 0)
         favorite.isFavorite = true
         save([favorite])
@@ -332,10 +312,10 @@ final class WelcomeViewModelTests: XCTestCase {
 
         viewModel.searchText = "zzz"
 
-        XCTAssertEqual(viewModel.listState, .noSearchMatch("zzz"))
+        #expect(viewModel.listState == .noSearchMatch("zzz"))
     }
 
-    func testATagFilterThatHidesEveryConnectionIsAFilterMiss() {
+    @Test func testATagFilterThatHidesEveryConnectionIsAFilterMiss() {
         let first = UUID()
         let second = UUID()
         var alpha = DatabaseConnection(name: "Alpha", type: .mysql, sortOrder: 0)
@@ -348,10 +328,10 @@ final class WelcomeViewModelTests: XCTestCase {
         viewModel.tagMatch = .all
         viewModel.searchTokens = [token(first), token(second)]
 
-        XCTAssertEqual(viewModel.listState, .noFilterMatch)
+        #expect(viewModel.listState == .noFilterMatch)
     }
 
-    func testDeletingTheLastConnectionClearsTheSearchItCanNoLongerRun() {
+    @Test func testDeletingTheLastConnectionClearsTheSearchItCanNoLongerRun() {
         let only = DatabaseConnection(name: "Only", type: .mysql, sortOrder: 0)
         save([only])
         viewModel.loadConnections()
@@ -360,84 +340,84 @@ final class WelcomeViewModelTests: XCTestCase {
         viewModel.connectionsToDelete = [only]
         viewModel.deleteSelectedConnections()
 
-        XCTAssertEqual(viewModel.searchText, "")
-        XCTAssertEqual(viewModel.listState, .firstRun)
+        #expect(viewModel.searchText == "")
+        #expect(viewModel.listState == .firstRun)
     }
 
-    func testTheImportOfferFollowsTheInstalledAppDetector() {
+    @Test func testTheImportOfferFollowsTheInstalledAppDetector() {
         let offering = makeViewModel(importableAppDetector: { true })
 
         offering.setUp()
 
-        XCTAssertTrue(offering.hasImportableApp)
-        XCTAssertFalse(viewModel.hasImportableApp)
+        #expect(offering.hasImportableApp)
+        #expect(!viewModel.hasImportableApp)
     }
 
-    func testRefreshingTheImportOfferPicksUpANewlyInstalledApp() {
+    @Test func testRefreshingTheImportOfferPicksUpANewlyInstalledApp() {
         let installed = InstalledAppFlag()
         let offering = makeViewModel(importableAppDetector: { installed.value })
         offering.refreshImportableApp()
-        XCTAssertFalse(offering.hasImportableApp)
+        #expect(!offering.hasImportableApp)
 
         installed.value = true
         offering.refreshImportableApp()
 
-        XCTAssertTrue(offering.hasImportableApp)
+        #expect(offering.hasImportableApp)
     }
 
     // MARK: - Welcome Sheet
 
-    func testAFirstLaunchPresentsTheWelcomeSheetOnce() {
+    @Test func testAFirstLaunchPresentsTheWelcomeSheetOnce() {
         viewModel.setUp()
-        XCTAssertTrue(viewModel.presentsWelcomeSheet)
+        #expect(viewModel.presentsWelcomeSheet)
 
         viewModel.presentsWelcomeSheet = false
         viewModel.welcomeSheetDidDismiss()
         let relaunched = makeViewModel()
         relaunched.setUp()
 
-        XCTAssertFalse(relaunched.presentsWelcomeSheet, "The sheet must not come back on its own")
+        #expect(!relaunched.presentsWelcomeSheet, "The sheet must not come back on its own")
     }
 
-    func testAUITestSandboxSkipsTheFirstLaunchSheet() {
+    @Test func testAUITestSandboxSkipsTheFirstLaunchSheet() {
         let sandboxed = makeViewModel(isUITestSandbox: true)
         sandboxed.setUp()
 
-        XCTAssertFalse(sandboxed.presentsWelcomeSheet)
+        #expect(!sandboxed.presentsWelcomeSheet)
     }
 
-    func testARoutedSheetWinsOverTheWelcomeSheet() {
+    @Test func testARoutedSheetWinsOverTheWelcomeSheet() {
         welcomeRouter.route(.importFromApp)
 
         viewModel.setUp()
 
-        XCTAssertFalse(viewModel.presentsWelcomeSheet)
-        XCTAssertNotNil(viewModel.activeSheet)
+        #expect(!viewModel.presentsWelcomeSheet)
+        #expect(viewModel.activeSheet != nil)
     }
 
-    func testTheHelpMenuRequestShowsTheSheetAgain() {
+    @Test func testTheHelpMenuRequestShowsTheSheetAgain() {
         AppSettingsStorage(userDefaults: defaults).markWelcomeSheetSeen()
         viewModel.setUp()
-        XCTAssertFalse(viewModel.presentsWelcomeSheet)
+        #expect(!viewModel.presentsWelcomeSheet)
 
         viewModel.handle(.showWelcomeSheet)
 
-        XCTAssertTrue(viewModel.presentsWelcomeSheet)
+        #expect(viewModel.presentsWelcomeSheet)
     }
 
-    func testTheHelpMenuRequestLeavesAnOpenSheetAlone() {
+    @Test func testTheHelpMenuRequestLeavesAnOpenSheetAlone() {
         AppSettingsStorage(userDefaults: defaults).markWelcomeSheetSeen()
         viewModel.setUp()
         viewModel.activeSheet = .activation
 
         viewModel.handle(.showWelcomeSheet)
 
-        XCTAssertFalse(viewModel.presentsWelcomeSheet, "A second sheet can never stack, so the request must not wait stuck")
+        #expect(!viewModel.presentsWelcomeSheet, "A second sheet can never stack, so the request must not wait stuck")
     }
 
     // MARK: - Favorites, Recent, Tags and Groups
 
-    func testAFavoriteAppearsInFavoritesAndStaysInItsGroup() throws {
+    @Test func testAFavoriteAppearsInFavoritesAndStaysInItsGroup() throws {
         let group = ConnectionGroup(name: "Acme")
         try groupStorage.addGroup(group)
         var favorite = DatabaseConnection(name: "Prod", type: .mysql, sortOrder: 0)
@@ -449,11 +429,11 @@ final class WelcomeViewModelTests: XCTestCase {
 
         viewModel.loadConnections()
 
-        XCTAssertEqual(viewModel.outline.connectionIds(in: .favorites), [favorite.id])
-        XCTAssertEqual(viewModel.outline.connectionIds(in: .connections), [favorite.id, other.id])
+        #expect(viewModel.outline.connectionIds(in: .favorites) == [favorite.id])
+        #expect(viewModel.outline.connectionIds(in: .connections) == [favorite.id, other.id])
     }
 
-    func testASearchHidesFavoritesAndOpensTheCollapsedGroupHoldingTheMatch() throws {
+    @Test func testASearchHidesFavoritesAndOpensTheCollapsedGroupHoldingTheMatch() throws {
         let group = ConnectionGroup(name: "Acme")
         try groupStorage.addGroup(group)
         var favorite = DatabaseConnection(name: "Orders", type: .mysql)
@@ -465,13 +445,13 @@ final class WelcomeViewModelTests: XCTestCase {
 
         viewModel.searchText = "Orders"
 
-        XCTAssertNil(viewModel.outline.section(.favorites))
-        XCTAssertTrue(viewModel.isGroupExpanded(group.id))
-        XCTAssertTrue(viewModel.visibleRowIds().contains(.connection(favorite.id, section: .connections)))
-        XCTAssertTrue(viewModel.expandedGroupIds.isEmpty, "A search must not rewrite the groups the user collapsed")
+        #expect(viewModel.outline.section(.favorites) == nil)
+        #expect(viewModel.isGroupExpanded(group.id))
+        #expect(viewModel.visibleRowIds().contains(.connection(favorite.id, section: .connections)))
+        #expect(viewModel.expandedGroupIds.isEmpty, "A search must not rewrite the groups the user collapsed")
     }
 
-    func testCollapsingAGroupDropsTheSelectionInsideIt() throws {
+    @Test func testCollapsingAGroupDropsTheSelectionInsideIt() throws {
         let group = ConnectionGroup(name: "Acme")
         try groupStorage.addGroup(group)
         var member = DatabaseConnection(name: "Prod", type: .mysql)
@@ -484,10 +464,10 @@ final class WelcomeViewModelTests: XCTestCase {
         viewModel.expandedGroupIds = []
         viewModel.rebuildOutline()
 
-        XCTAssertTrue(viewModel.selection.isEmpty, "A row the list no longer shows must not stay selected")
+        #expect(viewModel.selection.isEmpty, "A row the list no longer shows must not stay selected")
     }
 
-    func testDeletingTheLastTaggedConnectionDropsItsTokenFromTheSearch() {
+    @Test func testDeletingTheLastTaggedConnectionDropsItsTokenFromTheSearch() {
         let tagId = UUID()
         var tagged = DatabaseConnection(name: "Prod", type: .mysql, sortOrder: 0)
         tagged.tagIds = [tagId]
@@ -499,25 +479,25 @@ final class WelcomeViewModelTests: XCTestCase {
         viewModel.connectionsToDelete = [tagged]
         viewModel.deleteSelectedConnections()
 
-        XCTAssertTrue(viewModel.searchTokens.isEmpty, "A token for a tag nothing carries hides every connection")
-        XCTAssertEqual(viewModel.outline.connectionIds(in: .connections), [plain.id])
-        XCTAssertEqual(viewModel.listState, .content)
+        #expect(viewModel.searchTokens.isEmpty, "A token for a tag nothing carries hides every connection")
+        #expect(viewModel.outline.connectionIds(in: .connections) == [plain.id])
+        #expect(viewModel.listState == .content)
     }
 
-    func testCollapsingEveryGroupSurvivesAReopen() throws {
+    @Test func testCollapsingEveryGroupSurvivesAReopen() throws {
         let group = ConnectionGroup(name: "Acme")
         try groupStorage.addGroup(group)
         viewModel.setUp()
-        XCTAssertEqual(viewModel.expandedGroupIds, [group.id], "A first open expands every group")
+        #expect(viewModel.expandedGroupIds == [group.id], "A first open expands every group")
 
         viewModel.expandedGroupIds.remove(group.id)
         let reopened = makeViewModel()
         reopened.setUp()
 
-        XCTAssertTrue(reopened.expandedGroupIds.isEmpty, "Collapsing every group must be remembered")
+        #expect(reopened.expandedGroupIds.isEmpty, "Collapsing every group must be remembered")
     }
 
-    func testRecentConnectionsFillTheRecentSection() {
+    @Test func testRecentConnectionsFillTheRecentSection() {
         let first = DatabaseConnection(name: "First", type: .mysql, sortOrder: 0)
         let second = DatabaseConnection(name: "Second", type: .mysql, sortOrder: 1)
         save([first, second])
@@ -526,29 +506,29 @@ final class WelcomeViewModelTests: XCTestCase {
 
         viewModel.loadConnections()
 
-        XCTAssertEqual(viewModel.outline.connectionIds(in: .recent), [second.id, first.id])
+        #expect(viewModel.outline.connectionIds(in: .recent) == [second.id, first.id])
     }
 
-    func testHidingRecentTakesEffectInTheOpenWindowAndKeepsTheHistory() {
+    @Test func testHidingRecentTakesEffectInTheOpenWindowAndKeepsTheHistory() {
         let first = DatabaseConnection(name: "First", type: .mysql, sortOrder: 0)
         save([first])
         recents.record(first.id, at: Date(timeIntervalSince1970: 1))
         viewModel.setUp()
         viewModel.loadConnections()
-        XCTAssertEqual(viewModel.outline.connectionIds(in: .recent), [first.id])
+        #expect(viewModel.outline.connectionIds(in: .recent) == [first.id])
 
         preferences.setShowsRecent(false)
 
-        XCTAssertNil(viewModel.outline.section(.recent), "Hiding Recent must rebuild the open list")
-        XCTAssertEqual(viewModel.outline.connectionIds(in: .connections), [first.id])
-        XCTAssertFalse(recents.ledger.isEmpty, "Hiding Recent must not clear the history")
+        #expect(viewModel.outline.section(.recent) == nil, "Hiding Recent must rebuild the open list")
+        #expect(viewModel.outline.connectionIds(in: .connections) == [first.id])
+        #expect(!recents.ledger.isEmpty, "Hiding Recent must not clear the history")
 
         preferences.setShowsRecent(true)
 
-        XCTAssertEqual(viewModel.outline.connectionIds(in: .recent), [first.id])
+        #expect(viewModel.outline.connectionIds(in: .recent) == [first.id])
     }
 
-    func testAListOpenedWhileRecentIsHiddenStartsWithoutIt() {
+    @Test func testAListOpenedWhileRecentIsHiddenStartsWithoutIt() {
         let first = DatabaseConnection(name: "First", type: .mysql, sortOrder: 0)
         save([first])
         recents.record(first.id, at: Date(timeIntervalSince1970: 1))
@@ -557,51 +537,51 @@ final class WelcomeViewModelTests: XCTestCase {
         let reopened = makeViewModel()
         reopened.loadConnections()
 
-        XCTAssertNil(reopened.outline.section(.recent))
+        #expect(reopened.outline.section(.recent) == nil)
     }
 
-    func testChangingTheSortModeReordersTheTree() {
+    @Test func testChangingTheSortModeReordersTheTree() {
         let zulu = DatabaseConnection(name: "Zulu", type: .mysql, sortOrder: 0)
         let alpha = DatabaseConnection(name: "Alpha", type: .mysql, sortOrder: 1)
         save([zulu, alpha])
         viewModel.loadConnections()
-        XCTAssertEqual(viewModel.outline.connectionIds(in: .connections), [zulu.id, alpha.id])
+        #expect(viewModel.outline.connectionIds(in: .connections) == [zulu.id, alpha.id])
 
         viewModel.setSortMode(.name)
 
-        XCTAssertEqual(viewModel.outline.connectionIds(in: .connections), [alpha.id, zulu.id])
-        XCTAssertEqual(preferences.sortMode, .name)
+        #expect(viewModel.outline.connectionIds(in: .connections) == [alpha.id, zulu.id])
+        #expect(preferences.sortMode == .name)
     }
 
     // MARK: - Mutations
 
-    func testAddingAFavoriteKeepsASafeModeLevelSetElsewhere() throws {
+    @Test func testAddingAFavoriteKeepsASafeModeLevelSetElsewhere() throws {
         let prod = DatabaseConnection(name: "Prod", type: .postgresql)
         save([prod])
         viewModel.loadConnections()
-        XCTAssertTrue(connectionStorage.updateSafeModeLevel(.readOnly, for: prod.id))
+        #expect(connectionStorage.updateSafeModeLevel(.readOnly, for: prod.id))
 
         viewModel.setFavorite([prod.id], true, undoManager: nil)
 
-        let stored = try XCTUnwrap(connectionStorage.loadConnection(id: prod.id))
-        XCTAssertTrue(stored.isFavorite)
-        XCTAssertEqual(stored.preferredSafeModeLevel, .readOnly)
+        let stored = try #require(connectionStorage.loadConnection(id: prod.id))
+        #expect(stored.isFavorite)
+        #expect(stored.preferredSafeModeLevel == .readOnly)
     }
 
-    func testRenamingAConnectionKeepsASafeModeLevelSetElsewhere() throws {
+    @Test func testRenamingAConnectionKeepsASafeModeLevelSetElsewhere() throws {
         let prod = DatabaseConnection(name: "Prod", type: .postgresql)
         save([prod])
         viewModel.loadConnections()
-        XCTAssertTrue(connectionStorage.updateSafeModeLevel(.readOnly, for: prod.id))
+        #expect(connectionStorage.updateSafeModeLevel(.readOnly, for: prod.id))
 
         viewModel.commitRename(.connection(prod.id, section: .connections), to: "  Production  ")
 
-        let stored = try XCTUnwrap(connectionStorage.loadConnection(id: prod.id))
-        XCTAssertEqual(stored.name, "Production")
-        XCTAssertEqual(stored.preferredSafeModeLevel, .readOnly)
+        let stored = try #require(connectionStorage.loadConnection(id: prod.id))
+        #expect(stored.name == "Production")
+        #expect(stored.preferredSafeModeLevel == .readOnly)
     }
 
-    func testMovingAConnectionIntoAGroupPlacesItAfterTheOnesAlreadyThere() throws {
+    @Test func testMovingAConnectionIntoAGroupPlacesItAfterTheOnesAlreadyThere() throws {
         let group = ConnectionGroup(name: "Acme")
         try groupStorage.addGroup(group)
         var first = DatabaseConnection(name: "Zeta", type: .mysql, sortOrder: 4)
@@ -612,10 +592,10 @@ final class WelcomeViewModelTests: XCTestCase {
 
         viewModel.moveConnections([moving.id], toGroup: group.id, before: nil, undoManager: nil)
 
-        XCTAssertEqual(viewModel.outline.connectionIds(in: .connections), [first.id, moving.id])
+        #expect(viewModel.outline.connectionIds(in: .connections) == [first.id, moving.id])
     }
 
-    func testAManualDropPlacesTheConnectionBeforeTheTarget() {
+    @Test func testAManualDropPlacesTheConnectionBeforeTheTarget() {
         let a = DatabaseConnection(name: "A", type: .mysql, sortOrder: 0)
         let b = DatabaseConnection(name: "B", type: .mysql, sortOrder: 1)
         let c = DatabaseConnection(name: "C", type: .mysql, sortOrder: 2)
@@ -624,10 +604,10 @@ final class WelcomeViewModelTests: XCTestCase {
 
         viewModel.applyDrop(.moveConnections([c.id], toGroup: nil, before: a.id), undoManager: nil)
 
-        XCTAssertEqual(viewModel.outline.connectionIds(in: .connections), [c.id, a.id, b.id])
+        #expect(viewModel.outline.connectionIds(in: .connections) == [c.id, a.id, b.id])
     }
 
-    func testUndoPutsAMovedConnectionBack() throws {
+    @Test func testUndoPutsAMovedConnectionBack() throws {
         let group = ConnectionGroup(name: "Acme")
         try groupStorage.addGroup(group)
         let moving = DatabaseConnection(name: "Prod", type: .mysql)
@@ -639,14 +619,14 @@ final class WelcomeViewModelTests: XCTestCase {
         undoManager.beginUndoGrouping()
         viewModel.moveConnections([moving.id], toGroup: group.id, before: nil, undoManager: undoManager)
         undoManager.endUndoGrouping()
-        XCTAssertEqual(connectionStorage.loadConnection(id: moving.id)?.groupId, group.id)
+        #expect(connectionStorage.loadConnection(id: moving.id)?.groupId == group.id)
 
         undoManager.undo()
 
-        XCTAssertNil(connectionStorage.loadConnection(id: moving.id)?.groupId)
+        #expect(connectionStorage.loadConnection(id: moving.id)?.groupId == nil)
     }
 
-    func testDeleteMeansWhatTheSectionHolds() throws {
+    @Test func testDeleteMeansWhatTheSectionHolds() throws {
         let group = ConnectionGroup(name: "Acme")
         try groupStorage.addGroup(group)
         var favorite = DatabaseConnection(name: "Prod", type: .mysql)
@@ -655,26 +635,17 @@ final class WelcomeViewModelTests: XCTestCase {
         save([favorite, recent])
         viewModel.loadConnections()
 
-        XCTAssertEqual(
-            viewModel.deleteIntent(for: [.connection(favorite.id, section: .favorites)]),
-            .removeFavorites([favorite.id])
-        )
-        XCTAssertEqual(
-            viewModel.deleteIntent(for: [.connection(recent.id, section: .recent)]),
-            .removeRecent([recent.id])
-        )
-        XCTAssertEqual(
-            viewModel.deleteIntent(for: [.connection(favorite.id, section: .connections)]),
-            .connections([favorite.id])
-        )
-        XCTAssertEqual(viewModel.deleteIntent(for: [.group(group.id)]), .group(group.id))
-        XCTAssertNil(viewModel.deleteIntent(for: [
+        #expect(viewModel.deleteIntent(for: [.connection(favorite.id, section: .favorites)]) == .removeFavorites([favorite.id]))
+        #expect(viewModel.deleteIntent(for: [.connection(recent.id, section: .recent)]) == .removeRecent([recent.id]))
+        #expect(viewModel.deleteIntent(for: [.connection(favorite.id, section: .connections)]) == .connections([favorite.id]))
+        #expect(viewModel.deleteIntent(for: [.group(group.id)]) == .group(group.id))
+        #expect(viewModel.deleteIntent(for: [
             .connection(favorite.id, section: .favorites),
             .connection(recent.id, section: .connections),
-        ]))
+        ]) == nil)
     }
 
-    func testRemovingAFavoriteRowKeepsTheConnection() {
+    @Test func testRemovingAFavoriteRowKeepsTheConnection() {
         var favorite = DatabaseConnection(name: "Prod", type: .mysql)
         favorite.isFavorite = true
         save([favorite])
@@ -682,109 +653,96 @@ final class WelcomeViewModelTests: XCTestCase {
 
         viewModel.performDelete(rows: [.connection(favorite.id, section: .favorites)])
 
-        XCTAssertEqual(connectionStorage.loadConnection(id: favorite.id)?.isFavorite, false)
-        XCTAssertFalse(viewModel.showDeleteConfirmation)
+        #expect(connectionStorage.loadConnection(id: favorite.id)?.isFavorite == false)
+        #expect(!viewModel.showDeleteConfirmation)
     }
 
     // MARK: - Welcome Router Requests
 
-    private func waitForChooser(timeout: TimeInterval = 2) async -> DatabaseTypeChooserPayload? {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if let chooser = viewModel.databaseTypeChooser {
-                return chooser
-            }
-            try? await Task.sleep(nanoseconds: 5_000_000)
-        }
-        return viewModel.databaseTypeChooser
-    }
-
-    func testChooserRoutedWhileWelcomeWindowIsClosedSurvivesUntilItMounts() {
+    @Test func testChooserRoutedWhileWelcomeWindowIsClosedSurvivesUntilItMounts() {
         let payload = DatabaseTypeChooserPayload(initialType: .postgresql) { _ in }
         welcomeRouter.route(.chooseDatabaseType(payload))
 
         viewModel.setUp()
 
-        XCTAssertEqual(viewModel.databaseTypeChooser?.id, payload.id)
-        XCTAssertNil(welcomeRouter.pendingRequest)
+        #expect(viewModel.databaseTypeChooser?.id == payload.id)
+        #expect(welcomeRouter.pendingRequest == nil)
     }
 
-    func testChooserRoutedWhileWelcomeWindowIsOpenIsDelivered() async {
+    @Test func testChooserRoutedWhileWelcomeWindowIsOpenIsDelivered() async {
         viewModel.setUp()
-        XCTAssertNil(viewModel.databaseTypeChooser)
+        #expect(viewModel.databaseTypeChooser == nil)
 
         let payload = DatabaseTypeChooserPayload(initialType: .mysql) { _ in }
         welcomeRouter.route(.chooseDatabaseType(payload))
 
-        let delivered = await waitForChooser()
-        XCTAssertEqual(delivered?.id, payload.id)
+        _ = try? await waitUntil { self.viewModel.databaseTypeChooser != nil }
+        #expect(viewModel.databaseTypeChooser?.id == payload.id)
     }
 
-    func testImportFromURLRequestPresentsTheURLSheet() {
+    @Test func testImportFromURLRequestPresentsTheURLSheet() {
         welcomeRouter.route(.importFromURL)
 
         viewModel.setUp()
 
-        XCTAssertTrue(viewModel.urlImportPresented)
+        #expect(viewModel.urlImportPresented)
     }
 
-    func testImportFromAppRequestPresentsTheImportSheet() {
+    @Test func testImportFromAppRequestPresentsTheImportSheet() {
         welcomeRouter.route(.importFromApp)
 
         viewModel.setUp()
 
         guard case .importFromApp = viewModel.activeSheet else {
-            return XCTFail("Expected the Import from Other App sheet")
+            Issue.record("Expected the Import from Other App sheet")
+            return
         }
     }
 
-    func testExportConnectionsRequestIsIgnoredWhenThereAreNoConnections() {
+    @Test func testExportConnectionsRequestIsIgnoredWhenThereAreNoConnections() {
         welcomeRouter.route(.exportConnections)
 
         viewModel.setUp()
 
-        XCTAssertNil(viewModel.activeSheet)
+        #expect(viewModel.activeSheet == nil)
     }
 
-    func testRequestIsDrainedAheadOfABackgroundPluginInstall() {
+    @Test func testRequestIsDrainedAheadOfABackgroundPluginInstall() {
         let connection = DatabaseConnection(name: "Pending", type: .mysql)
         welcomeRouter.routePluginInstall(connection)
         welcomeRouter.route(.importFromURL)
 
         viewModel.setUp()
 
-        XCTAssertTrue(viewModel.urlImportPresented)
-        XCTAssertNil(viewModel.pluginInstallConnection)
-        XCTAssertEqual(welcomeRouter.pendingPluginInstall?.id, connection.id)
+        #expect(viewModel.urlImportPresented)
+        #expect(viewModel.pluginInstallConnection == nil)
+        #expect(welcomeRouter.pendingPluginInstall?.id == connection.id)
     }
 
     // MARK: - Delete
 
-    func testDeleteConfirmationIsNotPresentedBeforeTheFavoritesCheckFinishes() async throws {
+    @Test func testDeleteConfirmationIsNotPresentedBeforeTheFavoritesCheckFinishes() async throws {
         let connection = DatabaseConnection(name: "Prod", type: .mysql)
         save([connection])
         viewModel.loadConnections()
 
         viewModel.requestDeleteConnections([connection.id])
 
-        XCTAssertFalse(
-            viewModel.showDeleteConfirmation,
-            "The alert must wait for the favorites lookup, or it renders the wrong message"
-        )
-        XCTAssertEqual(viewModel.connectionsToDelete.map(\.id), [connection.id])
+        #expect(!viewModel.showDeleteConfirmation, "The alert must wait for the favorites lookup, or it renders the wrong message")
+        #expect(viewModel.connectionsToDelete.map(\.id) == [connection.id])
 
         try await waitUntil { self.viewModel.showDeleteConfirmation }
-        XCTAssertFalse(viewModel.pendingDeleteHasFavorites)
+        #expect(!viewModel.pendingDeleteHasFavorites)
     }
 
-    func testDeleteRequestWithNoTargetsPresentsNothing() async throws {
+    @Test func testDeleteRequestWithNoTargetsPresentsNothing() async throws {
         viewModel.requestDeleteConnections([])
 
-        XCTAssertFalse(viewModel.showDeleteConfirmation)
-        XCTAssertTrue(viewModel.connectionsToDelete.isEmpty)
+        #expect(!viewModel.showDeleteConfirmation)
+        #expect(viewModel.connectionsToDelete.isEmpty)
     }
 
-    func testASecondDeleteRequestSupersedesTheFirst() async throws {
+    @Test func testASecondDeleteRequestSupersedesTheFirst() async throws {
         let first = DatabaseConnection(name: "First", type: .mysql)
         let second = DatabaseConnection(name: "Second", type: .mysql)
         save([first, second])
@@ -794,18 +752,14 @@ final class WelcomeViewModelTests: XCTestCase {
         viewModel.requestDeleteConnections([second.id])
 
         try await waitUntil { self.viewModel.showDeleteConfirmation }
-        XCTAssertEqual(
-            viewModel.connectionsToDelete.map(\.id),
-            [second.id],
-            "The superseded request must not present an alert for its own targets"
-        )
+        #expect(viewModel.connectionsToDelete.map(\.id) == [second.id], "The superseded request must not present an alert for its own targets")
     }
 
-    func testDeleteKeepsTheConnectionAndReportsWhenPersistenceFails() throws {
+    @Test func testDeleteKeepsTheConnectionAndReportsWhenPersistenceFails() throws {
         let connection = DatabaseConnection(name: "Prod", type: .mysql)
-        XCTAssertTrue(connectionStorage.saveConnections([connection]))
+        #expect(connectionStorage.saveConnections([connection]))
         viewModel.loadConnections()
-        XCTAssertEqual(viewModel.connections.map(\.id), [connection.id])
+        #expect(viewModel.connections.map(\.id) == [connection.id])
 
         let directory = connectionFileURL.deletingLastPathComponent()
         try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
@@ -817,34 +771,14 @@ final class WelcomeViewModelTests: XCTestCase {
         viewModel.connectionsToDelete = [connection]
         viewModel.deleteSelectedConnections()
 
-        XCTAssertEqual(
-            viewModel.connections.map(\.id),
-            [connection.id],
-            "A connection that could not be persisted as deleted must not disappear from the list"
-        )
-        XCTAssertTrue(viewModel.connectionsToDelete.isEmpty)
-        XCTAssertNotNil(viewModel.libraryErrorMessage, "A refused delete must say so")
-    }
-
-    private func waitUntil(
-        timeout: TimeInterval = 5,
-        _ condition: @MainActor () -> Bool,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !condition() {
-            if Date() >= deadline {
-                XCTFail("Condition never became true within \(timeout)s", file: file, line: line)
-                return
-            }
-            try await Task.sleep(nanoseconds: 5_000_000)
-        }
+        #expect(viewModel.connections.map(\.id) == [connection.id], "A connection that could not be persisted as deleted must not disappear from the list")
+        #expect(viewModel.connectionsToDelete.isEmpty)
+        #expect(viewModel.libraryErrorMessage != nil, "A refused delete must say so")
     }
 
     // MARK: - Shared Connections
 
-    func testSharedRowIdsAreDerivedFromThePayloadAndAreStable() {
+    @Test func testSharedRowIdsAreDerivedFromThePayloadAndAreStable() {
         let folderId = UUID()
         let payload = makeExportable(name: "Shared")
 
@@ -856,23 +790,20 @@ final class WelcomeViewModelTests: XCTestCase {
             connection: makeExportable(name: "Different")
         )
 
-        XCTAssertEqual(first, second, "A shared row must keep its identity across launches")
-        XCTAssertNotEqual(first, otherFolder)
-        XCTAssertNotEqual(first, otherPayload)
+        #expect(first == second, "A shared row must keep its identity across launches")
+        #expect(first != otherFolder)
+        #expect(first != otherPayload)
     }
 
-    func testSharedConnectionsThatDifferOnlyByDatabaseAreDifferentRows() {
+    @Test func testSharedConnectionsThatDifferOnlyByDatabaseAreDifferentRows() {
         let folderId = UUID()
         let production = makeExportable(name: "Analytics", database: "prod")
         let staging = makeExportable(name: "Analytics", database: "staging")
 
-        XCTAssertNotEqual(
-            LinkedFolderWatcher.stableId(folderId: folderId, connection: production),
-            LinkedFolderWatcher.stableId(folderId: folderId, connection: staging)
-        )
+        #expect(LinkedFolderWatcher.stableId(folderId: folderId, connection: production) != LinkedFolderWatcher.stableId(folderId: folderId, connection: staging))
     }
 
-    func testASharedConnectionOpensWithoutItsTunnelCommandOrStartupSQL() {
+    @Test func testASharedConnectionOpensWithoutItsTunnelCommandOrStartupSQL() {
         let base = makeExportable(name: "Shared")
         let hostile = ExportableConnection(
             name: base.name,
@@ -909,14 +840,10 @@ final class WelcomeViewModelTests: XCTestCase {
             resolvesSSHProfile: { _ in false }
         )
 
-        XCTAssertEqual(opened.tunnelCommandMode, .disabled, "A shared file must never start a process on connect")
-        XCTAssertNil(opened.startupCommands, "A shared file must never run SQL on connect")
-        XCTAssertEqual(opened.host, base.host)
-        XCTAssertEqual(
-            linked.id,
-            LinkedFolderWatcher.stableId(folderId: linked.folderId, connection: hostile),
-            "Dropping the command must not change the row's identity"
-        )
+        #expect(opened.tunnelCommandMode == .disabled, "A shared file must never start a process on connect")
+        #expect(opened.startupCommands == nil, "A shared file must never run SQL on connect")
+        #expect(opened.host == base.host)
+        #expect(linked.id == LinkedFolderWatcher.stableId(folderId: linked.folderId, connection: hostile), "Dropping the command must not change the row's identity")
     }
 
     @MainActor

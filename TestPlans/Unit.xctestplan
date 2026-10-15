@@ -37,6 +37,54 @@
       }
     },
     {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:TablePro.xcodeproj",
+        "identifier" : "470B4B2AD7ECE95F89355E5D",
+        "name" : "ClickHouseDriverTests"
+      }
+    },
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:TablePro.xcodeproj",
+        "identifier" : "78FED44BD6211C3802B12002",
+        "name" : "FormatPluginTests"
+      }
+    },
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:TablePro.xcodeproj",
+        "identifier" : "5199774EEE2AEB7C677C6489",
+        "name" : "MySQLDriverTests"
+      }
+    },
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:TablePro.xcodeproj",
+        "identifier" : "38069A2443A5078F8D96AD1E",
+        "name" : "PostgreSQLDriverTests"
+      }
+    },
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:TablePro.xcodeproj",
+        "identifier" : "A9DD51F67B0B1D8CD1A4FFFE",
+        "name" : "RedisDriverTests"
+      }
+    },
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:TablePro.xcodeproj",
+        "identifier" : "F7DB6849081320C8CF4EDDD4",
+        "name" : "SQLiteDriverTests"
+      }
+    },
+    {
       "target" : {
         "containerPath" : "container:Packages\/TableProEditor",
         "identifier" : "TableProEditorKitTests",
@@ -55,6 +103,34 @@
         "containerPath" : "container:Packages\/TableProGrammars",
         "identifier" : "TableProGrammarsTests",
         "name" : "TableProGrammarsTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/TableProMacCore",
+        "identifier" : "TableProAutocompleteTests",
+        "name" : "TableProAutocompleteTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/TableProMacCore",
+        "identifier" : "TableProMCPTests",
+        "name" : "TableProMCPTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/TableProMacCore",
+        "identifier" : "TableProSSHConfigTests",
+        "name" : "TableProSSHConfigTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:Packages\/TableProMacCore",
+        "identifier" : "TableProUtilitiesTests",
+        "name" : "TableProUtilitiesTests"
       }
     }
   ],

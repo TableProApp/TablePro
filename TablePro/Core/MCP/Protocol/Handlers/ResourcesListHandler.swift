@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 
 public struct ResourcesListHandler: MCPMethodHandler {
     public static let method = "resources/list"

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProUtilities
 
 /// Formats an Elasticsearch, Typesense or Weaviate document by re-indenting each JSON body and leaving
 /// every other line as typed.

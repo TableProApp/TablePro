@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMySQLCore
 
 nonisolated internal enum OceanBaseColumnDefaults {
     enum Resolution: Equatable {

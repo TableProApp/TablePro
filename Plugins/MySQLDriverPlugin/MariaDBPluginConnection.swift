@@ -10,6 +10,7 @@ import CMariaDB
 import Foundation
 import os
 import OSLog
+import TableProMySQLCore
 import TableProPluginKit
 
 private let logger = Logger(subsystem: "com.TablePro", category: "MariaDBPluginConnection")

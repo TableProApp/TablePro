@@ -1,17 +1,12 @@
-//
-//  EditorLifecycleTeardownTests.swift
-//  TableProTests
-//
-//  Regression tests for #2236. A connection switch unparents the outgoing connection's pane
-//  and re-parents it on the way back, which SwiftUI reports as onDisappear then onAppear on a
-//  live editor. Teardown wired to that pair blanked the SQL editor, cleared its undo stack, and
-//  left its highlighter and key bindings dead, because only loadView() rebuilds them.
-//
+// A connection switch unparents the outgoing connection's pane and re-parents it on the way
+// back, which SwiftUI reports as onDisappear then onAppear on a live editor. Teardown wired to that pair blanked the SQL editor, cleared its undo stack, and
+// left its highlighter and key bindings dead, because only loadView() rebuilds them.
 
 import AppKit
 import SwiftUI
 @testable import TablePro
 import TableProEditorKit
+import TableProTestSupport
 import TableProTextEngine
 import Testing
 
@@ -78,10 +73,10 @@ struct EditorLifecycleTeardownTests {
     /// controller. Nothing lays a detached view out, so without the explicit layout pass SwiftUI
     /// never reconciles the cleared `rootView` and the tree stays mounted.
     @Test("WorkspacePanes.teardown dismantles a detached pane's content")
-    func teardownDismantlesDetachedPaneContent() throws {
+    func teardownDismantlesDetachedPaneContent() async throws {
         let recorder = DismantleRecorder()
         let panes = WorkspacePanes()
-        let window = try mount(panes.detail, showing: DismantleProbe(recorder: recorder))
+        let window = try await mount(panes.detail, showing: DismantleProbe(recorder: recorder))
         defer { window.orderOut(nil) }
 
         panes.detail.view.removeFromSuperview()
@@ -94,10 +89,10 @@ struct EditorLifecycleTeardownTests {
     }
 
     @Test("WorkspacePanes.teardown dismantles a pane that is still on screen")
-    func teardownDismantlesAttachedPaneContent() throws {
+    func teardownDismantlesAttachedPaneContent() async throws {
         let recorder = DismantleRecorder()
         let panes = WorkspacePanes()
-        let window = try mount(panes.detail, showing: DismantleProbe(recorder: recorder))
+        let window = try await mount(panes.detail, showing: DismantleProbe(recorder: recorder))
         defer { window.orderOut(nil) }
 
         panes.teardown()
@@ -111,7 +106,7 @@ struct EditorLifecycleTeardownTests {
     /// defaults `isReleasedWhenClosed` to true, so closing one that ARC also owns over-releases it
     /// and takes the whole test host down with it; the window is ordered out instead. A probe that
     /// never builds fails the test rather than letting it pass having asserted nothing.
-    private func mount(_ pane: NSHostingController<AnyView>, showing probe: DismantleProbe) throws -> NSWindow {
+    private func mount(_ pane: NSHostingController<AnyView>, showing probe: DismantleProbe) async throws -> NSWindow {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
             styleMask: [.titled],
@@ -126,12 +121,11 @@ struct EditorLifecycleTeardownTests {
         pane.view.frame = container.bounds
         container.addSubview(pane.view)
 
-        let deadline = Date(timeIntervalSinceNow: 10)
-        while probe.recorder.makeCount == 0, Date() < deadline {
+        let mounted: Void? = try? await waitUntil {
             pane.view.layoutSubtreeIfNeeded()
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.02))
+            return probe.recorder.makeCount > 0
         }
-        try #require(probe.recorder.makeCount == 1, "the probe never mounted, so the test proves nothing")
+        try #require(mounted != nil && probe.recorder.makeCount == 1, "the probe never mounted, so the test proves nothing")
         return window
     }
 }

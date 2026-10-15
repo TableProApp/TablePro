@@ -1,46 +1,22 @@
-//
-//  UsersRolesViewModelReappearanceTests.swift
-//  TableProTests
-//
-//  The Users & Roles view loads again each time it appears, which is every editor tab switch and
-//  every connection switch. A load that reset the change manager there threw away staged creates,
-//  passwords and grants, and the undo stack with them.
-//
+// The Users & Roles view loads again each time it appears, which is every editor tab switch and
+// every connection switch. A load that reset the change manager there threw away staged creates,
+// passwords and grants, and the undo stack with them.
 
 import Foundation
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @testable import TablePro
-
-private actor PrincipalFetchLatch {
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    private var isOpen = false
-
-    func open() {
-        guard !isOpen else { return }
-        isOpen = true
-        let pending = waiters
-        waiters = []
-        for waiter in pending {
-            waiter.resume()
-        }
-    }
-
-    func wait() async {
-        guard !isOpen else { return }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-}
 
 private struct PrincipalFetchRefused: Error {}
 
 /// A server whose principal list the test can change between loads. The loader calls it off the
 /// main actor, so its state is locked rather than isolated.
-private final class PrincipalServerStub: PluginDatabaseDriver, PluginPrincipalManagement, @unchecked Sendable {
+private final class PrincipalServerStub: PluginDriverStub, PluginPrincipalManagement, @unchecked Sendable {
     private struct Hold {
-        let reached: PrincipalFetchLatch
-        let release: PrincipalFetchLatch
+        let reached: AsyncGate
+        let release: AsyncGate
     }
 
     private let lock = NSLock()
@@ -66,30 +42,16 @@ private final class PrincipalServerStub: PluginDatabaseDriver, PluginPrincipalMa
     }
 
     /// The next `currentPrincipalRef()` opens `reached`, then waits for `release`.
-    func holdNextCurrentPrincipal() -> (reached: PrincipalFetchLatch, release: PrincipalFetchLatch) {
-        let hold = Hold(reached: PrincipalFetchLatch(), release: PrincipalFetchLatch())
+    func holdNextCurrentPrincipal() -> (reached: AsyncGate, release: AsyncGate) {
+        let hold = Hold(reached: AsyncGate(), release: AsyncGate())
         lock.withLock { currentPrincipalHold = hold }
         return (hold.reached, hold.release)
     }
 
-    func connect() async throws {}
-    func disconnect() {}
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
     }
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
     func fetchDatabases() async throws -> [String] { ["app"] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
-    }
 
     func fetchPrincipals() async throws -> [PluginPrincipalInfo] {
         let reply: [PluginPrincipalInfo]? = lock.withLock {

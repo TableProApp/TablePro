@@ -74,6 +74,32 @@ struct DataFileControllerTests {
         #expect(column(controller, 1) == ["Rome"])
     }
 
+    /// Compared as text, "9" sorts after "50" and would be kept too.
+    @Test("A cell filter on a number column compares numbers, not text")
+    func cellFilterComparesNumbersAsNumbers() async throws {
+        let (controller, _) = try await loaded("amount,name\n9,nine\n50,fifty\n100,hundred\n")
+
+        controller.addFilter(TableFilter(columnName: "amount", filterOperator: .greaterThan, value: "50"))
+        await controller.waitForPendingWork()
+
+        #expect(column(controller, 0) == ["100"])
+    }
+
+    @Test("Picking a value from the column statistics filters the file to its rows")
+    func statisticsValueFiltersTheFile() async throws {
+        let (controller, _) = try await loaded("city\nParis\nLondon\nParis\nRome\n")
+        let city = try #require(controller.columnNames.ids.first)
+        let request = try #require(controller.statisticsRequest(for: city))
+        let summary = try await request.summarize { _ in }
+        let paris = try #require(summary.topValues.first { $0.value == "Paris" })
+        #expect(paris.count == 2)
+
+        controller.addEqualsFilter(column: city, value: paris)
+        await controller.waitForPendingWork()
+
+        #expect(column(controller, 0) == ["Paris", "Paris"])
+    }
+
     @Test("Deleting a row under a sort removes that row and keeps the order")
     func deleteUnderSortTargetsTheVisibleRow() async throws {
         let (controller, _) = try await loaded("n\n3\n1\n2\n")

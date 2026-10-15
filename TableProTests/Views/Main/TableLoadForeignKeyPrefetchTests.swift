@@ -1,10 +1,6 @@
-//
-//  TableLoadForeignKeyPrefetchTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -42,9 +38,7 @@ struct TableLoadForeignKeyPrefetchTests {
         let scope = try #require(coordinator.scope(for: tab))
 
         coordinator.executeQueryInternal("SELECT * FROM orders")
-        for _ in 0 ..< 500 where !paused.isRaised {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        _ = try? await waitUntil { paused.isRaised }
         try #require(paused.isRaised, "The row query never reached the driver")
 
         #expect(SchemaForeignKeyStore.shared.prefetch(scope: scope) { nil } == nil)

@@ -17,6 +17,8 @@ import Testing
 import CLibSSH2
 
 @testable import TablePro
+@testable import TableProSSHConfig
+import TableProTestSupport
 
 /// Minimal ssh-agent that answers `SSH_AGENTC_REQUEST_IDENTITIES` with a fixed identity list.
 ///
@@ -209,7 +211,6 @@ private func withTransportlessSession<T>(_ body: (OpaquePointer) throws -> T) th
     return try body(session)
 }
 
-@Suite("AgentAuthenticator failure reasons", .serialized)
 struct AgentAuthenticatorFailureTests {
     @Test("A socket path nothing is listening on reports the agent as unreachable (#2583)")
     func missingSocketReportsUnavailable() throws {

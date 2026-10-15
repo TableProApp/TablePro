@@ -6,6 +6,8 @@ import Testing
 @MainActor
 struct CatalogEditFavoriteAdoptionTests {
     private let connection = TestFixtures.makeConnection(database: "shop")
+    private let suite: EphemeralDefaults
+    private let syncSuite: EphemeralDefaults
     private let metadata: SyncMetadataStorage
     private let favoriteTables: FavoriteTablesStorage
     private let favoriteDatabases: FavoriteDatabasesStorage
@@ -14,10 +16,10 @@ struct CatalogEditFavoriteAdoptionTests {
 
     init() throws {
         let unique = UUID().uuidString
-        let defaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.CatalogEditFavorites.\(unique)"))
-        metadata = SyncMetadataStorage(
-            userDefaults: try #require(UserDefaults(suiteName: "com.TablePro.tests.CatalogEditFavorites.sync.\(unique)"))
-        )
+        suite = try EphemeralDefaults()
+        syncSuite = try EphemeralDefaults()
+        let defaults = suite.defaults
+        metadata = SyncMetadataStorage(userDefaults: syncSuite.defaults)
         let tracker = SyncChangeTracker(metadataStorage: metadata)
         favoriteTables = FavoriteTablesStorage(userDefaults: defaults, syncTracker: tracker)
         favoriteDatabases = FavoriteDatabasesStorage(defaults: defaults, syncTracker: tracker)

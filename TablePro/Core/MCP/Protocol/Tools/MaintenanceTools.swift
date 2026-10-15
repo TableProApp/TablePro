@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public struct ListMaintenanceOperationsTool: MCPToolImplementation {
     public static let name = "list_maintenance_operations"

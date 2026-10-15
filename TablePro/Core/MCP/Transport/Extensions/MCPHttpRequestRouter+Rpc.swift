@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 
 internal extension MCPHttpRequestRouter {
     func handleRpc(head: HttpRequestHead, body: Data, context: HttpConnectionContext) async {

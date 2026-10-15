@@ -6,6 +6,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSSHConfig
 
 extension DatabaseManager {
     /// Rewrites a file-backed connection to open a local working copy of a file that lives on an

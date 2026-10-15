@@ -8,6 +8,7 @@
 
 import AppKit
 import SwiftUI
+import TableProAutocomplete
 import TableProEditorKit
 import TableProPluginKit
 import TableProTextEngine

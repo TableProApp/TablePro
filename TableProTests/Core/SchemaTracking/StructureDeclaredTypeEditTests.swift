@@ -2,7 +2,8 @@
 //  StructureDeclaredTypeEditTests.swift
 //  TableProTests
 //
-//  Editing a column whose type is read as the server declares it.
+//  Editing a column whose type is read as the server declares it. PostgreSQLDriverTests holds
+//  PostgreSQLColumnClauses to writing the type from what these hand over.
 //
 
 import Foundation
@@ -61,21 +62,24 @@ struct StructureDeclaredTypeEditTests {
         #expect(staged.dataType == "varchar(80)")
         #expect(staged.ddlSpelling == nil)
         #expect(staged.typeNameForClassification == "varchar(80)")
-        #expect(
-            PostgreSQLColumnClauses.alterType(old: loaded.toPlugin(), new: staged.toPlugin()) == "varchar(80)"
-        )
+        let written = staged.toPlugin()
+        #expect(written.dataType == "varchar(80)")
+        #expect(written.ddlSpelling == nil)
+        #expect(written.ddlCollation == nil)
     }
 
     @Test("An enum column left alone writes its qualified spelling, and a retype writes the typed one")
     @MainActor func enumColumnKeepsItsQualifiedSpellingUntilItIsEdited() {
         let manager = loadedManager()
         let loaded = manager.workingColumns[1]
-        #expect(PostgreSQLColumnClauses.type(for: loaded.toPlugin()) == "public.status")
+        #expect(loaded.toPlugin().ddlSpelling == "public.status")
 
         var retyped = loaded
         retyped.dataType = "text"
         manager.updateColumn(id: loaded.id, with: retyped)
-        let staged = manager.workingColumns[1]
-        #expect(PostgreSQLColumnClauses.alterType(old: loaded.toPlugin(), new: staged.toPlugin()) == "text")
+        let written = manager.workingColumns[1].toPlugin()
+        #expect(written.dataType == "text")
+        #expect(written.ddlSpelling == nil)
+        #expect(written.ddlCollation == nil)
     }
 }

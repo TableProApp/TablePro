@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 struct MCPPromptTarget: Sendable {
     let connection: MCPConnectionDescriptor

@@ -1,7 +1,8 @@
 import Foundation
+import TableProPostgreSQLCore
 
 nonisolated extension LibPQCopyDirection {
-    var unsupportedMessage: String {
+    var mobileUnsupportedMessage: String {
         switch self {
         case .copyIn:
             return String(localized: "TablePro cannot send data to COPY FROM STDIN, so no rows were sent. Insert the rows with INSERT instead.")

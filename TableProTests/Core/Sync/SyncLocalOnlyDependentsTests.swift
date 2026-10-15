@@ -2,6 +2,7 @@ import CloudKit
 import Foundation
 @testable import TablePro
 import TableProSyncTransport
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -97,6 +98,12 @@ struct SyncLocalOnlyDependentsTests {
 
     private func runCycle(_ transport: ScriptedSyncTransport) async -> SyncError? {
         await environment.makeCoordinator(transport: transport).runSyncCycle()
+    }
+
+    /// `ConnectionLocalState.purge` releases a Local only owner from a Task it does not return.
+    /// Waiting for the release keeps that defaults write inside the case, before the suite is removed.
+    private func waitForKeptOffOwnersReleased() async throws {
+        try await waitUntil { tracker.ownersKeptOffSync.isEmpty }
     }
 
     private static func isolatedQueryHistory() -> QueryHistoryManager {
@@ -359,10 +366,7 @@ struct SyncLocalOnlyDependentsTests {
             queryHistory: history,
             syncTracker: tracker
         )
-        await ConnectionLocalState.purgeAsyncStores(
-            [connection.id], origin: .localOnly, sqlFavorites: environment.favorites, queryHistory: history,
-            syncTracker: tracker
-        )
+        try await waitForKeptOffOwnersReleased()
         let transport = ScriptedSyncTransport(zoneID: Self.zoneID)
         let failure = await runCycle(transport)
 
@@ -379,7 +383,7 @@ struct SyncLocalOnlyDependentsTests {
     }
 
     @Test("A deleted Local only connection stays out of iCloud until its saved queries are gone")
-    func deletedLocalOnlyOwnerStaysExcludedUntilItsSavedQueriesAreGone() async {
+    func deletedLocalOnlyOwnerStaysExcludedUntilItsSavedQueriesAreGone() async throws {
         let connection = addConnection(.localOnly)
         let savedQuery = SQLFavorite(name: "Revenue", query: "SELECT 1", connectionId: connection.id)
         #expect(await environment.favorites.addFavorite(savedQuery))
@@ -401,17 +405,13 @@ struct SyncLocalOnlyDependentsTests {
         #expect(tracker.ownersKeptOffSync == [connection.id])
         #expect(!coordinator.syncBoundary(settings: .default).includes(.favorite, owner: connection.id))
 
-        await ConnectionLocalState.purgeAsyncStores(
-            [connection.id], origin: .localOnly, sqlFavorites: environment.favorites, queryHistory: history,
-            syncTracker: tracker
-        )
+        try await waitForKeptOffOwnersReleased()
 
         #expect(await environment.favorites.fetchFavorite(id: savedQuery.id) == nil)
-        #expect(tracker.ownersKeptOffSync.isEmpty)
     }
 
     @Test("Deleting a Local only connection forgets the deletions held for it, and a synced one keeps them")
-    func connectionDeleteDiscardsOnlyALocalOnlyOwnersTombstones() {
+    func connectionDeleteDiscardsOnlyALocalOnlyOwnersTombstones() async throws {
         let localOnly = addConnection(.localOnly)
         let synced = addConnection()
         metadata.addTombstones(["held"], type: .tableFavorite, owner: localOnly.id)
@@ -429,6 +429,7 @@ struct SyncLocalOnlyDependentsTests {
         #expect(environment.connections.deleteConnections([synced]))
         #expect(tracker.tombstonedIds(for: .tableFavorite) == ["pending"])
         #expect(tracker.tombstonedIds(for: .connection) == [synced.id.uuidString])
+        try await waitForKeptOffOwnersReleased()
     }
 
     // MARK: - Pruning

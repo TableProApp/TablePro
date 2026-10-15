@@ -1,320 +1,303 @@
+import Foundation
 @testable import TableProMSSQLCore
-import XCTest
+import Testing
 
-final class MSSQLSchemaQueriesTests: XCTestCase {
-    func testEscapeHandlesSingleQuote() {
-        XCTAssertEqual(MSSQLSchemaQueries.escape("O'Brien"), "O''Brien")
-        XCTAssertEqual(MSSQLSchemaQueries.escape("plain"), "plain")
+struct MSSQLSchemaQueriesTests {
+    @Test func testEscapeHandlesSingleQuote() {
+        #expect(MSSQLSchemaQueries.escape("O'Brien") == "O''Brien")
+        #expect(MSSQLSchemaQueries.escape("plain") == "plain")
     }
 
-    func testEscapeBracketHandlesClosingBracket() {
-        XCTAssertEqual(MSSQLSchemaQueries.escapeBracket("weird]name"), "weird]]name")
+    @Test func testEscapeBracketHandlesClosingBracket() {
+        #expect(MSSQLSchemaQueries.escapeBracket("weird]name") == "weird]]name")
     }
 
     /// A name `sp_rename` accepted verbatim must not close its brackets early and start a new batch.
-    func testEscapeBracketDoublesABracketBeforeACombiningMark() {
-        XCTAssertEqual(MSSQLSchemaQueries.escapeBracket("v]\u{0301}\nGO"), "v]]\u{0301}\nGO")
-        XCTAssertEqual(
-            MSSQLSchemaQueries.bracketed(schema: "dbo", table: "v]\u{0301}"),
-            "[dbo].[v]]\u{0301}]"
-        )
+    @Test func testEscapeBracketDoublesABracketBeforeACombiningMark() {
+        #expect(MSSQLSchemaQueries.escapeBracket("v]\u{0301}\nGO") == "v]]\u{0301}\nGO")
+        #expect(MSSQLSchemaQueries.bracketed(schema: "dbo", table: "v]\u{0301}") == "[dbo].[v]]\u{0301}]")
     }
 
-    func testBracketedComposesIdentifier() {
-        XCTAssertEqual(MSSQLSchemaQueries.bracketed(schema: "dbo", table: "Users"), "[dbo].[Users]")
-        XCTAssertEqual(MSSQLSchemaQueries.bracketed(schema: "weird]", table: "x"), "[weird]]].[x]")
+    @Test func testBracketedComposesIdentifier() {
+        #expect(MSSQLSchemaQueries.bracketed(schema: "dbo", table: "Users") == "[dbo].[Users]")
+        #expect(MSSQLSchemaQueries.bracketed(schema: "weird]", table: "x") == "[weird]]].[x]")
     }
 
     /// Unqualified, both views describe the database the connection is using, so every name got that database's
     /// numbers. Measured on SQL Server 2022 connected to AppDb: msdb reported 16 MB and 2 tables instead of 145.
-    func testDatabaseMetadataReadsTheNamedDatabasesCatalog() {
+    @Test func testDatabaseMetadataReadsTheNamedDatabasesCatalog() {
         let sql = MSSQLSchemaQueries.databaseMetadata(database: "msdb")
 
-        XCTAssertTrue(sql.contains("FROM [msdb].sys.database_files"))
-        XCTAssertTrue(sql.contains("FROM [msdb].sys.tables"))
-        XCTAssertFalse(sql.contains(" sys.database_files"))
-        XCTAssertFalse(sql.contains(" sys.tables"))
+        #expect(sql.contains("FROM [msdb].sys.database_files"))
+        #expect(sql.contains("FROM [msdb].sys.tables"))
+        #expect(!sql.contains(" sys.database_files"))
+        #expect(!sql.contains(" sys.tables"))
     }
 
-    func testDatabaseMetadataEscapesAClosingBracketInTheName() {
+    @Test func testDatabaseMetadataEscapesAClosingBracketInTheName() {
         let sql = MSSQLSchemaQueries.databaseMetadata(database: "we]ird")
 
-        XCTAssertTrue(sql.contains("FROM [we]]ird].sys.database_files"))
-        XCTAssertTrue(sql.contains("FROM [we]]ird].sys.tables"))
+        #expect(sql.contains("FROM [we]]ird].sys.database_files"))
+        #expect(sql.contains("FROM [we]]ird].sys.tables"))
     }
 
     /// The session runs with ANSI_WARNINGS off, so an int sum over a 2 GB database overflowed to NULL.
-    func testSizesAreSummedAsBigintBytes() {
-        XCTAssertTrue(MSSQLSchemaQueries.databaseMetadata(database: "AppDb").contains("SUM(CAST(size AS bigint)) * 8192"))
-        XCTAssertTrue(MSSQLSchemaQueries.allDatabaseSizes.contains("SUM(CAST(mf.size AS bigint)) * 8192"))
-        XCTAssertTrue(MSSQLSchemaQueries.allDatabaseSizes.contains("LEFT JOIN sys.master_files"))
+    @Test func testSizesAreSummedAsBigintBytes() {
+        #expect(MSSQLSchemaQueries.databaseMetadata(database: "AppDb").contains("SUM(CAST(size AS bigint)) * 8192"))
+        #expect(MSSQLSchemaQueries.allDatabaseSizes.contains("SUM(CAST(mf.size AS bigint)) * 8192"))
+        #expect(MSSQLSchemaQueries.allDatabaseSizes.contains("LEFT JOIN sys.master_files"))
     }
 
-    func testTablesQueryEscapesSchema() {
+    @Test func testTablesQueryEscapesSchema() {
         let sql = MSSQLSchemaQueries.tables(schema: "O'Brien")
-        XCTAssertTrue(sql.contains("N'O''Brien'"))
-        XCTAssertTrue(sql.contains("INFORMATION_SCHEMA.TABLES"))
-        XCTAssertTrue(sql.contains("'BASE TABLE'"))
-        XCTAssertTrue(sql.contains("'VIEW'"))
+        #expect(sql.contains("N'O''Brien'"))
+        #expect(sql.contains("INFORMATION_SCHEMA.TABLES"))
+        #expect(sql.contains("'BASE TABLE'"))
+        #expect(sql.contains("'VIEW'"))
     }
 
-    func testOneSchemaListingIsFilteredByTheSchemaAlone() {
+    @Test func testOneSchemaListingIsFilteredByTheSchemaAlone() {
         let sql = MSSQLSchemaQueries.tables(in: .schema("sales"))
-        XCTAssertEqual(sql, MSSQLSchemaQueries.tables(schema: "sales"))
-        XCTAssertTrue(sql.contains("WHERE t.TABLE_SCHEMA = N'sales'"))
-        XCTAssertTrue(sql.hasPrefix("SELECT t.TABLE_NAME, t.TABLE_TYPE\n"))
-        XCTAssertTrue(sql.hasSuffix("ORDER BY t.TABLE_NAME"))
-        XCTAssertFalse(sql.contains("INFORMATION_SCHEMA.SCHEMATA"))
+        #expect(sql == MSSQLSchemaQueries.tables(schema: "sales"))
+        #expect(sql.contains("WHERE t.TABLE_SCHEMA = N'sales'"))
+        #expect(sql.hasPrefix("SELECT t.TABLE_NAME, t.TABLE_TYPE\n"))
+        #expect(sql.hasSuffix("ORDER BY t.TABLE_NAME"))
+        #expect(!sql.contains("INFORMATION_SCHEMA.SCHEMATA"))
     }
 
     /// The all-schema listing is filtered by the schema list query itself, so a table is listed exactly when its schema
     /// is one `fetchSchemas()` returns. SQL Server rejects an `ORDER BY` inside that subquery, which is why the list is
     /// split from its ordering.
-    func testAllSchemaListingIsFilteredByTheSchemaListQuery() {
+    @Test func testAllSchemaListingIsFilteredByTheSchemaListQuery() {
         let sql = MSSQLSchemaQueries.tables(in: .allSchemas)
-        XCTAssertTrue(sql.contains("WHERE t.TABLE_SCHEMA IN (\n\(MSSQLSchemaQueries.listedSchemaNames)\n)"))
-        XCTAssertFalse(sql.contains("ORDER BY SCHEMA_NAME"))
-        XCTAssertTrue(sql.hasPrefix("SELECT t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_SCHEMA\n"))
-        XCTAssertTrue(sql.contains("AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')"))
-        XCTAssertTrue(sql.hasSuffix("ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME"))
+        #expect(sql.contains("WHERE t.TABLE_SCHEMA IN (\n\(MSSQLSchemaQueries.listedSchemaNames)\n)"))
+        #expect(!sql.contains("ORDER BY SCHEMA_NAME"))
+        #expect(sql.hasPrefix("SELECT t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_SCHEMA\n"))
+        #expect(sql.contains("AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')"))
+        #expect(sql.hasSuffix("ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME"))
     }
 
-    func testSchemaSetListingIsFilteredByTheNamedSchemasAlone() {
+    @Test func testSchemaSetListingIsFilteredByTheNamedSchemasAlone() {
         let sql = MSSQLSchemaQueries.tables(in: .schemas(["sales", "dbo"]))
-        XCTAssertTrue(sql.contains("WHERE t.TABLE_SCHEMA IN (N'sales', N'dbo')\n"))
-        XCTAssertFalse(sql.contains("INFORMATION_SCHEMA.SCHEMATA"))
-        XCTAssertTrue(sql.hasPrefix("SELECT t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_SCHEMA\n"))
-        XCTAssertTrue(sql.contains("AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')"))
-        XCTAssertTrue(sql.hasSuffix("ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME"))
+        #expect(sql.contains("WHERE t.TABLE_SCHEMA IN (N'sales', N'dbo')\n"))
+        #expect(!sql.contains("INFORMATION_SCHEMA.SCHEMATA"))
+        #expect(sql.hasPrefix("SELECT t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_SCHEMA\n"))
+        #expect(sql.contains("AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')"))
+        #expect(sql.hasSuffix("ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME"))
     }
 
-    func testSchemaSetListingQuotesEachName() {
+    @Test func testSchemaSetListingQuotesEachName() {
         let sql = MSSQLSchemaQueries.tables(in: .schemas(["O'Brien", "日本"]))
-        XCTAssertTrue(sql.contains("t.TABLE_SCHEMA IN (N'O''Brien', N'日本')"))
-        XCTAssertFalse(sql.contains("N'O'Brien'"))
+        #expect(sql.contains("t.TABLE_SCHEMA IN (N'O''Brien', N'日本')"))
+        #expect(!sql.contains("N'O'Brien'"))
     }
 
-    func testEmptySchemaSetListingMatchesNothing() {
+    @Test func testEmptySchemaSetListingMatchesNothing() {
         let sql = MSSQLSchemaQueries.tables(in: .schemas([]))
-        XCTAssertTrue(sql.contains("WHERE 1 = 0\n"))
-        XCTAssertFalse(sql.contains("IN ()"))
+        #expect(sql.contains("WHERE 1 = 0\n"))
+        #expect(!(sql.contains("IN ()")))
     }
 
-    func testSchemaListIsTheListedSchemasInOrder() {
-        XCTAssertEqual(MSSQLSchemaQueries.schemas, MSSQLSchemaQueries.listedSchemaNames + "\nORDER BY SCHEMA_NAME")
-        XCTAssertFalse(MSSQLSchemaQueries.listedSchemaNames.contains("ORDER BY"))
+    @Test func testSchemaListIsTheListedSchemasInOrder() {
+        #expect(MSSQLSchemaQueries.schemas == MSSQLSchemaQueries.listedSchemaNames + "\nORDER BY SCHEMA_NAME")
+        #expect(!MSSQLSchemaQueries.listedSchemaNames.contains("ORDER BY"))
     }
 
-    func testParseTableRowReadsTheSchemaColumnWhenPresent() {
-        XCTAssertEqual(
-            MSSQLSchemaQueries.parseTableRow(["orders", "BASE TABLE", "sales"]),
-            MSSQLTableRow(name: "orders", isView: false, schema: "sales")
-        )
-        XCTAssertNil(MSSQLSchemaQueries.parseTableRow(["orders", "BASE TABLE"])?.schema)
+    @Test func testParseTableRowReadsTheSchemaColumnWhenPresent() {
+        #expect(MSSQLSchemaQueries.parseTableRow(["orders", "BASE TABLE", "sales"]) == MSSQLTableRow(name: "orders", isView: false, schema: "sales"))
+        #expect(MSSQLSchemaQueries.parseTableRow(["orders", "BASE TABLE"])?.schema == nil)
     }
 
-    func testColumnsQueryIncludesIdentityAndPrimaryKey() {
+    @Test func testColumnsQueryIncludesIdentityAndPrimaryKey() {
         let sql = MSSQLSchemaQueries.columns(schema: "dbo", table: "Users")
-        XCTAssertTrue(sql.contains("IsIdentity"))
-        XCTAssertTrue(sql.contains("PRIMARY KEY"))
-        XCTAssertTrue(sql.contains("N'Users'"))
-        XCTAssertTrue(sql.contains("N'dbo'"))
+        #expect(sql.contains("IsIdentity"))
+        #expect(sql.contains("PRIMARY KEY"))
+        #expect(sql.contains("N'Users'"))
+        #expect(sql.contains("N'dbo'"))
     }
 
-    func testColumnsQueryQuotesBothNamesBeforeResolvingTheObject() {
+    @Test func testColumnsQueryQuotesBothNamesBeforeResolvingTheObject() {
         let sql = MSSQLSchemaQueries.columns(schema: "x.y", table: "a.b")
-        XCTAssertTrue(sql.contains("OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME))"))
-        XCTAssertFalse(sql.contains("OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME)"))
+        #expect(sql.contains("OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME))"))
+        #expect(!(sql.contains("OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME)")))
     }
 
-    func testColumnsQueryReportsRowversionAndPeriodColumnsAsServerGenerated() {
+    @Test func testColumnsQueryReportsRowversionAndPeriodColumnsAsServerGenerated() {
         let sql = MSSQLSchemaQueries.columns(schema: "dbo", table: "Users")
-        XCTAssertTrue(sql.contains("WHEN c.DATA_TYPE = 'timestamp' THEN 1"))
-        XCTAssertTrue(sql.contains("'GeneratedAlwaysType') > 0 THEN 1"))
-        XCTAssertTrue(sql.contains("AS IS_SERVER_GENERATED"))
+        #expect(sql.contains("WHEN c.DATA_TYPE = 'timestamp' THEN 1"))
+        #expect(sql.contains("'GeneratedAlwaysType') > 0 THEN 1"))
+        #expect(sql.contains("AS IS_SERVER_GENERATED"))
     }
 
-    func testAllColumnsQueryCarriesTheTableNameAfterTheParsedColumns() {
+    @Test func testAllColumnsQueryCarriesTheTableNameAfterTheParsedColumns() {
         let sql = MSSQLSchemaQueries.allColumns(schema: "dbo")
-        XCTAssertTrue(sql.contains("AS IS_SERVER_GENERATED,\n    c.TABLE_NAME"))
-        XCTAssertTrue(sql.contains("c.TABLE_SCHEMA = N'dbo'"))
-        XCTAssertEqual(MSSQLSchemaQueries.allColumnsTableNameIndex, 11)
+        #expect(sql.contains("AS IS_SERVER_GENERATED,\n    c.TABLE_NAME"))
+        #expect(sql.contains("c.TABLE_SCHEMA = N'dbo'"))
+        #expect(MSSQLSchemaQueries.allColumnsTableNameIndex == 11)
     }
 
-    func testParseColumnRowReadsServerGeneratedColumns() {
+    @Test func testParseColumnRowReadsServerGeneratedColumns() {
         let rowversion: [String?] = ["RV", "timestamp", nil, nil, nil, "NO", nil, "0", "0", "0", "1"]
-        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(rowversion)?.isServerGenerated, true)
-        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(rowversion)?.isGenerated, true)
+        #expect(MSSQLSchemaQueries.parseColumnRow(rowversion)?.isServerGenerated == true)
+        #expect(MSSQLSchemaQueries.parseColumnRow(rowversion)?.isGenerated == true)
 
         let computed: [String?] = ["Doubled", "int", nil, "10", "0", "YES", nil, "0", "0", "1", "0"]
-        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(computed)?.isGenerated, true)
-        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(computed)?.isServerGenerated, false)
+        #expect(MSSQLSchemaQueries.parseColumnRow(computed)?.isGenerated == true)
+        #expect(MSSQLSchemaQueries.parseColumnRow(computed)?.isServerGenerated == false)
 
         let plain: [String?] = ["Name", "nvarchar", "50", nil, nil, "YES", nil, "0", "0", "0", "0"]
-        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(plain)?.isGenerated, false)
+        #expect(MSSQLSchemaQueries.parseColumnRow(plain)?.isGenerated == false)
     }
 
-    func testIndexesQueryUsesBracketedIdentifier() {
+    @Test func testIndexesQueryUsesBracketedIdentifier() {
         let sql = MSSQLSchemaQueries.indexes(schema: "dbo", table: "Users")
-        XCTAssertTrue(sql.contains("OBJECT_ID(N'[dbo].[Users]')"))
-        XCTAssertTrue(sql.contains("sys.indexes"))
+        #expect(sql.contains("OBJECT_ID(N'[dbo].[Users]')"))
+        #expect(sql.contains("sys.indexes"))
     }
 
-    func testForeignKeysQueryFiltersByTableAndSchema() {
+    @Test func testForeignKeysQueryFiltersByTableAndSchema() {
         let sql = MSSQLSchemaQueries.foreignKeys(schema: "dbo", table: "Orders")
-        XCTAssertTrue(sql.contains("sys.foreign_keys"))
-        XCTAssertTrue(sql.contains("N'Orders'"))
-        XCTAssertTrue(sql.contains("N'dbo'"))
+        #expect(sql.contains("sys.foreign_keys"))
+        #expect(sql.contains("N'Orders'"))
+        #expect(sql.contains("N'dbo'"))
     }
 
-    func testForeignKeysQuerySelectsReferencedSchema() {
+    @Test func testForeignKeysQuerySelectsReferencedSchema() {
         let sql = MSSQLSchemaQueries.foreignKeys(schema: "dbo", table: "Orders")
-        XCTAssertTrue(sql.contains("sr.name AS ref_schema"))
-        XCTAssertTrue(sql.contains("JOIN sys.schemas sr ON tr.schema_id = sr.schema_id"))
+        #expect(sql.contains("sr.name AS ref_schema"))
+        #expect(sql.contains("JOIN sys.schemas sr ON tr.schema_id = sr.schema_id"))
     }
 
-    func testParseTableRowDetectsView() {
+    @Test func testParseTableRowDetectsView() {
         let row: [String?] = ["v_active_users", "VIEW"]
-        XCTAssertEqual(MSSQLSchemaQueries.parseTableRow(row), MSSQLTableRow(name: "v_active_users", isView: true))
+        #expect(MSSQLSchemaQueries.parseTableRow(row) == MSSQLTableRow(name: "v_active_users", isView: true))
     }
 
-    func testParseTableRowDefaultsToTable() {
+    @Test func testParseTableRowDefaultsToTable() {
         let row: [String?] = ["users", "BASE TABLE"]
-        XCTAssertEqual(MSSQLSchemaQueries.parseTableRow(row), MSSQLTableRow(name: "users", isView: false))
+        #expect(MSSQLSchemaQueries.parseTableRow(row) == MSSQLTableRow(name: "users", isView: false))
     }
 
-    func testParseTableRowRejectsMissingName() {
-        XCTAssertNil(MSSQLSchemaQueries.parseTableRow([nil, "BASE TABLE"]))
+    @Test func testParseTableRowRejectsMissingName() {
+        #expect(MSSQLSchemaQueries.parseTableRow([nil, "BASE TABLE"]) == nil)
     }
 
-    func testParseColumnRowExtractsAllFields() {
+    @Test func testParseColumnRowExtractsAllFields() {
         let row: [String?] = ["id", "int", nil, "10", "0", "NO", nil, "1", "1"]
         let parsed = MSSQLSchemaQueries.parseColumnRow(row)
-        XCTAssertEqual(parsed?.name, "id")
-        XCTAssertEqual(parsed?.dataType, "int")
-        XCTAssertEqual(parsed?.isNullable, false)
-        XCTAssertEqual(parsed?.isIdentity, true)
-        XCTAssertEqual(parsed?.isPrimaryKey, true)
+        #expect(parsed?.name == "id")
+        #expect(parsed?.dataType == "int")
+        #expect(parsed?.isNullable == false)
+        #expect(parsed?.isIdentity == true)
+        #expect(parsed?.isPrimaryKey == true)
     }
 
-    func testColumnDisplayTypeForFixedSizeOmitsLength() {
+    @Test func testColumnDisplayTypeForFixedSizeOmitsLength() {
         let row: [String?] = ["id", "int", "4", nil, nil, "NO", nil, "0", "0"]
-        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(row)?.displayType, "int")
+        #expect(MSSQLSchemaQueries.parseColumnRow(row)?.displayType == "int")
     }
 
-    func testColumnDisplayTypeForVarcharIncludesLength() {
+    @Test func testColumnDisplayTypeForVarcharIncludesLength() {
         let row: [String?] = ["name", "nvarchar", "100", nil, nil, "YES", nil, "0", "0"]
-        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(row)?.displayType, "nvarchar(100)")
+        #expect(MSSQLSchemaQueries.parseColumnRow(row)?.displayType == "nvarchar(100)")
     }
 
-    func testColumnDisplayTypeForMaxLengthRendersMax() {
+    @Test func testColumnDisplayTypeForMaxLengthRendersMax() {
         let row: [String?] = ["body", "varchar", "-1", nil, nil, "YES", nil, "0", "0"]
-        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(row)?.displayType, "varchar(max)")
+        #expect(MSSQLSchemaQueries.parseColumnRow(row)?.displayType == "varchar(max)")
     }
 
-    func testColumnDisplayTypeForDecimalIncludesPrecisionScale() {
+    @Test func testColumnDisplayTypeForDecimalIncludesPrecisionScale() {
         let row: [String?] = ["amount", "decimal", nil, "18", "2", "NO", nil, "0", "0"]
-        XCTAssertEqual(MSSQLSchemaQueries.parseColumnRow(row)?.displayType, "decimal(18,2)")
+        #expect(MSSQLSchemaQueries.parseColumnRow(row)?.displayType == "decimal(18,2)")
     }
 
-    func testParseIndexRowExtractsFlags() {
+    @Test func testParseIndexRowExtractsFlags() {
         let row: [String?] = ["IX_users_email", "1", "0", "email"]
         let parsed = MSSQLSchemaQueries.parseIndexRow(row)
-        XCTAssertEqual(parsed?.name, "IX_users_email")
-        XCTAssertEqual(parsed?.isUnique, true)
-        XCTAssertEqual(parsed?.isPrimary, false)
-        XCTAssertEqual(parsed?.columnName, "email")
+        #expect(parsed?.name == "IX_users_email")
+        #expect(parsed?.isUnique == true)
+        #expect(parsed?.isPrimary == false)
+        #expect(parsed?.columnName == "email")
     }
 
-    func testParseIndexRowRejectsMissingColumn() {
-        XCTAssertNil(MSSQLSchemaQueries.parseIndexRow(["IX_x", "0", "0", nil]))
+    @Test func testParseIndexRowRejectsMissingColumn() {
+        #expect(MSSQLSchemaQueries.parseIndexRow(["IX_x", "0", "0", nil]) == nil)
     }
 
-    func testParseForeignKeyRowExtractsAll() {
+    @Test func testParseForeignKeyRowExtractsAll() {
         let row: [String?] = ["FK_orders_users", "user_id", "users", "id", "sales"]
         let parsed = MSSQLSchemaQueries.parseForeignKeyRow(row)
-        XCTAssertEqual(parsed?.constraintName, "FK_orders_users")
-        XCTAssertEqual(parsed?.columnName, "user_id")
-        XCTAssertEqual(parsed?.referencedTable, "users")
-        XCTAssertEqual(parsed?.referencedColumn, "id")
-        XCTAssertEqual(parsed?.referencedSchema, "sales")
+        #expect(parsed?.constraintName == "FK_orders_users")
+        #expect(parsed?.columnName == "user_id")
+        #expect(parsed?.referencedTable == "users")
+        #expect(parsed?.referencedColumn == "id")
+        #expect(parsed?.referencedSchema == "sales")
     }
 
-    func testParseForeignKeyRowWithoutReferencedSchema() {
+    @Test func testParseForeignKeyRowWithoutReferencedSchema() {
         let row: [String?] = ["FK_orders_users", "user_id", "users", "id"]
-        XCTAssertNil(MSSQLSchemaQueries.parseForeignKeyRow(row)?.referencedSchema)
+        #expect(MSSQLSchemaQueries.parseForeignKeyRow(row)?.referencedSchema == nil)
     }
 
-    func testQualifiedNamePrefixesSchema() {
-        XCTAssertEqual(MSSQLSchemaQueries.qualifiedName(schema: "sales", table: "routeCache"), "[sales].[routeCache]")
+    @Test func testQualifiedNamePrefixesSchema() {
+        #expect(MSSQLSchemaQueries.qualifiedName(schema: "sales", table: "routeCache") == "[sales].[routeCache]")
     }
 
-    func testQualifiedNameOmitsSchemaWhenNilOrEmpty() {
-        XCTAssertEqual(MSSQLSchemaQueries.qualifiedName(schema: nil, table: "routeCache"), "[routeCache]")
-        XCTAssertEqual(MSSQLSchemaQueries.qualifiedName(schema: "", table: "routeCache"), "[routeCache]")
+    @Test func testQualifiedNameOmitsSchemaWhenNilOrEmpty() {
+        #expect(MSSQLSchemaQueries.qualifiedName(schema: nil, table: "routeCache") == "[routeCache]")
+        #expect(MSSQLSchemaQueries.qualifiedName(schema: "", table: "routeCache") == "[routeCache]")
     }
 
-    func testBrowseQualifiesNonDefaultSchema() {
+    @Test func testBrowseQualifiesNonDefaultSchema() {
         let sql = MSSQLSchemaQueries.browse(
             schema: "sales", table: "routeCache",
             orderByClause: "ORDER BY (SELECT NULL)", offset: 0, limit: 200
         )
-        XCTAssertEqual(
-            sql,
-            "SELECT * FROM [sales].[routeCache] ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY"
-        )
+        #expect(sql == "SELECT * FROM [sales].[routeCache] ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY")
     }
 
-    func testBrowseWithoutSchemaStaysUnqualified() {
+    @Test func testBrowseWithoutSchemaStaysUnqualified() {
         let sql = MSSQLSchemaQueries.browse(
             schema: nil, table: "routeCache",
             orderByClause: "ORDER BY (SELECT NULL)", offset: 10, limit: 50
         )
-        XCTAssertEqual(
-            sql,
-            "SELECT * FROM [routeCache] ORDER BY (SELECT NULL) OFFSET 10 ROWS FETCH NEXT 50 ROWS ONLY"
-        )
+        #expect(sql == "SELECT * FROM [routeCache] ORDER BY (SELECT NULL) OFFSET 10 ROWS FETCH NEXT 50 ROWS ONLY")
     }
 
-    func testFilteredQualifiesSchemaAndAppendsWhere() {
+    @Test func testFilteredQualifiesSchemaAndAppendsWhere() {
         let sql = MSSQLSchemaQueries.filtered(
             schema: "sales", table: "routeCache", whereClause: "[id] = 1",
             orderByClause: "ORDER BY (SELECT NULL)", offset: 0, limit: 200
         )
-        XCTAssertEqual(
-            sql,
-            "SELECT * FROM [sales].[routeCache] WHERE [id] = 1 ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY"
-        )
+        #expect(sql == "SELECT * FROM [sales].[routeCache] WHERE [id] = 1 ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY")
     }
 
-    func testFilteredOmitsWhenWhereClauseEmpty() {
+    @Test func testFilteredOmitsWhenWhereClauseEmpty() {
         let sql = MSSQLSchemaQueries.filtered(
             schema: "sales", table: "routeCache", whereClause: "",
             orderByClause: "ORDER BY (SELECT NULL)", offset: 0, limit: 200
         )
-        XCTAssertEqual(
-            sql,
-            "SELECT * FROM [sales].[routeCache] ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY"
-        )
+        #expect(sql == "SELECT * FROM [sales].[routeCache] ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY")
     }
 
-    func testCatalogPredicatesSurviveANonAsciiName() {
+    @Test func testCatalogPredicatesSurviveANonAsciiName() {
         let columns = MSSQLSchemaQueries.columns(schema: "dbo", table: "顧客テーブル")
-        XCTAssertTrue(columns.contains("N'顧客テーブル'"))
-        XCTAssertFalse(columns.contains("= '顧客テーブル'"))
+        #expect(columns.contains("N'顧客テーブル'"))
+        #expect(!columns.contains("= '顧客テーブル'"))
 
         let indexes = MSSQLSchemaQueries.indexes(schema: "dbo", table: "顧客テーブル")
-        XCTAssertTrue(indexes.contains("OBJECT_ID(N'[dbo].[顧客テーブル]')"))
+        #expect(indexes.contains("OBJECT_ID(N'[dbo].[顧客テーブル]')"))
 
         let foreignKeys = MSSQLSchemaQueries.foreignKeys(schema: "スキーマ", table: "顧客テーブル")
-        XCTAssertTrue(foreignKeys.contains("N'顧客テーブル'"))
-        XCTAssertTrue(foreignKeys.contains("N'スキーマ'"))
+        #expect(foreignKeys.contains("N'顧客テーブル'"))
+        #expect(foreignKeys.contains("N'スキーマ'"))
     }
 
-    func testFixedCatalogConstantsStayUnprefixed() {
+    @Test func testFixedCatalogConstantsStayUnprefixed() {
         let tables = MSSQLSchemaQueries.tables(schema: "dbo")
-        XCTAssertTrue(tables.contains("IN ('BASE TABLE', 'VIEW')"))
-        XCTAssertTrue(MSSQLSchemaQueries.columns(schema: "dbo", table: "t").contains("= 'PRIMARY KEY'"))
-        XCTAssertTrue(MSSQLSchemaQueries.schemas.contains("'information_schema'"))
+        #expect(tables.contains("IN ('BASE TABLE', 'VIEW')"))
+        #expect(MSSQLSchemaQueries.columns(schema: "dbo", table: "t").contains("= 'PRIMARY KEY'"))
+        #expect(MSSQLSchemaQueries.schemas.contains("'information_schema'"))
     }
 }

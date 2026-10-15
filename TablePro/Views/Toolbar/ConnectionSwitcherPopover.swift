@@ -8,6 +8,7 @@ import Combine
 import SwiftUI
 import TableProConnectionLibrary
 import TableProPluginKit
+import TableProUtilities
 
 enum ConnectionSwitcherFilter {
     // A file connection's database is a whole path, which a short query matches letter by letter.

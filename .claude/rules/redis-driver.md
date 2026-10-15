@@ -1,6 +1,7 @@
 ---
 paths:
   - "Plugins/RedisDriverPlugin/**/*"
+  - "Packages/TableProCore/Sources/TableProRedisCore/**/*"
 ---
 
 # Redis driver

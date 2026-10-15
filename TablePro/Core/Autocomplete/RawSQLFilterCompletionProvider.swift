@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProAutocomplete
 import TableProPluginKit
 
 struct RawSQLFilterCompletionItem: Equatable {

@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import os
+import TableProMCP
 
 enum ChatRole: String, Codable, Sendable {
     case user

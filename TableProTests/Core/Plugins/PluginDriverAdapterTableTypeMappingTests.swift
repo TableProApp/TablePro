@@ -8,7 +8,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-private final class StubTableTypeDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class StubTableTypeDriver: PluginDriverStub, @unchecked Sendable {
     var stubbedSupportsSchemas = false
     var stubbedCurrentSchema: String?
 
@@ -32,24 +32,9 @@ private final class StubTableTypeDriver: PluginDatabaseDriver, @unchecked Sendab
         return stubbedPartitions
     }
 
-    func connect() async throws {}
-    func disconnect() {}
     func ping() async throws {}
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
-
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 }
 
@@ -132,23 +117,17 @@ struct PluginDriverAdapterTableTypeMappingTests {
         #expect(tables.allSatisfy { $0.type == .systemTable })
     }
 
+    /// `EXTERNAL TABLE` is what PostgreSQLDriverTests pins `RedshiftExternalSchemaQueries.classifyTableType` to.
     @Test("Maps the Redshift external classifier output to an external table")
     func mapsExternalTable() async throws {
         let driver = StubTableTypeDriver()
         driver.stubbedTables = [
-            PluginTableInfo(
-                name: "customers",
-                type: RedshiftExternalSchemaQueries.classifyTableType(rawTabletype: "TABLE")
-            ),
-            PluginTableInfo(
-                name: "orders",
-                type: RedshiftExternalSchemaQueries.classifyTableType(rawTabletype: " ")
-            ),
+            PluginTableInfo(name: "customers", type: "EXTERNAL TABLE"),
             PluginTableInfo(name: "events", type: "external_table")
         ]
         let adapter = makeAdapter(driver: driver)
         let tables = try await adapter.fetchTables()
-        #expect(tables.count == 3)
+        #expect(tables.count == 2)
         #expect(tables.allSatisfy { $0.type == .externalTable })
         #expect(tables.allSatisfy { !$0.type.allowsRowEditing })
     }

@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import TableProUtilities
 
 /// Declares the intent behind creating a new window tab.
 internal enum TabIntent: String, Codable, Hashable {

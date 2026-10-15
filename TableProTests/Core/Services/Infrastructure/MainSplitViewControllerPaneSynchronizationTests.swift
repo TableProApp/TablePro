@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 @testable import TablePro
 import TableProEditorKit
+import TableProTestSupport
 import Testing
 
 @Suite("Main split view background pane synchronization", .serialized)
@@ -430,12 +431,11 @@ struct MainSplitViewControllerPaneSynchronizationTests {
 
         harness.background.queueMove(PendingTabMove(tabId: moving.id, source: source) { false })
 
-        var saved = await TabDiskActor.shared.load(connectionId: harness.foregroundConnection.id)
-        let deadline = Date(timeIntervalSinceNow: 2)
-        while saved?.tabs.contains(where: { $0.id == moving.id }) == true, Date() < deadline {
-            try await Task.sleep(for: .milliseconds(20))
-            saved = await TabDiskActor.shared.load(connectionId: harness.foregroundConnection.id)
+        let connectionId = harness.foregroundConnection.id
+        try await waitUntil {
+            await TabDiskActor.shared.load(connectionId: connectionId)?.tabs.contains { $0.id == moving.id } != true
         }
+        let saved = await TabDiskActor.shared.load(connectionId: connectionId)
         #expect(saved?.tabs.map(\.id) == [held.id])
     }
 
@@ -482,10 +482,7 @@ struct MainSplitViewControllerPaneSynchronizationTests {
         harness.background.queueMove(PendingTabMove(tabId: moving.id, source: source) { false })
 
         #expect(source.tabManager.tabs.map(\.id) == [moving.id])
-        let deadline = Date(timeIntervalSinceNow: 5)
-        while target.tabManager.tabs.isEmpty, Date() < deadline {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        try await waitUntil { !target.tabManager.tabs.isEmpty }
         #expect(target.persistence.hasObservedTabs)
         #expect(target.tabManager.tabs.map(\.id) == [moving.id])
         #expect(source.tabManager.tabs.isEmpty)

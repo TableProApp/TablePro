@@ -1,10 +1,6 @@
-//
-//  WelcomeToolbarTests.swift
-//  TableProTests
-//
-
 import AppKit
 import SwiftUI
+import TableProTestSupport
 import Testing
 
 @testable import TablePro
@@ -66,11 +62,7 @@ struct WelcomeToolbarTests {
             content.sceneBridgingOptions = [.toolbars]
 
             window.contentViewController = content
-            var waits = 0
-            while window.toolbar === seed, waits < 100 {
-                waits += 1
-                try await Task.sleep(for: .milliseconds(10))
-            }
+            _ = try? await waitUntil { window.toolbar !== seed }
 
             let bridged = try #require(window.toolbar)
             #expect(bridged !== seed)

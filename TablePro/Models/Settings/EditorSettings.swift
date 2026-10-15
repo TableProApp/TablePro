@@ -5,6 +5,7 @@
 
 import AppKit
 import Foundation
+import TableProAutocomplete
 
 internal struct FontFamilyOption: Equatable, Identifiable, Sendable {
     let id: String

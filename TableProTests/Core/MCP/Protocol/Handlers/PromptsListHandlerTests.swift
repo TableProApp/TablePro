@@ -1,109 +1,125 @@
 import Foundation
-import TableProPluginKit
 @testable import TablePro
-import XCTest
+import TableProMCP
+import TableProPluginKit
+import Testing
 
-final class PromptsListHandlerTests: XCTestCase {
-    func testMethodIsPromptsList() {
-        XCTAssertEqual(PromptsListHandler.method, "prompts/list")
+struct PromptsListHandlerTests {
+    @Test
+    func methodIsPromptsList() {
+        #expect(PromptsListHandler.method == "prompts/list")
     }
 
-    func testRequiresResourcesReadScope() {
-        XCTAssertEqual(PromptsListHandler.requiredScopes, [.resourcesRead])
+    @Test
+    func requiresResourcesReadScope() {
+        #expect(PromptsListHandler.requiredScopes == [.resourcesRead])
     }
 
-    func testIsAvailableToLegacyClients() {
-        XCTAssertTrue(PromptsListHandler.isAvailableToLegacyClients)
+    @Test
+    func isAvailableToLegacyClients() {
+        #expect(PromptsListHandler.isAvailableToLegacyClients)
     }
 
-    func testReturnsTheWholeCatalogRatherThanAnEmptyList() async throws {
+    @Test
+    func returnsTheWholeCatalogRatherThanAnEmptyList() async throws {
         let result = try await list(params: nil)
-        let prompts = try XCTUnwrap(result.payload["prompts"]?.arrayValue)
+        let prompts = try #require(result.payload["prompts"]?.arrayValue)
 
-        XCTAssertFalse(prompts.isEmpty, "prompts/list is advertised, so it must return the catalog")
-        XCTAssertEqual(prompts.count, MCPPromptCatalog.all.count)
+        #expect(!prompts.isEmpty, "prompts/list is advertised, so it must return the catalog")
+        #expect(prompts.count == MCPPromptCatalog.all.count)
 
         let names = prompts.compactMap { $0["name"]?.stringValue }
-        XCTAssertEqual(names, MCPPromptCatalog.all.map(\.name))
+        #expect(names == MCPPromptCatalog.all.map(\.name))
     }
 
-    func testEveryListedPromptCarriesItsTitleAndDescription() async throws {
+    @Test
+    func everyListedPromptCarriesItsTitleAndDescription() async throws {
         let result = try await list(params: nil)
-        let prompts = try XCTUnwrap(result.payload["prompts"]?.arrayValue)
+        let prompts = try #require(result.payload["prompts"]?.arrayValue)
 
         for prompt in prompts {
-            XCTAssertNotNil(prompt["name"]?.stringValue)
-            XCTAssertEqual(prompt["title"]?.stringValue?.isEmpty, false)
-            XCTAssertEqual(prompt["description"]?.stringValue?.isEmpty, false)
+            #expect(prompt["name"]?.stringValue != nil)
+            #expect(prompt["title"]?.stringValue?.isEmpty == false)
+            #expect(prompt["description"]?.stringValue?.isEmpty == false)
         }
     }
 
-    func testResultIsPubliclyCacheableForAnHour() async throws {
+    @Test
+    func resultIsPubliclyCacheableForAnHour() async throws {
         let result = try await list(params: nil)
-        let hint = try XCTUnwrap(result.cacheHint)
+        let hint = try #require(result.cacheHint)
 
-        XCTAssertEqual(hint.scope, .publicScope)
-        XCTAssertEqual(hint.ttlMilliseconds, 3_600_000)
+        #expect(hint.scope == .publicScope)
+        #expect(hint.ttlMilliseconds == 3_600_000)
     }
 
-    func testModernSerialisationCarriesTheCacheFields() async throws {
+    @Test
+    func modernSerialisationCarriesTheCacheFields() async throws {
         let result = try await list(params: nil)
         let json = result.asJsonValue(era: .modern, serverInfo: nil)
 
-        XCTAssertEqual(json["resultType"]?.stringValue, "complete")
-        XCTAssertEqual(json["ttlMs"]?.intValue, 3_600_000)
-        XCTAssertEqual(json["cacheScope"]?.stringValue, "public")
+        #expect(json["resultType"]?.stringValue == "complete")
+        #expect(json["ttlMs"]?.intValue == 3_600_000)
+        #expect(json["cacheScope"]?.stringValue == "public")
     }
 
-    func testLegacySerialisationOmitsTheCacheFields() async throws {
+    @Test
+    func legacySerialisationOmitsTheCacheFields() async throws {
         let result = try await list(params: nil)
         let json = result.asJsonValue(era: .legacy, serverInfo: nil)
 
-        XCTAssertNil(json["resultType"])
-        XCTAssertNil(json["ttlMs"])
-        XCTAssertNil(json["cacheScope"])
-        XCTAssertNotNil(json["prompts"])
+        #expect(json["resultType"] == nil)
+        #expect(json["ttlMs"] == nil)
+        #expect(json["cacheScope"] == nil)
+        #expect(json["prompts"] != nil)
     }
 
-    func testASinglePageNeedsNoCursor() async throws {
+    @Test
+    func aSinglePageNeedsNoCursor() async throws {
         let result = try await list(params: nil)
-        XCTAssertNil(result.payload["nextCursor"])
+        #expect(result.payload["nextCursor"] == nil)
     }
 
-    func testACursorForThisMethodResumesTheCatalog() async throws {
+    @Test
+    func aCursorForThisMethodResumesTheCatalog() async throws {
         let cursor = MCPListPagination.encodeCursor(offset: 1, method: PromptsListHandler.method)
         let result = try await list(params: .object(["cursor": .string(cursor)]))
         let names = result.payload["prompts"]?.arrayValue?.compactMap { $0["name"]?.stringValue } ?? []
 
-        XCTAssertEqual(names, Array(MCPPromptCatalog.all.map(\.name).dropFirst()))
+        #expect(names == Array(MCPPromptCatalog.all.map(\.name).dropFirst()))
     }
 
-    func testACursorMintedForAnotherMethodIsRefused() async throws {
+    @Test
+    func aCursorMintedForAnotherMethodIsRefused() async throws {
         let cursor = MCPListPagination.encodeCursor(offset: 0, method: "tools/list")
         let error = try await failure(params: .object(["cursor": .string(cursor)]))
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+        #expect(error.code == JsonRpcErrorCode.invalidParams)
     }
 
-    func testAGarbageCursorIsRefused() async throws {
+    @Test
+    func aGarbageCursorIsRefused() async throws {
         let error = try await failure(params: .object(["cursor": .string("not-a-cursor")]))
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+        #expect(error.code == JsonRpcErrorCode.invalidParams)
     }
 
-    func testANonStringCursorIsRefused() async throws {
+    @Test
+    func aNonStringCursorIsRefused() async throws {
         let error = try await failure(params: .object(["cursor": .int(3)]))
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+        #expect(error.code == JsonRpcErrorCode.invalidParams)
     }
 
-    func testACursorPastTheEndIsRefused() async throws {
+    @Test
+    func aCursorPastTheEndIsRefused() async throws {
         let cursor = MCPListPagination.encodeCursor(
             offset: MCPPromptCatalog.all.count + 1,
             method: PromptsListHandler.method
         )
         let error = try await failure(params: .object(["cursor": .string(cursor)]))
-        XCTAssertEqual(error.code, JsonRpcErrorCode.invalidParams)
+        #expect(error.code == JsonRpcErrorCode.invalidParams)
     }
 
-    func testAShortPageHandsBackACursorThatResumesWhereItStopped() throws {
+    @Test
+    func aShortPageHandsBackACursorThatResumesWhereItStopped() throws {
         let names = MCPPromptCatalog.all.map(\.name)
         let firstPage = try MCPListPagination.page(
             names,
@@ -111,8 +127,8 @@ final class PromptsListHandlerTests: XCTestCase {
             method: PromptsListHandler.method,
             pageSize: 2
         )
-        XCTAssertEqual(firstPage.items, Array(names.prefix(2)))
-        let cursor = try XCTUnwrap(firstPage.nextCursor)
+        #expect(firstPage.items == Array(names.prefix(2)))
+        let cursor = try #require(firstPage.nextCursor)
 
         let secondPage = try MCPListPagination.page(
             names,
@@ -120,7 +136,7 @@ final class PromptsListHandlerTests: XCTestCase {
             method: PromptsListHandler.method,
             pageSize: 2
         )
-        XCTAssertEqual(secondPage.items, Array(names.dropFirst(2).prefix(2)))
+        #expect(secondPage.items == Array(names.dropFirst(2).prefix(2)))
     }
 
     private func list(params: JsonValue?) async throws -> MCPResult {
@@ -135,7 +151,7 @@ final class PromptsListHandlerTests: XCTestCase {
     private func failure(params: JsonValue?) async throws -> MCPProtocolError {
         do {
             let result = try await list(params: params)
-            XCTFail("Expected an MCPProtocolError, got \(result)")
+            Issue.record("Expected an MCPProtocolError, got \(result)")
             throw PromptsListTestError.unexpectedSuccess
         } catch let error as MCPProtocolError {
             return error

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSSHConfig
 
 struct SSHProfile: Identifiable, Hashable, Codable, Sendable {
     let id: UUID

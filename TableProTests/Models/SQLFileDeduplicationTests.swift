@@ -10,6 +10,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+@testable import TableProUtilities
 import Testing
 
 // MARK: - QueryTabManager Deduplication Tests

@@ -6,6 +6,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProUtilities
 
 struct PluginMetadataSnapshot: Sendable {
     let displayName: String

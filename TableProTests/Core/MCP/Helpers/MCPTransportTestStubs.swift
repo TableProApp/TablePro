@@ -1,6 +1,7 @@
 import Foundation
 import Network
 @testable import TablePro
+import TableProMCP
 import TableProPluginKit
 
 actor StubAlwaysAllowAuthenticator: MCPAuthenticator {
@@ -417,13 +418,22 @@ enum MCPTransportTestHarness {
     static func start(
         port requestedPort: UInt16 = 0,
         authenticator: any MCPAuthenticator = StubAlwaysAllowAuthenticator(),
+        pairingService: MCPPairingService? = nil,
         limits: MCPHttpServerLimits = .standard,
         clock: any MCPClock = MCPSystemClock(),
         timeout: Duration = .seconds(5)
     ) async throws -> (MCPHttpServerTransport, UInt16) {
+        // Never .shared: its limiter locks 127.0.0.1 out after 5 failed exchanges, across cases.
+        let pairing: MCPPairingService
+        if let pairingService {
+            pairing = pairingService
+        } else {
+            pairing = await MCPPairingService()
+        }
         let transport = MCPHttpServerTransport(
             configuration: MCPHttpServerConfiguration.loopback(port: requestedPort, limits: limits),
             authenticator: authenticator,
+            pairingService: pairing,
             clock: clock
         )
         try await transport.start()
@@ -456,11 +466,17 @@ enum MCPTransportTestHarness {
     static func withServer(
         port requestedPort: UInt16 = 0,
         authenticator: any MCPAuthenticator = StubAlwaysAllowAuthenticator(),
+        pairingService: MCPPairingService? = nil,
         limits: MCPHttpServerLimits = .standard,
         handler: @escaping @Sendable (MCPInboundExchange) async -> Void = MCPTransportTestHandlers.echo,
         body: (UInt16) async throws -> Void
     ) async throws {
-        let (transport, port) = try await start(port: requestedPort, authenticator: authenticator, limits: limits)
+        let (transport, port) = try await start(
+            port: requestedPort,
+            authenticator: authenticator,
+            pairingService: pairingService,
+            limits: limits
+        )
         let consumer = StubExchangeConsumer()
         await consumer.start(transport: transport, responder: handler)
         do {

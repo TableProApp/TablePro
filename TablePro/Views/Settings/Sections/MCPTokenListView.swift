@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import TableProMCP
 
 struct MCPTokenListView: View {
     let tokens: [MCPAuthToken]

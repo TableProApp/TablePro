@@ -3,6 +3,7 @@ import Foundation
 import os
 import TableProDatabase
 import TableProModels
+import TableProRedisCore
 
 nonisolated final class RedisDriver: DatabaseDriver, KeyContentsBrowsing, @unchecked Sendable {
     private let actor = RedisActor()

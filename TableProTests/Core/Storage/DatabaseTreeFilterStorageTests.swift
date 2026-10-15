@@ -4,11 +4,10 @@ import Testing
 
 @MainActor
 struct DatabaseTreeFilterStorageTests {
+    private let pool = EphemeralDefaultsPool()
+
     private func makeStorage() throws -> DatabaseTreeFilterStorage {
-        let suite = "DatabaseTreeFilterStorageTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
-        return DatabaseTreeFilterStorage(defaults: defaults)
+        DatabaseTreeFilterStorage(defaults: try pool.make().defaults)
     }
 
     @Test("Defaults to an empty selection")

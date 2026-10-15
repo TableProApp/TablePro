@@ -14,6 +14,8 @@ final class SyncTestEnvironment {
     let keychain = InMemoryKeychain()
     let directory: URL
     let defaults: UserDefaults
+    private let storeSuite: EphemeralDefaults
+    private let syncSuite: EphemeralDefaults
     let metadata: SyncMetadataStorage
     let tracker: SyncChangeTracker
     let recordCache: SyncRecordCache
@@ -32,12 +34,12 @@ final class SyncTestEnvironment {
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("\(label)-\(unique)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.\(label).\(unique)"))
-        metadata = SyncMetadataStorage(
-            userDefaults: try #require(UserDefaults(suiteName: "com.TablePro.tests.\(label).sync.\(unique)"))
-        )
-        /// The account the scripted transport reports, recorded as already adopted so a run does not
-        /// start the server side over as it would for a new account.
+        storeSuite = try EphemeralDefaults("SyncTestEnvironment.\(label)")
+        syncSuite = try EphemeralDefaults("SyncTestEnvironment.\(label).sync")
+        defaults = storeSuite.defaults
+        metadata = SyncMetadataStorage(userDefaults: syncSuite.defaults)
+        // The account the scripted transport reports, recorded as already adopted so a run does not
+        // start the server side over as it would for a new account.
         metadata.lastAccountId = ScriptedSyncTransport.accountId
         tracker = SyncChangeTracker(metadataStorage: metadata)
         recordCache = SyncRecordCache(

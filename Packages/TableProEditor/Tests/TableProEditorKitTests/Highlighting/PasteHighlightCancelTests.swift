@@ -17,6 +17,7 @@ import Foundation
 import Rearrange
 @preconcurrency @testable import TableProEditorKit
 import TableProGrammars
+import TableProTestSupport
 import TableProTextEngine
 import Testing
 
@@ -77,7 +78,6 @@ private final class SwitchableHighlightProvider: HighlightProviding {
 }
 
 @MainActor
-@Suite("Highlighting survives a cancelled edit", .serialized)
 struct PasteHighlightCancelTests {
     private static let defaultText = NSColor.systemPurple
     private static let numbers = NSColor.systemYellow
@@ -120,16 +120,16 @@ struct PasteHighlightCancelTests {
     func cancelledEditRepaintsCaretInsertion() async throws {
         let provider = SwitchableHighlightProvider()
         let controller = makeController(provider)
-        await settle(controller)
-
         let token = (controller.textView.string as NSString).range(of: Self.originalToken)
+        await waitUntilPainted(token.location, in: controller)
+
         #expect(color(at: token.location, in: controller) == Self.numbers)
 
         provider.mode = .editCancelled
         let caret = token.max
         controller.textView.selectionManager.setSelectedRange(NSRange(location: caret, length: 0))
         controller.textView.insertText("999")
-        await settle(controller)
+        await waitUntilPainted(caret, in: controller)
 
         #expect(
             color(at: caret, in: controller) == Self.numbers,
@@ -141,15 +141,15 @@ struct PasteHighlightCancelTests {
     func cancelledEditRepaintsSelectionReplacement() async throws {
         let provider = SwitchableHighlightProvider()
         let controller = makeController(provider)
-        await settle(controller)
-
         let token = (controller.textView.string as NSString).range(of: Self.originalToken)
+        await waitUntilPainted(token.location, in: controller)
+
         #expect(color(at: token.location, in: controller) == Self.numbers)
 
         provider.mode = .editCancelled
         controller.textView.selectionManager.setSelectedRange(token)
         controller.textView.insertText(Self.sameLengthToken)
-        await settle(controller)
+        await waitUntilPainted(token.location, in: controller)
 
         #expect(color(at: token.location, in: controller) == Self.numbers)
     }
@@ -158,12 +158,12 @@ struct PasteHighlightCancelTests {
     func healthyEditRepaints() async throws {
         let provider = SwitchableHighlightProvider()
         let controller = makeController(provider)
-        await settle(controller)
-
         let token = (controller.textView.string as NSString).range(of: Self.originalToken)
+        await waitUntilPainted(token.location, in: controller)
+
         controller.textView.selectionManager.setSelectedRange(token)
         controller.textView.insertText(Self.sameLengthToken)
-        await settle(controller)
+        await waitUntilPainted(token.location, in: controller)
 
         #expect(color(at: token.location, in: controller) == Self.numbers)
     }
@@ -218,10 +218,11 @@ struct PasteHighlightCancelTests {
         return storage.attribute(.foregroundColor, at: location, effectiveRange: nil) as? NSColor
     }
 
-    private func settle(_ controller: TextViewController) async {
-        for _ in 0..<8 {
+    // Gives up silently, so the expectation after it reports what was painted instead.
+    private func waitUntilPainted(_ location: Int, in controller: TextViewController) async {
+        try? await waitUntil(timeout: .seconds(5)) {
             controller.textView.layoutManager.layoutLines(in: Self.frame)
-            try? await Task.sleep(nanoseconds: 25_000_000)
+            return color(at: location, in: controller) == Self.numbers
         }
     }
 }

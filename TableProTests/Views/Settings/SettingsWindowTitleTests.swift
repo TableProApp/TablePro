@@ -11,28 +11,45 @@ import XCTest
 final class SettingsWindowTitleTests: XCTestCase {
     private var storedPane: String?
     private var windows: [NSWindow] = []
+    private var registry: OfflineRegistry?
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        registry = try OfflineRegistry()
+    }
 
     override func setUp() {
         super.setUp()
         storedPane = AppStorageEnvironment.shared.defaults.string(forKey: PreferenceKeys.selectedSettingsPane.name)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         for window in windows {
             window.contentViewController = nil
             window.close()
         }
         windows = []
+        await registry?.settle()
+        registry = nil
         if let storedPane {
             AppStorageEnvironment.shared.defaults.set(storedPane, forKey: PreferenceKeys.selectedSettingsPane.name)
         } else {
             AppStorageEnvironment.shared.defaults.removeObject(forKey: PreferenceKeys.selectedSettingsPane.name)
         }
-        super.tearDown()
+        try await super.tearDown()
+    }
+
+    // The Plugins pane fetches the registry manifest when it appears.
+    private func offlineRegistryClient() -> RegistryClient {
+        guard let registry else {
+            XCTFail("setUpWithError builds the offline registry")
+            return RegistryClient.shared
+        }
+        return registry.client
     }
 
     private func makePanes() -> (SettingsPaneTabViewController, NSWindow) {
-        let panes = SettingsPaneTabViewController(nibName: nil, bundle: nil)
+        let panes = SettingsPaneTabViewController(registryClient: offlineRegistryClient())
         let window = NSWindow(contentViewController: panes)
         window.isReleasedWhenClosed = false
         windows.append(window)
@@ -102,10 +119,22 @@ final class SettingsWindowTitleTests: XCTestCase {
     }
 
     func testTheWindowRefusesToShrinkBelowAPane() {
-        let controller = SettingsWindowController()
+        let controller = SettingsWindowController(registryClient: offlineRegistryClient())
         guard let window = controller.window else { return XCTFail("The controller must build a window") }
         windows.append(window)
 
         XCTAssertEqual(window.contentMinSize, SettingsPaneTabViewController.paneSize)
+    }
+
+    func testTheInitializerPresentUsesBuildsTheSettingsWindow() {
+        AppStorageEnvironment.shared.defaults.set(
+            SettingsPane.general.rawValue,
+            forKey: PreferenceKeys.selectedSettingsPane.name
+        )
+        let controller = SettingsWindowController()
+        guard let window = controller.window else { return XCTFail("Cmd-comma and settings links present this controller") }
+        windows.append(window)
+
+        XCTAssertEqual(window.identifier?.rawValue, WindowIdentifier.settings)
     }
 }

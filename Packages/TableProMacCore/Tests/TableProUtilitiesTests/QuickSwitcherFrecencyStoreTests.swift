@@ -1,0 +1,145 @@
+import Foundation
+@testable import TableProUtilities
+import Testing
+
+final class QuickSwitcherFrecencyStoreTests {
+    // A suite named by a path keeps its plist in the directory, out of ~/Library/Preferences.
+    private let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("QuickSwitcherFrecencyTests-\(UUID().uuidString)", isDirectory: true)
+    private let suiteName: String
+    private let suite: UserDefaults
+
+    init() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        suiteName = directory.appendingPathComponent("defaults", isDirectory: false).path
+        suite = try #require(UserDefaults(suiteName: suiteName))
+    }
+
+    deinit {
+        suite.removePersistentDomain(forName: suiteName)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    private func makeStore() -> (store: QuickSwitcherFrecencyStore, defaults: UserDefaults, connectionId: UUID) {
+        let id = UUID()
+        return (QuickSwitcherFrecencyStore(connectionId: id, defaults: suite), suite, id)
+    }
+
+    @Test("recordAccess produces a positive score")
+    func recordAccessProducesScore() {
+        let (store, _, _) = makeStore()
+        store.recordAccess(itemId: "table_users")
+        let score = store.scores()["table_users"] ?? 0
+        #expect(score > 0)
+    }
+
+    @Test("Unknown items have no score entry")
+    func unknownItemHasNoScore() {
+        let (store, _, _) = makeStore()
+        #expect(store.scores()["missing"] == nil)
+    }
+
+    @Test("Recent access scores higher than an old access")
+    func recentBeatsOld() {
+        let (store, _, _) = makeStore()
+        let now = Date()
+        store.recordAccess(itemId: "recent", at: now)
+        store.recordAccess(itemId: "old", at: now.addingTimeInterval(-120 * 86_400))
+        let scores = store.scores(now: now)
+        #expect((scores["recent"] ?? 0) > (scores["old"] ?? 0))
+    }
+
+    @Test("Frequent access scores higher than a single access")
+    func frequentBeatsSingle() {
+        let (store, _, _) = makeStore()
+        let now = Date()
+        for offset in 0..<5 {
+            store.recordAccess(itemId: "frequent", at: now.addingTimeInterval(TimeInterval(-offset * 3_600)))
+        }
+        store.recordAccess(itemId: "single", at: now)
+        let scores = store.scores(now: now)
+        #expect((scores["frequent"] ?? 0) > (scores["single"] ?? 0))
+    }
+
+    @Test("Score is capped at 1")
+    func scoreCapsAtOne() {
+        let (store, _, _) = makeStore()
+        let now = Date()
+        for offset in 0..<20 {
+            store.recordAccess(itemId: "hot", at: now.addingTimeInterval(TimeInterval(-offset)))
+        }
+        #expect((store.scores(now: now)["hot"] ?? 0) <= 1)
+    }
+
+    @Test("Samples per item are capped at 10")
+    func samplesCapPerItem() {
+        let (store, defaults, connectionId) = makeStore()
+        for offset in 0..<15 {
+            store.recordAccess(itemId: "busy", at: Date().addingTimeInterval(TimeInterval(offset)))
+        }
+        let key = "QuickSwitcher.frecency.\(connectionId.uuidString)"
+        let stored = defaults.dictionary(forKey: key) as? [String: [TimeInterval]]
+        #expect(stored?["busy"]?.count == 10)
+    }
+
+    @Test("Tracked items are pruned to the most recently used 100")
+    func trackedItemsPruned() {
+        let (store, _, _) = makeStore()
+        let now = Date()
+        for index in 0..<120 {
+            store.recordAccess(itemId: "item_\(index)", at: now.addingTimeInterval(TimeInterval(index)))
+        }
+        let scores = store.scores(now: now)
+        #expect(scores.count == 100)
+        #expect(scores["item_119"] != nil)
+        #expect(scores["item_0"] == nil)
+    }
+
+    @Test("recentItemIds orders every tracked item by last access, newest first")
+    func recentItemIdsOrdered() {
+        let (store, _, _) = makeStore()
+        let now = Date()
+        store.recordAccess(itemId: "first", at: now.addingTimeInterval(-300))
+        store.recordAccess(itemId: "second", at: now.addingTimeInterval(-200))
+        store.recordAccess(itemId: "third", at: now.addingTimeInterval(-100))
+        #expect(store.recentItemIds() == ["third", "second", "first"])
+    }
+
+    @Test("recentItemIds is not cut to the Recent section's length")
+    func recentItemIdsReturnsEveryTrackedItem() {
+        let (store, _, _) = makeStore()
+        let now = Date()
+        for index in 0..<25 {
+            store.recordAccess(itemId: "item_\(index)", at: now.addingTimeInterval(TimeInterval(index)))
+        }
+        #expect(store.recentItemIds().count == 25)
+    }
+
+    @Test("Legacy MRU list migrates preserving order and removes the old key")
+    func legacyMRUMigrates() {
+        let connectionId = UUID()
+        let legacyKey = "QuickSwitcher.mru.\(connectionId.uuidString)"
+        suite.set(["newest", "middle", "oldest"], forKey: legacyKey)
+
+        let store = QuickSwitcherFrecencyStore(connectionId: connectionId, defaults: suite)
+        #expect(store.recentItemIds() == ["newest", "middle", "oldest"])
+        #expect(suite.stringArray(forKey: legacyKey) == nil)
+    }
+
+    @Test("clearHistory removes all tracked accesses")
+    func clearHistoryRemovesAll() {
+        let (store, _, _) = makeStore()
+        store.recordAccess(itemId: "table_users")
+        store.clearHistory()
+        #expect(store.scores().isEmpty)
+        #expect(store.recentItemIds().isEmpty)
+    }
+
+    @Test("Stores for different connections are isolated")
+    func storesAreIsolatedPerConnection() {
+        let storeA = QuickSwitcherFrecencyStore(connectionId: UUID(), defaults: suite)
+        let storeB = QuickSwitcherFrecencyStore(connectionId: UUID(), defaults: suite)
+        storeA.recordAccess(itemId: "table_users")
+        #expect(storeB.scores().isEmpty)
+    }
+}

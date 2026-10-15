@@ -6,11 +6,12 @@
 //  and buffered the rest without a word, so the trigger it had just dropped never came back.
 //
 
+import Foundation
 @testable import TablePro
-import XCTest
+import Testing
 
 @MainActor
-final class CompareSyncSessionScriptTextTests: XCTestCase {
+final class CompareSyncSessionScriptTextTests {
     private static let callTrigger = "CREATE OR REPLACE TRIGGER T BEFORE INSERT ON X FOR EACH ROW\nCALL P(:NEW.ID)"
 
     private func session(target databaseType: DatabaseType, statements: [SyncStatement]) -> CompareSyncSession {
@@ -35,23 +36,25 @@ final class CompareSyncSessionScriptTextTests: XCTestCase {
         )
     }
 
-    func testTheSavedScriptIsWrittenForTheTargetsOwnClient() {
+    @Test
+    func theSavedScriptIsWrittenForTheTargetsOwnClient() {
         let oracle = session(target: .oracle, statements: [
             statement("DROP TRIGGER \"T\""),
             statement(Self.callTrigger),
         ])
 
-        XCTAssertEqual(oracle.scriptText, "DROP TRIGGER \"T\";\n\(Self.callTrigger)\n/")
-        XCTAssertEqual(oracle.statements.map(\.sql), ["DROP TRIGGER \"T\"", Self.callTrigger])
+        #expect(oracle.scriptText == "DROP TRIGGER \"T\";\n\(Self.callTrigger)\n/")
+        #expect(oracle.statements.map(\.sql) == ["DROP TRIGGER \"T\"", Self.callTrigger])
     }
 
-    func testTheApplySheetShowsOnlyWhatWillRun() {
+    @Test
+    func theApplySheetShowsOnlyWhatWillRun() {
         let oracle = session(target: .oracle, statements: [
             statement("DROP TABLE \"OLD\"", refused: true),
             statement(Self.callTrigger),
         ])
 
-        XCTAssertEqual(oracle.runnableScriptText, "\(Self.callTrigger)\n/")
-        XCTAssertTrue(oracle.scriptText.hasPrefix("DROP TABLE \"OLD\";\n"))
+        #expect(oracle.runnableScriptText == "\(Self.callTrigger)\n/")
+        #expect(oracle.scriptText.hasPrefix("DROP TABLE \"OLD\";\n"))
     }
 }

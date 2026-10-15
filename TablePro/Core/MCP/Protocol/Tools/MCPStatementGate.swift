@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 enum MCPStatementGate {
     @discardableResult

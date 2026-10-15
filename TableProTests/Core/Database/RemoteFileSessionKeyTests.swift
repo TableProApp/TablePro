@@ -7,6 +7,7 @@ import Foundation
 import Testing
 
 @testable import TablePro
+import TableProSSHConfig
 
 /// The cached SFTP session is reused only when the server it was opened against still matches, so a
 /// connection edited to point at a different host does not download the old server's file.

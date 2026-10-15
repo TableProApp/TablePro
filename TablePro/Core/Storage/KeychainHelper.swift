@@ -36,7 +36,7 @@ final class KeychainHelper: KeychainStoring {
     static let shared = KeychainHelper()
     static let passwordSyncEnabledKey = "com.TablePro.keychainPasswordSyncEnabled"
 
-    private let service = "com.TablePro"
+    private let service: String
     private let accessGroup: String? = KeychainHelper.resolveAccessGroup()
     private static let logger = Logger(subsystem: "com.TablePro", category: "KeychainHelper")
 
@@ -58,7 +58,9 @@ final class KeychainHelper: KeychainStoring {
         AppStorageEnvironment.shared.defaults.bool(forKey: Self.passwordSyncEnabledKey)
     }
 
-    private init() {}
+    init(service: String = "com.TablePro") {
+        self.service = service
+    }
 
     // MARK: - Data API
 

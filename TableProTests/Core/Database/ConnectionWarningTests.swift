@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 /// A login can succeed with a warning attached, such as ORA-28002 for an Oracle password in its grace

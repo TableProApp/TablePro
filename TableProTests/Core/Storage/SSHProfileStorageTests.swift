@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSSHConfig
 import TableProSyncTransport
 import Testing
 
@@ -11,12 +12,13 @@ import Testing
 
 @MainActor
 struct SSHProfileStorageTests {
+    private let pool = EphemeralDefaultsPool()
     private let storage: SSHProfileStorage
     private let connections: ConnectionStorage
     private let keychain: InMemoryKeychain
     private let metadata: SyncMetadataStorage
 
-    init() {
+    init() throws {
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
@@ -27,9 +29,9 @@ struct SSHProfileStorageTests {
             withIntermediateDirectories: true
         )
 
-        let connectionDefaults = UserDefaults(suiteName: "com.TablePro.tests.SSHProfileConn.\(unique)")!
-        let profileDefaults = UserDefaults(suiteName: "com.TablePro.tests.SSHProfile.\(unique)")!
-        let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.SSHProfileSync.\(unique)")!
+        let connectionDefaults = try pool.make().defaults
+        let profileDefaults = try pool.make().defaults
+        let syncDefaults = try pool.make().defaults
 
         keychain = InMemoryKeychain()
         metadata = SyncMetadataStorage(userDefaults: syncDefaults)
@@ -154,10 +156,8 @@ struct SSHProfileStorageTests {
     }
 
     @Test("A save that cannot run reports the failure instead of returning silently")
-    func saveReportsFailureAfterFailedLoad() {
-        let profileDefaults = UserDefaults(
-            suiteName: "com.TablePro.tests.SSHProfileCorrupt.\(UUID().uuidString)"
-        )!
+    func saveReportsFailureAfterFailedLoad() throws {
+        let profileDefaults = try pool.make().defaults
         profileDefaults.set(Data("not json".utf8), forKey: "com.TablePro.sshProfiles")
         let corrupted = SSHProfileStorage(
             userDefaults: profileDefaults,
@@ -195,7 +195,7 @@ struct SSHProfileStorageTests {
     }
 
     @Test("A profile whose secrets cannot be read is not deleted, and its connections keep the link")
-    func deleteRefusesWhenSecretsAreUnreadable() {
+    func deleteRefusesWhenSecretsAreUnreadable() throws {
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
@@ -208,11 +208,11 @@ struct SSHProfileStorageTests {
         let lockedKeychain = UnreadableSecretKeychain()
         let lockedConnections = ConnectionStorage(
             fileURL: fileURL,
-            userDefaults: UserDefaults(suiteName: "com.TablePro.tests.SSHProfileLockedConn.\(unique)")!,
+            userDefaults: try pool.make().defaults,
             keychain: lockedKeychain
         )
         let lockedStorage = SSHProfileStorage(
-            userDefaults: UserDefaults(suiteName: "com.TablePro.tests.SSHProfileLocked.\(unique)")!,
+            userDefaults: try pool.make().defaults,
             keychain: lockedKeychain,
             syncTracker: SyncChangeTracker(metadataStorage: metadata),
             connectionStorage: lockedConnections

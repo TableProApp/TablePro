@@ -1,58 +1,59 @@
+import Foundation
 @testable import TableProMSSQLCore
-import XCTest
+import Testing
 
-final class MSSQLColumnTypeTests: XCTestCase {
-    func testIsBinaryCoversBinaryFamily() {
-        XCTAssertTrue(MSSQLColumnType.binary.isBinary)
-        XCTAssertTrue(MSSQLColumnType.varbinary.isBinary)
-        XCTAssertTrue(MSSQLColumnType.image.isBinary)
-        XCTAssertFalse(MSSQLColumnType.varchar.isBinary)
-        XCTAssertFalse(MSSQLColumnType.int.isBinary)
+struct MSSQLColumnTypeTests {
+    @Test func testIsBinaryCoversBinaryFamily() {
+        #expect(MSSQLColumnType.binary.isBinary)
+        #expect(MSSQLColumnType.varbinary.isBinary)
+        #expect(MSSQLColumnType.image.isBinary)
+        #expect(!MSSQLColumnType.varchar.isBinary)
+        #expect(!MSSQLColumnType.int.isBinary)
     }
 
-    func testIsDateOrTimeCoversAllDateTimeVariants() {
+    @Test func testIsDateOrTimeCoversAllDateTimeVariants() {
         let dateTypes: [MSSQLColumnType] = [
             .dateTime, .smallDateTime, .dateTimeN,
             .date, .time, .dateTime2, .dateTimeOffset
         ]
         for type in dateTypes {
-            XCTAssertTrue(type.isDateOrTime, "\(type.canonicalName) should be date/time")
+            #expect(type.isDateOrTime, "\(type.canonicalName) should be date/time")
         }
-        XCTAssertFalse(MSSQLColumnType.int.isDateOrTime)
-        XCTAssertFalse(MSSQLColumnType.varchar.isDateOrTime)
+        #expect(!MSSQLColumnType.int.isDateOrTime)
+        #expect(!MSSQLColumnType.varchar.isDateOrTime)
     }
 
-    func testIsUnicodeStringOnlyForNTypes() {
-        XCTAssertTrue(MSSQLColumnType.nchar.isUnicodeString)
-        XCTAssertTrue(MSSQLColumnType.nvarchar.isUnicodeString)
-        XCTAssertTrue(MSSQLColumnType.ntext.isUnicodeString)
-        XCTAssertFalse(MSSQLColumnType.char.isUnicodeString)
-        XCTAssertFalse(MSSQLColumnType.varchar.isUnicodeString)
+    @Test func testIsUnicodeStringOnlyForNTypes() {
+        #expect(MSSQLColumnType.nchar.isUnicodeString)
+        #expect(MSSQLColumnType.nvarchar.isUnicodeString)
+        #expect(MSSQLColumnType.ntext.isUnicodeString)
+        #expect(!MSSQLColumnType.char.isUnicodeString)
+        #expect(!MSSQLColumnType.varchar.isUnicodeString)
     }
 
-    func testIsNarrowStringOnlyForNonUnicodeStrings() {
-        XCTAssertTrue(MSSQLColumnType.char.isNarrowString)
-        XCTAssertTrue(MSSQLColumnType.varchar.isNarrowString)
-        XCTAssertTrue(MSSQLColumnType.text.isNarrowString)
-        XCTAssertFalse(MSSQLColumnType.nvarchar.isNarrowString)
-        XCTAssertFalse(MSSQLColumnType.int.isNarrowString)
+    @Test func testIsNarrowStringOnlyForNonUnicodeStrings() {
+        #expect(MSSQLColumnType.char.isNarrowString)
+        #expect(MSSQLColumnType.varchar.isNarrowString)
+        #expect(MSSQLColumnType.text.isNarrowString)
+        #expect(!MSSQLColumnType.nvarchar.isNarrowString)
+        #expect(!MSSQLColumnType.int.isNarrowString)
     }
 
-    func testCanonicalNameForDateTimeFamily() {
-        XCTAssertEqual(MSSQLColumnType.dateTime.canonicalName, "datetime")
-        XCTAssertEqual(MSSQLColumnType.dateTimeN.canonicalName, "datetime")
-        XCTAssertEqual(MSSQLColumnType.smallDateTime.canonicalName, "smalldatetime")
-        XCTAssertEqual(MSSQLColumnType.dateTime2.canonicalName, "datetime2")
-        XCTAssertEqual(MSSQLColumnType.dateTimeOffset.canonicalName, "datetimeoffset")
+    @Test func testCanonicalNameForDateTimeFamily() {
+        #expect(MSSQLColumnType.dateTime.canonicalName == "datetime")
+        #expect(MSSQLColumnType.dateTimeN.canonicalName == "datetime")
+        #expect(MSSQLColumnType.smallDateTime.canonicalName == "smalldatetime")
+        #expect(MSSQLColumnType.dateTime2.canonicalName == "datetime2")
+        #expect(MSSQLColumnType.dateTimeOffset.canonicalName == "datetimeoffset")
     }
 
-    func testUnknownTypePreservesToken() {
+    @Test func testUnknownTypePreservesToken() {
         let unknown = MSSQLColumnType.unknown(99)
-        XCTAssertEqual(unknown.canonicalName, "unknown")
+        #expect(unknown.canonicalName == "unknown")
         if case .unknown(let token) = unknown {
-            XCTAssertEqual(token, 99)
+            #expect(token == 99)
         } else {
-            XCTFail("expected .unknown case")
+            Issue.record("expected .unknown case")
         }
     }
 }

@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 extension PostgreSQLPluginDriver {
     /// PostgreSQL stores column order as `pg_attribute.attnum` and offers nothing that changes it,

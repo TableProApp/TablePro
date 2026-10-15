@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProUtilities
 
 extension PluginMetadataRegistry {
     /// The curated snapshot for DuckDB, alongside its connection fields in the sibling file.

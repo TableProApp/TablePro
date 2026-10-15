@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import os
+import TableProMCP
 
 public struct OpenConnectionWindowTool: MCPToolImplementation {
     public static let name = "open_connection_window"

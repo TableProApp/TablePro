@@ -1,10 +1,4 @@
-//
-//  ExtractTableNameTests.swift
-//  TableProTests
-//
-//  Tests for extractTableName(from:) — verifies SQL and MQL
-//  query patterns including the MongoDB bracket notation fix.
-//
+// extractTableName(from:) over SQL and MQL query patterns, including the MongoDB bracket notation.
 
 import Foundation
 import TableProPluginKit
@@ -135,30 +129,14 @@ struct ExtractTableNameTests {
 
     // MARK: - Edge cases
 
-    @Test("Empty string returns nil")
-    func emptyString() {
+    @Test("An empty string, plain text or non-SELECT SQL names no table", arguments: [
+        "", "hello world this is not a query", "INSERT INTO users VALUES (1)",
+    ])
+    func textWithoutASelectNamesNoTable(text: String) {
         let coordinator = makeCoordinator()
         defer { coordinator.teardown() }
 
-        let result = coordinator.extractTableName(from: "")
-        #expect(result == nil)
-    }
-
-    @Test("Random text returns nil")
-    func randomText() {
-        let coordinator = makeCoordinator()
-        defer { coordinator.teardown() }
-
-        let result = coordinator.extractTableName(from: "hello world this is not a query")
-        #expect(result == nil)
-    }
-
-    @Test("Non-SELECT SQL returns nil")
-    func nonSelectSql() {
-        let coordinator = makeCoordinator()
-        defer { coordinator.teardown() }
-
-        let result = coordinator.extractTableName(from: "INSERT INTO users VALUES (1)")
+        let result = coordinator.extractTableName(from: text)
         #expect(result == nil)
     }
 

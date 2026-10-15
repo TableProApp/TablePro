@@ -5,6 +5,7 @@
 
 import CoreFoundation
 import Foundation
+import TableProMySQLCore
 
 /// Error text from a server before 5.5, which sends the message template in the charset of its error
 /// language and the identifiers inside it in UTF-8, whatever `SET NAMES` asked for.

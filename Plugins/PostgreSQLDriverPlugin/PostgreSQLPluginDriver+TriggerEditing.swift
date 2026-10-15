@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 internal extension PostgreSQLPluginDriver {
     var triggerEditUsesReplace: Bool { versionedCapabilities.hasCreateOrReplaceTrigger }

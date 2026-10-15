@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProMCP
 
 /// Which sessions have a server's tools registered, and the client session behind them.
 ///

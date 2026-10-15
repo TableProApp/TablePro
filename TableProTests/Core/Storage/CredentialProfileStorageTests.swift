@@ -11,6 +11,7 @@ import Testing
 
 @MainActor
 struct CredentialProfileStorageTests {
+    private let pool = EphemeralDefaultsPool()
     private let storage: CredentialProfileStorage
     private let connections: ConnectionStorage
     private let keychain: InMemoryKeychain
@@ -20,7 +21,7 @@ struct CredentialProfileStorageTests {
     /// untrusted and the trust assertions here would pass or fail on the environment.
     private let integrity: ConnectionStoreIntegrity
 
-    init() {
+    init() throws {
         let unique = UUID().uuidString
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
@@ -29,13 +30,13 @@ struct CredentialProfileStorageTests {
 
         keychain = InMemoryKeychain()
         metadata = SyncMetadataStorage(
-            userDefaults: UserDefaults(suiteName: "com.TablePro.tests.CredProfileSync.\(unique)")!
+            userDefaults: try pool.make().defaults
         )
         let tracker = SyncChangeTracker(metadataStorage: metadata)
         integrity = ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
         let connectionStorage = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),
-            userDefaults: UserDefaults(suiteName: "com.TablePro.tests.CredProfileConn.\(unique)")!,
+            userDefaults: try pool.make().defaults,
             syncTracker: tracker,
             keychain: keychain,
             integrity: integrity
@@ -140,7 +141,7 @@ struct CredentialProfileStorageTests {
     }
 
     @Test("A profile whose secrets cannot be read is not deleted")
-    func deleteRefusesWhenSecretsAreUnreadable() {
+    func deleteRefusesWhenSecretsAreUnreadable() throws {
         let unique = UUID().uuidString
         let lockedDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
@@ -150,7 +151,7 @@ struct CredentialProfileStorageTests {
         let lockedKeychain = UnreadableSecretKeychain()
         let lockedConnections = ConnectionStorage(
             fileURL: lockedDirectory.appendingPathComponent("connections.json"),
-            userDefaults: UserDefaults(suiteName: "com.TablePro.tests.CredLockedConn.\(unique)")!,
+            userDefaults: try pool.make().defaults,
             keychain: lockedKeychain
         )
         let lockedStorage = CredentialProfileStorage(

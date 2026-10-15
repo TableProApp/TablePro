@@ -31,7 +31,6 @@ private final class NoopColumnLayoutPersister: ColumnLayoutPersisting {
 /// main actor can interleave between activating the test theme and restoring the original one.
 /// `.serialized` only orders tests inside this suite and does not provide that. Adding an `await`
 /// anywhere between the two would break it.
-@Suite("DataGridRowView tint follows the theme", .serialized)
 @MainActor
 struct DataGridRowTintThemeTests {
     private static let deleted = RowVisualState(isDeleted: true, isInserted: false, modifiedColumns: [])

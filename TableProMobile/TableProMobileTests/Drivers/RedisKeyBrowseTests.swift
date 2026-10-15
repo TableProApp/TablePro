@@ -1,6 +1,7 @@
 import Foundation
 @testable import TableProMobile
 import TableProModels
+import TableProRedisCore
 import Testing
 
 @Suite("Redis key browse")

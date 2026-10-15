@@ -17,15 +17,17 @@ struct SyncCoordinatorSQLFavoritePullTests {
     )
 
     private let connectionId = UUID()
+    private let suite: EphemeralDefaults
     private let defaults: UserDefaults
     private let metadata: SyncMetadataStorage
     private let tracker: SyncChangeTracker
     private let recordCache: SyncRecordCache
     private let scratchDirectory: URL
 
-    init() {
+    init() throws {
         let unique = UUID().uuidString
-        defaults = UserDefaults(suiteName: "tablepro-favorite-pull-\(unique)") ?? .standard
+        suite = try EphemeralDefaults()
+        defaults = suite.defaults
         metadata = SyncMetadataStorage(userDefaults: defaults, prefix: "tests.\(unique)")
         tracker = SyncChangeTracker(metadataStorage: metadata)
         scratchDirectory = FileManager.default.temporaryDirectory

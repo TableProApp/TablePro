@@ -1,12 +1,11 @@
 # Running under Claude Code
 
-How `SKILL.md` maps onto Claude Code.
-
 ## Tracking and asking
 
 - Keep a task list with the phases this run uses (`TodoWrite` or the task tools, when present), and progress in `plan.md` either way.
-- Ask with `AskUserQuestion`, recommendation first, only for the cases in "Autonomy".
-- The Bash tool's working directory resets to the main checkout between calls: start every command for the tree with `cd <tree> &&` or pass `-C <tree>`.
+- Ask with `AskUserQuestion`, recommendation first, only for the cases in Autonomy.
+- The Bash tool's working directory resets to the main checkout between calls: start every command for the tree with `cd <tree> &&`, or pass `-C <tree>`.
+- Claude Code injects `AGENTS.md` and path rules from the session's checkout, which can be on another branch than the tree. The tree's copies, read in `SKILL.md` Phase 2 (Rules read), win.
 
 ## Lanes
 
@@ -78,24 +77,24 @@ with a findings array holding only the real ones.
 return { results, verdict }
 ```
 
-- Fill in every `<...>` and hardcode it: the tool's `args` can arrive empty. `meta` is a pure literal; `Date.now()`, `Math.random()` and an argless `new Date()` throw.
-- Return raw results; an `agent(...).then(...)` chain inside `parallel()` has come back empty.
-- When a digest is missing or the return looks empty, read the lane's report file, or `journal.jsonl` for the run.
-- A lane that stalls is re-run as one background `Agent` with the same brief. Never `SendMessage` a lane that is still running: that starts a second copy.
-- Run the `critic` lane as one background `Agent`; long critic turns trip the workflow's stall watchdog.
+- Fill in every `<...>` and hardcode it: the tool's `args` can arrive empty. `meta` is a pure literal; `Date.now()`, `Math.random()` and an argless `new Date()` throw there.
+- Return raw results. An `agent(...).then(...)` chain inside `parallel()` has come back empty.
+- When a digest is missing or the return looks empty, read the lane's report file, or the run's `journal.jsonl`.
+- Re-run a stalled lane as one background `Agent` with the same brief. Never `SendMessage` a lane that is still running: that starts a second copy.
+- Run the `critic` lane as one background `Agent`, since a long critic turn trips the workflow's stall watchdog.
 - Afterwards, `git -C <tree> status --short` confirms no lane edited the tree.
 
-Parallel implementers (`SKILL.md` Phase 3) are background `Agent`s in one message, each prompt naming the tree, `plan.md` and the exact files it owns, and saying to edit nothing else, build nothing, and finish with the files it changed.
+Parallel implementers (`SKILL.md`, Phase 3) are background `Agent`s in one message.
 
 ## Long commands
 
-Run the profile's build and test steps, the Codex review and the CI watch with `run_in_background: true`. You are re-invoked when each exits, so never poll in between. Keep the quick steps (generating the project, lint) in the foreground, and never run two builds in one tree.
-
-CI watch: `gh pr checks <n> --repo TableProApp/TablePro --watch --interval 60` exits when every check finishes, non-zero on a failure; `gh run view <run-id> --log-failed` gives the log. A background command stops after two hours; if checks are still queued then, Phase 7's backlog rule applies.
+- Run the build and test steps, the Codex review and the Phase 7 watch with `run_in_background: true`. You are re-invoked when each exits, so never poll in between.
+- Keep the quick steps, `generate` and `lint`, in the foreground.
+- A background command stops after two hours. If checks are still queued then, Phase 7's backlog rule applies.
 
 ## Review: Codex
 
-Run the Codex plugin's companion from inside the tree (`cd <tree> &&` on every call; its job state is keyed by the checkout):
+Run the Codex plugin's companion from inside the tree (`cd <tree> &&` on every call), since its job state is keyed by the checkout:
 
 ```bash
 CODEX="$(ls -1d "$HOME"/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs | sort -V | tail -1)"
@@ -107,9 +106,9 @@ node "$CODEX" result <job-id>
 
 - `review` every round; `adversarial-review` in Full mode on the first round. One at a time, each in the background with `--wait`.
 - Read the findings with `result`, never from stdout, which shows only progress whether the job succeeded or died. `status` says whether it finished.
-- When `status` shows Codex cannot review (not installed, out of credits, usage limit), use `Skill(code-review)` and say so in the report. A setup or login error goes back to the user with `/codex:setup`.
+- When `status` shows Codex cannot review (not installed, out of credits, a usage limit), use `Skill(code-review)` and say so in the report. A setup or login error goes back to the user with `/codex:setup`.
 - The security pass is a background `Agent` told to review `git -C <tree> diff origin/<base>...HEAD` (the profile's pull request base) for injection, credential exposure, authorization and unsafe execution, reporting only high and medium findings with an exploit scenario. `Skill(security-review)` reads the main checkout, not the tree.
 
 ## Screenshots
 
-The profile's "Screen" section names the tools that launch, drive and capture the app. Open each shot with `Read` before using it.
+The profile's Screen section names the tools that launch, drive and capture the app. Open each shot with `Read` before using it.

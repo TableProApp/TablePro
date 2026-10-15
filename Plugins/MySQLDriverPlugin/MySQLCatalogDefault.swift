@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProMySQLCore
 import TableProPluginKit
 
 /// A catalog default, tagged with the form the read that produced it uses.

@@ -101,7 +101,7 @@ final class AppearanceSettingsUITests: UITestCase {
         XCTAssertTrue(reset.waitToExist(timeout: 10), "Every color of a Dracula copy starts overridden")
         XCTAssertEqual(reset.label, "Use Default")
         XCTAssertTrue(
-            scrollIntoView(reset, in: sheet.scrollViews.firstMatch, timeout: 10),
+            scrollUntilHittable(reset, in: sheet.scrollViews.firstMatch, timeout: 10),
             "The Editor Background row must scroll into the editor's list"
         )
         reset.click()
@@ -143,17 +143,6 @@ final class AppearanceSettingsUITests: UITestCase {
         let item = popup.menuItems[title]
         XCTAssertTrue(item.waitToExist(timeout: 5), "The popup should offer \(title)")
         item.click()
-    }
-
-    // The list shows about 180pt of rows on the runner, so a fixed 400pt step skips the row; aim it at the middle.
-    private func scrollIntoView(_ element: XCUIElement, in list: XCUIElement, timeout: TimeInterval) -> Bool {
-        let deadline = Date(timeIntervalSinceNow: timeout)
-        while !(element.exists && element.isHittable) {
-            guard Date() < deadline, list.exists, element.exists else { return false }
-            list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-                .scroll(byDeltaX: 0, deltaY: list.frame.midY - element.frame.midY)
-        }
-        return true
     }
 
     private func element(_ identifier: String, in container: XCUIElement) -> XCUIElement {

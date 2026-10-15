@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 
 public struct ToolsCallHandler: MCPMethodHandler {
     public static let method = "tools/call"

@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public protocol MCPToolImplementation: Sendable {
     static var name: String { get }

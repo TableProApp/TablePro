@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProSSHConfig
 
 struct SSHProfileEditorView: View {
     @Environment(\.dismiss) private var dismiss

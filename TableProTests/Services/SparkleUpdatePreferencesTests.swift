@@ -55,9 +55,8 @@ struct SparkleUpdatePreferencesTests {
 
     @Test("Reset removes every user-settable key and nothing else")
     func resetRemovesOnlyTheKeysSparkleOwns() throws {
-        let suite = "com.TablePro.tests.sparkle-reset"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
 
         for key in SparkleUpdatePreferences.userSettableKeys {
             defaults.set(true, forKey: key)
@@ -88,9 +87,8 @@ struct SparkleUpdatePreferencesTests {
 
     @Test("Reset on a domain that never held the keys is a no-op")
     func resetIsIdempotent() throws {
-        let suite = "com.TablePro.tests.sparkle-reset-empty"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
 
         SparkleUpdatePreferences.reset(in: defaults)
         SparkleUpdatePreferences.reset(in: defaults)

@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProAutocomplete
 
 struct EditorSettingsView: View {
     @Binding var settings: EditorSettings

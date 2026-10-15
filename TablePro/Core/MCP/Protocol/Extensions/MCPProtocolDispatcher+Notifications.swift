@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 
 extension MCPProtocolDispatcher {
     internal func handleNotification(_ notification: JsonRpcNotification, exchange: MCPInboundExchange) async {

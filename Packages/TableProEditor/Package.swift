@@ -11,6 +11,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../TableProGrammars"),
+        .package(path: "../TableProCore"),
         .package(url: "https://github.com/ChimeHQ/TextStory", from: "0.9.0"),
         .package(url: "https://github.com/ChimeHQ/TextFormation", from: "0.8.2"),
         .package(url: "https://github.com/apple/swift-collections.git", .upToNextMajor(from: "1.0.0"))
@@ -48,7 +49,8 @@ let package = Package(
             name: "TableProEditorKitTests",
             dependencies: [
                 "TableProEditorKit",
-                "TableProGrammars"
+                "TableProGrammars",
+                .product(name: "TableProTestSupport", package: "TableProCore")
             ],
             swiftSettings: [.swiftLanguageMode(.v5)]
         )

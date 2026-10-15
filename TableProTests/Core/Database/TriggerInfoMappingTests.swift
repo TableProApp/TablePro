@@ -10,7 +10,7 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-private final class StubTriggerDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class StubTriggerDriver: PluginDriverStub, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
     var currentSchema: String? { nil }
@@ -31,8 +31,6 @@ private final class StubTriggerDriver: PluginDatabaseDriver, @unchecked Sendable
     var triggerEditUsesReplace: Bool { editUsesReplace }
     var supportsTransactionalDDL: Bool { transactionalDDL }
 
-    func connect() async throws {}
-    func disconnect() {}
     func ping() async throws {}
     func execute(query: String) async throws -> PluginQueryResult {
         executedQueries.append(query)
@@ -42,21 +40,7 @@ private final class StubTriggerDriver: PluginDatabaseDriver, @unchecked Sendable
         return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
     }
 
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] { triggersToReturn }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
-    }
 }
 
 struct TriggerInfoMappingTests {

@@ -1,4 +1,5 @@
 import Foundation
+import TableProTestSupport
 import Testing
 
 @testable import TableProEditorKit
@@ -9,7 +10,7 @@ struct TreeSitterExecutorTests {
     /// `Task.isCancelled` and called `onCancel` for the same task. For an edit that meant one keystroke delivering a
     /// success and a failure, and for `exec` it meant resuming one continuation twice, which traps.
     @Test("A task that is cancelled while it runs reports once")
-    func aCancelledRunningTaskReportsOnce() async {
+    func aCancelledRunningTaskReportsOnce() async throws {
         let executor = TreeSitterExecutor()
         let started = DispatchSemaphore(value: 0)
         let mayFinish = DispatchSemaphore(value: 0)
@@ -30,12 +31,12 @@ struct TreeSitterExecutorTests {
         executor.cancelAll(below: .reset)
         mayFinish.signal()
 
-        try? await Task.sleep(for: .milliseconds(200))
+        try await settled(executor, outcomes)
         #expect(outcomes.recorded == ["completed"])
     }
 
     @Test("A task that abandons its work reports cancelled, not completed")
-    func anAbandonedTaskReportsCancelled() async {
+    func anAbandonedTaskReportsCancelled() async throws {
         let executor = TreeSitterExecutor()
         let started = DispatchSemaphore(value: 0)
         let mayFinish = DispatchSemaphore(value: 0)
@@ -55,12 +56,12 @@ struct TreeSitterExecutorTests {
         executor.cancelAll(below: .reset)
         mayFinish.signal()
 
-        try? await Task.sleep(for: .milliseconds(200))
+        try await settled(executor, outcomes)
         #expect(outcomes.recorded == ["cancelled"])
     }
 
     @Test("A task cancelled before it runs reports cancelled once")
-    func aTaskCancelledBeforeItRunsReportsCancelled() async {
+    func aTaskCancelledBeforeItRunsReportsCancelled() async throws {
         let executor = TreeSitterExecutor()
         let outcomes = OutcomeBox()
 
@@ -74,8 +75,16 @@ struct TreeSitterExecutorTests {
         )
         executor.cancelAll(below: .reset)
 
-        try? await Task.sleep(for: .milliseconds(200))
+        try await settled(executor, outcomes)
         #expect(outcomes.recorded.count <= 1, "reported \(outcomes.recorded)")
+    }
+
+    // Reporting and leaving the queue are each path's last two steps, so a second report would already show here.
+    private func settled(_ executor: TreeSitterExecutor, _ outcomes: OutcomeBox) async throws {
+        try await waitUntil {
+            guard !outcomes.recorded.isEmpty, case .success = executor.execSync({}) else { return false }
+            return true
+        }
     }
 
     private final class OutcomeBox: @unchecked Sendable {

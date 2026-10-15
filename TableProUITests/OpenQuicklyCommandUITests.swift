@@ -67,7 +67,7 @@ final class OpenQuicklyCommandUITests: UITestCase {
         XCTAssertTrue(panel.buttons["album"].waitToExist(timeout: 10))
         searchField.typeKey(.return, modifierFlags: .command)
         XCTAssertTrue(searchField.waitForNonExistence(timeout: 5), "Cmd+Return must commit and close the panel")
-        XCTAssertTrue(editorTab(titled: "album", in: window).waitToExist(timeout: 10), "Cmd+Return opens a new tab")
+        XCTAssertTrue(editorTabs(titled: "album", in: window).firstMatch.waitToExist(timeout: 10), "Cmd+Return opens a new tab")
 
         app.typeShortcut(.openQuickly)
         XCTAssertTrue(searchField.waitToExist(timeout: 10))
@@ -75,8 +75,8 @@ final class OpenQuicklyCommandUITests: UITestCase {
         XCTAssertTrue(panel.buttons["artist"].waitToExist(timeout: 10))
         searchField.typeKey(.return, modifierFlags: .option)
         XCTAssertTrue(searchField.waitForNonExistence(timeout: 5))
-        XCTAssertTrue(editorTab(titled: "artist", in: window).waitToExist(timeout: 10), "Option+Return opens a new tab")
-        XCTAssertTrue(editorTab(titled: "album", in: window).exists, "The second open must keep the first tab")
+        XCTAssertTrue(editorTabs(titled: "artist", in: window).firstMatch.waitToExist(timeout: 10), "Option+Return opens a new tab")
+        XCTAssertTrue(editorTabs(titled: "album", in: window).firstMatch.exists, "The second open must keep the first tab")
         XCTAssertEqual(app.children(matching: .window).count, 1, "Both open in this window, not a new one")
     }
 

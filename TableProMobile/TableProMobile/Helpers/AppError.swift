@@ -3,6 +3,7 @@ import os
 import TableProDatabase
 import TableProModels
 import TableProOracleCore
+import TableProRedisCore
 
 // MARK: - Error Category
 

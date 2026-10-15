@@ -11,8 +11,8 @@
 # runs none of it. None of that shows in a unit test, because each case depends on what the server does with the text
 # it is sent.
 #
-# So this builds a harness from the real TablePro/Core/Utilities/SQL/SQLFileParser.swift and the files it reads
-# lines and chunks with, the real Plugins/MSSQLDriverPlugin sources, the TableProCore package and the shipped
+# So this builds a harness from the real TablePro/Core/Utilities/SQL/SQLFileParser.swift, the TableProUtilities module it
+# reads lines and chunks with, the real Plugins/MSSQLDriverPlugin sources, the TableProCore package and the shipped
 # Libs/libsybdb.a. Each script is read by SQLFileParser with the SQL Server grammar and every batch it hands out goes
 # through MSSQLPluginDriver.executeBatch, as ImportDataSinkAdapter sends it: the first batch that raises an error stops
 # the import, with the server's line placed in the file. Then the database is read back.
@@ -78,11 +78,7 @@ fi
 
 mkdir -p "$WORK/Sources/Check"
 ln -s "$ROOT/Plugins/MSSQLDriverPlugin/CFreeTDS" "$WORK/CFreeTDS"
-for source in "$ROOT"/Plugins/MSSQLDriverPlugin/*.swift \
-    "$ROOT/TablePro/Core/Utilities/SQL/SQLFileParser.swift" \
-    "$ROOT/TablePro/Core/Utilities/SQL/SQLFileBatchLines.swift" \
-    "$ROOT/TablePro/Core/Utilities/SQL/SQLChunkDecoder.swift" \
-    "$ROOT/TablePro/Core/Utilities/Text/ByteOrderMark.swift"; do
+for source in "$ROOT"/Plugins/MSSQLDriverPlugin/*.swift "$ROOT/TablePro/Core/Utilities/SQL/SQLFileParser.swift"; do
     ln -s "$source" "$WORK/Sources/Check/$(basename "$source")"
 done
 
@@ -93,7 +89,10 @@ import PackageDescription
 let package = Package(
     name: "MSSQLSQLImportCheck",
     platforms: [.macOS(.v14)],
-    dependencies: [.package(path: "$ROOT/Packages/TableProCore")],
+    dependencies: [
+        .package(path: "$ROOT/Packages/TableProCore"),
+        .package(path: "$ROOT/Packages/TableProMacCore"),
+    ],
     targets: [
         .systemLibrary(name: "CFreeTDS", path: "CFreeTDS"),
         .executableTarget(
@@ -105,6 +104,7 @@ let package = Package(
                 .product(name: "TableProMSSQLCore", package: "TableProCore"),
                 .product(name: "TableProLogRedaction", package: "TableProCore"),
                 .product(name: "TableProSQLGrammar", package: "TableProCore"),
+                .product(name: "TableProUtilities", package: "TableProMacCore"),
             ],
             path: "Sources/Check",
             swiftSettings: [.swiftLanguageMode(.v6)],

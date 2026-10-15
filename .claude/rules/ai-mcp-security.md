@@ -2,6 +2,7 @@
 paths:
   - "TablePro/Core/AI/**/*"
   - "TablePro/Core/MCP/**/*"
+  - "Packages/TableProMacCore/Sources/TableProMCP/**/*"
 ---
 
 # AI and MCP

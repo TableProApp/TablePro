@@ -11,11 +11,11 @@ import TableProSyncTransport
 
 @MainActor
 struct ConnectionStorageAdditionalFieldsTests {
+    private let pool = EphemeralDefaultsPool()
     private let storage: ConnectionStorage
-    private let suiteName: String
     private let defaults: UserDefaults
 
-    init() {
+    init() throws {
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
@@ -24,9 +24,8 @@ struct ConnectionStorageAdditionalFieldsTests {
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        self.suiteName = "com.TablePro.tests.ConnectionStorage.\(unique)"
-        self.defaults = UserDefaults(suiteName: suiteName)!
-        let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.Sync.\(unique)")!
+        self.defaults = try pool.make().defaults
+        let syncDefaults = try pool.make().defaults
         let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
         let tracker = SyncChangeTracker(metadataStorage: metadata)
         self.storage = ConnectionStorage(

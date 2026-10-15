@@ -1,74 +1,69 @@
+import Foundation
 @testable import TableProOracleCore
-import XCTest
+import Testing
 
-final class OracleConnectionOptionsTests: XCTestCase {
-    func testAdditionalFieldKeysMatchTheMacKeysExactly() {
-        XCTAssertEqual(OracleConnectionOptions.AdditionalFieldKey.connectionType, "oracleConnectionType")
-        XCTAssertEqual(OracleConnectionOptions.AdditionalFieldKey.serviceName, "oracleServiceName")
-        XCTAssertEqual(OracleConnectionOptions.AdditionalFieldKey.sid, "oracleSID")
+struct OracleConnectionOptionsTests {
+    @Test func testAdditionalFieldKeysMatchTheMacKeysExactly() {
+        #expect(OracleConnectionOptions.AdditionalFieldKey.connectionType == "oracleConnectionType")
+        #expect(OracleConnectionOptions.AdditionalFieldKey.serviceName == "oracleServiceName")
+        #expect(OracleConnectionOptions.AdditionalFieldKey.sid == "oracleSID")
     }
 
-    func testIdentifierModeRawValuesMatchTheMacValues() {
-        XCTAssertEqual(OracleConnectionOptions.IdentifierMode.service.rawValue, "service")
-        XCTAssertEqual(OracleConnectionOptions.IdentifierMode.sid.rawValue, "sid")
+    @Test func testIdentifierModeRawValuesMatchTheMacValues() {
+        #expect(OracleConnectionOptions.IdentifierMode.service.rawValue == "service")
+        #expect(OracleConnectionOptions.IdentifierMode.sid.rawValue == "sid")
     }
 
-    func testIdentifierModeDefaultsToServiceWhenAbsent() {
-        XCTAssertEqual(OracleConnectionOptions.identifierMode(from: [:]), .service)
+    @Test func testIdentifierModeDefaultsToServiceWhenAbsent() {
+        #expect(OracleConnectionOptions.identifierMode(from: [:]) == .service)
     }
 
-    func testIdentifierModeReadsSID() {
+    @Test func testIdentifierModeReadsSID() {
         let fields = [OracleConnectionOptions.AdditionalFieldKey.connectionType: "sid"]
-        XCTAssertEqual(OracleConnectionOptions.identifierMode(from: fields), .sid)
+        #expect(OracleConnectionOptions.identifierMode(from: fields) == .sid)
     }
 
-    func testIdentifierModeFallsBackToServiceForUnknownValue() {
+    @Test func testIdentifierModeFallsBackToServiceForUnknownValue() {
         let fields = [OracleConnectionOptions.AdditionalFieldKey.connectionType: "tns"]
-        XCTAssertEqual(OracleConnectionOptions.identifierMode(from: fields), .service)
+        #expect(OracleConnectionOptions.identifierMode(from: fields) == .service)
     }
 
-    func testIdentifierUsesServiceNameInServiceMode() {
+    @Test func testIdentifierUsesServiceNameInServiceMode() {
         let options = makeOptions(identifierMode: .service, serviceName: "ORCL", sid: "XE", database: "DB")
-        XCTAssertEqual(options.identifier, "ORCL")
+        #expect(options.identifier == "ORCL")
     }
 
-    func testIdentifierUsesSIDInSIDMode() {
+    @Test func testIdentifierUsesSIDInSIDMode() {
         let options = makeOptions(identifierMode: .sid, serviceName: "ORCL", sid: "XE", database: "DB")
-        XCTAssertEqual(options.identifier, "XE")
+        #expect(options.identifier == "XE")
     }
 
-    func testIdentifierFallsBackToDatabaseWhenChosenFieldIsEmpty() {
+    @Test func testIdentifierFallsBackToDatabaseWhenChosenFieldIsEmpty() {
         let serviceMode = makeOptions(identifierMode: .service, serviceName: "", sid: "XE", database: "DB")
-        XCTAssertEqual(serviceMode.identifier, "DB")
+        #expect(serviceMode.identifier == "DB")
 
         let sidMode = makeOptions(identifierMode: .sid, serviceName: "ORCL", sid: "", database: "DB")
-        XCTAssertEqual(sidMode.identifier, "DB")
+        #expect(sidMode.identifier == "DB")
     }
 
-    func testDefaultPortIsOracleListenerPort() {
-        XCTAssertEqual(OracleConnectionOptions.defaultPort, 1_521)
+    @Test func testDefaultPortIsOracleListenerPort() {
+        #expect(OracleConnectionOptions.defaultPort == 1_521)
     }
 
-    func testRemainingMillisecondConnectBudgetTakesPrecedence() {
+    @Test func testRemainingMillisecondConnectBudgetTakesPrecedence() {
         let fields = [
             OracleConnectionOptions.AdditionalFieldKey.connectTimeoutMilliseconds: "1250",
             OracleConnectionOptions.AdditionalFieldKey.connectTimeoutSeconds: "30"
         ]
 
-        XCTAssertEqual(OracleConnectionOptions.loginTimeoutSeconds(from: fields), 1.25)
+        #expect(OracleConnectionOptions.loginTimeoutSeconds(from: fields) == 1.25)
     }
 
-    func testConfiguredConnectSecondsAndOldHostDefault() {
-        XCTAssertEqual(
-            OracleConnectionOptions.loginTimeoutSeconds(from: [
-                OracleConnectionOptions.AdditionalFieldKey.connectTimeoutSeconds: "2.5"
-            ]),
-            2.5
-        )
-        XCTAssertEqual(
-            OracleConnectionOptions.loginTimeoutSeconds(from: [:]),
-            OracleConnectionOptions.defaultLoginTimeoutSeconds
-        )
+    @Test func testConfiguredConnectSecondsAndOldHostDefault() {
+        #expect(OracleConnectionOptions.loginTimeoutSeconds(from: [
+            OracleConnectionOptions.AdditionalFieldKey.connectTimeoutSeconds: "2.5"
+        ]) == 2.5)
+        #expect(OracleConnectionOptions.loginTimeoutSeconds(from: [:]) == OracleConnectionOptions.defaultLoginTimeoutSeconds)
     }
 
     private func makeOptions(

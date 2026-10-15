@@ -3,6 +3,7 @@ import CryptoKit
 import Foundation
 import os
 import SQLite3
+import TableProUtilities
 
 enum MCPAuditVerification: Equatable, Sendable {
     case intact(count: Int)

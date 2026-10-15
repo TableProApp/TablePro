@@ -34,7 +34,6 @@ private final class DrawPathRowView: NSTableRowView {
 /// Each test adopts a pair on the shared `ThemeEngine` and restores it in a `defer`. The bodies are
 /// synchronous and `@MainActor`, so nothing else on the main actor runs between the two; an `await`
 /// added anywhere in between would break that.
-@Suite("Data grid drawing follows the theme", .serialized)
 @MainActor
 struct DataGridThemeDrawingTests {
     private static let rowFrame = NSRect(x: 0, y: 0, width: 160, height: 24)

@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProUtilities
 
 final class DataFileWorkingCopy: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DataFiles")

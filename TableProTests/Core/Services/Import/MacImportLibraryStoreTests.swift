@@ -275,8 +275,9 @@ struct MacImportLibraryStoreTests {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MacImportEnvironment-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
+        let suite = try EphemeralDefaults()
         let manager = PluginManager(
-            userDefaults: try #require(UserDefaults(suiteName: "MacImportEnvironment.\(UUID().uuidString)")),
+            userDefaults: suite.defaults,
             builtInPluginsURL: nil,
             userPluginsDir: root.appendingPathComponent("Plugins", isDirectory: true)
         )

@@ -2,6 +2,7 @@ import CMariaDB
 import Foundation
 import os
 import OSLog
+import TableProMySQLCore
 
 nonisolated internal enum MariaDBCharacterSet {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MariaDBCharacterSet")

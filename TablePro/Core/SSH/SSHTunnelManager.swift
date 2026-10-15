@@ -8,6 +8,7 @@
 import Foundation
 import os
 
+import TableProSSHConfig
 import TableProSSHTransport
 
 /// Why an SSH authentication attempt failed. Drives the user-facing error string so the

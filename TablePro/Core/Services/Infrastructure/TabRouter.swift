@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import os
+import TableProUtilities
 
 internal enum TabRouterError: Error, LocalizedError {
     case connectionNotFound(UUID)

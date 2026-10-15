@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProMCP
 
 struct AIChatToolUseBlockView: View {
     @ObservedObject private var themeEngine = ThemeEngine.shared

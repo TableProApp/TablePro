@@ -7,6 +7,7 @@ import Foundation
 import os
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProUtilities
 
 final class SQLFileParser: Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLFileParser")

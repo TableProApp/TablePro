@@ -45,15 +45,12 @@ struct QuickSwitcherKeyCommandTests {
 
     // MARK: - Command-Return
 
-    @Test("Command-Return resolves to a new-tab commit")
-    func commandReturnCommitsToNewTab() {
-        #expect(resolve("\r", .command) == .commit(.openInNewWindowTab))
-    }
-
     /// The numeric keypad's Enter reports U+0003, not a carriage return.
-    @Test("Command-Enter on the numeric keypad resolves to a new-tab commit")
-    func commandEnterCommitsToNewTab() {
-        #expect(resolve("\u{3}", .command) == .commit(.openInNewWindowTab))
+    @Test("Command-Return, and Command-Enter on the numeric keypad, resolve to a new-tab commit", arguments: [
+        "\r", "\u{3}",
+    ])
+    func commandReturnCommitsToNewTab(_ key: String) {
+        #expect(resolve(key, .command) == .commit(.openInNewWindowTab))
     }
 
     /// Plain Return reaches the field editor, which owns it. Claiming it here would take the

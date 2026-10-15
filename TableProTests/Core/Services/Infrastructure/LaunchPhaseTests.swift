@@ -3,24 +3,28 @@
 //  TableProTests
 //
 
+import Foundation
 @testable import TablePro
-import XCTest
+import Testing
 
-final class LaunchPhaseTests: XCTestCase {
-    func testLaunchingAndCollectingAcceptIntents() {
-        XCTAssertTrue(LaunchPhase.launching.isAcceptingIntents)
-        XCTAssertTrue(LaunchPhase.collectingIntents.isAcceptingIntents)
+struct LaunchPhaseTests {
+    @Test
+    func launchingAndCollectingAcceptIntents() {
+        #expect(LaunchPhase.launching.isAcceptingIntents)
+        #expect(LaunchPhase.collectingIntents.isAcceptingIntents)
     }
 
-    func testRoutingAndReadyRefuseIntents() {
-        XCTAssertFalse(LaunchPhase.routing.isAcceptingIntents)
-        XCTAssertFalse(LaunchPhase.ready.isAcceptingIntents)
+    @Test
+    func routingAndReadyRefuseIntents() {
+        #expect(!LaunchPhase.routing.isAcceptingIntents)
+        #expect(!LaunchPhase.ready.isAcceptingIntents)
     }
 
-    func testOnlyReadyReportsReady() {
-        XCTAssertFalse(LaunchPhase.launching.isReady)
-        XCTAssertFalse(LaunchPhase.collectingIntents.isReady)
-        XCTAssertFalse(LaunchPhase.routing.isReady)
-        XCTAssertTrue(LaunchPhase.ready.isReady)
+    @Test
+    func onlyReadyReportsReady() {
+        #expect(!LaunchPhase.launching.isReady)
+        #expect(!LaunchPhase.collectingIntents.isReady)
+        #expect(!LaunchPhase.routing.isReady)
+        #expect(LaunchPhase.ready.isReady)
     }
 }

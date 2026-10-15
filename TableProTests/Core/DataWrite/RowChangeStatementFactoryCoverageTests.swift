@@ -201,16 +201,12 @@ struct RowChangeStatementFactoryCoverageTests {
         #expect(driver.cellsHanded == rowCount * 2 * 2)
     }
 
+    /// The refusal RedisDriverTests' `collectionValueBesideTtlRefusesTheRow` pins for this edit.
     @Test("A Redis Value edit on a list key refuses the save even beside a TTL edit it could write")
     func redisMixedEditRefusesTheValueItWouldDrop() {
-        let generator = RedisStatementGenerator(namespaceName: "0", columns: ["Key", "Type", "TTL", "Length", "Value"])
-        let driver = RowWriteStubDriver { changes, insertedRowData, deletedRowIndices, insertedRowIndices in
-            try generator.generateRowWrites(
-                from: changes,
-                insertedRowData: insertedRowData,
-                deletedRowIndices: deletedRowIndices,
-                insertedRowIndices: insertedRowIndices
-            )
+        let reason = "The value of a list key cannot be edited in the grid. Change it with a command in the query editor."
+        let driver = RowWriteStubDriver { _, _, _, _ in
+            throw PluginRowWriteRefusal(rowIndex: 0, reason: reason)
         }
         let edit = RowChange(
             rowID: .existing(0),
@@ -221,7 +217,6 @@ struct RowChangeStatementFactoryCoverageTests {
             ],
             originalRow: ["mylist", "list", "-1", "1", "[\"a\"]"]
         )
-        let reason = "The value of a list key cannot be edited in the grid. Change it with a command in the query editor."
 
         #expect(throws: DataWriteError.changeRefused(table: "0", kind: .update, reason: reason)) {
             _ = try factory(

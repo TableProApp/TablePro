@@ -17,10 +17,9 @@ import Testing
 @MainActor
 struct SwitchDatabasePooledConnectionTests {
     // No driver plugin and no plugin load in the test host, so every switch's reconnect fails at once, with no network.
-    private static let typeId = "PooledSwitchReconnectFake"
-
-    private func registerTypeIfNeeded() {
-        guard PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: Self.typeId) == nil else { return }
+    /// A type of its own per case, so one case's cleanup never unregisters another's.
+    private func registerType() -> String {
+        let typeId = "PooledSwitchReconnectFake-\(UUID().uuidString)"
         let defaults = PluginMetadataSnapshot.CapabilityFlags.defaults
         var capabilities = PluginMetadataSnapshot.CapabilityFlags(
             supportsSchemaSwitching: true,
@@ -39,7 +38,7 @@ struct SwitchDatabasePooledConnectionTests {
         /// than opening a connection of its own for the database.
         capabilities.supportsConnectionPooling = false
         let snapshot = PluginMetadataSnapshot(
-            displayName: Self.typeId, iconName: "cylinder", defaultPort: 1_234,
+            displayName: typeId, iconName: "cylinder", defaultPort: 1_234,
             requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
             isDownloadable: false, primaryUrlScheme: "pooledswitchfake", parameterStyle: .questionMark,
             navigationModel: .standard, explainVariants: [], pathFieldRole: .database,
@@ -48,14 +47,14 @@ struct SwitchDatabasePooledConnectionTests {
             connectionMode: .network, supportsDatabaseSwitching: true,
             capabilities: capabilities, schema: .defaults, editor: .defaults, connection: .defaults
         )
-        PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: Self.typeId)
+        PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: typeId)
+        return typeId
     }
 
     /// A direct connection, with no tunnel of any kind, browsing `app`.
     private func makeSession(stoppedAnswering: Bool = false) -> DatabaseConnection {
-        registerTypeIfNeeded()
         var connection = TestFixtures.makeConnection(database: "app")
-        connection.type = DatabaseType(rawValue: Self.typeId)
+        connection.type = DatabaseType(rawValue: registerType())
         var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
         session.status = .connected
         session.browseDatabase = "app"
@@ -76,18 +75,19 @@ struct SwitchDatabasePooledConnectionTests {
         return pooled
     }
 
-    private func cleanUp(_ connectionId: UUID) {
+    private func cleanUp(_ connection: DatabaseConnection) {
+        let connectionId = connection.id
         MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
         DatabaseManager.shared.removeSession(for: connectionId)
         AppSettingsStorage.shared.saveLastDatabase(nil, for: connectionId)
         AppSettingsStorage.shared.saveLastSchema(nil, for: connectionId)
-        PluginMetadataRegistry.shared.unregister(typeId: Self.typeId)
+        PluginMetadataRegistry.shared.unregister(typeId: connection.type.rawValue)
     }
 
     @Test("A switch over a direct connection leaves the pooled connection to another database open")
     func switchLeavesOtherDatabasesPooled() async {
         let connection = makeSession()
-        defer { cleanUp(connection.id) }
+        defer { cleanUp(connection) }
         let pooled = seedPooledConnection(for: connection.id)
 
         try? await DatabaseManager.shared.switchDatabase(to: "unreachable", for: connection.id, persist: false)
@@ -105,7 +105,7 @@ struct SwitchDatabasePooledConnectionTests {
     @Test("A switch that reconnects a connection that stopped answering closes its pooled connections")
     func recoveringSwitchClosesThePool() async {
         let connection = makeSession(stoppedAnswering: true)
-        defer { cleanUp(connection.id) }
+        defer { cleanUp(connection) }
         let pooled = seedPooledConnection(for: connection.id)
 
         try? await DatabaseManager.shared.switchDatabase(to: "unreachable", for: connection.id, persist: false)

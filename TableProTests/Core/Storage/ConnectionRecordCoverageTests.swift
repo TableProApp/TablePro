@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+@testable import TableProSSHConfig
 import TableProSyncTransport
 import Testing
 
@@ -171,6 +172,7 @@ struct ConnectionDuplicateCoverageTests {
     /// source, and never a favorite or a sample because its source was.
     private static let resetByDuplicate: Set<String> = ["id", "name", "sortOrder", "isFavorite", "isSample"]
 
+    private let pool = EphemeralDefaultsPool()
     private let storage: ConnectionStorage
 
     init() throws {
@@ -182,8 +184,8 @@ struct ConnectionDuplicateCoverageTests {
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        let defaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.DuplicateCoverage.\(unique)"))
-        let syncDefaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.DuplicateCoverage.sync.\(unique)"))
+        let defaults = try pool.make().defaults
+        let syncDefaults = try pool.make().defaults
         storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,

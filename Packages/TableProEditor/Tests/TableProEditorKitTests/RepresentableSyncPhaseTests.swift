@@ -1,59 +1,61 @@
-import XCTest
+import Foundation
+import Testing
 
 @testable import TableProEditorKit
 
-final class RepresentableSyncPhaseTests: XCTestCase {
+@MainActor
+struct RepresentableSyncPhaseTests {
     @MainActor
-    func test_startsIdle() {
+    @Test func test_startsIdle() {
         let phase = RepresentableSyncPhase()
 
-        XCTAssertEqual(phase.phase, .idle)
-        XCTAssertFalse(phase.isEditorChangePending)
-        XCTAssertFalse(phase.isApplyingRepresentableValue)
+        #expect(phase.phase == .idle)
+        #expect(!phase.isEditorChangePending)
+        #expect(!phase.isApplyingRepresentableValue)
     }
 
     @MainActor
-    func test_markEditorChangeLatchesUntilConsumed() {
+    @Test func test_markEditorChangeLatchesUntilConsumed() {
         let phase = RepresentableSyncPhase()
 
         phase.markEditorChange()
         phase.markEditorChange()
 
-        XCTAssertTrue(phase.isEditorChangePending)
-        XCTAssertTrue(phase.consumePendingEditorChange())
-        XCTAssertEqual(phase.phase, .idle)
+        #expect(phase.isEditorChangePending)
+        #expect(phase.consumePendingEditorChange())
+        #expect(phase.phase == .idle)
     }
 
     @MainActor
-    func test_consumeWithoutPendingChangeReturnsFalse() {
+    @Test func test_consumeWithoutPendingChangeReturnsFalse() {
         let phase = RepresentableSyncPhase()
 
-        XCTAssertFalse(phase.consumePendingEditorChange())
-        XCTAssertEqual(phase.phase, .idle)
+        #expect(!phase.consumePendingEditorChange())
+        #expect(phase.phase == .idle)
     }
 
     @MainActor
-    func test_markDuringRepresentableApplicationIsIgnored() {
+    @Test func test_markDuringRepresentableApplicationIsIgnored() {
         let phase = RepresentableSyncPhase()
 
         phase.applyRepresentableValue {
             phase.markEditorChange()
-            XCTAssertTrue(phase.isApplyingRepresentableValue)
+            #expect(phase.isApplyingRepresentableValue)
         }
 
-        XCTAssertEqual(phase.phase, .idle)
-        XCTAssertFalse(phase.isEditorChangePending)
+        #expect(phase.phase == .idle)
+        #expect(!phase.isEditorChangePending)
     }
 
     @MainActor
-    func test_applyRepresentableValueRestoresPriorPhase() {
+    @Test func test_applyRepresentableValueRestoresPriorPhase() {
         let phase = RepresentableSyncPhase()
         phase.markEditorChange()
 
         phase.applyRepresentableValue {
-            XCTAssertTrue(phase.isApplyingRepresentableValue)
+            #expect(phase.isApplyingRepresentableValue)
         }
 
-        XCTAssertTrue(phase.isEditorChangePending)
+        #expect(phase.isEditorChangePending)
     }
 }

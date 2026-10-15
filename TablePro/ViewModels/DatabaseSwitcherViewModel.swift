@@ -7,6 +7,7 @@ import Combine
 import Foundation
 import os
 import SwiftUI
+import TableProUtilities
 
 @MainActor
 final class DatabaseSwitcherViewModel: ObservableObject {

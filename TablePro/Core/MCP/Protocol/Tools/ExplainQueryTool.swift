@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public struct ExplainQueryTool: MCPToolImplementation {
     public static let name = "explain_query"

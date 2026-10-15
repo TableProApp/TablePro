@@ -8,10 +8,11 @@
 //  should touch.
 //
 
+import Foundation
 @testable import TablePro
-import XCTest
+import Testing
 
-final class CompareResultGroupingTests: XCTestCase {
+struct CompareResultGroupingTests {
     private let comparators = [KeyPathComparator(\CompareResultRow.objectName)]
 
     private func result(
@@ -29,7 +30,8 @@ final class CompareResultGroupingTests: XCTestCase {
 
     // MARK: - Sections
 
-    func testGroupingByDifferenceProducesOneSectionPerStatus() {
+    @Test
+    func groupingByDifferenceProducesOneSectionPerStatus() {
         let groups = CompareResultGrouping.groups(
             from: [
                 result("a", status: .onlyInSource),
@@ -40,11 +42,12 @@ final class CompareResultGroupingTests: XCTestCase {
             sortedUsing: comparators
         )
 
-        XCTAssertEqual(groups.count, 3)
-        XCTAssertEqual(groups.flatMap { $0.rows }.count, 3)
+        #expect(groups.count == 3)
+        #expect(groups.flatMap { $0.rows }.count == 3)
     }
 
-    func testGroupingByObjectTypeProducesOneSectionPerKind() {
+    @Test
+    func groupingByObjectTypeProducesOneSectionPerKind() {
         let groups = CompareResultGrouping.groups(
             from: [
                 result("orders", kind: .table),
@@ -55,11 +58,12 @@ final class CompareResultGroupingTests: XCTestCase {
             sortedUsing: comparators
         )
 
-        XCTAssertEqual(groups.count, 3)
-        XCTAssertEqual(Set(groups.map { $0.header.objectName }).count, 3)
+        #expect(groups.count == 3)
+        #expect(Set(groups.map { $0.header.objectName }).count == 3)
     }
 
-    func testTheTwoGroupingsSectionTheSameResultsDifferently() {
+    @Test
+    func theTwoGroupingsSectionTheSameResultsDifferently() {
         let results = [
             result("orders", kind: .table, status: .differs),
             result("reporting", kind: .view, status: .differs)
@@ -72,34 +76,37 @@ final class CompareResultGroupingTests: XCTestCase {
             from: results, grouping: .byObjectType, sortedUsing: comparators
         )
 
-        XCTAssertEqual(byDifference.count, 1, "both differ, so one difference section")
-        XCTAssertEqual(byKind.count, 2, "two kinds, so two kind sections")
+        #expect(byDifference.count == 1, "both differ, so one difference section")
+        #expect(byKind.count == 2, "two kinds, so two kind sections")
     }
 
-    func testAnEmptyBucketProducesNoSection() {
+    @Test
+    func anEmptyBucketProducesNoSection() {
         let groups = CompareResultGrouping.groups(
             from: [result("orders", status: .differs)],
             grouping: .byDifference,
             sortedUsing: comparators
         )
 
-        XCTAssertEqual(groups.count, 1)
+        #expect(groups.count == 1)
     }
 
-    func testNoGroupingProducesFlatRows() {
+    @Test
+    func noGroupingProducesFlatRows() {
         let rows = CompareResultGrouping.rows(
             from: [result("b"), result("a")], sortedUsing: comparators
         )
 
-        XCTAssertEqual(rows.map { $0.objectName }, ["public.a", "public.b"])
-        XCTAssertTrue(rows.allSatisfy { !$0.isGroup })
+        #expect(rows.map { $0.objectName } == ["public.a", "public.b"])
+        #expect(rows.allSatisfy { !$0.isGroup })
     }
 
     // MARK: - Bulk include
 
     /// A group header's include checkbox must not reach an identical object, whose only available
     /// action is skip, nor one that could not be compared at all.
-    func testGroupMembersExcludeIdenticalAndUncomparableResults() {
+    @Test
+    func groupMembersExcludeIdenticalAndUncomparableResults() {
         let groups = CompareResultGrouping.groups(
             from: [
                 result("a", status: .differs),
@@ -111,54 +118,59 @@ final class CompareResultGroupingTests: XCTestCase {
         )
 
         let members = groups.flatMap { $0.header.memberIds }
-        XCTAssertEqual(members.count, 1)
-        XCTAssertTrue(members[0].contains("a"))
+        #expect(members.count == 1)
+        #expect(members[0].contains("a"))
     }
 
-    func testSelectingAGroupHeaderExpandsToItsMembers() {
+    @Test
+    func selectingAGroupHeaderExpandsToItsMembers() {
         let groups = CompareResultGrouping.groups(
             from: [result("a"), result("b")],
             grouping: .byObjectType,
             sortedUsing: comparators
         )
-        let header = try? XCTUnwrap(groups.first).header
+        let header = try? #require(groups.first).header
 
         let ids = CompareResultGrouping.objectIds(in: [header?.id ?? ""], groups: groups)
 
-        XCTAssertEqual(ids.count, 2)
+        #expect(ids.count == 2)
     }
 
-    func testSelectingObjectsPassesTheirOwnIdentifiersThrough() {
+    @Test
+    func selectingObjectsPassesTheirOwnIdentifiersThrough() {
         let orders = result("orders")
         let ids = CompareResultGrouping.objectIds(in: [orders.id], groups: [])
 
-        XCTAssertEqual(ids, [orders.id])
+        #expect(ids == [orders.id])
     }
 
     /// A group header shares the table's row type, so its identifier has to be one no object can
     /// produce, or a bulk include would resolve to a nonexistent object.
-    func testAGroupIdentifierCannotCollideWithAnObjectIdentifier() {
+    @Test
+    func aGroupIdentifierCannotCollideWithAnObjectIdentifier() {
         let groups = CompareResultGrouping.groups(
             from: [result("a")], grouping: .byObjectType, sortedUsing: comparators
         )
 
-        XCTAssertTrue(CompareResultGrouping.isGroupIdentifier(groups[0].header.id))
-        XCTAssertFalse(CompareResultGrouping.isGroupIdentifier(result("a").id))
+        #expect(CompareResultGrouping.isGroupIdentifier(groups[0].header.id))
+        #expect(!(CompareResultGrouping.isGroupIdentifier(result("a").id)))
     }
 
     // MARK: - Uncomparable
 
-    func testUncomparableResultsGetTheirOwnSection() {
+    @Test
+    func uncomparableResultsGetTheirOwnSection() {
         let group = CompareResultGrouping.uncomparableGroup(
             from: [result("a", error: "permission denied")], sortedUsing: comparators
         )
 
-        XCTAssertNotNil(group)
-        XCTAssertEqual(group?.rows.count, 1)
-        XCTAssertTrue(group?.header.memberIds.isEmpty ?? false, "nothing unreadable can be included")
+        #expect(group != nil)
+        #expect(group?.rows.count == 1)
+        #expect(group?.header.memberIds.isEmpty ?? false, "nothing unreadable can be included")
     }
 
-    func testNoUncomparableSectionWhenEverythingCompared() {
-        XCTAssertNil(CompareResultGrouping.uncomparableGroup(from: [], sortedUsing: comparators))
+    @Test
+    func noUncomparableSectionWhenEverythingCompared() {
+        #expect(CompareResultGrouping.uncomparableGroup(from: [], sortedUsing: comparators) == nil)
     }
 }

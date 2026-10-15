@@ -9,6 +9,7 @@
 import Foundation
 import os
 import TableProEditorKit
+import TableProUtilities
 
 extension MainContentCoordinator {
     func handleTabChange(

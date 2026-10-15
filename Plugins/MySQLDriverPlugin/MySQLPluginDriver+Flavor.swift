@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProMySQLCore
 import TableProPluginKit
 
 internal struct MySQLFlavorMismatchError: Error, Equatable {

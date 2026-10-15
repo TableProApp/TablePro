@@ -8,29 +8,14 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-private final class RefusingDDLDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class RefusingDDLDriver: PluginDriverStub, @unchecked Sendable {
     var refuse: (PluginSchemaOperation) -> String? = { _ in nil }
 
     var currentSchema: String? { "public" }
 
-    func connect() async throws {}
-    func disconnect() {}
     func ping() async throws {}
     func execute(query: String) async throws -> PluginQueryResult {
         PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? { refuse(operation) }
@@ -234,17 +219,19 @@ struct SchemaOperationRefusalTests {
     /// `DROP INDEX PRIMARY` commits, `ADD UNIQUE INDEX PRIMARY` fails with ERROR 1280, and the table
     /// is left with no key. The one-statement form fails the same way and keeps the key.
     @Test("A copy of MySQL's PRIMARY row put in place of the original is refused before anything runs")
-    func mysqlPrimaryReplacementIsRefused() throws {
+    func mysqlPrimaryReplacementIsRefused() {
+        let reason = "PRIMARY is the primary key's name, and no other index can take it."
         let driver = RefusingDDLDriver()
         driver.refuse = { operation in
-            guard case .addIndex(let index) = operation else { return nil }
-            return mysqlReservedIndexNameRefusal(for: index)
+            guard case .addIndex(let index) = operation,
+                  index.name.caseInsensitiveCompare("PRIMARY") == .orderedSame else { return nil }
+            return reason
         }
         var primary = index("PRIMARY", type: .btree)
         primary.isPrimary = true
         var copy = primary.withNewIdentity()
         copy.isPrimary = false
-        let reason = try #require(mysqlReservedIndexNameRefusal(for: copy.toPlugin()))
+        #expect(copy.toPlugin().name == "PRIMARY")
 
         #expect(refusalOfBatch([.addIndex(copy), .deleteIndex(primary)], driver: driver) == reason)
         #expect(refusalOfBatch(

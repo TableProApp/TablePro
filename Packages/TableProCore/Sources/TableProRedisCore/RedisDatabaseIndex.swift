@@ -1,0 +1,26 @@
+import Foundation
+
+nonisolated public enum RedisDatabaseIndex {
+    public static let fieldName = "redisDatabase"
+    public static let selectable: ClosedRange<Int> = 0...(Int(Int32.max) - 1)
+
+    /// The driver names databases `db0` upward everywhere it shows one, and `switchDatabase`
+    /// reads that spelling back, so connecting has to accept it too. Taking only a bare integer
+    /// made a saved `db4` resolve to 0 and browse the wrong database with nothing said.
+    public static func resolve(additionalFields: [String: String], database: String) -> Int {
+        if let field = additionalFields[fieldName], let index = parse(field) { return index }
+        return parse(database) ?? 0
+    }
+
+    public static func selectableIndex(_ value: String) -> Int? {
+        guard let index = parse(value), selectable.contains(index) else { return nil }
+        return index
+    }
+
+    public static func parse(_ value: String) -> Int? {
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        if let index = Int(trimmed) { return index }
+        guard trimmed.lowercased().hasPrefix("db") else { return nil }
+        return Int(trimmed.dropFirst(2))
+    }
+}

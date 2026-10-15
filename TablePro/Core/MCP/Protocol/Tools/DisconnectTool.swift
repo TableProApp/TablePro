@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 
 public struct DisconnectTool: MCPToolImplementation {
     public static let name = "disconnect"

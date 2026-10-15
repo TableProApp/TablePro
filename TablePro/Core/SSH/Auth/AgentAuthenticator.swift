@@ -7,6 +7,7 @@ import Foundation
 import os
 
 import CLibSSH2
+import TableProSSHConfig
 
 internal struct AgentAuthenticator: SSHAuthenticator {
     private static let logger = Logger(subsystem: "com.TablePro", category: "AgentAuthenticator")

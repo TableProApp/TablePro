@@ -38,7 +38,6 @@ private struct PaneMountProbe: NSViewRepresentable {
     }
 }
 
-@Suite("Workspace panes firewall", .serialized)
 @MainActor
 struct WorkspacePanesFirewallTests {
     private static func storedPanes(of panes: WorkspacePanes) -> [(label: String, pane: NSHostingController<AnyView>)] {

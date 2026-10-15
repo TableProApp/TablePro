@@ -11,14 +11,12 @@ import Testing
 
 @MainActor
 struct QuickHighlightOrderingTests {
+    private let fixtures = CoordinatorFixtures()
+
     private func makeCoordinator() -> (MainContentCoordinator, UUID) {
-        let tabManager = QueryTabManager()
-        let coordinator = MainContentCoordinator(
-            connection: TestFixtures.makeConnection(),
-            tabManager: tabManager,
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
+        let fixture = fixtures.make()
+        let tabManager = fixture.tabManager
+        let coordinator = fixture.coordinator
         let tab = QueryTab(title: "Q1", query: "SELECT status, country FROM orders", tabType: .query)
         tabManager.tabs.append(tab)
         tabManager.selectedTabId = tab.id

@@ -13,7 +13,6 @@ import Testing
 
 /// Each test adopts a pair on the shared `ThemeEngine` and restores it in a `defer`. The bodies are
 /// synchronous and `@MainActor`, so nothing else on the main actor runs between the two.
-@Suite("The window backdrop follows the theme", .serialized)
 @MainActor
 struct ThemeWindowBackdropTests {
     private static let windowHex = "#282A36"

@@ -5,6 +5,8 @@
 
 import Foundation
 @testable import TablePro
+import TableProMCP
+import TableProMCPTestSupport
 import Testing
 
 struct DescribeTableToolTests {

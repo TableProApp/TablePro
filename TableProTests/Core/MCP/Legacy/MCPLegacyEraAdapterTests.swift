@@ -1,5 +1,7 @@
 import Foundation
 @testable import TablePro
+import TableProMCP
+import TableProMCPTestSupport
 import Testing
 
 struct MCPLegacyEraAdapterTests {
@@ -616,46 +618,6 @@ struct MCPLegacyEraAdapterTests {
     }
 }
 
-actor LegacyEraTestClock: MCPClock {
-    private struct PendingSleep {
-        let dueAt: Date
-        let continuation: CheckedContinuation<Void, Error>
-    }
-
-    private var currentDate: Date
-    private var pending: [PendingSleep] = []
-
-    init(start: Date = Date(timeIntervalSince1970: 1_700_000_000)) {
-        currentDate = start
-    }
-
-    func now() -> Date {
-        currentDate
-    }
-
-    func sleep(for duration: Duration) async throws {
-        let dueAt = currentDate.addingTimeInterval(Self.seconds(of: duration))
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            pending.append(PendingSleep(dueAt: dueAt, continuation: continuation))
-        }
-    }
-
-    func advance(by duration: Duration) async {
-        currentDate = currentDate.addingTimeInterval(Self.seconds(of: duration))
-        let due = pending.filter { $0.dueAt <= currentDate }
-        pending.removeAll { $0.dueAt <= currentDate }
-        for sleep in due {
-            sleep.continuation.resume()
-        }
-        await Task.yield()
-    }
-
-    private static func seconds(of duration: Duration) -> TimeInterval {
-        let components = duration.components
-        return TimeInterval(components.seconds) + TimeInterval(components.attoseconds) / 1.0e18
-    }
-}
-
 actor LegacyEraRecordingSink: MCPResponderSink {
     private(set) var jsonWrites: [(data: Data, status: HttpStatus)] = []
     private(set) var acceptedCount = 0
@@ -693,7 +655,7 @@ enum MCPLegacyTestSupport {
 
     static func makeAdapter(
         policy: MCPLegacySessionPolicy = .standard,
-        clock: any MCPClock = LegacyEraTestClock()
+        clock: any MCPClock = MCPTestClock()
     ) -> MCPLegacyEraAdapter {
         MCPLegacyEraAdapter(store: MCPLegacySessionStore(policy: policy, clock: clock))
     }

@@ -1,0 +1,268 @@
+//
+//  SSHConfigurationTests.swift
+//  TableProTests
+//
+//  Tests for SSHConfiguration model
+//
+
+import Foundation
+import Testing
+
+@testable import TableProSSHConfig
+
+struct SSHConfigurationTests {
+    @Test("Disabled SSH config is always valid")
+    func testDisabledIsValid() {
+        let config = SSHConfiguration(enabled: false)
+        #expect(config.isValid == true)
+    }
+
+    @Test("Password auth is valid with host and username")
+    func testPasswordAuthValid() {
+        let config = SSHConfiguration(
+            enabled: true, host: "example.com", username: "admin",
+            authMethod: .password
+        )
+        #expect(config.isValid == true)
+    }
+
+    @Test("Private key auth valid without explicit key path")
+    func testPrivateKeyAuthValidWithoutPath() {
+        let config = SSHConfiguration(
+            enabled: true, host: "example.com", username: "admin",
+            authMethod: .privateKey, privateKeyPath: ""
+        )
+        #expect(config.isValid == true)
+
+        let withPath = SSHConfiguration(
+            enabled: true, host: "example.com", username: "admin",
+            authMethod: .privateKey, privateKeyPath: "~/.ssh/id_rsa"
+        )
+        #expect(withPath.isValid == true)
+    }
+
+    @Test("SSH Agent auth is valid without any key path")
+    func testSSHAgentAuthValid() {
+        let config = SSHConfiguration(
+            enabled: true, host: "example.com", username: "admin",
+            authMethod: .sshAgent
+        )
+        #expect(config.isValid == true)
+    }
+
+    @Test("SSH Agent auth is valid with custom socket path")
+    func testSSHAgentAuthValidWithSocket() {
+        let config = SSHConfiguration(
+            enabled: true, host: "example.com", username: "admin",
+            authMethod: .sshAgent, agentSocketPath: SSHAgentSocketOption.onePasswordSocketPath
+        )
+        #expect(config.isValid == true)
+    }
+
+    @Test("Missing host makes config invalid")
+    func testMissingHostInvalid() {
+        let config = SSHConfiguration(
+            enabled: true, host: "", username: "admin",
+            authMethod: .sshAgent
+        )
+        #expect(config.isValid == false)
+    }
+
+    @Test("Empty username is allowed (runtime resolver fills it from ssh config)")
+    func testEmptyUsernameAllowed() {
+        let config = SSHConfiguration(
+            enabled: true, host: "example.com", username: "",
+            authMethod: .sshAgent
+        )
+        #expect(config.isValid == true)
+    }
+
+    @Test("Empty socket path maps to SSH_AUTH_SOCK option")
+    func testEmptySocketPathMapsToSystemDefault() {
+        #expect(SSHAgentSocketOption(socketPath: "") == .systemDefault)
+    }
+
+    @Test("1Password socket path maps to 1Password option")
+    func testOnePasswordSocketPathMapsToPreset() {
+        #expect(SSHAgentSocketOption(socketPath: SSHAgentSocketOption.onePasswordSocketPath) == .onePassword)
+    }
+
+    @Test("1Password alias path maps to 1Password option")
+    func testOnePasswordAliasPathMapsToPreset() {
+        #expect(SSHAgentSocketOption(socketPath: "~/.1password/agent.sock") == .onePassword)
+    }
+
+    @Test("Unknown socket path maps to custom option")
+    func testCustomSocketPathMapsToCustomOption() {
+        #expect(SSHAgentSocketOption(socketPath: "/tmp/custom.sock") == .custom)
+    }
+
+    @Test("System default option resolves to empty socket path")
+    func testSystemDefaultOptionResolvesToEmptyPath() {
+        #expect(SSHAgentSocketOption.systemDefault.resolvedPath(customPath: "/tmp/custom.sock") == "")
+    }
+
+    @Test("1Password option resolves to preset socket path")
+    func testOnePasswordOptionResolvesToPresetPath() {
+        #expect(
+            SSHAgentSocketOption.onePassword.resolvedPath(customPath: "/tmp/custom.sock")
+                == SSHAgentSocketOption.onePasswordSocketPath
+        )
+    }
+
+    @Test("Custom option resolves to trimmed custom socket path")
+    func testCustomOptionResolvesToTrimmedPath() {
+        #expect(
+            SSHAgentSocketOption.custom.resolvedPath(customPath: "  /tmp/custom.sock  ")
+                == "/tmp/custom.sock"
+        )
+    }
+
+    @Test("The system default's help text says it is the macOS agent, not 1Password's (#2583)")
+    func testSystemDefaultExplanationNamesTheMacOSAgent() {
+        let explanation = SSHAgentSocketOption.systemDefault.explanation
+
+        #expect(explanation.localizedCaseInsensitiveContains("SSH_AUTH_SOCK"))
+        #expect(explanation.localizedCaseInsensitiveContains("1Password"))
+    }
+
+    @Test("Every agent socket option carries its own help text (#2583)")
+    func testEveryAgentSocketOptionExplains() {
+        let explanations = SSHAgentSocketOption.allCases.map(\.explanation)
+
+        #expect(!explanations.contains(""))
+        #expect(Set(explanations).count == explanations.count)
+    }
+
+    @Test("Jump hosts validation passes when all valid")
+    func testJumpHostsValidationPasses() {
+        let config = SSHConfiguration(
+            enabled: true, host: "example.com", username: "admin",
+            authMethod: .sshAgent,
+            jumpHosts: [
+                SSHJumpHost(host: "bastion1.com", username: "user1"),
+                SSHJumpHost(host: "bastion2.com", username: "user2"),
+            ]
+        )
+        #expect(config.isValid == true)
+    }
+
+    @Test("Jump hosts validation fails when any invalid")
+    func testJumpHostsValidationFails() {
+        let config = SSHConfiguration(
+            enabled: true, host: "example.com", username: "admin",
+            authMethod: .sshAgent,
+            jumpHosts: [
+                SSHJumpHost(host: "bastion1.com", username: "user1"),
+                SSHJumpHost(host: "", username: "user2"),
+            ]
+        )
+        #expect(config.isValid == false)
+    }
+
+    // MARK: - SSHPathUtilities
+
+    @Test("Tilde expansion resolves ~/path to home directory")
+    func testTildeExpansionWithSubpath() {
+        let home = NSHomeDirectory()
+        let result = SSHPathUtilities.expandTilde("~/Library/agent.sock")
+        #expect(result == "\(home)/Library/agent.sock")
+    }
+
+    @Test("Tilde expansion resolves bare ~ to home directory")
+    func testTildeExpansionBare() {
+        let home = NSHomeDirectory()
+        let result = SSHPathUtilities.expandTilde("~")
+        #expect(result == home)
+    }
+
+    @Test("Tilde expansion leaves absolute paths unchanged")
+    func testTildeExpansionAbsolutePath() {
+        let result = SSHPathUtilities.expandTilde("/absolute/path")
+        #expect(result == "/absolute/path")
+    }
+
+    @Test("Tilde expansion leaves empty string unchanged")
+    func testTildeExpansionEmptyString() {
+        let result = SSHPathUtilities.expandTilde("")
+        #expect(result == "")
+    }
+
+    @Test("Backward-compatible decoding without jumpHosts key")
+    func testBackwardCompatibleDecoding() throws {
+        let jsonString = """
+        {
+            "enabled": true,
+            "host": "example.com",
+            "port": 22,
+            "username": "admin",
+            "authMethod": "Password",
+            "privateKeyPath": "",
+            "agentSocketPath": ""
+        }
+        """
+        let json = Data(jsonString.utf8)
+
+        let config = try JSONDecoder().decode(SSHConfiguration.self, from: json)
+        #expect(config.jumpHosts.isEmpty)
+        #expect(config.host == "example.com")
+        #expect(config.enabled == true)
+    }
+
+    @Test("None auth method is valid and round-trips through Codable")
+    func testNoneAuthRoundTrips() throws {
+        let config = SSHConfiguration(
+            enabled: true, host: "tailscale.example.com", username: "admin",
+            authMethod: .none
+        )
+        #expect(config.isValid == true)
+
+        let data = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(SSHConfiguration.self, from: data)
+        #expect(decoded.authMethod == .none)
+        #expect(decoded.host == "tailscale.example.com")
+    }
+
+    @Test("Unknown authMethod falls back to Password and preserves the tunnel config")
+    func testUnknownAuthMethodFallsBackToPassword() throws {
+        let jsonString = """
+        {
+            "enabled": true,
+            "host": "example.com",
+            "port": 2222,
+            "username": "admin",
+            "authMethod": "FutureMethodFromNewerApp",
+            "privateKeyPath": "",
+            "agentSocketPath": ""
+        }
+        """
+        let json = Data(jsonString.utf8)
+
+        let config = try JSONDecoder().decode(SSHConfiguration.self, from: json)
+        #expect(config.authMethod == .password)
+        #expect(config.host == "example.com")
+        #expect(config.port == 2_222)
+        #expect(config.enabled == true)
+    }
+
+    @Test("Decoding ignores legacy useSSHConfig field")
+    func testLegacyUseSSHConfigIgnored() throws {
+        let jsonString = """
+        {
+            "enabled": true,
+            "host": "legacy.example.com",
+            "port": 22,
+            "username": "admin",
+            "authMethod": "Password",
+            "privateKeyPath": "",
+            "useSSHConfig": false,
+            "agentSocketPath": ""
+        }
+        """
+        let json = Data(jsonString.utf8)
+
+        let config = try JSONDecoder().decode(SSHConfiguration.self, from: json)
+        #expect(config.host == "legacy.example.com")
+        #expect(config.enabled == true)
+    }
+}

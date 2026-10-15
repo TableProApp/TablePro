@@ -4,6 +4,8 @@
 //
 
 import Foundation
+import TableProMCP
+import TableProMCPTestSupport
 import TableProPluginKit
 import Testing
 

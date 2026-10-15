@@ -19,20 +19,20 @@ private final class DataScopeConnectionList {
 final class CompareSyncSessionDataScopeTests: XCTestCase {
     private let sourceConnection = UUID()
     private let targetConnection = UUID()
-    private let suiteName = "CompareSyncSessionDataScopeTests"
     private let failure = "Timed out reading the target."
     private var storage: CompareSyncProfileStorage?
+    private var suite: EphemeralDefaults?
 
-    override func setUp() {
-        super.setUp()
-        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
-        guard let defaults = UserDefaults(suiteName: suiteName) else { return }
-        storage = CompareSyncProfileStorage(defaults: defaults)
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        let suite = try EphemeralDefaults()
+        self.suite = suite
+        storage = CompareSyncProfileStorage(defaults: suite.defaults)
     }
 
     override func tearDown() {
-        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
         storage = nil
+        suite = nil
         super.tearDown()
     }
 

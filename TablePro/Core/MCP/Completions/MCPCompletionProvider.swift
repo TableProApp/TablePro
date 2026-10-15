@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 
 public actor MCPCompletionProvider {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Completion")

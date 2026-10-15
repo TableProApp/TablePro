@@ -1,6 +1,7 @@
 ---
 paths:
   - "Plugins/MySQLDriverPlugin/**/*"
+  - "Packages/TableProCore/Sources/TableProMySQLCore/**/*"
   - "TableProMobile/**/*MySQL*"
   - "TableProMobile/**/*MariaDB*"
 ---

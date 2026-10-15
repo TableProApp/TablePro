@@ -1,9 +1,9 @@
 import Foundation
+import TableProMCP
 import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("MCP HTTP Server Configuration", .serialized)
 struct MCPHttpServerConfigurationTests {
     @Test("The loopback factory carries the port and the standard limits")
     func loopbackFactory() {

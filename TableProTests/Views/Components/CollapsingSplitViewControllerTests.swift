@@ -1,13 +1,9 @@
-//
-//  CollapsingSplitViewControllerTests.swift
-//  TableProTests
-//
-//  The Users & Roles principal list collapses while the tab is too narrow for it and for nothing
-//  else. A list collapsed any other way has no divider left to drag it back by.
-//
+// The Users & Roles principal list collapses while the tab is too narrow for it and for nothing
+// else. A list collapsed any other way has no divider left to drag it back by.
 
 import AppKit
 import SwiftUI
+import TableProTestSupport
 import Testing
 
 @testable import TablePro
@@ -25,9 +21,12 @@ struct CollapsingSplitViewControllerTests {
         let primary = try #require(controller.splitViewItems.first)
 
         #expect(await settle(window) { primary.viewController.view.frame.width > 0 })
+        // A drag collapses inside setPosition, and the controller's next layout reopens a list that fits.
         controller.splitView.setPosition(0, ofDividerAt: 0)
+        #expect(!primary.isCollapsed)
 
-        #expect(!(await settle(window) { primary.isCollapsed }))
+        window.contentView?.layoutSubtreeIfNeeded()
+        #expect(!primary.isCollapsed)
     }
 
     @Test("A list restored collapsed opens again once there is room")
@@ -69,12 +68,11 @@ struct CollapsingSplitViewControllerTests {
     /// SwiftUI lays the representable out on its own pass, so the split controller's
     /// `viewDidLayout` runs after the window's synchronous layout returns.
     private func settle(_ window: NSWindow, until condition: () -> Bool) async -> Bool {
-        for _ in 0 ..< 50 {
+        let met: Void? = try? await waitUntil {
             window.contentView?.layoutSubtreeIfNeeded()
-            if condition() { return true }
-            try? await Task.sleep(for: .milliseconds(20))
+            return condition()
         }
-        return condition()
+        return met != nil
     }
 
     private func splitController(in view: NSView?) -> CollapsingSplitViewController? {

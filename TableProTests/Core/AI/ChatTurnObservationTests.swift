@@ -7,6 +7,7 @@ import Combine
 import Foundation
 import os
 @testable import TablePro
+import TableProMCP
 import Testing
 
 /// The granularity these assert is now `objectWillChange` per object rather than

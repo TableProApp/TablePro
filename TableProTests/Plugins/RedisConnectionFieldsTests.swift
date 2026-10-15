@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProRedisCore
 import Testing
 
 struct RedisConnectionFieldsTests {

@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public struct InitializeHandler: MCPMethodHandler {
     public static let method = "initialize"

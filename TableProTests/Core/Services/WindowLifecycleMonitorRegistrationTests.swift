@@ -12,7 +12,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("Window lifecycle monitor registration", .serialized)
 @MainActor
 struct WindowLifecycleMonitorRegistrationTests {
     private func makeWindow() -> NSWindow {

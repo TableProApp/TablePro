@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import TableProMySQLCore
 import TableProPluginKit
 
 nonisolated internal enum MySQLForeignKeyClause {

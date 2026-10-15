@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMCP
 
 struct GetConnectionStatusChatTool: ChatTool {
     let name = "get_connection_status"

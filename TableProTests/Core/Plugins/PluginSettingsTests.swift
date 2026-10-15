@@ -1,8 +1,3 @@
-//
-//  PluginSettingsTests.swift
-//  TableProTests
-//
-
 import Foundation
 import TableProPluginKit
 import Testing
@@ -129,7 +124,8 @@ struct PluginSettingsStorageTests {
     }
 }
 
-@Suite("SettablePlugin snapshot and restore", .serialized)
+// Every case writes and clears the one key `settingsStorageId` names.
+@Suite(.serialized)
 struct SettablePluginSnapshotTests {
     private struct TestOptions: Codable, Equatable {
         var flag = false

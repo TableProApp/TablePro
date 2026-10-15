@@ -10,6 +10,7 @@
 
 import Foundation
 @testable import TablePro
+@testable import TableProAutocomplete
 import Testing
 
 struct EditorSettingsKeywordCaseTests {

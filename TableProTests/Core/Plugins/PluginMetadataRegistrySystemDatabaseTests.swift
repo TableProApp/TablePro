@@ -11,6 +11,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProPostgreSQLCore
 import Testing
 
 @MainActor

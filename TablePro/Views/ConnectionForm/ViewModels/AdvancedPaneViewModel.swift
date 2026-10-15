@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 
 @MainActor
 final class AdvancedPaneViewModel: ObservableObject {

@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-@Suite("URLClassifier file extension routing", .serialized)
 @MainActor
 struct URLClassifierTests {
     @Test("Tabular files route to the data file window", arguments: [

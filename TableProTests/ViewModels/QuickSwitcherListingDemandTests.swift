@@ -1,15 +1,17 @@
-//
-//  QuickSwitcherListingDemandTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @MainActor
 struct QuickSwitcherListingDemandTests {
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
     // MARK: - Pure rules
 
     @Test("All asks for the listing on a query or for Recent, Tables always, the rest never")
@@ -99,34 +101,28 @@ struct QuickSwitcherListingDemandTests {
     }
 
     private func makeSwitcher(_ connection: DatabaseConnection) -> QuickSwitcherViewModel {
-        let defaults = UserDefaults(suiteName: "QuickSwitcherListingDemandTests.\(UUID().uuidString)") ?? .standard
-        return QuickSwitcherViewModel(
+        QuickSwitcherViewModel(
             connectionId: connection.id,
             services: .live,
-            defaults: defaults,
+            defaults: suite.defaults,
             catalogStore: QuickSwitcherCatalogStore()
         )
     }
 
-    private func waitUntil(_ condition: () -> Bool) async {
-        for _ in 0..<300 where !condition() {
-            try? await Task.sleep(nanoseconds: 10_000_000)
-        }
-    }
-
     @Test("Opening with nothing typed reads no other schema, and the first keystroke reads them once")
-    func listingWaitsForTheFirstKeystroke() async {
+    func listingWaitsForTheFirstKeystroke() async throws {
         let (connection, driver) = connect()
         let switcher = makeSwitcher(connection)
 
         await switcher.loadItems(databaseType: .pglite, browseSchema: "public")
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        // A listing sets isLoadingTables before its task runs, so after the barrier one is either still flagged or counted.
+        await switcher.flushPendingFilter()
         #expect(driver.fetchTablesInAllSchemasCallCount == 0)
         #expect(!switcher.isLoadingTables)
 
         switcher.searchText = "time"
         #expect(switcher.isLoadingTables)
-        await waitUntil { driver.fetchTablesInAllSchemasCallCount == 1 && !switcher.isLoadingTables }
+        try await waitUntil { driver.fetchTablesInAllSchemasCallCount == 1 && !switcher.isLoadingTables }
         switcher.searchText = "times"
 
         #expect(driver.fetchTablesInAllSchemasCallCount == 1)
@@ -135,13 +131,13 @@ struct QuickSwitcherListingDemandTests {
     }
 
     @Test("The Tables scope lists every schema's tables, so it reads them on open")
-    func tablesScopeReadsOnOpen() async {
+    func tablesScopeReadsOnOpen() async throws {
         let (connection, driver) = connect()
         let switcher = makeSwitcher(connection)
         switcher.scope = .tables
 
         await switcher.loadItems(databaseType: .pglite, browseSchema: "public")
-        await waitUntil { driver.fetchTablesInAllSchemasCallCount == 1 && !switcher.isLoadingTables }
+        try await waitUntil { driver.fetchTablesInAllSchemasCallCount == 1 && !switcher.isLoadingTables }
 
         #expect(driver.fetchTablesInAllSchemasCallCount == 1)
         await disconnect(connection)

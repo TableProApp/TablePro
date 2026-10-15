@@ -2,6 +2,13 @@
 
 import PackageDescription
 
+// The plugins and the iOS app compile this code under SWIFT_APPROACHABLE_CONCURRENCY and MemberImportVisibility.
+let pluginCoreSettings: [SwiftSetting] = [
+    .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
+    .enableUpcomingFeature("InferIsolatedConformances"),
+    .enableUpcomingFeature("MemberImportVisibility")
+]
+
 let package = Package(
     name: "TableProCore",
     platforms: [
@@ -40,7 +47,11 @@ let package = Package(
         .library(name: "CSQLite", targets: ["CSQLite"]),
         .library(name: "TableProSQLiteCore", targets: ["TableProSQLiteCore"]),
         .library(name: "TableProTabularIO", targets: ["TableProTabularIO"]),
-        .library(name: "TableProTabular", targets: ["TableProTabular"])
+        .library(name: "TableProTabular", targets: ["TableProTabular"]),
+        .library(name: "TableProMySQLCore", targets: ["TableProMySQLCore"]),
+        .library(name: "TableProPostgreSQLCore", targets: ["TableProPostgreSQLCore"]),
+        .library(name: "TableProRedisCore", targets: ["TableProRedisCore"]),
+        .library(name: "TableProTestSupport", targets: ["TableProTestSupport"])
     ],
     targets: [
         .target(
@@ -139,6 +150,11 @@ let package = Package(
             path: "Tests/TableProTLSTestFixtures"
         ),
         .target(
+            name: "TableProTestSupport",
+            dependencies: [],
+            path: "Tests/TableProTestSupport"
+        ),
+        .target(
             name: "TableProGoogleCloud",
             dependencies: [],
             path: "Sources/TableProGoogleCloud"
@@ -203,6 +219,25 @@ let package = Package(
             dependencies: ["CSQLite"],
             path: "Sources/TableProSQLiteCore"
         ),
+        // Linked by a plugin bundle, so never TableProPluginKit: the plugin would carry its own copy of PluginKit's types.
+        .target(
+            name: "TableProMySQLCore",
+            dependencies: ["TableProGeometry"],
+            path: "Sources/TableProMySQLCore",
+            swiftSettings: pluginCoreSettings
+        ),
+        .target(
+            name: "TableProPostgreSQLCore",
+            dependencies: [],
+            path: "Sources/TableProPostgreSQLCore",
+            swiftSettings: pluginCoreSettings
+        ),
+        .target(
+            name: "TableProRedisCore",
+            dependencies: [],
+            path: "Sources/TableProRedisCore",
+            swiftSettings: pluginCoreSettings
+        ),
         .testTarget(
             name: "TableProBigtableCoreTests",
             dependencies: ["TableProBigtableCore"],
@@ -225,7 +260,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProCoreTypesTests",
-            dependencies: ["TableProCoreTypes"],
+            dependencies: ["TableProCoreTypes", "TableProTestSupport"],
             path: "Tests/TableProCoreTypesTests"
         ),
         .testTarget(
@@ -265,7 +300,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProDatabaseTests",
-            dependencies: ["TableProDatabase", "TableProModels", "TableProPluginKit"],
+            dependencies: ["TableProDatabase", "TableProModels", "TableProPluginKit", "TableProTestSupport"],
             path: "Tests/TableProDatabaseTests"
         ),
         .testTarget(
@@ -285,7 +320,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProMSSQLCoreTests",
-            dependencies: ["TableProMSSQLCore"],
+            dependencies: ["TableProMSSQLCore", "TableProTestSupport"],
             path: "Tests/TableProMSSQLCoreTests"
         ),
         .testTarget(
@@ -295,7 +330,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProGoogleCloudTests",
-            dependencies: ["TableProGoogleCloud"],
+            dependencies: ["TableProGoogleCloud", "TableProTestSupport"],
             path: "Tests/TableProGoogleCloudTests"
         ),
         .testTarget(
@@ -307,6 +342,24 @@ let package = Package(
             name: "TableProPluginKitTests",
             dependencies: ["TableProPluginKit"],
             path: "Tests/TableProPluginKitTests"
+        ),
+        .testTarget(
+            name: "TableProMySQLCoreTests",
+            dependencies: ["TableProMySQLCore"],
+            path: "Tests/TableProMySQLCoreTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProPostgreSQLCoreTests",
+            dependencies: ["TableProPostgreSQLCore"],
+            path: "Tests/TableProPostgreSQLCoreTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProRedisCoreTests",
+            dependencies: ["TableProRedisCore"],
+            path: "Tests/TableProRedisCoreTests",
+            swiftSettings: pluginCoreSettings
         )
     ]
 )

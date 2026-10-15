@@ -1,4 +1,5 @@
 import Foundation
+import TableProMySQLCore
 
 internal enum MySQLKillTarget: Equatable, Sendable {
     case threadId

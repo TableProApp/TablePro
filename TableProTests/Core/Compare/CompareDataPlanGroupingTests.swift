@@ -8,10 +8,11 @@
 //  list, and that a group header expands to exactly the plans a bulk include should touch.
 //
 
+import Foundation
 @testable import TablePro
-import XCTest
+import Testing
 
-final class CompareDataPlanGroupingTests: XCTestCase {
+struct CompareDataPlanGroupingTests {
     private let comparators = [KeyPathComparator(\CompareDataPlanRow.tableName)]
 
     private func plan(
@@ -44,31 +45,35 @@ final class CompareDataPlanGroupingTests: XCTestCase {
 
     // MARK: - Search
 
-    func testSearchMatchesTableNamesCaseInsensitively() {
+    @Test
+    func searchMatchesTableNamesCaseInsensitively() {
         let matched = CompareDataPlanGrouping.matching(
             [plan("orders"), plan("customers"), plan("order_items")],
             searchText: "ORDER"
         )
 
-        XCTAssertEqual(matched.map { $0.id }, ["public.orders", "public.order_items"])
+        #expect(matched.map { $0.id } == ["public.orders", "public.order_items"])
     }
 
-    func testAnEmptySearchKeepsEveryPlan() {
+    @Test
+    func anEmptySearchKeepsEveryPlan() {
         let plans = [plan("orders"), plan("customers")]
 
-        XCTAssertEqual(CompareDataPlanGrouping.matching(plans, searchText: "   ").count, 2)
-        XCTAssertEqual(CompareDataPlanGrouping.matching(plans, searchText: "").count, 2)
+        #expect(CompareDataPlanGrouping.matching(plans, searchText: "   ").count == 2)
+        #expect(CompareDataPlanGrouping.matching(plans, searchText: "").count == 2)
     }
 
-    func testSearchMatchesTheQualifiedName() {
+    @Test
+    func searchMatchesTheQualifiedName() {
         let matched = CompareDataPlanGrouping.matching([plan("orders")], searchText: "public.")
 
-        XCTAssertEqual(matched.count, 1)
+        #expect(matched.count == 1)
     }
 
     // MARK: - Sections
 
-    func testGroupingByDifferenceSeparatesEveryOutcome() {
+    @Test
+    func groupingByDifferenceSeparatesEveryOutcome() {
         let groups = CompareDataPlanGrouping.groups(
             from: [
                 plan("orders", summary: summary(inserts: 3)),
@@ -80,49 +85,53 @@ final class CompareDataPlanGroupingTests: XCTestCase {
             sortedUsing: comparators
         )
 
-        XCTAssertEqual(groups.count, 4)
-        XCTAssertEqual(groups.flatMap { $0.rows }.count, 4)
-        XCTAssertEqual(groups.map { $0.rows.count }, [1, 1, 1, 1])
+        #expect(groups.count == 4)
+        #expect(groups.flatMap { $0.rows }.count == 4)
+        #expect(groups.map { $0.rows.count } == [1, 1, 1, 1])
     }
 
     /// A plan nobody has run and a plan that matched are different answers. Folding them together
     /// would report a table that was never compared as identical.
-    func testAPlanThatWasNeverComparedIsNotReportedAsIdentical() {
+    @Test
+    func aPlanThatWasNeverComparedIsNotReportedAsIdentical() {
         let groups = CompareDataPlanGrouping.groups(
             from: [plan("customers", summary: summary(identical: 4)), plan("audit")],
             grouping: .byDifference,
             sortedUsing: comparators
         )
 
-        XCTAssertEqual(groups.count, 2)
-        XCTAssertTrue(groups.allSatisfy { $0.rows.count == 1 }, "the two outcomes never share a section")
-        XCTAssertEqual(Set(groups.map { $0.header.id }).count, 2)
+        #expect(groups.count == 2)
+        #expect(groups.allSatisfy { $0.rows.count == 1 }, "the two outcomes never share a section")
+        #expect(Set(groups.map { $0.header.id }).count == 2)
     }
 
-    func testAnEmptyBucketProducesNoSection() {
+    @Test
+    func anEmptyBucketProducesNoSection() {
         let groups = CompareDataPlanGrouping.groups(
             from: [plan("orders", summary: summary(inserts: 1))],
             grouping: .byDifference,
             sortedUsing: comparators
         )
 
-        XCTAssertEqual(groups.count, 1)
+        #expect(groups.count == 1)
     }
 
     /// Every plan is a table, so this grouping is one section rather than none. The control stays
     /// live and says what it grouped by instead of looking broken in one of the two modes.
-    func testGroupingByObjectTypeProducesOneSection() {
+    @Test
+    func groupingByObjectTypeProducesOneSection() {
         let groups = CompareDataPlanGrouping.groups(
             from: [plan("orders"), plan("customers")],
             grouping: .byObjectType,
             sortedUsing: comparators
         )
 
-        XCTAssertEqual(groups.count, 1)
-        XCTAssertEqual(groups.first?.rows.count, 2)
+        #expect(groups.count == 1)
+        #expect(groups.first?.rows.count == 2)
     }
 
-    func testNoGroupingProducesFlatRows() {
+    @Test
+    func noGroupingProducesFlatRows() {
         let rows = CompareDataPlanGrouping.rows(
             from: [plan("orders"), plan("customers")], sortedUsing: comparators
         )
@@ -130,14 +139,15 @@ final class CompareDataPlanGroupingTests: XCTestCase {
             from: [plan("orders"), plan("customers")], grouping: .none, sortedUsing: comparators
         )
 
-        XCTAssertEqual(rows.map { $0.tableName }, ["public.customers", "public.orders"])
-        XCTAssertTrue(rows.allSatisfy { !$0.isGroup })
-        XCTAssertTrue(groups.isEmpty)
+        #expect(rows.map { $0.tableName } == ["public.customers", "public.orders"])
+        #expect(rows.allSatisfy { !$0.isGroup })
+        #expect(groups.isEmpty)
     }
 
     // MARK: - Bulk include
 
-    func testGroupMembersExcludeUnreadablePlans() {
+    @Test
+    func groupMembersExcludeUnreadablePlans() {
         let groups = CompareDataPlanGrouping.groups(
             from: [plan("orders"), plan("legacy", unavailableReason: "No primary key.")],
             grouping: .byObjectType,
@@ -145,10 +155,11 @@ final class CompareDataPlanGroupingTests: XCTestCase {
         )
 
         let members = groups.flatMap { $0.header.memberIds }
-        XCTAssertEqual(members, ["public.orders"])
+        #expect(members == ["public.orders"])
     }
 
-    func testSelectingAGroupHeaderExpandsToItsMembers() {
+    @Test
+    func selectingAGroupHeaderExpandsToItsMembers() {
         let groups = CompareDataPlanGrouping.groups(
             from: [plan("orders"), plan("customers")],
             grouping: .byObjectType,
@@ -158,27 +169,30 @@ final class CompareDataPlanGroupingTests: XCTestCase {
 
         let ids = CompareDataPlanGrouping.planIds(in: [header], groups: groups)
 
-        XCTAssertEqual(ids.sorted(), ["public.customers", "public.orders"])
+        #expect(ids.sorted() == ["public.customers", "public.orders"])
     }
 
-    func testSelectingPlansPassesTheirOwnIdentifiersThrough() {
+    @Test
+    func selectingPlansPassesTheirOwnIdentifiersThrough() {
         let ids = CompareDataPlanGrouping.planIds(in: ["public.orders"], groups: [])
 
-        XCTAssertEqual(ids, ["public.orders"])
+        #expect(ids == ["public.orders"])
     }
 
-    func testAGroupIdentifierCannotCollideWithAPlanIdentifier() {
+    @Test
+    func aGroupIdentifierCannotCollideWithAPlanIdentifier() {
         let groups = CompareDataPlanGrouping.groups(
             from: [plan("orders")], grouping: .byObjectType, sortedUsing: comparators
         )
 
-        XCTAssertTrue(CompareDataPlanGrouping.isGroupIdentifier(groups[0].header.id))
-        XCTAssertFalse(CompareDataPlanGrouping.isGroupIdentifier(plan("orders").id))
+        #expect(CompareDataPlanGrouping.isGroupIdentifier(groups[0].header.id))
+        #expect(!(CompareDataPlanGrouping.isGroupIdentifier(plan("orders").id)))
     }
 
     // MARK: - Header counts
 
-    func testAGroupHeaderSumsItsMembersCounts() {
+    @Test
+    func aGroupHeaderSumsItsMembersCounts() {
         let groups = CompareDataPlanGrouping.groups(
             from: [
                 plan("orders", summary: summary(inserts: 2, updates: 1, deletes: 0, identical: 5)),
@@ -189,15 +203,16 @@ final class CompareDataPlanGroupingTests: XCTestCase {
         )
         let header = groups.first?.header
 
-        XCTAssertEqual(header?.insertCount, 5)
-        XCTAssertEqual(header?.updateCount, 1)
-        XCTAssertEqual(header?.deleteCount, 4)
-        XCTAssertEqual(header?.identicalCount, 11)
+        #expect(header?.insertCount == 5)
+        #expect(header?.updateCount == 1)
+        #expect(header?.deleteCount == 4)
+        #expect(header?.identicalCount == 11)
     }
 
     /// Nothing compared means no number, not a zero: the count columns draw a blank for a table
     /// nobody ran, and a header has to say the same thing rather than claim it found none.
-    func testAGroupWithNothingComparedCarriesNoCounts() {
+    @Test
+    func aGroupWithNothingComparedCarriesNoCounts() {
         let groups = CompareDataPlanGrouping.groups(
             from: [plan("orders"), plan("customers")],
             grouping: .byObjectType,
@@ -205,17 +220,18 @@ final class CompareDataPlanGroupingTests: XCTestCase {
         )
         let header = groups.first?.header
 
-        XCTAssertNil(header?.insertCount)
-        XCTAssertNil(header?.identicalCount)
+        #expect(header?.insertCount == nil)
+        #expect(header?.identicalCount == nil)
     }
 
-    func testAPlanRowCarriesItsOwnCounts() {
+    @Test
+    func aPlanRowCarriesItsOwnCounts() {
         let rows = CompareDataPlanGrouping.rows(
             from: [plan("orders", summary: summary(inserts: 2, identical: 7))], sortedUsing: comparators
         )
 
-        XCTAssertEqual(rows.first?.insertCount, 2)
-        XCTAssertEqual(rows.first?.identicalCount, 7)
-        XCTAssertNotNil(rows.first?.plan)
+        #expect(rows.first?.insertCount == 2)
+        #expect(rows.first?.identicalCount == 7)
+        #expect(rows.first?.plan != nil)
     }
 }

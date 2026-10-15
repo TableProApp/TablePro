@@ -1,12 +1,8 @@
-//
-//  MainWindowToolbarValidationTests.swift
-//  TableProTests
-//
-
 import AppKit
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -79,16 +75,11 @@ struct MainWindowToolbarValidationTests {
         return (owner, toolbar)
     }
 
-    private func waitForValidation(_ toolbar: RecordingToolbar, after baseline: Int) async {
-        for _ in 0..<10 {
-            guard toolbar.validationCount <= baseline else { return }
-            await Task.yield()
-        }
-    }
-
-    private func drainMainActor() async {
-        for _ in 0..<10 {
-            await Task.yield()
+    /// `onMainActorChange` delivers through `RunLoop.main.perform`, which runs blocks in the order
+    /// they were queued, so this returns after every callback a change queued before it.
+    private func runLoopTurn() async {
+        await withCheckedContinuation { continuation in
+            RunLoop.main.perform { continuation.resume() }
         }
     }
 
@@ -325,8 +316,8 @@ struct MainWindowToolbarValidationTests {
 
     @Test("Item validation reads the live session, not the connected state alone")
     func validateToolbarItemFollowsLiveSession() {
-        let coordinator = makeCoordinator()
-        defer { coordinator.teardown() }
+        let coordinatorFixture = makeFixture()
+        let coordinator = coordinatorFixture.coordinator
         let owner = MainWindowToolbar()
         owner.repoint(to: coordinator)
         let refresh = NSToolbarItem(itemIdentifier: MainWindowToolbar.refresh)
@@ -344,12 +335,10 @@ struct MainWindowToolbarValidationTests {
 
     @Test("Pending changes revalidate native items with the final state")
     func pendingChangesRevalidateNativeItems() async throws {
-        let coordinator = makeCoordinator()
+        let coordinatorFixture = makeFixture()
+        let coordinator = coordinatorFixture.coordinator
         let (owner, toolbar) = makeRecordingOwner()
-        defer {
-            owner.invalidate()
-            coordinator.teardown()
-        }
+        defer { owner.invalidate() }
         coordinator.toolbarState.connectionState = .connected
         toolbar.pendingSnapshotProvider = {
             (
@@ -362,7 +351,7 @@ struct MainWindowToolbarValidationTests {
         let dirtyBaseline = toolbar.validationCount
         coordinator.toolbarState.hasDataPendingChanges = true
         coordinator.toolbarState.hasPendingChanges = true
-        await waitForValidation(toolbar, after: dirtyBaseline)
+        try await waitUntil { toolbar.validationCount > dirtyBaseline }
 
         #expect(toolbar.validationCount > dirtyBaseline)
         let dirtySnapshot = try #require(toolbar.pendingSnapshots.last)
@@ -372,7 +361,7 @@ struct MainWindowToolbarValidationTests {
         let cleanBaseline = toolbar.validationCount
         coordinator.toolbarState.hasDataPendingChanges = false
         coordinator.toolbarState.hasPendingChanges = false
-        await waitForValidation(toolbar, after: cleanBaseline)
+        try await waitUntil { toolbar.validationCount > cleanBaseline }
 
         #expect(toolbar.validationCount > cleanBaseline)
         let cleanSnapshot = try #require(toolbar.pendingSnapshots.last)
@@ -385,12 +374,10 @@ struct MainWindowToolbarValidationTests {
     /// beside `hasPendingChanges`, and it is the one the commit control reads.
     @Test("Overflow Save and Preview use the pending-change predicates")
     func overflowPendingActionsValidateAgainstCurrentState() throws {
-        let coordinator = makeCoordinator()
+        let coordinatorFixture = makeFixture()
+        let coordinator = coordinatorFixture.coordinator
         let owner = MainWindowToolbar()
-        defer {
-            owner.invalidate()
-            coordinator.teardown()
-        }
+        defer { owner.invalidate() }
         coordinator.toolbarState.connectionState = .connected
         owner.repoint(to: coordinator)
 
@@ -423,54 +410,52 @@ struct MainWindowToolbarValidationTests {
     }
 
     @Test("A queued validation cannot cross a toolbar repoint")
-    func queuedValidationCannotCrossRepoint() async {
-        let first = makeCoordinator()
-        let second = makeCoordinator()
+    func queuedValidationCannotCrossRepoint() async throws {
+        let firstFixture = makeFixture()
+        let secondFixture = makeFixture()
+        let first = firstFixture.coordinator
+        let second = secondFixture.coordinator
         let (owner, toolbar) = makeRecordingOwner()
-        defer {
-            owner.invalidate()
-            first.teardown()
-            second.teardown()
-        }
+        defer { owner.invalidate() }
 
         owner.repoint(to: first)
         first.toolbarState.hasPendingChanges = true
         owner.repoint(to: second)
         let repointBaseline = toolbar.validationCount
-        await drainMainActor()
+        await runLoopTurn()
         #expect(toolbar.validationCount == repointBaseline)
 
         first.toolbarState.hasPendingChanges = false
-        await drainMainActor()
+        await runLoopTurn()
         #expect(toolbar.validationCount == repointBaseline)
 
         second.toolbarState.hasPendingChanges = true
-        await waitForValidation(toolbar, after: repointBaseline)
+        try await waitUntil { toolbar.validationCount > repointBaseline }
         #expect(toolbar.validationCount > repointBaseline)
     }
 
     @Test("Invalidation drops queued and future pending-state callbacks")
     func invalidationDropsPendingStateCallbacks() async {
-        let coordinator = makeCoordinator()
+        let coordinatorFixture = makeFixture()
+        let coordinator = coordinatorFixture.coordinator
         let (owner, toolbar) = makeRecordingOwner()
-        defer { coordinator.teardown() }
 
         owner.repoint(to: coordinator)
         coordinator.toolbarState.hasPendingChanges = true
         owner.invalidate()
         let invalidationBaseline = toolbar.validationCount
-        await drainMainActor()
+        await runLoopTurn()
         #expect(toolbar.validationCount == invalidationBaseline)
 
         coordinator.toolbarState.hasPendingChanges = false
-        await drainMainActor()
+        await runLoopTurn()
         #expect(toolbar.validationCount == invalidationBaseline)
     }
 
     @Test("Toolbar is configured for user customization and autosave")
     func toolbarConfigurationEnablesAutosave() {
-        let coordinator = makeCoordinator()
-        defer { coordinator.teardown() }
+        let coordinatorFixture = makeFixture()
+        let coordinator = coordinatorFixture.coordinator
         let owner = MainWindowToolbar()
         owner.repoint(to: coordinator)
         #expect(owner.managedToolbar.identifier == MainWindowToolbar.toolbarIdentifier)
@@ -480,8 +465,8 @@ struct MainWindowToolbarValidationTests {
 
     @Test("Allowed item identifiers are a superset of defaults so restored items survive autosave")
     func allowedItemIdentifiersAreSupersetOfDefaults() {
-        let coordinator = makeCoordinator()
-        defer { coordinator.teardown() }
+        let coordinatorFixture = makeFixture()
+        let coordinator = coordinatorFixture.coordinator
         let owner = MainWindowToolbar()
         owner.repoint(to: coordinator)
         let toolbar = owner.managedToolbar
@@ -490,37 +475,25 @@ struct MainWindowToolbarValidationTests {
         #expect(defaults.isSubset(of: allowed))
     }
 
-    private func makeCoordinator() -> MainContentCoordinator {
-        MainContentCoordinator(
-            connection: TestFixtures.makeConnection(database: "db_a"),
-            tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
+    private func makeFixture() -> CoordinatorFixture {
+        CoordinatorFixture(connection: TestFixtures.makeConnection(database: "db_a"))
     }
 }
 
 @MainActor
 struct MainWindowToolbarRepointTests {
-    private func makeCoordinator() -> MainContentCoordinator {
-        MainContentCoordinator(
-            connection: TestFixtures.makeConnection(database: "db_a"),
-            tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
+    private func makeFixture() -> CoordinatorFixture {
+        CoordinatorFixture(connection: TestFixtures.makeConnection(database: "db_a"))
     }
 
     /// The window keeps one toolbar and points it at whichever connection it is showing, so a
     /// switch has to change what the items are about without rebuilding them.
     @Test("Repointing changes the subject the items read")
     func repointChangesTheSubject() {
-        let first = makeCoordinator()
-        let second = makeCoordinator()
-        defer {
-            first.teardown()
-            second.teardown()
-        }
+        let firstFixture = makeFixture()
+        let secondFixture = makeFixture()
+        let first = firstFixture.coordinator
+        let second = secondFixture.coordinator
         let owner = MainWindowToolbar()
 
         owner.repoint(to: first)
@@ -538,8 +511,8 @@ struct MainWindowToolbarRepointTests {
     /// forward.
     @Test("Repointing to the same coordinator is a no-op")
     func repointToSameCoordinatorIsIgnored() {
-        let coordinator = makeCoordinator()
-        defer { coordinator.teardown() }
+        let coordinatorFixture = makeFixture()
+        let coordinator = coordinatorFixture.coordinator
         let owner = MainWindowToolbar()
 
         owner.repoint(to: coordinator)
@@ -553,12 +526,10 @@ struct MainWindowToolbarRepointTests {
     /// pinned it to the collapsed glyph for good once that coordinator went away.
     @Test("The Results glyph follows the repointed connection")
     func resultsSymbolFollowsTheRepointedConnection() throws {
-        let collapsed = makeCoordinator()
-        let expanded = makeCoordinator()
-        defer {
-            collapsed.teardown()
-            expanded.teardown()
-        }
+        let collapsedFixture = makeFixture()
+        let expandedFixture = makeFixture()
+        let collapsed = collapsedFixture.coordinator
+        let expanded = expandedFixture.coordinator
         collapsed.toolbarState.isResultsCollapsed = true
         expanded.toolbarState.isResultsCollapsed = false
 

@@ -34,40 +34,40 @@ struct TableStructureIndexReplayTests {
         TableStructureSnapshot(name: "users", columns: [], indexes: indexes)
     }
 
-    /// Measured on PostgreSQL 17.11: the statement below, run under `search_path = dst`, recreated the
-    /// index identically. The field-built one it replaces wrote `UNIQUE (tenant_id)`, which refused two
-    /// rows the source accepts, and `USING gin ("email")` with no operator class, which the server
-    /// refused outright.
-    @Test("An index read from the catalog is written back from the server's own spelling")
-    func catalogIndexReplaysItsSpelling() throws {
-        let ddl = PostgreSQLIndexQueries.indexDDL(rows: [
-            [.text("users"), .text("users_tenant_lower_email"), .text("USING btree (tenant_id, lower(email))"), .null],
-            [.text("users"), .text("users_email_trgm"), .text("USING gin (email public.gin_trgm_ops)"), .null],
-            [.text("users"), .text("users_partial_fn"), .text("USING btree (id)"), .text("public.st_isvalid(shape)")]
+    /// What PostgreSQLIndexRow reads from PostgreSQL 17.11's catalog for the probe schema. PostgreSQLDriverTests'
+    /// PostgreSQLIndexReplayTests holds the plugin to writing `CREATE INDEX` from these spellings.
+    private static let catalogIndexes = [
+        PluginIndexInfo(
+            name: "users_tenant_lower_email", columns: ["tenant_id", "lower(email)"], isUnique: true,
+            expressions: ["lower(email)"], includedColumns: nil,
+            ddlMethodAndKeys: "USING btree (tenant_id, lower(email))", ddlWhereClause: nil
+        ),
+        PluginIndexInfo(
+            name: "users_email_trgm", columns: ["email"], type: "GIN",
+            expressions: nil, includedColumns: nil,
+            ddlMethodAndKeys: "USING gin (email public.gin_trgm_ops)", ddlWhereClause: nil
+        ),
+        PluginIndexInfo(
+            name: "users_partial_fn", columns: ["id"], whereClause: "st_isvalid(shape)",
+            expressions: nil, includedColumns: nil,
+            ddlMethodAndKeys: "USING btree (id)", ddlWhereClause: "public.st_isvalid(shape)"
+        )
+    ]
+
+    /// Measured on PostgreSQL 17.11: written from these spellings under `search_path = dst`, each index came back
+    /// identical, where the field-built statement lost the expression key and the gin operator class.
+    @Test("An index read from the catalog reaches the driver with the server's own spelling")
+    func catalogIndexReplaysItsSpelling() {
+        let written = Self.snapshot(Self.catalogIndexes).indexes.map { $0.toPlugin() }
+
+        #expect(written.map(\.name) == ["users_tenant_lower_email", "users_email_trgm", "users_partial_fn"])
+        #expect(written.map(\.isUnique) == [true, false, false])
+        #expect(written.map(\.ddlMethodAndKeys) == [
+            "USING btree (tenant_id, lower(email))",
+            "USING gin (email public.gin_trgm_ops)",
+            "USING btree (id)"
         ])
-        let rows: [[PluginCellValue]] = [
-            [
-                .text("users"), .text("users_tenant_lower_email"), .text("{tenant_id,lower(email)}"), .text("true"),
-                .text("false"), .text("btree"), .null, .text("{lower(email)}"), .text("{}")
-            ],
-            [
-                .text("users"), .text("users_email_trgm"), .text("{email}"), .text("false"), .text("false"),
-                .text("gin"), .null, .text("{}"), .text("{}")
-            ],
-            [
-                .text("users"), .text("users_partial_fn"), .text("{id}"), .text("false"), .text("false"),
-                .text("btree"), .text("st_isvalid(shape)"), .text("{}"), .text("{}")
-            ]
-        ]
-        let indexes = rows.compactMap { PostgreSQLIndexRow.index(from: $0, ddl: ddl)?.index }
-        let statements = Self.snapshot(indexes).indexes.map {
-            PostgreSQLIndexClauses.createStatement(for: $0.toPlugin(), qualifiedTable: #""dst"."users""#)
-        }
-        #expect(statements == [
-            #"CREATE UNIQUE INDEX "users_tenant_lower_email" ON "dst"."users" USING btree (tenant_id, lower(email))"#,
-            #"CREATE INDEX "users_email_trgm" ON "dst"."users" USING gin (email public.gin_trgm_ops)"#,
-            #"CREATE INDEX "users_partial_fn" ON "dst"."users" USING btree (id) WHERE public.st_isvalid(shape)"#
-        ])
+        #expect(written.map(\.ddlWhereClause) == [nil, nil, "public.st_isvalid(shape)"])
     }
 
     @Test("An index that differs only in its INCLUDE columns is a real change")

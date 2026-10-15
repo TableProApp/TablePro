@@ -8,6 +8,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProAutocomplete
 import TableProPluginKit
 import Testing
 
@@ -104,7 +105,6 @@ private func populateCache(
 
 // MARK: - Tests
 
-@Suite("SQLSchemaProvider Fallback Columns", .serialized)
 @MainActor
 struct SQLSchemaProviderFallbackTests {
     // MARK: - allColumnsFromCachedTables

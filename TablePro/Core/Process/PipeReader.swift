@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProUtilities
 
 internal final class PipeReader: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "PipeReader")

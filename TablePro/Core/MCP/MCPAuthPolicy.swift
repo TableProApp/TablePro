@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import os
+import TableProMCP
 
 typealias MCPToolName = String
 

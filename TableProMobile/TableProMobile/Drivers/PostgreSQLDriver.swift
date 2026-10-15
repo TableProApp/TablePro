@@ -4,6 +4,7 @@ import os
 import TableProDatabase
 import TableProModels
 import TableProPluginKit
+import TableProPostgreSQLCore
 import TableProQuery
 import TableProSQLGrammar
 
@@ -419,7 +420,7 @@ private actor PostgreSQLActor {
 
         if let copy = result.flatMap(LibPQCopyState.copy(of:)) {
             _ = finishPendingResults(conn, cancellingOutput: cancelsOutput)
-            throw PostgreSQLError.unsupported(copy.direction.unsupportedMessage)
+            throw PostgreSQLError.unsupported(copy.direction.mobileUnsupportedMessage)
         }
 
         if status == PGRES_FATAL_ERROR {
@@ -928,7 +929,7 @@ nonisolated enum PostgreSQLStreamEnd: Equatable, Sendable {
         case .cancelled:
             return CancellationError()
         case .abandonedCopy(let direction):
-            return PostgreSQLError.unsupported(direction.unsupportedMessage)
+            return PostgreSQLError.unsupported(direction.mobileUnsupportedMessage)
         case .failed(let message):
             return PostgreSQLError.queryFailed(message)
         }

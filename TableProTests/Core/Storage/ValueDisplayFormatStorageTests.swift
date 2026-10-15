@@ -9,8 +9,10 @@ import Testing
 
 @MainActor
 struct ValueDisplayFormatStorageTests {
+    private let pool = EphemeralDefaultsPool()
+
     private func makeStorage() throws -> (ValueDisplayFormatStorage, UserDefaults) {
-        let defaults = try #require(UserDefaults(suiteName: "vdf-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         return (ValueDisplayFormatStorage(defaults: defaults), defaults)
     }
 

@@ -1,25 +1,14 @@
-//
-//  KeyWindowCommandSubscriptionTests.swift
-//  TableProTests
-//
-
 import AppKit
 import Combine
 import Foundation
-import Testing
-
 @testable import TablePro
+import TableProTestSupport
+import Testing
 
 @MainActor
 struct KeyWindowCommandSubscriptionTests {
     private final class Received {
         var payloads: [Int] = []
-    }
-
-    private func waitUntil(_ condition: () -> Bool) async throws {
-        for _ in 0 ..< 200 where !condition() {
-            try await Task.sleep(for: .milliseconds(10))
-        }
     }
 
     @Test("Only the subscriber whose window is frontmost runs the command")
@@ -35,8 +24,9 @@ struct KeyWindowCommandSubscriptionTests {
         }
 
         subject.send(7)
+        // Deliveries run on the main run loop in subscription order, so the background
+        // subscriber's has run by the time the frontmost one's lands.
         try await waitUntil { !frontmost.payloads.isEmpty }
-        try await Task.sleep(for: .milliseconds(50))
 
         #expect(frontmost.payloads == [7])
         #expect(background.payloads.isEmpty)
@@ -58,12 +48,18 @@ struct KeyWindowCommandSubscriptionTests {
         let subscription = KeyWindowCommandSubscription.sink(subject, whileKey: { window }) { _ in
             received.payloads.append(1)
         }
+        // Subscribed after, so its delivery on the main run loop comes after the window's.
+        let control = Received()
+        let controlSubscription = KeyWindowCommandSubscription.sink(subject, when: { true }) { _ in
+            control.payloads.append(1)
+        }
 
         subject.send(())
-        try await Task.sleep(for: .milliseconds(100))
+        try await waitUntil { !control.payloads.isEmpty }
 
         #expect(!window.isKeyWindow)
         #expect(received.payloads.isEmpty)
         subscription.cancel()
+        controlSubscription.cancel()
     }
 }

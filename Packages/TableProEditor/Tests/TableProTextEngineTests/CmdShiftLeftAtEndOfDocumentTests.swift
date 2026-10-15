@@ -23,23 +23,12 @@ struct CmdShiftLeftAtEndOfDocumentTests {
 
     // MARK: - rangeOfSelection (pure range computation)
 
-    @Test("Cmd+Left at end of single-line query returns range covering last word")
-    func cmdLeftRangeAtEndOfSingleLine() {
-        let textView = makeLaidOutTextView("select * from products")
-        let length = (textView.string as NSString).length
-
-        let range = textView.selectionManager.rangeOfSelection(
-            from: length,
-            direction: .backward,
-            destination: .word
-        )
-
-        #expect(range == NSRange(location: 14, length: 8))
-    }
-
-    @Test("Cmd+Left at end of multi-line query returns range covering last word")
-    func cmdLeftRangeAtEndOfMultiLine() {
-        let textView = makeLaidOutTextView("select *\nfrom products")
+    @Test("Cmd+Left at end of a single- or multi-line query returns range covering last word", arguments: [
+        "select * from products",
+        "select *\nfrom products",
+    ])
+    func cmdLeftRangeAtEnd(_ query: String) {
+        let textView = makeLaidOutTextView(query)
         let length = (textView.string as NSString).length
 
         let range = textView.selectionManager.rangeOfSelection(

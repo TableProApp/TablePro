@@ -1,12 +1,3 @@
-//
-//  FakeMSSQLPlugin.swift
-//  TableProTests
-//
-//  Minimal MSSQL driver stub registered with PluginManager so tests that
-//  resolve the SQL Server plugin (queryBuildingDriver, sqlDialect lookups)
-//  succeed without bundling the real MSSQLDriverPlugin.
-//
-
 import Foundation
 import os
 @testable import TablePro
@@ -46,6 +37,7 @@ actor FakeMSSQLConnectHold {
     }
 }
 
+// Registered with PluginManager, so a case that resolves the SQL Server plugin needs no real bundle.
 final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     struct CreatedDriverConfiguration: Equatable, Sendable {
         let host: String
@@ -159,7 +151,7 @@ final class FakeMSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 }
 
-final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+final class FakeMSSQLPluginDriver: PluginDriverStub, @unchecked Sendable {
     var supportsSchemas: Bool { true }
     var currentSchema: String? { "dbo" }
     var parameterStyle: ParameterStyle { .questionMark }
@@ -203,24 +195,6 @@ final class FakeMSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func applyQueryTimeout(_ seconds: Int) async throws {
         queryTimeoutValues.withLock { $0.append(seconds) }
-    }
-
-    func execute(query: String) async throws -> PluginQueryResult {
-        PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
-
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
     }
 
     func quoteIdentifier(_ name: String) -> String {

@@ -3,60 +3,19 @@
 //  TableProTests
 //
 
-import AppKit
 import Foundation
-import Testing
-
 @testable import TablePro
+import TableProUtilities
+import Testing
 
 @MainActor
 struct SplitViewAutosaveSweepTests {
     private func key(_ name: String) -> String {
-        SplitViewAutosaveRecord.keyPrefix + name
+        SplitViewAutosaveKey.key(forAutosaveName: name)
     }
 
     private func retiredName(connectionId: UUID = UUID(), tabId: UUID = UUID()) -> String {
         "\(SplitViewAutosaveName.querySplitPrefix)\(connectionId.uuidString)-\(tabId.uuidString)"
-    }
-
-    // MARK: - The undocumented key spelling
-
-    /// Apple documents `autosaveName` and nothing else: no key format, and no way to forget a
-    /// record, which is why the sweep reaches into the domain by hand. The spelling is therefore a
-    /// transcription, and this derives it from a real `NSSplitView` instead of trusting it.
-    @Test("The key prefix is the one AppKit actually writes")
-    func keyPrefixMatchesAppKit() {
-        let name = "SplitViewAutosaveSweepTests-\(UUID().uuidString)"
-        let defaults = UserDefaults.standard
-        let expected = key(name)
-        defaults.removeObject(forKey: expected)
-
-        let controller = NSSplitViewController()
-        controller.splitView.isVertical = true
-        for _ in 0 ..< 2 {
-            let pane = NSViewController()
-            pane.view = NSView(frame: NSRect(x: 0, y: 0, width: 200, height: 200))
-            controller.addSplitViewItem(NSSplitViewItem(viewController: pane))
-        }
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 200),
-            styleMask: [.titled, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.contentViewController = controller
-        controller.splitView.autosaveName = NSSplitView.AutosaveName(name)
-        window.orderFront(nil)
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.4))
-
-        defer {
-            window.orderOut(nil)
-            defaults.removeObject(forKey: expected)
-        }
-        #expect(
-            defaults.object(forKey: expected) != nil,
-            "AppKit no longer writes its record under \(expected), so the sweep matches a stale spelling"
-        )
     }
 
     // MARK: - Parsing

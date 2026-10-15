@@ -6,14 +6,11 @@ import Testing
 @MainActor
 struct FavoriteTablesStorageTests {
     private static let storageKey = "com.TablePro.favoriteTables"
+    private let pool = EphemeralDefaultsPool()
 
     private func makeFixture() throws -> (storage: FavoriteTablesStorage, defaults: UserDefaults, metadata: SyncMetadataStorage) {
-        let favoritesSuite = "FavoriteTablesStorageTests.favorites.\(UUID().uuidString)"
-        let syncSuite = "FavoriteTablesStorageTests.sync.\(UUID().uuidString)"
-        let favoritesDefaults = try #require(UserDefaults(suiteName: favoritesSuite))
-        let syncDefaults = try #require(UserDefaults(suiteName: syncSuite))
-        favoritesDefaults.removePersistentDomain(forName: favoritesSuite)
-        syncDefaults.removePersistentDomain(forName: syncSuite)
+        let favoritesDefaults = try pool.make().defaults
+        let syncDefaults = try pool.make().defaults
 
         let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
         let tracker = SyncChangeTracker(metadataStorage: metadata)

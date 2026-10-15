@@ -1,345 +1,325 @@
-//
-//  QueryCompletionAdapterLifecycleTests.swift
-//  TableProTests
-//
-//  Guards the invariants behind the autocomplete delegate-lifetime fix (#1731):
-//  the completion engine produces keyword suggestions before any schema is
-//  attached, and reconfiguring the adapter across nil/non-nil schema transitions
-//  keeps it functional. The SwiftUI onDisappear/onAppear delegate attachment that
-//  caused the original dropout is an AppKit lifecycle behaviour and is not
-//  deterministically unit-testable; these tests cover the logic the fix relies on.
-//
+// Guards the invariants behind the autocomplete delegate-lifetime fix:
+// the completion engine produces keyword suggestions before any schema is
+// attached, and reconfiguring the adapter across nil/non-nil schema transitions
+// keeps it functional. The SwiftUI onDisappear/onAppear delegate attachment that
+// caused the original dropout is an AppKit lifecycle behaviour and is not
+// deterministically unit-testable; these tests cover the logic the fix relies on.
 
 import Foundation
 @testable import TablePro
+@testable import TableProAutocomplete
 import TableProEditorKit
 import TableProPluginKit
 import TableProTextEngine
 import Testing
 
-struct QueryCompletionAdapterLifecycleTests {
-    @Test("engine returns keyword completions with no schema provider")
-    func keywordsAvailableWithoutSchema() async {
-        let engine = CompletionEngine(schemaProvider: nil, databaseType: .postgresql)
-        let context = await engine.getCompletions(text: "SEL", cursorPosition: 3)
-        #expect(context?.items.contains { $0.label == "SELECT" } == true)
-    }
-
-    @Test("engine returns keyword completions with no schema and no database type")
-    func keywordsAvailableWithoutSchemaOrDatabaseType() async {
-        let engine = CompletionEngine(schemaProvider: nil, databaseType: nil)
-        let context = await engine.getCompletions(text: "SEL", cursorPosition: 3)
-        #expect(context?.items.contains { $0.label == "SELECT" } == true)
-    }
-
-    @MainActor
-    @Test("configure across nil and non-nil schema keeps the adapter functional")
-    func configureAcrossSchemaTransitionsKeepsAdapterUsable() {
-        let adapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: nil)
-        #expect(!adapter.completionTriggerCharacters().isEmpty)
-
-        adapter.configure(schemaProvider: nil, databaseType: .postgresql)
-        adapter.configure(schemaProvider: SQLSchemaProvider(), databaseType: .postgresql)
-        adapter.configure(schemaProvider: nil, databaseType: .mysql)
-
-        #expect(!adapter.completionTriggerCharacters().isEmpty)
-    }
-
-    /// Rebuilding the service drops the open completion session. A refresh in any window of the
-    /// connection bumps the profile revision the editor's task keys on, so an unconditional
-    /// rebuild closed the popup under whoever was typing.
-    @MainActor
-    @Test("configuring with unchanged inputs does not rebuild the service")
-    func configureWithUnchangedInputsKeepsTheService() {
-        let provider = SQLSchemaProvider()
-        let adapter = QueryCompletionAdapter(schemaProvider: provider, databaseType: .postgresql)
-        let profile = QueryCompletionProfile(
-            resolvedDialect: nil,
-            statementCompletions: [],
-            revision: "rev-1"
-        )
-        adapter.configure(schemaProvider: provider, databaseType: .postgresql, profile: profile)
-        let first = adapter.serviceIdentityForTesting
-
-        adapter.configure(schemaProvider: provider, databaseType: .postgresql, profile: profile)
-
-        #expect(adapter.serviceIdentityForTesting == first)
-    }
-
-    @MainActor
-    @Test("a changed profile revision rebuilds the service")
-    func changedProfileRevisionRebuildsTheService() {
-        let provider = SQLSchemaProvider()
-        let adapter = QueryCompletionAdapter(schemaProvider: provider, databaseType: .postgresql)
-        adapter.configure(
-            schemaProvider: provider,
-            databaseType: .postgresql,
-            profile: QueryCompletionProfile(resolvedDialect: nil, statementCompletions: [], revision: "rev-1")
-        )
-        let first = adapter.serviceIdentityForTesting
-
-        adapter.configure(
-            schemaProvider: provider,
-            databaseType: .postgresql,
-            profile: QueryCompletionProfile(resolvedDialect: nil, statementCompletions: [], revision: "rev-2")
-        )
-
-        #expect(adapter.serviceIdentityForTesting != first)
-    }
-
-    @MainActor
-    @Test("a changed schema provider rebuilds the service")
-    func changedSchemaProviderRebuildsTheService() {
-        let adapter = QueryCompletionAdapter(schemaProvider: SQLSchemaProvider(), databaseType: .postgresql)
-        adapter.configure(schemaProvider: SQLSchemaProvider(), databaseType: .postgresql)
-        let first = adapter.serviceIdentityForTesting
-
-        adapter.configure(schemaProvider: SQLSchemaProvider(), databaseType: .postgresql)
-
-        #expect(adapter.serviceIdentityForTesting != first)
-    }
-
-    // MARK: - Incremental ranking (#2444)
-
-    /// The popup preselects its first row on every incremental update, so a list still ordered for
-    /// the prefix it opened with is what Return commits. Every pair here opened with the function
-    /// correctly ahead of the keyword, and has to swap once the typed token completes the keyword.
-    @MainActor
-    @Test(
-        "typing to an exact keyword puts it first",
-        arguments: [
-            (opening: "t", typed: "true", exact: "TRUE", longer: "TRUNCATE"),
-            (opening: "n", typed: "null", exact: "NULL", longer: "NULLIF"),
-            (opening: "i", typed: "in", exact: "IN", longer: "INSTR"),
-            (opening: "i", typed: "is", exact: "IS", longer: "ISNULL"),
-            (opening: "r", typed: "regexp", exact: "REGEXP", longer: "REGEXP_REPLACE")
-        ]
-    )
-    func incrementalUpdatePutsTheExactKeywordFirst(
-        opening: String,
-        typed: String,
-        exact: String,
-        longer: String
-    ) async {
-        let keywordCase = PinnedKeywordCase(.upper)
-        defer { keywordCase.restore() }
-        let labels = await incrementalLabels(opening: opening, typed: typed)
-
-        #expect(labels.first == exact)
-        if let exactIndex = labels.firstIndex(of: exact), let longerIndex = labels.firstIndex(of: longer) {
-            #expect(exactIndex < longerIndex)
+extension GlobalStateSuites {
+    struct QueryCompletionAdapterLifecycleTests {
+        @Test("engine returns keyword completions with no schema provider")
+        func keywordsAvailableWithoutSchema() async {
+            let engine = CompletionEngine(schemaProvider: nil, databaseType: .postgresql)
+            let context = await engine.getCompletions(text: "SEL", cursorPosition: 3)
+            #expect(context?.items.contains { $0.label == "SELECT" } == true)
         }
-    }
 
-    /// The reporter's own A/B: dismissing the popup and reopening it on the complete token gave the
-    /// right order, so an incremental update has to arrive at the same answer.
-    @MainActor
-    @Test("typing into an open popup lands where reopening it would")
-    func incrementalUpdateMatchesAFreshRequest() async {
-        let keywordCase = PinnedKeywordCase(.upper)
-        defer { keywordCase.restore() }
-        let opened = "SELECT * FROM gt_user WHERE t"
-        let completed = "SELECT * FROM gt_user WHERE true"
+        @Test("engine returns keyword completions with no schema and no database type")
+        func keywordsAvailableWithoutSchemaOrDatabaseType() async {
+            let engine = CompletionEngine(schemaProvider: nil, databaseType: nil)
+            let context = await engine.getCompletions(text: "SEL", cursorPosition: 3)
+            #expect(context?.items.contains { $0.label == "SELECT" } == true)
+        }
 
-        let controller = EditorControllerFixture.make(string: opened)
-        let adapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: .mysql)
-        _ = await adapter.completionSuggestionsRequested(
-            textView: controller,
-            cursorPosition: cursor(atEndOf: opened),
-            isManualTrigger: false
+        @MainActor
+        @Test("configure across nil and non-nil schema keeps the adapter functional")
+        func configureAcrossSchemaTransitionsKeepsAdapterUsable() {
+            let adapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: nil)
+            #expect(!adapter.completionTriggerCharacters().isEmpty)
+
+            adapter.configure(schemaProvider: nil, databaseType: .postgresql)
+            adapter.configure(schemaProvider: SQLSchemaProvider(), databaseType: .postgresql)
+            adapter.configure(schemaProvider: nil, databaseType: .mysql)
+
+            #expect(!adapter.completionTriggerCharacters().isEmpty)
+        }
+
+        /// Rebuilding the service drops the open completion session. A refresh in any window of the
+        /// connection bumps the profile revision the editor's task keys on, so an unconditional
+        /// rebuild closed the popup under whoever was typing.
+        @MainActor
+        @Test("configuring with unchanged inputs does not rebuild the service")
+        func configureWithUnchangedInputsKeepsTheService() {
+            let provider = SQLSchemaProvider()
+            let adapter = QueryCompletionAdapter(schemaProvider: provider, databaseType: .postgresql)
+            let profile = QueryCompletionProfile(
+                resolvedDialect: nil,
+                statementCompletions: [],
+                revision: "rev-1"
+            )
+            adapter.configure(schemaProvider: provider, databaseType: .postgresql, profile: profile)
+            let first = adapter.serviceIdentityForTesting
+
+            adapter.configure(schemaProvider: provider, databaseType: .postgresql, profile: profile)
+
+            #expect(adapter.serviceIdentityForTesting == first)
+        }
+
+        @MainActor
+        @Test("a changed profile revision rebuilds the service")
+        func changedProfileRevisionRebuildsTheService() {
+            let provider = SQLSchemaProvider()
+            let adapter = QueryCompletionAdapter(schemaProvider: provider, databaseType: .postgresql)
+            adapter.configure(
+                schemaProvider: provider,
+                databaseType: .postgresql,
+                profile: QueryCompletionProfile(resolvedDialect: nil, statementCompletions: [], revision: "rev-1")
+            )
+            let first = adapter.serviceIdentityForTesting
+
+            adapter.configure(
+                schemaProvider: provider,
+                databaseType: .postgresql,
+                profile: QueryCompletionProfile(resolvedDialect: nil, statementCompletions: [], revision: "rev-2")
+            )
+
+            #expect(adapter.serviceIdentityForTesting != first)
+        }
+
+        @MainActor
+        @Test("a changed schema provider rebuilds the service")
+        func changedSchemaProviderRebuildsTheService() {
+            let adapter = QueryCompletionAdapter(schemaProvider: SQLSchemaProvider(), databaseType: .postgresql)
+            adapter.configure(schemaProvider: SQLSchemaProvider(), databaseType: .postgresql)
+            let first = adapter.serviceIdentityForTesting
+
+            adapter.configure(schemaProvider: SQLSchemaProvider(), databaseType: .postgresql)
+
+            #expect(adapter.serviceIdentityForTesting != first)
+        }
+
+        // MARK: - Incremental ranking (#2444)
+
+        /// The popup preselects its first row on every incremental update, so a list still ordered for
+        /// the prefix it opened with is what Return commits. Every pair here opened with the function
+        /// correctly ahead of the keyword, and has to swap once the typed token completes the keyword.
+        @MainActor
+        @Test(
+            "typing to an exact keyword puts it first",
+            .upperCaseKeywords,
+            arguments: [
+                (opening: "t", typed: "true", exact: "TRUE", longer: "TRUNCATE"),
+                (opening: "n", typed: "null", exact: "NULL", longer: "NULLIF"),
+                (opening: "i", typed: "in", exact: "IN", longer: "INSTR"),
+                (opening: "i", typed: "is", exact: "IS", longer: "ISNULL"),
+                (opening: "r", typed: "regexp", exact: "REGEXP", longer: "REGEXP_REPLACE")
+            ]
         )
+        func incrementalUpdatePutsTheExactKeywordFirst(
+            opening: String,
+            typed: String,
+            exact: String,
+            longer: String
+        ) async {
+            let labels = await incrementalLabels(opening: opening, typed: typed)
 
-        controller.textView.setText(completed)
-        for length in (opened.utf16.count + 1)...completed.utf16.count {
+            #expect(labels.first == exact)
+            if let exactIndex = labels.firstIndex(of: exact), let longerIndex = labels.firstIndex(of: longer) {
+                #expect(exactIndex < longerIndex)
+            }
+        }
+
+        /// The reporter's own A/B: dismissing the popup and reopening it on the complete token gave the
+        /// right order, so an incremental update has to arrive at the same answer.
+        @MainActor
+        @Test("typing into an open popup lands where reopening it would", .upperCaseKeywords)
+        func incrementalUpdateMatchesAFreshRequest() async {
+            let opened = "SELECT * FROM gt_user WHERE t"
+            let completed = "SELECT * FROM gt_user WHERE true"
+
+            let controller = EditorControllerFixture.make(string: opened)
+            let adapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: .mysql)
+            _ = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: opened),
+                isManualTrigger: false
+            )
+
+            controller.textView.setText(completed)
+            for length in (opened.utf16.count + 1)...completed.utf16.count {
+                _ = adapter.completionOnCursorMove(
+                    textView: controller,
+                    cursorPosition: CursorPosition(range: NSRange(location: length, length: 0))
+                )
+            }
+            let incremental = adapter.completionOnCursorMove(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: completed)
+            )?.map(\.label)
+
+            let freshController = EditorControllerFixture.make(string: completed)
+            let freshAdapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: .mysql)
+            let fresh = await freshAdapter.completionSuggestionsRequested(
+                textView: freshController,
+                cursorPosition: cursor(atEndOf: completed),
+                isManualTrigger: false
+            )?.items.map(\.label)
+
+            #expect(incremental?.first == "TRUE")
+            #expect(incremental?.first == fresh?.first)
+        }
+
+        /// Deleting a character has to widen the list again, which it only does when each update is
+        /// resolved from the session's own candidates rather than from the previous keystroke's.
+        @MainActor
+        @Test("deleting a character widens the list again", .upperCaseKeywords)
+        func deletingACharacterWidensTheList() async {
+            let opened = "SELECT * FROM gt_user WHERE t"
+            let controller = EditorControllerFixture.make(string: opened)
+            let adapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: .mysql)
+            _ = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: opened),
+                isManualTrigger: false
+            )
+
+            let narrow = "SELECT * FROM gt_user WHERE trun"
+            controller.textView.setText(narrow)
+            let narrowed = adapter.completionOnCursorMove(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: narrow)
+            )?.map(\.label) ?? []
+
+            let wide = "SELECT * FROM gt_user WHERE tr"
+            controller.textView.setText(wide)
+            let widened = adapter.completionOnCursorMove(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: wide)
+            )?.map(\.label) ?? []
+
+            #expect(!narrowed.isEmpty)
+            #expect(widened.count > narrowed.count)
+            #expect(widened.contains("TRUE"))
+        }
+
+        // MARK: - The session pool
+
+        /// An open popup re-ranks against what the session kept rather than asking again, so the
+        /// session keeps more candidates than the popup shows. It still keeps a bounded number: ranking
+        /// walks every one of them on every keystroke.
+        @MainActor
+        @Test("an open session re-ranks a bounded pool wider than the visible list")
+        func openSessionReranksABoundedPool() async {
+            let items = (0..<5_000).map { SQLCompletionItem.keyword(String(format: "ab%04d", $0)) }
+            let service = RankingInputRecordingCompletionService(items: items, poolLimit: 400)
+            let adapter = QueryCompletionAdapter(serviceForTesting: service)
+            let controller = EditorControllerFixture.make(string: "a")
+
+            _ = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: CursorPosition(range: NSRange(location: 1, length: 0)),
+                isManualTrigger: false
+            )
+
+            controller.textView.setText("ab")
             _ = adapter.completionOnCursorMove(
                 textView: controller,
-                cursorPosition: CursorPosition(range: NSRange(location: length, length: 0))
+                cursorPosition: CursorPosition(range: NSRange(location: 2, length: 0))
             )
+            controller.textView.setText("ab0")
+            _ = adapter.completionOnCursorMove(
+                textView: controller,
+                cursorPosition: CursorPosition(range: NSRange(location: 3, length: 0))
+            )
+
+            #expect(service.rankingInputCounts == [400, 400])
         }
-        let incremental = adapter.completionOnCursorMove(
-            textView: controller,
-            cursorPosition: cursor(atEndOf: completed)
-        )?.map(\.label)
 
-        let freshController = EditorControllerFixture.make(string: completed)
-        let freshAdapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: .mysql)
-        let fresh = await freshAdapter.completionSuggestionsRequested(
-            textView: freshController,
-            cursorPosition: cursor(atEndOf: completed),
-            isManualTrigger: false
-        )?.items.map(\.label)
+        // MARK: - The session's token
 
-        #expect(incremental?.first == "TRUE")
-        #expect(incremental?.first == fresh?.first)
-    }
+        @MainActor
+        @Test("a session re-ranks its own token and declines the next one")
+        func sessionDeclinesACursorOnAnotherToken() async {
+            let service = TokenBoundCompletionService(labels: ["select", "set", "update", "users"])
+            let adapter = QueryCompletionAdapter(serviceForTesting: service)
+            let controller = EditorControllerFixture.make(string: "se")
 
-    /// Deleting a character has to widen the list again, which it only does when each update is
-    /// resolved from the session's own candidates rather than from the previous keystroke's.
-    @MainActor
-    @Test("deleting a character widens the list again")
-    func deletingACharacterWidensTheList() async {
-        let keywordCase = PinnedKeywordCase(.upper)
-        defer { keywordCase.restore() }
-        let opened = "SELECT * FROM gt_user WHERE t"
-        let controller = EditorControllerFixture.make(string: opened)
-        let adapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: .mysql)
-        _ = await adapter.completionSuggestionsRequested(
-            textView: controller,
-            cursorPosition: cursor(atEndOf: opened),
-            isManualTrigger: false
-        )
+            _ = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: "se"),
+                isManualTrigger: false
+            )
 
-        let narrow = "SELECT * FROM gt_user WHERE trun"
-        controller.textView.setText(narrow)
-        let narrowed = adapter.completionOnCursorMove(
-            textView: controller,
-            cursorPosition: cursor(atEndOf: narrow)
-        )?.map(\.label) ?? []
+            controller.textView.setText("sel")
+            let sameToken = adapter.completionOnCursorMove(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: "sel")
+            )?.map(\.label)
 
-        let wide = "SELECT * FROM gt_user WHERE tr"
-        controller.textView.setText(wide)
-        let widened = adapter.completionOnCursorMove(
-            textView: controller,
-            cursorPosition: cursor(atEndOf: wide)
-        )?.map(\.label) ?? []
+            controller.textView.setText("se u")
+            let nextToken = adapter.completionOnCursorMove(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: "se u")
+            )?.map(\.label)
 
-        #expect(!narrowed.isEmpty)
-        #expect(widened.count > narrowed.count)
-        #expect(widened.contains("TRUE"))
-    }
+            #expect(sameToken == ["select"])
+            #expect(nextToken == nil)
+        }
 
-    // MARK: - The session pool
+        @MainActor
+        @Test("a response names the prefix it was ranked for, not the text the editor holds when it lands")
+        func responseNamesThePrefixItWasRankedFor() async {
+            let controller = EditorControllerFixture.make(string: "sl")
+            let service = TokenBoundCompletionService(labels: ["sleep", "select", "set"])
+            service.whileAnswering = { controller.textView.setText("se") }
+            let adapter = QueryCompletionAdapter(serviceForTesting: service)
 
-    /// An open popup re-ranks against what the session kept rather than asking again, so the
-    /// session keeps more candidates than the popup shows. It still keeps a bounded number: ranking
-    /// walks every one of them on every keystroke.
-    @MainActor
-    @Test("an open session re-ranks a bounded pool wider than the visible list")
-    func openSessionReranksABoundedPool() async {
-        let items = (0..<5_000).map { SQLCompletionItem.keyword(String(format: "ab%04d", $0)) }
-        let service = RankingInputRecordingCompletionService(items: items, poolLimit: 400)
-        let adapter = QueryCompletionAdapter(serviceForTesting: service)
-        let controller = EditorControllerFixture.make(string: "a")
+            let response = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: "sl"),
+                isManualTrigger: false
+            )
 
-        _ = await adapter.completionSuggestionsRequested(
-            textView: controller,
-            cursorPosition: CursorPosition(range: NSRange(location: 1, length: 0)),
-            isManualTrigger: false
-        )
+            #expect(controller.textView.string == "se")
+            #expect(response?.prefix == CodeSuggestionPrefix(range: NSRange(location: 0, length: 2), text: "sl"))
+            #expect(response?.windowPosition.range == NSRange(location: 2, length: 0))
+        }
 
-        controller.textView.setText("ab")
-        _ = adapter.completionOnCursorMove(
-            textView: controller,
-            cursorPosition: CursorPosition(range: NSRange(location: 2, length: 0))
-        )
-        controller.textView.setText("ab0")
-        _ = adapter.completionOnCursorMove(
-            textView: controller,
-            cursorPosition: CursorPosition(range: NSRange(location: 3, length: 0))
-        )
+        // MARK: - Helpers
 
-        #expect(service.rankingInputCounts == [400, 400])
-    }
-
-    // MARK: - The session's token
-
-    @MainActor
-    @Test("a session re-ranks its own token and declines the next one")
-    func sessionDeclinesACursorOnAnotherToken() async {
-        let service = TokenBoundCompletionService(labels: ["select", "set", "update", "users"])
-        let adapter = QueryCompletionAdapter(serviceForTesting: service)
-        let controller = EditorControllerFixture.make(string: "se")
-
-        _ = await adapter.completionSuggestionsRequested(
-            textView: controller,
-            cursorPosition: cursor(atEndOf: "se"),
-            isManualTrigger: false
-        )
-
-        controller.textView.setText("sel")
-        let sameToken = adapter.completionOnCursorMove(
-            textView: controller,
-            cursorPosition: cursor(atEndOf: "sel")
-        )?.map(\.label)
-
-        controller.textView.setText("se u")
-        let nextToken = adapter.completionOnCursorMove(
-            textView: controller,
-            cursorPosition: cursor(atEndOf: "se u")
-        )?.map(\.label)
-
-        #expect(sameToken == ["select"])
-        #expect(nextToken == nil)
-    }
-
-    @MainActor
-    @Test("a response names the prefix it was ranked for, not the text the editor holds when it lands")
-    func responseNamesThePrefixItWasRankedFor() async {
-        let controller = EditorControllerFixture.make(string: "sl")
-        let service = TokenBoundCompletionService(labels: ["sleep", "select", "set"])
-        service.whileAnswering = { controller.textView.setText("se") }
-        let adapter = QueryCompletionAdapter(serviceForTesting: service)
-
-        let response = await adapter.completionSuggestionsRequested(
-            textView: controller,
-            cursorPosition: cursor(atEndOf: "sl"),
-            isManualTrigger: false
-        )
-
-        #expect(controller.textView.string == "se")
-        #expect(response?.prefix == CodeSuggestionPrefix(range: NSRange(location: 0, length: 2), text: "sl"))
-        #expect(response?.windowPosition.range == NSRange(location: 2, length: 0))
-    }
-
-    // MARK: - Helpers
-
-    @MainActor
-    private func cursor(atEndOf text: String) -> CursorPosition {
-        CursorPosition(range: NSRange(location: text.utf16.count, length: 0))
-    }
+        @MainActor
+        private func cursor(atEndOf text: String) -> CursorPosition {
+            CursorPosition(range: NSRange(location: text.utf16.count, length: 0))
+        }
 
 
-    @MainActor
-    private func incrementalLabels(opening: String, typed: String) async -> [String] {
-        let queryPrefix = "SELECT * FROM gt_user WHERE "
-        let openingQuery = queryPrefix + opening
-        let controller = EditorControllerFixture.make(string: openingQuery)
-        let adapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: .mysql)
+        @MainActor
+        private func incrementalLabels(opening: String, typed: String) async -> [String] {
+            let queryPrefix = "SELECT * FROM gt_user WHERE "
+            let openingQuery = queryPrefix + opening
+            let controller = EditorControllerFixture.make(string: openingQuery)
+            let adapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: .mysql)
 
-        _ = await adapter.completionSuggestionsRequested(
-            textView: controller,
-            cursorPosition: cursor(atEndOf: openingQuery),
-            isManualTrigger: false
-        )
+            _ = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: openingQuery),
+                isManualTrigger: false
+            )
 
-        let typedQuery = queryPrefix + typed
-        controller.textView.setText(typedQuery)
+            let typedQuery = queryPrefix + typed
+            controller.textView.setText(typedQuery)
 
-        return adapter.completionOnCursorMove(
-            textView: controller,
-            cursorPosition: cursor(atEndOf: typedQuery)
-        )?.map(\.label) ?? []
+            return adapter.completionOnCursorMove(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: typedQuery)
+            )?.map(\.label) ?? []
+        }
     }
 }
 
-/// Holds `SQLKeywordCase` at one value for the length of a test, and puts the user's own back.
-///
-/// A completion's label follows that setting, so every ranking assertion written against a
-/// spelling would otherwise answer to whatever the machine running it has chosen: the same four
-/// tests pass on a developer set to UPPERCASE and fail on CI, which takes the shipped default and
-/// follows the lowercase prefix they type.
-@MainActor
-private struct PinnedKeywordCase {
-    private let previous: SQLKeywordCase
-
-    init(_ value: SQLKeywordCase) {
-        previous = AppSettingsManager.shared.editor.keywordCase
-        AppSettingsManager.shared.editor.keywordCase = value
-    }
-
-    func restore() {
-        AppSettingsManager.shared.editor.keywordCase = previous
-    }
+/// A completion's label follows `SQLKeywordCase`, so every ranking assertion written against a
+/// spelling would otherwise answer to whatever the machine running it has chosen: the same tests
+/// pass on a developer set to UPPERCASE and fail on CI, which follows the lowercase prefix typed.
+private extension Trait where Self == AppSettingsTrait {
+    static var upperCaseKeywords: Self { .appSettings { $0.editor.keywordCase = .upper } }
 }
 
 @MainActor

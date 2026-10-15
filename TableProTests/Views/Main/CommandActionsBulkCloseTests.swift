@@ -1,16 +1,12 @@
-//
-//  CommandActionsBulkCloseTests.swift
-//  TableProTests
-//
-//  Covers the bulk tab-close commands: which of the connection's tabs they target and
-//  that the surviving window empties in place instead of closing (#1972).
-//
+// The bulk tab-close commands: which of the connection's tabs they target, and that the surviving
+// window empties in place instead of closing.
 
 import AppKit
 import Foundation
 import SwiftUI
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -193,12 +189,7 @@ struct CommandActionsBulkCloseTests {
         #expect(current.coordinator.tabManager.tabs.count == 2)
 
         current.actions.closeTabsForOtherDatabases()
-
-        var spins = 0
-        while current.coordinator.tabManager.tabs.count > 1, spins < 500 {
-            await Task.yield()
-            spins += 1
-        }
+        _ = try? await waitUntil { current.coordinator.tabManager.tabs.count <= 1 }
 
         #expect(current.coordinator.tabManager.tabs.count == 1)
         #expect(current.coordinator.tabManager.tabs.first?.tabType == .query)

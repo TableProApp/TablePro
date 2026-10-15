@@ -7,6 +7,7 @@ import Foundation
 import SwiftUI
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 /// PGlite keeps every read on the injected session driver and groups by schema.
@@ -35,12 +36,6 @@ struct SidebarSchemaFilterTests {
 
     private func table(_ name: String, _ schema: String) -> TableInfo {
         TestFixtures.makeTableInfo(name: name, schema: schema)
-    }
-
-    private func waitUntil(_ condition: () -> Bool) async {
-        for _ in 0..<300 where !condition() {
-            try? await Task.sleep(nanoseconds: 10_000_000)
-        }
     }
 
     @Test("The kept set adds the browsed schema for the browsed database only")
@@ -82,7 +77,7 @@ struct SidebarSchemaFilterTests {
     }
 
     @Test("A sidebar search with a schema filter lists the kept schemas alone")
-    func searchListsKeptSchemasOnly() async {
+    func searchListsKeptSchemasOnly() async throws {
         let (connection, driver) = connect { driver in
             driver.schemaTablesToReturn = [
                 "public": [table("timesheet", "public")],
@@ -101,7 +96,7 @@ struct SidebarSchemaFilterTests {
         )
 
         viewModel.searchText = "timesheet"
-        await waitUntil { service.allSchemaTablesLoadState(connectionId: connection.id, database: "shop").value != nil }
+        try await waitUntil { service.allSchemaTablesLoadState(connectionId: connection.id, database: "shop").value != nil }
 
         let listed = service.allSchemaTablesLoadState(connectionId: connection.id, database: "shop").value
         #expect(Set(listed?.tables.compactMap(\.schema) ?? []) == ["attendance", "public"])
@@ -112,7 +107,7 @@ struct SidebarSchemaFilterTests {
     }
 
     @Test("Sidebar search and Open Quickly share one listing for one filter, read schema by schema")
-    func sidebarAndOpenQuicklyReadOnce() async {
+    func sidebarAndOpenQuicklyReadOnce() async throws {
         let (connection, driver) = connect { driver in
             driver.allSchemaTablesToReturn = [
                 table("timesheet", "public"), table("timesheet", "attendance"), table("timesheet", "payroll")
@@ -135,10 +130,10 @@ struct SidebarSchemaFilterTests {
         let switcher = QuickSwitcherViewModel(connectionId: connection.id, services: .live)
 
         viewModel.searchText = "timesheet"
-        await waitUntil { service.allSchemaTablesLoadState(connectionId: connection.id, database: "shop").value != nil }
+        try await waitUntil { service.allSchemaTablesLoadState(connectionId: connection.id, database: "shop").value != nil }
         await switcher.loadItems(databaseType: .pglite)
         switcher.searchText = "timesheet"
-        await waitUntil { !switcher.isLoadingTables }
+        try await waitUntil { !switcher.isLoadingTables }
 
         #expect(driver.fetchTablesInAllSchemasCallCount == 0)
         #expect(driver.fetchSchemaTablesCalls.filter { $0 == "attendance" }.count == 1)

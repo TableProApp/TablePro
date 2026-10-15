@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import TableProMCP
 
 public struct FocusQueryTabTool: MCPToolImplementation {
     public static let name = "focus_query_tab"

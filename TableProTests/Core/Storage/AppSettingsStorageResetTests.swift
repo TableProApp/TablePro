@@ -8,9 +8,11 @@ import Foundation
 import Testing
 
 struct AppSettingsStorageResetTests {
+    private let pool = EphemeralDefaultsPool()
+
     @Test("Reset clears the selected settings pane and default sidebar layout")
     func resetClearsUIOrphans() throws {
-        let defaults = try #require(UserDefaults(suiteName: "settings-reset-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         let storage = AppSettingsStorage(userDefaults: defaults)
         defaults.set("account", forKey: PreferenceKeys.selectedSettingsPane.name)
         defaults.set("tree", forKey: SidebarPersistenceKey.defaultLayout)
@@ -25,7 +27,7 @@ struct AppSettingsStorageResetTests {
 
     @Test("Reset clears every remembered inspector field height and the geometry field's mode")
     func resetClearsInspectorFieldPreferences() throws {
-        let defaults = try #require(UserDefaults(suiteName: "settings-reset-\(UUID().uuidString)"))
+        let defaults = try pool.make().defaults
         let storage = AppSettingsStorage(userDefaults: defaults)
         defaults.set(320.0, forKey: PreferenceKeys.rowInspectorJsonFieldHeight.name)
         defaults.set(240.0, forKey: PreferenceKeys.rowInspectorTextFieldHeight.name)

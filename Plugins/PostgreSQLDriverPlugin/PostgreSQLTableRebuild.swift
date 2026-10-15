@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPostgreSQLCore
 
 struct PostgreSQLTableRebuild {
     var columnNames: [String] = []

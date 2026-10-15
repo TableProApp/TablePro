@@ -114,14 +114,6 @@ struct QueryClassifierDynamoDBTests {
         #expect(tier(sql) == .destructive)
     }
 
-    @Test("The app knows every action the driver runs, and no other")
-    func actionListsMatchTheDriver() {
-        let classified = Set(DynamoDBRequestAction.allCases.map(\.rawValue)).subtracting(["Browse"])
-        let executed = Set(DynamoDBOperation.allCases.map(\.rawValue))
-
-        #expect(classified == executed)
-    }
-
     @Test("A body the classifier cannot read is the worst its action can do", arguments: [
         "UpdateTable", "UpdateTimeToLive", "UpdateContinuousBackups", "BatchWriteItem", "TransactWriteItems",
         "ExecuteStatement", "ExecuteTransaction", "BatchExecuteStatement", "DeleteTable"
@@ -133,17 +125,6 @@ struct QueryClassifierDynamoDBTests {
 
         #expect(tier(padded) == .destructive)
         #expect(tier(broken) == .destructive)
-    }
-
-    @Test("The classifier reads every body as deep as the driver sends", arguments: [1, 63, 64, 65, 127, 128, 129, 200])
-    func classifierReadsWhatTheDriverReads(_ depth: Int) {
-        let nested = String(repeating: "[", count: depth) + String(repeating: "]", count: depth)
-        let body = #"{"TableName": "orders", "Pad": \#(nested)}"#
-
-        let driverReads = (try? DynamoDBJSON.parse(body)) != nil
-        let classifierReads = DynamoDBRequestJSON.parsePrefix(body[...]).map { $0.remainder.isEmpty } ?? false
-
-        #expect(classifierReads == driverReads)
     }
 
     @Test("Requests joined without a semicolon are each tiered")

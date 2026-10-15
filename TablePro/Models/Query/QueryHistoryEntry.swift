@@ -1,5 +1,6 @@
 import Foundation
 import TableProPluginKit
+import TableProUtilities
 
 struct QueryHistoryEntry: Identifiable, Codable, Hashable, Sendable {
     let id: UUID

@@ -1,13 +1,8 @@
-//
-//  SupervisedProcessRunnerTests.swift
-//  TableProTests
-//
-
 import Darwin
 import Foundation
-import Testing
-
 @testable import TablePro
+import TableProTestSupport
+import Testing
 
 struct SupervisedProcessRunnerTests {
     private func runner(script: String) throws -> ProcessSupervisedRunner {
@@ -101,15 +96,6 @@ struct SupervisedProcessRunnerTests {
 
     private func isAlive(_ pid: pid_t) -> Bool { kill(pid, 0) == 0 }
 
-    private func waitUntilGone(_ pid: pid_t, within seconds: Double) async -> Bool {
-        let deadline = Date().addingTimeInterval(seconds)
-        while Date() < deadline {
-            if !isAlive(pid) { return true }
-            try? await Task.sleep(nanoseconds: 50_000_000)
-        }
-        return !isAlive(pid)
-    }
-
     /// The whole reason `stop()` may signal a negated pid: Foundation puts every child in a process
     /// group of its own. If a toolchain stopped doing that, the same call would signal this
     /// process's own group instead.
@@ -139,6 +125,7 @@ struct SupervisedProcessRunnerTests {
 
         runner.stop()
 
-        #expect(await waitUntilGone(helper, within: 5))
+        try await waitUntil(timeout: .seconds(5)) { !isAlive(helper) }
+        #expect(!isAlive(helper))
     }
 }

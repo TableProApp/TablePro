@@ -1,5 +1,6 @@
 import Combine
 import SwiftUI
+import TableProMCP
 
 struct PairingApproval: Sendable {
     let grantedPermissions: TokenPermissions

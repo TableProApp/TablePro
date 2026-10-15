@@ -1,5 +1,6 @@
 import Foundation
 @testable import TablePro
+import TableProSSHConfig
 import Testing
 
 @MainActor
@@ -28,11 +29,14 @@ private final class SpyPrompt: ExternalConnectionPrompting {
 
 @MainActor
 struct ExternalConnectionGateTests {
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
     private func makeStore() throws -> ExternalConnectionTrustStore {
-        let suite = "ExternalConnectionGateTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
-        return ExternalConnectionTrustStore(defaults: defaults)
+        ExternalConnectionTrustStore(defaults: suite.defaults)
     }
 
     private func ddevConnection(port: Int = 32_770) -> DatabaseConnection {

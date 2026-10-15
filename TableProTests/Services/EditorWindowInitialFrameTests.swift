@@ -13,7 +13,6 @@ import Testing
 /// sidebar's top row under the titlebar and its toolbar's trailing items in the overflow menu, and
 /// stayed that way. The pin resized the window from a `WindowAccessor` callback, which runs inside
 /// the window's layout pass.
-@Suite("Editor window initial frame", .serialized)
 @MainActor
 struct EditorWindowInitialFrameTests {
     private let pinnedSize = CGSize(width: 1_000, height: 700)

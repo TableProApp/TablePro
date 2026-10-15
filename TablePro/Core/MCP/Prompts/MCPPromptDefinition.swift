@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public enum MCPPromptRole: String, Sendable, Equatable {
     case user

@@ -1,8 +1,3 @@
-//
-//  SchemaRefreshCommitCostTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -361,21 +356,23 @@ struct SchemaGroupedRefreshCostTests {
             metadataDriverProvider: provider,
             databaseManager: nil
         )
-        let coordinator = MainContentCoordinator(
+        let fixture = CoordinatorFixture(
             connection: connection,
-            tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState(),
             services: Self.services(schemaService: schemaService, schemaRefreshService: refresh)
         )
         var truncates = Set<DatabaseTreeTableRef>()
         var deletes = Set<DatabaseTreeTableRef>()
 
-        coordinator.handleDiscard(pendingTruncates: &truncates, pendingDeletes: &deletes)
-        try await Task.sleep(for: .milliseconds(200))
+        fixture.coordinator.handleDiscard(pendingTruncates: &truncates, pendingDeletes: &deletes)
+        // A refresh the discard started is a main-actor task queued ahead of this block, and it
+        // registers with the service before it first suspends.
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        await refresh.waitForRefresh(connectionId: connection.id)
         #expect(driver.reads.isEmpty)
 
-        await coordinator.refreshTables()
+        await fixture.coordinator.refreshTables()
         #expect(driver.reads.contains("tables"))
     }
 

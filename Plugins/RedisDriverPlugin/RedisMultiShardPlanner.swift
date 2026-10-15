@@ -11,6 +11,7 @@
 //
 
 import Foundation
+import TableProRedisCore
 
 struct RedisMultiShardGroup: Equatable {
     /// The hash slot every key in this group belongs to.

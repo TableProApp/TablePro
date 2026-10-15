@@ -5,11 +5,11 @@
 
 import Foundation
 import TableProPluginKit
-import XCTest
+import Testing
 
 @testable import TablePro
 
-private final class RecordingDriver: PluginDatabaseDriver, @unchecked Sendable {
+private final class RecordingDriver: PluginDriverStub, @unchecked Sendable {
     var executed: [String] = []
     var transactionEvents: [String] = []
     var failingStatements: Set<String> = []
@@ -20,10 +20,6 @@ private final class RecordingDriver: PluginDatabaseDriver, @unchecked Sendable {
     var capabilities: PluginCapabilities { declaredCapabilities }
     var supportsTransactions: Bool { transactionsSupported }
     var supportsTransactionalDDL: Bool { transactionalDDLSupported }
-
-    func connect() async throws {}
-
-    func disconnect() {}
 
     func execute(query: String) async throws -> PluginQueryResult {
         executed.append(query)
@@ -36,23 +32,9 @@ private final class RecordingDriver: PluginDatabaseDriver, @unchecked Sendable {
     func beginTransaction() async throws { transactionEvents.append("begin") }
     func commitTransaction() async throws { transactionEvents.append("commit") }
     func rollbackTransaction() async throws { transactionEvents.append("rollback") }
-
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-    func fetchDatabases() async throws -> [String] { [] }
-    func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
-    }
 }
 
-final class CompareSyncExecutorTests: XCTestCase {
+struct CompareSyncExecutorTests {
     private func endpoint(databaseType: DatabaseType = .mysql) -> DatabaseEndpoint {
         DatabaseEndpoint(
             scope: DatabaseScope(connectionId: UUID(), database: "app", schema: nil),
@@ -95,7 +77,8 @@ final class CompareSyncExecutorTests: XCTestCase {
 
     /// A statement already is the text the driver takes, one call each: on Oracle a unit keeps its own `;` and a
     /// CALL trigger has none, and on SQL Server a body the generic grammar would cut stays whole.
-    func testEveryStatementGoesOutExactlyAsBuilt() async throws {
+    @Test
+    func everyStatementGoesOutExactlyAsBuilt() async throws {
         let cases: [(DatabaseType, [String])] = [
             (.oracle, [
                 "CREATE OR REPLACE PROCEDURE p IS BEGIN NULL; END;",
@@ -108,24 +91,26 @@ final class CompareSyncExecutorTests: XCTestCase {
         for (databaseType, sql) in cases {
             let driver = RecordingDriver()
             _ = try await run(statements: sql.map { statement($0) }, driver: driver, databaseType: databaseType)
-            XCTAssertEqual(driver.executed, sql, "\(databaseType.rawValue)")
+            #expect(driver.executed == sql, "\(databaseType.rawValue)")
         }
     }
 
     // MARK: - Held back statements
 
-    func testRefusedStatementIsNotExecutedUnlessAllowed() async throws {
+    @Test
+    func refusedStatementIsNotExecutedUnlessAllowed() async throws {
         let driver = RecordingDriver()
         let dropStatement = statement("DROP TABLE t;", refused: true)
 
         let result = try await run(statements: [statement("SELECT 1;"), dropStatement], driver: driver)
 
-        XCTAssertEqual(driver.executed, ["SELECT 1;"], "a refused statement must not reach the driver")
-        XCTAssertEqual(result.heldBackCount, 1)
-        XCTAssertEqual(result.executedCount, 1)
+        #expect(driver.executed == ["SELECT 1;"], "a refused statement must not reach the driver")
+        #expect(result.heldBackCount == 1)
+        #expect(result.executedCount == 1)
     }
 
-    func testAllowingARefusedStatementRunsIt() async throws {
+    @Test
+    func allowingARefusedStatementRunsIt() async throws {
         let driver = RecordingDriver()
         let dropStatement = statement("DROP TABLE t;", refused: true)
         var settings = CompareSyncExecutionSettings()
@@ -133,31 +118,34 @@ final class CompareSyncExecutorTests: XCTestCase {
 
         let result = try await run(statements: [dropStatement], settings: settings, driver: driver)
 
-        XCTAssertEqual(driver.executed, ["DROP TABLE t;"])
-        XCTAssertEqual(result.heldBackCount, 0)
+        #expect(driver.executed == ["DROP TABLE t;"])
+        #expect(result.heldBackCount == 0)
     }
 
-    func testAllRefusedMeansNothingRunsAndNoTransactionOpens() async throws {
+    @Test
+    func allRefusedMeansNothingRunsAndNoTransactionOpens() async throws {
         let driver = RecordingDriver()
 
         let result = try await run(statements: [statement("DROP TABLE t;", refused: true)], driver: driver)
 
-        XCTAssertTrue(driver.executed.isEmpty)
-        XCTAssertTrue(driver.transactionEvents.isEmpty)
-        XCTAssertEqual(result.heldBackCount, 1)
+        #expect(driver.executed.isEmpty)
+        #expect(driver.transactionEvents.isEmpty)
+        #expect(result.heldBackCount == 1)
     }
 
     // MARK: - Transactions
 
-    func testSuccessfulRunCommits() async throws {
+    @Test
+    func successfulRunCommits() async throws {
         let driver = RecordingDriver()
 
         _ = try await run(statements: [statement("A;"), statement("B;")], driver: driver)
 
-        XCTAssertEqual(driver.transactionEvents, ["begin", "commit"])
+        #expect(driver.transactionEvents == ["begin", "commit"])
     }
 
-    func testFailureRollsBackWithStopAndRollback() async throws {
+    @Test
+    func failureRollsBackWithStopAndRollback() async throws {
         let driver = RecordingDriver()
         driver.failingStatements = ["B;"]
         var settings = CompareSyncExecutionSettings()
@@ -169,12 +157,13 @@ final class CompareSyncExecutorTests: XCTestCase {
             driver: driver
         )
 
-        XCTAssertEqual(driver.transactionEvents, ["begin", "rollback"])
-        XCTAssertTrue(result.rolledBack)
-        XCTAssertEqual(driver.executed, ["A;", "B;"], "execution stops at the first failure")
+        #expect(driver.transactionEvents == ["begin", "rollback"])
+        #expect(result.rolledBack)
+        #expect(driver.executed == ["A;", "B;"], "execution stops at the first failure")
     }
 
-    func testFailureCommitsWithStopAndCommit() async throws {
+    @Test
+    func failureCommitsWithStopAndCommit() async throws {
         let driver = RecordingDriver()
         driver.failingStatements = ["B;"]
         var settings = CompareSyncExecutionSettings()
@@ -186,11 +175,12 @@ final class CompareSyncExecutorTests: XCTestCase {
             driver: driver
         )
 
-        XCTAssertEqual(driver.transactionEvents, ["begin", "commit"])
-        XCTAssertFalse(result.rolledBack)
+        #expect(driver.transactionEvents == ["begin", "commit"])
+        #expect(!result.rolledBack)
     }
 
-    func testSkipAndContinueRunsEverythingAndUsesNoTransaction() async throws {
+    @Test
+    func skipAndContinueRunsEverythingAndUsesNoTransaction() async throws {
         let driver = RecordingDriver()
         driver.failingStatements = ["B;"]
         var settings = CompareSyncExecutionSettings()
@@ -202,51 +192,55 @@ final class CompareSyncExecutorTests: XCTestCase {
             driver: driver
         )
 
-        XCTAssertEqual(driver.executed, ["A;", "B;", "C;"])
-        XCTAssertTrue(driver.transactionEvents.isEmpty, "skip and continue must not open a transaction")
-        XCTAssertEqual(result.failedCount, 1)
-        XCTAssertEqual(result.executedCount, 2)
+        #expect(driver.executed == ["A;", "B;", "C;"])
+        #expect(driver.transactionEvents.isEmpty, "skip and continue must not open a transaction")
+        #expect(result.failedCount == 1)
+        #expect(result.executedCount == 2)
     }
 
-    func testNoTransactionWhenDriverDoesNotSupportOne() async throws {
+    @Test
+    func noTransactionWhenDriverDoesNotSupportOne() async throws {
         let driver = RecordingDriver()
         driver.transactionsSupported = false
         driver.transactionalDDLSupported = false
 
         _ = try await run(statements: [statement("A;")], driver: driver)
 
-        XCTAssertTrue(driver.transactionEvents.isEmpty)
+        #expect(driver.transactionEvents.isEmpty)
     }
 
     /// A structure sync on MySQL, MariaDB or Oracle must not open a transaction it cannot roll
     /// back: DDL commits implicitly there, so the ROLLBACK undid nothing while the run reported
     /// "The target is unchanged."
-    func testStructureSyncOpensNoTransactionWhenDDLCommitsImplicitly() async throws {
+    @Test
+    func structureSyncOpensNoTransactionWhenDDLCommitsImplicitly() async throws {
         let driver = RecordingDriver()
         driver.transactionsSupported = true
         driver.transactionalDDLSupported = false
 
         _ = try await run(statements: [statement("ALTER TABLE users DROP COLUMN legacy_id;")], driver: driver)
 
-        XCTAssertTrue(driver.transactionEvents.isEmpty)
+        #expect(driver.transactionEvents.isEmpty)
     }
 
     // MARK: - Gate
 
-    func testDeniedAuthorizationRunsNoStatements() async {
+    @Test
+    func deniedAuthorizationRunsNoStatements() async {
         let driver = RecordingDriver()
 
         do {
             _ = try await run(statements: [statement("A;")], driver: driver, gate: AlwaysDenyGate())
-            XCTFail("Expected the gate to deny the run")
+            Issue.record("Expected the gate to deny the run")
         } catch {
-            XCTAssertTrue(driver.executed.isEmpty, "nothing may run when the gate denies")
+            #expect(driver.executed.isEmpty, "nothing may run when the gate denies")
         }
     }
 
     // MARK: - Progress
 
-    func testProgressReachesTotalOnCompletion() async throws {
+    @Test
+    func progressReachesTotalOnCompletion() async throws {
         let driver = RecordingDriver()
         let progress = Progress()
 
@@ -259,12 +253,12 @@ final class CompareSyncExecutorTests: XCTestCase {
             progress: progress
         )
 
-        XCTAssertEqual(progress.totalUnitCount, 3)
-        XCTAssertEqual(progress.completedUnitCount, 3)
+        #expect(progress.totalUnitCount == 3)
+        #expect(progress.completedUnitCount == 3)
     }
 }
 
-final class CompareSyncExecutionSettingsTests: XCTestCase {
+struct CompareSyncExecutionSettingsTests {
     private func driver(transactions: Bool, transactionalDDL: Bool) -> RecordingDriver {
         let driver = RecordingDriver()
         driver.transactionsSupported = transactions
@@ -272,78 +266,85 @@ final class CompareSyncExecutionSettingsTests: XCTestCase {
         return driver
     }
 
-    func testTransactionIsDisabledForSkipAndContinue() {
+    @Test
+    func transactionIsDisabledForSkipAndContinue() {
         var settings = CompareSyncExecutionSettings()
         settings.wrapInTransaction = true
         settings.errorHandling = .skipAndContinue
 
-        XCTAssertFalse(settings.usesTransaction(
+        #expect(!(settings.usesTransaction(
             for: .data, driver: driver(transactions: true, transactionalDDL: true)
-        ))
+        )))
     }
 
-    func testTransactionRequiresDriverSupport() {
+    @Test
+    func transactionRequiresDriverSupport() {
         var settings = CompareSyncExecutionSettings()
         settings.wrapInTransaction = true
         settings.errorHandling = .stopAndRollback
 
-        XCTAssertTrue(settings.usesTransaction(
+        #expect(settings.usesTransaction(
             for: .data, driver: driver(transactions: true, transactionalDDL: true)
         ))
-        XCTAssertFalse(settings.usesTransaction(
+        #expect(!(settings.usesTransaction(
             for: .data, driver: driver(transactions: false, transactionalDDL: true)
-        ))
+        )))
     }
 
     /// MySQL, MariaDB and Oracle commit implicitly on every DDL statement, so a structure sync
     /// wrapped in a transaction reported "The target is unchanged" after a ROLLBACK that undid
     /// nothing. Structure asks `supportsTransactionalDDL`, data asks `supportsTransactions`.
-    func testStructureSyncAsksForTransactionalDDLRatherThanTransactions() {
+    @Test
+    func structureSyncAsksForTransactionalDDLRatherThanTransactions() {
         var settings = CompareSyncExecutionSettings()
         settings.wrapInTransaction = true
         settings.errorHandling = .stopAndRollback
         let mysqlLike = driver(transactions: true, transactionalDDL: false)
 
-        XCTAssertFalse(settings.usesTransaction(for: .structure, driver: mysqlLike))
-        XCTAssertTrue(settings.usesTransaction(for: .data, driver: mysqlLike))
+        #expect(!settings.usesTransaction(for: .structure, driver: mysqlLike))
+        #expect(settings.usesTransaction(for: .data, driver: mysqlLike))
     }
 
-    func testStructureSyncUsesATransactionWhenTheEngineSupportsTransactionalDDL() {
+    @Test
+    func structureSyncUsesATransactionWhenTheEngineSupportsTransactionalDDL() {
         var settings = CompareSyncExecutionSettings()
         settings.wrapInTransaction = true
         settings.errorHandling = .stopAndRollback
 
-        XCTAssertTrue(settings.usesTransaction(
+        #expect(settings.usesTransaction(
             for: .structure, driver: driver(transactions: true, transactionalDDL: true)
         ))
     }
 }
 
-final class CompareSyncEligibilityTests: XCTestCase {
-    func testMissingSchemaCompareBitIsRefused() {
+struct CompareSyncEligibilityTests {
+    @Test
+    func missingSchemaCompareBitIsRefused() {
         let driver = RecordingDriver()
         driver.declaredCapabilities = []
 
-        XCTAssertNotNil(CompareSyncEligibility.refusalReason(for: driver, mode: .structure, endpointName: "db"))
+        #expect(CompareSyncEligibility.refusalReason(for: driver, mode: .structure, endpointName: "db") != nil)
     }
 
-    func testDeclaredBitPasses() {
+    @Test
+    func declaredBitPasses() {
         let driver = RecordingDriver()
         driver.declaredCapabilities = [.schemaCompare, .dataCompare]
 
-        XCTAssertNil(CompareSyncEligibility.refusalReason(for: driver, mode: .structure, endpointName: "db"))
-        XCTAssertNil(CompareSyncEligibility.refusalReason(for: driver, mode: .data, endpointName: "db"))
+        #expect(CompareSyncEligibility.refusalReason(for: driver, mode: .structure, endpointName: "db") == nil)
+        #expect(CompareSyncEligibility.refusalReason(for: driver, mode: .data, endpointName: "db") == nil)
     }
 
-    func testStructureBitDoesNotGrantDataCompare() {
+    @Test
+    func structureBitDoesNotGrantDataCompare() {
         let driver = RecordingDriver()
         driver.declaredCapabilities = [.schemaCompare]
 
-        XCTAssertNotNil(CompareSyncEligibility.refusalReason(for: driver, mode: .data, endpointName: "db"))
+        #expect(CompareSyncEligibility.refusalReason(for: driver, mode: .data, endpointName: "db") != nil)
     }
 }
 
-final class DatabaseEndpointSafeModeTests: XCTestCase {
+struct DatabaseEndpointSafeModeTests {
     private func endpoint(_ level: SafeModeLevel) -> DatabaseEndpoint {
         DatabaseEndpoint(
             scope: DatabaseScope(connectionId: UUID(), database: "prod", schema: nil),
@@ -354,17 +355,19 @@ final class DatabaseEndpointSafeModeTests: XCTestCase {
         )
     }
 
-    func testReadOnlyEndpointCannotBeWrittenTo() {
+    @Test
+    func readOnlyEndpointCannotBeWrittenTo() {
         let target = endpoint(.readOnly)
 
-        XCTAssertFalse(target.canBeWrittenTo)
-        XCTAssertNotNil(target.ineligibleAsTargetReason)
+        #expect(!target.canBeWrittenTo)
+        #expect(target.ineligibleAsTargetReason != nil)
     }
 
-    func testOtherLevelsCanBeWrittenTo() {
+    @Test
+    func otherLevelsCanBeWrittenTo() {
         for level in [SafeModeLevel.silent, .alert, .alertFull, .safeMode, .safeModeFull] {
-            XCTAssertTrue(endpoint(level).canBeWrittenTo, "\(level) should be a valid target")
-            XCTAssertNil(endpoint(level).ineligibleAsTargetReason)
+            #expect(endpoint(level).canBeWrittenTo, "\(level) should be a valid target")
+            #expect(endpoint(level).ineligibleAsTargetReason == nil)
         }
     }
 }

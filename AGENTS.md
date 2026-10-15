@@ -1,151 +1,153 @@
 # TablePro
 
-A native macOS database client (SwiftUI + AppKit), a lightweight alternative to TablePlus. macOS 13.0+, Swift 6 language mode for the app targets (`Configs/Base.xcconfig`), Universal Binary. `TableProMobile/` is the iOS app.
+A native macOS database client (SwiftUI and AppKit), a lightweight alternative to TablePlus. macOS 13.0+, Swift 6 language mode for the app targets (`Configs/Base.xcconfig`), Universal Binary. `TableProMobile/` is the iOS app.
 
-This file is the project guide for every agent, and it covers the macOS and iOS apps. An app for another platform keeps its own guide beside its code, and that guide is the one to follow there. Claude Code loads this file through `CLAUDE.md`; Codex loads it directly. Area rules live in `.claude/rules/` (index at the end), and Claude Code loads each one automatically when you touch a file its `paths:` names. Codex does not, so read the matching rule before editing those paths.
+This guide covers the macOS and iOS apps; another platform's app keeps its own guide beside its code. Claude Code loads it through `CLAUDE.md`, Codex directly.
 
 ## Principles
 
 1. **Security first.** Validate at system boundaries; never introduce injection, credential exposure or a widened permission by accident.
-2. **Native only.** AppKit, SwiftUI and system frameworks. No cross-platform layers, no web views for native UI. Follow the documented Apple API and the HIG, not a hand-rolled equivalent.
-3. **Fix the cause, not the symptom.** Diagnose (add OSLog if needed), then fix the actual cause. No temporary workarounds left in place.
-4. **Clean architecture.** Separation of concerns, protocol-oriented design, dependency injection where it earns its place. Consider the effect of every change on the design, not just the immediate problem.
-5. **Tests define behavior.** Every testable change has a test. When a test fails, fix the code, never the test.
-6. **Open plugin domain.** `DatabaseType` is a string-backed struct, so unknown types from future plugins round-trip. A `switch` over an open type keeps a `default:`; a `switch` over a closed enum stays exhaustive so the compiler flags new cases.
+2. **Native only.** AppKit, SwiftUI and system frameworks; no cross-platform layer, no web view for native UI. Follow the documented Apple API and the HIG.
+3. **Fix the cause, not the symptom.** Diagnose (add OSLog if needed), then fix the cause. No workaround left behind.
+4. **Clean architecture.** Separation of concerns, protocol-oriented design, dependency injection where it earns its place. Weigh each change's effect on the design.
+5. **Tests define behavior.** Every testable change has a test. When a test fails, fix the code, never the test. A test that pins behavior the PR changes on purpose is updated in the same PR and named in its description.
+6. **Open plugin domain.** `DatabaseType` is a string-backed struct (static constants, `allKnownTypes`), so a future plugin's type round-trips. A `switch` over an open type keeps a `default:`; one over a closed enum stays exhaustive.
 
 ## Scope
 
 Every capability is core, a module or a plugin. The first rule that fits decides:
 
-1. Used weekly by an app or backend developer or an AI-first user, or only a row that runs nothing until clicked: **core**, with no toggle.
-2. UI for one engine: core, shown only for the drivers that support it.
-3. A database driver or a heavy native dependency: **plugin**, shipped through the plugin registry and signed by TablePro.
-4. Any other advanced tool that needs a session, the grid, the editor or native UI: **module**, compiled in and turned on or off as a unit.
-5. A duplicate, or not worth maintaining: delete it. Never move it to the registry as a halfway step.
+1. Used weekly by app or backend developers or AI-first users, or only a row that runs nothing until clicked: **core**, no toggle.
+2. UI for one engine: core, shown only for drivers that support it.
+3. A database driver or a heavy native dependency: **plugin**, registry-shipped, signed by TablePro.
+4. Any other advanced tool needing a session, the grid, the editor or native UI: **module**, compiled in, toggled as a unit.
+5. A duplicate, or not worth maintaining: delete it, never park it in the registry.
 
-- A new database engine ships only as a registry plugin. Engine-specific code never goes into `TablePro/`; engine UI goes through a PluginKit capability or plugin metadata.
+- A new engine ships only as a registry plugin: no engine-specific code in `TablePro/`; engine UI uses a PluginKit capability or plugin metadata.
 - A new advanced tool ships as a module, off by default.
-- A module PR declares its module id, its default, the sink that refuses it while it is off, its residue test and its docs page.
-- An off module leaves nothing behind: no menu item, key equivalent, context item, Settings section or Keyboard row; no launch work, observer, timer, listener or child process; no Keychain read or network call. A URL, AppleScript or MCP request for it gets an error that says where to turn it on, and only a click in TablePro turns it on.
+- A module PR declares its id, default, off-state sink, residue test (a behavior test) and docs page.
+- An off module leaves nothing behind: no menu item, key equivalent, context item, Settings section or Keyboard row; no launch work, observer, timer, listener or child process; no Keychain read or network call. A URL, AppleScript or MCP request for it gets an error naming where to enable it; only a click in TablePro enables it.
 
 ## Repository map
 
-- `TablePro/`: the app. `Core/` (services, business logic), `Views/`, `Models/`, `ViewModels/`, `Extensions/`, `Theme/`.
-- `Plugins/`: every database driver and import/export format is a `.tableplugin` bundle, plus `TableProPluginKit`, the shared framework. Bundled plugins are the targets in the app's `copy: { destination: plugins }` phase in `project.yml`; the rest are registry-only and ship through [TableProApp/plugins](https://github.com/TableProApp/plugins). Some bundled plugins also have a registry entry (`"bundled": true` in `.github/plugin-registry.json`), but the app never installs or offers a registry update over a bundled plugin; a published build reaches a user only through a manual install of its zip.
-- `Packages/`: local SwiftPM packages (`TableProCore`, `TableProOracle`, `TableProEditor`, `TableProGrammars`). Each sets its own Swift language mode in its manifest; `SWIFT_VERSION` in the xcconfig does not reach them, and passing `SWIFT_VERSION=` to `xcodebuild` reaches every package and reports their errors as yours. `Packages/TableProCore/Sources/TableProPluginKit` is a symlink: edit `Plugins/TableProPluginKit/` only.
-- `Native/`: first-party Rust and Go bridges (see `.claude/rules/native-bridges.md`).
-- `Libs/`: prebuilt static libraries and iOS xcframeworks, downloaded by `scripts/download-libs.sh`, not in git.
-- The docs site (docs.tablepro.app) is its own repository, [TableProApp/docs](https://github.com/TableProApp/docs), cloned beside this one as `../tablepro-docs`. Its `AGENTS.md` and `STYLE.md` govern its pages.
-- `TablePro.xcodeproj` and `TableProMobile/TableProMobile.xcodeproj` are generated from `project.yml` and `TableProMobile/project.yml` by XcodeGen. They are gitignored, except each one's tracked `Package.resolved`. Never hand-edit them. Signing overrides and secrets go in `Configs/Secrets.xcconfig` (template: `Secrets.xcconfig.example`).
+- `TablePro/`: the app (`Core/`, `Views/`, `Models/`, `ViewModels/`, `Extensions/`, `Theme/`).
+- `Plugins/`: drivers and import/export formats as `.tableplugin` bundles, plus `TableProPluginKit`. Bundled plugins are the app's `copy: { destination: plugins }` targets in `project.yml`; the rest ship through TableProApp/plugins, and the app never offers a registry install or update over a bundled one.
+- `Packages/`: `TableProCore` (both apps), `TableProMacCore` (macOS-only modules; never in the iOS project), `TableProOracle`, `TableProEditor`, `TableProGrammars`. `TableProCore`'s PluginKit source is a symlink: edit `Plugins/TableProPluginKit/` only. Each manifest sets its own Swift language mode, so never pass `SWIFT_VERSION=` to `xcodebuild`.
+- Tests: `TableProTests/`, `TableProUITests/`, `Plugins/*Tests/`, `Packages/*/Tests/`, `TableProMobile/TableProMobileTests/`; plans in `TestPlans/`. Which holds what: `.claude/rules/tests.md`.
+- `Native/`: first-party Rust and Go bridges (`.claude/rules/native-bridges.md`).
+- `Libs/`: static libraries and iOS xcframeworks from `scripts/download-libs.sh`, not in git.
+- Docs site: TableProApp/docs, cloned beside this repo as `../tablepro-docs`, under its own `AGENTS.md` and `STYLE.md`.
+- `TablePro.xcodeproj` and `TableProMobile/TableProMobile.xcodeproj` are generated by XcodeGen from their `project.yml`, gitignored except their `Package.resolved`; never hand-edit them. Signing overrides go in `Configs/Secrets.xcconfig`.
+
+## Architecture
+
+- **Plugins.** `PluginManager` loads `DriverPlugin` bundles; `DatabaseDriverFactory` finds one by `pluginTypeId`; `PluginDriverAdapter` bridges its `PluginDatabaseDriver` to `DatabaseDriver`; `DatabaseManager` owns sessions. A new requirement gets a default implementation, then the adapter (`.claude/rules/plugin-system.md`).
+- **Main window.** `MainContentCoordinator`, split into `Views/Main/Extensions/`; one `ConnectionWorkspace` per connection (`.claude/rules/connection-window.md`).
+- **Change tracking.** `DataChangeManager` holds edits behind `AnyChangeManager`; `SQLStatementGenerator` writes them on Save. Undo: `StructureChangeManager`'s `UndoManager`, `ConnectionWorkspace.undoManager`.
+- **Editor and theme.** `ThemeCatalog` lists themes, `ThemeResolver` picks the light and dark pair, `ThemeEngine` holds the palette and font caches; fonts come from `TypographySettings`. A theme colors content and window backdrop, never chrome (`.claude/rules/theme.md`). `QueryCompletionAdapter` bridges `CompletionEngine`; `EditorTabStrip` draws tabs (`.claude/rules/editor.md`).
+- **Storage.** Passwords in the Keychain, preferences in UserDefaults, query history in SQLite FTS5, tab state as JSON (`.claude/rules/data-sync-storage.md`).
 
 ## Commands
 
 ```bash
-scripts/download-libs.sh          # first time, and after a libs update
-scripts/generate-project.sh       # after editing project.yml or Configs/, or adding, moving or deleting a source file
-```
-
-Build, test and lint through the wrapper, which keeps the full log on disk and prints a short verdict (`PASS`, `FAIL`, `INCONCLUSIVE`):
-
-```bash
+scripts/download-libs.sh  # first time, and after a libs update
+scripts/generate-project.sh [both|macos|ios]  # needs the libs; rerun after editing a project.yml or Configs/, or adding, moving or deleting a source file
 .claude/skills/fix-issue/scripts/verify.sh build
-.claude/skills/fix-issue/scripts/verify.sh test <SuiteType> [SuiteType...]
-.claude/skills/fix-issue/scripts/verify.sh lint <file.swift> [...]
+.claude/skills/fix-issue/scripts/verify.sh test [Test...]  # no Test: the whole Unit plan
+.claude/skills/fix-issue/scripts/verify.sh lint <file.swift>...
 ```
 
-It also has `generate`, `uitest`, `package`, `ios`, `plugins`, `abi`, `l10n`, `docs` and `agent-docs`; `verify.sh --help` lists them. The steps are the platform's: on a Mac they are these, and `--platform <name>` picks another app's. The raw equivalents always pass `-skipPackagePluginValidation`:
-
-```bash
-xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
-xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation -only-testing:TableProTests/<SuiteType>
-swiftlint lint --strict <files>
-```
-
-- Tests are Swift Testing. `-only-testing` matches the Swift type name of a suite (one case: `<SuiteType>/<test>()`), and a filter that matches nothing still prints `TEST SUCCEEDED`, so check the executed count.
-- A full `TableProTests` run is not a gate: run the suites that own the types you changed.
-- Release builds: `scripts/build-release.sh arm64|x86_64|both` and `scripts/create-dmg.sh`; the `release` skill runs the whole release.
-- SwiftLint (`.swiftlint.yml`) is the enforced style and runs on every PR. Pass it file paths: a directory outside its `included:` scope lints nothing and reports zero violations.
-
-## Architecture
-
-**Plugins.** `PluginManager` (`Core/Plugins/`) loads bundles at runtime. `PluginDatabaseDriver` and `DriverPlugin` live in TableProPluginKit; `PluginDriverAdapter` bridges a plugin driver to the app's `DatabaseDriver`; `DatabaseDriverFactory` finds a plugin by `DatabaseType.pluginTypeId`; `DatabaseManager` owns sessions and is what views and coordinators talk to. A new protocol method goes on `PluginDatabaseDriver` with a default implementation, then into `PluginDriverAdapter`. PluginKit is ABI-resilient and its compatibility rules are in `.claude/rules/plugin-system.md`; read them before touching it.
-
-**DatabaseType.** A string-backed struct, not an enum. Use the static constants (`.mysql`, `.postgresql`) for known types and `DatabaseType.allKnownTypes` for the canonical list.
-
-**Main window.** `MainContentCoordinator` is the central coordinator, split into extension files in `Views/Main/Extensions/`. Each connection a window hosts is a `ConnectionWorkspace` with its own phase; see `.claude/rules/connection-window.md`.
-
-**Change tracking.** A cell edit goes to `DataChangeManager`; Save turns it into statements through `SQLStatementGenerator`; `AnyChangeManager` abstracts the concrete managers. Undo comes from `StructureChangeManager`'s private `UndoManager` and `ConnectionWorkspace.undoManager`.
-
-**Editor and theme.** `ThemeCatalog` owns the theme list, `ThemeResolver` picks the light and dark pair, and `ThemeEngine` holds the palette and the font caches; the fonts themselves are `TypographySettings`. A theme colors content and the window backdrop, never chrome or controls; see `.claude/rules/theme.md`. `CompletionEngine` is framework-agnostic and `QueryCompletionAdapter` bridges it to the editor. Editor tabs are drawn by `EditorTabStrip`, not native window tabs. Details: `.claude/rules/editor.md`.
-
-**Storage.** Passwords in the Keychain, preferences in UserDefaults, query history in SQLite FTS5, tab state as JSON. The full table of which store owns what is in `.claude/rules/data-sync-storage.md`.
+- `verify.sh` logs to disk and prints `PASS`, `FAIL` or `INCONCLUSIVE`, exit 0, 1 or 2; 3 is a usage error that ran nothing.
+- A Test is `<Suite>` (a Swift type name), `<Suite>/<case>()`, or either behind its target, `<Target>/<Suite>`.
+- `INCONCLUSIVE` is never a pass.
+- A run that executed nothing is `FAIL`, unless a named environment cause makes it `INCONCLUSIVE`.
+- `verify.sh --help` lists every step. Steps per change: `.claude/skills/fix-issue/references/platform-apple.md`, Verify. Test names, verdicts, remedies, red CI checks: `.claude/skills/fix-issue/references/verification-apple.md`.
+- A raw `xcodebuild` passes `-skipPackagePluginValidation`, plus `-testPlan Unit` or `UI` for macOS tests. Raw commands: `CONTRIBUTING.md`, Tests.
+- The macOS plans own their run settings: never add `-parallel-testing-enabled`, `-test-iterations` or `-retry-tests-on-failure`, except to reproduce a flake (`.claude/rules/tests.md`). iOS tests have no plan and pass `-parallel-testing-enabled NO` (`.claude/rules/ci.md`, iOS and Package Tests).
+- Releases: `RELEASING.md` and the `release` skill.
 
 ## Invariants that apply everywhere
 
-- **The app runs the AppKit lifecycle.** `main.swift` starts it, `MainMenuBuilder.install` builds the menu bar in `applicationWillFinishLaunching`, and every window is an `NSWindowController`. Never add a SwiftUI `App`: it rewrites `NSApp.mainMenu` after launch.
-- **A refresh never clears the cache it refreshes.** Fetch, then commit over the old value. Enter `.loading` only when nothing is loaded, keep the good data when a refresh fails, and use `prepareForReload` for a reload, keeping `invalidate` for disconnect.
-- **Canceling a connect does not stop the driver.** `Task.cancel()` cannot interrupt a blocking C call, so a connect must be abortable (poll it, or resume through `runCancellableBlocking` and let the late call close its own handle), and every attempt checks its `ConnectionAttemptRegistry` generation before adopting a driver.
+- **AppKit lifecycle.** `main.swift` starts the app; `MainMenuBuilder.install` builds the menus in `applicationWillFinishLaunching`; windows are `NSWindowController`s. A SwiftUI `App` rewrites `NSApp.mainMenu`: never add one.
+- **A refresh never clears what it refreshes.** Fetch, then commit over the old value; `.loading` only when nothing is loaded; keep good data on failure; `prepareForReload` to reload, `invalidate` on disconnect.
+- **A canceled connect keeps running.** `Task.cancel()` cannot interrupt a blocking C call: poll the connect or resume through `runCancellableBlocking` (the late call closes its handle), then check the `ConnectionAttemptRegistry` generation before adopting a driver.
+- **Storage resolves through `AppStorageEnvironment.shared`** (stores, defaults suite, keychain); the `storage_environment_*` SwiftLint rules fail other Application Support or standard-defaults use.
+- **An AppKit autosave name** (split view, window frame, table) **goes through `SplitViewAutosaveName.current(_:)`**: AppKit writes the record to the real defaults domain, which the sandbox does not redirect.
+- **No new test-only branch in production code**: tests use injection or `TABLEPRO_UI_TEST_SANDBOX`.
+- **macOS files the iOS app compiles** (listed in `TableProMobile/project.yml`) give each top-level declaration explicit isolation, usually `nonisolated`, since iOS defaults to `MainActor` (`scripts/ci/check-ios-shared-isolation.py`).
+- **No package product in a macOS binary depends on the `TableProPluginKit` package**: a plugin would carry its own PluginKit types (`.claude/rules/plugin-system.md`).
+- **A source-text rule is a SwiftLint rule or a `scripts/ci` check**, never a test reading source.
 
 ## Code style
 
-`.swiftlint.yml` is the source of truth. Beyond it:
-
-- **Comments say why, never what.** A short `///` (one or two lines) belongs where the code would surprise a careful reader: a platform quirk, an invariant, a workaround and the reason for it. Never narrate what the code does, cite tickets, or describe callers. Remove a what-comment when you touch its code.
-- Early returns with `guard`; small focused functions; self-explanatory names.
-- Explicit access control, declared on the extension rather than on each member.
-- No force unwrapping or force casting.
-- OSLog (`Logger(subsystem: "com.TablePro", category: "...")`), never `print()`.
-- Imports: system frameworks alphabetically, then third-party, then local.
-- Approaching a SwiftLint size limit: extract into `TypeName+Category.swift`, grouped by domain.
+- `.swiftlint.yml` is the source of truth. Never run `swiftlint --fix`.
+- **Comments say why, never what.** A short `///` only where code would surprise a reader (a platform quirk, an invariant, a workaround's reason). Delete what-comments in code you touch.
+- Early returns with `guard`, small functions, self-explanatory names.
+- Explicit access control, declared on the extension.
+- No force unwrap or force cast.
+- Log with `Logger(subsystem: "com.TablePro", category: ...)`, never `print()`.
+- Imports: one alphabetical block (`sorted_imports`).
+- Booleans start with `is`, `has`, `can` or `should`; factories with `make`; acronyms all caps (`SQLStatementGenerator`).
+- Near a size limit, split into `TypeName+Category.swift` by domain. `file_length` skips comment-only lines: trust `swiftlint lint --strict --no-cache <file>`, not `wc -l`.
+- Formatting beyond SwiftLint: `CONTRIBUTING.md`, Code style.
 
 ## Performance pitfalls
 
 - Never `ForEach($bindable.array) { $item in }` on an `@Observable` array that can shrink: index bindings crash. Use `ForEach(array)` and a manual binding.
-- On large strings, use `(string as NSString).length` and `character(at:)`, never `.count` or `index(_:offsetBy:)` in a loop.
-- Never call `ensureLayout(forCharacterRange:)`; it defeats non-contiguous layout.
-- A SQL dump can have one line of millions of characters: cap regex and highlight ranges at 10k characters.
+- On large strings use `(string as NSString).length` and `character(at:)`, never `.count` or `index(_:offsetBy:)` in a loop.
+- Never call `ensureLayout(forCharacterRange:)`: it defeats non-contiguous layout.
+- A SQL dump line can hold millions of characters: cap regex and highlight ranges at 10k.
 
 ## Every change
 
-1. **Tests.** Unit tests for testable behavior; `TableProUITests` automation for a user flow that runs deterministically, or the reason in the PR. UI suites subclass `UITestCase`. Details: `.claude/rules/tests.md`.
-2. **CHANGELOG.md.** A user-visible change gets one fragment under `[Unreleased]`, in the existing canonical section. Format: `.claude/rules/changelog.md`.
-3. **Localization.** `String(localized:)` for user-facing strings outside SwiftUI literals, never with interpolation (use `String(format: String(localized: "Preview %@"), name)`). Do not localize technical terms. Plugin and package messages must be in the app catalog, managed manually: `python3 scripts/localization.py plugins --add`. Never hand-edit a `.xcstrings`; translations go through `xcodebuild -exportLocalizations` and `-importLocalizations`.
-4. **Docs.** A new shortcut, UI or settings change, or driver change gets a paired draft pull request in TableProApp/docs that names this one. Its CI checks the app's `main`, so it merges after this one does; `verify.sh docs` runs the same checks against this tree first.
-5. **Lint** the changed Swift files with `swiftlint lint --strict`.
+1. **Tests.** Every testable change has a test in the target owning the code. Read `.claude/rules/tests.md` before creating a test file: a path rule loads only once a matching file is open. A UI flow only for a new or changed end-to-end flow (`.claude/rules/ui-tests.md`).
+2. **CHANGELOG.md.** A user-visible change gets one fragment under `[Unreleased]`; format: `.claude/rules/changelog.md`.
+3. **Localization.** `String(localized:)` outside SwiftUI literals, never interpolated: `String(format: String(localized: "Preview %@"), name)`. Technical terms stay unlocalized. A plugin or package string lives in the host app's catalog: add it with `python3 scripts/localization.py plugins --add`, plus `--target ios` for a package the iOS app links. Never hand-edit a `.xcstrings`.
+4. **Docs.** A new shortcut, UI or settings change, or driver change gets a paired draft PR in TableProApp/docs naming this one; it merges after this one. `verify.sh docs` runs its checks here first.
+5. **Lint** each changed Swift file with `verify.sh lint`. Run `verify.sh agent-docs` when `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`, `RELEASING.md`, `.github/pull_request_template.md` or anything under `.claude/` changed.
 6. **Atomic API changes.** A rename or signature change updates every caller and test in the same commit.
-7. **Commits and pull requests.** Squash merges use the PR title as the commit subject, so the title is the record: Conventional Commits (`<type>(<scope>): <description>`, `!` for breaking), at most 72 characters, a canonical scope when one fits. CI checks it. Branch commits follow the same format; put the explanation in the PR description, which follows `.github/pull_request_template.md`.
-   - Types: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`, `style`, `revert`. The `release` skill alone writes `release: v<version>`.
-   - Scopes: `ai-chat`, `ai-providers`, `mcp`, `copilot`, `inline-suggest`, `editor`, `datagrid`, `tabs`, `coordinator`, `sidebar`, `connections`, `connection-form`, `welcome`, `settings`, `toolbar`, `hig`, `ssh`, `ios`, `windowing`, `perf`, `launch`, `plugins`, `plugin-<name>`, `changelog`, `claude-md`, `docs`, `ci`, `release`.
-   - Platform scopes: `ios` for the iOS app, `linux` or `linux-<area>` for the Linux app. `windows` is kept for a Windows app, which is why window management is `windowing`.
+7. **Commits and PRs.** The PR title is the squash commit subject; branch commits use the same format. The body follows `.github/pull_request_template.md`, whose top comment holds the format, types and scopes. The `PR title` check (`scripts/ci/check-pr-title.py`) enforces the format and 72 characters, not scopes.
 
-## Writing style
+## Writing style and docs
 
-For everything: docs, commits, CHANGELOG, UI strings, errors, PR descriptions. Short sentences, plain words, specific numbers and names. No em dashes, no filler. `scripts/banned-words.txt` is the list, and `scripts/check-banned-words.sh --staged` checks the added lines of a staged change.
+- All writing: short sentences, plain words, specific numbers and names, no em dash, no filler.
+- `scripts/banned-words.txt` is the list; never copy its terms. `scripts/check-banned-words.sh --staged` checks a staged change; the `PR title` job checks a PR's added lines and body.
+- One home per fact; others point to it by repo path and section. No drifting counts or timings; a plan is not a fact.
+- Budgets: this file 16 KiB, a rule 200 lines, a `SKILL.md` 500, a skill description 1,536 characters.
+- `verify.sh agent-docs` checks backticked names in the Every change 5 files and each Area rules row against its rule's `paths:`. Never state a plugin count in prose.
 
 ## CI
 
-- **PRs:** `macos-tests.yml`, `ios-tests.yml`, `swiftlint.yml` (pinned, `--strict`), `pr-title.yml` (Conventional Commits, at most 72 characters) and `repo-hygiene.yml` (actionlint, shellcheck and the repo's source-scanning checks).
-- **Releases:** `build.yml` runs on `v*` tags and produces the DMG, the tar.xz update archive, its deltas and the Sparkle feed, with notes taken from `CHANGELOG.md`.
-- **Plugins:** `build-plugin.yml` runs on `plugin-<slug>-v*` tags, where the slug is a key in `.github/plugin-registry.json`.
+- A PR merges on five green checks: macOS Tests, iOS and Package Tests, SwiftLint, Repo Hygiene and PR title. Only release deploy keys bypass them (`RELEASING.md`, Keys and rulesets).
+- Read why a CI check failed before any re-run.
+- Workflows: `.claude/rules/ci.md`. Red checks: `.claude/skills/fix-issue/references/verification-apple.md`, Reading CI.
 
 ## Area rules
 
-| Rule | Covers |
-| --- | --- |
-| `ai-mcp-security.md` | `TablePro/Core/AI`, `TablePro/Core/MCP` |
-| `changelog.md` | `CHANGELOG.md` |
-| `connection-window.md` | connection windows, workspaces, sessions, `DatabaseManager` |
-| `data-grid.md` | the data grid under `TablePro/Views/Results` |
-| `data-sync-storage.md` | storage, CloudKit sync, the database core |
-| `editor.md` | `Packages/TableProEditor`, editor views, fonts |
-| `libs.md` | `Libs/` and the libs scripts |
-| `mongodb-driver.md`, `mysql-driver.md`, `redis-driver.md` | those drivers |
-| `native-bridges.md` | `Native/` and the Dameng and HANA plugins |
-| `plugin-system.md` | `Plugins/`, TableProPluginKit, `project.yml`, plugin CI |
-| `split-views.md` | split view controllers and workspace panes |
-| `tests.md` | `TableProTests`, `TableProUITests` |
-| `theme.md` | `TablePro/Theme`, every view a theme reaches, content windows |
-| `ui-lifecycle.md` | views, view models, UI tests |
-| `welcome-library.md` | the welcome window's connection list |
+Claude Code loads a rule when it reads or edits a file the rule covers. Under Codex, before editing a file, read every rule whose row matches it. Each row is the rule's `paths:` with a trailing `/**/*` dropped; `verify.sh agent-docs` keeps them equal.
 
-Skills live in `.claude/skills/`; Codex sees them through `.agents/skills/`. `fix-issue` takes an issue to a pull request; `release` ships a version.
+| Rule | Read before editing |
+| --- | --- |
+| `ai-mcp-security.md` | `TablePro/Core/AI`, `TablePro/Core/MCP`, `Packages/TableProMacCore/Sources/TableProMCP` |
+| `changelog.md` | `CHANGELOG.md` |
+| `ci.md` | `.github/workflows`, `.github/actions`, `.github/scripts`, `.github/actionlint.yaml`, `.github/*baseline*`, `scripts/ci`, `.swiftlint.yml`, `**/.swiftlint.yml` |
+| `connection-window.md` | `TablePro/Core/Services/Infrastructure`, `TablePro/Models/Connection`, `TablePro/Core/Database/DatabaseManager*.swift`, `Packages/TableProCore/Sources/TableProDatabase`, `TablePro/Views/Main` |
+| `data-grid.md` | `TablePro/Views/Results`, `TablePro/Core/DataGrid`, `TableProTests/Views/Results` |
+| `data-sync-storage.md` | `TablePro/Core/**/*Storage*.swift`, `TablePro/Core/**/*Sync*.swift`, `TablePro/Core/Database`, `TablePro/Core/Plugins/PluginMetadataRegistry*.swift`, `TablePro/Core/Services/Query`, `Packages/TableProCore/Sources/TableProSyncTransport`, `CloudKit` |
+| `editor.md` | `Packages/TableProEditor`, `TablePro/Theme`, `TablePro/Views/Editor`, `TablePro/Views/RowInspector` |
+| `libs.md` | `Libs`, `scripts/download-libs.sh`, `scripts/publish-libs.sh`, `scripts/publish-ios-libs.sh` |
+| `mongodb-driver.md` | `Plugins/MongoDBDriverPlugin`, `Plugins/MQLExportPlugin` |
+| `mysql-driver.md` | `Plugins/MySQLDriverPlugin`, `Packages/TableProCore/Sources/TableProMySQLCore`, `TableProMobile/**/*MySQL*`, `TableProMobile/**/*MariaDB*` |
+| `native-bridges.md` | `Native`, `Plugins/DamengDriverPlugin`, `Plugins/HanaDriverPlugin`, `scripts/build-dameng.sh`, `scripts/build-hana.sh` |
+| `plugin-system.md` | `Plugins`, `Packages/TableProCore/Sources/TableProPluginKit`, `Packages/TableProCore/Sources/TableProMySQLCore`, `Packages/TableProCore/Sources/TableProPostgreSQLCore`, `Packages/TableProCore/Sources/TableProRedisCore`, `Packages/*/Package.swift`, `project.yml`, `TableProMobile/project.yml`, `.github/workflows/build-plugin.yml`, `.github/plugin-registry.json`, `scripts/*plugin*` |
+| `redis-driver.md` | `Plugins/RedisDriverPlugin`, `Packages/TableProCore/Sources/TableProRedisCore` |
+| `split-views.md` | `TablePro/**/*Split*.swift`, `TablePro/Core/Services/Infrastructure/WorkspacePane*.swift` |
+| `tests.md` | `TableProTests`, `TableProUITests`, `Plugins/*Tests`, `Packages/*/Tests`, `TableProMobile/TableProMobileTests`, `TestPlans`, `scripts/ci/check-test-plans.py`, `scripts/clean-test-residue.sh` |
+| `theme.md` | `TablePro/Theme`, `TablePro/Views`, `TablePro/Core/Services/Infrastructure/*Window*` |
+| `ui-lifecycle.md` | `TablePro/Views`, `TablePro/ViewModels`, `TablePro/Core/Services/Infrastructure`, `Packages/TableProEditor` |
+| `ui-tests.md` | `TableProUITests`, `TestPlans/UI.xctestplan` |
+| `welcome-library.md` | `TablePro/Views/Welcome`, `TablePro/ViewModels/WelcomeViewModel*.swift`, `Packages/TableProCore/Sources/TableProConnectionLibrary` |
+
+## Skills
+
+`fix-issue` takes a problem to one green PR and holds `verify.sh` and its references; `release` ships a version. Both live in `.claude/skills/`; Codex sees them through `.agents/skills/`.

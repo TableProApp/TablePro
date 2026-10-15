@@ -7,6 +7,7 @@
 
 import AppKit
 import os
+import TableProUtilities
 import UniformTypeIdentifiers
 
 /// Service for reading and writing SQL files.

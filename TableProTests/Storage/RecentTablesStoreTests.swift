@@ -5,14 +5,19 @@ import Testing
 
 @MainActor
 struct RecentTablesStoreTests {
-    private func makeStore() throws -> RecentTablesStore {
-        let defaults = try #require(UserDefaults(suiteName: "RecentTablesTests.\(UUID().uuidString)"))
-        return RecentTablesStore(defaults: defaults)
+    private let suite: EphemeralDefaults
+
+    init() throws {
+        suite = try EphemeralDefaults()
+    }
+
+    private func makeStore() -> RecentTablesStore {
+        RecentTablesStore(defaults: suite.defaults)
     }
 
     @Test("Record inserts entry at the front")
     func recordInsertsAtFront() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let conn = UUID()
         store.record(connectionId: conn, database: "db", schema: nil, name: "a", isView: false, objectType: nil)
         store.record(connectionId: conn, database: "db", schema: nil, name: "b", isView: false, objectType: nil)
@@ -21,7 +26,7 @@ struct RecentTablesStoreTests {
 
     @Test("Record dedupes by identity and bumps to front")
     func recordDedupes() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let conn = UUID()
         store.record(connectionId: conn, database: "db", schema: nil, name: "a", isView: false, objectType: nil)
         store.record(connectionId: conn, database: "db", schema: nil, name: "b", isView: false, objectType: nil)
@@ -31,7 +36,7 @@ struct RecentTablesStoreTests {
 
     @Test("Record preserves the view flag")
     func recordPreservesViewFlag() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let conn = UUID()
         store.record(
             connectionId: conn, database: "db", schema: nil, name: "orders_view", isView: true, objectType: .view
@@ -41,7 +46,7 @@ struct RecentTablesStoreTests {
 
     @Test("Per-database list caps at 10 entries")
     func capsPerDatabase() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let conn = UUID()
         for index in 0..<15 {
             store.record(
@@ -56,7 +61,7 @@ struct RecentTablesStoreTests {
 
     @Test("Cap applies per database, not per connection")
     func capIsPerDatabase() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let conn = UUID()
         for index in 0..<10 {
             store.record(
@@ -74,7 +79,7 @@ struct RecentTablesStoreTests {
 
     @Test("Entries isolated per connection")
     func isolatedPerConnection() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let connA = UUID()
         let connB = UUID()
         store.record(connectionId: connA, database: "db", schema: nil, name: "alpha", isView: false, objectType: nil)
@@ -85,7 +90,7 @@ struct RecentTablesStoreTests {
 
     @Test("Schema-qualified table is distinct from same-name unqualified")
     func schemaDistinct() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let conn = UUID()
         store.record(
             connectionId: conn, database: "db", schema: "public", name: "users", isView: false, objectType: nil
@@ -96,7 +101,7 @@ struct RecentTablesStoreTests {
 
     @Test("A qualified open replaces the same table recorded without a schema")
     func qualifiedOpenReplacesUnqualified() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let conn = UUID()
         store.record(connectionId: conn, database: "db", schema: nil, name: "users", isView: false, objectType: nil)
         store.record(
@@ -109,7 +114,7 @@ struct RecentTablesStoreTests {
 
     @Test("Resolving a schema rewrites the entry in place and keeps its open time")
     func resolveSchemaRewritesInPlace() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let conn = UUID()
         let firstOpened = Date(timeIntervalSince1970: 3_000)
         store.record(
@@ -136,7 +141,7 @@ struct RecentTablesStoreTests {
 
     @Test("Same name in different databases stays distinct")
     func databaseDistinct() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let conn = UUID()
         store.record(connectionId: conn, database: "a", schema: nil, name: "orders", isView: false, objectType: nil)
         store.record(connectionId: conn, database: "b", schema: nil, name: "orders", isView: false, objectType: nil)
@@ -145,7 +150,7 @@ struct RecentTablesStoreTests {
 
     @Test("Dotted identifiers do not collide")
     func dottedIdentifiersDistinct() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let conn = UUID()
         store.record(connectionId: conn, database: "db", schema: "a", name: "b.c", isView: false, objectType: nil)
         store.record(connectionId: conn, database: "db", schema: "a.b", name: "c", isView: false, objectType: nil)
@@ -154,7 +159,7 @@ struct RecentTablesStoreTests {
 
     @Test("Remove drops the matching entry")
     func removeDrops() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let conn = UUID()
         store.record(connectionId: conn, database: "db", schema: nil, name: "a", isView: false, objectType: nil)
         let remaining = store.record(
@@ -167,7 +172,7 @@ struct RecentTablesStoreTests {
 
     @Test("Clear removes only the given database")
     func clearScopesToDatabase() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let conn = UUID()
         store.record(connectionId: conn, database: "db", schema: nil, name: "a", isView: false, objectType: nil)
         store.record(connectionId: conn, database: "other", schema: nil, name: "b", isView: false, objectType: nil)
@@ -177,7 +182,7 @@ struct RecentTablesStoreTests {
 
     @Test("Entries persist across store instances on the same defaults")
     func persistsAcrossInstances() throws {
-        let defaults = try #require(UserDefaults(suiteName: "RecentTablesTests.\(UUID().uuidString)"))
+        let defaults = suite.defaults
         let conn = UUID()
         RecentTablesStore(defaults: defaults).record(
             connectionId: conn, database: "db", schema: nil, name: "a", isView: false, objectType: nil

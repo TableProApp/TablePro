@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import TableProRedisCore
 
 struct RedisClusterNode: Equatable, Sendable {
     let id: String

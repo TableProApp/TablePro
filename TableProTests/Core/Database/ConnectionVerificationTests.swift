@@ -11,6 +11,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @Suite("Connection verification before use", .serialized)
@@ -277,18 +278,20 @@ struct ConnectionVerificationTests {
     /// answer to whatever driver the session holds by then is how a losing attempt tears down the
     /// one that replaced it.
     @Test("a late answer about a driver that has been replaced is discarded")
-    func aLateAnswerAboutAReplacedDriverIsDiscarded() async {
+    func aLateAnswerAboutAReplacedDriverIsDiscarded() async throws {
         let slow = MockDatabaseDriver()
-        slow.pingDelaySeconds = 0.3
+        let ping = AsyncGate()
+        slow.pingGate = ping
         slow.pingError = DatabaseError.notConnected
         let connection = makeSession(driver: slow)
         DatabaseManager.shared.markSessionVerified(connection.id, at: .distantPast)
 
         let connectionId = connection.id
         let check = Task { @MainActor in await DatabaseManager.shared.verifyBeforeUse(connectionId) }
-        try? await Task.sleep(for: .milliseconds(50))
+        try await waitUntil { slow.pingCallCount == 1 }
         let replacement = MockDatabaseDriver()
         DatabaseManager.shared.updateSession(connectionId) { $0.driver = replacement }
+        await ping.open()
         await check.value
 
         #expect(slow.pingCallCount == 1)
@@ -338,101 +341,103 @@ struct ConnectionVerificationTests {
     }
 }
 
-@Suite("Health monitor scheduling", .serialized)
-@MainActor
-struct HealthMonitorSchedulingTests {
-    private func makeSession() -> DatabaseConnection {
-        FakeMSSQLPluginRegistration.registerIfNeeded()
-        var connection = TestFixtures.makeConnection(name: "Prod")
-        connection.type = DatabaseType(rawValue: FakeMSSQLPlugin.databaseTypeId)
-        var session = ConnectionSession(connection: connection)
-        session.status = .connected
-        session.driver = MockDatabaseDriver()
-        DatabaseManager.shared.injectSession(session, for: connection.id)
-        return connection
-    }
-
-    private func withHealthCheck(_ setting: ConnectionHealthCheck, _ body: () async -> Void) async {
-        let previous = AppSettingsManager.shared.general.connectionHealthCheck
-        AppSettingsManager.shared.general.connectionHealthCheck = setting
-        await body()
-        AppSettingsManager.shared.general.connectionHealthCheck = previous
-    }
-
-    /// The whole point of the on-demand setting: not a very long interval, no scheduled work at
-    /// all. A task that wakes up to decide it has nothing to do is still something waking up.
-    @Test("on demand starts no monitor at all")
-    func onDemandStartsNoMonitor() async {
-        let connection = makeSession()
-        defer { DatabaseManager.shared.removeSession(for: connection.id) }
-
-        await withHealthCheck(.onDemand) {
-            await DatabaseManager.shared.startHealthMonitor(for: connection.id)
+extension GlobalStateSuites {
+    @Suite("Health monitor scheduling")
+    @MainActor
+    struct HealthMonitorSchedulingTests {
+        private func makeSession() -> DatabaseConnection {
+            FakeMSSQLPluginRegistration.registerIfNeeded()
+            var connection = TestFixtures.makeConnection(name: "Prod")
+            connection.type = DatabaseType(rawValue: FakeMSSQLPlugin.databaseTypeId)
+            var session = ConnectionSession(connection: connection)
+            session.status = .connected
+            session.driver = MockDatabaseDriver()
+            DatabaseManager.shared.injectSession(session, for: connection.id)
+            return connection
         }
 
-        #expect(DatabaseManager.shared.healthMonitors[connection.id] == nil)
-        await DatabaseManager.shared.stopHealthMonitor(for: connection.id)
-    }
-
-    @Test("a polling setting starts a monitor")
-    func aPollingSettingStartsAMonitor() async {
-        let connection = makeSession()
-        defer { DatabaseManager.shared.removeSession(for: connection.id) }
-
-        await withHealthCheck(.every15Minutes) {
-            await DatabaseManager.shared.startHealthMonitor(for: connection.id)
+        private func withHealthCheck(_ setting: ConnectionHealthCheck, _ body: () async -> Void) async {
+            let previous = AppSettingsManager.shared.general.connectionHealthCheck
+            AppSettingsManager.shared.general.connectionHealthCheck = setting
+            await body()
+            AppSettingsManager.shared.general.connectionHealthCheck = previous
         }
 
-        #expect(DatabaseManager.shared.healthMonitors[connection.id] != nil)
-        await DatabaseManager.shared.stopHealthMonitor(for: connection.id)
-    }
+        /// The whole point of the on-demand setting: not a very long interval, no scheduled work at
+        /// all. A task that wakes up to decide it has nothing to do is still something waking up.
+        @Test("on demand starts no monitor at all")
+        func onDemandStartsNoMonitor() async {
+            let connection = makeSession()
+            defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
-    @Test("health checks never ping while a tracked operation is running")
-    func trackedOperationSuppressesPingRegardlessOfAge() async {
-        FakeMSSQLPluginRegistration.registerIfNeeded()
-        var connection = TestFixtures.makeConnection(name: "Prod")
-        connection.type = DatabaseType(rawValue: FakeMSSQLPlugin.databaseTypeId)
-        let driver = MockDatabaseDriver(connection: connection)
-        var session = ConnectionSession(connection: connection, driver: driver)
-        session.status = .connected
-        DatabaseManager.shared.injectSession(session, for: connection.id)
+            await withHealthCheck(.onDemand) {
+                await DatabaseManager.shared.startHealthMonitor(for: connection.id)
+            }
 
-        await withHealthCheck(.every15Minutes) {
-            await DatabaseManager.shared.startHealthMonitor(for: connection.id)
-        }
-        let monitor = DatabaseManager.shared.healthMonitors[connection.id]
-        DatabaseManager.shared.queriesInFlight[connection.id] = 1
-        DatabaseManager.shared.queryStartTimes[connection.id] = .distantPast
-
-        await monitor?.performHealthCheck()
-        #expect(driver.pingCallCount == 0)
-
-        DatabaseManager.shared.queriesInFlight.removeValue(forKey: connection.id)
-        DatabaseManager.shared.queryStartTimes.removeValue(forKey: connection.id)
-        await monitor?.performHealthCheck()
-        #expect(driver.pingCallCount == 1)
-
-        await DatabaseManager.shared.stopHealthMonitor(for: connection.id)
-        DatabaseManager.shared.removeSession(for: connection.id)
-    }
-
-    /// The monitor is built once, when the connection opens, so switching the setting has to reach
-    /// what is already open or it only applies to the next connection someone makes.
-    @Test("turning the check off stops the monitor an open connection already has")
-    func switchingToOnDemandStopsALiveMonitor() async {
-        let connection = makeSession()
-        defer { DatabaseManager.shared.removeSession(for: connection.id) }
-
-        await withHealthCheck(.every30Seconds) {
-            await DatabaseManager.shared.startHealthMonitor(for: connection.id)
-        }
-        #expect(DatabaseManager.shared.healthMonitors[connection.id] != nil)
-
-        await withHealthCheck(.onDemand) {
-            await DatabaseManager.shared.startHealthMonitor(for: connection.id)
+            #expect(DatabaseManager.shared.healthMonitors[connection.id] == nil)
+            await DatabaseManager.shared.stopHealthMonitor(for: connection.id)
         }
 
-        #expect(DatabaseManager.shared.healthMonitors[connection.id] == nil)
-        await DatabaseManager.shared.stopHealthMonitor(for: connection.id)
+        @Test("a polling setting starts a monitor")
+        func aPollingSettingStartsAMonitor() async {
+            let connection = makeSession()
+            defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+            await withHealthCheck(.every15Minutes) {
+                await DatabaseManager.shared.startHealthMonitor(for: connection.id)
+            }
+
+            #expect(DatabaseManager.shared.healthMonitors[connection.id] != nil)
+            await DatabaseManager.shared.stopHealthMonitor(for: connection.id)
+        }
+
+        @Test("health checks never ping while a tracked operation is running")
+        func trackedOperationSuppressesPingRegardlessOfAge() async {
+            FakeMSSQLPluginRegistration.registerIfNeeded()
+            var connection = TestFixtures.makeConnection(name: "Prod")
+            connection.type = DatabaseType(rawValue: FakeMSSQLPlugin.databaseTypeId)
+            let driver = MockDatabaseDriver(connection: connection)
+            var session = ConnectionSession(connection: connection, driver: driver)
+            session.status = .connected
+            DatabaseManager.shared.injectSession(session, for: connection.id)
+
+            await withHealthCheck(.every15Minutes) {
+                await DatabaseManager.shared.startHealthMonitor(for: connection.id)
+            }
+            let monitor = DatabaseManager.shared.healthMonitors[connection.id]
+            DatabaseManager.shared.queriesInFlight[connection.id] = 1
+            DatabaseManager.shared.queryStartTimes[connection.id] = .distantPast
+
+            await monitor?.performHealthCheck()
+            #expect(driver.pingCallCount == 0)
+
+            DatabaseManager.shared.queriesInFlight.removeValue(forKey: connection.id)
+            DatabaseManager.shared.queryStartTimes.removeValue(forKey: connection.id)
+            await monitor?.performHealthCheck()
+            #expect(driver.pingCallCount == 1)
+
+            await DatabaseManager.shared.stopHealthMonitor(for: connection.id)
+            DatabaseManager.shared.removeSession(for: connection.id)
+        }
+
+        /// The monitor is built once, when the connection opens, so switching the setting has to reach
+        /// what is already open or it only applies to the next connection someone makes.
+        @Test("turning the check off stops the monitor an open connection already has")
+        func switchingToOnDemandStopsALiveMonitor() async {
+            let connection = makeSession()
+            defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+            await withHealthCheck(.every30Seconds) {
+                await DatabaseManager.shared.startHealthMonitor(for: connection.id)
+            }
+            #expect(DatabaseManager.shared.healthMonitors[connection.id] != nil)
+
+            await withHealthCheck(.onDemand) {
+                await DatabaseManager.shared.startHealthMonitor(for: connection.id)
+            }
+
+            #expect(DatabaseManager.shared.healthMonitors[connection.id] == nil)
+            await DatabaseManager.shared.stopHealthMonitor(for: connection.id)
+        }
     }
 }

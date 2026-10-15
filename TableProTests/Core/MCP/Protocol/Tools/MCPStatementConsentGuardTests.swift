@@ -8,6 +8,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProMCP
 import Testing
 
 struct MCPStatementConsentGuardTests {

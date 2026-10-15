@@ -7,25 +7,19 @@
 //  left to the text view, whose deleteBackward it is.
 //
 
-import XCTest
-import TableProPluginKit
+import Foundation
 @testable import TablePro
+import TableProPluginKit
+import Testing
 
 @MainActor
-final class VimEngineInsertModeEditTests: XCTestCase {
+final class VimEngineInsertModeEditTests {
     private var engine: VimEngine!
     private var buffer: VimTextBufferMock!
 
-    override func setUp() {
-        super.setUp()
+    init() {
         buffer = VimTextBufferMock(text: "hello world\n")
         engine = VimEngine(buffer: buffer)
-    }
-
-    override func tearDown() {
-        engine = nil
-        buffer = nil
-        super.tearDown()
     }
 
     private func enterInsert(at offset: Int) {
@@ -35,106 +29,116 @@ final class VimEngineInsertModeEditTests: XCTestCase {
 
     // MARK: - Ctrl+W: Delete previous word
 
-    func testCtrlWDeletesPreviousWord() {
+    @Test
+    func ctrlWDeletesPreviousWord() {
         enterInsert(at: 11)
         _ = engine.process("\u{17}", shift: false) // Ctrl+W
-        XCTAssertEqual(buffer.text, "hello \n",
+        #expect(buffer.text == "hello \n",
             "Ctrl+W in insert mode should delete the previous word ('world')")
     }
 
-    func testCtrlWInMiddleOfWord() {
+    @Test
+    func ctrlWInMiddleOfWord() {
         // Cursor at offset 8 (inside 'world'). Ctrl+W should delete back to 'w'.
         enterInsert(at: 8)
         _ = engine.process("\u{17}", shift: false)
-        XCTAssertEqual(buffer.text, "hello rld\n",
+        #expect(buffer.text == "hello rld\n",
             "Ctrl+W mid-word should delete back to the start of the current word")
     }
 
-    func testCtrlWAtLineStartIsNoOp() {
+    @Test
+    func ctrlWAtLineStartIsNoOp() {
         enterInsert(at: 0)
         _ = engine.process("\u{17}", shift: false)
-        XCTAssertEqual(buffer.text, "hello world\n",
+        #expect(buffer.text == "hello world\n",
             "Ctrl+W at line start should not cross the line boundary")
     }
 
-    func testCtrlWConsumed() {
+    @Test
+    func ctrlWConsumed() {
         enterInsert(at: 11)
         let consumed = engine.process("\u{17}", shift: false)
-        XCTAssertTrue(consumed, "Ctrl+W in insert mode must be consumed by the engine")
+        #expect(consumed, "Ctrl+W in insert mode must be consumed by the engine")
     }
 
     // MARK: - Ctrl+U: Delete to line start
 
-    func testCtrlUDeletesToLineStart() {
+    @Test
+    func ctrlUDeletesToLineStart() {
         enterInsert(at: 11)
         _ = engine.process("\u{15}", shift: false) // Ctrl+U
-        XCTAssertEqual(buffer.text, "\n",
+        #expect(buffer.text == "\n",
             "Ctrl+U should delete everything from cursor back to the start of the line")
     }
 
-    func testCtrlUOnEmptyLineIsNoOp() {
+    @Test
+    func ctrlUOnEmptyLineIsNoOp() {
         buffer = VimTextBufferMock(text: "\n")
         engine = VimEngine(buffer: buffer)
         enterInsert(at: 0)
         _ = engine.process("\u{15}", shift: false)
-        XCTAssertEqual(buffer.text, "\n")
+        #expect(buffer.text == "\n")
     }
 
-    func testCtrlUInMiddleOfLine() {
+    @Test
+    func ctrlUInMiddleOfLine() {
         enterInsert(at: 6)
         _ = engine.process("\u{15}", shift: false)
-        XCTAssertEqual(buffer.text, "world\n",
+        #expect(buffer.text == "world\n",
             "Ctrl+U mid-line should delete just the part before the cursor")
     }
 
     // MARK: - Ctrl+H: Backspace
 
-    func testCtrlHIsLeftToTheTextViewBackspace() {
+    @Test
+    func ctrlHIsLeftToTheTextViewBackspace() {
         enterInsert(at: 5)
         let consumed = engine.process("\u{08}", shift: false) // Ctrl+H
-        XCTAssertFalse(
-            consumed,
-            "Ctrl+H in insert mode is the text view's deleteBackward, which handles selections and every cursor"
-        )
-        XCTAssertEqual(buffer.text, "hello world\n")
+        #expect(!consumed,
+            "Ctrl+H in insert mode is the text view's deleteBackward, which handles selections and every cursor")
+        #expect(buffer.text == "hello world\n")
     }
 
     // MARK: - Ctrl+T / Ctrl+D: Indent / Outdent
 
-    func testCtrlTIndentsCurrentLine() {
+    @Test
+    func ctrlTIndentsCurrentLine() {
         enterInsert(at: 5)
         _ = engine.process("\u{14}", shift: false) // Ctrl+T
-        XCTAssertEqual(buffer.text, "    hello world\n",
+        #expect(buffer.text == "    hello world\n",
             "Ctrl+T in insert mode should add one indent level to the current line")
     }
 
-    func testCtrlDOutdentsCurrentLine() {
+    @Test
+    func ctrlDOutdentsCurrentLine() {
         buffer = VimTextBufferMock(text: "        hello\n")
         engine = VimEngine(buffer: buffer)
         enterInsert(at: 10)
         _ = engine.process("\u{04}", shift: false) // Ctrl+D
-        XCTAssertEqual(buffer.text, "    hello\n",
+        #expect(buffer.text == "    hello\n",
             "Ctrl+D should remove one indent level from the current line")
     }
 
     // MARK: - Mode invariants
 
-    func testCtrlEditsKeepInsertMode() {
+    @Test
+    func ctrlEditsKeepInsertMode() {
         enterInsert(at: 11)
         _ = engine.process("\u{17}", shift: false)
-        XCTAssertEqual(engine.mode, .insert, "Ctrl+W should not exit insert mode")
+        #expect(engine.mode == .insert, "Ctrl+W should not exit insert mode")
         _ = engine.process("\u{15}", shift: false)
-        XCTAssertEqual(engine.mode, .insert, "Ctrl+U should not exit insert mode")
+        #expect(engine.mode == .insert, "Ctrl+U should not exit insert mode")
     }
 
     // MARK: - In Replace Mode
 
-    func testCtrlWInReplaceModeDeletesPreviousWord() {
+    @Test
+    func ctrlWInReplaceModeDeletesPreviousWord() {
         buffer.setSelectedRange(NSRange(location: 11, length: 0))
         _ = engine.process("R", shift: true)
-        XCTAssertEqual(engine.mode, .replace)
+        #expect(engine.mode == .replace)
         _ = engine.process("\u{17}", shift: false)
-        XCTAssertEqual(buffer.text, "hello \n",
+        #expect(buffer.text == "hello \n",
             "Ctrl+W should work in replace mode too")
     }
 }

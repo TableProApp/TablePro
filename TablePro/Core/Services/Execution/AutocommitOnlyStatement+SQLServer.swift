@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProSQLGrammar
+import TableProUtilities
 
 internal extension AutocommitOnlyStatement {
     /// From the T-SQL transaction locking and row versioning guide, which lists the statements an

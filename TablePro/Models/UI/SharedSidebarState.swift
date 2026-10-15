@@ -9,6 +9,7 @@
 
 import Combine
 import Foundation
+import TableProUtilities
 
 /// Which sidebar tab is active
 internal enum SidebarTab: String, CaseIterable {
@@ -95,7 +96,8 @@ final class SharedSidebarState: ObservableObject {
         objectType: TableInfo.TableType?,
         frecencyKey: String
     ) {
-        QuickSwitcherFrecencyStore(connectionId: connectionId).recordAccess(itemId: frecencyKey)
+        QuickSwitcherFrecencyStore(connectionId: connectionId, defaults: AppStorageEnvironment.shared.defaults)
+            .recordAccess(itemId: frecencyKey)
         guard AppSettingsManager.shared.general.showRecentTables else { return }
         recentTables = RecentTablesStore.shared.record(
             connectionId: connectionId, database: normalizedDatabase(database),

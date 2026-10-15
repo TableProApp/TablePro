@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 enum MCPScopeArguments {
     static let keys: Set<String> = ["connection_id", "database", "schema"]

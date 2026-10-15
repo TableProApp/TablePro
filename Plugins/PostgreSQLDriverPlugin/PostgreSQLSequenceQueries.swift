@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 struct PostgreSQLSequenceDefinition: Equatable, Sendable {
     let name: String

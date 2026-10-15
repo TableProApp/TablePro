@@ -6,25 +6,19 @@
 //  the most recent visual selection.
 //
 
-import XCTest
-import TableProPluginKit
+import Foundation
 @testable import TablePro
+import TableProPluginKit
+import Testing
 
 @MainActor
-final class VimEngineVisualReselectionTests: XCTestCase {
+final class VimEngineVisualReselectionTests {
     private var engine: VimEngine!
     private var buffer: VimTextBufferMock!
 
-    override func setUp() {
-        super.setUp()
+    init() {
         buffer = VimTextBufferMock(text: "hello world\nsecond line\nthird line\n")
         engine = VimEngine(buffer: buffer)
-    }
-
-    override func tearDown() {
-        engine = nil
-        buffer = nil
-        super.tearDown()
     }
 
     private func keys(_ chars: String) {
@@ -39,28 +33,30 @@ final class VimEngineVisualReselectionTests: XCTestCase {
 
     // MARK: - gv: Reselect Last Visual
 
-    func testGVReselectsLastCharacterwiseVisual() {
+    @Test
+    func gVReselectsLastCharacterwiseVisual() {
         // Make a selection in visual mode and exit.
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("v")
         keys("lll")
         let originalSel = buffer.selectedRange()
         escape()
-        XCTAssertEqual(engine.mode, .normal)
+        #expect(engine.mode == .normal)
         // Move cursor somewhere else.
         keys("0")
         keys("j")
         // gv should restore the original visual selection.
         keys("gv")
-        XCTAssertEqual(engine.mode, .visual(linewise: false),
+        #expect(engine.mode == .visual(linewise: false),
             "gv should re-enter visual mode")
-        XCTAssertEqual(buffer.selectedRange().location, originalSel.location,
+        #expect(buffer.selectedRange().location == originalSel.location,
             "gv should restore the original selection location")
-        XCTAssertEqual(buffer.selectedRange().length, originalSel.length,
+        #expect(buffer.selectedRange().length == originalSel.length,
             "gv should restore the original selection length")
     }
 
-    func testGVReselectsLastLinewiseVisual() {
+    @Test
+    func gVReselectsLastLinewiseVisual() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("V", shift: true)
         keys("j")
@@ -68,28 +64,30 @@ final class VimEngineVisualReselectionTests: XCTestCase {
         escape()
         keys("G")
         keys("gv")
-        XCTAssertEqual(engine.mode, .visual(linewise: true),
+        #expect(engine.mode == .visual(linewise: true),
             "gv after V should re-enter linewise visual mode")
-        XCTAssertEqual(buffer.selectedRange().location, originalSel.location)
-        XCTAssertEqual(buffer.selectedRange().length, originalSel.length)
+        #expect(buffer.selectedRange().location == originalSel.location)
+        #expect(buffer.selectedRange().length == originalSel.length)
     }
 
-    func testGVAfterDeleteOperationStillReselectable() {
+    @Test
+    func gVAfterDeleteOperationStillReselectable() {
         // Even after running an operator on the selection, gv should reselect.
         // The selection bounds may shift to track the edit, but the visual region
         // (now containing whatever replaced the deleted text) should be reselectable.
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("vlll")
         keys("d")
-        XCTAssertEqual(engine.mode, .normal)
+        #expect(engine.mode == .normal)
         keys("gv")
-        XCTAssertEqual(engine.mode, .visual(linewise: false),
+        #expect(engine.mode == .visual(linewise: false),
             "gv should still enter visual mode after a delete operation")
     }
 
     // MARK: - '< and '> Jump Marks
 
-    func testJumpToLastSelectionStart() {
+    @Test
+    func jumpToLastSelectionStart() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("v")
         keys("lll")
@@ -97,11 +95,12 @@ final class VimEngineVisualReselectionTests: XCTestCase {
         escape()
         keys("G")
         keys("`<")
-        XCTAssertEqual(buffer.selectedRange().location, start,
+        #expect(buffer.selectedRange().location == start,
             "`< should jump to the start of the last visual selection")
     }
 
-    func testJumpToLastSelectionEnd() {
+    @Test
+    func jumpToLastSelectionEnd() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("v")
         keys("lll")
@@ -110,17 +109,18 @@ final class VimEngineVisualReselectionTests: XCTestCase {
         escape()
         keys("G")
         keys("`>")
-        XCTAssertEqual(buffer.selectedRange().location, inclusiveEnd,
+        #expect(buffer.selectedRange().location == inclusiveEnd,
             "`> should jump to the inclusive-end of the last visual selection")
     }
 
     // MARK: - gv Without Prior Selection
 
-    func testGVWithNoPriorSelectionIsNoOp() {
+    @Test
+    func gVWithNoPriorSelectionIsNoOp() {
         // Fresh engine, no previous visual selection.
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("gv")
-        XCTAssertEqual(engine.mode, .normal,
+        #expect(engine.mode == .normal,
             "gv with no prior selection should remain in normal mode (no-op)")
     }
 }

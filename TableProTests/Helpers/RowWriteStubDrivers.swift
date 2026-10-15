@@ -1,14 +1,9 @@
-//
-//  RowWriteStubDrivers.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import TableProPluginKit
 
 /// A driver that writes its own statements through `generateRowWrites`.
-internal final class RowWriteStubDriver: PluginDatabaseDriver, @unchecked Sendable {
+internal final class RowWriteStubDriver: PluginDriverStub, @unchecked Sendable {
     internal typealias Writer = (
         _ changes: [PluginRowChange],
         _ insertedRowData: [Int: [PluginCellValue]],
@@ -38,9 +33,6 @@ internal final class RowWriteStubDriver: PluginDatabaseDriver, @unchecked Sendab
 
     internal func quoteIdentifier(_ name: String) -> String { "\"\(name)\"" }
 
-    internal func connect() async throws {}
-    internal func disconnect() {}
-
     internal func execute(query: String) async throws -> PluginQueryResult {
         executedQueries.append(query)
         return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
@@ -50,28 +42,11 @@ internal final class RowWriteStubDriver: PluginDatabaseDriver, @unchecked Sendab
         executedQueries.append(query)
         return PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
     }
-
-    internal func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    internal func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    internal func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    internal func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    internal func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    internal func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-
-    internal func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-
-    internal func fetchDatabases() async throws -> [String] { [] }
-
-    internal func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
-    }
 }
 
 /// A driver built before `generateRowWrites` existed: it implements only `generateStatements`, so
 /// the host reaches it through the PluginKit default.
-internal final class LegacyStatementStubDriver: PluginDatabaseDriver, @unchecked Sendable {
+internal final class LegacyStatementStubDriver: PluginDriverStub, @unchecked Sendable {
     internal typealias Generator = (
         _ changes: [PluginRowChange],
         _ insertedRowData: [Int: [PluginCellValue]],
@@ -105,30 +80,6 @@ internal final class LegacyStatementStubDriver: PluginDatabaseDriver, @unchecked
     }
 
     internal func quoteIdentifier(_ name: String) -> String { "\"\(name)\"" }
-
-    internal func connect() async throws {}
-    internal func disconnect() {}
-
-    internal func execute(query: String) async throws -> PluginQueryResult {
-        PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
-    }
-
-    internal func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
-    internal func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { [] }
-    internal func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
-    internal func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }
-    internal func fetchTableDDL(table: String, schema: String?) async throws -> String { "" }
-    internal func fetchViewDefinition(view: String, schema: String?) async throws -> String { "" }
-
-    internal func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        PluginTableMetadata(tableName: table)
-    }
-
-    internal func fetchDatabases() async throws -> [String] { [] }
-
-    internal func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        PluginDatabaseMetadata(name: database)
-    }
 }
 
 /// The way MongoDB's generator behaves: one statement per change it can write, one `deleteMany`

@@ -6,6 +6,7 @@
 import CryptoKit
 import Foundation
 import os
+import TableProUtilities
 
 actor CloudSQLProxyBinaryManager {
     static let shared = CloudSQLProxyBinaryManager()

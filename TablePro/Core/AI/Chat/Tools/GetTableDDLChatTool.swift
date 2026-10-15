@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMCP
 
 struct GetTableDDLChatTool: ChatTool {
     let name = "get_table_ddl"

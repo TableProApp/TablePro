@@ -11,10 +11,10 @@ import XCTest
 
 @MainActor
 final class GroupStorageTests: XCTestCase {
+    private var suite: EphemeralDefaults!
+    private var syncSuite: EphemeralDefaults!
     private var defaults: UserDefaults!
-    private var suiteName: String!
     private var syncDefaults: UserDefaults!
-    private var syncSuiteName: String!
     private var storage: GroupStorage!
     private var tracker: SyncChangeTracker!
     private var connectionStorage: ConnectionStorage!
@@ -26,10 +26,10 @@ final class GroupStorageTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
         let unique = UUID().uuidString
-        suiteName = "com.TablePro.tests.GroupStorage.\(unique)"
-        defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        syncSuiteName = "com.TablePro.tests.Sync.\(unique)"
-        syncDefaults = try XCTUnwrap(UserDefaults(suiteName: syncSuiteName))
+        suite = try EphemeralDefaults()
+        syncSuite = try EphemeralDefaults()
+        defaults = suite.defaults
+        syncDefaults = syncSuite.defaults
         let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
         tracker = SyncChangeTracker(metadataStorage: metadata)
         connectionFileURL = FileManager.default.temporaryDirectory
@@ -58,13 +58,11 @@ final class GroupStorageTests: XCTestCase {
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
-        syncDefaults.removePersistentDomain(forName: syncSuiteName)
         try? FileManager.default.removeItem(at: connectionFileURL)
         defaults = nil
-        suiteName = nil
         syncDefaults = nil
-        syncSuiteName = nil
+        suite = nil
+        syncSuite = nil
         changeSubscription = nil
         appEvents = nil
         storage = nil

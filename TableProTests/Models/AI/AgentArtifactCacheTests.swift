@@ -10,6 +10,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProMCP
 import Testing
 
 @MainActor

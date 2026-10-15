@@ -9,6 +9,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProRedisCore
 
 /// A parsed Redis command ready for execution
 enum RedisOperation {

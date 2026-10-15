@@ -7,6 +7,7 @@ import Foundation
 import TableProEditorKit
 import TableProSQLGrammar
 import TableProTextEngine
+import TableProUtilities
 
 /// Answers the editor's per-line fold queries from a whole-document scan.
 ///

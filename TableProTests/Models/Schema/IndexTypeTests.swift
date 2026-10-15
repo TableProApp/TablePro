@@ -72,14 +72,12 @@ struct IndexTypePasteTests {
 
     /// A paste used to turn such a type into BTREE, which took the refusal away: PostgreSQL 17.11
     /// then created `USING btree` over a text column, and refused a 6.4 KB row later with "index row
-    /// size 6416 exceeds btree version 4 maximum 2704".
+    /// size 6416 exceeds btree version 4 maximum 2704". PostgreSQLDriverTests pins the refusal of FULLTEXT.
     @Test("A type the target has no index of is kept, so PostgreSQL refuses a pasted FULLTEXT before saving")
     func typeWithoutEquivalentIsKeptForTheTargetToJudge() {
         let fulltext = Self.index("FULLTEXT").pasted(from: .mysql, into: .postgresql)
         #expect(fulltext.type == .fulltext)
-        #expect(PostgreSQLVersionedStatements.refusal(
-            for: .addIndex(fulltext.toPlugin()), capabilities: PostgreSQLCapabilities(serverVersion: 170_011)
-        ) == "PostgreSQL has no FULLTEXT index type.")
+        #expect(fulltext.toPlugin().indexType == "FULLTEXT")
         #expect(Self.index("hnsw").pasted(from: .postgresql, into: .mysql).type.rawValue == "HNSW")
         #expect(Self.index("gin").pasted(from: .postgresql, into: .mysql).type == .gin)
     }

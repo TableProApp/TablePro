@@ -3,27 +3,31 @@
 //  TableProTests
 //
 
+import Foundation
 @testable import TablePro
-import XCTest
+import Testing
 
 @MainActor
-final class SourceObjectIndexCarriageTests: XCTestCase {
-    func testTheMatrixDecidesWhichKindsCarryIndexes() {
-        XCTAssertTrue(SourceObjectIndexes.areCarried(for: .materializedView, by: .postgreSQL))
-        XCTAssertFalse(SourceObjectIndexes.areCarried(for: .view, by: .postgreSQL))
-        XCTAssertFalse(SourceObjectIndexes.areCarried(for: .materializedView, by: .tablesOnly))
-        XCTAssertFalse(SourceObjectIndexes.areCarried(for: .table, by: .postgreSQL))
-        XCTAssertFalse(SourceObjectIndexes.areCarried(for: .function, by: .postgreSQL))
+final class SourceObjectIndexCarriageTests {
+    @Test
+    func theMatrixDecidesWhichKindsCarryIndexes() {
+        #expect(SourceObjectIndexes.areCarried(for: .materializedView, by: .postgreSQL))
+        #expect(!SourceObjectIndexes.areCarried(for: .view, by: .postgreSQL))
+        #expect(!SourceObjectIndexes.areCarried(for: .materializedView, by: .tablesOnly))
+        #expect(!SourceObjectIndexes.areCarried(for: .table, by: .postgreSQL))
+        #expect(!SourceObjectIndexes.areCarried(for: .function, by: .postgreSQL))
     }
 
-    func testPostgreSQLAndPGliteCarryAMaterializedViewsIndexes() {
-        XCTAssertEqual(SourceObjectIndexes.carriedKinds(on: .postgresql), [.materializedView])
-        XCTAssertEqual(SourceObjectIndexes.carriedKinds(on: .pglite), [.materializedView])
+    @Test
+    func postgreSQLAndPGliteCarryAMaterializedViewsIndexes() {
+        #expect(SourceObjectIndexes.carriedKinds(on: .postgresql) == [.materializedView])
+        #expect(SourceObjectIndexes.carriedKinds(on: .pglite) == [.materializedView])
     }
 
-    func testEnginesNobodyHasCuratedCarryNone() {
-        XCTAssertEqual(SourceObjectIndexes.carriedKinds(on: .cockroachdb), [])
-        XCTAssertEqual(SourceObjectIndexes.carriedKinds(on: .redshift), [])
-        XCTAssertEqual(SourceObjectIndexes.carriedKinds(on: DatabaseType(rawValue: "NotARealEngine")), [])
+    @Test
+    func enginesNobodyHasCuratedCarryNone() {
+        #expect(SourceObjectIndexes.carriedKinds(on: .cockroachdb) == [])
+        #expect(SourceObjectIndexes.carriedKinds(on: .redshift) == [])
+        #expect(SourceObjectIndexes.carriedKinds(on: DatabaseType(rawValue: "NotARealEngine")) == [])
     }
 }

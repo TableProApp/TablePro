@@ -8,6 +8,7 @@ import CryptoKit
 import Darwin
 import Foundation
 import os
+import TableProSSHConfig
 
 /// What a remote file looked like at a moment in time.
 ///

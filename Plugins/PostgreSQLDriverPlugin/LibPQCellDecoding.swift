@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 internal enum LibPQCellDecoding {
     private static let booleanOid: UInt32 = 16

@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 
 public struct ListFavoriteTablesTool: MCPToolImplementation {
     public static let name = "list_favorite_tables"

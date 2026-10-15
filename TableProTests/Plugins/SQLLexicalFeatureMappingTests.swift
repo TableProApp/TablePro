@@ -50,22 +50,18 @@ struct SQLLexicalFeatureMappingTests {
         #expect(SQLLexicalGrammar(pluginFeatures: grammar.pluginFeatures) == grammar)
     }
 
+    /// MySQLDriverTests' MySQLLexicalFeatureListTests pins MySQLLexicalFeatures to these same sets.
     @Test("The grammars the MySQL plugin keeps are the curated ones")
     func pluginGrammarsMatchTheCuratedTable() {
-        #expect(SQLLexicalGrammar(pluginFeatures: MySQLLexicalFeatures.mySQL) == DatabaseType.mysql.lexicalGrammar)
-        #expect(
-            SQLLexicalGrammar(pluginFeatures: MySQLLexicalFeatures.databend) == DatabaseType.databend.lexicalGrammar
-        )
-    }
-
-    @Test("NO_BACKSLASH_ESCAPES from the server status turns the backslash off in both string quotes")
-    func mySQLSessionState() {
-        let off = MySQLLexicalFeatures.features(for: .mysql, noBackslashEscapes: true)
-        #expect(!off.contains(.backslashEscapesInSingleQuotes))
-        #expect(!off.contains(.backslashEscapesInDoubleQuotes))
-        #expect(MySQLLexicalFeatures.features(for: .mysql, noBackslashEscapes: false) == MySQLLexicalFeatures.mySQL)
-        #expect(MySQLLexicalFeatures.sessionState(noBackslashEscapes: nil) == nil)
-        #expect(MySQLLexicalFeatures.features(for: .databend, noBackslashEscapes: true) == MySQLLexicalFeatures.databend)
+        let mySQL: SQLLexicalFeatures = [
+            .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .hashLineComments,
+            .executableComments, .dashCommentsNeedWhitespace, .delimiterDirective,
+        ]
+        let databend: SQLLexicalFeatures = [
+            .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .untaggedDollarQuotes,
+        ]
+        #expect(SQLLexicalGrammar(pluginFeatures: mySQL) == DatabaseType.mysql.lexicalGrammar)
+        #expect(SQLLexicalGrammar(pluginFeatures: databend) == DatabaseType.databend.lexicalGrammar)
     }
 
     static let corpus = [

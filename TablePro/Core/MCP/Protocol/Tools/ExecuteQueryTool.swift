@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProMCP
 
 public struct ExecuteQueryTool: MCPToolImplementation {
     public static let name = "execute_query"

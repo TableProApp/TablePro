@@ -21,7 +21,6 @@ private final class CountingLayoutPersister: ColumnLayoutPersisting {
 
 /// `captureColumnLayout()` asks `tableRowsProvider` for the result exactly once, which is what
 /// these tests count. The walks are otherwise invisible from outside.
-@Suite("Size All Columns to Fit", .serialized)
 @MainActor
 struct SizeAllColumnsToFitTests {
     private struct Grid {

@@ -1,8 +1,3 @@
-//
-//  ToolApprovalCenterTests.swift
-//  TableProTests
-//
-
 import Foundation
 import TableProPluginKit
 @testable import TablePro
@@ -18,7 +13,7 @@ struct ToolApprovalCenterTests {
         let waiter = Task {
             await center.awaitDecision(sessionId: session, toolUseId: "tool-1")
         }
-        await Task.yield()
+        await runQueuedMainActorWork()
         center.resolve(sessionId: session, toolUseId: "tool-1", decision: .run)
         let decision = await waiter.value
         if case .run = decision {
@@ -40,7 +35,7 @@ struct ToolApprovalCenterTests {
         let center = ToolApprovalCenter()
         let firstWaiter = Task { await center.awaitDecision(sessionId: session, toolUseId: "a") }
         let secondWaiter = Task { await center.awaitDecision(sessionId: session, toolUseId: "b") }
-        await Task.yield()
+        await runQueuedMainActorWork()
         center.cancelAll(sessionId: session)
         let firstDecision = await firstWaiter.value
         let secondDecision = await secondWaiter.value
@@ -53,9 +48,9 @@ struct ToolApprovalCenterTests {
     func duplicateAwaitCancelsPrior() async {
         let center = ToolApprovalCenter()
         let firstWaiter = Task { await center.awaitDecision(sessionId: session, toolUseId: "tool-1") }
-        await Task.yield()
+        await runQueuedMainActorWork()
         let secondWaiter = Task { await center.awaitDecision(sessionId: session, toolUseId: "tool-1") }
-        await Task.yield()
+        await runQueuedMainActorWork()
         let firstDecision = await firstWaiter.value
         if case .cancel = firstDecision {} else {
             Issue.record("first should auto-cancel when overwritten, got \(firstDecision)")
@@ -72,7 +67,7 @@ struct ToolApprovalCenterTests {
         let center = ToolApprovalCenter()
         #expect(center.hasPending == false)
         let waiter = Task { await center.awaitDecision(sessionId: session, toolUseId: "tool-1") }
-        await Task.yield()
+        await runQueuedMainActorWork()
         #expect(center.hasPending == true)
         center.resolve(sessionId: session, toolUseId: "tool-1", decision: .run)
         _ = await waiter.value
@@ -88,7 +83,7 @@ struct ToolApprovalCenterTests {
         let other = UUID()
         let mine = Task { await center.awaitDecision(sessionId: session, toolUseId: "call_0") }
         let theirs = Task { await center.awaitDecision(sessionId: other, toolUseId: "call_0") }
-        await Task.yield()
+        await runQueuedMainActorWork()
 
         center.resolve(sessionId: session, toolUseId: "call_0", decision: .run)
         if case .run = await mine.value {} else { Issue.record("this session's answer went missing") }
@@ -105,7 +100,7 @@ struct ToolApprovalCenterTests {
         let other = UUID()
         let survivor = Task { await center.awaitDecision(sessionId: other, toolUseId: "call_0") }
         let victim = Task { await center.awaitDecision(sessionId: session, toolUseId: "call_0") }
-        await Task.yield()
+        await runQueuedMainActorWork()
 
         center.cancelAll(sessionId: session)
         if case .cancel = await victim.value {} else { Issue.record("the stopped session should cancel") }
@@ -121,12 +116,18 @@ struct ToolApprovalCenterTests {
         let other = UUID()
         let mine = Task { await center.awaitDecision(sessionId: session, toolUseId: "call_0") }
         let theirs = Task { await center.awaitDecision(sessionId: other, toolUseId: "call_0") }
-        await Task.yield()
+        await runQueuedMainActorWork()
 
         center.cancelEverything()
 
         if case .cancel = await mine.value {} else { Issue.record("first should cancel") }
         if case .cancel = await theirs.value {} else { Issue.record("second should cancel") }
         #expect(center.hasPending == false)
+    }
+
+    /// The main queue runs its jobs in order, so a job queued now runs after every waiter the case
+    /// started has reached its await.
+    private func runQueuedMainActorWork() async {
+        await Task { @MainActor in }.value
     }
 }

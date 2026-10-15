@@ -1,4 +1,5 @@
 import Foundation
+import TableProMCP
 import TableProPluginKit
 
 struct MCPBrowseRequest: Sendable {

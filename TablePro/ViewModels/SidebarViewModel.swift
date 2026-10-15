@@ -7,13 +7,14 @@ import Combine
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProUtilities
 
 @MainActor
 final class SidebarViewModel: ObservableObject {
     private var searchTextObservation: AnyCancellable?
     private static let logger = Logger(subsystem: "com.TablePro", category: "SidebarViewModel")
     private static var registry: [UUID: SidebarViewModel] = [:]
-    private static let searchDebounceNanoseconds: UInt64 = 150_000_000
+    private static let searchDebounce: Duration = .milliseconds(150)
 
     static func shared(
         connectionId: UUID,
@@ -123,7 +124,7 @@ final class SidebarViewModel: ObservableObject {
     }
     @Published var isRedisKeysExpanded: Bool {
         didSet {
-            AppStorageEnvironment.shared.defaults.set(
+            defaults.set(
                 isRedisKeysExpanded,
                 forKey: SidebarPersistenceKey.redisKeysExpanded(connectionId: connectionId)
             )
@@ -131,7 +132,7 @@ final class SidebarViewModel: ObservableObject {
     }
     @Published var isRecentsExpanded: Bool {
         didSet {
-            AppStorageEnvironment.shared.defaults.set(
+            defaults.set(
                 isRecentsExpanded,
                 forKey: SidebarPersistenceKey.recentsExpanded(connectionId: connectionId)
             )
@@ -139,7 +140,7 @@ final class SidebarViewModel: ObservableObject {
     }
     @Published var isFoldersExpanded: Bool {
         didSet {
-            AppStorageEnvironment.shared.defaults.set(
+            defaults.set(
                 isFoldersExpanded,
                 forKey: SidebarPersistenceKey.foldersExpanded(connectionId: connectionId)
             )
@@ -160,6 +161,8 @@ final class SidebarViewModel: ObservableObject {
     // MARK: - Dependencies
 
     private let connectionId: UUID
+    private let defaults: UserDefaults
+    private let clock: any Clock<Duration>
 
     /// The single connection-scoped state holder. Search text and the Redis key
     /// tree live here so this view model and the sidebar views share one source.
@@ -200,7 +203,9 @@ final class SidebarViewModel: ObservableObject {
         pendingDeletes: Binding<Set<DatabaseTreeTableRef>>,
         tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>,
         databaseType: DatabaseType,
-        connectionId: UUID
+        connectionId: UUID,
+        defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
+        clock: any Clock<Duration> = ContinuousClock()
     ) {
         self.selectedTablesBinding = selectedTables
         self.pendingTruncatesBinding = pendingTruncates
@@ -208,20 +213,25 @@ final class SidebarViewModel: ObservableObject {
         self.tableOperationOptionsBinding = tableOperationOptions
         self.databaseType = databaseType
         self.connectionId = connectionId
+        self.defaults = defaults
+        self.clock = clock
         self.sharedState = SharedSidebarState.forConnection(connectionId)
-        self.expanded = Self.loadInitialExpansion(connectionId: connectionId)
+        self.expanded = Self.loadInitialExpansion(connectionId: connectionId, defaults: defaults)
         self.isRedisKeysExpanded = Self.loadExpansion(
             perConnectionKey: SidebarPersistenceKey.redisKeysExpanded(connectionId: connectionId),
             legacyKey: SidebarPersistenceKey.legacyRedisKeysExpanded,
-            defaultValue: true
+            defaultValue: true,
+            defaults: defaults
         )
         self.isRecentsExpanded = Self.loadExpansion(
             perConnectionKey: SidebarPersistenceKey.recentsExpanded(connectionId: connectionId),
-            defaultValue: true
+            defaultValue: true,
+            defaults: defaults
         )
         self.isFoldersExpanded = Self.loadExpansion(
             perConnectionKey: SidebarPersistenceKey.foldersExpanded(connectionId: connectionId),
-            defaultValue: true
+            defaultValue: true,
+            defaults: defaults
         )
         /// Seeded once, at creation, from whatever the field already holds. Doing it from a view's
         /// initializer instead ran on every view-graph pass.
@@ -237,16 +247,15 @@ final class SidebarViewModel: ObservableObject {
         ]
     }
 
-    private static func loadInitialExpansion(connectionId: UUID) -> ExpansionState {
+    private static func loadInitialExpansion(connectionId: UUID, defaults: UserDefaults) -> ExpansionState {
         var values: [SidebarObjectKind: Bool] = [:]
         for kind in SidebarObjectKind.allCases {
-            values[kind] = loadKindExpansion(connectionId: connectionId, kind: kind)
+            values[kind] = loadKindExpansion(connectionId: connectionId, kind: kind, defaults: defaults)
         }
         return ExpansionState(values: values)
     }
 
-    private static func loadKindExpansion(connectionId: UUID, kind: SidebarObjectKind) -> Bool {
-        let defaults = AppStorageEnvironment.shared.defaults
+    private static func loadKindExpansion(connectionId: UUID, kind: SidebarObjectKind, defaults: UserDefaults) -> Bool {
         let perKindKey = SidebarPersistenceKey.expanded(connectionId: connectionId, kind: kind)
         if defaults.object(forKey: perKindKey) != nil {
             return defaults.bool(forKey: perKindKey)
@@ -270,9 +279,9 @@ final class SidebarViewModel: ObservableObject {
     private static func loadExpansion(
         perConnectionKey: String,
         legacyKey: String? = nil,
-        defaultValue: Bool
+        defaultValue: Bool,
+        defaults: UserDefaults
     ) -> Bool {
-        let defaults = AppStorageEnvironment.shared.defaults
         if defaults.object(forKey: perConnectionKey) != nil {
             return defaults.bool(forKey: perConnectionKey)
         }
@@ -285,7 +294,6 @@ final class SidebarViewModel: ObservableObject {
     }
 
     private func persistExpansion(oldValue: ExpansionState) {
-        let defaults = AppStorageEnvironment.shared.defaults
         for kind in SidebarObjectKind.allCases where oldValue[kind] != expanded[kind] {
             defaults.set(
                 expanded[kind],
@@ -614,8 +622,9 @@ final class SidebarViewModel: ObservableObject {
             return
         }
         filterDebounceTask?.cancel()
+        let clock = clock
         filterDebounceTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: Self.searchDebounceNanoseconds)
+            try? await clock.sleep(for: Self.searchDebounce)
             guard !Task.isCancelled else { return }
             guard let self else { return }
             self.filterQuery = self.searchText

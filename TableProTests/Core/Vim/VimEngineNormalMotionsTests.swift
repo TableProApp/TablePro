@@ -5,14 +5,15 @@
 //  Specification tests for cursor motions in Normal mode.
 //
 
-import XCTest
-import TableProPluginKit
+import Foundation
 @testable import TablePro
+import TableProPluginKit
+import Testing
 
 // swiftlint:disable file_length type_body_length
 
 @MainActor
-final class VimEngineNormalMotionsTests: XCTestCase {
+final class VimEngineNormalMotionsTests {
     // Standard test buffer:
     // Line 0: "hello world\n"  offsets  0..11   (newline at 11, content end at 10 = 'd')
     // Line 1: "second line\n"  offsets 12..23   (newline at 23, content end at 22 = 'e')
@@ -21,16 +22,9 @@ final class VimEngineNormalMotionsTests: XCTestCase {
     private var engine: VimEngine!
     private var buffer: VimTextBufferMock!
 
-    override func setUp() {
-        super.setUp()
+    init() {
         buffer = VimTextBufferMock(text: "hello world\nsecond line\nthird line\n")
         engine = VimEngine(buffer: buffer)
-    }
-
-    override func tearDown() {
-        engine = nil
-        buffer = nil
-        super.tearDown()
     }
 
     private func keys(_ chars: String) {
@@ -45,115 +39,133 @@ final class VimEngineNormalMotionsTests: XCTestCase {
 
     // MARK: - h / l (Character Motions)
 
-    func testHMovesLeftByOne() {
+    @Test
+    func hMovesLeftByOne() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("h")
-        XCTAssertEqual(pos, 4)
+        #expect(pos == 4)
     }
 
-    func testHStopsAtLineStart() {
+    @Test
+    func hStopsAtLineStart() {
         buffer.setSelectedRange(NSRange(location: 12, length: 0))
         keys("h")
-        XCTAssertEqual(pos, 12, "h must not cross line boundary backward")
+        #expect(pos == 12, "h must not cross line boundary backward")
     }
 
-    func testHStopsAtBufferStart() {
+    @Test
+    func hStopsAtBufferStart() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("h")
-        XCTAssertEqual(pos, 0)
+        #expect(pos == 0)
     }
 
-    func testHWithCount() {
+    @Test
+    func hWithCount() {
         buffer.setSelectedRange(NSRange(location: 8, length: 0))
         keys("5h")
-        XCTAssertEqual(pos, 3)
+        #expect(pos == 3)
     }
 
-    func testHCountClampedToLineStart() {
+    @Test
+    func hCountClampedToLineStart() {
         buffer.setSelectedRange(NSRange(location: 14, length: 0))
         keys("99h")
-        XCTAssertEqual(pos, 12, "h with large count must clamp to start of current line")
+        #expect(pos == 12, "h with large count must clamp to start of current line")
     }
 
-    func testLMovesRightByOne() {
+    @Test
+    func lMovesRightByOne() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("l")
-        XCTAssertEqual(pos, 1)
+        #expect(pos == 1)
     }
 
-    func testLStopsBeforeNewline() {
+    @Test
+    func lStopsBeforeNewline() {
         buffer.setSelectedRange(NSRange(location: 10, length: 0))
         keys("l")
-        XCTAssertEqual(pos, 10, "l must not move onto or past the line-terminating newline")
+        #expect(pos == 10, "l must not move onto or past the line-terminating newline")
     }
 
-    func testLWithCount() {
+    @Test
+    func lWithCount() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("4l")
-        XCTAssertEqual(pos, 4)
+        #expect(pos == 4)
     }
 
-    func testLCountClampedToLineEnd() {
+    @Test
+    func lCountClampedToLineEnd() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("99l")
-        XCTAssertEqual(pos, 10, "l with large count clamps to last content char of line")
+        #expect(pos == 10, "l with large count clamps to last content char of line")
     }
 
     // MARK: - j / k (Line Motions) and Goal Column
 
-    func testJMovesDownOneLine() {
+    @Test
+    func jMovesDownOneLine() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("j")
-        XCTAssertEqual(pos, 12)
+        #expect(pos == 12)
     }
 
-    func testJPreservesColumn() {
+    @Test
+    func jPreservesColumn() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0)) // line 0 col 5
         keys("j")
-        XCTAssertEqual(pos, 17, "j should preserve current column when moving down")
+        #expect(pos == 17, "j should preserve current column when moving down")
     }
 
-    func testJStaysOnLastLine() {
+    @Test
+    func jStaysOnLastLine() {
         buffer.setSelectedRange(NSRange(location: 28, length: 0))
         keys("j")
         let (line, _) = buffer.lineAndColumn(forOffset: pos)
-        XCTAssertEqual(line, 2, "j on last line stays on last line")
+        #expect(line == 2, "j on last line stays on last line")
     }
 
-    func testJWithCount() {
+    @Test
+    func jWithCount() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("2j")
         let (line, _) = buffer.lineAndColumn(forOffset: pos)
-        XCTAssertEqual(line, 2)
+        #expect(line == 2)
     }
 
-    func testKMovesUpOneLine() {
+    @Test
+    func kMovesUpOneLine() {
         buffer.setSelectedRange(NSRange(location: 12, length: 0))
         keys("k")
-        XCTAssertEqual(pos, 0)
+        #expect(pos == 0)
     }
 
-    func testKPreservesColumn() {
+    @Test
+    func kPreservesColumn() {
         buffer.setSelectedRange(NSRange(location: 18, length: 0)) // line 1 col 6
         keys("k")
-        XCTAssertEqual(pos, 6, "k should preserve current column when moving up")
+        #expect(pos == 6, "k should preserve current column when moving up")
     }
 
-    func testKStaysOnFirstLine() {
+    @Test
+    func kStaysOnFirstLine() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("k")
         let (line, _) = buffer.lineAndColumn(forOffset: pos)
-        XCTAssertEqual(line, 0)
+        #expect(line == 0)
     }
 
-    func testKWithCount() {
+    @Test
+    func kWithCount() {
         buffer.setSelectedRange(NSRange(location: 28, length: 0))
         keys("2k")
         let (line, _) = buffer.lineAndColumn(forOffset: pos)
-        XCTAssertEqual(line, 0)
+        #expect(line == 0)
     }
 
-    func testJGoalColumnSurvivesShortLines() {
+    @Test
+    func jGoalColumnSurvivesShortLines() {
         // Move to col 10 on line 0, j onto a short line, then j onto a long line again.
         // Vim's "goal column" semantics: column 10 is remembered even when
         // intermediate lines are shorter than 10.
@@ -163,382 +175,429 @@ final class VimEngineNormalMotionsTests: XCTestCase {
         keys("j") // line 1 is "short" — clamped to col 4
         keys("j") // line 2 — should snap back to col 10
         let (line, col) = buffer.lineAndColumn(forOffset: pos)
-        XCTAssertEqual(line, 2)
-        XCTAssertEqual(col, 10, "Goal column should snap back to 10 on a long-enough line")
+        #expect(line == 2)
+        #expect(col == 10, "Goal column should snap back to 10 on a long-enough line")
     }
 
-    func testHResetsGoalColumn() {
+    @Test
+    func hResetsGoalColumn() {
         // After h, the goal column should be cleared.
         buffer.setSelectedRange(NSRange(location: 10, length: 0))
         keys("jh")
         // Now at line 1, col reduced by 1. Subsequent j should not snap back to col 10.
         keys("j")
         let (line, col) = buffer.lineAndColumn(forOffset: pos)
-        XCTAssertEqual(line, 2)
-        XCTAssertLessThan(col, 10, "h should reset goal column so subsequent j uses new column")
+        #expect(line == 2)
+        #expect(col < 10, "h should reset goal column so subsequent j uses new column")
     }
 
     // MARK: - Word Motions: w / W
 
-    func testWMovesToNextWordStart() {
+    @Test
+    func wMovesToNextWordStart() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("w")
-        XCTAssertEqual(pos, 6, "w should move from 'h' in 'hello' to 'w' in 'world'")
+        #expect(pos == 6, "w should move from 'h' in 'hello' to 'w' in 'world'")
     }
 
-    func testWAcrossLineBoundary() {
+    @Test
+    func wAcrossLineBoundary() {
         buffer.setSelectedRange(NSRange(location: 6, length: 0)) // 'w' in 'world'
         keys("w")
-        XCTAssertEqual(pos, 12, "w should cross newline to next word")
+        #expect(pos == 12, "w should cross newline to next word")
     }
 
-    func testWStopsAtPunctuation() {
+    @Test
+    func wStopsAtPunctuation() {
         buffer = VimTextBufferMock(text: "hello,world\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("w")
-        XCTAssertEqual(pos, 5, "w should stop at the punctuation as a new word")
+        #expect(pos == 5, "w should stop at the punctuation as a new word")
     }
 
-    func testWWithCount() {
+    @Test
+    func wWithCount() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("3w")
-        XCTAssertEqual(pos, 19, "3w advances three word-starts: hello → world → second → line (offset 19)")
+        #expect(pos == 19, "3w advances three word-starts: hello → world → second → line (offset 19)")
     }
 
-    func testWAtLastWordOfBufferStaysOnLastChar() {
+    @Test
+    func wAtLastWordOfBufferStaysOnLastChar() {
         // "SELECT * FROM users;" — no next word after ';'. Pressing w from ';' must
         // not advance past the last char; the cursor stays on ';'.
         buffer = VimTextBufferMock(text: "SELECT * FROM users;")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 19, length: 0))
         keys("w")
-        XCTAssertEqual(pos, 19, "w from the last word of the buffer must stay on the last content char")
+        #expect(pos == 19, "w from the last word of the buffer must stay on the last content char")
     }
 
-    func testWAtLastWordSingleLineWithoutNewline() {
+    @Test
+    func wAtLastWordSingleLineWithoutNewline() {
         // Single-word buffer "hello" with no newline. w from 'h' should land on the
         // last content char 'o' (vim's last-word-on-last-line clamp).
         buffer = VimTextBufferMock(text: "hello")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("w")
-        XCTAssertEqual(pos, 4, "w with no next word should land on the last content char, not past it")
+        #expect(pos == 4, "w with no next word should land on the last content char, not past it")
     }
 
-    func testWClampsToLastCharOnLineWithTrailingNewline() {
+    @Test
+    func wClampsToLastCharOnLineWithTrailingNewline() {
         // "hello\n" — single word followed by newline, no further content.
         buffer = VimTextBufferMock(text: "hello\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("w")
-        XCTAssertEqual(pos, 4, "w on a single-word buffer with trailing newline lands on 'o'")
+        #expect(pos == 4, "w on a single-word buffer with trailing newline lands on 'o'")
     }
 
-    func testCapitalWTreatsPunctuationAsWordChar() {
+    @Test
+    func capitalWTreatsPunctuationAsWordChar() {
         // W (WORD) moves by whitespace-delimited tokens — punctuation is not a boundary.
         buffer = VimTextBufferMock(text: "hello,world foo\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("W", shift: true)
-        XCTAssertEqual(pos, 12, "W should skip past punctuation and land at next WORD")
+        #expect(pos == 12, "W should skip past punctuation and land at next WORD")
     }
 
-    func testCapitalWWithCount() {
+    @Test
+    func capitalWWithCount() {
         buffer = VimTextBufferMock(text: "a.b c.d e.f g.h\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("2")
         key("W", shift: true)
-        XCTAssertEqual(pos, 8, "2W should advance past two WORDs")
+        #expect(pos == 8, "2W should advance past two WORDs")
     }
 
     // MARK: - Word Motions: b / B
 
-    func testBMovesToPreviousWordStart() {
+    @Test
+    func bMovesToPreviousWordStart() {
         buffer.setSelectedRange(NSRange(location: 6, length: 0))
         keys("b")
-        XCTAssertEqual(pos, 0)
+        #expect(pos == 0)
     }
 
-    func testBFromMidWordGoesToWordStart() {
+    @Test
+    func bFromMidWordGoesToWordStart() {
         buffer.setSelectedRange(NSRange(location: 3, length: 0)) // 'l' in 'hello'
         keys("b")
-        XCTAssertEqual(pos, 0, "b from mid-word should land at the start of the same word")
+        #expect(pos == 0, "b from mid-word should land at the start of the same word")
     }
 
-    func testBAtStartOfBufferStaysPut() {
+    @Test
+    func bAtStartOfBufferStaysPut() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("b")
-        XCTAssertEqual(pos, 0)
+        #expect(pos == 0)
     }
 
-    func testBAcrossLineBoundary() {
+    @Test
+    func bAcrossLineBoundary() {
         buffer.setSelectedRange(NSRange(location: 12, length: 0)) // start of 'second'
         keys("b")
-        XCTAssertEqual(pos, 6, "b from line start should cross newline to previous word")
+        #expect(pos == 6, "b from line start should cross newline to previous word")
     }
 
-    func testBWithCount() {
+    @Test
+    func bWithCount() {
         buffer.setSelectedRange(NSRange(location: 17, length: 0))
         keys("3b")
-        XCTAssertEqual(pos, 0, "3b should skip back three word starts")
+        #expect(pos == 0, "3b should skip back three word starts")
     }
 
-    func testCapitalBTreatsPunctuationAsWordChar() {
+    @Test
+    func capitalBTreatsPunctuationAsWordChar() {
         buffer = VimTextBufferMock(text: "hello,world\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 8, length: 0))
         key("B", shift: true)
-        XCTAssertEqual(pos, 0, "B should treat 'hello,world' as one WORD")
+        #expect(pos == 0, "B should treat 'hello,world' as one WORD")
     }
 
     // MARK: - Word End: e / E / ge / gE
 
-    func testEMovesToEndOfCurrentWord() {
+    @Test
+    func eMovesToEndOfCurrentWord() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("e")
-        XCTAssertEqual(pos, 4, "e from 'h' should land on 'o' (end of 'hello')")
+        #expect(pos == 4, "e from 'h' should land on 'o' (end of 'hello')")
     }
 
-    func testEAtWordEndJumpsToNextWordEnd() {
+    @Test
+    func eAtWordEndJumpsToNextWordEnd() {
         buffer.setSelectedRange(NSRange(location: 4, length: 0)) // 'o' at end of 'hello'
         keys("e")
-        XCTAssertEqual(pos, 10, "e from end of word should jump to end of next word")
+        #expect(pos == 10, "e from end of word should jump to end of next word")
     }
 
-    func testEWithCount() {
+    @Test
+    func eWithCount() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("3e")
-        XCTAssertEqual(pos, 17, "3e from 'hello' should land at end of 'second' (offset 17)")
+        #expect(pos == 17, "3e from 'hello' should land at end of 'second' (offset 17)")
     }
 
-    func testCapitalEIgnoresPunctuation() {
+    @Test
+    func capitalEIgnoresPunctuation() {
         buffer = VimTextBufferMock(text: "a.b.c word\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("E", shift: true)
-        XCTAssertEqual(pos, 4, "E should land at end of WORD 'a.b.c'")
+        #expect(pos == 4, "E should land at end of WORD 'a.b.c'")
     }
 
-    func testGEMovesToPreviousWordEnd() {
+    @Test
+    func gEMovesToPreviousWordEnd() {
         // ge is the backward analog of e.
         buffer.setSelectedRange(NSRange(location: 12, length: 0)) // start of 'second'
         keys("ge")
-        XCTAssertEqual(pos, 10, "ge should land at the end of the previous word ('d' in 'world')")
+        #expect(pos == 10, "ge should land at the end of the previous word ('d' in 'world')")
     }
 
-    func testGEWithCount() {
+    @Test
+    func gEWithCount() {
         buffer.setSelectedRange(NSRange(location: 17, length: 0))
         keys("2ge")
-        XCTAssertEqual(pos, 4, "2ge from mid-word should skip two word-ends backward")
+        #expect(pos == 4, "2ge from mid-word should skip two word-ends backward")
     }
 
-    func testCapitalGEIgnoresPunctuation() {
+    @Test
+    func capitalGEIgnoresPunctuation() {
         buffer = VimTextBufferMock(text: "a.b.c word\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 6, length: 0)) // 'w' in 'word'
         keys("g")
         key("E", shift: true)
-        XCTAssertEqual(pos, 4, "gE should land at end of WORD 'a.b.c'")
+        #expect(pos == 4, "gE should land at end of WORD 'a.b.c'")
     }
 
     // MARK: - Line Motions: 0 / $ / ^ / _
 
-    func testZeroGoesToLineStart() {
+    @Test
+    func zeroGoesToLineStart() {
         buffer.setSelectedRange(NSRange(location: 8, length: 0))
         keys("0")
-        XCTAssertEqual(pos, 0)
+        #expect(pos == 0)
     }
 
-    func testZeroIgnoresLeadingWhitespace() {
+    @Test
+    func zeroIgnoresLeadingWhitespace() {
         buffer = VimTextBufferMock(text: "   hello\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("0")
-        XCTAssertEqual(pos, 0, "0 should land at column 0 even when leading whitespace exists")
+        #expect(pos == 0, "0 should land at column 0 even when leading whitespace exists")
     }
 
-    func testDollarGoesToLineEnd() {
+    @Test
+    func dollarGoesToLineEnd() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("$")
-        XCTAssertEqual(pos, 10, "$ on 'hello world\\n' should land on 'd' (offset 10)")
+        #expect(pos == 10, "$ on 'hello world\\n' should land on 'd' (offset 10)")
     }
 
-    func testDollarOnLineWithoutTrailingNewline() {
+    @Test
+    func dollarOnLineWithoutTrailingNewline() {
         buffer = VimTextBufferMock(text: "hello")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("$")
-        XCTAssertEqual(pos, 4, "$ on the last line without a newline should land on the last char")
+        #expect(pos == 4, "$ on the last line without a newline should land on the last char")
     }
 
-    func testCaretGoesToFirstNonBlank() {
+    @Test
+    func caretGoesToFirstNonBlank() {
         buffer = VimTextBufferMock(text: "   hello world\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 10, length: 0))
         keys("^")
-        XCTAssertEqual(pos, 3, "^ should skip leading whitespace and land on 'h'")
+        #expect(pos == 3, "^ should skip leading whitespace and land on 'h'")
     }
 
-    func testCaretOnBlankLineGoesToLineStart() {
+    @Test
+    func caretOnBlankLineGoesToLineStart() {
         buffer = VimTextBufferMock(text: "hello\n\nworld\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 6, length: 0))
         keys("^")
-        XCTAssertEqual(pos, 6, "^ on blank line should stay at line start")
+        #expect(pos == 6, "^ on blank line should stay at line start")
     }
 
-    func testUnderscoreGoesToFirstNonBlank() {
+    @Test
+    func underscoreGoesToFirstNonBlank() {
         buffer = VimTextBufferMock(text: "\t\thello\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("_")
-        XCTAssertEqual(pos, 2, "_ should skip tabs and land on 'h'")
+        #expect(pos == 2, "_ should skip tabs and land on 'h'")
     }
 
     // MARK: - Document Motions: gg / G
 
-    func testGGGoesToDocumentStart() {
+    @Test
+    func gGGoesToDocumentStart() {
         buffer.setSelectedRange(NSRange(location: 25, length: 0))
         keys("gg")
-        XCTAssertEqual(pos, 0)
+        #expect(pos == 0)
     }
 
-    func testGGGoesToFirstNonBlankOnFirstLine() {
+    @Test
+    func gGGoesToFirstNonBlankOnFirstLine() {
         buffer = VimTextBufferMock(text: "   hello\nworld\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 12, length: 0))
         keys("gg")
-        XCTAssertEqual(pos, 3, "gg should land on the first non-blank of line 1")
+        #expect(pos == 3, "gg should land on the first non-blank of line 1")
     }
 
-    func testCapitalGGoesToLastLineFirstNonBlank() {
+    @Test
+    func capitalGGoesToLastLineFirstNonBlank() {
         buffer = VimTextBufferMock(text: "one\ntwo\n   three\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("G", shift: true)
-        XCTAssertEqual(pos, 11, "G should land on first non-blank of last line ('t' at offset 11)")
+        #expect(pos == 11, "G should land on first non-blank of last line ('t' at offset 11)")
     }
 
-    func testCountGGoesToSpecificLine() {
+    @Test
+    func countGGoesToSpecificLine() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("2")
         key("G", shift: true)
         let (line, _) = buffer.lineAndColumn(forOffset: pos)
-        XCTAssertEqual(line, 1, "2G should land on line 2 (0-indexed line 1)")
+        #expect(line == 1, "2G should land on line 2 (0-indexed line 1)")
     }
 
-    func testCountGGGoesToSpecificLine() {
+    @Test
+    func countGGGoesToSpecificLine() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("2gg")
         let (line, _) = buffer.lineAndColumn(forOffset: pos)
-        XCTAssertEqual(line, 1)
+        #expect(line == 1)
     }
 
-    func testCountGClampedAtLastLine() {
+    @Test
+    func countGClampedAtLastLine() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("999")
         key("G", shift: true)
         let (line, _) = buffer.lineAndColumn(forOffset: pos)
-        XCTAssertEqual(line, 2, "Count beyond last line should clamp to last line")
+        #expect(line == 2, "Count beyond last line should clamp to last line")
     }
 
     // MARK: - Screen Motions: H / M / L
 
-    func testHHomeMovesToTopOfScreen() {
+    @Test
+    func hHomeMovesToTopOfScreen() {
         // In the engine (no scroll concept), H should move to the first line of the buffer.
         buffer.setSelectedRange(NSRange(location: 28, length: 0))
         key("H", shift: true)
         let (line, _) = buffer.lineAndColumn(forOffset: pos)
-        XCTAssertEqual(line, 0, "H should move to the top of the visible/buffer range")
+        #expect(line == 0, "H should move to the top of the visible/buffer range")
     }
 
-    func testLLastMovesToBottomOfScreen() {
+    @Test
+    func lLastMovesToBottomOfScreen() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("L", shift: true)
         let (line, _) = buffer.lineAndColumn(forOffset: pos)
-        XCTAssertEqual(line, 2, "L should move to the bottom of the visible/buffer range")
+        #expect(line == 2, "L should move to the bottom of the visible/buffer range")
     }
 
-    func testMMiddleMovesToMiddleOfScreen() {
+    @Test
+    func mMiddleMovesToMiddleOfScreen() {
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         key("M", shift: true)
         let (line, _) = buffer.lineAndColumn(forOffset: pos)
-        XCTAssertEqual(line, 1, "M should move to the middle of the visible/buffer range")
+        #expect(line == 1, "M should move to the middle of the visible/buffer range")
     }
 
     // MARK: - Matching: %
 
-    func testPercentJumpsToMatchingParen() {
+    @Test
+    func percentJumpsToMatchingParen() {
         buffer = VimTextBufferMock(text: "(hello)\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("%")
-        XCTAssertEqual(pos, 6, "% on '(' should jump to matching ')'")
+        #expect(pos == 6, "% on '(' should jump to matching ')'")
     }
 
-    func testPercentJumpsBackToOpenParen() {
+    @Test
+    func percentJumpsBackToOpenParen() {
         buffer = VimTextBufferMock(text: "(hello)\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 6, length: 0))
         keys("%")
-        XCTAssertEqual(pos, 0, "% on ')' should jump back to '('")
+        #expect(pos == 0, "% on ')' should jump back to '('")
     }
 
-    func testPercentMatchesNestedBrackets() {
+    @Test
+    func percentMatchesNestedBrackets() {
         buffer = VimTextBufferMock(text: "(a(b)c)\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("%")
-        XCTAssertEqual(pos, 6, "% on outer '(' should jump to matching outer ')'")
+        #expect(pos == 6, "% on outer '(' should jump to matching outer ')'")
     }
 
-    func testPercentMatchesCurlyBraces() {
+    @Test
+    func percentMatchesCurlyBraces() {
         buffer = VimTextBufferMock(text: "{a}\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("%")
-        XCTAssertEqual(pos, 2)
+        #expect(pos == 2)
     }
 
-    func testPercentMatchesSquareBrackets() {
+    @Test
+    func percentMatchesSquareBrackets() {
         buffer = VimTextBufferMock(text: "[a]\n")
         engine = VimEngine(buffer: buffer)
         buffer.setSelectedRange(NSRange(location: 0, length: 0))
         keys("%")
-        XCTAssertEqual(pos, 2)
+        #expect(pos == 2)
     }
 
     // MARK: - Pending g Cancellation
 
-    func testPendingGCancelledByUnknownKey() {
+    @Test
+    func pendingGCancelledByUnknownKey() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("g")
         keys("z") // unknown — should consume and clear pending g
         // Subsequent l should move 1 (not be interpreted as part of a g sequence)
         keys("l")
-        XCTAssertEqual(pos, 6)
+        #expect(pos == 6)
     }
 
-    func testPendingGCancelledByEscape() {
+    @Test
+    func pendingGCancelledByEscape() {
         buffer.setSelectedRange(NSRange(location: 5, length: 0))
         keys("g")
         _ = engine.process("\u{1B}", shift: false)
         keys("l")
-        XCTAssertEqual(pos, 6)
+        #expect(pos == 6)
     }
 
     // MARK: - Empty Buffer Safety
 
-    func testMotionsOnEmptyBufferDoNotCrash() {
+    @Test
+    func motionsOnEmptyBufferDoNotCrash() {
         buffer = VimTextBufferMock(text: "")
         engine = VimEngine(buffer: buffer)
         keys("hjklwbe0$^_")
         keys("gg")
         key("G", shift: true)
-        XCTAssertEqual(pos, 0)
-        XCTAssertEqual(buffer.text, "")
+        #expect(pos == 0)
+        #expect(buffer.text == "")
     }
 }
 

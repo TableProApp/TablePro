@@ -17,6 +17,7 @@
 //
 
 import Foundation
+import TableProMySQLCore
 import TableProPluginKit
 
 extension MySQLPluginDriver {

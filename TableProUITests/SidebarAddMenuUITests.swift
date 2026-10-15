@@ -41,8 +41,8 @@ final class SidebarAddMenuUITests: UITestCase {
             "The new table must be listed in the sidebar"
         )
         XCTAssertEqual(
-            sqliteStrings("SELECT name FROM pragma_table_info('playlist')", in: launch.database),
-            ["title"],
+            FixtureFile.rows("SELECT name FROM pragma_table_info('playlist')", in: launch.database),
+            [["title"]],
             "The table must be in the file with the column the draft named"
         )
     }

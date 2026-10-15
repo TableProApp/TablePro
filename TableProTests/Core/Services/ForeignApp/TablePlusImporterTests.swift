@@ -9,7 +9,6 @@ import TableProPluginKit
 @testable import TablePro
 import Testing
 
-@Suite("TablePlusImporter", .serialized)
 struct TablePlusImporterTests {
     private var tempDir: URL
     private var importer: TablePlusImporter
@@ -1124,16 +1123,12 @@ struct TablePlusImporterTests {
     }
 
     @Test("The default ViewSetting reader reads the named app's defaults domain")
-    func testDefaultViewSettingReaderReadsTheForeignDomain() {
-        let domain = "com.TablePro.tests.TablePlusViewSetting.\(UUID().uuidString)"
+    func testDefaultViewSettingReaderReadsTheForeignDomain() throws {
+        let suite = try EphemeralDefaults()
         let key = "ViewSetting" as CFString
-        CFPreferencesSetAppValue(key, ["SharedQueryPath": "~/Queries"] as CFDictionary, domain as CFString)
-        defer {
-            CFPreferencesSetAppValue(key, nil, domain as CFString)
-            CFPreferencesAppSynchronize(domain as CFString)
-        }
+        CFPreferencesSetAppValue(key, ["SharedQueryPath": "~/Queries"] as CFDictionary, suite.suiteName as CFString)
 
-        let setting = TablePlusImporter().readViewSetting(domain)
+        let setting = TablePlusImporter().readViewSetting(suite.suiteName)
 
         #expect(setting?["SharedQueryPath"] as? String == "~/Queries")
         #expect(TablePlusImporter().readViewSetting("com.TablePro.tests.missing.\(UUID().uuidString)") == nil)

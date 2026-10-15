@@ -41,7 +41,9 @@ private final class ScriptedKeychain: KeychainStoring, @unchecked Sendable {
 
 @MainActor
 struct StoredSecretStateTests {
-    private func makeStorage(_ result: KeychainStringResult) -> ConnectionStorage {
+    private let pool = EphemeralDefaultsPool()
+
+    private func makeStorage(_ result: KeychainStringResult) throws -> ConnectionStorage {
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
@@ -53,24 +55,24 @@ struct StoredSecretStateTests {
         )
         return ConnectionStorage(
             fileURL: fileURL,
-            userDefaults: UserDefaults(suiteName: "com.TablePro.tests.SecretState.\(unique)")!,
+            userDefaults: try pool.make().defaults,
             keychain: ScriptedKeychain(result)
         )
     }
 
     @Test("A stored password reads as stored")
-    func storedPassword() {
-        #expect(makeStorage(.found("hunter2")).passwordState(for: UUID()) == .stored)
+    func storedPassword() throws {
+        #expect(try makeStorage(.found("hunter2")).passwordState(for: UUID()) == .stored)
     }
 
     @Test("No keychain item reads as absent")
-    func absentPassword() {
-        #expect(makeStorage(.notFound).passwordState(for: UUID()) == .absent)
+    func absentPassword() throws {
+        #expect(try makeStorage(.notFound).passwordState(for: UUID()) == .absent)
     }
 
     @Test("An empty stored value reads as absent rather than stored")
-    func emptyStoredValueIsAbsent() {
-        #expect(makeStorage(.found("")).passwordState(for: UUID()) == .absent)
+    func emptyStoredValueIsAbsent() throws {
+        #expect(try makeStorage(.found("")).passwordState(for: UUID()) == .absent)
     }
 
     @Test(
@@ -82,17 +84,17 @@ struct StoredSecretStateTests {
             .error(-25_300),
         ]
     )
-    func unreadableKeychain(_ result: KeychainStringResult) {
-        #expect(makeStorage(result).passwordState(for: UUID()) == .unreadable)
+    func unreadableKeychain(_ result: KeychainStringResult) throws {
+        #expect(try makeStorage(result).passwordState(for: UUID()) == .unreadable)
     }
 
     @Test("The SSH namespaces answer the same way")
-    func sshNamespaces() {
-        let stored = makeStorage(.found("secret"))
+    func sshNamespaces() throws {
+        let stored = try makeStorage(.found("secret"))
         #expect(stored.sshPasswordState(for: UUID()) == .stored)
         #expect(stored.keyPassphraseState(for: UUID()) == .stored)
 
-        let locked = makeStorage(.locked)
+        let locked = try makeStorage(.locked)
         #expect(locked.sshPasswordState(for: UUID()) == .unreadable)
         #expect(locked.keyPassphraseState(for: UUID()) == .unreadable)
     }

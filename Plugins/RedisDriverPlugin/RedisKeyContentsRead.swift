@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProRedisCore
 
 /// What the server said about one key. Either half is nil when the server would not say, which
 /// an ACL user whose key patterns do not cover the key gets for both, while `SCAN` still lists it.

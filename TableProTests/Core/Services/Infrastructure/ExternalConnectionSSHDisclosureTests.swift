@@ -10,6 +10,7 @@
 import AppKit
 import TableProPluginKit
 @testable import TablePro
+@testable import TableProSSHConfig
 import Testing
 
 @MainActor

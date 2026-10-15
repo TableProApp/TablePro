@@ -6,6 +6,7 @@
 import Foundation
 import TableProSQLGrammar
 import TableProTabularIO
+import TableProUtilities
 
 internal enum SQLDumpEncodingChoice {
     private static let declarationScanLength = 65_536

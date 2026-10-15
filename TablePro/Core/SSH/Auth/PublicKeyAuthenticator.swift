@@ -10,6 +10,7 @@
 import Foundation
 
 import CLibSSH2
+import TableProSSHConfig
 
 internal struct PublicKeyAuthenticator: SSHAuthenticator {
     let privateKeyPath: String

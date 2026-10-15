@@ -16,9 +16,8 @@ struct SyncMetadataStorageEnvironmentTests {
 
     @Test("A storage built for a suite never touches the app's defaults")
     func injectedStorageStaysInItsSuite() throws {
-        let suiteName = "syncmetadata-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let suite = try EphemeralDefaults()
+        let defaults = suite.defaults
 
         let storage = SyncMetadataStorage(userDefaults: defaults)
         let id = UUID().uuidString

@@ -10,9 +10,10 @@ import TableProSyncTransport
 
 @MainActor
 struct ConnectionStorageRemoveTagTests {
+    private let pool = EphemeralDefaultsPool()
     private let storage: ConnectionStorage
 
-    init() {
+    init() throws {
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
@@ -21,12 +22,8 @@ struct ConnectionStorageRemoveTagTests {
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        let defaultsName = "com.TablePro.tests.ConnectionStorage.RemoveTag.\(unique)"
-        let syncName = "com.TablePro.tests.Sync.RemoveTag.\(unique)"
-        guard let defaults = UserDefaults(suiteName: defaultsName),
-              let syncDefaults = UserDefaults(suiteName: syncName) else {
-            fatalError("UserDefaults suite creation failed in test setup")
-        }
+        let defaults = try pool.make().defaults
+        let syncDefaults = try pool.make().defaults
         let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
         let tracker = SyncChangeTracker(metadataStorage: metadata)
         self.storage = ConnectionStorage(

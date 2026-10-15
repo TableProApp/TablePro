@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 enum PostgreSQLForeignKeyQueries {
     static func foreignKeyList(schema: String, table: String?, capabilities: PostgreSQLCapabilities) -> String {

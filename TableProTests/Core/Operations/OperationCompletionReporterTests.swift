@@ -1,8 +1,3 @@
-//
-//  OperationCompletionReporterTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import Testing
@@ -72,8 +67,7 @@ struct OperationCompletionReporterTests {
         let presenter = FakeNotificationPresenter()
         let reporter = makeReporter(presenter: presenter)
 
-        reporter.report(completion())
-        try await Task.sleep(for: .milliseconds(120))
+        await reporter.report(completion())?.value
 
         #expect(presenter.posted.count == 1)
         let content = try #require(presenter.posted.first?.content)
@@ -87,8 +81,7 @@ struct OperationCompletionReporterTests {
         let presenter = FakeNotificationPresenter()
         let reporter = makeReporter(presenter: presenter)
 
-        reporter.report(completion(outcome: .cancelled))
-        try await Task.sleep(for: .milliseconds(120))
+        await reporter.report(completion(outcome: .cancelled))?.value
 
         #expect(presenter.posted.isEmpty)
     }
@@ -99,8 +92,7 @@ struct OperationCompletionReporterTests {
         var marked: [OperationOwner] = []
         let reporter = makeReporter(presenter: presenter, visibility: .onScreen) { marked.append($0) }
 
-        reporter.report(completion())
-        try await Task.sleep(for: .milliseconds(120))
+        await reporter.report(completion())?.value
 
         #expect(presenter.posted.isEmpty)
         #expect(marked.isEmpty)
@@ -114,8 +106,7 @@ struct OperationCompletionReporterTests {
         var marked: [OperationOwner] = []
         let reporter = makeReporter(presenter: presenter) { marked.append($0) }
 
-        reporter.report(completion())
-        try await Task.sleep(for: .milliseconds(120))
+        await reporter.report(completion())?.value
 
         #expect(presenter.posted.isEmpty)
         #expect(marked.count == 1)
@@ -131,8 +122,7 @@ struct OperationCompletionReporterTests {
 
         #expect(presenter.requestedOptions.isEmpty)
 
-        reporter.report(completion())
-        try await Task.sleep(for: .milliseconds(120))
+        await reporter.report(completion())?.value
 
         #expect(presenter.requestedOptions == [[.alert, .sound]])
         #expect(presenter.posted.count == 1)
@@ -163,9 +153,10 @@ struct OperationCompletionReporterTests {
         let reporter = makeReporter(presenter: presenter)
         let mine = completion()
 
-        reporter.report(mine)
-        reporter.report(completion())
-        try await Task.sleep(for: .milliseconds(150))
+        let first = reporter.report(mine)
+        let second = reporter.report(completion())
+        await first?.value
+        await second?.value
         #expect(presenter.posted.count == 2)
 
         reporter.clearDelivered(for: mine.owner)

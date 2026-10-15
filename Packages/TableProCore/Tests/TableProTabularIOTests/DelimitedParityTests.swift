@@ -1,9 +1,9 @@
 import Foundation
 @testable import TableProPluginKit
 @testable import TableProTabularIO
-import XCTest
+import Testing
 
-final class DelimitedParityTests: XCTestCase {
+struct DelimitedParityTests {
     private struct SeededGenerator: RandomNumberGenerator {
         var state: UInt64
 
@@ -18,7 +18,7 @@ final class DelimitedParityTests: XCTestCase {
 
     private let alphabet: [UInt8] = Array("ab,;\"\"\"\n\r\\ x|".utf8)
 
-    func testRowIndexMatchesStreamingParserOnRandomInput() throws {
+    @Test func testRowIndexMatchesStreamingParserOnRandomInput() throws {
         var generator = SeededGenerator(state: 42)
         for trial in 0..<20_000 {
             let length = Int.random(in: 0...64, using: &generator)
@@ -38,7 +38,7 @@ final class DelimitedParityTests: XCTestCase {
                 try DelimitedRowIndexer.index($0, dialect: dialect, contentStart: hasBOM ? 3 : 0)
             }
             let actual = (0..<index.rowCount).map { index.range(ofRow: $0) }
-            XCTAssertEqual(actual, expected, "trial \(trial): \(TabularTextCodec.utf8String(bytes).debugDescription)")
+            #expect(actual == expected, "trial \(trial): \(TabularTextCodec.utf8String(bytes).debugDescription)")
 
             let expectedFields = bytes.withUnsafeBufferPointer { buffer in
                 expected.map { CSVStreamingParser(dialect: legacy).parseRow(buffer, range: $0) }
@@ -47,30 +47,30 @@ final class DelimitedParityTests: XCTestCase {
                 guard let base = buffer.baseAddress else { return actual.map { _ in [""] } }
                 return actual.map { DelimitedFieldReader(dialect: dialect).fields(in: base, range: $0) }
             }
-            XCTAssertEqual(actualFields, expectedFields, "trial \(trial): \(TabularTextCodec.utf8String(bytes).debugDescription)")
+            #expect(actualFields == expectedFields, "trial \(trial): \(TabularTextCodec.utf8String(bytes).debugDescription)")
         }
     }
 
-    func testEndsWithLineTerminatorIsReported() throws {
+    @Test func testEndsWithLineTerminatorIsReported() throws {
         let withTerminator = Array("a,b\nc,d\n".utf8)
         let withoutTerminator = Array("a,b\nc,d".utf8)
         let dialect = DelimitedDialect()
         let first = try withTerminator.withUnsafeBufferPointer { try DelimitedRowIndexer.index($0, dialect: dialect, contentStart: 0) }
         let second = try withoutTerminator.withUnsafeBufferPointer { try DelimitedRowIndexer.index($0, dialect: dialect, contentStart: 0) }
-        XCTAssertTrue(first.endsWithLineTerminator)
-        XCTAssertFalse(second.endsWithLineTerminator)
-        XCTAssertEqual(first.rowCount, 2)
-        XCTAssertEqual(second.rowCount, 2)
+        #expect(first.endsWithLineTerminator)
+        #expect(!second.endsWithLineTerminator)
+        #expect(first.rowCount == 2)
+        #expect(second.rowCount == 2)
     }
 
-    func testIndexingStopsWhenCancelled() {
+    @Test func testIndexingStopsWhenCancelled() {
         let bytes = [UInt8](repeating: 0x61, count: (1 << 24) + 10)
-        XCTAssertThrowsError(
+        if let error = #expect(throws: (any Error).self, performing: {
             try bytes.withUnsafeBufferPointer {
                 try DelimitedRowIndexer.index($0, dialect: DelimitedDialect(), contentStart: 0, isCancelled: { true })
             }
-        ) { error in
-            XCTAssertTrue(error is TabularCancellation)
+        }) {
+            #expect(error is TabularCancellation)
         }
     }
 }

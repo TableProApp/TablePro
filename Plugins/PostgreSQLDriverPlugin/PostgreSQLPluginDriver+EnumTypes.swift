@@ -7,6 +7,7 @@ import Foundation
 import os
 import OSLog
 import TableProPluginKit
+import TableProPostgreSQLCore
 
 private let enumProbeLogger = Logger(
     subsystem: "com.TablePro.PostgreSQLDriver",
