@@ -51,6 +51,11 @@ name = "application_session_restore"
 path = "tests/application_session_restore.rs"
 harness = false
 
+[[test]]
+name = "accessibility"
+path = "tests/accessibility/main.rs"
+harness = false
+
 [features]
 default = ["kerberos"]
 kerberos = ["tablepro-driver-mssql/kerberos"]

@@ -53,12 +53,16 @@
                           </object>
                         </child>
                         <child type="top">
+                          <!-- No close button: GTK gives it no accessible name,
+                               and the search toggle and Escape close the bar. -->
                           <object class="GtkSearchBar" id="table_search_bar">
-                            <property name="show-close-button">true</property>
                             <property name="child">
                               <object class="GtkSearchEntry" id="table_search">
                                 <property name="placeholder-text" translatable="yes">Filter tables…</property>
                                 <property name="hexpand">true</property>
+                                <accessibility>
+                                  <property name="label" translatable="yes">Filter tables</property>
+                                </accessibility>
                               </object>
                             </property>
                           </object>

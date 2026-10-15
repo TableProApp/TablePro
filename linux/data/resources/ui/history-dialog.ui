@@ -42,13 +42,17 @@
               </object>
             </child>
             <child type="top">
+              <!-- No close button: GTK gives it no accessible name, and
+                   the search toggle and Escape close the bar. -->
               <object class="GtkSearchBar" id="search_bar">
-                <property name="show-close-button">true</property>
                 <property name="child">
                   <object class="GtkSearchEntry" id="search_entry">
                     <property name="placeholder-text" translatable="yes">Search queries…</property>
                     <property name="search-delay">150</property>
                     <property name="hexpand">true</property>
+                    <accessibility>
+                      <property name="label" translatable="yes">Search queries</property>
+                    </accessibility>
                   </object>
                 </property>
               </object>

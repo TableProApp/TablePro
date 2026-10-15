@@ -33,6 +33,9 @@
                     <property name="hexpand">true</property>
                     <property name="search-delay">150</property>
                     <property name="placeholder-text" translatable="yes">Find</property>
+                    <accessibility>
+                      <property name="label" translatable="yes">Find</property>
+                    </accessibility>
                   </object>
                 </child>
                 <child>
@@ -86,6 +89,9 @@
                       <object class="GtkEntry" id="replace_entry">
                         <property name="hexpand">true</property>
                         <property name="placeholder-text" translatable="yes">Replace</property>
+                        <accessibility>
+                          <property name="label" translatable="yes">Replace with</property>
+                        </accessibility>
                       </object>
                     </child>
                     <child>
