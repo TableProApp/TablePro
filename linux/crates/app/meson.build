@@ -56,19 +56,30 @@ custom_target(
   install_dir: [bindir, libexecdir],
 )
 
+test_env = cargo_env
+if profile != 'development'
+  # With --release every test binary goes through the release profile's
+  # fat LTO, which takes gigabytes and minutes per binary and runs a
+  # package build out of memory. The installed binaries keep it.
+  test_env.set('CARGO_PROFILE_RELEASE_LTO', 'off')
+endif
+
 # The workspace suite excludes the app, whose tests need a display and
 # the GTK test accessibility backend.
 test(
   'workspace',
   cargo,
   args: ['test'] + cargo_options + ['--workspace', '--exclude', 'tablepro'],
-  env: cargo_env,
+  env: test_env,
   suite: 'unit',
   is_parallel: false,
   timeout: 3600,
 )
 
 gtk_env = app_env
+if profile != 'development'
+  gtk_env.set('CARGO_PROFILE_RELEASE_LTO', 'off')
+endif
 gtk_env.set('GSK_RENDERER', 'cairo')
 gtk_env.set('GTK_A11Y', 'test')
 # The key tests press real keys through XTEST, which only an X11 display

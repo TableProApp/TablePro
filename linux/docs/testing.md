@@ -41,7 +41,9 @@ is `cargo test -p tablepro` with `GSK_RENDERER=cairo` and `GTK_A11Y=test`,
 `data` runs `desktop-file-validate`, `glib-compile-schemas --strict` and `appstreamcli validate`,
 and `packaging` runs the unit tests in `build-aux/tests` and checks that
 `debian/copyright`, the RPM spec and the metainfo agree with `data/licenses`
-and the version Meson builds.
+and the version Meson builds. In a `-Dprofile=default` build, which the
+packages run, the unit and gtk suites build with `--release` but without
+its fat LTO, which would cost gigabytes and minutes per test binary.
 Tests that need Docker or a Secret Service are ignored. Without a display
 (SSH, containers), prefix with xvfb the way the CI fast job does:
 
