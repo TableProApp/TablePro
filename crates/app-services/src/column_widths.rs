@@ -302,4 +302,41 @@ mod tests {
         assert_eq!(store.load(id, "t", "c"), Some(MIN_COLUMN_WIDTH));
         assert_eq!(store.load(id, "t", "d"), Some(MAX_COLUMN_WIDTH));
     }
+
+    #[test]
+    fn at_least_one_column_always_stays_visible() {
+        assert!(!may_hide(0, 0));
+        assert!(!may_hide(1, 0));
+        assert!(may_hide(2, 0));
+        assert!(!may_hide(2, 1));
+        assert!(may_hide(5, 3));
+        assert!(!may_hide(5, 4));
+    }
+
+    #[test]
+    fn open_follows_the_config_directory_environment() {
+        let configured = std::env::var_os("XDG_CONFIG_HOME").is_some() || std::env::var_os("HOME").is_some();
+        assert_eq!(ColumnWidthStore::open().is_some(), configured);
+    }
+
+    #[test]
+    fn flushing_persists_widths_hidden_columns_and_order_for_the_next_launch() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = Uuid::new_v4();
+        let store = ColumnWidthStore::load_in(dir.path());
+        store.save(id, "users", "name", 240).unwrap();
+        store.set_hidden(id, "users", "secret", true).unwrap();
+        store
+            .set_column_order(id, "users", vec!["name".into(), "id".into()])
+            .unwrap();
+        store.flush().unwrap();
+        drop(store);
+        let reopened = ColumnWidthStore::load_in(dir.path());
+        assert_eq!(reopened.load(id, "users", "name"), Some(240));
+        assert!(reopened.hidden_columns(id, "users").contains("secret"));
+        assert_eq!(
+            reopened.column_order(id, "users"),
+            vec!["name".to_string(), "id".to_string()]
+        );
+    }
 }

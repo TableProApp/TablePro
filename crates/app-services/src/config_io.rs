@@ -4,9 +4,17 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 pub fn xdg_config_path(filename: &str) -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
+    config_path_in(std::env::var_os("XDG_CONFIG_HOME"), std::env::var_os("HOME"), filename)
+}
+
+fn config_path_in(
+    xdg: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+    filename: &str,
+) -> Option<PathBuf> {
+    let base = xdg
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
+        .or_else(|| home.map(|h| PathBuf::from(h).join(".config")))?;
     Some(base.join(tablepro_storage::storage_dir_name()).join(filename))
 }
 
@@ -107,5 +115,93 @@ mod tests {
             serde_json::from_slice::<Vec<i32>>(&std::fs::read(path).unwrap()).unwrap(),
             vec![1]
         );
+    }
+
+    #[test]
+    fn the_config_directory_prefers_xdg_then_falls_back_to_home() {
+        let name = tablepro_storage::storage_dir_name();
+        assert_eq!(
+            config_path_in(Some("/xdg".into()), Some("/home/me".into()), "f.json"),
+            Some(PathBuf::from("/xdg").join(name).join("f.json"))
+        );
+        assert_eq!(
+            config_path_in(None, Some("/home/me".into()), "f.json"),
+            Some(PathBuf::from("/home/me/.config").join(name).join("f.json"))
+        );
+        assert_eq!(config_path_in(None, None, "f.json"), None);
+    }
+
+    #[test]
+    fn the_environment_wrapper_agrees_with_the_pure_helper() {
+        assert_eq!(
+            xdg_config_path("f.json"),
+            config_path_in(std::env::var_os("XDG_CONFIG_HOME"), std::env::var_os("HOME"), "f.json")
+        );
+    }
+
+    #[test]
+    fn a_backup_copies_the_current_file_once_and_never_overwrites_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let backup = dir.path().join("settings.json.bak");
+        std::fs::write(&path, b"original").unwrap();
+        backup_file_if_exists(&path, &backup).unwrap();
+        assert_eq!(std::fs::read(&backup).unwrap(), b"original");
+        std::fs::write(&path, b"changed").unwrap();
+        backup_file_if_exists(&path, &backup).unwrap();
+        assert_eq!(std::fs::read(&backup).unwrap(), b"original");
+    }
+
+    #[test]
+    fn a_missing_file_needs_no_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let backup = dir.path().join("settings.json.bak");
+        backup_file_if_exists(&dir.path().join("absent.json"), &backup).unwrap();
+        assert!(!backup.exists());
+    }
+
+    #[test]
+    fn a_backup_path_that_is_not_a_regular_file_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, b"original").unwrap();
+        let backup = dir.path().join("settings.json.bak");
+        std::fs::create_dir(&backup).unwrap();
+        assert!(backup_file_if_exists(&path, &backup).is_err());
+        let link = dir.path().join("link.bak");
+        std::os::unix::fs::symlink(&path, &link).unwrap();
+        assert!(backup_file_if_exists(&path, &link).is_err());
+    }
+
+    #[test]
+    fn an_unreadable_source_is_an_error_not_a_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("a-directory");
+        std::fs::create_dir(&source).unwrap();
+        assert!(backup_file_if_exists(&source, &dir.path().join("settings.json.bak")).is_err());
+    }
+
+    #[test]
+    fn a_backup_location_that_cannot_be_inspected_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, b"original").unwrap();
+        let blocker = dir.path().join("blocker");
+        std::fs::write(&blocker, b"a file").unwrap();
+        assert!(backup_file_if_exists(&path, &blocker.join("settings.json.bak")).is_err());
+    }
+
+    #[test]
+    fn a_backup_location_that_denies_inspection_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, b"original").unwrap();
+        let locked = dir.path().join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let enforced = std::fs::read_dir(&locked).is_err();
+        let result = backup_file_if_exists(&path, &locked.join("settings.json.bak"));
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(!enforced || result.is_err());
     }
 }

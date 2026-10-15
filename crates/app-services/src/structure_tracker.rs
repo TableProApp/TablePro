@@ -234,4 +234,57 @@ mod tests {
         assert_eq!(registry.pending_tabs_for(&first_window), vec![first]);
         assert_eq!(registry.pending_tabs_for(&second_window), vec![second]);
     }
+
+    fn pending_op() -> StructureOp {
+        StructureOp::AddColumn {
+            schema: None,
+            table: "t".into(),
+            column: dc("a", "int"),
+        }
+    }
+
+    #[test]
+    fn clear_drops_the_cached_ops() {
+        let mut t = StructureChangeTracker::default();
+        t.set_ops(vec![pending_op()]);
+        t.clear();
+        assert!(!t.has_pending());
+        assert!(t.ops().is_empty());
+    }
+
+    #[test]
+    fn registry_reports_which_open_tabs_have_pending_changes() {
+        let mut r = StructureTrackerRegistry::default();
+        let dirty = Uuid::new_v4();
+        let clean = Uuid::new_v4();
+        let unknown = Uuid::new_v4();
+        r.open_tab(clean);
+        r.with_tab(dirty, |t| t.set_ops(vec![pending_op()]));
+        assert!(r.with_tab_ref(clean, |t| t.has_pending()) == Some(false));
+        assert!(r.any_pending_in([clean, dirty]));
+        assert!(!r.any_pending_in([clean, unknown]));
+        assert_eq!(r.pending_among([clean, dirty, unknown]), vec![dirty]);
+        assert!(r.pending_among([clean, unknown]).is_empty());
+    }
+
+    #[test]
+    fn the_module_functions_track_a_tab_from_open_to_close() {
+        let dirty = Uuid::new_v4();
+        let clean = Uuid::new_v4();
+        let window: std::collections::HashSet<Uuid> = [dirty, clean].into();
+        open_tab(clean);
+        with_tab(dirty, |t| t.set_ops(vec![pending_op()]));
+        assert_eq!(with_tab_ref(clean, |t| t.has_pending()), Some(false));
+        assert_eq!(with_tab_ref(dirty, |t| t.has_pending()), Some(true));
+        assert!(any_pending_in([clean, dirty]));
+        assert!(!any_pending_in([clean]));
+        assert_eq!(pending_among([clean, dirty]), vec![dirty]);
+        assert!(pending_among([clean]).is_empty());
+        assert_eq!(pending_tabs_for(&window), vec![dirty]);
+        assert!(pending_tabs_for(&[clean].into()).is_empty());
+        close_tab(dirty);
+        assert_eq!(with_tab_ref(dirty, |t| t.has_pending()), None);
+        assert!(!any_pending_in([clean, dirty]));
+        assert!(pending_tabs_for(&window).is_empty());
+    }
 }

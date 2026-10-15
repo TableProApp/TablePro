@@ -141,4 +141,62 @@ mod tests {
         let parsed: FilterSet = serde_json::from_str(&json).unwrap();
         assert_eq!(original, parsed);
     }
+
+    fn other_set() -> FilterSet {
+        FilterSet {
+            combinator: Combinator::And,
+            rules: vec![FilterRule {
+                column: "age".into(),
+                op: FilterOp::Gt,
+                value: Some(FilterValue::Single("30".into())),
+            }],
+            extra_sql: None,
+        }
+    }
+
+    #[test]
+    fn a_saved_filter_loads_back_and_survives_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("filters.json");
+        let id = Uuid::new_v4();
+        let store = FilterSettingsStore::load_at(path.clone());
+        store.save(id, Some("public"), "users", sample_set()).unwrap();
+        assert_eq!(store.load(id, Some("public"), "users"), sample_set());
+        store.flush().unwrap();
+        drop(store);
+        let reopened = FilterSettingsStore::load_at(path);
+        assert_eq!(reopened.load(id, Some("public"), "users"), sample_set());
+    }
+
+    #[test]
+    fn a_table_without_a_schema_is_stored_apart_from_the_same_table_in_a_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = FilterSettingsStore::load_at(dir.path().join("filters.json"));
+        let id = Uuid::new_v4();
+        store.save(id, None, "users", sample_set()).unwrap();
+        assert!(store.load(id, Some("public"), "users").is_empty());
+        store.save(id, Some("public"), "users", other_set()).unwrap();
+        assert_eq!(store.load(id, None, "users"), sample_set());
+        assert_eq!(store.load(id, Some("public"), "users"), other_set());
+    }
+
+    #[test]
+    fn saving_an_empty_filter_removes_it_and_leaves_an_empty_file_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("filters.json");
+        let id = Uuid::new_v4();
+        let store = FilterSettingsStore::load_at(path.clone());
+        store.save(id, None, "users", sample_set()).unwrap();
+        store.save(id, None, "users", FilterSet::default()).unwrap();
+        assert!(store.load(id, None, "users").is_empty());
+        store.flush().unwrap();
+        let on_disk: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        assert_eq!(on_disk, serde_json::json!({}));
+    }
+
+    #[test]
+    fn open_follows_the_config_directory_environment() {
+        let configured = std::env::var_os("XDG_CONFIG_HOME").is_some() || std::env::var_os("HOME").is_some();
+        assert_eq!(FilterSettingsStore::open().is_some(), configured);
+    }
 }

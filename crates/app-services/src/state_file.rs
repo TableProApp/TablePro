@@ -193,4 +193,56 @@ mod tests {
         failed.update(|value| *value = 1).unwrap();
         assert_eq!(failed.flush(), Err("disk full".into()));
     }
+
+    #[test]
+    fn a_file_that_cannot_be_read_blocks_updates_instead_of_being_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = StateFile::<Vec<u32>>::load(dir.path().to_path_buf());
+        let error = file.update(|value| value.push(1)).unwrap_err();
+        assert!(error.contains("could not be read"), "{error}");
+        assert_eq!(file.read(|value| value.clone()), Some(Vec::new()));
+    }
+
+    #[test]
+    fn dropping_the_file_stops_its_writer_thread() {
+        let marker = Arc::new(());
+        let held = marker.clone();
+        let file = StateFile::with_writer(0_u32, None, move |_| {
+            let _keep = &held;
+            Ok(())
+        });
+        assert_eq!(Arc::strong_count(&marker), 2);
+        drop(file);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Arc::strong_count(&marker) > 1 && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(Arc::strong_count(&marker), 1);
+    }
+
+    #[test]
+    fn the_last_update_is_still_written_when_the_file_is_dropped_mid_write() {
+        let values = Arc::new(Mutex::new(Vec::new()));
+        let written = values.clone();
+        let (started, wait) = std::sync::mpsc::channel();
+        let (release, hold) = std::sync::mpsc::channel();
+        let file = StateFile::with_writer(0_u32, None, move |value| {
+            if *value == 1 {
+                started.send(()).unwrap();
+                hold.recv_timeout(Duration::from_secs(5)).unwrap();
+            }
+            written.lock().unwrap().push(*value);
+            Ok(())
+        });
+        file.update(|value| *value = 1).unwrap();
+        wait.recv_timeout(Duration::from_secs(5)).unwrap();
+        file.update(|value| *value = 2).unwrap();
+        drop(file);
+        release.send(()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while values.lock().unwrap().len() < 2 && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(*values.lock().unwrap(), vec![1, 2]);
+    }
 }

@@ -1,0 +1,5 @@
+# Missed mutants accepted for now (cargo mutants --package tablepro-app-services, 2026-10-15).
+# may_hide: `>` and `>=` agree because already_hidden + 1 < total is already false when total is 0.
+# atomic_write_bytes: a non-NotFound error from symlink_metadata also fails the write that follows, so widening the guard changes nothing a test can see.
+crates/app-services/src/column_widths.rs:38:11: replace > with >= in may_hide
+crates/app-services/src/config_io.rs:49:23: replace match guard error.kind() == std::io::ErrorKind::NotFound with true in atomic_write_bytes
