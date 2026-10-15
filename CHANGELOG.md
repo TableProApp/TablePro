@@ -221,6 +221,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - MCP `export_data` with CSV now reports `truncated` when the row cap cut the result, as the JSON format already did.
 - An MCP write preview that is cancelled or times out while its transaction is starting now says the outcome is unknown, instead of reporting a plain cancellation.
 - Query history is left untouched and switched off, instead of being opened as if it were current, when its file was written by a newer version of the app.
+- Saving a favorite or editing saved queries while the favorites list is still loading can no longer bring back an older list.
 
 ### Security
 

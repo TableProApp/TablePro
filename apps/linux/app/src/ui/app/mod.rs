@@ -158,6 +158,7 @@ pub struct App {
     dialog: Option<Controller<ConnectDialog>>,
     schema_buffer: gtk::TextBuffer,
     favorites: Vec<tablepro_storage::SavedQuery>,
+    favorites_order: crate::services::request_generation::LatestApplied,
     /// Tables and their columns for schema-aware editor completion.
     schema_index: std::rc::Rc<std::cell::RefCell<crate::ui::editor::SchemaIndex>>,
     /// Tables whose columns are already requested, so cursor movement
@@ -577,6 +578,7 @@ impl SimpleComponent for App {
             dialog: None,
             schema_buffer: build_schema_buffer(),
             favorites: Vec::new(),
+            favorites_order: crate::services::request_generation::LatestApplied::default(),
             schema_index: std::rc::Rc::new(std::cell::RefCell::new(crate::ui::editor::SchemaIndex::default())),
             requested_columns: std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashSet::new())),
             history_dialog: None,
@@ -908,13 +910,16 @@ impl SimpleComponent for App {
             AppMsg::EditorTabQueryChanged(id, text) => self.on_editor_tab_query_changed(id, text),
             AppMsg::EditorNeedsColumns(tables) => self.on_editor_needs_columns(tables, sender),
             AppMsg::SchemaColumnsFetched(table, columns) => self.on_schema_columns_fetched(table, columns),
-            AppMsg::FavoritesLoaded(favorites) => self.on_favorites_loaded(favorites),
+            AppMsg::FavoritesLoaded(ticket, favorites) => self.on_favorites_loaded(ticket, favorites),
             AppMsg::PersistFavorite(favorite) => self.on_persist_favorite(favorite, sender),
             AppMsg::FavoriteSaved => self.show_toast(&crate::tr!("Saved as favorite")),
             AppMsg::FavoriteSaveFailed(reason) => self.show_toast(&reason),
             AppMsg::SaveQueryAsFavorite => self.on_save_query_as_favorite(sender),
             AppMsg::ShowSavedQueries => self.on_show_saved_queries(sender),
-            AppMsg::SavedQueriesChanged(saved) => self.on_favorites_loaded(saved),
+            AppMsg::SavedQueriesChanged(saved) => {
+                let ticket = self.favorites_order.begin();
+                self.on_favorites_loaded(ticket, saved);
+            }
             AppMsg::ShowQuickSwitcher => self.on_show_quick_switcher(sender),
             AppMsg::QuickSwitcherChose(target) => self.on_quick_switcher_chose(target, sender),
             AppMsg::ShowHistory => self.on_show_history(sender),

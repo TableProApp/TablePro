@@ -11,12 +11,13 @@ use super::{App, AppMsg};
 
 impl App {
     pub(super) fn load_favorites(&self, sender: ComponentSender<Self>) {
+        let ticket = self.favorites_order.begin();
         let sender_clone = sender.clone();
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
                     match tablepro_storage::load_favorites().await {
-                        Ok(favorites) => sender_clone.input(AppMsg::FavoritesLoaded(favorites)),
+                        Ok(favorites) => sender_clone.input(AppMsg::FavoritesLoaded(ticket, favorites)),
                         Err(error) => tracing::warn!(error = %error, "load favorites failed"),
                     }
                 })
@@ -24,8 +25,10 @@ impl App {
         });
     }
 
-    pub(super) fn on_favorites_loaded(&mut self, favorites: Vec<SavedQuery>) {
-        self.favorites = favorites;
+    pub(super) fn on_favorites_loaded(&mut self, ticket: u64, favorites: Vec<SavedQuery>) {
+        if self.favorites_order.accept(ticket) {
+            self.favorites = favorites;
+        }
     }
 
     pub(super) fn on_save_query_as_favorite(&self, sender: ComponentSender<Self>) {
@@ -72,13 +75,14 @@ impl App {
     }
 
     pub(super) fn on_persist_favorite(&self, favorite: SavedQuery, sender: ComponentSender<Self>) {
+        let ticket = self.favorites_order.begin();
         let sender_clone = sender.clone();
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
                     match tablepro_storage::save_favorite(favorite).await {
                         Ok(favorites) => {
-                            sender_clone.input(AppMsg::FavoritesLoaded(favorites));
+                            sender_clone.input(AppMsg::FavoritesLoaded(ticket, favorites));
                             sender_clone.input(AppMsg::FavoriteSaved);
                         }
                         Err(error) => sender_clone.input(AppMsg::FavoriteSaveFailed(error.to_string())),

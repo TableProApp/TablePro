@@ -94,7 +94,7 @@ pub enum AppMsg {
     EditorTabRunStateChanged(Uuid, bool),
     EditorTabQueryChanged(Uuid, String),
     EditorNeedsColumns(Vec<String>),
-    FavoritesLoaded(Vec<tablepro_storage::SavedQuery>),
+    FavoritesLoaded(u64, Vec<tablepro_storage::SavedQuery>),
     PersistFavorite(tablepro_storage::SavedQuery),
     FavoriteSaved,
     FavoriteSaveFailed(String),
