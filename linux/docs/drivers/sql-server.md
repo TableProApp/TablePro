@@ -49,6 +49,7 @@ The sandbox has no `/etc/krb5.conf` of the host, and its `/tmp` is private, so a
 - A build with `-Dflatpak=true` and Kerberos installs `build-aux/flatpak/krb5.conf` into the app's `sysconfdir`. It uses the KCM credential cache and finds the realm and the KDC through DNS.
 - The development manifest grants the KCM socket, `/run/.heim_org.h5l.kcm-socket`, so a host that runs `sssd-kcm` shares its tickets with the app.
 - A FILE cache works only when `KRB5CCNAME` points at a file the sandbox can read, such as one under the home folder.
+- A KEYRING cache does not work: Flatpak blocks the kernel keyring calls.
 
 Running from source remains the supported path for Kerberos today.
 

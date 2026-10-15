@@ -153,12 +153,13 @@ kinit you@EXAMPLE.COM
 ```
 
 The driver asks for `MSSQLSvc/<host>:<port>`, built from the host and
-port you typed, not from an SSH tunnel's local forward. Three things are
+port you typed, not from an SSH tunnel's local forward. Four things are
 worth knowing:
 
-- tiberius imports that SPN as a raw Kerberos principal, so it picks up
-  `default_realm` from `/etc/krb5.conf` and nothing else. `[domain_realm]`
-  does not apply: that lookup only runs for host-based service names, and
+- tiberius imports that SPN as a raw Kerberos principal, so it takes the
+  default realm and nothing else: `default_realm` from `/etc/krb5.conf`,
+  or under Flatpak a DNS record, as below. `[domain_realm]` does not
+  apply: that lookup only runs for host-based service names, and
   tiberius exposes no SPN override. A server in another realm works only
   when your KDC answers with a referral, which Active Directory does
   inside a forest. Otherwise the login fails with
@@ -166,10 +167,14 @@ worth knowing:
 - The host has to match the SPN registered on the server. An IP address
   or a CNAME usually does not.
 - Under Flatpak the host's `/etc/krb5.conf` is out of reach. The app
-  brings its own through `KRB5_CONFIG`, which reads tickets from the KCM
-  cache and finds the realm and KDC through DNS, so a ticket the host's
-  `kinit` keeps in KCM (Fedora's default, through sssd-kcm) is used. The
-  sandbox's `/tmp` is private, so a FILE ticket cache there is invisible.
+  brings its own through `KRB5_CONFIG`. It sets no `default_realm`, so
+  the realm comes from the `_kerberos` TXT record of this computer's DNS
+  domain or a parent of it, and the KDC from DNS SRV records.
+- Under Flatpak tickets are read from the KCM cache, so a ticket the
+  host's `kinit` keeps in KCM (Fedora's default, through sssd-kcm) is
+  used. The sandbox's `/tmp` is private, so a FILE ticket cache there is
+  invisible. A KEYRING cache fails too, because Flatpak blocks the
+  kernel keyring calls.
 
 ## Documentation index
 
