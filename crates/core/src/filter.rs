@@ -269,7 +269,7 @@ fn build_rule_sql(
 
         FilterOp::Contains | FilterOp::StartsWith | FilterOp::EndsWith => {
             let raw = require_single(rule)?;
-            let escaped = escape_like(raw);
+            let escaped = escape_like(driver_id, raw);
             let pattern = match rule.op {
                 FilterOp::Contains => format!("%{escaped}%"),
                 FilterOp::StartsWith => format!("{escaped}%"),
@@ -281,7 +281,12 @@ fn build_rule_sql(
             params.push(Value::Text(pattern));
             // Case-sensitive on all drivers. The user picks Ilike
             // explicitly when they want case-insensitive matching.
-            Ok(format!("{pattern_sql} LIKE {ph}"))
+            let escape = if like_needs_escape_clause(driver_id) {
+                " ESCAPE '\\'"
+            } else {
+                ""
+            };
+            Ok(format!("{pattern_sql} LIKE {ph}{escape}"))
         }
 
         FilterOp::Like | FilterOp::NotLike => {
@@ -414,8 +419,17 @@ fn require_list(rule: &FilterRule) -> Result<&Vec<String>, BuildFilterError> {
 /// Escape a string for safe inclusion inside a `LIKE` pattern.
 /// Backslash escapes `%` and `_` so a literal `50%` searches for
 /// exactly that text rather than matching anything ending in `50`.
-fn escape_like(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+fn like_needs_escape_clause(driver_id: &str) -> bool {
+    matches!(driver_id, "sqlite" | "duckdb" | "mssql")
+}
+
+fn escape_like(driver_id: &str, s: &str) -> String {
+    let escaped = s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+    if driver_id == "mssql" {
+        escaped.replace('[', "\\[")
+    } else {
+        escaped
+    }
 }
 
 pub fn filter_value_kind(col: &ColumnInfo) -> FilterValueKind {

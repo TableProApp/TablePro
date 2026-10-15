@@ -132,3 +132,48 @@ async fn a_failing_statement_reports_its_index_and_rolls_the_batch_back() {
     );
     assert_eq!(values(connection.as_ref()).await[0], Value::Text("a".into()));
 }
+
+#[tokio::test]
+async fn browse_filter_contains_matches_literal_percent_and_underscore() {
+    use tablepro_core::{ColumnInfo, FilterOp, FilterRule, FilterSet, FilterValue, build_filter_where};
+
+    let directory = TempDir::new().unwrap();
+    let connection = connect(&directory).await;
+    connection.execute("CREATE TABLE t (v TEXT)").await.unwrap();
+    connection
+        .execute("INSERT INTO t VALUES ('50% off'), ('500 off'), ('a_b'), ('aXb'), ('a\\Xb')")
+        .await
+        .unwrap();
+    let column = ColumnInfo {
+        name: "v".into(),
+        data_type: "TEXT".into(),
+        nullable: true,
+        primary_key: false,
+        is_auto_increment: false,
+        default_value: None,
+        is_generated: false,
+        comment: None,
+        collation: None,
+        enum_type: None,
+        domain_type: None,
+    };
+    for (needle, expected) in [("50%", "50% off"), ("a_b", "a_b")] {
+        let set = FilterSet {
+            rules: vec![FilterRule {
+                column: "v".into(),
+                op: FilterOp::Contains,
+                value: Some(FilterValue::Single(needle.into())),
+            }],
+            ..Default::default()
+        };
+        let (clause, params) = build_filter_where("sqlite", std::slice::from_ref(&column), &set)
+            .unwrap()
+            .unwrap();
+        let rows = connection
+            .query_params(&format!("SELECT v FROM t WHERE {clause}"), &params)
+            .await
+            .unwrap()
+            .rows;
+        assert_eq!(rows, vec![vec![Value::Text(expected.into())]], "{needle}");
+    }
+}

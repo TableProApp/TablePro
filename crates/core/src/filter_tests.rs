@@ -904,3 +904,56 @@ fn a_mediumint_filter_binds_an_integer() {
         .unwrap();
     assert_eq!(params, vec![Value::Int(5)]);
 }
+
+fn like_where(driver_id: &str, op: FilterOp, raw: &str) -> (String, Vec<Value>) {
+    let cols = vec![col("note", "text")];
+    let set = FilterSet {
+        rules: vec![rule("note", op, Some(FilterValue::Single(raw.into())))],
+        ..Default::default()
+    };
+    build_filter_where(driver_id, &cols, &set).unwrap().unwrap()
+}
+
+#[test]
+fn engines_without_a_default_escape_get_an_escape_clause() {
+    for (driver_id, ph, quoted) in [
+        ("sqlite", "?", "\"note\""),
+        ("duckdb", "?", "\"note\""),
+        ("mssql", "@P1", "[note]"),
+    ] {
+        for op in [FilterOp::Contains, FilterOp::StartsWith, FilterOp::EndsWith] {
+            let (sql, _) = like_where(driver_id, op, "x");
+            assert_eq!(sql, format!("{quoted} LIKE {ph} ESCAPE '\\'"), "{driver_id}");
+        }
+    }
+}
+
+#[test]
+fn engines_with_a_default_escape_keep_the_plain_like() {
+    for (driver_id, expected) in [
+        ("postgres", "\"note\" LIKE $1"),
+        ("mysql", "`note` LIKE ?"),
+        ("clickhouse", "`note` LIKE ?"),
+    ] {
+        let (sql, _) = like_where(driver_id, FilterOp::Contains, "x");
+        assert_eq!(sql, expected, "{driver_id}");
+    }
+}
+
+#[test]
+fn like_metacharacters_are_escaped_per_driver() {
+    for driver_id in ["postgres", "mysql", "clickhouse", "sqlite", "duckdb", "mssql"] {
+        let (_, params) = like_where(driver_id, FilterOp::Contains, "50%_a\\b");
+        assert_eq!(params, vec![Value::Text("%50\\%\\_a\\\\b%".into())], "{driver_id}");
+    }
+}
+
+#[test]
+fn mssql_escapes_the_open_bracket_and_others_do_not() {
+    let (_, params) = like_where("mssql", FilterOp::StartsWith, "[abc]");
+    assert_eq!(params, vec![Value::Text("\\[abc]%".into())]);
+    for driver_id in ["postgres", "mysql", "clickhouse", "sqlite", "duckdb"] {
+        let (_, params) = like_where(driver_id, FilterOp::StartsWith, "[abc]");
+        assert_eq!(params, vec![Value::Text("[abc]%".into())], "{driver_id}");
+    }
+}
