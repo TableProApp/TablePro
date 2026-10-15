@@ -1,5 +1,5 @@
 # SOME DESCRIPTIVE TITLE.
-# Copyright (C) YEAR TablePro Authors
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
 # This file is distributed under the same license as the tablepro package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
 #
@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tablepro 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/TableProApp/TablePro/issues\n"
-"POT-Creation-Date: 2026-04-26 15:36+0000\n"
+"POT-Creation-Date: 2026-10-15 06:52+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -16,911 +16,1863 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
-#: crates/app/src/ui/app.rs:200 crates/app/src/ui/app.rs:1549 crates/app/src/ui/app.rs:1584 crates/app/src/ui/app.rs:1626
-msgid "New connection"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:207
-msgid "Open saved connection"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:218
-msgid "Read-only"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:235 crates/app/src/ui/edit_dialog.rs:178
-msgid "Saving…"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:241 crates/app/src/ui/app.rs:2301 crates/app/src/ui/preferences.rs:124
-msgid "SQL editor"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:250
-msgid "Main menu"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:274
-msgid "Filter tables…"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:296
-msgid "Retry"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:302 crates/app/src/ui/app.rs:1545
-msgid "Connect to a database"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:303
-msgid "Click the server icon for a new connection or the folder icon to open a saved one."
-msgstr ""
-
-#: crates/app/src/ui/app.rs:437
-msgid "Saved Connections"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:456
-msgid "Previous page"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:461
-msgid "Next page"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:485
-msgid "Rows per page"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:501
-msgid "Insert row"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:506
-msgid "Edit selected row"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:511
-msgid "Delete selected row"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:533
-msgid "Export as CSV…"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:534
-msgid "Export as JSON…"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:537
-msgid "Export results"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:558 crates/app/src/ui/app.rs:2287
-msgid "Find in results"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:692
-msgid "Rows updated"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:703
-msgid "Undoing…"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:784 crates/app/src/ui/app.rs:1425
-msgid "Select a table"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:785
-msgid "Connected to {driver}. Pick a table from the left to load up to 100,000 rows."
-msgstr ""
-
-#: crates/app/src/ui/app.rs:832
-msgid "Loading…"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:833
-msgid "Fetching rows from {table}"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:946
-msgid "No rows at offset {n}"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:952
-msgid "Rows {start} – {end} of {total}"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:956
-msgid "Rows {start} – {end}"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1016 crates/app/src/ui/history_dialog.rs:113
-msgid "Failed"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1051
-msgid "Row inserted"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1068
-msgid "Cannot edit"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1069
-msgid "Select exactly one row to edit."
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1095
-msgid "Row updated"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1122 crates/app/src/ui/app.rs:2405
-msgid "Cannot delete"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1131 crates/app/src/ui/app.rs:2415
-msgid "Delete row where {pk}?"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1133 crates/app/src/ui/app.rs:1858
-msgid "Delete {n} rows?"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1136 crates/app/src/ui/app.rs:2426 crates/app/src/ui/history_dialog.rs:333 crates/app/src/ui/history_dialog.rs:726 crates/app/src/ui/history_dialog.rs:753
-msgid "Delete"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1138
-msgid "Delete {n}"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1192
-msgid "Cannot update cell"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1208
-msgid "Cell updated"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1244
-msgid "No connection"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1245
-msgid "Connect to a database first to run SQL."
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1269
-msgid "View open tabs"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1276
-msgid "New tab"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1385
-msgid "Query {n}"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1426
-msgid "Pick a table from the left to load rows."
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1449 crates/app/src/ui/editor.rs:573 crates/app/src/ui/history_dialog.rs:917
-msgid "Empty query"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1508 crates/app/src/ui/connect_dialog.rs:281
-msgid "Connecting…"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1509
-msgid "Opening {name}"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1546
-msgid "Add a connection to get started."
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1580
-msgid "Saved connections"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1607 crates/app/src/ui/connection_row.rs:44
-msgid "Remove connection"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1761
-msgid "Connected"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1767
-msgid "Reconnecting · attempt {n} · retrying"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1775
-msgid "Connection lost — reconnecting (attempt {n}, will keep retrying)"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1836
-msgid "1 row deleted"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1838
-msgid "{n} rows deleted"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1856 crates/app/src/ui/app.rs:2417
-msgid "Delete row?"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1861 crates/app/src/ui/editor.rs:96 crates/app/src/ui/history_dialog.rs:492 crates/app/src/ui/preferences.rs:70
-msgid "Cancel"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:1903
-msgid "Undo"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2151
-msgid "Disconnect"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2156 crates/app/src/ui/history_dialog.rs:83 crates/app/src/ui/history_dialog.rs:92
-msgid "Query History"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2159 crates/app/src/ui/preferences.rs:9
-msgid "Preferences"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2162
-msgid "Keyboard Shortcuts"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2163
-msgid "About TablePro"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2164 crates/app/src/ui/app.rs:2295
-msgid "Quit"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2285 crates/app/src/ui/preferences.rs:13
-msgid "General"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2286
-msgid "Open SQL editor"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2288
-msgid "Refresh table"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2289
-msgid "Open Preferences"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2290
-msgid "Open Query History"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2293
-msgid "Show keyboard shortcuts"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2302
-msgid "Run query"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2303
-msgid "Cancel running query"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2304
-msgid "New editor tab"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2307
-msgid "Close current tab or window"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2309
-msgid "Next editor tab"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2312
-msgid "Previous editor tab"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2316
-msgid "Dialogs"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2317
-msgid "Close dialog"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2338
-msgid "Copied to clipboard"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2366
-msgid "Cannot set NULL"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2382
-msgid "Cell cleared"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2454
-msgid "INSERT statement copied"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2459
-msgid "Nothing to export"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2469 crates/app/src/ui/history_dialog.rs:860
-msgid "CSV files"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2474
-msgid "JSON files"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2483 crates/app/src/ui/history_dialog.rs:326
-msgid "Export as CSV"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2484
-msgid "Export as JSON"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2502
-msgid "Exported to {path}"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2505
-msgid "Export failed: {error}"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2550
-msgid "TablePro"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2552
-msgid "TablePro Authors"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2557
-msgid "© 2025–2026 TablePro Authors"
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2560
-msgid "A native Linux database client built with GTK4 + libadwaita."
-msgstr ""
-
-#: crates/app/src/ui/app.rs:2564
+#. Translators: your names, one per line, as "Name <email>" or "Name https://site".
+#: crates/app/src/application/about_dialog.rs
 msgid "translator-credits"
 msgstr ""
 
-#: crates/app/src/ui/connect_dialog.rs:78 crates/app/src/ui/connect_dialog.rs:212
-msgid "Connect"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:155
-msgid "Driver"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:164
-msgid "Host"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:167
-msgid "Port"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:169 crates/app/src/ui/connect_dialog.rs:481
-msgid "Database"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:173
-msgid "Username"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:176 crates/app/src/ui/ssh_section.rs:58
-msgid "Password"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:178
-msgid "Use TLS"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:179
-msgid "Require encrypted connection"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:183
-msgid "Read-only mode"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:184
-msgid "Block INSERT, UPDATE, DELETE, and DDL on this connection"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:205
-msgid "Test"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:246 crates/app/src/ui/connect_dialog.rs:262
-msgid "Connect to {name}"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:285 crates/app/src/ui/connect_dialog.rs:348
-msgid "no driver selected"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:294 crates/app/src/ui/connect_dialog.rs:355
-msgid "driver {id} not registered"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:344
-msgid "Testing…"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:423
-msgid "Connection ok · {n} table(s) visible"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:428
-msgid "Test failed: {error}"
-msgstr ""
-
-#: crates/app/src/ui/connect_dialog.rs:479
-msgid "File path"
-msgstr ""
-
-#: crates/app/src/ui/edit_dialog.rs:98
-msgid "{name} (read-only · primary key)"
-msgstr ""
-
-#: crates/app/src/ui/edit_dialog.rs:102 crates/app/src/ui/insert_dialog.rs:98
-msgid "{name} (required)"
-msgstr ""
-
-#: crates/app/src/ui/edit_dialog.rs:113
-msgid "Save"
-msgstr ""
-
-#: crates/app/src/ui/edit_dialog.rs:123
-msgid "Edit row in {table}"
-msgstr ""
-
-#: crates/app/src/ui/edit_dialog.rs:145 crates/app/src/ui/editor.rs:257 crates/app/src/ui/insert_dialog.rs:135
-msgid "no active connection"
-msgstr ""
-
-#: crates/app/src/ui/editor.rs:104
-msgid "Run"
-msgstr ""
-
-#: crates/app/src/ui/editor.rs:250
-msgid "empty query"
-msgstr ""
+#: crates/app/src/i18n.rs crates/app/src/ui/export/export_scope.rs
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+#: crates/app/src/ui/result_pane/mod.rs
+#, rust-format
+msgid "{n} row"
+msgid_plural "{n} rows"
+msgstr[0] ""
+msgstr[1] ""
 
-#: crates/app/src/ui/editor.rs:271
-msgid "Running…"
+#: crates/app/src/ui/browse_tab/browse_actions.rs
+#: data/resources/shortcuts-dialog.ui
+msgid "Insert Row"
 msgstr ""
 
-#: crates/app/src/ui/editor.rs:328
-msgid "{n} row(s) in {ms} ms (truncated)"
+#: crates/app/src/ui/browse_tab/browse_actions.rs
+msgid "Delete Selected Rows"
 msgstr ""
 
-#: crates/app/src/ui/editor.rs:332
-msgid "{n} row(s) in {ms} ms"
+#: crates/app/src/ui/browse_tab/browse_actions.rs
+msgid "Export Rows…"
 msgstr ""
 
-#: crates/app/src/ui/editor.rs:340
-msgid "No rows"
+#: crates/app/src/ui/browse_tab/pager_bar.rs
+msgid "Last Page"
 msgstr ""
 
-#: crates/app/src/ui/editor.rs:341
-msgid "Query returned no rows."
+#: crates/app/src/ui/browse_tab/pager_bar.rs
+msgid "Count rows to go to the last page"
 msgstr ""
 
-#: crates/app/src/ui/editor.rs:370
-msgid "error"
+#: crates/app/src/ui/browse_tab/pager_bar.rs
+msgid "Counting…"
 msgstr ""
 
-#: crates/app/src/ui/editor.rs:373
-msgid "Query failed"
+#: crates/app/src/ui/browse_tab/pager_bar.rs data/resources/ui/browse-tab.ui
+#: data/resources/ui/structure-tab.ui
+msgid "Try Again"
 msgstr ""
 
-#: crates/app/src/ui/editor.rs:393 crates/app/src/ui/history_dialog.rs:930
-msgid "cancelled"
+#: crates/app/src/ui/browse_tab/pager_bar.rs data/resources/ui/pager-bar.ui
+msgid "Count Rows"
 msgstr ""
 
-#: crates/app/src/ui/editor.rs:396
-msgid "Query cancelled"
+#: crates/app/src/ui/browse_tab/pager_bar.rs
+msgid "First Page"
 msgstr ""
 
-#: crates/app/src/ui/editor.rs:397
-msgid "The running query was stopped."
+#: crates/app/src/ui/browse_tab/pager_bar.rs data/resources/shortcuts-dialog.ui
+msgid "Previous Page"
 msgstr ""
 
-#: crates/app/src/ui/error_text.rs:7
-msgid "This table has no primary key. Use the modal Edit dialog instead."
+#: crates/app/src/ui/browse_tab/pager_bar.rs data/resources/shortcuts-dialog.ui
+msgid "Next Page"
 msgstr ""
 
-#: crates/app/src/ui/error_text.rs:8
-msgid "No changes to save."
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+msgid "Copied to clipboard"
 msgstr ""
 
-#: crates/app/src/ui/error_text.rs:10
-msgid "Internal column count mismatch (expected {expected}, got {got})."
-msgstr ""
-
-#: crates/app/src/ui/error_text.rs:20
-msgid "Could not reach the database. Is it running?"
-msgstr ""
-
-#: crates/app/src/ui/error_text.rs:21
-msgid "Username or password is wrong."
-msgstr ""
-
-#: crates/app/src/ui/error_text.rs:22
-msgid "TLS handshake failed: {detail}"
-msgstr ""
-
-#: crates/app/src/ui/error_text.rs:26
-msgid "Query failed (SQLSTATE {sqlstate}): {message}"
-msgstr ""
-
-#: crates/app/src/ui/error_text.rs:29
-msgid "Query failed: {message}"
-msgstr ""
-
-#: crates/app/src/ui/error_text.rs:30
-msgid "The connection was closed. Try reconnecting."
-msgstr ""
-
-#: crates/app/src/ui/error_text.rs:32
-msgid "This connection is read-only. Reopen it without read-only mode to make changes."
-msgstr ""
-
-#: crates/app/src/ui/error_text.rs:34
-msgid "Internal driver error: {detail}"
-msgstr ""
-
-#: crates/app/src/ui/grid.rs:272
-msgid "Copy value"
-msgstr ""
-
-#: crates/app/src/ui/grid.rs:273
-msgid "Copy row as INSERT"
-msgstr ""
-
-#: crates/app/src/ui/grid.rs:276
-msgid "Set to NULL"
-msgstr ""
-
-#: crates/app/src/ui/grid.rs:277
-msgid "Delete row"
-msgstr ""
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+#, rust-format
+msgid "Copied {n} row"
+msgid_plural "Copied {n} rows"
+msgstr[0] ""
+msgstr[1] ""
 
-#: crates/app/src/ui/history_dialog.rs:96
-msgid "Filter"
-msgstr ""
-
-#: crates/app/src/ui/history_dialog.rs:98
-msgid "Filter history"
-msgstr ""
-
-#: crates/app/src/ui/history_dialog.rs:104
-msgid "All connections"
-msgstr ""
-
-#: crates/app/src/ui/history_dialog.rs:111
-msgid "Any"
-msgstr ""
-
-#: crates/app/src/ui/history_dialog.rs:112
-msgid "Successful"
-msgstr ""
-
-#: crates/app/src/ui/history_dialog.rs:114
-msgid "Cancelled"
-msgstr ""
-
-#: crates/app/src/ui/history_dialog.rs:120
-msgid "Any time"
-msgstr ""
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+#, rust-format
+msgid "Copied {n} value"
+msgid_plural "Copied {n} values"
+msgstr[0] ""
+msgstr[1] ""
 
-#: crates/app/src/ui/history_dialog.rs:121
-msgid "Last 24 hours"
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+msgid "Couldn't copy the selection"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:122
-msgid "Last 7 days"
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+#, rust-format
+msgid "{n} NULL or binary values left out of the IN clause"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:123
-msgid "Last 30 days"
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+#, rust-format
+msgid ""
+"Couldn't copy: the column “{column}” holds a value TablePro couldn't read"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:128
-msgid "Reset"
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+msgid "This row has a value that can't be written as SQL"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:148
-msgid "Connection"
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+msgid "This row has no value to put in an INSERT"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:151
-msgid "Status"
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+msgid "This column has a value that can't be written as SQL"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:153
-msgid "Time window"
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+msgid "Nothing to copy: an IN clause can't carry NULL or binary values"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:176
-msgid "Select"
+#: crates/app/src/ui/editor/tests.rs
+msgid "query-results"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:177
-msgid "Toggle multi-select"
+#: crates/app/src/ui/error_text/edit.rs
+msgid "This column needs a value"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:187
-msgid "Show storage location"
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter a whole number"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:190
-msgid "Clear all history…"
+#: crates/app/src/ui/error_text/edit.rs
+#, rust-format
+msgid "Enter a whole number from {min} to {max}"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:195
-msgid "More actions"
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter a number"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:223
-msgid "Search queries…"
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter a decimal number, such as 12.50"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:238
-msgid "Search"
-msgstr ""
-
-#: crates/app/src/ui/history_dialog.rs:254
-msgid "Pinned"
-msgstr ""
-
-#: crates/app/src/ui/history_dialog.rs:274
-msgid "All queries"
-msgstr ""
-
-#: crates/app/src/ui/history_dialog.rs:305 crates/app/src/ui/history_dialog.rs:633
-msgid "No queries yet"
-msgstr ""
+#: crates/app/src/ui/error_text/edit.rs
+#, rust-format
+msgid "This column keeps at most {n} digit"
+msgid_plural "This column keeps at most {n} digits"
+msgstr[0] ""
+msgstr[1] ""
 
-#: crates/app/src/ui/history_dialog.rs:306 crates/app/src/ui/history_dialog.rs:635
-msgid "Run a query in the SQL editor and it will appear here."
-msgstr ""
+#: crates/app/src/ui/error_text/edit.rs
+#, rust-format
+msgid "This column keeps at most {n} decimal place"
+msgid_plural "This column keeps at most {n} decimal places"
+msgstr[0] ""
+msgstr[1] ""
 
-#: crates/app/src/ui/history_dialog.rs:325
-msgid "Export as SQL"
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter true or false"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:328
-msgid "Export"
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter a UUID"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:487 crates/app/src/ui/preferences.rs:65
-msgid "Clear all query history?"
+#: crates/app/src/ui/error_text/edit.rs
+#, rust-format
+msgid "Enter valid JSON: {detail}"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:489 crates/app/src/ui/preferences.rs:67
-msgid "This permanently deletes every saved query, including pinned ones."
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter a date as YYYY-MM-DD"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:493 crates/app/src/ui/preferences.rs:71
-msgid "Clear"
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter a time as HH:MM:SS"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:628
-msgid "No matches"
+#: crates/app/src/ui/error_text/edit.rs
+msgid "This time is outside the range the column can hold"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:630
-msgid "Try a different search term or change the filters."
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter a date and time as YYYY-MM-DD HH:MM:SS"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:709 crates/app/src/ui/history_dialog.rs:744
-msgid "Unpin"
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Add a time zone offset, such as +02:00"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:711 crates/app/src/ui/history_dialog.rs:746
-msgid "Pin"
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter an interval, such as 1 day 02:00:00"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:738
-msgid "Open in new tab"
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter bits as 0 and 1"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:739
-msgid "Replace current tab"
-msgstr ""
+#: crates/app/src/ui/error_text/edit.rs
+#, rust-format
+msgid "Enter exactly {n} bit"
+msgid_plural "Enter exactly {n} bits"
+msgstr[0] ""
+msgstr[1] ""
 
-#: crates/app/src/ui/history_dialog.rs:750
-msgid "Copy SQL"
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Enter one of the values this column allows"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:822
-msgid "{n} selected"
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Binary values can't be edited here"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:856
-msgid "SQL files"
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Spatial values can't be edited here"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:867
-msgid "Export query history"
+#: crates/app/src/ui/error_text/edit.rs
+msgid "This value couldn't be read, so it can't be edited"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:939
-msgid "{n} row(s)"
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Arrays and composite values can't be edited here"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:949
-msgid "just now"
+#: crates/app/src/ui/error_text/edit.rs
+msgid "Values whose type changes by row can't be edited here"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:952
-msgid "{n} min ago"
-msgstr ""
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "Exported {rows} row to {name}"
+msgid_plural "Exported {rows} rows to {name}"
+msgstr[0] ""
+msgstr[1] ""
 
-#: crates/app/src/ui/history_dialog.rs:955
-msgid "{n} h ago"
+#: crates/app/src/ui/export/export_failure_text.rs
+msgid "Export stopped"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog.rs:958
-msgid "{n} d ago"
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "Export stopped. {name} is incomplete."
 msgstr ""
 
-#: crates/app/src/ui/insert_dialog.rs:104
-msgid "Insert"
-msgstr ""
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "{rows} of {total} row"
+msgid_plural "{rows} of {total} rows"
+msgstr[0] ""
+msgstr[1] ""
 
-#: crates/app/src/ui/insert_dialog.rs:114
-msgid "Insert into {table}"
-msgstr ""
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "{rows} of about {total} row"
+msgid_plural "{rows} of about {total} rows"
+msgstr[0] ""
+msgstr[1] ""
 
-#: crates/app/src/ui/insert_dialog.rs:167
-msgid "Inserting…"
-msgstr ""
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "{rows} row"
+msgid_plural "{rows} rows"
+msgstr[0] ""
+msgstr[1] ""
 
-#: crates/app/src/ui/preferences.rs:18
-msgid "Data browser"
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid ""
+"The column “{column}” holds a value TablePro couldn't read, so it can't be "
+"written to the file."
 msgstr ""
 
-#: crates/app/src/ui/preferences.rs:20
-msgid "Tunes the row paginator and destructive-action confirmation."
+#: crates/app/src/ui/export/export_failure_text.rs
+msgid ""
+"This statement returned more than one result, so it can't be exported as one "
+"file."
 msgstr ""
 
-#: crates/app/src/ui/preferences.rs:27
-msgid "Default page size"
+#: crates/app/src/ui/export/export_failure_text.rs
+msgid "This statement returned no rows to export."
 msgstr ""
 
-#: crates/app/src/ui/preferences.rs:28
-msgid "Rows fetched per request when browsing a table"
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid ""
+"An Excel sheet holds {limit} rows, and this result has more. Export it as "
+"CSV instead."
 msgstr ""
 
-#: crates/app/src/ui/preferences.rs:32
-msgid "Confirm before deleting rows"
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "Writing {name} failed: {error}"
 msgstr ""
 
-#: crates/app/src/ui/preferences.rs:33
-msgid "Show a confirmation dialog before each destructive action"
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid ""
+"An export to {name} is already running. Wait for it to finish, or export to "
+"another file."
 msgstr ""
 
-#: crates/app/src/ui/preferences.rs:42
-msgid "Query history"
+#: crates/app/src/ui/export/export_failure_text.rs
+msgid "The export stopped unexpectedly."
 msgstr ""
 
-#: crates/app/src/ui/preferences.rs:43
-msgid "Persistent record of every SQL query you run."
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "{name} is incomplete."
 msgstr ""
 
-#: crates/app/src/ui/preferences.rs:47
-msgid "Retention (days)"
+#: crates/app/src/ui/export/export_failure_text.rs
+msgid ""
+"Export All only runs statements that read data. This statement changes data."
 msgstr ""
 
-#: crates/app/src/ui/preferences.rs:48
-msgid "0 keeps history forever; pinned entries are never pruned."
+#: crates/app/src/ui/export/export_failure_text.rs
+msgid ""
+"Export All runs the statement again on a separate connection, so temporary "
+"tables, session settings and uncommitted changes from this editor aren't "
+"available."
 msgstr ""
 
-#: crates/app/src/ui/preferences.rs:53
-msgid "Clear now"
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "An Excel sheet holds {limit} rows, and this result has {got}."
 msgstr ""
 
-#: crates/app/src/ui/preferences.rs:58
-msgid "Clear history now"
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "An Excel sheet holds {limit} columns, and this result has {got}."
 msgstr ""
 
-#: crates/app/src/ui/preferences.rs:59
-msgid "Removes every saved query, including pinned ones."
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid "The file couldn't be built: {error}"
 msgstr ""
 
-#: crates/app/src/ui/preferences.rs:90
+#: crates/app/src/ui/export/export_failure_text.rs
+#: data/resources/ui/history-dialog.ui
+#: data/resources/ui/preferences-history-group.ui
 msgid "Show in Files"
 msgstr ""
 
-#: crates/app/src/ui/preferences.rs:98
-msgid "Storage location"
+#: crates/app/src/ui/export/export_failure_text.rs
+#: crates/app/src/ui/history_dialog/history_export.rs
+msgid "Couldn't Export"
 msgstr ""
 
-#: crates/app/src/ui/preferences.rs:120
+#: crates/app/src/ui/export/export_failure_text.rs
+#: crates/app/src/ui/history_dialog/history_export.rs
+msgid "_Close"
+msgstr ""
+
+#: crates/app/src/ui/export/export_ledger.rs
+msgid "Stop Exports?"
+msgstr ""
+
+#: crates/app/src/ui/export/export_ledger.rs
+#, rust-format
+msgid "{n} export is still running. Stopping it leaves the file unfinished."
+msgid_plural ""
+"{n} exports are still running. Stopping them leaves the files unfinished."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/export/export_ledger.rs
+msgid "_Keep Exporting"
+msgstr ""
+
+#: crates/app/src/ui/export/export_ledger.rs
+msgid "_Stop Exports"
+msgstr ""
+
+#: crates/app/src/ui/export/export_operations_button.rs
+msgid "Stop Export"
+msgstr ""
+
+#: crates/app/src/ui/export/export_scope.rs
+msgid "filters apply"
+msgstr ""
+
+#: crates/app/src/ui/export/export_scope.rs
+msgid "unsaved changes aren't included"
+msgstr ""
+
+#: crates/app/src/ui/export/export_scope.rs
+msgid "Current Page"
+msgstr ""
+
+#: crates/app/src/ui/export/export_scope.rs
+msgid "Entire Table"
+msgstr ""
+
+#: crates/app/src/ui/export/export_scope.rs
+msgctxt "list separator"
+msgid ", "
+msgstr ""
+
+#: crates/app/src/ui/export/export_scope.rs
+msgid "Shown Rows"
+msgstr ""
+
+#: crates/app/src/ui/export/export_scope.rs
+msgid "All Rows"
+msgstr ""
+
+#: crates/app/src/ui/export/export_scope.rs
+msgid ""
+"Runs the statement again on a separate read-only connection, without this "
+"editor's USE or SET changes"
+msgstr ""
+
+#: crates/app/src/ui/export/export_scope.rs
+#, rust-format
+msgid "About {n} row"
+msgid_plural "About {n} rows"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/export/export_scope.rs
+msgid "Every row"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+#, rust-format
+msgid ""
+"An Excel sheet holds {limit} rows, and this export has {rows}. Export it as "
+"CSV instead."
+msgstr ""
+
+#: crates/app/src/ui/file_reveal/reveal_failure_toast.rs
+msgid "Could not show the file in Files"
+msgstr ""
+
+#: crates/app/src/ui/grid/row_json_dialog.rs
+#, rust-format
+msgid "… ({count} more byte)"
+msgid_plural "… ({count} more bytes)"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/history_dialog/connection_filter.rs
+msgid "All Connections"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_export.rs
+msgid "SQL files"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_export.rs
+msgid "CSV files"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_export.rs
+msgid "Export Query History"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_export.rs
+msgid "The selected entries couldn't be written as CSV."
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_export.rs
+msgid "The selected entries couldn't be read from the query history."
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+#: data/resources/ui/connect-dialog.ui
+msgid "Connection"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+msgid "All"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+msgid "Succeeded"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+msgid "Failed"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+msgid "Cancelled"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+msgid "Status"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+msgid "Any Time"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+msgid "Today"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+msgid "Last 7 Days"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+msgid "Last 30 Days"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_filters.rs
+msgid "Time window"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+msgid "Empty Query"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+msgid "cancelled"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+msgid "just now"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+#, rust-format
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+#, rust-format
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+#, rust-format
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/history_dialog/history_row.rs
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "Unpin"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/history_row.rs
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "Pin"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+#, rust-format
+msgid "{n} selected"
+msgid_plural "{n} selected"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "The query could not be pinned."
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "The query could not be unpinned."
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "The queries could not be deleted."
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+#, rust-format
+msgid "{count} query deleted"
+msgid_plural "{count} queries deleted"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "_Undo"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "The queries could not be restored."
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "Clear All Query History?"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "This permanently deletes every saved query, including pinned ones."
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs data/resources/ui/connecting-page.ui
+msgid "Cancel"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs data/resources/ui/tls-section.ui
+msgid "Clear"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "The query history could not be cleared."
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "The query history could not be read."
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "No Matches"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "Try a different search term or change the filters."
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs data/resources/ui/history-dialog.ui
+msgid "No Queries Yet"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs data/resources/ui/history-dialog.ui
+msgid "Run a query in the SQL editor and it will appear here."
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "History Unavailable"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "Pinned"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "All Queries"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "Open in New Tab"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "Replace Current Tab"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs
+msgid "Copy SQL"
+msgstr ""
+
+#: crates/app/src/ui/history_dialog/mod.rs data/resources/ui/history-dialog.ui
+#: data/resources/ui/history-row.ui
+msgid "Delete"
+msgstr ""
+
+#: crates/app/src/ui/host_key_review.rs
+msgid "Replace Key and Connect"
+msgstr ""
+
+#: crates/app/src/ui/result_pane/result_limit_banner.rs
+msgid "Export All…"
+msgstr ""
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
+msgid "Showing {shown} of {total} row"
+msgid_plural "Showing {shown} of {total} rows"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
+msgid "Showing the first {shown} row"
+msgid_plural "Showing the first {shown} rows"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
+msgid "{rows}+"
+msgstr ""
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
+msgid "Result {n} ({rows})"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+msgid ""
+"Rebuilds the table: copies its rows into a new table and drops the old one."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/sql_preview.rs
+msgid "-- Connect to a database to see the SQL."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/sql_preview.rs
+msgid "-- This database's structure can't be edited here."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/sql_preview.rs
+msgid "-- Fix the highlighted fields to see the SQL."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/sql_preview.rs
+msgid "-- No pending changes."
+msgstr ""
+
+#. Translators: TablePro is the product name and is not translated.
+#: data/app.tablepro.TablePro.desktop.in.in data/resources/ui/picker-page.ui
+#: data/resources/ui/session-window.ui
+msgid "TablePro"
+msgstr ""
+
+#: data/app.tablepro.TablePro.desktop.in.in
+msgid "Database Client"
+msgstr ""
+
+#: data/app.tablepro.TablePro.desktop.in.in
+msgid ""
+"Browse and edit PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse "
+"databases"
+msgstr ""
+
+#: data/app.tablepro.TablePro.desktop.in.in
+msgid "SQL;Database;PostgreSQL;MySQL;SQLite;SQL Server;ClickHouse;"
+msgstr ""
+
+#: data/app.tablepro.TablePro.desktop.in.in data/resources/gtk/menus.ui
+#: data/resources/shortcuts-dialog.ui
+msgid "New Window"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Window width"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Width of the main window in logical pixels."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Window height"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Height of the main window in logical pixels."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Window is maximized"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Whether the main window was maximized when it last closed."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Rows per page"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "How many rows a table page fetches at a time."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Confirm destructive actions"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid ""
+"Ask before dropping a table, deleting rows, or discarding pending edits."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Save query history"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid ""
+"Whether the SQL you run is kept in the query history. Statements that "
+"contain passwords or connection secrets are never saved. Turning this off "
+"keeps the entries already saved."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Query history retention in days"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid ""
+"Unpinned history entries older than this are pruned at startup. Zero keeps "
+"everything."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Query timeout in seconds"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid ""
+"How long the editor waits before cancelling a running query. Zero disables "
+"the timeout."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Use the system monospace font"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid ""
+"Whether the SQL editor follows the desktop monospace font instead of a "
+"custom one."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Custom editor font"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid ""
+"Pango font description the SQL editor uses when the system font is turned "
+"off."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Editor style scheme"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "GtkSourceView style scheme id for the SQL editor."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Restore session"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid ""
+"Whether the connections open when TablePro quit are opened again at the next "
+"launch."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Driver the connect dialog opens with"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid ""
+"Id of the driver last connected to, so the dialog opens on it with its own "
+"default port."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Write NULL as an empty field"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid ""
+"Whether a CSV export writes NULL as an empty field rather than the text NULL."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Replace line breaks with spaces"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid ""
+"Whether a CSV export flattens line breaks inside a value into single spaces."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Write a header row"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Whether a CSV export starts with the column names."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Neutralise spreadsheet formulas"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid ""
+"Whether a CSV export prefixes values starting with =, +, - or @ so a "
+"spreadsheet does not run them."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "CSV field delimiter"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Character that separates fields in a CSV export."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "CSV quoting"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "When a CSV export wraps a field in quotes."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "CSV line ending"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "Line ending a CSV export writes between records."
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid "CSV decimal separator"
+msgstr ""
+
+#: data/app.tablepro.TablePro.gschema.xml
+msgid ""
+"Character a CSV export uses between the whole and fractional parts of a "
+"number."
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Work with your databases"
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid ""
+"TablePro connects to PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse. "
+"Browse tables, edit rows in place, run SQL with syntax highlighting, and "
+"reach servers behind an SSH bastion."
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "It can:"
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Edit cells in place, with primary-key safety and an undo history"
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Run SQL scripts statement by statement and cancel a slow query"
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Tunnel through an SSH jump host using your own OpenSSH client"
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Verify TLS, keep connections read-only, and reconnect on drop"
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Export results to CSV, TSV, JSON and SQL"
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Browse and edit table rows"
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Run SQL in the editor"
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Change a table's columns and indexes"
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Connect through an SSH tunnel"
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "sql"
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "postgres"
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "mysql"
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "sqlite"
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "database"
+msgstr ""
+
+#: data/app.tablepro.TablePro.metainfo.xml.in.in
+msgid "Initial pre-release tracking the production-hardening pass."
+msgstr ""
+
+#: data/resources/gtk/menus.ui data/resources/shortcuts-dialog.ui
+#: data/resources/ui/history-dialog.ui
+#: data/resources/ui/preferences-history-group.ui
+msgid "Query History"
+msgstr ""
+
+#: data/resources/gtk/menus.ui
+msgid "Saved Queries"
+msgstr ""
+
+#: data/resources/gtk/menus.ui
+msgid "Disconnect"
+msgstr ""
+
+#: data/resources/gtk/menus.ui
+msgid "Import Connections…"
+msgstr ""
+
+#: data/resources/gtk/menus.ui
+msgid "Export Connections…"
+msgstr ""
+
+#: data/resources/gtk/menus.ui data/resources/shortcuts-dialog.ui
+#: data/resources/ui/preferences-dialog.ui
+msgid "Preferences"
+msgstr ""
+
+#: data/resources/gtk/menus.ui data/resources/shortcuts-dialog.ui
+msgid "Keyboard Shortcuts"
+msgstr ""
+
+#: data/resources/gtk/menus.ui
+msgid "About TablePro"
+msgstr ""
+
+#: data/resources/gtk/menus.ui
+msgid "Reopen Closed Tab"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+#: data/resources/ui/preferences-general-page.ui
+msgid "General"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Show or Hide the Sidebar"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Close a Dialog"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Quit"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Tabs"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "New SQL Editor Tab"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Close the Tab or the Empty Window"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Reopen the Last Closed Tab"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Next Tab"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Previous Tab"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Move the Tab Right"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Move the Tab Left"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Browse Table"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui data/resources/ui/browse-tab.ui
+msgid "Filter Rows"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Read the Table Again"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Save Pending Changes"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Undo the Last Change"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Redo the Last Change"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Select All Rows"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Clear the Selection"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "First Row of the Page"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Last Row of the Page"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Extend the Selection to the Clicked Row"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Add or Remove the Clicked Row"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Data Grid"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Move Between Cells"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Edit a Cell or Toggle a Check Box"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Toggle a Check Box"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Show the Cell Menu"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Set Cell to NULL"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Finish Editing"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Cancel Editing"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Finish Editing and Edit the Next Cell"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Finish Editing and Edit the Previous Cell"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Save a Multi-Line Value"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Mark Rows for Deletion"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Copy Selected Rows as TSV"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Clear the Multi-Row Selection"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "SQL Editor"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Run the Query or the Selected Text"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Run the Statement at the Cursor"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Cancel the Running Query"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Format SQL"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Toggle Line Comment"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui data/resources/ui/find-bar.ui
+msgid "Find"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Find and Replace"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Next Match"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Previous Match"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Save the Query Under a Name"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Table Structure"
+msgstr ""
+
+#: data/resources/ui/browse-tab.ui
+msgid "Couldn't refresh rows. Showing the last loaded page."
+msgstr ""
+
+#: data/resources/ui/browse-tab.ui
+msgid "Read-only connection. Editing disabled."
+msgstr ""
+
+#: data/resources/ui/browse-tab.ui
+msgid "This table has no primary key. Use the SQL editor to modify rows."
+msgstr ""
+
+#: data/resources/ui/browse-tab.ui
+msgid "Loading…"
+msgstr ""
+
+#: data/resources/ui/browse-tab.ui
+msgid "Couldn't Load Rows"
+msgstr ""
+
+#: data/resources/ui/browse-tab.ui
+msgid "Filter"
+msgstr ""
+
+#: data/resources/ui/browse-tab.ui
+msgid "Rows:"
+msgstr ""
+
+#: data/resources/ui/connect-dialog.ui
+msgid "Connect"
+msgstr ""
+
+#: data/resources/ui/connect-dialog.ui
+msgid "Test"
+msgstr ""
+
+#: data/resources/ui/connect-dialog.ui
+msgid "Connect Once to Check the Settings"
+msgstr ""
+
+#: data/resources/ui/connect-dialog.ui data/resources/ui/structure-tab.ui
+msgid "Name"
+msgstr ""
+
+#: data/resources/ui/connect-dialog.ui
+msgid "Driver"
+msgstr ""
+
+#: data/resources/ui/connect-dialog.ui
+msgid "Host"
+msgstr ""
+
+#: data/resources/ui/connect-dialog.ui data/resources/ui/ssh-section.ui
+msgid "Port"
+msgstr ""
+
+#: data/resources/ui/connect-dialog.ui
+msgid "Database"
+msgstr ""
+
+#: data/resources/ui/connect-dialog.ui data/resources/ui/ssh-section.ui
+msgid "Authentication"
+msgstr ""
+
+#: data/resources/ui/connect-dialog.ui
+msgid "Method"
+msgstr ""
+
+#: data/resources/ui/connect-dialog.ui data/resources/ui/ssh-section.ui
+msgid "Username"
+msgstr ""
+
+#: data/resources/ui/connect-dialog.ui data/resources/ui/ssh-section.ui
+msgid "Password"
+msgstr ""
+
+#: data/resources/ui/connect-dialog.ui
+msgid "Remember Password"
+msgstr ""
+
+#: data/resources/ui/connect-dialog.ui
+msgid "Keep it in the keyring; otherwise it is asked for at each connect"
+msgstr ""
+
+#: data/resources/ui/connect-dialog.ui
+msgid "Options"
+msgstr ""
+
+#: data/resources/ui/connect-dialog.ui
+msgid "Read-Only Mode"
+msgstr ""
+
+#: data/resources/ui/connect-failed-page.ui
+msgid "Could Not Connect"
+msgstr ""
+
+#: data/resources/ui/connect-failed-page.ui
+msgid "Enter Password…"
+msgstr ""
+
+#: data/resources/ui/connect-failed-page.ui data/resources/ui/workspace.ui
+msgid "Retry"
+msgstr ""
+
+#: data/resources/ui/connect-failed-page.ui
+msgid "Edit Connection…"
+msgstr ""
+
+#: data/resources/ui/connect-failed-page.ui
+msgid "Choose Connection"
+msgstr ""
+
+#: data/resources/ui/export-operations-button.ui
+msgid "Exports"
+msgstr ""
+
+#: data/resources/ui/export-operations-button.ui
+msgid "Running exports"
+msgstr ""
+
+#: data/resources/ui/filter-strip.ui
+msgid "Match"
+msgstr ""
+
+#: data/resources/ui/filter-strip.ui
+msgctxt "filter operator"
+msgid "all"
+msgstr ""
+
+#: data/resources/ui/filter-strip.ui
+msgctxt "filter operator"
+msgid "any"
+msgstr ""
+
+#: data/resources/ui/filter-strip.ui
+msgid "of these rules"
+msgstr ""
+
+#: data/resources/ui/filter-strip.ui
+msgid "Clear All"
+msgstr ""
+
+#: data/resources/ui/filter-strip.ui
+msgid "Apply"
+msgstr ""
+
+#: data/resources/ui/filter-strip.ui
+msgid "e.g. created_at > now() - interval '1 day'"
+msgstr ""
+
+#: data/resources/ui/filter-strip.ui
+msgid "Or use the rule editor"
+msgstr ""
+
+#: data/resources/ui/filter-strip.ui
+msgid "Add Rule"
+msgstr ""
+
+#: data/resources/ui/find-bar.ui
+msgid "Match Case"
+msgstr ""
+
+#: data/resources/ui/find-bar.ui
+msgid "Match Whole Word"
+msgstr ""
+
+#: data/resources/ui/find-bar.ui
+msgid "Regular Expressions"
+msgstr ""
+
+#: data/resources/ui/find-bar.ui
+msgid "Replace"
+msgstr ""
+
+#: data/resources/ui/find-bar.ui
+msgid "Replace with"
+msgstr ""
+
+#: data/resources/ui/find-bar.ui
+msgid "Replace All"
+msgstr ""
+
+#: data/resources/ui/history-dialog.ui
+msgid "Select"
+msgstr ""
+
+#: data/resources/ui/history-dialog.ui
+msgid "Select Queries"
+msgstr ""
+
+#: data/resources/ui/history-dialog.ui
+msgid "More Actions"
+msgstr ""
+
+#: data/resources/ui/history-dialog.ui
+msgid "Search"
+msgstr ""
+
+#: data/resources/ui/history-dialog.ui
+msgid "Search queries…"
+msgstr ""
+
+#: data/resources/ui/history-dialog.ui
+msgid "Search queries"
+msgstr ""
+
+#: data/resources/ui/history-dialog.ui
+msgid "Queries"
+msgstr ""
+
+#: data/resources/ui/history-dialog.ui
+msgid "Export"
+msgstr ""
+
+#: data/resources/ui/history-dialog.ui
+msgid "Clear All History…"
+msgstr ""
+
+#: data/resources/ui/history-dialog.ui
+msgid "Export as SQL"
+msgstr ""
+
+#: data/resources/ui/history-dialog.ui
+msgid "Export as CSV"
+msgstr ""
+
+#: data/resources/ui/history-row.ui
+msgid "Select Query"
+msgstr ""
+
+#: data/resources/ui/pending-changes-bar.ui data/resources/ui/structure-tab.ui
+#: data/resources/ui/workspace.ui
+msgid "Saving…"
+msgstr ""
+
+#: data/resources/ui/pending-changes-bar.ui data/resources/ui/structure-tab.ui
+msgid "Save"
+msgstr ""
+
+#: data/resources/ui/pending-changes-bar.ui
+msgid "Save Changes"
+msgstr ""
+
+#: data/resources/ui/pending-changes-bar.ui data/resources/ui/structure-tab.ui
+msgid "Discard"
+msgstr ""
+
+#: data/resources/ui/pending-changes-bar.ui
+msgid "Discard All Changes"
+msgstr ""
+
+#: data/resources/ui/pending-changes-bar.ui data/resources/ui/structure-tab.ui
+msgid "_Stop Saving"
+msgstr ""
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Data Browser"
+msgstr ""
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Tunes the row paginator and destructive-action confirmation."
+msgstr ""
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Default page size"
+msgstr ""
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Rows fetched per request when browsing a table"
+msgstr ""
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Confirm Before Deleting Rows"
+msgstr ""
+
+#: data/resources/ui/preferences-data-browser-group.ui
+msgid "Show a confirmation dialog before each destructive action"
+msgstr ""
+
+#: data/resources/ui/preferences-editor-page.ui
 msgid "Editor"
 msgstr ""
 
-#: crates/app/src/ui/preferences.rs:127
-msgid "Editor font size"
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Font"
 msgstr ""
 
-#: crates/app/src/ui/ssh_section.rs:42
-msgid "Use SSH tunnel"
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Use the System Monospace Font"
 msgstr ""
 
-#: crates/app/src/ui/ssh_section.rs:43
-msgid "Reach the database through a bastion host"
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Follows the font you picked in the desktop settings"
 msgstr ""
 
-#: crates/app/src/ui/ssh_section.rs:48
-msgid "SSH tunnel"
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Editor font"
 msgstr ""
 
-#: crates/app/src/ui/ssh_section.rs:51
-msgid "SSH host"
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Style Scheme"
 msgstr ""
 
-#: crates/app/src/ui/ssh_section.rs:53
-msgid "SSH port"
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Running Queries"
 msgstr ""
 
-#: crates/app/src/ui/ssh_section.rs:56
-msgid "SSH user"
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Query timeout (seconds)"
 msgstr ""
 
-#: crates/app/src/ui/ssh_section.rs:59
+#: data/resources/ui/preferences-editor-page.ui
+msgid "Cancel long-running queries automatically. Set to 0 to disable."
+msgstr ""
+
+#: data/resources/ui/preferences-general-page.ui
+msgid "Startup"
+msgstr ""
+
+#: data/resources/ui/preferences-general-page.ui
+msgid "Restore Session"
+msgstr ""
+
+#: data/resources/ui/preferences-general-page.ui
+msgid "Reopen the connections that were open when TablePro quit"
+msgstr ""
+
+#: data/resources/ui/preferences-history-group.ui
+msgid "Save Query History"
+msgstr ""
+
+#: data/resources/ui/preferences-history-group.ui
+msgid ""
+"Keep a searchable record of the SQL you run. Statements that contain "
+"passwords or connection secrets are never saved."
+msgstr ""
+
+#: data/resources/ui/preferences-history-group.ui
+msgid "Retention (days)"
+msgstr ""
+
+#: data/resources/ui/preferences-history-group.ui
+msgid "0 keeps history forever; pinned entries are never pruned."
+msgstr ""
+
+#: data/resources/ui/preferences-history-group.ui
+msgid "Clear query history"
+msgstr ""
+
+#: data/resources/ui/preferences-history-group.ui
+msgid "Removes every saved query, including pinned ones."
+msgstr ""
+
+#: data/resources/ui/preferences-history-group.ui
+msgid "Clear…"
+msgstr ""
+
+#: data/resources/ui/preferences-history-group.ui
+msgid "Storage location"
+msgstr ""
+
+#: data/resources/ui/results-pane.ui
+msgid "Show Results List"
+msgstr ""
+
+#: data/resources/ui/results-pane.ui
+msgid "Results"
+msgstr ""
+
+#: data/resources/ui/results-pane.ui
+msgid "No Results Yet"
+msgstr ""
+
+#: data/resources/ui/results-pane.ui
+msgid "Run a query to see what it returns."
+msgstr ""
+
+#: data/resources/ui/sql-editor.ui
+msgid "Open SQL File…"
+msgstr ""
+
+#: data/resources/ui/sql-editor.ui
+msgid "Save Query…"
+msgstr ""
+
+#: data/resources/ui/sql-editor.ui
+msgid "Format"
+msgstr ""
+
+#: data/resources/ui/sql-editor.ui
+msgid "Find…"
+msgstr ""
+
+#: data/resources/ui/sql-editor.ui
+msgid "Find and Replace…"
+msgstr ""
+
+#: data/resources/ui/sql-editor.ui
+msgid "Editor Options"
+msgstr ""
+
+#: data/resources/ui/sql-editor.ui
+msgid "Stop"
+msgstr ""
+
+#: data/resources/ui/sql-editor.ui
+msgid "Stop the Running Query"
+msgstr ""
+
+#: data/resources/ui/sql-editor.ui
+msgid "Run"
+msgstr ""
+
+#: data/resources/ui/sql-editor.ui
+msgid "Run the Script"
+msgstr ""
+
+#: data/resources/ui/sql-editor.ui
+msgid "SQL editor"
+msgstr ""
+
+#: data/resources/ui/sqlite-file-row.ui
+msgid "Database file"
+msgstr ""
+
+#: data/resources/ui/sqlite-file-row.ui
+msgid "No file chosen"
+msgstr ""
+
+#: data/resources/ui/sqlite-file-row.ui data/resources/ui/tls-section.ui
+msgid "Choose…"
+msgstr ""
+
+#: data/resources/ui/sqlite-file-row.ui
+msgid "Open an Existing Database File"
+msgstr ""
+
+#: data/resources/ui/sqlite-file-row.ui
+msgid "New Database…"
+msgstr ""
+
+#: data/resources/ui/sqlite-file-row.ui
+msgid "Create a Database File When You Connect"
+msgstr ""
+
+#: data/resources/ui/ssh-section.ui
+msgid "SSH Tunnel"
+msgstr ""
+
+#: data/resources/ui/ssh-section.ui
+msgid "Use SSH Tunnel"
+msgstr ""
+
+#: data/resources/ui/ssh-section.ui
+msgid "Empty rows are filled from your SSH configuration"
+msgstr ""
+
+#: data/resources/ui/ssh-section.ui
+msgid "Host or alias"
+msgstr ""
+
+#: data/resources/ui/ssh-section.ui
+msgid "Jump hosts"
+msgstr ""
+
+#: data/resources/ui/ssh-section.ui
 msgid "Private key"
 msgstr ""
 
-#: crates/app/src/ui/ssh_section.rs:62
-msgid "SSH auth"
+#: data/resources/ui/ssh-section.ui
+msgid "Choose a Private Key File"
 msgstr ""
 
-#: crates/app/src/ui/ssh_section.rs:68
-msgid "SSH password"
+#: data/resources/ui/ssh-section.ui
+msgid "Choose Private Key"
 msgstr ""
 
-#: crates/app/src/ui/ssh_section.rs:71
-msgid "Private key path"
+#: data/resources/ui/ssh-section.ui
+msgid "Passphrase"
 msgstr ""
 
-#: crates/app/src/ui/ssh_section.rs:76
-msgid "Key passphrase"
+#: data/resources/ui/structure-tab.ui
+msgid "Couldn't reload structure. Showing the last loaded version."
 msgstr ""
 
-#: crates/app/src/ui/ssh_section.rs:209
-msgid "Browse for private key"
+#: data/resources/ui/structure-tab.ui
+msgid "Loading structure…"
 msgstr ""
 
-#: crates/app/src/ui/ssh_section.rs:216
-msgid "Select SSH private key"
+#: data/resources/ui/structure-tab.ui
+msgid "Reading columns, indexes, and foreign keys…"
+msgstr ""
+
+#: data/resources/ui/structure-tab.ui
+msgid "Add a name and at least one column to save."
+msgstr ""
+
+#: data/resources/ui/structure-tab.ui
+msgid "Columns"
+msgstr ""
+
+#: data/resources/ui/structure-tab.ui
+msgid "Add Column"
+msgstr ""
+
+#: data/resources/ui/structure-tab.ui
+msgid "Indexes"
+msgstr ""
+
+#: data/resources/ui/structure-tab.ui
+msgid "Add Index…"
+msgstr ""
+
+#: data/resources/ui/structure-tab.ui
+msgid "Foreign Keys"
+msgstr ""
+
+#: data/resources/ui/structure-tab.ui
+msgid "Add Foreign Key…"
+msgstr ""
+
+#: data/resources/ui/structure-tab.ui
+msgid "SQL Preview"
+msgstr ""
+
+#: data/resources/ui/structure-tab.ui
+msgid "Couldn't Load Structure"
+msgstr ""
+
+#: data/resources/ui/structure-tab.ui
+msgid "Drop Table…"
+msgstr ""
+
+#: data/resources/ui/tls-section.ui
+msgid "Security"
+msgstr ""
+
+#: data/resources/ui/tls-section.ui
+msgid "Encryption"
+msgstr ""
+
+#: data/resources/ui/tls-section.ui
+msgid "Certificates"
+msgstr ""
+
+#: data/resources/ui/tls-section.ui
+msgid "For a server whose certificate this computer does not trust"
+msgstr ""
+
+#: data/resources/ui/tls-section.ui
+msgid "CA certificate"
+msgstr ""
+
+#: data/resources/ui/tls-section.ui
+msgid "Clear CA Certificate"
+msgstr ""
+
+#: data/resources/ui/tls-section.ui
+msgid "Choose CA Certificate"
+msgstr ""
+
+#: data/resources/ui/tls-section.ui
+msgid "Client certificate"
+msgstr ""
+
+#: data/resources/ui/tls-section.ui
+msgid "Clear Client Certificate"
+msgstr ""
+
+#: data/resources/ui/tls-section.ui
+msgid "Choose Client Certificate"
+msgstr ""
+
+#: data/resources/ui/tls-section.ui
+msgid "Client key"
+msgstr ""
+
+#: data/resources/ui/tls-section.ui
+msgid "Clear Client Key"
+msgstr ""
+
+#: data/resources/ui/tls-section.ui
+msgid "Choose Client Key"
+msgstr ""
+
+#: data/resources/ui/tls-section.ui
+msgid "TLS server name"
+msgstr ""
+
+#: data/resources/ui/welcome-view.ui
+msgid "Saved Connections"
+msgstr ""
+
+#: data/resources/ui/welcome-view.ui
+msgid "No Connections"
+msgstr ""
+
+#: data/resources/ui/welcome-view.ui
+msgid "Add a database connection to get started."
+msgstr ""
+
+#: data/resources/ui/welcome-view.ui
+msgid "Add Connection"
+msgstr ""
+
+#: data/resources/ui/workspace.ui
+msgid "Filter tables…"
+msgstr ""
+
+#: data/resources/ui/workspace.ui
+msgid "Filter tables"
+msgstr ""
+
+#: data/resources/ui/workspace.ui
+msgid "Select a Table"
+msgstr ""
+
+#: data/resources/ui/workspace.ui
+msgid "Choose a table in the sidebar or open the SQL editor."
+msgstr ""
+
+#: data/resources/ui/workspace.ui
+msgid "Open SQL Editor"
 msgstr ""

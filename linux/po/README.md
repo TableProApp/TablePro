@@ -58,18 +58,24 @@ silently drop out of translation.
 
 ## Regenerating tablepro.pot
 
-`tablepro.pot` is the master template, regenerated during release
-preparation rather than on every change:
+`tablepro.pot` is the master template. A change that adds, edits or
+removes a user-facing string regenerates it in the same commit:
 
 ```sh
 meson compile -C _build tablepro-pot
 ```
 
+The template names the file each string is in but not the line, so moving
+code leaves it alone. The Translations CI job regenerates it and fails when
+the committed file differs in anything but its creation date. It then
+uploads the template it wrote as the `tablepro-pot` artifact, which can be
+committed as it is.
+
 This needs **gettext 0.24 or newer**, which is the first release whose
-xgettext reads Rust. An older xgettext falls back to its C lexer, which
-misreads lifetimes such as `'static` as character constants and produces a
-template you should not commit. `meson setup` warns when the xgettext it
-found is too old.
+xgettext reads Rust. Fedora 44 ships 0.26; Ubuntu 26.04 ships 0.23.2. An
+older xgettext falls back to its C lexer, which misreads lifetimes such as
+`'static` as character constants and produces a template you should not
+commit. `meson setup` warns when the xgettext it found is too old.
 
 Use `msgmerge` to fold new strings into existing translations:
 
