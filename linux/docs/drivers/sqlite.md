@@ -28,7 +28,7 @@ A reconnect uses `FileEndpoint::for_reopen`, which is always `OpenExisting`, so 
 
 SQLite relies on POSIX file locks and, for a database in WAL mode, on shared memory in the `-shm` file beside it. Both work on a local file system. On NFS or SMB, locks can fail without an error, and two writers can then corrupt the file. A FUSE mount may not implement the locks at all. A file chosen through the Flatpak document portal sits on the portal's own FUSE file system, which exposes the chosen file rather than its folder, so the journal and WAL files SQLite keeps beside it may not work there.
 
-The driver does not detect any of these. Open such a file read-only, or copy it to a local folder first. Under the development Flatpak, which grants `--filesystem=home`, a file under the home folder is opened at its real path, not through the portal.
+The driver does not detect any of these. Open such a file read-only, or copy it to a local folder first. Under the development Flatpak, which grants the home folder, `/media`, `/run/media` and `/mnt`, a file under any of them is opened at its real path, not through the portal.
 
 ## Connections
 

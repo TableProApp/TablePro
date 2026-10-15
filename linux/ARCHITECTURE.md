@@ -236,8 +236,8 @@ On Linux the system store is the distribution's CA bundle. Under Flatpak it is t
 #### Choosing a CA file under Flatpak
 
 - For a server whose certificate comes from a private CA, choose the CA's PEM file in the connection's TLS settings, whatever the host trusts.
-- The development manifest grants `--filesystem=home`, so a file under your home folder is read at its real path.
-- A file chosen from outside the home folder comes back from the file chooser portal as a path under `/run/user/<uid>/doc/`. It works for as long as the portal keeps the grant. If it goes, the connect fails naming the CA file, and choosing the file again fixes it. Keeping a copy of the CA in your home folder avoids this.
+- The development manifest grants the home folder and the mount points of removable drives (`/media`, `/run/media` and `/mnt`), so a file under any of them is read at its real path.
+- A file chosen from anywhere else comes back from the file chooser portal as a path under `/run/user/<uid>/doc/`. It works for as long as the portal keeps the grant. If it goes, the connect fails naming the CA file, and choosing the file again fixes it. Keeping a copy of the CA in your home folder avoids this.
 - The file is read at every connect, so a replaced CA applies on the next connect.
 
 ### Liveness and deadlines
