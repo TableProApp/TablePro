@@ -158,6 +158,23 @@ struct VisibleContainerFollowingTests {
         }
     }
 
+    /// A follow scheduled but not yet started has to be in flight already, or a newer move to the
+    /// database still browsed sees nothing to supersede and the older one takes the window away.
+    @Test("A scheduled switch that was superseded before it started never runs")
+    func supersededScheduledSwitchNeverRuns() async throws {
+        try await withConnectedCoordinator { coordinator, tabManager, _ in
+            tabManager.tabs = [queryTab(database: "db_a"), queryTab(database: "db_b")]
+            tabManager.show(container: "db_b")
+            coordinator.followVisibleContainer()
+
+            coordinator.goToEntry("db_a")
+
+            try await waitUntil { coordinator.pendingCursorRequest == nil }
+            #expect(coordinator.browsedContainer == "db_a")
+            #expect(tabManager.visibleContainer == "db_a")
+        }
+    }
+
     /// Two windows of one connection share its cursor; the window the user comes back to decides.
     @Test("A window coming to the front takes the connection to the entry it shows")
     func activationMovesTheCursorToTheShownEntry() async throws {

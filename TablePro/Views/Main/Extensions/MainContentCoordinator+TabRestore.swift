@@ -72,6 +72,7 @@ extension MainContentCoordinator {
         let entry = restoredEntry(
             selecting: merge.selectedTabId,
             among: merge.tabs,
+            restoredTabIds: merge.restoredTabIds,
             activeDatabase: activeDatabase,
             activeSchema: activeSchema
         )
@@ -117,32 +118,21 @@ extension MainContentCoordinator {
         )
     }
 
-    /// Where a restore lands: the entry of the tab it selects, so the tab the user was on, or the one
-    /// a link opened before the restore read the disk, is the one on screen. The database and schema
-    /// the connection was last on are kept when they are that entry, and named only when no selected
-    /// tab names one.
     private func restoredEntry(
         selecting selection: UUID?,
         among tabs: [QueryTab],
+        restoredTabIds: Set<UUID>,
         activeDatabase: String?,
         activeSchema: String?
-    ) -> (container: String?, database: String?, schema: String?) {
-        let target = tabManager.containerTarget
-        let lastActive = WorkspaceAnchoring.containerName(database: activeDatabase, schema: activeSchema, target: target)
-        guard let selected = tabs.first(where: { $0.id == selection }),
-              let container = tabManager.containerName(of: selected),
-              container != lastActive
-        else {
-            return (lastActive, activeDatabase, activeSchema)
-        }
-        switch target {
-        case .database:
-            return (container, container, nil)
-        case .schema:
-            return (container, activeDatabase, container)
-        case nil:
-            return (lastActive, activeDatabase, activeSchema)
-        }
+    ) -> RestoredEntry {
+        let selected = tabs.first { $0.id == selection }
+        return RestoredEntry.resolve(
+            selected: selected,
+            isPresent: selected.map { !restoredTabIds.contains($0.id) } ?? false,
+            target: tabManager.containerTarget,
+            activeDatabase: activeDatabase,
+            activeSchema: activeSchema
+        )
     }
 
     internal func restoreSavedTabs() async {

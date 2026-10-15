@@ -72,10 +72,19 @@ extension MainContentCoordinator {
               services.databaseManager.session(for: connectionId)?.isConnected == true,
               followsBrowseCursor
         else { return }
+        moveCursor(to: container, persist: false)
+    }
+
+    /// Claimed before the task is scheduled, so a selection made before it starts sees it in flight
+    /// and supersedes it, and a superseded task never switches at all. A failure is remembered so the
+    /// window coming back to the front, which is what dismissing the error does, does not ask again.
+    private func moveCursor(to container: String, persist: Bool) {
         failedCursorFollow = nil
+        let request = beginCursorRequest()
         Task { @MainActor [weak self] in
-            await self?.switchContainer(to: container, persist: false)
-            guard let self, self.browsedContainer != container, self.pendingCursorRequest == nil else { return }
+            guard let self, self.pendingCursorRequest == request else { return }
+            await self.switchContainer(to: container, persist: persist)
+            guard self.browsedContainer != container, self.pendingCursorRequest == nil else { return }
             self.failedCursorFollow = container
         }
     }
@@ -94,8 +103,6 @@ extension MainContentCoordinator {
     func goToEntry(_ container: String) {
         tabManager.show(container: container)
         guard container != browsedContainer || pendingCursorRequest != nil else { return }
-        Task { @MainActor [weak self] in
-            await self?.switchContainer(to: container)
-        }
+        moveCursor(to: container, persist: true)
     }
 }

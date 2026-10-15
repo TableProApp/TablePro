@@ -25,6 +25,30 @@ struct EditorTabOpenerTests {
         DatabaseManager.shared.injectSession(session, for: connection.id)
     }
 
+    /// While a switch to the entry on screen is on its way the cursor still names the database being
+    /// left. A new tab belongs to the entry on screen; a table named without a database is the one
+    /// in the database being browsed, which is also what the lookup for an open copy of it uses.
+    @Test("A new tab takes the entry on screen and a bare table takes the browsed database")
+    func unnamedPayloadsResolveByKind() throws {
+        let connection = TestFixtures.makeConnection(database: "tenant_a", type: .mysql)
+        let manager = QueryTabManager(containerTarget: .database, visibleContainer: "tenant_b")
+
+        EditorTabOpener.apply(
+            EditorTabPayload(connectionId: connection.id, tabType: .query, intent: .newEmptyTab),
+            to: manager,
+            connection: connection,
+            toolbarState: nil
+        )
+        EditorTabOpener.apply(
+            EditorTabPayload(connectionId: connection.id, tabType: .table, tableName: "orders", isView: false),
+            to: manager,
+            connection: connection,
+            toolbarState: nil
+        )
+
+        #expect(manager.tabs.map(\.tableContext.databaseName) == ["tenant_b", "tenant_a"])
+    }
+
     /// A link, MCP or AppleScript naming another database and no schema bound the table to the
     /// schema browsed in this one, so its first query named a relation that database may not have.
     @Test("A table payload naming another database takes no schema from the browsed one")

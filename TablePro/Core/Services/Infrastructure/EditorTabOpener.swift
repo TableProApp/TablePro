@@ -19,9 +19,11 @@ internal enum EditorTabOpener {
         connection: DatabaseConnection,
         toolbarState: ConnectionToolbarState?
     ) {
-        let browseDatabaseName = tabManager.openingDatabase(
-            browsing: DatabaseManager.shared.browseDatabaseName(for: connection)
-        )
+        let browseDatabaseName = DatabaseManager.shared.browseDatabaseName(for: connection)
+        /// A table named without a database is the one in the database being browsed, the same answer
+        /// the lookup for a tab already showing it gives. Anything else opened without one belongs to
+        /// the entry on screen, which the cursor lags while a switch to it is on its way.
+        let openingDatabaseName = tabManager.openingDatabase(browsing: browseDatabaseName)
 
         switch payload.intent {
         case .openContent:
@@ -30,14 +32,15 @@ internal enum EditorTabOpener {
                 to: tabManager,
                 connection: connection,
                 toolbarState: toolbarState,
-                browseDatabaseName: browseDatabaseName
+                browseDatabaseName: browseDatabaseName,
+                openingDatabaseName: openingDatabaseName
             )
         case .newEmptyTab:
             let allTabs = MainContentCoordinator.allTabs(for: connection.id)
             tabManager.addTab(
                 initialQuery: payload.initialQuery,
                 title: QueryTabManager.nextQueryTitle(existingTabs: allTabs),
-                databaseName: payload.databaseName ?? browseDatabaseName,
+                databaseName: payload.databaseName ?? openingDatabaseName,
                 claimFocus: true
             )
         case .restoreOrDefault:
@@ -50,7 +53,8 @@ internal enum EditorTabOpener {
         to tabManager: QueryTabManager,
         connection: DatabaseConnection,
         toolbarState: ConnectionToolbarState?,
-        browseDatabaseName: String
+        browseDatabaseName: String,
+        openingDatabaseName: String
     ) {
         switch payload.tabType {
         case .table:
@@ -69,18 +73,18 @@ internal enum EditorTabOpener {
             tabManager.addTab(
                 initialQuery: payload.initialQuery,
                 title: payload.tabTitle,
-                databaseName: payload.databaseName ?? browseDatabaseName,
+                databaseName: payload.databaseName ?? openingDatabaseName,
                 sourceFileURL: payload.sourceFileURL,
                 sourceFileStamp: payload.sourceFileStamp,
                 sourceFileEncoding: payload.sourceFileEncoding,
                 claimFocus: true
             )
         case .createTable:
-            tabManager.addCreateTableTab(databaseName: payload.databaseName ?? browseDatabaseName)
+            tabManager.addCreateTableTab(databaseName: payload.databaseName ?? openingDatabaseName)
         case .erDiagram:
             tabManager.addERDiagramTab(
-                schemaKey: payload.erDiagramSchemaKey ?? payload.databaseName ?? browseDatabaseName,
-                databaseName: payload.databaseName ?? browseDatabaseName,
+                schemaKey: payload.erDiagramSchemaKey ?? payload.databaseName ?? openingDatabaseName,
+                databaseName: payload.databaseName ?? openingDatabaseName,
                 schemaName: payload.schemaName
             )
         case .serverDashboard:
