@@ -1,6 +1,6 @@
 # 0002 — Rust + GTK4 + libadwaita
 
-- **Status**: Accepted
+- **Status**: Accepted; version floor superseded by [0015](0015-gnome-50-platform-floor.md)
 - **Date**: 2026-04-26
 
 ## Context

@@ -4,7 +4,7 @@ This file governs the Linux subproject only. [AGENTS.md](AGENTS.md) is the short
 
 ## Dev environment
 
-System packages — see [README.md](README.md) for distro-specific commands. After they are installed, work happens entirely from the `linux/` directory.
+Install the system packages listed in [README.md](README.md#quickstart). After that, work happens entirely from the `linux/` directory.
 
 ```bash
 cd linux
@@ -44,6 +44,16 @@ meson dist -C _build --no-tests --formats xztar
 
 Inside a desktop session, `dbus-run-session -- meson test -C _build` runs the same suites without xvfb.
 
+The fast job also runs a few source greps and `scripts/check-doc-symbols.sh` from the repository root. The supply-chain, documentation and Docker jobs run these, among others; [docs/testing.md](docs/testing.md#ci) describes every job, and the Docker job runs the last line once per package that has Docker tests:
+
+```bash
+cargo deny --locked check advisories bans licenses sources
+cargo shear
+build-aux/update-third-party-licenses.sh     # then a diff against the committed files
+lychee --offline --include-fragments --no-progress 'linux/**/*.md'   # from the repository root
+cargo nextest run --locked --profile ci -p tablepro-driver-postgres --run-ignored only
+```
+
 Logs go to stderr and the filter comes from `RUST_LOG`; a development
 build defaults to `debug`.
 
@@ -70,10 +80,12 @@ The script stops and names each crate it read no license file for, since the not
 
 | Tool | Config | Notes |
 |---|---|---|
-| `rustfmt` | `rustfmt.toml` at workspace root | Run before commit. Pre-commit hook enforces it. |
-| `clippy` | `clippy.toml` at workspace root | All workspace crates pass with `-D warnings`. New lints are negotiated per PR. |
+| `rustfmt` | `rustfmt.toml` at the workspace root | CI fails on any diff from `cargo fmt --all -- --check`. There is no pre-commit hook. |
+| `clippy` | `[workspace.lints]` in `Cargo.toml`, `clippy.toml`, `crates/app/clippy.toml` | Every crate passes with `-D warnings`, with and without default features. |
 | Edition | 2024 | Set per workspace. Do not override per crate. |
-| MSRV | 1.98 | Pinned in `rust-toolchain.toml` and `rust-version`; matches the Flatpak rust-stable extension. |
+| MSRV | 1.98 | `rust-version` in `Cargo.toml` and `rust-toolchain.toml`; matches the Flatpak rust-stable extension. |
+
+The workspace denies `unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`, `dbg_macro`, `print_stdout`, `print_stderr`, `allow_attributes`, `allow_attributes_without_reason`, `ignore_without_reason` and `too_many_lines`, plus `unsafe_op_in_unsafe_fn`. `clippy.toml` lets tests unwrap, expect, panic, print and use `dbg!`, and bans `serde_json::Map`, which reorders a server's JSON. `crates/app/clippy.toml` also bans reaching for the ambient tokio runtime: background work goes through `Tasks`.
 
 Conventions, beyond what `rustfmt` decides:
 
@@ -86,7 +98,7 @@ Conventions, beyond what `rustfmt` decides:
   string, `gettext_f` with named `{placeholders}` when values are
   interpolated, `ngettext_f` for counts, `pgettext` when a word's sense
   depends on where it appears. See [po/README.md](po/README.md).
-- **Errors cross crate boundaries as `thiserror` enums.** Inside a crate, `anyhow::Result` is fine. See [docs/error-handling.md](docs/error-handling.md).
+- **Errors are `thiserror` enums.** The workspace has no `anyhow`. See [docs/error-handling.md](docs/error-handling.md).
 
 ## Adding a database driver
 
@@ -94,12 +106,11 @@ This is the most common substantive change. Follow [docs/adding-drivers.md](docs
 
 ## Commits
 
-Conventional Commits, single line, at most 72 characters, same rule as the macOS app. The scope is `linux`, or `linux-<area>` for one area of the app:
+Conventional Commits, single line, at most 72 characters, same rule as the macOS app. The scope is `linux`, or `linux-<area>` for one area of the app: `linux-grid`, `linux-browse`, `linux-structure`, `linux-editor`, `linux-history`, `linux-export`, `linux-sidebar`, `linux-picker`, `linux-session`, `linux-storage`, `linux-ssh`, `linux-core`, `linux-flatpak`, or a driver as `linux-postgres`, `linux-mysql`, `linux-sqlite`, `linux-mssql`, `linux-clickhouse`.
 
 ```
-feat(linux-drivers): add ClickHouse driver via clickhouse-arrow
-fix(linux-sidebar): debounce selection to avoid duplicate fetches
-refactor(linux-core): split DatabaseDriver into Driver + Connection traits
+fix(linux-sidebar): keep the filter text when the catalog refreshes
+feat(linux-export): export the entire table from the table tab
 docs(linux): clarify the TLS step for a new driver
 ```
 
@@ -113,13 +124,16 @@ A user-visible change gets one fragment under `[Unreleased]` in [CHANGELOG.md](C
 2. PR title is the conventional commit message you intend to land.
 3. The PR description follows the repository's `.github/pull_request_template.md`.
 4. Run the [fast-job commands](#fast-job-commands) locally before pushing.
-5. UI changes must include before / after screenshots in the PR description, taken at HiDPI on both light and dark themes.
+5. A change to `Cargo.lock` commits what `build-aux/update-third-party-licenses.sh` rewrites: `data/licenses`, `build-aux/debian/copyright` and the spec's `License` tag ([Dependencies](#dependencies)). `cargo-sources.json` is not committed: CI writes it from `Cargo.lock`.
+6. A new or removed file under `crates/app/src` regenerates `po/POTFILES.in`, and a changed user-facing string regenerates `po/tablepro.pot` ([po/README.md](po/README.md)).
+7. A user-visible change has its [changelog](#changelog) fragment.
+8. UI changes include before and after screenshots in the PR description, light and dark when color is involved. A change to a window shown in the metainfo retakes its screenshot in `data/screenshots` ([README.md](README.md#screenshots)).
 
 ## What does not belong here
 
 - Documentation for end users (installation, FAQ, screenshots) lives in the [TableProApp/docs](https://github.com/TableProApp/docs) repository.
 - Cross-platform decisions (release cadence, branding, pricing) are not made in this subproject.
-- macOS plugin work — that lives in `apps/macos/Plugins/` (post Phase B restructure) or the current `Plugins/` directory.
+- macOS plugin work, which lives in the repository's `Plugins/` directory.
 
 ## Where to start as a contributor
 
@@ -127,5 +141,5 @@ In rough order of impact:
 
 1. Read [ARCHITECTURE.md](ARCHITECTURE.md) and [docs/decisions/](docs/decisions/). 20 minutes, fixes most "why is it shaped like this" questions.
 2. Pick an issue labelled `platform-linux`, or `good first issue` among those.
-3. If adding a driver, copy the most recently merged driver crate as a template. Do not copy the spike code.
+3. If adding a driver, start from the most recently merged driver crate and [docs/adding-drivers.md](docs/adding-drivers.md).
 4. Open the PR small. We prefer five small PRs over one big one.

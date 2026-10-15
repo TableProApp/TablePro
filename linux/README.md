@@ -1,21 +1,25 @@
 # TablePro Linux
 
-Native Linux database client. Sister product to the macOS TablePro app, sharing no code but matching the feature set.
+Native Linux database client, the Linux sibling of the macOS TablePro app. The two share no code.
 
 ## Status
 
-Phases 2 and 3 in progress (see [ROADMAP.md](ROADMAP.md)). The stack (Rust + GTK4 + libadwaita + Relm4 + sqlx / tiberius) runs as an app you can build and use: PostgreSQL, MySQL, SQLite, and MSSQL drivers, workspace tabs, structure editing, SSH tunnels, and query history. It is not beta-shippable yet. Flatpak / Flathub distribution and the remaining hardening items are open.
+It connects to five engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse and SQLite. Each connection session gets a window of its own. Nothing is released yet: the app is not on Flathub and no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
 
 ## Stack
 
 | Layer | Pick |
 |---|---|
-| Language | Rust 1.98+ |
-| GUI toolkit | GTK4 4.22+ + libadwaita 1.9+ + GtkSourceView 5.18+ (GNOME 50, [ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) |
-| App architecture | gtk-rs subclasses with composite templates, one window per connection session ([ADR 0012](docs/decisions/0012-window-per-session.md)); a few views still on [Relm4](https://relm4.org) |
+| Language | Rust 1.98 (`rust-toolchain.toml` and `rust-version`) |
+| GUI toolkit | GTK 4.22, libadwaita 1.9, GtkSourceView 5.18 and GLib 2.88: GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) |
+| App architecture | gtk-rs subclasses with composite templates, one window per connection session ([ADR 0012](docs/decisions/0012-window-per-session.md)); the saved-queries and CSV import dialogs are still [Relm4](https://relm4.org) 0.11 components |
 | Async | the app's tokio runtime (`AppRuntime`) for background work, results delivered to the GLib main loop |
-| DB drivers | sqlx (PG / MySQL / SQLite), tiberius (MSSQL), official `clickhouse` crate; planned: fred (Redis), official mongodb / duckdb crates, etc. |
-| Persistence | libsecret (passwords), gio::Settings (prefs), JSON files (connection metadata) |
+| Database drivers | tokio-postgres with deadpool-postgres (PostgreSQL), sqlx 0.9 (MySQL and MariaDB, SQLite), tiberius 0.13 (SQL Server) and the official `clickhouse` crate, all from crates.io ([ADR 0016](docs/decisions/0016-driver-contract-v2.md)) |
+| SSH | the system OpenSSH client ([ADR 0013](docs/decisions/0013-openssh-client-transport.md)) |
+| TLS | rustls with aws-lc-rs as the only crypto provider ([ADR 0009](docs/decisions/0009-crypto-provider-and-sources.md)) |
+| Secrets | oo7: the Secret portal inside Flatpak, the Secret Service over D-Bus on the host ([ADR 0004](docs/decisions/0004-libsecret-secret-storage.md)) |
+| Storage | GSettings for preferences and window state ([ADR 0007](docs/decisions/0007-gsettings-preferences.md)), JSON files for connections and workspace state, SQLite for query history ([docs/storage.md](docs/storage.md)) |
+| Build | Meson driving Cargo ([ADR 0006](docs/decisions/0006-meson-cargo-build.md)) |
 | Distribution | Flathub primary; .deb for Ubuntu 26.04 on GitHub Releases and .rpm for Fedora 44 on COPR ([ADR 0017](docs/decisions/0017-distribution-channels.md)) |
 
 ## What this is not
@@ -32,15 +36,17 @@ Phases 2 and 3 in progress (see [ROADMAP.md](ROADMAP.md)). The stack (Rust + GTK
 System dependencies:
 
 ```bash
-# Ubuntu / Debian
-sudo apt install -y build-essential pkg-config meson ninja-build gettext desktop-file-utils appstream libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libssl-dev libsecret-1-dev libsqlite3-dev libkrb5-dev clang libclang-dev
+# Ubuntu 26.04
+sudo apt install -y build-essential pkgconf meson ninja-build gettext desktop-file-utils appstream libglib2.0-bin libxml2-utils libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libsqlite3-dev libkrb5-dev clang libclang-dev openssh-client
 
-# Fedora
-sudo dnf install -y gcc pkg-config meson ninja-build gettext desktop-file-utils appstream gtk4-devel libadwaita-devel gtksourceview5-devel openssl-devel libsecret-devel sqlite-devel krb5-devel clang clang-devel
+# Fedora 44
+sudo dnf install -y gcc pkgconf meson ninja-build gettext desktop-file-utils appstream glib2-devel libxml2 gtk4-devel libadwaita-devel gtksourceview5-devel sqlite-devel krb5-devel clang-devel openssh-clients
 
-# Arch
-sudo pacman -S --needed base-devel pkg-config meson ninja gettext desktop-file-utils appstream gtk4 libadwaita gtksourceview5 openssl libsecret sqlite krb5 clang
+# Arch (not covered by CI)
+sudo pacman -S --needed base-devel pkgconf meson ninja gettext desktop-file-utils appstream libxml2 gtk4 libadwaita gtksourceview5 sqlite krb5 clang openssh
 ```
+
+The Ubuntu list is the .deb's build dependencies in `build-aux/debian/control` and the Fedora list the RPM's in `build-aux/rpm/tablepro.spec`, less the ones only their tests need. CI builds both.
 
 Verify the right versions are present:
 
@@ -70,17 +76,19 @@ askpass helper, the desktop entry, the D-Bus service, the AppStream
 metainfo, the icons and the third-party license notices. See
 [ADR 0006](docs/decisions/0006-meson-cargo-build.md).
 
-Before pushing, run the [fast-job commands](CONTRIBUTING.md#fast-job-commands).
+Before pushing, run the [fast-job commands](CONTRIBUTING.md#fast-job-commands). [docs/testing.md](docs/testing.md) describes the test suites, including the ones that need Docker.
 
 `libsqlite3-dev` is there because the SQLite driver and the query history
 link the system SQLite through sqlx's `sqlite-unbundled` feature rather
 than compiling a second copy into the binary. `libclang-dev` lets
 `libsqlite3-sys` run bindgen against the installed `sqlite3.h`.
 
-`libkrb5-dev` and `clang` are there for the app's default `kerberos`
-feature: SQL Server Windows integrated auth links MIT Kerberos and runs
-bindgen at build time. `cargo build -p tablepro --no-default-features`
-leaves it out, and the connect dialog then hides Windows (Kerberos).
+`libkrb5-dev` is there for the app's default `kerberos` feature: SQL
+Server Windows integrated auth links MIT Kerberos and runs bindgen against
+its headers. `meson setup _build -Dkerberos=false`, or
+`cargo build -p tablepro --no-default-features`, leaves it out, and the
+connect dialog then hides Windows (Kerberos). clang and libclang stay
+either way, for the SQLite bindings.
 
 ## Flatpak
 
@@ -209,15 +217,16 @@ worth knowing:
 | Topic | File |
 |---|---|
 | Layered architecture, crate boundaries, dependency rules | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| Roadmap and current phase | [ROADMAP.md](ROADMAP.md) |
+| What is built, the backlog and the release criteria | [ROADMAP.md](ROADMAP.md) |
 | Contributing: dev workflow, lint, commits, PRs | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | **Adding a database driver** | [docs/adding-drivers.md](docs/adding-drivers.md) |
 | State management: windows, sessions, background work | [docs/state-management.md](docs/state-management.md) |
 | Persistence: secrets, settings, files | [docs/storage.md](docs/storage.md) |
 | Error handling conventions | [docs/error-handling.md](docs/error-handling.md) |
-| Testing conventions | [docs/testing.md](docs/testing.md) |
+| Testing conventions, suites and CI jobs | [docs/testing.md](docs/testing.md) |
+| Every guide, driver page and dated audit | [docs/README.md](docs/README.md) |
 | Architecture decision records | [docs/decisions/](docs/decisions/) |
 
 ## License
 
-Same as the parent TablePro project.
+AGPL-3.0-or-later, as the parent TablePro project: see [LICENSE](LICENSE).
