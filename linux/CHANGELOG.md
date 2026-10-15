@@ -116,6 +116,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A connection added, changed or deleted in one window did not show in the other windows' connection lists.
 - A connection name with & or < in it showed wrong in the connection list.
 - PostgreSQL statement timeouts showed as a plain server error when the server's messages were not in English.
+- A PostgreSQL query run right after a timeout or Stop could fail as canceled by that earlier stop.
 - MySQL and MariaDB connections that verify the certificate did not trust certificate authorities installed on the system.
 - SQL Server money and smallmoney in the SQL editor and query results showed as approximate floats.
 - Saving a SQL Server row with a char or varchar key locked the whole table until the save ended.

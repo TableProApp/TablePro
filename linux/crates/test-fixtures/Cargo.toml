@@ -12,7 +12,7 @@ path = "src/lib.rs"
 [dependencies]
 rcgen.workspace = true
 tempfile.workspace = true
-testcontainers = { workspace = true, features = ["http_wait_plain"] }
+testcontainers.workspace = true
 testcontainers-modules = { workspace = true, features = ["postgres", "mssql_server"] }
 thiserror.workspace = true
 tokio = { workspace = true, features = ["fs", "io-util", "process"] }

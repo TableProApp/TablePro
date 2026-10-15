@@ -117,8 +117,10 @@ impl StopWatch {
     }
 
     /// Wait for an outstanding cancel request before anything else goes
-    /// to the server. One that has not settled by the end of the grace is
-    /// dropped: it could not reach the server, so it cannot land late.
+    /// to the server. The request settles once the server has signalled
+    /// the backend, so nothing sent after it can be what it cancels. One
+    /// the server has not taken by the end of the grace is let go, and
+    /// can still cancel a later statement.
     pub(crate) async fn settle(&mut self) {
         let Some(mut request) = self.request.take() else {
             return;

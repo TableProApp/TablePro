@@ -34,7 +34,9 @@ pub trait EngineStop: Send + Sync + 'static {
     fn delivery(&self) -> StopDelivery;
 
     /// Send the stop. Called at most once, and only for
-    /// `OutOfBand` delivery.
+    /// `OutOfBand` delivery. A `Connection` stop returns only once the
+    /// server has acted on it or it failed to reach the server, because
+    /// its connection can be handed on as soon as it returns.
     async fn stop(&self) -> Result<(), DriverError>;
 
     /// Whether this error is the engine acknowledging the stop rather
