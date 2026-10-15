@@ -21,6 +21,10 @@ pub(crate) fn cell_allows_inline_edit(column: &ColumnInfo, value: &Value) -> boo
             || (column.data_type.eq_ignore_ascii_case("bit(1)") && matches!(value, Value::Int(0 | 1))))
 }
 
+pub(crate) fn cell_allows_set_null(column: &ColumnInfo, value: &Value) -> bool {
+    column.nullable && cell_allows_inline_edit(column, value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,5 +175,32 @@ mod tests {
                 value_is_inline_editable(&value)
             );
         }
+    }
+
+    #[test]
+    fn set_to_null_needs_an_editable_nullable_cell() {
+        let mut column = ColumnInfo {
+            name: "note".into(),
+            data_type: "VARCHAR".into(),
+            nullable: true,
+            primary_key: false,
+            is_auto_increment: false,
+            is_generated: false,
+            comment: None,
+            default_value: None,
+            collation: None,
+            enum_type: None,
+            domain_type: None,
+        };
+        let value = Value::Text("x".into());
+        assert!(cell_allows_set_null(&column, &value));
+        column.nullable = false;
+        assert!(!cell_allows_set_null(&column, &value));
+        column.nullable = true;
+        column.primary_key = true;
+        assert!(!cell_allows_set_null(&column, &value));
+        column.primary_key = false;
+        column.data_type = "BYTEA".into();
+        assert!(!cell_allows_set_null(&column, &value));
     }
 }

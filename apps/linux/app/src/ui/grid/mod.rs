@@ -14,7 +14,7 @@ mod presentation;
 mod row_find;
 mod types;
 mod value_viewer;
-pub(crate) use presentation::cell_allows_inline_edit;
+pub(crate) use presentation::{cell_allows_inline_edit, cell_allows_set_null};
 
 use gtk4::prelude::*;
 

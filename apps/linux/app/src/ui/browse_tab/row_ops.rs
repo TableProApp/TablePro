@@ -410,6 +410,17 @@ impl BrowseTab {
         if self.reject_stale_row_edit(row_position, &row_key, &sender) {
             return;
         }
+        let allowed = self
+            .current_columns
+            .get(col_index)
+            .zip(self.row_object_at(row_position))
+            .is_some_and(|(column, row)| crate::ui::grid::cell_allows_set_null(column, &row.cell_value(col_index)));
+        if !allowed {
+            let _ = sender.output(BrowseTabOutput::ShowToast(crate::tr!(
+                "This cell can't be set to NULL because it is read-only or does not accept NULL."
+            )));
+            return;
+        }
         let Some((key, row)) = self.row_key_at(row_position) else {
             self.report_unreadable_row_key(row_position, &sender);
             return;
