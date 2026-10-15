@@ -29,13 +29,31 @@
   <url type="bugtracker">https://github.com/TableProApp/TablePro/issues</url>
   <url type="vcs-browser">https://github.com/TableProApp/TablePro</url>
   <url type="help">https://docs.tablepro.app</url>
-  <url type="translate">https://github.com/TableProApp/TablePro/tree/main/linux/po</url>
-  <url type="contribute">https://github.com/TableProApp/TablePro/blob/main/linux/CONTRIBUTING.md</url>
+  <url type="translate">https://github.com/TableProApp/TablePro/blob/linux-v@version@/linux/po/README.md</url>
+  <url type="contribute">https://github.com/TableProApp/TablePro/blob/linux-v@version@/linux/CONTRIBUTING.md</url>
   <translation type="gettext">@gettext-package@</translation>
   <branding>
     <color type="primary" scheme_preference="light">#99c1f1</color>
     <color type="primary" scheme_preference="dark">#1a5fb4</color>
   </branding>
+  <screenshots>
+    <screenshot type="default">
+      <image>@screenshots-base-url@/01-table.png</image>
+      <caption>Browse and edit table rows</caption>
+    </screenshot>
+    <screenshot>
+      <image>@screenshots-base-url@/02-editor.png</image>
+      <caption>Run SQL in the editor</caption>
+    </screenshot>
+    <screenshot>
+      <image>@screenshots-base-url@/03-structure.png</image>
+      <caption>Change a table's columns and indexes</caption>
+    </screenshot>
+    <screenshot>
+      <image>@screenshots-base-url@/04-connect.png</image>
+      <caption>Connect through an SSH tunnel</caption>
+    </screenshot>
+  </screenshots>
   <categories>
     <category>Development</category>
     <category>Database</category>

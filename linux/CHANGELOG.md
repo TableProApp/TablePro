@@ -52,6 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Find and replace in the SQL editor with Ctrl+F and Ctrl+H, matching case, whole words or regular expressions.
 - Edit…, Duplicate and Move to Group in a saved connection's menu; an edit keeps the saved passwords unless you type new ones.
 - Desktop notification when a query, save or export finishes in a tab you are not looking at; clicking it opens the tab.
+- SSH agent sign-in, Kerberos tickets in KCM and SQLite files on removable drives in the Flatpak build.
+- Screenshots of the table grid, SQL editor, Structure tab and connect dialog in the software centre listing.
 
 ### Changed
 

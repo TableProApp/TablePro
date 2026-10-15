@@ -82,6 +82,52 @@ feature: SQL Server Windows integrated auth links MIT Kerberos and runs
 bindgen at build time. `cargo build -p tablepro --no-default-features`
 leaves it out, and the connect dialog then hides Windows (Kerberos).
 
+## Flatpak
+
+`build-aux/flatpak/app.tablepro.TablePro.Devel.json` builds the development
+profile from this tree, with network access during the build so cargo can
+fetch the crates `Cargo.lock` pins. From `linux/`:
+
+```bash
+flatpak-builder --user --install-deps-from=flathub --install --force-clean \
+  _flatpak build-aux/flatpak/app.tablepro.TablePro.Devel.json
+flatpak run app.tablepro.TablePro.Devel
+```
+
+Lint the manifest with Flathub's linter. Its two expected findings are
+listed in `build-aux/flatpak/lint-exceptions.json`, and the file only
+counts when `--exceptions` is passed too:
+
+```bash
+flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
+  --exceptions --user-exceptions build-aux/flatpak/lint-exceptions.json \
+  manifest build-aux/flatpak/app.tablepro.TablePro.Devel.json
+```
+
+The sandbox gets the network, the display, the home folder and the mount
+points of removable drives, the SSH agent and the Kerberos KCM socket. The
+Secret Service, file choosers, notifications and links go through portals.
+[ADR 0008](docs/decisions/0008-flatpak-sandbox-permissions.md) gives the
+reason for each grant, and it is what maintainers send Flathub when they ask
+for the two exceptions.
+
+The Flathub manifest is kept in Flathub's repository for the app, the way
+Fractal and Loupe keep theirs. It builds `-Dprofile=default` from the
+release tarball, with a `cargo-sources.json` that `flatpak-cargo-generator`
+writes from that release's `Cargo.lock`, since Flathub builds offline.
+
+### Screenshots
+
+The metainfo lists the PNGs in `data/screenshots`, at the release tag's
+URL: Flathub copies them from there when it builds. A build of a commit
+that has no tag yet sets `-Dscreenshots_base_url` to an https URL where
+that commit's `data/screenshots` can be fetched.
+
+Take new ones from the app at default settings (light style, blue accent,
+Adwaita Sans and Adwaita Mono at 11 pt, scale 1) with a 1000×700 window,
+keeping the window shadow and rounded corners, and keep the file names and
+captions in step with the metainfo.
+
 ## Opening SQLite files
 
 Once installed, TablePro is in the file manager's **Open With** for
@@ -119,11 +165,11 @@ worth knowing:
   `KRB5KDC_ERR_S_PRINCIPAL_UNKNOWN`.
 - The host has to match the SPN registered on the server. An IP address
   or a CNAME usually does not.
-- Running from source is the supported path today. Under Flatpak the
-  sandbox has no `/etc/krb5.conf` and its `/tmp` is private, so a FILE
-  ticket cache there is invisible; the manifest grants the config file
-  and the KCM socket, and a FILE cache needs `KRB5CCNAME` pointed
-  somewhere under `$HOME`.
+- Under Flatpak the host's `/etc/krb5.conf` is out of reach. The app
+  brings its own through `KRB5_CONFIG`, which reads tickets from the KCM
+  cache and finds the realm and KDC through DNS, so a ticket the host's
+  `kinit` keeps in KCM (Fedora's default, through sssd-kcm) is used. The
+  sandbox's `/tmp` is private, so a FILE ticket cache there is invisible.
 
 ## Documentation index
 
