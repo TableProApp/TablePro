@@ -5,8 +5,10 @@ name: Release Linux
 # for Fedora 44 through COPR. Flathub's own repository picks the new source
 # tarball up from the release.
 #
-# Secret COPR_CONFIG: the API token file copr-cli reads (~/.config/copr).
+# Environment linux-release, limited to linux-v* tags, holds the secret
+# COPR_CONFIG: the API token file copr-cli reads (~/.config/copr).
 # Variable LINUX_COPR_PROJECT: the COPR project, as owner/project.
+# Variable LINUX_BRANCH: the branch a release tag must be on, linux when unset.
 
 on:
   push:
@@ -33,13 +35,19 @@ jobs:
           apt-get install -y --no-install-recommends ca-certificates git meson python3
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: The tag, metainfo, spec and changelog name one version
         working-directory: linux
         env:
           TAG: ${{ github.ref_name }}
+          LINUX_BRANCH: ${{ vars.LINUX_BRANCH || 'linux' }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          if ! git merge-base --is-ancestor HEAD "origin/$LINUX_BRANCH"; then
+            echo "::error::$GITHUB_SHA is not on $LINUX_BRANCH"
+            exit 1
+          fi
           version="$(meson introspect --projectinfo meson.build \
             | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
           tag_date="$(TZ=UTC git log -1 --date=format-local:%Y-%m-%d --format=%cd)"
@@ -57,6 +65,7 @@ jobs:
     name: COPR build for Fedora 44
     needs: packages
     runs-on: ubuntu-24.04
+    environment: linux-release
     timeout-minutes: 300
     container:
       image: fedora:44
@@ -84,6 +93,7 @@ jobs:
     name: GitHub release
     needs: packages
     runs-on: ubuntu-24.04
+    environment: linux-release
     timeout-minutes: 15
     permissions:
       contents: write
@@ -107,5 +117,6 @@ jobs:
           (cd release && sha256sum -- * > SHA256SUMS)
           python3 linux/build-aux/packaging/check_packaging.py --source-root linux \
             --version "$version" --tag "$TAG" --notes notes.md
-          gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag \
+          # The repository's latest release stays the macOS one.
+          gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \
             --title "TablePro for Linux $version" --notes-file notes.md

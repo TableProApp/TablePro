@@ -27,9 +27,12 @@ Three channels, all built from one `meson install` and one lock file:
 | .deb for Ubuntu 26.04 | `dpkg-buildpackage -b` with the committed `build-aux/debian`, Rust from rustup | GitHub Releases |
 | .rpm for Fedora 44 | `rpmbuild` with the committed `build-aux/rpm/tablepro.spec` and Fedora's Rust | COPR |
 
-A `linux-vX.Y.Z` tag runs `release-linux.yml`. It checks that the tag,
-`meson.build`, the newest metainfo release (dated the day of the tagged
-commit), the spec and `CHANGELOG.md` name one version, then publishes:
+A `linux-vX.Y.Z` tag runs `release-linux.yml`. It checks that the tagged
+commit is on the `LINUX_BRANCH` branch (`linux` when unset) and that the
+tag, `meson.build`, the newest metainfo release (dated the day of the
+tagged commit), the spec and `CHANGELOG.md` name one version, then
+publishes, under the `linux-release` environment and without taking the
+repository's latest release from macOS:
 
 - `tablepro-X.Y.Z.tar.xz` from `meson dist`;
 - `tablepro-X.Y.Z-vendor.tar.xz`: `vendor/` from `cargo vendor --locked
@@ -83,9 +86,10 @@ Meson test fails when they drift.
   `-f %{name}.lang` in the spec; the same test fails until it is there.
 - A pre-release version such as `0.2.0-rc.1` cannot be packaged: RPM
   forbids `-` in `Version` and git forbids `~` in a tag.
-- Publishing needs the `COPR_CONFIG` secret and the `LINUX_COPR_PROJECT`
-  variable; without them the COPR job fails and the GitHub release still
-  goes out.
+- Publishing needs the `linux-release` environment, limited to `linux-v*`
+  tags and holding the `COPR_CONFIG` secret, and the `LINUX_COPR_PROJECT`
+  variable; without the secret or the variable the COPR job fails and the
+  GitHub release still goes out.
 - The vendor tarball holds every crate in the lock file, Windows-only and
   test-only ones included, because `cargo vendor` cannot filter.
 - The release profile's fat LTO needs gigabytes per binary. The .deb

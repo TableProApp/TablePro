@@ -148,7 +148,7 @@ Not built yet, in no order.
 ### Release and project
 
 - Submit to Flathub.
-- Create the COPR project, the `COPR_CONFIG` secret and the `LINUX_COPR_PROJECT` variable before the first tag.
+- Create the COPR project, the `linux-release` environment limited to `linux-v*` tags with the `COPR_CONFIG` secret, and the `LINUX_COPR_PROJECT` variable before the first tag.
 - An AUR PKGBUILD, kept by the community.
 - The first translations in `po/LINGUAS`.
 - A manual pass with Orca, the keyboard alone, High Contrast, 1.5x text scaling and a right-to-left locale.
