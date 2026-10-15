@@ -11,6 +11,7 @@ path = "src/lib.rs"
 
 [dependencies]
 rcgen.workspace = true
+tablepro-test-support = { path = "../test-support" }
 tempfile.workspace = true
 testcontainers.workspace = true
 testcontainers-modules = { workspace = true, features = ["postgres", "mssql_server"] }

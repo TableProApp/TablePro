@@ -221,19 +221,17 @@ mod tests {
     /// last, the way an ssh_config would resolve it, and fails for any
     /// other.
     fn fake_ssh(dir: &Path, hosts: &[(&str, String)]) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
-
         let cases: String = hosts
             .iter()
             .map(|(host, resolved)| format!("  {host}) printf '{resolved}' ;;\n"))
             .collect();
         let program = dir.join("ssh");
-        std::fs::write(
+        tablepro_test_support::write_executable(
             &program,
-            format!("#!/bin/sh\nfor last; do :; done\ncase \"$last\" in\n{cases}  *) exit 255 ;;\nesac\n"),
+            format!("#!/bin/sh\nfor last; do :; done\ncase \"$last\" in\n{cases}  *) exit 255 ;;\nesac\n").as_bytes(),
+            0o755,
         )
         .unwrap();
-        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
         program
     }
 

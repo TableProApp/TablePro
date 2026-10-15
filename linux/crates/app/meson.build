@@ -88,11 +88,25 @@ gtk_env.set('GDK_BACKEND', 'x11')
 # gnome.compile_schemas exports GSETTINGS_SCHEMA_DIR to devenv only, so
 # the suite points at the build tree itself.
 gtk_env.set('GSETTINGS_SCHEMA_DIR', meson.project_build_root() / 'data')
+# Inside Flatpak GLib sends notifications through the portal; the suite
+# answers them with a freedesktop server of its own on its own bus.
+gtk_env.set('GNOTIFICATION_BACKEND', 'freedesktop')
+
+# A session bus of the suite's own, so its names and notifications never
+# reach the desktop it runs on, and a build sandbox without a bus still
+# has one. A build that skips the tests need not install dbus.
+gtk_program = cargo
+gtk_args = ['test'] + cargo_options + ['-p', 'tablepro']
+dbus_run_session = find_program('dbus-run-session', required: false)
+if dbus_run_session.found()
+  gtk_program = dbus_run_session
+  gtk_args = ['--', cargo] + gtk_args
+endif
 
 test(
   'app',
-  cargo,
-  args: ['test'] + cargo_options + ['-p', 'tablepro'],
+  gtk_program,
+  args: gtk_args,
   env: gtk_env,
   depends: [compiled_schemas, metainfo_file],
   suite: 'gtk',

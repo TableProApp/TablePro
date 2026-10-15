@@ -5,7 +5,6 @@
     reason = "the setup helpers fail a test the way the test functions themselves do"
 )]
 
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -88,12 +87,12 @@ fn isolated_ssh() -> IsolatedSsh {
     )
     .expect("the ssh config");
     let wrapper = dir.path().join("ssh");
-    std::fs::write(
+    tablepro_test_support::write_executable(
         &wrapper,
-        format!("#!/bin/sh\nexec ssh -F '{}' \"$@\"\n", config.display()),
+        format!("#!/bin/sh\nexec ssh -F '{}' \"$@\"\n", config.display()).as_bytes(),
+        0o755,
     )
     .expect("the ssh wrapper");
-    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).expect("an executable wrapper");
     let runtime = dir.path().join("runtime");
     std::fs::create_dir(&runtime).expect("the runtime directory");
     let services = SshServices {

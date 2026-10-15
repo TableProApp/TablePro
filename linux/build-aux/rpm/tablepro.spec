@@ -47,6 +47,14 @@ BuildRequires:  glibc-langpack-en
 BuildRequires:  openssh-clients
 
 Requires:       hicolor-icon-theme
+# GTK's renderer loads libGLESv2 at runtime through libepoxy, which aborts
+# without it, and neither gtk4 nor libepoxy declares it: GNOME Shell pulls
+# it in, but a minimal install, a toolbox or another desktop may not.
+%if %{__isa_bits} == 64
+Requires:       libGLESv2.so.2()(64bit)
+%else
+Requires:       libGLESv2.so.2
+%endif
 # SSH tunnels run through the system OpenSSH client.
 Requires:       openssh-clients
 
