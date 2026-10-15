@@ -216,7 +216,8 @@ A test that panics hard can still leave a container behind. `podman container pr
 
 ### Regression names
 
-A test that guards a critical audit finding starts with the finding id, `f001_` to `f006_`. `cargo test --workspace -- f001_` runs the guards for that finding.
+A test that guards a critical audit finding starts with the finding id, `f001_` to `f006_`. `cargo test --workspace --exclude tablepro -- f001_` runs the guards for that finding that need no server, and `cargo test -p tablepro --lib -- f001_` the app's, under a display.
+[regression-tests.md](regression-tests.md) lists every guard with its file, and `build-aux/tests/test_regression_names.py`, in the `packaging` suite, fails when the list and the code disagree.
 
 ## App / UI tests
 
