@@ -13,4 +13,4 @@ Environment: Rust/Cargo 1.98.1 and Docker Engine 29.7.2. The runner executed bot
 
 The MySQL selection includes MySQL/MariaDB atomicity, trigger and nontransactional side-effect cases, including the optional storage-engine coverage. Both steps exited 0; the complete layer passed.
 
-This is local Docker-backed source evidence on current Linux. It does not establish Forgejo acceptance, installed Arch/Hyprland acceptance, or the remaining frozen-candidate/nightly release qualification. The wider B4-11 matrix remains open.
+The full current `mysql_atomic` selector passed locally, including its optional-engine, trigger, session/lock and other nontransactional cases. B4-11 remains open for exact-candidate and Forgejo acceptance; this current-tip local run does not qualify the release or prove requirements outside this selector.
