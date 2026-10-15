@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "commit": "4bc61b9396e907978caa045b79d39df8a9db9fd1",
+  "working_tree": "",
+  "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "started_utc": "2026-10-15T15:09:28.346754+00:00",
+  "status": "passed",
+  "layers": {
+    "b4-rollback": {
+      "status": "passed",
+      "steps": [
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "tablepro-driver-mysql",
+            "--test",
+            "integration",
+            "mysql_atomic",
+            "--",
+            "--include-ignored",
+            "--test-threads=1"
+          ],
+          "timeout_seconds": 1200,
+          "evidence": "rust-tests",
+          "status": "passed",
+          "log": "b4-rollback-1.log",
+          "exit_code": 0,
+          "seconds": 231.859
+        },
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "tablepro-driver-postgres",
+            "--test",
+            "integration",
+            "rollback_failure::a_batch_reports_rollback_failure_after_postgres_terminates_its_backend",
+            "--",
+            "--include-ignored",
+            "--test-threads=1"
+          ],
+          "timeout_seconds": 1200,
+          "evidence": "rust-tests",
+          "status": "passed",
+          "log": "b4-rollback-2.log",
+          "exit_code": 0,
+          "seconds": 20.259
+        }
+      ]
+    }
+  },
+  "finished_utc": "2026-10-15T15:13:40.465577+00:00",
+  "environment": {
+    "rustc": "1.98.1",
+    "cargo": "1.98.1",
+    "docker_engine": "29.7.2"
+  },
+  "summary": {
+    "mysql_atomic": {
+      "passed": 32,
+      "failed": 0,
+      "filtered": 92
+    },
+    "postgres_rollback_failure": {
+      "passed": 1,
+      "failed": 0,
+      "filtered": 274
+    }
+  }
+}
