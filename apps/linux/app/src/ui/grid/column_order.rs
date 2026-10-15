@@ -27,6 +27,29 @@ fn apply(view: &gtk::ColumnView, columns: &[gtk::ColumnViewColumn], order: &[usi
     }
 }
 
+fn visible_model_order(view: &gtk::ColumnView) -> Vec<usize> {
+    let list = view.columns();
+    (0..list.n_items())
+        .filter_map(|position| list.item(position)?.downcast::<gtk::ColumnViewColumn>().ok())
+        .filter(|column| column.is_visible())
+        .filter_map(|column| column.id()?.parse().ok())
+        .collect()
+}
+
+pub(crate) fn displayed_column_order(root: &impl IsA<gtk::Widget>) -> Option<Vec<usize>> {
+    if let Some(view) = root.dynamic_cast_ref::<gtk::ColumnView>() {
+        return Some(visible_model_order(view));
+    }
+    let mut child = root.first_child();
+    while let Some(current) = child {
+        if let Some(order) = displayed_column_order(&current) {
+            return Some(order);
+        }
+        child = current.next_sibling();
+    }
+    None
+}
+
 pub(super) fn install(
     view: &gtk::ColumnView,
     columns: &[gtk::ColumnViewColumn],

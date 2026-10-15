@@ -14,6 +14,7 @@ mod presentation;
 mod row_find;
 mod types;
 mod value_viewer;
+pub(crate) use column_order::displayed_column_order;
 pub(crate) use presentation::{cell_allows_inline_edit, cell_allows_set_null};
 
 use gtk4::prelude::*;
@@ -225,6 +226,7 @@ pub fn build_column_view(
             grid_menus.clone(),
             column_widths.clone(),
         );
+        col.set_id(Some(&i.to_string()));
         column_view.append_column(&col);
         view_columns.push(col);
     }

@@ -937,7 +937,7 @@ impl SimpleComponent for BrowseTab {
             }
             BrowseTabInput::CopySelectedRowsAsTsv => self.handle_copy_selected_rows_as_tsv(sender),
             BrowseTabInput::PasteNotSupported => self.handle_paste_not_supported(sender),
-            BrowseTabInput::Paste { row, col, row_key } => self.handle_paste(row, col, row_key, sender),
+            BrowseTabInput::Paste(anchor) => self.handle_paste(anchor, sender),
             BrowseTabInput::PasteText(input) => self.handle_paste_text(input, sender),
             BrowseTabInput::SelectAllRows => self.handle_select_all_rows(),
             BrowseTabInput::GoToFirstRow => self.handle_go_to_first_row(),

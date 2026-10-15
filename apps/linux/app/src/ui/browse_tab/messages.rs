@@ -92,11 +92,7 @@ pub enum BrowseTabInput {
     FlashErrorRow(crate::services::change_tracker::StatementSource),
     CopySelectedRowsAsTsv,
     PasteNotSupported,
-    Paste {
-        row: u32,
-        col: usize,
-        row_key: Vec<Value>,
-    },
+    Paste(paste::PasteAnchor),
     PasteText(paste::PasteTextInput),
     SelectAllRows,
     GoToFirstRow,

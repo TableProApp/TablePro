@@ -13,11 +13,20 @@ pub(in crate::ui) struct PasteSnapshot {
 }
 
 #[derive(Debug)]
+pub(in crate::ui) struct PasteAnchor {
+    pub(in crate::ui) row: u32,
+    pub(in crate::ui) col: usize,
+    pub(in crate::ui) row_key: Vec<Value>,
+    pub(in crate::ui) displayed: Option<Vec<usize>>,
+}
+
+#[derive(Debug)]
 pub(in crate::ui) struct PasteTextInput {
     pub(in crate::ui) row: u32,
     pub(in crate::ui) col: usize,
     pub(in crate::ui) row_key: Vec<Value>,
     pub(in crate::ui) text: String,
+    pub(in crate::ui) displayed: Option<Vec<usize>>,
     pub(in crate::ui) snapshot: PasteSnapshot,
 }
 
@@ -123,7 +132,7 @@ pub(super) fn paste_plan(
     anchor_col: usize,
     grid: &[Vec<String>],
     loaded_rows: u32,
-    columns: usize,
+    displayed: &[usize],
 ) -> Result<Vec<PasteCell>, String> {
     let width = grid.iter().map(Vec::len).max().unwrap_or(0);
     let height = grid.len();
@@ -136,7 +145,10 @@ pub(super) fn paste_plan(
     if (anchor_row as usize).saturating_add(height) > loaded_rows as usize {
         return Err(crate::tr!("The pasted rows run past the last loaded row"));
     }
-    if anchor_col.saturating_add(width) > columns {
+    let Some(start) = displayed.iter().position(|col| *col == anchor_col) else {
+        return Err(crate::tr!("The column you clicked is hidden, so nothing was pasted"));
+    };
+    if start.saturating_add(width) > displayed.len() {
         return Err(crate::tr!("The pasted columns run past the last column"));
     }
     let mut cells = Vec::with_capacity(height * width);
@@ -144,7 +156,7 @@ pub(super) fn paste_plan(
         for (c, text) in line.iter().enumerate() {
             cells.push(PasteCell {
                 row: anchor_row + r as u32,
-                col: anchor_col + c,
+                col: displayed[start + c],
                 text: text.clone(),
             });
         }
@@ -158,7 +170,12 @@ pub(super) fn paste_shortcut(sender: ComponentSender<BrowseTab>) -> gtk::Shortcu
         .action(&gtk::CallbackAction::new(move |widget, _| {
             match crate::ui::grid::focused_cell_identity(widget).or_else(|| crate::ui::grid::last_clicked_cell(widget))
             {
-                Some((row, col, row_key)) => sender.input(BrowseTabInput::Paste { row, col, row_key }),
+                Some((row, col, row_key)) => sender.input(BrowseTabInput::Paste(PasteAnchor {
+                    row,
+                    col,
+                    row_key,
+                    displayed: crate::ui::grid::displayed_column_order(widget),
+                })),
                 None => sender.input(BrowseTabInput::PasteNotSupported),
             }
             glib::Propagation::Stop
@@ -167,7 +184,13 @@ pub(super) fn paste_shortcut(sender: ComponentSender<BrowseTab>) -> gtk::Shortcu
 }
 
 impl BrowseTab {
-    pub(super) fn handle_paste(&mut self, row: u32, col: usize, row_key: Vec<Value>, sender: ComponentSender<Self>) {
+    pub(super) fn handle_paste(&mut self, anchor: PasteAnchor, sender: ComponentSender<Self>) {
+        let PasteAnchor {
+            row,
+            col,
+            row_key,
+            displayed,
+        } = anchor;
         if !self.row_position_still_holds(row, &row_key) {
             let _ = sender.output(BrowseTabOutput::ShowToast(crate::tr!(
                 "The rows changed since you clicked the cell, so nothing was pasted"
@@ -186,6 +209,7 @@ impl BrowseTab {
                     col,
                     row_key,
                     text: text.to_string(),
+                    displayed,
                     snapshot,
                 }));
             }
@@ -223,6 +247,7 @@ impl BrowseTab {
             col,
             row_key,
             text,
+            displayed,
             snapshot,
         } = input;
         if snapshot.page_request_id != self.page_requests.current_id() || !self.row_position_still_holds(row, &row_key)
@@ -233,13 +258,8 @@ impl BrowseTab {
             return;
         }
         let loaded = self.row_count_loaded();
-        let cells = match paste_plan(
-            row,
-            col,
-            &parse_clipboard_grid(&text),
-            loaded,
-            self.current_columns.len(),
-        ) {
+        let displayed = displayed.unwrap_or_else(|| (0..self.current_columns.len()).collect());
+        let cells = match paste_plan(row, col, &parse_clipboard_grid(&text), loaded, &displayed) {
             Ok(cells) => cells,
             Err(message) => {
                 let _ = sender.output(BrowseTabOutput::ShowToast(message));
@@ -325,18 +345,34 @@ mod tests {
 
     #[test]
     fn a_plan_places_every_cell_from_the_anchor_and_refuses_to_run_off_the_grid() {
-        let plan = paste_plan(2, 1, &grid(&[&["a", "b"], &["c", "d"]]), 10, 5).unwrap();
+        let plan = paste_plan(2, 1, &grid(&[&["a", "b"], &["c", "d"]]), 10, &[0, 1, 2, 3, 4]).unwrap();
         let places: Vec<(u32, usize, &str)> = plan.iter().map(|c| (c.row, c.col, c.text.as_str())).collect();
         assert_eq!(places, [(2, 1, "a"), (2, 2, "b"), (3, 1, "c"), (3, 2, "d")]);
-        assert!(paste_plan(9, 0, &grid(&[&["a"], &["b"]]), 10, 5).is_err());
-        assert!(paste_plan(0, 4, &grid(&[&["a", "b"]]), 10, 5).is_err());
-        assert!(paste_plan(0, 0, &[], 10, 5).is_err());
+        assert!(paste_plan(9, 0, &grid(&[&["a"], &["b"]]), 10, &[0, 1, 2, 3, 4]).is_err());
+        assert!(paste_plan(0, 4, &grid(&[&["a", "b"]]), 10, &[0, 1, 2, 3, 4]).is_err());
+        assert!(paste_plan(0, 0, &[], 10, &[0, 1, 2, 3, 4]).is_err());
+    }
+
+    #[test]
+    fn a_plan_follows_the_displayed_column_order() {
+        let plan = paste_plan(0, 0, &grid(&[&["A", "B"]]), 1, &[0, 2, 1]).unwrap();
+        let places: Vec<(usize, &str)> = plan.iter().map(|c| (c.col, c.text.as_str())).collect();
+        assert_eq!(places, [(0, "A"), (2, "B")]);
+    }
+
+    #[test]
+    fn a_plan_skips_hidden_columns_and_refuses_a_hidden_anchor() {
+        let plan = paste_plan(0, 0, &grid(&[&["A", "B"]]), 1, &[0, 2]).unwrap();
+        let places: Vec<(usize, &str)> = plan.iter().map(|c| (c.col, c.text.as_str())).collect();
+        assert_eq!(places, [(0, "A"), (2, "B")]);
+        assert!(paste_plan(0, 1, &grid(&[&["A"]]), 1, &[0, 2]).is_err());
+        assert!(paste_plan(0, 2, &grid(&[&["A", "B"]]), 1, &[0, 2]).is_err());
     }
 
     #[test]
     fn a_huge_paste_is_refused_before_any_cell_is_touched() {
         let big = vec![vec!["x".to_string(); 100]; 100];
-        assert!(paste_plan(0, 0, &big, 20_000, 200).is_err());
+        assert!(paste_plan(0, 0, &big, 20_000, &(0..200).collect::<Vec<_>>()).is_err());
     }
 
     #[test]
