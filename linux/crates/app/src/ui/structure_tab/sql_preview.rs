@@ -98,8 +98,7 @@ mod tests {
     fn a_plan_that_cannot_be_written_says_why() {
         let preview = preview_text(&new_table(Some(postgres())), &created(&["id", "id"]));
 
-        assert!(preview.starts_with("-- "), "{preview}");
-        assert!(!preview.contains("CREATE TABLE"), "{preview}");
+        assert_eq!(preview, "-- Duplicate column name: id");
     }
 
     #[gtk4::test]
