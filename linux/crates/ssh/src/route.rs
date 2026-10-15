@@ -170,7 +170,6 @@ fn parse_resolved(ssh_g_output: &str) -> Option<Resolved> {
 
 #[cfg(test)]
 mod tests {
-    use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
 
     use super::*;
@@ -247,8 +246,7 @@ mod tests {
 
     fn fake_ssh(dir: &Path, script: &str) -> PathBuf {
         let program = dir.join("ssh");
-        std::fs::write(&program, format!("#!/bin/sh\n{script}\n")).unwrap();
-        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        tablepro_test_support::write_executable(&program, format!("#!/bin/sh\n{script}\n").as_bytes(), 0o755).unwrap();
         program
     }
 

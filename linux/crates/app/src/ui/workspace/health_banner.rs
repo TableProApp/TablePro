@@ -548,16 +548,18 @@ mod tests {
     /// `[bastion]:2222`, looked up in `known_hosts`, the way an
     /// ssh_config with `HostName bastion` would.
     fn resolving_ssh(dir: &Path, known_hosts: &Path) -> SshServices {
-        use std::os::unix::fs::PermissionsExt;
-
         let program = dir.join("ssh");
         let resolved = format!(
             "hostname bastion\\nport 2222\\nhostkeyalias none\\nuserknownhostsfile {} {}\\n",
             known_hosts.display(),
             dir.join("known_hosts2").display()
         );
-        std::fs::write(&program, format!("#!/bin/sh\nprintf '{resolved}'\n")).unwrap();
-        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        tablepro_test_support::write_executable(
+            &program,
+            format!("#!/bin/sh\nprintf '{resolved}'\n").as_bytes(),
+            0o755,
+        )
+        .unwrap();
         SshServices {
             ssh_program: program,
             ..ssh_services(dir)
@@ -599,14 +601,12 @@ mod tests {
 
     #[gtk4::test]
     fn no_second_review_while_the_old_key_is_removed() {
-        use std::os::unix::fs::PermissionsExt;
-
         let dir = tempfile::tempdir().unwrap();
         let known_hosts = dir.path().join("known_hosts");
         std::fs::write(&known_hosts, format!("[bastion]:2222 {KEY}\n")).unwrap();
         let slow_keygen = dir.path().join("slow-ssh-keygen");
-        std::fs::write(&slow_keygen, "#!/bin/sh\nsleep 1\nexec ssh-keygen \"$@\"\n").unwrap();
-        std::fs::set_permissions(&slow_keygen, std::fs::Permissions::from_mode(0o755)).unwrap();
+        tablepro_test_support::write_executable(&slow_keygen, b"#!/bin/sh\nsleep 1\nexec ssh-keygen \"$@\"\n", 0o755)
+            .unwrap();
         let ssh = SshServices {
             ssh_keygen_program: slow_keygen,
             ..resolving_ssh(dir.path(), &known_hosts)

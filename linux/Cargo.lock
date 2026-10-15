@@ -4649,6 +4649,7 @@ version = "0.0.0"
 dependencies = [
  "rcgen",
  "rustls",
+ "tablepro-test-support",
  "tempfile",
  "testcontainers",
  "testcontainers-modules",

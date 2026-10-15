@@ -59,11 +59,11 @@ async fn start() -> TestResult<Fixture> {
     let config = temp.path().join("ssh_config");
     write_config(&config, &known_hosts, "ask")?;
     let wrapper = temp.path().join("ssh");
-    std::fs::write(
+    tablepro_test_support::write_executable(
         &wrapper,
-        format!("#!/bin/sh\nexec ssh -F '{}' \"$@\"\n", config.display()),
+        format!("#!/bin/sh\nexec ssh -F '{}' \"$@\"\n", config.display()).as_bytes(),
+        0o755,
     )?;
-    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755))?;
 
     let runtime_dir = temp.path().join("runtime");
     std::fs::create_dir(&runtime_dir)?;
@@ -441,16 +441,17 @@ async fn a_jump_host_whose_user_config_skips_the_host_key_check_still_asks() {
     // An Include refuses a file others can write.
     std::fs::set_permissions(&user_config, std::fs::Permissions::from_mode(0o600)).unwrap();
     let wrapper = fixture.temp.path().join("ssh-as-user");
-    std::fs::write(
+    tablepro_test_support::write_executable(
         &wrapper,
         format!(
             "#!/bin/sh\nHOME='{}' exec ssh -F '{}' \"$@\"\n",
             home.display(),
             user_config.display()
-        ),
+        )
+        .as_bytes(),
+        0o755,
     )
     .unwrap();
-    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
     let services = SshServices {
         ssh_program: wrapper,
         config_file: None,
