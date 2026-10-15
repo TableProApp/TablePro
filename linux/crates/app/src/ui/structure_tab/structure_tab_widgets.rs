@@ -5,8 +5,6 @@ use libadwaita as adw;
 use crate::ui::handler_guard::HandlerGuard;
 use crate::ui::tab_load::StaleBanner;
 
-/// The template's widgets the handlers drive, taken once as the tab is
-/// built.
 pub(super) struct StructureTabWidgets {
     pub(super) inner_stack: gtk::Stack,
     /// The status page shown when the read fails, with the driver's

@@ -5,8 +5,6 @@ use super::pager_bar::PagerBar;
 use super::pending_changes_bar::PendingChangesBar;
 use crate::ui::tab_load::StaleBanner;
 
-/// The template's widgets the handlers drive, taken once as the tab is
-/// built.
 pub(super) struct BrowseTabWidgets {
     pub(super) inner_stack: gtk::Stack,
     pub(super) grid_holder: gtk::Box,

@@ -18,7 +18,6 @@ use crate::ui::format::format_thousands;
 use crate::ui::grid::GridSink;
 use crate::ui::tab_load::StaleBanner;
 
-/// What the tab opens with.
 pub(super) struct LayoutInit<'a> {
     pub(super) table_label: &'a str,
     pub(super) read_only: bool,
@@ -99,7 +98,7 @@ fn page_size_choices(dropdown: &gtk::DropDown, page_size: u64) {
     dropdown.set_selected(u32::try_from(initial_idx).unwrap_or_default());
 }
 
-/// Sends `msg()` to the tab for as long as it is open.
+/// Holds the tab weakly, since the tab owns the control that holds this.
 fn sender<I: Into<BrowseTabInput> + 'static>(tab: &BrowseTab, msg: fn() -> I) -> impl Fn() + 'static {
     let tab = tab.downgrade();
     move || {

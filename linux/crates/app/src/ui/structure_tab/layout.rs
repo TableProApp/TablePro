@@ -27,7 +27,6 @@ use super::{
 use crate::ui::handler_guard::HandlerGuard;
 use crate::ui::tab_load::StaleBanner;
 
-/// What the tab opens with.
 pub(super) struct LayoutInit<'a> {
     pub(super) table: &'a str,
     /// The table's schema, which a foreign key may have to reference
