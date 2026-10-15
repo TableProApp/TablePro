@@ -292,6 +292,41 @@ fn encryption_combo_lists_only_capability_modes() {
     }
 }
 
+/// Each encryption mode and SSH method beside the subtitle that
+/// describes it, in the dialog at its own width.
+#[gtk4::test]
+fn a_described_choice_shows_its_whole_value() {
+    let harness = dialog();
+    let window = adw::Window::builder().default_width(1000).default_height(700).build();
+    window.present();
+    harness.dialog.present(Some(&window));
+    let ssh = harness.dialog.imp().ssh_section.get();
+    ssh.enable();
+    let rows = [
+        harness.dialog.imp().tls_section.imp().encryption_row.get(),
+        ssh.imp().auth_row.get(),
+    ];
+
+    for row in rows {
+        let choices = row.model().expect("the choices");
+        for index in 0..choices.n_items() {
+            row.set_selected(index);
+            let choice = row
+                .selected_item()
+                .and_downcast::<gtk4::StringObject>()
+                .expect("a choice")
+                .string();
+            let whole = wait_until(WAIT, || {
+                crate::ui::combo_value::shown_value(&row).is_some_and(|value| {
+                    value.label() == choice && value.width() > 0 && !value.layout().is_ellipsized()
+                })
+            });
+            assert!(whole.is_ok(), "{choice} was cut beside {:?}", row.subtitle());
+        }
+    }
+    window.close();
+}
+
 #[gtk4::test]
 fn sqlite_shows_file_row_and_hides_security_and_ssh() {
     let harness = dialog();

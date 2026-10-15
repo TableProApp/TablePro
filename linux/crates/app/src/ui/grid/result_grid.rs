@@ -37,7 +37,7 @@ mod tests {
     use super::*;
     use crate::test_support::{descendants, drain_main_context, wait_until};
     use crate::ui::clipboard::{CopyKind, CopyRequest};
-    use crate::ui::grid::test_grid::{named, recorder};
+    use crate::ui::grid::test_grid::{Grid, named, recorder};
     use crate::ui::grid::{GridCell, GridMsg};
 
     const WAIT: Duration = Duration::from_secs(10);
@@ -216,6 +216,58 @@ mod tests {
         assert!(elapsed < Duration::from_secs(1), "sorting took {elapsed:?}");
         assert_eq!(shown(&selection, 0)[0], text("name 00000"));
         assert_eq!(shown(&selection, 0)[9_999], text("name 09999"));
+    }
+
+    /// PostgreSQL's editor reads columns with no type, holding the
+    /// server's text.
+    #[gtk4::test]
+    fn untyped_numbers_line_up_as_the_browse_grid_lines_them_up() {
+        let untyped = |name: &str| ResultColumn::new(name, tablepro_core::column::ColumnType::untyped_text("text"));
+        let columns: Arc<[ResultColumn]> = ["id", "category", "products", "avg_price"].map(untyped).into();
+        let rows = vec![
+            RowObject::result(vec![text("1"), text("Coffee"), text("7"), text("23.79")].into()),
+            RowObject::result(vec![text("2"), text("Tea"), Value::Null, text("10.58")].into()),
+        ];
+        let (view, _selection) = build_result_grid(columns, rows, recorder().0);
+        let window = gtk::Window::new();
+        window.set_child(Some(&view));
+        window.present();
+        let result = |column: usize| {
+            descendants(&view)
+                .into_iter()
+                .filter_map(|widget| widget.downcast::<GridCell>().ok())
+                .find(|cell| cell.position() == Some(0) && cell.column() == column && cell.row().is_some())
+                .and_then(|cell| cell.display())
+        };
+        wait_until(WAIT, || (0..4).all(|column| result(column).is_some())).expect("the result is drawn");
+        let browse = Grid::open(
+            vec![
+                named("id", "integer", true),
+                named("category", "text", false),
+                named("products", "bigint", false),
+                named("avg_price", "numeric", false),
+            ],
+            vec![vec![
+                Value::Int(1),
+                text("Coffee"),
+                Value::Int(7),
+                Value::Decimal("23.79".parse().expect("a decimal")),
+            ]],
+        );
+
+        for column in 0..4 {
+            let shown = result(column).expect("a result cell");
+            let typed = browse.cell_of(1, column).display().expect("a browse cell");
+            assert_eq!(shown.xalign(), typed.xalign(), "column {column}");
+            assert_eq!(
+                shown.has_css_class("numeric"),
+                typed.has_css_class("numeric"),
+                "column {column}"
+            );
+        }
+        assert_eq!(result(2).map(|display| display.xalign()), Some(1.0));
+        assert_eq!(result(1).map(|display| display.xalign()), Some(0.0));
+        window.close();
     }
 
     #[gtk4::test]

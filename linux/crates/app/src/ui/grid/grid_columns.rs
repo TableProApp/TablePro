@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gtk4::prelude::*;
-use gtk4::{self as gtk, glib};
+use gtk4::{self as gtk, gio, glib};
 
 use super::RowObject;
 use super::cell_editor_kind::CellEditorKind;
@@ -53,6 +53,17 @@ impl GridColumns {
             view_column: view_column.downgrade(),
             drawing,
         });
+    }
+
+    /// Measure every column against the rows `store` holds now.
+    pub(super) fn measure(&self, store: &gio::ListStore) {
+        let rows: Vec<RowObject> = (0..store.n_items())
+            .filter_map(|position| store.item(position).and_downcast())
+            .collect();
+        for column in self.columns.borrow().iter() {
+            let drawing = &column.drawing;
+            drawing.figures.measure(&drawing.column_type, column.index, &rows);
+        }
     }
 
     pub(super) fn shown(&self, view: &gtk::ColumnView) -> Vec<ShownColumn> {
