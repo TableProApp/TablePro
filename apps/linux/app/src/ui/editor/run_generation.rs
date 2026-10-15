@@ -20,15 +20,17 @@ impl RunGeneration {
     }
 
     pub(super) fn accepts(&self, generation: u64) -> bool {
-        self.current == Some(generation)
+        self.current == Some(generation) && self.active.contains(&generation)
     }
 
     pub(super) fn finish(&mut self, generation: u64) -> Option<RunTerminal> {
-        if !self.active.remove(&generation) {
+        if !self.active.contains(&generation) {
             return None;
         }
+        let replace_ui = self.accepts(generation);
+        self.active.remove(&generation);
         Some(RunTerminal {
-            replace_ui: self.accepts(generation),
+            replace_ui,
             became_idle: self.active.is_empty(),
         })
     }

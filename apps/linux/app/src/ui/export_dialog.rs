@@ -11,12 +11,61 @@ use crate::services::preferences::PreferencesStore;
 
 pub(crate) type PageFetcherFactory = std::sync::Arc<dyn Fn(CancellationToken) -> PageFetcher + Send + Sync>;
 
-pub(crate) type PageFetcher = Box<dyn FnMut() -> Result<Option<RowPage>, ExportError> + Send>;
+type NextPage = Box<dyn FnMut() -> Result<Option<RowPage>, ExportError> + Send>;
+type FinishPages = Box<dyn FnOnce() -> Result<(), ExportError> + Send>;
+
+pub(crate) struct PageFetcher {
+    next: NextPage,
+    finish: Option<FinishPages>,
+}
+
+impl PageFetcher {
+    pub(crate) fn new(
+        next: impl FnMut() -> Result<Option<RowPage>, ExportError> + Send + 'static,
+        finish: impl FnOnce() -> Result<(), ExportError> + Send + 'static,
+    ) -> Self {
+        Self {
+            next: Box::new(next),
+            finish: Some(Box::new(finish)),
+        }
+    }
+
+    pub(crate) fn next_page(&mut self) -> Result<Option<RowPage>, ExportError> {
+        (self.next)()
+    }
+
+    pub(crate) fn finish(mut self) -> Result<(), ExportError> {
+        self.finish.take().map_or(Ok(()), |finish| finish())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PagedExportMode {
+    FullTable,
+    GuardedQuery,
+}
 
 #[derive(Clone)]
 pub(crate) struct PagedExport {
+    pub(crate) mode: PagedExportMode,
     pub(crate) total_rows: Option<usize>,
     pub(crate) open: PageFetcherFactory,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct StreamExportQuery {
+    pub(crate) origin: crate::services::catalog::CatalogOrigin,
+    pub(crate) driver_id: String,
+    pub(crate) sql: String,
+    pub(crate) params: Vec<tablepro_core::Value>,
+    pub(crate) timeout_secs: u32,
+    pub(crate) suggested_name: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct StreamExportRequest {
+    pub(crate) query: StreamExportQuery,
+    pub(crate) columns: Vec<tablepro_core::ColumnInfo>,
 }
 
 pub(crate) struct ExportRequest {
@@ -122,6 +171,10 @@ impl ExportFormat {
 fn format_subtitle(result: &QueryResult, paged: Option<&PagedExport>) -> String {
     match paged {
         Some(PagedExport {
+            mode: PagedExportMode::GuardedQuery,
+            ..
+        }) => crate::tr!("All rows from a fresh guarded run of this query"),
+        Some(PagedExport {
             total_rows: Some(total),
             ..
         }) => crate::tr!("All {n} rows, read page by page; changes made meanwhile may be missed")
@@ -208,7 +261,11 @@ pub(crate) fn present_with_format(
     json: bool,
     preferences: &PreferencesStore,
 ) {
-    if request.paged.is_some() {
+    if request
+        .paged
+        .as_ref()
+        .is_some_and(|paged| paged.mode == PagedExportMode::FullTable)
+    {
         let alert = adw::AlertDialog::builder()
             .heading(crate::tr!("Full-table export unavailable"))
             .body(file::snapshot_refusal_message())
@@ -440,6 +497,7 @@ fn save_with_file_dialog(parent: &adw::ApplicationWindow, toast_overlay: &adw::T
 fn job_source(paged: &Option<PagedExport>, result: &QueryResult) -> file::JobSource {
     match paged {
         Some(paged) => file::JobSource::Paged {
+            mode: paged.mode,
             columns: result.columns.clone(),
             total: paged.total_rows,
             open: paged.open.clone(),
@@ -487,10 +545,11 @@ mod tests {
         let opened = calls.clone();
         let request = ExportRequest {
             paged: Some(PagedExport {
+                mode: PagedExportMode::FullTable,
                 total_rows: Some(1),
                 open: std::sync::Arc::new(move |_| {
                     opened.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    Box::new(|| Ok(None))
+                    PageFetcher::new(|| Ok(None), || Ok(()))
                 }),
             }),
             result: QueryResult {
@@ -618,10 +677,12 @@ mod tests {
     #[test]
     fn a_workbook_needs_a_known_row_count_when_rows_are_read_page_by_page() {
         let unknown = PagedExport {
+            mode: PagedExportMode::FullTable,
             total_rows: None,
-            open: std::sync::Arc::new(|_| Box::new(|| Ok(None))),
+            open: std::sync::Arc::new(|_| PageFetcher::new(|| Ok(None), || Ok(()))),
         };
         let known = PagedExport {
+            mode: PagedExportMode::FullTable,
             total_rows: Some(10),
             open: unknown.open.clone(),
         };

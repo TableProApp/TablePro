@@ -141,6 +141,7 @@ pub enum AppMsg {
         result: QueryResult,
         name: String,
     },
+    ExportStreamedResults(crate::ui::export_dialog::StreamExportRequest),
     CopyToClipboard(String),
     CopyRowAsInsert {
         tab_id: Uuid,

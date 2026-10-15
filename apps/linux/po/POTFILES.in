@@ -70,6 +70,7 @@ apps/linux/app/src/ui/grid/column_visibility.rs
 apps/linux/app/src/ui/grid/context_menu.rs
 apps/linux/app/src/ui/grid/display.rs
 apps/linux/app/src/ui/grid/editing.rs
+apps/linux/app/src/ui/grid/full_value_editor.rs
 apps/linux/app/src/ui/grid/local_filter.rs
 apps/linux/app/src/ui/grid/row_find.rs
 apps/linux/app/src/ui/grid/value_viewer.rs
@@ -88,5 +89,6 @@ apps/linux/app/src/ui/structure_tab/columns.rs
 apps/linux/app/src/ui/structure_tab/fks.rs
 apps/linux/app/src/ui/structure_tab/indexes.rs
 apps/linux/app/src/ui/structure_tab/mod.rs
+apps/linux/app/src/ui/structure_tab/validate.rs
 apps/linux/app/src/ui/structure_tab_dialogs.rs
 apps/linux/app/src/ui/welcome_view.rs

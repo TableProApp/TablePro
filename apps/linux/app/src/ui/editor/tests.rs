@@ -36,6 +36,7 @@ fn only_a_started_run_can_replace_the_visible_results() {
     let running = generations.start_new();
     assert!(generations.accepts(running));
     assert!(generations.finish(running).unwrap().replace_ui);
+    assert!(!generations.accepts(running));
     assert!(generations.finish(running).is_none());
 }
 

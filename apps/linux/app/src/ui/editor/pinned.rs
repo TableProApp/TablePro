@@ -3,6 +3,13 @@ use relm4::gtk::prelude::*;
 
 pub(super) const MAX_PINNED: usize = 4;
 
+fn has_grid_result(outcome: &StatementOutcome) -> bool {
+    matches!(
+        outcome.kind,
+        StatementOutcomeKind::Rows(_) | StatementOutcomeKind::Streamed(_)
+    )
+}
+
 #[derive(Default)]
 pub(super) struct PinnedResults {
     pins: Vec<StatementOutcome>,
@@ -19,9 +26,7 @@ impl PinnedResults {
     }
 
     pub(super) fn has_results(&self) -> bool {
-        self.last
-            .iter()
-            .any(|outcome| matches!(outcome.kind, StatementOutcomeKind::Rows(_)))
+        self.last.iter().any(has_grid_result)
     }
 
     pub(super) fn show(&mut self, fresh: Vec<StatementOutcome>) -> Vec<StatementOutcome> {
@@ -35,7 +40,7 @@ impl PinnedResults {
         let pinnable = self
             .last
             .iter()
-            .filter(|outcome| matches!(outcome.kind, StatementOutcomeKind::Rows(_)))
+            .filter(|outcome| has_grid_result(outcome))
             .cloned()
             .map(|outcome| StatementOutcome {
                 pinned: true,
@@ -91,6 +96,9 @@ impl SqlEditor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+
+    use tablepro_core::{ColumnInfo, QueryResult, Value};
 
     fn rows(sql: &str) -> StatementOutcome {
         StatementOutcome {
@@ -105,6 +113,33 @@ mod tests {
     fn failed(sql: &str) -> StatementOutcome {
         StatementOutcome {
             kind: StatementOutcomeKind::Error("boom".into()),
+            ..rows(sql)
+        }
+    }
+
+    fn streamed(sql: &str, values: &[i64], terminal: super::super::stream_pages::StreamTerminal) -> StatementOutcome {
+        let mut cache = super::super::stream_pages::StreamPageCache::default();
+        let page = Arc::new(QueryResult {
+            columns: vec![ColumnInfo {
+                name: "id".into(),
+                data_type: "INTEGER".into(),
+                nullable: false,
+                primary_key: true,
+                is_auto_increment: false,
+                default_value: None,
+                is_generated: false,
+                comment: None,
+                collation: None,
+                enum_type: None,
+                domain_type: None,
+            }],
+            rows: values.iter().map(|value| vec![Value::Int(*value)]).collect(),
+            truncated: false,
+        });
+        assert!(cache.append(0, page).is_ok());
+        let result = cache.snapshot(terminal, None);
+        StatementOutcome {
+            kind: StatementOutcomeKind::Streamed(Box::new(result)),
             ..rows(sql)
         }
     }
@@ -148,11 +183,57 @@ mod tests {
     }
 
     #[test]
-    fn only_row_results_are_pinned() {
+    fn failed_statements_are_not_pinned() {
         let mut pins = PinnedResults::default();
         pins.show(vec![failed("SELECT x")]);
         assert!(!pins.has_results());
         assert_eq!(pins.pin_last(), 0);
+    }
+
+    #[test]
+    fn an_empty_streamed_result_can_be_pinned_without_losing_its_metadata() {
+        let mut pins = PinnedResults::default();
+        pins.show(vec![streamed(
+            "SELECT id FROM empty_table",
+            &[],
+            super::super::stream_pages::StreamTerminal::Complete,
+        )]);
+
+        assert!(pins.has_results());
+        assert_eq!(pins.pin_last(), 1);
+
+        let shown = pins.show(vec![rows("SELECT 2")]);
+        assert_eq!(shown.len(), 2);
+        let pinned = &shown[0];
+        assert!(pinned.pinned);
+        let StatementOutcomeKind::Streamed(result) = &pinned.kind else {
+            panic!("streamed result should remain streamed when pinned");
+        };
+        assert_eq!(result.total_rows, 0);
+        assert_eq!(result.pages.len(), 1);
+        assert_eq!(result.pages[0].columns[0].name, "id");
+        assert_eq!(shown[1].sql_preview, "SELECT 2");
+    }
+
+    #[test]
+    fn a_stream_with_prior_pages_remains_pinnable_after_a_later_fetch_failure() {
+        let mut pins = PinnedResults::default();
+        pins.show(vec![streamed(
+            "SELECT id FROM items",
+            &[7],
+            super::super::stream_pages::StreamTerminal::Failed("fetch failed".into()),
+        )]);
+
+        assert!(pins.has_results());
+        assert_eq!(pins.pin_last(), 1);
+        let StatementOutcomeKind::Streamed(result) = &pins.pins[0].kind else {
+            panic!("streamed result should remain streamed when pinned");
+        };
+        assert!(matches!(
+            result.terminal,
+            super::super::stream_pages::StreamTerminal::Failed(_)
+        ));
+        assert_eq!(result.pages[0].rows[0][0], Value::Int(7));
     }
 
     #[test]

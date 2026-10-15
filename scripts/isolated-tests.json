@@ -380,6 +380,21 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::editor::outcomes::tests::exporting_after_partial_view_uses_the_guarded_query_and_its_bind_values"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::outcomes::tests::streamed_result_widgets_keep_pages_visible_during_loading_and_terminal_states"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::streaming::tests::a_stream_waits_with_a_loading_status_page"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::grid::context_menu::tests::the_cell_menu_opens_with_the_menu_key_and_shift_f10"
     ],
     [
