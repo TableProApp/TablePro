@@ -187,6 +187,7 @@ Build and install with the helper (`cargo build -p tablepro-ssh --bin tablepro-a
 - [ ] On SQLite, Explain a query that scans and searches: steps nest by their parent.
 - [ ] On MySQL, ClickHouse or DuckDB the dialog shows the text plan with no Tree tab.
 - [ ] Explain on an empty editor still shows the existing message.
+- [ ] On a connection where a plan takes a few seconds (for example `EXPLAIN ANALYZE SELECT pg_sleep(20)` on PostgreSQL), open the Explain window and close it at once. In the database's activity view the statement is gone within about a second, not after the query timeout.
 
 ## Go to Referenced Row
 

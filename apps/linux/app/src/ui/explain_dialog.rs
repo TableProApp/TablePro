@@ -106,16 +106,25 @@ pub fn present(
         glib::Propagation::Proceed
     });
     window.add_controller(escape);
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let cancel_on_close = cancel.clone();
+    window.connect_close_request(move |_| {
+        cancel_on_close.cancel();
+        glib::Propagation::Proceed
+    });
     window.present();
 
     let buffer = view.buffer();
     let timeout_secs = crate::services::operation_control::timeout_for(preferences, database, Some(connection_id));
     glib::spawn_future_local(async move {
-        let control = crate::services::operation_control::bounded(timeout_secs);
+        let control = crate::services::operation_control::bounded_with(timeout_secs, cancel.clone());
         let text = match conn.query_controlled(&explain_sql, &control).await {
             Ok(result) => format_explain_result(&result),
             Err(e) => format!("{e}"),
         };
+        if cancel.is_cancelled() {
+            return;
+        }
         let nodes = super::explain_tree::parse_plan(&text);
         if !nodes.is_empty() {
             tree_scrolled.set_child(Some(&super::explain_tree::build_tree(&nodes)));
