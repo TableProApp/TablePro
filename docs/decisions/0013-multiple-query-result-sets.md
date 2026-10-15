@@ -2,6 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-10-07
+- **Clarified**: 2026-10-15 for wording. The editor shows result sets through a "Result set" drop-down and a view stack, not tabs. The JSON and CSV rules for several sets are implemented by MCP `export_data`; the GUI export dialog exports one result.
 
 ## Context
 

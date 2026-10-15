@@ -56,6 +56,8 @@ Other options and why they were rejected.
 | [0017](0017-mcp-sdk-behind-the-governed-seam.md) | Official Rust MCP SDK behind the governed seam | Accepted | Replace the hand-written protocol and transport layer; keep tokens, allowlists, approval and audit in our code. |
 | [0018](0018-headless-app-services-crate.md) | Headless application-services crate | Accepted | Move GTK-free logic and a tab model out of the GTK crate so it tests without a display. |
 
+Three records use "snapshot" for different things: ADR 0011 a read-only snapshot session, ADR 0014 the read snapshot a full export holds, and ADR 0015 a saved copy of a database.
+
 Decisions 0007–0009 extract existing approved sprint/task-board rules. Accepted means the architecture choice is recorded; implementation and runtime acceptance remain on the [active sprint](../bookie-0.2-sprint.md) and owning boards.
 
 ## Adding a decision

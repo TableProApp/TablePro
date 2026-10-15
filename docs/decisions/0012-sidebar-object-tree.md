@@ -2,6 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-10-07
+- **Clarified**: 2026-10-15 for status. The Decision describes the target design; the Implementation status section records what has shipped. The sidebar still uses a `GtkListBox`.
 
 ## Context
 

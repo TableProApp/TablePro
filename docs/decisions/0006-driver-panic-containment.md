@@ -2,6 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-09-18
+- **Clarified**: 2026-10-15 for the dependency. The workspace uses the crates.io `tiberius` 0.13 release, not a pinned git dependency. The decision is unchanged.
 
 ## Context
 

@@ -2,6 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-10-12
+- **Clarified**: 2026-10-15 for status. The Decision is the target; the Implementation status section records that the production MCP server is still the hand-written one.
 
 ## Context
 
