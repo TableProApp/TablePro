@@ -248,6 +248,7 @@ fn handle_tools_list(bridge: &McpBridge, params: &JsonValue) -> Result<JsonValue
             "name": name,
             "description": tool_description(name),
             "inputSchema": tool_schema(name),
+            "annotations": tool_annotations(name),
         })).collect::<Vec<_>>()
     }))
 }
@@ -280,6 +281,24 @@ pub(crate) fn tool_description(name: &str) -> &'static str {
         "count_rows" => "Count the rows of a table exactly",
         "browse_table" => "Read a page of table rows by offset and limit",
         _ => "",
+    }
+}
+
+const READ_ONLY_TOOLS: &[&str] = &[
+    "list_connections",
+    "list_tables",
+    "list_objects",
+    "describe_table",
+    "table_schema",
+    "count_rows",
+    "browse_table",
+];
+
+pub(crate) fn tool_annotations(name: &str) -> JsonValue {
+    if READ_ONLY_TOOLS.contains(&name) {
+        json!({"readOnlyHint": true, "openWorldHint": false})
+    } else {
+        json!({"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false})
     }
 }
 
@@ -829,6 +848,30 @@ mod tests {
         let result = handle_tools_list(&bridge, &json!({"token": token})).unwrap();
         let tools = result["tools"].as_array().unwrap();
         assert_eq!(tools.len(), TOOL_NAMES.len());
+    }
+
+    #[test]
+    fn tools_list_declares_conservative_safety_annotations() {
+        let (_dir, bridge, token) = bridge_with_token();
+        let result = handle_tools_list(&bridge, &json!({"token": token})).unwrap();
+        let hints = |name: &str| {
+            result["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|tool| tool["name"] == name)
+                .map(|tool| tool["annotations"].clone())
+                .unwrap()
+        };
+        assert_eq!(hints("list_tables")["readOnlyHint"], true);
+        assert_eq!(hints("browse_table")["readOnlyHint"], true);
+        for name in ["execute_query", "execute_write", "explain_query", "export_data"] {
+            let tool = hints(name);
+            assert_eq!(tool["readOnlyHint"], false, "{name}");
+            assert_eq!(tool["destructiveHint"], true, "{name}");
+            assert_eq!(tool["idempotentHint"], false, "{name}");
+        }
+        assert!(TOOL_NAMES.iter().all(|name| hints(name)["openWorldHint"] == false));
     }
 
     /// A minimal in-memory `AsyncWrite` sink so `serve_json_rpc_lines` can be

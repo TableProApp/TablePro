@@ -11,7 +11,7 @@ use rmcp::{
 use serde_json::{Map, Value as JsonValue};
 
 use crate::bridge::McpBridge;
-use crate::server::{tool_description, tool_schema};
+use crate::server::{tool_annotations, tool_description, tool_schema};
 use crate::tools::{self, TOOL_NAMES};
 
 #[derive(Clone)]
@@ -58,7 +58,13 @@ impl ServerHandler for BridgeHandler {
             .map_err(|message| ErrorData::invalid_request(message, None))?;
         let tools = TOOL_NAMES
             .iter()
-            .map(|name| Tool::new(*name, tool_description(name), Arc::new(json_object(tool_schema(name)))))
+            .map(|name| {
+                let tool = Tool::new(*name, tool_description(name), Arc::new(json_object(tool_schema(name))));
+                match serde_json::from_value(tool_annotations(name)) {
+                    Ok(annotations) => tool.with_annotations(annotations),
+                    Err(_) => tool,
+                }
+            })
             .collect();
         Ok(ListToolsResult::with_all_items(tools))
     }
@@ -207,6 +213,11 @@ mod tests {
             tools.iter().all(|tool| tool["inputSchema"]["type"] == "object"),
             "{response}"
         );
+        let hint =
+            |name: &str, key: &str| tools.iter().find(|tool| tool["name"] == name).unwrap()["annotations"][key].clone();
+        assert_eq!(hint("list_tables", "readOnlyHint"), true, "{response}");
+        assert_eq!(hint("execute_write", "readOnlyHint"), false, "{response}");
+        assert_eq!(hint("execute_write", "destructiveHint"), true, "{response}");
     }
 
     #[tokio::test]
