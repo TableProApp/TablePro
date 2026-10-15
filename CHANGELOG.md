@@ -225,6 +225,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Duplicating a connection while the keyring cannot be read now offers to enter a password for the copy, instead of assuming the original had none.
 - Closing the Explain window now stops its query instead of letting it run until the query timeout.
 - SQL Server queries that return several result sets now show every set inside an editor session or transaction, masked and audited like the first, instead of only the first.
+- A MySQL or MariaDB connection that carries a PostgreSQL-style socket directory is now refused when it connects, instead of being checked against a PostgreSQL socket file.
 
 ### Security
 

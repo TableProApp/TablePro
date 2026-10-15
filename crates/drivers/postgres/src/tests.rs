@@ -407,3 +407,9 @@ fn connect_options_follow_the_transport_and_refuse_a_socket_file() {
     };
     assert!(postgres_connect_options(&directory).is_ok());
 }
+
+#[test]
+fn postgres_offers_a_socket_directory() {
+    assert!(PgDriver.supports_local_socket());
+    assert!(PgDriver.supports_local_socket_directory());
+}

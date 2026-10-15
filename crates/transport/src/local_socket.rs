@@ -46,7 +46,7 @@ fn validate_postgres_socket_directory(
     driver: &dyn DatabaseDriver,
     has_ssh: bool,
 ) -> Result<(), TransportError> {
-    check_local_endpoint(driver.supports_local_socket(), driver, has_ssh, opts.tls.mode)?;
+    check_local_endpoint(driver.supports_local_socket_directory(), driver, has_ssh, opts.tls.mode)?;
     if opts.port == 0 {
         return invalid("PostgreSQL socket port must be greater than zero");
     }
@@ -97,4 +97,55 @@ fn check_local_endpoint(
 
 fn invalid(message: impl Into<String>) -> Result<(), TransportError> {
     Err(TransportError::InvalidLocalSocket(message.into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::os::unix::net::UnixListener;
+
+    use tablepro_core::{ConnectOptions, Connection, DatabaseDriver, DriverError};
+
+    use super::validate_local_socket;
+    use crate::TransportError;
+
+    struct FileSocketOnlyDriver;
+
+    #[async_trait::async_trait]
+    impl DatabaseDriver for FileSocketOnlyDriver {
+        fn id(&self) -> &'static str {
+            "file-socket"
+        }
+        fn display_name(&self) -> &'static str {
+            "File socket"
+        }
+        fn default_port(&self) -> u16 {
+            3306
+        }
+        fn supports_local_socket(&self) -> bool {
+            true
+        }
+        fn supports_local_socket_file(&self) -> bool {
+            true
+        }
+        async fn connect(&self, _opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError> {
+            Err(DriverError::Unsupported("test driver".into()))
+        }
+    }
+
+    #[test]
+    fn a_driver_that_only_supports_a_socket_file_refuses_a_socket_directory() {
+        let directory = tempfile::tempdir().unwrap();
+        let _listener = UnixListener::bind(directory.path().join(".s.PGSQL.3306")).unwrap();
+        let opts = ConnectOptions {
+            host: "localhost".into(),
+            port: 3306,
+            local_socket_dir: Some(directory.path().to_path_buf()),
+            ..Default::default()
+        };
+
+        assert!(matches!(
+            validate_local_socket(&opts, &FileSocketOnlyDriver, false),
+            Err(TransportError::LocalSocketUnsupported(_))
+        ));
+    }
 }

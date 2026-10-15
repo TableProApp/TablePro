@@ -790,6 +790,9 @@ mod tests {
         fn supports_local_socket_file(&self) -> bool {
             true
         }
+        fn supports_local_socket_directory(&self) -> bool {
+            true
+        }
         async fn connect(&self, _opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError> {
             Err(DriverError::Unsupported("test driver".into()))
         }

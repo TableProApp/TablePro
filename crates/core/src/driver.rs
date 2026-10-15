@@ -123,6 +123,10 @@ pub trait DatabaseDriver: Send + Sync {
         false
     }
 
+    fn supports_local_socket_directory(&self) -> bool {
+        false
+    }
+
     /// Whether this driver can authenticate TLS connections with a client
     /// certificate and private key. Transport refuses configured identities
     /// for drivers that do not explicitly opt in.

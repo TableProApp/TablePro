@@ -66,6 +66,10 @@ impl DatabaseDriver for FakeDriver {
         self.local_socket
     }
 
+    fn supports_local_socket_directory(&self) -> bool {
+        self.local_socket
+    }
+
     fn supports_client_tls_auth(&self) -> bool {
         self.client_tls_auth
     }

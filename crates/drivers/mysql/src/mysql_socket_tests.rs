@@ -26,3 +26,10 @@ fn a_local_socket_connection_dials_the_exact_selected_file() {
     let mysql_opts = mysql_connect_options(&opts);
     assert_eq!(mysql_opts.get_socket(), Some(&path));
 }
+
+#[test]
+fn mysql_offers_a_socket_file_but_not_a_socket_directory() {
+    assert!(MysqlDriver.supports_local_socket());
+    assert!(MysqlDriver.supports_local_socket_file());
+    assert!(!MysqlDriver.supports_local_socket_directory());
+}
