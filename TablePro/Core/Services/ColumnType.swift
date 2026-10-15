@@ -2,8 +2,8 @@
 //  ColumnType.swift
 //  TablePro
 //
-//  Column type metadata for type-aware formatting and display.
-//  Driver-specific type mapping lives in each plugin; this enum is display-only.
+//  Column type metadata for type-aware formatting, display and editing.
+//  Driver-specific type mapping lives in each plugin.
 //
 
 import Foundation
@@ -161,6 +161,42 @@ enum ColumnType: Equatable, Sendable {
         case .blob: return true
         default: return false
         }
+    }
+
+    /// Whether `''` is a value of this type, so an emptied cell can be written as one.
+    ///
+    /// A date, number, boolean, JSON document, geometry or array has no empty value. Sent `''`,
+    /// MySQL without strict mode stores its zero value (`0000-00-00 00:00:00`, `0`), SQL Server
+    /// stores `1900-01-01` or `0`, SQLite keeps the text, and a strict MySQL or PostgreSQL refuses
+    /// the save. An empty SET is the empty set, and an enum has an empty value only when one of
+    /// its labels is the empty string.
+    var hasEmptyValue: Bool {
+        switch self {
+        case .text(let rawType):
+            return !Self.nonCharacterTextTypes.contains(Self.baseTypeName(rawType))
+        case .set, .blob:
+            return true
+        case .enumType(_, let values):
+            return values?.contains("") ?? false
+        case .date, .timestamp, .datetime, .integer, .decimal, .boolean, .json, .spatial, .array:
+            return false
+        }
+    }
+
+    /// Types the classifier files under `.text`, either by name or because nothing else matched,
+    /// that hold no empty string either.
+    private static let nonCharacterTextTypes: Set<String> = [
+        "YEAR", "UUID", "TIMEUUID", "UNIQUEIDENTIFIER",
+        "INET", "CIDR", "MACADDR", "MACADDR8", "IPV4", "IPV6", "INTERVAL"
+    ]
+
+    /// `Nullable(UUID)`, `year(4)` and `INTERVAL DAY TO SECOND` all name their type in the first word.
+    private static func baseTypeName(_ rawType: String?) -> String {
+        guard var name = rawType?.uppercased() else { return "" }
+        while let wrapper = ["NULLABLE(", "LOWCARDINALITY("].first(where: { name.hasPrefix($0) }) {
+            name.removeFirst(wrapper.count)
+        }
+        return String(name.prefix { $0.isLetter || $0.isNumber || $0 == "_" })
     }
 
     /// The element type of an array column, if this is one

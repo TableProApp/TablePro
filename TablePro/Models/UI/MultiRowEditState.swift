@@ -44,6 +44,9 @@ struct FieldEditState: Identifiable {
     /// Save never writes.
     var isServerOwned: Bool = false
 
+    /// False for a NOT NULL column. Nil from the schema reads as nullable, as the grid's menus do.
+    var isNullable = true
+
     /// The value already differs from the loaded schema because the edit is recorded elsewhere.
     var hasCommittedEdit: Bool = false
 
@@ -130,6 +133,7 @@ final class MultiRowEditState: ObservableObject {
     @Published private(set) var absentCells: [Set<Int>] = []
     @Published private(set) var columns: [String] = []
     @Published private(set) var columnTypes: [ColumnType] = []
+    private var nonNullableColumns: Set<String> = []
 
     var hasEdits: Bool {
         fields.contains { $0.hasEdit }
@@ -146,6 +150,7 @@ final class MultiRowEditState: ObservableObject {
         primaryKeyColumns: Set<String> = [],
         foreignKeyColumns: Set<String> = [],
         serverOwnedColumns: Set<String> = [],
+        nonNullableColumns: Set<String> = [],
         displayFormats: [ValueDisplayFormat?] = [],
         binaryColumns: Set<Int> = []
     ) {
@@ -159,6 +164,7 @@ final class MultiRowEditState: ObservableObject {
         self.absentCells = absentCells
         self.columns = columns
         self.columnTypes = columnTypes
+        self.nonNullableColumns = nonNullableColumns
 
         var newFields: [FieldEditState] = []
 
@@ -228,6 +234,7 @@ final class MultiRowEditState: ObservableObject {
                 isPrimaryKey: primaryKeyColumns.contains(columnName),
                 isForeignKey: foreignKeyColumns.contains(columnName),
                 isServerOwned: serverOwnedColumns.contains(columnName),
+                isNullable: !nonNullableColumns.contains(columnName),
                 originalValue: originalValue,
                 hasMultipleValues: hasMultipleValues,
                 pendingValue: pendingValue,
@@ -337,13 +344,22 @@ final class MultiRowEditState: ObservableObject {
         guard index < fields.count else { return }
         let hadPendingEdit = fields[index].hasEdit
         let original = fields[index].originalValue
-        let pending = Self.resolvePendingValue(value, original: original, isJson: fields[index].isJson)
+        var pending = Self.resolvePendingValue(value, original: original, isJson: fields[index].isJson)
+        var staged = pending.map { PluginCellValue.entered($0, columnType: fields[index].columnTypeEnum) }
+        /// A NOT NULL column whose type has no empty value holds nothing an emptied field could
+        /// mean, so the field goes back to its stored value, as the grid's cell does.
+        if staged == .null, !fields[index].isNullable {
+            pending = nil
+            staged = nil
+        }
         fields[index].pendingValue = pending
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = false
         fields[index].isPendingRemoval = false
-        if pending != nil {
-            onFieldChanged?(index, PluginCellValue.fromOptional(pending), .typing)
+        /// The field keeps its empty text while the change it stages is NULL: swapping the editor
+        /// for the pending NULL pill would take the field away in the middle of typing a new value.
+        if let staged {
+            onFieldChanged?(index, staged, .typing)
         } else if hadPendingEdit {
             /// `originalValue` is nil for three different situations, and only one of them is a
             /// value: a stored NULL, a selection whose rows do not agree, and a field the rows do
@@ -391,7 +407,9 @@ final class MultiRowEditState: ObservableObject {
             updateField(at: columnIndex, value: value)
             return
         }
-        onDetachedFieldChanged?(columnIndex, PluginCellValue.fromOptional(value), rowIDs)
+        let staged = PluginCellValue.entered(value, columnType: columnTypes[safe: columnIndex])
+        if staged.isNull, columns[safe: columnIndex].map(nonNullableColumns.contains) == true { return }
+        onDetachedFieldChanged?(columnIndex, staged, rowIDs)
     }
 
     private static func resolvePendingValue(_ value: String?, original: String?, isJson: Bool) -> String? {
@@ -497,6 +515,7 @@ final class MultiRowEditState: ObservableObject {
         absentCells = []
         columns = []
         columnTypes = []
+        nonNullableColumns = []
     }
 
     /// Get all edited fields with their new values

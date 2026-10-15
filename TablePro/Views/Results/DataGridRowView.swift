@@ -5,6 +5,7 @@
 
 import AppKit
 import Combine
+import TableProPluginKit
 
 @MainActor
 class DataGridRowView: NSTableRowView {
@@ -690,9 +691,12 @@ class DataGridRowView: NSTableRowView {
             && coordinator.isColumnWritable(tableRows.columns[dataColumnIndex])
         guard coordinator.isEditable, namesWritableColumn else { return }
 
-        let setValueItem = NSMenuItem(title: String(localized: "Set Value"), action: nil, keyEquivalent: "")
-        setValueItem.submenu = buildSetValueMenu(dataColumnIndex: dataColumnIndex, tableRows: tableRows)
-        menu.addItem(setValueItem)
+        let setValueMenu = buildSetValueMenu(dataColumnIndex: dataColumnIndex, tableRows: tableRows)
+        if !setValueMenu.items.isEmpty {
+            let setValueItem = NSMenuItem(title: String(localized: "Set Value"), action: nil, keyEquivalent: "")
+            setValueItem.submenu = setValueMenu
+            menu.addItem(setValueItem)
+        }
 
         guard coordinator.supportsFieldRemoval,
               coordinator.displayRow(at: rowIndex)?.isAbsent(dataColumnIndex) == false else { return }
@@ -703,14 +707,18 @@ class DataGridRowView: NSTableRowView {
         menu.addItem(removeFieldItem)
     }
 
-    private func buildSetValueMenu(dataColumnIndex: Int, tableRows: TableRows) -> NSMenu {
+    /// Empty is offered only where `''` is a value of the column's type, the way NULL is offered
+    /// only where the column takes it. On a date it wrote the server's zero date.
+    func buildSetValueMenu(dataColumnIndex: Int, tableRows: TableRows) -> NSMenu {
         let setValueMenu = NSMenu()
 
-        let emptyItem = NSMenuItem(
-            title: String(localized: "Empty"), action: #selector(setEmptyValue(_:)), keyEquivalent: "")
-        emptyItem.representedObject = dataColumnIndex
-        emptyItem.target = self
-        setValueMenu.addItem(emptyItem)
+        if tableRows.editingColumnType(at: dataColumnIndex)?.hasEmptyValue ?? true {
+            let emptyItem = NSMenuItem(
+                title: String(localized: "Empty"), action: #selector(setEmptyValue(_:)), keyEquivalent: "")
+            emptyItem.representedObject = dataColumnIndex
+            emptyItem.target = self
+            setValueMenu.addItem(emptyItem)
+        }
 
         let columnName = dataColumnIndex < tableRows.columns.count
             ? tableRows.columns[dataColumnIndex]
@@ -839,9 +847,10 @@ class DataGridRowView: NSTableRowView {
         coordinator?.removeField(row: rowIndex, columnIndex: columnIndex)
     }
 
+    /// Written as `''` itself rather than read as typed text, which would turn it into NULL.
     @objc private func setEmptyValue(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int else { return }
-        coordinator?.setCellValueAtColumn("", at: rowIndex, columnIndex: columnIndex)
+        coordinator?.commitTypedCellEdit(row: rowIndex, columnIndex: columnIndex, newValue: .text(""))
     }
 
     @objc private func setDefaultValue(_ sender: NSMenuItem) {

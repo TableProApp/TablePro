@@ -41,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Smaller updates: about 6 MB from any of the last five releases and 21 MB from older ones, down from 34 MB.
 - Several statements run together on PostgreSQL from iPhone and iPad commit one at a time, and a failure keeps the ones before it. (#3399)
 - MySQL dumps write TIMESTAMP values in UTC and turn off foreign key checks while they load, as mysqldump does.
+- Set Value > Empty and Set EMPTY offered only on columns that can hold an empty value, not on dates, numbers or booleans.
+- Clearing a date, number or boolean cell in a NOT NULL column keeps the stored value instead of saving an empty string.
+- Clearing a Redis key's TTL in the grid removes its expiry.
 
 ### Removed
 
@@ -120,6 +123,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - GitHub Copilot language server pinned to a reviewed version and checksum instead of the latest npm release.
 - One unreadable setting, or one unknown AI provider, resetting its whole settings group to defaults.
+- Clearing a date, number or boolean cell saving an empty string, stored as `0000-00-00 00:00:00` on MySQL, instead of NULL.
+- Pasting a copied NULL into a date, number or boolean cell writing the text NULL, stored as a zero date or 0 on MySQL.
+- Empty line in pasted cells moving the values below it up a row, or cutting off the columns after it.
 
 ### Security
 

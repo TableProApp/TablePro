@@ -40,6 +40,13 @@ extension MainContentCoordinator {
         guard !editedFields.isEmpty else { return [] }
 
         let tableRows = tabSessionRegistry.tableRows(for: tab.id)
+        /// Typed text is read for its column, as the grid reads a cell, and text a NOT NULL column can
+        /// hold neither as itself nor as NULL writes nothing. An explicit NULL stays NULL.
+        let writes: [(field: InspectorFieldEdit, value: PluginCellValue)] = editedFields.compactMap { field in
+            guard !field.removesField, let text = field.newValue else { return (field, .null) }
+            return tableRows.enteredValue(text, forColumn: field.columnIndex).map { (field, $0) }
+        }
+        guard !writes.isEmpty else { return [] }
         let displayIDs = activeGridDisplayIDs
         let changes: [RowChange] = selectionState.indices.sorted().compactMap { rowIndex -> RowChange? in
             guard let resolvedRow = DisplayRowMapping.row(
@@ -51,7 +58,7 @@ extension MainContentCoordinator {
             return RowChange(
                 rowID: resolvedRow.id,
                 type: .update,
-                cellChanges: editedFields.map { field in
+                cellChanges: writes.map { field, newValue in
                     let oldValue: PluginCellValue = field.columnIndex < originalRow.count
                         ? originalRow[field.columnIndex]
                         : .null
@@ -59,7 +66,7 @@ extension MainContentCoordinator {
                         columnIndex: field.columnIndex,
                         columnName: field.columnName,
                         oldValue: oldValue,
-                        newValue: field.removesField ? .null : PluginCellValue.fromOptional(field.newValue),
+                        newValue: newValue,
                         oldIsAbsent: resolvedRow.isAbsent(field.columnIndex),
                         newIsAbsent: field.removesField
                     )

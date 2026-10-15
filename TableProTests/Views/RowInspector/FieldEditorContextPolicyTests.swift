@@ -54,6 +54,25 @@ struct FieldEditorContextPolicyTests {
         #expect(makeContext(isReadOnly: false, originalValue: long).placeholderText == long)
     }
 
+    @Test("an emptied date field says NULL, which is what it stages, and a text field echoes the old value")
+    func emptiedFieldPlaceholderFollowsColumnType() {
+        func context(_ columnType: ColumnType, original: String?) -> FieldEditorContext {
+            FieldEditorContext(
+                columnName: "c",
+                columnType: columnType,
+                isLongText: false,
+                value: .constant(""),
+                originalValue: original,
+                valueState: .value(""),
+                isReadOnly: false
+            )
+        }
+
+        #expect(context(.datetime(rawType: "DATETIME"), original: "2024-01-01 10:00:00").placeholderText == "NULL")
+        #expect(context(.text(rawType: "VARCHAR(20)"), original: "Alice").placeholderText == "Alice")
+        #expect(context(.datetime(rawType: "DATETIME"), original: "").placeholderText == "")
+    }
+
     @Test("a stored empty string is not reported as NULL")
     func storedEmptyStringIsNotNull() {
         #expect(makeContext(isReadOnly: true, originalValue: "").emptyStatePlaceholder == nil)

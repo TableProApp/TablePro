@@ -95,9 +95,10 @@ struct FillColumnTests {
 
     @Test("Resolves NULL distinctly from an empty string")
     func resolvesNullDistinctFromEmpty() {
-        #expect(TableViewCoordinator.fillColumnValue(text: "ignored", setNull: true) == .null)
-        #expect(TableViewCoordinator.fillColumnValue(text: "", setNull: false) == .text(""))
-        #expect(TableViewCoordinator.fillColumnValue(text: "active", setNull: false) == .text("active"))
+        let coordinator = makeCoordinator(columns: ["a"], rowCount: 1, manager: DataChangeManager())
+        #expect(coordinator.fillColumnValue(text: "ignored", setNull: true, columnIndex: 0) == .null)
+        #expect(coordinator.fillColumnValue(text: "", setNull: false, columnIndex: 0) == .text(""))
+        #expect(coordinator.fillColumnValue(text: "active", setNull: false, columnIndex: 0) == .text("active"))
     }
 
     @Test("Impact description reflects singular and plural counts")

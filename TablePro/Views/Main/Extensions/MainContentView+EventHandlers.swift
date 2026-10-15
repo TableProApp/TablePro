@@ -180,12 +180,7 @@ extension MainContentView {
         }
         let allRows = selectedRows.map { Array($0.values) }
 
-        var columnTypes = tableRows.columnTypes
-        for (i, col) in tableRows.columns.enumerated() where i < columnTypes.count {
-            if let values = tableRows.columnEnumValues[col], !values.isEmpty {
-                columnTypes[i] = columnTypes[i].withAllowedValues(values)
-            }
-        }
+        let columnTypes = tableRows.columnTypes.indices.compactMap { tableRows.editingColumnType(at: $0) }
 
         if !changeManager.hasChanges {
             trailingPaneState.inspector.editState.clearEdits()
@@ -219,6 +214,7 @@ extension MainContentView {
             primaryKeyColumns: pkColumns,
             foreignKeyColumns: fkColumns,
             serverOwnedColumns: tableRows.generatedColumns.union(changeManager.unwritableColumns(among: tableRows.columns)),
+            nonNullableColumns: Set(tableRows.columnNullable.compactMap { $0.value ? nil : $0.key }),
             displayFormats: inspectorDisplayFormats(for: tab, columns: tableRows.columns, types: tableRows.columnTypes),
             binaryColumns: MultiRowEditState.binaryColumns(in: allRows)
         )

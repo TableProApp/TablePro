@@ -122,6 +122,26 @@ extension GlobalStateSuites {
             #expect(coordinator.pasteCellsFromClipboard(anchorRow: 0, anchorColumn: 0))
         }
 
+        @Test("Whole rows with an empty line between them still go to row paste")
+        func defersOnRowShapedTSVWithEmptyLine() throws {
+            let stub = try #require(RecordingClipboard.current)
+            stub.text = "x\ty\tz\n\nq\tw\te\n\n"
+
+            let coordinator = makeCoordinator(columns: ["a", "b", "c"], rowCount: 5)
+
+            #expect(coordinator.pasteCellsFromClipboard(anchorRow: 0, anchorColumn: 0) == false)
+        }
+
+        @Test("A value with trailing line breaks still fills only the focused cell in a one-column table")
+        func singleValueWithTrailingBreaksInSingleColumnTable() throws {
+            let stub = try #require(RecordingClipboard.current)
+            stub.text = "hello\n\n"
+
+            let coordinator = makeCoordinator(columns: ["a"], rowCount: 3)
+
+            #expect(coordinator.canPasteCellsFromClipboard(anchorRow: 1, anchorColumn: 0))
+        }
+
         @Test("Returns false when not editable")
         func refusesWhenReadOnly() throws {
             let stub = try #require(RecordingClipboard.current)

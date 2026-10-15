@@ -32,13 +32,15 @@ extension TableViewCoordinator {
         }
 
         let maxRow = min(anchorRow + grid.count, cachedRowCount)
-        let maxCol = min(anchorPosition + (grid.first?.count ?? 0), presentedColumnCount)
+        let maxCol = min(anchorPosition + Self.blockWidth(grid), presentedColumnCount)
         guard anchorRow < maxRow, anchorPosition < maxCol else { return false }
 
         let undoManager = tableView?.window?.undoManager
         undoManager?.beginUndoGrouping()
         undoManager?.setActionName(String(localized: "Paste Cells"))
 
+        let tableRows = tableRowsProvider()
+        var refusedCell = false
         for (gridRow, rowValues) in grid.enumerated() {
             let targetRow = anchorRow + gridRow
             guard targetRow < maxRow else { break }
@@ -48,11 +50,17 @@ extension TableViewCoordinator {
                 let targetPosition = anchorPosition + gridCol
                 guard targetPosition < maxCol else { break }
                 guard let targetCol = dataColumnIndex(atDisplayPosition: targetPosition) else { continue }
-                commitCellEdit(row: targetRow, columnIndex: targetCol, newValue: cellValue)
+                let text = Self.pastedText(cellValue, columnType: tableRows.editingColumnType(at: targetCol))
+                if !commitEnteredText(text, row: targetRow, columnIndex: targetCol) {
+                    refusedCell = true
+                }
             }
         }
 
         undoManager?.endUndoGrouping()
+        if refusedCell {
+            NSSound.beep()
+        }
 
         tableView?.reloadData()
         return true
@@ -71,27 +79,56 @@ extension TableViewCoordinator {
         guard let text = ClipboardService.shared.readText(), !text.isEmpty else { return nil }
         guard (text as NSString).length <= Self.maxCellPasteLength else { return nil }
 
-        let grid = text.components(separatedBy: "\n")
-            .filter { !$0.isEmpty }
-            .map { $0.components(separatedBy: "\t") }
+        let grid = Self.pastedLines(text).map { $0.components(separatedBy: "\t") }
         guard let firstRow = grid.first else { return nil }
 
         /// Whole rows are routed away by the result's own column count, not the presented one.
         /// `TSVRowParser` fills from data index 0 and knows nothing about which columns are on
         /// screen, so handing it a block as wide as the *visible* run writes the fields into hidden
         /// or wrong columns. A block that matches the visible width but not the result's stays on
-        /// the cell path, where every field is placed by display position.
+        /// the cell path, where every field is placed by display position. Row paste skips empty
+        /// lines, so they do not decide the shape.
         let isSingleValue = grid.count == 1 && firstRow.count == 1
         let dataColumnCount = tableRowsProvider().columns.count
-        if !isSingleValue, dataColumnCount > 0, grid.allSatisfy({ $0.count == dataColumnCount }) {
+        let rowLines = grid.filter { $0 != [""] }
+        if !isSingleValue, dataColumnCount > 0, !rowLines.isEmpty,
+           rowLines.allSatisfy({ $0.count == dataColumnCount }) {
             return nil
         }
 
         guard let anchorPosition = displayPosition(ofDataColumnIndex: anchorColumn) else { return nil }
         let maxRow = min(anchorRow + grid.count, cachedRowCount)
-        let maxCol = min(anchorPosition + firstRow.count, presentedColumnCount)
+        let maxCol = min(anchorPosition + Self.blockWidth(grid), presentedColumnCount)
         guard anchorRow < maxRow, anchorPosition < maxCol else { return nil }
 
         return grid
+    }
+
+    /// The widest line, since an empty line holds one field and may come first.
+    static func blockWidth(_ grid: [[String]]) -> Int {
+        grid.map(\.count).max() ?? 0
+    }
+
+    /// The grid copies a NULL cell as the text `NULL`. A date, number or boolean cannot hold those
+    /// four letters, so there they paste as NULL rather than the server's zero date or an error. A
+    /// text column keeps them: the same text is what a stored `'NULL'` copies as.
+    static func pastedText(_ field: String, columnType: ColumnType?) -> String? {
+        guard field == "NULL", let columnType, !columnType.hasEmptyValue,
+              columnType.enumValues?.contains(field) != true else { return field }
+        return nil
+    }
+
+    /// An empty line inside the block is an empty value and keeps the rows below it in place.
+    /// Dropping it moved every later value up a row. Empty lines at the end are the line breaks a
+    /// spreadsheet ends its copy with, not rows.
+    ///
+    /// A `\r\n` copy is folded to `\n` first. Split as it is, every row kept a `\r` on its last field,
+    /// and split on both characters it read as an empty line between every two rows.
+    static func pastedLines(_ text: String) -> [String] {
+        var lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: .newlines)
+        while lines.count > 1, lines.last?.isEmpty == true {
+            lines.removeLast()
+        }
+        return lines
     }
 }

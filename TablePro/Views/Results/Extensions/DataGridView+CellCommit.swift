@@ -10,8 +10,21 @@ import TableProPluginKit
 private let cellCommitLogger = Logger(subsystem: "com.TablePro", category: "DataGrid")
 
 extension TableViewCoordinator {
+    /// Every caller hands over text a person entered, so it is read for the column it lands in:
+    /// an emptied date, number or boolean is NULL, an emptied text cell is `''`. A NOT NULL column
+    /// that can hold neither keeps its value, and the beep says the edit was refused.
     func commitCellEdit(row: Int, columnIndex: Int, newValue: String?) {
-        commitTypedCellEdit(row: row, columnIndex: columnIndex, newValue: PluginCellValue.fromOptional(newValue))
+        if !commitEnteredText(newValue, row: row, columnIndex: columnIndex) {
+            NSSound.beep()
+        }
+    }
+
+    /// False when the column holds neither the text nor NULL in its place, and nothing was staged.
+    @discardableResult
+    func commitEnteredText(_ text: String?, row: Int, columnIndex: Int) -> Bool {
+        guard let value = tableRowsProvider().enteredValue(text, forColumn: columnIndex) else { return false }
+        commitTypedCellEdit(row: row, columnIndex: columnIndex, newValue: value)
+        return true
     }
 
     func commitTypedCellEdit(row: Int, columnIndex: Int, newValue typedNewValue: PluginCellValue) {
@@ -42,7 +55,11 @@ extension TableViewCoordinator {
     /// A detached editor outlives a sort, a value filter and a display-format change, none of which
     /// close it, and a display row names a different record after any of them.
     func commitCellEdit(rowID: RowID, columnIndex: Int, newValue: String?) {
-        commitTypedCellEdit(rowID: rowID, columnIndex: columnIndex, newValue: PluginCellValue.fromOptional(newValue))
+        guard let value = tableRowsProvider().enteredValue(newValue, forColumn: columnIndex) else {
+            NSSound.beep()
+            return
+        }
+        commitTypedCellEdit(rowID: rowID, columnIndex: columnIndex, newValue: value)
     }
 
     func commitTypedCellEdit(rowID: RowID, columnIndex: Int, newValue typedNewValue: PluginCellValue) {

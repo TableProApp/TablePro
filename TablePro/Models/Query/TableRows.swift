@@ -94,6 +94,30 @@ struct TableRows: Sendable {
         return !ColumnDefaultLiteral.isNull(defaultValue)
     }
 
+    /// The column's type with the labels its catalog declared, which a result set alone never carries.
+    func editingColumnType(at index: Int) -> ColumnType? {
+        guard columnTypes.indices.contains(index) else { return nil }
+        let columnType = columnTypes[index]
+        guard columns.indices.contains(index),
+              let labels = columnEnumValues[columns[index]], !labels.isEmpty else { return columnType }
+        return columnType.withAllowedValues(labels)
+    }
+
+    /// What text entered for a column stages, or nil when the column holds neither it nor NULL.
+    ///
+    /// An emptied date in a NOT NULL column has no value to write. MySQL turns NULL there into the
+    /// current time when `explicit_defaults_for_timestamp` is off, and `''` into the zero date, so
+    /// the edit is refused rather than staged.
+    func enteredValue(_ text: String?, forColumn index: Int) -> PluginCellValue? {
+        let value = PluginCellValue.entered(text, columnType: editingColumnType(at: index))
+        guard value.isNull, refusesNull(columnAt: index) else { return value }
+        return nil
+    }
+
+    func refusesNull(columnAt index: Int) -> Bool {
+        columns.indices.contains(index) && columnNullable[columns[index]] == false
+    }
+
     func value(at row: Int, column: Int) -> PluginCellValue {
         guard row >= 0, row < rows.count else { return .null }
         return rows[row][column]

@@ -9,7 +9,8 @@ import SwiftUI
 /// down and its context menu so both stay in sync.
 ///
 /// A read-only field keeps the copy actions and loses the mutating ones. Hiding the whole menu
-/// left a value that is neither selectable nor copyable.
+/// left a value that is neither selectable nor copyable. Set EMPTY is offered only where `''` is a
+/// value of the column's type.
 internal struct FieldMenuContent: View {
     let value: String
     let columnType: ColumnType
@@ -31,7 +32,9 @@ internal struct FieldMenuContent: View {
         if canMutate {
             Button("Set NULL") { onSetNull() }
             Button("Set DEFAULT") { onSetDefault() }
-            Button("Set EMPTY") { onSetEmpty() }
+            if columnType.hasEmptyValue {
+                Button("Set EMPTY") { onSetEmpty() }
+            }
             if let onRemoveField {
                 Button("Remove Field") { onRemoveField() }
             }
