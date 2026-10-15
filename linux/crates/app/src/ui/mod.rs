@@ -1,6 +1,7 @@
 mod a11y;
 mod browse_tab;
 pub(crate) mod clipboard;
+mod combo_value;
 mod connect_dialog;
 mod connection_list_banner;
 pub(crate) mod credential_prompt;

@@ -100,6 +100,7 @@ mod imp {
             ] {
                 button.set_icon_name(crate::ui::icons::EDIT_CLEAR);
             }
+            crate::ui::combo_value::show_whole_value(&self.encryption_row);
 
             let weak = section.downgrade();
             self.encryption_row.connect_selected_notify(move |_| {

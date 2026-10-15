@@ -75,6 +75,7 @@ mod imp {
             let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
             self.auth_names.splice(0, self.auth_names.n_items(), &labels);
             self.key_browse_button.set_icon_name(crate::ui::icons::DOCUMENT_OPEN);
+            crate::ui::combo_value::show_whole_value(&self.auth_row);
             section.refresh_auth_rows();
 
             let weak = section.downgrade();

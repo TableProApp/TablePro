@@ -163,6 +163,7 @@ crates/app/src/ui/clipboard/clipboard_writer.rs
 crates/app/src/ui/clipboard/copy_renderer.rs
 crates/app/src/ui/clipboard/mod.rs
 crates/app/src/ui/clipboard/tests.rs
+crates/app/src/ui/combo_value.rs
 crates/app/src/ui/connect_dialog/connect_dialog_mode.rs
 crates/app/src/ui/connect_dialog/connect_form.rs
 crates/app/src/ui/connect_dialog/connect_submission.rs

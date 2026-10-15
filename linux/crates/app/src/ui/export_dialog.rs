@@ -187,10 +187,12 @@ fn switch_row(title: &str, subtitle: Option<&str>) -> adw::SwitchRow {
 }
 
 fn combo_row(title: &str, choices: &[&str]) -> adw::ComboRow {
-    adw::ComboRow::builder()
+    let row = adw::ComboRow::builder()
         .title(title)
         .model(&gtk::StringList::new(choices))
-        .build()
+        .build();
+    super::combo_value::show_whole_value(&row);
+    row
 }
 
 /// What the dialog exports, and where it hands the job.
