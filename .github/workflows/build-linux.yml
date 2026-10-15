@@ -142,14 +142,24 @@ jobs:
       - name: No em dash in user-facing text
         # The GNOME writing style leaves the em dash out. The paths are
         # the ones po/POTFILES.in lists. The dash is spelt as its UTF-8
-        # bytes so this file holds none.
+        # bytes so this file holds none. git grep exits 1 for no match,
+        # and above 1 when it could not search at all.
         run: |
           em_dash=$(printf '\342\200\224')
-          if git grep -nF "$em_dash" -- 'crates/app/src/*.rs' 'data/resources/*.ui' 'data/*.desktop.in.in' \
-            'data/*.gschema.xml' 'data/*.metainfo.xml.in.in'; then
-            echo "::error::write a comma, a colon or two sentences instead of an em dash"
-            exit 1
-          fi
+          status=0
+          git grep -nF "$em_dash" -- 'crates/app/src/*.rs' 'data/resources/*.ui' 'data/*.desktop.in.in' \
+            'data/*.gschema.xml' 'data/*.metainfo.xml.in.in' || status=$?
+          case "$status" in
+            0)
+              echo "::error::write a comma, a colon or two sentences instead of an em dash"
+              exit 1
+              ;;
+            1) ;;
+            *)
+              echo "::error::git grep failed with status $status, so no file was checked"
+              exit "$status"
+              ;;
+          esac
       - name: Docs name paths and types that exist
         # A renamed type or a moved file stays named in prose until
         # something asks. GTK and GLib names resolve against the GIR
