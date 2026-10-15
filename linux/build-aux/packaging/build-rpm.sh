@@ -20,8 +20,11 @@ cp "$1" "$2" "$top/SOURCES/"
 
 dnf install -y --setopt=install_weak_deps=False rpm-build rpmlint tar xz
 
-tar -xOf "$1" "$name/build-aux/rpm/tablepro.spec" > "$top/SPECS/tablepro.spec"
-rpmbuild --define "_topdir $top" -bs "$top/SPECS/tablepro.spec"
+# Outside SPECS, where rpmbuild --rebuild removes the spec it unpacks, so
+# rpmlint still has this one to read.
+spec="$top/tablepro.spec"
+tar -xOf "$1" "$name/build-aux/rpm/tablepro.spec" > "$spec"
+rpmbuild --define "_topdir $top" -bs "$spec"
 srpm="$(find "$top/SRPMS" -name '*.src.rpm')"
 
 dnf builddep -y --setopt=install_weak_deps=False "$srpm"
@@ -32,8 +35,7 @@ if ! rpmbuild --define "_topdir $top" --rebuild "$srpm"; then
     exit 1
 fi
 
-rpmlint \
-    "$top/SPECS/tablepro.spec" "$srpm" "$top"/RPMS/*/*.rpm
+rpmlint "$spec" "$srpm" "$top"/RPMS/*/*.rpm
 
 cp "$srpm" "$top"/RPMS/*/*.rpm "$out/"
 ls -l "$out"
