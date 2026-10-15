@@ -115,7 +115,14 @@ impl HistoryStore {
             .create_if_missing(true)
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
         let pool = SqlitePoolOptions::new().max_connections(1).connect_with(opts).await?;
-        if existed && user_version(&pool).await? < MIGRATIONS.len() as i64 {
+        let applied = user_version(&pool).await?;
+        if applied > MIGRATIONS.len() as i64 {
+            return Err(StorageError::Schema(format!(
+                "history database version {applied} is newer than this version supports ({})",
+                MIGRATIONS.len()
+            )));
+        }
+        if existed && applied < MIGRATIONS.len() as i64 {
             backup_before_migration(&pool, &path).await?;
         }
         apply_schema(&pool).await?;
@@ -1073,5 +1080,43 @@ mod tests {
             let mode = std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
             assert_eq!(mode, 0o600, "{p:?} must be private");
         }
+    }
+
+    #[tokio::test]
+    async fn a_history_file_from_a_newer_version_is_refused_and_left_untouched() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("history.db");
+        let store = HistoryStore::open(path.clone()).await.unwrap();
+        store.pool.close().await;
+        let newer = MIGRATIONS.len() as i64 + 1;
+        let options = SqliteConnectOptions::new().filename(&path);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!("PRAGMA user_version = {newer}")))
+            .execute(&pool)
+            .await
+            .unwrap();
+        pool.close().await;
+
+        let error = HistoryStore::open(path.clone())
+            .await
+            .err()
+            .expect("a newer file is refused");
+
+        assert!(
+            matches!(&error, StorageError::Schema(message) if message.contains(&newer.to_string())),
+            "{error:?}"
+        );
+        let options = SqliteConnectOptions::new().filename(&path);
+        let check = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        assert_eq!(user_version(&check).await.unwrap(), newer);
+        assert!(!path.with_extension("before-migrations.db").exists());
     }
 }
