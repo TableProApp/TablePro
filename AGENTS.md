@@ -153,7 +153,7 @@ All tiers run on Forgejo (`.forgejo/workflows/ci.yml` and `nightly.yml`). New gt
 From the repository root, narrow test first, then:
 
 ```bash
-bash scripts/preflight.sh            # size, panic and bounded-operation guards, fmt, clippy, unit, sandbox
+bash scripts/preflight.sh            # size, panic, bounded-operation and crate-boundary guards, fmt, clippy, unit, sandbox
 bash scripts/test-gtk-widgets.sh     # when GTK code changed
 python3 scripts/check-known-issues.py && python3 scripts/check-doc-links.py   # when docs changed
 cargo deny check                           # from the repository root, when dependencies changed

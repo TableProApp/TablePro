@@ -23,6 +23,7 @@ CRATES=(
   tablepro-policy
   tablepro-storage
   tablepro-transport
+  tablepro-app-services
   tablepro-ssh
   tablepro-mcp
   tablepro-agentd
@@ -53,6 +54,9 @@ echo "==> bounded database operations in the GUI"
 
 echo "==> panic sites in production code"
 "$ROOT/scripts/check-panic-sites.sh"
+
+echo "==> crate boundaries"
+python3 scripts/check-crate-boundaries.py
 
 echo "==> function sizes"
 python3 scripts/check-function-size.py

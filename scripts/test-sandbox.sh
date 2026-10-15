@@ -22,6 +22,7 @@ CRATES=(
   tablepro-policy
   tablepro-storage
   tablepro-transport
+  tablepro-app-services
   tablepro-ssh
   tablepro-mcp
   tablepro-agentd
