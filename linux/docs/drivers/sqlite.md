@@ -16,7 +16,7 @@ Every connection to the file opens with the same options:
 - The statement cache is off, because sqlx keeps a statement's columns from its first prepare and SQLite prepares it again with more columns after an `ALTER TABLE`.
 - sqlx's statement logging is off.
 
-The connect reads `sqlite_version()` from the file once, so a file that is not a database fails the connect (`NotADatabase`) rather than the first page. SQLite only says it could not open a file; the driver tells a moved file (`FileNotFound`) from one the user may not read (`FileAccessDenied`) by looking at the path.
+The connect reads `sqlite_version()` and counts `sqlite_schema` once, so a file that is not a database fails the connect (`NotADatabase`) rather than the first page. Either statement can be the one that finds out: SQLite 3.51 reads the schema before it compiles a connection's first SELECT, while 3.46 waits for a statement that names a table. SQLite only says it could not open a file; the driver tells a moved file (`FileNotFound`) from one the user may not read (`FileAccessDenied`) by looking at the path.
 
 ### New databases
 
@@ -39,6 +39,8 @@ The driver does not detect any of these. Open such a file read-only, or copy it 
 | One connection per editor tab | `EditorSession` |
 
 One workspace connection is enough because SQLite takes one writer at a time anyway, and it keeps a temporary table or an attached database where the next call can see it. Calls wait for it for up to the pool wait (5 s).
+
+The health probe runs `SELECT 1` on the workspace connection when it is free. When it is busy, the probe opens a read-only connection of its own and closes it again without running a statement: opening runs only pragmas that set connection flags, which need no lock, whereas its first SELECT would read the schema on SQLite 3.51 and so wait for any lock another connection holds, often the one the busy call is waiting for too.
 
 ## Stops and timeouts
 

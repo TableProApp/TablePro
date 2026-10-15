@@ -26,3 +26,10 @@ option(
   value: '',
   description: 'The https URL the metainfo screenshots are under. Empty uses data/screenshots at the release tag.',
 )
+
+option(
+  'cargo_config',
+  type: 'string',
+  value: '',
+  description: 'A Cargo configuration file, relative to the source root, for every cargo call. Packages point it at their vendored crates.',
+)

@@ -25,6 +25,13 @@ pub enum FakeReply<T> {
         after: Duration,
         outcome: Result<T, DriverError>,
     },
+    /// Answer once the test cancels `release`, unless the call's
+    /// deadline or cancel comes first, so a case can act while the call
+    /// is still running however slowly the machine runs.
+    UntilReleased {
+        release: CancellationToken,
+        outcome: Result<T, DriverError>,
+    },
     /// Never answer on its own: only the call's deadline or cancel ends
     /// it, the way a statement the server never finishes behaves.
     UntilStopped,
@@ -56,6 +63,10 @@ impl<T> FakeReply<T> {
                 tokio::time::sleep(after).await;
                 outcome
             }
+            Self::UntilReleased { release, outcome } => {
+                stop.until(release.cancelled()).await?;
+                outcome
+            }
             Self::UntilStopped => {
                 stop.wait(None).await?;
                 Err(DriverError::Protocol("an unbounded fake call finished".to_owned()))
@@ -83,12 +94,15 @@ impl Stop<'_> {
     /// Wait `after`, or forever when it is `None`, giving up with the
     /// error a conforming driver reports when the call is stopped first.
     pub(crate) async fn wait(&self, after: Option<Duration>) -> Result<(), DriverError> {
-        let work = async {
-            match after {
-                Some(after) => tokio::time::sleep(after).await,
-                None => std::future::pending().await,
-            }
-        };
+        match after {
+            Some(after) => self.until(tokio::time::sleep(after)).await,
+            None => self.until(std::future::pending()).await,
+        }
+    }
+
+    /// Wait for `work`, giving up the same way when the call is stopped
+    /// first.
+    pub(crate) async fn until(&self, work: impl Future<Output = ()>) -> Result<(), DriverError> {
         let deadline = async {
             match self.deadline {
                 Some(deadline) => tokio::time::sleep_until(deadline).await,
@@ -104,5 +118,70 @@ impl Stop<'_> {
             () = self.cancel.cancelled() => Err(DriverError::Cancelled),
             () = self.closed.cancelled() => Err(DriverError::Cancelled),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::pin::pin;
+
+    use super::*;
+
+    fn stop<'a>(deadline: Option<Instant>, cancel: &'a CancellationToken, closed: &'a CancellationToken) -> Stop<'a> {
+        Stop {
+            deadline,
+            cancel,
+            closed,
+            phase: TimeoutPhase::Statement,
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_until_released_reply_answers_only_once_released() {
+        let (release, cancel, closed) = (
+            CancellationToken::new(),
+            CancellationToken::new(),
+            CancellationToken::new(),
+        );
+        let stop = stop(None, &cancel, &closed);
+        let reply = FakeReply::UntilReleased {
+            release: release.clone(),
+            outcome: Ok(7),
+        };
+        let mut answering = pin!(reply.resolve(&stop));
+
+        let early = tokio::time::timeout(Duration::from_secs(3600), &mut answering).await;
+        assert!(early.is_err(), "answered before the release: {early:?}");
+        release.cancel();
+
+        assert_eq!(answering.await, Ok(7));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_until_released_reply_gives_way_to_the_deadline_and_the_cancel() {
+        let (release, cancel, closed) = (
+            CancellationToken::new(),
+            CancellationToken::new(),
+            CancellationToken::new(),
+        );
+        let reply = || FakeReply::UntilReleased {
+            release: release.clone(),
+            outcome: Ok(7),
+        };
+
+        let timed = reply()
+            .resolve(&stop(Some(Instant::now() + Duration::from_secs(1)), &cancel, &closed))
+            .await;
+        cancel.cancel();
+        let cancelled = reply().resolve(&stop(None, &cancel, &closed)).await;
+
+        assert_eq!(
+            timed,
+            Err(DriverError::Timeout {
+                phase: TimeoutPhase::Statement,
+                server_cancelled: true,
+            })
+        );
+        assert_eq!(cancelled, Err(DriverError::Cancelled));
     }
 }

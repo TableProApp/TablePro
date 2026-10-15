@@ -328,6 +328,8 @@ impl GridCell {
     /// left inside only after the next frame; a window focus-in between
     /// the two crashes GTK 4.22 on the detached row. So the focus goes
     /// before the edit ends, and the grid takes it back after the frame.
+    /// Without an edit the focus is on the cell widget around this cell,
+    /// which a removed row takes out of the window just the same.
     fn leave_detached_row(&self) {
         let window = self.root().and_downcast::<gtk::Window>();
         let held = window

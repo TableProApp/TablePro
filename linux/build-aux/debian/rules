@@ -1,0 +1,23 @@
+#!/usr/bin/make -f
+
+# The crates come from the vendor tarball unpacked into vendor/.
+export CARGO_NET_OFFLINE = true
+# The release profile carries no debug info, which leaves the dbgsym
+# package empty; line tables are enough to symbolize a backtrace.
+export CARGO_PROFILE_RELEASE_DEBUG = line-tables-only
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+%:
+	dh $@ --buildsystem=meson
+
+# dh_clean deletes *.orig files, and every vendored crate ships a
+# Cargo.toml.orig that its .cargo-checksum.json lists.
+override_dh_clean:
+	dh_clean -Xvendor/
+
+override_dh_auto_configure:
+	dh_auto_configure -- -Dprofile=default -Dkerberos=true -Dcargo_config=vendor/cargo-config.toml
+
+# The gtk suite opens windows on a display and owns D-Bus names.
+override_dh_auto_test:
+	xvfb-run -a dbus-run-session -- dh_auto_test

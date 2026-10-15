@@ -1,0 +1,111 @@
+name: Release Linux
+
+# A linux-vX.Y.Z tag publishes the Linux release: the source and vendor
+# tarballs and the .deb for Ubuntu 26.04 on GitHub Releases, and the .rpm
+# for Fedora 44 through COPR. Flathub's own repository picks the new source
+# tarball up from the release.
+#
+# Secret COPR_CONFIG: the API token file copr-cli reads (~/.config/copr).
+# Variable LINUX_COPR_PROJECT: the COPR project, as owner/project.
+
+on:
+  push:
+    tags: ["linux-v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-linux-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Tag, version and release notes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    container:
+      image: ubuntu:26.04
+    steps:
+      - name: Install git and meson
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git meson python3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The tag, metainfo, spec and changelog name one version
+        working-directory: linux
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          version="$(meson introspect --projectinfo meson.build \
+            | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
+          tag_date="$(TZ=UTC git log -1 --date=format-local:%Y-%m-%d --format=%cd)"
+          python3 build-aux/packaging/check_packaging.py --source-root . \
+            --version "$version" --tag "$TAG" --tag-date "$tag_date"
+
+  packages:
+    name: Packages
+    needs: verify
+    uses: ./.github/workflows/linux-packages.yml
+    with:
+      deb-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
+
+  copr:
+    name: COPR build for Fedora 44
+    needs: packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    container:
+      image: fedora:44
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-rpm
+          path: rpm
+      - name: Build the source RPM in COPR
+        env:
+          COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+          COPR_PROJECT: ${{ vars.LINUX_COPR_PROJECT }}
+        run: |
+          if [ -z "$COPR_CONFIG" ] || [ -z "$COPR_PROJECT" ]; then
+            echo "::error::Set the COPR_CONFIG secret and the LINUX_COPR_PROJECT variable to publish the RPM"
+            exit 1
+          fi
+          dnf install -y --setopt=install_weak_deps=False copr-cli
+          mkdir -p "$HOME/.config"
+          printf '%s\n' "$COPR_CONFIG" > "$HOME/.config/copr"
+          copr-cli build "$COPR_PROJECT" "$(find rpm -name '*.src.rpm')" \
+            --chroot fedora-44-x86_64 --chroot fedora-44-aarch64
+
+  github-release:
+    name: GitHub release
+    needs: packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: linux-*
+          path: artifacts
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#linux-v}"
+          mkdir release
+          find artifacts -type f \( -name '*.tar.xz' -o -name 'tablepro_*.deb' -o -name 'tablepro-dbgsym_*.ddeb' \) \
+            -exec cp {} release/ \;
+          (cd release && sha256sum -- * > SHA256SUMS)
+          python3 linux/build-aux/packaging/check_packaging.py --source-root linux \
+            --version "$version" --tag "$TAG" --notes notes.md
+          gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "TablePro for Linux $version" --notes-file notes.md

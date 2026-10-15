@@ -125,10 +125,10 @@ fn show_refused(parent: &gtk::Widget, tabs: &[DirtyTab], refused: &[(Uuid, SaveR
 mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
-    use std::time::Duration;
 
     use tablepro_core::{DriverError, LossPhase, WriteReport};
     use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
+    use tokio_util::sync::CancellationToken;
 
     use super::*;
     use crate::test_support::wait_until;
@@ -272,11 +272,14 @@ mod tests {
         assert_eq!(workspace.tracker.pending_state(), PendingState::Unsaved);
     }
 
+    /// The save lands only once the dialog is up, so a slow machine
+    /// cannot settle it inside the quiet period the dialog waits out.
     #[gtk4::test]
     fn in_flight_save_waiting_dialog_force_closes_on_settle() {
+        let release = CancellationToken::new();
         let mut script = ConnectionScript::default();
-        script.write_batch.always(FakeReply::Bounded {
-            after: Duration::from_millis(500),
+        script.write_batch.always(FakeReply::UntilReleased {
+            release: release.clone(),
             outcome: Ok(WriteReport::new(vec![Some(1)])),
         });
         let workspace = Workspace::open(script);
@@ -288,6 +291,11 @@ mod tests {
             visible_alert(&window).is_some_and(|alert| alert.heading().as_deref() == Some("Saving Changes"))
         })
         .expect("the waiting dialog");
+        assert!(
+            decision.borrow().is_none(),
+            "the guard decided with the save still running"
+        );
+        release.cancel();
 
         assert_eq!(decided(&decision), CloseDecision::Approved);
         crate::test_support::drain_main_context();

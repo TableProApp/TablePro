@@ -216,10 +216,11 @@ jobs:
         run: build-aux/update-third-party-licenses.sh
       - name: The committed notices cover every shipped crate
         # A crate added to or bumped in Cargo.lock changes the regenerated
-        # files, and so does one whose license text changed.
+        # files, and so does one whose license text changed. The Debian
+        # copyright file and the RPM License tag follow data/licenses.
         run: |
-          if ! git diff --exit-code -- data/licenses; then
-            echo "::error::data/licenses does not match Cargo.lock: run linux/build-aux/update-third-party-licenses.sh and commit the result"
+          if ! git diff --exit-code -- data/licenses build-aux/debian/copyright build-aux/rpm/tablepro.spec; then
+            echo "::error::the license files do not match Cargo.lock: run linux/build-aux/update-third-party-licenses.sh and commit the result"
             exit 1
           fi
 
