@@ -649,12 +649,13 @@ impl Connection for PolicyGuard {
     }
 
     async fn begin(&self) -> Result<Box<dyn Transaction>, DriverError> {
-        let inner = self.caught_write("BEGIN", self.inner.begin()).await?;
-        Ok(Box::new(PolicyTransaction {
-            guard: self.clone(),
-            inner,
-            batch_id: Uuid::new_v4(),
-        }))
+        let inner = self.caught_write("BEGIN", self.inner.begin()).await;
+        self.wrap_begin(inner)
+    }
+
+    async fn begin_controlled(&self, control: &OperationControl) -> Result<Box<dyn Transaction>, DriverError> {
+        let inner = self.caught_write("BEGIN", self.inner.begin_controlled(control)).await;
+        self.wrap_begin(inner)
     }
 
     async fn server_version(&self) -> Result<Option<String>, DriverError> {
@@ -676,6 +677,20 @@ impl Connection for PolicyGuard {
 }
 
 impl PolicyGuard {
+    fn wrap_begin(
+        &self,
+        inner: Result<Box<dyn Transaction>, DriverError>,
+    ) -> Result<Box<dyn Transaction>, DriverError> {
+        if matches!(inner, Err(DriverError::OperationOutcomeUnknown { .. })) {
+            self.ctx.audit_state.disable_governed_writes();
+        }
+        Ok(Box::new(PolicyTransaction {
+            guard: self.clone(),
+            inner: inner?,
+            batch_id: Uuid::new_v4(),
+        }))
+    }
+
     async fn execute_write<'a, F, Fut>(
         &'a self,
         sql: &'a str,

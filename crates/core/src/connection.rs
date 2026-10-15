@@ -343,6 +343,9 @@ pub trait Connection: Send + Sync {
             "begin is not implemented for this driver".into(),
         ))
     }
+    async fn begin_controlled(&self, control: &OperationControl) -> Result<Box<dyn Transaction>, DriverError> {
+        run_controlled(self.begin(), control).await
+    }
     /// Best-effort server version string (e.g. `PostgreSQL 16.3`). Default
     /// returns `None` when the driver has not implemented detection.
     async fn server_version(&self) -> Result<Option<String>, DriverError> {
@@ -427,6 +430,10 @@ mod controlled_default_tests {
         }
 
         async fn execute_in_transaction(&self, _statements: &[(String, Vec<Value>)]) -> Result<Vec<u64>, DriverError> {
+            self.stall().await
+        }
+
+        async fn begin(&self) -> Result<Box<dyn Transaction>, DriverError> {
             self.stall().await
         }
 
@@ -575,6 +582,47 @@ mod controlled_default_tests {
     async fn a_driver_declares_no_server_cancellation_by_default() {
         let connection = SlowConnection::default();
         assert!(!connection.supports_server_cancellation());
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_control_stops_begin_before_dispatch() {
+        let dispatched = Arc::new(AtomicUsize::new(0));
+        let connection = SlowConnection {
+            dispatched: dispatched.clone(),
+        };
+
+        let error = connection
+            .begin_controlled(&cancelled_control())
+            .await
+            .err()
+            .expect("cancelled before dispatch");
+
+        assert!(matches!(error, DriverError::Cancelled), "{error:?}");
+        assert_eq!(dispatched.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_begin_interrupted_after_dispatch_reports_an_unknown_outcome() {
+        let dispatched = Arc::new(AtomicUsize::new(0));
+        let connection = SlowConnection {
+            dispatched: dispatched.clone(),
+        };
+        let control = OperationControl::new(
+            CancellationToken::new(),
+            Some(tokio::time::Instant::now() + Duration::from_millis(50)),
+        );
+
+        let error = connection
+            .begin_controlled(&control)
+            .await
+            .err()
+            .expect("the deadline interrupts the stalled begin");
+
+        assert!(
+            matches!(&error, DriverError::OperationOutcomeUnknown { source } if matches!(**source, DriverError::TimedOut)),
+            "{error:?}"
+        );
+        assert_eq!(dispatched.load(Ordering::SeqCst), 1);
     }
 }
 

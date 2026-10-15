@@ -440,6 +440,61 @@ async fn controlled_unknown_outcome_records_unknown_and_poisons_state() {
 }
 
 #[tokio::test]
+async fn an_interrupted_begin_with_an_unknown_outcome_poisons_governed_writes() {
+    let state = Arc::new(AuditState::new());
+    let guard = PolicyGuard::new(
+        Arc::new(ControlledWriteConn { outcome_unknown: true }),
+        context(
+            Principal::human_gui(),
+            Environment::Prod,
+            PolicyConfig::default(),
+            Arc::new(AutoApproveSink),
+            Arc::new(SequenceAuditSink::new(vec![])),
+            state.clone(),
+        ),
+    );
+    let control = OperationControl::new(Default::default(), None);
+
+    let error = guard
+        .begin_controlled(&control)
+        .await
+        .err()
+        .expect("unknown outcome must surface");
+
+    assert!(
+        matches!(error, DriverError::OperationOutcomeUnknown { .. }),
+        "{error:?}"
+    );
+    assert!(state.governed_writes_disabled());
+}
+
+#[tokio::test]
+async fn a_begin_that_fails_with_a_known_outcome_leaves_governed_writes_enabled() {
+    let state = Arc::new(AuditState::new());
+    let guard = PolicyGuard::new(
+        Arc::new(ControlledWriteConn { outcome_unknown: false }),
+        context(
+            Principal::human_gui(),
+            Environment::Prod,
+            PolicyConfig::default(),
+            Arc::new(AutoApproveSink),
+            Arc::new(SequenceAuditSink::new(vec![])),
+            state.clone(),
+        ),
+    );
+    let control = OperationControl::new(Default::default(), None);
+
+    let error = guard
+        .begin_controlled(&control)
+        .await
+        .err()
+        .expect("the failure surfaces");
+
+    assert!(matches!(error, DriverError::TimedOut), "{error:?}");
+    assert!(!state.governed_writes_disabled());
+}
+
+#[tokio::test]
 async fn an_unknown_write_blocks_only_its_connection_and_generation() {
     let journal = Arc::new(AuditState::new());
     let state_a = Arc::new(journal.new_connection_generation());

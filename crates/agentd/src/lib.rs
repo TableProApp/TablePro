@@ -253,6 +253,10 @@ impl Connection for SessionConnection {
         self.inner.begin().await
     }
 
+    async fn begin_controlled(&self, control: &OperationControl) -> Result<Box<dyn Transaction>, DriverError> {
+        self.inner.begin_controlled(control).await
+    }
+
     async fn server_version(&self) -> Result<Option<String>, DriverError> {
         self.inner.server_version().await
     }

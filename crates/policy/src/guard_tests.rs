@@ -356,6 +356,15 @@ impl Connection for ControlledWriteConn {
         Err(DriverError::Unsupported("transaction".into()))
     }
 
+    async fn begin_controlled(&self, _: &OperationControl) -> Result<Box<dyn Transaction>, DriverError> {
+        if self.outcome_unknown {
+            return Err(DriverError::OperationOutcomeUnknown {
+                source: Box::new(DriverError::TimedOut),
+            });
+        }
+        Err(DriverError::TimedOut)
+    }
+
     async fn ping(&self) -> Result<(), DriverError> {
         Ok(())
     }
