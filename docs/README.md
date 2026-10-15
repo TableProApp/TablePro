@@ -77,3 +77,8 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 ## Keep context bounded
 
 Record a rule once in an ADR and a task once on Project #3. Do not copy old test counts into a current claim. Keep ignored `target/quality` paths as plain text, and when output is unavailable, say so instead of leaving a dead link.
+
+## PostgreSQL client research (2026-10-15)
+
+- [dbx architecture, boundaries and reuse review](archive/2026-10-15-dbx-review.md).
+- [PostgreSQL client review](archive/2026-10-15-postgresql-client-research/review.md), with [46 regression candidates](archive/2026-10-15-postgresql-client-research/cases.csv), [machine-readable cases](archive/2026-10-15-postgresql-client-research/cases.json) and [source pins and probe evidence](archive/2026-10-15-postgresql-client-research/manifest.json). These dated observations do not override current ADRs or sprint priorities.

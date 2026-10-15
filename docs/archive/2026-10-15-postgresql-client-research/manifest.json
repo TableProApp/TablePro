@@ -1,0 +1,23 @@
+{
+  "date": "2026-10-15",
+  "pins": {
+    "BookiE": "f08746024561e90ade4f7d3e34de3aefb34aa7a2",
+    "dbx": "12139b55df9b4bf0ae89d4fab459bf1871e8a783",
+    "DBeaver": "e97f23bcbd68db782b5300591dc4b61366f30c92",
+    "pgAdmin": "607c9eccbffdd1c17f437cb236f7c63d176df4c5",
+    "pgcli": "baf0f01db64e5ed20337eb9c4dee050dabd5705c"
+  },
+  "scope": "Focused source/fix/issue research, no live database or desktop validation",
+  "case_count": 46,
+  "reviewed_issue_feeds": {
+    "DBeaver": 60,
+    "dbx": 60,
+    "pgAdmin": 60
+  },
+  "probe": "identifier-probe.rs",
+  "probe_output": [
+    "users=\"public.users\"; quoted Users=\"public.users\"",
+    "quoted dot=(Some(\"odd.schema.a\"), \"b\")",
+    "embedded quote=(Some(\"public\"), \"ab\")"
+  ]
+}
