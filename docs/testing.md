@@ -176,6 +176,21 @@ Ubuntu CI uses `dbus-daemon`, `gnome-keyring`, `xvfb`, `xauth`, `at-spi2-core`, 
 
 The nightly workflow runs in stages (unit-tier coverage, then the Docker-tier coverage and mutation jobs, then the soak and package jobs), two shards at a time, so a red stage is a finding and not a lost runner. Each driver crate is measured with its Docker suite against `baselines/coverage-floors-crates.txt` (`scripts/check-crate-coverage-floors.py`). Mutation results are compared with `baselines/mutants/<package>.txt` by `scripts/check-mutants-baseline.py`: a missed mutant that is not in the baseline fails the run, and baseline lines that a test now catches are listed for deletion. A missing baseline file means no missed mutant is accepted. The soak is three runs of five attempts each per night.
 
+### Reading a red nightly
+
+Sort each red job before touching code. The class decides what the fix and its regression test are.
+
+| Class | How to recognise it | What to do |
+| --- | --- | --- |
+| Setup failure | The job fails before any test runs: a missing script or path, a wrong binary name, a package missing from an image, a port already in use | Fix the workflow or script, and add a contract test in `scripts/tests/test_ci_workflow.py` or next to the helper. A setup failure hides every later check in that job. |
+| Missed mutant | The log lists `NEW missed mutant` | Write a test that asserts the behaviour the mutant changes. Baseline only a mutant that no test can observe, with the reason in the file header. |
+| Scenario failure | The soak or an installed GTK shard names a scenario and an assertion | Read the assertion first. The runner stops at the first failing scenario ([#859](https://github.com/cozyGarage/BookiE/issues/859)), so fix one and expect the next to appear. |
+| Known gap | `gtk-ubuntu` is allowed to fail ([TEST-28](backlog.md)) | Do not chase it from the nightly. |
+
+Every nightly finding that is a product or test gap gets a regression test in the lowest tier that can show it, and an issue when the fix is not immediate. Check a mutation change locally with `cargo mutants -p <crate> --file <file>` and then `python3 scripts/check-mutants-baseline.py <package> <output dir> 3`, which uses the nightly's own judgement. Run a few times: a mutant caught by a timing accident shows up as an occasional miss.
+
+A manual dispatch runs the whole nightly, and the soak and package jobs wait for the mutation jobs. A fix to a nightly-only job is therefore proven by the next night. The contract tests cover its static part.
+
 Forgejo workflows on the host executors use no JavaScript actions, because those executors have no Node; `scripts/tests/test_ci_workflow.py` fails on any `uses:` line. The distro-floor jobs share one Ubuntu 24.04 package per commit: `scripts/distro-floor-package.sh <sha>` builds it once per host under a lock, caches it for a day and hands the root-owned build output back to the runner user. The runtime image carries the GTK 4 Python bindings because the paste scenario starts a clipboard helper with them. When a floor job fails, its output lists the failing scenario and assertion, not the end of the log.
 
 SQLite integration regressions also distinguish NULL from zero, false, empty text, and empty blobs in declared columns, and preserve binary values despite declared-type affinity mismatches. Export unit tests overlap writers deterministically and check that pre-existing temporary symlinks cannot redirect writes. Workspace tests preserve active-tab identity when unknown records are removed.
