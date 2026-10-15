@@ -873,6 +873,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "\"%@\" is not a row limit. Use a whole number above 0." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "\"%@\" is not a URL. Enter an endpoint such as http://localhost:8000." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -15597,10 +15601,6 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "A new row needs a _key. Bigtable has no generated keys." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "A new row needs at least one cell. Bigtable does not store empty rows." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -15877,11 +15877,11 @@
         }
       }
     },
-    "A quoted row key is missing its closing quote." : {
+    "A quoted value is missing its closing quote." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "A quoted row key is not a valid JSON string." : {
+    "A quoted value is not a valid JSON string." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -15952,6 +15952,10 @@
           }
         }
       }
+    },
+    "A row key cannot change. Duplicate the row, give the copy a new _key, then delete this one." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "A row needs a key. Bigtable has no empty row key." : {
       "extractionState" : "manual",
@@ -16823,6 +16827,10 @@
           }
         }
       }
+    },
+    "A write needs at least one cell. Bigtable does not store empty rows." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "about %@ row" : {
       "localizations" : {
@@ -30479,10 +30487,6 @@
         }
       }
     },
-    "Bigtable answered with something other than HTTP." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Bigtable cannot filter with %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -30492,6 +30496,10 @@
       "generatesSymbol" : false
     },
     "Bigtable ended the response in the middle of a row." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Bigtable has no default values. Delete the cell, or enter a value." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -69932,6 +69940,10 @@
         }
       }
     },
+    "Enter a _key for the new row. Bigtable has no generated keys." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Enter a collection name." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -81280,10 +81292,6 @@
         }
       }
     },
-    "Firebase answered with something other than HTTP." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Firebase has no views." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -92246,6 +92254,14 @@
           }
         }
       }
+    },
+    "INSERT needs a JSON object of cells, such as INSERT events/user#42 {\"profile:name\": \"Ann\"}." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "INSERT only sets cells. Leave %@ out, or delete it with PUT." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Insert Row" : {
       "localizations" : {
@@ -136170,10 +136186,6 @@
         }
       }
     },
-    "PUT needs a JSON object of cells, such as {\"profile:name\": \"Ann\"}." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "PUT needs a JSON object of cells, such as PUT events/user#42 {\"profile:name\": \"Ann\"}." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -148889,6 +148901,10 @@
         }
       }
     },
+    "Row %@ already exists. Edit that row, or give the new one another key." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Row %@ is not an object." : {
       "localizations" : {
         "fr" : {
@@ -153586,6 +153602,10 @@
           }
         }
       }
+    },
+    "SCAN takes only ?limit=, as in SCAN events/user#?limit=20." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Scan with filters" : {
       "extractionState" : "manual",
@@ -186202,6 +186222,10 @@
         }
       }
     },
+    "The server answered with something other than HTTP." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The server chose this row's key." : {
       "localizations" : {
         "fr" : {
@@ -210144,6 +210168,10 @@
           }
         }
       }
+    },
+    "Write the cells as a JSON object, such as {\"profile:name\": \"Ann\"}." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Writes %lld files, one for each database." : {
       "localizations" : {

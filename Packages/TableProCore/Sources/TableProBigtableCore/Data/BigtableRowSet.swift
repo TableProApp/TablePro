@@ -1,9 +1,10 @@
 import Foundation
 
 /// Rows laid out for the grid: `_key` first, then one column per `family:qualifier` any row on the
-/// page holds, in family then qualifier order. A cell a row does not have is reported absent.
+/// page holds, in family then qualifier order.
 public struct BigtableRowSet: Sendable, Equatable {
     public static let keyColumn = "_key"
+    public static let extraColumn = "__extra__"
 
     public enum Cell: Sendable, Equatable {
         case absent
@@ -39,12 +40,39 @@ public struct BigtableRowSet: Sendable, Equatable {
         self.absentCells = absent
     }
 
-    /// A value that is not text goes to the grid as bytes, so it shows as hex and an edit of
-    /// another cell in the row cannot rewrite it as a string.
+    /// A value that is not text, or text a write would read back as base64, goes to the grid as
+    /// bytes, so writing it back reproduces the same bytes.
     static func cell(_ value: Data) -> Cell {
-        if let text = String(data: value, encoding: .utf8), BigtableBytes.isPrintable(text) {
-            return .text(text)
+        BigtableBytes.printableText(value).map(Cell.text) ?? .bytes(value)
+    }
+
+    /// The page under `header`, the columns an export fixed from its first page, with `__extra__`
+    /// last. Cells of any column the header lacks go into `__extra__` as one JSON object.
+    public func rows(alignedTo header: [String]) -> [[Cell]] {
+        rows.map { row in
+            var byName: [String: Cell] = [:]
+            for (column, cell) in zip(columns, row) where cell != .absent {
+                byName[column] = cell
+            }
+            var aligned = header.filter { $0 != Self.extraColumn }.map { byName.removeValue(forKey: $0) ?? .absent }
+            aligned.append(Self.extraCell(byName))
+            return aligned
         }
-        return .bytes(value)
+    }
+
+    private static func extraCell(_ cells: [String: Cell]) -> Cell {
+        let extra = cells.compactMapValues { cell -> String? in
+            switch cell {
+            case .absent: return nil
+            case .text(let text): return text
+            case .bytes(let data): return BigtableBytes.base64Prefix + data.base64EncodedString()
+            }
+        }
+        guard !extra.isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: extra, options: [.sortedKeys, .withoutEscapingSlashes]),
+              let text = String(data: data, encoding: .utf8) else {
+            return .absent
+        }
+        return .text(text)
     }
 }

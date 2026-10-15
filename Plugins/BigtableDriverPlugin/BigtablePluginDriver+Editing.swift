@@ -3,8 +3,8 @@ import TableProBigtableCore
 import TableProPluginKit
 
 extension BigtablePluginDriver {
-    /// Each change becomes one request line, the text the editor takes, so the history shows what
-    /// was sent. All cells of a row change in one atomic `mutateRow`.
+    private static let defaultMarker = "__DEFAULT__"
+
     func generateRowWrites(
         table: String,
         schema: String?,
@@ -18,23 +18,24 @@ extension BigtablePluginDriver {
         try changes.compactMap { change in
             do {
                 return try request(for: change, table: table, columns: columns, insertedRowData: insertedRowData)
-                    .map { PluginRowWrite(statement: $0.text(defaultTable: table), rowIndices: [change.rowIndex]) }
+                    .map { PluginRowWrite(statement: $0.text, rowIndices: [change.rowIndex]) }
             } catch {
                 throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: error.localizedDescription)
             }
         }
     }
 
+    /// Restoring a deleted row writes it back under its own key, refused if that key is taken again.
     func generateIdentityPreservingInsert(
         table: String,
         schema: String?,
         columns: [String],
         primaryKeyColumns: [String],
-        rows: [[PluginCellValue]]
+        rows: [[PluginCellValue]],
+        absentCells: [Int: Set<Int>]
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
-        let statements = rows.enumerated().compactMap { index, row -> String? in
-            let change = PluginRowChange(rowIndex: index, type: .insert, cellChanges: [], originalRow: nil)
-            return (try? request(for: change, table: table, columns: columns, insertedRowData: [index: row]))??.text(defaultTable: table)
+        let statements = rows.enumerated().compactMap { index, row in
+            try? BigtableRowWrites.insert(table: table, columns: columns, values: cells(row, absent: absentCells[index] ?? [])).text
         }
         return statements.count == rows.count ? statements.map { ($0, []) } : nil
     }
@@ -45,72 +46,47 @@ extension BigtablePluginDriver {
         columns: [String],
         insertedRowData: [Int: [PluginCellValue]]
     ) throws -> BigtableRequest? {
-        let keyColumn = BigtableRowSet.keyColumn
+        let absent = change.absentColumns ?? []
         switch change.type {
         case .insert:
-            let row = insertedRowData[change.rowIndex] ?? []
-            let absent = change.absentColumns ?? []
-            var cells: [String: Any] = [:]
-            var key: Data?
-            for (index, column) in columns.enumerated() where index < row.count && !absent.contains(index) {
-                if column == keyColumn {
-                    key = try keyBytes(row[index])
-                    continue
-                }
-                guard let value = Self.text(row[index]) else { continue }
-                cells[column] = value
-            }
-            guard let key, !key.isEmpty else {
-                throw BigtableError.configuration(String(localized: "A new row needs a _key. Bigtable has no generated keys."))
-            }
-            guard !cells.isEmpty else {
-                throw BigtableError.configuration(String(localized: "A new row needs at least one cell. Bigtable does not store empty rows."))
-            }
-            return BigtableRequest(verb: .put, key: key, body: try Self.body(cells))
+            return try BigtableRowWrites.insert(
+                table: table, columns: columns, values: cells(insertedRowData[change.rowIndex] ?? [], absent: absent)
+            )
         case .update:
-            let key = try originalKey(change, columns: columns)
-            let absent = change.absentColumns ?? []
-            var cells: [String: Any] = [:]
-            for cell in change.cellChanges where cell.columnName != keyColumn {
-                cells[cell.columnName] = absent.contains(cell.columnIndex) ? NSNull() : (Self.text(cell.newValue) ?? NSNull())
+            let changes = try change.cellChanges.map { cell in
+                guard cell.newValue.asText != Self.defaultMarker else {
+                    throw BigtableError.unsupported(String(localized: "Bigtable has no default values. Delete the cell, or enter a value."))
+                }
+                return (column: cell.columnName, value: absent.contains(cell.columnIndex) ? BigtableRowSet.Cell.absent : Self.cell(cell.newValue))
             }
-            for index in absent where index < columns.count && columns[index] != keyColumn && cells[columns[index]] == nil {
-                cells[columns[index]] = NSNull()
-            }
-            guard !cells.isEmpty else { return nil }
-            return BigtableRequest(verb: .put, key: key, body: try Self.body(cells))
+            return try BigtableRowWrites.update(table: table, key: try originalKey(change, columns: columns), changes: changes)
         case .delete:
-            return BigtableRequest(verb: .delete, key: try originalKey(change, columns: columns))
+            return BigtableRowWrites.delete(table: table, key: try originalKey(change, columns: columns))
         }
     }
 
     private func originalKey(_ change: PluginRowChange, columns: [String]) throws -> Data {
         guard let index = columns.firstIndex(of: BigtableRowSet.keyColumn),
-              let row = change.originalRow, index < row.count, let key = try keyBytes(row[index]), !key.isEmpty else {
+              let row = change.originalRow, index < row.count,
+              let key = try BigtableRowWrites.key(Self.cell(row[index])) else {
             throw BigtableError.configuration(String(localized: "The row has no _key, so the row it came from is unknown. Reload the table."))
         }
         return key
     }
 
-    private func keyBytes(_ cell: PluginCellValue) throws -> Data? {
-        switch cell {
-        case .null: return nil
-        case .bytes(let data): return data
-        case .text(let text): return text.isEmpty ? nil : try BigtableBytes.parse(text)
+    /// A new row holds the host's Default marker where it has no value yet. Bigtable generates
+    /// nothing, so that cell is left out, and a `_key` left that way is refused.
+    private func cells(_ row: [PluginCellValue], absent: Set<Int>) -> [BigtableRowSet.Cell] {
+        row.enumerated().map { index, value in
+            absent.contains(index) || value.asText == Self.defaultMarker ? .absent : Self.cell(value)
         }
     }
 
-    /// Bytes go back as `b64:` text so a binary value survives the JSON body unchanged.
-    private static func text(_ cell: PluginCellValue) -> String? {
-        switch cell {
-        case .null: return nil
-        case .text(let text): return text
-        case .bytes(let data): return BigtableBytes.base64Prefix + data.base64EncodedString()
+    private static func cell(_ value: PluginCellValue) -> BigtableRowSet.Cell {
+        switch value {
+        case .null: return .absent
+        case .text(let text): return .text(text)
+        case .bytes(let data): return .bytes(data)
         }
-    }
-
-    private static func body(_ cells: [String: Any]) throws -> String {
-        let data = try JSONSerialization.data(withJSONObject: cells, options: [.sortedKeys, .withoutEscapingSlashes])
-        return String(bytes: data, encoding: .utf8) ?? "{}"
     }
 }

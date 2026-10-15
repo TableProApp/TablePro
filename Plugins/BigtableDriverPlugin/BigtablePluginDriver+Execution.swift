@@ -5,50 +5,65 @@ import TableProPluginKit
 extension BigtablePluginDriver {
     static let scanPageSize = 100
     static let exportPageSize = 500
-    /// Rows skipped per keys-only read when a page has no cursor yet.
     static let skipBatchSize = 5_000
-    /// Export fixes its columns from the first page; a column only later rows have goes here as
-    /// JSON rather than being dropped.
-    static let extraColumn = "__extra__"
 
     func execute(query: String) async throws -> PluginQueryResult {
+        try await run(query, rowCap: PluginRowLimits.emergencyMax)
+    }
+
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        try await run(query, rowCap: rowCap ?? PluginRowLimits.emergencyMax)
+    }
+
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        try await run(query, rowCap: rowCap)
+    }
+
+    /// Every read asks the server for one row past `rowCap`, which is how a truncated result is
+    /// told apart from one that ended there, without buffering the rest of the table.
+    private func run(_ query: String, rowCap: Int) async throws -> PluginQueryResult {
         let started = Date()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.lowercased() == "select 1" {
             try await ping()
             return PluginQueryResult(columns: ["ok"], columnTypeNames: ["integer"], rows: [[.text("1")]],
-                                     rowsAffected: 0, executionTime: elapsed(since: started))
+                                     rowsAffected: 0, timing: PluginQueryTiming(total: Date().timeIntervalSince(started)))
         }
+        let cap = min(max(rowCap, 1), PluginRowLimits.emergencyMax)
+        let rows: [BigtableRow]
         switch try BigtableStatement.parse(trimmed) {
         case .browse(let spec):
-            return try await browse(spec, started: started)
+            rows = try await browse(spec, rowCap: cap)
         case .request(let request):
-            return try await execute(request, started: started)
+            if let written = try await write(request, started: started) {
+                return written
+            }
+            rows = try await read(request, rowCap: cap)
         }
+        return result(BigtableRowSet(rows: Array(rows.prefix(cap))), isTruncated: rows.count > cap, started: started)
     }
 
     // MARK: - Browse
 
-    func browse(_ spec: BigtableBrowseSpec, started: Date = Date()) async throws -> PluginQueryResult {
+    func browse(_ spec: BigtableBrowseSpec, rowCap: Int) async throws -> [BigtableRow] {
         let client = try requireClient()
         let after = try await startKey(for: spec, client: client)
         if spec.offset > 0, after == nil {
-            return result(BigtableRowSet(rows: []), started: started)
+            return []
         }
-        let body = try BigtableReadRequest.body(spec: spec, limit: spec.limit, after: after?.key)
-        let rows = try await client.readRows(table: spec.table, body: body)
+        let limit = spec.limit > 0 ? min(spec.limit, rowCap + 1) : rowCap + 1
+        let rows = try await client.readRows(table: spec.table, body: try BigtableReadRequest.body(spec: spec, limit: limit, after: after))
         if let last = rows.last?.key, spec.limit > 0, rows.count == spec.limit {
             rememberCursor(view: spec.viewKey, offset: spec.offset + rows.count, key: last)
         }
-        return result(BigtableRowSet(rows: rows), started: started)
+        return rows
     }
 
-    /// The key a page starts after. Page 1 needs none; a later page starts from the nearest cursor an
-    /// earlier page left and skips the rest by reading keys alone, which costs no values.
-    private func startKey(for spec: BigtableBrowseSpec, client: BigtableClient) async throws -> (key: Data, offset: Int)? {
+    /// Page 1 needs no start key; a later page starts from the nearest cursor an earlier page left
+    /// and skips the rest by reading keys alone.
+    private func startKey(for spec: BigtableBrowseSpec, client: BigtableClient) async throws -> Data? {
         guard spec.offset > 0 else { return nil }
         var position = cursor(view: spec.viewKey, offset: spec.offset)
-        if position?.offset == spec.offset { return position.map { ($0.key, $0.offset) } }
         while (position?.offset ?? 0) < spec.offset {
             try Task.checkCancellation()
             let start = position?.offset ?? 0
@@ -61,16 +76,17 @@ extension BigtablePluginDriver {
             if keys.count < step { break }
         }
         guard let position, position.offset == spec.offset else { return nil }
-        return (position.key, position.offset)
+        return position.key
     }
 
-    func result(_ rows: BigtableRowSet, started: Date) -> PluginQueryResult {
+    func result(_ rows: BigtableRowSet, isTruncated: Bool = false, started: Date) -> PluginQueryResult {
         var result = PluginQueryResult(
             columns: rows.columns,
             columnTypeNames: rows.columns.map { _ in "bytes" },
             rows: rows.rows.map { $0.map(Self.cell) },
             rowsAffected: 0,
-            executionTime: elapsed(since: started)
+            timing: PluginQueryTiming(total: Date().timeIntervalSince(started)),
+            isTruncated: isTruncated
         )
         result.rowLocators = rows.locators
         result.absentCells = rows.absentCells
@@ -87,73 +103,46 @@ extension BigtablePluginDriver {
 
     // MARK: - Request lines
 
-    private func execute(_ request: BigtableRequest, started: Date) async throws -> PluginQueryResult {
+    private func read(_ request: BigtableRequest, rowCap: Int) async throws -> [BigtableRow] {
         let client = try requireClient()
-        guard let table = request.table else {
-            throw BigtableError.configuration(String(localized: "Name the table before the key, as in GET events/user#42."))
-        }
         switch request.verb {
         case .get:
-            let rows = try await client.readRows(table: table, body: [
-                "rows": ["rowKeys": [request.key?.base64EncodedString() ?? ""]],
-                "filter": ["cellsPerColumnLimitFilter": 1]
-            ])
-            return result(BigtableRowSet(rows: rows), started: started)
+            return try await client.readRows(table: request.table, body: BigtableReadRequest.get(request.key ?? Data()))
         case .scan:
-            var filters: [BigtableFilterSpec] = []
-            if let key = request.key {
-                filters.append(BigtableFilterSpec(column: Self.keyColumn, op: "STARTS WITH", value: BigtableBytes.display(key)))
-            }
-            let spec = BigtableBrowseSpec(table: table, filters: filters, limit: request.limit ?? Self.scanPageSize, offset: 0)
-            let rows = try await client.readRows(table: table, body: try BigtableReadRequest.body(spec: spec, limit: spec.limit, after: nil))
-            return result(BigtableRowSet(rows: rows), started: started)
+            let filters = request.key.map {
+                [BigtableFilterSpec(column: BigtableRowSet.keyColumn, op: "STARTS WITH", value: BigtableBytes.display($0))]
+            } ?? []
+            let spec = BigtableBrowseSpec(table: request.table, filters: filters, limit: request.limit ?? Self.scanPageSize, offset: 0)
+            return try await browse(spec, rowCap: rowCap)
         case .read:
             guard let data = request.body?.data(using: .utf8),
-                  let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  var body = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 throw BigtableError.configuration(String(localized: "READ needs a ReadRows JSON body, such as READ events {\"rowsLimit\": \"10\"}."))
             }
-            return result(BigtableRowSet(rows: try await client.readRows(table: table, body: body)), started: started)
-        case .put:
-            let mutations = try Self.mutations(fromBody: request.body ?? "{}")
-            try await client.mutateRow(table: table, key: request.key ?? Data(), mutations: mutations)
-            forgetCursors(table: table)
-            return writeResult(table: table, key: request.key, started: started)
-        case .delete:
-            let mutation: BigtableMutation = try request.column.map { .deleteColumn(try BigtableColumn(name: $0)) } ?? .deleteRow
-            try await client.mutateRow(table: table, key: request.key ?? Data(), mutations: [mutation])
-            forgetCursors(table: table)
-            return writeResult(table: table, key: request.key, started: started)
+            let asked = (body["rowsLimit"] as? String).flatMap(Int.init) ?? (body["rowsLimit"] as? NSNumber)?.intValue ?? 0
+            body["rowsLimit"] = String(asked > 0 ? min(asked, rowCap + 1) : rowCap + 1)
+            return try await client.readRows(table: request.table, body: body)
+        case .insert, .put, .delete:
+            return []
         }
     }
 
-    /// A `PUT` body maps `family:qualifier` to the new value as text, `b64:` text for bytes, or
-    /// null to delete that cell. All of it lands in one atomic row mutation.
-    static func mutations(fromBody body: String) throws -> [BigtableMutation] {
-        guard let data = body.data(using: .utf8), let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw BigtableError.configuration(String(localized: "PUT needs a JSON object of cells, such as {\"profile:name\": \"Ann\"}."))
+    private func write(_ request: BigtableRequest, started: Date) async throws -> PluginQueryResult? {
+        let client = try requireClient()
+        let key = request.key ?? Data()
+        switch request.verb {
+        case .get, .scan, .read:
+            return nil
+        case .insert:
+            try await client.insertRow(table: request.table, key: key, mutations: try request.mutations())
+        case .put, .delete:
+            try await client.mutateRow(table: request.table, key: key, mutations: try request.mutations())
         }
-        return try object.keys.sorted().map { name in
-            let column = try BigtableColumn(name: name)
-            switch object[name] {
-            case is NSNull:
-                return .deleteColumn(column)
-            case let text as String:
-                return .setCell(column, try BigtableBytes.parse(text))
-            case let number as NSNumber:
-                return .setCell(column, Data(number.stringValue.utf8))
-            default:
-                throw BigtableError.configuration(String(
-                    format: String(localized: "The value of %@ must be text or null. Bigtable stores bytes, so a number is written as its digits."), name
-                ))
-            }
-        }
-    }
-
-    private func writeResult(table: String, key: Data?, started: Date) -> PluginQueryResult {
-        PluginQueryResult(
+        forgetCursors(table: request.table)
+        return PluginQueryResult(
             columns: ["row"], columnTypeNames: ["bytes"],
-            rows: [[.text(table + "/" + (key.map(BigtableBytes.display) ?? ""))]],
-            rowsAffected: 1, executionTime: elapsed(since: started)
+            rows: [[.text(request.table + "/" + BigtableBytes.display(key))]],
+            rowsAffected: 1, timing: PluginQueryTiming(total: Date().timeIntervalSince(started))
         )
     }
 
@@ -167,8 +156,9 @@ extension BigtablePluginDriver {
                         try await self.export(spec, continuation: continuation)
                     } else {
                         let result = try await self.execute(query: query)
-                        continuation.yield(.header(PluginStreamHeader(columns: result.columns, columnTypeNames: result.columnTypeNames,
-                                                                      estimatedRowCount: nil)))
+                        continuation.yield(.header(PluginStreamHeader(
+                            columns: result.columns, columnTypeNames: result.columnTypeNames, estimatedRowCount: nil
+                        )))
                         if !result.rows.isEmpty { continuation.yield(.rows(result.rows)) }
                     }
                     continuation.finish()
@@ -180,6 +170,7 @@ extension BigtablePluginDriver {
         }
     }
 
+    /// The columns come from the first page; a column only later rows hold goes into `__extra__`.
     private func export(_ spec: BigtableBrowseSpec, continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation) async throws {
         let client = try requireClient()
         var header: [String]?
@@ -189,32 +180,17 @@ extension BigtablePluginDriver {
             let body = try BigtableReadRequest.body(spec: spec, limit: Self.exportPageSize, after: after)
             let rows = try await client.readRows(table: spec.table, body: body)
             let page = BigtableRowSet(rows: rows)
+            let columns = header ?? page.columns + [BigtableRowSet.extraColumn]
             if header == nil {
-                header = page.columns + [Self.extraColumn]
+                header = columns
                 continuation.yield(.header(PluginStreamHeader(
-                    columns: header ?? [], columnTypeNames: (header ?? []).map { _ in "bytes" }, estimatedRowCount: nil
+                    columns: columns, columnTypeNames: columns.map { _ in "bytes" }, estimatedRowCount: nil
                 )))
             }
-            let fixed = header ?? []
-            continuation.yield(.rows(page.rows.map { Self.align($0.map(Self.cell), columns: page.columns, to: fixed) }))
+            if !rows.isEmpty {
+                continuation.yield(.rows(page.rows(alignedTo: columns).map { $0.map(Self.cell) }))
+            }
             after = rows.count == Self.exportPageSize ? rows.last?.key : nil
         } while after != nil
-    }
-
-    /// Places a page's cells under the export's columns and gathers the rest into `__extra__`.
-    static func align(_ row: [PluginCellValue], columns: [String], to header: [String]) -> [PluginCellValue] {
-        var byName: [String: PluginCellValue] = [:]
-        for (column, value) in zip(columns, row) { byName[column] = value }
-        var aligned = header.dropLast().map { byName.removeValue(forKey: $0) ?? .null }
-        let extra = byName.filter { !$0.value.isNull }.mapValues { value -> String in
-            value.asText ?? (value.asBytes.map { BigtableBytes.base64Prefix + $0.base64EncodedString() } ?? "")
-        }
-        if extra.isEmpty {
-            aligned.append(.null)
-        } else {
-            let data = (try? JSONSerialization.data(withJSONObject: extra, options: [.sortedKeys])) ?? Data()
-            aligned.append(String(bytes: data, encoding: .utf8).map(PluginCellValue.text) ?? .null)
-        }
-        return aligned
     }
 }

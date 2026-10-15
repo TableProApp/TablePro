@@ -684,4 +684,18 @@ struct DataChangeManagerImmutableColumnTests {
 
         #expect(!manager.isColumnWritable("total"))
     }
+
+    @Test("Bigtable's _key is writable, since a new row has no other way to get a key")
+    func bigtableRowKeyWritable() {
+        let manager = DataChangeManager()
+        manager.configureForTable(
+            tableName: "events",
+            columns: ["_key", "cf:name"],
+            primaryKeyColumns: ["_key"],
+            databaseType: .bigtable,
+            generatedColumns: []
+        )
+
+        #expect(manager.isColumnWritable("_key"))
+    }
 }

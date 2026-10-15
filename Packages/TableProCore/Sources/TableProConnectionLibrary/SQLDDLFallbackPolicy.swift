@@ -45,6 +45,7 @@ public enum SQLDDLFallbackPolicy {
         "Beancount",
         "Firestore",
         "Firebase Realtime Database",
+        "Bigtable",
     ]
 
     /// True when `DROP`/`TRUNCATE` built by the app is something this engine could run.

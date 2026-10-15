@@ -1094,23 +1094,23 @@ private extension QueryClassifier {
         }
     }
 
-    /// A grid page is a tagged spec and anything else a request line led by its verb. A PUT that sets
-    /// a cell to null deletes that cell, so it ranks with DELETE.
+    /// A PUT that sets a cell to null deletes that cell, so it ranks with DELETE. INSERT refuses a
+    /// key that already has a row, so it never overwrites one.
     static func bigtableClassification(_ trimmed: String) -> QueryClassification {
         if trimmed.hasPrefix("BIGTABLE_BROWSE:") {
             return .safe
         }
+        let write = QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
         let destructive = QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
-        let verb = trimmed.prefix { !$0.isWhitespace }.uppercased()
-        switch verb {
+        switch trimmed.prefix(while: { !$0.isWhitespace }).uppercased() {
         case "GET", "SCAN", "READ":
             return .safe
         case "DELETE":
             return destructive
-        case "PUT" where bigtableBodyDeletesCell(trimmed):
-            return destructive
+        case "PUT":
+            return bigtableBodyDeletesCell(trimmed) ? destructive : write
         default:
-            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+            return write
         }
     }
 

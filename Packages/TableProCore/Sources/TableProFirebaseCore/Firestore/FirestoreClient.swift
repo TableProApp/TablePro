@@ -1,9 +1,10 @@
 import Foundation
+import TableProGoogleCloud
 
 public final class FirestoreClient: @unchecked Sendable {
     public let projectId: String
     private let baseURL: URL
-    private let requester: FirebaseRequester
+    private let requester: GoogleRESTRequester
     private let lock = NSLock()
     private var database: String
 
@@ -11,14 +12,14 @@ public final class FirestoreClient: @unchecked Sendable {
         projectId: String,
         database: String,
         baseURL: URL,
-        transport: any FirebaseTransport,
-        credential: FirebaseCredential,
+        transport: any GoogleRESTTransport,
+        credential: GoogleRESTCredential,
         timeout: @escaping @Sendable () -> TimeInterval
     ) {
         self.projectId = projectId
         self.database = database
         self.baseURL = baseURL
-        self.requester = FirebaseRequester(transport: transport, credential: credential, timeout: timeout)
+        self.requester = GoogleRESTRequester(transport: transport, credential: credential, timeout: timeout)
     }
 
     public var currentDatabase: String {
@@ -176,7 +177,7 @@ public final class FirestoreClient: @unchecked Sendable {
         guard var components = URLComponents(string: baseURL.absoluteString + path) else {
             throw FirebaseError.configuration(String(format: String(localized: "\"%@\" is not a valid path."), path))
         }
-        components.percentEncodedQuery = FirebaseRequester.queryString(query)
+        components.percentEncodedQuery = FirebaseQueryString.encode(query)
         guard let url = components.url else {
             throw FirebaseError.configuration(String(format: String(localized: "\"%@\" is not a valid path."), path))
         }

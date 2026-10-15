@@ -1,16 +1,24 @@
 import Foundation
 
 /// Row keys, qualifiers and values are bytes. Text that is valid UTF-8 with no control characters
-/// shows as itself; anything else shows as `b64:` followed by base64, which reads back to the same
-/// bytes, so a binary key can still be named in a request line and edited from the grid.
+/// shows as itself; anything else, and text that itself starts with `b64:`, shows as `b64:` and
+/// base64, which reads back to the same bytes.
 public enum BigtableBytes {
     public static let base64Prefix = "b64:"
 
     public static func display(_ data: Data) -> String {
-        if let text = String(data: data, encoding: .utf8), isPrintable(text), !text.hasPrefix(base64Prefix) {
+        if let text = printableText(data) {
             return text
         }
         return base64Prefix + data.base64EncodedString()
+    }
+
+    /// The bytes as text when `display` would show them as themselves.
+    public static func printableText(_ data: Data) -> String? {
+        guard let text = String(data: data, encoding: .utf8), isPrintable(text), !text.hasPrefix(base64Prefix) else {
+            return nil
+        }
+        return text
     }
 
     public static func parse(_ text: String) throws -> Data {
@@ -27,17 +35,15 @@ public enum BigtableBytes {
         }
     }
 
-    static func decodeBase64(_ text: String?) throws -> Data {
-        guard let text else { return Data() }
+    static func decodeBase64(_ text: String) throws -> Data {
         guard let data = Data(base64Encoded: text) else {
             throw BigtableError.malformedResponse(String(localized: "Bigtable sent bytes that are not base64."))
         }
         return data
     }
 
-    /// The smallest key greater than every key starting with `prefix`: the prefix with its last
-    /// byte below 0xFF incremented and what follows dropped. Nil when every byte is 0xFF, which
-    /// leaves the range open at the end.
+    /// The smallest key greater than every key starting with `prefix`. Nil when every byte is 0xFF,
+    /// which leaves the range open at the end.
     public static func prefixEnd(_ prefix: Data) -> Data? {
         var bytes = [UInt8](prefix)
         while let last = bytes.last {
@@ -50,13 +56,12 @@ public enum BigtableBytes {
         return nil
     }
 
-    /// `regexLiteral` writes only printable ASCII, so its text form always exists.
     public static func regexText(_ data: Data) -> String {
         String(bytes: regexLiteral(data), encoding: .ascii) ?? ""
     }
 
-    /// RE2 reads these as operators, so a literal is escaped byte by byte before it goes into a
-    /// regex filter.
+    /// Escapes RE2 operators byte by byte and writes every other byte outside printable ASCII as
+    /// `\xNN`, so the result is always ASCII.
     public static func regexLiteral(_ data: Data) -> Data {
         let special = Set("\\^$.|?*+()[]{}".utf8)
         var escaped = Data()

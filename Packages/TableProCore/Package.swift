@@ -171,12 +171,12 @@ let package = Package(
         ),
         .target(
             name: "TableProBigtableCore",
-            dependencies: [],
+            dependencies: ["TableProGoogleCloud"],
             path: "Sources/TableProBigtableCore"
         ),
         .target(
             name: "TableProFirebaseCore",
-            dependencies: [],
+            dependencies: ["TableProGoogleCloud"],
             path: "Sources/TableProFirebaseCore"
         ),
         .target(
@@ -240,7 +240,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProBigtableCoreTests",
-            dependencies: ["TableProBigtableCore"],
+            dependencies: ["TableProBigtableCore", "TableProGoogleCloud"],
             path: "Tests/TableProBigtableCoreTests"
         ),
         .testTarget(

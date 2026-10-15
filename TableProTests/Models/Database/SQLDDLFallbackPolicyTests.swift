@@ -24,7 +24,7 @@ struct SQLDDLFallbackPolicyTests {
     func nonSQLEnginesRefuse() {
         for type in [
             DatabaseType.elasticsearch, .kafka, .weaviate, .etcd,
-            .redis, .mongodb, .typesense, .surrealdb, .dynamodb, .beancount,
+            .redis, .mongodb, .typesense, .surrealdb, .dynamodb, .beancount, .bigtable,
         ] {
             #expect(!SQLDDLFallbackPolicy.allowsGeneratedDDL(for: type), "\(type.rawValue) should refuse")
         }

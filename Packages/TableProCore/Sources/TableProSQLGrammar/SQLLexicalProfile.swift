@@ -285,6 +285,9 @@ public struct SQLLexicalProfile: Sendable, Hashable {
             "Typesense": commandLineFamily,
             "Weaviate": commandLineFamily,
             "Kafka": commandLineFamily,
+            "Firestore": commandLineFamily,
+            "Firebase Realtime Database": commandLineFamily,
+            "Bigtable": commandLineFamily,
         ]
     }()
 }

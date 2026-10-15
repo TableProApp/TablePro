@@ -5,10 +5,10 @@ public enum BigtableError: Error, LocalizedError, Equatable, Sendable {
     case notConnected
     case transport(String)
     case authentication(String)
-    /// IAM refused the operation. Kept apart from an empty result so a blocked read never looks
-    /// like a table with no rows.
+    /// Kept apart from an empty result so a blocked read never looks like a table with no rows.
     case permissionDenied(operation: String, detail: String)
     case notFound(String)
+    case conflict(String)
     case unsupported(String)
     case api(status: Int, message: String)
     case malformedResponse(String)
@@ -16,7 +16,7 @@ public enum BigtableError: Error, LocalizedError, Equatable, Sendable {
     public var errorDescription: String? {
         switch self {
         case .configuration(let detail), .transport(let detail), .malformedResponse(let detail),
-             .authentication(let detail), .notFound(let detail), .unsupported(let detail):
+             .authentication(let detail), .notFound(let detail), .conflict(let detail), .unsupported(let detail):
             return detail
         case .notConnected:
             return String(localized: "Not connected to Bigtable.")
@@ -28,10 +28,21 @@ public enum BigtableError: Error, LocalizedError, Equatable, Sendable {
         }
     }
 
-    /// `operation` names what was attempted ("read events", "write a row of events"), because
-    /// Google's denial text names the permission and not the table.
+    /// `operation` names what was attempted ("read events"), because Google's denial text names the
+    /// permission and not the table.
     public static func from(status: Int, body: Data, operation: String) -> BigtableError {
-        let message = apiMessage(from: body)
+        from(status: status, message: apiMessage(from: body), operation: operation)
+    }
+
+    /// A streamed read that fails after its first row has already answered 200, so the failure
+    /// arrives as the last element of the array instead.
+    static func from(streamError error: [String: Any], operation: String) -> BigtableError {
+        let status = (error["code"] as? NSNumber)?.intValue ?? 500
+        let message = (error["message"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return from(status: status, message: message, operation: operation)
+    }
+
+    static func from(status: Int, message: String?, operation: String) -> BigtableError {
         switch status {
         case 401:
             return .authentication(message ?? String(localized: "Google refused the credential."))
@@ -40,10 +51,7 @@ public enum BigtableError: Error, LocalizedError, Equatable, Sendable {
         case 404:
             return .notFound(message ?? String(format: String(localized: "Not found: %@."), operation))
         default:
-            return .api(
-                status: status,
-                message: message ?? String(format: String(localized: "Bigtable returned HTTP %d."), status)
-            )
+            return .api(status: status, message: message ?? String(format: String(localized: "Bigtable returned HTTP %d."), status))
         }
     }
 

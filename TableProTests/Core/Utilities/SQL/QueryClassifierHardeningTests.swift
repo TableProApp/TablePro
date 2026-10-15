@@ -696,6 +696,7 @@ struct QueryClassifierNonSqlTests {
         #expect(!QueryClassifier.isWriteQuery("GET events/user#42", databaseType: .bigtable))
         #expect(!QueryClassifier.isWriteQuery("scan events/user#?limit=5", databaseType: .bigtable))
         #expect(!QueryClassifier.isWriteQuery("READ events {\"rowsLimit\": \"5\"}", databaseType: .bigtable))
+        #expect(QueryClassifier.classifyTier("INSERT events/k {\"cf:a\": \"1\"}", databaseType: .bigtable) == .write)
         #expect(QueryClassifier.classifyTier("PUT events/k {\"cf:a\": \"1\"}", databaseType: .bigtable) == .write)
         #expect(QueryClassifier.classifyTier("PUT events/k {\"cf:a\": null}", databaseType: .bigtable) == .destructive)
         #expect(QueryClassifier.classifyTier("PUT events/\"a{b\" {\"cf:a\": null}", databaseType: .bigtable) == .destructive)

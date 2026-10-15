@@ -3,7 +3,8 @@ import TableProPluginKit
 
 extension PluginMetadataRegistry {
     /// Rows come only in key order and Bigtable keeps no count, so a column sort is the grid's own
-    /// and a count reads every key, only when asked.
+    /// and a count reads every key, only when asked. `_key` stays writable because a new row has
+    /// no other way to get one; the driver refuses a change to an existing row's key.
     func bigtablePluginDefaults() -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
         [
             ("Bigtable", PluginMetadataSnapshot(
@@ -46,7 +47,7 @@ extension PluginMetadataRegistry {
                     tableEntityName: "Tables",
                     containerEntityName: "Instance",
                     defaultPrimaryKeyColumn: "_key",
-                    immutableColumns: ["_key"],
+                    immutableColumns: [],
                     systemDatabaseNames: [],
                     systemSchemaNames: [],
                     fileExtensions: [],
@@ -74,6 +75,7 @@ private let bigtableCompletions: [CompletionEntry] = [
     CompletionEntry(label: "GET row", insertText: "GET events/user#42"),
     CompletionEntry(label: "SCAN prefix", insertText: "SCAN events/user#?limit=20"),
     CompletionEntry(label: "READ", insertText: "READ events {\"rowsLimit\": \"20\", \"filter\": {\"cellsPerColumnLimitFilter\": 1}}"),
+    CompletionEntry(label: "INSERT row", insertText: "INSERT events/user#42 {\"profile:name\": \"Ann\"}"),
     CompletionEntry(label: "PUT cells", insertText: "PUT events/user#42 {\"profile:name\": \"Ann\"}"),
     CompletionEntry(label: "DELETE row", insertText: "DELETE events/user#42"),
     CompletionEntry(label: "DELETE column", insertText: "DELETE events/user#42 profile:name")

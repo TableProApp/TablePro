@@ -11,6 +11,7 @@ struct SQLLexicalReadingsTests {
             "SQLite", "libSQL", "Turso", "Cloudflare D1", "DuckDB", "Oracle", "Dameng", "SQL Server", "ClickHouse",
             "Snowflake", "BigQuery", "Spanner", "Trino", "Teradata", "SAP HANA", "Cassandra", "ScyllaDB", "DynamoDB",
             "SurrealDB", "Redis", "MongoDB", "etcd", "Elasticsearch", "Typesense", "Weaviate", "Kafka",
+            "Firestore", "Firebase Realtime Database", "Bigtable",
         ]
         let missing = shipped.filter { SQLLexicalProfile.curated(forDatabaseTypeId: $0) == nil }
         #expect(missing.isEmpty)

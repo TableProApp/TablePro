@@ -40,7 +40,7 @@ public struct BigtableCell: Equatable, Sendable {
     }
 }
 
-/// A row with the newest version of each cell. Older versions are filtered out on the server.
+/// A row with the newest version of each cell.
 public struct BigtableRow: Equatable, Sendable {
     public let key: Data
     public let cells: [BigtableColumn: BigtableCell]
@@ -66,10 +66,13 @@ public struct BigtableChunkAssembler {
 
     public init() {}
 
-    public static func rows(fromResponse json: Any) throws -> [BigtableRow] {
+    public static func rows(fromResponse json: Any, operation: String) throws -> [BigtableRow] {
         let messages = json as? [[String: Any]] ?? (json as? [String: Any]).map { [$0] } ?? []
         var assembler = BigtableChunkAssembler()
         for message in messages {
+            if let error = message["error"] as? [String: Any] {
+                throw BigtableError.from(streamError: error, operation: operation)
+            }
             for chunk in message["chunks"] as? [[String: Any]] ?? [] {
                 try assembler.add(chunk)
             }
@@ -103,9 +106,8 @@ public struct BigtableChunkAssembler {
         if let encoded = chunk["value"] as? String {
             value.append(try BigtableBytes.decodeBase64(encoded))
         }
-        let hasCell = family != nil && qualifier != nil
         inCell = (Self.int64(chunk["valueSize"]) ?? 0) > 0
-        if hasCell, !inCell, let family, let qualifier {
+        if !inCell, let family, let qualifier {
             let column = BigtableColumn(family: family, qualifier: qualifier)
             if cells[column].map({ $0.timestampMicros < timestamp }) ?? true {
                 cells[column] = BigtableCell(value: value, timestampMicros: timestamp)

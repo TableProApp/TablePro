@@ -1,18 +1,19 @@
 import Foundation
+import TableProGoogleCloud
 
 public final class RealtimeDatabaseClient: @unchecked Sendable {
-    private let requester: FirebaseRequester
+    private let requester: GoogleRESTRequester
     private let lock = NSLock()
     private var instanceURL: URL
 
     public init(
         instanceURL: URL,
-        transport: any FirebaseTransport,
-        credential: FirebaseCredential,
+        transport: any GoogleRESTTransport,
+        credential: GoogleRESTCredential,
         timeout: @escaping @Sendable () -> TimeInterval
     ) {
         self.instanceURL = instanceURL
-        self.requester = FirebaseRequester(transport: transport, credential: credential, timeout: timeout)
+        self.requester = GoogleRESTRequester(transport: transport, credential: credential, timeout: timeout)
     }
 
     public var currentURL: URL {
@@ -165,7 +166,7 @@ public final class RealtimeDatabaseClient: @unchecked Sendable {
         let joined = ([basePath].filter { !$0.isEmpty } + segments).joined(separator: "/")
         components.percentEncodedPath = "/" + joined + ".json"
         let namespace = components.queryItems?.filter { $0.name == "ns" } ?? []
-        components.percentEncodedQuery = FirebaseRequester.queryString(namespace + query)
+        components.percentEncodedQuery = FirebaseQueryString.encode(namespace + query)
         guard let url = components.url else {
             throw FirebaseError.configuration(String(format: String(localized: "\"%@\" is not a valid path."), path))
         }
@@ -184,10 +185,10 @@ public final class RealtimeDatabaseClient: @unchecked Sendable {
 }
 
 public struct RealtimeDatabaseInstanceLister: Sendable {
-    private let requester: FirebaseRequester
+    private let requester: GoogleRESTRequester
 
-    public init(transport: any FirebaseTransport, credential: FirebaseCredential, timeout: @escaping @Sendable () -> TimeInterval) {
-        self.requester = FirebaseRequester(transport: transport, credential: credential, timeout: timeout)
+    public init(transport: any GoogleRESTTransport, credential: GoogleRESTCredential, timeout: @escaping @Sendable () -> TimeInterval) {
+        self.requester = GoogleRESTRequester(transport: transport, credential: credential, timeout: timeout)
     }
 
     public func instances(projectId: String) async throws -> [URL] {

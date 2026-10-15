@@ -42,8 +42,7 @@ final class BigtablePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let tableEntityName = "Tables"
     static let containerEntityName = "Instance"
     static let defaultSchemaName = ""
-    static let immutableColumns: [String] = ["_key"]
-    static let defaultPrimaryKeyColumn: String? = "_key"
+    static let defaultPrimaryKeyColumn: String? = BigtableRowSet.keyColumn
     static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable]
     static let sqlDialect: SQLDialectDescriptor? = nil
 
@@ -103,6 +102,7 @@ let bigtableCompletions: [CompletionEntry] = [
     CompletionEntry(label: "GET row", insertText: "GET events/user#42"),
     CompletionEntry(label: "SCAN prefix", insertText: "SCAN events/user#?limit=20"),
     CompletionEntry(label: "READ", insertText: "READ events {\"rowsLimit\": \"20\", \"filter\": {\"cellsPerColumnLimitFilter\": 1}}"),
+    CompletionEntry(label: "INSERT row", insertText: "INSERT events/user#42 {\"profile:name\": \"Ann\"}"),
     CompletionEntry(label: "PUT cells", insertText: "PUT events/user#42 {\"profile:name\": \"Ann\"}"),
     CompletionEntry(label: "DELETE row", insertText: "DELETE events/user#42"),
     CompletionEntry(label: "DELETE column", insertText: "DELETE events/user#42 profile:name")

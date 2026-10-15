@@ -1,20 +1,19 @@
 import Foundation
 import os
 import TableProBigtableCore
+import TableProGoogleCloud
 import TableProLogRedaction
 import TableProPluginKit
 
 internal final class BigtablePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     static let logger = Logger(subsystem: "com.TablePro", category: "BigtablePluginDriver")
-
-    /// Page cursors of this many views are kept; a view is one table with one set of filters.
     static let cursorViewLimit = 64
 
     let config: DriverConnectionConfig
     let queryTimeout = HttpQueryTimeoutBox()
     private let lock = NSLock()
     private var client: BigtableClient?
-    private var transport: URLSessionBigtableTransport?
+    private var transport: URLSessionGoogleRESTTransport?
     private var cursors: [String: [Int: Data]] = [:]
     private var cursorOrder: [String] = []
 
@@ -33,35 +32,36 @@ internal final class BigtablePluginDriver: PluginDatabaseDriver, @unchecked Send
 
     // MARK: - Lifecycle
 
-    /// The first calls run under the connect deadline; once they answer, the client switches to the
-    /// query timeout the user set.
+    /// The probe runs under the connect deadline and the client after it under the query timeout.
     func connect() async throws {
-        let resolved = try BigtableCredentialFactory.resolve(config: config)
-        let settings = try BigtableConnectionSettings.parse(fields: config.additionalFields, credentialProject: resolved.projectHint)
-        let connectMilliseconds = PluginConnectTimeout.milliseconds(
+        let resolved = try GoogleRESTCredential.resolving(
+            try BigtableConnectionSettings.credentialSource(fields: config.additionalFields, password: config.password),
+            scopes: BigtableClient.scopes
+        )
+        let settings = try BigtableConnectionSettings.parse(
+            fields: config.additionalFields, database: config.database, credentialProject: resolved.projectHint
+        )
+        let deadline = PluginConnectDeadline(milliseconds: PluginConnectTimeout.milliseconds(
             in: config.additionalFields,
             default: Int(HttpQueryTimeout().requestTimeoutInterval * 1_000)
-        )
-        let deadline = PluginConnectDeadline(milliseconds: connectMilliseconds)
-        let transport = URLSessionBigtableTransport(resourceTimeout: HttpQueryTimeout.sessionResourceTimeout)
+        ))
+        let transport = URLSessionGoogleRESTTransport.bigtable(resourceTimeout: HttpQueryTimeout.sessionResourceTimeout)
         let timeoutBox = queryTimeout
 
         let probe = BigtableClient(
             projectId: settings.projectId, instanceId: settings.instanceId ?? "-", appProfileId: settings.appProfileId,
             transport: transport, credential: resolved.credential, timeout: { deadline.remainingSeconds() }
         )
-        var instanceId = settings.instanceId
-        if instanceId == nil {
+        if settings.instanceId == nil {
             guard let first = try await probe.listInstances().first else {
                 throw BigtableError.notFound(String(format: String(localized: "Project %@ has no Bigtable instance."), settings.projectId))
             }
-            instanceId = first
             try probe.switchInstance(to: first)
         }
         try await probe.ping()
 
         let client = BigtableClient(
-            projectId: settings.projectId, instanceId: instanceId ?? probe.instanceId, appProfileId: settings.appProfileId,
+            projectId: settings.projectId, instanceId: probe.instanceId, appProfileId: settings.appProfileId,
             transport: transport, credential: resolved.credential, timeout: { timeoutBox.requestTimeoutInterval }
         )
         lock.withLock {
@@ -151,8 +151,8 @@ internal final class BigtablePluginDriver: PluginDatabaseDriver, @unchecked Send
     }
 
     func forgetCursors(table: String) {
+        let prefix = BigtableBrowseSpec.viewKeyPrefix(table: table)
         lock.withLock {
-            let prefix = table + "\u{3}"
             for view in cursors.keys where view.hasPrefix(prefix) {
                 cursors[view] = nil
             }
@@ -166,14 +166,6 @@ internal final class BigtablePluginDriver: PluginDatabaseDriver, @unchecked Send
         BigtableStatement.encode(BigtableBrowseSpec(table: table, limit: 0, offset: 0))
     }
 
-    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
-        nil
-    }
-
-    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
-        nil
-    }
-
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         throw BigtableError.unsupported(String(localized: "Bigtable has no views."))
     }
@@ -184,9 +176,5 @@ internal final class BigtablePluginDriver: PluginDatabaseDriver, @unchecked Send
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
         nil
-    }
-
-    func elapsed(since start: Date) -> TimeInterval {
-        Date().timeIntervalSince(start)
     }
 }

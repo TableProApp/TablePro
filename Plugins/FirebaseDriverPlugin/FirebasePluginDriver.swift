@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProFirebaseCore
+import TableProGoogleCloud
 import TableProLogRedaction
 import TableProPluginKit
 
@@ -51,7 +52,7 @@ internal final class FirebasePluginDriver: PluginDatabaseDriver, @unchecked Send
             default: Int(HttpQueryTimeout().requestTimeoutInterval * 1_000)
         )
         let deadline = PluginConnectDeadline(milliseconds: connectMilliseconds)
-        let transport = URLSessionFirebaseTransport(resourceTimeout: HttpQueryTimeout.sessionResourceTimeout)
+        let transport = URLSessionGoogleRESTTransport.firebase(resourceTimeout: HttpQueryTimeout.sessionResourceTimeout)
         let timeoutBox = queryTimeout
         let timeout: @Sendable () -> TimeInterval = { timeoutBox.requestTimeoutInterval }
         let connectTimeout: @Sendable () -> TimeInterval = { deadline.remainingSeconds() }
@@ -74,8 +75,8 @@ internal final class FirebasePluginDriver: PluginDatabaseDriver, @unchecked Send
     /// The probe runs under the connect deadline and the client after it under the query timeout.
     private func connectFirestore(
         settings: FirebaseConnectionSettings,
-        transport: URLSessionFirebaseTransport,
-        credential: FirebaseCredential,
+        transport: URLSessionGoogleRESTTransport,
+        credential: GoogleRESTCredential,
         connectTimeout: @escaping @Sendable () -> TimeInterval,
         timeout: @escaping @Sendable () -> TimeInterval
     ) async throws -> FirebaseSession {
@@ -93,8 +94,8 @@ internal final class FirebasePluginDriver: PluginDatabaseDriver, @unchecked Send
 
     private func connectRealtimeDatabase(
         settings: FirebaseConnectionSettings,
-        transport: URLSessionFirebaseTransport,
-        credential: FirebaseCredential,
+        transport: URLSessionGoogleRESTTransport,
+        credential: GoogleRESTCredential,
         connectTimeout: @escaping @Sendable () -> TimeInterval,
         timeout: @escaping @Sendable () -> TimeInterval
     ) async throws -> FirebaseSession {
@@ -298,8 +299,8 @@ internal final class FirebasePluginDriver: PluginDatabaseDriver, @unchecked Send
 
 struct FirebaseSession: Sendable {
     let settings: FirebaseConnectionSettings
-    let transport: URLSessionFirebaseTransport
-    let credential: FirebaseCredential
+    let transport: URLSessionGoogleRESTTransport
+    let credential: GoogleRESTCredential
     let timeout: @Sendable () -> TimeInterval
     let firestore: FirestoreClient?
     let database: RealtimeDatabaseClient?
