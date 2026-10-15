@@ -7,6 +7,7 @@ project(
   license_files: 'LICENSE',
 )
 
+fs = import('fs')
 i18n = import('i18n')
 gnome = import('gnome')
 

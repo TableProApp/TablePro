@@ -110,4 +110,25 @@ if appstreamcli.found()
     args: ['validate', '--no-net', '--explain', metainfo_file],
     suite: 'data',
   )
+
+  # Meson pins the links and screenshot URLs to the project version's
+  # tag, and a plain cargo build to the newest release, which is listed
+  # first, so the two must agree.
+  newest_release = 'none'
+  release_tags = fs.read('app.tablepro.TablePro.metainfo.xml.in.in').replace('\n', ' ').replace('\t', ' ').split('<release ')
+  if release_tags.length() > 1
+    release_attributes = ' ' + release_tags[1].split('>')[0]
+    foreach quote : ['"', '\'']
+      release_version = release_attributes.split(' version=' + quote)
+      if newest_release == 'none' and release_version.length() > 1
+        newest_release = release_version[1].split(quote)[0]
+      endif
+    endforeach
+  endif
+  test(
+    'metainfo-release-version',
+    appstreamcli,
+    args: ['vercmp', newest_release, 'eq', meson.project_version()],
+    suite: 'data',
+  )
 endif
