@@ -49,6 +49,9 @@
                     <property name="placeholder-text" translatable="yes">Search queries…</property>
                     <property name="search-delay">150</property>
                     <property name="hexpand">true</property>
+                    <accessibility>
+                      <property name="label" translatable="yes">Search queries</property>
+                    </accessibility>
                   </object>
                 </property>
               </object>

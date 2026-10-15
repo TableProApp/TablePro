@@ -113,7 +113,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failed query history export said nothing.
 - Copying many rows, or showing a row with a long value as JSON, froze the window.
 - A query saved just before quitting could be lost.
-- The sidebar's table search button had no name for screen readers.
+- The sidebar's table search, the find and replace fields and the Query History search had no name for screen readers.
 - The sidebar was slow to fill and to search on databases with thousands of tables, and said nothing when the list could not be read again.
 - A connection added, changed or deleted in one window did not show in the other windows' connection lists.
 - A connection name with & or < in it showed wrong in the connection list.

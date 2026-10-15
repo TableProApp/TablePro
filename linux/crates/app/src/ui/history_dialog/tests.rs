@@ -549,6 +549,18 @@ fn filters_are_labelled() {
 }
 
 #[gtk4::test]
+fn the_open_search_bar_is_labelled() {
+    let harness = Harness::new();
+    let dialog = harness.presented_dialog();
+    let imp = dialog.imp();
+
+    imp.search_bar.set_search_mode(true);
+    crate::test_support::drain_main_context();
+
+    crate::test_support::assert_labelled(&imp.search_entry.get()).unwrap_or_else(|problem| panic!("{problem}"));
+}
+
+#[gtk4::test]
 fn history_dialog_show_in_files_reveals_the_database_file() {
     let harness = Harness::new();
     let dialog = harness.presented_dialog();

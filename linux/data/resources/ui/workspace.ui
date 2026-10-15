@@ -59,6 +59,9 @@
                               <object class="GtkSearchEntry" id="table_search">
                                 <property name="placeholder-text" translatable="yes">Filter tables…</property>
                                 <property name="hexpand">true</property>
+                                <accessibility>
+                                  <property name="label" translatable="yes">Filter tables</property>
+                                </accessibility>
                               </object>
                             </property>
                           </object>
