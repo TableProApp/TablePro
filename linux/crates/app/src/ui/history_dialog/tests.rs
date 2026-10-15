@@ -558,6 +558,10 @@ fn the_open_search_bar_is_labelled() {
     crate::test_support::drain_main_context();
 
     crate::test_support::assert_labelled(&imp.search_entry.get()).unwrap_or_else(|problem| panic!("{problem}"));
+    assert_eq!(
+        crate::test_support::unlabelled_icon_buttons(&dialog),
+        Vec::<String>::new()
+    );
 }
 
 #[gtk4::test]

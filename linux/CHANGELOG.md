@@ -103,6 +103,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Connection buttons in a connected window's header bar; New Window opens another connection.
 - Ctrl+E for a new SQL editor tab; Ctrl+T opens one.
+- Close button in the sidebar and Query History search bars; the search button or Escape closes them.
 
 ### Fixed
 
