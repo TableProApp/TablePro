@@ -246,6 +246,42 @@ async fn mcp_row_cap_is_shared_across_result_sets() {
 }
 
 #[tokio::test]
+async fn a_capped_export_says_it_was_truncated_in_every_format() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = Arc::new(TokenStore::open(dir.path().join("tokens.json")).unwrap());
+    let connection_id = Uuid::nil();
+    let (_metadata, plaintext) = store
+        .issue("reader".into(), TokenPermissions::ReadOnly, vec![connection_id], None)
+        .unwrap();
+    let provider = Arc::new(RecordingProvider::with_result_sets(vec![QueryResult {
+        columns: vec![column("n")],
+        rows: vec![vec![Value::Int(1)], vec![Value::Int(2)], vec![Value::Int(3)]],
+        truncated: false,
+    }]));
+    let bridge = McpBridge::with_limits(
+        provider,
+        store,
+        McpLimits {
+            requests_per_minute: 120,
+            max_rows: 2,
+            query_timeout_secs: 30,
+        },
+    );
+    let token = bridge.authenticate(&plaintext).unwrap();
+    for format in ["json", "csv"] {
+        let output = tablepro_mcp::dispatch(
+            &bridge,
+            &token,
+            "export_data",
+            serde_json::json!({"connection_id": connection_id.to_string(), "sql": "SELECT n", "format": format}),
+        )
+        .await
+        .expect("a capped export returns its admitted rows");
+        assert_eq!(output["truncated"], true, "{format}: {output}");
+    }
+}
+
+#[tokio::test]
 async fn json_export_keeps_multiple_result_sets_and_csv_refuses_them() {
     let dir = tempfile::TempDir::new().unwrap();
     let store = Arc::new(TokenStore::open(dir.path().join("tokens.json")).unwrap());

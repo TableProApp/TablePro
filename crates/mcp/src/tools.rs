@@ -177,7 +177,9 @@ pub async fn dispatch(bridge: &McpBridge, token: &McpToken, name: &str, args: Js
                     }
                     bridge.ensure_operation_active(&control)?;
                     let content = String::from_utf8(out).map_err(|error| error.to_string())?;
-                    Ok(json!({"format": "csv", "content": content, "null_marker": null_marker}))
+                    Ok(
+                        json!({"format": "csv", "content": content, "null_marker": null_marker, "truncated": result.truncated}),
+                    )
                 }
                 _ => {
                     let first = result.result_sets.first();
