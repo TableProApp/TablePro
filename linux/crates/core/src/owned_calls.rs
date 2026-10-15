@@ -58,13 +58,14 @@ impl OwnedCalls {
         W: FnOnce(R, StopRequest) -> Fut + Send + 'static,
         Fut: Future<Output = (R, Result<T, DriverError>)> + Send + 'static,
     {
+        let options = options.child();
+        let call = options.cancel().clone();
         let (sender, receiver) = tokio::sync::oneshot::channel();
         let abandon = resource.abandon_flag();
         let request = StopRequest::new();
         let running = work(resource, request.clone());
         let shutdown = self.shutdown.clone();
         let grace = self.cancel_grace;
-        let cancel = options.cancel().clone();
 
         let spawned = self.tracker.spawn(async move {
             let settled = Supervisor {
@@ -113,7 +114,7 @@ impl OwnedCalls {
 
         // Dropping the caller is itself a cancel: the work is already
         // running on the server and has to be stopped, not forgotten.
-        let _guard = cancel.drop_guard();
+        let _guard = call.drop_guard();
         match receiver.await {
             Ok(outcome) => outcome,
             Err(_) => {
@@ -142,13 +143,14 @@ impl OwnedCalls {
         W: FnOnce(R, StopRequest) -> Fut + Send + 'static,
         Fut: Future<Output = (R, Result<WriteReport, DriverError>)> + Send + 'static,
     {
+        let options = options.child();
+        let call = options.cancel().clone();
         let (sender, receiver) = tokio::sync::oneshot::channel();
         let abandon = resource.abandon_flag();
         let request = StopRequest::new();
         let running = work(resource, request.clone());
         let shutdown = self.shutdown.clone();
         let grace = self.cancel_grace;
-        let cancel = options.cancel().clone();
         let caller_ledger = ledger.clone();
 
         let spawned = self.tracker.spawn(async move {
@@ -190,7 +192,7 @@ impl OwnedCalls {
             let _ = sender.send(outcome);
         });
 
-        let _guard = cancel.drop_guard();
+        let _guard = call.drop_guard();
         match receiver.await {
             Ok(outcome) => outcome,
             Err(_) => {
@@ -476,7 +478,10 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(10)).await;
 
         assert!(dropped.is_err(), "the call finished before it could be dropped");
-        assert!(cancel.is_cancelled(), "dropping the caller did not cancel the call");
+        assert!(
+            !cancel.is_cancelled(),
+            "dropping one call cancelled the caller's token, which its other calls share"
+        );
         assert_eq!(
             sent.load(Ordering::SeqCst),
             1,
@@ -615,6 +620,49 @@ mod tests {
             0,
             "a stop was sent for a call that finished"
         );
+    }
+
+    #[tokio::test]
+    async fn reads_that_share_one_call_options_each_run() {
+        let calls = OwnedCalls::new(Duration::from_secs(1));
+        let cancel = CancellationToken::new();
+        let shared = options(None, &cancel);
+
+        for expected in [1, 2, 3] {
+            let (connection, _abandon, _discarded) = Connection::new();
+            let (engine, _sent) = Engine::new(StopDelivery::OutOfBand(StopScope::Statement));
+            let answer = calls
+                .run_read(shared.clone(), connection, engine, move |resource, _stop| async move {
+                    (resource, Ok(expected))
+                })
+                .await;
+            assert_eq!(answer.expect("each call's answer"), expected);
+        }
+        assert!(!cancel.is_cancelled(), "a finished read cancelled the caller's token");
+    }
+
+    #[tokio::test]
+    async fn writes_that_share_one_call_options_each_run() {
+        let calls = OwnedCalls::new(Duration::from_secs(1));
+        let cancel = CancellationToken::new();
+        let shared = options(None, &cancel);
+
+        for _ in 0..2 {
+            let (connection, _abandon, _discarded) = Connection::new();
+            let (engine, _sent) = Engine::new(StopDelivery::InBand);
+            let ledger = Arc::new(WriteLedger::new(crate::write_ledger::WriteAtomicity::Transactional));
+            let answer = calls
+                .run_write(
+                    shared.clone(),
+                    connection,
+                    engine,
+                    ledger,
+                    |resource, _stop| async move { (resource, Ok(WriteReport::default())) },
+                )
+                .await;
+            assert!(answer.is_ok(), "a write after a finished one failed: {answer:?}");
+        }
+        assert!(!cancel.is_cancelled(), "a finished write cancelled the caller's token");
     }
 
     #[tokio::test(start_paused = true)]

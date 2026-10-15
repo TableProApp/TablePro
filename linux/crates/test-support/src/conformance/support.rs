@@ -102,12 +102,22 @@ pub(crate) async fn apply(
     kind: WriteKind,
     statements: Vec<String>,
 ) -> Result<WriteReport, DriverError> {
+    apply_with(connection, table, kind, statements, within(CALL_DEADLINE)).await
+}
+
+pub(crate) async fn apply_with(
+    connection: &dyn Connection,
+    table: &TableRef,
+    kind: WriteKind,
+    statements: Vec<String>,
+    options: CallOptions,
+) -> Result<WriteReport, DriverError> {
     let steps = statements
         .iter()
         .map(|sql| GuardedStatement::unguarded(statement(sql)))
         .collect();
     let batch = WriteBatch::new(kind, table.clone(), steps, ForeignKeyMode::Enforced);
-    connection.write_batch(&batch, within(CALL_DEADLINE)).await
+    connection.write_batch(&batch, options).await
 }
 
 pub(crate) async fn create_scratch_table<E: ConformanceEngine>(
@@ -133,9 +143,17 @@ pub(crate) fn insert_sql(dialect: &dyn SqlDialect, table: &TableRef, id: i64, la
 /// The rows in `table`, through the same `count_rows` the browse tab
 /// uses.
 pub(crate) async fn count(connection: &dyn Connection, table: &TableRef) -> Result<u64, ConformanceFailure> {
+    count_with(connection, table, within(CALL_DEADLINE)).await
+}
+
+pub(crate) async fn count_with(
+    connection: &dyn Connection,
+    table: &TableRef,
+    options: CallOptions,
+) -> Result<u64, ConformanceFailure> {
     let dialect = connection.dialect();
     let sql = format!("SELECT {} FROM {}", dialect.count_all(), dialect.qualify(table));
-    Ok(connection.count_rows(&statement(&sql), within(CALL_DEADLINE)).await?)
+    Ok(connection.count_rows(&statement(&sql), options).await?)
 }
 
 /// The events one editor run sent, kept after the sink is gone.

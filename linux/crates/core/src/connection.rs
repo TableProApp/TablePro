@@ -29,7 +29,9 @@ use crate::write_report::WriteReport;
 /// Each call runs on a task the connection owns, not on the caller's
 /// future, so dropping the caller cancels the call instead of leaving
 /// the server working for nobody (`OwnedCalls`). A call returns within
-/// its deadline plus the liveness policy's cancel grace.
+/// its deadline plus the liveness policy's cancel grace. It stops on a
+/// child of the caller's token and never cancels the token itself: one
+/// `CallOptions` serves every call of an operation.
 #[async_trait]
 pub trait Connection: Send + Sync {
     fn server_info(&self) -> &ServerInfo;

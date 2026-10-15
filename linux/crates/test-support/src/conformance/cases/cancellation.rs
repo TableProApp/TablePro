@@ -1,17 +1,19 @@
 use std::time::Duration;
 
-use tablepro_core::{EditorSessionOptions, EditorSessionState, RowLimit, RunEnd, RunOptions};
+use tablepro_core::{EditorSessionOptions, EditorSessionState, RowLimit, RunEnd, RunOptions, WriteKind};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::conformance::support::{
-    SCHEDULING_SLACK, connect, expect, no_deadline, run_completed, run_editor, run_options, statement, unexpected,
-    unique, wait_for_running, writable,
+    CALL_DEADLINE, SCHEDULING_SLACK, apply_with, connect, count_with, create_scratch_table, expect, insert_sql,
+    no_deadline, run_completed, run_editor, run_options, statement, unexpected, unique, wait_for_running, within,
+    writable,
 };
 use crate::conformance::{ConformanceEngine, ConformanceFailure, NetworkConformanceEngine, test_liveness};
 
 const EDITOR_CASE: &str = "editor_cancel_reports_cancelled_and_session_stays_ready";
 const DROPPED_CASE: &str = "dropped_caller_stops_server_statement";
+const SHARED_CASE: &str = "calls_sharing_one_call_options_each_run";
 
 /// Long enough for the statement to reach the server before the case
 /// stops it, so the stop is tested rather than a race with sending.
@@ -103,6 +105,40 @@ pub async fn dropped_caller_stops_server_statement<E: NetworkConformanceEngine>(
     .await?;
 
     monitor.close().await;
+    connection.close().await?;
+    Ok(())
+}
+
+/// Case 16: a session operation hands one `CallOptions` to every call it
+/// makes, so a call that finished leaves it as it found it and the next
+/// call runs.
+pub async fn calls_sharing_one_call_options_each_run<E: ConformanceEngine>() -> Result<(), ConformanceFailure> {
+    let engine = E::start().await?;
+    let connection = connect(SHARED_CASE, &engine, writable()).await?;
+    let table = create_scratch_table(&engine, connection.as_ref(), "shared_options").await?;
+    let dialect = connection.dialect();
+    let insert = insert_sql(dialect.as_ref(), &table, 1, "row");
+    let shared = within(CALL_DEADLINE);
+
+    connection.fetch_columns(&table, shared.clone()).await?;
+    connection.row_identity(&table, shared.clone()).await?;
+    apply_with(
+        connection.as_ref(),
+        &table,
+        WriteKind::RowChanges,
+        vec![insert],
+        shared.clone(),
+    )
+    .await?;
+    let rows = count_with(connection.as_ref(), &table, shared.clone()).await?;
+    connection
+        .query_bound(&statement("SELECT 1"), RowLimit::EDITOR_DEFAULT, shared.clone())
+        .await?;
+
+    expect(SHARED_CASE, rows == 1, || format!("{rows} rows counted, not 1"))?;
+    expect(SHARED_CASE, !shared.cancel().is_cancelled(), || {
+        "a finished call cancelled the token its caller shares".to_owned()
+    })?;
     connection.close().await?;
     Ok(())
 }

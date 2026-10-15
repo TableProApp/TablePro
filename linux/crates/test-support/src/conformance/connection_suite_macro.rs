@@ -162,6 +162,11 @@ macro_rules! connection_conformance_suite {
         }
         $crate::__conformance_case! {
             $docker,
+            calls_sharing_one_call_options_each_run,
+            $crate::conformance::cases::cancellation::calls_sharing_one_call_options_each_run::<$engine>
+        }
+        $crate::__conformance_case! {
+            $docker,
             read_only_connection_refuses_writes,
             $crate::conformance::cases::read_only::read_only_connection_refuses_writes::<$engine>
         }

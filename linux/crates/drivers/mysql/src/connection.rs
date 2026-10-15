@@ -159,12 +159,9 @@ impl MysqlConnection {
             return Ok(WriteAtomicity::StatementByStatement);
         }
         let table = batch.table.clone();
-        // A call cancels its token when it returns, so the lookup gets a
-        // child: the write that follows still answers to the caller.
-        let lookup = CallOptions::new(options.deadline(), options.cancel().child_token());
         let engine = self
             .read(
-                lookup,
+                options.clone(),
                 read_op(move |connection, flavour| {
                     Box::pin(async move { table_engine::lookup(connection, flavour, &table).await })
                 }),
