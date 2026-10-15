@@ -320,6 +320,14 @@ final class RowOperationsManager {
             return PasteRowsResult(pastedRows: [], delta: .none)
         }
 
+        if parser == nil, let cells = clipboardProvider.readGridCells(), cells.text == clipboardText {
+            let parsedRows = Self.rows(fromCopiedCells: cells, schema: schema, tableRows: tableRows)
+            return insertParsedRows(
+                keepsMissingFields ? parsedRows.map(Self.nullsAsMissingFields) : parsedRows,
+                into: &tableRows
+            )
+        }
+
         let rowParser = parser ?? Self.detectParser(for: clipboardText)
         let parseResult = rowParser.parse(clipboardText, schema: schema)
 
@@ -363,6 +371,26 @@ final class RowOperationsManager {
             }
 
             return ParsedRow(values: values, sourceLineNumber: index + 1, absentColumns: absentColumns)
+        }
+    }
+
+    /// Cells the grid copied, as wide as the table, become rows field by field, so a value holding a
+    /// tab or a line break stays one value and a NULL stays NULL. An empty field is read for its
+    /// column, as a typed one is.
+    private static func rows(
+        fromCopiedCells cells: GridCellsClipboardPayload,
+        schema: TableSchema,
+        tableRows: TableRows
+    ) -> [ParsedRow] {
+        cells.fields.enumerated().map { index, fields in
+            var values: [PluginCellValue] = (0..<schema.columnCount).map { column in
+                guard column < fields.count, let text = fields[column] else { return .null }
+                return .entered(text, columnType: tableRows.editingColumnType(at: column))
+            }
+            if let pkIndex = schema.primaryKeyIndex, pkIndex < values.count {
+                values[pkIndex] = .text("__DEFAULT__")
+            }
+            return ParsedRow(values: values, sourceLineNumber: index + 1)
         }
     }
 

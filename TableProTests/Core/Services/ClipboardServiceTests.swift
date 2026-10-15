@@ -57,4 +57,23 @@ struct ClipboardServiceTests {
 
         #expect(provider.readGridRows() == payload)
     }
+
+    @Test("writeCells writes the text and round-trips the fields, NULL included")
+    func writeCellsRoundTripsFields() {
+        let provider = NSPasteboardClipboardProvider()
+        let cells = GridCellsClipboardPayload(text: "NULL\tNULL", fields: [[nil, "NULL"]])
+        provider.writeCells(cells)
+
+        #expect(provider.readText() == "NULL\tNULL")
+        #expect(provider.readGridCells() == cells)
+    }
+
+    @Test("A later plain write drops the fields with the text they described")
+    func writeTextClearsFields() {
+        let provider = NSPasteboardClipboardProvider()
+        provider.writeCells(GridCellsClipboardPayload(text: "NULL", fields: [[nil]]))
+        provider.writeText("other")
+
+        #expect(provider.readGridCells() == nil)
+    }
 }

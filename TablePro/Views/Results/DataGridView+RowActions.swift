@@ -63,29 +63,29 @@ extension TableViewCoordinator {
         let cell = row.values[columnIndex]
         let columnTypes = tableRows.columnTypes
         let columnType = columnTypes.indices.contains(columnIndex) ? columnTypes[columnIndex] : nil
+        let text = cellCopyText(cell, columnIndex: columnIndex, columnType: columnType)
+        ClipboardService.shared.writeCells(GridCellsClipboardPayload(text: text, fields: [[cell.isNull ? nil : text]]))
+    }
 
+    private func cellCopyText(_ cell: PluginCellValue, columnIndex: Int, columnType: ColumnType?) -> String {
         if case .bytes(let data) = cell {
             let format = columnIndex < columnDisplayFormats.count ? columnDisplayFormats[columnIndex] : nil
-            let value = format.flatMap { format in
+            return format.flatMap { format in
                 guard format.isApplicable(to: columnType, databaseType: databaseType) else { return nil }
                 return ValueDisplayFormatter.apply(data, format: format, columnType: columnType)
             }
                 ?? BlobFormattingService.shared.format(data, for: .copy)
                 ?? ""
-            ClipboardService.shared.writeText(value)
-            return
         }
 
         let value = cell.asText ?? "NULL"
 
         if columnIndex < columnDisplayFormats.count, let format = columnDisplayFormats[columnIndex], format != .raw,
            let formatted = ValueDisplayFormatter.apply(value, format: format, columnType: columnType) {
-            ClipboardService.shared.writeText(formatted)
-            return
+            return formatted
         }
 
-        let copyValue = BlobFormattingService.shared.formatIfNeeded(value, columnType: columnType, for: .copy)
-        ClipboardService.shared.writeText(copyValue)
+        return BlobFormattingService.shared.formatIfNeeded(value, columnType: columnType, for: .copy)
     }
 
     func copyRowsAsInsert(at indices: Set<Int>) {
@@ -404,14 +404,14 @@ extension TableViewCoordinator {
             rowActionsLogger.warning("Clipboard copy truncated: \(selectedRowCount) rows selected, capping at \(maxRows)")
         }
 
-        var lines: [String] = []
-        lines.reserveCapacity(rowRange.count)
+        var copiedLines: [[String?]] = []
+        copiedLines.reserveCapacity(rowRange.count)
         for rowIndex in rowRange {
             guard let row = displayRow(at: rowIndex) else {
-                lines.append(String(repeating: "\t", count: positions.count - 1))
+                copiedLines.append(Array(repeating: "", count: positions.count))
                 continue
             }
-            var fields: [String] = []
+            var fields: [String?] = []
             fields.reserveCapacity(positions.count)
             for position in positions {
                 guard selection.contains(row: rowIndex, displayColumn: position),
@@ -421,16 +421,15 @@ extension TableViewCoordinator {
                     continue
                 }
                 let columnType = columnTypes.indices.contains(columnIndex) ? columnTypes[columnIndex] : nil
-                let text = RowValueCopyFormatter.copyText(cell: row.values[columnIndex], columnType: columnType) ?? "NULL"
-                fields.append(text)
+                fields.append(RowValueCopyFormatter.copyText(cell: row.values[columnIndex], columnType: columnType))
             }
-            lines.append(fields.joined(separator: "\t"))
+            copiedLines.append(fields)
         }
 
-        var text = lines.joined(separator: "\n")
+        var text = copiedLines.map { $0.map { $0 ?? "NULL" }.joined(separator: "\t") }.joined(separator: "\n")
         if isTruncated {
             text.append("\n(truncated, showing first \(maxRows) of \(selectedRowCount) rows)")
         }
-        ClipboardService.shared.writeText(text)
+        ClipboardService.shared.writeCells(GridCellsClipboardPayload(text: text, fields: copiedLines))
     }
 }

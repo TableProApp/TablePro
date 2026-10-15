@@ -61,9 +61,12 @@ internal struct FieldEditorContext {
     internal var hasMultipleValues: Bool { valueState == .multipleValues }
 
     /// The prompt a text field shows while it is empty. A state with its own name says it; an
-    /// ordinary value echoes the stored one so the user can see what they are replacing.
+    /// ordinary value echoes the stored one so the user can see what they are replacing. An emptied
+    /// date, number or boolean is staged as NULL, so it says that instead.
     internal var placeholderText: String {
-        valueState.placeholder ?? originalValue ?? "NULL"
+        if let placeholder = valueState.placeholder { return placeholder }
+        if valueState == .value(""), originalValue != "", !columnType.hasEmptyValue { return "NULL" }
+        return originalValue ?? "NULL"
     }
 
     /// What Copy Value puts on the pasteboard.

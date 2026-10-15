@@ -9,6 +9,7 @@ final class RecordingClipboard: ClipboardProvider {
 
     var text: String?
     var gridRows: GridRowsClipboardPayload?
+    var gridCells: GridCellsClipboardPayload?
     private(set) var html: String?
     private(set) var writes: [String] = []
     private(set) var images: [NSImage] = []
@@ -18,6 +19,7 @@ final class RecordingClipboard: ClipboardProvider {
 
     func readText() -> String? { text }
     func readGridRows() -> GridRowsClipboardPayload? { gridRows }
+    func readGridCells() -> GridCellsClipboardPayload? { gridCells }
 
     func writeText(_ text: String) { replace(text: text) }
     func writeCsv(_ csv: String) { replace(text: csv) }
@@ -31,10 +33,20 @@ final class RecordingClipboard: ClipboardProvider {
         replace(text: tsv, html: html, gridRows: gridRows)
     }
 
-    private func replace(text: String?, html: String? = nil, gridRows: GridRowsClipboardPayload? = nil) {
+    func writeCells(_ cells: GridCellsClipboardPayload) {
+        replace(text: cells.text, gridCells: cells)
+    }
+
+    private func replace(
+        text: String?,
+        html: String? = nil,
+        gridRows: GridRowsClipboardPayload? = nil,
+        gridCells: GridCellsClipboardPayload? = nil
+    ) {
         self.text = text
         self.html = html
         self.gridRows = gridRows
+        self.gridCells = gridCells
         if let text { writes.append(text) }
     }
 }

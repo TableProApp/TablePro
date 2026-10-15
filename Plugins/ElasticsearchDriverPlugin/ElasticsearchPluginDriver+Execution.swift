@@ -361,7 +361,8 @@ extension ElasticsearchPluginDriver {
             columnTypeNames: typeNames,
             rows: rows,
             rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(startTime)
+            executionTime: Date().timeIntervalSince(startTime),
+            columnMeta: ElasticsearchTypeClassification.columnMeta(columns: columns, typeNames: typeNames)
         )
     }
 

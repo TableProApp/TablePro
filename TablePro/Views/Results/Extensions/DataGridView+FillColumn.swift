@@ -35,8 +35,14 @@ extension TableViewCoordinator {
         alert.window.initialFirstResponder = accessory.firstResponderView
 
         alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn else { return }
-            self?.applyFillColumn(columnIndex: columnIndex, value: accessory.resolvedValue)
+            guard response == .alertFirstButtonReturn, let self else { return }
+            guard let value = self.fillColumnValue(
+                text: accessory.enteredText, setNull: accessory.setsNull, columnIndex: columnIndex
+            ) else {
+                NSSound.beep()
+                return
+            }
+            self.applyFillColumn(columnIndex: columnIndex, value: value)
         }
     }
 
@@ -75,8 +81,10 @@ extension TableViewCoordinator {
         return (0..<rowCount).filter { !isRowDeleted($0) }
     }
 
-    static func fillColumnValue(text: String, setNull: Bool) -> PluginCellValue {
-        setNull ? .null : .text(text)
+    /// The value a fill writes, read for the column the way a typed cell is: an empty fill of a date
+    /// is NULL. Nil when the column holds neither the text nor NULL in its place.
+    func fillColumnValue(text: String, setNull: Bool, columnIndex: Int) -> PluginCellValue? {
+        setNull ? .null : tableRowsProvider().enteredValue(text, forColumn: columnIndex)
     }
 
     static func fillImpactDescription(rowCount: Int) -> String {
@@ -118,12 +126,9 @@ private final class FillColumnAccessoryView: NSView {
         super.init(coder: coder)
     }
 
-    var resolvedValue: PluginCellValue {
-        TableViewCoordinator.fillColumnValue(
-            text: valueField.stringValue,
-            setNull: nullCheckbox?.state == .on
-        )
-    }
+    var enteredText: String { valueField.stringValue }
+
+    var setsNull: Bool { nullCheckbox?.state == .on }
 
     var firstResponderView: NSView { valueField }
 
