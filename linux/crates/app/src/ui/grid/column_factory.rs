@@ -9,6 +9,7 @@ use tablepro_core::column::{ColumnKind, ResultColumn};
 use super::cell_edit::install_edit_triggers;
 use super::cell_editability::column_takes_edits;
 use super::column_drawing::ColumnDrawing;
+use super::column_figures::ColumnFigures;
 use super::context_menu::attach_cell_gesture;
 use super::grid_attributes::GridAttributes;
 use super::grid_columns::GridColumns;
@@ -47,6 +48,13 @@ pub(crate) fn build_column_view(
     } = content;
     let store = gio::ListStore::new::<RowObject>();
     store.splice(0, 0, &rows);
+    let grid_columns = Rc::new(GridColumns::default());
+    // A browse page splices its rows into this store, so the columns
+    // measure them again before the view binds any of them.
+    store.connect_items_changed({
+        let grid_columns = grid_columns.clone();
+        move |store, _, _, _| grid_columns.measure(store)
+    });
     // Tab leaves the grid, and the arrow keys move between cells.
     let column_view = gtk::ColumnView::builder()
         .show_row_separators(true)
@@ -79,7 +87,6 @@ pub(crate) fn build_column_view(
         None
     };
     let mut columns: Vec<gtk::ColumnViewColumn> = Vec::with_capacity(result_columns.len());
-    let grid_columns = Rc::new(GridColumns::default());
     let attributes = Rc::new(GridAttributes::new());
     for (i, column) in result_columns.iter().enumerate() {
         let sorter = match sorting {
@@ -91,6 +98,7 @@ pub(crate) fn build_column_view(
         let col = build_column(ColumnInit {
             info: column,
             idx: i,
+            rows: &rows,
             catalog: schema_columns.get(i).cloned(),
             sink: sink.clone(),
             sorter,
@@ -179,6 +187,7 @@ enum CellKind {
 struct ColumnInit<'a> {
     info: &'a ResultColumn,
     idx: usize,
+    rows: &'a [RowObject],
     /// `None` for a column the grid knows only from the result set.
     catalog: Option<ColumnInfo>,
     sink: GridSink,
@@ -195,6 +204,7 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
     let ColumnInit {
         info,
         idx,
+        rows,
         catalog,
         sink,
         sorter,
@@ -219,14 +229,16 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
     let auto_filled = catalog
         .as_ref()
         .is_some_and(|column| column.is_auto_increment || column.is_generated);
+    let figures = ColumnFigures::default();
+    figures.measure(&info.column_type, idx, rows);
     let drawing = Rc::new(ColumnDrawing {
         catalog,
         column_type: info.column_type.clone(),
         tab_ctx: tab_ctx.clone(),
         auto_filled,
         attributes,
+        figures,
     });
-    let numeric = info.column_type.kind.is_numeric();
 
     let setup_drawing = drawing.clone();
     let setup_columns = grid_columns.clone();
@@ -246,10 +258,10 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
         grid_cell.set_sink(sink.clone());
         grid_cell.set_columns(setup_columns.clone());
         match kind {
-            CellKind::ReadOnly => grid_cell.set_content(&text_display(numeric)),
+            CellKind::ReadOnly => grid_cell.set_content(&text_display(&setup_drawing.figures)),
             CellKind::Toggle => ToggleCell::setup(&grid_cell, &setup_name),
             CellKind::Text => {
-                grid_cell.set_content(&text_display(numeric));
+                grid_cell.set_content(&text_display(&setup_drawing.figures));
                 install_edit_triggers(&grid_cell);
             }
         }
@@ -305,11 +317,9 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
 }
 
 /// Every cell but a check box draws its value in an Inscription, which
-/// lays out only what fits and offers no text selection of its own. A
-/// number lines up on its last digit in tabular figures.
-fn text_display(numeric: bool) -> gtk::Inscription {
+/// lays out only what fits and offers no text selection of its own.
+fn text_display(figures: &ColumnFigures) -> gtk::Inscription {
     let display = gtk::Inscription::new(None);
-    display.set_xalign(if numeric { 1.0 } else { 0.0 });
     display.set_hexpand(true);
     display.set_text_overflow(gtk::InscriptionOverflow::EllipsizeEnd);
     display.set_min_chars(3);
@@ -317,9 +327,7 @@ fn text_display(numeric: bool) -> gtk::Inscription {
     display.set_margin_start(8);
     display.set_margin_end(8);
     display.add_css_class("tp-cell-text");
-    if numeric {
-        display.add_css_class("numeric");
-    }
+    figures.apply(&display);
     display
 }
 

@@ -7,6 +7,7 @@ use tablepro_core::column::{BoolStorage, ColumnKind, ColumnType};
 use tablepro_core::{ColumnInfo, Value};
 
 use super::cell_tooltip::cell_tooltip;
+use super::column_figures::ColumnFigures;
 use super::display_text::{DisplayText, display_text};
 use super::grid_attributes::{GridAttributes, TextMark};
 use super::toggle_cell::{ToggleCell, toggle_state};
@@ -34,6 +35,7 @@ pub struct ColumnDrawing {
     /// rather than an empty cell the user should type in.
     pub auto_filled: bool,
     pub attributes: Rc<GridAttributes>,
+    pub figures: ColumnFigures,
 }
 
 impl ColumnDrawing {
@@ -100,6 +102,7 @@ impl ColumnDrawing {
             (false, Value::Null) if cell.editable => DisplayText::placeholder(&attributes.editable_null),
             (false, value) => display_text(value, &self.column_type, scratch),
         };
+        self.figures.apply(display);
         display.set_text(Some(shown.text));
         let widget = display.upcast_ref::<gtk::Widget>();
         widget.set_tooltip_text(cell_tooltip(shown.text, shown.truncated_bytes, shown.placeholder).as_deref());
