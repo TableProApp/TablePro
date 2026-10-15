@@ -137,6 +137,7 @@ Terminal audit states: `succeeded`, `failed`, `denied`, `cancelled`, `timed_out`
 - The system MUST wrap every issued consumer-facing database handle in `PolicyGuard`.
 - MCP and `bookie-agentd` MUST NOT expose a raw driver connection through `ConnectionProvider`.
 - Preview, transaction, retry and batch paths MUST use the same rule, approval, intent and audit pipeline as direct execution. Session statements MAY skip `shared_connection_decision`.
+- `PolicyGuard::begin` and `begin_controlled` are transaction setup calls. They are allowed for read-only connections and agent principals, do not create a standalone audit event, and do not grant SQL authority. Each statement inside the transaction MUST pass the same policy and audit checks as a direct statement. Commit and rollback retain their transaction audit outcomes.
 
 ### MCP checks
 

@@ -377,6 +377,65 @@ async fn a_guarded_transaction_audits_each_statement_and_its_outcome() {
 }
 
 #[tokio::test]
+async fn beginning_a_transaction_does_not_grant_write_authority() {
+    let cases = [
+        (Principal::human_gui(), true),
+        (
+            Principal::Agent {
+                token: "token".into(),
+                client: None,
+                model: None,
+            },
+            false,
+        ),
+    ];
+
+    for (principal, read_only) in cases {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let audit = Arc::new(SequenceAuditSink::new(vec![]));
+        let mut guard_context = context(
+            principal,
+            Environment::Prod,
+            PolicyConfig::default(),
+            Arc::new(AutoApproveSink),
+            audit.clone(),
+            Arc::new(AuditState::new()),
+        );
+        guard_context.read_only = read_only;
+        let guard = PolicyGuard::new(
+            Arc::new(CatalogConn {
+                calls: calls.clone(),
+                fail: false,
+            }),
+            guard_context,
+        );
+
+        let mut transaction = guard.begin().await.expect("transaction setup is permitted");
+        transaction.query("SELECT 1").await.expect("read is permitted");
+        transaction
+            .execute("INSERT INTO t VALUES (1)")
+            .await
+            .expect_err("transaction setup does not authorize a write");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "only the read reaches the driver");
+        let events = audit.events.lock().expect("events");
+        assert_eq!(events.len(), 3, "begin has no standalone audit event");
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.operation_class == AuditOperationClass::Read)
+                .count(),
+            2,
+            "the read has its intent and outcome records"
+        );
+        assert!(events.iter().any(|event| {
+            event.operation_class == AuditOperationClass::Mutation
+                && event.terminal_status == AuditTerminalStatus::Denied
+        }));
+    }
+}
+
+#[tokio::test]
 async fn closing_the_guard_closes_the_connection_and_the_session_is_not_offered_by_a_plain_driver() {
     let (guard, _calls, _audit) = catalog_guard(false);
     guard.ping().await.unwrap();
