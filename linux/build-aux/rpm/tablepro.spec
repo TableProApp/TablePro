@@ -77,7 +77,9 @@ export CARGO_PROFILE_RELEASE_LTO=thin
 # The app's manifest rather than the workspace, so the test-only crates
 # are left out.
 (cd crates/app && %{cargo_license}) > LICENSE.dependencies
-(cd crates/app && %{cargo_vendor_manifest})
+# From the root: cargo2rpm drops the workspace's own crates by the
+# working directory in their path, and lists every vendored crate.
+%{cargo_vendor_manifest}
 
 %install
 %meson_install
@@ -93,7 +95,7 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/app.tablepro.TablePro
 %{shrink:xvfb-run -a dbus-run-session -- %meson_test}
 
 %files
-%license LICENSE LICENSE.dependencies crates/app/cargo-vendor.txt
+%license LICENSE LICENSE.dependencies cargo-vendor.txt
 %doc README.md
 %{_bindir}/tablepro
 %{_libexecdir}/tablepro-askpass
