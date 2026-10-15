@@ -1,389 +1,203 @@
 # Roadmap
 
-## Where we are (2026-09-18)
+**Status, 2026-10-15**: every capability in the tables below is in the tree. Nothing has shipped yet: the app is not on Flathub, and no `linux-v*` tag has been cut. The [release criteria](#release-criteria) say what has to hold first, and the [backlog](#backlog) lists what is not built.
 
-**Phase 0 is complete. Phase 1 is complete. Large parts of Phase 2 and Phase 3 are already in the tree.**
+The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) and connects to five engines, each a crate linked in at compile time ([ADR 0001](docs/decisions/0001-no-plugin-system.md)): [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md) and [SQLite](docs/drivers/sqlite.md).
 
-The app connects to PostgreSQL, MySQL, SQLite, and Microsoft SQL Server; browses tables in a virtualized `GtkColumnView`; supports in-place cell edit with transactional save; hosts an `AdwTabView` workspace (editor / table / structure); filters rows; tunnels over SSH via `russh`; stores passwords in the Secret Service; and records query history in SQLite + FTS5. Drivers ship with testcontainers integration tests. Relm4 architecture is intact.
+## Implemented
 
-This is **past demo-grade**, but still **not beta-shippable**. The gap between "works on the developer's machine" and "I would install this from Flathub and use it daily" remains. See [`docs/production-audit.md`](docs/production-audit.md) for the detailed gap analysis. Remaining big-ticket items:
+### Connections
 
-| Concern | Status |
+| Capability | Detail |
 |---|---|
-| Type system | Done. `Value` covers Null/Bool/Int/Float/Text/Bytes/Date/Time/DateTime/TimestampTz/Decimal/Uuid/Json |
-| Result scaling | Streams via sqlx `fetch` with `MAX_QUERY_ROWS` cap; full result still held in the grid model |
-| Connection management | Done. One window per connection session, each with its own `AdwTabView` workspace; the sessions open at quit open again at launch |
-| Network security | SSH tunnelling + TLS toggle present; cert-path / verify-mode UI still thin |
-| Distribution | Flatpak manifest + metainfo + desktop + icon present; .deb (Ubuntu 26.04) and .rpm (Fedora 44) built, linted and install-tested in CI, published by a `linux-v*` tag |
-| Internationalization | gettext through `crates/app/src/i18n.rs` + `po/` template; extraction reaches every call site and `POTFILES.in` matches the tree. The committed template still predates that fix and needs regenerating on gettext 0.24 or newer |
-| Accessibility | Untested with Orca / keyboard nav |
-| Integration tests | Postgres, MySQL, MSSQL and ClickHouse docker suites run in CI, one nextest job per package; SQLite has a value suite that needs no container |
-| Recovery | `connection_monitor` ping + reconnect loop; cancel drops the client future, the server-side query keeps running |
+| Saved connections | Create, edit and rename, duplicate with the secrets carried to the copy, delete with or without the connection's history |
+| Groups and colour tags | From the connection row's menu; each group is a section of the connection list |
+| Import and export | A JSON file with no secrets in it, matched by id on the way back in |
+| Test before saving | Test connects once and reports, then disconnects |
+| Passwords | Kept in the Secret Service; a prompt asks when one is missing or refused, with Remember Password |
+| Read-only connections | SQLite and ClickHouse refuse writes at the engine, PostgreSQL and MySQL run in read-only transactions, and SQL Server relies on the login with the app refusing saves; the switch's subtitle says which |
+| SQLite files | Choose a file, create a new one, open one from Files, find a moved one with Locate, and choose read-only or read-write for one on a network filesystem |
+| Kerberos for SQL Server | From the ticket cache, in the Flatpak through the KCM socket |
+| Health and reconnect | A banner while the connection is lost, reconnect with backoff, and reads replayed after it; writes are never replayed |
+| Cancel on the server | Stopping a query stops the statement on the server, on every engine |
+
+### SSH
+
+| Capability | Detail |
+|---|---|
+| System OpenSSH client | One ControlMaster per connection ([ADR 0013](docs/decisions/0013-openssh-client-transport.md)); empty fields come from `~/.ssh/config` |
+| Jump hosts | A ProxyJump chain, passed to `ssh -J` |
+| Authentication | Agent, private key, password and keyboard-interactive; prompts go through the app's askpass helper |
+| Host keys | An unknown or changed key is shown with its SHA256 fingerprint before connecting; a changed key can be replaced, a revoked one is refused |
+
+### TLS
+
+| Capability | Detail |
+|---|---|
+| Modes | Disable, Require and Verify full; Verify full is the default for a new connection |
+| Certificates | CA file, client certificate and key (every network engine but SQL Server), and a server name override |
+| Remedies | A TLS failure says what went wrong and jumps to the field that fixes it |
+
+### Browse and edit
+
+| Capability | Detail |
+|---|---|
+| Data grid | A virtualized `GtkColumnView` with keyboard-focusable cells, pages of a chosen size, and a pager with an exact or estimated row count and Count Rows |
+| Filters | Per-column operators, a raw WHERE fragment checked as one expression, match any or all, kept per table |
+| Sorting | A header click sorts tables on the server and query results in the grid |
+| Cell editing | Editors by column kind: inline text, a multi-line editor, a calendar for dates, a toggle for booleans, JSON checked before saving; values are edited from their exact text, never from what the cell displays |
+| Rows | Insert, duplicate and delete; Set NULL, Empty and DEFAULT; undo and redo; save or discard pending changes, and stop a save |
+| Bulk delete | Deleting 10 rows or more asks first |
+| Copy | Copy, and Copy As rows, with headers, JSON, CSV, Markdown, IN clause or INSERT; Show Row as JSON |
+| Column widths | Kept per table |
+| CSV import | Into an existing table, with a column mapping, in one write batch |
+| Sidebar | Tables, views, materialized views and foreign tables by schema, with search, Open in New Tab, Edit Structure, Show CREATE TABLE, Import CSV and Drop Table |
+
+### Structure
+
+| Capability | Detail |
+|---|---|
+| Table definition | Columns, indexes, foreign keys and column comments |
+| Changes | Create, rename and drop tables; add, drop and rename columns, and change their type, nullability, default and comment; add and drop indexes and foreign keys |
+| Review | The SQL is previewed, and a save that loses data or can stop halfway is reviewed before it runs |
+| SQLite rebuilds | Changes SQLite cannot ALTER rebuild the table and keep its rows and indexes |
+
+### SQL editor
+
+| Capability | Detail |
+|---|---|
+| Editing | GtkSourceView with SQL highlighting, a scheme that follows the light or dark style, and toggle comment |
+| Completion | Tables, views, columns, schemas, functions and keywords, with aliases resolved |
+| Formatter | Format SQL, leaving a statement as typed when formatting would change its tokens |
+| Scripts | Split per dialect (`DELIMITER`, `GO`, routine and trigger bodies), one result per statement, Run Selection and run the statement at the cursor |
+| Find and replace | Ctrl+F and Ctrl+H, with case, whole word and regular expressions |
+| Files | Open a .sql file into the editor, or drop one on it |
+| Results | Several result sets per run, a banner at the 10,000-row limit with Export All, and Go to Error |
+| Drafts | The editor's text is kept per connection |
+
+### History and saved queries
+
+| Capability | Detail |
+|---|---|
+| Query history | A SQLite database with full-text search, filters by connection, time and status, pins, export as SQL or CSV, and a retention period |
+| What is recorded | Editor runs, and the SQL the app runs for grid saves, structure saves and imports; a run that sets a password is not recorded, and recording can be turned off |
+| Show in Files | For the history database, from the history dialog and Preferences |
+| Saved queries | Kept per connection, saved from the editor, opened in a new tab or the current one |
+
+### Export
+
+| Capability | Detail |
+|---|---|
+| Formats | CSV with its options, JSON, Markdown, HTML, XML, Excel, and SQL INSERT from a table tab |
+| Scope | The current page, every row of a query, or the entire table |
+| Running | Off the GTK thread with progress and Stop; closing or quitting asks about a running export |
+
+### Windows and sessions
+
+| Capability | Detail |
+|---|---|
+| Window per session | A window holds one connection; another connection opens in a window of its own, and one already open brings its window forward ([ADR 0012](docs/decisions/0012-window-per-session.md)) |
+| One instance | A second launch presents the running app; New Window (Ctrl+Shift+N) opens a picker |
+| Tabs | `AdwTabView` with the tab overview and split header bars, adapting down to 360×294 |
+| Session restore | The windows open at quit open again at launch, behind a preference |
+| Closing safely | Unsaved edits, a save in flight or a running export ask before a window closes or the app quits; logout waits for saves |
+| Notifications | Work that finishes in a tab you are not looking at sends a notification |
+| Preferences | Restore session, page size, query history, editor font and scheme, query timeout |
+| Shortcuts and About | A shortcuts dialog, and About from the metainfo with third-party licenses and debug info |
+
+### Packaging and platform
+
+| Capability | Detail |
+|---|---|
+| Flatpak | The Devel manifest builds with every Meson suite in the sandbox, and the shape Flathub builds is built offline and linted on every pull request |
+| .deb and .rpm | Ubuntu 26.04 and Fedora 44, linted, then installed and started in fresh containers in CI; a `linux-v*` tag publishes them ([ADR 0017](docs/decisions/0017-distribution-channels.md)) |
+| Desktop integration | Desktop file with Open With for SQLite files, D-Bus activation, a man page, metainfo with screenshots, and SVG icons |
+| Translations | Every user-facing string goes through gettext; CI checks `POTFILES.in` and the template |
+| Logs | stderr, which the session journals, with JSON lines on request |
+| Tests | Unit, GTK and accessibility suites, the conformance suites on every engine, and Docker suites for PostgreSQL with PgBouncer, MySQL with MariaDB, SQL Server, ClickHouse, SSH and the session ([testing.md](docs/testing.md)); every critical audit finding has named guards ([regression-tests.md](docs/regression-tests.md)) |
 
-**What "production-ready" means for this project**: a user on Fedora 41 or Ubuntu 24.04 can install from Flathub, connect to their everyday Postgres or MySQL database, browse and edit data correctly across all native types, run SQL queries, see schema, and trust the app to handle errors gracefully.
+## Backlog
 
-## Phase legend
+Not built yet, in no order.
 
-Phases are ordered by **maturity**, not feature count. Each phase has a single concrete exit criterion.
+### Connections
 
----
+- A statement timeout per connection. Today one preference covers editor runs, and every other call has a fixed 60 seconds.
+- Kerberos against a service outside the client's realm, which needs an SPN override in tiberius.
 
-## Phase 0 — Foundation ✅
+### Browse, edit and structure
 
-**Status**: complete.
+- Paste rows from the clipboard. Ctrl+V in the grid says it is not supported yet.
+- Set a cell to `NOW()` or `CURRENT_TIMESTAMP`, which needs SQL expressions as cell values.
+- Edit binary columns from and to a file. They are read-only today.
+- Time and timestamp pickers. Dates have a calendar; times are typed.
+- Save the column order per table.
+- Make the Confirm Before Deleting Rows preference take effect. The switch is stored, but deleting rows does not read it.
+- Functions, procedures, sequences and triggers in the sidebar.
+- The CREATE INDEX statement for an index.
+- Jump from a foreign key to the table it references.
+- Reorder columns in the structure tab by dragging, with the ALTER previewed.
+- An ER diagram.
 
-- [x] Cargo workspace with `app`, `core`, `storage`, `ssh`, `drivers/{postgres,sqlite,mysql,mssql}`
-- [x] `core::DatabaseDriver`, `core::Connection`, `core::DriverRegistry` traits
-- [x] `storage::connections` (JSON, atomic writes, schema versioning)
-- [x] `storage::secrets` (Secret Service via `oo7`)
-- [x] CI (`build-linux.yml`: fmt, clippy `-D warnings`, build, unit tests + driver integration)
-- [x] `rustfmt.toml`, `clippy.toml`, `rust-toolchain.toml`
-- [x] Flatpak manifest skeleton (not yet validated end-to-end — see Phase 3)
-- [x] Architecture decision records for stack picks
+### SQL editor
 
-Exit criterion: a fresh contributor can `cargo run -p tablepro` and reach a working window in under 15 minutes. **Met.**
+- Multi-cursor editing.
+- Vim mode.
+- Snippets.
 
----
+### Release and project
 
-## Phase 1 — Demo MVP ✅
+- Submit to Flathub.
+- Create the COPR project, the `COPR_CONFIG` secret and the `LINUX_COPR_PROJECT` variable before the first tag.
+- An AUR PKGBUILD, kept by the community.
+- The first translations in `po/LINGUAS`.
+- A manual pass with Orca, the keyboard alone, High Contrast, 1.5x text scaling and a right-to-left locale.
+- Install and use it on Ubuntu 26.04 and Fedora 44 by hand, and under KDE Plasma with the Adwaita style.
+- A crash report a user can send. A panic goes to the journal today, and About offers the debug info and the issue tracker.
+- A Linux user guide on docs.tablepro.app, a page on the marketing site, and a support channel.
 
-**Status**: complete.
+### More engines
 
-- [x] Drivers wired: PostgreSQL / SQLite / MySQL via `sqlx`, MSSQL via `tiberius`
-- [x] `AdwNavigationSplitView` shell with header bar + Connect/Open/Edit/Disconnect
-- [x] Multi-driver Connect dialog with engine picker + per-driver form
-- [x] Saved connection list with delete + reconnect
-- [x] Browse paginated table results in `GtkColumnView` (100k rows scroll smoothly)
-- [x] Sidebar table search (case-insensitive substring filter)
-- [x] SQL editor pane (GtkSourceView 5 + Run button)
-- [x] Modal Insert / Edit / Delete row dialogs (parameterized SQL)
-- [x] **True in-place cell edit** with snapshot-on-edit-start + force-cancel-on-recycle
-- [x] Connection deduplication by (driver, host, port, db, user)
-- [x] PG `fetch_columns` correctly populates `primary_key`
-- [x] All `unsafe set_data` confined to grid cell metadata, contained
-- [x] All async work via `sender.command` with auto-cancellation on shutdown
-- [x] Typed error → user-friendly message layer
-
-Exit criterion: a developer can demo the basic flows (connect, browse, edit, query) without crashes on their own machine. **Met.**
+Each one is a crate under `crates/drivers` ([adding-drivers.md](docs/adding-drivers.md)), on a client library that meets the [supply-chain policy](docs/decisions/0005-supply-chain-policy.md).
 
----
+| Engine | Client | Condition |
+|---|---|---|
+| Redis | redis 1.x (redis-rs) | None. fred, named here before, has had no release since 2025-02-27 |
+| MongoDB | mongodb 3.x, default features off, `rustls-tls-aws-lc` | It must use the system trust store first: it fills its roots from webpki-roots unless `ca_file_path` is set, so it needs native roots upstream or `ca_file_path` set to the platform bundle |
+| DuckDB | duckdb, from the DuckDB project | None |
+| Cassandra and ScyllaDB | scylla 1.x with `rustls-023` | None |
+| Oracle | none | Blocked. The oracle crate has one maintainer, no release since 2025-01-02, and needs the proprietary Oracle client |
 
-## Phase 2 — Production hardening (in progress)
+Microsoft's mssql-tds is checked again each release as a SQL Server client. Today its TLS on Linux goes through OpenSSL and it takes no outside pull requests, so tiberius stays.
 
-**Goal**: handle real-world data and real-world failure modes correctly.
-
-### Type system expansion ✅
+### Ideas
 
-- [x] Add to `core::Value`: `Date`, `Time`, `DateTime`, `TimestampTz`, `Decimal`, `Uuid`, `Json`
-- [x] Map driver-specific types across PG / MySQL / SQLite / MSSQL
-- [x] `chrono`, `rust_decimal`, `serde_json` in the workspace
-- [x] `RowObject` / display helpers consume the full `Value` set
+Not committed: server monitoring (sessions, locks, slow queries), maintenance commands, backup and restore, replication status, comparing result sets, schema diff and data sync between connections, scheduled queries, and opt-in usage telemetry.
 
-### Streaming results (partial)
-
-- [x] sqlx `fetch` stream into a bounded collector (`MAX_QUERY_ROWS`)
-- [ ] Backpressure model: hold the stream open for next-page reads
-- [ ] Memory-bounded grid: drop rows outside viewport (GTK virtualizes paint; model still holds all loaded rows)
-- [ ] Cancellation: drop the stream when user navigates away
-
-### Multi-connection / multi-tab architecture ✅
-
-- [x] A `Session` per window, claimed in the `SessionRegistry` so one database opens in one window
-- [x] `AdwTabView` for multiple open tables / queries within one connection
-- [x] Workspace tab persistence, one file per session under `$XDG_STATE_HOME/tablepro/workspaces/`
-- [x] Multi-window: each `SessionWindow` holds its own session, and another connection opens in another window rather than replacing it ([ADR 0012](docs/decisions/0012-window-per-session.md))
-- [x] Session restore: the windows open at quit open again at the next launch, behind the `restore-session` preference
-- [x] Open With: a database file from the file manager opens in a window of its own, or brings forward the window that has it open
+## Release criteria
 
-### Security baseline (partial)
+From the [production-readiness audit](docs/production-audit.md#what-production-ready-means-here), for GNOME 50. A user on Ubuntu 26.04 or Fedora 44:
 
-- [x] TLS toggle on connect options
-- [x] SSH tunnelling via `russh` (host, port, key / password auth)
-- [x] SSH jump host: `ProxyJump` chains resolved from the OpenSSH client configuration
-- [x] Windows integrated (Kerberos) authentication for SQL Server, from the ambient ticket cache
-- [ ] Kerberos against a service outside the client's default realm, which needs an SPN override upstream in tiberius
-- [x] Read-only mode toggle per connection
-- [x] Cancel running query: button + Esc shortcut
-- [ ] `Connection::cancel` driver method, so cancelling stops the server-side query instead of dropping the client future (`core::OwnedCalls` carries the stop and the engine-stop contract; it is wired once `Connection` v2 lands)
-- [x] Connection lost recovery: ping monitor + reconnect loop
-- [ ] Statement timeout configurable per connection
-- [ ] TLS cert path / verify mode / SNI override UI
+1. Installs `app.tablepro.TablePro` from Flathub, or the .deb or the .rpm.
+2. Connects to their everyday PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse or SQLite database.
+3. Browses tables of real-world data (dates, decimals, JSON, UUIDs, NULLs) and sees correct values.
+4. Runs typical queries against tables of a million rows or more without running out of memory or freezing.
+5. Edits data in place, and the changes commit correctly even when the connection or the app misbehaves.
+6. Trusts the app with credentials: TLS, SSH tunnels, no password in plain text.
+7. Recovers when the network drops or the database restarts.
+8. Works with a screen reader, the keyboard alone and larger text.
+9. Sees no message that cannot be translated, even while only English ships.
+10. Uses the app daily for a week without an unrecoverable failure.
 
-### Integration tests (partial)
-
-- [x] `tests/integration.rs` using `testcontainers-rs` for Postgres, MySQL, MSSQL
-- [x] SQLite suite (`crates/drivers/sqlite/tests/values.rs`: storage class per value, declared type, NULL against empty string)
-- [x] Connect, list_tables, fetch_columns (PK detection), pagination, value round-trip, bad SQL
-- [x] CI runs each driver docker suite through cargo-nextest, one job per package
-- [x] Run the MSSQL suite in CI
-
-**Exit criterion**: Connect to a 10M-row Postgres table, scroll, edit a date column, lose network mid-query, see a recoverable error, reconnect via the same UI flow.
-
----
-
-## Phase 3 — Beta release (in progress)
-
-**Goal**: shippable to Flathub. A user installs and uses for real work.
-
-### Browse UX (partial)
-
-- [x] Where-filter UI (`filter_strip`) with per-column operators
-- [x] ORDER BY wired to `GtkColumnView` header click → server sort
-- [x] Multi-row select via shift-click + Ctrl-click
-- [x] Bulk delete with confirmation
-- [x] Right-click context menu (copy, copy as, set value, export, insert, duplicate, delete)
-- [x] Save column widths per (connection, table)
-- [ ] Save column order per (connection, table), which needs column reordering in the grid first; `GtkColumnView` does not have it turned on
-
-### Export / import (~1 week)
-
-- [x] Export current grid to CSV / JSON from the result grid's right-click menu and the paginator (query results included)
-- [x] Export with CSV options: NULL handling, line breaks, header row, formula sanitizing, delimiter, quote style, line endings, decimal separator
-- [x] Export as SQL INSERT / Markdown / HTML / XML
-- [x] Export as XLSX, with numbers, dates and booleans in the types Excel has for them
-- [x] Copy as Rows / With Headers / JSON / CSV / Markdown / IN Clause, Show Row as JSON
-- [ ] Paste rows from clipboard; Set Value > NOW() / CURRENT_TIMESTAMP (needs raw SQL expressions in the change tracker)
-- [x] Import CSV into a table, from the table's own menu, with a mapping dialog and one transaction for the whole file
-- [x] Run SQL file: opened from the editor's menu into the tab, then run like anything else
-
-### Schema browser (partial)
-
-- [x] Structure tab: columns, indexes, foreign keys (edit + DDL diff)
-- [x] Column metadata: type, nullable, default
-- [x] Column comments: read on PostgreSQL, MySQL, SQL Server and ClickHouse, edited in the Structure tab everywhere but SQLite, which stores none
-- [ ] Sidebar tabs: Views, Triggers, Functions, Sequences
-- [ ] Click view → SELECT * FROM view (re-uses browse view)
-- [ ] Click index → show CREATE INDEX DDL + which columns
-- [ ] Click FK → highlight columns + jump to referenced table
-
-### Query history + saved queries (partial)
-
-- [x] SQLite FTS5 store at `$XDG_STATE_HOME/tablepro/history.db`, versioned with embedded sqlx migrations
-- [x] SQL editor runs recorded with timestamp, duration, success, connection name
-- [x] Record the SQL the app runs outside the editor (Structure tab DDL saves, grid row saves)
-- [x] History pane with full-text search
-- [x] Saved queries: named and kept per connection, saved from the editor, reopened from the app menu
-
-### Connection management (partial)
-
-- [x] Connection groups: filed from the row's own menu, shown as headers in both connection lists
-- [x] Colour tags per connection, from the row's own menu, shown as a dot ahead of the name
-- [x] Import / export connections to a JSON file, matched by id on the way back in, with no secrets in the file
-- [x] Clone connection, from the row's own menu, secrets carried onto the copy's id
-- [x] "Test connection" button in dialog before save
-
-### Distribution scaffolding (~1 week)
-
-- [x] `app.tablepro.TablePro.metainfo.xml` skeleton
-- [x] App icon: scalable SVG
-- [ ] Icon set: 16/32/48/64/128/256/512 PNG
-- [ ] 4–5 high-resolution screenshots showing key flows
-- [ ] Long description + short description polish in metainfo
-- [x] ContentRating (`oars-1.1` in the metainfo)
-- [x] `cargo-sources.json` generation via `flatpak-builder-tools/cargo` (in CI, for the release-shaped build)
-- [x] CI job: `flatpak-builder` builds the Devel manifest with its tests and the release shape offline on each PR
-- [ ] Submit to Flathub `flathub/flathub` PR → review → first publish
-
-### Observability (~0.5 weeks)
-
-- [x] Structured logging via `tracing-subscriber` (env-filter)
-- [x] JSON log layer, env-toggleable through `TABLEPRO_LOG_FORMAT=json`
-- [ ] Crash reporter: panic hook captures backtrace, writes to log, optional anonymous upload (with explicit opt-in)
-- [ ] "Help → Report bug" UI helper that opens the issue tracker pre-filled with sanitized log excerpt
-
-**Exit criterion**: app published to Flathub stable channel; user installs via `flatpak install app.tablepro.TablePro`; runs against their Postgres + MySQL daily for one week without unrecoverable failure.
-
----
-
-## Phase 4 — Beta polish (3 weeks)
-
-**Goal**: shipped beta, accepting external bug reports, ready for first wave of public users.
-
-### Internationalization setup (partial)
-
-- [x] `gettext` integration via `gettext-rs`
-- [x] `tr!` macro + locale bind in `i18n::init`
-- [x] `po/` scaffolding: `tablepro.pot`, `POTFILES.in`, `LINGUAS`
-- [x] Locale detection: `setlocale(LC_ALL, "")` in `i18n::init`
-- [x] Extract all user-facing strings: the extractor is pointed at `gettext`, `gettext_f`, `ngettext_f` and `pgettext_f` rather than the `tr!` macro that no longer exists
-- [x] Regenerate `tablepro.pot` with gettext 0.24 or newer; CI fails when the committed template drifts
-- [x] Refresh `POTFILES.in`, generated by the `git ls-files` command in `po/README.md` so CI can diff against it
-- [ ] Build pipeline integrates `.po` → `.mo` compilation
-- [ ] Ship English-only at first; structure ready for translators
-
-### Accessibility audit (~1 week)
-
-- [ ] Test screen-reader flow with Orca on GNOME 47
-- [ ] Keyboard-only flow: tab order, focus indicators, escape close, enter commit
-- [ ] High contrast mode rendering
-- [ ] Font scaling honored (`gsettings text-scaling-factor`)
-- [ ] No color-only UI signals (Connect button has icon + text, Delete has icon + label)
-- [ ] Set `Accessible` properties on custom widgets (cells, popover content)
-
-### Multi-DE / multi-distro testing (~0.5 weeks)
-
-- [ ] KDE Plasma 6 visual smoke test (Adwaita styling acceptable; do not adopt KDE styling)
-- [ ] Wayland-specific bug fixes (HiDPI fractional scaling, drag handles)
-- [ ] X11 fallback works on older distros
-- [ ] Manual install + smoke on Fedora 41, Ubuntu 24.04, Arch (latest), Debian 12/13
-
-### Distribution variants (~0.5 weeks)
-
-- [x] `.deb` for Ubuntu 26.04 on GitHub Releases, built from `meson install` with rustup ([ADR 0017](docs/decisions/0017-distribution-channels.md))
-- [x] `.rpm` for Fedora 44 through COPR, built with Fedora's Rust
-- [x] Both packages built in fresh containers, linted, and installed and started in fresh containers on CI
-- [ ] Set up the COPR project, the `COPR_CONFIG` secret and the `LINUX_COPR_PROJECT` variable before the first tag
-- [ ] AUR PKGBUILD for Arch (community-maintained, mirror in repo)
-- AppImage dropped: no base older than Ubuntu 26.04 or Fedora 44 has GLib 2.88 and GTK 4.22
-
-### Documentation (~0.5 weeks)
-
-- [ ] User manual at `docs/user/` (Mintlify) — getting started, connection setup per database, keyboard shortcuts, FAQ
-- [ ] Marketing page on the existing TablePro Mintlify site for Linux
-- [ ] CHANGELOG.md for the Linux subproject
-- [ ] Issue templates: bug report, feature request
-
-**Exit criterion**: Beta release announced on the marketing site, on Flathub stable, on r/linux. Issue tracker active. First 10 external bug reports triaged.
-
----
-
-## Phase 5 — GA expansion (6+ months, ongoing)
-
-**Goal**: General Availability. Feature set covers what a daily Postgres/MySQL user expects, plus genuine multi-engine support.
-
-### Additional drivers (parallelizable, ~1 week each)
-
-- [x] ClickHouse via the official `clickhouse` crate
-- [x] MSSQL via `tiberius`
-- [ ] Oracle via `oracle` crate (ODPI-C)
-- [ ] Redis via `fred`
-- [ ] MongoDB via official `mongodb` crate
-- [ ] DuckDB via `duckdb` crate
-- [ ] Cassandra/Scylla via `scylla`
-- [ ] DynamoDB via `aws-sdk-dynamodb`
-- [ ] BigQuery (HTTP, third-party crate)
-- [ ] Cloudflare D1 (HTTP)
-
-### Editor maturation (~3 weeks total)
-
-- [ ] Schema-aware SQL autocomplete (tables, columns, keywords) using cached `current_columns`
-- [ ] SQL formatter (multiple dialect support)
-- [ ] Multi-statement execution
-- [ ] Run-selection-only
-- [ ] Find / replace within editor
-- [ ] Multi-cursor editing
-- [ ] Vim mode (custom impl on top of GtkSourceView 5)
-- [ ] Snippets
-
-### Schema editor (~2 weeks)
-
-- [x] Create / alter / drop table via Structure tab + DDL materialization
-- [x] Add / remove columns
-- [x] Rename columns, through a `RenameColumn` op materialized ahead of the alter so the alter addresses a name that exists
-- [x] Add / remove indexes
-- [x] Add / remove foreign keys
-- [ ] Drag-drop column reordering with ALTER TABLE preview
-
-### ER diagram (~3 weeks)
-
-- [ ] Cairo-based custom widget rendering tables as cards
-- [ ] Foreign key edges with arrowheads
-- [ ] Pan / zoom / save layout
-- [ ] Auto-layout via dot graph algorithm
-
-### Type-aware widgets (~2 weeks)
-
-- [ ] Date / time picker for date columns
-- [ ] Number spinner with bounds (INT2/INT4/INT8 ranges)
-- [ ] JSON editor with syntax highlighting + validation
-- [ ] Boolean toggle
-- [ ] File chooser for BLOB columns
-
-### Real product infrastructure
-
-- [ ] Marketing site updates per release
-- [ ] Support channel: GitHub Discussions or Discourse
-- [ ] Email support (paid tier?) — depends on business model decision
-- [ ] Pricing page (free, paid, enterprise — depends on model)
-- [ ] Donation links if open source
-- [ ] Telemetry (anonymous, opt-in) for usage analytics
-
-**No fixed exit criterion**. This phase ends when the team decides parity is "enough" and shifts to maintenance + driver additions on demand.
-
----
-
-## Phase 6 — Parity ambitions (year+)
-
-**Goal**: feature-competitive with DBeaver / DataGrip on the engines we support.
-
-### Maybe (open questions)
-
-- [ ] Real-time monitoring (active connections, locks, slow queries)
-- [ ] Server admin tools (vacuum, reindex, ANALYZE)
-- [ ] Backup / restore UI
-- [ ] Replication monitoring
-- [ ] Multi-tab query results comparison
-- [ ] Diff tool: schema diff between two connections
-- [ ] Data sync between two connections
-- [ ] Cron-style scheduled queries
-- [ ] Reporting / dashboard builder (probably out of scope; focus on the IDE shape)
-
-These are ambitions, not commitments. Phase 6 should only start after Phase 5 has stabilized for at least 6 months.
-
----
-
-## Out of scope (firm)
+## Out of scope
 
 | Item | Reason |
 |---|---|
-| Plugin system at runtime | [decision 0001](docs/decisions/0001-no-plugin-system.md) — drivers are static |
-| Cross-platform builds (Windows / macOS) | Separate apps in the monorepo for those platforms |
-| Embedded scripting (JS / Python / Lua) | SQL is enough; adds attack surface |
-| Hot-reload of drivers | Compile-time only; use `cargo watch` during dev |
-| Cloud sync of connections (proprietary backend) | Out of scope unless business model demands it |
-| Snap distribution | Decided to skip; Flathub, .deb and .rpm cover the audience |
-| AppImage | No base older than Ubuntu 26.04 or Fedora 44 has the GNOME 50 libraries; see [decision 0017](docs/decisions/0017-distribution-channels.md) |
-| KDE-native styling | Run as Adwaita on KDE; users wanting native KDE have other options |
+| Plugins loaded at runtime | Drivers are linked in at compile time ([ADR 0001](docs/decisions/0001-no-plugin-system.md)) |
+| Windows and macOS builds | Those platforms have their own apps in this repository |
+| Embedded scripting (JavaScript, Python, Lua) | SQL is enough, and a scripting engine widens the attack surface |
+| Hot-reloading drivers | Drivers are compiled in |
+| Cloud sync of connections through a TablePro service | Not without a business model that needs it |
+| KDE-native styling | The app runs with the Adwaita style everywhere |
 
----
-
-## Phase B — Repository restructure (deferred)
-
-Once Beta has shipped (end of Phase 4) and is stable for at least 6 weeks, the top-level repository layout migrates:
-
-```
-apps/macos/        (move from TablePro/, TableProTests/, Plugins/, Libs/, LocalPackages/)
-apps/ios/          (move from TableProMobile/)
-apps/linux/        (move from linux/)
-packages/          (move from Packages/TableProCore/)
-```
-
-This is a separate undertaking and is not blocking any phase. It moves only after Linux is stable and there is a real cost to the current flat layout.
-
----
-
-## Realistic timeline
-
-| Stage | Effort | Calendar |
-|---|---|---|
-| Phase 0 + 1 | done | done |
-| Phase 2 remainder (streaming backpressure, driver-side query cancel, TLS UI polish) | ~2 weeks FT | next |
-| Phase 3 remainder — Beta release | ~3 weeks FT | following |
-| Phase 4 — Beta polish | 3 weeks FT | after Beta |
-| **Beta on Flathub** | **~8 weeks FT from this revision** | **after Phase 4** |
-| Phase 5 — GA expansion | 6 months FT | rolling |
-| Phase 6 — Parity ambitions | 12+ months FT | optional |
-
-At 50% effort (part-time), double everything. At 25% effort (side project), 4x.
-
----
-
-## What changed in this revision (2026-07-27)
-
-The previous "Where we are (2026-04-26)" section still described the project as Phase 0/1 demo-grade with a type system of 6 variants, no multi-tab, no SSH, and a single ignored integration test. The tree has moved on:
-
-- Four drivers (including MSSQL), full `Value` set, `DatabaseService`, workspace tabs, Structure tab + DDL, filters, SSH, read-only mode, query history, connection monitor, gettext scaffolding, and CI integration jobs are all present.
-- Phase 2 and Phase 3 checklists were marked to match the code. Unchecked items are the real remaining work.
-- Timeline shortened: Beta is roughly 8 weeks of focused work from this baseline, not 11 weeks from a stale Phase 1.
-
-This revision does not claim Beta readiness. It stops the roadmap from under-selling what already ships.
+The distribution channels, and why there is no AppImage or Snap, are in [ADR 0017](docs/decisions/0017-distribution-channels.md).
