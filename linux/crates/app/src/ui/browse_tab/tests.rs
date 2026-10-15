@@ -1268,7 +1268,7 @@ fn a_page_that_replaces_the_focused_row_takes_the_focus_out_first() {
         seen.set(seen.get() || focus.is_some_and(|focus| focus.root().is_none()));
     });
 
-    harness.tab().send(BrowseTabInput::NextPage);
+    harness.tab().send(PagingInput::NextPage);
     wait_until(WAIT, || harness.shown() == text(&["Linus"])).expect("the next page");
     after_next_frame(&shown.0);
 
