@@ -125,4 +125,16 @@ final class SettingsWindowTitleTests: XCTestCase {
 
         XCTAssertEqual(window.contentMinSize, SettingsPaneTabViewController.paneSize)
     }
+
+    func testTheInitializerPresentUsesBuildsTheSettingsWindow() {
+        AppStorageEnvironment.shared.defaults.set(
+            SettingsPane.general.rawValue,
+            forKey: PreferenceKeys.selectedSettingsPane.name
+        )
+        let controller = SettingsWindowController()
+        guard let window = controller.window else { return XCTFail("Cmd-comma and settings links present this controller") }
+        windows.append(window)
+
+        XCTAssertEqual(window.identifier?.rawValue, WindowIdentifier.settings)
+    }
 }

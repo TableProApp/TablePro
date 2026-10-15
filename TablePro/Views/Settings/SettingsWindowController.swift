@@ -27,7 +27,12 @@ internal final class SettingsWindowController: NSWindowController {
         contentViewController as? SettingsPaneTabViewController
     }
 
-    internal convenience init(registryClient: RegistryClient = .shared) {
+    // A defaulted parameter would let `SettingsWindowController()` resolve to the inherited `init()`, which builds no window.
+    internal convenience init() {
+        self.init(registryClient: .shared)
+    }
+
+    internal convenience init(registryClient: RegistryClient) {
         let panes = SettingsPaneTabViewController(registryClient: registryClient)
 
         /// `NSWindow(contentViewController:)` binds the window title to the content view
