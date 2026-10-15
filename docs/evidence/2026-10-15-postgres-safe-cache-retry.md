@@ -24,3 +24,11 @@ PostgreSQL source references: [plan revalidation](https://github.com/postgres/po
 - A guarded query/execute regression is included in the existing release tier; the exact-head Forgejo result is recorded on the pull request before merge.
 
 This does not qualify every PostgreSQL-compatible server. A server that omits or changes the verified diagnostics returns the error explicitly rather than receiving an automatic retry.
+
+## Merged acceptance
+
+[#921](https://github.com/cozyGarage/BookiE/pull/921) merged as `73ac5c6cf7e286ae80b64b3f4371524a81132587` and closed #900. Forgejo run 475 passed for `ae61021e2c5ad5be34131f3f7490d78659d8c789`. The subsequent linux merge left the PR's own `crates`/`scripts` diff byte-identical to that gated head (SHA-256 `592df06d9522baa4bc8eece42f58eb930c99a609592bfee987bbea3a50108409`). GitHub checks, CodeQL and SonarCloud passed at updated PR head `324a06c5629925b1b1804faf77bbbc072536fc9a` before merge.
+
+The later linux sync floor failure is recorded in the [completion validation evidence](2026-10-15-postgres-completion-routing.md); it was not counted as a passing run.
+
+Research catalogue case PG-15 is covered by `application_errors_never_replay_nontransactional_effects` and `guarded_application_error_does_not_replay_sequence_effects`. The final combined linux passed Forgejo run 496 after the completion follow-up merged.

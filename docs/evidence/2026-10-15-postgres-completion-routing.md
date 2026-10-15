@@ -30,3 +30,24 @@ Exact proposal activation is separate from metadata identity. The current GtkSou
 ## CI observation
 
 The post-merge linux sync for #921 reached Forgejo run 485 at `73ac5c6cf7e286ae80b64b3f4371524a81132587`. Only the Ubuntu 24.04 floor job failed; Debian floor passed. The captured log did not expose a GTK scenario or assertion failure. A minimal shell probe confirmed the summary pipeline can exit before printing its fallback tail under `set -euo pipefail`. [#937](https://github.com/cozyGarage/BookiE/issues/937) tracks that diagnostic defect, and [#556](https://github.com/cozyGarage/BookiE/issues/556#issuecomment-6193746472) holds the run observation. The failure was not counted as a passing gate or attributed to PostgreSQL. This follow-up requires its own exact-head gate.
+
+## Merged acceptance
+
+[#938](https://github.com/cozyGarage/BookiE/pull/938) merged as `e528ae5ded453fd34a41513c664d19d397a118f7`, closing #933 and #923. Exact PR head `32752b03ab6756f83af21d50a8921f7ecf07bf6c` passed Forgejo run 493 (all 28 jobs, including both distro floors), GitHub checks, CodeQL and SonarCloud. #932 landed first and its identity regressions were retained/adapted.
+
+The CI diagnostic probe used this control flow:
+
+```bash
+set -euo pipefail
+false || {
+  printf 'unexpected startup error\n' | grep '^FAILED' | tail -30
+  printf 'FULL FAILURE TAIL\n'
+  exit 1
+}
+```
+
+Observed: exit 1, with no fallback tail emitted. The logging fix remains #937; it was kept out of the completion change.
+
+Final merged-linux sync: Forgejo run 496 passed all 28 jobs for `e528ae5ded453fd34a41513c664d19d397a118f7`. Both completed fix branches were removed from GitHub, Forgejo and the local branch list.
+
+Research catalogue case PG-26 is covered by the completion identity/reference tests and `completion_metadata_preserves_exact_postgresql_catalog_names`. Cases PG-19 and PG-27 (owning-session visibility and search_path resolution) remain separate candidates, and actual proposal activation remains #934.
