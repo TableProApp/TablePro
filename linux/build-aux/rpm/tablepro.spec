@@ -27,6 +27,9 @@ BuildRequires:  pkgconfig(gio-2.0) >= 2.88
 BuildRequires:  pkgconfig(gtk4) >= 4.22
 BuildRequires:  pkgconfig(libadwaita-1) >= 1.9
 BuildRequires:  pkgconfig(gtksourceview-5) >= 5.18
+# The SQLite driver and the query history link the system library
+# (sqlx's sqlite-unbundled) rather than a copy in the binary, so SQLite
+# security fixes arrive through Fedora's sqlite package.
 BuildRequires:  pkgconfig(sqlite3) >= 3.46
 BuildRequires:  pkgconfig(mit-krb5-gssapi)
 # %%check: the gtk suite opens windows on a display and owns D-Bus names,
