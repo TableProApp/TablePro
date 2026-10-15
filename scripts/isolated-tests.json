@@ -410,6 +410,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::structure_tab::columns::tests::a_structure_expander_arrow_matches_its_expansion_state"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::export_dialog::tests::a_full_export_shows_a_refusal_without_opening_its_source"
     ],
     [

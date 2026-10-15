@@ -1,6 +1,12 @@
 .tp-cell-modified {
                 background: alpha(@warning_color, 0.18);
             }
+            image.tp-structure-expander-arrow:dir(ltr) {
+                margin-left: 6px;
+            }
+            image.tp-structure-expander-arrow:dir(rtl) {
+                margin-right: 6px;
+            }
             .tp-row-pending-insert {
                 background: alpha(@success_color, 0.16);
             }
