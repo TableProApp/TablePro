@@ -758,8 +758,9 @@ fn current_page_export_includes_pending_edits() {
     assert!(offer.session.is_some(), "a read of every row has no session");
 }
 
+/// The bar's own states are tested with the bar; this is the tab's wiring.
 #[gtk4::test]
-fn stop_saving_button_visible_only_while_saving() {
+fn stop_saving_follows_the_save_and_reaches_the_window() {
     use gtk4::subclass::prelude::ObjectSubclassIsExt;
 
     let mut script = serving_table();
@@ -771,21 +772,17 @@ fn stop_saving_button_visible_only_while_saving() {
     harness
         .tab()
         .connect_stop_save_requested(move |_| stop_sink.set(stop_sink.get() + 1));
-    let imp = harness.tab().imp().pending_bar.imp();
-    let (stop, spinner, save) = (imp.stop_button.get(), imp.saving_spinner.get(), imp.save_button.get());
+    let stop = harness.tab().imp().pending_bar.imp().stop_button.get();
     harness.tab().send(EditInput::InsertRow);
 
-    assert!(!stop.is_visible() && !spinner.is_visible());
     harness.tab().send(SaveInput::SaveStarted);
-    assert!(stop.is_visible() && spinner.is_visible());
-    assert!(!save.is_sensitive(), "Save stayed on while a save ran");
+    assert!(stop.is_visible(), "a running save offered no Stop Saving");
 
     stop.emit_clicked();
     assert_eq!(stops.get(), 1);
 
     harness.tab().send(SaveInput::SaveFailed("rolled back".to_owned()));
-    assert!(!stop.is_visible() && !spinner.is_visible());
-    assert!(save.is_sensitive());
+    assert!(!stop.is_visible(), "Stop Saving outlived the save");
 }
 
 #[gtk4::test]
