@@ -2,6 +2,30 @@
 
 The approved [BookiE convergence sprint](bookie-0.2-sprint.md) now includes shared Rust/Linux foundations as well as behavior review. Apple source trees remain excluded.
 
+## 2026-10-15: upstream Linux changelog review
+
+Reviewed upstream `linux` at `20ed72497` (`fix(linux): require the GLES library GTK loads at runtime in the rpm`) from `0e542e3c1` (`chore(linux): drop files main already deleted`, 2026-09-18), against BookiE `linux` at `46a4979b3`. Fourteen commits touch `linux/`. Most are the driver contract v2 switch and remediation steps 31 to 66 on a session crate we do not share. Upstream also rewrote `linux/CHANGELOG.md`, so its Fixed and Security lines were screened as hypotheses against our code. Upstream is AGPL-3.0; every fix below is reimplemented here, not copied.
+
+Applies to us, confirmed by reading our code and filed:
+
+| Upstream | BookiE issue |
+| --- | --- |
+| `52e666138` credential rules for history recording | [#967](https://github.com/cozyGarage/BookiE/issues/967) query history saves passwords and keys |
+| Changelog: creating a SQLite table with a foreign key failed | [#972](https://github.com/cozyGarage/BookiE/issues/972) |
+| Changelog: SQL Server drop or type change of a column with a default | [#973](https://github.com/cozyGarage/BookiE/issues/973) |
+| Changelog: MySQL rename across databases, ClickHouse rename | [#974](https://github.com/cozyGarage/BookiE/issues/974) |
+| Changelog: `real` values showed extra digits | [#975](https://github.com/cozyGarage/BookiE/issues/975) (SQL Server, DuckDB, MySQL) |
+| Changelog Security: jump host trusted through ssh_config | [#970](https://github.com/cozyGarage/BookiE/issues/970), the item the 2026-09-25 entry left open |
+| `611c95848` two edits of one connection mixing | [#978](https://github.com/cozyGarage/BookiE/issues/978) |
+
+Does not apply:
+
+- `c423710ba` waits for the server to close a cancel request, because tokio-postgres returns once the request is written and a late signal cancels the next statement. We cancel with `SELECT pg_cancel_backend($1)` on a separate pooled connection, which returns after the signal is sent. A "query right after Stop" regression probe is listed in [#983](https://github.com/cozyGarage/BookiE/issues/983).
+- `1155d3eb1` disarms a `CancellationToken::drop_guard` on completion. We have no `drop_guard`.
+- Driver contract v2, owned calls, the session and health crates, the ClickHouse fixture and rpm packaging.
+
+The remaining changelog lines that touch shared behaviour, together with the dbx and DBeaver probes, are in the intake issue [#983](https://github.com/cozyGarage/BookiE/issues/983).
+
 ## 2026-10-03: macOS main applicability review
 
 Follow-up: [U1 SQL Server handoff](archive/upstream-u1-sql-server-2026-10-03.md) records the manual metadata fix for rowversion and temporal period columns, the failing-before/passing-after native regression, and remaining U1 consumers.

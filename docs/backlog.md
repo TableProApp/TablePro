@@ -43,6 +43,9 @@ candidate inventory as a release commitment.
 | TEST-34 | Import Python coverage for repository tooling into SonarCloud without lowering the coverage gate; #830 added tests but SonarCloud reported 0.0% new-code coverage |
 | AUD-5 | About 4,700 comment lines in `src/` to move into docs, file by file |
 | DOC-3, DOC-5 | Orca and high contrast pass; value comparison with DBeaver and dbx |
+| PEER-1 | MCP tool annotations (`read_only_hint`, `destructive_hint`, `idempotent_hint`) on every tool so clients see policy intent, as dbx does |
+| PEER-2 | One per-dialect lexer profile (backslash escapes, `E''` strings, `--` rule, quote characters) shared by the statement splitter, the classifier and export quoting; dbx's `SqlDialectProfile` closed a class of splitter and export disagreements |
+| PEER-3 | A Redis command table with arity and safety class that fails closed on unknown commands, instead of relying on the SQL classifier |
 | B4-9, B4-11, B4-17, B4-21 | Route and TLS acceptance evidence, failed-batch rollback on optional MySQL engines and package acceptance, native multi-hop trust flow, SQL Server Kerberos Windows AD interoperability and package acceptance |
 
 ## Development tooling
