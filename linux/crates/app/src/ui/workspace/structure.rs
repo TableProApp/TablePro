@@ -17,7 +17,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::runtime::DeliverInput;
 use crate::ui::error_text;
-use crate::ui::structure_tab::{StructureMode, StructureTabInput};
+use crate::ui::structure_tab::{LoadInput, SaveInput, StructureMode, StructureTabInput};
 use crate::ui::workspace::{WorkspaceInput, WorkspaceModel, WorkspaceTab};
 
 use super::structure_target::StructureTarget;
@@ -218,7 +218,7 @@ impl WorkspaceModel {
                 if new_table_name.is_some() {
                     self.retitle_tab(tab_id);
                 }
-                self.send_to_structure_tab(tab_id, StructureTabInput::SaveCompleted { new_table_name });
+                self.send_to_structure_tab(tab_id, SaveInput::SaveCompleted { new_table_name });
                 self.input.deliver(WorkspaceInput::SchemaChanged {
                     schema,
                     table: Some(table),
@@ -261,7 +261,7 @@ impl WorkspaceModel {
         });
     }
 
-    pub(super) fn send_to_structure_tab(&self, tab_id: Uuid, msg: StructureTabInput) {
+    pub(super) fn send_to_structure_tab(&self, tab_id: Uuid, msg: impl Into<StructureTabInput>) {
         let structure = self
             .workspace_tabs
             .borrow()
@@ -298,10 +298,10 @@ impl WorkspaceModel {
                 })
                 .unzip();
             for browse in browse_tabs.into_iter().flatten() {
-                browse.send(crate::ui::browse_tab::BrowseTabInput::SchemaChanged);
+                browse.send(crate::ui::browse_tab::DataInput::SchemaChanged);
             }
             for structure in structure_tabs.into_iter().flatten() {
-                structure.send(StructureTabInput::SchemaChanged);
+                structure.send(LoadInput::SchemaChanged);
             }
         }
         // The catalog watch takes the new list to the sidebar, and a

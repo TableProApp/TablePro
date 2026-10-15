@@ -7,24 +7,24 @@ use tablepro_core::{DriverError, TimeoutPhase};
 use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 
-use super::BrowseTabInput;
 use super::tests::{
     Harness, LogLines, WAIT, estimate, full_page, not_null, not_null_name, paging, rows, rows_from, serving_table,
     text, toasts,
 };
+use super::{PagingInput, SaveInput};
 use crate::services::change_origins::ChangeOrigins;
 use crate::test_support::{drain_main_context, wait_until};
 
 fn paginator(harness: &Harness) -> String {
-    harness.tab().imp().paginator_label.label().to_string()
+    harness.tab().imp().pager_bar.imp().paginator_label.label().to_string()
 }
 
 fn count_button(harness: &Harness) -> gtk4::Button {
-    harness.tab().imp().count_button.get()
+    harness.tab().imp().pager_bar.imp().count_button.get()
 }
 
 fn count_label(harness: &Harness) -> String {
-    harness.tab().imp().count_label.label().to_string()
+    harness.tab().imp().pager_bar.imp().count_label.label().to_string()
 }
 
 fn count_calls(harness: &Harness) -> usize {
@@ -55,7 +55,7 @@ fn large_estimate_offers_count_without_counting() {
     assert_eq!(count_calls(&harness), 0, "a large table was counted on its own");
     assert!(count_button(&harness).is_visible() && count_button(&harness).is_sensitive());
     assert_eq!(count_label(&harness), "Count Rows");
-    assert!(!harness.tab().imp().last_button.is_sensitive());
+    assert!(!harness.tab().imp().pager_bar.imp().last_button.is_sensitive());
 }
 
 #[gtk4::test]
@@ -129,7 +129,7 @@ fn count_rows_button_counts_and_shows_progress() {
 
     assert_eq!(count_label(&harness), "Counting…");
     assert!(!count_button(&harness).is_sensitive());
-    assert!(harness.tab().imp().count_spinner.is_visible());
+    assert!(harness.tab().imp().pager_bar.imp().count_spinner.is_visible());
     wait_until(WAIT, || paginator(&harness) == "Rows 1 – 2 of 2").expect("the counted total");
     assert!(!count_button(&harness).is_visible());
 }
@@ -147,7 +147,7 @@ fn count_is_cancelled_when_filter_changes() {
     wait_until(WAIT, || count_calls(&harness) == 1).expect("the count was asked for");
     let counters = harness.connection.counters();
 
-    harness.tab().send(BrowseTabInput::FilterApplied(not_null_name()));
+    harness.tab().send(PagingInput::FilterApplied(not_null_name()));
 
     wait_until(WAIT, || CallCounters::get(&counters.stopped) == 1).expect("the filter left the count running");
     wait_until(WAIT, || count_label(&harness) == "Count Rows").expect("the stopped count still shows");
@@ -169,7 +169,7 @@ fn stale_count_reply_does_not_overwrite_newer_total() {
     let harness = Harness::open(script, []);
     wait_until(WAIT, || count_calls(&harness) == 1).expect("the first count was asked for");
 
-    harness.tab().send(BrowseTabInput::FilterApplied(not_null_name()));
+    harness.tab().send(PagingInput::FilterApplied(not_null_name()));
     wait_until(WAIT, || paginator(&harness) == "Rows 1 – 2 of 5").expect("the filtered total");
     std::thread::sleep(Duration::from_millis(500));
     drain_main_context();
@@ -216,7 +216,7 @@ fn save_adjusts_unfiltered_total_without_recount() {
 
     harness
         .tab()
-        .send(BrowseTabInput::SaveCommitted(ChangeOrigins { inserts: 2, deletes: 1 }));
+        .send(SaveInput::SaveCommitted(ChangeOrigins { inserts: 2, deletes: 1 }));
     wait_until(WAIT, || {
         CallCounters::get(&harness.connection.counters().query_bound) == queries + 1
     })
@@ -234,7 +234,7 @@ fn save_on_filtered_view_demotes_total_to_about() {
 
     harness
         .tab()
-        .send(BrowseTabInput::SaveCommitted(ChangeOrigins { inserts: 1, deletes: 0 }));
+        .send(SaveInput::SaveCommitted(ChangeOrigins { inserts: 1, deletes: 0 }));
 
     assert_eq!(paginator(&harness), "Rows 1 – 2 of about 3");
     assert_eq!(count_label(&harness), "Count Rows");
@@ -266,13 +266,13 @@ fn last_page_waits_for_an_exact_total() {
     let harness = Harness::open(script, []);
     wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
     wait_until(WAIT, || count_button(&harness).is_visible()).expect("Count Rows offered");
-    let last = harness.tab().imp().last_button.get();
+    let last = harness.tab().imp().pager_bar.imp().last_button.get();
     assert!(!last.is_sensitive());
     assert_eq!(
         last.tooltip_text().as_deref(),
         Some("Count rows to go to the last page")
     );
-    harness.tab().send(BrowseTabInput::LastPage);
+    harness.tab().send(PagingInput::LastPage);
     drain_main_context();
     assert_eq!(CallCounters::get(&harness.connection.counters().query_bound), 1);
 
@@ -308,7 +308,7 @@ fn a_failed_count_does_not_run_again_after_a_reconnect() {
     wait_until(WAIT, || paginator(&harness).contains("of about")).expect("the estimate in the paginator");
     count_button(&harness).emit_clicked();
     wait_until(WAIT, || count_label(&harness) == "Try Again").expect("the count that ran out of time");
-    harness.tab().send(BrowseTabInput::FilterApplied(not_null_name()));
+    harness.tab().send(PagingInput::FilterApplied(not_null_name()));
     wait_until(WAIT, || count_label(&harness) == "Count Rows").expect("the filtered total");
 
     harness.connection.mark_lost();
@@ -334,13 +334,13 @@ fn saving_away_the_last_page_moves_to_the_new_last_page() {
     script.count_rows.always(FakeReply::ok(101));
     let harness = Harness::open(script, []);
     wait_until(WAIT, || paginator(&harness) == "Rows 1 – 100 of 101").expect("the exact total");
-    harness.tab().send(BrowseTabInput::NextPage);
+    harness.tab().send(PagingInput::NextPage);
     wait_until(WAIT, || harness.shown() == text(&["Linus"])).expect("the last page");
     let queries = CallCounters::get(&harness.connection.counters().query_bound);
 
     harness
         .tab()
-        .send(BrowseTabInput::SaveCommitted(ChangeOrigins { inserts: 0, deletes: 1 }));
+        .send(SaveInput::SaveCommitted(ChangeOrigins { inserts: 0, deletes: 1 }));
     wait_until(WAIT, || {
         CallCounters::get(&harness.connection.counters().query_bound) == queries + 1
     })
@@ -376,7 +376,7 @@ fn an_estimate_that_lands_during_a_count_keeps_it_counting() {
 
     assert_eq!(count_label(&harness), "Counting…");
     assert!(!count_button(&harness).is_sensitive());
-    assert!(harness.tab().imp().count_spinner.is_visible());
+    assert!(harness.tab().imp().pager_bar.imp().count_spinner.is_visible());
     assert_eq!(count_calls(&harness), 1);
     assert_eq!(CallCounters::get(&harness.connection.counters().stopped), 0);
 }
@@ -386,7 +386,7 @@ fn count_rows_under_a_filter_that_no_longer_fits_says_why() {
     let harness = Harness::open(estimated(RowCountEstimate::Approximate(5_000_000)), []);
     wait_until(WAIT, || paginator(&harness).contains("of about")).expect("the estimate in the paginator");
     let toasts = toasts(harness.tab());
-    harness.tab().send(BrowseTabInput::FilterApplied(not_null("nickname")));
+    harness.tab().send(PagingInput::FilterApplied(not_null("nickname")));
     wait_until(WAIT, || toasts.borrow().len() == 1).expect("the filter that does not fit");
 
     count_button(&harness).emit_clicked();

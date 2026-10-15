@@ -17,6 +17,8 @@ use crate::ui::{
 fn template_classes() -> Vec<glib::Type> {
     vec![
         browse_tab::BrowseTab::static_type(),
+        browse_tab::PagerBar::static_type(),
+        browse_tab::PendingChangesBar::static_type(),
         connect_dialog::ConnectDialog::static_type(),
         editor::SqlEditor::static_type(),
         export::ExportOperationsButton::static_type(),

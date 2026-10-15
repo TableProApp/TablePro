@@ -10,7 +10,7 @@ use tablepro_core::meta::IndexKey;
 
 use super::columns::gate;
 use super::index_object::IndexObject;
-use super::{StructureTabInput, StructureTabSender};
+use super::{IndexesInput, StructureTabSender};
 
 fn index_badge(label: &str, accent_class: &str) -> gtk::Label {
     let badge = gtk::Label::builder().label(label).valign(gtk::Align::Center).build();
@@ -58,7 +58,7 @@ pub(super) fn build_index_row(
     let sender_for_remove = sender.clone();
     remove_button.connect_clicked(move |_| {
         if let Some(index) = index_for_remove.upgrade() {
-            sender_for_remove.input(StructureTabInput::RemoveIndex(index));
+            sender_for_remove.input(IndexesInput::RemoveIndex(index));
         }
     });
     row.add_suffix(&remove_button);

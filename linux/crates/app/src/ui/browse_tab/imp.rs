@@ -11,6 +11,8 @@ use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 use tablepro_session::runtime::WatchForwarder;
 
+use super::pager_bar::PagerBar;
+use super::pending_changes_bar::PendingChangesBar;
 use super::{BrowseModel, BrowseTabInput};
 
 #[derive(Default, gtk::CompositeTemplate)]
@@ -39,21 +41,7 @@ pub struct BrowseTab {
     #[template_child]
     pub delete_button: TemplateChild<gtk::Button>,
     #[template_child]
-    pub first_button: TemplateChild<gtk::Button>,
-    #[template_child]
-    pub prev_button: TemplateChild<gtk::Button>,
-    #[template_child]
-    pub next_button: TemplateChild<gtk::Button>,
-    #[template_child]
-    pub last_button: TemplateChild<gtk::Button>,
-    #[template_child]
-    pub paginator_label: TemplateChild<gtk::Label>,
-    #[template_child]
-    pub count_button: TemplateChild<gtk::Button>,
-    #[template_child]
-    pub count_spinner: TemplateChild<adw::Spinner>,
-    #[template_child]
-    pub count_label: TemplateChild<gtk::Label>,
+    pub pager_bar: TemplateChild<PagerBar>,
     #[template_child]
     pub selection_label: TemplateChild<gtk::Label>,
     #[template_child]
@@ -65,17 +53,7 @@ pub struct BrowseTab {
     #[template_child]
     pub page_size_dropdown: TemplateChild<gtk::DropDown>,
     #[template_child]
-    pub pending_revealer: TemplateChild<gtk::Revealer>,
-    #[template_child]
-    pub pending_label: TemplateChild<gtk::Label>,
-    #[template_child]
-    pub discard_button: TemplateChild<gtk::Button>,
-    #[template_child]
-    pub save_button: TemplateChild<gtk::Button>,
-    #[template_child]
-    pub saving_spinner: TemplateChild<adw::Spinner>,
-    #[template_child]
-    pub stop_button: TemplateChild<gtk::Button>,
+    pub pending_bar: TemplateChild<PendingChangesBar>,
 
     pub(super) model: RefCell<Option<BrowseModel>>,
     pub(super) queue: RefCell<VecDeque<BrowseTabInput>>,
@@ -91,6 +69,8 @@ impl ObjectSubclass for BrowseTab {
     type ParentType = adw::Bin;
 
     fn class_init(klass: &mut Self::Class) {
+        PagerBar::ensure_type();
+        PendingChangesBar::ensure_type();
         klass.bind_template();
     }
 

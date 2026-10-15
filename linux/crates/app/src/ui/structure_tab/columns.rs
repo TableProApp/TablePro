@@ -11,7 +11,7 @@ use tablepro_core::dialect::SqlDialect;
 
 use super::context::StructureContext;
 use super::draft_column_object::DraftColumnObject;
-use super::{ColumnField, StructureTabInput, StructureTabSender};
+use super::{ColumnField, ColumnsInput, StructureTabSender};
 use crate::ui::a11y::describe_icon_button;
 use crate::ui::error_text::refusal_text;
 use crate::ui::handler_guard::HandlerGuard;
@@ -26,7 +26,7 @@ struct ColumnEdits {
 impl ColumnEdits {
     fn send(&self, field: ColumnField) {
         if let Some(column) = self.column.upgrade() {
-            self.sender.input(StructureTabInput::ColumnEdited { column, field });
+            self.sender.input(ColumnsInput::ColumnEdited { column, field });
         }
     }
 }
@@ -137,7 +137,7 @@ pub(super) fn build_column_row(
     let sender_for_remove = sender.clone();
     remove_button.connect_clicked(move |_| {
         if let Some(column) = column_for_remove.upgrade() {
-            sender_for_remove.input(StructureTabInput::RemoveColumn(column));
+            sender_for_remove.input(ColumnsInput::RemoveColumn(column));
         }
     });
     row.add_suffix(&remove_button);

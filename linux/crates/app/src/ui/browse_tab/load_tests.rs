@@ -8,11 +8,11 @@ use libadwaita as adw;
 use tablepro_core::{ColumnInfo, DriverError, LossPhase, QueryResult, Value};
 use tablepro_test_support::{CallCounters, FakeReply};
 
-use super::BrowseTabInput;
 use super::tests::{
     Harness, Shown, WAIT, after_next_frame, column, column_view, delete_action, full_page, header_titles, key,
     not_null_name, rows, serving_table, text, toasts,
 };
+use super::{ClipboardInput, PagingInput};
 use crate::test_support::{drain_main_context, wait_until};
 use crate::ui::grid::GridCell;
 
@@ -55,7 +55,7 @@ fn refresh_keeps_grid_visible_and_sets_tab_loading() {
     wait_until(WAIT, || harness.shown() == text(&["before"])).expect("the first page");
     let loading = loading_log(&harness);
 
-    harness.tab().send(BrowseTabInput::Refresh);
+    harness.tab().send(PagingInput::Refresh);
 
     assert_eq!(harness.visible_page().as_deref(), Some("grid"));
     assert_eq!(harness.shown(), text(&["before"]), "the refresh blanked the rows");
@@ -78,7 +78,7 @@ fn failed_refresh_keeps_rows_and_reveals_stale_banner() {
     wait_until(WAIT, || harness.shown() == text(&["kept"])).expect("the first page");
     let counters = harness.connection.counters();
 
-    harness.tab().send(BrowseTabInput::Refresh);
+    harness.tab().send(PagingInput::Refresh);
     wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed refresh was not shown");
 
     assert_eq!(CallCounters::get(&counters.query_bound), 2);
@@ -99,7 +99,7 @@ fn stale_banner_retry_reloads_and_hides_banner() {
         .always(FakeReply::ok(rows(&["fresh"])));
     let harness = Harness::open(script, []);
     wait_until(WAIT, || harness.shown() == text(&["kept"])).expect("the first page");
-    harness.tab().send(BrowseTabInput::Refresh);
+    harness.tab().send(PagingInput::Refresh);
     wait_until(WAIT, || banner(&harness).is_revealed()).expect("the stale banner");
 
     banner(&harness).emit_by_name::<()>("button-clicked", &[]);
@@ -162,7 +162,7 @@ fn refresh_restores_multi_row_selection_and_focus_by_key() {
     picked.add(3);
     selection.set_selection(&picked, &gtk4::Bitset::new_range(0, selection.n_items()));
 
-    harness.tab().send(BrowseTabInput::Refresh);
+    harness.tab().send(PagingInput::Refresh);
     wait_until(WAIT, || harness.shown().len() == 6).expect("the refreshed page");
     after_next_frame(&shown.0);
 
@@ -190,11 +190,11 @@ fn a_selection_is_not_put_back_after_a_failed_refresh() {
     wait_until(WAIT, || harness.shown().len() == 3).expect("the first page");
     let selection = harness.selection();
     selection.select_item(0, true);
-    harness.tab().send(BrowseTabInput::Refresh);
+    harness.tab().send(PagingInput::Refresh);
     wait_until(WAIT, || banner(&harness).is_revealed()).expect("the stale banner");
     selection.select_item(2, true);
 
-    harness.tab().send(BrowseTabInput::Refresh);
+    harness.tab().send(PagingInput::Refresh);
     wait_until(WAIT, || !banner(&harness).is_revealed()).expect("the second refresh");
     drain_main_context();
 
@@ -286,7 +286,7 @@ fn refresh_failure_of_columns_keeps_cached_columns() {
     let harness = Harness::open(script, []);
     wait_until(WAIT, || harness.shown() == text(&["kept"])).expect("the first page");
 
-    harness.tab().send(BrowseTabInput::Refresh);
+    harness.tab().send(PagingInput::Refresh);
     wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed refresh was not shown");
 
     assert_eq!(header_titles(harness.tab()), ["id", "name"]);
@@ -342,9 +342,9 @@ fn the_rows_behind_the_error_page_take_no_action() {
         .connect_export_results(move |_, _| *sink.borrow_mut() += 1);
     let toasts = toasts(harness.tab());
 
-    harness.tab().send(BrowseTabInput::FilterApplied(not_null_name()));
+    harness.tab().send(PagingInput::FilterApplied(not_null_name()));
     wait_until(WAIT, || harness.visible_page().as_deref() == Some("error")).expect("the error page");
-    harness.tab().send(BrowseTabInput::Export(None));
+    harness.tab().send(ClipboardInput::Export(None));
 
     assert_eq!(*exported.borrow(), 0, "Export wrote rows the filter does not match");
     assert!(
@@ -356,7 +356,7 @@ fn the_rows_behind_the_error_page_take_no_action() {
         !delete_action(harness.tab()).is_enabled(),
         "Delete stayed on for rows behind the error page"
     );
-    assert_eq!(harness.tab().imp().paginator_label.label(), "");
+    assert_eq!(harness.tab().imp().pager_bar.imp().paginator_label.label(), "");
 }
 
 /// Next moved the pager before its read failed, so the way back goes
@@ -374,10 +374,10 @@ fn a_failed_next_page_leaves_the_way_back_open() {
         .always(FakeReply::ok(full_page(0)));
     let harness = Harness::open(script, []);
     wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
-    let imp = harness.tab().imp();
+    let imp = harness.tab().imp().pager_bar.imp();
     assert!(!imp.prev_button.is_sensitive());
 
-    harness.tab().send(BrowseTabInput::NextPage);
+    harness.tab().send(PagingInput::NextPage);
     wait_until(WAIT, || harness.visible_page().as_deref() == Some("error")).expect("the error page");
 
     assert_eq!(harness.tab().current_offset(), 100);
@@ -455,10 +455,10 @@ fn a_failed_column_read_leaves_no_read_for_a_later_one_to_start() {
     let counters = harness.connection.counters();
     wait_until(WAIT, || harness.shown() == text(&["first"])).expect("the first page");
     wait_until(WAIT, || CallCounters::get(&counters.count_rows) == 1).expect("the count");
-    harness.tab().send(BrowseTabInput::Refresh);
+    harness.tab().send(PagingInput::Refresh);
     wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed refresh");
 
-    harness.tab().send(BrowseTabInput::SortChanged {
+    harness.tab().send(PagingInput::SortChanged {
         col_idx: 0,
         ascending: false,
     });

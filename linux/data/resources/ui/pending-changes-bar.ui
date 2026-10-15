@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProPendingChangesBar" parent="AdwBin">
+    <property name="child">
+      <!-- The footer slides in only while there are unsaved edits. -->
+      <object class="GtkRevealer" id="revealer">
+        <property name="transition-type">slide-up</property>
+        <property name="transition-duration">150</property>
+        <property name="child">
+          <object class="GtkActionBar">
+            <child type="start">
+              <object class="GtkLabel" id="pending_label">
+                <style>
+                  <class name="dimmed"/>
+                  <class name="caption"/>
+                </style>
+              </object>
+            </child>
+            <child type="start">
+              <object class="AdwSpinner" id="saving_spinner">
+                <property name="visible">false</property>
+                <property name="tooltip-text" translatable="yes">Saving…</property>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkButton" id="save_button">
+                <property name="label" translatable="yes">Save</property>
+                <property name="tooltip-text" translatable="yes">Save pending edits</property>
+                <style>
+                  <class name="suggested-action"/>
+                </style>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkButton" id="discard_button">
+                <property name="label" translatable="yes">Discard</property>
+                <property name="tooltip-text" translatable="yes">Discard all pending edits</property>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkButton" id="stop_button">
+                <property name="label" translatable="yes">_Stop Saving</property>
+                <property name="use-underline">true</property>
+                <property name="visible">false</property>
+                <style>
+                  <class name="destructive-action"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

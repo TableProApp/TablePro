@@ -12,7 +12,7 @@ use tablepro_session::SessionKey;
 use tablepro_storage::{DraftId, DraftScope};
 use uuid::Uuid;
 
-use crate::ui::browse_tab::BrowseTabInput;
+use crate::ui::browse_tab::{BrowseTabInput, PagingInput, SaveInput};
 use crate::ui::structure_tab::StructureMode;
 use crate::workspace::{
     RestoredDrafts, TabRecord, WorkspaceFileName, WorkspaceLoad, WorkspaceRecord, WorkspaceSaveError,
@@ -342,7 +342,7 @@ impl WorkspaceModel {
             .get(id)
             .is_some_and(|tracker| tracker.pending_count() > 0);
         if !dirty {
-            self.dispatch_to_tab(id, BrowseTabInput::Refresh);
+            self.dispatch_to_tab(id, PagingInput::Refresh);
             return;
         }
         // A refetch replaces the rows and with them every pending edit,
@@ -369,7 +369,7 @@ impl WorkspaceModel {
                 .and_then(|tab| tab.browse_tab())
                 .cloned();
             if let Some(browse) = browse {
-                browse.send(BrowseTabInput::DiscardAndRefresh);
+                browse.send(SaveInput::DiscardAndRefresh);
             }
         });
         dialog.present(self.window().as_ref());
@@ -434,7 +434,7 @@ impl WorkspaceModel {
     /// Forward a per-tab Browse input to the right slot. Routes to the
     /// Browse-side controller in both legacy `Browse` slots and the
     /// unified `Table` slot.
-    pub(super) fn dispatch_to_tab(&self, tab_id: Uuid, msg: BrowseTabInput) {
+    pub(super) fn dispatch_to_tab(&self, tab_id: Uuid, msg: impl Into<BrowseTabInput>) {
         let browse = self
             .workspace_tabs
             .borrow()

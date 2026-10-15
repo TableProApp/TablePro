@@ -100,70 +100,7 @@
               </object>
             </child>
             <child type="start">
-              <!-- One linked group reads as one navigation control, as
-                   the back and forward buttons do in Files. -->
-              <object class="GtkBox">
-                <style>
-                  <class name="linked"/>
-                </style>
-                <child>
-                  <object class="GtkButton" id="first_button">
-                    <property name="icon-name">go-first-symbolic</property>
-                    <property name="sensitive">false</property>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkButton" id="prev_button">
-                    <property name="icon-name">go-previous-symbolic</property>
-                    <property name="sensitive">false</property>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkButton" id="next_button">
-                    <property name="icon-name">go-next-symbolic</property>
-                    <property name="sensitive">false</property>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkButton" id="last_button">
-                    <property name="icon-name">go-last-symbolic</property>
-                    <property name="sensitive">false</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child type="start">
-              <object class="GtkLabel" id="paginator_label">
-                <property name="accessible-role">status</property>
-                <style>
-                  <class name="dimmed"/>
-                </style>
-              </object>
-            </child>
-            <child type="start">
-              <!-- An exact count can scan the whole table, so it runs
-                   when asked, except for a table small enough. -->
-              <object class="GtkButton" id="count_button">
-                <property name="visible">false</property>
-                <style>
-                  <class name="flat"/>
-                </style>
-                <property name="child">
-                  <object class="GtkBox">
-                    <property name="spacing">6</property>
-                    <child>
-                      <object class="AdwSpinner" id="count_spinner">
-                        <property name="visible">false</property>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkLabel" id="count_label">
-                        <property name="label" translatable="yes">Count Rows</property>
-                      </object>
-                    </child>
-                  </object>
-                </property>
-              </object>
+              <object class="TableProPagerBar" id="pager_bar"/>
             </child>
             <child type="start">
               <object class="GtkLabel" id="selection_label">
@@ -231,55 +168,7 @@
           </object>
         </child>
         <child type="bottom">
-          <!-- The pending-changes footer slides in only while there are
-               unsaved edits. -->
-          <object class="GtkRevealer" id="pending_revealer">
-            <property name="transition-type">slide-up</property>
-            <property name="transition-duration">150</property>
-            <property name="child">
-              <object class="GtkActionBar">
-                <child type="start">
-                  <object class="GtkLabel" id="pending_label">
-                    <style>
-                      <class name="dimmed"/>
-                      <class name="caption"/>
-                    </style>
-                  </object>
-                </child>
-                <child type="start">
-                  <object class="AdwSpinner" id="saving_spinner">
-                    <property name="visible">false</property>
-                    <property name="tooltip-text" translatable="yes">Saving…</property>
-                  </object>
-                </child>
-                <child type="end">
-                  <object class="GtkButton" id="save_button">
-                    <property name="label" translatable="yes">Save</property>
-                    <property name="tooltip-text" translatable="yes">Save pending edits</property>
-                    <style>
-                      <class name="suggested-action"/>
-                    </style>
-                  </object>
-                </child>
-                <child type="end">
-                  <object class="GtkButton" id="discard_button">
-                    <property name="label" translatable="yes">Discard</property>
-                    <property name="tooltip-text" translatable="yes">Discard all pending edits</property>
-                  </object>
-                </child>
-                <child type="end">
-                  <object class="GtkButton" id="stop_button">
-                    <property name="label" translatable="yes">_Stop Saving</property>
-                    <property name="use-underline">true</property>
-                    <property name="visible">false</property>
-                    <style>
-                      <class name="destructive-action"/>
-                    </style>
-                  </object>
-                </child>
-              </object>
-            </property>
-          </object>
+          <object class="TableProPendingChangesBar" id="pending_bar"/>
         </child>
       </object>
     </property>

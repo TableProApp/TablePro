@@ -1,4 +1,3 @@
-use gtk4::prelude::*;
 use tablepro_core::browse::build_count;
 use tablepro_core::meta::{RowCountEstimate, TableEstimate};
 use tablepro_session::{OperationError, OperationKind};
@@ -144,28 +143,8 @@ impl BrowseModel {
     /// The paginator's label, the Count Rows button and Last, which only
     /// an exact total enables.
     pub(super) fn sync_total_chrome(&self) {
-        self.update_paginator_label();
-        let last = self.pager.last(&self.total).is_some();
-        self.last_button.set_sensitive(last);
-        let last_tooltip = match self.total.exact() {
-            Some(_) => crate::i18n::gettext("Last Page"),
-            None => crate::i18n::gettext("Count rows to go to the last page"),
-        };
-        self.last_button.set_tooltip_text(Some(&last_tooltip));
-
-        let counting = matches!(self.total, RowTotal::Counting { .. });
-        self.count_button
-            .set_visible(self.shown_page().is_some() && self.total.exact().is_none());
-        self.count_button.set_sensitive(!counting);
-        self.count_spinner.set_visible(counting);
-        let (label, tooltip) = match &self.total {
-            RowTotal::Counting { .. } => (crate::i18n::gettext("Counting…"), None),
-            RowTotal::Unavailable { reason, .. } => (crate::i18n::gettext("Try Again"), Some(reason.as_str())),
-            RowTotal::Unknown | RowTotal::Estimated(_) | RowTotal::Exact(_) => {
-                (crate::i18n::gettext("Count Rows"), None)
-            }
-        };
-        self.count_label.set_label(&label);
-        self.count_button.set_tooltip_text(tooltip);
+        self.widgets
+            .pager_bar
+            .show_total(&self.pager, self.shown_page(), &self.total);
     }
 }

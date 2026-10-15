@@ -3,7 +3,9 @@ use gtk4::gio;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 
-use super::{BrowseModel, BrowseTab, BrowseTabInput};
+use super::{
+    BrowseModel, BrowseTab, BrowseTabInput, ClipboardInput, EditInput, PagingInput, SaveInput, SelectionInput,
+};
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 use crate::i18n::gettext;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
@@ -52,17 +54,19 @@ pub(super) fn install_browse_actions(tab: &BrowseTab) -> BrowseActions {
         group.add_action(&action);
         action
     };
-    add("filter", || BrowseTabInput::ToggleFilterStrip);
-    add("refresh", || BrowseTabInput::RequestRefresh);
-    add("paste-rows", || BrowseTabInput::PasteNotSupported);
-    let imp = tab.imp();
-    let previous = add("previous-page", || BrowseTabInput::PrevPage);
-    imp.prev_button
+    add("filter", || PagingInput::ToggleFilterStrip.into());
+    add("refresh", || PagingInput::RequestRefresh.into());
+    add("paste-rows", || ClipboardInput::PasteNotSupported.into());
+    let pager = tab.imp().pager_bar.imp();
+    let previous = add("previous-page", || PagingInput::PrevPage.into());
+    pager
+        .prev_button
         .bind_property("sensitive", &previous, "enabled")
         .sync_create()
         .build();
-    let next = add("next-page", || BrowseTabInput::NextPage);
-    imp.next_button
+    let next = add("next-page", || PagingInput::NextPage.into());
+    pager
+        .next_button
         .bind_property("sensitive", &next, "enabled")
         .sync_create()
         .build();
@@ -73,17 +77,17 @@ pub(super) fn install_browse_actions(tab: &BrowseTab) -> BrowseActions {
             return;
         };
         let rows = tab.read(BrowseModel::selected_rows).unwrap_or_default();
-        tab.send(BrowseTabInput::DeleteRows(rows));
+        tab.send(EditInput::DeleteRows(rows));
     });
     group.add_action(&delete_rows);
     let actions = BrowseActions {
-        save: add("save", || BrowseTabInput::CommitSave),
-        undo: add("undo", || BrowseTabInput::Undo),
-        redo: add("redo", || BrowseTabInput::Redo),
-        insert_row: add("insert-row", || BrowseTabInput::InsertRow),
+        save: add("save", || SaveInput::CommitSave.into()),
+        undo: add("undo", || EditInput::Undo.into()),
+        redo: add("redo", || EditInput::Redo.into()),
+        insert_row: add("insert-row", || EditInput::InsertRow.into()),
         delete_rows,
-        copy_rows: add("copy-rows", || BrowseTabInput::CopySelectedRowsAsTsv),
-        clear_selection: add("clear-selection", || BrowseTabInput::ClearSelection),
+        copy_rows: add("copy-rows", || ClipboardInput::CopySelectedRowsAsTsv.into()),
+        clear_selection: add("clear-selection", || SelectionInput::ClearSelection.into()),
     };
     for action in [
         &actions.save,
@@ -102,7 +106,8 @@ pub(super) fn install_browse_actions(tab: &BrowseTab) -> BrowseActions {
 }
 
 /// Names the icon buttons and gives every button the keys of its action.
-/// Run as the tab is built, so the names never wait on its actions.
+/// Run as the tab is built, so the names never wait on its actions. The
+/// pager and the pending changes bar name their own.
 pub(super) fn describe_buttons(tab: &BrowseTab) {
     let imp = tab.imp();
     for (button, label, action) in [
@@ -112,17 +117,11 @@ pub(super) fn describe_buttons(tab: &BrowseTab) {
             gettext("Delete Selected Rows"),
             Some("browse.delete-rows"),
         ),
-        (&imp.first_button, gettext("First Page"), None),
-        (&imp.prev_button, gettext("Previous Page"), Some("browse.previous-page")),
-        (&imp.next_button, gettext("Next Page"), Some("browse.next-page")),
-        (&imp.last_button, gettext("Last Page"), None),
         (&imp.export_button, gettext("Export Rows…"), None),
     ] {
         describe_icon_button(&button.get(), &label, action);
     }
-    for (button, action) in [(&imp.filter_button, "browse.filter"), (&imp.save_button, "browse.save")] {
-        announce_key_shortcuts(&button.get(), action);
-    }
+    announce_key_shortcuts(&imp.filter_button.get(), "browse.filter");
 }
 
 pub(super) fn install_grid_shortcuts(view: &gtk::ColumnView) {

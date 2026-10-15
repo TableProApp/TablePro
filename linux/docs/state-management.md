@@ -146,6 +146,7 @@ The components that remain follow these conventions until a rewrite turns them i
 ## Naming
 
 - `<Thing>Input`: every message a view handles, as an enum (`SessionWindowInput`, `WorkspaceInput`, `BrowseTabInput`).
+- A view with many inputs groups them by the state each one changes, one enum per group (`BrowseTabInput::Paging(PagingInput)`, `StructureTabInput::Save(SaveInput)`), and handles each group in its own `*_handlers` module. Senders pass the group's enum; `send` takes anything that converts into the view's input.
 - `<Thing>Output`: only the messages a parent should react to.
 - `<Thing>Cmd`: a Relm4 command's result.
 - `<Thing>Init`: what the parent hands a view when it builds it (`SessionWindowInit`, `WorkspaceInit`).
