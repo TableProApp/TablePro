@@ -265,6 +265,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::grid::full_value_editor::tests::invalid_json_stages_nothing_and_valid_apply_keeps_json_typed"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::grid::full_value_editor::tests::set_null_stages_null_and_cancel_stages_nothing"
     ],
     [

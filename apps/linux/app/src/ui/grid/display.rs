@@ -251,6 +251,12 @@ define_widget_slot!(SUPPRESS_SLOT, SuppressKey, bool, "tp-suppress-toggle");
 define_widget_slot!(POPOVER_SLOT, PopoverKey, gtk4::Popover, "tp-popover");
 define_widget_slot!(PREEDIT_SLOT, PreeditKey, bool, "tp-preedit-active");
 define_widget_slot!(FULL_EDIT_TEXT_SLOT, FullEditTextKey, String, "tp-full-edit-text");
+define_widget_slot!(
+    FULL_EDIT_KIND_SLOT,
+    FullEditKindKey,
+    super::full_value_editor::FullValueKind,
+    "tp-full-edit-kind"
+);
 define_widget_slot!(IS_NULL_SLOT, IsNullKey, bool, "tp-cell-is-null");
 
 struct ClickedCell {

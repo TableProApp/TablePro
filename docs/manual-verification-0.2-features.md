@@ -231,7 +231,7 @@ Main menu, then Catalog, on a PostgreSQL connection with a few objects of each k
 
 ## Grid previews for long values
 
-In browse and SQL result grids, text, JSON and binary cells over 8 KiB show a typed preview with the original byte count. SQL result grids are read-only. In an editable browse table, confirm that a long text cell opens for inline editing with the full value, not the preview. **View Value** and **Copy Value** expose the complete value. Text cells over 8 KiB can be edited in the bounded full-value dialog. JSON full-value editing remains open under [#610](https://github.com/cozyGarage/BookiE/issues/610). Use text and JSON values just below and just above the 8 KiB threshold.
+In browse and SQL result grids, text, JSON and binary cells over 8 KiB show a typed preview with the original byte count. SQL result grids are read-only. In an editable browse table, confirm that a long text cell opens for inline editing with the full value, not the preview. **View Value** and **Copy Value** expose the complete value. Text and JSON cells over 8 KiB can be edited in the bounded full-value dialog. Use text and JSON values just below and just above the 8 KiB threshold.
 
 - [ ] A value below the threshold displays in full and remains editable where that type supports grid edits.
 - [ ] Values over the threshold show a prefix and `… (N bytes total)`; SQL result cells and binary/unsupported browse values do not offer inline editing. Editable browse text opens with the full value.
@@ -249,7 +249,8 @@ Use a keyed table with a nullable text column and values above 8 KiB. Include CR
 - [ ] Apply empty text and confirm it remains empty. Use **Set to NULL** separately and confirm the stored value is SQL NULL.
 - [ ] Edit a draft text row, save it, and discard a separate pending edit.
 - [ ] A value over 1 MiB is refused. Non-text, generated, key and read-only cells do not offer the action.
-- [ ] JSON previews remain read-only in this dialog. Small JSON cells keep using the existing JSON popover editor; full-value JSON editing remains open under [#610](https://github.com/cozyGarage/BookiE/issues/610).
+- [ ] Edit JSON and JSONB values with reordered keys, duplicate source-text keys, large integer lexemes, JSON `null`, and SQL NULL. Apply valid input and reload to confirm the correct stored carrier; invalid input leaves the dialog open and stages no change.
+- [ ] **Format JSON** visibly formats semantic JSON values. Source-text JSON has no lossy formatter; its exact text stays intact until edited. Confirm empty text, JSON `null`, text `null`, and SQL NULL remain distinct.
 
 ## Server activity view: binary values
 

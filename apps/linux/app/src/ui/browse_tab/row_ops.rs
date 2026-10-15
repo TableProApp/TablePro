@@ -320,7 +320,7 @@ impl BrowseTab {
             .zip(row_obj.as_ref())
             .is_some_and(|(column, row)| {
                 row.with_cell_value(col_index, |current| {
-                    crate::ui::grid::full_value_editor::can_stage_text_value(column, current, &value)
+                    crate::ui::grid::full_value_editor::can_stage_full_value(column, current, &value)
                 })
                 .unwrap_or(false)
             });

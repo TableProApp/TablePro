@@ -8,7 +8,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - SQL completion inserts complete dialect-quoted table and column names, preserves aliases, and offers scoped metadata instead of arbitrary editor words.
 - Large SQL query results stream in bounded pages, can be pinned, and can be fully exported by running the guarded query again.
 - CSV imports into PostgreSQL, MySQL/MariaDB and SQLite can preserve explicit auto-increment values from mapped columns; generated columns remain database-owned.
-- Editable text columns open a bounded full-value dialog; Apply stages the exact multiline text, while Set to NULL remains a separate action.
+- Editable text and JSON columns open a bounded full-value dialog; JSON input is validated, source-text JSON retains its exact text, and Format JSON makes semantic formatting changes visible before Apply.
 - At narrow window widths, the navigation sidebar collapses and the Fold block and Unfold all toolbar buttons hide so the remaining editor controls stay in view; their keyboard shortcuts still work.
 - Switching database drivers keeps custom connection values and updates fields that still use the previous driver's defaults.
 - Duplicating a password-authenticated connection with a saved password opens the copy's credential form so its password can be entered before connecting.

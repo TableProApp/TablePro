@@ -4,8 +4,8 @@ use tablepro_core::{ColumnInfo, Value};
 
 use super::context_menu::GridMenus;
 use super::display::{
-    CellView, FULL_EDIT_TEXT_SLOT, IS_NULL_SLOT, POPOVER_SLOT, POSITION_SLOT, ROW_KEY_SLOT, SNAPSHOT_SLOT,
-    SUPPRESS_SLOT, cell_view, value_to_full_edit_text,
+    CellView, FULL_EDIT_KIND_SLOT, FULL_EDIT_TEXT_SLOT, IS_NULL_SLOT, POPOVER_SLOT, POSITION_SLOT, ROW_KEY_SLOT,
+    SNAPSHOT_SLOT, SUPPRESS_SLOT, cell_view, value_to_full_edit_text,
 };
 use super::editing::{setup_bool_cell, setup_editable_cell, setup_readonly_cell};
 pub(super) use super::presentation::column_is_editable as is_cell_editable;
@@ -87,7 +87,7 @@ pub(super) fn build_column(
                     item,
                     idx,
                     column_name.clone(),
-                    super::full_value_editor::is_text_column(&column_data_type),
+                    super::full_value_editor::is_full_value_column(&column_data_type),
                     edit_sender,
                     editor_kind,
                     choices_for_setup.clone(),
@@ -212,8 +212,14 @@ pub(super) fn build_column(
             ROW_KEY_SLOT.set(&label, pk_values.clone());
             if inline_editable && let Some(value) = &value {
                 FULL_EDIT_TEXT_SLOT.set(&label, value_to_full_edit_text(value));
+                if let Some(kind) = super::full_value_editor::edit_kind(&column_info.data_type, value) {
+                    FULL_EDIT_KIND_SLOT.set(&label, kind);
+                } else {
+                    FULL_EDIT_KIND_SLOT.take(&label);
+                }
             } else {
                 FULL_EDIT_TEXT_SLOT.take(&label);
+                FULL_EDIT_KIND_SLOT.take(&label);
             }
         } else if let Ok(checkbox) = child.clone().downcast::<gtk4::CheckButton>() {
             checkbox.set_sensitive(inline_editable);

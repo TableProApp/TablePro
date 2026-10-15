@@ -6,7 +6,7 @@ use gtk4::{self as gtk, gio, glib};
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 
 use super::GridMsg;
-use super::display::{FULL_EDIT_TEXT_SLOT, IS_NULL_SLOT, POSITION_SLOT, ROW_KEY_SLOT};
+use super::display::{FULL_EDIT_KIND_SLOT, FULL_EDIT_TEXT_SLOT, IS_NULL_SLOT, POSITION_SLOT, ROW_KEY_SLOT};
 use super::editing::enter_edit_mode;
 use super::export;
 use super::local_filter::LocalResultView;
@@ -80,7 +80,7 @@ pub(super) fn install_grid_context_menus(
             let Some(column) = columns.get(slot.col_index) else {
                 return;
             };
-            if !super::full_value_editor::is_text_column(&column.data_type) {
+            if !super::full_value_editor::is_full_value_column(&column.data_type) {
                 return;
             }
             let Some(row) = row_object_at(&view, position(slot)) else {
@@ -90,8 +90,8 @@ pub(super) fn install_grid_context_menus(
             if row.draft_id().is_none() && !has_persisted_row_key(&row_key) {
                 return;
             }
-            let initial_text = match full_text_seed(&slot.widget, &row, slot.col_index) {
-                TextSeed::Value(text) => text,
+            let (initial_text, kind) = match full_value_seed(&slot.widget, &row, slot.col_index, &column.data_type) {
+                TextSeed::Value(text, kind) => (text, kind),
                 TextSeed::TooLarge => {
                     super::full_value_editor::present_too_large(&view);
                     return;
@@ -107,6 +107,7 @@ pub(super) fn install_grid_context_menus(
                     col_index: slot.col_index,
                     row_key,
                     nullable: column.nullable,
+                    kind,
                     sender: sender.clone(),
                 },
             );
@@ -758,29 +759,51 @@ fn position(slot: &CellContext) -> u32 {
 }
 
 enum TextSeed {
-    Value(String),
+    Value(String, super::full_value_editor::FullValueKind),
     TooLarge,
     Unsupported,
 }
 
-fn full_text_seed(widget: &gtk::Widget, row: &crate::ui::row_object::RowObject, column: usize) -> TextSeed {
+fn full_value_seed(
+    widget: &gtk::Widget,
+    row: &crate::ui::row_object::RowObject,
+    column: usize,
+    data_type: &str,
+) -> TextSeed {
     if IS_NULL_SLOT.get(widget).unwrap_or(false) {
-        return TextSeed::Value(String::new());
+        return super::full_value_editor::edit_kind(data_type, &Value::Null)
+            .map(|kind| TextSeed::Value(String::new(), kind))
+            .unwrap_or(TextSeed::Unsupported);
     }
     if let Some(size) = FULL_EDIT_TEXT_SLOT.with(widget, String::len) {
         if !super::full_value_editor::within_edit_budget(size) {
             return TextSeed::TooLarge;
         }
-        return FULL_EDIT_TEXT_SLOT
-            .cloned(widget)
-            .map(TextSeed::Value)
-            .unwrap_or(TextSeed::Unsupported);
+        let Some(text) = FULL_EDIT_TEXT_SLOT.cloned(widget) else {
+            return TextSeed::Unsupported;
+        };
+        let Some(kind) = FULL_EDIT_KIND_SLOT.get(widget) else {
+            return TextSeed::Unsupported;
+        };
+        return TextSeed::Value(text, kind);
     }
     row.with_cell_value(column, |value| match value {
-        Value::Text(text) if super::full_value_editor::within_edit_budget(text.len()) => TextSeed::Value(text.clone()),
+        Value::Text(text) if super::full_value_editor::within_edit_budget(text.len()) => {
+            super::full_value_editor::edit_kind(data_type, value)
+                .map(|kind| TextSeed::Value(text.clone(), kind))
+                .unwrap_or(TextSeed::Unsupported)
+        }
         Value::Text(_) => TextSeed::TooLarge,
-        Value::Null => TextSeed::Value(String::new()),
-        _ => TextSeed::Unsupported,
+        value => super::full_value_editor::edit_kind(data_type, value)
+            .map(|kind| {
+                let text = super::display::value_to_full_edit_text(value);
+                if super::full_value_editor::within_edit_budget(text.len()) {
+                    TextSeed::Value(text, kind)
+                } else {
+                    TextSeed::TooLarge
+                }
+            })
+            .unwrap_or(TextSeed::Unsupported),
     })
     .unwrap_or(TextSeed::Unsupported)
 }
@@ -792,7 +815,12 @@ fn row_has_full_text_value(view: &gtk::ColumnView, widget: &gtk::Widget, positio
     let (_, row_key) = cell_row_identity(widget);
     (row.draft_id().is_some() || has_persisted_row_key(&row_key))
         && row
-            .with_cell_value(column, |value| matches!(value, Value::Text(_) | Value::Null))
+            .with_cell_value(column, |value| {
+                matches!(
+                    value,
+                    Value::Text(_) | Value::Json(_) | Value::JsonText(_) | Value::Null
+                )
+            })
             .unwrap_or(false)
 }
 
