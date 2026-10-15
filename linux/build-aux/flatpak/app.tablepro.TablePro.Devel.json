@@ -54,6 +54,7 @@
                         ".flatpak-builder",
                         "_build",
                         "_flatpak",
+                        "flatpak_app",
                         "repo",
                         "target",
                         "build-aux/flatpak/.flatpak-builder"
