@@ -1,3 +1,8 @@
+# Line tables, as the .deb keeps, are enough to symbolize a backtrace.
+# Full debuginfo adds to what each rustc of the app and the final link
+# need, and an 8 GB builder ran out of memory with it.
+%global rustflags_debuginfo 1
+
 Name:           tablepro
 Version:        0.1.0
 Release:        1%{?dist}
@@ -59,8 +64,8 @@ find vendor -type f -name '*.rs' -perm /111 -exec chmod a-x {} +
 
 %build
 # Cargo starts a rustc per CPU, and under Fedora's RUSTFLAGS (one codegen
-# unit, full debuginfo) one rustc of the app takes several GB, so the
-# jobs are also capped at one per 4 GB. %%check builds the tests the same.
+# unit) one rustc of the app takes several GB, so the jobs are also
+# capped at one per 4 GB. %%check builds the tests the same.
 %constrain_build -m 4096
 export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 # Fedora's rustc runs out of 8 GB in the release profile's fat LTO link of
