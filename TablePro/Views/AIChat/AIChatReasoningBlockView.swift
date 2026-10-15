@@ -5,15 +5,13 @@
 
 import SwiftUI
 
+/// Reasoning text arrives through the same 50 ms flush as the reply, which already coalesces it, so it is shown as it
+/// comes. A debounce on top of the flush, longer than the flush, restarted on every one and never fired.
 struct AIChatReasoningBlockView: View {
     let block: ReasoningBlock
     let isStreaming: Bool
 
-    @State private var displayedText: String = ""
-    @State private var debounceTask: Task<Void, Never>?
     @State private var manualExpanded: Bool?
-
-    private static let debounceInterval: Duration = .milliseconds(80)
 
     private var isExpanded: Bool {
         manualExpanded ?? isStreaming
@@ -28,8 +26,8 @@ struct AIChatReasoningBlockView: View {
 
     var body: some View {
         DisclosureGroup(isExpanded: expansionBinding) {
-            if !displayedText.isEmpty {
-                Text(displayedText)
+            if let text = block.text, !text.isEmpty {
+                Text(text)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
@@ -43,25 +41,6 @@ struct AIChatReasoningBlockView: View {
             )
             .font(.caption)
             .foregroundStyle(.secondary)
-        }
-        .onAppear {
-            displayedText = block.text ?? ""
-        }
-        .onChange(of: block.text ?? "") { newValue in
-            scheduleUpdate(to: newValue)
-        }
-        .onDisappear {
-            debounceTask?.cancel()
-            debounceTask = nil
-        }
-    }
-
-    private func scheduleUpdate(to newValue: String) {
-        debounceTask?.cancel()
-        debounceTask = Task { @MainActor in
-            try? await Task.sleep(for: Self.debounceInterval)
-            guard !Task.isCancelled else { return }
-            displayedText = newValue
         }
     }
 }

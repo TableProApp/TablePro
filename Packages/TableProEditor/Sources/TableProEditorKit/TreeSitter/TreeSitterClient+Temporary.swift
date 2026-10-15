@@ -9,13 +9,11 @@ import AppKit
 import SwiftTreeSitter
 import TableProGrammars
 
-extension TreeSitterClient {
-    static func quickHighlight(
-        string: String,
-        theme: EditorTheme,
-        font: NSFont,
-        language: CodeLanguage
-    ) -> NSAttributedString? {
+public extension TreeSitterClient {
+    /// The captures the editor's grammar finds in `string`, for a view that shows code it never edits and applies
+    /// its own attributes. Safe away from the main thread: each call makes its own parser, and the compiled queries
+    /// are behind a lock.
+    static func highlightRanges(in string: String, language: CodeLanguage) -> [HighlightRange]? {
         guard let parserLanguage = language.language, let query = HighlightQueries.shared.query(for: language.id) else {
             return nil
         }
@@ -28,7 +26,7 @@ extension TreeSitterClient {
             }
             let queryCursor = query.execute(in: syntaxTree)
             var ranges: [NSRange: Int] = [:]
-            let highlights: [HighlightRange] = queryCursor
+            return queryCursor
                 .resolve(with: .init(string: string))
                 .flatMap { $0.captures }
                 .reversed() // SwiftTreeSitter returns captures in the reverse order of what we need to filter with.
@@ -50,22 +48,34 @@ extension TreeSitterClient {
 
                     return HighlightRange(range: range, capture: captureName)
                 }
-
-            let string = NSMutableAttributedString(string: string)
-
-            for highlight in highlights {
-                string.setAttributes(
-                    [
-                        .font: theme.fontFor(for: highlight.capture, from: font),
-                        .foregroundColor: theme.colorFor(highlight.capture)
-                    ],
-                    range: highlight.range
-                )
-            }
-
-            return string
         } catch {
             return nil
         }
+    }
+
+    /// `string` with the theme's color and weight on each range the grammar captures.
+    static func quickHighlight(
+        string: String,
+        theme: EditorTheme,
+        font: NSFont,
+        language: CodeLanguage
+    ) -> NSAttributedString? {
+        guard let highlights = highlightRanges(in: string, language: language) else {
+            return nil
+        }
+
+        let string = NSMutableAttributedString(string: string)
+
+        for highlight in highlights {
+            string.setAttributes(
+                [
+                    .font: theme.fontFor(for: highlight.capture, from: font),
+                    .foregroundColor: theme.colorFor(highlight.capture)
+                ],
+                range: highlight.range
+            )
+        }
+
+        return string
     }
 }

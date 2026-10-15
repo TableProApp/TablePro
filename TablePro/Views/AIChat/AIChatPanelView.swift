@@ -24,11 +24,6 @@ struct AIChatPanelView: View {
     var contentWidth: ChatContentWidth = .pane
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     @ObservedObject private var copilotService = CopilotService.shared
-    @State private var bottomVisibleMessageID: UUID?
-    @State private var pinnedToBottom: Bool = true
-    @State private var scrollToBottomRequest: UUID?
-
-    private static let bottomAnchorID = "chat.bottom.anchor"
     @StateObject private var mentionState = MentionPopoverState()
 
     private var hasConfiguredProvider: Bool {
@@ -54,7 +49,7 @@ struct AIChatPanelView: View {
             } else if viewModel.messages.isEmpty {
                 emptyState
             } else {
-                messageList
+                AIChatTranscriptView(viewModel: viewModel, contentWidth: contentWidth)
             }
 
             if hasConfiguredProvider {
@@ -150,114 +145,6 @@ struct AIChatPanelView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Message List
-
-    private var messageList: some View {
-        let visibleMessages = viewModel.messages.filter { isVisibleInMessageList($0) }
-        let spacedMessageIDs = AIChatMessageSpacing.spacedMessageIDs(for: visibleMessages)
-
-        let lastMessageID = visibleMessages.last?.id
-        let isUserScrolledUp = !pinnedToBottom && bottomVisibleMessageID != nil
-            && bottomVisibleMessageID != lastMessageID
-
-        return ZStack(alignment: .bottom) {
-            ScrollViewReader { proxy in
-            GeometryReader { viewport in
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(visibleMessages) { message in
-                        if spacedMessageIDs.contains(message.id) {
-                            Spacer()
-                                .frame(height: 16)
-                        }
-                        AIChatMessageView(
-                            message: message,
-                            onRetry: shouldShowRetry(for: message) ? { viewModel.retry() } : nil,
-                            onRegenerate: shouldShowRegenerate(for: message) ? { viewModel.regenerate() } : nil,
-                            onEdit: message.role == .user && !viewModel.isStreaming
-                                ? { viewModel.editMessage(message) } : nil,
-                            onContinue: shouldShowContinue(for: message)
-                                ? { viewModel.continueToolLoop() } : nil,
-                            onAdjustToolLimit: shouldShowContinue(for: message)
-                                ? { WindowOpener.shared.openSettings(tab: .ai) } : nil,
-                            pausedToolCallCount: shouldShowContinue(for: message)
-                                ? viewModel.toolLimitPauseCount : nil
-                        )
-                        .equatable()
-                        .padding(.vertical, 4)
-                        .id(message.id)
-                    }
-                    /// The bottom sentinel. `scrollPosition(id:anchor:)` reported which row sat at
-                    /// the bottom edge, which is macOS 14; measuring the last row against the
-                    /// viewport answers the only question that read was asked: is the reader at the
-                    /// end, or have they scrolled up.
-                    Color.clear
-                        .frame(height: 1)
-                        .id(Self.bottomAnchorID)
-                        .background(
-                            GeometryReader { row in
-                                Color.clear.preference(
-                                    key: ChatAtBottomKey.self,
-                                    value: row.frame(in: .global).maxY
-                                        <= viewport.frame(in: .global).maxY + 24
-                                )
-                            }
-                        )
-                }
-                .chatColumn(contentWidth)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 8)
-            }
-            .scrollIndicators(.hidden)
-            .onPreferenceChange(ChatAtBottomKey.self) { atBottom in
-                pinnedToBottom = atBottom
-                bottomVisibleMessageID = atBottom ? lastMessageID : visibleMessages.dropLast().last?.id
-            }
-            .modifier(ScrollsToBottomOnFirstAppearance {
-                proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
-            })
-            .onChange(of: visibleMessages.count) { _ in
-                if pinnedToBottom {
-                    proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
-                }
-            }
-            .onChange(of: viewModel.activeConversationID) { _ in
-                pinnedToBottom = true
-                proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
-            }
-            .onChange(of: viewModel.isStreaming) { newValue in
-                if !newValue, pinnedToBottom {
-                    proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
-                }
-            }
-            .onChange(of: scrollToBottomRequest) { _ in
-                proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
-            }
-            .environmentObject(viewModel)
-            }
-            }
-
-            if isUserScrolledUp {
-                Button {
-                    pinnedToBottom = true
-                    withMotion(.easeOut(duration: 0.2)) {
-                        scrollToBottomRequest = UUID()
-                    }
-                } label: {
-                    Image(systemName: "arrow.down.circle.fill")
-                        .font(.title2)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .padding(.bottom, 8)
-                .transition(.opacity)
-                .motionAnimation(.easeInOut(duration: 0.2), value: isUserScrolledUp)
-                .accessibilityLabel(String(localized: "Scroll to latest message"))
-            }
-        }
-    }
-
     // MARK: - Error Banner
 
     private func errorBanner(_ message: String) -> some View {
@@ -300,36 +187,11 @@ struct AIChatPanelView: View {
                     composerImageChipStrip
                 }
 
-                ChatComposerView(
-                    text: $viewModel.inputText,
-                    placeholder: String(localized: "Ask about your database…"),
-                    minLines: 1,
-                    maxLines: 5,
-                    mentionState: mentionState,
-                    onTextChange: { text, caret in
-                        updateMentionState(text: text, caret: caret)
-                    },
-                    onSubmit: {
-                        updateContext()
-                        viewModel.sendMessage()
-                    },
-                    onAttach: { item in
-                        viewModel.attach(item)
-                    },
-                    acceptsImages: viewModel.activeProviderSupportsImages,
-                    onAttachImages: { images in
-                        for image in images {
-                            viewModel.attachImage(image)
-                        }
-                    },
-                    onImageAttachmentFailed: { message in
-                        viewModel.reportImageAttachmentFailure(message)
-                    },
-                    highlightEnabled: settingsManager.ai.composerHighlightEnabled,
-                    onToggleHighlight: {
-                        settingsManager.ai.composerHighlightEnabled.toggle()
-                    }
-                )
+                let acceptsImages = viewModel.activeProviderSupportsImages
+                let highlightEnabled = settingsManager.ai.composerHighlightEnabled
+                ChatComposerDraftReader(draft: viewModel.composerDraft) { text in
+                    composer(text: text, acceptsImages: acceptsImages, highlightEnabled: highlightEnabled)
+                }
 
                 HStack(alignment: .center, spacing: 8) {
                     mentionMenu
@@ -345,6 +207,40 @@ struct AIChatPanelView: View {
             .chatColumn(contentWidth)
             .padding(8)
         }
+    }
+
+    /// Built by the draft reader on each keystroke, so it takes what it shows rather than looking it up again.
+    private func composer(text: Binding<String>, acceptsImages: Bool, highlightEnabled: Bool) -> some View {
+        ChatComposerView(
+            text: text,
+            placeholder: String(localized: "Ask about your database…"),
+            minLines: 1,
+            maxLines: 5,
+            mentionState: mentionState,
+            onTextChange: { text, caret in
+                updateMentionState(text: text, caret: caret)
+            },
+            onSubmit: {
+                updateContext()
+                viewModel.sendMessage()
+            },
+            onAttach: { item in
+                viewModel.attach(item)
+            },
+            acceptsImages: acceptsImages,
+            onAttachImages: { images in
+                for image in images {
+                    viewModel.attachImage(image)
+                }
+            },
+            onImageAttachmentFailed: { message in
+                viewModel.reportImageAttachmentFailure(message)
+            },
+            highlightEnabled: highlightEnabled,
+            onToggleHighlight: {
+                settingsManager.ai.composerHighlightEnabled.toggle()
+            }
+        )
     }
 
     private var composerImageChipStrip: some View {
@@ -406,18 +302,20 @@ struct AIChatPanelView: View {
             .help(String(localized: "Stop Generating"))
             .accessibilityLabel(String(localized: "Stop Generating"))
         } else {
-            let isEmpty = viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            Button {
-                updateContext()
-                viewModel.sendMessage()
-            } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .foregroundStyle(isEmpty ? .secondary : Color.accentColor)
+            ChatComposerDraftReader(draft: viewModel.composerDraft) { text in
+                let isEmpty = text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                Button {
+                    updateContext()
+                    viewModel.sendMessage()
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .foregroundStyle(isEmpty ? .secondary : Color.accentColor)
+                }
+                .buttonStyle(.plain)
+                .disabled(isEmpty)
+                .help(String(localized: "Send Message"))
+                .accessibilityLabel(String(localized: "Send Message"))
             }
-            .buttonStyle(.plain)
-            .disabled(isEmpty)
-            .help(String(localized: "Send Message"))
-            .accessibilityLabel(String(localized: "Send Message"))
         }
     }
 
@@ -622,22 +520,6 @@ struct AIChatPanelView: View {
         viewModel.editorTarget = live.map(\.target) ?? editorTarget
     }
 
-    /// Hide system turns and user turns that exist only to carry tool-result
-    /// blocks back to the model: those are protocol plumbing, not user input.
-    private func isVisibleInMessageList(_ message: ChatTurn) -> Bool {
-        guard message.role != .system else { return false }
-        if message.role == .user {
-            let hasUserContent = message.blocks.contains { block in
-                switch block.kind {
-                case .text(let value): return !value.isEmpty
-                case .attachment, .image: return true
-                case .toolUse, .toolResult, .reasoning, .sqlWalkthrough: return false
-                }
-            }
-            if !hasUserContent { return false }
-        }
-        return true
-    }
 
     private func updateMentionState(text: String, caret: Int) {
         guard let match = MentionDetector.detect(in: text, caret: caret) else {
@@ -713,53 +595,6 @@ struct AIChatPanelView: View {
 
     private func matchesQuery(_ label: String, _ query: String) -> Bool {
         query.isEmpty || label.localizedCaseInsensitiveContains(query)
-    }
-
-    private func shouldShowRetry(for message: ChatTurn) -> Bool {
-        message.role == .user
-            && message.id == viewModel.messages.last?.id
-            && viewModel.lastMessageFailed
-            && viewModel.canRetryLastFailure
-    }
-
-    private func shouldShowContinue(for message: ChatTurn) -> Bool {
-        message.role == .assistant
-            && viewModel.isPausedAtToolLimit
-            && message.id == viewModel.messages.last(where: { $0.role == .assistant })?.id
-    }
-
-    private func shouldShowRegenerate(for message: ChatTurn) -> Bool {
-        message.role == .assistant
-            && message.id == viewModel.messages.last?.id
-            && !viewModel.isStreaming
-            && !message.plainText.isEmpty
-    }
-}
-
-/// Whether the conversation's last row is inside the viewport. Replaces reading
-/// `scrollPosition(id:anchor:)`, which is macOS 14.
-private struct ChatAtBottomKey: PreferenceKey {
-    static let defaultValue = true
-
-    static func reduce(value: inout Bool, nextValue: () -> Bool) {
-        value = nextValue()
-    }
-}
-
-/// Re-adding the pane to the window fires `onAppear` again while the scroll view keeps its offset,
-/// so scrolling on every appearance threw a reader who had scrolled up back to the bottom. The flag
-/// lives with the scroll view, so a transcript rebuilt after the empty state still opens at the end.
-private struct ScrollsToBottomOnFirstAppearance: ViewModifier {
-    let scrollToBottom: () -> Void
-
-    @State private var hasScrolled = false
-
-    func body(content: Content) -> some View {
-        content.onAppear {
-            guard !hasScrolled else { return }
-            hasScrolled = true
-            scrollToBottom()
-        }
     }
 }
 

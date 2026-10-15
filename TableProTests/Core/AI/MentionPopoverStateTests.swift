@@ -3,7 +3,9 @@
 //  TableProTests
 //
 
+import Combine
 import Foundation
+import os
 import TableProPluginKit
 @testable import TablePro
 import Testing
@@ -12,6 +14,38 @@ import Testing
 struct MentionPopoverStateTests {
     private func candidate(_ name: String) -> MentionCandidate {
         MentionCandidate(item: .table(connectionId: UUID(), name: name))
+    }
+
+    @Test("Resetting a popover that is already reset publishes nothing")
+    func resetWhenResetIsSilent() {
+        let state = MentionPopoverState()
+        let published = OSAllocatedUnfairLock(initialState: false)
+        let observation = state.objectWillChange.sink { _ in
+            published.withLock { $0 = true }
+        }
+        defer { observation.cancel() }
+
+        state.reset()
+
+        #expect(published.withLock { $0 } == false)
+    }
+
+    @Test("Resetting a visible popover clears it")
+    func resetClearsAVisiblePopover() {
+        let state = MentionPopoverState()
+        state.candidates = [candidate("a"), candidate("b")]
+        state.selectedIndex = 1
+        state.query = "a"
+        state.anchorRange = NSRange(location: 3, length: 2)
+        state.isVisible = true
+
+        state.reset()
+
+        #expect(state.isVisible == false)
+        #expect(state.candidates.isEmpty)
+        #expect(state.selectedIndex == 0)
+        #expect(state.query.isEmpty)
+        #expect(state.anchorRange == NSRange(location: 0, length: 0))
     }
 
     @Test("moveSelection wraps forward at end")

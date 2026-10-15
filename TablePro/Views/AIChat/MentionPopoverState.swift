@@ -14,7 +14,11 @@ final class MentionPopoverState: ObservableObject {
     @Published var query = ""
     @Published var anchorRange = NSRange(location: 0, length: 0)
 
+    /// Called on every keystroke without a mention in progress, so it writes only when there is something to clear:
+    /// each write publishes, and the composer's owner redraws on every publish.
     func reset() {
+        guard isVisible || !candidates.isEmpty || selectedIndex != 0 || !query.isEmpty || anchorRange.length != 0
+            || anchorRange.location != 0 else { return }
         isVisible = false
         candidates = []
         selectedIndex = 0

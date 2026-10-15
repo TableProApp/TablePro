@@ -124,7 +124,7 @@ public struct EditorTheme: Equatable {
     /// Get the color from ``theme`` for the specified capture name.
     /// - Parameter capture: The capture name
     /// - Returns: A `NSColor`
-    func colorFor(_ capture: CaptureName?) -> NSColor {
+    public func colorFor(_ capture: CaptureName?) -> NSColor {
         mapCapture(capture).color
     }
 
@@ -133,7 +133,7 @@ public struct EditorTheme: Equatable {
     ///   - capture: The capture name.
     ///   - font: The font to add attributes to.
     /// - Returns: A new font that has the correct attributes for the capture.
-    func fontFor(for capture: CaptureName?, from font: NSFont) -> NSFont {
+    public func fontFor(for capture: CaptureName?, from font: NSFont) -> NSFont {
         let attributes = mapCapture(capture)
         guard attributes.bold || attributes.italic else {
             return font

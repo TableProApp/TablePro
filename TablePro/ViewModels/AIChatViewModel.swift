@@ -22,7 +22,7 @@ final class AIChatViewModel: ObservableObject {
     }
 
     @Published var messages: [ChatTurn] = []
-    @Published var inputText: String = ""
+    let composerDraft = ChatComposerDraft()
     @Published var streamingState: StreamingState = .idle
     @Published var errorMessage: String?
     @Published var conversations: [AIConversation] = []
@@ -51,6 +51,12 @@ final class AIChatViewModel: ObservableObject {
     @Published var currentQuery: String?
     @Published var queryResults: String?
     var editorTarget: AssistantEditorTarget?
+
+    /// The composer's text. It lives on `composerDraft`, which publishes it apart from the conversation.
+    var inputText: String {
+        get { composerDraft.text }
+        set { composerDraft.text = newValue }
+    }
 
     var isStreaming: Bool {
         switch streamingState {

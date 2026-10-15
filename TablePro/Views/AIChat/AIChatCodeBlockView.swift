@@ -5,56 +5,46 @@
 
 import AppKit
 import SwiftUI
-import TableProEditorKit
 import TableProGrammars
 
+/// A fenced code block in a chat reply: selectable text in the editor's font and colors, as tall as its code.
+///
+/// It holds no scroll view of its own. The HIG asks not to nest a scroll view inside another of the same
+/// orientation, and an inner one that cannot show all its code takes the transcript's scroll whenever the pointer
+/// crosses it.
 struct AIChatCodeBlockView: View, Equatable {
-    @ObservedObject private var settingsManager = AppSettingsManager.shared
     @ObservedObject private var themeEngine = ThemeEngine.shared
     let code: String
     let language: String?
-    var prefersLightweightRendering: Bool = false
+    /// False while the block is the end of a reply still arriving. It shows plain editor text until then, so a
+    /// half-written block is not reparsed and recolored on every flush.
+    var isSettled: Bool = true
 
     static func == (lhs: AIChatCodeBlockView, rhs: AIChatCodeBlockView) -> Bool {
         lhs.code == rhs.code
             && lhs.language == rhs.language
-            && lhs.prefersLightweightRendering == rhs.prefersLightweightRendering
+            && lhs.isSettled == rhs.isSettled
     }
 
     @State private var isCopied: Bool = false
-    @State private var isEditorReady = false
-    @State private var editorState = SourceEditorState()
-    @State private var editorConfiguration = makeConfiguration()
-    @State private var measuredWidth: CGFloat = 0
+    @State private var highlighted: (key: String, text: AttributedString)?
     @Environment(\.commandActions) private var actions
 
-    private var usesLightweightContent: Bool {
-        prefersLightweightRendering || !isEditorReady
-    }
-
     var body: some View {
+        let resolvedLanguage = Self.resolvedLanguage(hint: language, code: code)
+        let codeLanguage = Self.codeLanguage(for: resolvedLanguage)
         GroupBox {
-            codeContent
+            codeText(language: codeLanguage)
         } label: {
-            codeBlockHeader
+            header(resolvedLanguage: resolvedLanguage, isInsertable: codeLanguage.id != CodeLanguage.default.id)
         }
         .groupBoxStyle(CodeBlockGroupBoxStyle())
-        .task(id: prefersLightweightRendering) {
-            guard !prefersLightweightRendering else {
-                isEditorReady = false
-                return
-            }
-            isEditorReady = true
-        }
-        .onDisappear {
-            isEditorReady = false
-        }
     }
 
-    private var codeBlockHeader: some View {
+    private func header(resolvedLanguage: String?, isInsertable: Bool) -> some View {
         HStack(spacing: 8) {
-            if let resolved = resolvedLanguage {
-                Text(resolved.uppercased())
+            if let resolvedLanguage {
+                Text(resolvedLanguage.uppercased())
                     .font(.caption2)
                     .fontWeight(.medium)
                     .foregroundStyle(.secondary)
@@ -105,60 +95,52 @@ struct AIChatCodeBlockView: View, Equatable {
         }
     }
 
-    @ViewBuilder
-    private var codeContent: some View {
-        Group {
-            if usesLightweightContent {
-                // Stands in for the editor while the block streams, so it wears the editor's colors and the block
-                // does not change color when the editor replaces it.
-                Text(code.isEmpty ? " " : code)
-                    .font(Font(Self.editorFont))
-                    .lineSpacing(CodeBlockHeightEstimator.extraLineSpacing(for: Self.editorFont))
-                    .foregroundStyle(themeEngine.palette.color(.editorText))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
-                    .frame(minHeight: CodeBlockHeightEstimator.minimumHeight, alignment: .topLeading)
-                    .background(themeEngine.palette.color(.editorBackground))
-            } else {
-                SourceEditor(
-                    .constant(code),
-                    language: treeSitterLanguage,
-                    configuration: editorConfiguration,
-                    state: $editorState,
-                    foldProvider: FoldProviderResolver.provider(for: treeSitterLanguage)
+    private func codeText(language: CodeLanguage) -> some View {
+        let font = themeEngine.editorFonts.font
+        let key = isSettled
+            ? CodeBlockHighlighter.key(for: code, language: language, font: font, themeEngine: themeEngine)
+            : nil
+        let marked = key.flatMap { key in
+            highlighted?.key == key ? highlighted?.text : CodeBlockHighlighter.cachedCode(forKey: key)
+        }
+        return Text(code.isEmpty ? AttributedString(" ") : marked ?? AttributedString(code))
+            .font(Font(font))
+            .foregroundStyle(themeEngine.palette.color(.editorText))
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(8)
+            .background(themeEngine.palette.color(.editorBackground))
+            .task(id: key) {
+                guard let key, marked == nil else { return }
+                let text = await CodeBlockHighlighter.highlightedCode(
+                    code,
+                    language: language,
+                    font: font,
+                    key: key,
+                    themeEngine: themeEngine
                 )
-                .frame(maxWidth: .infinity)
-                .frame(height: contentHeight)
+                highlighted = (key, text)
             }
-        }
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.width
-        } action: { newWidth in
-            measuredWidth = newWidth
-        }
-        .onReceive(AppEvents.shared.themeChanged) { _ in
-            editorConfiguration = Self.makeConfiguration()
-        }
-        .onChange(of: settingsManager.editor) { _ in
-            editorConfiguration = Self.makeConfiguration()
-        }
     }
 
-    private var resolvedLanguage: String? {
-        if let language, !language.isEmpty {
-            return language
+    private static func resolvedLanguage(hint: String?, code: String) -> String? {
+        if let hint, !hint.isEmpty {
+            return hint
         }
-        return Self.detectLanguage(from: code)
+        return detectLanguage(from: code)
     }
 
+    /// Reads only up to the first line that is not blank or a comment, so a long block costs no more than a short one.
     nonisolated static func detectLanguage(from code: String) -> String? {
-        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard !trimmed.isEmpty else { return nil }
-        let firstNonCommentLine = trimmed
-            .split(whereSeparator: { $0.isNewline })
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .first(where: { !$0.isEmpty && !$0.hasPrefix("--") && !$0.hasPrefix("/*") }) ?? trimmed
+        var firstStatement: String?
+        code.enumerateLines { line, stop in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty, !trimmed.hasPrefix("--"), !trimmed.hasPrefix("/*") else { return }
+            firstStatement = trimmed.uppercased()
+            stop = true
+        }
+        guard let firstStatement else { return nil }
 
         let sqlPrefixes = [
             "SELECT ", "INSERT ", "UPDATE ", "DELETE ", "WITH ",
@@ -167,16 +149,16 @@ struct AIChatCodeBlockView: View, Equatable {
             "REVOKE ", "ANALYZE ", "SET ", "CALL ", "LOCK ",
             "MERGE ", "SHOW ", "DESCRIBE ", "DESC "
         ]
-        if sqlPrefixes.contains(where: { firstNonCommentLine.hasPrefix($0) }) {
+        if sqlPrefixes.contains(where: { firstStatement.hasPrefix($0) }) {
             return "sql"
         }
-        if firstNonCommentLine.hasPrefix("DB.") {
+        if firstStatement.hasPrefix("DB.") {
             return "javascript"
         }
         return nil
     }
 
-    private var treeSitterLanguage: CodeLanguage {
+    private static func codeLanguage(for resolvedLanguage: String?) -> CodeLanguage {
         switch resolvedLanguage?.lowercased() {
         case "sql", "mysql", "postgresql", "postgres", "sqlite":
             return .sql
@@ -187,40 +169,6 @@ struct AIChatCodeBlockView: View, Equatable {
         default:
             return .default
         }
-    }
-
-    private var isInsertable: Bool {
-        treeSitterLanguage.id != CodeLanguage.default.id
-    }
-
-    private var contentHeight: CGFloat {
-        CodeBlockHeightEstimator.height(
-            for: code,
-            font: Self.editorFont,
-            availableWidth: measuredWidth
-        )
-    }
-
-    private static let editorFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-
-    private static func makeConfiguration() -> SourceEditorConfiguration {
-        SourceEditorConfiguration(
-            appearance: .init(
-                theme: TableProEditorTheme.make(),
-                font: editorFont,
-                lineHeightMultiple: Double(CodeBlockHeightEstimator.lineHeightMultiple),
-                wrapLines: true
-            ),
-            behavior: .init(
-                isEditable: false
-            ),
-            layout: .init(
-                contentInsets: NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
-            ),
-            peripherals: EditorPeripherals.preview(
-                folding: AppSettingsManager.shared.editor.codeFoldingEnabled
-            )
-        )
     }
 }
 

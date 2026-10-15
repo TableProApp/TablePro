@@ -77,9 +77,9 @@ struct TrailingPaneStateTests {
 
         var announcements = 0
         let subscription = state.assistant.objectWillChange.sink { announcements += 1 }
-        busy.inputText = "typed into the busy session"
+        busy.selectedModel = "chosen in the busy session"
         #expect(announcements == 0)
-        fresh.inputText = "typed into the new session"
+        fresh.selectedModel = "chosen in the new session"
         #expect(announcements > 0)
         subscription.cancel()
     }
@@ -114,9 +114,9 @@ struct TrailingPaneStateTests {
 
         var announcements = 0
         let subscription = second.assistant.objectWillChange.sink { announcements += 1 }
-        busy.inputText = "typed into the busy session"
+        busy.selectedModel = "chosen in the busy session"
         #expect(announcements == 0)
-        fresh.inputText = "typed into the new session"
+        fresh.selectedModel = "chosen in the new session"
         #expect(announcements > 0)
         #expect(second.assistant.viewModelIfActivated === fresh)
         subscription.cancel()

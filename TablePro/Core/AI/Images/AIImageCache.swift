@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import ImageIO
 import os
 
 /// Disk-backed cache for chat-attached images. File operations are serialised
@@ -13,6 +14,12 @@ final class AIImageCache: @unchecked Sendable {
 
     private let cacheDirectory: URL
     private let queue = DispatchQueue(label: "com.TablePro.AIImageCache", qos: .utility)
+    /// `NSCache` is safe to use from any thread.
+    private let thumbnails: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 64
+        return cache
+    }()
 
     private init() {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
@@ -45,6 +52,36 @@ final class AIImageCache: @unchecked Sendable {
     func loadImage(filename: String) -> NSImage? {
         guard let data = read(filename: filename) else { return nil }
         return NSImage(data: data)
+    }
+
+    /// The image scaled down to `maxPixelSize` on its longer side by ImageIO, which never keeps the full-size bitmap.
+    /// A pasted screenshot is up to 2000 px, and drawing it into a 96 pt thumbnail decoded all of it each time its
+    /// transcript row came back into view.
+    func thumbnail(filename: String, maxPixelSize: Int) -> NSImage? {
+        if let cached = cachedThumbnail(filename: filename, maxPixelSize: maxPixelSize) {
+            return cached
+        }
+        guard let url = safeURL(for: filename),
+              let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        let thumbnail = NSImage(cgImage: image, size: .zero)
+        thumbnails.setObject(thumbnail, forKey: thumbnailKey(filename: filename, maxPixelSize: maxPixelSize))
+        return thumbnail
+    }
+
+    /// A thumbnail already made, without touching the disk, so a row that scrolls back in draws it on its first frame.
+    func cachedThumbnail(filename: String, maxPixelSize: Int) -> NSImage? {
+        thumbnails.object(forKey: thumbnailKey(filename: filename, maxPixelSize: maxPixelSize))
+    }
+
+    private func thumbnailKey(filename: String, maxPixelSize: Int) -> NSString {
+        "\(maxPixelSize)/\(filename)" as NSString
     }
 
     func delete(filename: String) {

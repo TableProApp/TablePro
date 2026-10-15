@@ -23,6 +23,9 @@ enum FoldPreviewMetrics {
     private static let verticalPadding: CGFloat = 16
     private static let horizontalPadding: CGFloat = 24
 
+    /// The peek's `SourceEditor` keeps the editor's default line height multiple.
+    private static let lineHeightMultiple: CGFloat = 1.2
+
     struct Layout: Equatable {
         /// The lines the peek shows, without a trailing newline.
         let text: String
@@ -41,7 +44,7 @@ enum FoldPreviewMetrics {
         let shown = Array(lines.prefix(maxLines))
         let hiddenLineCount = lines.count - shown.count
 
-        let lineHeight = CodeBlockHeightEstimator.editorLineHeight(for: font)
+        let lineHeight = (font.ascender - font.descender + font.leading) * lineHeightMultiple
         let widest = shown.reduce(CGFloat.zero) { widest, line in
             max(widest, (line as NSString).size(withAttributes: [.font: font]).width)
         }

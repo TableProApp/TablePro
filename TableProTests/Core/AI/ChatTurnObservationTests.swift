@@ -20,6 +20,29 @@ struct ChatTurnObservationTests {
         return (ChatTurn(role: .assistant, blocks: [block]), block)
     }
 
+    @Test("Typing in the composer publishes on the draft, not on the view model")
+    func typingLeavesTheViewModelSilent() {
+        let viewModel = AIChatViewModel()
+        let viewModelInvalidated = OSAllocatedUnfairLock(initialState: false)
+        let draftInvalidated = OSAllocatedUnfairLock(initialState: false)
+        let viewModelObservation = viewModel.objectWillChange.sink { _ in
+            viewModelInvalidated.withLock { $0 = true }
+        }
+        let draftObservation = viewModel.composerDraft.objectWillChange.sink { _ in
+            draftInvalidated.withLock { $0 = true }
+        }
+        defer {
+            viewModelObservation.cancel()
+            draftObservation.cancel()
+        }
+
+        viewModel.inputText = "select"
+
+        #expect(viewModelInvalidated.withLock { $0 } == false)
+        #expect(draftInvalidated.withLock { $0 } == true)
+        #expect(viewModel.composerDraft.text == "select")
+    }
+
     @Test("Appending a streaming token leaves the messages array untouched")
     func tokenAppendDoesNotInvalidateMessagesArray() {
         let viewModel = AIChatViewModel()

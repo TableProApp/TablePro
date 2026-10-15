@@ -9,15 +9,28 @@ import SwiftUI
 struct ChatImageThumbnailView: View {
     let input: ChatImageInput
 
+    /// The largest frame a thumbnail is drawn in, in points.
+    private static let maximumPointSize: CGFloat = 96
+
+    @Environment(\.displayScale) private var displayScale
+    @State private var thumbnail: NSImage?
+
     var body: some View {
         switch input.source {
         case .cacheFile(let filename, _):
-            if let nsImage = AIImageCache.shared.loadImage(filename: filename) {
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                placeholder
+            let maxPixelSize = Int(Self.maximumPointSize * displayScale)
+            Group {
+                if let thumbnail = thumbnail
+                    ?? AIImageCache.shared.cachedThumbnail(filename: filename, maxPixelSize: maxPixelSize) {
+                    Image(nsImage: thumbnail)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    placeholder
+                }
+            }
+            .task(id: filename) {
+                thumbnail = await Self.loadThumbnail(filename: filename, maxPixelSize: maxPixelSize)
             }
         case .remoteURL(let url, _):
             AsyncImage(url: url) { phase in
@@ -33,6 +46,12 @@ struct ChatImageThumbnailView: View {
                 }
             }
         }
+    }
+
+    /// Decoding happens off the main actor; a row that scrolls back in finds the thumbnail in the cache.
+    @concurrent
+    nonisolated private static func loadThumbnail(filename: String, maxPixelSize: Int) async -> NSImage? {
+        AIImageCache.shared.thumbnail(filename: filename, maxPixelSize: maxPixelSize)
     }
 
     private var placeholder: some View {
