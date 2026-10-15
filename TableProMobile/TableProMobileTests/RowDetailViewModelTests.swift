@@ -444,6 +444,16 @@ struct RowDetailViewModelTests {
         #expect(vm.hasUnsavedEdits == false)
     }
 
+    @Test("A stored empty string in a date column is left alone when another field is saved")
+    func storedEmptyDateIsUntouched() {
+        let rows = [Row(cells: [.text("1"), .text("Alice"), .text(""), .text("2023-12-01 09:00:00")])]
+        let vm = RowDetailViewModel(columns: makeDatedColumns(), rows: rows, initialIndex: 0)
+        vm.startEditing()
+
+        #expect(vm.writtenValue(at: 2) == "")
+        #expect(vm.hasUnsavedEdits == false)
+    }
+
     @Test("Turning NULL off on a NULL date without typing writes nothing")
     func nullToggledOffOnDateIsNoEdit() {
         let rows = [Row(cells: [.text("1"), .text("Alice"), .null, .text("2023-12-01 09:00:00")])]

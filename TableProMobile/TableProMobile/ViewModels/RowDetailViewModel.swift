@@ -208,12 +208,13 @@ final class RowDetailViewModel {
     /// What Save writes for a field. An emptied date, number or boolean is NULL, since `''` is no
     /// value of those types and MySQL without strict mode stores it as the zero date. In a NOT NULL
     /// column, which holds neither, the field keeps the stored value and Save writes nothing for it.
+    /// A field left as it was is never read again: SQLite can hold `''` in a DATETIME column.
     func writtenValue(at index: Int) -> String? {
         guard index < editedValues.count else { return nil }
         let value = editedValues[index]
-        guard value == "", !holdsEmptyString(at: index) else { return value }
-        guard isNullable(at: index) else { return index < currentRow.count ? currentRow[index] : nil }
-        return nil
+        let stored = index < currentRow.count ? currentRow[index] : nil
+        guard value == "", stored != "", !holdsEmptyString(at: index) else { return value }
+        return isNullable(at: index) ? nil : stored
     }
 
     private func holdsEmptyString(at index: Int) -> Bool {
