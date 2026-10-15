@@ -32,7 +32,8 @@ pub struct ConnectDialog {
     database_file_picker: gtk::Box,
     username: adw::EntryRow,
     password: adw::PasswordEntryRow,
-    auth_combo: adw::ComboRow,
+    auth_row: adw::ActionRow,
+    auth_combo: AccessibleChoice,
     tls_row: adw::ActionRow,
     tls_mode: AccessibleChoice,
     tls_root_cert: adw::EntryRow,
@@ -41,7 +42,7 @@ pub struct ConnectDialog {
     read_only: adw::SwitchRow,
     connect_timeout: gtk::SpinButton,
     query_timeout: gtk::SpinButton,
-    environment: adw::ComboRow,
+    environment: AccessibleChoice,
     auth_group: adw::PreferencesGroup,
     ssh: SshSection,
     test_button: gtk::Button,
@@ -249,13 +250,11 @@ impl Component for ConnectDialog {
             .subtitle(crate::tr!("Block writes at the policy layer"))
             .active(false)
             .build();
-        let environment = adw::ComboRow::builder()
-            .title(crate::tr!("Environment"))
-            .subtitle(crate::tr!("Drives agent and approval defaults"))
-            .build();
-        let env_model = gtk::StringList::new(&["Local", "Dev", "Staging", "Prod"]);
-        environment.set_model(Some(&env_model));
-        environment.set_selected(0);
+        let (environment_row, environment) = choice_row(
+            crate::tr!("Environment"),
+            Some(crate::tr!("Drives agent and approval defaults")),
+            ["Local", "Dev", "Staging", "Prod"].map(String::from).to_vec(),
+        );
 
         let ssh = SshSection::build();
         let sender_for_ssh = sender.clone();
@@ -292,12 +291,7 @@ impl Component for ConnectDialog {
         connection_group.add(&database);
 
         let auth_labels: Vec<String> = AUTH_MODE_ROWS.iter().map(|mode| auth_mode_label(*mode)).collect();
-        let auth_labels_ref: Vec<&str> = auth_labels.iter().map(String::as_str).collect();
-        let auth_mode_model = gtk::StringList::new(&auth_labels_ref);
-        let auth_combo = adw::ComboRow::builder()
-            .title(crate::tr!("Method"))
-            .model(&auth_mode_model)
-            .build();
+        let (auth_row, auth_combo) = choice_row(crate::tr!("Method"), None, auth_labels);
         let sender_for_auth_mode = sender.clone();
         auth_combo.connect_selected_notify(move |_| {
             sender_for_auth_mode.input(ConnectDialogInput::AuthModeChanged);
@@ -306,7 +300,7 @@ impl Component for ConnectDialog {
         let auth_group = adw::PreferencesGroup::builder()
             .title(crate::tr!("Authentication"))
             .build();
-        auth_group.add(&auth_combo);
+        auth_group.add(&auth_row);
         auth_group.add(&username);
         auth_group.add(&password);
 
@@ -319,7 +313,7 @@ impl Component for ConnectDialog {
         let (connect_timeout_row, connect_timeout, query_timeout_row, query_timeout) = timeout_rows();
         options_group.add(&connect_timeout_row);
         options_group.add(&query_timeout_row);
-        options_group.add(&environment);
+        options_group.add(&environment_row);
 
         let test_button = gtk::Button::builder().label(crate::tr!("Test")).build();
         let sender_for_test = sender.clone();
@@ -383,6 +377,7 @@ impl Component for ConnectDialog {
             database_file_picker,
             username,
             password,
+            auth_row,
             auth_combo,
             tls_row,
             tls_mode,
@@ -843,7 +838,7 @@ impl ConnectDialog {
         } else {
             self.password.set_title(&crate::tr!("Password"));
         }
-        self.auth_combo.set_visible(self.form.shows_method());
+        self.auth_row.set_visible(self.form.shows_method());
         let credentials = self.form.shows_credentials();
         self.username.set_visible(credentials);
         self.password.set_visible(credentials);

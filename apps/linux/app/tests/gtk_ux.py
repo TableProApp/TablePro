@@ -341,6 +341,16 @@ GLib.MainLoop().run()
         ui.wait_for_node_containing("Test failed")
         assert ui.find_node_containing("Connection ok") is None
 
+    def connection_dialog_environment_choice_is_operable(database, base):
+        ui.invoke(ui.wait_for_node(name="New connection", role=pyatspi.ROLE_PUSH_BUTTON))
+        ui.wait_for_node(name="Connect to PostgreSQL")
+        environment = ui.wait_for_node(name="Local", role=pyatspi.ROLE_PUSH_BUTTON)
+        actions = environment.queryAction()
+        names = [actions.getName(index).lower() for index in range(actions.nActions)]
+        assert any(name in {"click", "activate", "press", "toggle", "default.activate"} for name in names), (
+            f"Environment has no accessible activation action: {names!r}"
+        )
+
     def connect_dialog_cancel_stops_a_hanging_connection(database, base):
         import threading
 
@@ -1504,6 +1514,7 @@ GLib.MainLoop().run()
         grid_paste_preserves_multiline_text_and_sibling_rows,
         test_connection_reports_success_in_the_dialog,
         test_connection_reports_failure_in_the_dialog,
+        connection_dialog_environment_choice_is_operable,
         connect_dialog_cancel_stops_a_hanging_connection,
         a_second_launch_raises_the_window_and_exits_cleanly,
         session_transaction_label_and_toggle_off_confirmation,
