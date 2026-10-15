@@ -171,15 +171,18 @@ impl SqliteConnection {
             .await
     }
 
-    /// With the workspace connection busy, the file is asked on a
-    /// connection of the probe's own, which needs no lock to answer.
+    /// With the workspace connection busy, the file is opened on a
+    /// connection of the probe's own and nothing more. Opening runs only
+    /// pragmas that set flags on the connection, so it needs no lock. A
+    /// SELECT would: SQLite 3.51 reads the schema before it compiles a
+    /// connection's first SELECT (3.46 waited for a table name), and so
+    /// waits out the lock the busy calls are waiting on.
     async fn probe_standalone(&self, options: &CallOptions) -> Result<(), DriverError> {
         let options_for_probe = self.options(true);
         let probing = async {
-            let mut connection = SqlxConnection::connect_with(&options_for_probe)
+            let connection = SqlxConnection::connect_with(&options_for_probe)
                 .await
                 .map_err(|error| map_open_error(error, &self.path))?;
-            connection.execute("SELECT 1").await.map_err(map_error)?;
             connection.close().await.map_err(map_error)
         };
         tokio::select! {

@@ -40,6 +40,8 @@ The driver does not detect any of these. Open such a file read-only, or copy it 
 
 One workspace connection is enough because SQLite takes one writer at a time anyway, and it keeps a temporary table or an attached database where the next call can see it. Calls wait for it for up to the pool wait (5 s).
 
+The health probe runs `SELECT 1` on the workspace connection when it is free. When it is busy, the probe opens a read-only connection of its own and closes it again without running a statement: opening runs only pragmas that set connection flags, which need no lock, whereas its first SELECT would read the schema on SQLite 3.51 and so wait for any lock another connection holds, often the one the busy call is waiting for too.
+
 ## Stops and timeouts
 
 SQLite has no statement timeout and no out-of-band cancel. Each call installs a fresh flag, and a progress handler checks it every 1,000 virtual-machine instructions; when the flag is up the statement ends with `SQLITE_INTERRUPT`. The flag names the call, not the connection, so a stop that arrives late cannot reach the next call: `StopDelivery::OutOfBand(StopScope::Statement)`. `sqlite3_interrupt` is not used, because sqlx's handle to the connection waits for the worker thread to finish its current command, which is the statement the stop was meant for.
