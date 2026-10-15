@@ -22,38 +22,9 @@ struct WorkspaceAnchoringTests {
         return tab
     }
 
-    @Test("A brand new query tab is not work, so it holds nothing")
-    func emptyQueryTabHoldsNothing() {
-        #expect(!WorkspaceAnchoring.hasWork(queryTab()))
-    }
-
-    @Test("A query tab with text holds its database")
-    func typedQueryTabHoldsItsContainer() {
-        #expect(WorkspaceAnchoring.hasWork(queryTab("SELECT 1")))
-    }
-
-    @Test("A query tab the user has edited rows in holds its database even with no text")
-    func interactedQueryTabHoldsItsContainer() {
-        var tab = queryTab()
-        tab.hasUserInteraction = true
-        #expect(WorkspaceAnchoring.hasWork(tab))
-    }
-
-    @Test("A file-backed query tab holds its database even before anything is typed")
-    func fileBackedQueryTabHoldsItsContainer() {
-        var tab = queryTab()
-        tab.content.sourceFileURL = URL(fileURLWithPath: "/tmp/report.sql")
-        #expect(WorkspaceAnchoring.hasWork(tab))
-    }
-
-    @Test("Every tab that is not a query tab holds its database")
-    func nonQueryTabsAlwaysHold() {
-        #expect(WorkspaceAnchoring.hasWork(tableTab()))
-    }
-
     @Test("A database engine keys the container on the database")
     func databaseEngineUsesDatabase() {
-        let container = WorkspaceAnchoring.container(
+        let container = WorkspaceAnchoring.containerName(
             of: tableTab(database: "app", schema: "public"),
             target: .database
         )
@@ -62,7 +33,7 @@ struct WorkspaceAnchoringTests {
 
     @Test("A schema engine keys the container on the schema")
     func schemaEngineUsesSchema() {
-        let container = WorkspaceAnchoring.container(
+        let container = WorkspaceAnchoring.containerName(
             of: tableTab(database: "app", schema: "reporting"),
             target: .schema
         )
@@ -71,24 +42,25 @@ struct WorkspaceAnchoringTests {
 
     @Test("A schema engine names no container for a tab with no schema")
     func schemaEngineWithoutSchemaNamesNothing() {
-        #expect(WorkspaceAnchoring.container(of: tableTab(database: "app"), target: .schema) == nil)
+        #expect(WorkspaceAnchoring.containerName(of: tableTab(database: "app"), target: .schema) == nil)
     }
 
     @Test("An engine that switches nothing names no container, so it gets a single workspace")
     func noSwitchTargetNamesNothing() {
-        #expect(WorkspaceAnchoring.container(of: tableTab(database: "app"), target: nil) == nil)
+        #expect(WorkspaceAnchoring.containerName(of: tableTab(database: "app"), target: nil) == nil)
         #expect(WorkspaceAnchoring.containers(in: [tableTab(database: "app")], target: nil).isEmpty)
     }
 
-    @Test("Containers collapse duplicates and skip tabs that hold nothing")
-    func containersDeduplicateAndSkipScratchTabs() {
+    /// A tab is reachable only through its entry, so an empty scratch tab names its container too.
+    @Test("Containers collapse duplicates and include every tab that names one")
+    func containersDeduplicateAndIncludeScratchTabs() {
         let tabs = [
             tableTab(database: "app"),
             tableTab(database: "app"),
             tableTab(database: "logs"),
             queryTab(database: "archive"),
         ]
-        #expect(WorkspaceAnchoring.containers(in: tabs, target: .database) == ["app", "logs"])
+        #expect(WorkspaceAnchoring.containers(in: tabs, target: .database) == ["app", "logs", "archive"])
     }
 
     @Test("The browsed container falls back to the connection's database when none is set")
@@ -105,33 +77,41 @@ struct WorkspaceAnchoringTests {
         #expect(WorkspaceAnchoring.defaultContainer(of: connection, target: .database) == "app")
     }
 
-    @Test("On a schema engine, a query tab with no schema holds nothing rather than a container it cannot name")
-    func schemaEngineQueryTabWithoutSchemaHoldsNothing() {
-        var tab = queryTab("SELECT 1", database: "warehouse")
-        tab.hasUserInteraction = true
-        #expect(WorkspaceAnchoring.hasWork(tab))
-        #expect(!WorkspaceAnchoring.holdsContainer(tab, target: .schema))
-        #expect(WorkspaceAnchoring.holdsContainer(tab, target: .database))
+    /// On an engine whose query tabs run against whatever schema is browsed, such a tab belongs to
+    /// every entry rather than to one it cannot name.
+    @Test("On a schema engine, a query tab with no schema names no container")
+    func schemaEngineQueryTabWithoutSchemaNamesNothing() {
+        let tab = queryTab("SELECT 1", database: "warehouse")
+        #expect(WorkspaceAnchoring.containerName(of: tab, target: .schema) == nil)
+        #expect(WorkspaceAnchoring.containerName(of: tab, target: .database) == "warehouse")
     }
 
-    @Test("On a schema engine, a tab that names its schema still holds it")
-    func schemaEngineTabWithSchemaHolds() {
+    @Test("On a schema engine, a tab that names its schema is in that entry")
+    func schemaEngineTabWithSchemaNamesIt() {
         let tab = queryTab("SELECT 1", database: "warehouse", schema: "reporting")
-        #expect(WorkspaceAnchoring.holdsContainer(tab, target: .schema))
-        #expect(WorkspaceAnchoring.container(of: tab, target: .schema) == "reporting")
+        #expect(WorkspaceAnchoring.containerName(of: tab, target: .schema) == "reporting")
     }
 
-    @Test("Typing into a query tab changes the anchors, so the rail is told to reload")
-    func typingChangesAnchors() {
-        let before = WorkspaceAnchoring.anchors(in: [queryTab()])
-        let after = WorkspaceAnchoring.anchors(in: [queryTab("SELECT 1")])
+    @Test("A tab moving to another database changes the anchors, so the rail is told to reload")
+    func rebindingChangesAnchors() {
+        let before = WorkspaceAnchoring.anchors(in: [queryTab(database: "app")])
+        let after = WorkspaceAnchoring.anchors(in: [queryTab(database: "logs")])
         #expect(before != after)
     }
 
-    @Test("Editing a query that already had text leaves the anchors alone")
-    func editingTypedQueryKeepsAnchors() {
-        let before = WorkspaceAnchoring.anchors(in: [queryTab("SELECT 1")])
-        let after = WorkspaceAnchoring.anchors(in: [queryTab("SELECT 2")])
+    @Test("Typing into a query tab leaves the anchors alone")
+    func typingKeepsAnchors() {
+        let before = WorkspaceAnchoring.anchors(in: [queryTab()])
+        let after = WorkspaceAnchoring.anchors(in: [queryTab("SELECT 1")])
         #expect(before == after)
+    }
+
+    @Test("A dropped database is listed under its own name only on an engine whose entries are databases")
+    func entryNameFollowsTheEngineTarget() {
+        let database = DatabaseContainerRef(kind: .database, database: "tenant_a", schema: nil, isSystem: false)
+        let schema = DatabaseContainerRef(kind: .schema, database: "app", schema: "tenant_b", isSystem: false)
+        #expect(WorkspaceAnchoring.entryName(of: database, target: .database) == "tenant_a")
+        #expect(WorkspaceAnchoring.entryName(of: schema, target: .database) == nil)
+        #expect(WorkspaceAnchoring.entryName(of: schema, target: .schema) == "tenant_b")
     }
 }

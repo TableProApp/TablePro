@@ -38,6 +38,13 @@ extension MainSplitViewController {
     /// action the command does not take.
     var closeCommandTitle: String? {
         if commandActions?.hasOpenTab == true { return String(localized: "Close Tab") }
+        if let workspace = workspaces.selected,
+           let entry = WorkspaceCloseAction.closableEntry(
+               connectionId: workspace.connectionId,
+               container: workspace.sessionState?.tabManager.visibleContainer
+           ) {
+            return WorkspaceRailViewController.containerCloseTitle(for: entry)
+        }
         guard let name = workspaces.selected?.connection?.name else { return nil }
         return String(format: String(localized: "Close “%@”"), name)
     }

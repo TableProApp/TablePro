@@ -21,14 +21,13 @@ struct SwitchDatabaseTests {
         _ body: (MainContentCoordinator, QueryTabManager) async throws -> Void
     ) async throws {
         let connection = TestFixtures.makeConnection(database: "db_a", type: .mysql)
-        let driver = MockDatabaseDriver(connection: connection)
-        DatabaseManager.shared.injectSession(
-            ConnectionSession(connection: connection, driver: driver),
-            for: connection.id
-        )
+        let driver = PluginDriverAdapter(connection: connection, pluginDriver: SwitchingDriverStub())
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
-        let tabManager = QueryTabManager()
+        let tabManager = QueryTabManager(containerTarget: .database, visibleContainer: "db_a")
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
@@ -65,21 +64,44 @@ struct SwitchDatabaseTests {
 
     // MARK: - Tab state after database switch
 
+    /// A switch keeps every tab: the database left behind keeps its tabs in its own entry, and
+    /// the window shows the one it switched to, which has none yet.
     @Test("switchDatabase keeps table and query tabs and their contents")
     func switchDatabaseKeepsExistingTabs() async throws {
         try await withConnectedCoordinator { coordinator, tabManager in
             try tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db_a")
             tabManager.addTab(initialQuery: "SELECT NOW()", databaseName: "db_a")
             let idsBefore = tabManager.tabs.map(\.id)
-            let selectedBefore = tabManager.selectedTabId
 
             let switched = await coordinator.switchDatabase(to: "db_b", persist: false)
 
             #expect(switched)
             #expect(tabManager.tabs.map(\.id) == idsBefore)
-            #expect(tabManager.selectedTabId == selectedBefore)
+            #expect(tabManager.visibleContainer == "db_b")
+            #expect(tabManager.visibleTabs.isEmpty)
+            #expect(tabManager.selectedTabId == nil)
             #expect(tabManager.tabs.contains { $0.content.query == "SELECT NOW()" })
             #expect(coordinator.toolbarState.currentDatabase == "db_b")
+        }
+    }
+
+    /// The toolbar, the sidebar and Open Database used to move only the object browser and leave a
+    /// tab from the database the user had just left on screen.
+    @Test("switching back to a database lands on the tab last used there")
+    func switchingBackLandsOnTheDatabasesTab() async throws {
+        try await withConnectedCoordinator { coordinator, tabManager in
+            try tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db_a")
+            tabManager.addTab(initialQuery: "SELECT NOW()", databaseName: "db_a")
+            let users = try #require(tabManager.tabs.first)
+            tabManager.selectedTabId = users.id
+
+            _ = await coordinator.switchDatabase(to: "db_b", persist: false)
+            tabManager.addTab(initialQuery: "SELECT 1", databaseName: "db_b")
+            _ = await coordinator.switchDatabase(to: "db_a", persist: false)
+
+            #expect(tabManager.visibleContainer == "db_a")
+            #expect(tabManager.selectedTabId == users.id)
+            #expect(tabManager.visibleTabs.map(\.tableContext.databaseName) == ["db_a", "db_a"])
         }
     }
 

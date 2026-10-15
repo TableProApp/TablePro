@@ -12,11 +12,21 @@ import TableProPluginKit
 extension MainContentView {
     // MARK: - Helper Methods
 
+    /// Keyed on the tab and the table's whole identity. A name alone stayed equal across
+    /// `tenant_a.orders` and `tenant_b.orders`, so the second never loaded its own numbers.
+    struct TableInfoTaskKey: Hashable {
+        let tabId: UUID
+        let table: TableTabIdentity?
+    }
+
+    var tableInfoTaskKey: TableInfoTaskKey? {
+        currentTab.map { TableInfoTaskKey(tabId: $0.id, table: $0.tableIdentity(browsing: "")) }
+    }
+
     func loadTableMetadataIfNeeded() async {
         guard let tab = currentTab,
             let tableName = tab.tableContext.tableName,
-            !(coordinator.tableMetadata?.tableName == tableName
-                && coordinator.hasCurrentTableMetadata(for: tab, tableName: tableName))
+            !coordinator.hasCurrentTableMetadata(for: tab, tableName: tableName)
         else { return }
         await coordinator.loadTableMetadata(tableName: tableName, for: tab)
     }
@@ -117,17 +127,11 @@ extension MainContentView {
 
     /// Nil on a tab that has no table of its own.
     ///
-    /// `coordinator.tableMetadata` is a single latest-wins slot, written by `loadTableMetadata` and
-    /// cleared only by `teardown()`. Handing it over unconditionally meant a query tab, a
-    /// dashboard, an ER diagram or a Users & Roles tab showed the size, row count and engine of
-    /// whichever table had been opened last, labelled as if they described what was on screen, and
-    /// closing that table's tab did not clear it.
+    /// Read from the entry cached for this tab, never from `coordinator.tableMetadata`, the single
+    /// latest-wins slot. Gated on the name, the slot showed a query tab, a dashboard, or a table of
+    /// the same name in another database the numbers of whichever table had loaded last.
     private var tableMetadataForCurrentTab: TableMetadata? {
-        guard let tableName = currentTab?.tableContext.tableName,
-              let metadata = coordinator.tableMetadata,
-              metadata.tableName == tableName
-        else { return nil }
-        return metadata
+        currentTab.flatMap { coordinator.currentTableMetadata(for: $0) }
     }
 
     /// The scope a structure row's type picker looks types up in: the tab's own database and

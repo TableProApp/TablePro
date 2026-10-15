@@ -159,23 +159,4 @@ struct QueryTabManagerRecencyTests {
 
         #expect(sequence(of: firstTab, in: one) > (two.activationSequence.values.max() ?? 0))
     }
-
-    /// The rail switches a connection's database before it selects the tab that database holds, and
-    /// the tab shown while the switch runs is only a waypoint.
-    @Test("A held record skips the tab passed through and records the one landed on")
-    func deferredRecordSkipsTheWaypoint() async throws {
-        let manager = await makeManager(tabCount: 3)
-        let waypoint = manager.tabs[0]
-        let landing = manager.tabs[1]
-        manager.defersActivationRecord = true
-
-        manager.selectedTabId = waypoint.id
-        await settle()
-        manager.selectedTabId = landing.id
-        manager.defersActivationRecord = false
-        await settle()
-
-        #expect(manager.activationSequence[waypoint.id] == nil)
-        #expect(sequence(of: landing, in: manager) > 0)
-    }
 }

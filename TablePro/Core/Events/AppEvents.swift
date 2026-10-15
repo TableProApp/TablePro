@@ -90,6 +90,9 @@ final class AppEvents {
     /// Payload is the connection's id.
     let browseContainerChanged = PassthroughSubject<UUID, Never>()
 
+    /// A window put another connections-strip entry in front, so the strip's highlight moves.
+    let visibleContainerChanged = PassthroughSubject<Void, Never>()
+
     // MARK: - Data Sources
 
     /// Query history changed (entry added, deleted, or cleared).

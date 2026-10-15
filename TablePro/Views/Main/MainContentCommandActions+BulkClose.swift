@@ -46,14 +46,10 @@ extension MainContentCommandActions {
         return !tabsToClose(kind: .otherDatabases).isEmpty
     }
 
-    /// The container the connection is browsing, named the way this engine names containers.
-    /// Comparing a schema-switching engine's tabs against a database name classified nothing.
-    var browsedContainerName: String {
-        let target = PluginManager.shared.containerSwitchTarget(for: currentDatabaseType)
-        guard let session = DatabaseManager.shared.session(for: connectionId) else {
-            return target == .schema ? "" : browseDatabaseName
-        }
-        return WorkspaceAnchoring.browsedContainer(of: session, target: target) ?? ""
+    /// The entry this window shows, named the way this engine names containers. Comparing a
+    /// schema-switching engine's tabs against a database name classified nothing.
+    var shownContainerName: String {
+        coordinator?.tabManager.visibleContainer ?? coordinator?.browsedContainer ?? ""
     }
 
     var closeTabsForOtherDatabasesTitle: String {
@@ -194,25 +190,26 @@ extension MainContentCommandActions {
         return coordinator.hasSidebarEdits || coordinator.hasPendingDestructiveTableOps
     }
 
+    /// Close All and Close Other Tabs act on the strip, which lists one entry: a close never takes
+    /// tabs the user cannot see. Close Tabs for Other Databases is the one that reaches behind the
+    /// other entries, and it takes every tab there, an empty one too, since each would keep its
+    /// entry listed.
     private func tabsToClose(kind: BatchCloseKind) -> [QueryTab] {
         guard let coordinator else { return [] }
-        let tabs = coordinator.tabManager.tabs
-        let target = PluginManager.shared.containerSwitchTarget(for: currentDatabaseType)
+        let manager = coordinator.tabManager
 
         switch kind {
         case .all:
-            return tabs
+            return manager.visibleTabs
         case .others(let anchor):
-            return tabs.filter { $0.id != anchor }
+            return manager.visibleTabs.filter { $0.id != anchor }
         case .otherDatabases:
-            let current = browsedContainerName
-            /// A tab that cannot name its container is not in another one, it is in none, and
+            let current = shownContainerName
+            /// A tab that cannot name its container is not in another one, it is in every one, and
             /// `containerName` returning nil compared against a non-optional name made every such
-            /// tab foreign. Only `.table` tabs carry a schema, so on a schema-switching engine that
-            /// swept up every query tab the user had typed into. `container(of:)` is the same
-            /// composition the workspace rail already uses to avoid exactly this.
-            return tabs.filter { tab in
-                guard let name = WorkspaceAnchoring.container(of: tab, target: target) else { return false }
+            /// tab foreign.
+            return manager.tabs.filter { tab in
+                guard let name = manager.containerName(of: tab) else { return false }
                 return name != current
             }
         }

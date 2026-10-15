@@ -33,6 +33,15 @@ internal enum WorkspaceCloseAction {
         entryCount > 1 ? .container : .connection
     }
 
+    /// The entry Close takes in a window that shows an entry with no tab left: that container, or
+    /// nil when it is the connection's only entry, which closing would take the connection with.
+    internal static func closableEntry(connectionId: UUID, container: String?) -> WorkspaceRailEntry? {
+        guard let container, !container.isEmpty else { return nil }
+        let entries = WorkspaceRailStore.entries.filter { $0.workspace.connectionId == connectionId }
+        guard scope(entryCount: entries.count) == .container else { return nil }
+        return entries.first { $0.container == container }
+    }
+
     /// The entry that takes the closed one's place, so closing lands on a neighbour the way closing
     /// a tab does, rather than on whatever the connection happened to browse last.
     internal static func neighbour(in containers: [String], closing container: String) -> String? {
@@ -130,6 +139,9 @@ internal enum WorkspaceCloseAction {
         )
 
         let left = await browseAway(from: workspace, among: containers, coordinator: coordinator)
+        if left {
+            leave(workspace, in: coordinators)
+        }
         for hostedWorkspace in hostedWorkspaces {
             hostedWorkspace.endClosing()
         }
@@ -157,7 +169,6 @@ internal enum WorkspaceCloseAction {
                 hostedWorkspace.closeContainer(workspace.container)
             }
         }
-        landOnRemainingTab(after: workspace, among: containers, coordinator: coordinator)
         /// The database keeps its own connection and its catalog while its entry is listed; closing the
         /// entry is what ends them, and the connection has already moved off it above.
         DatabaseManager.shared.sessionLanes.close(database: workspace.container, for: workspace.connectionId)
@@ -189,13 +200,14 @@ internal enum WorkspaceCloseAction {
         guard !victims.isEmpty else { return everything }
 
         var closable: Set<UUID> = []
-        /// What each window was showing before it was brought forward to ask. A dirty split
-        /// connection reveals more than one of them, and the caller can only put one back, so an
-        /// abandoned close left the others switched to a connection the user never chose.
-        var revealed: [(host: MainSplitViewController, shown: UUID?)] = []
+        /// What each window was showing before it was brought forward to ask, the entry and its tab
+        /// as well as the connection. A dirty split connection reveals more than one of them, and
+        /// the caller can only put one back, so an abandoned close left the others switched to a
+        /// connection the user never chose.
+        var revealed: [RevealedWindow] = []
         func restoreRevealed() {
-            for entry in revealed {
-                entry.host.workspaces.select(entry.shown)
+            for window in revealed {
+                window.restore()
             }
         }
 
@@ -212,9 +224,7 @@ internal enum WorkspaceCloseAction {
                 closable.formUnion(owned.map(\.id))
                 continue
             }
-            if let host = coordinator.splitViewController {
-                revealed.append((host, host.workspaces.selectedConnectionId))
-            }
+            revealed.append(RevealedWindow(coordinator: coordinator))
             reveal(workspace, in: coordinator)
             switch await actions.resolveUnsavedWork(in: owned) {
             case .cancel:
@@ -230,6 +240,33 @@ internal enum WorkspaceCloseAction {
         }
         closable.formUnion(unclaimed)
         return closable
+    }
+
+    /// A window as it was before it was brought forward to ask: the connection it showed, and that
+    /// connection's entry and tab.
+    @MainActor
+    private struct RevealedWindow {
+        let coordinator: MainContentCoordinator
+        let host: MainSplitViewController?
+        let shownConnection: UUID?
+        let entry: String?
+        let tab: UUID?
+
+        init(coordinator: MainContentCoordinator) {
+            self.coordinator = coordinator
+            self.host = coordinator.splitViewController
+            self.shownConnection = host?.workspaces.selectedConnectionId
+            self.entry = coordinator.tabManager.visibleContainer
+            self.tab = coordinator.tabManager.selectedTabId
+        }
+
+        func restore() {
+            host?.workspaces.select(shownConnection)
+            let manager = coordinator.tabManager
+            manager.show(container: entry)
+            guard let tab, manager.tabs.contains(where: { $0.id == tab }) else { return }
+            manager.selectedTabId = tab
+        }
     }
 
     /// Asked before the unsaved-work prompt, whose Save writes at once, so a Cancel here leaves
@@ -274,16 +311,14 @@ internal enum WorkspaceCloseAction {
         return WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId)?.container == next
     }
 
-    /// The tab the connection last used in the container it landed in, once the closed container's
-    /// own tabs are gone.
-    private static func landOnRemainingTab(
-        after workspace: WorkspaceID,
-        among containers: [String],
-        coordinator: MainContentCoordinator?
-    ) {
-        guard let coordinator, let next = neighbour(in: containers, closing: workspace.container) else { return }
-        guard WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId)?.container == next else { return }
-        coordinator.selectTab(inContainer: next)
+    /// Every window still showing the closed entry goes to the one the connection browses. The
+    /// window whose cursor moved away is there already; a window a tab was torn off into, or one
+    /// that only showed the entry to ask about its unsaved work, is not, and would otherwise be left
+    /// on an entry the strip no longer lists.
+    private static func leave(_ workspace: WorkspaceID, in coordinators: [MainContentCoordinator]) {
+        for coordinator in coordinators where coordinator.tabManager.visibleContainer == workspace.container {
+            coordinator.showBrowsedContainer()
+        }
     }
 
     private static func listedContainers(of connectionId: UUID) -> [String] {
@@ -309,14 +344,6 @@ internal enum WorkspaceCloseAction {
         reveal(workspace, window: coordinator.contentWindow, coordinator: coordinator)
     }
 
-    private static func reveal(_ workspace: WorkspaceID, coordinator: MainContentCoordinator?) {
-        reveal(
-            workspace,
-            window: WindowManager.shared.window(for: workspace.connectionId),
-            coordinator: coordinator
-        )
-    }
-
     private static func reveal(
         _ workspace: WorkspaceID,
         window: NSWindow?,
@@ -330,6 +357,8 @@ internal enum WorkspaceCloseAction {
             (window.contentViewController as? MainSplitViewController)?
                 .workspaces.select(workspace.connectionId)
         }
-        coordinator?.selectTab(inContainer: workspace.container)
+        /// Shown to be asked about, not gone to: the object browser stays where it is, and a
+        /// Cancel puts the entry back the way it was.
+        coordinator?.tabManager.show(container: workspace.container)
     }
 }

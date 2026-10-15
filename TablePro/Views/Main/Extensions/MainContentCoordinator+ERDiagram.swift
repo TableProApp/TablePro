@@ -30,7 +30,7 @@ extension MainContentCoordinator {
         }
 
         if tabManager.tabs.isEmpty {
-            tabManager.addERDiagramTab(schemaKey: schemaKey, databaseName: dbName)
+            tabManager.addERDiagramTab(schemaKey: schemaKey, databaseName: dbName, schemaName: schemaName)
             return
         }
 

@@ -69,8 +69,22 @@ extension MainContentCoordinator {
             heldElsewhere: heldElsewhere
         )
         guard !merge.restoredTabIds.isEmpty else { return }
+        let entry = restoredEntry(
+            selecting: merge.selectedTabId,
+            among: merge.tabs,
+            activeDatabase: activeDatabase,
+            activeSchema: activeSchema
+        )
         tabManager.tabs = merge.tabs
-        tabManager.selectedTabId = merge.selectedTabId
+        /// The entry goes in front before the selection is written, so restoring a tab is never read
+        /// as the user picking one in another entry, which would switch the database on its own.
+        tabManager.show(container: entry.container ?? tabManager.visibleContainer)
+        tabManager.bindUnboundTabs()
+        if let selection = merge.selectedTabId,
+           let tab = tabManager.tabs.first(where: { $0.id == selection }),
+           tabManager.isVisible(tab) {
+            tabManager.selectedTabId = selection
+        }
         for renamedId in merge.renamedTabIds {
             tabManager.markTabRenamed(renamedId)
         }
@@ -97,10 +111,38 @@ extension MainContentCoordinator {
         await restoreConnectionContext(
             for: selected,
             loadsSelectedTab: selectedIsRestored,
-            activeDatabase: activeDatabase,
-            activeSchema: activeSchema,
+            activeDatabase: entry.database,
+            activeSchema: entry.schema,
             loadTiming: loadTiming
         )
+    }
+
+    /// Where a restore lands: the entry of the tab it selects, so the tab the user was on, or the one
+    /// a link opened before the restore read the disk, is the one on screen. The database and schema
+    /// the connection was last on are kept when they are that entry, and named only when no selected
+    /// tab names one.
+    private func restoredEntry(
+        selecting selection: UUID?,
+        among tabs: [QueryTab],
+        activeDatabase: String?,
+        activeSchema: String?
+    ) -> (container: String?, database: String?, schema: String?) {
+        let target = tabManager.containerTarget
+        let lastActive = WorkspaceAnchoring.containerName(database: activeDatabase, schema: activeSchema, target: target)
+        guard let selected = tabs.first(where: { $0.id == selection }),
+              let container = tabManager.containerName(of: selected),
+              container != lastActive
+        else {
+            return (lastActive, activeDatabase, activeSchema)
+        }
+        switch target {
+        case .database:
+            return (container, container, nil)
+        case .schema:
+            return (container, activeDatabase, container)
+        case nil:
+            return (lastActive, activeDatabase, activeSchema)
+        }
     }
 
     internal func restoreSavedTabs() async {

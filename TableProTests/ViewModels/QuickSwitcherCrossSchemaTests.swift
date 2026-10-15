@@ -16,6 +16,21 @@ struct QuickSwitcherCrossSchemaTests {
         TableInfo(name: name, type: type, rowCount: nil, schema: schema)
     }
 
+    private func openTable(
+        _ database: String,
+        _ schema: String?,
+        _ name: String,
+        browsing browseSchema: String?
+    ) -> QuickSwitcherOpenTable {
+        QuickSwitcherOpenTable(
+            database: database,
+            schema: schema,
+            name: name,
+            browsingDatabase: "shop",
+            browsingSchema: browseSchema
+        )
+    }
+
     private func items(
         _ tables: [TableInfo],
         browsing browseSchema: String? = "public",
@@ -79,7 +94,7 @@ struct QuickSwitcherCrossSchemaTests {
 
     @Test("An open table is badged, one without a tab is not")
     func openState() {
-        let open: Set<QuickSwitcherOpenTable> = [QuickSwitcherOpenTable(schema: "public", name: "users", browsing: "public")]
+        let open: Set<QuickSwitcherOpenTable> = [openTable("shop", "public", "users", browsing: "public")]
         let rows = items([table("users", "public"), table("orders", "public")], openTables: open)
 
         #expect(rows.first { $0.name == "users" }?.isOpenInTab == true)
@@ -89,8 +104,16 @@ struct QuickSwitcherCrossSchemaTests {
     /// The defect #2191 fixed: a tab on `public.users` badged `analytics.users` as open.
     @Test("A table of the same name in another schema is not badged")
     func openStateRespectsSchema() {
-        let open: Set<QuickSwitcherOpenTable> = [QuickSwitcherOpenTable(schema: "public", name: "users", browsing: "analytics")]
+        let open: Set<QuickSwitcherOpenTable> = [openTable("shop", "public", "users", browsing: "analytics")]
         let rows = items([table("users", "analytics")], browsing: "analytics", openTables: open)
+
+        #expect(rows.first?.isOpenInTab == false)
+    }
+
+    @Test("A table of the same name in another database is not badged")
+    func openStateRespectsDatabase() {
+        let open: Set<QuickSwitcherOpenTable> = [openTable("tenant_a", nil, "orders", browsing: nil)]
+        let rows = items([table("orders", nil)], browsing: nil, openTables: open)
 
         #expect(rows.first?.isOpenInTab == false)
     }

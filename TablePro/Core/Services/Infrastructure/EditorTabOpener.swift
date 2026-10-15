@@ -78,7 +78,8 @@ internal enum EditorTabOpener {
         case .erDiagram:
             tabManager.addERDiagramTab(
                 schemaKey: payload.erDiagramSchemaKey ?? payload.databaseName ?? browseDatabaseName,
-                databaseName: payload.databaseName ?? browseDatabaseName
+                databaseName: payload.databaseName ?? browseDatabaseName,
+                schemaName: payload.schemaName
             )
         case .serverDashboard:
             tabManager.addServerDashboardTab()

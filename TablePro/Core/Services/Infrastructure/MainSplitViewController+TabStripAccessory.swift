@@ -38,7 +38,7 @@ internal extension MainSplitViewController {
     /// real `tabManager` to observe, and there is no single moment in the lifecycle that is
     /// reliably that call.
     func applyTabStripVisibility() {
-        let tabCount = workspaces.selected?.sessionState?.tabManager.tabs.count ?? 0
+        let tabCount = workspaces.selected?.sessionState?.tabManager.visibleTabs.count ?? 0
         tabStripAccessory.setBandVisible(
             ConnectionWindowPaneResolver.showsTabStrip(
                 for: currentPane,
@@ -71,12 +71,13 @@ internal extension MainSplitViewController {
 
         /// `onMainActorChange` already delivers a turn late, which is what the count needs:
         /// the publisher fires before the change lands. It also wakes for any tab mutation
-        /// rather than only a count change, so the count is compared here.
+        /// rather than only a count change, so the count is compared here. The count is the
+        /// strip's, which moving to another entry changes without a tab opening or closing.
         guard let manager = workspaces.selected?.sessionState?.tabManager else { return }
-        var lastCount = manager.tabs.count
+        var lastCount = manager.visibleTabs.count
         tabStripObservation = manager.onMainActorChange { [weak self] in
             guard let self, generation == self.tabStripObservationGeneration else { return }
-            let current = manager.tabs.count
+            let current = manager.visibleTabs.count
             guard current != lastCount else { return }
             lastCount = current
             self.tabStripObservationIsArmed = false
@@ -180,7 +181,7 @@ internal extension MainSplitViewController {
             /// truncated or duplicated name is told apart.
             tooltip: { [weak manager] id in
                 guard let manager, let tab = manager.tabs.first(where: { $0.id == id }) else { return "" }
-                let description = EditorTabLabelResolver.resolve(tabs: manager.tabs, target: target)[id]?
+                let description = EditorTabLabelResolver.resolve(tabs: manager.visibleTabs, target: target)[id]?
                     .description ?? tab.title
                 guard tab.isPreview else { return description }
                 return String(
@@ -193,7 +194,7 @@ internal extension MainSplitViewController {
         /// `EditorTabStripInteraction.adopt(tabIds:overflow:)`; the strip's own `onChange` carries
         /// every later change.
         interaction.adopt(
-            tabIds: manager.tabs.map(\.id),
+            tabIds: manager.visibleTabs.map(\.id),
             overflow: AppSettingsManager.shared.tabs.overflow
         )
     }

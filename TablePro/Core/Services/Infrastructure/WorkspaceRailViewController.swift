@@ -379,10 +379,18 @@ internal final class WorkspaceRailViewController: NSViewController {
         onLayoutChange?(resolved)
     }
 
-    /// Both halves move: the window switches which connection it shows, and that connection
-    /// switches which container it browses. Neither can be captured at init.
+    /// Both halves move: the window switches which connection it shows, and that connection's tabs
+    /// switch which entry is in front. Neither can be captured at init.
+    ///
+    /// The entry this window shows, not the one the connection browses: a window a tab was torn off
+    /// into shares its connection's cursor with the window it came from, and highlighting the cursor
+    /// named an entry whose tabs that window was not showing.
     private var activeWorkspace: WorkspaceID? {
         guard let connectionId = host?.selectedConnectionId else { return nil }
+        if let shown = WindowManager.shared.coordinator(for: connectionId, in: view.window)?
+            .tabManager.visibleContainer {
+            return WorkspaceID(connectionId: connectionId, container: shown)
+        }
         return WorkspaceRailStore.browsedWorkspace(for: connectionId)
     }
 
@@ -459,7 +467,11 @@ internal final class WorkspaceRailViewController: NSViewController {
     private func commit(row: Int) {
         guard entries.indices.contains(row) else { return }
         let workspace = entries[row].workspace
-        guard workspace != appliedSelection else {
+        /// The highlighted entry is clicked again to retry a switch that failed: its tabs are on
+        /// screen, but the object browser stayed where it was.
+        guard workspace != appliedSelection
+            || WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId) != workspace
+        else {
             Self.logger.debug(
                 "commit rail=\(self.railName, privacy: .public) ignored: already at \(Self.describe(workspace), privacy: .public)"
             )
@@ -531,10 +543,9 @@ internal final class WorkspaceRailViewController: NSViewController {
         applySelection()
     }
 
-    /// Both halves of going to a workspace: the object tree moves to its container, and the window
-    /// lands on the work that container already holds. They run in one place, in that order,
-    /// because the switch is asynchronous and a second trigger would select a tab against a cursor
-    /// that had not moved yet.
+    /// Going to an entry of a connection: its tabs come forward, and the object tree follows to its
+    /// container once the switch lands. `goToEntry` holds both halves, so the order cannot be got
+    /// wrong here.
     private func moveBrowseCursor(of window: NSWindow, to workspace: WorkspaceID) {
         guard !workspace.container.isEmpty else {
             Self.logger.debug("moveBrowseCursor skipped: unnamed container")
@@ -545,7 +556,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         /// other connection moved the browse cursor of the one on screen instead: it switched the
         /// visible connection to a database named after a different one, or failed against a
         /// database that connection does not have.
-        guard let coordinator = WindowManager.shared.coordinator(for: workspace.connectionId) else {
+        guard let coordinator = WindowManager.shared.coordinator(for: workspace.connectionId, in: window) else {
             Self.logger.error(
                 """
                 moveBrowseCursor has no coordinator target=\(Self.describe(workspace), privacy: .public) \
@@ -554,41 +565,8 @@ internal final class WorkspaceRailViewController: NSViewController {
             )
             return
         }
-        let current = WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId)
-        guard current != workspace else {
-            Self.logger.debug(
-                "moveBrowseCursor skipped: already at \(Self.describe(workspace), privacy: .public)"
-            )
-            coordinator.selectTab(inContainer: workspace.container)
-            return
-        }
-        Self.logger.info(
-            """
-            moveBrowseCursor from=\(current.map(Self.describe) ?? "none", privacy: .public) \
-            to=\(Self.describe(workspace), privacy: .public)
-            """
-        )
-        coordinator.tabManager.defersActivationRecord = true
-        Task { @MainActor in
-            defer { coordinator.tabManager.defersActivationRecord = false }
-            await coordinator.switchContainer(to: workspace.container)
-            let landed = WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId)
-            if landed == workspace {
-                Self.logger.info("moveBrowseCursor landed \(Self.describe(workspace), privacy: .public)")
-                /// Only once the cursor is really there. A failed switch has already told the user
-                /// why, and selecting that container's tab on top of it would leave the window
-                /// showing one database while the tree lists another.
-                coordinator.selectTab(inContainer: workspace.container)
-            } else {
-                Self.logger.error(
-                    """
-                    moveBrowseCursor did not land wanted=\(Self.describe(workspace), privacy: .public) \
-                    got=\(landed.map(Self.describe) ?? "none", privacy: .public)
-                    """
-                )
-            }
-            self.applySelection()
-        }
+        Self.logger.info("moveBrowseCursor to=\(Self.describe(workspace), privacy: .public)")
+        coordinator.goToEntry(workspace.container)
     }
 
     /// The menu command is a commit, not a highlight: it names the workspace it goes to, so it

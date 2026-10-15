@@ -23,15 +23,18 @@ extension MainContentCoordinator {
             FeatureTipSignals.quickSwitcherOpened()
         }
         let browseSchema = services.databaseManager.session(for: connectionId)?.browseSchema
+        let browseDatabase = services.databaseManager.browseScope(for: connectionId)?.database
         let openTables = Set(
             tabManager.tabs
                 .filter { $0.tabType == .table }
                 .compactMap { tab -> QuickSwitcherOpenTable? in
                     guard let tableName = tab.tableContext.tableName else { return nil }
                     return QuickSwitcherOpenTable(
+                        database: tab.tableContext.databaseName,
                         schema: tab.tableContext.schemaName,
                         name: tableName,
-                        browsing: browseSchema
+                        browsingDatabase: browseDatabase,
+                        browsingSchema: browseSchema
                     )
                 }
         )

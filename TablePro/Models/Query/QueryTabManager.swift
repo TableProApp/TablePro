@@ -14,12 +14,14 @@ final class QueryTabManager: ObservableObject {
     @Published var tabs: [QueryTab] = [] {
         didSet {
             _tabIndexMapDirty = true
+            _visibleTabs = nil
             if oldValue.map(\.id) != tabs.map(\.id) {
                 tabStructureVersion += 1
                 pruneActivations(keeping: tabs)
             }
             publishAnchorChange(oldTabs: oldValue, newTabs: tabs)
             syncTabSessionRegistry(oldTabs: oldValue, newTabs: tabs)
+            reconcileVisibleContainer()
         }
     }
 
@@ -31,9 +33,30 @@ final class QueryTabManager: ObservableObject {
     @Published var selectedTabId: UUID? {
         didSet {
             guard selectedTabId != oldValue else { return }
+            recordSelectedTabContainer()
+            reconcileVisibleContainer()
             scheduleActivationRecord()
         }
     }
+
+    /// What a tab's entry is decided by: the database on an engine that switches databases, the
+    /// schema on one that only switches schemas. Nil where the engine switches neither, and every
+    /// tab is in the connection's one entry.
+    let containerTarget: ContainerSwitchTarget?
+
+    /// The connections-strip entry this window shows: the strip lists only that container's tabs,
+    /// plus the ones that name no container. Nil shows every tab.
+    ///
+    /// A switch never closes a tab, it only changes which entry is in front; the tabs of the others
+    /// are kept and come back with their entry.
+    @Published private(set) var visibleContainer: String?
+
+    /// Told when the selection carried the window into another entry, such as a tab picked from
+    /// the recent-tabs list or rebound to another database, so the connection can browse it too.
+    var onVisibleContainerReconciled: (() -> Void)?
+
+    private(set) var containerTabHistory = ContainerTabHistory()
+    private var _visibleTabs: [QueryTab]?
 
     /// Whether the window shows this connection's tabs, in the key window. The window sets it, for
     /// every connection it hosts at once. Only then is a selection a tab the user switched to: a
@@ -58,16 +81,6 @@ final class QueryTabManager: ObservableObject {
     private static var lastActivationSequence: UInt64 = 0
     private var activationRecordPending = false
 
-    /// Held while the window is on its way to a tab across an await, such as the rail switching a
-    /// connection's database before it selects the tab that database holds. The tab shown in the
-    /// meantime is a waypoint, and the one landed on is recorded when the hold lifts.
-    var defersActivationRecord = false {
-        didSet {
-            guard !defersActivationRecord, oldValue else { return }
-            scheduleActivationRecord()
-        }
-    }
-
     private var _tabIndexMap: [UUID: Int] = [:]
     private var _tabIndexMapDirty = true
 
@@ -75,48 +88,68 @@ final class QueryTabManager: ObservableObject {
     private weak var tabSessionRegistry: TabSessionRegistry?
 
     init(
+        containerTarget: ContainerSwitchTarget? = nil,
+        visibleContainer: String? = nil,
         globalTabsProvider: @escaping () -> [QueryTab] = { [] },
         tabSessionRegistry: TabSessionRegistry? = nil
     ) {
+        self.containerTarget = containerTarget
+        self.visibleContainer = containerTarget == nil ? nil : visibleContainer.flatMap { $0.isEmpty ? nil : $0 }
         self.globalTabsProvider = globalTabsProvider
         self.tabSessionRegistry = tabSessionRegistry
     }
 
     /// Closing a tab used to mean closing its window, because a tab was a window. Selection
-    /// lands on the tab that took its place so the pane never blanks while others are open.
+    /// lands on the tab that took its place in the strip, so the pane never blanks while the entry
+    /// still has tabs. An entry left with none shows its empty state rather than another entry's tab.
     func closeTab(id: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         let wasSelected = selectedTab?.id == id
+        let stripIndex = visibleTabs.firstIndex { $0.id == id }
         tabs.remove(at: index)
         guard wasSelected else { return }
-        selectedTabId = tabs.indices.contains(index) ? tabs[index].id : tabs.last?.id
+        let remaining = visibleTabs
+        guard let stripIndex, remaining.indices.contains(stripIndex) else {
+            selectedTabId = remaining.last?.id
+            return
+        }
+        selectedTabId = remaining[stripIndex].id
     }
 
     /// Reorders the strip. A pure permutation: the same tabs, a different order, and the selection
     /// stays on whichever tab it was on rather than on the position that tab vacated.
     ///
+    /// `destination` is a position in the strip, which lists one entry's tabs, so the move lands
+    /// beside the strip neighbour it was dropped next to wherever the other entries' tabs sit.
+    ///
     /// The array is rebuilt and assigned once rather than mutated twice, because `tabs.didSet`
     /// bumps `tabStructureVersion` and republishes the workspace anchors on every write, and the
     /// state between a `remove` and an `insert` is a tab list the user never had.
     func moveTab(id: UUID, to destination: Int) {
-        guard let source = tabs.firstIndex(where: { $0.id == id }) else { return }
-        let clamped = min(max(destination, 0), tabs.count - 1)
+        let strip = visibleTabs
+        guard let source = strip.firstIndex(where: { $0.id == id }) else { return }
+        let clamped = min(max(destination, 0), strip.count - 1)
         guard clamped != source else { return }
 
+        let neighbourId = strip[clamped].id
         var reordered = tabs
-        reordered.insert(reordered.remove(at: source), at: clamped)
+        guard let flatSource = reordered.firstIndex(where: { $0.id == id }) else { return }
+        let moving = reordered.remove(at: flatSource)
+        guard let neighbour = reordered.firstIndex(where: { $0.id == neighbourId }) else { return }
+        reordered.insert(moving, at: clamped > source ? neighbour + 1 : neighbour)
         tabs = reordered
     }
 
     /// Whether `tab` can move one place in `offset`'s direction, so a menu item can dim instead of
     /// being offered and doing nothing.
     func canMoveTab(id: UUID, by offset: Int) -> Bool {
-        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return false }
-        return tabs.indices.contains(index + offset)
+        let strip = visibleTabs
+        guard let index = strip.firstIndex(where: { $0.id == id }) else { return false }
+        return strip.indices.contains(index + offset)
     }
 
     func moveTab(id: UUID, by offset: Int) {
-        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = visibleTabs.firstIndex(where: { $0.id == id }) else { return }
         moveTab(id: id, to: index + offset)
     }
 
@@ -141,15 +174,17 @@ final class QueryTabManager: ObservableObject {
     }
 
     func selectTab(at index: Int) {
-        guard tabs.indices.contains(index) else { return }
-        selectedTabId = tabs[index].id
+        let strip = visibleTabs
+        guard strip.indices.contains(index) else { return }
+        selectedTabId = strip[index].id
     }
 
     func selectTab(offsetBy offset: Int) {
-        guard !tabs.isEmpty else { return }
-        let current = selectedTab.flatMap { tab in tabs.firstIndex { $0.id == tab.id } } ?? 0
-        let count = tabs.count
-        selectedTabId = tabs[((current + offset) % count + count) % count].id
+        let strip = visibleTabs
+        guard !strip.isEmpty else { return }
+        let current = selectedTab.flatMap { tab in strip.firstIndex { $0.id == tab.id } } ?? 0
+        let count = strip.count
+        selectedTabId = strip[((current + offset) % count + count) % count].id
     }
 
     // MARK: - Recency
@@ -159,7 +194,7 @@ final class QueryTabManager: ObservableObject {
     /// the tab it was showing is never drawn; recorded as it passed through, it would be what the
     /// next Control-Tab went back to.
     private func scheduleActivationRecord() {
-        guard isFrontmost, !defersActivationRecord, !activationRecordPending else { return }
+        guard isFrontmost, !activationRecordPending else { return }
         activationRecordPending = true
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated { self?.recordSettledActivation() }
@@ -168,7 +203,7 @@ final class QueryTabManager: ObservableObject {
 
     private func recordSettledActivation() {
         activationRecordPending = false
-        guard isFrontmost, !defersActivationRecord, let id = selectedTab?.id else { return }
+        guard isFrontmost, let id = selectedTab?.id else { return }
         recordActivation(of: id)
     }
 
@@ -224,7 +259,7 @@ final class QueryTabManager: ObservableObject {
 
     var selectedTab: QueryTab? {
         if let index = selectedTabIndex { return tabs[index] }
-        return selectedTabId == nil ? tabs.first : nil
+        return selectedTabId == nil ? visibleTabs.first : nil
     }
 
     var selectedTabIndex: Int? {
@@ -297,6 +332,7 @@ final class QueryTabManager: ObservableObject {
         }
 
         newTab.tableContext.databaseName = databaseName
+        bindToVisibleContainer(&newTab)
         newTab.content.sourceFileURL = sourceFileURL
         if sourceFileURL != nil {
             FileTabBaseline.adopt(
@@ -335,6 +371,8 @@ final class QueryTabManager: ObservableObject {
     /// minting a fresh one. Selecting it drives the window title, toolbar, and persistence through
     /// the usual `selectedTabId` observation.
     func adoptTab(_ tab: QueryTab, claimFocus: Bool = false) {
+        var tab = tab
+        bindToVisibleContainer(&tab)
         tabs.append(tab)
         selectedTabId = tab.id
         if claimFocus {
@@ -463,16 +501,21 @@ final class QueryTabManager: ObservableObject {
         let tabTitle = String(localized: "Create Table")
         var newTab = QueryTab(title: tabTitle, tabType: .createTable)
         newTab.tableContext.databaseName = databaseName
+        bindToVisibleContainer(&newTab)
         newTab.tableContext.isEditable = false
         newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
     }
 
-    func addERDiagramTab(schemaKey: String, databaseName: String = "") {
+    /// `schemaName` is the schema the diagram draws, which on an engine whose entries are schemas
+    /// is the entry the tab belongs to, whichever one is on screen when it opens.
+    func addERDiagramTab(schemaKey: String, databaseName: String = "", schemaName: String? = nil) {
         let tabTitle = String(localized: "ER Diagram")
         var newTab = QueryTab(title: tabTitle, tabType: .erDiagram)
         newTab.tableContext.databaseName = databaseName
+        newTab.tableContext.schemaName = schemaName
+        bindToVisibleContainer(&newTab)
         newTab.display.erDiagramSchemaKey = schemaKey
         newTab.tableContext.isEditable = false
         newTab.hasUserInteraction = true
@@ -684,5 +727,140 @@ final class QueryTabManager: ObservableObject {
         Logger(subsystem: "com.TablePro", category: "QueryTabManager")
             .debug("QueryTabManager deallocated")
         #endif
+    }
+}
+
+// MARK: - Visible Container
+
+extension QueryTabManager {
+    /// The tabs the strip lists: the visible entry's, plus the ones that name no container.
+    var visibleTabs: [QueryTab] {
+        if let cached = _visibleTabs { return cached }
+        let visible = tabs.filter(isVisible)
+        _visibleTabs = visible
+        return visible
+    }
+
+    func containerName(of tab: QueryTab) -> String? {
+        WorkspaceAnchoring.containerName(of: tab, target: containerTarget)
+    }
+
+    /// A tab that names no container belongs to no entry, so every entry shows it: a server
+    /// dashboard, or a query tab on an engine whose query tabs run against whatever is browsed.
+    func isVisible(_ tab: QueryTab) -> Bool {
+        guard let visibleContainer, let container = containerName(of: tab) else { return true }
+        return container == visibleContainer
+    }
+
+    /// Puts an entry in front. The selection stays when it is already in that entry, lands on the
+    /// tab last used there otherwise, and on nothing when the entry holds no tab of its own, which
+    /// is the entry's empty state rather than a tab from somewhere else.
+    ///
+    /// It never moves the browse cursor. Whoever moved the cursor calls this, or calls it first and
+    /// moves the cursor after.
+    func show(container: String?) {
+        guard containerTarget != nil else { return }
+        let container = container.flatMap { $0.isEmpty ? nil : $0 }
+        if container != visibleContainer {
+            setVisibleContainer(container)
+        }
+        let landing = selectionLanding(in: container)
+        guard landing != selectedTabId else { return }
+        selectedTabId = landing
+    }
+
+    /// A new window's only tab. Its entry is put in front before the tab is selected, so a window
+    /// built around a tab never reads as the user picking a tab in another entry, which would move
+    /// the connection's database on its own.
+    func seed(with tab: QueryTab) {
+        tabs = [tab]
+        show(container: containerName(of: tab) ?? visibleContainer)
+        selectedTabId = tab.id
+    }
+
+    /// A tab is bound to the database, or the schema on an engine whose entries are schemas, it was
+    /// opened in. One a caller opened without naming it, such as a New Tab on a schema engine,
+    /// Favorites or Open in Editor, gets the visible entry's. Left unbound it ran against whatever
+    /// the connection browsed next, and picking a tab of another entry moves that: a statement
+    /// typed against one schema would run against the other.
+    func bindToVisibleContainer(_ tab: inout QueryTab) {
+        guard let visibleContainer,
+              Self.bindsToContainer(tab.tabType),
+              containerName(of: tab) == nil
+        else { return }
+        switch containerTarget {
+        case .database:
+            tab.tableContext.databaseName = visibleContainer
+        case .schema:
+            tab.tableContext.schemaName = visibleContainer
+        case nil:
+            break
+        }
+    }
+
+    /// Restored tabs from before tabs were bound to their entry: they ran against the container the
+    /// connection was on, which is the one the restore lands in.
+    func bindUnboundTabs() {
+        guard visibleContainer != nil,
+              tabs.contains(where: { Self.bindsToContainer($0.tabType) && containerName(of: $0) == nil })
+        else { return }
+        var bound = tabs
+        for index in bound.indices {
+            bindToVisibleContainer(&bound[index])
+        }
+        tabs = bound
+    }
+
+    /// Server-wide tabs answer for the whole connection, so they belong to every entry.
+    private static func bindsToContainer(_ type: TabType) -> Bool {
+        switch type {
+        case .query, .table, .createTable, .erDiagram, .objectSource:
+            return true
+        case .serverDashboard, .usersRoles, .insights, .versionHistory:
+            return false
+        }
+    }
+
+    private func selectionLanding(in container: String?) -> UUID? {
+        let selected = selectedTabId.flatMap { id in tabs.first { $0.id == id } }
+        guard let container else { return selected?.id ?? visibleTabs.first?.id }
+        if let selected, containerName(of: selected) == container {
+            return selected.id
+        }
+        if let remembered = containerTabHistory.tabToSelect(
+            inContainer: container, among: tabs, target: containerTarget
+        ) {
+            return remembered
+        }
+        if let selected, isVisible(selected) {
+            return selected.id
+        }
+        return visibleTabs.last?.id
+    }
+
+    /// Selecting a tab of another entry, or moving the selected tab into one, takes the window to
+    /// that entry: the selected tab is always one the strip lists. A selection that names a tab not
+    /// in the list yet is the moment inside a close or an adoption, and is left alone.
+    fileprivate func reconcileVisibleContainer() {
+        guard containerTarget != nil,
+              let id = selectedTabId,
+              let tab = tabs.first(where: { $0.id == id }),
+              let container = containerName(of: tab),
+              container != visibleContainer
+        else { return }
+        containerTabHistory.record(tabId: id, container: container)
+        setVisibleContainer(container)
+        onVisibleContainerReconciled?()
+    }
+
+    fileprivate func recordSelectedTabContainer() {
+        guard let id = selectedTabId, let tab = tabs.first(where: { $0.id == id }) else { return }
+        containerTabHistory.record(tabId: id, container: containerName(of: tab))
+    }
+
+    private func setVisibleContainer(_ container: String?) {
+        visibleContainer = container
+        _visibleTabs = nil
+        AppEvents.shared.visibleContainerChanged.send()
     }
 }

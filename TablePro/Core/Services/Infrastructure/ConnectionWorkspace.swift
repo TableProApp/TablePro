@@ -102,6 +102,7 @@ internal final class ConnectionWorkspace {
     private var browseCancellable: AnyCancellable?
     private var statusCancellable: AnyCancellable?
     private var tabsCancellable: AnyCancellable?
+    private var catalogCancellable: AnyCancellable?
 
     /// Set before `teardown` clears anything. Releasing the workspace writes `session = nil`, whose
     /// observer would otherwise record the container all over again from the session the manager has
@@ -159,6 +160,25 @@ internal final class ConnectionWorkspace {
             .sink { [weak self] _ in
                 self?.recordTabContainers()
             }
+        catalogCancellable = AppCommands.shared.containerChanged
+            .filter { [connectionId] change in change.connectionId == connectionId }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] change in
+                guard let self, let type = self.connection?.type else { return }
+                self.adoptContainerChange(change, target: PluginManager.shared.containerSwitchTarget(for: type))
+            }
+    }
+
+    /// A dropped database is not open any more, and a renamed one is open under its new name. Only
+    /// the user closing an entry took one out of the set, so a dropped database stayed listed and
+    /// clicking it failed the switch with an error.
+    internal func adoptContainerChange(_ change: DatabaseContainerChange, target: ContainerSwitchTarget?) {
+        guard let name = WorkspaceAnchoring.entryName(of: change.container, target: target),
+              openedContainers.contains(name)
+        else { return }
+        closeContainer(name)
+        guard case .renamed(let newName) = change.kind else { return }
+        openContainer(newName)
     }
 
     private func recordBrowsedContainer() {
@@ -376,6 +396,7 @@ internal final class ConnectionWorkspace {
         browseCancellable = nil
         statusCancellable = nil
         tabsCancellable = nil
+        catalogCancellable = nil
         openedContainers = []
         panes.teardown()
         trailingPaneState?.teardown()

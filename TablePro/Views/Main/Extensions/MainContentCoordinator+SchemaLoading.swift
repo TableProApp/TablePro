@@ -173,6 +173,17 @@ extension MainContentCoordinator {
         return entry.tableName == tableName && entry.lastExecutedAt == tab.execution.lastExecutedAt
     }
 
+    /// The numbers loaded for this tab, or nil. Read per tab, never from the latest-wins slot, so a
+    /// table of the same name in another database cannot show them; a retarget drops the entry.
+    /// A refresh keeps showing them until new ones arrive.
+    func currentTableMetadata(for tab: QueryTab) -> TableMetadata? {
+        guard let tableName = tab.tableContext.tableName,
+              let entry = tableMetadataCache[tab.id],
+              entry.tableName == tableName
+        else { return nil }
+        return entry.metadata
+    }
+
     func loadTableMetadata(tableName: String, for tab: QueryTab) async {
         if let entry = tableMetadataCache[tab.id],
            entry.tableName == tableName,

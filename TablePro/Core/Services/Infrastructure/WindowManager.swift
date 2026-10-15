@@ -95,8 +95,7 @@ internal final class WindowManager {
             intent: .openContent
         )
         let state = SessionStateFactory.create(connection: connection, payload: nil)
-        state.tabManager.tabs = [tab]
-        state.tabManager.selectedTabId = tab.id
+        state.tabManager.seed(with: tab)
         /// Selected before anything observes the manager, so the switch that prepares an incoming
         /// tab has to be run by hand, as `openTabInNewWindow` does for the tab it moves.
         state.coordinator.handleTabChange(from: nil, to: tab.id, tabs: [tab])
@@ -246,8 +245,7 @@ internal final class WindowManager {
         /// value drops the user's position in the editor.
         let moved = sourceState.coordinator.enrichedForPersistence(tab)
         let state = SessionStateFactory.create(connection: connection, payload: nil)
-        state.tabManager.tabs = [moved]
-        state.tabManager.selectedTabId = moved.id
+        state.tabManager.seed(with: moved)
 
         /// The rows the tab already loaded live in its `TabSession`, which belongs to the
         /// coordinator's registry rather than to the tab. Without handing it over the new window
@@ -520,6 +518,15 @@ internal final class WindowManager {
             .first
     }
 
+    /// The coordinator hosting this connection in `window`, or in whichever window hosts it when
+    /// that one does not. A connection a tab was torn off from has one coordinator per window, each
+    /// with its own tabs.
+    internal func coordinator(for connectionId: UUID, in window: NSWindow?) -> MainContentCoordinator? {
+        let host = window?.contentViewController as? MainSplitViewController
+        return host?.workspaces.workspace(for: connectionId)?.sessionState?.coordinator
+            ?? coordinator(for: connectionId)
+    }
+
     private func hosts() -> [MainSplitViewController] {
         controllers.values.compactMap { $0.window?.contentViewController as? MainSplitViewController }
     }
@@ -554,6 +561,24 @@ internal final class WindowManager {
 
     internal func coordinators(for connectionId: UUID) -> [MainContentCoordinator] {
         workspaces(for: connectionId).compactMap { $0.sessionState?.coordinator }
+    }
+
+    /// The coordinator of the frontmost window hosting this connection, by window order rather than
+    /// key status: a cursor an MCP client moves while another app is active has no key window.
+    internal func frontmostCoordinator(for connectionId: UUID) -> MainContentCoordinator? {
+        let hosting = hosts().compactMap { host -> (window: NSWindow?, coordinator: MainContentCoordinator)? in
+            guard let coordinator = host.workspaces.workspace(for: connectionId)?.sessionState?.coordinator else {
+                return nil
+            }
+            return (host.view.window, coordinator)
+        }
+        guard hosting.count > 1 else { return hosting.first?.coordinator }
+        let order = NSApp.orderedWindows
+        return hosting.min { lhs, rhs in
+            let left = lhs.window.flatMap { order.firstIndex(of: $0) } ?? Int.max
+            let right = rhs.window.flatMap { order.firstIndex(of: $0) } ?? Int.max
+            return left < right
+        }?.coordinator
     }
 
     internal func hostedCoordinators() -> [MainContentCoordinator] {

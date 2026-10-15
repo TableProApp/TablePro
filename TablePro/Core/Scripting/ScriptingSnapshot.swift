@@ -105,19 +105,28 @@ internal enum ScriptingSnapshot {
 
     /// The table name alone is not an identity. Another database or schema on the same connection
     /// can have a table of the same name already open, and returning that one hands the script a
-    /// reference to rows it did not ask for.
+    /// reference to rows it did not ask for. A database or schema the script left out means the one
+    /// being browsed, which is where the open put the tab, not any of them.
     private static func matches(
         _ tab: ScriptTab,
         tableName: String,
         databaseName: String?,
         schemaName: String?
     ) -> Bool {
-        guard tab.kind == ScriptEnumerations.code(for: .table), tab.tableName == tableName else {
-            return false
-        }
-        if let databaseName, tab.databaseName != databaseName { return false }
-        if let schemaName, tab.schemaName != schemaName { return false }
-        return true
+        guard tab.kind == ScriptEnumerations.code(for: .table),
+              let tabTable = tab.tableName,
+              tabTable == tableName
+        else { return false }
+        let databaseManager = DatabaseManager.shared
+        let wanted = databaseManager.requestedTableIdentity(
+            table: tableName, database: databaseName, schema: schemaName, for: tab.connectionId
+        )
+        let browseDatabase = databaseManager.activeSessions[tab.connectionId]?.resolvedBrowseDatabase ?? ""
+        return TableTabIdentity(
+            table: tabTable,
+            database: tab.databaseName ?? browseDatabase,
+            schema: tab.schemaName
+        ) == wanted
     }
 
     @discardableResult

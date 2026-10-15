@@ -143,11 +143,15 @@ struct CommandActionsBulkCloseTests {
         try current.coordinator.tabManager.addTableTab(
             tableName: "EMPLOYEES", databaseType: .oracle, databaseName: "ORCL", schemaName: "HR"
         )
+        try current.coordinator.tabManager.addTableTab(
+            tableName: "DEPT", databaseType: .oracle, databaseName: "ORCL", schemaName: "SCOTT"
+        )
 
+        #expect(current.coordinator.tabManager.visibleContainer == "SCOTT")
         #expect(current.actions.canCloseTabsForOtherDatabases)
     }
 
-    /// The same rule on a database-switching engine: a tab that never got a database is in no
+    /// A tab opened without a database is bound to the entry it was opened in, so it is in this
     /// database rather than in another one.
     @Test("a tab with no database of its own is not foreign")
     func tabWithoutADatabaseIsNotForeign() {
@@ -160,18 +164,37 @@ struct CommandActionsBulkCloseTests {
         #expect(!current.actions.canCloseTabsForOtherDatabases)
     }
 
-    /// A tab holds a container only when it has work as well as a name, which is the rule the
-    /// workspace rail applies. So an untouched scratch tab on another database is left alone even
-    /// though it can name where it is.
-    @Test("an empty scratch tab on another database is left alone")
-    func emptyScratchTabOnAnotherDatabaseSurvives() {
+    /// Every tab names its entry and keeps it listed, so an untouched scratch tab behind another
+    /// entry is one of the tabs the command closes. Leaving it kept the other entry in the strip.
+    @Test("an empty scratch tab on another database is closed too")
+    func emptyScratchTabOnAnotherDatabaseIsForeign() {
         let connection = TestFixtures.makeConnection(database: "db_a")
         let current = makeWindow(connection: connection)
         defer { current.coordinator.teardown() }
 
         current.coordinator.tabManager.addTab(databaseName: "db_b")
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
 
-        #expect(!current.actions.canCloseTabsForOtherDatabases)
+        #expect(current.actions.canCloseTabsForOtherDatabases)
+    }
+
+    /// The strip lists one entry, and a close never takes tabs the user cannot see.
+    @Test("close all and close others act on the entry on screen")
+    func closeAllAndOthersStayInTheShownEntry() async {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+        let manager = current.coordinator.tabManager
+
+        manager.addTab(initialQuery: "SELECT 'b'", databaseName: "db_b")
+        manager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
+        manager.addTab(initialQuery: "SELECT 2", databaseName: "db_a")
+        #expect(manager.visibleTabs.count == 2)
+
+        current.actions.closeAllTabs()
+        _ = try? await waitUntil { manager.tabs.count == 1 }
+
+        #expect(manager.tabs.map(\.tableContext.databaseName) == ["db_b"])
     }
 
     /// The enablement flag and the close itself read the same victim list, so this drives the real
@@ -186,13 +209,15 @@ struct CommandActionsBulkCloseTests {
         try current.coordinator.tabManager.addTableTab(
             tableName: "EMPLOYEES", databaseType: .oracle, databaseName: "ORCL", schemaName: "HR"
         )
-        #expect(current.coordinator.tabManager.tabs.count == 2)
+        try current.coordinator.tabManager.addTableTab(
+            tableName: "DEPT", databaseType: .oracle, databaseName: "ORCL", schemaName: "SCOTT"
+        )
+        #expect(current.coordinator.tabManager.tabs.count == 3)
 
         current.actions.closeTabsForOtherDatabases()
-        _ = try? await waitUntil { current.coordinator.tabManager.tabs.count <= 1 }
+        _ = try? await waitUntil { current.coordinator.tabManager.tabs.count <= 2 }
 
-        #expect(current.coordinator.tabManager.tabs.count == 1)
-        #expect(current.coordinator.tabManager.tabs.first?.tabType == .query)
+        #expect(current.coordinator.tabManager.tabs.map(\.tableContext.schemaName) == [nil, "SCOTT"])
     }
 
     // MARK: - Container wording

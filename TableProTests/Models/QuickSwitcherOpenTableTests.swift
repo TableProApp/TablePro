@@ -10,7 +10,43 @@ import Testing
 /// assertions are always about a pair: what a tab produces against what a table produces.
 struct QuickSwitcherOpenTableTests {
     private func tab(_ schema: String?, _ name: String, browsing: String?) -> QuickSwitcherOpenTable {
-        QuickSwitcherOpenTable(schema: schema, name: name, browsing: browsing)
+        QuickSwitcherOpenTable(
+            database: nil,
+            schema: schema,
+            name: name,
+            browsingDatabase: nil,
+            browsingSchema: browsing
+        )
+    }
+
+    private func tab(
+        database: String?,
+        _ name: String,
+        browsingDatabase: String?
+    ) -> QuickSwitcherOpenTable {
+        QuickSwitcherOpenTable(
+            database: database,
+            schema: nil,
+            name: name,
+            browsingDatabase: browsingDatabase,
+            browsingSchema: nil
+        )
+    }
+
+    @Test("Two databases holding the same table name do not match")
+    func differentDatabasesDoNotMatch() {
+        #expect(
+            tab(database: "tenant_a", "orders", browsingDatabase: "tenant_b")
+                != tab(database: "tenant_b", "orders", browsingDatabase: "tenant_b")
+        )
+    }
+
+    @Test("A tab that names no database resolves against the browsed one")
+    func unboundDatabaseResolvesAgainstBrowseDatabase() {
+        #expect(
+            tab(database: "", "orders", browsingDatabase: "tenant_b")
+                == tab(database: "tenant_b", "orders", browsingDatabase: "tenant_b")
+        )
     }
 
     @Test("Two schemas holding the same table name do not match")

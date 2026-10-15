@@ -329,7 +329,7 @@ struct MainContentView: View {
                     configureWindow(window)
                 }
             }
-            .task(id: currentTab?.tableContext.tableName) {
+            .task(id: tableInfoTaskKey) {
                 await loadTableInfo()
             }
             /// Keyed on the connection alone. The only driver that answers `fetchSessionContexts`

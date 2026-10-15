@@ -738,7 +738,7 @@ internal final class MainSplitViewController: NSSplitViewController {
             agentSessionTitle: agentSession?.title,
             connection: paneConnection,
             tab: sessionState?.tabManager.selectedTab,
-            hasTabs: !(sessionState?.tabManager.tabs.isEmpty ?? true),
+            hasTabs: !(sessionState?.tabManager.visibleTabs.isEmpty ?? true),
             queryLanguageName: paneConnection.map { PluginManager.shared.queryLanguageName(for: $0.type) } ?? nil
         )
         windowTitle = resolved.title

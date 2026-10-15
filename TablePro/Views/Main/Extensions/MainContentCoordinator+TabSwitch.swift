@@ -99,8 +99,6 @@ extension MainContentCoordinator {
             let newTab = tabManager.tabs[newIndex]
             let newRows = tabSessionRegistry.tableRows(for: newId)
 
-            recordSelectedTabContainer()
-
             selectionState.indices = newTab.selectedDisplayRows
             toolbarState.isTableTab = newTab.tabType == .table
             toolbarState.isResultsCollapsed = newTab.display.isResultsCollapsed
@@ -147,6 +145,18 @@ extension MainContentCoordinator {
             // count, and a real content change still arrives through `configureForTable`. (#2424)
             lazyLoadCurrentTabIfNeeded()
         } else {
+            /// An entry with no tab of its own. The outgoing tab's edits were saved onto it above,
+            /// and the live copy goes: the change manager is the selected tab's, and with none
+            /// selected a Save would write those rows against the database now on screen.
+            selectionState.indices = []
+            changeManager.configureForTable(
+                tableName: "",
+                columns: [],
+                primaryKeyColumns: [],
+                databaseType: connection.type,
+                generatedColumns: [],
+                triggerReload: false
+            )
             toolbarState.isTableTab = false
             toolbarState.isResultsCollapsed = false
             toolbarState.isQueryTab = false

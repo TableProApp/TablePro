@@ -37,6 +37,31 @@ extension DatabaseManager {
         )
     }
 
+    /// The table an open by name lands on. The open path binds a missing database to the browse
+    /// cursor and a missing schema through `resolvedSchemaName`, so a lookup for a tab already
+    /// showing it resolves the same way. Treating a missing part as "any" matched `tenant_a.orders`
+    /// for a request that meant the `orders` of the database being browsed.
+    func requestedTableIdentity(
+        table: String,
+        database: String?,
+        schema: String?,
+        for connectionId: UUID
+    ) -> TableTabIdentity {
+        let named = database.flatMap { $0.isEmpty ? nil : $0 }
+        let resolvedDatabase = named ?? activeSessions[connectionId]?.resolvedBrowseDatabase ?? ""
+        return TableTabIdentity(
+            table: table,
+            database: resolvedDatabase,
+            schema: resolvedSchemaName(schema, inDatabase: resolvedDatabase, for: connectionId)
+        )
+    }
+
+    /// The identity of a table tab as it stands, with an unbound database read as the browse
+    /// cursor, the rule `TabTableContext.resolvedDatabaseName(browsing:)` defines.
+    func tableIdentity(of tab: QueryTab, for connectionId: UUID) -> TableTabIdentity? {
+        tab.tableIdentity(browsing: activeSessions[connectionId]?.resolvedBrowseDatabase ?? "")
+    }
+
     /// Authoritative schema for a table identity. An explicit schema passes through unchanged; a
     /// blank or missing one resolves to the live session's current schema and stays nil for
     /// schema-less engines. A blank name never reaches a query builder: engines that qualify

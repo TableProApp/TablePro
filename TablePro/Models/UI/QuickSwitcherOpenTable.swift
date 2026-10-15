@@ -7,28 +7,36 @@ import Foundation
 
 /// A table that already has a tab, identified the way the quick switcher has to match it.
 ///
-/// Matching on the bare name is wrong the moment a connection has two schemas holding a table of
-/// the same name: with `public.users` open, `analytics.users` was badged Open, boosted in the
-/// ranking and offered "Switch to Tab", and committing it opened a second tab anyway.
+/// Matching on the bare name is wrong the moment a connection has two databases or two schemas
+/// holding a table of the same name: with `tenant_a.orders` open, `tenant_b.orders` was badged
+/// Open, boosted in the ranking and offered "Switch to Tab", and committing it opened a second tab
+/// anyway.
 ///
-/// A tab or a catalog entry that names no schema follows the connection's browse cursor, which is
-/// the rule `TabTableContext.resolvedDatabaseName(browsing:)` already applies to databases. Both
-/// sides resolve through this initializer with the same cursor, so a driver that reports no schema
-/// at all still matches on name, while two schemas that both hold `users` no longer collide.
+/// A side that names no database or schema follows the connection's browse cursor, the rule
+/// `TabTableContext.resolvedDatabaseName(browsing:)` applies. Both sides resolve through this
+/// initializer with the same cursor, so a driver that reports neither still matches on name.
 internal struct QuickSwitcherOpenTable: Hashable, Sendable {
+    internal let database: String?
     internal let schema: String?
     internal let name: String
 
-    internal init(schema: String?, name: String, browsing browseSchema: String?) {
-        self.schema = Self.resolve(schema, browsing: browseSchema)
+    internal init(
+        database: String?,
+        schema: String?,
+        name: String,
+        browsingDatabase: String?,
+        browsingSchema: String?
+    ) {
+        self.database = Self.resolve(database, browsing: browsingDatabase)
+        self.schema = Self.resolve(schema, browsing: browsingSchema)
         self.name = name
     }
 
-    private static func resolve(_ schema: String?, browsing browseSchema: String?) -> String? {
-        if let schema, !schema.isEmpty {
-            return schema
+    private static func resolve(_ value: String?, browsing browsed: String?) -> String? {
+        if let value, !value.isEmpty {
+            return value
         }
-        guard let browseSchema, !browseSchema.isEmpty else { return nil }
-        return browseSchema
+        guard let browsed, !browsed.isEmpty else { return nil }
+        return browsed
     }
 }

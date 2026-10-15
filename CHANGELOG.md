@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cloud Firestore and Firebase Realtime Database as a registry plugin over their REST APIs. (#2504)
 - Google Cloud Bigtable as a registry plugin over the REST API.
 - Warning banner and Test Connection notice for a server warning at login, such as an Oracle password about to expire. (#3401)
+- Schema picker in the query editor on servers that switch schemas, such as Oracle, to point a query tab at another schema.
 
 ### Changed
 
@@ -46,6 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Set Value > Empty and Set EMPTY offered only on columns that can hold an empty value, not on dates, numbers or booleans.
 - Clearing a date, number or boolean cell in a NOT NULL column keeps the stored value instead of saving an empty string.
 - Clearing a Redis key's TTL in the grid removes its expiry.
+- Each database in the connections strip keeps its own tabs. The tab bar shows the tabs of the one you are on. (#3431)
+- Query tabs stay on the schema they were opened in on servers that switch schemas, instead of following the sidebar.
+- Close Tab with no tab left closes the database's entry in the connections strip, then the connection.
 
 ### Removed
 
@@ -127,6 +131,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scroll to latest message button in AI chat never appearing.
 - AI reasoning text not updating while it streams.
 - Clearing a date, number or boolean field on iPhone and iPad saving an empty string, stored as `0000-00-00 00:00:00` on MySQL, instead of NULL.
+- Switching database from the toolbar, sidebar or Open Database left the previous database's tab on screen.
+- Quick Switcher marking a table as open when a table of the same name was open in another database.
+- Table Info in the inspector showing the numbers of a table of the same name in another database.
+- Links, AppleScript and MCP `open_table_tab` focusing a table of the same name in another database.
+- Dropped databases staying in the connections strip, where clicking them failed with an error.
+- A query tab moved to another database in its database picker keeping the old database's schema.
+- Connections strip missing a database whose tabs were in a torn-off window.
 
 ### Security
 

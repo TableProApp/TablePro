@@ -56,7 +56,14 @@ enum SessionStateFactory {
     ) -> SessionState {
         let connectionId = connection.id
         let tabSessionRegistry = TabSessionRegistry()
+        let containerTarget = PluginManager.shared.containerSwitchTarget(for: connection.type)
+        /// The entry the window opens on is where the connection is, or will be once it connects.
+        let openingContainer = DatabaseManager.shared.session(for: connectionId)
+            .flatMap { WorkspaceAnchoring.browsedContainer(of: $0, target: containerTarget) }
+            ?? WorkspaceAnchoring.defaultContainer(of: connection, target: containerTarget)
         let tabMgr = QueryTabManager(
+            containerTarget: containerTarget,
+            visibleContainer: openingContainer,
             globalTabsProvider: {
                 MainActor.assumeIsolated { MainContentCoordinator.allTabs(for: connectionId) }
             },

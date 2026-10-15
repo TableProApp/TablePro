@@ -461,12 +461,17 @@ extension MainContentCoordinator {
     // MARK: - Database Switching
 
     /// Moves the browse cursor: what the sidebar lists and which database a new tab
-    /// opens in. It never retargets an open tab, and an open tab never calls it.
+    /// opens in. It never retargets an open tab. Once it lands, the window shows that database's
+    /// entry, unless a newer move from this window has been asked for since.
     /// `persist` records the database as the connection's saved default.
     @discardableResult
     func switchDatabase(to database: String, persist: Bool = true) async -> Bool {
+        let request = beginCursorRequest()
         do {
             try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId, persist: persist)
+            if endCursorRequest(request) {
+                showBrowsedContainer()
+            }
             toolbarState.currentDatabase = database
             toolbarState.currentSchema = DatabaseManager.shared.session(for: connectionId)?.browseSchema
 
@@ -476,6 +481,7 @@ extension MainContentCoordinator {
             syncSidebarObjectSelection()
             return true
         } catch {
+            _ = endCursorRequest(request)
             navigationLogger.error("Failed to switch database: \(error.publicLogShape, privacy: .public)")
             /// A user who dismissed the password prompt already knows why nothing happened, and
             /// telling them their own decision failed is noise, not news.
@@ -496,49 +502,13 @@ extension MainContentCoordinator {
     /// engines like BigQuery), routing by the plugin's container switch target.
     /// `target` names the dimension the caller opened, because an engine can switch both and the
     /// engine's primary target cannot tell the two presentations apart.
-    func switchContainer(to container: String, target: ContainerSwitchTarget? = nil) async {
+    func switchContainer(to container: String, target: ContainerSwitchTarget? = nil, persist: Bool = true) async {
         switch target ?? PluginManager.shared.containerSwitchTarget(for: connection.type) {
         case .schema:
             await switchSchema(to: container)
         case .database, nil:
-            await switchDatabase(to: container)
+            await switchDatabase(to: container, persist: persist)
         }
-    }
-
-    /// Records which container the tab on screen belongs to, so the connections strip can come
-    /// back to it.
-    ///
-    /// Called on every tab change and again when the window becomes key. A window restoring its
-    /// tabs picks the selected one before anything is watching the selection, so without the second
-    /// call the first thing ever recorded would be whatever the user switched to next, and coming
-    /// back to that database would land on the wrong tab.
-    func recordSelectedTabContainer() {
-        guard let tab = tabManager.selectedTab else { return }
-        containerTabHistory.record(
-            tabId: tab.id,
-            container: WorkspaceAnchoring.containerName(
-                of: tab,
-                target: PluginManager.shared.containerSwitchTarget(for: connection.type)
-            )
-        )
-    }
-
-    /// Land on the work a container already holds.
-    ///
-    /// The connections strip returns to the tab you last used when it moves between two
-    /// connections. A row for a second database of one connection is the same promise, and without
-    /// it the strip moved the object tree while leaving a tab from another database on screen: the
-    /// row said one database, the window title said another (#2217).
-    ///
-    /// A container holding no tab selects nothing. That row is the browse cursor alone, and the
-    /// next thing opened lands there anyway.
-    func selectTab(inContainer container: String) {
-        guard let tabId = containerTabHistory.tabToSelect(
-            inContainer: container,
-            among: tabManager.tabs,
-            target: PluginManager.shared.containerSwitchTarget(for: connection.type)
-        ) else { return }
-        tabManager.selectedTabId = tabId
     }
 
     /// Applies both dimensions a caller named, in the order this engine can take them.
@@ -566,18 +536,28 @@ extension MainContentCoordinator {
             switchable: PluginManager.shared.switchableContainers(for: connection.type)
         )
 
+        var didSwitch = false
         for step in steps {
             let session = services.databaseManager.session(for: connectionId)
+            /// A switch of this window's own still on its way to somewhere else would land after this
+            /// one and take the window there, so being on the target already is not enough.
+            let isSettled = pendingCursorRequest == nil
             switch step {
             case .database(let name):
-                guard name != session?.resolvedBrowseDatabase else { continue }
+                guard name != session?.resolvedBrowseDatabase || !isSettled else { continue }
+                didSwitch = true
                 /// A schema belongs to a database, so a failed database switch stops the plan
                 /// rather than applying the schema against whatever is still open.
                 guard await switchDatabase(to: name) else { return }
             case .schema(let name):
-                guard name != session?.browseSchema else { continue }
+                guard name != session?.browseSchema || !isSettled else { continue }
+                didSwitch = true
                 await switchSchema(to: name)
             }
+        }
+        /// Already there is still a request to be there: the window may be showing another entry.
+        if !didSwitch {
+            showBrowsedContainer()
         }
     }
 
@@ -607,10 +587,15 @@ extension MainContentCoordinator {
         let previousSchema = toolbarState.currentSchema
         toolbarState.currentSchema = schema
 
+        let request = beginCursorRequest()
         do {
             try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
+            if endCursorRequest(request) {
+                showBrowsedContainer()
+            }
             syncSidebarObjectSelection()
         } catch {
+            _ = endCursorRequest(request)
             /// A switch that waited for the driver is dropped when the connection was closed and
             /// opened again before its turn. The toolbar now belongs to that new session, so it is
             /// read back from it rather than restored to what the old one showed, and nothing failed

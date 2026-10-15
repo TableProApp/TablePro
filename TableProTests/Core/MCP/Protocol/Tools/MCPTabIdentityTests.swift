@@ -34,6 +34,57 @@ struct MCPTabIdentityTests {
         )
     }
 
+    private func tableSnapshot(_ tableName: String, database: String?, schema: String? = nil) -> MCPTabSnapshot {
+        MCPTabSnapshot(
+            tabId: UUID(),
+            connectionId: connectionId,
+            connectionName: "Primary",
+            tabType: "table",
+            tableName: tableName,
+            databaseName: database,
+            schemaName: schema,
+            displayTitle: tableName,
+            windowId: nil,
+            isActive: false,
+            window: nil
+        )
+    }
+
+    @Test("A same-named table in another database is not the one asked for")
+    func firstTableMatchesTheDatabase() {
+        let tenantA = tableSnapshot("orders", database: "tenant_a")
+        let tenantB = tableSnapshot("orders", database: "tenant_b")
+        let match = MCPTabSnapshotProvider.firstTable(
+            in: [tenantA, tenantB],
+            matching: TableTabIdentity(table: "orders", database: "tenant_b", schema: nil),
+            browseDatabase: "tenant_a"
+        )
+        #expect(match?.tabId == tenantB.tabId)
+    }
+
+    @Test("A tab bound to no database is in the one being browsed")
+    func firstTableResolvesAnUnboundTab() {
+        let unbound = tableSnapshot("orders", database: nil)
+        let match = MCPTabSnapshotProvider.firstTable(
+            in: [unbound],
+            matching: TableTabIdentity(table: "orders", database: "tenant_a", schema: nil),
+            browseDatabase: "tenant_a"
+        )
+        #expect(match?.tabId == unbound.tabId)
+    }
+
+    @Test("A schema has to match as well")
+    func firstTableMatchesTheSchema() {
+        let publicOrders = tableSnapshot("orders", database: "shop", schema: "public")
+        let tenantOrders = tableSnapshot("orders", database: "shop", schema: "tenant_b")
+        let match = MCPTabSnapshotProvider.firstTable(
+            in: [publicOrders, tenantOrders],
+            matching: TableTabIdentity(table: "orders", database: "shop", schema: "tenant_b"),
+            browseDatabase: "shop"
+        )
+        #expect(match?.tabId == tenantOrders.tabId)
+    }
+
     @Test("The encoded tab carries the same ids the snapshot holds")
     func encodedTabCarriesTheSnapshotIds() throws {
         let encoded = MCPTabSnapshotProvider.encode(snapshot(windowId: windowId))

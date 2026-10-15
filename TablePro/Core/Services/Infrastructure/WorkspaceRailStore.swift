@@ -49,22 +49,25 @@ internal enum WorkspaceRailStore {
 
         let sessions = DatabaseManager.shared.activeSessions
         let sessionless = openIds.filter { sessions[$0] == nil }
-        let workspacesById = hosted.reduce(into: [UUID: ConnectionWorkspace]()) { result, workspace in
-            result[workspace.connectionId] = workspace
-        }
+        /// Every window hosting a connection, not one of them: a tab torn off into its own window
+        /// still holds its container, and keeping one workspace per connection dropped the other
+        /// window's entries depending on dictionary order.
+        let workspacesById = Dictionary(grouping: hosted, by: \.connectionId)
+        let coordinatorsById = workspacesById.mapValues { $0.compactMap { $0.sessionState?.coordinator } }
         return resolveEntries(
             openConnectionIds: openIds,
             sessions: sessions,
-            hostedConnections: workspacesById.compactMapValues(\.connection),
+            hostedConnections: workspacesById.compactMapValues { $0.lazy.compactMap(\.connection).first },
             storedConnections: Self.storedConnections(for: Array(sessionless)),
             containerTarget: { PluginManager.shared.containerSwitchTarget(for: $0) },
-            /// The hosted workspace's own coordinator, never the app-wide registry: that one also
+            /// The hosted workspaces' own coordinators, never the app-wide registry: that one also
             /// lists the throwaway coordinators SwiftUI discards mid-body, whose stale copy of a
             /// closed tab kept a container listed and made a closed entry come back.
-            tabs: { workspacesById[$0]?.sessionState?.coordinator.tabManager.tabs ?? [] },
-            openedContainers: { workspacesById[$0]?.openedContainers ?? [] },
-            closingContainers: { workspacesById[$0]?.closingContainer },
-            openedAt: workspacesById.mapValues(\.openedAt),
+            tabs: { coordinatorsById[$0]?.flatMap(\.tabManager.tabs) ?? [] },
+            openedContainers: { workspacesById[$0]?.reduce(into: Set<String>()) { $0.formUnion($1.openedContainers) } ?? [] },
+            closingContainers: { workspacesById[$0]?.lazy.compactMap(\.closingContainer).first },
+            visibleContainers: { Set(coordinatorsById[$0]?.compactMap(\.tabManager.visibleContainer) ?? []) },
+            openedAt: workspacesById.compactMapValues { $0.map(\.openedAt).min() },
             storedOrder: WorkspaceRailOrderStore.shared.order
         )
     }
@@ -84,6 +87,7 @@ internal enum WorkspaceRailStore {
         tabs: (UUID) -> [QueryTab],
         openedContainers: (UUID) -> Set<String> = { _ in [] },
         closingContainers: (UUID) -> String? = { _ in nil },
+        visibleContainers: (UUID) -> Set<String> = { _ in [] },
         openedAt: [UUID: Date] = [:],
         storedOrder: [WorkspaceID]
     ) -> [WorkspaceRailEntry] {
@@ -106,11 +110,13 @@ internal enum WorkspaceRailStore {
             let target = containerTarget(resolved.connection.type)
             targets[connectionId] = target
 
+            let closing = closingContainers(connectionId)
+            let shown = visibleContainers(connectionId).filter { $0 != closing }
             let held = containers(
                 for: resolved,
                 tabs: tabs(connectionId),
-                opened: openedContainers(connectionId),
-                closing: closingContainers(connectionId),
+                opened: openedContainers(connectionId).union(shown),
+                closing: closing,
                 target: target
             )
             for container in held {
@@ -166,6 +172,7 @@ internal enum WorkspaceRailStore {
             events.connectionWindowsChanged.eraseToAnyPublisher(),
             events.workspaceRailOrderChanged.eraseToAnyPublisher(),
             events.workspaceTabsChanged.eraseToAnyPublisher(),
+            events.visibleContainerChanged.eraseToAnyPublisher(),
             events.browseContainerChanged.map { _ in () }.eraseToAnyPublisher(),
             events.connectionStatusChanged.map { _ in () }.eraseToAnyPublisher(),
             events.connectionUpdated.map { _ in () }.eraseToAnyPublisher()
@@ -208,8 +215,8 @@ internal enum WorkspaceRailStore {
     /// connection that has not reached one yet names nothing either. Both still get one
     /// row, keyed by the empty container, so every open window is reachable from the rail.
     ///
-    /// `opened` is what the user has open and has not closed. Tabs are still read alongside it,
-    /// because a restored window has tabs before anything has browsed anywhere.
+    /// `opened` is what the user has open and has not closed, plus the entry each window shows.
+    /// Every container a tab names is listed too, because a tab is only reachable through its entry.
     ///
     /// The live browse cursor always earns a row: it is where the next tab opens, and a container
     /// the connection is standing in cannot be closed without leaving it first. The saved default is

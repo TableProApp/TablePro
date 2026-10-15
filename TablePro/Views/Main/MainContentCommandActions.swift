@@ -321,7 +321,7 @@ final class MainContentCommandActions: ObservableObject {
 
     var browseDatabaseName: String { coordinator?.browseDatabaseName ?? "" }
 
-    var openTabCount: Int { coordinator?.tabManager.tabs.count ?? 0 }
+    var openTabCount: Int { coordinator?.tabManager.visibleTabs.count ?? 0 }
 
     var supportsContainerSwitching: Bool {
         PluginManager.shared.supportsContainerSwitching(for: connection.type)
@@ -731,8 +731,9 @@ final class MainContentCommandActions: ObservableObject {
         coordinator.tabManager.selectedTabId = id
     }
 
-    /// Cmd+W closes the tab in front. Pressed again with no tabs left it closes the connection,
-    /// and the window itself only once that was the last connection open in it.
+    /// Cmd+W closes the tab in front. Pressed again with no tabs left it closes the entry, the way
+    /// the connections strip closes it, and the connection once that was its only entry. The window
+    /// itself goes only once that was the last connection open in it.
     func closeTab() {
         guard let coordinator else {
             Task { await closeWindowAwaiting() }
@@ -740,6 +741,13 @@ final class MainContentCommandActions: ObservableObject {
         }
         if let selected = coordinator.tabManager.selectedTab {
             closeTab(id: selected.id)
+            return
+        }
+        if let entry = WorkspaceCloseAction.closableEntry(
+            connectionId: connectionId,
+            container: coordinator.tabManager.visibleContainer
+        ) {
+            Task { await WorkspaceCloseAction.close(entry.workspace) }
             return
         }
         Task { await ConnectionCloseAction.close(connectionId: connectionId) }

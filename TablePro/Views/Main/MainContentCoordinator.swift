@@ -172,9 +172,11 @@ final class MainContentCoordinator: ObservableObject {
     let queryExecutor: QueryExecutor
     internal var executionGate: any ExecutionGate = ExecutionGateProvider.shared
     let windowSidebarState: WindowSidebarState
-    /// Which tab each of this connection's containers was last on, so the connections strip lands
-    /// on that container's work instead of leaving a tab from another database on screen.
-    internal var containerTabHistory = ContainerTabHistory()
+    /// The browse-cursor move this window asked for last. Switches queue on the driver, so one that
+    /// lands after a newer request is stale and must not put back the entry the user already left.
+    internal var pendingCursorRequest: Int?
+    internal var cursorRequestCount = 0
+    internal var hasDeferredCursorFollow = false
 
     // MARK: - Services
 
@@ -395,6 +397,7 @@ final class MainContentCoordinator: ObservableObject {
     internal lazy var sourceFileDiskChangeMonitor = SourceFileDiskChangeMonitor(tabManager: tabManager)
     private var schemaSwitchCancellable: AnyCancellable?
     private var clearedEditsCancellable: AnyCancellable?
+    private var browseContainerCancellable: AnyCancellable?
 
     @Published var fileConflictRequest: FileConflictRequest?
 
@@ -724,6 +727,15 @@ final class MainContentCoordinator: ObservableObject {
         ConnectionDataCache.shared(for: connection.id).ensureLoaded()
         changeManager.undoManagerProvider = { [weak self] in self?.contentWindow?.undoManager }
         changeManager.onUndoApplied = { [weak self] result in self?.handleUndoResult(result) }
+        tabManager.onVisibleContainerReconciled = { [weak self] in
+            self?.followVisibleContainer()
+        }
+        browseContainerCancellable = services.appEvents.browseContainerChanged
+            .filter { [connectionId = connection.id] changed in changed == connectionId }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.browseContainerDidChange()
+            }
         tabManager.onTabRetargeted = { [weak self] tabId in
             self?.dataTabDelegate?.tableViewCoordinator?.flushPendingColumnLayoutPersistence()
             self?.supersedeExecution(for: tabId)
@@ -966,6 +978,7 @@ final class MainContentCoordinator: ObservableObject {
         externalFileModCancellable = nil
         sourceFileDiskChangeMonitor.cancel()
         schemaSwitchCancellable = nil
+        browseContainerCancellable = nil
         fileWatcher?.stopWatching(connectionId: connectionId)
         fileWatcher = nil
         cancelAllQueryTasks()

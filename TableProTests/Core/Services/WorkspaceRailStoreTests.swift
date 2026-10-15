@@ -41,6 +41,7 @@ struct WorkspaceRailStoreTests {
         tabs: [UUID: [QueryTab]] = [:],
         opened: [UUID: Set<String>] = [:],
         closing: [UUID: String] = [:],
+        visible: [UUID: Set<String>] = [:],
         openedAt: [UUID: Date] = [:],
         storedOrder: [WorkspaceID] = []
     ) -> [WorkspaceRailEntry] {
@@ -53,6 +54,7 @@ struct WorkspaceRailStoreTests {
             tabs: { tabs[$0] ?? [] },
             openedContainers: { opened[$0] ?? [] },
             closingContainers: { closing[$0] },
+            visibleContainers: { visible[$0] ?? [] },
             openedAt: openedAt,
             storedOrder: storedOrder
         )
@@ -134,15 +136,39 @@ struct WorkspaceRailStoreTests {
         #expect(Set(entries.map(\.container)) == ["app", "logs"])
     }
 
-    /// A restored window has tabs before anything has browsed anywhere, so a container nobody has
-    /// opened is listed only when a tab there carries work. An empty scratch tab does not.
-    @Test("An empty query tab in a container nobody opened earns no row")
-    func scratchTabDoesNotHoldItsContainer() {
+    /// Each entry owns its tabs, so a tab is reachable only through its entry: an empty scratch tab
+    /// in a container nobody opened still lists it, or the tab would sit behind no entry at all.
+    @Test("An empty query tab in a container nobody opened still earns a row")
+    func scratchTabHoldsItsContainer() {
         let connection = TestFixtures.makeConnection(database: "app")
         let entries = resolve(
             openConnectionIds: [connection.id],
             sessions: [connection.id: makeSession(connection, browseDatabase: "logs")],
             tabs: [connection.id: [scratchTab(database: "app")]]
+        )
+        #expect(Set(entries.map(\.container)) == ["app", "logs"])
+    }
+
+    @Test("The entry a window shows is listed even when nothing else holds it")
+    func shownEntryIsListed() {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let entries = resolve(
+            openConnectionIds: [connection.id],
+            sessions: [connection.id: makeSession(connection, browseDatabase: "logs")],
+            visible: [connection.id: ["audit"]]
+        )
+        #expect(Set(entries.map(\.container)) == ["audit", "logs"])
+    }
+
+    @Test("An entry being closed is not listed because a window still shows it")
+    func closingEntryIsNotListedForAWindowShowingIt() {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let entries = resolve(
+            openConnectionIds: [connection.id],
+            sessions: [connection.id: makeSession(connection, browseDatabase: "logs")],
+            opened: [connection.id: ["logs"]],
+            closing: [connection.id: "audit"],
+            visible: [connection.id: ["audit"]]
         )
         #expect(entries.map(\.container) == ["logs"])
     }

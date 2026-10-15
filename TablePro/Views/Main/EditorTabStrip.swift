@@ -75,7 +75,7 @@ internal struct EditorTabStrip: View {
         /// A closed tab leaves its id behind, and the tab that slides into its place would
         /// otherwise light up under a pointer that never moved onto it. The initial list is seeded
         /// where the strip is built, so these two carry changes only.
-        .onChange(of: tabManager.tabs.map(\.id)) { ids in
+        .onChange(of: tabManager.visibleTabs.map(\.id)) { ids in
             interaction.dropClosedTabs(keeping: ids)
         }
         .onChange(of: settings.tabs.overflow) { style in
@@ -144,7 +144,7 @@ internal struct EditorTabStrip: View {
     }
 
     private var displayedTabs: [QueryTab] {
-        let byId = Dictionary(tabManager.tabs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let byId = Dictionary(tabManager.visibleTabs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return interaction.displayedIds.compactMap { byId[$0] }
     }
 

@@ -5,71 +5,37 @@
 
 import Foundation
 
-/// Which containers a connection's open tabs hold open.
+/// Which container a tab belongs to, and so which connections-strip entry lists it.
 ///
-/// This answers for tabs alone. What the connections strip lists is what the connection has open:
-/// `ConnectionWorkspace.openedContainers`, which the user adds to by browsing to a container and
-/// empties by closing its entry, plus whatever tabs hold. Anchoring used to be the whole of that
-/// membership, under the rule "the rail lists work, not history", and deriving a switcher's rows
-/// from what its rows were being used for is what let clicking one entry delete another.
+/// Each entry owns its tabs: the tab strip shows the selected entry's tabs, and every container a
+/// tab names is an entry, so no tab ever sits behind an entry the strip does not list. What else the
+/// strip lists is `ConnectionWorkspace.openedContainers`, which the user adds to by browsing to a
+/// container and empties by closing its entry.
 ///
-/// A tab holds its container when it carries work that would be lost if the row went away. A brand
-/// new query tab with nothing in it is not work, so a window restoring an empty scratch tab into a
-/// container nobody has opened does not open a row for it. Everything else, including a query tab
-/// the user has typed into, holds its container until its last tab closes.
+/// A tab that names no container belongs to no entry and is shown in all of them: a server
+/// dashboard, or a query tab on an engine whose query tabs run against whatever is being browsed.
 internal enum WorkspaceAnchoring {
     /// A tab's identity as far as anchoring is concerned. Comparing these across a tab
     /// mutation is what tells the rail whether it has to reload.
     internal struct Anchor: Hashable {
         internal let databaseName: String
         internal let schemaName: String?
-        internal let holdsContainer: Bool
     }
 
-    /// Whether a tab carries work that would be lost. A brand new query tab does not; everything
-    /// else does, including a query tab the user has typed into.
-    internal static func hasWork(_ tab: QueryTab) -> Bool {
-        guard tab.tabType == .query else { return true }
-        return tab.hasUserInteraction
-            || !tab.content.query.isEmpty
-            || tab.content.sourceFileURL != nil
-    }
-
-    /// A tab holds a container only if it has work AND can name the container it belongs to.
-    /// The two have to be decided together: only `.table` tabs are given a schema, so on a
-    /// schema-switching engine a query tab full of unsaved SQL would otherwise be reported as
-    /// holding a container it cannot name, and its row would vanish from the rail on the next
-    /// switch. That is exactly the loss the anchoring rule exists to prevent.
-    internal static func holdsContainer(_ tab: QueryTab, target: ContainerSwitchTarget?) -> Bool {
-        guard containerName(of: tab, target: target) != nil else { return false }
-        return hasWork(tab)
-    }
-
-    /// What a tab's container is called, whether or not the tab holds it open. Close commands
-    /// name every tab they are about to close; the rail only lists the ones worth a row.
+    /// What a tab's container is called, or nil when the tab belongs to every entry.
     internal static func containerName(of tab: QueryTab, target: ContainerSwitchTarget?) -> String? {
         named(database: tab.tableContext.databaseName, schema: tab.tableContext.schemaName, target: target)
     }
 
-    internal static func container(of tab: QueryTab, target: ContainerSwitchTarget?) -> String? {
-        guard holdsContainer(tab, target: target) else { return nil }
-        return containerName(of: tab, target: target)
-    }
-
     internal static func containers(in tabs: [QueryTab], target: ContainerSwitchTarget?) -> Set<String> {
-        Set(tabs.compactMap { container(of: $0, target: target) })
+        Set(tabs.compactMap { containerName(of: $0, target: target) })
     }
 
     /// Change detection only, so it stays free of the engine's container target: any change to a
-    /// tab's database, schema or work state can move a rail row, whichever of them this engine
-    /// keys on.
+    /// tab's database or schema can move a rail row, whichever of them this engine keys on.
     internal static func anchors(in tabs: [QueryTab]) -> [Anchor] {
         tabs.map {
-            Anchor(
-                databaseName: $0.tableContext.databaseName,
-                schemaName: $0.tableContext.schemaName,
-                holdsContainer: hasWork($0)
-            )
+            Anchor(databaseName: $0.tableContext.databaseName, schemaName: $0.tableContext.schemaName)
         }
     }
 
@@ -79,6 +45,15 @@ internal enum WorkspaceAnchoring {
         named(database: session.resolvedBrowseDatabase, schema: session.browseSchema, target: target)
     }
 
+    /// The entry a saved database and schema pair names, such as the one a connection was last on.
+    internal static func containerName(
+        database: String?,
+        schema: String?,
+        target: ContainerSwitchTarget?
+    ) -> String? {
+        named(database: database ?? "", schema: schema, target: target)
+    }
+
     /// The container a connection names before it has a session to browse with. A schema
     /// switching engine names none, because a saved connection records no schema.
     internal static func defaultContainer(
@@ -86,6 +61,20 @@ internal enum WorkspaceAnchoring {
         target: ContainerSwitchTarget?
     ) -> String? {
         named(database: connection.database, schema: nil, target: target)
+    }
+
+    /// The entry a dropped or renamed database or schema is listed under, or nil when that kind of
+    /// container is not what this engine's entries are: a schema dropped inside a PostgreSQL
+    /// database is not an entry of its own.
+    internal static func entryName(of container: DatabaseContainerRef, target: ContainerSwitchTarget?) -> String? {
+        switch (target, container.kind) {
+        case (.database, .database):
+            return container.database.flatMap { $0.isEmpty ? nil : $0 }
+        case (.schema, .schema):
+            return container.schema.flatMap { $0.isEmpty ? nil : $0 }
+        default:
+            return nil
+        }
     }
 
     /// An engine that switches neither database nor schema has one container, and naming it

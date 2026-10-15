@@ -78,10 +78,12 @@ struct SwitchSchemaTests {
         await body(connection, driver)
     }
 
+    /// PostgreSQL's entries are its databases, so a schema switch inside one keeps the entry on
+    /// screen, its tabs and the tab the user was on.
     @Test("switchSchema keeps query and table tabs and their contents")
     func switchSchemaPreservesTabs() async {
         await withSchemaSwitchingConnection { connection, driver in
-            let tabManager = QueryTabManager()
+            let tabManager = QueryTabManager(containerTarget: .database, visibleContainer: connection.database)
             let coordinator = MainContentCoordinator(
                 connection: connection,
                 tabManager: tabManager,
@@ -90,8 +92,10 @@ struct SwitchSchemaTests {
             )
             defer { coordinator.teardown() }
 
-            let queryTab = makeTab(title: "Query 1", query: "SELECT 42", tabType: .query)
-            let tableTab = makeTab(title: "users", query: "SELECT * FROM users", tabType: .table, tableName: "users")
+            var queryTab = makeTab(title: "Query 1", query: "SELECT 42", tabType: .query)
+            queryTab.tableContext.databaseName = connection.database
+            var tableTab = makeTab(title: "users", query: "SELECT * FROM users", tabType: .table, tableName: "users")
+            tableTab.tableContext.databaseName = connection.database
             tabManager.tabs = [queryTab, tableTab]
             tabManager.selectedTabId = queryTab.id
             let idsBefore = tabManager.tabs.map(\.id)
@@ -100,6 +104,7 @@ struct SwitchSchemaTests {
 
             #expect(tabManager.tabs.map(\.id) == idsBefore)
             #expect(tabManager.selectedTabId == queryTab.id)
+            #expect(tabManager.visibleTabs.map(\.id) == idsBefore)
             #expect(tabManager.tabs.contains { $0.content.query == "SELECT 42" })
             #expect(driver.currentSchema == "s2")
             #expect(coordinator.toolbarState.currentSchema == "s2")

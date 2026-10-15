@@ -282,16 +282,12 @@ internal final class TabRouter {
     private func focusExistingTableTab(
         connectionId: UUID, database: String?, schema: String?, table: String
     ) -> Bool {
-        HostedTabRouting.live.revealFirstTab(of: connectionId) { tab in
-            guard tab.tabType == .table,
-                  tab.tableContext.tableName == table else { return false }
-            let databaseMatches = database.map { db in
-                tab.tableContext.databaseName == db
-            } ?? true
-            let schemaMatches = schema.map { sch in
-                tab.tableContext.schemaName.map { $0 == sch } ?? false
-            } ?? true
-            return databaseMatches && schemaMatches
+        let databaseManager = DatabaseManager.shared
+        let wanted = databaseManager.requestedTableIdentity(
+            table: table, database: database, schema: schema, for: connectionId
+        )
+        return HostedTabRouting.live.revealFirstTab(of: connectionId) { tab in
+            databaseManager.tableIdentity(of: tab, for: connectionId) == wanted
         }
     }
 

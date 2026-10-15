@@ -42,6 +42,63 @@ struct ConnectionWorkspaceContainersTests {
         #expect(workspace.openedContainers.isEmpty)
     }
 
+    private func change(
+        _ kind: DatabaseContainerChange.Kind,
+        database: String,
+        connectionId: UUID
+    ) -> DatabaseContainerChange {
+        DatabaseContainerChange(
+            connectionId: connectionId,
+            container: DatabaseContainerRef(kind: .database, database: database, schema: nil, isSystem: false),
+            kind: kind
+        )
+    }
+
+    @Test("A dropped database leaves the strip")
+    func droppedDatabaseIsClosed() {
+        let workspace = makeWorkspace()
+        workspace.openContainer("tenant_a")
+        workspace.openContainer("tenant_b")
+
+        workspace.adoptContainerChange(
+            change(.dropped, database: "tenant_a", connectionId: workspace.connectionId),
+            target: .database
+        )
+
+        #expect(workspace.openedContainers == ["tenant_b"])
+    }
+
+    @Test("A renamed database stays open under its new name")
+    func renamedDatabaseIsReopened() {
+        let workspace = makeWorkspace()
+        workspace.openContainer("tenant_a")
+
+        workspace.adoptContainerChange(
+            change(.renamed(to: "tenant_x"), database: "tenant_a", connectionId: workspace.connectionId),
+            target: .database
+        )
+
+        #expect(workspace.openedContainers == ["tenant_x"])
+    }
+
+    /// On an engine whose entries are databases, a schema is not an entry of its own.
+    @Test("A dropped schema does not close a database entry")
+    func droppedSchemaOnDatabaseEngineIsIgnored() {
+        let workspace = makeWorkspace()
+        workspace.openContainer("public")
+
+        workspace.adoptContainerChange(
+            DatabaseContainerChange(
+                connectionId: workspace.connectionId,
+                container: DatabaseContainerRef(kind: .schema, database: "app", schema: "public", isSystem: false),
+                kind: .dropped
+            ),
+            target: .database
+        )
+
+        #expect(workspace.openedContainers == ["public"])
+    }
+
     @Test("Closing a container leaves the others open")
     func closingLeavesTheRest() {
         let workspace = makeWorkspace()

@@ -109,7 +109,7 @@ extension MainContentView {
             agentSessionTitle: nil,
             connection: connection,
             tab: selectedTab,
-            hasTabs: !tabManager.tabs.isEmpty,
+            hasTabs: !tabManager.visibleTabs.isEmpty,
             queryLanguageName: PluginManager.shared.queryLanguageName(for: connection.type)
         )
         windowTitle = resolved.title

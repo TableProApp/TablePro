@@ -76,6 +76,47 @@ struct MainContentCoordinatorTableMetadataTests {
         #expect(coordinator.hasCurrentTableMetadata(for: customers, tableName: "customers"))
     }
 
+    @Test("A table of the same name in another database never shows the other one's numbers")
+    func sameNameInAnotherDatabaseIsNotShown() {
+        let (coordinator, tabManager) = makeCoordinator()
+        var tenantA = addTableTab(to: tabManager, tableName: "orders")
+        tenantA.tableContext.databaseName = "tenant_a"
+        tabManager.updateTab(tenantA)
+        var tenantB = addTableTab(to: tabManager, tableName: "orders")
+        tenantB.tableContext.databaseName = "tenant_b"
+        tabManager.updateTab(tenantB)
+
+        let tenantAMetadata = metadata("orders", rowCount: 10)
+        coordinator.tableMetadataCache[tenantA.id] = TableMetadataCacheEntry(
+            tableName: "orders",
+            lastExecutedAt: tenantA.execution.lastExecutedAt,
+            metadata: tenantAMetadata
+        )
+        coordinator.tableMetadata = tenantAMetadata
+
+        #expect(coordinator.currentTableMetadata(for: tenantA) == tenantAMetadata)
+        #expect(coordinator.currentTableMetadata(for: tenantB) == nil)
+    }
+
+    /// A refresh never clears what it refreshes: the panel keeps the last numbers until new ones
+    /// arrive, while the cache still reports them stale so the next load refetches.
+    @Test("Re-running the tab's query keeps its numbers on screen")
+    func reExecutingKeepsTheShownNumbers() {
+        let (coordinator, tabManager) = makeCoordinator()
+        var orders = addTableTab(to: tabManager, tableName: "orders")
+        let shown = metadata("orders", rowCount: 10)
+        coordinator.tableMetadataCache[orders.id] = TableMetadataCacheEntry(
+            tableName: "orders",
+            lastExecutedAt: orders.execution.lastExecutedAt,
+            metadata: shown
+        )
+
+        orders.execution.lastExecutedAt = Date(timeIntervalSince1970: 1)
+
+        #expect(coordinator.currentTableMetadata(for: orders) == shown)
+        #expect(!coordinator.hasCurrentTableMetadata(for: orders, tableName: "orders"))
+    }
+
     @Test("Re-running the tab's query makes its cached numbers stale")
     func reExecutingInvalidatesTheEntry() {
         let (coordinator, tabManager) = makeCoordinator()

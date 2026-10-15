@@ -66,25 +66,52 @@ enum MCPTabSnapshotProvider {
         return snapshots.filter { readable.contains($0.connectionId) }
     }
 
+    /// A database or schema the caller left out means the one being browsed, which is where the
+    /// open put the tab. Matching the name alone returned whichever same-named table sorted first,
+    /// so an agent asking for `tenant_b.orders` was handed the id of `tenant_a.orders`.
     static func awaitTab(
         connectionId: UUID,
         tableName: String?,
+        databaseName: String? = nil,
+        schemaName: String? = nil,
         clock: ContinuousClock = ContinuousClock()
     ) async -> MCPTabSnapshot? {
         let deadline = clock.now.advanced(by: openTimeout)
         while clock.now < deadline {
-            let snapshots = await MainActor.run { collectTabSnapshots() }
-            let candidates = snapshots.filter { $0.connectionId == connectionId }
-            if let tableName {
-                if let match = candidates.first(where: { $0.tableName == tableName }) {
-                    return match
+            let match = await MainActor.run { () -> MCPTabSnapshot? in
+                let candidates = collectTabSnapshots().filter { $0.connectionId == connectionId }
+                guard let tableName else {
+                    return candidates.first(where: \.isActive) ?? candidates.first
                 }
-            } else if let match = candidates.first(where: \.isActive) ?? candidates.first {
+                let databaseManager = DatabaseManager.shared
+                return firstTable(
+                    in: candidates,
+                    matching: databaseManager.requestedTableIdentity(
+                        table: tableName, database: databaseName, schema: schemaName, for: connectionId
+                    ),
+                    browseDatabase: databaseManager.activeSessions[connectionId]?.resolvedBrowseDatabase ?? ""
+                )
+            }
+            if let match {
                 return match
             }
             try? await Task.sleep(for: openPollInterval)
         }
         return nil
+    }
+
+    static func firstTable(
+        in snapshots: [MCPTabSnapshot],
+        matching wanted: TableTabIdentity,
+        browseDatabase: String
+    ) -> MCPTabSnapshot? {
+        snapshots.first { snapshot in
+            guard snapshot.tabType == TabType.table.snapshotName,
+                  let table = snapshot.tableName
+            else { return false }
+            let database = snapshot.databaseName.flatMap { $0.isEmpty ? nil : $0 } ?? browseDatabase
+            return TableTabIdentity(table: table, database: database, schema: snapshot.schemaName) == wanted
+        }
     }
 
     static func encode(_ snapshot: MCPTabSnapshot) -> JsonValue {
