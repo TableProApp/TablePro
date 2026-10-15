@@ -12,5 +12,10 @@
       ]
     }{{#unless @last}},{{/unless}}
 {{/each}}
+  ],
+  "crates": [
+{{#each crates}}
+    { "name": {{json package.name}}, "version": {{json package.version}}, "license": {{json license}} }{{#unless @last}},{{/unless}}
+{{/each}}
   ]
 }

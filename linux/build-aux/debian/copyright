@@ -4,12 +4,13 @@ Upstream-Contact: https://github.com/TableProApp/TablePro/issues
 Source: https://github.com/TableProApp/TablePro
 Comment: build-aux/packaging/license_metadata.py writes this file from
  data/licenses/third-party.json. The vendor/ paragraphs cover the crates
- linked into tablepro and tablepro-askpass, each under the license
- TablePro uses it under, with the license text the crate ships.
+ linked into tablepro and tablepro-askpass. Each names every license
+ the crate offers and holds the text of the one TablePro uses, as the
+ crate ships it.
 
 Files: *
 Copyright: TablePro Authors
-License: AGPL-3.0-or-later
+License: AGPL-3.0+
                      GNU AFFERO GENERAL PUBLIC LICENSE
                         Version 3, 19 November 2007
  .
@@ -672,9 +673,15 @@ License: AGPL-3.0-or-later
  For more information on this, and how to apply and follow the GNU AGPL, see
  <https://www.gnu.org/licenses/>.
 
+Files: data/app.tablepro.TablePro.metainfo.xml.in.in
+Copyright: TablePro Authors
+License: CC0-1.0
+ On Debian systems, the complete text of the CC0 1.0 Universal license
+ can be found in "/usr/share/common-licenses/CC0-1.0".
+
 Files: vendor/aes-0.8.4/*
 Copyright: 2018 Artyom Pavlov
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2018 Artyom Pavlov
  .
  Permission is hereby granted, free of charge, to any
@@ -707,7 +714,7 @@ Files: vendor/aho-corasick-1.1.5/*
  vendor/csv-core-0.1.13/*
  vendor/memchr-2.8.3/*
 Copyright: 2015 Andrew Gallant
-License: MIT
+License: Expat or Unlicense
  The MIT License (MIT)
  .
  Copyright (c) 2015 Andrew Gallant
@@ -732,7 +739,7 @@ License: MIT
 
 Files: vendor/allocator-api2-0.2.21/*
 Copyright: the authors of allocator-api2
-License: MIT
+License: Apache-2.0 or Expat
  Permission is hereby granted, free of charge, to any
  person obtaining a copy of this software and associated
  documentation files (the "Software"), to deal in the
@@ -759,7 +766,7 @@ License: MIT
 
 Files: vendor/ashpd-0.13.13/*
 Copyright: 2020 Bilal Elmoussaoui
-License: MIT
+License: Expat
  MIT License
  .
  Copyright (c) 2020 Bilal Elmoussaoui
@@ -785,7 +792,7 @@ License: MIT
 Files: vendor/async-broadcast-0.7.2/*
  vendor/connection-string-0.2.0/*
 Copyright: 2020 Yoshua Wuyts
-License: MIT
+License: Apache-2.0 or Expat
  The MIT License (MIT)
  .
  Copyright (c) 2020 Yoshua Wuyts
@@ -812,7 +819,7 @@ Files: vendor/async-recursion-1.1.1/*
  vendor/flume-0.12.0/*
  vendor/rsa-0.10.0-rc.18/*
 Copyright: the authors of async-recursion, flume, rsa
-License: MIT
+License: Apache-2.0 or Expat
  Permission is hereby granted, free of charge, to any
  person obtaining a copy of this software and associated
  documentation files (the "Software"), to deal in the
@@ -842,12 +849,10 @@ Files: vendor/async-trait-0.1.92/*
  vendor/clickhouse-macros-0.3.0/*
  vendor/clickhouse-types-0.1.3/*
  vendor/displaydoc-0.2.7/*
- vendor/endi-1.1.1/*
  vendor/event-listener-5.4.2/*
  vendor/event-listener-strategy-0.5.4/*
  vendor/fastrand-2.5.0/*
  vendor/itoa-1.0.18/*
- vendor/linux-raw-sys-0.12.1/*
  vendor/once_cell-1.21.4/*
  vendor/ordered-stream-0.2.0/*
  vendor/parking-2.2.1/*
@@ -857,7 +862,6 @@ Files: vendor/async-trait-0.1.92/*
  vendor/quote-1.0.47/*
  vendor/relm4-0.11.0/*
  vendor/relm4-macros-0.11.0/*
- vendor/rustix-1.1.4/*
  vendor/rustversion-1.0.23/*
  vendor/serde-1.0.229/*
  vendor/serde_bytes-0.11.19/*
@@ -872,17 +876,14 @@ Files: vendor/async-trait-0.1.92/*
  vendor/thiserror-2.0.20/*
  vendor/thiserror-impl-2.0.20/*
  vendor/typed-path-0.12.3/*
- vendor/zmij-1.0.23/*
- vendor/zvariant_utils-4.2.0/*
 Copyright: the authors of async-trait, clickhouse, clickhouse-macros,
- clickhouse-types, displaydoc, endi, event-listener,
- event-listener-strategy, fastrand, itoa, linux-raw-sys, once_cell,
- ordered-stream, parking, pin-project-lite, proc-macro-crate,
- proc-macro2, quote, relm4, relm4-macros, rustix, rustversion, serde,
- serde_bytes, serde_core, serde_derive, serde_derive_internals,
+ clickhouse-types, displaydoc, event-listener, event-listener-strategy,
+ fastrand, itoa, once_cell, ordered-stream, parking, pin-project-lite,
+ proc-macro-crate, proc-macro2, quote, relm4, relm4-macros, rustversion,
+ serde, serde_bytes, serde_core, serde_derive, serde_derive_internals,
  serde_json, serde_repr, sqlformat, syn, thiserror, thiserror-impl,
- typed-path, zmij, zvariant_utils
-License: MIT
+ typed-path
+License: Apache-2.0 or Expat
  Permission is hereby granted, free of charge, to any
  person obtaining a copy of this software and associated
  documentation files (the "Software"), to deal in the
@@ -910,7 +911,7 @@ License: MIT
 Files: vendor/asynchronous-codec-0.7.0/*
 Copyright: 2019 - 2020 Matt Hunzinger
  2021 Max Inden
-License: MIT
+License: Expat
  MIT License
  .
  Copyright (c) 2019 - 2020 Matt Hunzinger
@@ -936,7 +937,7 @@ License: MIT
 
 Files: vendor/atoi-2.0.0/*
 Copyright: 2017
-License: MIT
+License: Expat
  MIT License
  .
  Copyright (c) 2017
@@ -963,7 +964,7 @@ Files: vendor/atomic-waker-1.1.2/*
  vendor/futures-lite-2.6.1/*
 Copyright: 2016 Alex Crichton
  2017 The Tokio Authors
-License: MIT
+License: Apache-2.0 or Expat
  ===============================================================================
  .
  Copyright (c) 2016 Alex Crichton
@@ -1036,7 +1037,7 @@ License: MIT
 
 Files: vendor/aws-lc-rs-1.18.1/*
 Copyright: Amazon.com, Inc. or its affiliates.
-License: ISC
+License: Apache-2.0 or ISC, and ISC
  SPDX-License-Identifier: ISC AND (Apache-2.0 OR ISC)
  .
  .
@@ -1078,7 +1079,7 @@ Copyright: Amazon.com, Inc. or its affiliates. All Rights Reserved.
  2017 - 2025, Stephan Mueller <smueller@chronox.de>.
  2008 Google Inc.
  The Go Authors. All rights reserved.
-License: Apache-2.0 and BSD-3-Clause and ISC and MIT
+License: Apache-2.0, and Apache-2.0 or ISC, and Apache-2.0 or ISC or Expat, and Apache-2.0 or ISC or MIT-0, and BSD-3-Clause, and ISC, and Expat
  AWS Libcrypto (AWS-LC)
  .
  AWS-LC is a fork of BoringSSL, which is itself a fork of OpenSSL.
@@ -1357,7 +1358,7 @@ License: Apache-2.0 and BSD-3-Clause and ISC and MIT
 
 Files: vendor/base64-0.22.1/*
 Copyright: 2015 Alice Maz
-License: MIT
+License: Apache-2.0 or Expat
  The MIT License (MIT)
  .
  Copyright (c) 2015 Alice Maz
@@ -1383,7 +1384,7 @@ License: MIT
 Files: vendor/base64ct-1.8.3/*
 Copyright: 2014 Steve "Sc00bz" Thomas (steve at tobtu dot com)
  2021-2025 The RustCrypto Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2014 Steve "Sc00bz" Thomas (steve at tobtu dot com)
  Copyright (c) 2021-2025 The RustCrypto Project Developers
  .
@@ -1425,7 +1426,7 @@ Files: vendor/bitflags-2.13.2/*
  vendor/regex-automata-0.4.18/*
  vendor/regex-syntax-0.8.11/*
 Copyright: 2014 The Rust Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2014 The Rust Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -1455,7 +1456,7 @@ License: MIT
 Files: vendor/block-buffer-0.10.4/*
  vendor/block-padding-0.3.3/*
 Copyright: 2018-2019 The RustCrypto Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2018-2019 The RustCrypto Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -1484,7 +1485,7 @@ License: MIT
 
 Files: vendor/block-buffer-0.12.1/*
 Copyright: 2018-2025 The RustCrypto Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2018-2025 The RustCrypto Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -1515,7 +1516,7 @@ Files: vendor/bnum-0.13.0/*
 Copyright: 2014 The Rust Project Developers
  2018 Developers of the Rand project
  2022 Isaac Holt
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2014 The Rust Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -1593,7 +1594,7 @@ License: MIT
 
 Files: vendor/bstr-1.13.1/*
 Copyright: 2018-2019 Andrew Gallant
-License: MIT
+License: Apache-2.0 or Expat
  The MIT License (MIT)
  .
  Copyright (c) 2018-2019 Andrew Gallant
@@ -1618,7 +1619,7 @@ License: MIT
 
 Files: vendor/bumpalo-3.20.3/*
 Copyright: 2019 Nick Fitzgerald
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2019 Nick Fitzgerald
  .
  Permission is hereby granted, free of charge, to any
@@ -1647,7 +1648,7 @@ License: MIT
 
 Files: vendor/bytes-1.12.1/*
 Copyright: 2018 Carl Lerche
-License: MIT
+License: Expat
  Copyright (c) 2018 Carl Lerche
  .
  Permission is hereby granted, free of charge, to any
@@ -1706,7 +1707,7 @@ Copyright: the authors of cairo-rs, cairo-sys-rs, gdk-pixbuf, gdk-pixbuf-sys, gd
  glib-sys, gobject-sys, graphene-rs, graphene-sys, gsk4, gsk4-sys, gtk4,
  gtk4-macros, gtk4-sys, libadwaita, libadwaita-sys, pango, pango-sys,
  sourceview5, sourceview5-sys
-License: MIT
+License: Expat
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
  in the Software without restriction, including without limitation the rights
@@ -1728,7 +1729,7 @@ License: MIT
 Files: vendor/cbc-0.1.2/*
 Copyright: 2018-2022 RustCrypto Developers
  2018 Artyom Pavlov
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2018-2022 RustCrypto Developers
  Copyright (c) 2018 Artyom Pavlov
  .
@@ -1761,7 +1762,7 @@ Files: vendor/cfg-if-1.0.4/*
  vendor/openssl-probe-0.2.1/*
  vendor/socket2-0.6.5/*
 Copyright: 2014 Alex Crichton
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2014 Alex Crichton
  .
  Permission is hereby granted, free of charge, to any
@@ -1791,7 +1792,7 @@ License: MIT
 Files: vendor/chacha20-0.10.2/*
  vendor/zeroize_derive-1.5.0/*
 Copyright: 2019-2026 The RustCrypto Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2019-2026 The RustCrypto Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -1820,7 +1821,7 @@ License: MIT
 
 Files: vendor/chrono-0.4.45/*
 Copyright: 2014, Kang Seonghoon.
-License: MIT
+License: Apache-2.0 or Expat
  The MIT License (MIT)
  .
  Copyright (c) 2014, Kang Seonghoon.
@@ -1845,7 +1846,7 @@ License: MIT
 
 Files: vendor/cipher-0.4.4/*
 Copyright: 2016-2020 RustCrypto Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2016-2020 RustCrypto Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -1875,7 +1876,7 @@ License: MIT
 Files: vendor/cmov-0.5.4/*
  vendor/hybrid-array-0.4.15/*
 Copyright: 2022-2026 The RustCrypto Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2022-2026 The RustCrypto Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -1907,7 +1908,7 @@ Files: vendor/const-oid-0.10.2/*
  vendor/der-0.8.2/*
  vendor/pkcs8-0.11.0/*
 Copyright: 2020-2026 The RustCrypto Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2020-2026 The RustCrypto Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -1937,7 +1938,7 @@ License: MIT
 Files: vendor/const-oid-0.9.6/*
  vendor/der_derive-0.7.3/*
 Copyright: 2020-2022 The RustCrypto Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2020-2022 The RustCrypto Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -1966,7 +1967,7 @@ License: MIT
 
 Files: vendor/core_detect-1.0.0/*
 Copyright: 2017-2020 The Rust Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2017-2020 The Rust Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -1995,7 +1996,7 @@ License: MIT
 
 Files: vendor/cpubits-0.1.1/*
 Copyright: 2023-2026 The RustCrypto Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2023-2026 The RustCrypto Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -2024,7 +2025,7 @@ License: MIT
 
 Files: vendor/cpufeatures-0.2.17/*
 Copyright: 2020-2025 The RustCrypto Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2020-2025 The RustCrypto Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -2053,7 +2054,7 @@ License: MIT
 
 Files: vendor/crc-3.4.0/*
 Copyright: 2017 crc-rs Developers
-License: MIT
+License: Apache-2.0 or Expat
  MIT License
  .
  Copyright (c) 2017 crc-rs Developers
@@ -2078,7 +2079,7 @@ License: MIT
 
 Files: vendor/crc-catalog-2.5.0/*
 Copyright: 2019 Akhil Velagapudi
-License: MIT
+License: Apache-2.0 or Expat
  MIT License
  .
  Copyright (c) 2019 Akhil Velagapudi
@@ -2103,7 +2104,7 @@ License: MIT
 
 Files: vendor/crc32fast-1.5.2/*
 Copyright: 2018 Sam Rijs, Alex Crichton and contributors
-License: MIT
+License: Apache-2.0 or Expat
  MIT License
  .
  Copyright (c) 2018 Sam Rijs, Alex Crichton and contributors
@@ -2129,7 +2130,7 @@ License: MIT
 Files: vendor/crossbeam-queue-0.3.14/*
  vendor/crossbeam-utils-0.8.23/*
 Copyright: 2019 The Crossbeam Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  The MIT License (MIT)
  .
  Copyright (c) 2019 The Crossbeam Project Developers
@@ -2161,7 +2162,7 @@ License: MIT
 Files: vendor/crypto-bigint-0.7.5/*
  vendor/spki-0.8.0/*
 Copyright: 2021-2026 The RustCrypto Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2021-2026 The RustCrypto Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -2190,7 +2191,7 @@ License: MIT
 
 Files: vendor/crypto-common-0.1.7/*
 Copyright: 2021 RustCrypto Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2021 RustCrypto Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -2219,7 +2220,7 @@ License: MIT
 
 Files: vendor/crypto-common-0.2.2/*
 Copyright: 2021-2026 RustCrypto Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2021-2026 RustCrypto Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -2248,7 +2249,7 @@ License: MIT
 
 Files: vendor/crypto-primes-0.7.2/*
 Copyright: 2022-* Bogdan Opanchuk
-License: MIT
+License: Apache-2.0 or Expat
  Copyright 2022-* Bogdan Opanchuk
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -2259,7 +2260,7 @@ License: MIT
 
 Files: vendor/ctutils-0.4.2/*
 Copyright: 2025-2026 The RustCrypto Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2025-2026 The RustCrypto Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -2290,7 +2291,7 @@ Files: vendor/deadpool-0.13.1/*
  vendor/deadpool-postgres-0.14.2/*
  vendor/deadpool-runtime-0.3.1/*
 Copyright: 2019 Michael P. Jung
-License: MIT
+License: Apache-2.0 or Expat
  The MIT License (MIT)
  .
  Copyright (c) 2019 Michael P. Jung
@@ -2314,7 +2315,7 @@ License: MIT
 
 Files: vendor/der-0.7.10/*
 Copyright: 2020-2023 The RustCrypto Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2020-2023 The RustCrypto Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -2345,7 +2346,7 @@ Files: vendor/digest-0.10.7/*
  vendor/hmac-0.12.1/*
  vendor/hmac-0.13.0/*
 Copyright: 2017 Artyom Pavlov
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2017 Artyom Pavlov
  .
  Permission is hereby granted, free of charge, to any
@@ -2375,7 +2376,7 @@ License: MIT
 Files: vendor/digest-0.11.3/*
 Copyright: 2017-2025 RustCrypto Developers
  2017 Artyom Pavlov
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2017-2025 RustCrypto Developers
  Copyright (c) 2017 Artyom Pavlov
  .
@@ -2405,7 +2406,7 @@ License: MIT
 
 Files: vendor/dotenvy-0.15.7/*
 Copyright: 2014 Santiago Lapresta and contributors
-License: MIT
+License: Expat
  # The MIT License (MIT)
  .
  Copyright (c) 2014 Santiago Lapresta and contributors
@@ -2430,7 +2431,7 @@ License: MIT
 
 Files: vendor/either-1.18.0/*
 Copyright: 2015
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2015
  .
  Permission is hereby granted, free of charge, to any
@@ -2460,7 +2461,7 @@ License: MIT
 Files: vendor/encoding_rs-0.8.41/*
 Copyright: WHATWG (Apple, Google, Mozilla, Microsoft).
  Mozilla Foundation
-License: BSD-3-Clause and MIT
+License: Apache-2.0 or Expat, and BSD-3-Clause
  // Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
  //
  // Redistribution and use in source and binary forms, with or without
@@ -2569,9 +2570,38 @@ License: BSD-3-Clause and MIT
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
 
+Files: vendor/endi-1.1.1/*
+ vendor/zmij-1.0.23/*
+ vendor/zvariant_utils-4.2.0/*
+Copyright: the authors of endi, zmij, zvariant_utils
+License: Expat
+ Permission is hereby granted, free of charge, to any
+ person obtaining a copy of this software and associated
+ documentation files (the "Software"), to deal in the
+ Software without restriction, including without
+ limitation the rights to use, copy, modify, merge,
+ publish, distribute, sublicense, and/or sell copies of
+ the Software, and to permit persons to whom the Software
+ is furnished to do so, subject to the following
+ conditions:
+ .
+ The above copyright notice and this permission notice
+ shall be included in all copies or substantial portions
+ of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+ TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+ SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ DEALINGS IN THE SOFTWARE.
+
 Files: vendor/enumflags2-0.7.12/*
 Copyright: 2017-2023 Maik Klein, Maja Kądziołka
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2017-2023 Maik Klein, Maja Kądziołka
  .
  Permission is hereby granted, free of charge, to any
@@ -2600,7 +2630,7 @@ License: MIT
 
 Files: vendor/enumflags2_derive-0.7.12/*
 Copyright: 2017 Maik Klein
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2017 Maik Klein
  .
  Permission is hereby granted, free of charge, to any
@@ -2629,7 +2659,7 @@ License: MIT
 
 Files: vendor/equivalent-1.0.2/*
 Copyright: 2016--2023
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2016--2023
  .
  Permission is hereby granted, free of charge, to any
@@ -2658,7 +2688,7 @@ License: MIT
 
 Files: vendor/errno-0.3.14/*
 Copyright: 2014 Chris Wong
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2014 Chris Wong
  .
  Permission is hereby granted, free of charge, to any
@@ -2687,7 +2717,7 @@ License: MIT
 
 Files: vendor/fallible-iterator-0.2.0/*
 Copyright: 2015 The rust-openssl-verify Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2015 The rust-openssl-verify Developers
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -2710,7 +2740,7 @@ License: MIT
 
 Files: vendor/field-offset-0.3.6/*
 Copyright: 2016-2021 Diggory Blake, and other contributors.
-License: MIT
+License: Apache-2.0 or Expat
  MIT License
  .
  Copyright (c) 2016-2021 Diggory Blake, and other contributors.
@@ -2839,7 +2869,7 @@ License: Apache-2.0
 
 Files: vendor/flate2-1.1.10/*
 Copyright: 2014-2026 Alex Crichton
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2014-2026 Alex Crichton
  .
  Permission is hereby granted, free of charge, to any
@@ -2891,7 +2921,7 @@ License: Zlib
 
 Files: vendor/form_urlencoded-1.2.2/*
 Copyright: 2013-2016 The rust-url developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2013-2016 The rust-url developers
  .
  Permission is hereby granted, free of charge, to any
@@ -2929,7 +2959,7 @@ Files: vendor/futures-0.3.34/*
  vendor/futures-util-0.3.34/*
 Copyright: 2016 Alex Crichton
  2017 The Tokio Authors
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2016 Alex Crichton
  Copyright (c) 2017 The Tokio Authors
  .
@@ -2959,7 +2989,7 @@ License: MIT
 
 Files: vendor/futures-intrusive-0.5.0/*
 Copyright: 2019 Matthias Einwag
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2019 Matthias Einwag
  .
  Permission is hereby granted, free of charge, to any
@@ -2988,7 +3018,7 @@ License: MIT
 
 Files: vendor/generic-array-0.14.7/*
 Copyright: 2015 Bartłomiej Kamiński
-License: MIT
+License: Expat
  The MIT License (MIT)
  .
  Copyright (c) 2015 Bartłomiej Kamiński
@@ -3014,7 +3044,7 @@ License: MIT
 Files: vendor/getrandom-0.3.4/*
 Copyright: 2018-2025 The rust-random Project Developers
  2014 The Rust Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2018-2025 The rust-random Project Developers
  Copyright (c) 2014 The Rust Project Developers
  .
@@ -3045,7 +3075,7 @@ License: MIT
 Files: vendor/getrandom-0.4.3/*
 Copyright: 2018-2026 The rust-random Project Developers
  2014 The Rust Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2018-2026 The rust-random Project Developers
  Copyright (c) 2014 The Rust Project Developers
  .
@@ -3076,7 +3106,7 @@ License: MIT
 Files: vendor/gettext-rs-0.8.0/*
  vendor/gettext-sys-0.26.0/*
 Copyright: 2016 Konstantin V. Salikhov
-License: MIT
+License: Expat
  The MIT License (MIT)
  .
  Copyright (c) 2016 Konstantin V. Salikhov
@@ -3100,9 +3130,8 @@ License: MIT
  SOFTWARE.
 
 Files: vendor/half-2.7.1/*
- vendor/whoami-2.1.3/*
-Copyright: the authors of half, whoami
-License: MIT
+Copyright: the authors of half
+License: Apache-2.0 or Expat
  MIT License
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -3126,7 +3155,7 @@ License: MIT
 Files: vendor/hashbrown-0.16.1/*
  vendor/hashbrown-0.17.1/*
 Copyright: 2016 Amanieu d'Antras
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2016 Amanieu d'Antras
  .
  Permission is hereby granted, free of charge, to any
@@ -3155,7 +3184,7 @@ License: MIT
 
 Files: vendor/hashlink-0.11.1/*
 Copyright: the authors of hashlink
-License: MIT
+License: Apache-2.0 or Expat
  This work is derived in part from the `linked-hash-map` crate, Copyright (c)
  2015 The Rust Project Developers
  .
@@ -3188,7 +3217,7 @@ Files: vendor/heck-0.5.0/*
  vendor/unicode-normalization-0.1.25/*
  vendor/unicode-properties-0.1.4/*
 Copyright: 2015 The Rust Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2015 The Rust Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -3218,7 +3247,7 @@ License: MIT
 Files: vendor/hex-0.4.3/*
 Copyright: 2013-2014 The Rust Project Developers.
  2015-2020 The rust-hex Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2013-2014 The Rust Project Developers.
  Copyright (c) 2015-2020 The rust-hex Developers
  .
@@ -3243,7 +3272,7 @@ License: MIT
 Files: vendor/hkdf-0.12.4/*
 Copyright: 2015-2018 Vlad Filippov
  2018-2021 RustCrypto Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2015-2018 Vlad Filippov
  Copyright (c) 2018-2021 RustCrypto Developers
  .
@@ -3273,7 +3302,7 @@ License: MIT
 
 Files: vendor/http-1.5.0/*
 Copyright: 2017 http-rs authors
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2017 http-rs authors
  .
  Permission is hereby granted, free of charge, to any
@@ -3303,7 +3332,7 @@ License: MIT
 Files: vendor/http-body-1.1.0/*
  vendor/http-body-util-0.1.5/*
 Copyright: 2019-2026 Sean McArthur & Hyper Contributors
-License: MIT
+License: Expat
  Copyright (c) 2019-2026 Sean McArthur & Hyper Contributors
  .
  Permission is hereby granted, free of charge, to any
@@ -3332,7 +3361,7 @@ License: MIT
 
 Files: vendor/httparse-1.10.1/*
 Copyright: 2015-2025 Sean McArthur
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2015-2025 Sean McArthur
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -3355,7 +3384,7 @@ License: MIT
 
 Files: vendor/hyper-1.11.1/*
 Copyright: 2014-2026 Sean McArthur
-License: MIT
+License: Expat
  Copyright (c) 2014-2026 Sean McArthur
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -3380,7 +3409,7 @@ Files: vendor/hyper-rustls-0.27.9/*
  vendor/rustls-0.23.46/*
  vendor/rustls-native-certs-0.8.4/*
 Copyright: 2016 Joseph Birr-Pixton <jpixton@gmail.com>
-License: MIT
+License: Apache-2.0 or ISC or Expat
  Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
  .
  Permission is hereby granted, free of charge, to any
@@ -3409,7 +3438,7 @@ License: MIT
 
 Files: vendor/hyper-util-0.1.20/*
 Copyright: 2023-2025 Sean McArthur
-License: MIT
+License: Expat
  Copyright (c) 2023-2025 Sean McArthur
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -3432,7 +3461,7 @@ License: MIT
 
 Files: vendor/iana-time-zone-0.1.65/*
 Copyright: 2020 Andrew D. Straw
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2020 Andrew D. Straw
  .
  Permission is hereby granted, free of charge, to any
@@ -3463,7 +3492,7 @@ Files: vendor/idna-1.1.0/*
  vendor/percent-encoding-2.3.2/*
  vendor/url-2.5.8/*
 Copyright: 2013-2025 The rust-url developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2013-2025 The rust-url developers
  .
  Permission is hereby granted, free of charge, to any
@@ -3492,7 +3521,7 @@ License: MIT
 
 Files: vendor/idna_adapter-1.2.2/*
 Copyright: The rust-url developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) The rust-url developers
  .
  Permission is hereby granted, free of charge, to any
@@ -3521,7 +3550,7 @@ License: MIT
 
 Files: vendor/indexmap-2.14.2/*
 Copyright: 2016--2017
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2016--2017
  .
  Permission is hereby granted, free of charge, to any
@@ -3551,7 +3580,7 @@ License: MIT
 Files: vendor/inout-0.1.4/*
 Copyright: 2022 The RustCrypto Project Developers
  2022 Artyom Pavlov
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2022 The RustCrypto Project Developers
  Copyright (c) 2022 Artyom Pavlov
  .
@@ -3581,7 +3610,7 @@ License: MIT
 
 Files: vendor/lazy_static-1.5.0/*
 Copyright: 2010 The Rust Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2010 The Rust Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -3610,7 +3639,7 @@ License: MIT
 
 Files: vendor/libc-0.2.189/*
 Copyright: The Rust Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) The Rust Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -3640,7 +3669,7 @@ License: MIT
 Files: vendor/libgssapi-0.11.0/*
  vendor/libgssapi-sys-0.3.4/*
 Copyright: the authors of libgssapi, libgssapi-sys
-License: MIT
+License: Expat
  MIT License
  .
  Copyright (c) [year] [fullname]
@@ -3672,7 +3701,7 @@ Copyright: 2018 Jorge Aparicio
  2003-2009 Bruce D. Evans or
  2008 Stephen L. Moshier or
  2017-2018 Arm Limited
-License: MIT
+License: Expat
  rust-lang/libm as a whole is available for use under the MIT license:
  .
  ------------------------------------------------------------------------------
@@ -3760,7 +3789,7 @@ License: MIT
 
 Files: vendor/libsqlite3-sys-0.37.0/*
 Copyright: 2014 The rusqlite developers
-License: MIT
+License: Expat
  Copyright (c) 2014 The rusqlite developers
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -3781,13 +3810,41 @@ License: MIT
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
 
+Files: vendor/linux-raw-sys-0.12.1/*
+ vendor/rustix-1.1.4/*
+Copyright: the authors of linux-raw-sys, rustix
+License: Apache-2.0 or Apache-2.0 with LLVM exception or Expat
+ Permission is hereby granted, free of charge, to any
+ person obtaining a copy of this software and associated
+ documentation files (the "Software"), to deal in the
+ Software without restriction, including without
+ limitation the rights to use, copy, modify, merge,
+ publish, distribute, sublicense, and/or sell copies of
+ the Software, and to permit persons to whom the Software
+ is furnished to do so, subject to the following
+ conditions:
+ .
+ The above copyright notice and this permission notice
+ shall be included in all copies or substantial portions
+ of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+ TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+ SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ DEALINGS IN THE SOFTWARE.
+
 Files: vendor/locale_config-0.3.0/*
 Copyright: 2016–2019 Jan Hudec <bulb@ucw.cz>
  2016 A.J. Gardner <aaron.j.gardner@gmail.com>
  2019, Bastien Orivel <eijebong@bananium.fr>
  2019, Igor Gnatenko <i.gnatenko.brain@gmail.com>
  2019, Sophie Tauchert <999eagle@999eagle.moe>
-License: MIT
+License: Expat
  The MIT License (MIT)
  .
  Copyright (c) 2016–2019 Jan Hudec <bulb@ucw.cz>
@@ -3819,7 +3876,7 @@ Files: vendor/lock_api-0.4.14/*
  vendor/parking_lot_core-0.9.12/*
  vendor/thread_local-1.1.10/*
 Copyright: 2016 The Rust Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2016 The Rust Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -3848,7 +3905,7 @@ License: MIT
 
 Files: vendor/matchers-0.2.0/*
 Copyright: 2019 Eliza Weisman
-License: MIT
+License: Expat
  Copyright (c) 2019 Eliza Weisman
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -3874,7 +3931,7 @@ Files: vendor/md-5-0.10.6/*
 Copyright: 2006-2009 Graydon Hoare
  2009-2013 Mozilla Foundation
  2016 Artyom Pavlov
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2006-2009 Graydon Hoare
  Copyright (c) 2009-2013 Mozilla Foundation
  Copyright (c) 2016 Artyom Pavlov
@@ -3910,7 +3967,7 @@ Copyright: 2016-2026 The RustCrypto Project Developers
  2016 Artyom Pavlov
  2009-2013 Mozilla Foundation
  2006-2009 Graydon Hoare
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2016-2026 The RustCrypto Project Developers
  Copyright (c) 2016 Artyom Pavlov
  Copyright (c) 2009-2013 Mozilla Foundation
@@ -3942,7 +3999,7 @@ License: MIT
 
 Files: vendor/memoffset-0.9.1/*
 Copyright: 2017 Gilad Naaman
-License: MIT
+License: Expat
  Copyright (c) 2017 Gilad Naaman
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -3965,7 +4022,7 @@ License: MIT
 
 Files: vendor/mio-1.2.3/*
 Copyright: 2014 Carl Lerche and other MIO contributors
-License: MIT
+License: Expat
  Copyright (c) 2014 Carl Lerche and other MIO contributors
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -3989,7 +4046,7 @@ License: MIT
 Files: vendor/multiversion-0.9.0/*
  vendor/multiversion-macros-0.9.0/*
 Copyright: 2019 Caleb Zulawski
-License: MIT
+License: Apache-2.0 or Expat
  Copyright 2019 Caleb Zulawski
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -4001,7 +4058,7 @@ License: MIT
 Files: vendor/multiversion_no_op-1.0.0/*
  vendor/utf8_iter-1.0.4/*
 Copyright: Mozilla Foundation
-License: MIT
+License: Apache-2.0 or Expat
  Copyright Mozilla Foundation
  .
  Permission is hereby granted, free of charge, to any
@@ -4031,7 +4088,7 @@ License: MIT
 Files: vendor/nu-ansi-term-0.50.3/*
 Copyright: 2014 Benjamin Sago
  2021-2022 The Nushell Project Developers
-License: MIT
+License: Expat
  The MIT License (MIT)
  .
  Copyright (c) 2014 Benjamin Sago
@@ -4057,7 +4114,7 @@ License: MIT
 
 Files: vendor/oo7-0.6.0/*
 Copyright: 2022 Bilal Elmoussaoui, Sophie Herold, Maximiliano Sandoval, Dhanuka Warusadura
-License: MIT
+License: Expat
  MIT License
  .
  Copyright (c) 2022 Bilal Elmoussaoui, Sophie Herold, Maximiliano Sandoval, Dhanuka Warusadura
@@ -4083,7 +4140,7 @@ License: MIT
 Files: vendor/pbkdf2-0.12.2/*
 Copyright: 2017 Artyom Pavlov
  2018-2023 The RustCrypto Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2017 Artyom Pavlov
  Copyright (c) 2018-2023 The RustCrypto Project Developers
  .
@@ -4114,7 +4171,7 @@ License: MIT
 Files: vendor/pem-rfc7468-1.0.0/*
  vendor/pkcs1-0.8.0-rc.4/*
 Copyright: 2021-2025 The RustCrypto Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2021-2025 The RustCrypto Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -4144,7 +4201,7 @@ License: MIT
 Files: vendor/phf-0.13.1/*
  vendor/phf_shared-0.13.1/*
 Copyright: 2014-2022 Steven Fackler, Yuki Okushi
-License: MIT
+License: Expat
  The MIT License (MIT)
  .
  Copyright (c) 2014-2022 Steven Fackler, Yuki Okushi
@@ -4170,7 +4227,7 @@ Files: vendor/postgres-protocol-0.6.12/*
  vendor/postgres-types-0.2.14/*
  vendor/tokio-postgres-0.7.18/*
 Copyright: 2016 Steven Fackler
-License: MIT
+License: Apache-2.0 or Expat
  The MIT License (MIT)
  .
  Copyright (c) 2016 Steven Fackler
@@ -4195,7 +4252,7 @@ License: MIT
 
 Files: vendor/pretty-hex-0.4.2/*
 Copyright: 2018 Andrei Volnin
-License: MIT
+License: Expat
  MIT License
  .
  Copyright (c) 2018 Andrei Volnin
@@ -4223,7 +4280,7 @@ Files: vendor/rand-0.10.2/*
  vendor/rand_core-0.9.5/*
 Copyright: 2018 Developers of the Rand project
  2014 The Rust Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright 2018 Developers of the Rand project
  Copyright (c) 2014 The Rust Project Developers
  .
@@ -4253,7 +4310,7 @@ License: MIT
 
 Files: vendor/rand_core-0.10.1/*
 Copyright: 2018-2026 The Rand Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2018-2026 The Rand Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -4282,7 +4339,7 @@ License: MIT
 
 Files: vendor/rust_xlsxwriter-0.99.1/*
 Copyright: 2022-2026 John McNamara <jmcnamara@cpan.org>
-License: MIT
+License: Apache-2.0 or Expat
  MIT License
  .
  Copyright 2022-2026 John McNamara <jmcnamara@cpan.org>
@@ -4307,7 +4364,7 @@ License: MIT
 
 Files: vendor/rustls-pki-types-1.15.1/*
 Copyright: 2023 Dirkjan Ochtman <dirkjan@ochtman.nl>
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2023 Dirkjan Ochtman <dirkjan@ochtman.nl>
  .
  Permission is hereby granted, free of charge, to any
@@ -4336,7 +4393,7 @@ License: MIT
 
 Files: vendor/rustls-platform-verifier-0.7.0/*
 Copyright: 2022 1Password
-License: MIT
+License: Apache-2.0 or Expat
  MIT License
  .
  Copyright (c) 2022 1Password
@@ -4384,13 +4441,13 @@ License: ISC
 
 Files: vendor/ryu-1.0.23/*
 Copyright: the authors of ryu
-License: Apache-2.0
+License: Apache-2.0 or BSL-1.0
  On Debian systems, the complete text of the Apache License, Version 2.0
  can be found in "/usr/share/common-licenses/Apache-2.0".
 
 Files: vendor/scopeguard-1.2.0/*
 Copyright: 2016-2019 Ulrik Sverdrup "bluss" and scopeguard developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2016-2019 Ulrik Sverdrup "bluss" and scopeguard developers
  .
  Permission is hereby granted, free of charge, to any
@@ -4419,7 +4476,7 @@ License: MIT
 
 Files: vendor/secrecy-0.10.3/*
 Copyright: 2019-2024 iqlusion
-License: MIT
+License: Apache-2.0 or Expat
  MIT License
  .
  Copyright (c) 2019-2024 iqlusion
@@ -4444,7 +4501,7 @@ License: MIT
 
 Files: vendor/sharded-slab-0.1.7/*
 Copyright: 2019 Eliza Weisman
-License: MIT
+License: Expat
  Copyright (c) 2019 Eliza Weisman
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -4467,7 +4524,7 @@ License: MIT
 
 Files: vendor/signal-hook-registry-1.4.8/*
 Copyright: 2017 tokio-jsonrpc developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2017 tokio-jsonrpc developers
  .
  Permission is hereby granted, free of charge, to any
@@ -4496,7 +4553,7 @@ License: MIT
 
 Files: vendor/signature-3.0.0/*
 Copyright: 2018-2026 RustCrypto Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2018-2026 RustCrypto Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -4525,7 +4582,7 @@ License: MIT
 
 Files: vendor/simd-adler32-0.3.10/*
 Copyright: [2021] [Marvin Countryman]
-License: MIT
+License: Expat
  MIT License
  .
  Copyright (c) [2021] [Marvin Countryman]
@@ -4550,7 +4607,7 @@ License: MIT
 
 Files: vendor/simdutf8-0.1.5/*
 Copyright: the authors of simdutf8
-License: MIT
+License: Apache-2.0 or Expat
  MIT License
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -4573,7 +4630,7 @@ License: MIT
 
 Files: vendor/siphasher-1.0.4/*
 Copyright: the authors of siphasher
-License: MIT
+License: Apache-2.0 or Expat
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
  in the Software without restriction, including without limitation the rights
@@ -4594,7 +4651,7 @@ License: MIT
 
 Files: vendor/slab-0.4.12/*
 Copyright: 2019 Carl Lerche
-License: MIT
+License: Expat
  Copyright (c) 2019 Carl Lerche
  .
  Permission is hereby granted, free of charge, to any
@@ -4623,7 +4680,7 @@ License: MIT
 
 Files: vendor/smallvec-1.16.1/*
 Copyright: 2018 The Servo Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2018 The Servo Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -4652,7 +4709,7 @@ License: MIT
 
 Files: vendor/spin-0.9.9/*
 Copyright: 2014 Mathijs van de Nes
-License: MIT
+License: Expat
  The MIT License (MIT)
  .
  Copyright (c) 2014 Mathijs van de Nes
@@ -4677,7 +4734,7 @@ License: MIT
 
 Files: vendor/spki-0.7.3/*
 Copyright: 2021-2023 The RustCrypto Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2021-2023 The RustCrypto Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -4742,7 +4799,7 @@ Files: vendor/sqlx-0.9.0/*
  vendor/sqlx-mysql-0.9.0/*
  vendor/sqlx-sqlite-0.9.0/*
 Copyright: SQLx Contributors
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (C) SQLx Contributors
  Portions of this work Copyright (C) LaunchBadge, LLC
  .
@@ -4772,7 +4829,7 @@ License: MIT
 
 Files: vendor/stable_deref_trait-1.2.1/*
 Copyright: 2017 Robert Grosse
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2017 Robert Grosse
  .
  Permission is hereby granted, free of charge, to any
@@ -4801,7 +4858,7 @@ License: MIT
 
 Files: vendor/stringprep-0.1.5/*
 Copyright: 2017 The rust-stringprep Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2017 The rust-stringprep Developers
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -4858,7 +4915,7 @@ License: BSD-3-Clause
 
 Files: vendor/synstructure-0.13.2/*
 Copyright: 2016 Nika Layzell
-License: MIT
+License: Expat
  Copyright 2016 Nika Layzell
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -4869,7 +4926,7 @@ License: MIT
 
 Files: vendor/tempfile-3.27.0/*
 Copyright: 2015 Steven Allen
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2015 Steven Allen
  .
  Permission is hereby granted, free of charge, to any
@@ -4899,7 +4956,7 @@ License: MIT
 Files: vendor/tiberius-0.13.0/*
  vendor/tiberius-macros-0.1.0/*
 Copyright: 2021 Tiberius Contributors
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2021 Tiberius Contributors
  .
  Permission is hereby granted, free of charge, to any
@@ -4928,7 +4985,7 @@ License: MIT
 
 Files: vendor/tinyvec-1.13.3/*
 Copyright: the authors of tinyvec
-License: MIT
+License: Apache-2.0 or Expat or Zlib
  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
  .
  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
@@ -4939,7 +4996,7 @@ Files: vendor/tokio-1.53.1/*
  vendor/tokio-stream-0.1.19/*
  vendor/tokio-util-0.7.19/*
 Copyright: Tokio Contributors
-License: MIT
+License: Expat
  MIT License
  .
  Copyright (c) Tokio Contributors
@@ -4965,7 +5022,7 @@ License: MIT
 Files: vendor/tokio-macros-2.7.2/*
 Copyright: 2019 Yoshua Wuyts
  Tokio Contributors
-License: MIT
+License: Expat
  MIT License
  .
  Copyright (c) 2019 Yoshua Wuyts
@@ -4991,7 +5048,7 @@ License: MIT
 
 Files: vendor/tokio-postgres-rustls-0.14.0/*
 Copyright: 2019 Jasper Hugo
-License: MIT
+License: Expat
  MIT License
  .
  Copyright (c) 2019 Jasper Hugo
@@ -5016,7 +5073,7 @@ License: MIT
 
 Files: vendor/tokio-rustls-0.26.5/*
 Copyright: 2017 quininer kel
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2017 quininer kel
  .
  Permission is hereby granted, free of charge, to any
@@ -5047,7 +5104,7 @@ Files: vendor/toml_datetime-1.1.1+spec-1.1.0/*
  vendor/toml_edit-0.25.15+spec-1.1.0/*
  vendor/toml_parser-1.1.3+spec-1.1.0/*
 Copyright: Individual contributors
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) Individual contributors
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -5070,7 +5127,7 @@ License: MIT
 
 Files: vendor/tower-service-0.3.3/*
 Copyright: 2019 Tower Contributors
-License: MIT
+License: Expat
  Copyright (c) 2019 Tower Contributors
  .
  Permission is hereby granted, free of charge, to any
@@ -5103,7 +5160,7 @@ Files: vendor/tracing-0.1.44/*
  vendor/tracing-serde-0.2.0/*
  vendor/tracing-subscriber-0.3.23/*
 Copyright: 2019 Tokio Contributors
-License: MIT
+License: Expat
  Copyright (c) 2019 Tokio Contributors
  .
  Permission is hereby granted, free of charge, to any
@@ -5133,7 +5190,7 @@ License: MIT
 Files: vendor/tracing-core-0.1.36/*
 Copyright: 2019 Tokio Contributors
  2014 Mathijs van de Nes
-License: MIT
+License: Expat
  Copyright (c) 2019 Tokio Contributors
  .
  Permission is hereby granted, free of charge, to any
@@ -5185,7 +5242,7 @@ License: MIT
 Files: vendor/try-lock-0.2.5/*
 Copyright: 2018-2023 Sean McArthur
  2016 Alex Crichton
-License: MIT
+License: Expat
  Copyright (c) 2018-2023 Sean McArthur
  Copyright (c) 2016 Alex Crichton
  .
@@ -5209,7 +5266,7 @@ License: MIT
 
 Files: vendor/typenum-1.20.1/*
 Copyright: 2014 Paho Lurie-Gregg
-License: MIT
+License: Apache-2.0 or Expat
  The MIT License (MIT)
  .
  Copyright (c) 2014 Paho Lurie-Gregg
@@ -5234,7 +5291,7 @@ License: MIT
 
 Files: vendor/unicode-ident-1.0.24/*
 Copyright: 1991-2023 Unicode, Inc.
-License: MIT and Unicode-3.0
+License: Apache-2.0 or Expat, and Unicode-3.0
  Permission is hereby granted, free of charge, to any
  person obtaining a copy of this software and associated
  documentation files (the "Software"), to deal in the
@@ -5301,7 +5358,7 @@ License: MIT and Unicode-3.0
 
 Files: vendor/unicode_categories-0.1.1/*
 Copyright: 2015 The unicode-categories Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2015 The unicode-categories Developers
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -5342,7 +5399,7 @@ License: ISC
 Files: vendor/uuid-1.26.1/*
 Copyright: 2014 The Rust Project Developers
  2018 Ashley Mannix, Christopher Armstrong, Dylan DPC, Hunar Roop Kahlon
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2014 The Rust Project Developers
  Copyright (c) 2018 Ashley Mannix, Christopher Armstrong, Dylan DPC, Hunar Roop Kahlon
  .
@@ -5372,7 +5429,7 @@ License: MIT
 
 Files: vendor/want-0.3.1/*
 Copyright: 2018-2019 Sean McArthur
-License: MIT
+License: Expat
  Copyright (c) 2018-2019 Sean McArthur
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -5458,10 +5515,33 @@ License: CDLA-Permissive-2.0
  of Data, including for example machine learning models and models'
  insights.
 
+Files: vendor/whoami-2.1.3/*
+Copyright: the authors of whoami
+License: Apache-2.0 or BSL-1.0 or Expat
+ MIT License
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
 Files: vendor/winnow-0.7.15/*
  vendor/winnow-1.0.4/*
 Copyright: the authors of winnow
-License: MIT
+License: Expat
  Permission is hereby granted, free of charge, to any person obtaining
  a copy of this software and associated documentation files (the
  "Software"), to deal in the Software without restriction, including
@@ -5483,7 +5563,7 @@ License: MIT
 
 Files: vendor/x509-cert-0.2.5/*
 Copyright: 2021 The RustCrypto Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2021 The RustCrypto Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -5516,7 +5596,7 @@ Files: vendor/zbus-5.19.0/*
  vendor/zvariant-5.15.0/*
  vendor/zvariant_derive-5.15.0/*
 Copyright: 2024 Zeeshan Ali Khan & zbus contributors
-License: MIT
+License: Expat
  Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
  .
  Permission is hereby granted, free of charge, to any
@@ -5545,7 +5625,7 @@ License: MIT
 
 Files: vendor/zcheapstr-1.1.0/*
 Copyright: 2026 Zeeshan Ali Khan & zcheapstr contributors
-License: MIT
+License: Expat
  Copyright (c) 2026 Zeeshan Ali Khan & zcheapstr contributors
  .
  Permission is hereby granted, free of charge, to any
@@ -5575,7 +5655,7 @@ License: MIT
 Files: vendor/zerocopy-0.8.57/*
  vendor/zerocopy-derive-0.8.57/*
 Copyright: 2023 The Fuchsia Authors
-License: MIT
+License: Apache-2.0 or BSD-2-Clause or Expat
  Copyright 2023 The Fuchsia Authors
  .
  Permission is hereby granted, free of charge, to any
@@ -5604,7 +5684,7 @@ License: MIT
 
 Files: vendor/zeroize-1.9.0/*
 Copyright: 2018-2026 The RustCrypto Project Developers
-License: MIT
+License: Apache-2.0 or Expat
  Copyright (c) 2018-2026 The RustCrypto Project Developers
  .
  Permission is hereby granted, free of charge, to any
@@ -5633,7 +5713,7 @@ License: MIT
 
 Files: vendor/zip-8.6.0/*
 Copyright: 2014 Mathijs van de Nes
-License: MIT
+License: Expat
  The MIT License (MIT)
  .
  Copyright (c) 2014 Mathijs van de Nes
