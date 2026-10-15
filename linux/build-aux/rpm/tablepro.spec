@@ -95,7 +95,7 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/app.tablepro.TablePro
 %{shrink:xvfb-run -a dbus-run-session -- %meson_test}
 
 %files
-%license LICENSE LICENSE.dependencies cargo-vendor.txt
+%license LICENSE.dependencies cargo-vendor.txt
 %doc README.md
 %{_bindir}/tablepro
 %{_libexecdir}/tablepro-askpass
@@ -104,7 +104,12 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/app.tablepro.TablePro
 %{_datadir}/glib-2.0/schemas/app.tablepro.TablePro.gschema.xml
 %{_datadir}/icons/hicolor/scalable/apps/app.tablepro.TablePro.svg
 %{_datadir}/icons/hicolor/symbolic/apps/app.tablepro.TablePro-symbolic.svg
-%{_datadir}/licenses/app.tablepro.TablePro/
+# The About dialog reads these where Meson installs them, so the project
+# license is marked there rather than copied a second time.
+%dir %{_datadir}/licenses/app.tablepro.TablePro
+%license %{_datadir}/licenses/app.tablepro.TablePro/LICENSE
+%license %{_datadir}/licenses/app.tablepro.TablePro/THIRD-PARTY-NOTICE.md
+%{_datadir}/licenses/app.tablepro.TablePro/third-party.json
 %{_mandir}/man1/tablepro.1*
 %{_metainfodir}/app.tablepro.TablePro.metainfo.xml
 
