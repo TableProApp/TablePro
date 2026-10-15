@@ -22,7 +22,7 @@ use crate::hop_config;
 use crate::host_key_checking::HostKeyChecking;
 use crate::known_hosts::spawn_failure;
 use crate::password_owner::password_owner;
-use crate::route::{JumpHop, lookup, trace_route};
+use crate::route::{JumpHop, Route, lookup, trace_route};
 use crate::stderr_classify::{ClassifyContext, classify};
 use crate::supervisor::{ForwardCancel, Supervisor, TASKS, run_control};
 use crate::{SshAuth, SshConfig, SshServices, lock};
@@ -53,6 +53,87 @@ enum Handshake {
     Failed(TransportError),
 }
 
+/// A master that finished its handshake, and where it keeps its sockets.
+struct Master {
+    child: Child,
+    master_dir: PathBuf,
+    control: PathBuf,
+    stderr_tail: Arc<Mutex<String>>,
+}
+
+/// What ssh's own configuration says about the destination, read before
+/// the master starts.
+struct MasterPlan {
+    /// The `user@host` in the destination's password prompt.
+    password_owner: Option<String>,
+    host_keys: Option<HostKeyChecking>,
+    route: Route,
+    master_config: Option<PathBuf>,
+}
+
+impl MasterPlan {
+    async fn resolve(
+        config: &SshConfig,
+        services: &SshServices,
+        master_dir: &Path,
+        cancel: &CancellationToken,
+    ) -> Result<Self, TransportError> {
+        let config_file = services.config_file.as_deref();
+        let resolved = lookup(
+            &services.ssh_program,
+            config_file,
+            &config.destination,
+            &config.jump_hosts,
+        )
+        .await;
+        let password_owner = match config.auth {
+            SshAuth::Password { .. } => resolved.as_deref().and_then(password_owner),
+            SshAuth::Agent | SshAuth::PrivateKey { .. } | SshAuth::KeyboardInteractive => None,
+        };
+        let host_keys = resolved.as_deref().and_then(HostKeyChecking::from_ssh_g);
+        let route = tokio::select! {
+            route = trace_route(&services.ssh_program, config_file, resolved.as_deref()) => route,
+            () = cancel.cancelled() => return Err(SshFailure::InteractionCancelled.into()),
+        };
+        let master_config = pin_jump_hosts(&route.hops, config_file, master_dir)
+            .await?
+            .or_else(|| config_file.map(Path::to_path_buf));
+        Ok(Self {
+            password_owner,
+            host_keys,
+            route,
+            master_config,
+        })
+    }
+
+    fn spawn_master(
+        &self,
+        config: &SshConfig,
+        services: &SshServices,
+        liveness: &LivenessPolicy,
+        control: &Path,
+        master_dir: &Path,
+    ) -> std::io::Result<Child> {
+        Command::new(&services.ssh_program)
+            .args(master_args(
+                config,
+                control,
+                liveness,
+                self.host_keys,
+                self.master_config.as_deref(),
+            ))
+            .env("SSH_ASKPASS", &services.askpass_program)
+            .env("SSH_ASKPASS_REQUIRE", "force")
+            .env_remove("SSH_ASKPASS_PROMPT")
+            .env("TABLEPRO_ASKPASS_SOCKET", master_dir.join("askpass"))
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+    }
+}
+
 impl SshSession {
     pub async fn connect(
         config: &SshConfig,
@@ -74,51 +155,14 @@ impl SshSession {
                 return Err(error);
             }
         };
-        let config_file = services.config_file.as_deref();
-        let resolved = lookup(
-            &services.ssh_program,
-            config_file,
-            &config.destination,
-            &config.jump_hosts,
-        )
-        .await;
-        let password_owner = match config.auth {
-            SshAuth::Password { .. } => resolved.as_deref().and_then(password_owner),
-            SshAuth::Agent | SshAuth::PrivateKey { .. } | SshAuth::KeyboardInteractive => None,
-        };
-        let host_keys = resolved.as_deref().and_then(HostKeyChecking::from_ssh_g);
-        let route = tokio::select! {
-            route = trace_route(&services.ssh_program, config_file, resolved.as_deref()) => route,
-            () = cancel.cancelled() => {
-                remove_dir(&master_dir).await;
-                return Err(SshFailure::InteractionCancelled.into());
-            }
-        };
-        let master_config = match pin_jump_hosts(&route.hops, config_file, &master_dir).await {
-            Ok(written) => written.or_else(|| config_file.map(Path::to_path_buf)),
+        let plan = match MasterPlan::resolve(config, services, &master_dir, &cancel).await {
+            Ok(plan) => plan,
             Err(error) => {
                 remove_dir(&master_dir).await;
                 return Err(error);
             }
         };
-        let spawned = Command::new(&services.ssh_program)
-            .args(master_args(
-                config,
-                &control,
-                liveness,
-                host_keys,
-                master_config.as_deref(),
-            ))
-            .env("SSH_ASKPASS", &services.askpass_program)
-            .env("SSH_ASKPASS_REQUIRE", "force")
-            .env_remove("SSH_ASKPASS_PROMPT")
-            .env("TABLEPRO_ASKPASS_SOCKET", master_dir.join("askpass"))
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn();
-        let mut child = match spawned {
+        let mut child = match plan.spawn_master(config, services, liveness, &control, &master_dir) {
             Ok(child) => child,
             Err(error) => {
                 remove_dir(&master_dir).await;
@@ -136,7 +180,7 @@ impl SshSession {
             config.destination.to_string(),
             interaction,
             &config.auth,
-            password_owner,
+            plan.password_owner,
         );
         let outcome = handshake(
             &mut child,
@@ -176,6 +220,36 @@ impl SshSession {
             }
         }
 
+        let master = Master {
+            child,
+            master_dir,
+            control,
+            stderr_tail,
+        };
+        Ok(Self::supervise(
+            config,
+            services,
+            liveness,
+            master,
+            plan.route.first_hop,
+        ))
+    }
+
+    /// The session over a master that finished its handshake, with the
+    /// supervisor that stops it.
+    fn supervise(
+        config: &SshConfig,
+        services: &SshServices,
+        liveness: &LivenessPolicy,
+        master: Master,
+        first_hop: Option<NetworkEndpoint>,
+    ) -> Arc<SshSession> {
+        let Master {
+            child,
+            master_dir,
+            control,
+            stderr_tail,
+        } = master;
         let closed = CancellationToken::new();
         let shutdown = CancellationToken::new();
         let exit_status = Arc::new(Mutex::new(None));
@@ -187,7 +261,7 @@ impl SshSession {
             master_dir: master_dir.clone(),
             control: control.clone(),
             master_pid: child.id(),
-            first_hop: route.first_hop,
+            first_hop,
             closed: closed.clone(),
             shutdown: shutdown.clone(),
             exit_status: exit_status.clone(),
@@ -209,7 +283,7 @@ impl SshSession {
             }
             .run(),
         );
-        Ok(session)
+        session
     }
 
     pub fn closed(&self) -> WaitForCancellationFutureOwned {
