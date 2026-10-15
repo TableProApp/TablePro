@@ -6,6 +6,7 @@ mod find_bar;
 mod finish_notice;
 mod folding;
 pub(crate) mod open_file;
+mod run_lifecycle;
 use tablepro_core::sql_format as format_plan;
 mod outcomes;
 mod pinned;
@@ -17,6 +18,8 @@ mod split_view;
 mod sql_text;
 mod statement_band;
 mod statement_cursor;
+mod stream_pages;
+mod streaming;
 
 use std::time::SystemTime;
 
@@ -28,6 +31,8 @@ use sourceview5::prelude::*;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use stream_pages::{StreamTerminal, StreamedResult};
+use streaming::ActiveStream;
 use tablepro_core::QueryResult;
 use tablepro_storage::query_history::{HistoryStore, NewEntry, Outcome};
 
@@ -37,9 +42,10 @@ use crate::ui::grid::GridMsg;
 pub use completion::{SchemaIndex, SchemaRequest, candidate_words, referenced_tables};
 pub(crate) use completion_identifiers::{catalog_reference, split_table_reference, table_key};
 pub use schema::{SQL_KEYWORDS, build_schema_buffer, derive_tab_label, update_schema_buffer};
+pub(crate) use session_mode::query_cursor_export_factory;
 pub use statement_cursor::grammar_for;
 
-use outcomes::{ScriptRunResult, clear_box, render_outcomes, run_statements};
+use outcomes::{ScriptRunResult, StatementRun, StreamUpdate, clear_box, render_outcomes, run_statements_with_stream};
 use run_generation::{RunGeneration, RunTerminal};
 use schema::{apply_editor_preferences, apply_editor_scheme};
 use sql_text::toggle_line_comment;
@@ -77,6 +83,7 @@ pub struct SqlEditor {
     grid_sender: relm4::Sender<GridMsg>,
     cancel_token: Option<CancellationToken>,
     executions: std::collections::HashMap<u64, ExecutionContext>,
+    streaming: Option<ActiveStream>,
     connection_id: Option<Uuid>,
     history: Option<HistoryStore>,
     database: std::sync::Arc<crate::services::database_service::DatabaseService>,
@@ -119,6 +126,7 @@ pub struct StatementIdentity {
 #[derive(Debug, Clone)]
 pub enum StatementOutcomeKind {
     Rows(Vec<std::sync::Arc<QueryResult>>),
+    Streamed(Box<StreamedResult>),
     Error(String),
     NotRun,
 }
@@ -143,6 +151,23 @@ pub enum SqlEditorInput {
     ShowOutcomes {
         generation: u64,
         outcomes: Vec<StatementOutcome>,
+    },
+    StreamStarted {
+        generation: u64,
+        identity: StatementIdentity,
+        sql_preview: String,
+        export_query: Option<crate::ui::export_dialog::StreamExportQuery>,
+        accepted: tokio::sync::oneshot::Sender<bool>,
+    },
+    StreamPage {
+        generation: u64,
+        sequence: u64,
+        page: std::sync::Arc<QueryResult>,
+        accepted: tokio::sync::oneshot::Sender<bool>,
+    },
+    StreamFinished {
+        generation: u64,
+        terminal: StreamTerminal,
     },
     ShowCancelled(u64),
     ShowTimedOut {
@@ -207,6 +232,7 @@ pub enum SqlEditorOutput {
     CopyToClipboard(String),
     ShowRowAsJson(String),
     ExportResults { result: QueryResult, name: String },
+    ExportStreamedResults(crate::ui::export_dialog::StreamExportRequest),
 }
 
 pub(super) const MAX_SQL_FILE_BYTES: u64 = 8 * 1024 * 1024;
@@ -578,6 +604,7 @@ impl SimpleComponent for SqlEditor {
             grid_sender,
             cancel_token: None,
             executions: std::collections::HashMap::new(),
+            streaming: None,
             connection_id: init.connection_id,
             history: init.history,
             run_generation: RunGeneration::default(),
@@ -622,6 +649,9 @@ impl SimpleComponent for SqlEditor {
                     result,
                     name: self.export_name(),
                 });
+            }
+            SqlEditorInput::Grid(GridMsg::ExportStreamedResults(request)) => {
+                let _ = sender.output(SqlEditorOutput::ExportStreamedResults(request));
             }
             SqlEditorInput::Grid(_) => {}
             SqlEditorInput::SplitToggled(visible) => self.split_view.set_visible(visible),
@@ -790,6 +820,25 @@ impl SimpleComponent for SqlEditor {
                 );
             }
 
+            SqlEditorInput::StreamStarted {
+                generation,
+                identity,
+                sql_preview,
+                export_query,
+                accepted,
+            } => self.on_stream_started(generation, identity, sql_preview, export_query, accepted),
+
+            SqlEditorInput::StreamPage {
+                generation,
+                sequence,
+                page,
+                accepted,
+            } => self.on_stream_page(generation, sequence, page, accepted),
+
+            SqlEditorInput::StreamFinished { generation, terminal } => {
+                self.on_stream_finished(generation, terminal, &sender);
+            }
+
             SqlEditorInput::ShowCancelled(generation) => {
                 let Some((terminal, context)) = self.finish_run(generation, &sender) else {
                     return;
@@ -900,60 +949,7 @@ impl SimpleComponent for SqlEditor {
 }
 
 impl SqlEditor {
-    fn export_name(&self) -> String {
-        let buffer = self.source_view.buffer();
-        let (start, end) = buffer.bounds();
-        export_name_for_query(&buffer.text(&start, &end, true))
-    }
-
-    fn metadata(&self) -> Option<ConnectionMetadata> {
-        self.database.metadata(self.connection_id?)
-    }
-
-    fn begin_run(&mut self, sql: String, single_statement: bool, sender: ComponentSender<Self>) {
-        if self.session_teardown_active {
-            return;
-        }
-        let driver_id = self.metadata().map(|metadata| metadata.driver_id).unwrap_or_default();
-        let (statements, error_policy) = if single_statement {
-            (
-                vec![sql.clone()],
-                tablepro_core::sql_syntax::script::BatchErrorPolicy::StopScript,
-            )
-        } else {
-            match script_statements(&sql, &driver_id) {
-                Ok(planned) => (planned.statements, planned.error_policy),
-                Err(message) => {
-                    self.status.set_label(&message);
-                    return;
-                }
-            }
-        };
-        let names = crate::services::query_parameters::statement_names(&sql, &driver_id);
-        if names.is_empty() {
-            self.execute_sql(sql, statements, error_policy, std::collections::HashMap::new(), sender);
-            return;
-        }
-        let Some(window) = self
-            .source_view
-            .root()
-            .and_then(|root| root.downcast::<gtk::Window>().ok())
-        else {
-            self.status
-                .set_label(&crate::tr!("Cannot ask for parameter values without a window"));
-            return;
-        };
-        crate::ui::parameters_dialog::present(&window, &names, move |values| {
-            sender.input(SqlEditorInput::RunWithParameters {
-                sql: sql.clone(),
-                statements: statements.clone(),
-                error_policy,
-                values,
-            });
-        });
-    }
-
-    fn execute_sql(
+    pub(super) fn execute_sql(
         &mut self,
         trimmed: String,
         statements: Vec<String>,
@@ -988,6 +984,7 @@ impl SqlEditor {
         self.set_running(true, conn.supports_server_cancellation(), &sender);
         self.status.set_label(&crate::tr!("Running…"));
         clear_box(&self.results_holder);
+        self.streaming = None;
         self.clear_run_marks();
 
         self.executions.insert(
@@ -1001,11 +998,14 @@ impl SqlEditor {
 
         let timeout_secs =
             crate::services::operation_control::timeout_for(&self.preferences, &self.database, self.connection_id);
+        let export_origin = origin.clone();
+        let export_suggested_name = export_name_for_query(&trimmed);
         let driver_id = self
             .executions
             .get(&generation)
             .map(|context| context.metadata.driver_id.clone())
             .unwrap_or_default();
+        let export_driver_id = driver_id.clone();
         let target = self.statement_target(conn);
         let sender_clone = sender.clone();
         sender.command(move |_, shutdown| {
@@ -1021,14 +1021,63 @@ impl SqlEditor {
                             });
                         }
                     };
-                    let msg = match run_statements(
-                        target.clone(),
-                        statements,
-                        &driver_id,
-                        &parameter_values,
-                        &control,
-                        error_policy,
-                        succeeded,
+                    let page_sender = sender_clone.clone();
+                    let stream_update = move |update| {
+                        let sender = page_sender.clone();
+                        let export_origin = export_origin.clone();
+                        let export_driver_id = export_driver_id.clone();
+                        let export_suggested_name = export_suggested_name.clone();
+                        Box::pin(async move {
+                            match update {
+                                StreamUpdate::Started {
+                                    identity,
+                                    sql_preview,
+                                    sql,
+                                    params,
+                                } => {
+                                    let (accepted, delivered) = tokio::sync::oneshot::channel();
+                                    sender.input(SqlEditorInput::StreamStarted {
+                                        generation,
+                                        identity,
+                                        sql_preview,
+                                        export_query: export_origin.map(|origin| {
+                                            crate::ui::export_dialog::StreamExportQuery {
+                                                origin,
+                                                driver_id: export_driver_id.clone(),
+                                                sql,
+                                                params,
+                                                timeout_secs,
+                                                suggested_name: export_suggested_name.clone(),
+                                            }
+                                        }),
+                                        accepted,
+                                    });
+                                    delivered.await.unwrap_or(false)
+                                }
+                                StreamUpdate::Page { sequence, page } => {
+                                    let (accepted, delivered) = tokio::sync::oneshot::channel();
+                                    sender.input(SqlEditorInput::StreamPage {
+                                        generation,
+                                        sequence,
+                                        page,
+                                        accepted,
+                                    });
+                                    delivered.await.unwrap_or(false)
+                                }
+                            }
+                        }) as std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send>>
+                    };
+                    let msg = match run_statements_with_stream(
+                        StatementRun {
+                            target: target.clone(),
+                            statements,
+                            driver_id: &driver_id,
+                            parameter_values: &parameter_values,
+                            control: &control,
+                            error_policy,
+                            succeeded,
+                        },
+                        stream_update,
                     )
                     .await
                     {
@@ -1037,11 +1086,15 @@ impl SqlEditor {
                             generation,
                             secs: timeout_secs,
                         },
+                        ScriptRunResult::Streamed(terminal) => SqlEditorInput::StreamFinished { generation, terminal },
                         ScriptRunResult::Completed(outcomes) => {
                             let total_ms: u128 = outcomes.iter().map(|o| o.elapsed_ms).sum();
                             let n_ok = outcomes
                                 .iter()
-                                .filter(|o| matches!(o.kind, StatementOutcomeKind::Rows(_)))
+                                .filter(|o| {
+                                    matches!(o.kind, StatementOutcomeKind::Rows(_))
+                                        || matches!(o.kind, StatementOutcomeKind::Streamed(_))
+                                })
                                 .count();
                             let n_err = outcomes
                                 .iter()
@@ -1061,59 +1114,6 @@ impl SqlEditor {
                     }
                 })
                 .drop_on_shutdown()
-        });
-    }
-
-    fn set_running(&self, running: bool, supports_server_cancellation: bool, sender: &ComponentSender<Self>) {
-        self.run_button.set_sensitive(!running && !self.session_teardown_active);
-        self.cancel_button
-            .set_visible(show_cancel_button(running, supports_server_cancellation));
-        self.running_spinner.set_visible(running);
-        let _ = sender.output(SqlEditorOutput::RunStateChanged(running));
-    }
-
-    fn finish_run(
-        &mut self,
-        generation: u64,
-        sender: &ComponentSender<Self>,
-    ) -> Option<(RunTerminal, ExecutionContext)> {
-        let terminal = self.run_generation.finish(generation)?;
-        let context = self.executions.remove(&generation)?;
-        if terminal.became_idle {
-            self.set_running(false, false, sender);
-            if let Ok(elapsed) = context.started_at.elapsed() {
-                finish_notice::notify_if_unattended(&self.source_view, elapsed);
-            }
-            self.try_start_session_teardown(sender);
-        }
-        Some((terminal, context))
-    }
-
-    fn record_history(
-        &self,
-        context: ExecutionContext,
-        duration_ms: i64,
-        rows_affected: Option<i64>,
-        outcome: Outcome,
-    ) {
-        let Some(history) = self.history.clone() else {
-            return;
-        };
-        let entry = NewEntry {
-            query: context.sql,
-            driver_id: context.metadata.driver_id,
-            connection_id: context.metadata.id,
-            connection_name: context.metadata.name,
-            executed_at: context.started_at,
-            duration_ms: Some(duration_ms),
-            rows_affected,
-            outcome,
-            source: tablepro_storage::query_history::Source::Editor,
-        };
-        relm4::spawn(async move {
-            if let Err(e) = history.record(entry).await {
-                tracing::warn!(error = %e, "history record failed");
-            }
         });
     }
 }

@@ -66,6 +66,7 @@ pub enum GridMsg {
     },
     ShowRowAsJson(String),
     ExportResults(QueryResult),
+    ExportStreamedResults(crate::ui::export_dialog::StreamExportRequest),
     SetCellNull {
         row_position: u32,
         col_index: usize,

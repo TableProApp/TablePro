@@ -1,3 +1,4 @@
+use super::stream_pages::StreamTerminal;
 use relm4::gtk::prelude::*;
 use sourceview5::prelude::*;
 
@@ -21,8 +22,13 @@ pub(super) fn statement_start_lines(text: &str, statements: &[String]) -> Vec<Op
 }
 
 fn category_of(outcome: &StatementOutcome) -> Option<&'static str> {
-    match outcome.kind {
+    match &outcome.kind {
         StatementOutcomeKind::Rows(_) => Some(OK_CATEGORY),
+        StatementOutcomeKind::Streamed(result) => match &result.terminal {
+            StreamTerminal::Complete => Some(OK_CATEGORY),
+            StreamTerminal::Failed(_) | StreamTerminal::TimedOut => Some(ERROR_CATEGORY),
+            StreamTerminal::Loading | StreamTerminal::Cancelled => None,
+        },
         StatementOutcomeKind::Error(_) => Some(ERROR_CATEGORY),
         StatementOutcomeKind::NotRun => None,
     }

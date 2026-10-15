@@ -5,12 +5,19 @@ use relm4::adw::prelude::*;
 use relm4::{adw, gtk};
 #[cfg(test)]
 use tablepro_core::QueryResult;
-use tablepro_core::{Connection, DriverError, OperationControl, QueryResultBatch, Session, Value};
+use tablepro_core::{
+    Connection, DriverError, OperationControl, QueryCursorId, QueryCursorPage, QueryResultBatch, Session, Value,
+};
 use uuid::Uuid;
 
 use crate::services::database_service::ConnectionIdentity;
 
 use super::{SqlEditor, SqlEditorInput};
+
+mod export_pages;
+pub(crate) use export_pages::query_cursor_export_factory;
+#[cfg(test)]
+pub(crate) use export_pages::query_cursor_export_factory_for_target;
 
 pub(crate) type SharedSession = Arc<tokio::sync::Mutex<Option<Box<dyn Session>>>>;
 
@@ -37,7 +44,128 @@ pub(crate) enum StatementTarget {
     Retired { id: Uuid },
 }
 
+pub(crate) struct StatementCursor {
+    target: StatementTarget,
+    id: QueryCursorId,
+    owned_session: bool,
+}
+
+impl StatementCursor {
+    pub(crate) async fn fetch_page(&self, control: &OperationControl) -> Result<QueryCursorPage, DriverError> {
+        let StatementTarget::Session { shared, .. } = &self.target else {
+            return Err(DriverError::Internal("cursor target is not a session".into()));
+        };
+        let mut session = shared.lock().await;
+        match session.as_mut() {
+            Some(session) => session.fetch_query_cursor_page_controlled(self.id, control).await,
+            None => Err(DriverError::Unsupported("the cursor session was closed".into())),
+        }
+    }
+
+    pub(crate) async fn finish(self, close_cursor: bool) -> Result<(), DriverError> {
+        let StatementTarget::Session { shared, .. } = &self.target else {
+            return Err(DriverError::Internal("cursor target is not a session".into()));
+        };
+        let close = if close_cursor {
+            let mut session = shared.lock().await;
+            match session.as_mut() {
+                Some(session) => {
+                    let control = OperationControl::with_timeout(std::time::Duration::from_secs(10));
+                    session.close_query_cursor_controlled(self.id, &control).await
+                }
+                None => Ok(()),
+            }
+        } else {
+            Ok(())
+        };
+        let rollback_control = OperationControl::with_timeout(std::time::Duration::from_secs(10));
+        let rollback = self.target.query("ROLLBACK", &[], &rollback_control).await.map(|_| ());
+        let session_close = if self.owned_session {
+            close_for_teardown(shared.clone()).await
+        } else {
+            Ok(())
+        };
+        close.and(rollback).and(session_close)
+    }
+}
+
 impl StatementTarget {
+    pub(crate) async fn open_query_cursor(
+        &self,
+        sql: &str,
+        params: &[Value],
+        control: &OperationControl,
+    ) -> Result<Option<StatementCursor>, DriverError> {
+        let (target, owned_session) = match self {
+            Self::Pool(connection) => {
+                let session = connection.open_session().await?;
+                let shared = Arc::new(tokio::sync::Mutex::new(Some(session)));
+                (
+                    Self::Session {
+                        id: Uuid::new_v4(),
+                        shared,
+                    },
+                    true,
+                )
+            }
+            Self::Session { .. } => {
+                let Some((_, transaction_open, usable)) = self.session_state().await else {
+                    return Ok(None);
+                };
+                if transaction_open || !usable {
+                    return Ok(None);
+                }
+                (self.clone(), false)
+            }
+            Self::Retired { .. } => return Err(retired_session_error()),
+        };
+        let begin = target
+            .query("BEGIN READ ONLY ISOLATION LEVEL REPEATABLE READ", &[], control)
+            .await;
+        if let Err(error) = begin {
+            Self::release_cursor_session(&target, owned_session).await;
+            return Err(error);
+        }
+        let cursor_id = match &target {
+            Self::Session { shared, .. } => {
+                let mut session = shared.lock().await;
+                match session.as_mut() {
+                    Some(session) => session.open_query_cursor_controlled(sql, params, control).await,
+                    None => Err(DriverError::Unsupported("the cursor session was closed".into())),
+                }
+            }
+            Self::Pool(_) | Self::Retired { .. } => Err(DriverError::Internal("cursor target is not a session".into())),
+        };
+        match cursor_id {
+            Ok(id) => Ok(Some(StatementCursor {
+                target,
+                id,
+                owned_session,
+            })),
+            Err(error) => {
+                Self::release_cursor_session(&target, owned_session).await;
+                if matches!(error, DriverError::Unsupported(_)) {
+                    Ok(None)
+                } else {
+                    Err(error)
+                }
+            }
+        }
+    }
+
+    async fn release_cursor_session(target: &StatementTarget, owned_session: bool) {
+        let rollback_control = OperationControl::with_timeout(std::time::Duration::from_secs(10));
+        if let Err(error) = target.query("ROLLBACK", &[], &rollback_control).await {
+            tracing::warn!(%error, "read-only cursor setup rollback failed");
+        }
+        if owned_session
+            && let Self::Session { shared, .. } = target
+            && let Err(error) = close_for_teardown(shared.clone()).await
+        {
+            tracing::warn!(%error, "read-only cursor setup session close failed");
+        }
+    }
+
     pub(crate) async fn query(
         &self,
         sql: &str,

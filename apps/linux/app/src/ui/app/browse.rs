@@ -523,6 +523,35 @@ impl App {
         );
     }
 
+    pub(super) fn on_export_streamed_results(&self, request: crate::ui::export_dialog::StreamExportRequest) {
+        let Some(connection) = request.query.origin.connection(&self.database) else {
+            self.show_toast(&crate::tr!("The connection for this result is no longer available."));
+            return;
+        };
+        let result = QueryResult {
+            columns: request.columns,
+            rows: Vec::new(),
+            truncated: false,
+        };
+        let fetcher = crate::ui::editor::query_cursor_export_factory(connection, request.query.clone());
+        crate::ui::export_dialog::present_with_format(
+            &self.window,
+            &self.toast_overlay,
+            crate::ui::export_dialog::ExportRequest {
+                paged: Some(crate::ui::export_dialog::PagedExport {
+                    mode: crate::ui::export_dialog::PagedExportMode::GuardedQuery,
+                    total_rows: None,
+                    open: fetcher,
+                }),
+                result,
+                suggested_name: request.query.suggested_name,
+                driver_id: request.query.driver_id,
+            },
+            false,
+            &self.preferences,
+        );
+    }
+
     fn relation_is_ordinary_table(&self, schema: Option<&str>, table: &str) -> bool {
         use crate::services::sidebar_tree::NodeKind;
         self.sidebar_nodes.borrow().iter().any(|node| {
@@ -575,6 +604,7 @@ impl App {
             &self.toast_overlay,
             crate::ui::export_dialog::ExportRequest {
                 paged: Some(crate::ui::export_dialog::PagedExport {
+                    mode: crate::ui::export_dialog::PagedExportMode::FullTable,
                     total_rows,
                     open: page_fetcher_factory(conn, plan),
                 }),
@@ -716,12 +746,8 @@ fn page_fetcher_factory(
         })
     });
     std::sync::Arc::new(move |cancel| {
-        Box::new(crate::services::export_pages::page_fetcher(
-            conn.clone(),
-            plan.clone(),
-            run.clone(),
-            cancel,
-        ))
+        let fetcher = crate::services::export_pages::page_fetcher(conn.clone(), plan.clone(), run.clone(), cancel);
+        crate::ui::export_dialog::PageFetcher::new(fetcher, || Ok(()))
     })
 }
 

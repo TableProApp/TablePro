@@ -10,6 +10,7 @@ use tokio_util::sync::CancellationToken;
 pub(super) enum JobSource {
     Loaded(tablepro_core::QueryResult),
     Paged {
+        mode: super::PagedExportMode,
         columns: Vec<tablepro_core::ColumnInfo>,
         total: Option<usize>,
         open: super::PageFetcherFactory,
@@ -27,7 +28,13 @@ pub(super) struct ExportJob {
 }
 
 fn write_export(job: ExportJob, cancel: &CancellationToken, completed: &AtomicUsize) -> Result<(), ExportError> {
-    if matches!(&job.source, JobSource::Paged { .. }) {
+    if matches!(
+        &job.source,
+        JobSource::Paged {
+            mode: super::PagedExportMode::FullTable,
+            ..
+        }
+    ) {
         return Err(ExportError::Source(snapshot_refusal_message()));
     }
     let export = ResultExport {
@@ -45,15 +52,39 @@ fn write_export(job: ExportJob, cancel: &CancellationToken, completed: &AtomicUs
         JobSource::Loaded(result) => {
             tablepro_core::export::write_result_file(&job.path, &result, &export, cancelled, progress)
         }
-        JobSource::Paged { columns, total, open } => tablepro_core::export::write_paged_file(
-            &job.path,
-            &columns,
-            total.unwrap_or(0),
-            &export,
-            open(cancel.clone()),
-            cancelled,
-            progress,
-        ),
+        JobSource::Paged {
+            mode: super::PagedExportMode::GuardedQuery,
+            columns,
+            total,
+            open,
+        } => {
+            let mut pages = open(cancel.clone());
+            let result = tablepro_core::export::write_paged_file(
+                &job.path,
+                &columns,
+                total.unwrap_or(0),
+                &export,
+                || pages.next_page(),
+                cancelled,
+                progress,
+            );
+            finish_pages(result, pages.finish())
+        }
+        JobSource::Paged {
+            mode: super::PagedExportMode::FullTable,
+            ..
+        } => Err(ExportError::Source(snapshot_refusal_message())),
+    }
+}
+
+fn finish_pages(result: Result<(), ExportError>, finish: Result<(), ExportError>) -> Result<(), ExportError> {
+    match (result, finish) {
+        (Err(error), Err(cleanup)) => {
+            tracing::warn!(%cleanup, "paged export source cleanup failed after export error");
+            Err(error)
+        }
+        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+        (Ok(()), Ok(())) => Ok(()),
     }
 }
 
@@ -201,11 +232,12 @@ mod tests {
         let calls = Arc::new(AtomicUsize::new(0));
         let opened = calls.clone();
         let source = JobSource::Paged {
+            mode: super::super::PagedExportMode::FullTable,
             columns: Vec::new(),
             total: None,
             open: Arc::new(move |_| {
                 opened.fetch_add(1, Ordering::SeqCst);
-                Box::new(|| Ok(None))
+                super::super::PageFetcher::new(|| Ok(None), || Ok(()))
             }),
         };
         let outcome = write_export(
@@ -247,5 +279,141 @@ mod tests {
         )
         .unwrap();
         assert_eq!(std::fs::read_to_string(path).unwrap(), "label\n\"hello, export\"\n");
+    }
+
+    #[test]
+    fn a_guarded_query_export_finishes_its_source_after_writing() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("query.csv");
+        let finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let finished_source = finished.clone();
+        let source = JobSource::Paged {
+            mode: super::super::PagedExportMode::GuardedQuery,
+            columns: vec![tablepro_core::ColumnInfo {
+                name: "id".into(),
+                data_type: "BIGINT".into(),
+                nullable: false,
+                primary_key: false,
+                is_auto_increment: false,
+                default_value: None,
+                is_generated: false,
+                comment: None,
+                collation: None,
+                enum_type: None,
+                domain_type: None,
+            }],
+            total: None,
+            open: Arc::new(move |_| {
+                let mut sent = false;
+                let finished = finished_source.clone();
+                super::super::PageFetcher::new(
+                    move || {
+                        if sent {
+                            return Ok(None);
+                        }
+                        sent = true;
+                        Ok(Some(vec![vec![tablepro_core::Value::Int(42)]]))
+                    },
+                    move || {
+                        finished.store(true, Ordering::SeqCst);
+                        Ok(())
+                    },
+                )
+            }),
+        };
+
+        write_export(
+            job(path.clone(), source),
+            &CancellationToken::new(),
+            &AtomicUsize::new(0),
+        )
+        .unwrap();
+
+        assert!(finished.load(Ordering::SeqCst));
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "id\n42\n");
+    }
+
+    #[test]
+    fn a_cancelled_guarded_query_export_still_finishes_its_source() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("query.csv");
+        let cancel = CancellationToken::new();
+        let finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let finished_source = finished.clone();
+        let source = JobSource::Paged {
+            mode: super::super::PagedExportMode::GuardedQuery,
+            columns: vec![tablepro_core::ColumnInfo {
+                name: "id".into(),
+                data_type: "BIGINT".into(),
+                nullable: false,
+                primary_key: false,
+                is_auto_increment: false,
+                default_value: None,
+                is_generated: false,
+                comment: None,
+                collation: None,
+                enum_type: None,
+                domain_type: None,
+            }],
+            total: None,
+            open: Arc::new(move |cancel| {
+                let finished = finished_source.clone();
+                let mut sent = false;
+                super::super::PageFetcher::new(
+                    move || {
+                        if sent {
+                            return Ok(None);
+                        }
+                        sent = true;
+                        cancel.cancel();
+                        Ok(Some(vec![vec![tablepro_core::Value::Int(42)]]))
+                    },
+                    move || {
+                        finished.store(true, Ordering::SeqCst);
+                        Ok(())
+                    },
+                )
+            }),
+        };
+        let rows = Arc::new(AtomicUsize::new(0));
+        let rows_written = rows.clone();
+        let outcome = write_export(job(path.clone(), source), &cancel, &rows);
+        assert!(matches!(outcome, Err(ExportError::Cancelled)));
+        assert!(finished.load(Ordering::SeqCst));
+        assert_eq!(rows_written.load(Ordering::SeqCst), 0);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn a_failed_guarded_query_export_finishes_its_source_and_keeps_the_source_error() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("query.csv");
+        let finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let finished_source = finished.clone();
+        let source = JobSource::Paged {
+            mode: super::super::PagedExportMode::GuardedQuery,
+            columns: Vec::new(),
+            total: None,
+            open: Arc::new(move |_| {
+                let finished = finished_source.clone();
+                super::super::PageFetcher::new(
+                    || Err(ExportError::Source("source page failed".into())),
+                    move || {
+                        finished.store(true, Ordering::SeqCst);
+                        Ok(())
+                    },
+                )
+            }),
+        };
+
+        let outcome = write_export(
+            job(path.clone(), source),
+            &CancellationToken::new(),
+            &AtomicUsize::new(0),
+        );
+
+        assert!(matches!(outcome, Err(ExportError::Source(message)) if message == "source page failed"));
+        assert!(finished.load(Ordering::SeqCst));
+        assert!(!path.exists());
     }
 }

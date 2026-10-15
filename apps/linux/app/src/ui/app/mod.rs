@@ -833,6 +833,7 @@ impl SimpleComponent for App {
                 },
                 &self.preferences,
             ),
+            AppMsg::ExportStreamedResults(request) => self.on_export_streamed_results(request),
             AppMsg::ShowToast(msg) => self.show_toast(&msg),
             AppMsg::BrowseTabDirtyChanged(tab_id, dirty) => self.refresh_browse_tab_dirty(tab_id, dirty),
             AppMsg::ToggleSidebarGroup(key) => self.toggle_sidebar_group(&key),

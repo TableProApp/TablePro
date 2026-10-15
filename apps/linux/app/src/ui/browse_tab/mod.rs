@@ -172,259 +172,12 @@ pub struct BrowseTab {
     suppress_combo_emit: Rc<std::cell::Cell<bool>>,
 }
 
-#[derive(Debug)]
-pub enum BrowseTabInput {
-    /// Replace this tab's grid with the given page of rows.
-    RowsLoaded {
-        request: BrowsePageRequest,
-        result: QueryResult,
-        projected_columns: Option<Vec<usize>>,
-    },
-    /// Schema columns for the current table arrived (governs editability).
-    ColumnsLoaded(Vec<ColumnInfo>),
-    /// Foreign keys for the current table arrived. Drives the cell
-    /// value picker; never blocks or errors the tab on its own.
-    ForeignKeysLoaded(Vec<ForeignKeyInfo>),
-    EnumLabelsLoaded(Vec<(String, Vec<String>)>),
-    /// Total row count for paginator label.
-    RowCountLoaded {
-        request: BrowseRowCountRequest,
-        count: u64,
-    },
-    /// The row-count query failed or returned something unparseable.
-    /// Clears any previously known total instead of leaving it on
-    /// screen as if it were still accurate.
-    RowCountFailed(BrowseRowCountRequest),
-    /// Show an error status page.
-    ShowError(String),
-    /// Re-issue the fetch for this tab (F5).
-    Refresh,
-    /// Clear a multi-row selection (Esc when 2+ rows are selected
-    /// and no search bar / cell editor is active). Single-row
-    /// selections are intentionally preserved — unselecting the
-    /// only-row would strand the keyboard focus indicator.
-    ClearSelection,
-    /// Toggle the inline filter strip's reveal state. Wired to the
-    /// Filter button + Ctrl+F action.
-    ToggleFilterStrip,
-    /// User confirmed a new filter set in the filter strip (or hit
-    /// "Clear all" — that's an empty FilterSet). BrowseTab persists,
-    /// resets pagination to offset 0, refreshes chrome, and
-    /// re-fetches.
-    FilterApplied(tablepro_core::FilterSet),
-    /// User clicked First page (offset → 0).
-    FirstPage,
-    /// User clicked Prev page.
-    PrevPage,
-    /// User clicked Next page.
-    NextPage,
-    /// User clicked Last page (offset → last full page based on
-    /// row count). No-op if the row count isn't known yet.
-    LastPage,
-    /// Sort flipped on column idx (from grid sorter).
-    SortChanged {
-        col_idx: usize,
-        ascending: bool,
-    },
-    /// Page size dropdown changed.
-    PageSizeChanged(u64),
-    /// User clicked the Insert button on this tab's paginator bar.
-    InsertRow,
-    /// Self-dispatched after `InsertRow` to grab focus on the newly-
-    /// inserted draft row's first editable cell. Sent through the
-    /// input queue so the handler reads `self.current_column_view`
-    /// fresh rather than capturing a potentially-stale reference into
-    /// an `idle_add_local_once` closure.
-    FocusInsertedDraft,
-    /// User clicked the Delete Selected button.
-    DeleteSelectedRow,
-    /// Cell-edit / set-null / delete-row / copy-as-insert events from
-    /// this tab's grid (forwarded from its own GridMsg channel). The
-    /// table is implicit — each tab's grid only ever fires for its
-    /// own table.
-    GridCellEdited {
-        row_position: u32,
-        col_index: usize,
-        new_value: String,
-        value: Option<Value>,
-        row_key: Vec<Value>,
-    },
-    FilterByValue {
-        column: String,
-        value: tablepro_core::Value,
-    },
-    GoToReference {
-        column: String,
-        row: Vec<(String, Value)>,
-    },
-    GridSetCellNull {
-        row_position: u32,
-        col_index: usize,
-        row_key: Vec<Value>,
-    },
-    GridDeleteRowAt {
-        row_position: u32,
-        row_key: Vec<Value>,
-    },
-    GridCopyRowAsInsert {
-        row_position: u32,
-    },
-    /// Cell context-menu "Duplicate row" — clone the cell values
-    /// from `row_position` into a fresh draft row prepended to the
-    /// grid. PK / generated / auto-increment columns are blanked so
-    /// the duplicate doesn't inherit the source's identity.
-    DuplicateRow {
-        row_position: u32,
-    },
-    GridCopyToClipboard(String),
-    GridFetchCellValue {
-        col_index: usize,
-        column_name: String,
-        row_key: Vec<Value>,
-    },
-    CellValueLoaded {
-        request: BrowseCellValueRequest,
-        col_index: usize,
-        column_name: String,
-        value: Value,
-    },
-    CellValueFailed(BrowseCellValueRequest, String),
-    IncompleteRowData,
-    ProjectionFailure,
-    GridShowRowAsJson(String),
-    GridExportResults(QueryResult),
-    /// Ctrl+Z on this tab. Pops one entry off the change tracker's
-    /// undo stack AND mirrors the visual revert in the grid:
-    /// CellEdit → reset the RowObject's cell + items_changed;
-    /// Insert → remove the draft RowObject from the ListStore;
-    /// Delete → re-bind the row so the strikethrough overlay drops.
-    /// Without the mirror the chrome (counter, .tp-cell-modified
-    /// class) updated correctly while the cell text stayed at the
-    /// post-edit value.
-    Undo,
-    /// Ctrl+Shift+Z. Symmetric to Undo: re-applies the popped op
-    /// and mirrors the visual change forward.
-    Redo,
-    /// User clicked Save — materialize tracker pending changes and
-    /// emit them as a single `BrowseTabOutput::ExecuteTransaction`
-    /// for atomic commit.
-    CommitSave,
-    /// User clicked Discard — clear all pending edits and refetch
-    /// the page so the grid shows committed values again.
-    DiscardAll,
-    /// Pending count changed (from tracker subscription) — refresh
-    /// the Save / Discard / counter visibility.
-    PendingCountChanged(usize),
-    /// Specific rows mutated in the tracker (cell edit, set NULL,
-    /// insert, delete, undo, redo). Triggers a targeted re-bind of
-    /// just those rows so pending-state CSS classes update without
-    /// re-binding the entire visible viewport.
-    ChangedRows(Vec<crate::services::change_tracker::RowKey>),
-    /// Save command resolved successfully — clear tracker, refetch.
-    SaveCompleted,
-    /// Save command failed — surface error to the user; keep the
-    /// pending changeset intact so they can retry.
-    SaveFailed(String),
-    /// App-side mapping resolved a `DriverError::Transaction`'s
-    /// statement_index to a `StatementSource`. Find the matching row
-    /// in the current grid (by draft_id for inserts, PK for updates
-    /// and deletes) and scroll-and-select it. Best-effort: if the row
-    /// isn't on the current page (paginated past it, sorted away),
-    /// the alert dialog still tells the user which statement failed.
-    FlashErrorRow(crate::services::change_tracker::StatementSource),
-    /// Ctrl+C with row(s) selected: serialize each selected row as
-    /// tab-separated cells and push to the system clipboard. Falls
-    /// through to GTK's default Ctrl+C if no rows are selected so
-    /// inline cell-text selection still copies the highlighted text.
-    CopySelectedRowsAsTsv,
-    /// Ctrl+V on the grid (focus not in a cell editor): show a toast
-    /// telling the user multi-row paste isn't supported. Cell-level
-    /// paste continues to work via the normal text-editor path.
-    PasteNotSupported,
-    Paste {
-        row: u32,
-        col: usize,
-        row_key: Vec<Value>,
-    },
-    PasteText(paste::PasteTextInput),
-    /// Ctrl+A: select every visible row.
-    SelectAllRows,
-    /// Home / End: scroll-and-focus the first / last row of the
-    /// current page. Cell-level Home/End within a row would conflict
-    /// with the cell editor's text-edit behaviour, so we scope
-    /// these to row navigation only — matches how GtkColumnView
-    /// users expect Home/End to behave in a list context.
-    GoToFirstRow,
-    GoToLastRow,
-}
-
-#[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
-pub enum BrowseTabOutput {
-    OpenReferencedRow {
-        schema: Option<String>,
-        table: String,
-        filter: tablepro_core::FilterSet,
-    },
-    ChooseReferencedRow(Vec<reference::ReferencedRowTarget>),
-    /// Tab needs the next page of rows fetched (state is in the slot).
-    FetchPage,
-    /// Tab needs schema columns fetched.
-    FetchColumns,
-    /// Tab needs the row count fetched.
-    FetchRowCount,
-    FetchCellValue {
-        request: BrowseCellValueRequest,
-        col_index: usize,
-        column_name: String,
-        row_key: Vec<Value>,
-    },
-    /// Display state changed in a way that should be persisted.
-    StateChanged,
-    /// Cell context-menu "Copy row as INSERT".
-    CopyRowAsInsert {
-        row_position: u32,
-    },
-    /// Generic clipboard-copy request from grid.
-    CopyToClipboard(String),
-    ShowRowAsJson(String),
-    ExportResults {
-        result: QueryResult,
-        name: String,
-    },
-    /// Column-name vocabulary for editor autocomplete; App merges across tabs.
-    SchemaWordsChanged(Vec<String>),
-    /// Show a generic info dialog for "Cannot edit / select exactly one row".
-    ShowSelectionAlert {
-        title: String,
-        body: String,
-    },
-    /// Show a transient toast — used for inline cell-input validation
-    /// errors ("Invalid date format" etc.) where a modal alert is too
-    /// heavy for the user's intent.
-    ShowToast(String),
-    /// Pending-changeset count crossed the empty / non-empty boundary.
-    /// `true` = at least one pending edit; the App-side handler
-    /// prefixes the tab title with the GNOME-Text-Editor "•" dot.
-    DirtyChanged(bool),
-    /// Run a sequence of pending-changeset statements inside a single
-    /// DB transaction. Materialised by the per-tab change tracker on
-    /// Save click. App routes this to `Connection::execute_in_transaction`
-    /// and dispatches `SaveCompleted` / `SaveFailed` back via input.
-    /// `sources[i]` identifies the row that produced `statements[i]`,
-    /// so a `DriverError::Transaction { statement_index, .. }` can be
-    /// mapped back to the offending grid row for scroll-and-select.
-    ExecuteTransaction {
-        statements: Vec<(String, Vec<Value>)>,
-        sources: Vec<crate::services::change_tracker::StatementSource>,
-    },
-}
-
 mod accessors;
 mod choices;
 mod chrome;
 mod grid_messages;
 mod grid_render;
+mod messages;
 mod paste;
 pub(crate) mod reference;
 mod requests;
@@ -439,6 +192,7 @@ mod value_view;
 
 pub(crate) use choices::scalar_enum_columns;
 use chrome::*;
+pub use messages::{BrowseTabInput, BrowseTabOutput};
 pub use requests::{BrowseCellValueRequest, BrowseLoadFailure, BrowsePageRequest, BrowseRowCountRequest};
 use requests::{CellValueRequestTracker, PageRequestTracker, RowCountRequestTracker};
 use selection::*;
@@ -1177,6 +931,9 @@ impl SimpleComponent for BrowseTab {
                     result,
                     name: self.table_label(),
                 });
+            }
+            BrowseTabInput::GridExportStreamedResults(request) => {
+                let _ = sender.output(BrowseTabOutput::ExportStreamedResults(request));
             }
             BrowseTabInput::CopySelectedRowsAsTsv => self.handle_copy_selected_rows_as_tsv(sender),
             BrowseTabInput::PasteNotSupported => self.handle_paste_not_supported(sender),
