@@ -197,6 +197,19 @@ fn bounded_document_rows(docs: &[Document], columns: &[ColumnInfo]) -> (Vec<Vec<
     (rows, false)
 }
 
+async fn observe_sample<S>(mut sample: S) -> Result<BTreeMap<String, String>, mongodb::error::Error>
+where
+    S: futures::Stream<Item = Result<Document, mongodb::error::Error>> + Unpin,
+{
+    let mut types = BTreeMap::new();
+    while let Some(doc) = sample.try_next().await? {
+        for (key, value) in &doc {
+            observe_bson_type(&mut types, key, value);
+        }
+    }
+    Ok(types)
+}
+
 impl MongodbConnection {
     fn db(&self) -> Database {
         self.client.database(&self.database_name)
@@ -229,13 +242,7 @@ impl MongodbConnection {
             .limit(METADATA_SAMPLE_SIZE)
             .await
             .map_err(map_mongo_error)?;
-        let sample_docs: Vec<Document> = cursor.try_collect().await.map_err(map_mongo_error)?;
-        let mut types = BTreeMap::new();
-        for doc in &sample_docs {
-            for (key, value) in doc {
-                observe_bson_type(&mut types, key, value);
-            }
-        }
+        let mut types = observe_sample(cursor).await.map_err(map_mongo_error)?;
         types.entry("_id".into()).or_insert_with(|| "ObjectId".into());
         let mut columns = columns_from_types(types);
         merge_page_types(&mut columns, &page_docs);
@@ -593,6 +600,40 @@ impl MongodbConnection {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn sampling_infers_types_one_document_at_a_time_and_marks_a_late_difference() {
+        let docs = (0..200).map(|index| {
+            let value = if index == 199 {
+                mongodb::bson::Bson::String("late".into())
+            } else {
+                mongodb::bson::Bson::Int32(index)
+            };
+            Ok(doc! { "n": value, "name": "x" })
+        });
+        let types = observe_sample(futures::stream::iter(docs)).await.unwrap();
+        assert_eq!(types.get("n").map(String::as_str), Some("mixed"));
+        assert_eq!(types.get("name").map(String::as_str), Some("string"));
+    }
+
+    #[tokio::test]
+    async fn sampling_stops_reading_after_an_error() {
+        let pulled = std::sync::atomic::AtomicUsize::new(0);
+        let stream = futures::stream::unfold(0usize, |index| {
+            let pulled = &pulled;
+            async move {
+                pulled.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let item = if index == 2 {
+                    Err(mongodb::error::Error::custom("boom"))
+                } else {
+                    Ok(doc! { "n": 1 })
+                };
+                Some((item, index + 1))
+            }
+        });
+        assert!(observe_sample(Box::pin(stream)).await.is_err());
+        assert_eq!(pulled.load(std::sync::atomic::Ordering::SeqCst), 3);
+    }
 
     #[tokio::test]
     async fn open_session_is_refused() {
