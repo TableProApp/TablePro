@@ -24,6 +24,9 @@ i18n.gettext(
     '--keyword=ngettext_f:1,2',
     '--keyword=pgettext_f:1c,2',
     '--from-code=UTF-8',
+    # CI fails when the committed template differs from a fresh one, and
+    # line numbers would make every edit above a string count as a change.
+    '--add-location=file',
     '--add-comments=Translators:',
     '--package-name=' + meson.project_name(),
     '--package-version=' + meson.project_version(),

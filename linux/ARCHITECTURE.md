@@ -330,7 +330,7 @@ Meson is the build system and Cargo is the Rust compiler; see [ADR 0006](docs/de
 
 The floor is GNOME 50 (GTK 4.22, libadwaita 1.9, GtkSourceView 5.18, GLib 2.88); see [ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md). The host runner image (`ubuntu-24.04`) ships GLib 2.80, well below that, so the system-deps check fails there.
 
-`.github/workflows/build-linux.yml` runs the **Fast checks** job inside a `container: ubuntu:26.04`, which ships GLib 2.88 and the meson, appstream and desktop-file-utils packages the data suite needs. The container is minimal, so the install step pulls `ca-certificates`, `curl` and `git` before rust-toolchain and Swatinem can run. The **integration** job stays on the host runner because the driver crates depend only on `tablepro-core` and `tablepro-net` and don't pull libadwaita.
+`.github/workflows/build-linux.yml` runs the **Fast checks** job inside a `container: ubuntu:26.04`, which ships GLib 2.88 and the meson, appstream and desktop-file-utils packages the data suite needs. The container is minimal, so the install step pulls `ca-certificates`, `curl` and `git` before rust-toolchain and Swatinem can run. The **integration** job stays on the host runner because the driver crates depend only on `tablepro-core` and `tablepro-net` and don't pull libadwaita. The translations job runs in `fedora:44`, whose xgettext reads Rust, and both Flatpak jobs in the `gnome-50` Flatpak image: the Devel manifest with every Meson suite, and the release shape Flathub builds, offline from the dist tarball, then linted. The supply-chain job runs cargo-deny, cargo-shear, the license regeneration and zizmor. [docs/testing.md](docs/testing.md#ci) lists every job.
 
 ## Out of scope
 

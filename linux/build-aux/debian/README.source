@@ -1,0 +1,22 @@
+tablepro for Debian and Ubuntu
+==============================
+
+This directory is the debian/ directory of the .deb that TablePro publishes
+on GitHub Releases for Ubuntu 26.04. It lives in the upstream tree under
+build-aux/debian and is copied to debian/ by
+build-aux/packaging/build-deb.sh, which also writes debian/changelog with
+dch --create for the version being built.
+
+Toolchain: the workspace needs Rust 1.98 (rust-toolchain.toml), and Ubuntu
+26.04 ships rustc 1.93, so the build installs the pinned toolchain with the
+rustup package before dpkg-buildpackage runs. The package therefore cannot
+be built in the Ubuntu or Debian archive, and is built as a binary-only
+package (dpkg-buildpackage -b).
+
+Crates: the build is offline. tablepro-X.Y.Z-vendor.tar.xz, published next
+to tablepro-X.Y.Z.tar.xz, holds vendor/ from cargo vendor --versioned-dirs
+and vendor/cargo-config.toml, which debian/rules hands to Meson as
+-Dcargo_config. Unpack it into the source tree before building.
+
+debian/copyright is generated from data/licenses/third-party.json by
+build-aux/update-third-party-licenses.sh. Do not edit it by hand.

@@ -16,7 +16,7 @@ Phases 2 and 3 in progress (see [ROADMAP.md](ROADMAP.md)). The stack (Rust + GTK
 | Async | the app's tokio runtime (`AppRuntime`) for background work, results delivered to the GLib main loop |
 | DB drivers | sqlx (PG / MySQL / SQLite), tiberius (MSSQL), official `clickhouse` crate; planned: fred (Redis), official mongodb / duckdb crates, etc. |
 | Persistence | libsecret (passwords), gio::Settings (prefs), JSON files (connection metadata) |
-| Distribution | Flathub primary, .deb / .rpm / AppImage secondary |
+| Distribution | Flathub primary; .deb for Ubuntu 26.04 on GitHub Releases and .rpm for Fedora 44 on COPR ([ADR 0017](docs/decisions/0017-distribution-channels.md)) |
 
 ## What this is not
 
@@ -115,6 +115,10 @@ The Flathub manifest is kept in Flathub's repository for the app, the way
 Fractal and Loupe keep theirs. It builds `-Dprofile=default` from the
 release tarball, with a `cargo-sources.json` that `flatpak-cargo-generator`
 writes from that release's `Cargo.lock`, since Flathub builds offline.
+Meson sets its own `CARGO_HOME`, so the manifest also passes
+`-Dcargo_config=cargo/config` for Cargo to find the crates
+`cargo-sources.json` unpacks. CI builds and lints the same shape on every
+pull request, from the tarball `meson dist` writes.
 
 ### Screenshots
 
@@ -127,6 +131,30 @@ Take new ones from the app at default settings (light style, blue accent,
 Adwaita Sans and Adwaita Mono at 11 pt, scale 1) with a 1000×700 window,
 keeping the window shadow and rounded corners, and keep the file names and
 captions in step with the metainfo.
+
+## Packages
+
+A `linux-vX.Y.Z` tag publishes a .deb for Ubuntu 26.04 on GitHub Releases
+and an .rpm for Fedora 44 through COPR, both built from `meson install`
+with the crates from the release's vendor tarball
+([ADR 0017](docs/decisions/0017-distribution-channels.md)). The packaging
+is `build-aux/debian` and `build-aux/rpm/tablepro.spec`.
+
+To build both from the committed tree the way CI does, each step in a
+fresh container, with Docker or Podman:
+
+```bash
+build-aux/packaging/build-packages.sh all _packages
+```
+
+It writes the source and vendor tarballs, the .deb (checked by lintian)
+and the RPMs (checked by rpmlint) under `_packages`, then installs each
+package in a fresh container and starts it. `deb` or `rpm` in place of
+`all` builds one. `meson dist` archives `HEAD`, so commit first.
+
+After a change to `Cargo.lock`, `build-aux/update-third-party-licenses.sh`
+rewrites `debian/copyright` and the spec's `License` tag along with
+`data/licenses`.
 
 ## Opening SQLite files
 

@@ -36,9 +36,14 @@ meson setup _build -Dprofile=development
 dbus-run-session -- meson test -C _build --print-errorlogs
 ```
 
-Three suites: `unit` is `cargo test --workspace --exclude tablepro`, `gtk`
+Four suites: `unit` is `cargo test --workspace --exclude tablepro`, `gtk`
 is `cargo test -p tablepro` with `GSK_RENDERER=cairo` and `GTK_A11Y=test`,
-and `data` runs `desktop-file-validate`, `glib-compile-schemas --strict` and `appstreamcli validate`.
+`data` runs `desktop-file-validate`, `glib-compile-schemas --strict` and `appstreamcli validate`,
+and `packaging` runs the unit tests in `build-aux/tests` and checks that
+`debian/copyright`, the RPM spec and the metainfo agree with `data/licenses`
+and the version Meson builds. In a `-Dprofile=default` build, which the
+packages run, the unit and gtk suites build with `--release` but without
+its fat LTO, which would cost gigabytes and minutes per test binary.
 Tests that need Docker or a Secret Service are ignored. Without a display
 (SSH, containers), prefix with xvfb the way the CI fast job does:
 
@@ -332,12 +337,19 @@ The tests in `crates/app/src/ui/editor/script_runner.rs` drive `run_batches` und
 
 ## CI
 
-GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runner:
+GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runners. Every action is pinned by commit SHA and every tool by version.
 
-1. **Fast checks**: `meson setup`, `cargo fmt --all -- --check`, clippy with and without default features, `meson compile`, `xvfb-run -a dbus-run-session -- meson test --print-errorlogs`, a Secret Service step under `gnome-keyring-daemon`, then `meson dist`. Runs in an `ubuntu:26.04` container, which ships GLib 2.88 plus the meson, appstream and desktop-file-utils packages. [CONTRIBUTING.md](../CONTRIBUTING.md#fast-job-commands) lists the same commands.
-2. **Docker tests**: runs after fast checks pass. One matrix entry per package with docker tests (the PostgreSQL, MySQL, SQL Server and ClickHouse drivers, `tablepro-ssh` against an OpenSSH server container, and `tablepro-test-fixtures` for the fixtures themselves) runs that package's ignored docker tests through cargo-nextest on the host runner's Docker. `tablepro-session` builds storage, which needs GLib 2.88, so its job runs in the fast job's `ubuntu:26.04` image with the host's Docker socket mounted. The app's docker tests (`crates/app/tests/tracker_save_postgres.rs`) run the same way, since the app links GTK; that job names its test targets, because the app's `startup` test needs Meson.
+1. **Fast checks**: `meson setup`, `cargo fmt --all -- --check`, the source greps (no `thread_local!` in services, no blocking file I/O under `ui`, no em dash in user-facing text), clippy with and without default features, `meson compile`, `xvfb-run -a dbus-run-session -- meson test --print-errorlogs`, a Secret Service step under `gnome-keyring-daemon`, then `meson dist`. Runs in an `ubuntu:26.04` container, which ships GLib 2.88 plus the meson, appstream and desktop-file-utils packages. A failed run keeps `_build/meson-logs/testlog.txt` as the `meson-testlog` artifact. The job ends by rendering the release-shaped Flatpak manifest from the dist tarball (below). [CONTRIBUTING.md](../CONTRIBUTING.md#fast-job-commands) lists the same commands.
+2. **Docker tests**: runs after fast checks pass. One matrix entry per package with docker tests (the PostgreSQL driver with PgBouncer, the MySQL driver with MariaDB, the SQL Server and ClickHouse drivers, all four with their TLS suites, `tablepro-ssh` against an OpenSSH server container, and `tablepro-test-fixtures` for the fixtures themselves) runs that package's ignored docker tests through cargo-nextest on the host runner's Docker, one test at a time per package. `tablepro-session` builds storage, which needs GLib 2.88, so its job runs in the fast job's `ubuntu:26.04` image with the host's Docker socket mounted. The app's docker tests (`crates/app/tests/tracker_save_postgres.rs`) run the same way, since the app links GTK; that job names its test targets, because the app's `startup` test needs Meson. The SQLite driver needs no container: its suites run in the fast job.
+3. **Supply chain**: `cargo deny check` against `deny.toml` (advisories, bans, licenses and sources, with every feature and the dev-dependencies), `cargo shear` for unused or misplaced dependencies, `build-aux/update-third-party-licenses.sh` with a diff of the files it writes, and `zizmor` over the Linux workflows.
+4. **Translations**: in `fedora:44`, whose gettext reads Rust. `po/POTFILES.in` must match `git ls-files`, `meson setup --fatal-meson-warnings` must pass, and `po/tablepro.pot` must match a fresh `meson compile -C _build tablepro-pot` in everything but its creation date. A failed run keeps the template it wrote as the `tablepro-pot` artifact.
+5. **Documentation links**: lychee, offline, over every Markdown file under `linux/`, with heading anchors checked.
+6. **Flatpak Devel**: the Devel manifest built in the `gnome-50` Flatpak image for x86_64 and aarch64, with every Meson suite run inside the build sandbox from a tree with no `.git`.
+7. **Flatpak release shape**: the manifest the fast job rendered, which is the Devel manifest with the Flathub app ID, `-Dprofile=default`, the dist tarball as its source and a `cargo-sources.json` that `flatpak-cargo-generator` wrote from `Cargo.lock`, built offline with the screenshots mirrored, then `flatpak-builder-lint` over the manifest and the repository with `build-aux/flatpak/lint-exceptions.json`.
 
-A Translations job also checks `po/POTFILES.in` and extracts the POT template. PRs only merge when every job is green.
+Every job first checks that `linux/meson.build` exists, so the same file can sit on `main` before `linux/` does. GitHub runs a schedule only from the default branch: while `main` has no `linux/`, the Monday run there starts this workflow on the branch the `LINUX_BRANCH` repository variable names, `linux` when it is unset. PRs only merge when every job is green.
+
+`.github/workflows/linux-packages.yml` builds the .deb in `ubuntu:26.04` and the .rpm in `fedora:44` from the release source and vendor tarballs, running every Meson suite inside the package build, then installs each package in a fresh container and starts it. It runs on a pull request that touches the packaging or the Meson files; `build-aux/packaging/build-packages.sh` runs the same steps locally.
 
 ## Coverage
 

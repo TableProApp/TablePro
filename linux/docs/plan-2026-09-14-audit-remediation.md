@@ -1,7 +1,7 @@
 # TablePro Linux remediation plan
 
 **Date**: 2026-09-14  
-**Fixes**: every finding in [audit-2026-09-13-full.md](audit-2026-09-13-full.md) (F-001 to F-138)  
+**Fixes**: every finding of the 2026-09-13 full audit (F-001 to F-138)  
 **Size**: 172 commit-sized tasks in 66 landing steps across 9 workstreams  
 **Details**: contracts, decisions and full task specifications are in [plan-2026-09-14-audit-remediation-details.md](plan-2026-09-14-audit-remediation-details.md)
 

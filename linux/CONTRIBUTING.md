@@ -10,7 +10,7 @@ System packages — see [README.md](README.md) for distro-specific commands. Aft
 cd linux
 meson setup _build -Dprofile=development
 meson compile -C _build        # builds tablepro and tablepro-askpass
-meson test -C _build           # unit, gtk and data suites
+meson test -C _build           # unit, gtk, data and packaging suites
 meson devenv -C _build ./crates/app/tablepro   # run the app
 meson devenv -C _build cargo test   # cargo against the configured app ID
 cargo fmt --all                # format
@@ -55,7 +55,7 @@ CI sets `GTK_A11Y=test` for GTK tests. With `GTK_A11Y=none` GTK records no acces
 
 ### Dependencies
 
-`data/licenses` holds the license notices of every crate the app ships, written from `Cargo.lock` by cargo-about. The About dialog embeds `third-party.json`, and both files install next to `LICENSE`. After a change to `Cargo.lock`, regenerate them and commit the result; the Third-party licenses CI job fails until they match:
+`data/licenses` holds the license notices of every crate the app ships, written from `Cargo.lock` by cargo-about. The About dialog embeds `third-party.json`, and both files install next to `LICENSE`. After a change to `Cargo.lock`, regenerate them and commit the result; the Supply chain CI job fails until they match:
 
 ```bash
 cargo install --locked cargo-about@0.9.2 --features cli

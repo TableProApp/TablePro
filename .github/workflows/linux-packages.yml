@@ -1,0 +1,181 @@
+name: Linux packages
+
+# Builds the .deb and the .rpm from the release source tarballs, each in a
+# fresh container that installs only the build dependencies the package
+# declares, then installs each package in another fresh container with only
+# its runtime dependencies and starts it. release-linux.yml calls this
+# workflow and publishes what it builds.
+
+on:
+  pull_request:
+    paths:
+      - "linux/build-aux/debian/**"
+      - "linux/build-aux/rpm/**"
+      - "linux/build-aux/packaging/**"
+      - "linux/meson.build"
+      - "linux/meson_options.txt"
+      - "linux/crates/app/meson.build"
+      - "linux/data/meson.build"
+      - "linux/po/meson.build"
+      - "linux/rust-toolchain.toml"
+      - ".github/workflows/linux-packages.yml"
+  push:
+    branches: [linux]
+    paths:
+      - "linux/build-aux/debian/**"
+      - "linux/build-aux/rpm/**"
+      - "linux/build-aux/packaging/**"
+      - "linux/meson.build"
+      - "linux/meson_options.txt"
+      - "linux/crates/app/meson.build"
+      - "linux/data/meson.build"
+      - "linux/po/meson.build"
+      - "linux/rust-toolchain.toml"
+      - ".github/workflows/linux-packages.yml"
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      deb-runners:
+        description: JSON list of runners; one .deb is built per runner architecture.
+        type: string
+        default: '["ubuntu-24.04"]'
+
+permissions:
+  contents: read
+
+jobs:
+  sources:
+    name: Source tarballs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: ubuntu:26.04
+    steps:
+      # Before the checkout: without git, actions/checkout downloads a
+      # tarball, which leaves no .git for meson dist to archive.
+      - name: Install git
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Make the source and vendor tarballs
+        run: linux/build-aux/packaging/make-sources.sh --install-deps _packages/sources
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-sources
+          path: _packages/sources
+          if-no-files-found: error
+
+  deb:
+    name: Debian package (${{ matrix.runner }})
+    needs: sources
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.deb-runners || '["ubuntu-24.04"]') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 300
+    container:
+      image: ubuntu:26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-sources
+          path: _packages/sources
+      - name: Build, test and lint the package
+        run: |
+          dist="$(find _packages/sources -name 'tablepro-*.tar.xz' ! -name '*-vendor.tar.xz')"
+          vendor="$(find _packages/sources -name 'tablepro-*-vendor.tar.xz')"
+          linux/build-aux/packaging/build-deb.sh "$dist" "$vendor" _packages/deb
+      - name: Keep the Meson test log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-deb-testlog-${{ runner.arch }}
+          path: _packages/deb/testlog.txt
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-deb-${{ runner.arch }}
+          path: _packages/deb
+          if-no-files-found: error
+
+  deb-install:
+    name: Install the Debian package (${{ matrix.runner }})
+    needs: deb
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.deb-runners || '["ubuntu-24.04"]') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    container:
+      image: ubuntu:26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-deb-${{ runner.arch }}
+          path: _packages/deb
+      - name: Install, start and validate
+        run: linux/build-aux/packaging/smoke-test.sh "$(find _packages/deb -name 'tablepro_*.deb')"
+
+  rpm:
+    name: RPM package
+    needs: sources
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    container:
+      image: fedora:44
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-sources
+          path: _packages/sources
+      - name: Build, test and lint the package
+        run: |
+          dist="$(find _packages/sources -name 'tablepro-*.tar.xz' ! -name '*-vendor.tar.xz')"
+          vendor="$(find _packages/sources -name 'tablepro-*-vendor.tar.xz')"
+          linux/build-aux/packaging/build-rpm.sh "$dist" "$vendor" _packages/rpm
+      - name: Keep the Meson test log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-rpm-testlog
+          path: _packages/rpm/testlog.txt
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-rpm
+          path: _packages/rpm
+          if-no-files-found: error
+
+  rpm-install:
+    name: Install the RPM package
+    needs: rpm
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: fedora:44
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-rpm
+          path: _packages/rpm
+      - name: Install, start and validate
+        run: linux/build-aux/packaging/smoke-test.sh "$(find _packages/rpm -name 'tablepro-[0-9]*.rpm' ! -name '*.src.rpm')"

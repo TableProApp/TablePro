@@ -10,14 +10,15 @@
 # A term matches case-insensitively at the start of a word, so a capitalized or suffixed form is a
 # hit and a word that only ends in a term is not. A term that starts with punctuation, the em dash,
 # matches anywhere. Each hit prints as file:line: term. Exits 1 on a hit, 0 when clean and 2 on a
-# usage error. A diff skips linux/data/licenses/, which reproduces third-party license text verbatim.
+# usage error. A diff skips linux/data/licenses/ and linux/build-aux/debian/copyright, which reproduce
+# third-party license text verbatim.
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 LIST="$SCRIPT_DIR/banned-words.txt"
 LIST_PATH_IN_REPO="scripts/banned-words.txt"
-VERBATIM_DIR_IN_REPO="linux/data/licenses/"
+VERBATIM_IN_REPO="linux/data/licenses/ linux/build-aux/debian/copyright"
 
 usage() {
     sed -n "5,8s/^#   //p" "${BASH_SOURCE[0]}"
@@ -71,12 +72,23 @@ function check(text, location,    lowered, i) {
 '
 
 DIFF_READER='
+BEGIN { verbatim_count = split(verbatim, verbatim_paths, " ") }
+
+function is_verbatim(path,    i) {
+    for (i = 1; i <= verbatim_count; i++) {
+        if (index(path, verbatim_paths[i]) == 1) {
+            return 1
+        }
+    }
+    return 0
+}
+
 /^diff --git / { in_header = 1; file = ""; next }
 in_header && /^\+\+\+ / {
     file = substr($0, 5)
     sub(/^b\//, "", file)
     sub(/\t$/, "", file)
-    if (file == "/dev/null" || file == skip || index(file, verbatim) == 1) {
+    if (file == "/dev/null" || file == skip || is_verbatim(file)) {
         file = ""
     }
     next
@@ -111,7 +123,7 @@ check_diff() {
     }
     git -c core.quotePath=false diff -U0 --no-color --no-ext-diff --diff-filter=ACMR \
         --src-prefix=a/ --dst-prefix=b/ "$@" |
-        LC_ALL=C awk -v skip="$LIST_PATH_IN_REPO" -v verbatim="$VERBATIM_DIR_IN_REPO" "$MATCHER$DIFF_READER"
+        LC_ALL=C awk -v skip="$LIST_PATH_IN_REPO" -v verbatim="$VERBATIM_IN_REPO" "$MATCHER$DIFF_READER"
 }
 
 check_files() {
