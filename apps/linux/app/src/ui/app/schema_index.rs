@@ -120,13 +120,15 @@ impl App {
 }
 
 fn split_table_reference(reference: &str) -> (Option<String>, String) {
-    let cleaned = reference.replace(['"', '`', '[', ']'], "");
-    match cleaned.rsplit_once('.') {
-        Some((schema, table)) if !schema.is_empty() && !table.is_empty() => {
-            (Some(schema.to_string()), table.to_string())
-        }
-        _ => (None, cleaned),
+    let mut parts: Vec<String> = crate::ui::editor::split_reference(reference)
+        .into_iter()
+        .map(|part| part.text)
+        .collect();
+    if parts.len() >= 2 && parts.iter().all(|part| !part.is_empty()) {
+        let table = parts.pop().unwrap_or_default();
+        return (parts.pop(), table);
     }
+    (None, parts.join("."))
 }
 
 #[cfg(test)]
@@ -149,6 +151,18 @@ mod tests {
     fn a_bare_reference_has_no_schema() {
         assert_eq!(split_table_reference("users"), (None, "users".to_string()));
         assert_eq!(split_table_reference("`orders`"), (None, "orders".to_string()));
+    }
+
+    #[test]
+    fn dots_and_doubled_quotes_inside_quotes_stay_in_the_name() {
+        assert_eq!(
+            split_table_reference("\"odd.schema\".\"a.b\""),
+            (Some("odd.schema".to_string()), "a.b".to_string())
+        );
+        assert_eq!(
+            split_table_reference("public.\"a\"\"b\""),
+            (Some("public".to_string()), "a\"b".to_string())
+        );
     }
 
     #[test]

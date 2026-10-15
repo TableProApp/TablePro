@@ -61,7 +61,7 @@ impl SchemaIndex {
         if let Some(columns) = self.columns.get(&key) {
             return Some(columns);
         }
-        if key.contains('.') {
+        if key.contains(KEY_SEPARATOR) {
             return None;
         }
         let mut matches = self.columns.iter().filter(|(known, _)| bare_name(known) == key);
@@ -85,19 +85,64 @@ pub enum Scope {
     TablesAndColumns(Vec<String>),
 }
 
+const KEY_SEPARATOR: char = '\u{1f}';
+
+pub struct ReferencePart {
+    pub text: String,
+    pub quoted: bool,
+}
+
+pub fn split_reference(reference: &str) -> Vec<ReferencePart> {
+    let mut parts = Vec::new();
+    let mut chars = reference.chars().peekable();
+    loop {
+        let mut text = String::new();
+        let mut quoted = false;
+        match chars.peek().copied() {
+            Some(open @ ('"' | '`' | '[')) => {
+                quoted = open == '"';
+                let close = if open == '[' { ']' } else { open };
+                chars.next();
+                while let Some(c) = chars.next() {
+                    if c == close && chars.peek() == Some(&close) {
+                        chars.next();
+                        text.push(close);
+                    } else if c == close {
+                        break;
+                    } else {
+                        text.push(c);
+                    }
+                }
+            }
+            _ => {
+                while let Some(c) = chars.next_if(|c| *c != '.') {
+                    text.push(c);
+                }
+            }
+        }
+        parts.push(ReferencePart { text, quoted });
+        if chars.next().is_none() {
+            return parts;
+        }
+    }
+}
+
 pub fn table_key(table: &str) -> String {
-    table
-        .split('.')
+    split_reference(table)
+        .into_iter()
         .map(|part| {
-            part.trim_matches(|c| c == '"' || c == '`' || c == '[' || c == ']')
-                .to_ascii_lowercase()
+            if part.quoted {
+                part.text
+            } else {
+                part.text.to_ascii_lowercase()
+            }
         })
         .collect::<Vec<_>>()
-        .join(".")
+        .join(&KEY_SEPARATOR.to_string())
 }
 
 fn bare_name(key: &str) -> &str {
-    key.rsplit('.').next().unwrap_or(key)
+    key.rsplit(KEY_SEPARATOR).next().unwrap_or(key)
 }
 
 pub fn candidate_words(sql: &str, cursor_byte: usize, index: &SchemaIndex) -> Vec<String> {
@@ -507,9 +552,41 @@ mod tests {
 
     #[test]
     fn table_key_keeps_the_schema_and_ignores_quoting_and_case() {
-        assert_eq!(table_key("public.\"Users\""), "public.users");
-        assert_eq!(table_key("`orders`"), "orders");
-        assert_eq!(table_key("[dbo].[Items]"), "dbo.items");
+        assert_eq!(table_key("Public.Users"), table_key("public.users"));
+        assert_eq!(table_key("`Orders`"), table_key("orders"));
+        assert_eq!(table_key("[dbo].[Items]"), table_key("dbo.items"));
+    }
+
+    #[test]
+    fn a_double_quoted_name_keeps_its_case_and_stays_distinct() {
+        assert_ne!(table_key("public.\"Users\""), table_key("public.users"));
+        assert_eq!(table_key("public.\"users\""), table_key("public.users"));
+        assert_ne!(table_key("\"a.b\""), table_key("a.b"));
+        assert_ne!(table_key("public.\"a\"\"b\""), table_key("public.ab"));
+    }
+
+    #[test]
+    fn two_spellings_keep_their_own_columns() {
+        let index = index_with(&[("public.users", &["id"]), ("public.\"Users\"", &["Id", "name"])]);
+        assert_eq!(index.columns_for("public.users"), Some(&vec!["id".to_string()]));
+        assert_eq!(
+            index.columns_for("public.\"Users\""),
+            Some(&vec!["Id".to_string(), "name".to_string()])
+        );
+    }
+
+    #[test]
+    fn a_reference_splits_on_dots_outside_quotes() {
+        let texts = |reference: &str| {
+            split_reference(reference)
+                .into_iter()
+                .map(|part| part.text)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(texts("\"odd.schema\".\"a.b\""), ["odd.schema", "a.b"]);
+        assert_eq!(texts("public.\"a\"\"b\""), ["public", "a\"b"]);
+        assert_eq!(texts("[dbo].[Items]"), ["dbo", "Items"]);
+        assert_eq!(texts("users."), ["users", ""]);
     }
 
     fn index_with(tables: &[(&str, &[&str])]) -> SchemaIndex {
@@ -524,7 +601,7 @@ mod tests {
     fn same_named_tables_in_two_schemas_keep_separate_columns() {
         let index = index_with(&[("a.items", &["a_id"]), ("b.items", &["b_id"])]);
         assert_eq!(index.columns_for("a.items"), Some(&vec!["a_id".to_string()]));
-        assert_eq!(index.columns_for("b.\"Items\""), Some(&vec!["b_id".to_string()]));
+        assert_eq!(index.columns_for("B.Items"), Some(&vec!["b_id".to_string()]));
     }
 
     #[test]

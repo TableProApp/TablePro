@@ -228,6 +228,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - A MySQL or MariaDB connection that carries a PostgreSQL-style socket directory is now refused when it connects, instead of being checked against a PostgreSQL socket file.
 - The connection form's Environment and Method choices can now be operated with a screen reader and other assistive tools.
 - After a transaction start is interrupted with an unknown outcome (for example an MCP write preview that times out), the connection stops accepting governed writes until it is replaced, instead of carrying on as if nothing had happened.
+- PostgreSQL column completion now tells apart a quoted mixed-case table such as "Users" from users, and keeps dots and doubled quotes inside quoted names.
 
 ### Security
 
