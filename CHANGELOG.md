@@ -115,6 +115,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Oracle view DDL losing the view's column names, and cut off after 4000 bytes without saying so.
 - Trino materialized views left out of SQL exports.
 - Return in Switch Connection reopening the current connection after typing another connection's name.
+- Clearing a date, number or boolean field on iPhone and iPad saving an empty string, stored as `0000-00-00 00:00:00` on MySQL, instead of NULL.
 
 ### Security
 

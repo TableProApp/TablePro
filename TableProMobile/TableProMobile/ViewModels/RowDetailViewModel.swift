@@ -197,12 +197,28 @@ final class RowDetailViewModel {
                 return false
             }
             let oldValue = index < original.count ? original[index] : nil
-            return oldValue != editedValues[index]
+            return oldValue != writtenValue(at: index)
         }
     }
 
     private var editedChanges: [(column: String, value: String?)] {
-        editedColumnIndices.map { (column: columns[$0].name, value: editedValues[$0]) }
+        editedColumnIndices.map { (column: columns[$0].name, value: writtenValue(at: $0)) }
+    }
+
+    /// What Save writes for a field. An emptied date, number or boolean is NULL, since `''` is no
+    /// value of those types and MySQL without strict mode stores it as the zero date. In a NOT NULL
+    /// column, which holds neither, the field keeps the stored value and Save writes nothing for it.
+    func writtenValue(at index: Int) -> String? {
+        guard index < editedValues.count else { return nil }
+        let value = editedValues[index]
+        guard value == "", !holdsEmptyString(at: index) else { return value }
+        guard isNullable(at: index) else { return index < currentRow.count ? currentRow[index] : nil }
+        return nil
+    }
+
+    private func holdsEmptyString(at index: Int) -> Bool {
+        guard index >= 0, index < columns.count else { return true }
+        return (columnDetail(for: columns[index].name) ?? columns[index]).holdsEmptyString
     }
 
     // MARK: - Save
@@ -270,7 +286,7 @@ final class RowDetailViewModel {
         isSaving = true
         defer { isSaving = false }
         let savedCells = Dictionary(uniqueKeysWithValues: editedColumnIndices.map { index in
-            (index, editedValues[index].map { Cell.text($0) } ?? .null)
+            (index, writtenValue(at: index).map { Cell.text($0) } ?? .null)
         })
 
         do {
