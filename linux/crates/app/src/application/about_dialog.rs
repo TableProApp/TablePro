@@ -138,7 +138,12 @@ mod tests {
                 assert!(entry.contains("<caption"), "a screenshot without a caption: {entry}");
                 let url = metainfo_text(entry, "<image", "</image>");
                 assert!(url.starts_with("https://"), "{url}");
-                url.rsplit('/').next().unwrap_or_default().to_owned()
+                let name = url.rsplit('/').next().unwrap_or_default();
+                assert!(
+                    url.ends_with(&format!("/linux/data/screenshots/{name}")),
+                    "{url} is not under the repository's data/screenshots"
+                );
+                name.to_owned()
             })
             .collect();
         listed.sort();
