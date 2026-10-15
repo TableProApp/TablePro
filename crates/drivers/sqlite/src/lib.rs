@@ -113,7 +113,7 @@ impl Connection for SqliteConnection {
     async fn list_tables(&self) -> Result<Vec<TableInfo>, DriverError> {
         let rows = sqlx::query(
             "SELECT name FROM sqlite_master
-             WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+             WHERE type = 'table' AND substr(name, 1, 7) <> 'sqlite_'
              ORDER BY name",
         )
         .fetch_all(&self.pool)
