@@ -168,7 +168,10 @@ mod tests {
             1,
             "the connection closed more than once"
         );
-        assert!(workspace.upgrade().is_none(), "the workspace outlived its teardown");
+        // A delivery still in flight holds the workspace until its aborted
+        // task's result reaches the main context, which a loaded runtime
+        // posts after the drain above.
+        wait_until(WAIT, || workspace.upgrade().is_none()).expect("the workspace outlived its teardown");
         let claim = test
             .services
             .sessions
