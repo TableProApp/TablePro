@@ -6,7 +6,7 @@ use gtk4 as gtk;
 use gtk4::gio;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use tablepro_core::ddl::{DraftColumn, DraftType, Permission};
+use tablepro_core::ddl::{ColumnCapabilities, DraftColumn, DraftType, Permission};
 use tablepro_core::dialect::SqlDialect;
 
 use super::context::StructureContext;
@@ -125,6 +125,26 @@ pub(super) fn build_column_row(
     column.bind_property("summary", &row, "subtitle").sync_create().build();
 
     // On the header, so it shows whether or not the row is expanded.
+    row.add_suffix(&remove_button(column, sender, &permissions.drop));
+    row.add_row(&name_row(&draft, &permissions.rename, edits.clone()));
+    row.add_row(&type_row(&draft, context, &permissions.alter_type, edits.clone()));
+    let nullable_row = nullable_row(&draft, &permissions.alter_nullability, edits.clone());
+    row.add_row(&nullable_row);
+    row.add_row(&default_row(
+        column,
+        &draft,
+        context,
+        &permissions.alter_default,
+        edits.clone(),
+    ));
+    let (pk_row, auto_row) = key_rows(&draft, context, &permissions, &nullable_row, &edits);
+    row.add_row(&pk_row);
+    row.add_row(&auto_row);
+    row.add_row(&comment_row(&draft, &permissions.alter_comment, edits));
+    row
+}
+
+fn remove_button(column: &DraftColumnObject, sender: &StructureTabSender, permission: &Permission) -> gtk::Button {
     let remove_button = gtk::Button::builder()
         .icon_name(crate::ui::icons::USER_TRASH)
         .valign(gtk::Align::Center)
@@ -132,7 +152,7 @@ pub(super) fn build_column_row(
     remove_button.add_css_class("flat");
     describe_icon_button(&remove_button, &crate::i18n::gettext("Remove Column"), None);
     remove_button.set_widget_name("col-remove");
-    gate(&remove_button, &permissions.drop);
+    gate(&remove_button, permission);
     let column_for_remove = column.downgrade();
     let sender_for_remove = sender.clone();
     remove_button.connect_clicked(move |_| {
@@ -140,70 +160,95 @@ pub(super) fn build_column_row(
             sender_for_remove.input(ColumnsInput::RemoveColumn(column));
         }
     });
-    row.add_suffix(&remove_button);
+    remove_button
+}
 
+fn name_row(draft: &DraftColumn, permission: &Permission, edits: ColumnEdits) -> adw::EntryRow {
     let name_row = adw::EntryRow::builder().title(crate::i18n::gettext("Name")).build();
     name_row.set_text(&draft.name);
     name_row.set_widget_name("col-name");
-    gate(&name_row, &permissions.rename);
-    let edits_for_name = edits.clone();
-    name_row.connect_changed(move |entry| edits_for_name.send(ColumnField::Name(entry.text().to_string())));
-    row.add_row(&name_row);
+    gate(&name_row, permission);
+    name_row.connect_changed(move |entry| edits.send(ColumnField::Name(entry.text().to_string())));
+    name_row
+}
 
-    // Free text, so `decimal(10,2)` or an enum type need no list; the
-    // menu only suggests.
+/// Free text, so `decimal(10,2)` or an enum type need no list; the
+/// menu only suggests.
+fn type_row(
+    draft: &DraftColumn,
+    context: &StructureContext,
+    permission: &Permission,
+    edits: ColumnEdits,
+) -> adw::EntryRow {
     let type_row = adw::EntryRow::builder().title(crate::i18n::gettext("Type")).build();
     type_row.set_text(draft.column_type.text());
     type_row.set_widget_name("col-type");
     // Before the gate, whose reason the tooltip has to keep.
     mark_invalid(
         &type_row,
-        type_error(context.dialect.as_deref(), &draft, draft.column_type.text()).as_deref(),
+        type_error(context.dialect.as_deref(), draft, draft.column_type.text()).as_deref(),
     );
-    gate(&type_row, &permissions.alter_type);
-    let edits_for_type = edits.clone();
+    gate(&type_row, permission);
     let dialect_for_type = context.dialect.clone();
     type_row.connect_changed(move |entry| {
         let text = entry.text().to_string();
-        let error = edits_for_type
+        let error = edits
             .column
             .upgrade()
             .and_then(|column| type_error(dialect_for_type.as_deref(), &column.column(), &text));
         mark_invalid(entry, error.as_deref());
-        edits_for_type.send(ColumnField::Type(text));
+        edits.send(ColumnField::Type(text));
     });
     if type_row.is_sensitive() {
         type_row.add_suffix(&build_type_suggestions_button(context.type_suggestions(), &type_row));
     }
-    row.add_row(&type_row);
+    type_row
+}
 
+fn nullable_row(draft: &DraftColumn, permission: &Permission, edits: ColumnEdits) -> adw::SwitchRow {
     let nullable_row = adw::SwitchRow::builder()
         .title(crate::i18n::gettext("Nullable"))
         .active(draft.nullable)
         .build();
     nullable_row.set_widget_name("col-nullable");
-    gate(&nullable_row, &permissions.alter_nullability);
-    let edits_for_null = edits.clone();
-    nullable_row.connect_active_notify(move |switch| edits_for_null.send(ColumnField::Nullable(switch.is_active())));
-    row.add_row(&nullable_row);
+    gate(&nullable_row, permission);
+    nullable_row.connect_active_notify(move |switch| edits.send(ColumnField::Nullable(switch.is_active())));
+    nullable_row
+}
 
-    // SQL, as the engine's parser reads it: a quoted literal or an
-    // expression. Empty means no DEFAULT clause. Text the parser refused
-    // stays as the user typed it.
+/// SQL, as the engine's parser reads it: a quoted literal or an
+/// expression. Empty means no DEFAULT clause. Text the parser refused
+/// stays as the user typed it.
+fn default_row(
+    column: &DraftColumnObject,
+    draft: &DraftColumn,
+    context: &StructureContext,
+    permission: &Permission,
+    edits: ColumnEdits,
+) -> adw::EntryRow {
     let default_row = adw::EntryRow::builder()
         .title(crate::i18n::gettext("Default value"))
         .build();
     let default_text = column
         .unparsed_default()
-        .map_or_else(|| context.default_text(&draft), |unparsed| unparsed.text);
+        .map_or_else(|| context.default_text(draft), |unparsed| unparsed.text);
     default_row.set_text(&default_text);
     default_row.set_widget_name("col-default");
     follow_default_error(column, &default_row);
-    gate(&default_row, &permissions.alter_default);
-    let edits_for_default = edits.clone();
-    default_row.connect_changed(move |entry| edits_for_default.send(ColumnField::Default(entry.text().to_string())));
-    row.add_row(&default_row);
+    gate(&default_row, permission);
+    default_row.connect_changed(move |entry| edits.send(ColumnField::Default(entry.text().to_string())));
+    default_row
+}
 
+/// The Primary Key and Auto Increment switches. Joining the key turns
+/// `nullable_row` off, and leaving it gives back what it showed before.
+fn key_rows(
+    draft: &DraftColumn,
+    context: &StructureContext,
+    permissions: &ColumnCapabilities,
+    nullable_row: &adw::SwitchRow,
+    edits: &ColumnEdits,
+) -> (adw::SwitchRow, adw::SwitchRow) {
     let pk_row = adw::SwitchRow::builder()
         .title(crate::i18n::gettext("Primary Key"))
         .active(draft.primary_key)
@@ -233,7 +278,7 @@ pub(super) fn build_column_row(
     // A refused nullability change keeps the reason it already shows.
     let hold = permissions.alter_nullability.is_allowed();
     if hold {
-        hold_not_null(&nullable_row, draft.primary_key);
+        hold_not_null(nullable_row, draft.primary_key);
     }
     let edits_for_pk = edits.clone();
     // The row owns both switches, so this holds them weakly.
@@ -262,26 +307,25 @@ pub(super) fn build_column_row(
             auto.set_active(false);
         }
     });
-    row.add_row(&pk_row);
 
     let edits_for_auto = edits.clone();
     auto_row.connect_active_notify(move |switch| edits_for_auto.send(ColumnField::AutoIncrement(switch.is_active())));
-    row.add_row(&auto_row);
+    (pk_row, auto_row)
+}
 
-    // Empty means the column carries no description; clearing one the
-    // server had drops it.
+/// Empty means the column carries no description; clearing one the
+/// server had drops it.
+fn comment_row(draft: &DraftColumn, permission: &Permission, edits: ColumnEdits) -> adw::EntryRow {
     let comment_row = adw::EntryRow::builder().title(crate::i18n::gettext("Comment")).build();
     comment_row.set_text(draft.comment.as_deref().unwrap_or(""));
     comment_row.set_widget_name("col-comment");
-    gate(&comment_row, &permissions.alter_comment);
+    gate(&comment_row, permission);
     comment_row.connect_changed(move |entry| {
         let text = entry.text().to_string();
         let value = if text.is_empty() { None } else { Some(text) };
         edits.send(ColumnField::Comment(value));
     });
-    row.add_row(&comment_row);
-
-    row
+    comment_row
 }
 
 /// A picked type is written into `target`, whose `changed` handler

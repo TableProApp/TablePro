@@ -90,70 +90,25 @@ impl ForeignKeyDialog {
         details.add(&name_row);
 
         let tables = gio::ListStore::new::<TableChoiceObject>();
-        let table_row = adw::ComboRow::builder()
-            .title(crate::i18n::gettext("Referenced table"))
-            .model(&tables)
-            .enable_search(true)
-            .sensitive(false)
-            .build();
-        table_row.set_search_match_mode(gtk::StringFilterMatchMode::Substring);
-        table_row.set_expression(Some(&gtk::PropertyExpression::new(
-            TableChoiceObject::static_type(),
-            None::<&gtk::Expression>,
-            "label",
-        )));
-        let table_spinner = adw::Spinner::new();
-        table_row.add_suffix(&table_spinner);
+        let (table_row, table_spinner) = table_row(&tables);
         let references = adw::PreferencesGroup::new();
         references.add(&table_row);
 
-        let checklist = adw::PreferencesGroup::builder()
-            .title(crate::i18n::gettext("Columns"))
-            .description(crate::i18n::gettext(
-                "The columns of this table that hold the reference.",
-            ))
-            .build();
-        let column_checks: Vec<(String, gtk::CheckButton)> = columns
-            .iter()
-            .map(|column| {
-                let row = adw::ActionRow::builder().title(column).use_markup(false).build();
-                let check = gtk::CheckButton::builder().valign(gtk::Align::Center).build();
-                row.add_prefix(&check);
-                row.set_activatable_widget(Some(&check));
-                checklist.add(&row);
-                (column.clone(), check)
-            })
-            .collect();
-
+        let (checklist, column_checks) = column_checklist(&columns);
         let pairs_group = adw::PreferencesGroup::builder()
             .title(crate::i18n::gettext("Referenced Columns"))
             .visible(false)
             .build();
+        let actions_group = ActionRows::new(actions);
 
-        let labels = action_labels(actions);
-        let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
-        let on_delete_row = adw::ComboRow::builder()
-            .title(crate::i18n::gettext("On delete"))
-            .model(&gtk::StringList::new(&labels))
-            .build();
-        let on_update_row = adw::ComboRow::builder()
-            .title(crate::i18n::gettext("On update"))
-            .model(&gtk::StringList::new(&labels))
-            .build();
-        let actions_group = adw::PreferencesGroup::builder()
-            .title(crate::i18n::gettext("Actions"))
-            .build();
-        actions_group.add(&on_delete_row);
-        actions_group.add(&on_update_row);
-
-        for group in [&details, &references, &checklist, &pairs_group, &actions_group] {
+        for group in [&details, &references, &checklist, &pairs_group, &actions_group.group] {
             form.page.add(group);
         }
 
         let inner = Rc::new(Inner {
             form,
-            name_row: name_row.clone(),
-            table_row: table_row.clone(),
+            name_row,
+            table_row,
             table_spinner,
             tables,
             column_checks,
@@ -173,48 +128,7 @@ impl ForeignKeyDialog {
             columns_edited: Cell::new(false),
             on_add: Box::new(on_add),
         });
-
-        let weak = Rc::downgrade(&inner);
-        name_row.connect_changed(move |row| {
-            if let Some(inner) = weak.upgrade() {
-                inner.name_edited.set(true);
-                inner.draft.borrow_mut().name = row.text().to_string();
-                inner.refresh();
-            }
-        });
-        for (column, check) in &inner.column_checks {
-            let (weak, column) = (Rc::downgrade(&inner), column.clone());
-            check.connect_toggled(move |check| {
-                if let Some(inner) = weak.upgrade() {
-                    inner.columns_edited.set(true);
-                    let referenced = inner.referenced_columns.borrow().clone().unwrap_or_default();
-                    inner
-                        .draft
-                        .borrow_mut()
-                        .set_checked(&inner.columns, &column, check.is_active(), &referenced);
-                    inner.refresh();
-                }
-            });
-        }
-        for (row, on_delete) in [(&on_delete_row, true), (&on_update_row, false)] {
-            let weak = Rc::downgrade(&inner);
-            row.connect_selected_notify(move |row| {
-                if let Some(inner) = weak.upgrade() {
-                    let action = action_at(actions, row.selected());
-                    let mut draft = inner.draft.borrow_mut();
-                    match on_delete {
-                        true => draft.on_delete = action,
-                        false => draft.on_update = action,
-                    }
-                }
-            });
-        }
-        let weak = Rc::downgrade(&inner);
-        inner.form.submit.connect_clicked(move |_| {
-            if let Some(inner) = weak.upgrade() {
-                inner.submit();
-            }
-        });
+        inner.follow_edits(&actions_group);
         inner.load_tables();
         inner.refresh();
         give_state(&dialog, inner.clone());
@@ -230,7 +144,127 @@ impl ForeignKeyDialog {
     }
 }
 
+/// Off, with a spinner, until the catalog's tables are read.
+fn table_row(tables: &gio::ListStore) -> (adw::ComboRow, adw::Spinner) {
+    let table_row = adw::ComboRow::builder()
+        .title(crate::i18n::gettext("Referenced table"))
+        .model(tables)
+        .enable_search(true)
+        .sensitive(false)
+        .build();
+    table_row.set_search_match_mode(gtk::StringFilterMatchMode::Substring);
+    table_row.set_expression(Some(&gtk::PropertyExpression::new(
+        TableChoiceObject::static_type(),
+        None::<&gtk::Expression>,
+        "label",
+    )));
+    let table_spinner = adw::Spinner::new();
+    table_row.add_suffix(&table_spinner);
+    (table_row, table_spinner)
+}
+
+fn column_checklist(columns: &[String]) -> (adw::PreferencesGroup, Vec<(String, gtk::CheckButton)>) {
+    let checklist = adw::PreferencesGroup::builder()
+        .title(crate::i18n::gettext("Columns"))
+        .description(crate::i18n::gettext(
+            "The columns of this table that hold the reference.",
+        ))
+        .build();
+    let column_checks = columns
+        .iter()
+        .map(|column| {
+            let row = adw::ActionRow::builder().title(column).use_markup(false).build();
+            let check = gtk::CheckButton::builder().valign(gtk::Align::Center).build();
+            row.add_prefix(&check);
+            row.set_activatable_widget(Some(&check));
+            checklist.add(&row);
+            (column.clone(), check)
+        })
+        .collect();
+    (checklist, column_checks)
+}
+
+/// What deleting or updating a referenced row does.
+struct ActionRows {
+    group: adw::PreferencesGroup,
+    on_delete: adw::ComboRow,
+    on_update: adw::ComboRow,
+    actions: &'static [ReferentialAction],
+}
+
+impl ActionRows {
+    fn new(actions: &'static [ReferentialAction]) -> Self {
+        let labels = action_labels(actions);
+        let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
+        let on_delete = adw::ComboRow::builder()
+            .title(crate::i18n::gettext("On delete"))
+            .model(&gtk::StringList::new(&labels))
+            .build();
+        let on_update = adw::ComboRow::builder()
+            .title(crate::i18n::gettext("On update"))
+            .model(&gtk::StringList::new(&labels))
+            .build();
+        let group = adw::PreferencesGroup::builder()
+            .title(crate::i18n::gettext("Actions"))
+            .build();
+        group.add(&on_delete);
+        group.add(&on_update);
+        Self {
+            group,
+            on_delete,
+            on_update,
+            actions,
+        }
+    }
+}
+
 impl Inner {
+    /// Every control writes into the draft, and Add submits it.
+    fn follow_edits(self: &Rc<Self>, action_rows: &ActionRows) {
+        let weak = Rc::downgrade(self);
+        self.name_row.connect_changed(move |row| {
+            if let Some(inner) = weak.upgrade() {
+                inner.name_edited.set(true);
+                inner.draft.borrow_mut().name = row.text().to_string();
+                inner.refresh();
+            }
+        });
+        for (column, check) in &self.column_checks {
+            let (weak, column) = (Rc::downgrade(self), column.clone());
+            check.connect_toggled(move |check| {
+                if let Some(inner) = weak.upgrade() {
+                    inner.columns_edited.set(true);
+                    let referenced = inner.referenced_columns.borrow().clone().unwrap_or_default();
+                    inner
+                        .draft
+                        .borrow_mut()
+                        .set_checked(&inner.columns, &column, check.is_active(), &referenced);
+                    inner.refresh();
+                }
+            });
+        }
+        let actions = action_rows.actions;
+        for (row, on_delete) in [(&action_rows.on_delete, true), (&action_rows.on_update, false)] {
+            let weak = Rc::downgrade(self);
+            row.connect_selected_notify(move |row| {
+                if let Some(inner) = weak.upgrade() {
+                    let action = action_at(actions, row.selected());
+                    let mut draft = inner.draft.borrow_mut();
+                    match on_delete {
+                        true => draft.on_delete = action,
+                        false => draft.on_update = action,
+                    }
+                }
+            });
+        }
+        let weak = Rc::downgrade(self);
+        self.form.submit.connect_clicked(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                inner.submit();
+            }
+        });
+    }
+
     fn submit(&self) {
         let valid = self.draft.borrow().validate(&self.existing);
         if let Ok(key) = valid {
