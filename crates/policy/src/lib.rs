@@ -20,6 +20,7 @@ mod rules;
 mod select_writes;
 mod sensitive_projection;
 mod transaction_control;
+mod tsql_transaction;
 mod verdict;
 
 pub use approval::{ApprovalOutcome, ApprovalRequest, ApprovalSink, AutoApproveSink, DenyApprovalSink};

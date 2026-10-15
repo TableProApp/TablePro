@@ -621,10 +621,24 @@ async fn list_objects_audit_target_leaves_out_the_schema_for_unscoped_kinds() {
     assert!(events.iter().any(|event| event.targets == vec!["role".to_string()]));
 }
 
+fn tsql_spellings(driver_id: &str) -> &'static [&'static str] {
+    if driver_id != "mssql" {
+        return &[];
+    }
+    &[
+        "BEGIN TRAN",
+        "COMMIT TRAN",
+        "ROLLBACK TRAN",
+        "BEGIN TRAN UPDATE t SET a = 1 WHERE id = 1",
+        "UPDATE t SET a = 1 WHERE id = 1 COMMIT TRAN",
+    ]
+}
+
 #[tokio::test]
 async fn transaction_control_on_the_shared_connection_is_denied_before_dispatch() {
     for driver_id in ["postgres", "mysql", "sqlite", "mssql"] {
-        for statement in ["BEGIN", "START TRANSACTION", "COMMIT", "ROLLBACK", "SELECT 1; BEGIN"] {
+        let common = ["BEGIN", "START TRANSACTION", "COMMIT", "ROLLBACK", "SELECT 1; BEGIN"];
+        for statement in common.iter().chain(tsql_spellings(driver_id)).copied() {
             let executes = Arc::new(AtomicUsize::new(0));
             let queries = Arc::new(AtomicUsize::new(0));
             let audit = Arc::new(SequenceAuditSink::new(vec![]));

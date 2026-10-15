@@ -4,7 +4,9 @@ use crate::classify::{StatementClass, StatementFacts};
 use crate::config::EnvPolicy;
 use crate::effects::Effects;
 use crate::principal::Principal;
-use crate::transaction_control::{TransactionControl, has_implicit_transaction_starter, transaction_control};
+use crate::transaction_control::{
+    TransactionControl, has_implicit_transaction_starter, leaves_tsql_transaction_unclosed, transaction_control,
+};
 pub use crate::verdict::Decision;
 
 pub fn evaluate(
@@ -73,6 +75,9 @@ pub(crate) fn shared_connection_decision(sql: &str, driver_id: &str, facts: &Sta
 }
 
 fn has_unclosed_shared_transaction(sql: &str, driver_id: &str) -> bool {
+    if leaves_tsql_transaction_unclosed(sql, driver_id) {
+        return true;
+    }
     let statements = tablepro_core::sql_lex::split_statements(sql, driver_id);
     if statements.len() < 2 {
         return false;

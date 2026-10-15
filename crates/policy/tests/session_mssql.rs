@@ -1,13 +1,15 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use drivers_mssql::MssqlDriver;
-use tablepro_core::{ConnectOptions, Connection, DatabaseDriver, DriverError, Environment};
+use tablepro_core::{ConnectOptions, Connection, DatabaseDriver, DriverError, Environment, OperationControl, Value};
 use tablepro_policy::{
-    AuditError, AuditEvent, AuditRecordPhase, AuditSink, AuditState, AuditTerminalStatus, AutoApproveSink,
-    GuardContext, PolicyConfig, PolicyGuard, Principal, StatementClass, classify,
+    AuditError, AuditEvent, AuditOperationClass, AuditRecordPhase, AuditSink, AuditState, AuditTerminalStatus,
+    AuditTransactionOutcome, AutoApproveSink, GuardContext, PolicyConfig, PolicyGuard, Principal, StatementClass,
+    classify,
 };
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::mssql_server::MssqlServer;
@@ -22,6 +24,90 @@ impl AuditSink for CapturingAudit {
         self.0.lock().expect("audit event lock").push(event);
         Ok(())
     }
+}
+
+async fn run_session(
+    session: &mut Box<dyn tablepro_core::Session>,
+    sql: &str,
+) -> Result<tablepro_core::QueryResult, DriverError> {
+    session
+        .query_params_controlled(sql, &[], &OperationControl::with_timeout(Duration::from_secs(10)))
+        .await
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn sql_server_tran_forms_are_refused_shared_and_tracked_in_sessions() {
+    let container = MssqlServer::default().with_accept_eula().start().await.unwrap();
+    let connection = MssqlDriver
+        .connect(ConnectOptions {
+            host: container.get_host().await.unwrap().to_string(),
+            port: container.get_host_port_ipv4(1433).await.unwrap(),
+            database: "master".into(),
+            username: "sa".into(),
+            password: secrecy::SecretString::new(MssqlServer::DEFAULT_SA_PASSWORD.to_string().into()),
+            tls: tablepro_core::TlsConfig::disabled(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let connection: Arc<dyn Connection> = Arc::from(connection);
+    let table = format!("dbo.b4_transaction_{}", Uuid::new_v4().simple());
+    connection
+        .execute(&format!(
+            "CREATE TABLE {table} (id int PRIMARY KEY, value int NOT NULL)"
+        ))
+        .await
+        .unwrap();
+    connection
+        .execute(&format!("INSERT INTO {table} VALUES (1, 10)"))
+        .await
+        .unwrap();
+    let audit = Arc::new(CapturingAudit::default());
+    let guard = PolicyGuard::new(
+        connection.clone(),
+        GuardContext {
+            connection_id: Uuid::new_v4(),
+            connection_name: "SQL Server transaction-control fixture".into(),
+            driver_id: "mssql".into(),
+            environment: Environment::Local,
+            read_only: false,
+            principal: Principal::human_gui(),
+            policy: Arc::new(PolicyConfig::default()),
+            approval: Arc::new(AutoApproveSink),
+            audit: audit.clone(),
+            audit_state: Arc::new(AuditState::new()),
+        },
+    );
+
+    assert!(matches!(
+        guard.query("BEGIN TRAN").await,
+        Err(DriverError::PolicyDenied(_))
+    ));
+    let mut session = guard.open_session().await.expect("open session");
+    run_session(&mut session, "BEGIN TRAN").await.expect("begin tran");
+    let count = run_session(&mut session, "SELECT @@TRANCOUNT")
+        .await
+        .expect("transaction count");
+    assert_eq!(count.rows, vec![vec![Value::Int(1)]]);
+    run_session(&mut session, &format!("UPDATE {table} SET value = 20 WHERE id = 1"))
+        .await
+        .expect("update within session transaction");
+    run_session(&mut session, "ROLLBACK TRAN").await.expect("rollback tran");
+    session.close().await.expect("close session");
+
+    let state = connection
+        .query(&format!("SELECT value FROM {table} WHERE id = 1"))
+        .await
+        .unwrap();
+    assert_eq!(state.rows, vec![vec![Value::Int(10)]]);
+    let outcomes = audit.0.lock().expect("audit events");
+    assert!(outcomes.iter().any(|event| {
+        event.phase == AuditRecordPhase::Outcome
+            && event.operation_class == AuditOperationClass::TransactionRollback
+            && event.transaction_outcome == AuditTransactionOutcome::RolledBack
+            && event.terminal_status == AuditTerminalStatus::Succeeded
+    }));
 }
 
 #[tokio::test]

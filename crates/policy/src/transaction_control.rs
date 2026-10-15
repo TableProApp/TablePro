@@ -3,6 +3,7 @@ use sqlparser::parser::Parser;
 use sqlparser::tokenizer::{Token, Tokenizer};
 
 use crate::classify::dialect_for;
+use crate::tsql_transaction::{self, TsqlPhrase};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransactionControl {
@@ -69,6 +70,13 @@ fn is_word(token: Option<&Token>, expected: &str) -> bool {
 }
 
 pub fn transaction_control(sql: &str, driver_id: &str) -> Option<TransactionControl> {
+    if driver_id == "mssql" {
+        return tsql_transaction_control(sql);
+    }
+    parsed_transaction_control(sql, driver_id)
+}
+
+fn parsed_transaction_control(sql: &str, driver_id: &str) -> Option<TransactionControl> {
     let dialect = dialect_for(driver_id);
     let statements = Parser::parse_sql(dialect.as_ref(), sql.trim()).ok()?;
     let [statement] = statements.as_slice() else {
@@ -77,12 +85,31 @@ pub fn transaction_control(sql: &str, driver_id: &str) -> Option<TransactionCont
     control_of(statement)
 }
 
+fn tsql_transaction_control(sql: &str) -> Option<TransactionControl> {
+    let Some(phrase) = tsql_transaction::scan(sql).only_phrase() else {
+        return parsed_transaction_control(sql, "mssql");
+    };
+    match phrase {
+        TsqlPhrase::Begin => parsed_transaction_control(sql, "mssql").or(Some(TransactionControl::Begin)),
+        TsqlPhrase::Commit => Some(TransactionControl::Commit { chain: false }),
+        TsqlPhrase::Rollback => Some(TransactionControl::Rollback { chain: false }),
+        TsqlPhrase::NamedRollback | TsqlPhrase::Save => None,
+    }
+}
+
 pub(crate) fn hides_transaction_control(sql: &str, driver_id: &str) -> bool {
+    if driver_id == "mssql" && tsql_transaction::scan(sql).hides_control() {
+        return true;
+    }
     let dialect = dialect_for(driver_id);
     let Ok(statements) = Parser::parse_sql(dialect.as_ref(), sql.trim()) else {
         return false;
     };
     statements.len() > 1 && statements.iter().any(|statement| control_of(statement).is_some())
+}
+
+pub(crate) fn leaves_tsql_transaction_unclosed(sql: &str, driver_id: &str) -> bool {
+    driver_id == "mssql" && tsql_transaction::scan(sql).leaves_shared_transaction_unclosed()
 }
 
 fn control_of(statement: &Statement) -> Option<TransactionControl> {
@@ -158,6 +185,53 @@ mod tests {
         ];
         for (sql, driver, expected) in cases {
             assert_eq!(transaction_control(sql, driver), expected, "{driver}: {sql}");
+        }
+    }
+
+    #[test]
+    fn sql_server_tran_spellings_are_transaction_control() {
+        let begin = Some(TransactionControl::Begin);
+        let commit = Some(TransactionControl::Commit { chain: false });
+        let rollback = Some(TransactionControl::Rollback { chain: false });
+        for (sql, expected) in [
+            ("BEGIN TRAN", begin),
+            ("begin tran", begin),
+            ("BEGIN TRAN t1", begin),
+            ("BEGIN TRANSACTION t1", begin),
+            ("BEGIN TRAN @name", begin),
+            ("BEGIN DISTRIBUTED TRANSACTION", begin),
+            ("COMMIT TRAN", commit),
+            ("COMMIT TRANSACTION t1", commit),
+            ("COMMIT WORK", commit),
+            ("ROLLBACK TRAN", rollback),
+            ("ROLLBACK WORK", rollback),
+            ("ROLLBACK TRANSACTION t1", None),
+            ("SAVE TRAN s1", None),
+        ] {
+            assert_eq!(transaction_control(sql, "mssql"), expected, "{sql}");
+        }
+        assert!(hides_transaction_control("ROLLBACK TRAN s1", "mssql"));
+        assert!(hides_transaction_control("SAVE TRAN s1", "mssql"));
+    }
+
+    #[test]
+    fn sql_server_tran_inside_a_batch_is_hidden_transaction_control() {
+        for sql in [
+            "BEGIN TRAN UPDATE t SET a = 1 WHERE id = 1",
+            "BEGIN TRAN; UPDATE t SET a = 1 WHERE id = 1",
+            "UPDATE t SET a = 1 WHERE id = 1 COMMIT TRAN",
+            "UPDATE t SET a = 1 WHERE id = 1; ROLLBACK TRAN",
+            "SAVE TRAN s1; UPDATE t SET a = 1",
+        ] {
+            assert!(hides_transaction_control(sql, "mssql"), "{sql}");
+        }
+        for sql in [
+            "SELECT 'BEGIN TRAN' AS x",
+            "SELECT 1 /* COMMIT TRAN */",
+            "UPDATE tran SET a = 1",
+        ] {
+            assert!(!hides_transaction_control(sql, "mssql"), "{sql}");
+            assert_eq!(transaction_control(sql, "mssql"), None, "{sql}");
         }
     }
 

@@ -622,6 +622,48 @@ async fn transaction_control_hidden_in_a_script_is_refused_and_never_reaches_the
 }
 
 #[tokio::test]
+async fn sql_server_tran_statements_drive_the_session_transaction() {
+    let h = harness_with_driver(SessionScript::default(), false, "mssql");
+    let mut session = h.guard.open_session().await.expect("open session");
+
+    run(&mut session, "BEGIN TRAN").await.expect("begin tran");
+    assert!(session.transaction_open());
+    run(&mut session, "UPDATE items SET v = 1 WHERE id = 1")
+        .await
+        .expect("write");
+    run(&mut session, "ROLLBACK TRAN").await.expect("rollback tran");
+    assert!(!session.transaction_open());
+
+    let rollbacks = outcomes_of(&h.audit, AuditOperationClass::TransactionRollback);
+    assert_eq!(rollbacks.len(), 1);
+    assert_eq!(rollbacks[0].transaction_outcome, AuditTransactionOutcome::RolledBack);
+}
+
+#[tokio::test]
+async fn sql_server_tran_hidden_in_a_batch_is_refused_and_never_reaches_the_database() {
+    for script in [
+        "BEGIN TRAN UPDATE items SET v = 1 WHERE id = 1",
+        "UPDATE items SET v = 1 WHERE id = 1 COMMIT TRAN",
+        "ROLLBACK TRAN outer_name",
+        "SAVE TRAN savepoint_name",
+    ] {
+        let h = harness_with_driver(SessionScript::default(), false, "mssql");
+        let mut session = h.guard.open_session().await.expect("open session");
+
+        run(&mut session, "BEGIN TRAN").await.expect("begin tran");
+        let error = run(&mut session, script).await.expect_err("hidden transaction control");
+
+        assert!(matches!(error, DriverError::PolicyDenied(_)), "{script}: {error:?}");
+        assert!(session.transaction_open(), "{script}");
+        assert_eq!(
+            *h.script.sent.lock().expect("sent lock"),
+            vec!["BEGIN TRAN"],
+            "{script}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn a_nested_begin_is_refused() {
     let h = harness(SessionScript::default(), false);
     let mut session = h.guard.open_session().await.expect("open session");
