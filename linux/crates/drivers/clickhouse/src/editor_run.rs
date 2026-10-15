@@ -61,39 +61,16 @@ impl EditorRun {
         let mut stop = Stop::new(options.cancel, self.shutdown.clone(), deadline, self.grace);
         let previous = self.lingering.take();
         if let Some(previous) = previous {
-            // The wait is the run's own, under its stop and its deadline,
-            // so it is as long as the server takes and no longer than the
-            // user lets it. A run with no deadline gives up at the cancel
-            // grace instead, so a stopped query that never ends cannot
-            // hold it for good; a session still locked then refuses it
-            // with 373.
+            // A run with no deadline gives up at the cancel grace, so a
+            // stopped query that never ends cannot hold it for good; a
+            // session still locked then refuses it with 373.
             let give_up = deadline.is_none().then(|| started + self.grace);
-            tokio::select! {
-                interrupt = stop.triggered() => {
-                    self.lingering.left(previous);
-                    return Ok(summary(started, unsent(interrupt)));
-                }
-                ended = wait_until_ended(&self.control, previous) => {
-                    if let Err(error) = ended {
-                        tracing::debug!(%error, "waiting for a stopped editor query to end failed");
-                    }
-                }
-                () = reached(give_up) => {
-                    tracing::debug!("a stopped editor query did not end within the cancel grace");
-                }
+            if let Some(interrupt) = self.wait_for_stopped(previous, &stop, give_up).await {
+                return Ok(summary(started, unsent(interrupt)));
             }
         }
         let query_id = Uuid::new_v4();
-        let mut query = self
-            .session
-            .query_raw(sql.as_str())
-            .with_setting("query_id", query_id.to_string());
-        if bound.is_some() {
-            query = query
-                .with_setting("max_execution_time", whole_seconds(bound).to_string())
-                .with_setting("timeout_overflow_mode", "throw");
-        }
-        let mut reader = match ResultReader::open(query) {
+        let mut reader = match self.open(&sql, query_id, bound) {
             Ok(reader) => reader,
             Err(error) => return Ok(summary(started, RunEnd::Failed(error))),
         };
@@ -172,6 +149,42 @@ impl EditorRun {
             }
         };
         Ok(summary(started, end))
+    }
+
+    /// Wait for the query an earlier run stopped to end. The wait is the
+    /// run's own, under its stop and its deadline, so it is as long as
+    /// the server takes and no longer than the user lets it. `Some` when
+    /// the run is stopped first.
+    async fn wait_for_stopped(&self, previous: Uuid, stop: &Stop, give_up: Option<Instant>) -> Option<Interrupt> {
+        tokio::select! {
+            interrupt = stop.triggered() => {
+                self.lingering.left(previous);
+                return Some(interrupt);
+            }
+            ended = wait_until_ended(&self.control, previous) => {
+                if let Err(error) = ended {
+                    tracing::debug!(%error, "waiting for a stopped editor query to end failed");
+                }
+            }
+            () = reached(give_up) => {
+                tracing::debug!("a stopped editor query did not end within the cancel grace");
+            }
+        }
+        None
+    }
+
+    /// Send `sql` as `query_id`, which the server ends at `bound`.
+    fn open(&self, sql: &UserSql, query_id: Uuid, bound: Option<Duration>) -> Result<ResultReader, DriverError> {
+        let mut query = self
+            .session
+            .query_raw(sql.as_str())
+            .with_setting("query_id", query_id.to_string());
+        if bound.is_some() {
+            query = query
+                .with_setting("max_execution_time", whole_seconds(bound).to_string())
+                .with_setting("timeout_overflow_mode", "throw");
+        }
+        ResultReader::open(query)
     }
 
     /// The server may still be ending a query told to stop when the run
