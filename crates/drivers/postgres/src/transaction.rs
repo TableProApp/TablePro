@@ -11,7 +11,7 @@ pub(super) async fn execute_in_transaction_checked(
         let inferred_text_types = if needs_text_type_inference(params) {
             match describe_query_parameters(&mut tx, sql, params).await {
                 Ok(description) => description.inferred_text_types,
-                Err(error) => return Err(transaction_failure(tx, index, error).await),
+                Err(error) => return Err(transaction_failure(tx, index, error.into_driver()).await),
             }
         } else {
             Vec::new()

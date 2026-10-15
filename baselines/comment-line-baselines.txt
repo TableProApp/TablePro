@@ -133,7 +133,7 @@ crates/drivers/mysql/src/session.rs 5
 crates/drivers/mysql/src/temporal.rs 1
 crates/drivers/postgres/src/array.rs 4
 crates/drivers/postgres/src/lib.rs 52
-crates/drivers/postgres/src/query.rs 5
+crates/drivers/postgres/src/query.rs 2
 crates/drivers/postgres/src/session.rs 3
 crates/drivers/postgres/src/temporal.rs 1
 crates/drivers/redis/src/lib.rs 10

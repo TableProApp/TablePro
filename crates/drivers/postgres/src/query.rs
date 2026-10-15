@@ -37,15 +37,12 @@ pub(super) async fn query_connection(
     params: &[Value],
     stop: Option<QueryStop<'_>>,
 ) -> Result<QueryResult, DriverError> {
-    let result = query_connection_once(connection, sql, params, stop).await;
-    // A concurrent DROP/CREATE can leave a cached plan pointing at the old
-    // OID. PostgreSQL raises this before executing the statement, so clear
-    // SQLx's per-connection caches and retry the same operation once.
+    let result = query_attempt(connection, sql, params, stop).await;
     if result.as_ref().is_err_and(is_stale_type_cache_error) {
         connection.clear_cached_statements().await.map_err(map_sqlx_error)?;
         return query_connection_once(connection, sql, params, stop).await;
     }
-    result
+    result.map_err(QueryFailure::into_driver)
 }
 
 pub(super) async fn query_connection_once(
@@ -54,6 +51,17 @@ pub(super) async fn query_connection_once(
     params: &[Value],
     stop: Option<QueryStop<'_>>,
 ) -> Result<QueryResult, DriverError> {
+    query_attempt(connection, sql, params, stop)
+        .await
+        .map_err(QueryFailure::into_driver)
+}
+
+async fn query_attempt(
+    connection: &mut PoolConnection<Postgres>,
+    sql: &str,
+    params: &[Value],
+    stop: Option<QueryStop<'_>>,
+) -> Result<QueryResult, QueryFailure> {
     let description = if needs_text_type_inference(params) {
         Some(describe_query_parameters(connection, sql, params).await?)
     } else {
@@ -68,8 +76,7 @@ pub(super) async fn query_connection_once(
             let parameter_types = pg_parameter_type_infos(params);
             let statement = connection
                 .prepare_with(sqlx::AssertSqlSafe(sql).into_sql_str(), &parameter_types)
-                .await
-                .map_err(map_sqlx_error)?;
+                .await?;
             statement
                 .columns()
                 .iter()
@@ -112,12 +119,12 @@ pub(super) async fn execute_connection(
     sql: &str,
     params: &[Value],
 ) -> Result<ExecResult, DriverError> {
-    let result = execute_connection_once(connection, sql, params).await;
+    let result = execute_attempt(connection, sql, params).await;
     if result.as_ref().is_err_and(is_stale_type_cache_error) {
         connection.clear_cached_statements().await.map_err(map_sqlx_error)?;
         return execute_connection_once(connection, sql, params).await;
     }
-    result
+    result.map_err(QueryFailure::into_driver)
 }
 
 pub(super) async fn execute_connection_once(
@@ -125,6 +132,16 @@ pub(super) async fn execute_connection_once(
     sql: &str,
     params: &[Value],
 ) -> Result<ExecResult, DriverError> {
+    execute_attempt(connection, sql, params)
+        .await
+        .map_err(QueryFailure::into_driver)
+}
+
+async fn execute_attempt(
+    connection: &mut PoolConnection<Postgres>,
+    sql: &str,
+    params: &[Value],
+) -> Result<ExecResult, QueryFailure> {
     let inferred_text_types = if needs_text_type_inference(params) {
         describe_query_parameters(connection, sql, params)
             .await?
@@ -133,21 +150,56 @@ pub(super) async fn execute_connection_once(
         Vec::new()
     };
     let query = bind_pg_params(sqlx::query(sqlx::AssertSqlSafe(sql)), params, &inferred_text_types)?;
-    let result = query.execute(&mut **connection).await.map_err(map_sqlx_error)?;
+    let result = query.execute(&mut **connection).await?;
     Ok(ExecResult {
         rows_affected: result.rows_affected(),
     })
 }
 
-fn is_stale_type_cache_error(error: &DriverError) -> bool {
+pub(super) enum QueryFailure {
+    Driver(DriverError),
+    Sqlx(sqlx::Error),
+}
+
+impl QueryFailure {
+    pub(super) fn into_driver(self) -> DriverError {
+        match self {
+            Self::Driver(error) => error,
+            Self::Sqlx(error) => map_sqlx_error(error),
+        }
+    }
+}
+
+impl From<DriverError> for QueryFailure {
+    fn from(error: DriverError) -> Self {
+        Self::Driver(error)
+    }
+}
+
+impl From<sqlx::Error> for QueryFailure {
+    fn from(error: sqlx::Error) -> Self {
+        Self::Sqlx(error)
+    }
+}
+
+fn is_stale_type_cache_error(error: &QueryFailure) -> bool {
+    let QueryFailure::Sqlx(sqlx::Error::Database(error)) = error else {
+        return false;
+    };
+    let Some(error) = error.try_downcast_ref::<sqlx::postgres::PgDatabaseError>() else {
+        return false;
+    };
+    if error.r#where().is_some() {
+        return false;
+    }
     matches!(
-        error,
-        DriverError::Query {
-            message,
-            sqlstate: Some(sqlstate),
-            ..
-        } if (sqlstate == "XX000" && message.starts_with("cache lookup failed for type "))
-            || sqlstate == "0A000"
+        (error.code(), error.file(), error.routine()),
+        ("0A000", Some("plancache.c"), Some("RevalidateCachedQuery"))
+            | (
+                "XX000",
+                Some("lsyscache.c"),
+                Some("getTypeInputInfo" | "getTypeBinaryInputInfo")
+            )
     )
 }
 
@@ -162,9 +214,11 @@ pub(super) async fn stream_into_result(
     let result = stream_into_result_once(&mut connection, sql, limit, stop).await;
     if result.as_ref().is_err_and(is_stale_type_cache_error) {
         connection.clear_cached_statements().await.map_err(map_sqlx_error)?;
-        return stream_into_result_once(&mut connection, sql, limit, stop).await;
+        return stream_into_result_once(&mut connection, sql, limit, stop)
+            .await
+            .map_err(QueryFailure::into_driver);
     }
-    result
+    result.map_err(QueryFailure::into_driver)
 }
 
 async fn stream_into_result_once(
@@ -172,11 +226,8 @@ async fn stream_into_result_once(
     sql: &str,
     limit: usize,
     stop: Option<QueryStop<'_>>,
-) -> Result<QueryResult, DriverError> {
-    let statement = connection
-        .prepare(sqlx::AssertSqlSafe(sql).into_sql_str())
-        .await
-        .map_err(map_sqlx_error)?;
+) -> Result<QueryResult, QueryFailure> {
+    let statement = connection.prepare(sqlx::AssertSqlSafe(sql).into_sql_str()).await?;
     if statement
         .columns()
         .iter()
@@ -338,7 +389,7 @@ async fn refresh_enum_type_names(
 async fn collect_query_rows<S>(
     stream: &mut S,
     limit: usize,
-) -> Result<(QueryResult, Vec<PgTypeInfo>, Vec<Option<(i64, i16)>>), DriverError>
+) -> Result<(QueryResult, Vec<PgTypeInfo>, Vec<Option<(i64, i16)>>), QueryFailure>
 where
     S: futures::Stream<Item = Result<PgRow, sqlx::Error>> + Unpin,
 {
@@ -350,7 +401,13 @@ where
     let mut budget = QueryResultBudget::default();
     let mut truncated = false;
     while let Some(row_result) = stream.next().await {
-        let row = row_result.map_err(map_sqlx_error)?;
+        let row = row_result.map_err(|error| {
+            if rows.is_empty() {
+                QueryFailure::Sqlx(error)
+            } else {
+                QueryFailure::Driver(map_sqlx_error(error))
+            }
+        })?;
         if rows.len() >= limit {
             truncated = true;
             break;

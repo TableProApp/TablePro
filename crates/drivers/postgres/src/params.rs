@@ -5,8 +5,7 @@ use sqlx::{Encode, Executor, Postgres, SqlSafeStr, Statement, Type, TypeInfo};
 use tablepro_core::{ColumnInfo, DriverError, Value};
 
 use crate::array::MAX_ARRAY_TEXT_BYTES;
-use crate::map_sqlx_error;
-use crate::query::{statement_column_origins, statement_columns, statement_type_infos};
+use crate::query::{QueryFailure, statement_column_origins, statement_columns, statement_type_infos};
 
 const TEXT_OID: u32 = 25;
 const PG_LSN_OID: u32 = 3220;
@@ -27,7 +26,7 @@ pub(super) async fn describe_query_parameters(
     connection: &mut PgConnection,
     sql: &str,
     params: &[Value],
-) -> Result<PgParameterDescription, DriverError> {
+) -> Result<PgParameterDescription, QueryFailure> {
     let described_sql = format!("{sql}\n/* Bookie parameter type description */");
     let described_sql = sqlx::AssertSqlSafe(described_sql.as_str()).into_sql_str();
     let statement = match connection.prepare(described_sql.clone()).await {
@@ -38,7 +37,7 @@ pub(super) async fn describe_query_parameters(
                 .and_then(|error| error.code())
                 .is_some_and(|code| matches!(code.as_ref(), "42P08" | "42P18"));
             if !ambiguous {
-                return Err(map_sqlx_error(error));
+                return Err(error.into());
             }
             let parameter_types = pg_parameter_type_infos(params);
             match connection.prepare_with(described_sql, &parameter_types).await {
@@ -48,11 +47,7 @@ pub(super) async fn describe_query_parameters(
                         .as_database_error()
                         .and_then(|error| error.code())
                         .is_some_and(|code| code.as_ref() == "42883");
-                    return Err(map_sqlx_error(if text_operator_mismatch {
-                        error
-                    } else {
-                        fallback_error
-                    }));
+                    return Err(if text_operator_mismatch { error } else { fallback_error }.into());
                 }
             }
         }

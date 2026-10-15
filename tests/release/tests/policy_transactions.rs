@@ -122,3 +122,43 @@ async fn interactive_rollback_discards_uncommitted_writes() {
         .await
         .expect("drop interactive table");
 }
+
+#[tokio::test]
+#[ignore = "requires the postgres release fixture"]
+async fn guarded_application_error_does_not_replay_sequence_effects() {
+    let fixture = Fixture::from_env();
+    let raw: Arc<dyn Connection> = fixture.connect_verified().await.into();
+    raw.execute("DROP SEQUENCE IF EXISTS release_retry_probe")
+        .await
+        .unwrap();
+    raw.execute("CREATE SEQUENCE release_retry_probe").await.unwrap();
+    raw.execute(
+        "CREATE OR REPLACE FUNCTION release_retry_probe_fn() RETURNS integer LANGUAGE plpgsql VOLATILE AS $$ \
+         BEGIN PERFORM nextval('release_retry_probe'); \
+         RAISE EXCEPTION USING ERRCODE = '0A000', MESSAGE = 'cached plan must not change result type'; END $$",
+    )
+    .await
+    .unwrap();
+    let harness = guard(raw.clone(), false);
+    let control = tablepro_core::OperationControl::with_timeout(std::time::Duration::from_secs(30));
+    let result = harness
+        .guard
+        .query_controlled("SELECT release_retry_probe_fn()", &control)
+        .await;
+    assert!(matches!(result, Err(DriverError::Query { sqlstate: Some(ref code), .. }) if code == "0A000"));
+    assert_eq!(
+        scalar_int(raw.as_ref(), "SELECT last_value FROM release_retry_probe").await,
+        1
+    );
+    let result = harness
+        .guard
+        .execute_controlled("SELECT release_retry_probe_fn()", &control)
+        .await;
+    assert!(matches!(result, Err(DriverError::Query { sqlstate: Some(ref code), .. }) if code == "0A000"));
+    assert_eq!(
+        scalar_int(raw.as_ref(), "SELECT last_value FROM release_retry_probe").await,
+        2
+    );
+    raw.execute("DROP FUNCTION release_retry_probe_fn()").await.unwrap();
+    raw.execute("DROP SEQUENCE release_retry_probe").await.unwrap();
+}
