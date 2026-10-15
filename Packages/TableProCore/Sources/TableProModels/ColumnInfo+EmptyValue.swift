@@ -16,7 +16,7 @@ public extension ColumnInfo {
         let upper = unwrapped(typeName.uppercased())
         if upper.hasSuffix("[]") || upper.hasPrefix("ARRAY") { return false }
         let base = upper.prefix { $0 != "(" }.trimmingCharacters(in: .whitespaces)
-        if base == "ENUM" { return upper.contains("('',") || upper.contains(",'')") || upper.contains("('')") }
+        if base == "ENUM" { return ["('',", ",'',", ",'')", "('')"].contains { upper.contains($0) } }
         if base.hasPrefix("BIT VARYING") { return true }
         return !typedStems.contains(stem(of: base))
     }

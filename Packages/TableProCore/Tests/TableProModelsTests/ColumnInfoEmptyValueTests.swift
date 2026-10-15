@@ -11,7 +11,7 @@ struct ColumnInfoEmptyValueTests {
             "DATETIME", "datetime(6)", "TIMESTAMP", "timestamptz", "DATE", "TIME", "YEAR",
             "INT", "int4", "BIGINT UNSIGNED", "DECIMAL(10,2)", "numeric", "DOUBLE", "MONEY",
             "TINYINT(1)", "BIT", "bool", "JSON", "jsonb", "uuid", "uniqueidentifier", "inet",
-            "geometry", "interval", "integer[]", "Nullable(UUID)", "enum('a','b')", "BINARY_DOUBLE",
+            "geometry", "interval", "integer[]", "Nullable(UUID)", "enum('a','b')", "enum('it''s','b')", "BINARY_DOUBLE",
             "timestamp without time zone", "double precision", "Int64", "DateTime64(3)", "FLOAT8"
         ]
     )
@@ -23,7 +23,7 @@ struct ColumnInfoEmptyValueTests {
         "Character, binary and SET columns, and types this does not know, hold the empty string",
         arguments: [
             "VARCHAR(64)", "character varying", "TEXT", "LONGTEXT", "NVARCHAR(MAX)", "bpchar",
-            "citext", "CLOB", "BLOB", "bytea", "VARBINARY(16)", "set('x','y')", "enum('','a')",
+            "citext", "CLOB", "BLOB", "bytea", "VARBINARY(16)", "set('x','y')", "enum('','a')", "enum('a','','b')", "enum('a','')",
             "Nullable(String)", "LowCardinality(String)", "", "USER-DEFINED", "mood", "bit varying"
         ]
     )
