@@ -589,6 +589,37 @@ mod tests {
         assert_eq!(texts("users."), ["users", ""]);
     }
 
+    #[test]
+    fn quoted_names_with_spaces_unicode_and_reserved_words_keep_their_identity() {
+        let texts = |reference: &str| {
+            split_reference(reference)
+                .into_iter()
+                .map(|part| part.text)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(texts("\"my schema\".\"order items\""), ["my schema", "order items"]);
+        assert_eq!(texts("\"café\".\"Таблица\""), ["café", "Таблица"]);
+        assert_eq!(texts("public.\"select\""), ["public", "select"]);
+        assert_ne!(table_key("public.\"Select\""), table_key("public.select"));
+        assert_eq!(table_key("public.\"select\""), table_key("PUBLIC.SELECT"));
+        assert_ne!(table_key("\"Café\""), table_key("café"));
+    }
+
+    #[test]
+    fn invalid_neighbours_of_quoted_names_do_not_panic_or_merge() {
+        let texts = |reference: &str| {
+            split_reference(reference)
+                .into_iter()
+                .map(|part| part.text)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(texts("\"unterminated"), ["unterminated"]);
+        assert_eq!(texts("\"a\"\""), ["a\""]);
+        assert_eq!(texts(""), [""]);
+        assert_eq!(texts("."), ["", ""]);
+        assert_ne!(table_key("\"a\".b"), table_key("\"a.b\""));
+    }
+
     fn index_with(tables: &[(&str, &[&str])]) -> SchemaIndex {
         let mut index = SchemaIndex::default();
         for (table, columns) in tables {
