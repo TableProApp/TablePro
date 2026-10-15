@@ -20,17 +20,28 @@ use super::secret_labels::secret_label;
 /// secrets are deleted. Every write publishes the list, which every
 /// picker follows.
 ///
+/// An edit and a copy run one at a time, since each writes the keyring
+/// and the list in turn: two edits of one connection from two windows
+/// would otherwise leave the endpoint of one with the password of the
+/// other.
+///
 /// Run it on the app runtime, which the Secret Service client needs.
 #[derive(Clone)]
 pub struct SavedConnectionEditor {
     store: ConnectionStore,
     secrets: Arc<dyn SecretVault>,
     tasks: Tasks,
+    turn: Arc<futures::lock::Mutex<()>>,
 }
 
 impl SavedConnectionEditor {
     pub fn new(store: ConnectionStore, secrets: Arc<dyn SecretVault>, tasks: Tasks) -> Self {
-        Self { store, secrets, tasks }
+        Self {
+            store,
+            secrets,
+            tasks,
+            turn: Arc::default(),
+        }
     }
 
     /// Save `connection` over the entry with its id, applying `changes`
@@ -43,6 +54,7 @@ impl SavedConnectionEditor {
         connection: SavedConnection,
         changes: SecretChanges,
     ) -> Result<SavedConnection, SavedConnectionError> {
+        let _turn = self.turn.lock().await;
         let id = connection.id;
         let original = self.find(id).await?;
         let mut connection = connection;
@@ -141,6 +153,7 @@ impl SavedConnectionEditor {
     /// deleting either leaves the other able to connect. It has never
     /// been opened, so it does not claim the original's place at the top.
     pub async fn duplicate(&self, id: Uuid) -> Result<SavedConnection, SavedConnectionError> {
+        let _turn = self.turn.lock().await;
         let list = self.list().await?;
         let source = list
             .iter()
@@ -317,6 +330,101 @@ mod tests {
             .into_iter()
             .filter(|call| !matches!(call, Call::Load(..)))
             .collect()
+    }
+
+    /// A vault whose first SSH password store waits until the test lets
+    /// it go, so an edit can be held between two of its secrets.
+    struct HeldVault {
+        inner: Arc<FakeSecretVault>,
+        held: futures::lock::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+        reached: tokio::sync::Notify,
+    }
+
+    #[async_trait::async_trait]
+    impl SecretVault for HeldVault {
+        async fn store(
+            &self,
+            id: Uuid,
+            kind: SecretKind,
+            secret: &SecretString,
+            label: &str,
+        ) -> Result<(), SecretError> {
+            if kind == SecretKind::SshPassword {
+                let gate = self.held.lock().await.take();
+                if let Some(gate) = gate {
+                    self.reached.notify_one();
+                    gate.await.expect("the test lets the store go");
+                }
+            }
+            self.inner.store(id, kind, secret, label).await
+        }
+
+        async fn load(&self, id: Uuid, kind: SecretKind) -> Result<SecretLookup, SecretError> {
+            self.inner.load(id, kind).await
+        }
+
+        async fn relabel(&self, id: Uuid, kind: SecretKind, label: &str) -> Result<(), SecretError> {
+            self.inner.relabel(id, kind, label).await
+        }
+
+        async fn delete_kind(&self, id: Uuid, kind: SecretKind) -> Result<(), SecretError> {
+            self.inner.delete_kind(id, kind).await
+        }
+
+        async fn delete_connection(&self, id: Uuid) -> Result<(), SecretError> {
+            self.inner.delete_connection(id).await
+        }
+    }
+
+    #[tokio::test]
+    async fn two_edits_of_one_connection_do_not_mix() {
+        let fixture = fixture().await;
+        let (release, gate) = tokio::sync::oneshot::channel();
+        let vault = Arc::new(HeldVault {
+            inner: fixture.vault.clone(),
+            held: futures::lock::Mutex::new(Some(gate)),
+            reached: tokio::sync::Notify::new(),
+        });
+        let editor = SavedConnectionEditor::new(fixture.store.clone(), vault.clone(), paused_tasks());
+        let edit = |host: &str, password: &str| {
+            let connection = SavedConnection {
+                host: host.to_owned(),
+                ..fixture.saved.clone()
+            };
+            let changes = SecretChanges {
+                database_password: SecretChange::Replace(SecretString::from(password.to_owned())),
+                ssh_password: SecretChange::Replace(SecretString::from(password.to_owned())),
+                ssh_passphrase: SecretChange::Keep,
+            };
+            (connection, changes)
+        };
+        let (first, first_changes) = edit("first.example.com", "first");
+        let (second, second_changes) = edit("second.example.com", "second");
+
+        let held = editor.update(first, first_changes);
+        let racing = async {
+            vault.reached.notified().await;
+            let second = editor.update(second, second_changes);
+            let letting_go = async {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                release.send(()).expect("the held store is waiting");
+            };
+            futures::future::join(second, letting_go).await.0
+        };
+        let (first, second) = futures::future::join(held, racing).await;
+        first.expect("the first edit");
+        second.expect("the second edit");
+
+        let saved = stored(&fixture.store);
+        let password = fixture
+            .vault
+            .stored_secret(fixture.saved.id, SecretKind::DatabasePassword);
+        assert_eq!(saved[0].host, "second.example.com");
+        assert_eq!(
+            password.as_deref(),
+            Some("second"),
+            "the endpoint and password come from different edits"
+        );
     }
 
     #[tokio::test]
