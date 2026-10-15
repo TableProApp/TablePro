@@ -281,6 +281,7 @@ The tests in `crates/app/tests` that start TablePro run without the test harness
 | `application_lifecycle` | Quit waits for a session's close within the close timeout and gives up on a close that hangs, a cancelled close keeps the app running, and an editor session's close holds the process |
 | `application_session_restore` | the windows open at quit open again at the next launch, and a window closed first does not |
 | `open_files` | a file handed over D-Bus opens a window on it, the same file brings that window forward, and another file opens a second window |
+| `accessibility` | every control a screen reader reaches has a name, on the picker, connecting, connect failed and workspace pages and in the connect and preferences dialogs |
 | `startup`, `i18n_catalog`, `logging` | the command-line options, a missing schema, the translation catalogue and the log setup |
 
 They need a display and a session bus, so run them the way CI does:
@@ -290,6 +291,8 @@ xvfb-run -a dbus-run-session -- meson test -C _build --suite gtk --print-errorlo
 ```
 
 or one at a time, `xvfb-run -a dbus-run-session -- meson devenv -C _build cargo test -p tablepro --test application_lifecycle`. `startup` needs the build Meson configures, so it fails under plain Cargo. cargo-nextest asks each test binary to list its tests, which a harness-free binary does not do, so run these with `cargo test`.
+
+`accessibility` starts one TablePro per scenario in its own process instead, on the main context, and needs `GTK_A11Y=test`; pass scenario names after `--` to run only those. It leaves to libadwaita the parts libadwaita builds and names with a tooltip alone: a tab's close button, a password row's peek button and the preferences dialog's search button.
 
 Policy:
 
