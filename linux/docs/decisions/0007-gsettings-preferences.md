@@ -1,6 +1,6 @@
 # 0007: Preferences and window geometry in GSettings
 
-- **Status**: Accepted
+- **Status**: Accepted; the schema id and path per profile amended 2026-10-15
 - **Date**: 2026-09-15
 
 ## Context
@@ -19,8 +19,9 @@ use.
 
 ## Decision
 
-`data/app.tablepro.TablePro.gschema.xml` holds every app-wide preference
-and the window geometry. `tablepro_storage::AppSettings` wraps it in
+`data/app.tablepro.TablePro.gschema.xml.in` holds every app-wide
+preference and the window geometry. Its id and path follow the
+application id, so a development build keeps settings of its own. `tablepro_storage::AppSettings` wraps it in
 typed accessors.
 
 - Each key carries a summary, a description and, where it is bounded, a

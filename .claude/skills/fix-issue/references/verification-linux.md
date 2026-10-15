@@ -40,4 +40,4 @@ Cargo prints one "test result:" line per test binary and never adds them up, thr
 ## Packaging
 
 - **`dist` packs the last commit** and refuses a tree with uncommitted changes, so run it after the commit.
-- **The Flatpak manifest** under `linux/build-aux/flatpak/` is not built in CI.
+- **The wrapper builds neither the Flatpak nor the packages.** CI builds both, and checks the workspace on the minimum Rust version (`linux/docs/testing.md`, CI). Locally: `flatpak-builder` (`linux/README.md`, Flatpak) and `linux/build-aux/packaging/build-packages.sh` (`linux/README.md`, Packages).

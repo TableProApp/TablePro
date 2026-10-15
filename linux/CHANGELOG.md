@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- .deb package for Ubuntu 26.04 and .rpm package for Fedora 44.
+- Packages for Ubuntu 26.04 from a Launchpad PPA and for Fedora 44 from COPR, updated with the rest of the system.
 - Password prompt on connect when the keyring holds no password or the server refused it, with a choice to remember it.
 - SSH tunnels through the system OpenSSH client, with your agent, host aliases and jump hosts, confirming new host keys.
 - Security group in the connect dialog: encryption mode, CA certificate, client certificate and TLS server name.

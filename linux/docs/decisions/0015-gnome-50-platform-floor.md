@@ -1,6 +1,6 @@
 # 0015: GNOME 50 platform floor
 
-- **Status**: Accepted
+- **Status**: Accepted; the runtime row and the channel that matters amended by 0018
 - **Date**: 2026-09-15
 
 ## Context
@@ -48,9 +48,11 @@ dropped, because the crates declare their own floors directly.
 
 | Target | Ships |
 |---|---|
-| org.gnome.Platform//50 | GTK 4.22, libadwaita 1.9, GtkSourceView 5.18, GLib 2.88 |
 | Ubuntu 26.04 LTS | GTK 4.22, libadwaita 1.9, GLib 2.88 |
 | Fedora 44 | GTK 4.22, libadwaita 1.9, GLib 2.88 |
+| org.gnome.Platform//51 | GTK 4.24, libadwaita 1.10, GLib 2.90 |
 
-Flathub is the primary channel, so the runtime is the floor that matters.
-Older distributions build from the Flatpak, not from system packages.
+The distribution packages are the primary channels
+([ADR 0018](0018-ppa-copr-and-flathub-later.md)), so Ubuntu 26.04 and
+Fedora 44 are the floor that matters. The Devel Flatpak builds on the
+latest GNOME runtime, as a Flathub submission must.

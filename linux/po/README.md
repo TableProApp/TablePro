@@ -55,7 +55,7 @@ Do not translate symbols, SQL keywords, or the word TablePro.
 
 ```sh
 git ls-files 'crates/app/src/*.rs' 'data/resources/*.ui' 'data/*.desktop.in.in' \
-  'data/*.gschema.xml' 'data/*.metainfo.xml.in.in' > po/POTFILES.in
+  'data/*.gschema.xml.in' 'data/*.metainfo.xml.in.in' > po/POTFILES.in
 ```
 
 CI runs the same command and fails on a diff, so a new source file cannot

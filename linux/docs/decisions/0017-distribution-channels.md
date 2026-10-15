@@ -1,10 +1,7 @@
-# 0017. Distribution channels
+# 0017: Distribution channels
 
-Date: 2026-10-14
-
-## Status
-
-Accepted.
+- **Status**: Superseded by 0018
+- **Date**: 2026-10-14
 
 ## Context
 

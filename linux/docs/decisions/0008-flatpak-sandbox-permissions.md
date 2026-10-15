@@ -1,6 +1,6 @@
 # 0008: Flatpak sandbox permissions
 
-- **Status**: Accepted
+- **Status**: Accepted; the Flathub submission deferred by 0018
 - **Date**: 2026-10-14
 
 ## Context
@@ -31,8 +31,8 @@ The first manifest also granted `--filesystem=/etc/krb5.conf:ro` and `--talk-nam
 
 ## Consequences
 
-- Two lint findings are expected: `finish-args-home-filesystem-access` and `finish-args-has-socket-ssh-auth`. `build-aux/flatpak/lint-exceptions.json` lists them for `app.tablepro.TablePro` and for the Devel ID, and every lint passes it with `--exceptions --user-exceptions`, so any other finding fails.
-- Before the first Flathub submission, maintainers ask Flathub for the same two exceptions with the reasons above. Flathub's builders apply only the exceptions Flathub granted.
+- Two lint findings are expected: `finish-args-home-filesystem-access` and `finish-args-has-socket-ssh-auth`. `build-aux/flatpak/lint-exceptions.json` lists them for the Devel ID, and every lint passes it with `--exceptions --user-exceptions`, so any other finding fails.
+- Before the first Flathub submission, maintainers ask Flathub for the same two exceptions with the reasons above, writing the request themselves. Flathub's builders apply only the exceptions Flathub granted, and Flathub refuses the home exception when the software shows signs of LLM use; [ADR 0018](0018-ppa-copr-and-flathub-later.md) records what follows from that.
 - The removed grants stay removed: `/etc/krb5.conf:ro` is a reserved path that Flatpak never granted, and the Secret Service talk-name exposed the whole keyring.
 - A `ProxyCommand` or `Match exec` that runs a host program, the host's `/etc/ssh` and FIDO keys kept in files do not work in the Flatpak build ([ADR 0013](0013-openssh-client-transport.md)). Distribution packages have none of these limits.
 
