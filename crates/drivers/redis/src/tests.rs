@@ -493,3 +493,25 @@ fn a_named_certificate_authority_is_read_when_the_connection_verifies() {
 
     assert_eq!(bytes, Some(b"-----BEGIN CERTIFICATE-----\n".to_vec()));
 }
+
+#[tokio::test]
+async fn connection_errors_never_carry_the_password() {
+    const PASSWORD_CANARY: &str = "canary-p@ss/w0rd#1";
+    let mut failures = 0;
+    for host in ["bad host", "exa@mple", "", "a/b", "[::1"] {
+        let opts = ConnectOptions {
+            host: host.into(),
+            port: 6379,
+            username: "app".into(),
+            password: secrecy::SecretString::from(PASSWORD_CANARY),
+            ..Default::default()
+        };
+        if let Err(error) = RedisDriver.connect(opts).await {
+            failures += 1;
+            let text = format!("{error} {error:?}");
+            assert!(!text.contains(PASSWORD_CANARY), "{host:?}: {text}");
+            assert!(!text.contains("p%40ss"), "{host:?}: {text}");
+        }
+    }
+    assert!(failures >= 4, "the hostile hosts must actually fail, got {failures}");
+}

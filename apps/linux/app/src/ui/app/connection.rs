@@ -780,14 +780,7 @@ impl App {
                             if !eligible {
                                 false
                             } else {
-                                tablepro_storage::load_password(source.id)
-                                    .await
-                                    .ok()
-                                    .flatten()
-                                    .is_some_and(|password| {
-                                        use secrecy::ExposeSecret;
-                                        !password.expose_secret().is_empty()
-                                    })
+                                prompt_for_stored_password(tablepro_storage::load_password(source.id).await)
                             }
                         }
                         None => false,
@@ -832,6 +825,18 @@ impl App {
 /// fail at connect time.
 fn duplicate_connection_message(name: &str) -> String {
     crate::tr!("Created “{name}”. Enter its password the first time you connect.").replace("{name}", name)
+}
+
+fn prompt_for_stored_password(stored: Result<Option<secrecy::SecretString>, tablepro_storage::StorageError>) -> bool {
+    use secrecy::ExposeSecret;
+    match stored {
+        Ok(Some(password)) => !password.expose_secret().is_empty(),
+        Ok(None) => false,
+        Err(error) => {
+            tracing::warn!(error = %error, "the keyring could not be read; the copy will ask for a password");
+            true
+        }
+    }
 }
 
 fn duplicate_connection_prompt_eligible(
@@ -893,7 +898,8 @@ fn execute_delete_connection(
 
 #[cfg(test)]
 mod tests {
-    use super::{duplicate_connection_message, duplicate_connection_prompt_eligible};
+    use super::{duplicate_connection_message, duplicate_connection_prompt_eligible, prompt_for_stored_password};
+    use secrecy::SecretString;
 
     #[test]
     fn the_duplicate_toast_says_the_copy_has_no_saved_password() {
@@ -924,6 +930,19 @@ mod tests {
             false,
             true
         ));
+    }
+
+    #[test]
+    fn a_stored_password_means_the_copy_should_prompt_for_one() {
+        assert!(prompt_for_stored_password(Ok(Some(SecretString::from("hunter2")))));
+        assert!(!prompt_for_stored_password(Ok(Some(SecretString::from("")))));
+        assert!(!prompt_for_stored_password(Ok(None)));
+    }
+
+    #[test]
+    fn an_unreadable_keyring_prompts_instead_of_pretending_there_is_no_password() {
+        let failure = tablepro_storage::StorageError::Schema("keyring locked".into());
+        assert!(prompt_for_stored_password(Err(failure)));
     }
 }
 

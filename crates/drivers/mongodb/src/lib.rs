@@ -93,18 +93,24 @@ async fn build_client_options(opts: &ConnectOptions) -> Result<ClientOptions, Dr
     let host = uri_host(&opts.host)?;
     let scheme = "mongodb";
     let password = opts.password.expose_secret();
-    let auth = if !opts.username.is_empty() {
+    let auth = secrecy::SecretString::from(if !opts.username.is_empty() {
         format!("{}:{}@", encode_uri(&opts.username), encode_uri(password))
     } else {
         String::new()
-    };
+    });
     let db_path = if opts.database.is_empty() {
         String::new()
     } else {
         format!("/{}", encode_uri(&opts.database))
     };
-    let uri = format!("{scheme}://{auth}{host}:{}{db_path}", opts.port);
-    let mut client_opts = ClientOptions::parse(&uri).await.map_err(map_mongo_error)?;
+    let uri = secrecy::SecretString::from(format!(
+        "{scheme}://{}{host}:{}{db_path}",
+        auth.expose_secret(),
+        opts.port
+    ));
+    let mut client_opts = ClientOptions::parse(uri.expose_secret())
+        .await
+        .map_err(map_mongo_error)?;
     client_opts.app_name = Some("TablePro".into());
     client_opts.tls = Some(tls_for(&opts.tls, opts.service_address().0));
     client_opts.connect_timeout = Some(CONNECT_TIMEOUT);
@@ -778,5 +784,41 @@ mod tests {
             panic!("TLS must be enabled when verifying");
         };
         assert_eq!(tls_options.verify_hostname.as_deref(), Some("mongo.internal.example"));
+    }
+
+    const PASSWORD_CANARY: &str = "canary-p@ss/w0rd#1";
+
+    fn hostile_options(host: &str, port: u16, database: &str) -> ConnectOptions {
+        ConnectOptions {
+            host: host.into(),
+            port,
+            database: database.into(),
+            username: "app".into(),
+            password: secrecy::SecretString::from(PASSWORD_CANARY),
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn connection_option_errors_never_carry_the_password() {
+        let cases = [
+            ("", 27017, "test"),
+            ("bad host", 27017, "test"),
+            ("exa@mple", 27017, "test"),
+            ("127.0.0.1", 0, "test"),
+            ("127.0.0.1", 27017, "a/b?x=1#y"),
+            ("127.0.0.1", 27017, "\u{0}"),
+        ];
+        let mut failures = 0;
+        for (host, port, database) in cases {
+            let opts = hostile_options(host, port, database);
+            if let Err(error) = build_client_options(&opts).await {
+                failures += 1;
+                let text = format!("{error} {error:?}");
+                assert!(!text.contains(PASSWORD_CANARY), "{host:?}:{port}/{database:?}: {text}");
+                assert!(!text.contains("p%40ss"), "{host:?}:{port}/{database:?}: {text}");
+            }
+        }
+        assert!(failures >= 5, "the hostile cases must actually fail, got {failures}");
     }
 }
