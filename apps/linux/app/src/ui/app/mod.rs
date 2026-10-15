@@ -43,7 +43,6 @@ use uuid::Uuid;
 use super::browse_tab::BrowseTabInput;
 use super::connect_dialog::ConnectDialog;
 use super::connection_row::ConnectionRow;
-use super::editor::build_schema_buffer;
 use super::history_dialog::HistoryDialog;
 use super::sidebar_row::SidebarRow;
 use super::welcome_view::{WelcomeView, WelcomeViewInit, WelcomeViewOutput};
@@ -156,7 +155,6 @@ pub struct App {
     /// `tab_view.pages()` since HashMap is unordered.
     workspace_tabs: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, WorkspaceTab>>>,
     dialog: Option<Controller<ConnectDialog>>,
-    schema_buffer: gtk::TextBuffer,
     favorites: Vec<tablepro_storage::SavedQuery>,
     favorites_order: crate::services::request_generation::LatestApplied,
     /// Tables and their columns for schema-aware editor completion.
@@ -169,8 +167,6 @@ pub struct App {
     welcome_view: Controller<WelcomeView>,
     /// Driver id is connection-wide, not per-tab.
     current_driver_id: Option<String>,
-    /// All tables in the current connection — fed into `schema_buffer`
-    /// for the editor's autocomplete; not the per-tab columns.
     table_names: Vec<String>,
     /// Read-only flag is connection-wide; fanned out to every BrowseTab
     /// when toggled.
@@ -576,7 +572,6 @@ impl SimpleComponent for App {
             workspace_root_added: std::cell::Cell::new(false),
             workspace_tabs: std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new())),
             dialog: None,
-            schema_buffer: build_schema_buffer(),
             favorites: Vec::new(),
             favorites_order: crate::services::request_generation::LatestApplied::default(),
             schema_index: std::rc::Rc::new(std::cell::RefCell::new(crate::ui::editor::SchemaIndex::default())),
@@ -734,7 +729,7 @@ impl SimpleComponent for App {
             AppMsg::WorkspaceTabsChanged => self.on_workspace_tabs_changed(),
             AppMsg::SwitchToRecentTab => self.on_switch_to_recent_tab(),
             AppMsg::EndRecentTabWalk => self.on_end_recent_tab_walk(),
-            AppMsg::WorkspaceSchemaWordsChanged => self.rebuild_schema_buffer(),
+            AppMsg::WorkspaceSchemaWordsChanged => self.refresh_schema_index(),
             AppMsg::ExecuteBrowseTransaction {
                 tab_id,
                 statements,

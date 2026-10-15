@@ -123,7 +123,7 @@ impl App {
         self.restore_sidebar_state();
         self.repopulate_sidebar(&tables);
         self.rebuild_schema_filter_popover(&sender);
-        self.rebuild_schema_buffer();
+        self.refresh_schema_index();
         self.refresh_window_title();
         // Restore tabs (browse + editor) persisted from the prior session
         // for this connection.
@@ -231,7 +231,6 @@ impl App {
             self.database.close(id);
             crate::services::window_registry::unregister(id);
         }
-        self.schema_buffer.set_text(crate::ui::editor::SQL_KEYWORDS);
         self.current_driver_id = None;
         self.read_only = false;
         self.read_only_badge.set_visible(false);

@@ -5,6 +5,7 @@
 Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the user-facing map for that development line since the last tagged package, [0.1.5](#015---2026-09-27). Compare: [`linux-v0.1.5...linux`](https://github.com/cozyGarage/BookiE/compare/linux-v0.1.5...linux). Entries stay here until the next tagged release.
 
 ### Added
+- SQL completion inserts complete dialect-quoted table and column names, preserves aliases, and offers scoped metadata instead of arbitrary editor words.
 - Large SQL query results stream in bounded pages, can be pinned, and can be fully exported by running the guarded query again.
 - CSV imports into PostgreSQL, MySQL/MariaDB and SQLite can preserve explicit auto-increment values from mapped columns; generated columns remain database-owned.
 - Editable text columns open a bounded full-value dialog; Apply stages the exact multiline text, while Set to NULL remains a separate action.

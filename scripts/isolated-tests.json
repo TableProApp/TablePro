@@ -426,6 +426,21 @@
       "tablepro-app",
       "--lib",
       "ui::filter_strip::tests::an_externally_applied_rule_expands_the_rule_editor"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::completion_provider::tests::proposals_activate_complete_quoted_references"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::completion_provider::tests::proposals_preserve_aliases_and_replace_only_the_identifier"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::completion_provider::tests::retired_proposals_do_not_edit_the_buffer"
     ]
   ],
   "keyring": [

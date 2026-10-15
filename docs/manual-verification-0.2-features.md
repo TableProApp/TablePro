@@ -294,3 +294,9 @@ Use a keyed table with a nullable text column and values above 8 KiB. Include CR
 - Bundle export and import are covered at the byte level in unit tests and by the keyring tier, but no end-to-end round trip between two real profiles has been run.
 - Bundle export and import write administrative audit events. Run a bundle round trip and confirm both events appear in `audit.jsonl` (B4-22).
 - SQL-format export and copied INSERT statements now preserve binary values on PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse, with real-engine tests for NULL, empty blobs and all 256 byte values. DuckDB binary SQL literals also have a NULL/empty/all-byte round-trip regression in the B3 ledger; installed acceptance is still pending. Other lossless-contract requirements remain under B3.
+
+## Exact SQL completion
+
+- [ ] On PostgreSQL, create distinct `users` and `"Users"` relations, plus a relation with a space or escaped quote in its name. Use Ctrl+Space to open completion, select each relation with the arrow keys, and accept with Enter or Tab. Run the resulting SELECT and confirm the intended relation. Repeat in the split editor view.
+- [ ] Complete an alias-qualified column in the middle of a query. The alias and following SQL stay intact. Undo restores the original identifier in one step.
+- [ ] With a screen reader, confirm completion names can be read and selected. This remains a manual accessibility check; provider activation tests do not establish screen reader behavior.

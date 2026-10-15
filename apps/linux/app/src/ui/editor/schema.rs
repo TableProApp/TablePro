@@ -12,21 +12,6 @@ AND OR IS LIKE IN BETWEEN EXISTS ANY \
 COUNT SUM AVG MIN MAX CASE WHEN THEN ELSE END \
 TRUE FALSE ASC DESC RETURNING";
 
-pub fn build_schema_buffer() -> gtk::TextBuffer {
-    let buf = gtk::TextBuffer::new(None);
-    buf.set_text(SQL_KEYWORDS);
-    buf
-}
-
-pub fn update_schema_buffer(buffer: &gtk::TextBuffer, schema_words: &[String]) {
-    let mut text = String::from(SQL_KEYWORDS);
-    for w in schema_words {
-        text.push(' ');
-        text.push_str(w);
-    }
-    buffer.set_text(&text);
-}
-
 pub fn derive_tab_label(query: &str) -> String {
     for line in query.lines() {
         let trimmed = line.trim();

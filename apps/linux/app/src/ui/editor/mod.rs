@@ -1,5 +1,7 @@
 mod completion;
 mod completion_identifiers;
+mod completion_proposals;
+mod completion_provider;
 mod diagnostics;
 mod error_location;
 mod find_bar;
@@ -39,9 +41,9 @@ use tablepro_storage::query_history::{HistoryStore, NewEntry, Outcome};
 use crate::services::database_service::ConnectionMetadata;
 use crate::ui::grid::GridMsg;
 
-pub use completion::{SchemaIndex, SchemaRequest, candidate_words, referenced_tables};
+pub use completion::{SchemaIndex, SchemaRequest, referenced_tables};
 pub(crate) use completion_identifiers::{catalog_reference, split_table_reference, table_key};
-pub use schema::{SQL_KEYWORDS, build_schema_buffer, derive_tab_label, update_schema_buffer};
+pub use schema::{SQL_KEYWORDS, derive_tab_label};
 pub(crate) use session_mode::query_cursor_export_factory;
 pub use statement_cursor::grammar_for;
 
@@ -99,7 +101,6 @@ pub struct SqlEditor {
 }
 
 pub struct SqlEditorInit {
-    pub schema_buffer: gtk::TextBuffer,
     pub schema_index: std::rc::Rc<std::cell::RefCell<SchemaIndex>>,
     pub initial_query: Option<String>,
     pub connection_id: Option<Uuid>,
@@ -504,11 +505,7 @@ impl SimpleComponent for SqlEditor {
         apply_editor_preferences(&widgets.source_view, &preferences);
         apply_editor_preferences(split_view.secondary_view(), &preferences);
 
-        let provider = sourceview5::CompletionWords::new(Some("SQL"));
-        provider.register(&init.schema_buffer);
-        if let Ok(view_buffer) = widgets.source_view.buffer().downcast::<sourceview5::Buffer>() {
-            provider.register(&view_buffer);
-        }
+        let provider = completion_provider::install(init.schema_index.clone());
         let completion = widgets.source_view.completion();
         completion.add_provider(&provider);
         split_view.secondary_view().completion().add_provider(&provider);
@@ -529,12 +526,8 @@ impl SimpleComponent for SqlEditor {
             .buffer()
             .connect_cursor_position_notify(move |_| update_cursor());
 
-        let refresh_completion = build_completion_refresh(
-            widgets.source_view.clone(),
-            init.schema_buffer.clone(),
-            init.schema_index.clone(),
-            sender.clone(),
-        );
+        let refresh_completion =
+            build_completion_refresh(widgets.source_view.clone(), init.schema_index.clone(), sender.clone());
         refresh_completion();
         let refresh_on_cursor = refresh_completion.clone();
         widgets
@@ -1147,7 +1140,6 @@ fn export_name_for_query(query: &str) -> String {
 
 fn build_completion_refresh(
     view: sourceview5::View,
-    schema_buffer: gtk::TextBuffer,
     schema_index: std::rc::Rc<std::cell::RefCell<SchemaIndex>>,
     sender: ComponentSender<SqlEditor>,
 ) -> std::rc::Rc<dyn Fn()> {
@@ -1160,13 +1152,11 @@ fn build_completion_refresh(
         let Ok(index) = schema_index.try_borrow() else {
             return;
         };
-        let words = candidate_words(&sql, cursor_byte, &index);
         let missing: Vec<String> = referenced_tables(&sql, cursor_byte, index.grammar)
             .into_iter()
             .filter(|table| !index.knows_columns(table))
             .collect();
         drop(index);
-        update_schema_buffer(&schema_buffer, &words);
         if !missing.is_empty() {
             let _ = sender.output(SqlEditorOutput::NeedColumns(missing));
         }

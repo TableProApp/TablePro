@@ -800,7 +800,7 @@ impl App {
                 self.set_completion_tables(&tables, &views);
                 self.sidebar_views = views;
                 self.repopulate_sidebar(&tables);
-                self.rebuild_schema_buffer();
+                self.refresh_schema_index();
             }
             Err(error) => self.show_error_alert(&crate::tr!("Catalog refresh failed"), &error),
         }

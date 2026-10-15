@@ -184,7 +184,6 @@ impl App {
         // entry points are visually indistinguishable.
         let workspace_tabs_for_create = self.workspace_tabs.clone();
         let tab_view_for_create = tab_view.clone();
-        let schema_buffer_for_create = self.schema_buffer.clone();
         let schema_index_for_create = self.schema_index.clone();
         let history_for_create = self.history.clone();
         let database_for_create = self.database.clone();
@@ -198,7 +197,6 @@ impl App {
             let editor = SqlEditor::builder()
                 .launch(SqlEditorInit {
                     connection_id: connection_id_for_create,
-                    schema_buffer: schema_buffer_for_create.clone(),
                     schema_index: schema_index_for_create.clone(),
                     initial_query: None,
                     history: history_for_create.clone(),
@@ -563,7 +561,6 @@ impl App {
         let editor = SqlEditor::builder()
             .launch(SqlEditorInit {
                 connection_id: self.connection_id,
-                schema_buffer: self.schema_buffer.clone(),
                 schema_index: self.schema_index.clone(),
                 initial_query,
                 history: self.history.clone(),
@@ -611,7 +608,7 @@ impl App {
         tab_view.set_selected_page(&page);
         self.workspace_outer_stack.set_visible_child_name("tabs");
         self.refresh_window_title();
-        self.rebuild_schema_buffer();
+        self.refresh_schema_index();
         self.persist_workspace_state();
     }
 
@@ -825,7 +822,7 @@ impl App {
         if self.workspace_tabs.borrow().is_empty() {
             self.workspace_outer_stack.set_visible_child_name("empty");
         }
-        self.rebuild_schema_buffer();
+        self.refresh_schema_index();
         self.refresh_window_title();
     }
 }

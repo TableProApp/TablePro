@@ -97,7 +97,7 @@ impl App {
         }
     }
 
-    pub(super) fn rebuild_schema_buffer(&self) {
+    pub(super) fn refresh_schema_index(&self) {
         if let Some(identity) = self.connection_id.and_then(|id| self.database.identity(id))
             && self.schema_index.borrow_mut().sync_connection(&identity)
         {
@@ -107,19 +107,7 @@ impl App {
             .current_driver_id
             .as_deref()
             .and_then(crate::ui::editor::grammar_for);
-        let mut words: Vec<String> = self.table_names.clone();
         let tabs = self.workspace_tabs.borrow();
-        for tab in tabs.values() {
-            if let Some(controller) = tab.browse_controller() {
-                for col in controller.model().columns() {
-                    words.push(col.name.clone());
-                }
-            }
-        }
-        words.sort_unstable();
-        words.dedup();
-        crate::ui::editor::update_schema_buffer(&self.schema_buffer, &words);
-
         let mut index = self.schema_index.borrow_mut();
         index.tables = self.table_names.clone();
         for tab in tabs.values() {

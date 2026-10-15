@@ -93,7 +93,35 @@ fn bare_name(key: &str) -> &str {
     key.rsplit('\0').next().unwrap_or(key)
 }
 
-pub fn candidate_words(sql: &str, cursor_byte: usize, index: &SchemaIndex) -> Vec<String> {
+#[cfg(test)]
+fn candidate_words(sql: &str, cursor_byte: usize, index: &SchemaIndex) -> Vec<String> {
+    candidates(sql, cursor_byte, index, true, str::to_string)
+}
+
+pub(super) fn candidate_sql(sql: &str, cursor_byte: usize, index: &SchemaIndex) -> Vec<String> {
+    let driver = match index.grammar {
+        Some(SqlGrammar::MySql) => "mysql",
+        Some(SqlGrammar::MsSql) => "mssql",
+        Some(SqlGrammar::ClickHouse) => "clickhouse",
+        _ => "postgres",
+    };
+    candidates(sql, cursor_byte, index, false, |column| {
+        tablepro_core::sql_dialect::quote_ident(driver, column)
+    })
+}
+
+pub(super) fn scope_at(sql: &str, cursor: usize, index: &SchemaIndex) -> Scope {
+    let statement = statement_around(sql, cursor, index.grammar);
+    scope_for(&statement.text[..statement.cursor], statement.text, index)
+}
+
+fn candidates(
+    sql: &str,
+    cursor_byte: usize,
+    index: &SchemaIndex,
+    bare_tables: bool,
+    column_sql: impl Fn(&str) -> String,
+) -> Vec<String> {
     let statement = statement_around(sql, cursor_byte, index.grammar);
     let prefix = &statement.text[..statement.cursor];
     let scope = scope_for(prefix, statement.text, index);
@@ -102,26 +130,30 @@ pub fn candidate_words(sql: &str, cursor_byte: usize, index: &SchemaIndex) -> Ve
     match scope {
         Scope::ColumnsOf(table) => {
             if let Some(columns) = index.columns_for(&table) {
-                out.extend(columns.iter().cloned());
+                out.extend(columns.iter().map(|column| column_sql(column)));
             }
         }
         Scope::Tables => {
             out.extend(index.tables.iter().cloned());
-            out.extend(bare_table_names(&index.tables, index.grammar));
+            if bare_tables {
+                out.extend(bare_table_names(&index.tables, index.grammar));
+            }
         }
         Scope::TablesAndColumns(tables) => {
             for table in &tables {
                 if let Some(columns) = index.columns_for(table) {
-                    out.extend(columns.iter().cloned());
+                    out.extend(columns.iter().map(|column| column_sql(column)));
                 }
             }
             if tables.is_empty() {
                 for columns in index.columns.values() {
-                    out.extend(columns.iter().cloned());
+                    out.extend(columns.iter().map(|column| column_sql(column)));
                 }
             }
             out.extend(index.tables.iter().cloned());
-            out.extend(bare_table_names(&index.tables, index.grammar));
+            if bare_tables {
+                out.extend(bare_table_names(&index.tables, index.grammar));
+            }
         }
     }
 
@@ -270,7 +302,7 @@ fn last_keyword(prefix: &str, grammar: Option<SqlGrammar>) -> Option<String> {
 }
 
 fn trailing_qualifier(prefix: &str, grammar: Option<SqlGrammar>) -> Option<String> {
-    if prefix.ends_with(char::is_whitespace) {
+    if prefix.ends_with(char::is_whitespace) && !prefix.trim_end().ends_with('.') {
         return None;
     }
     let word = words(prefix, grammar).last().copied()?;
