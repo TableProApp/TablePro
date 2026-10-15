@@ -1,10 +1,7 @@
-# 0015. GNOME 50 platform floor
+# 0015: GNOME 50 platform floor
 
-Date: 2026-09-15
-
-## Status
-
-Accepted.
+- **Status**: Accepted
+- **Date**: 2026-09-15
 
 ## Context
 

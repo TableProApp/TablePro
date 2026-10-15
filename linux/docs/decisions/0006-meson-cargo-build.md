@@ -1,10 +1,7 @@
-# 0006. Meson drives Cargo
+# 0006: Meson drives Cargo
 
-Date: 2026-09-15
-
-## Status
-
-Accepted.
+- **Status**: Accepted; where the version lives amended by [0017](0017-distribution-channels.md)
+- **Date**: 2026-09-15
 
 ## Context
 
@@ -42,7 +39,8 @@ Meson is the build system; Cargo stays the Rust compiler.
   the template with the same values, without translations.
 - Tests run through `meson test`, grouped into the `unit`, `gtk` and
   `data` suites. The `data` suite runs `desktop-file-validate` and
-  `appstreamcli validate`, which is what Flathub checks.
+  `appstreamcli validate`, which is what Flathub checks. ADR 0017 added
+  a fourth, `packaging`, for the package scripts and release metadata.
 - `meson devenv -C _build` exports the same environment, so
   `meson devenv -C _build cargo test` runs against the configured
   application ID without an install.
@@ -51,8 +49,10 @@ Meson is the build system; Cargo stays the Rust compiler.
 
 - Contributors need meson and ninja on top of the Rust toolchain. The
   plain `cargo build` path keeps working for quick edits.
-- The version number lives in `meson.build` alone. Crate manifests carry
-  no version, and the About dialog reads `config::VERSION`.
+- The version number lives in `meson.build`. Crate manifests carry no
+  version, and the About dialog reads `config::VERSION`. Since ADR 0017
+  the newest metainfo release and the RPM spec's `Version` repeat it,
+  and Meson tests keep the three equal.
 - A development build is a separate application: its own ID, icon,
   config directory and keyring schema. Installing one never disturbs the
   other.

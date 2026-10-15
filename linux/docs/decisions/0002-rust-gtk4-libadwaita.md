@@ -1,6 +1,6 @@
-# 0002 — Rust + GTK4 + libadwaita
+# 0002: Rust + GTK4 + libadwaita
 
-- **Status**: Accepted; version floor superseded by [0015](0015-gnome-50-platform-floor.md)
+- **Status**: Accepted; version floor superseded by [0015](0015-gnome-50-platform-floor.md), the Relm4 consequence by [0012](0012-window-per-session.md)
 - **Date**: 2026-04-26
 
 ## Context
@@ -26,14 +26,14 @@ A 2-day spike (April 2026) validated the stack against the load-bearing requirem
 
 | Stack | Data grid | Verdict |
 |---|---|---|
-| GTK4 + libadwaita | `GtkColumnView` — production-grade, used by GNOME Files | ✅ Picked |
-| Slint 1.16 | None; build from `Flickable` | ❌ Missing the central widget |
-| Iced 0.14 | None | ❌ Missing the central widget |
-| Floem (Lapce's framework) | Custom; pre-1.0 framework | ❌ Framework instability |
-| egui | Immediate-mode, broken IME for CJK | ❌ Accessibility failure |
-| Qt6 + KDE Frameworks | `QTableView` — production-grade | Viable; lost on language (C++) |
-| SwiftCrossUI / adwaita-swift | Pre-1.0; small ecosystem | ❌ Tooling immaturity |
-| Tauri / Dioxus desktop | WebView | ❌ Excluded by "native only" |
+| GTK4 + libadwaita | `GtkColumnView`, production-grade, used by GNOME Files | Picked |
+| Slint 1.16 | None; build from `Flickable` | Lost: no data grid |
+| Iced 0.14 | None | Lost: no data grid |
+| Floem (Lapce's framework) | Custom; pre-1.0 framework | Lost: framework not stable |
+| egui | Immediate-mode, broken IME for CJK | Lost: accessibility |
+| Qt6 + KDE Frameworks | `QTableView`, production-grade | Viable; lost on language (C++) |
+| SwiftCrossUI / adwaita-swift | Pre-1.0; small ecosystem | Lost: immature tooling |
+| Tauri / Dioxus desktop | WebView | Excluded by "native only" |
 
 GTK4 is the only candidate where the virtualized table widget is **already built and proven** at the row counts a database client demands. Building one from scratch in a Rust-native framework is a 3–6 month engineering task, paid before any other feature ships.
 
@@ -51,14 +51,14 @@ Accepted:
 - **GNOME-first.** KDE Plasma works because Adwaita widgets render correctly there; the app does not adopt Plasma styling. Users who want a Plasma-native client have alternatives.
 - **Wayland-first.** X11 works because GTK4 supports it, but bug reports are triaged Wayland-first.
 - **gtk4-rs upgrade discipline.** Monthly cadence. Pin to specific versions; plan binding upgrades alongside GNOME release cycles.
-- **No declarative UI macros.** Relm4 (see [0003](0003-relm4-architecture.md)) gives structure; we do not adopt third-party DSLs on top.
+- **No declarative UI macros.** Relm4 (see [0003](0003-relm4-architecture.md)) gives structure; we do not adopt third-party DSLs on top. [0012](0012-window-per-session.md) later moved the views to gtk-rs subclasses with composite templates.
 
 Gained:
 
 - The app feels native on the dominant Linux desktop.
 - A widget set covering 95% of what the app needs without custom drawing.
 - A Rust ecosystem that solves driver problems we would otherwise solve ourselves.
-- A spike-validated stack — no surprises in Phase 0.
+- A spike-validated stack, with no surprises in Phase 0.
 
 ## Alternatives considered
 

@@ -9,8 +9,10 @@ linux/
 ├── meson.build                    build entry point; owns install and the build-time config
 ├── Cargo.toml                     workspace manifest
 ├── about.toml                     cargo-about settings for the third-party license notices
-├── data/                          desktop entry, D-Bus service, AppStream metainfo and screenshots, icons, GResource, licenses
+├── data/                          desktop entry, D-Bus service, AppStream metainfo and screenshots, GSettings schema, man page, icons, GResource, licenses
 ├── build-aux/flatpak/             Devel Flatpak manifest, lint exceptions and krb5.conf
+├── build-aux/debian/, rpm/        .deb and .rpm packaging
+├── build-aux/packaging/, tests/   scripts that build, check and smoke-test the packages, and their tests
 ├── build-aux/about/               templates that turn Cargo.lock into data/licenses
 ├── po/                            translation catalogue
 └── crates/
@@ -46,7 +48,7 @@ Rules, enforced by review:
 - `core` depends on **no other workspace crate**. It holds the domain types and the driver contract, and no I/O beyond the traits.
 - `net`, `ssh` and `storage` depend on `core` only.
 - Each `drivers/<engine>` crate depends on `core`, and on `net` when it speaks TLS or dials TCP. **Drivers never depend on each other, on `session` or on `ssh`.**
-- `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver: it reaches drivers through `DriverRegistry`.
+- `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver outside its tests: it reaches drivers through `DriverRegistry`. Its Docker test takes `tablepro-driver-postgres` as a dev-dependency.
 - `app` depends on all of them. It is the only crate that names every driver.
 - `test-support` and `test-fixtures` are dev-dependencies, with one exception: `session` takes `test-support` as an optional dependency behind its `fakes` feature, which only `app`'s dev-dependencies turn on.
 
@@ -81,23 +83,16 @@ The GTK main loop owns every widget and runs on the main thread. Everything else
 - `spawn_task` for async work, `spawn_blocking_task` for a blocking call such as a durable write, and `spawn_owned` for a loop that stops when its handle drops.
 - Once the main loop returns, `AppRuntime::shutdown` gives the work still in flight two seconds.
 
-Work crosses between the two through `crate::runtime`:
-
-- `spawn_and_deliver` runs work on `Tasks` and hands its result to a closure on the GTK thread. Aborting the returned handle drops the delivery, never the work.
-- `spawn_held` runs work the user expects to finish, such as a save or a write to the connection list, with the process held until it ends.
-- A window's and a workspace's input queue (`input_queue`) takes the messages their actions, signal handlers and background work send. `pump_inputs` hands them over one at a time on the GTK thread, never inside the signal or action that sent one. `DeliverInput::deliver` drops a message once the widget has shut down and logs that at debug, so a reply that lands after a disconnect is never shown.
-- A value the session publishes on a `tokio::sync::watch` (its health, its link generation, a schema's objects) reaches a view through a `WatchForwarder`, which delivers on the GTK thread and stops when the view drops it.
-
-`crates/app/clippy.toml` bans the ways around this: `tokio::spawn`, `Handle::current`, `relm4::spawn` and its siblings, `MainContext::block_on`, `ComponentSender::input`, `RelmApp::run` and `gio::Application::quit`. The fast CI job also fails on `std::fs`, a `Path` method that reads the disk, or a `_blocking` call outside `spawn_blocking_task` under `crates/app/src/ui`.
+Views cross between the two through `crate::runtime` (`spawn_and_deliver`, `spawn_held`, the input queues and `WatchForwarder`), and `crates/app/clippy.toml` bans the ways around it; [state-management.md](docs/state-management.md#rules-for-every-view) has the rules every view follows.
 
 One second runtime remains. Relm4 runs a component's commands (`sender.command`, `oneshot_command`) on a runtime of its own, built the first time one runs, with one worker since nothing sets `RELM_THREADS`. The saved-queries dialog still loads through commands, so that runtime starts when it opens.
 
 ## The application
 
-`TableProApplication` (`crates/app/src/application/`) is an `adw::Application` subclass. `run()` builds it with the `AppServices` every window shares: the driver registry, the connector and its deadlines, the `SessionRegistry`, the settings, the storage, `Tasks`, the process hold, the open-sessions record and the query history.
+`TableProApplication` (`crates/app/src/application/`) is an `adw::Application` subclass. `run()` builds it with the `AppServices` every window shares: the driver registry, the connector and its deadlines, the liveness policy, the `SessionRegistry`, the settings, the storage, the saved connection list and its editor, the SSH services, the credential sources, the file revealer, `Tasks`, the process hold, the open-sessions record and the query history.
 
 - **One process per profile.** GApplication owns the application id on the session bus. A second launch parses its own options, sends the running process an activate, or an open with the files it was given, and exits. With `--new-window` (`-n`), `handle_local_options` sends `app.new-window` instead. The development profile has an id of its own and runs beside the stable app.
-- **Startup**, in the primary process only, adds the app actions (`new-window`, `quit`, `preferences`, `about`) and installs the application accelerators from the accelerator table, opens the query history, checks the askpass helper, ends SSH masters a crashed instance left running, and starts `SessionSignals`, which tells every session about network changes and a resume from suspend.
+- **Startup**, in the primary process only, adds the app actions (`new-window`, `quit`, `preferences`, `about`, `focus-tab`) and installs the application accelerators from the accelerator table, opens the query history, checks the askpass helper, ends SSH masters a crashed instance left running, and starts `SessionSignals`, which tells every session about network changes and a resume from suspend.
 - **Windows.** `open_window` builds a `SessionWindow` for a `WindowLaunch`: the picker, a saved connection, a file, or a session to restore. The application keeps each window in its `WindowRegistry` by window id, and a window reaches the others through its `WindowHost`, which holds the application weakly.
 - **Holds.** A `ProcessHold` keeps the process alive while work that must finish runs: a session closing, a save, a durable write, a file being resolved. The app's `GioProcessHold` is `gio::Application::hold`, so the process ends once the last window and the last hold are gone.
 - **Quit.** `request_quit` runs `QuitSequence`, which asks each window in turn through its close prompts and never calls `g_application_quit`. A second Quit while a window asks brings that window forward. At logout, `query-end` brings forward the first window that holds the session back.
@@ -126,9 +121,9 @@ The `Workspace` (`crates/app/src/ui/workspace/`) shows one session: the sidebar 
 
 ## UI architecture
 
-The application, its windows, the workspace and every view a rewrite has reached are gtk-rs subclasses. A widget with a layout has a CompositeTemplate `.ui` file under `data/resources/ui/`, compiled into the GResource: the session window and its pages, the workspace, the browse, structure and SQL editor tabs, the browse tab's filter strip and its rule rows, its pager (`PagerBar`) and its pending-changes bar (`PendingChangesBar`), the results pane, and the connect and preferences dialogs with their sections. A subclass keeps its state in its `imp` struct and reports through signals. The window and the workspace take input through their input queues; a browse or structure tab handles its input in `send` at once, and one that arrives while another is being handled waits for it.
+The application, its windows, the workspace and every view a rewrite has reached are gtk-rs subclasses. A widget with a layout has a CompositeTemplate `.ui` file under `data/resources/ui/`, compiled into the GResource: the session window and its pages, the workspace, the browse, structure and SQL editor tabs, the browse tab's filter strip and its rule rows, its pager (`PagerBar`) and its pending-changes bar (`PendingChangesBar`), the results pane, the SQL editor's find bar, the picker's welcome view, the query history dialog and its rows, the export operations button, and the connect and preferences dialogs with their sections. A subclass keeps its state in its `imp` struct and reports through signals. The window and the workspace take input through their input queues; a browse or structure tab handles its input in `send` at once, and one that arrives while another is being handled waits for it.
 
-A few views are still [Relm4](https://relm4.org) components ([ADR 0003](docs/decisions/0003-relm4-architecture.md)): the saved-queries and CSV import dialogs. Their output reaches the subclass that hosts them through `connect_receiver` or `relm4_bridge`, which put it on that subclass's queue. The two patterns coexist until a rewrite turns each component into a subclass.
+A few views are still [Relm4](https://relm4.org) components ([ADR 0003](docs/decisions/0003-relm4-architecture.md)): the saved-queries and CSV import dialogs. Their output reaches the workspace through `connect_receiver`, which puts it on the workspace's input queue. The two patterns coexist until a rewrite turns each component into a subclass.
 
 See [docs/state-management.md](docs/state-management.md) for the patterns and naming we use.
 
@@ -137,11 +132,11 @@ See [docs/state-management.md](docs/state-management.md) for the patterns and na
 Every key the app binds or relies on is one `Accelerator` in `ACCELERATORS` (`crates/app/src/application/accelerators.rs`): the action it fires, its triggers, its `AcceleratorScope` and where the shortcuts dialog lists it.
 
 - **Application** keys go in with `set_accels_for_action` at startup. GtkWindow runs them in the capture phase, before the focused widget, so none of them is a key a text field or a list uses.
-- **Local** keys are a `local_shortcut_controller(owner)` on the owner's widget, firing the owner's action group through `NamedAction`: `browse` on a table tab and its column view, `editor` on the SQL editor's source view, `structure`, `filter`, the sidebar's list, which opens the selected table's menu, and the query history's list, which opens the focused row's menu. A disabled action lets its key go on. Bubble phase leaves a text field inside the owner its own Ctrl+Z and Ctrl+C; the editor's keys run in the capture phase, because GtkTextView binds Ctrl+/ itself.
+- **Local** keys are a `local_shortcut_controller(owner)` on the owner's widget, firing the owner's action group through `NamedAction`: `browse` on a table tab and its column view, `editor` on the SQL editor's source view and, for find and replace, on the whole editor tab, `structure`, `filter`, the sidebar's list, which opens the selected table's menu, the query history's list, which opens the focused row's menu, and a picker row, which opens its menu. A disabled action lets its key go on. Bubble phase leaves a text field inside the owner its own Ctrl+Z and Ctrl+C; the source view's keys run in the capture phase, because GtkTextView binds Ctrl+/ itself.
 - **Component** keys are bound by a component's own controller (the grid cell keys, the cell editors), which reads them from the table through `component_trigger` or `component_matches`.
 - **Stock** keys belong to GTK or libadwaita: GtkListBase's selection and movement, AdwTabView's tab switching, AdwApplication's Ctrl+?. The workspace removes AdwTabView's Ctrl+Home and Ctrl+End pairs so the lists and the editor in its tabs keep them.
 
-`data/resources/shortcuts-dialog.ui` lists every listed entry under an id made from its action, and `shortcuts_dialog_matches_accelerator_table` holds the two in step both ways. Menus show a Local key through `menu_item`, and `describe_icon_button` puts a button's key on its accessible node instead of in its tooltip.
+`data/resources/shortcuts-dialog.ui` lists every listed entry under an id made from its action, and `shortcuts_dialog_matches_accelerator_table` holds the two in step both ways. Menus show a Local or Component key through `menu_item`, and `describe_icon_button` puts a button's key on its accessible node instead of in its tooltip.
 
 ## Driver layer
 
@@ -262,7 +257,7 @@ On Linux the system store is the distribution's CA bundle. Under Flatpak it is t
 
 ### Sessions and health
 
-A window holds one `Session`. Every use of its connection goes through the `OperationRunner`, which adds no timer of its own: the deadline travels in `CallOptions` so the driver stops the statement on the server. The session's monitor probes every 30 s and calls the connection lost after three failed probes in a row, or as soon as `Connection::lost()` fires, which a driver resolves only when the link is gone, never for one dead backend in its pool. It then reconnects on a backoff from 5 s to 60 s. A failure that a retry cannot fix (authentication, TLS, configuration, a host key to review) parks the session until the user acts. A read that failed because its connection was lost runs once more on the replacement link; a save never does.
+A window holds one `Session`. Every use of its connection goes through the `OperationRunner`, which adds no timer of its own: the deadline travels in `CallOptions` so the driver stops the statement on the server. The session's monitor probes every 30 s, retries an unanswered probe after 10 s, and calls the connection lost after three unanswered probes in a row, when a probe finds the link gone, or as soon as `Connection::lost()` fires, which a driver resolves only when the link is gone, never for one dead backend in its pool. It then reconnects on a backoff from 5 s to 60 s. A failure that a retry cannot fix (authentication, TLS, configuration, a host key to review) parks the session until the user acts. A read that failed because its connection was lost runs once more on the replacement link; a save never does.
 
 The application tells each session what its connection cannot see. When `GNetworkMonitor` reports a change, and when a window adopts a session, it asks whether that session's server, or its first SSH hop, is reachable; a file, a socket and a loopback server are never asked about. A session that loses a server the network cannot reach waits offline, checking every 60 s, and reconnects as soon as the server is reachable again. While a session is open, a 5 s timer compares `CLOCK_BOOTTIME` with `CLOCK_MONOTONIC`, and after a suspend each server is checked again and a session that slept more than 30 s probes its connection. A session parked on an SSH host key keeps the error that parked it, and its banner's Review Key shows the fingerprint. Trusting it retries with ssh's question about that one key answered yes, so ssh still checks the key and writes known_hosts; a changed key is first removed with `ssh-keygen -R`, since ssh never accepts one. When the review cannot accept the key, because ssh's configuration takes keys only from known_hosts or the key is revoked, its dialog offers Retry for after the user fixes the key outside TablePro.
 
@@ -274,18 +269,19 @@ The session drives a single `AdwTabView` hosting heterogeneous tabs. The `Worksp
 
 ```rust
 pub enum WorkspaceTab {
-    Editor(EditorTabSlot),     // SQL editor, free-form query
-    Structure(StructureTabSlot), // New-Table draft only (Edit promotes to Table)
-    Table(TableTabSlot),       // (schema, table) entity with Data / Structure
-                               // sub-views toggled via AdwViewSwitcher
+    Editor(EditorTabSlot),       // SQL editor, free-form query
+    Structure(StructureTabSlot), // a new table's draft, or an existing table's definition
+    Table(TableTabSlot),         // one (schema, table) in the browse grid
 }
 ```
+
+A table's structure opens in a Structure tab of its own. Saving a new table closes its Structure tab and opens a Table tab on it.
 
 Each tab is a gtk-rs widget with a composite template, which the `AdwTabView` adopts. The workspace keeps a `HashMap<Uuid, WorkspaceTab>` keyed by the tab's UUID; the canonical display order comes from `tab_view.pages()` (drag-reorderable). A `TabIndex` maps each `AdwTabPage` to its tab's UUID, so close and right-click actions can recover it. `TabFactory` builds every tab from a `TabSpec`, whether the sidebar, the overview's new-tab button, a restore or a reopen asks for it. Every tab's title comes from its `TabIdentity` through `resolve_tab_title`, and the window's from the tab in front through `resolve_window_title`. A tab that closing would lose something in shows `document-modified-symbolic` as its page icon, as GNOME Text Editor does; its title never changes for it.
 
 Routing is hub-and-spoke: a tab emits signals, and the closures the workspace connects tag them with the tab's UUID and queue them as `WorkspaceInput`. The workspace looks up the slot and calls back into the tab. This keeps the tabs ignorant of each other and gives the workspace one place to enforce cross-tab invariants (reload the tabs on a table whose schema changed, close all tabs for a dropped table, etc.). A reply a tab's request brings back after a disconnect reaches a closed queue and is dropped.
 
-A browse or structure tab reads its own data through the session. A `RequestSequencer` keeps one request of each kind current: a new page stops the one it replaces, and a reply to a replaced request is dropped. A page and the table's row estimate wait for the table's columns from the catalog; an exact count runs on its own only for a table the estimate says is small, and otherwise when the user asks. A read that failed is asked again once the session reconnects, and a tab whose reads all landed keeps its rows; a failed count waits for Try Again. A read that fails with rows on screen leaves them there under a banner with Retry; the error page is for a tab with nothing to show. Closing a tab stops its reads, so the server drops the statement.
+A browse or structure tab reads its own data through the session, one request of each kind at a time, and keeps what it shows through a failed read; [state-management.md](docs/state-management.md#rules-for-every-view) has the rules.
 
 Reopening a closed tab uses a 10-deep `VecDeque<ClosedTabDescriptor>` snapshot taken in `finish_close_workspace_tab` before the slot is dropped. The stack goes with the workspace on disconnect because descriptors reference tables in its session.
 
@@ -304,33 +300,21 @@ The Structure tab is **definition + draft**, not a per-change log. The `TableDef
 
 ## Persistence
 
-| Data | Backend | Path / table |
-|---|---|---|
-| Saved connections | JSON, `g_file_set_contents_full` CONSISTENT + DURABLE, 0600 | `$XDG_CONFIG_HOME/tablepro/connections.json` |
-| Connection passwords + SSH secrets | libsecret via `oo7` (Secret Service / KWallet) | keyring item per connection UUID |
-| Workspace tabs, one file per session | JSON, durable write, debounced 500 ms, off the GTK thread | `$XDG_STATE_HOME/tablepro/workspaces/<connection id>.json`, `file-<sha256 of the URI>.json` for an unsaved file |
-| Sessions open at quit, reopened at launch | JSON, durable write, off the GTK thread | `$XDG_STATE_HOME/tablepro/workspaces/open-sessions.json` |
-| Editor tab text | one file per tab, debounced 500 ms | `$XDG_DATA_HOME/tablepro/drafts/<workspace name>/` |
-| Query history and saved queries | SQLite with an FTS5 trigram index over the case-folded query, 0600 | `$XDG_STATE_HOME/tablepro/history.db` |
-| Application preferences | GSettings | schema `app.tablepro.TablePro` |
-| Window size / maximized | GSettings | schema `app.tablepro.TablePro` |
-| Per-table column widths | JSON, durable write | `$XDG_CONFIG_HOME/tablepro/column_widths.json` |
+[docs/storage.md](docs/storage.md) says which store holds which data and where each file goes. This section covers how the workspace writes and restores its own files.
 
-`WorkspaceStore` reads a session's file once its session is adopted, and the window writes the tab list only after that read, so a write never lands on tabs not yet restored. A file that cannot be read, that another version wrote, or that is over 1 MiB is left as it is and nothing is written over it until the user picks Reset on the toast, which moves it aside as `<name>.json.corrupt-<seconds>`. Every open tab is saved and restored, with no cap on the count. Writes go through one task that keeps the newest record per file. Editor records carry a draft id, never the text, and the editor's `content-changed` signal carries no text either: the tab label reads at most 200 characters.
+Workspace tabs are one JSON file per session in `$XDG_STATE_HOME/tablepro/workspaces/`, named by the connection id, or `file-<sha256 of the URI>.json` for a file. Their writes are debounced 500 ms and run off the GTK thread, and so are the editor drafts', one file per tab. `WorkspaceStore` reads a session's file once its session is adopted, and the window writes the tab list only after that read, so a write never lands on tabs not yet restored. A file that cannot be read, that another version wrote, or that is over 1 MiB is left as it is and nothing is written over it until the user picks Reset on the toast, which moves it aside as `<name>.json.corrupt-<seconds>`. Every open tab is saved and restored, with no cap on the count. Writes go through one task that keeps the newest record per file. Editor records carry a draft id, never the text, and the editor's `content-changed` signal carries no text either: the tab label reads at most 200 characters.
 
 `OpenSessions` writes the record of open sessions off the GTK thread, holding the process until each write lands; [Restoring sessions and opening files](#restoring-sessions-and-opening-files) says when it changes. A record that cannot be read is moved aside as `open-sessions.json.corrupt-<seconds>`.
 
 A restore deletes the drafts no saved or open tab names, except while a moved-aside copy of the session's file is there, since that copy may name them. A draft that cannot be read is moved aside as `<id>.sql.corrupt-<seconds>`, which the cleanup never deletes, and its tab opens empty with a toast. A disconnect writes the open tabs' text before their buffers go.
 
-`SavedConnection::last_opened_at: Option<DateTime<Utc>>` is stamped on each successful connect via `touch_last_opened`. The welcome view sorts by recency-first with alphabetical tiebreaker; never-opened entries fall to the bottom.
+`SavedConnection::last_opened_at` is stamped through `touch_last_opened` each time a window adopts a saved connection's session. Every picker shows the list in one order (`saved_connection_order::sort`): ungrouped connections first, then each group by name. Inside each block the connection opened last comes first, ties sort by name, and never-opened connections go to the end of their block.
 
 ## Build & CI
 
-Meson is the build system and Cargo is the Rust compiler; see [ADR 0006](docs/decisions/0006-meson-cargo-build.md). `meson setup _build && meson compile -C _build` produces `tablepro` and `tablepro-askpass`, and `meson test -C _build` runs the `unit`, `gtk` and `data` suites.
+Meson is the build system and Cargo is the Rust compiler; see [ADR 0006](docs/decisions/0006-meson-cargo-build.md). `meson setup _build && meson compile -C _build` produces `tablepro` and `tablepro-askpass`, and `meson test -C _build` runs the `unit`, `gtk`, `data` and `packaging` suites.
 
-The floor is GNOME 50 (GTK 4.22, libadwaita 1.9, GtkSourceView 5.18, GLib 2.88); see [ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md). The host runner image (`ubuntu-24.04`) ships GLib 2.80, well below that, so the system-deps check fails there.
-
-`.github/workflows/build-linux.yml` runs the **Fast checks** job inside a `container: ubuntu:26.04`, which ships GLib 2.88 and the meson, appstream and desktop-file-utils packages the data suite needs. The container is minimal, so the install step pulls `ca-certificates`, `curl` and `git` before rust-toolchain and Swatinem can run. The **integration** job stays on the host runner because the driver crates depend only on `tablepro-core` and `tablepro-net` and don't pull libadwaita. The translations job runs in `fedora:44`, whose xgettext reads Rust, and both Flatpak jobs in the `gnome-50` Flatpak image: the Devel manifest with every Meson suite, and the release shape Flathub builds, offline from the dist tarball, then linted. The supply-chain job runs cargo-deny, cargo-shear, the license regeneration and zizmor. [docs/testing.md](docs/testing.md#ci) lists every job.
+The platform floor is GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)), and `meson.build` refuses to configure below it. [docs/testing.md](docs/testing.md#ci) lists every CI job, what starts it and where it runs.
 
 ## Out of scope
 

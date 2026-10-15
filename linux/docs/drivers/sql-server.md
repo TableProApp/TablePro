@@ -46,12 +46,12 @@ TLS is negotiated inside the TDS pre-login exchange, after the server has said w
 
 The sandbox has no `/etc/krb5.conf` of the host, and its `/tmp` is private, so a FILE ticket cache from `kinit` on the host is invisible:
 
-- A build with `-Dflatpak=true` and Kerberos installs `build-aux/flatpak/krb5.conf` into the app's `sysconfdir`. It uses the KCM credential cache and finds the realm and the KDC through DNS.
-- The development manifest grants the KCM socket, `/run/.heim_org.h5l.kcm-socket`, so a host that runs `sssd-kcm` shares its tickets with the app.
+- A build with `-Dflatpak=true` and Kerberos installs `build-aux/flatpak/krb5.conf` into the app's `sysconfdir`, and the manifest points `KRB5_CONFIG` at it. It uses the KCM credential cache and sets no `default_realm`: the realm comes from the `_kerberos` TXT record of the computer's DNS domain or a parent of it, and the KDC from DNS SRV records.
+- The manifest grants the KCM socket, `/run/.heim_org.h5l.kcm-socket`, so a host that keeps its tickets in KCM through `sssd-kcm`, as Fedora does by default, shares them with the app.
 - A FILE cache works only when `KRB5CCNAME` points at a file the sandbox can read, such as one under the home folder.
 - A KEYRING cache does not work: Flatpak blocks the kernel keyring calls.
 
-Running from source remains the supported path for Kerberos today.
+[ADR 0008](../decisions/0008-flatpak-sandbox-permissions.md) records why the sandbox gets these grants.
 
 ## Read-only
 

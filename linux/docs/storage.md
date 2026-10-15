@@ -5,7 +5,7 @@ The app's data goes to the store its shape calls for. The `storage` crate owns t
 | Data | Backend | API |
 |---|---|---|
 | Saved connections | JSON file | `ConnectionStore` |
-| Database passwords, SSH passwords and key passphrases | the Secret Service, through `oo7` | `SecretStore`, read at each connect by `KeyringCredentials` |
+| Database passwords, SSH passwords and key passphrases | `oo7`: the host's Secret Service, or the Secret portal inside Flatpak | `SecretStore`, read at each connect by `KeyringCredentials` |
 | Preferences and window geometry | `gio::Settings` | `AppSettings` |
 | Query history and saved queries | SQLite, one database | `QueryHistory`, `SavedQueries` |
 | Editor tab text | one file per tab | `DraftStore` |
@@ -23,7 +23,7 @@ The app's data goes to the store its shape calls for. The `storage` crate owns t
 - A file that cannot be read, or that another version wrote, leaves the store `Unavailable`, and it refuses every write until the user picks Reset (`reset_unreadable_blocking`), which moves the file aside.
 - A `SavedConnection` does **not** carry a password. Secrets live in the keyring, keyed by the connection's UUID, so a rename or a new host keeps them.
 - `group` is a `ConnectionGroupName`: trimmed, 1 to 64 characters, no control characters. Earlier builds stored any name, so a stored one is read with its control characters turned into spaces and cut to 64 characters, and a blank one reads as no group.
-- An edit, a copy or a move to another group goes through the app's `SavedConnectionEditor`, which writes the keyring first. A refused secret stops before the list changes, and the secrets of a copy whose entry did not land are deleted again.
+- An edit, a copy or a move to another group goes through the app's `SavedConnectionEditor`, which writes the keyring first. A refused secret stops before the list changes, and the secrets of a copy whose entry did not land are deleted again. Edits and copies run one at a time, so two windows editing one connection never leave the host of one with the password of the other.
 
 ### SSH settings
 
@@ -33,18 +33,18 @@ The app's data goes to the store its shape calls for. The `storage` crate owns t
 - `jump_hosts`: `[user@]host[:port]` entries, empty for a direct connection.
 - `auth`, tagged by `kind`: `agent`, `private_key` (optional `path` and `has_passphrase`), `password` or `keyboard_interactive`.
 
-SSH passwords and key passphrases live in libsecret next to database passwords. The system OpenSSH client runs every combination ([ADR 0013](decisions/0013-openssh-client-transport.md)), and asks for a missing secret through the app's prompts.
+SSH passwords and key passphrases sit in the keyring next to database passwords. The system OpenSSH client runs every combination ([ADR 0013](decisions/0013-openssh-client-transport.md)), and asks for a missing secret through the app's prompts.
 
-## Passwords with libsecret
+## Passwords in the keyring
 
 `SecretStore` is the app's `SecretVault`: `store`, `load`, `relabel`, `delete_kind` and `delete_connection`, keyed by connection id and `SecretKind`, with the secret as a `SecretString`.
 
-Backed by the [`oo7`](https://crates.io/crates/oo7) crate, which speaks the Secret Service D-Bus API. Both GNOME Keyring and KWallet implement it.
+Backed by the [`oo7`](https://crates.io/crates/oo7) crate ([ADR 0004](decisions/0004-libsecret-secret-storage.md)). Outside Flatpak it talks to the host's Secret Service over D-Bus, which GNOME Keyring and KWallet both implement. Inside Flatpak it keeps the items in an encrypted file in the sandbox, unlocked with a key from the Secret portal, and uses the Secret Service only when there is no portal.
 
 Notes:
 
-- Schema name: `app.tablepro.TablePro.Password`, from the application id. Attributes: `xdg:schema`, `connection-id` and `kind` (`db_password`, `ssh_password`, `ssh_passphrase`).
-- Labels name the kind and the target, for example `TablePro database password for app@db.example.com:5432/shop`, so the item is identifiable in Seahorse.
+- Schema name: the application id plus `.Password`, so `app.tablepro.TablePro.Password` for an installed build and `app.tablepro.TablePro.Devel.Password` for a development one. Neither reads the other's secrets. Attributes: `xdg:schema`, `connection-id` and `kind` (`db_password`, `ssh_password`, `ssh_passphrase`).
+- Labels name the kind and the target, for example `TablePro database password for app@db.example.com:5432/shop`, so the item is identifiable in Seahorse on a host install. Under Flatpak the items sit in the app's own file keyring.
 - The store unlocks the keyring and the item before reading. A locked keyring otherwise looks exactly like a connection with no saved password.
 - Failures are typed (`SecretError`): a dismissed prompt, a locked keyring, a missing service, a missing portal and a bad encoding each get their own message and their own next step.
 - With no Secret Service at all the store reports `ServiceUnavailable` and the UI prompts at connect time. The app never writes passwords to a plain file as a fallback.
@@ -114,7 +114,7 @@ nothing reaches outside it.
 | `column_widths_file()` | `$XDG_CONFIG_HOME/<dir>/column_widths.json` |
 | `filter_settings_file()` | `$XDG_CONFIG_HOME/<dir>/filter_settings.json` |
 | `history_database()` | `$XDG_STATE_HOME/<dir>/history.db` |
-| `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces` |
+| `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces`: one file per session, and `open-sessions.json` |
 | `drafts_dir()` | `$XDG_DATA_HOME/<dir>/drafts` |
 
 `<dir>` is `tablepro` for an installed build and `tablepro-devel` for a
@@ -139,7 +139,7 @@ Everything private goes through `tablepro_storage::fs`:
   the database is what keeps all three off world-readable.
 
 These calls block on `fsync`, so async callers run them through
-`spawn_blocking` rather than on the GTK thread.
+`Tasks::spawn_blocking_task`, never on the GTK thread.
 
 ## Query history schema
 
@@ -210,7 +210,7 @@ can tell whether a re-pinned entry falls in the pages already read.
   skipped.
 - `restore(entries)` puts them back under their own ids, pinned as they
   were and folded again; the insert trigger indexes them. The history
-  dialog's Undo is this pair.
+  dialog deletes at once and offers Undo in a toast, which is this pair.
 - `clear_all` empties the history, pinned entries included.
 - `delete_for_connection` removes one connection's entries, pinned ones
   included, for a connection deleted along with its history, then runs
@@ -244,7 +244,7 @@ Turning the setting off keeps what is already there; Clear removes it.
 
 `data/app.tablepro.TablePro.gschema.xml` holds every app-wide preference and the window geometry. Meson installs it to `$datadir/glib-2.0/schemas` and compiles it; see [ADR 0007](decisions/0007-gsettings-preferences.md).
 
-Schema id and path: `app.tablepro.TablePro`.
+Schema id `app.tablepro.TablePro`, path `/app/tablepro/TablePro/`. A development build reads the same schema.
 
 | Key | Type | Default | Range |
 |---|---|---|---|
@@ -303,7 +303,7 @@ High-churn keyed data stays in files: column widths, per-table filters and works
 - `Encode` for a history CSV export.
 - `NotInitialised` and `Settings` are declared, but nothing returns them: `AppSettings` returns its own `SettingsError`.
 
-A keyring failure is a `SecretError` from `tablepro-core`, not a `StorageError`. UI code matches on the variants to say something useful, never the raw `Display` text. See [error-handling.md](error-handling.md).
+A keyring failure is a `SecretError` from `tablepro-core`, not a `StorageError`; `KeyringError::Secret` carries it. UI code matches on the variants to say something useful, never the raw `Display` text. See [error-handling.md](error-handling.md).
 
 ## Changing a format
 

@@ -1,10 +1,7 @@
-# 0007. Preferences and window geometry in GSettings
+# 0007: Preferences and window geometry in GSettings
 
-Date: 2026-09-15
-
-## Status
-
-Accepted.
+- **Status**: Accepted
+- **Date**: 2026-09-15
 
 ## Context
 

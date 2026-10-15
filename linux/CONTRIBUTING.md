@@ -12,9 +12,16 @@ meson setup _build -Dprofile=development
 meson compile -C _build        # builds tablepro and tablepro-askpass
 meson test -C _build           # unit, gtk, data and packaging suites
 meson devenv -C _build ./crates/app/tablepro   # run the app
-meson devenv -C _build cargo test   # cargo against the configured app ID
+meson devenv -C _build cargo test --workspace --exclude tablepro   # the unit suite through cargo
+GTK_A11Y=test GSK_RENDERER=cairo GDK_BACKEND=x11 meson devenv -C _build cargo test -p tablepro   # the app's tests
 cargo fmt --all                # format
 ```
+
+The app's tests need the variables the gtk Meson suite sets
+(`crates/app/meson.build`), and `meson devenv` does not export them:
+`GTK_A11Y=test` for the accessibility checks, `GSK_RENDERER=cairo` for a
+machine with no GPU, and `GDK_BACKEND=x11` for the tests that press keys
+through XTEST.
 
 Run every other `cargo` command through `meson devenv -C _build` too. It
 points Cargo at the `CARGO_HOME` and target directory inside `_build`, so
@@ -33,12 +40,15 @@ installed one.
 The fast job in `.github/workflows/build-linux.yml` runs these steps in this order:
 
 ```bash
+localedef -i en_US -f UTF-8 en_US.UTF-8   # as root, once: the catalogue test needs a real locale
 meson setup _build -Dprofile=development
 cargo fmt --all -- --check
 meson devenv -C _build cargo clippy --locked --workspace --all-targets -- -D warnings
 meson devenv -C _build cargo clippy --locked --workspace --all-targets --no-default-features -- -D warnings
 meson compile -C _build
 xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs
+dbus-run-session -- bash -c "gnome-keyring-daemon --components=secrets --daemonize --unlock <<< ci \
+  && meson devenv -C _build cargo test --locked -p tablepro-storage --test secret_service -- --ignored"
 meson dist -C _build --no-tests --formats xztar
 ```
 
@@ -55,13 +65,14 @@ cargo nextest run --locked --profile ci -p tablepro-driver-postgres --run-ignore
 ```
 
 Logs go to stderr and the filter comes from `RUST_LOG`; a development
-build defaults to `debug`.
+build defaults to `debug`. `TABLEPRO_LOG_FORMAT=json` writes one JSON
+object per line.
 
 ```bash
-RUST_LOG=debug ./_build/crates/app/tablepro
+RUST_LOG=debug meson devenv -C _build ./crates/app/tablepro
 ```
 
-CI sets `GTK_A11Y=test` for GTK tests. With `GTK_A11Y=none` GTK records no accessible properties, and the accessibility helpers report that the test backend is missing.
+The gtk Meson suite sets `GTK_A11Y=test`, and `meson devenv` does not. With `GTK_A11Y=none` GTK records no accessible properties, and the accessibility helpers report that the test backend is missing.
 
 ### Dependencies
 
@@ -81,16 +92,16 @@ The script stops and names each crate it read no license file for, since the not
 | Tool | Config | Notes |
 |---|---|---|
 | `rustfmt` | `rustfmt.toml` at the workspace root | CI fails on any diff from `cargo fmt --all -- --check`. There is no pre-commit hook. |
-| `clippy` | `[workspace.lints]` in `Cargo.toml`, `clippy.toml`, `crates/app/clippy.toml` | Every crate passes with `-D warnings`, with and without default features. |
+| `clippy` | `[workspace.lints]` in `Cargo.toml`, `clippy.toml`, `crates/app/clippy.toml`, `crates/session/clippy.toml` | Every crate passes with `-D warnings`, with and without default features. |
 | Edition | 2024 | Set per workspace. Do not override per crate. |
 | MSRV | 1.98 | `rust-version` in `Cargo.toml` and `rust-toolchain.toml`; matches the Flatpak rust-stable extension. |
 
-The workspace denies `unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`, `dbg_macro`, `print_stdout`, `print_stderr`, `allow_attributes`, `allow_attributes_without_reason`, `ignore_without_reason` and `too_many_lines`, plus `unsafe_op_in_unsafe_fn`. `clippy.toml` lets tests unwrap, expect, panic, print and use `dbg!`, and bans `serde_json::Map`, which reorders a server's JSON. `crates/app/clippy.toml` also bans reaching for the ambient tokio runtime: background work goes through `Tasks`.
+The workspace denies `unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`, `dbg_macro`, `print_stdout`, `print_stderr`, `allow_attributes`, `allow_attributes_without_reason`, `ignore_without_reason` and `too_many_lines`, plus `unsafe_op_in_unsafe_fn`. `clippy.toml` lets tests unwrap, expect, panic, print and use `dbg!`, and bans `serde_json::Map`, which reorders a server's JSON. Clippy reads only the `clippy.toml` nearest a crate, so `crates/app/clippy.toml` and `crates/session/clippy.toml` replace the root file for their crate. Both keep its test allowances and ban reaching for the ambient tokio runtime: background work goes through `Tasks`. The app's also keeps the `serde_json::Map` ban and bans the Relm4 spawns, `MainContext::block_on` and `ApplicationExt::quit`. The session's has no `serde_json::Map` ban.
 
 Conventions, beyond what `rustfmt` decides:
 
 - **Comments say why, never what.** A short comment belongs where the code would surprise a careful reader: a hidden constraint, an invariant, a platform quirk. Code is otherwise self-documenting through naming.
-- **No `unwrap()` or `expect()` in production paths.** Tests and `OnceLock::get_or_init` initialisers are the only acceptable callers.
+- **No `unwrap()` or `expect()` in production paths.** Tests are the only callers; the workspace lints deny the rest.
 - **No `panic!`, `todo!`, `unimplemented!` in merged code.** Stub a real `Err` variant instead.
 - **One public type per module file** when the type's surface is non-trivial. Internal helpers stay private.
 - **A function holds at most 100 lines of code**, tests included. The workspace denies `clippy::too_many_lines` at its default threshold, so split a long function by what each part does instead of allowing the lint.

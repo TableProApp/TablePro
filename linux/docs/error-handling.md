@@ -1,16 +1,16 @@
 # Error handling
 
-Errors are typed enums, built with `thiserror` wherever they cross a crate boundary. There is no `anyhow` in the workspace: the caller matches on the enum, and the app decides what to say from it, never from the message.
+Errors are typed enums, built with `thiserror` wherever they cross a crate boundary. No TablePro crate depends on `anyhow`: the caller matches on the enum, and the app decides what to say from it, never from the message.
 
 ## Errors by layer
 
 | Crate | Error types | Notes |
 |---|---|---|
-| `tablepro-core` | `DriverError`, `ConfigError`, `TransportError`, `SshFailure`, `CertificateFileProblem` | The contract every driver and transport speaks. |
-| `tablepro-net` | `tls::TlsSetupError` | Wraps a `ConfigError` or a rustls error while a TLS config is built; drivers turn it into `DriverError`. |
+| `tablepro-core` | `DriverError`, `ConfigError`, `TransportError`, `SshFailure`, `CertificateFileProblem`, `SecretError` | The contract every driver, transport and keyring speaks. |
+| `tablepro-net` | `tls::TlsSetupError` | Wraps a `ConfigError`, a rustls error or a PEM encoding error while a TLS config is built; drivers turn it into `DriverError`. |
 | `tablepro-ssh` | `SshFailure`, inside `TransportError::Ssh` | Classified from OpenSSH's exit status and stderr. |
 | `drivers/<engine>` | `DriverError` only | The client library's error never leaves the crate. |
-| `tablepro-storage` | `StorageError`, `SettingsError`, `KeyringError`, `CredentialError` | |
+| `tablepro-storage` | `StorageError`, `SettingsError`, `KeyringError`, `CredentialError` | `KeyringError::Secret` wraps core's `SecretError`. |
 | `tablepro-session` | `ConnectError`, `OperationError`, `ClaimError` | `ConnectError::Driver` and `OperationError::Driver` carry the driver's error unchanged. |
 | `tablepro` (the app) | Small enums per module (`StartupError`, `LoggingError`, `AcquireError`, ...) | User-facing text comes from `crates/app/src/ui/error_text/`. |
 
@@ -52,9 +52,9 @@ Rules:
 | Category | Variants | What the app does |
 |---|---|---|
 | `Configuration` | `Config`, `Unsupported`; SSH setup failures | Names the setting to change. The session stops retrying until the user changes something. |
-| `Network` | `Transport` (resolution, refused, unreachable); a rejected SSH forward | Names the host and port. A session retries on a backoff. |
+| `Network` | `Transport` (resolution, refused, unreachable); an SSH forward that was rejected or could not open, or an SSH master that exited | Names the host and port. A session retries on a backoff. |
 | `Tls` | `Tls` | One sentence per `TlsFailure`, with a remedy button where one exists. The session stops retrying. |
-| `Authentication` | `Auth`, `IntegratedAuth`; SSH auth and host-key failures | Says the login or the host key was refused, with the server's reason. Never echoes what was typed. The session stops retrying. |
+| `Authentication` | `Auth`, `IntegratedAuth`; SSH auth and host-key failures, and a cancelled SSH prompt | Says the login or the host key was refused, with the server's reason. Never echoes what was typed. The session stops retrying. |
 | `ReadOnly` | `ReadOnly` | Says who refused: this connection's setting, or the server. |
 | `Server` | `Server` | The server's own words, code, detail and hint. |
 | `Interrupted` | `Cancelled` | "Stopped." |
@@ -77,21 +77,11 @@ A server error keeps the shape the server sent it in. `ServerCode` holds each en
 | `ClickHouse { code }` | ClickHouse | ClickHouse code 62 |
 | `Sqlite { primary, extended }` | SQLite | SQLite error 2067 |
 
+`ServerCode` is closed: an engine with its own numbering adds a variant, and its label in `crates/app/src/ui/error_text/driver.rs`.
+
 `ServerDiagnostics` also carries `severity`, `detail`, `hint`, `position`, `where_context`, `schema`, `table`, `column` and `constraint`. PostgreSQL fills most of them; the other engines mostly leave them empty. `position` counts characters from the start of the statement the user wrote: a driver that wraps the statement corrects it (the PostgreSQL cursor flight subtracts its `DECLARE` prefix).
 
-A driver maps the codes the app acts on to their own variants and passes everything else through as `Server`:
-
-| Meaning | PostgreSQL | MySQL, MariaDB | SQL Server | ClickHouse | SQLite |
-|---|---|---|---|---|---|
-| `Auth` | 28P01, 28000 | 1045 | 18456, 18452, 18486-18488 | 192, 193, 194, 516; 497 at login | |
-| `ReadOnly` (server) | 25006 | 1792 | 3906 | 164, 392 | 8 (`SQLITE_READONLY`) |
-| Statement `Timeout` | 57014 with "statement timeout" | 3024 (MySQL), 1969 (MariaDB) | | 159 | |
-| `LockWait` timeout | 55P03 | 1205 | 1222 | | |
-| `Cancelled` | 57014 after our cancel request | 1317 | attention acknowledged | 394 after our KILL | 9 (`SQLITE_INTERRUPT`) after our stop |
-| `Busy` | 53300 | 1040 | 17809 | 202, 203 | 5, 6 (`SQLITE_BUSY`, `SQLITE_LOCKED`) |
-| `ConnectionLost` | 57P01, 57P02, 57P03 | 1053, 1927, 4031 | | | |
-
-The engine pages ([PostgreSQL](drivers/postgresql.md), [MySQL and MariaDB](drivers/mysql.md), [SQLite](drivers/sqlite.md), [SQL Server](drivers/sql-server.md), [ClickHouse](drivers/clickhouse.md)) give each driver's mapping, and the places where a driver can only read the message, as SQL Server's TLS failures through tiberius.
+A driver maps the codes the app acts on to their own variants and passes everything else through as `Server`. Each engine page has its driver's table, and the places where it can only read the message, as SQL Server's TLS failures through tiberius: [PostgreSQL](drivers/postgresql.md#stops-and-timeouts), [MySQL and MariaDB](drivers/mysql.md#stops-and-timeouts), [SQLite](drivers/sqlite.md#stops-and-timeouts), [SQL Server](drivers/sql-server.md#stops-and-timeouts), [ClickHouse](drivers/clickhouse.md#stops-and-timeouts).
 
 ## `TimeoutPhase`
 
@@ -122,13 +112,13 @@ Drivers classify a handshake failure with `tablepro_net::tls::classify`, which w
 | `CaFileInvalid`, `ClientIdentityInvalid` | A file the user chose cannot be used. | The message names the file. |
 | `Other` | Anything else. | The rustls message. |
 
-The buttons are `TlsRemedy` in `crates/app/src/ui/error_text/tls_remedy.rs`, shown on the connect failure's toast. Which certificates each engine trusts, and how to choose a CA file under Flatpak, is in [ARCHITECTURE.md](../ARCHITECTURE.md#trust).
+The buttons are `TlsRemedy` in `crates/app/src/ui/error_text/tls_remedy.rs`: the toast button when the connect dialog's Test fails, and the Edit button on the window's connect failed page. Which certificates each engine trusts, and how to choose a CA file under Flatpak, is in [ARCHITECTURE.md](../ARCHITECTURE.md#trust).
 
 ## Mapping errors in a driver
 
 - Map by the engine's code, not by message text. Where the client library keeps nothing but the text, say so in a comment and pin the text with a test.
 - Keep the server's diagnostics: `DriverError::reported(ServerDiagnostics)`, and `DriverError::auth(Some(diagnostics))` for a refused login.
-- An error the engine raised to acknowledge our stop is the stop: `Cancelled`, or `Timeout { server_cancelled: true }`. `EngineStop::acknowledged` is where `OwnedCalls::run_read` learns which errors those are; `run_write` passes the result through, so a write maps its own.
+- An error the engine raised to acknowledge our stop is the stop: `Cancelled`, or `Timeout { server_cancelled: true }` ([adding-drivers.md](adding-drivers.md#ownedcalls) has how `run_read` and `run_write` tell).
 - A `ConnectionLost` goes through `Transport::explain_closed_stream`, so an SSH master that exited is reported as that.
 - A dead route is reported only once a check outside the pool confirms it ([adding-drivers.md](adding-drivers.md#deciding-that-the-link-is-lost)).
 
@@ -144,8 +134,8 @@ Logging goes through `tracing`. `crates/app/src/logging.rs` installs a `tracing_
 - `TABLEPRO_LOG_FORMAT=json` writes one JSON object per line; `text`, the default, writes plain lines.
 
 ```sh
-RUST_LOG=debug ./_build/crates/app/tablepro
-RUST_LOG=tablepro=trace,info TABLEPRO_LOG_FORMAT=json ./_build/crates/app/tablepro
+RUST_LOG=debug meson devenv -C _build ./crates/app/tablepro
+RUST_LOG=tablepro=trace,info TABLEPRO_LOG_FORMAT=json meson devenv -C _build ./crates/app/tablepro
 journalctl --user -f -t tablepro
 ```
 
@@ -157,7 +147,7 @@ The libraries under the drivers log what a database was sent or answered: tokio-
 
 ## `unwrap`, `expect` and `panic!`
 
-The workspace lints deny `unwrap_used`, `expect_used`, `panic`, `todo` and `unimplemented`; `clippy.toml` allows them in tests only. Return a real error instead. The one accepted use outside tests is in a `const`, where the compiler proves the value, as `RowLimit::EDITOR_DEFAULT` does.
+The workspace lints deny `unwrap_used`, `expect_used`, `panic`, `todo` and `unimplemented`. `clippy.toml` allows `unwrap`, `expect` and `panic!` in tests; `todo!` and `unimplemented!` are denied there too. Return a real error instead. The one accepted use outside tests is in a `const`, where the compiler proves the value, as `RowLimit::EDITOR_DEFAULT` does.
 
 ## Patterns refused in review
 

@@ -40,9 +40,9 @@ The editor's row limit on PostgreSQL is a `DECLARE` and `FETCH` cursor. tokio-po
 
 ## Consequences
 
-- A new driver implements the whole contract and runs both conformance suites ([testing.md](../testing.md#conformance)). `suite_flags_match_driver_capabilities` keeps a driver from skipping a case by declaring less.
+- A new driver implements the whole contract and runs the connection and DDL conformance suites, and a network engine the TLS suite too ([testing.md](../testing.md#conformance)). `suite_flags_match_driver_capabilities` fails when the suite's `endpoint` or `editor_transactions` disagrees with the driver's capabilities, so those cases cannot be skipped by declaring less.
 - PostgreSQL editor results are text until rust-postgres #1358 ships. The `SAVEPOINT` probe outside a transaction writes an ERROR line (25P01) to the server log. A cursor read plans for its first rows and never uses a parallel plan. Statement pooling is unsupported.
-- Trust differs by engine until sqlx and tiberius take a rustls `ClientConfig`: MySQL trusts the Mozilla roots compiled into sqlx, not the system store.
+- Trust differs by engine until sqlx and tiberius take a rustls `ClientConfig`: MySQL takes the system store and the CA file as one PEM bundle, on top of the Mozilla roots compiled into sqlx.
 - SQL Server TLS failures are classified more coarsely than the other engines', and three cancel tests stay held until tiberius-rs/tiberius#459 ships.
 - [ADR 0009](0009-crypto-provider-and-sources.md) allowed `tiberius-rs/tiberius` as a git source until tiberius 0.13 was published. It is on crates.io now, and `allow-git` in `deny.toml` is empty.
 - What each engine does with the contract is in `docs/drivers/`: [PostgreSQL](../drivers/postgresql.md), [MySQL and MariaDB](../drivers/mysql.md), [SQLite](../drivers/sqlite.md), [SQL Server](../drivers/sql-server.md), [ClickHouse](../drivers/clickhouse.md).

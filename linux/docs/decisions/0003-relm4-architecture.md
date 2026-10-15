@@ -1,6 +1,6 @@
-# 0003 — Relm4 for app architecture
+# 0003: Relm4 for app architecture
 
-- **Status**: Accepted; superseded for windows and the workspace by [0012](0012-window-per-session.md)
+- **Status**: Accepted; superseded by [0012](0012-window-per-session.md) except for the saved-queries and CSV import dialogs, which are still Relm4 components
 - **Date**: 2026-04-26
 
 ## Context
@@ -19,7 +19,7 @@ We need a structure that makes state explicit, decouples view from update logic,
 
 The `app` crate uses **[Relm4](https://relm4.org)** on top of `gtk4-rs`. Relm4 supplies:
 
-- **Components** with explicit `Init`, `Input`, `Output`, `CmdOutput` types.
+- **Components** with explicit `Init`, `Input`, `Output`, `CommandOutput` types.
 - **AsyncComponent** for components whose `init` or `update` is async.
 - **Factory** for homogeneous lists / grids driven by a model.
 - **Worker** for background units that do not own widgets.
@@ -35,7 +35,7 @@ The framework integrates with tokio without forcing the developer to think about
 
 Relm4 0.11 (December 2025) is stable enough for production. It is the canonical pattern for non-trivial gtk4-rs apps in 2026 and is actively maintained.
 
-The trade-off is one more layer of abstraction. New contributors must read the Relm4 book before contributing meaningfully — but this is a one-time cost paid once per contributor, not per PR.
+The trade-off is one more layer of abstraction. New contributors must read the Relm4 book before contributing meaningfully, but this is a one-time cost paid once per contributor, not per PR.
 
 ## Consequences
 
@@ -48,7 +48,7 @@ Accepted:
 
 Gained:
 
-- Async work is uniformly handled via `command` + `CmdOutput`. No ad-hoc `tokio::spawn` in handlers.
+- Async work is uniformly handled via `command` + `CommandOutput`. No ad-hoc `tokio::spawn` in handlers.
 - State is private to a component. Parent components communicate via typed `Input` and `Output`.
 - Refactoring a view is local. The cost is bounded by the component's surface, not by the call sites.
 - Pure logic is naturally separable into `app::services` modules and tested in isolation.

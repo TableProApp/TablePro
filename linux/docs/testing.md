@@ -5,8 +5,11 @@ Three layers, three tools. Each crate's test policy follows from its position in
 | Crate | Layer | Tools | Required for merge? |
 |---|---|---|---|
 | `core` | Pure traits + types | Unit tests in `crates/core/src/`, table-driven for type mappers | Yes |
-| `storage` | Filesystem + libsecret + GSchema | Unit tests + integration tests with `tempfile` | Yes |
-| `session` | Sessions, connect, health | Unit tests with the `fakes` feature + `testcontainers-rs` tests | Yes |
+| `storage` | Filesystem, the Secret Service through `oo7`, GSettings | Unit tests + integration tests with `tempfile` | Yes |
+| `net` | TLS setup | Unit tests, a TLS handshake test against a local server | Yes |
+| `ssh` | OpenSSH transport | Unit tests, `testcontainers-rs` tests against an OpenSSH server | Yes |
+| `test-fixtures` | Containers for the other crates' tests | `testcontainers-rs` tests of the fixtures themselves | Yes |
+| `session` | Sessions, connect, health | Unit tests over the fakes in `tablepro-test-support` and `tablepro_session::fakes`, plus `testcontainers-rs` tests | Yes |
 | `drivers/<engine>` | Real engines | Unit tests, the conformance suites, `testcontainers-rs` integration tests | Yes |
 | `app` | GTK 4 widgets | `#[gtk4::test]` widget tests; pure logic is unit-tested | Yes |
 
@@ -36,10 +39,12 @@ meson setup _build -Dprofile=development
 dbus-run-session -- meson test -C _build --print-errorlogs
 ```
 
-Four suites: `unit` is `cargo test --workspace --exclude tablepro`, `gtk`
-is `cargo test -p tablepro` with `GSK_RENDERER=cairo` and `GTK_A11Y=test`,
-`data` runs `desktop-file-validate`, `glib-compile-schemas --strict` and `appstreamcli validate`,
-and `packaging` runs the unit tests in `build-aux/tests` and checks that
+Four suites: `unit` is `cargo test --workspace --exclude tablepro`. `gtk`
+is `cargo test -p tablepro` with `GSK_RENDERER=cairo`, `GTK_A11Y=test`,
+`GDK_BACKEND=x11` and the build tree's schema directory. `data` runs
+`desktop-file-validate`, `glib-compile-schemas --strict` and
+`appstreamcli validate`, and checks that the newest metainfo release is
+the Meson version. `packaging` runs the unit tests in `build-aux/tests` and checks that
 `debian/copyright`, the RPM spec and the metainfo agree with `data/licenses`
 and the version Meson builds. In a `-Dprofile=default` build, which the
 packages run, the unit and gtk suites build with `--release` but without
@@ -52,15 +57,20 @@ xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs
 ```
 
 For a single crate, `meson devenv -C _build cargo test -p <crate>` runs
-Cargo with the same environment.
+Cargo on the same build tree. It does not set the gtk suite's variables,
+so for the app pass them:
+
+```bash
+GSK_RENDERER=cairo GTK_A11Y=test GDK_BACKEND=x11 meson devenv -C _build cargo test -p tablepro
+```
 
 ## Integration tests
 
-Per-crate `tests/` directory. One file per scenario.
+Per-crate `tests/` directory. A driver has one target, `tests/integration/main.rs`, with one module per topic.
 
-For `storage`, integration tests use `tempfile::TempDir` to run against an isolated filesystem root, with `XDG_CONFIG_HOME` overridden via env var.
+For `storage`, integration tests build `StoragePaths::under(root, ..)` over a `tempfile::TempDir`, so every file lands under that root.
 
-For drivers, integration tests use [`testcontainers`](https://docs.rs/testcontainers/latest/testcontainers/) through the fixtures in `tablepro-test-fixtures`. Each driver's `tests/integration/support.rs` turns a fixture into `ConnectOptions` and a connected `Connection`:
+For network drivers, integration tests use [`testcontainers`](https://docs.rs/testcontainers/latest/testcontainers/) through the fixtures in `tablepro-test-fixtures`. Each network driver's `tests/integration/support.rs` turns a fixture into `ConnectOptions` and a connected `Connection`; SQLite's opens a file endpoint instead:
 
 ```rust
 use tablepro_core::meta::{ObjectKind, ObjectScope};
@@ -116,7 +126,7 @@ tablepro_test_support::connection_conformance_suite! {
 }
 ```
 
-The cases every engine runs: a created table is listed with its key, a query bound times out within its deadline, a cancelled editor run reports it and leaves the session ready, a read-only connection refuses writes, a write batch commits every step and a failed one ends as the driver's atomicity says, a row guard mismatch applies nothing, `close` is idempotent, a commit the engine keeps no record of resolves as `Unresolvable`, and `stream_read` streams every row in bounded batches.
+The cases every engine runs: a created table is listed with its key, one operation's calls share one `CallOptions`, a query bound times out within its deadline, a cancelled editor run reports it and leaves the session ready, a read-only connection refuses writes, a write batch commits every step and a failed one ends as the driver's atomicity says, a row guard mismatch applies nothing, `close` is idempotent, a commit the engine keeps no record of resolves as `Unresolvable`, and `stream_read` streams every row in bounded batches.
 
 Each flag adds cases and needs its engine trait:
 
@@ -125,6 +135,7 @@ Each flag adds cases and needs its engine trait:
 | `endpoint: network` | a dropped `query_bound` caller or editor run stops the server's statement, and the editor session then runs again or reports `Lost`; a lost transport reports `ConnectionLost` | `NetworkConformanceEngine` |
 | `endpoint: file` | a dropped editor run stops, and the session takes the next run within the cancel grace | `ConformanceEngine` |
 | `pool: pooled` | a probe succeeds while every pool slot is busy | `PooledConformanceEngine` |
+| `pool: unbounded` | nothing: the engine has no slot limit (ClickHouse) | `ConformanceEngine` |
 | `editor_transactions: true` | the row limit keeps the transaction and the statements after it | `EditorTransactionEngine` |
 | `unsupported_types: true` | an unsupported type never decodes as NULL | `TypedConformanceEngine` |
 | `bounded_ddl: true` | a schema-change batch is not cut off by the statement timeout | `BoundedDdlEngine` |
@@ -135,7 +146,7 @@ Each case starts its own engine, then has two minutes (`CASE_LIMIT`) to finish. 
 
 ### DDL conformance
 
-`ddl_conformance_suite!` runs the structure tab's own plans against the server. The adapter implements `ConformanceDdlEngine` on top of `ConformanceEngine`: the engine's integer, text and timestamp types, its current-timestamp expression, and, for an engine whose `DdlDialect` creates no tables (ClickHouse), a CREATE TABLE of its own.
+`ddl_conformance_suite!` runs the structure tab's own plans against the server. The same `conformance_engine.rs` implements `ConformanceDdlEngine` on top of `ConformanceEngine` and invokes it: the engine's integer, text and timestamp types, its current-timestamp expression, and, for an engine whose `DdlDialect` creates no tables (ClickHouse), a CREATE TABLE of its own.
 
 ```rust
 tablepro_test_support::ddl_conformance_suite! {
@@ -155,7 +166,7 @@ The PostgreSQL, MySQL, SQL Server, ClickHouse and SQLite targets run it, and the
 
 ### TLS conformance
 
-Every network driver also runs `tls_conformance_suite!` against a TLS-only server built from `TestPki`:
+Every network driver's `tests/integration/tls.rs` also runs `tls_conformance_suite!` against a TLS-only server built from `TestPki`:
 
 ```rust
 tablepro_test_support::tls_conformance_suite! {
@@ -183,7 +194,9 @@ CI runs one job per package with docker tests:
 cargo nextest run --locked --profile ci -p tablepro-driver-mssql --run-ignored only
 ```
 
-`.config/nextest.toml` puts each package's docker tests in a test group with one thread, so the tests of one suite never compete for a container. The `ci` profile writes a JUnit report to `target/nextest/ci/junit.xml` and kills a test that runs past five minutes, so a hang fails with the test's name.
+`.config/nextest.toml` puts each package that has Docker tests in a test group with one thread, and for the app only its integration targets, so the tests of one suite never compete for a container. Its default filter leaves out three SQL Server tests that need tiberius#459 ([sql-server.md](drivers/sql-server.md#stops-and-timeouts)). The `ci` profile writes a JUnit report to `target/nextest/ci/junit.xml` and kills a test that runs past five minutes, so a hang fails with the test's name.
+
+A new package with Docker tests gets a test group and an override in `.config/nextest.toml`, and an entry in the `integration` matrix of `.github/workflows/build-linux.yml`.
 
 Locally, with [cargo-nextest](https://nexte.st/) installed:
 
@@ -216,8 +229,7 @@ A test that panics hard can still leave a container behind. `podman container pr
 
 ### Regression names
 
-A test that guards a critical audit finding starts with the finding id, `f001_` to `f006_`. `cargo test --workspace --exclude tablepro -- f001_` runs the guards for that finding that need no server, and `cargo test -p tablepro --lib -- f001_` the app's, under a display.
-[regression-tests.md](regression-tests.md) lists every guard with its file, and `build-aux/tests/test_regression_names.py`, in the `packaging` suite, fails when the list and the code disagree.
+A test that guards a critical audit finding starts with the finding id, `f001_` to `f006_`. [regression-tests.md](regression-tests.md) has the commands that run them and lists every guard with its file, and `build-aux/tests/test_regression_names.py`, in the `packaging` suite, fails when the list and the code disagree.
 
 ## App / UI tests
 
@@ -240,7 +252,7 @@ Helpers live in `crates/app/src/test_support`, compiled only for tests:
   - any other widget, such as an icon-only button or a bare entry, needs an accessible label or a labelled-by relation.
 - `unlabelled_icon_buttons(root)` lists the icon-only buttons under `root` that a screen reader reaches and cannot name, and `tooltips_with_keys(root)` the tooltips that spell out a key, which belongs on the accessible node. `ui::a11y::tests` walks every template in the GResource: an icon-only button the template does not label needs an id, and a label once its class is built, which is where `describe_icon_button` gives it one.
 
-CI sets `GTK_A11Y=test` so results never depend on an AT-SPI bus. With `GTK_A11Y=none`, GTK records no accessible properties and `assert_labelled` returns `TestBackendMissing` instead of a wrong verdict.
+The gtk suite sets `GTK_A11Y=test`, so results never depend on an AT-SPI bus. With `GTK_A11Y=none`, GTK records no accessible properties and `assert_labelled` returns `TestBackendMissing` instead of a wrong verdict.
 
 Two harnesses build the app's real objects over fakes:
 
@@ -275,7 +287,7 @@ A critical then aborts the process with the message, for example libadwaita's "T
 
 ### Fakes
 
-`tablepro-test-support` holds the driver contract's fakes, which every crate's tests share: `FakeDriver`, `FakeConnection` scripted through `ConnectionScript`, `FakeEditorSession` with `FakeRun`, `FakeSecretVault`, `FakePrompter` and `FaultTransport`. A `FakeReply` answers at once, after a delay unless the deadline or cancel comes first, late whatever the caller asked, only once stopped, or never. `CallCounters` counts the calls a connection received after it was handed over. `tablepro_session::fakes` adds `FakeConnector` and `FakeCredentialSource` behind the session crate's `fakes` feature, which only the app's dev-dependencies turn on.
+`tablepro-test-support` holds the driver contract's fakes, which every crate's tests share: `FakeDriver`, `FakeConnection` scripted through `ConnectionScript`, `FakeEditorSession` with `FakeRun`, `FakeSecretVault`, `FakePrompter` and `FaultTransport`. A `FakeReply` answers at once, after a delay unless the deadline or cancel comes first, late whatever the caller asked, once the test releases it, only once stopped, or never. `CallCounters` counts the calls a connection received after it was handed over. `tablepro_session::fakes` adds `FakeConnector` and `FakeCredentialSource` behind the session crate's `fakes` feature, which only the app's dev-dependencies turn on.
 
 ### Application tests
 
@@ -298,7 +310,7 @@ xvfb-run -a dbus-run-session -- meson test -C _build --suite gtk --print-errorlo
 
 or one at a time, `xvfb-run -a dbus-run-session -- meson devenv -C _build cargo test -p tablepro --test application_lifecycle`. `startup` needs the build Meson configures, so it fails under plain Cargo. cargo-nextest asks each test binary to list its tests, which a harness-free binary does not do, so run these with `cargo test`.
 
-`accessibility` starts one TablePro per scenario in its own process instead, on the main context, and needs `GTK_A11Y=test`; pass scenario names after `--` to run only those. It leaves to libadwaita the parts libadwaita builds and names with a tooltip alone: a tab's close button, a password row's peek button and the preferences dialog's search button.
+`accessibility` runs in the test binary's own process instead. Each of its six scenarios starts a TablePro there under an application id of its own, one after another, on the main context. It needs `GTK_A11Y=test`; pass scenario names after `--` to run only those. It leaves to libadwaita the parts libadwaita builds and names with a tooltip alone: a tab's close button, a password row's peek button and the preferences dialog's search button.
 
 Policy:
 
@@ -338,23 +350,23 @@ The tests in `crates/app/src/ui/editor/script_runner.rs` drive `run_batches` und
 
 ## CI
 
-GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runners. Every action is pinned by commit SHA and every tool by version.
+GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runners. It runs on a pull request, and on a push to `main`, `linux`, `linux/**` or `feat/linux-**`, that touches `linux/` or one of the three Linux workflows: `build-linux.yml`, `linux-packages.yml` and `release-linux.yml`. It also runs every Monday and by hand. Every action is pinned by commit SHA and every tool by version.
 
-1. **Fast checks**: `meson setup`, `cargo fmt --all -- --check`, the source greps (no `thread_local!` in services, no blocking file I/O under `ui`, no em dash in user-facing text), clippy with and without default features, `meson compile`, `xvfb-run -a dbus-run-session -- meson test --print-errorlogs`, a Secret Service step under `gnome-keyring-daemon`, then `meson dist`. Runs in an `ubuntu:26.04` container, which ships GLib 2.88 plus the meson, appstream and desktop-file-utils packages. A failed run keeps `_build/meson-logs/testlog.txt` as the `meson-testlog` artifact. The job ends by rendering the release-shaped Flatpak manifest from the dist tarball (below). [CONTRIBUTING.md](../CONTRIBUTING.md#fast-job-commands) lists the same commands.
-2. **Docker tests**: runs after fast checks pass. One matrix entry per package with docker tests (the PostgreSQL driver with PgBouncer, the MySQL driver with MariaDB, the SQL Server and ClickHouse drivers, all four with their TLS suites, `tablepro-ssh` against an OpenSSH server container, and `tablepro-test-fixtures` for the fixtures themselves) runs that package's ignored docker tests through cargo-nextest on the host runner's Docker, one test at a time per package. `tablepro-session` builds storage, which needs GLib 2.88, so its job runs in the fast job's `ubuntu:26.04` image with the host's Docker socket mounted. The app's docker tests (`crates/app/tests/tracker_save_postgres.rs`) run the same way, since the app links GTK; that job names its test targets, because the app's `startup` test needs Meson. The SQLite driver needs no container: its suites run in the fast job.
-3. **Supply chain**: `cargo deny check` against `deny.toml` (advisories, bans, licenses and sources, with every feature and the dev-dependencies), `cargo shear` for unused or misplaced dependencies, `build-aux/update-third-party-licenses.sh` with a diff of the files it writes, and `zizmor` over the Linux workflows.
-4. **Translations**: in `fedora:44`, whose gettext reads Rust. `po/POTFILES.in` must match `git ls-files`, `meson setup --fatal-meson-warnings` must pass, and `po/tablepro.pot` must match a fresh `meson compile -C _build tablepro-pot` in everything but its creation date. A failed run keeps the template it wrote as the `tablepro-pot` artifact.
+1. **Fast checks**: `meson setup`, `cargo fmt --all -- --check`, the source greps (no `thread_local!` in services, no blocking file I/O under `ui`, no action group inserted as `win`, no `set_qdata`, no em dash in user-facing text), `scripts/check-doc-symbols.sh` over the docs that name code, clippy with and without default features, `meson compile`, `xvfb-run -a dbus-run-session -- meson test --print-errorlogs`, a Secret Service step under `gnome-keyring-daemon`, then `meson dist`. Runs in an `ubuntu:26.04` container, which ships GLib 2.88 plus the meson, appstream and desktop-file-utils packages. A failed run keeps `_build/meson-logs/testlog.txt` as the `meson-testlog` artifact. The job ends by rendering the release-shaped Flatpak manifest from the dist tarball (below). [CONTRIBUTING.md](../CONTRIBUTING.md#fast-job-commands) lists the same commands.
+2. **Docker tests** (`integration`, `integration-session`, `integration-app`): runs after fast checks pass, and keeps each package's JUnit report as a `junit-<package>` artifact. One matrix entry per package with docker tests (the PostgreSQL driver with PgBouncer, the MySQL driver with MariaDB, the SQL Server and ClickHouse drivers, all four with their TLS suites, `tablepro-ssh` against an OpenSSH server container, and `tablepro-test-fixtures` for the fixtures themselves) runs that package's ignored docker tests through cargo-nextest on the host runner's Docker, one test at a time per package. `tablepro-session` builds storage, which needs GLib 2.88, so its job runs in the fast job's `ubuntu:26.04` image with the host's Docker socket mounted. The app's docker tests (`crates/app/tests/tracker_save_postgres.rs`) run the same way, since the app links GTK; that job names its test targets, because the app's `startup` test needs Meson. The SQLite driver needs no container: its suites run in the fast job.
+3. **Supply chain**: `cargo deny check` against `deny.toml` (advisories, bans, licenses and sources, with every feature, both Linux targets and the dev-dependencies), `cargo shear` for unused or misplaced dependencies, and `build-aux/update-third-party-licenses.sh`, failing when `data/licenses`, `build-aux/debian/copyright` or the spec's `License` tag differ from what it writes. Then `zizmor` over the three Linux workflows.
+4. **Translations**: in `fedora:44`, whose gettext reads Rust. `po/POTFILES.in` must match `git ls-files`, `meson setup --fatal-meson-warnings` must pass, and `po/tablepro.pot` must match a fresh `meson compile -C _build tablepro-pot` in everything but its creation date. Regenerating it locally needs gettext 0.24 or newer. A failed run keeps the template it wrote as the `tablepro-pot` artifact.
 5. **Documentation links**: lychee, offline, over every Markdown file under `linux/`, with heading anchors checked.
 6. **Flatpak Devel**: the Devel manifest built in the `gnome-50` Flatpak image for x86_64 and aarch64, with every Meson suite run inside the build sandbox from a tree with no `.git`.
 7. **Flatpak release shape**: the manifest the fast job rendered, which is the Devel manifest with the Flathub app ID, `-Dprofile=default`, the dist tarball as its source and a `cargo-sources.json` that `flatpak-cargo-generator` wrote from `Cargo.lock`, built offline with the screenshots mirrored, then `flatpak-builder-lint` over the manifest and the repository with `build-aux/flatpak/lint-exceptions.json`.
 
-Every job first checks that `linux/meson.build` exists, so the same file can sit on `main` before `linux/` does. GitHub runs a schedule only from the default branch: while `main` has no `linux/`, the Monday run there starts this workflow on the branch the `LINUX_BRANCH` repository variable names, `linux` when it is unset. PRs only merge when every job is green.
+A `detect` job first checks that `linux/meson.build` exists, and every other job waits for it and is skipped without it, so the same file can sit on `main` before `linux/` does. GitHub runs a schedule only from the default branch: while `main` has no `linux/`, the Monday run there starts this workflow on the branch the `LINUX_BRANCH` repository variable names, `linux` when it is unset. PRs only merge when every job is green.
 
-`.github/workflows/linux-packages.yml` builds the .deb in `ubuntu:26.04` and the .rpm in `fedora:44` from the release source and vendor tarballs, running every Meson suite inside the package build, then installs each package in a fresh container and starts it. It runs on a pull request that touches the packaging or the Meson files; `build-aux/packaging/build-packages.sh` runs the same steps locally.
+`.github/workflows/linux-packages.yml` builds the .deb in `ubuntu:26.04` and the .rpm in `fedora:44` from the release source and vendor tarballs, running every Meson suite inside the package build, and checks each with lintian or rpmlint. It then installs each package in a fresh container and starts it. It runs on a pull request, or a push to `linux`, that touches the packaging (`build-aux/debian`, `build-aux/rpm`, `build-aux/packaging`), the Meson files or `rust-toolchain.toml`. `.github/workflows/release-linux.yml` calls it on a `linux-v*` tag ([ADR 0017](decisions/0017-distribution-channels.md)). `build-aux/packaging/build-packages.sh` runs the same steps locally.
 
 ## Coverage
 
-Tracked with `cargo-llvm-cov` once the codebase has substance. No hard coverage threshold; coverage is a discussion aid, not a gate.
+No job collects coverage, and there is no coverage threshold.
 
 ## Mocking
 

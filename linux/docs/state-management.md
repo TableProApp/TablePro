@@ -21,7 +21,7 @@ Windows share nothing but `AppServices`. CI fails on a `thread_local!` under `cr
 
 ## Rules for every view
 
-**Background work goes through `Tasks`.** Use `crate::runtime::spawn_and_deliver` to run work on the app runtime and get its result on the GTK thread, and `spawn_held` for work the user expects to finish, such as a save. `crates/app/clippy.toml` bans `tokio::spawn`, `Handle::current`, `relm4::spawn` and their siblings, so nothing reaches for whichever runtime happens to be ambient.
+**Background work goes through `Tasks`.** Use `crate::runtime::spawn_and_deliver` to run work on the app runtime and get its result on the GTK thread, and `spawn_held` for work that has to finish even if its window goes, such as saving a named query or importing a connection list. A table or structure save goes through `WorkspaceHandle::save`, whose `SaveLedger` holds the process. `crates/app/clippy.toml` bans `tokio::spawn`, `Handle::current`, `relm4::spawn` and their siblings, so nothing reaches for whichever runtime happens to be ambient.
 
 **Input goes through `DeliverInput::deliver`.** It works on an input queue's sender, a `relm4::Sender`, a `ComponentSender` and a `FactorySender`. A message to a view that has shut down is dropped and logged at debug under the `component` target, so a read or a save that comes back after its window closed changes nothing. `ComponentSender::input` and `FactorySender::input` are banned: relm4 0.11 calls `expect` on a closed channel, which would take every window down. Use `try_deliver` when the caller must act on a dropped message, as `QuitSequence` does when a window is already gone.
 
@@ -133,13 +133,13 @@ The tab emits `transaction-changed` when that flips, and the workspace reads `Wo
 - `HistoryPaging` numbers each refresh. A page that lands for an older search is dropped, a new search drops the old cursor, and one next-page read runs at a time.
 - A refresh keeps the rows on screen until its first page lands, so typing never blanks the list, and a refresh that fails keeps them.
 - Pinning moves the row to where the history now lists it without reading again. A row that now sorts past the pages read comes back with its page.
-- Delete happens at once and offers Undo in a toast, which puts the entries back under their own ids (`QueryHistory::delete_returning`, then `QueryHistory::restore`).
+- Delete happens at once and offers Undo ([storage.md](storage.md#deleting-and-restoring)).
 
 ## Relm4 components
 
 The components that remain follow these conventions until a rewrite turns them into subclasses:
 
-- Input reaches them through `deliver`, and their output reaches the subclass that hosts them through `connect_receiver` or `runtime::relm4_bridge`, which put it on that subclass's queue.
+- Input reaches them through `deliver`. Their output reaches the subclass that hosts them through `connect_receiver`, whose closure delivers it to that subclass's queue.
 - Their commands (`sender.command`, `oneshot_command`) run on Relm4's own runtime, not on `Tasks`. The saved-queries dialog still loads that way; new work goes through `spawn_and_deliver`.
 - They present their dialogs on the window they belong to. `ComponentBuilder::transient_for` is banned, because Relm4 applies it only from `relm4::RelmApp`, which this app does not use.
 

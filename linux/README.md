@@ -11,7 +11,7 @@ It connects to five engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHou
 | Layer | Pick |
 |---|---|
 | Language | Rust 1.98 (`rust-toolchain.toml` and `rust-version`) |
-| GUI toolkit | GTK 4.22, libadwaita 1.9, GtkSourceView 5.18 and GLib 2.88: GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) |
+| GUI toolkit | GTK 4, libadwaita, GtkSourceView and GLib at the GNOME 50 floor ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) |
 | App architecture | gtk-rs subclasses with composite templates, one window per connection session ([ADR 0012](docs/decisions/0012-window-per-session.md)); the saved-queries and CSV import dialogs are still [Relm4](https://relm4.org) 0.11 components |
 | Async | the app's tokio runtime (`AppRuntime`) for background work, results delivered to the GLib main loop |
 | Database drivers | tokio-postgres with deadpool-postgres (PostgreSQL), sqlx 0.9 (MySQL and MariaDB, SQLite), tiberius 0.13 (SQL Server) and the official `clickhouse` crate, all from crates.io ([ADR 0016](docs/decisions/0016-driver-contract-v2.md)) |
@@ -26,7 +26,7 @@ It connects to five engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHou
 
 | Not | Why |
 |---|---|
-| A port of the macOS app | Swift code does not run on Linux, and Swift / GTK bindings are immature. The Linux app shares zero source with macOS. |
+| A port of the macOS app | The macOS app is AppKit and SwiftUI, which Linux does not have, and Swift's GTK bindings are immature. The Linux app shares no source with macOS. |
 | A plugin host | Drivers are statically linked at compile time. Adding a database engine = adding one crate + one register call. See [decisions/0001-no-plugin-system.md](docs/decisions/0001-no-plugin-system.md). |
 | Cross-platform | Linux only. macOS and iOS have separate apps in this monorepo. |
 | Electron / WebView | Native GTK4 widgets throughout. No HTML rendering of any kind. |
@@ -48,10 +48,25 @@ sudo pacman -S --needed base-devel pkgconf meson ninja gettext desktop-file-util
 
 The Ubuntu list is the .deb's build dependencies in `build-aux/debian/control` and the Fedora list the RPM's in `build-aux/rpm/tablepro.spec`, less the ones only their tests need. CI builds both.
 
-Verify the right versions are present:
+The test suites need a few more: an X server for the GTK tests, a session
+bus, the icon theme, a generated `en_US.UTF-8` locale for the catalogue
+test, and gnome-keyring for the Secret Service tests.
 
 ```bash
-pkg-config --modversion gtk4 libadwaita-1 gtksourceview-5 glib-2.0 sqlite3   # need 4.22+ / 1.9+ / 5.18+ / 2.88+ / 3.46+
+# Ubuntu 26.04
+sudo apt install -y xvfb xauth dbus-daemon adwaita-icon-theme locales gnome-keyring
+sudo localedef -i en_US -f UTF-8 en_US.UTF-8
+
+# Fedora 44
+sudo dnf install -y xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon adwaita-icon-theme glibc-langpack-en gnome-keyring
+```
+
+Check the installed versions against the floors in
+[ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md). SQLite needs
+3.46 or later.
+
+```bash
+pkg-config --modversion gtk4 libadwaita-1 gtksourceview-5 glib-2.0 sqlite3
 ```
 
 Install Rust with [rustup](https://rustup.rs). `rust-toolchain.toml` pins
@@ -73,7 +88,8 @@ with `GSettings schema app.tablepro.TablePro is not installed`.
 
 Install with `meson install -C _build`, which places the binary, the
 askpass helper, the desktop entry, the D-Bus service, the AppStream
-metainfo, the icons and the third-party license notices. See
+metainfo, the GSettings schema, the icons, the man page and the
+third-party license notices. See
 [ADR 0006](docs/decisions/0006-meson-cargo-build.md).
 
 Before pushing, run the [fast-job commands](CONTRIBUTING.md#fast-job-commands). [docs/testing.md](docs/testing.md) describes the test suites, including the ones that need Docker.
@@ -189,28 +205,22 @@ kinit you@EXAMPLE.COM
 ```
 
 The driver asks for `MSSQLSvc/<host>:<port>`, built from the host and
-port you typed, not from an SSH tunnel's local forward. Four things are
+port you typed, not from an SSH tunnel's local forward. Two things are
 worth knowing:
 
 - tiberius imports that SPN as a raw Kerberos principal, so it takes the
   default realm and nothing else: `default_realm` from `/etc/krb5.conf`,
-  or under Flatpak a DNS record, as below. `[domain_realm]` does not
-  apply: that lookup only runs for host-based service names, and
-  tiberius exposes no SPN override. A server in another realm works only
-  when your KDC answers with a referral, which Active Directory does
-  inside a forest. Otherwise the login fails with
-  `KRB5KDC_ERR_S_PRINCIPAL_UNKNOWN`.
+  or under Flatpak a DNS record. `[domain_realm]` does not apply: that
+  lookup only runs for host-based service names, and tiberius exposes no
+  SPN override. A server in another realm works only when your KDC
+  answers with a referral, which Active Directory does inside a forest.
+  Otherwise the login fails with `KRB5KDC_ERR_S_PRINCIPAL_UNKNOWN`.
 - The host has to match the SPN registered on the server. An IP address
   or a CNAME usually does not.
-- Under Flatpak the host's `/etc/krb5.conf` is out of reach. The app
-  brings its own through `KRB5_CONFIG`. It sets no `default_realm`, so
-  the realm comes from the `_kerberos` TXT record of this computer's DNS
-  domain or a parent of it, and the KDC from DNS SRV records.
-- Under Flatpak tickets are read from the KCM cache, so a ticket the
-  host's `kinit` keeps in KCM (Fedora's default, through sssd-kcm) is
-  used. The sandbox's `/tmp` is private, so a FILE ticket cache there is
-  invisible. A KEYRING cache fails too, because Flatpak blocks the
-  kernel keyring calls.
+
+Under Flatpak the app brings its own Kerberos configuration and reads
+tickets from the KCM cache. [Kerberos inside Flatpak](docs/drivers/sql-server.md#kerberos-inside-flatpak)
+says where the realm, the KDC and the tickets come from there.
 
 ## Documentation index
 

@@ -44,7 +44,7 @@ SET SESSION innodb_lock_wait_timeout = 10
 
 A workspace session also pins two things the app's generated SQL depends on: `time_zone = '+00:00'`, so a `TIMESTAMP` reads as the instant it names, and `sql_mode` without `NO_BACKSLASH_ESCAPES`, because generated DDL writes literals such as `COMMENT '...'` that have no hex form. An editor session keeps the server's own zone and `sql_mode`, as the mysql client would.
 
-sqlx's own session statements (`PIPES_AS_CONCAT`, `NO_ENGINE_SUBSTITUTION`, its `SET NAMES`, its time zone) are turned off, its statement cache is 0 so no prepared statement outlives its call, and its statement logging is off.
+sqlx's own session statements (`PIPES_AS_CONCAT`, `NO_ENGINE_SUBSTITUTION`, its `SET NAMES`) are turned off. Its time zone is off too, except on a workspace session, where sqlx's `time_zone` option sends the `+00:00` above. Its statement cache is 0 so no prepared statement outlives its call, and its statement logging is off.
 
 ## TLS
 
@@ -70,7 +70,7 @@ A stop is `KILL QUERY <connection id>` on the control connection, which reaches 
 | 3159 | `Tls { failure: ServerRequiresTls }` |
 | 1053, 1927 (MariaDB), 4031 (MySQL) | `ConnectionLost` |
 
-A call that timed out or lost its connection is checked before the link is declared lost: a `KILL` that never got through means the route is gone, one the server answered means it is not, and otherwise a login of its own answers within the cancel grace.
+A call that timed out or lost its connection is checked before the link is declared lost, as [adding-drivers.md](../adding-drivers.md#deciding-that-the-link-is-lost) describes, with the `KILL` as the stop and a login of its own as the check.
 
 ### Through ProxySQL
 
@@ -78,7 +78,9 @@ A call that timed out or lost its connection is checked before the link is decla
 
 ## Read-only
 
-`ReadOnlyEnforcement::SessionDefault`: `SET SESSION TRANSACTION READ ONLY` on every session. Saves are refused before anything is sent, a write through generated SQL fails with 1792, and an export runs in `START TRANSACTION READ ONLY` and refuses SQL that does not start with `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC`, `EXPLAIN` or `TABLE`. In the editor, the user's own `SET TRANSACTION READ WRITE` or `SET SESSION TRANSACTION READ WRITE` lifts it. For a guarantee, connect with a login that has no write privileges.
+`ReadOnlyEnforcement::SessionDefault`: `SET SESSION TRANSACTION READ ONLY` on every session. Saves are refused before anything is sent, and a write through generated SQL fails with 1792. In the editor, the user's own `SET TRANSACTION READ WRITE` or `SET SESSION TRANSACTION READ WRITE` lifts it. For a guarantee, connect with a login that has no write privileges.
+
+An export, on any connection, runs in `START TRANSACTION READ ONLY` and refuses user SQL with a statement that does not start with `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC`, `EXPLAIN`, `TABLE` or a parenthesis.
 
 ## Writes
 
@@ -94,14 +96,14 @@ Whether a write can be undone depends on the table's storage engine, not on the 
 - On a non-transactional table, a statement whose connection drops before its answer may have run, so it is reported as unknown, not as refused.
 - A trigger on an InnoDB table can write into a non-transactional one. A `ROLLBACK` then leaves those rows, and the server says so with warning 1196. The driver reads `SHOW WARNINGS` after every rollback, and a 1196 makes the outcome `PartiallyApplied` instead of `RolledBack`.
 - MariaDB's `max_statement_time` would stop a long `ALTER` the way it stops a `SELECT`, so a schema change on MariaDB lifts it for the batch and puts it back after. A connection where it cannot be put back is closed. MySQL's bound covers only `SELECT`.
-- A statement with parameters is prepared and closed after it runs; one without goes over the text protocol, which accepts statements MySQL cannot prepare, such as `CREATE TRIGGER`.
+- Every step is prepared, also one with no parameters, so a stray `;` in generated SQL fails instead of running a second statement. The prepared statement is closed after it runs. A step with no parameters that the server cannot prepare (error 1295, such as `CREATE TRIGGER`) is sent again over the text protocol.
 - MySQL cannot suspend foreign keys for one batch, so a batch that asks for it is refused before anything is sent.
 - There is nothing to ask the server about a lost `COMMIT` (`CommitResolutionSupport::Unavailable`). `CommitOutcomeUnknown` carries no token, and the user reloads to see what landed.
 
 ## Editor sessions
 
 - The editor sends one statement per run. Text with several statements runs as the server's own multi-statement batch over the text protocol, except that mysql-client `DELIMITER` lines split it where the client would, because the server does not know the directive.
-- The row limit is `SET SESSION sql_select_limit = <limit + 1>`, sent when the limit changes. The server stops a plain `SELECT` there, and the set ends with `Truncation::ServerStopped` and no total. A `SELECT` with a `LIMIT` of its own, or one inside a routine, is read to its end: the rows past the limit are counted, never decoded, and the set ends with `Truncation::ReadPastLimit` and its total.
+- The row limit is `SET SESSION sql_select_limit = <limit + 1>`, sent when the limit changes. The server stops a plain `SELECT` there, and the set ends with `Truncation::ServerStopped` and no total. A `SELECT` with a `LIMIT` of its own, or one inside a routine, is read to its end: the rows past the limit are counted, never decoded, and the set ends with `Truncation::ReadPastLimit` and its total. A set that ends exactly one row past the limit reads as `ServerStopped` either way.
 - A stop sends `KILL QUERY` on the session's own control connection and gives the statement the cancel grace to end. A statement that has not ended by then ends the session, because its answer is still on the way.
 - When the grid stops reading, the run sends the same `KILL QUERY` and ends as cancelled. The batch already sent is read to its end, unshown, and no later batch is sent.
 - The transaction state after each run comes from `@@in_transaction` on MariaDB and from `performance_schema.events_transactions_current` on MySQL. On MySQL before 8.0.16, with `performance_schema` off, or for a login that cannot read it, the state is `Unknown`, and the tab's close guard warns instead of guessing.

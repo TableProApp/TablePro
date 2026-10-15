@@ -1,6 +1,6 @@
 # TablePro for Linux
 
-The native Linux app: Rust, GTK 4 and libadwaita through gtk-rs, built with Meson and Cargo. The platform floor is GNOME 50 (GTK 4.22, libadwaita 1.9, GtkSourceView 5.18, GLib 2.88). It shares no code with the macOS app.
+The native Linux app: Rust, GTK 4 and libadwaita through gtk-rs, built with Meson and Cargo. The platform floor is GNOME 50; `docs/decisions/0015-gnome-50-platform-floor.md` has the library versions. It shares no code with the macOS app.
 
 This is the guide for work under `linux/`. The root `AGENTS.md` describes the macOS and iOS apps; of it, only the principles named below, "Writing style" and the commit rules apply here. Claude Code loads this file through `linux/CLAUDE.md` once a file under `linux/` is read; Codex reads it when started in `linux/`, so otherwise read it yourself.
 
@@ -19,7 +19,8 @@ This is the guide for work under `linux/`. The root `AGENTS.md` describes the ma
 ## Map
 
 - `crates/app`: the binary, the GTK application, its windows and views. `crates/core`: domain types and traits, no GUI. `crates/storage`: secrets, settings and files. `crates/session`, `crates/net`, `crates/ssh`: sessions, the network layer and the OpenSSH transport. `crates/drivers/*`: one crate per engine. `crates/test-fixtures` and `crates/test-support`: test-only.
-- `data/`: desktop entry, D-Bus service, metainfo, GSettings schema, icons and GResource. `po/`: translations. `build-aux/flatpak/`: the Flatpak manifest.
+- `data/`: desktop entry, D-Bus service, metainfo and screenshots, GSettings schema, man page, icons, GResource and license notices. `po/`: translations.
+- `build-aux/flatpak/`: the Flatpak manifest. `build-aux/debian/`, `build-aux/rpm/` and `build-aux/packaging/`: the .deb and .rpm and the scripts that build them. `build-aux/about/`: the license templates. `build-aux/tests/`: the packaging tests.
 - `ARCHITECTURE.md`, `CONTRIBUTING.md` and `docs/` (testing, storage, error handling, state management, adding a driver, decisions) are the reference. Read the one for the area you touch.
 
 ## Commands
@@ -47,23 +48,11 @@ From the repository root, through the verification wrapper, which keeps the full
 ## Every change
 
 1. **Tests.** A unit test for testable behavior, a `#[gtk4::test]` widget test for UI behavior, and a test against the real engine, ignored with `requires docker`, for driver behavior. No mocks. Details: `docs/testing.md`.
-2. **CHANGELOG.** A user-visible change gets one fragment under `[Unreleased]` in `linux/CHANGELOG.md`, in the format of the root `.claude/rules/changelog.md`. The root `CHANGELOG.md` is the macOS release notes: never write a Linux change there.
-3. **Translations.** User-facing strings go through `crate::i18n` (`gettext`, `gettext_f` with named placeholders, `ngettext_f`, `pgettext`). A new file that holds them goes in `po/POTFILES.in`. See `po/README.md`.
+2. **CHANGELOG.** A user-visible change gets a fragment in `linux/CHANGELOG.md`, never the root one. `CONTRIBUTING.md`, Changelog, has the rule.
+3. **Translations.** User-facing strings go through `crate::i18n` (`gettext`, `gettext_f` with named placeholders, `ngettext_f`, `pgettext`). A new or removed file under `crates/app/src` or `data/resources` regenerates `po/POTFILES.in`. See `po/README.md`.
 4. **Lint** the workspace: rustfmt, then clippy with and without default features.
 5. **Commits and pull requests** follow the root rules: Conventional Commits, at most 72 characters, scope `linux` or `linux-<area>` (for example `linux-grid`, `linux-storage`), and the root `.github/pull_request_template.md`.
 
 ## CI
 
-`.github/workflows/build-linux.yml` runs on a pull request that touches `linux/` or one of the three Linux workflows:
-
-- **Fast checks**: format, both clippy runs, build, every Meson suite, the Secret Service tests, `meson dist`, then the release-shaped Flatpak manifest rendered from the dist tarball.
-- **Supply chain**: `cargo deny check` against `deny.toml`, `cargo shear`, and `build-aux/update-third-party-licenses.sh`, failing when `data/licenses`, `build-aux/debian/copyright` or the spec's `License` tag differ from what it writes; then zizmor over the Linux workflows.
-- **Translations**: in `fedora:44` (gettext 0.26), `po/POTFILES.in` and `po/tablepro.pot` must match what the tree generates. A change to a user-facing string regenerates the template in the same commit.
-- **Documentation links**: lychee, offline, over the Markdown under `linux/`.
-- **Flatpak Devel** (x86_64 and aarch64) and **Flatpak release shape**: the Devel manifest with every Meson suite in the sandbox, and the shape Flathub builds, offline from the dist tarball, linted with `build-aux/flatpak/lint-exceptions.json`.
-- **Docker tests** (`integration`): one matrix job per package on the host runner, for the PostgreSQL, MySQL, SQL Server and ClickHouse drivers, `tablepro-ssh` and `tablepro-test-fixtures`.
-- **Docker tests (tablepro-session)** (`integration-session`) and **Docker tests (tablepro)** (`integration-app`): in the fast job's `ubuntu:26.04` image with the host's Docker socket, because the session crate links GLib 2.88 and the app GTK 4.22, which the host runner lacks. The app job runs only its named test targets, since the `startup` test needs Meson.
-
-`docs/testing.md` describes each job. Every action is pinned by commit SHA; a new one is too.
-
-`.github/workflows/linux-packages.yml` runs on a pull request that touches the packaging (`build-aux/debian`, `build-aux/rpm`, `build-aux/packaging`, the Meson files): it builds the source and vendor tarballs, the .deb in `ubuntu:26.04` and the .rpm in `fedora:44`, each with lintian or rpmlint, then installs and starts each in a fresh container. `release-linux.yml` calls it on a `linux-v*` tag and publishes the result (ADR 0017).
+The Linux workflows are `.github/workflows/build-linux.yml`, `.github/workflows/linux-packages.yml` and `.github/workflows/release-linux.yml`. `docs/testing.md`, CI, lists every job, what starts it and what it runs; read it before changing a workflow or reading a red check. Every action is pinned by commit SHA; a new one is too.

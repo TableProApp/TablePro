@@ -1,4 +1,4 @@
-# 0001 — No plugin system; drivers are statically linked
+# 0001: No plugin system; drivers are statically linked
 
 - **Status**: Accepted
 - **Date**: 2026-04-26
@@ -22,7 +22,7 @@ Adding a new database engine requires:
 1. A new crate at `crates/drivers/<engine>/`.
 2. Implementation of the `core::DatabaseDriver` and `core::Connection` traits.
 3. Adding the crate to the workspace.
-4. One `r.register(...)` line in `app::main::build_registry`.
+4. One `r.register(...)` line in `build_registry` in `crates/app/src/lib.rs`.
 5. Recompiling.
 
 There is no `.tableplugin` equivalent. There is no runtime discovery. There is no plugin manifest.
@@ -56,14 +56,14 @@ Gained:
 
 - Zero plugin-loading crashes possible.
 - Full Rust type checking across driver boundary.
-- Single `cargo build` produces a runnable artefact.
+- One `meson compile` produces a runnable artefact.
 - One bug report category disappears from the issue tracker.
 
 ## Alternatives considered
 
 **WebAssembly plugins via Wasmtime Component Model.** Modern, sandboxed, language-agnostic. Lost because DB drivers need raw socket and TLS access; routing those through the host crosses an extra trust boundary for no real isolation gain (drivers handle credentials regardless). WASM is the right call for *editor* extensions (Zed's model), wrong for *driver* extensions.
 
-**`abi_stable` Rust dynamic loading.** Mature crate, layout-checked at load. Lost because the maintenance benefit over a Cargo workspace is small while the complexity tax is non-trivial. We would gain "users can install drivers" — a feature no one has asked for on Linux.
+**`abi_stable` Rust dynamic loading.** Mature crate, layout-checked at load. Lost because the maintenance benefit over a Cargo workspace is small while the complexity tax is non-trivial. We would gain "users can install drivers", a feature no one has asked for on Linux.
 
 **C-FFI plugin contract.** Universal but verbose, error-prone, no type safety. Inferior to `abi_stable` if we ever want plugins; inferior to static linking if we do not.
 

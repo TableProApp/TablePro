@@ -13,7 +13,8 @@ gettext at `config::LOCALEDIR`, which meson sets at build time.
 | A string with values in it | `gettext_f("{table} in {schema}", &[("table", name), ("schema", schema)])` |
 | A count | `ngettext_f("{n} row", "{n} rows", n, &[("n", &n.to_string())])` |
 | A word whose sense depends on where it appears | `pgettext("filter operator", "all")` |
-| Both of the last two | `npgettext` / `pgettext_f` |
+| A word in context, with values in it | `pgettext_f` |
+| A count whose word depends on where it appears | `npgettext` |
 
 Placeholders are **named**, never positional. A translator can reorder
 `{table}` and `{schema}` freely, and a value is substituted once, so a
@@ -32,13 +33,17 @@ Do not translate symbols, SQL keywords, or the word TablePro.
    msginit --locale=xx --input=po/tablepro.pot --output=po/xx.po
    ```
 
-4. Compile and install (the package build does this automatically; for
-   local testing):
+4. Compile and install it. The package build does this on its own. To
+   test locally, put the catalogue where the build looks: the directory
+   is built in from Meson's `localedir`, so point the prefix at a folder
+   you can write and rebuild.
 
    ```sh
+   meson configure _build --prefix="$HOME/.local"
+   meson compile -C _build
    mkdir -p ~/.local/share/locale/xx/LC_MESSAGES
    msgfmt po/xx.po -o ~/.local/share/locale/xx/LC_MESSAGES/tablepro.mo
-   LC_ALL=xx.UTF-8 TABLEPRO_LOCALEDIR=~/.local/share/locale ./_build/crates/app/tablepro
+   LC_ALL=xx.UTF-8 meson devenv -C _build ./crates/app/tablepro
    ```
 
    glibc loads no catalogue at all under `C` or `C.UTF-8`, so testing a

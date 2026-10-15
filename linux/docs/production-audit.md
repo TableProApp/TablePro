@@ -1,11 +1,13 @@
 # Production-readiness audit
 
+> Historical record, written on 2026-04-26 at 28 commits and not updated since. It describes the app as it was then. [ROADMAP.md](../ROADMAP.md) has the current state; its release criteria come from [What "production-ready" means here](#what-production-ready-means-here).
+
 **Date**: 2026-04-26
 **Branch**: `linux`
 **Commits**: 28
 **State**: demo-grade
 
-This document captures the full gap analysis between the current build and what "shippable on Flathub for real users" requires. It is the basis for the phase boundaries in [ROADMAP.md](../ROADMAP.md).
+This document captures the full gap analysis between the current build and what "shippable on Flathub for real users" requires. It set the phase boundaries [ROADMAP.md](../ROADMAP.md) had then.
 
 The intent is **realism, not pessimism**. The current build is a strong demo. It is also nowhere near beta-ship-able. Both can be true.
 
@@ -342,4 +344,4 @@ Currently at **Demo**. Beta is the right "production-ready ship-able" target; th
 - **When to ship** — shipping Beta on a smaller solid surface beats shipping GA on a feature-rich fragile surface. The ROADMAP's choice to do hardening before driver expansion reflects this.
 - **Cost** — engineering time is the dominant cost. Flathub publishing is free. Distribution adds no revenue without a business model.
 
-This audit is a snapshot at 2026-04-26. Re-run when the next major refactor lands.
+This audit is a snapshot at 2026-04-26 and is not re-run.

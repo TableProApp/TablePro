@@ -11,7 +11,7 @@ Driver id `postgres`, crate `crates/drivers/postgres`. It runs on tokio-postgres
 | One connection per editor tab | `EditorSession` | When the tab first runs SQL |
 | One stream per stop | The cancel request | For that request |
 
-Every connection logs in with `Config::connect_raw` over a stream from the transport, so a direct route and an SSH forward behave the same. The login sends only the user, the password, the database, `application_name = TablePro` and `channel_binding = prefer`, under the 15 s login timeout. Startup options are never used: a transaction pooler refuses parameters it does not track.
+Every connection logs in with `Config::connect_raw` over a stream from the transport, so a direct route and an SSH forward behave the same. The startup message carries the user, the database and `application_name = TablePro`, plus the `client_encoding = UTF8` that tokio-postgres always adds. The password goes in the authentication exchange, with channel binding set to prefer. The login runs under the 15 s login timeout. Startup options are never used: a transaction pooler refuses parameters it does not track.
 
 ## TLS
 
@@ -48,14 +48,16 @@ A stop is PostgreSQL's cancel request (`CancelToken::cancel_query_raw`) over a n
 | Server answer | Reported as |
 |---|---|
 | 57014 after our cancel request | `Cancelled`, or `Timeout { server_cancelled: true }` when the deadline asked for it |
-| 57014 with "statement timeout" | `Timeout { phase: Statement, server_cancelled: true }` |
+| 57014 that no cancel request of ours caused, once the call's statement bound has passed | `Timeout { phase: Statement, server_cancelled: true }` |
 | 55P03 | `Timeout { phase: LockWait }` |
 | 25006 | `ReadOnly(ServerRejected)` |
 | 28P01, 28000 | `Auth` |
 | 53300 | `Busy` |
 | 57P01, 57P02, 57P03 | `ConnectionLost` |
 
-A call that timed out or lost its connection is checked before the link is declared lost: a cancel request that never got through means the route is gone, one the server answered means it is not, and otherwise a connection of its own answers within the cancel grace.
+The server translates its message through `lc_messages`, so the driver tells its own statement timeout from another session's cancel by the time that passed, not by the text.
+
+A call that timed out or lost its connection is checked before the link is declared lost, as [adding-drivers.md](../adding-drivers.md#deciding-that-the-link-is-lost) describes, with the cancel request as the stop.
 
 ## Read-only
 

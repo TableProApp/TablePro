@@ -1,6 +1,6 @@
-# 0004 — libsecret via oo7 for password storage
+# 0004: Secret storage through oo7
 
-- **Status**: Accepted
+- **Status**: Accepted; store API, attributes, labels and the Flatpak path amended 2026-09-15, the rules for edits 2026-10-15
 - **Date**: 2026-04-26
 
 ## Context
@@ -20,19 +20,18 @@ The choice must work on both GNOME and KDE without per-DE branching, must have a
 
 ## Decision
 
-Passwords are stored via the **Secret Service D-Bus API**, accessed through the **[`oo7`](https://crates.io/crates/oo7)** Rust crate.
+Secrets are stored through the **Secret Service D-Bus API**, reached with the **[`oo7`](https://crates.io/crates/oo7)** Rust crate.
 
-- Schema name: `app.tablepro.TablePro.Password`, taken from the application
-id, so a development build never reads an installed build's secrets.
-- Attributes: `connection-id` (the UUID).
-- Label: the human-readable connection name, kept in sync on rename.
-- Wrapper: `storage::secrets`, exposing `store_password`, `load_password`, `delete_password`.
+- Schema: the `xdg:schema` attribute is the application id plus `.Password`, so a development build never reads an installed build's secrets.
+- Attributes: `connection-id` (the UUID) and `kind` (`db_password`, `ssh_password` or `ssh_passphrase`), one item per connection and kind.
+- Label: the kind and the target, such as `TablePro database password for app@db.example.com:5432/shop`, translated. A kept secret is relabeled when its target changes. Renaming the connection leaves it.
+- Store: `tablepro_storage::SecretStore`, the app's `SecretVault`, with `store`, `load`, `relabel`, `delete_kind` and `delete_connection`.
 
-When the Secret Service is unavailable (no daemon, sandbox without portal, headless system), the storage layer returns `Ok(None)` from `load_password`. The UI prompts the user at connect time. The app never falls back to writing passwords to plain files.
+When the Secret Service or the portal is unavailable (no daemon, sandbox without the portal, headless system), `load` returns `SecretError::ServiceUnavailable` or `SecretError::PortalUnavailable`, and `KeyringCredentials` prompts at connect time with no Remember switch. A connection with nothing saved gets `SecretLookup::NotStored`. The app never falls back to writing passwords to plain files.
 
 ## Rationale
 
-Secret Service is the only Linux-wide secret API. Both major desktop environments implement it; both `seahorse` (GNOME) and `kwalletmanager` (KDE) display secrets stored under our schema correctly. Choosing a DE-specific API would require runtime DE detection and double the implementation cost.
+Secret Service is the only Linux-wide secret API. Both major desktop environments implement it; outside Flatpak, both `seahorse` (GNOME) and `kwalletmanager` (KDE) display the items under our schema. Choosing a DE-specific API would require runtime DE detection and double the implementation cost.
 
 `oo7` is the most active modern Rust binding for the Secret Service API, maintained by GNOME developers, keeps up with portal API additions, and has clean async API that fits our `tokio`-centric backend. The older `secret-service` crate is unmaintained; the older `libsecret` C-binding crates are heavier and require system development packages.
 
@@ -42,16 +41,16 @@ Falling back to plain files is rejected. Storing user database passwords in clea
 
 Accepted:
 
-- **System dependency.** `libsecret-1` development package required at build time on systems where `oo7` falls back to libsecret backend (the "compat" feature).
+- **No system library.** oo7 is pure Rust here (`tokio` and `native_crypto`, default features off), so the build needs no libsecret package.
 - **Daemon dependency.** Headless or minimal Linux installs without `gnome-keyring-daemon` or `kwalletd` will not store passwords. We accept this and prompt instead.
-- **Flatpak portal.** In sandboxed builds, Secret Service access is mediated by `xdg-desktop-portal`. Verified working on Flatpak 1.16.4+. We pin runtime versions accordingly.
-- **One-way migration.** Once a connection's password is stored, it is keyed by UUID. Re-imports keep the same UUID; renames update the label only.
+- **Flatpak.** Inside the sandbox oo7 keeps the items in its own keyring file, encrypted with a key from the Secret portal, so the manifest has no `org.freedesktop.secrets` talk-name. The section below has the details.
+- **Keyed by UUID.** A stored secret belongs to the connection's UUID. A rename or a new host keeps it. An import keeps the UUID only for an entry that connects the same way; any other entry gets a new UUID and no secrets.
 
 Gained:
 
 - Single API across GNOME and KDE.
-- Native integration with `seahorse` / `kwalletmanager` — users can audit and delete secrets through their distro's standard tools.
-- No password ever written to a regular file by the app.
+- Outside Flatpak, users can audit and delete the items in `seahorse` or `kwalletmanager`. Inside Flatpak they live in oo7's own file.
+- No password is written in clear text. Inside Flatpak, oo7's keyring file is encrypted.
 - A small, async-first, well-maintained Rust binding (`oo7`).
 
 ## Alternatives considered
@@ -73,9 +72,11 @@ Outside Flatpak, oo7 talks to the host Secret Service over D-Bus.
 Inside Flatpak, `Keyring::new` first calls the Secret portal's `retrieve`
 (oo7 0.6.0, `keyring.rs:30-37`, with `?`). A missing or failing portal
 therefore returns `File(Portal(_))` straight away, which the store maps to
-`SecretError::PortalUnavailable`. The D-Bus path is only reached when
-`retrieve` succeeds and the file load reports `PortalNotFound`. The
-manifest carries no `org.freedesktop.secrets` talk-name.
+`SecretError::PortalUnavailable`. With the portal's key, oo7 opens its own
+keyring file under the sandbox's data directory. The D-Bus path is only
+reached when `retrieve` succeeds and the file load reports
+`PortalNotFound`. The manifest carries no `org.freedesktop.secrets`
+talk-name.
 
 ## Rules this store follows
 
@@ -94,8 +95,12 @@ manifest carries no `org.freedesktop.secrets` talk-name.
 - **Secrets before the list write.** The list records whether a passphrase
   was actually stored, so it has to be written after the attempt. If the
   list write then fails for a new connection, the secrets just stored are
-  deleted; for an existing one they are kept, because they still belong to
-  it.
+  deleted. For an existing one, connect-and-save keeps them, and an edit
+  saved without connecting puts back what the keyring held before.
+- **One edit at a time.** Saved-connection edits and copies run in turn,
+  since each writes the keyring and then the list; two windows editing
+  one connection would otherwise leave one edit's host with the other's
+  password.
 - **Labels name the kind and the target**, so Seahorse and GNOME Settings
   identify the item without opening TablePro.
 - **No migration.** There is no `oo7::migrate` call: the application id

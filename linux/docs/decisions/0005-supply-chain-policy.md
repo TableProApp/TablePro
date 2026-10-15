@@ -32,9 +32,9 @@ A time-boxed spike ran the sqlparser 0.63.0 tokenizer through a `Dialect` wrappe
 3. MySQL `END$$` after `DELIMITER $$`: `$` is an identifier character, so the delimiter sits inside one word token. The mysql client matches delimiters in raw text.
 4. A wrapper has to forward each tokenizer hook by hand. A hook added in a later sqlparser release would silently use its default instead of the wrapped dialect.
 
-sqlparser stays a dev-dependency of tablepro-core. `lexer_matches_sqlparser_where_engines_agree` compares semicolon positions on the corpus cases where both lexers agree. `script_plan_matches_sqlite3_complete` checks the SQLite rules against `sqlite3_complete` for every prefix of its corpus.
+sqlparser is a normal dependency of tablepro-core for type and expression parsing ([ADR 0014](0014-lossless-values-and-dialects.md)); the script planner still does not use its tokenizer. `lexer_matches_sqlparser_where_engines_agree` compares semicolon positions on the corpus cases where both lexers agree. `script_plan_matches_sqlite3_complete` checks the SQLite rules against `sqlite3_complete` for every prefix of its corpus.
 
-**Watch list**: sqlparser gaining per-dialect bracket escaping and ClickHouse line comments. Re-run the spike when both ship; FB 5 already adds sqlparser as a normal dependency for type and expression parsing.
+**Watch list**: sqlparser gaining per-dialect bracket escaping and ClickHouse line comments. Re-run the spike when both ship.
 
 **Rejected**: pg_query, which needs a C build and covers PostgreSQL only.
 

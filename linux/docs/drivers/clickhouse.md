@@ -26,6 +26,7 @@ Every request carries these settings:
 | Setting | Why |
 |---|---|
 | `output_format_decimal_trailing_zeros=1` | A Decimal keeps the scale it was stored with. |
+| `date_time_output_format=simple` | A DateTime reads in its own time zone, so a save keyed on it finds its row even when a profile or session set `iso`. |
 | `http_write_exception_in_output_format=0` | An error after the first rows arrives as exception text, not as one more row. |
 | `output_format_json_quote_denormals=1` | NaN and infinity arrive as words instead of null. |
 | `output_format_json_validate_utf8=0` | A String that is not UTF-8 arrives byte for byte. |
@@ -60,6 +61,7 @@ A stop is `KILL QUERY WHERE query_id = ? ASYNC` on the control client. Each quer
 | 192, 193, 194, 516; 497 on the first request | `Auth` |
 | 202, 203 | `Busy` |
 | 373 on an editor run | `EditorSessionBusy` |
+| 372 on an editor run | `ConnectionLost`: the server let the session expire |
 
 ## Writes
 
@@ -83,20 +85,20 @@ A failed statement is sorted by whether it can have landed. A server error that 
 | What the log says | `CommitResolution` |
 |---|---|
 | `QueryFinish` | `Applied` |
-| `ExceptionBeforeStart`, not an `ALTER` | `NotApplied` |
-| `ExceptionWhileProcessing` on an `INSERT` | `Unresolvable`: some blocks may have been written |
-| An `ALTER` that failed while its mutation may live on (cancelled, timed out, the wait gave up, or failed while processing) | The mutation, below |
+| `ExceptionBeforeStart`, unless an `ALTER` as in the mutation row | `NotApplied` |
+| `ExceptionWhileProcessing`, not an `ALTER` | `Unresolvable`: an `INSERT` may have written some blocks |
+| An `ALTER` that failed while processing, or whose wait ended with 394, 159, 341, 209 or 210 (cancelled, timed out, the wait gave up, a network error) | The mutation, below |
 | Started, never ended | `StillRunning` if `system.processes` still lists it, else `Unresolvable` |
 | No `system.query_log`, or no access to it | `Unresolvable` |
 
-3. For a mutation: `system.mutations` has no column that links a mutation to its `ALTER`, so the driver looks for mutations on the table the log names, created between the `ALTER`'s start and end. One that is done is `Applied`; one still running is `StillRunning`. None, because someone ran `KILL MUTATION` (which removes the row and keeps the parts already changed), or more than one, is `Unresolvable`.
+3. For a mutation: `system.mutations` has no column that links a mutation to its `ALTER`, so the driver looks for mutations on the table the log names, or the token's table when the log names none, created between the `ALTER`'s start and end. One that is done is `Applied`; one still running is `StillRunning`. None, because someone ran `KILL MUTATION` (which removes the row and keeps the parts already changed), or more than one, is `Unresolvable`.
 4. The batch's answer: statements confirmed before the unconfirmed one, or not yet sent after it, turn a whole answer into `PartiallyApplied`.
 
 The query log and the process list are each node's own, and the driver asks the node its connection reaches; it does not query the cluster. Behind a load balancer that sends the next request to another node, that node's log has no entry for the statement and the answer is `Unresolvable`.
 
 ## Editor sessions
 
-- An editor session is the workspace client with a `session_id` of its own and `session_timeout=3600`, so the server keeps the session's settings and temporary tables between runs. The server runs one query at a time per session, so a second run is `EditorSessionBusy`.
+- An editor session is the workspace client with a `session_id` of its own and `session_timeout=3600`, so the server keeps the session's settings and temporary tables between runs. Opening it asks `SELECT 1` in the session, and every run after that sends `session_check=1`, so a session the server let expire fails with 372 instead of starting an empty one. The server runs one query at a time per session, so a second run is `EditorSessionBusy`.
 - One statement per run (`ScriptExecution::SingleStatement`), each with a new query id.
 - The run's deadline, or the session's statement timeout, goes to the server as `max_execution_time` with `timeout_overflow_mode=throw`. A stop sends `KILL QUERY` and keeps reading, because the server answers the `KILL` by ending the response; a server that has not answered within the cancel grace is cut off.
 - Past the row limit the driver sends `KILL QUERY` for the rest of the result rather than reading it.

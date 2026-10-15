@@ -57,6 +57,7 @@ path = "src/lib.rs"
 tablepro-core = { path = "../../core" }
 tablepro-net = { path = "../../net" }
 async-trait.workspace = true
+secrecy.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 tokio-util = { workspace = true, features = ["rt"] }
 tracing.workspace = true
@@ -70,7 +71,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"
 workspace = true
 ```
 
-A driver depends on `tablepro-core`, and on `tablepro-net` when it speaks TLS or dials TCP. It never depends on GTK, on `tablepro-session`, on `tablepro-ssh` or on another driver. Add the crate to `members` in `linux/Cargo.toml`.
+A driver depends on `tablepro-core`, and on `tablepro-net` when it speaks TLS or dials TCP. `secrecy` reads the password of a password login. It never depends on GTK, on `tablepro-session`, on `tablepro-ssh` or on another driver. Add the crate to `members` in `linux/Cargo.toml`.
 
 ## 3. `DatabaseDriver` and capabilities
 
@@ -92,19 +93,19 @@ pub trait DatabaseDriver: Send + Sync {
 
 ### Capabilities
 
-`DriverCapabilities` is a `static` the driver returns before any connection exists. The connect dialog and `DriverConnector` read `endpoint`, `auth_modes`, `tls`, `read_only` and `database_required`. The conformance suites hold `endpoint`, `dml_writes` and the TLS client certificate flag to what the engine does.
+`DriverCapabilities` is a `static` the driver returns before any connection exists. The connect dialog and `DriverConnector` read `endpoint`, `auth_modes`, `tls`, `read_only` and `database_required`, and the structure review reads `ddl_writes`. The conformance suites hold `endpoint`, `dml_writes`, `ddl_writes`, `commit_resolution` and the TLS client certificate flag to what the engine does. Nothing reads `script_execution`, `row_count_estimate` or `object_kinds` yet: set them to what the engine does.
 
 | Field | Meaning |
 |---|---|
-| `endpoint` | `Network { default_port }` or `File`. A file engine gets a path row instead of host, port, TLS and SSH. |
+| `endpoint` | `Network { default_port }` or `File`. A file engine gets a path row instead of host, port, TLS and SSH. The picker's file subtitle and opening a file from Files look for the id `sqlite` (`is_sqlite` in `crates/app/src/services/saved_connection_object.rs`, `file_driver` in `crates/app/src/ui/session_window/resolve_file_identity.rs`), so a second file engine changes those too. |
 | `auth_modes` | The `AuthMode`s the driver can log in with. `Kerberos` only where `connect` maps it to a real integrated login. |
 | `tls` | `TlsCapabilities`: the `TlsMode`s offered, whether a CA file and a client certificate are accepted, and where a server name override works (`ServerNameOverride`). `None` for an engine with no TLS. |
 | `read_only` | How a read-only connection is held: `EngineEnforced` (the engine refuses every write), `SessionDefault` (a statement can lift it) or `LoginPrivileges` (only the login's grants hold). The connect dialog says which one the user gets. |
 | `dml_writes`, `ddl_writes` | `WriteAtomicity` of row changes and of schema changes: `Transactional` or `StatementByStatement`. |
-| `script_execution` | `NativeBatch` (the engine runs a script) or `SingleStatement` (one statement per run). |
+| `script_execution` | `NativeBatch` (a run takes a whole script) or `SingleStatement` (one statement per run). |
 | `commit_resolution` | How an unanswered commit can be resolved: `ServerTransactionStatus`, `QueryLog` or `Unavailable`. |
 | `row_count_estimate` | `Statistics` ("about N"), `ExactMetadata` or `Unavailable`. |
-| `object_kinds` | The `ObjectKind`s the sidebar can list. |
+| `object_kinds` | The `ObjectKind`s `list_objects` returns. |
 | `database_required` | Whether a connect without a database name is refused before anything is opened. |
 
 The shipped drivers:
@@ -217,7 +218,7 @@ Start the resource empty and fill it inside the work, as `PgCall::acquire` and `
 
 A connection-scoped stop holds its connection until it settles because it names the connection, not the statement: released early, a cancel request still in flight would stop the next caller's statement on that connection. `OwnedCalls` waits for the stop up to the end of the grace. A stop that has not settled by then, or that the server never acknowledged, costs the connection rather than risking someone else's statement.
 
-The driver adds its own rules on top. PostgreSQL taints a call whose transaction did not end with an acknowledged COMMIT or ROLLBACK, because deadpool's recycle check passes inside a half-finished transaction. MySQL taints a call stopped between statements, since a `KILL` may be on its way to an idle connection. SQL Server discards a connection whose attention was not acknowledged at a token boundary.
+The driver adds its own rules on top, and its engine page says which: [PostgreSQL](drivers/postgresql.md#workspace-calls), [MySQL](drivers/mysql.md#stops-and-timeouts), [SQL Server](drivers/sql-server.md#stops-and-timeouts).
 
 ### Deciding that the link is lost
 
@@ -239,6 +240,8 @@ ledger.statement_confirmed(index);
 ledger.commit_sending(Some(token));
 ```
 
+An engine with no COMMIT hands its token over with `ledger.attach_token(token)` before the first statement, as the ClickHouse driver does.
+
 `WriteLedger::stop_permitted` holds the engine's stop while it would turn a knowable outcome into an unknown one: on a `Transactional` engine once COMMIT is on the wire, on a `StatementByStatement` engine while a statement is in flight.
 
 When a write is interrupted, `WriteLedger::interrupted(cause, fate)` gives the outcome from what was sent and from `SessionFate` (`RolledBack`, `Discarded`, `RollbackIncomplete { executed }`):
@@ -253,7 +256,7 @@ When a write is interrupted, `WriteLedger::interrupted(cause, fate)` gives the o
 | `StatementByStatement` | one in flight, and nothing confirmed or a commit token held | `CommitOutcomeUnknown { token }` |
 | `StatementByStatement` | one in flight, some confirmed, no token | `PartiallyApplied { applied: confirmed }`, that statement `Unknown` |
 
-A discarded session leaves nothing behind on a transactional engine, because a COMMIT that was never written cannot land once the session is gone. `WriteLedger::failed` and `WriteLedger::guard_failed` give the outcome of a statement the server refused and of a guard mismatch, with the same rules. The full table is the `outcome_table` test in `crates/core/src/write_ledger.rs`.
+A discarded session leaves nothing behind on a transactional engine, because a COMMIT that was never written cannot land once the session is gone. `WriteLedger::failed` and `WriteLedger::guard_failed` give the outcome of a statement the server refused and of a guard mismatch, with the same rules. The full tables are the `a_lost_transaction_rolls_back_until_its_commit_is_sent` and `a_lost_statement_by_statement_write_keeps_what_was_confirmed` tests in `crates/core/src/write_ledger.rs`.
 
 A transactional COMMIT that the server answers with an error rolled back; only a COMMIT with no answer is `CommitOutcomeUnknown`.
 
@@ -262,16 +265,20 @@ A transactional COMMIT that the server answers with an error rolled back; only a
 Where the engine can answer later, the ledger carries a `CommitToken`:
 
 - `PostgresXid { xid, legacy_txid }`: `pg_current_xact_id()` (or `txid_current()` before PostgreSQL 13), read inside the transaction before COMMIT, and asked back with `pg_xact_status` (or `txid_status`).
-- `ClickHouseQuery { query_ids, first_unconfirmed }`: the query id of every statement, looked up in `system.query_log`.
+- `ClickHouseQuery { query_ids, first_unconfirmed, table }`: the query id of every statement, looked up in `system.query_log`, and the table they write, which finds a mutation in `system.mutations`.
 
-`resolve_commit` answers with a `CommitResolution`: `Applied`, `NotApplied`, `PartiallyApplied`, `StillRunning` or `Unresolvable`. A commit the engine keeps no record of is `Unresolvable`, never an error, so where `commit_resolution` is `Unavailable` (MySQL, SQL Server, SQLite) every answer is `Unresolvable`. The app reports `CommitOutcomeUnknown` as unknown and asks the user to reload; it does not call `resolve_commit` yet.
+`resolve_commit` answers with a `CommitResolution`: `Applied`, `NotApplied`, `PartiallyApplied`, `StillRunning` or `Unresolvable`. A commit the engine keeps no record of is `Unresolvable`, never an error, so where `commit_resolution` is `Unavailable` (MySQL, SQL Server, SQLite) every answer is `Unresolvable`.
+
+After a save ends in `CommitOutcomeUnknown` with a token, the workspace asks `resolve_commit` once (`crates/app/src/workspace/workspace_handle.rs`). `Applied` reads as saved, `NotApplied` as rolled back and `PartiallyApplied` as partly applied. `StillRunning`, `Unresolvable` or a failed question leave the outcome unknown, and the user reloads to see what landed.
 
 ## 6. `EditorSession`
 
 An editor tab holds one session for as long as it is open, because the state a user builds there lives on that connection and nowhere else: an open transaction, a temporary table, a session setting.
 
-- It is never pooled and never reopened behind the user's back. A lost connection is `EditorSessionState::Lost`, and the tab opens a new session on its next run.
+- `open_editor_session` takes `EditorSessionOptions`, whose `statement_timeout` bounds each statement when set.
+- It is never pooled and never reopened behind the user's back. `state()` is `Ready`, `Running` or `Lost`. A lost connection is `EditorSessionState::Lost`, and the tab opens a new session on its next run.
 - One run at a time: a second `run` fails with `EditorSessionBusy`.
+- `transaction_state(options)` answers what the session holds now, outside a run.
 - `run(sql, options, sink)` takes `UserSql` as typed and `RunOptions`: `row_limit`, `deadline` and `cancel`. A caller stops a run through `RunOptions::cancel`.
 - A dropped caller is a cancel. The run goes on a task of its own, or an actor's, and `run` arms `options.cancel.clone().drop_guard()` until the outcome arrives, so the stop still goes out and the session settles to `Ready` or `Lost`. `MysqlEditorSession::run` is the shape to copy.
 - The app's editor splits a script with the engine's grammar and sends one statement per run, or one `GO` batch on SQL Server. A driver still runs whatever text it is given, a whole script included.
@@ -307,6 +314,8 @@ A run streams `ResultEvent`s into a `ResultSink`:
 
 `Connection::dialect()` returns the engine's `SqlDialect`, built from `ServerInfo` at connect. Every builder in `tablepro-core` (pages, filters, row edits, exports) goes through it: quoting, placeholders, literals, the page window, keyset comparison, the engine's row address and type parsing. A dialect never reads session state. `SqlDialect::ddl()` returns the engine's `DdlDialect`, or `None` where the app does not edit the engine's structure. Never match on a driver id in core; add a dialect method.
 
+`SqlDialect::grammar()` names the engine's `SqlGrammar`, which the editor's split and completion, filter and default validation, and the history check read. `SqlGrammar` is closed: an engine with its own lexical rules adds a variant, and the compiler lists every match to extend, starting with its rules in `crates/core/src/sql_syntax/script/script_rules.rs`. Each rule gets a named case in `crates/core/tests/script_corpus.rs` ([testing.md](testing.md#the-script-planner)). An engine with its own error numbering adds a `ServerCode` variant the same way ([error-handling.md](error-handling.md#serverdiagnostics)).
+
 `SqlDialect::history_recording` says whether SQL the user ran may go into the query history. Implement it as `classify_for_history(<grammar>, &CREDENTIAL_RULES, sql)`, with a `CredentialRules` const next to the dialect naming the engine's statements, conditional statements and functions that can carry a password or a connection string, and test each one ([storage.md](storage.md#what-goes-into-the-history)).
 
 ### Structure changes
@@ -315,9 +324,10 @@ A run streams `ResultEvent`s into a `ResultSink`:
 
 | Method | What it does |
 |---|---|
-| `capabilities` | The table-level `DdlCapabilities`. The tab offers only what is on. |
+| `capabilities` | The table-level `DdlCapabilities`. The tab offers only what is on. `table_capabilities` narrows them for one table, and defaults to `capabilities`. |
+| `sql_dialect` | The `SqlDialect` that quotes, binds and parses for the plans. Return `self`. |
 | `column_capabilities` | A `Permission` per change to one column. Start from `ColumnCapabilities::standard`, which refuses a restatement that would drop a generated expression or an unmodeled attribute, a default on a numbered column, a drop of a column another table's foreign key points at, and any primary-key change while a foreign key points at the key. Add the engine's own refusals on top, each with its `RefusalReason`. An engine that writes the whole column again, as MySQL does for every change and SQL Server for a type or nullability change, refuses those changes where it cannot write the column back as it is. One that restates a generated column's expression checks `ColumnCapabilities::modeled` in place of `restatement`. |
-| `type_suggestions`, `default_column_type`, `referential_actions` | What the tab's type menu, new columns and foreign-key dialog offer. Every suggestion has to parse through `parse_type`. |
+| `type_suggestions`, `default_column_type`, `referential_actions`, `references_other_schemas` | What the tab's type menu, new columns and foreign-key dialog offer. Every suggestion has to parse through `parse_type`. The last two have defaults: every action, and keys across schemas. |
 | `plan_create_table(&TableDraft)` | Starts with `draft.check_create(self)?`. Foreign keys go inside CREATE TABLE. |
 | `plan_alter_table(&TableDefinition, &TableChanges)` | Starts with `changes.check(self, original)?`, then writes the changes in the order the engine needs: one combined ALTER TABLE where the engine takes one, and every statement after a table rename against the new name. A table rename keeps the table in its schema. An engine that renames one column per statement takes them from `changes.ordered_renames(original)`, which runs a swap through a temporary name. It ends with `DdlPlan::for_changes`, which refuses a change that came to no statement. |
 | `plan_drop_table` | The default writes `DROP TABLE [IF EXISTS] <table> [CASCADE]`. |
@@ -351,38 +361,11 @@ The layout every driver follows:
 - `tests/integration/main.rs` with one module per topic: `support.rs` (start a fixture, connect, run), `conformance_engine.rs`, `tls.rs` for a network engine, and the engine's own behaviour (`metadata.rs`, `write_batch.rs`, `cancellation.rs` and so on). A network engine's test starts its own container and is `#[ignore = "requires docker"]`.
 - A container fixture in `crates/test-fixtures` for anything the default image cannot do: TLS from the generated PKI, a second principal that logs in with a client certificate.
 
-The conformance suites are the contract's own tests. The driver's `conformance_engine.rs` implements `ConformanceEngine` and the engine traits its flags need, then invokes:
-
-```rust
-tablepro_test_support::connection_conformance_suite! {
-    engine: PgEngine,
-    docker: true,
-    endpoint: network,
-    pool: pooled,
-    editor_transactions: true,
-    unsupported_types: true,
-    bounded_ddl: true,
-}
-```
-
-A network engine's `tls.rs` implements the TLS engine and invokes the TLS suite:
-
-```rust
-tablepro_test_support::tls_conformance_suite! {
-    engine: PgTlsEngine,
-    client_identity: true,
-}
-```
-
-The cases cover listing and identity, deadlines within the cancel grace, a cancelled editor run, a dropped `query_bound` caller or editor run stopping the server's statement, a lost transport, a busy pool's probe, read-only refusal, write atomicity, row guards, the row limit, unbounded schema changes, streaming in bounded batches, a commit with no record resolving as `Unresolvable`, type fallback and every TLS mode. [testing.md](testing.md#conformance) lists them with their flags. `suite_flags_match_driver_capabilities` runs without Docker and fails when a flag disagrees with the driver's capabilities, so a case cannot be skipped by declaring less.
+The conformance suites are the contract's own tests. The driver's `conformance_engine.rs` invokes the connection and DDL suites, and a network engine's `tls.rs` the TLS suite. [testing.md](testing.md#conformance) has the adapter traits, the flags and the cases, with the [DDL](testing.md#ddl-conformance) and [TLS](testing.md#tls-conformance) suites after them.
 
 Behaviour the suites do not cover gets a test of its own against the real engine: the engine's stop, its error mapping, what a pooler does to it, each write outcome the ledger can produce.
 
-For a new package with Docker tests, add a test group and override in `.config/nextest.toml` and an entry in the `integration` matrix of `.github/workflows/build-linux.yml`. Run them one package at a time:
-
-```bash
-cargo nextest run --locked --profile ci -p tablepro-driver-<engine> --run-ignored only
-```
+A new package with Docker tests also needs its nextest group and CI matrix entry, and runs one package at a time ([testing.md](testing.md#running-the-docker-tests)).
 
 ## Checklist
 
@@ -396,6 +379,7 @@ cargo nextest run --locked --profile ci -p tablepro-driver-<engine> --run-ignore
 - [ ] Errors map to `DriverError` by the engine's code ([error-handling.md](error-handling.md)).
 - [ ] The client library's log target is in `SILENCED_LIBRARIES` in `crates/app/src/logging.rs`, so no statement text reaches the journal ([error-handling.md](error-handling.md#logging)).
 - [ ] Registered in `build_registry`; added to the workspace and to `crates/app/Cargo.toml`.
-- [ ] Both conformance suites run; the CI matrix and nextest groups include the package.
-- [ ] A page in `docs/drivers/` covers timeouts, stops, read-only, writes, trust and the engine's limits.
-- [ ] `cargo clippy --all-targets -- -D warnings` passes with and without default features.
+- [ ] The connection, DDL and TLS conformance suites run; the CI matrix and nextest groups include the package.
+- [ ] `build-aux/update-third-party-licenses.sh` ran and its output is committed; `cargo deny check` passes.
+- [ ] A page in `docs/drivers/` covers timeouts, stops, the server codes the driver maps, read-only, writes, trust and the engine's limits.
+- [ ] `meson devenv -C _build cargo clippy --locked --workspace --all-targets -- -D warnings` passes, and again with `--no-default-features`.

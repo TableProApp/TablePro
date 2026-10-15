@@ -1,6 +1,6 @@
 # 0009: One crypto provider, upstream sources and dependency bans
 
-- **Status**: Accepted
+- **Status**: Accepted; sources and the PostgreSQL and ClickHouse TLS setup superseded by [0016](0016-driver-contract-v2.md)
 - **Date**: 2026-09-15
 
 ## Context
@@ -13,9 +13,9 @@ aws-lc-rs is the only crypto provider, and `deny.toml` enforces providers, sourc
 
 ## Rationale
 
-- **Single provider**: sqlx uses `tls-rustls-aws-lc-rs` on the MySQL and PostgreSQL drivers, clickhouse uses `rustls-tls-aws-lc` with webpki roots, and testcontainers and testcontainers-modules use `aws-lc-rs` with default features off. `cargo tree -e all -i ring` finds no package. `crates/drivers/postgres/tests/tls_provider.rs` builds a rustls `ClientConfig` with the process default, which fails when zero or two providers are compiled in. The app never calls `CryptoProvider::install_default`.
-- **Sources**: crates.io plus exactly one git source, `tiberius-rs/tiberius`, until tiberius 0.13 is published. No forks.
-- **Bans**: ring, openssl-sys, native-tls, rustls before 0.23, rustls-pemfile, bigdecimal, backoff and instant are denied with a reason each, and libsqlite3-sys may appear only once.
+- **Single provider**: sqlx uses `tls-rustls-aws-lc-rs` on the MySQL driver. Since [0016](0016-driver-contract-v2.md), PostgreSQL runs on tokio-postgres with tokio-postgres-rustls, whose provider features are off, and the clickhouse crate has its default features off while the driver dials through hyper-rustls with `aws-lc-rs`. testcontainers and testcontainers-modules use `aws-lc-rs` with default features off. `cargo tree -e all -i ring` finds no package. `crates/drivers/postgres/tests/tls_provider.rs` builds a rustls `ClientConfig` with the process default, which fails when zero or two providers are compiled in. The app never calls `CryptoProvider::install_default`.
+- **Sources**: crates.io plus exactly one git source, `tiberius-rs/tiberius`, until tiberius 0.13 is published. No forks. tiberius 0.13 is on crates.io now, and `allow-git` in `deny.toml` is empty ([0016](0016-driver-contract-v2.md)).
+- **Bans**: ring, openssl-sys, native-tls, rustls before 0.23, rustls-pemfile, bigdecimal, rust_decimal, backoff and instant are denied with a reason each, libsqlite3-sys may appear only once, rsa only under sqlx-mysql (below), and tablepro-test-fixtures only under the crates that test with it.
 - **RUSTSEC-2023-0071** (Marvin attack on rsa):
   - Stage A, until the OpenSSH transport replaced russh: rsa signed SSH RSA identities in process, one blinded signature per authentication. Host-key verification and agent signing did not use it.
   - Stage B, since ADR 0013 removed russh: rsa is reached only through sqlx-mysql, which encrypts the MySQL password with the server's public key when the connection has no TLS. The advisory is about private-key timing, and no private-key operation runs in process: the OpenSSH client or the agent signs SSH identities in its own process. `deny.toml` bans rsa under any other parent, so a dependency that brings an in-process RSA signer fails `cargo deny check bans` instead of passing under the ignore.

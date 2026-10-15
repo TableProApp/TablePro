@@ -1,6 +1,6 @@
 # SQLite
 
-Driver id `sqlite`, crate `crates/drivers/sqlite`. It runs on sqlx 0.9 with `sqlite-unbundled`, so it links the system's libsqlite3 rather than a second copy, and calls `libsqlite3-sys` directly once, for `sqlite3_get_autocommit`, until sqlx exposes a connection's transaction state. The library must be SQLite 3.37.0 or newer (`SQLITE_MIN_VERSION`), which the driver checks when it opens the file. The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `sqlite`, crate `crates/drivers/sqlite`. It runs on sqlx 0.9 with `sqlite-unbundled`, so it links the system's libsqlite3 rather than a second copy, and calls `libsqlite3-sys` directly twice: `sqlite3_get_autocommit`, until sqlx exposes a connection's transaction state, and `sqlite3_busy_handler`, so a stop reaches a statement waiting for a lock. The library must be SQLite 3.37.0 or newer (`SQLITE_MIN_VERSION`), which the driver checks when it opens the file. The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 There is no network, login or TLS: the target is a `FileEndpoint`, an absolute path with a `FileOpenMode`.
 
@@ -11,7 +11,7 @@ Every connection to the file opens with the same options:
 - The path is a file name, never a URI, so `?` and `%41` in it are part of the name.
 - A missing file is `FileNotFound`; the driver never creates one by accident (`create_if_missing` is off).
 - A read-only connection opens the file with `SQLITE_OPEN_READONLY`.
-- `busy_timeout` is the workspace's lock timeout, 10 s: how long SQLite waits for another connection's lock before it reports `Busy`.
+- `busy_timeout` is the workspace's lock timeout, 10 s: how long SQLite waits for another connection's lock before it reports `Busy`. A call replaces it with a busy handler that waits as long and also ends at a stop ([Stops and timeouts](#stops-and-timeouts)).
 - `foreign_keys = ON`, and `trusted_schema = OFF`, so a view or trigger in a file from elsewhere cannot run SQL functions with side effects.
 - The statement cache is off, because sqlx keeps a statement's columns from its first prepare and SQLite prepares it again with more columns after an `ALTER TABLE`.
 - sqlx's statement logging is off.
@@ -46,7 +46,18 @@ The health probe runs `SELECT 1` on the workspace connection when it is free. Wh
 
 SQLite has no statement timeout and no out-of-band cancel. Each call installs a fresh flag, and a progress handler checks it every 1,000 virtual-machine instructions; when the flag is up the statement ends with `SQLITE_INTERRUPT`. The flag names the call, not the connection, so a stop that arrives late cannot reach the next call: `StopDelivery::OutOfBand(StopScope::Statement)`. `sqlite3_interrupt` is not used, because sqlx's handle to the connection waits for the worker thread to finish its current command, which is the statement the stop was meant for.
 
+A statement waiting for another connection's lock runs no instructions, so each call also installs a busy handler in place of `busy_timeout`. It sleeps the steps SQLite's own would, up to the lock timeout, and gives up as `Busy` once the flag is up, which reads as the stop.
+
 The workspace statement timeout (60 s) becomes a deadline the flag enforces. The flag is lowered before a rollback runs, so the rollback is never interrupted by the stop that caused it.
+
+| SQLite answer | Reported as |
+|---|---|
+| 9 (`SQLITE_INTERRUPT`) after our stop | `Cancelled`, or `Timeout { server_cancelled: true }` when the deadline asked for it |
+| 5, 6 (`SQLITE_BUSY`, `SQLITE_LOCKED`) | `Busy` |
+| 8 (`SQLITE_READONLY`) | `ReadOnly(ServerRejected)` |
+| 14 (`SQLITE_CANTOPEN`) at open | `FileNotFound`, or `FileAccessDenied` when the file is there |
+| 26 (`SQLITE_NOTADB`) at open | `NotADatabase` |
+| The workspace connection not free within the pool wait | `Busy` |
 
 ## Read-only
 
