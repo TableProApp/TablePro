@@ -1,12 +1,13 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::group_name_error::GroupNameError;
 
 /// The group a saved connection is filed under, as the user typed it
 /// without the spaces around it.
 ///
-/// Read from disk through the same check as from the dialog, so a name
-/// a menu or a section title could not show never reaches either.
+/// A name read from disk passes the same check as one from the dialog,
+/// after `from_stored` cleans it, so a name a menu or a section title
+/// could not show never reaches either.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct ConnectionGroupName(String);
@@ -29,9 +30,28 @@ impl ConnectionGroupName {
         Ok(Self(name.to_owned()))
     }
 
+    /// A name read back from a file. Builds before the limits stored any
+    /// name the user typed, so control characters become spaces and the
+    /// name is cut to the limit rather than making the file unreadable.
+    /// A blank name means no group.
+    pub(crate) fn from_stored(value: &str) -> Option<Self> {
+        let shown: String = value.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+        let cut: String = shown.trim().chars().take(Self::MAX_CHARS).collect();
+        Self::new(&cut).ok()
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+/// Reads a saved connection's `group` through `from_stored`.
+pub(crate) fn deserialize_stored<'de, D>(deserializer: D) -> Result<Option<ConnectionGroupName>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let stored = Option::<String>::deserialize(deserializer)?;
+    Ok(stored.as_deref().and_then(ConnectionGroupName::from_stored))
 }
 
 impl TryFrom<String> for ConnectionGroupName {
@@ -83,6 +103,21 @@ mod tests {
         let name = "é".repeat(ConnectionGroupName::MAX_CHARS);
 
         assert_eq!(ConnectionGroupName::new(&name).map(String::from), Ok(name));
+    }
+
+    #[test]
+    fn a_stored_name_is_cleaned_rather_than_refused() {
+        let long = "a".repeat(ConnectionGroupName::MAX_CHARS + 10);
+        assert_eq!(
+            ConnectionGroupName::from_stored(&long).map(String::from),
+            Some("a".repeat(ConnectionGroupName::MAX_CHARS))
+        );
+        assert_eq!(
+            ConnectionGroupName::from_stored("Work\tHome\n").map(String::from),
+            Some(String::from("Work Home"))
+        );
+        assert_eq!(ConnectionGroupName::from_stored(" \t "), None);
+        assert_eq!(ConnectionGroupName::from_stored(""), None);
     }
 
     #[test]

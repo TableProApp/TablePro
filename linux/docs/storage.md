@@ -22,7 +22,7 @@ The app's data goes to the store its shape calls for. The `storage` crate owns t
 - `subscribe` hands out a watch of `ConnectionListSnapshot`, so every picker sees every writer's change.
 - A file that cannot be read, or that another version wrote, leaves the store `Unavailable`, and it refuses every write until the user picks Reset (`reset_unreadable_blocking`), which moves the file aside.
 - A `SavedConnection` does **not** carry a password. Secrets live in the keyring, keyed by the connection's UUID, so a rename or a new host keeps them.
-- `group` is a `ConnectionGroupName`: trimmed, 1 to 64 characters, no control characters. A file with any other group is refused like any other unreadable list.
+- `group` is a `ConnectionGroupName`: trimmed, 1 to 64 characters, no control characters. Earlier builds stored any name, so a stored one is read with its control characters turned into spaces and cut to 64 characters, and a blank one reads as no group.
 - An edit, a copy or a move to another group goes through the app's `SavedConnectionEditor`, which writes the keyring first. A refused secret stops before the list changes, and the secrets of a copy whose entry did not land are deleted again.
 
 ### SSH settings

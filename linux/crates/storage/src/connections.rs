@@ -43,7 +43,11 @@ pub struct SavedConnection {
     pub color: Option<crate::ConnectionColor>,
     /// The folder the user filed this connection under. `None` means it
     /// sits on its own, which is where every connection starts.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::connection_group_name::deserialize_stored"
+    )]
     pub group: Option<crate::ConnectionGroupName>,
 }
 
@@ -1210,18 +1214,33 @@ mod tests {
             serde_json::from_slice(&std::fs::read(opened.path()).expect("read")).expect("json");
         assert_eq!(raw["connections"][0]["group"], "Work");
 
-        for blank in [r#""""#, r#""   ""#] {
+        for blank in [r#""""#, r#""   ""#, "null"] {
             let root = TempDir::new().expect("tempdir");
             seed(&root, &connections_json(Some(blank)));
 
-            let error = store(&root).load_blocking().expect_err("a blank group");
+            assert_eq!(store(&root).load_blocking().expect(blank)[0].group, None, "{blank}");
+        }
+    }
 
-            let StorageError::DocumentUnavailable(problem) = error else {
-                panic!("expected a document problem, got {error:?}");
-            };
-            assert!(
-                problem.to_string().contains(&crate::GroupNameError::Empty.to_string()),
-                "{blank}: {problem}"
+    #[test]
+    fn a_group_an_earlier_build_wrote_past_the_limits_still_loads() {
+        let long = "g".repeat(crate::ConnectionGroupName::MAX_CHARS + 1);
+        for (stored, read) in [
+            (
+                format!(r#""{long}""#),
+                "g".repeat(crate::ConnectionGroupName::MAX_CHARS),
+            ),
+            (String::from(r#""Work\tHome""#), String::from("Work Home")),
+        ] {
+            let root = TempDir::new().expect("tempdir");
+            seed(&root, &connections_json(Some(&stored)));
+
+            let list = store(&root).load_blocking().expect("the list loads");
+
+            assert_eq!(
+                list[0].group.as_ref().map(crate::ConnectionGroupName::as_str),
+                Some(read.as_str()),
+                "{stored}"
             );
         }
     }
