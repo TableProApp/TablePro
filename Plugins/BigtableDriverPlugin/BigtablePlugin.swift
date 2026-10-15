@@ -45,6 +45,7 @@ final class BigtablePlugin: NSObject, TableProPlugin, DriverPlugin {
     static let defaultPrimaryKeyColumn: String? = BigtableRowSet.keyColumn
     static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable]
     static let sqlDialect: SQLDialectDescriptor? = nil
+    static let caseSensitivityStyle: SQLDialectDescriptor.CaseSensitivityStyle = .driverManaged
 
     static let columnTypesByCategory: [String: [String]] = ["Binary": ["bytes"]]
     static let additionalConnectionFields: [ConnectionField] = bigtableConnectionFields()
