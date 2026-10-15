@@ -197,12 +197,15 @@ final class RowDetailViewModel {
                 return false
             }
             let oldValue = index < original.count ? original[index] : nil
-            return oldValue != writtenValue(at: index)
+            return oldValue != writtenValue(at: index, stored: oldValue)
         }
     }
 
     private var editedChanges: [(column: String, value: String?)] {
-        editedColumnIndices.map { (column: columns[$0].name, value: writtenValue(at: $0)) }
+        let original = currentRow
+        return editedColumnIndices.map { index in
+            (column: columns[index].name, value: writtenValue(at: index, stored: index < original.count ? original[index] : nil))
+        }
     }
 
     /// What Save writes for a field. An emptied date, number or boolean is NULL, since `''` is no
@@ -210,9 +213,15 @@ final class RowDetailViewModel {
     /// column, which holds neither, the field keeps the stored value and Save writes nothing for it.
     /// A field left as it was is never read again: SQLite can hold `''` in a DATETIME column.
     func writtenValue(at index: Int) -> String? {
+        let original = currentRow
+        return writtenValue(at: index, stored: index < original.count ? original[index] : nil)
+    }
+
+    /// Takes the stored value from the caller's snapshot of the row, which `currentRow` rebuilds on
+    /// every read, so a pass over every field stays linear.
+    private func writtenValue(at index: Int, stored: String?) -> String? {
         guard index < editedValues.count else { return nil }
         let value = editedValues[index]
-        let stored = index < currentRow.count ? currentRow[index] : nil
         guard value == "", stored != "", !holdsEmptyString(at: index) else { return value }
         return isNullable(at: index) ? nil : stored
     }
@@ -286,8 +295,10 @@ final class RowDetailViewModel {
     private func execute(sql: String, session: ConnectionSession) async -> Bool {
         isSaving = true
         defer { isSaving = false }
+        let original = currentRow
         let savedCells = Dictionary(uniqueKeysWithValues: editedColumnIndices.map { index in
-            (index, writtenValue(at: index).map { Cell.text($0) } ?? .null)
+            let stored = index < original.count ? original[index] : nil
+            return (index, writtenValue(at: index, stored: stored).map { Cell.text($0) } ?? .null)
         })
 
         do {
