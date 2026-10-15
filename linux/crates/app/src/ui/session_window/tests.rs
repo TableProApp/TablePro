@@ -80,11 +80,7 @@ impl TestWindow {
     }
 
     pub(crate) fn with_script(name: &str, script: Script) -> Self {
-        adw::init().expect("libadwaita initialises under the test backend");
-        crate::register_test_resources();
-        if let Some(settings) = gtk4::Settings::default() {
-            settings.set_gtk_enable_animations(false);
-        }
+        init_gtk();
         let runtime = crate::test_support::test_runtime();
         let settings = MemorySettings::new();
         let dir = tempfile::tempdir().expect("a temporary directory");
@@ -102,31 +98,13 @@ impl TestWindow {
             unreadable_list,
             window_size,
         } = script;
-        if let Some((width, height)) = window_size {
-            settings
-                .get()
-                .set_window_geometry(tablepro_storage::WindowGeometry {
-                    width,
-                    height,
-                    maximized: false,
-                })
-                .expect("store the window size");
+        if let Some(size) = window_size {
+            remember_window_size(&settings, size);
         }
         let network = network || tunnel.is_some();
-        let saved = match tunnel {
-            Some(tunnel) => SavedConnection {
-                ssh: Some(tunnel),
-                auth_mode: AuthMode::Kerberos,
-                ..network_connection()
-            },
-            None if network => network_connection(),
-            None => saved_connection(&dir.path().join("fake.db")),
-        };
+        let saved = scripted_connection(network, tunnel, dir.path());
         if unreadable_list {
-            if let Some(parent) = list_file.parent() {
-                std::fs::create_dir_all(parent).expect("the config directory");
-            }
-            std::fs::write(&list_file, b"{ not json").expect("the unreadable list");
+            write_unreadable_list(&list_file);
         } else {
             storage
                 .connections()
@@ -146,7 +124,7 @@ impl TestWindow {
         let connector = FakeConnector::new(establish).always(FakeEstablish::Connect(connection));
         let liveness = LivenessPolicy::DESKTOP;
         let hold = Rc::new(CountingHold::new());
-        let mut services = AppServices::new(AppServicesParts {
+        let parts = AppServicesParts {
             drivers,
             connector: Arc::new(connector.clone()),
             deadlines: Arc::new(DefaultDeadlines::new(liveness)),
@@ -154,21 +132,9 @@ impl TestWindow {
             settings: settings.get().clone(),
             storage,
             tasks: runtime.tasks(),
-        })
-        .with_hold(hold.clone());
-        if let Some(credentials) = credentials {
-            services = services.with_credentials(Rc::new(FakeSources(credentials)));
-        }
-        if let Some(ssh) = ssh {
-            services = services.with_ssh(ssh);
-        }
-        let app = TableProApplication::new(services);
-        app.set_application_id(Some(&format!("{}.Test.Window{name}", crate::config::SCHEMA_ID)));
-        app.register(gio::Cancellable::NONE).expect("register the application");
-        let window = app
-            .open_window(WindowLaunch::Picker)
-            .and_then(|window| window.downcast::<SessionWindow>().ok())
-            .expect("a session window");
+        };
+        let services = scripted_services(parts, hold.clone(), credentials, ssh);
+        let (app, window) = open_picker_window(name, services);
         let services = app.services().expect("the application's services");
         let test = Self {
             app,
@@ -244,6 +210,77 @@ impl TestWindow {
         editor.run();
         wait_until(WAIT, || !editor.is_running()).expect("the run to end");
     }
+}
+
+fn init_gtk() {
+    adw::init().expect("libadwaita initialises under the test backend");
+    crate::register_test_resources();
+    if let Some(settings) = gtk4::Settings::default() {
+        settings.set_gtk_enable_animations(false);
+    }
+}
+
+fn remember_window_size(settings: &MemorySettings, (width, height): (i32, i32)) {
+    settings
+        .get()
+        .set_window_geometry(tablepro_storage::WindowGeometry {
+            width,
+            height,
+            maximized: false,
+        })
+        .expect("store the window size");
+}
+
+/// The connection the script's world has saved: through `tunnel` when
+/// it has one, to a server when `network`, else to a file under `dir`.
+fn scripted_connection(
+    network: bool,
+    tunnel: Option<tablepro_storage::SavedSshConfig>,
+    dir: &std::path::Path,
+) -> SavedConnection {
+    match tunnel {
+        Some(tunnel) => SavedConnection {
+            ssh: Some(tunnel),
+            auth_mode: AuthMode::Kerberos,
+            ..network_connection()
+        },
+        None if network => network_connection(),
+        None => saved_connection(&dir.join("fake.db")),
+    }
+}
+
+fn write_unreadable_list(list_file: &std::path::Path) {
+    if let Some(parent) = list_file.parent() {
+        std::fs::create_dir_all(parent).expect("the config directory");
+    }
+    std::fs::write(list_file, b"{ not json").expect("the unreadable list");
+}
+
+fn scripted_services(
+    parts: AppServicesParts,
+    hold: Rc<CountingHold>,
+    credentials: Option<FakeCredentialSource>,
+    ssh: Option<tablepro_ssh::SshServices>,
+) -> AppServices {
+    let mut services = AppServices::new(parts).with_hold(hold);
+    if let Some(credentials) = credentials {
+        services = services.with_credentials(Rc::new(FakeSources(credentials)));
+    }
+    if let Some(ssh) = ssh {
+        services = services.with_ssh(ssh);
+    }
+    services
+}
+
+fn open_picker_window(name: &str, services: AppServices) -> (TableProApplication, SessionWindow) {
+    let app = TableProApplication::new(services);
+    app.set_application_id(Some(&format!("{}.Test.Window{name}", crate::config::SCHEMA_ID)));
+    app.register(gio::Cancellable::NONE).expect("register the application");
+    let window = app
+        .open_window(WindowLaunch::Picker)
+        .and_then(|window| window.downcast::<SessionWindow>().ok())
+        .expect("a session window");
+    (app, window)
 }
 
 impl Drop for TestWindow {
