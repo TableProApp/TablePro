@@ -55,6 +55,7 @@ Other options and why they were rejected.
 | [0016](0016-governed-consumer-seam.md) | PolicyGuard is the only consumer connection | Accepted | GUI, MCP and agentd issue a `PolicyGuard`; scopes and allowlists do not replace it; later UI ideas stay on that seam |
 | [0017](0017-mcp-sdk-behind-the-governed-seam.md) | Official Rust MCP SDK behind the governed seam | Accepted | Replace the hand-written protocol and transport layer; keep tokens, allowlists, approval and audit in our code. |
 | [0018](0018-headless-app-services-crate.md) | Headless application-services crate | Accepted | Move GTK-free logic and a tab model out of the GTK crate so it tests without a display. |
+| [0019](0019-database-tooling-without-sidecars.md) | Database tooling without sidecars | Accepted (0.2.x after 0.2.0) | DuckDB for file conversion, `refinery` behind `PolicyGuard` for migrations, supervised vendor dump tools for backup; no sidecar binaries |
 
 Three records use "snapshot" for different things: ADR 0011 a read-only snapshot session, ADR 0014 the read snapshot a full export holds, and ADR 0015 a saved copy of a database.
 

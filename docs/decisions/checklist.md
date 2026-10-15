@@ -87,6 +87,7 @@ Reviewed against the current ADR index, code and living docs on 2026-10-14. The 
 | Full-table export read snapshot | [ADR 0014](0014-full-table-export-snapshot.md) (not the same as ADR 0015) |
 | Database clone / restore snapshots | [ADR 0015](0015-database-snapshots.md) (accepted for 0.2.x after 0.2.0) |
 | Bundle admin audit | [ADR 0010](0010-administrative-action-audit.md) |
+| File conversion, schema migrations, logical backup | [ADR 0019](0019-database-tooling-without-sidecars.md) (accepted for 0.2.x after 0.2.0) |
 
 ## Open forks (do not invent answers here)
 

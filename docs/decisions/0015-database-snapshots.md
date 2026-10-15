@@ -35,6 +35,6 @@ Native engine mechanisms are the only way to snapshot a whole database quickly a
 
 ## Alternatives considered
 
-- `pg_dump`, `mysqldump`, `mongodump`: external binaries, passwords on command lines or temp files, slow on large databases, and a new dependency.
+- `pg_dump`, `mysqldump`, `mongodump`: external binaries, passwords on command lines or temp files, slow on large databases, and a new dependency. [ADR 0019](0019-database-tooling-without-sidecars.md) later adopts them for portable backups, not snapshots.
 - Row exports as snapshots: not a database state (no schema objects, sequences or constraints) and subject to the ADR 0014 snapshot rule.
 - Transactions or savepoints: only last as long as one session and cannot cover DDL on MySQL; useful for one experiment, not a saved state.
