@@ -25,7 +25,7 @@ candidate inventory as a release commitment.
 
 | Row | What |
 |---|---|
-| PERF-2, PERF-7, PERF-8 | Progressively load SQL editor results while keeping the existing budgets. Core, PostgreSQL and PolicyGuard cursor support has landed; editor lifecycle and retained-page behavior remain open. |
+| PERF-2, PERF-7, PERF-8 | Progressively load SQL editor results while keeping bounded resource use. Core, PostgreSQL, PolicyGuard and the PostgreSQL editor lifecycle have landed; other engines and comparable memory profiling remain open. |
 | PERF-3 | MongoDB browse on large collections | Compatible `_id` keyset seek landed in #493; supported server-side sorting landed in #837. Other sorted pages and keyless deep pages still use offset pagination; installed and representative-network acceptance remain |
 | PERF-4 | Server time next to elapsed time |
 | PERF-5, PERF-6 | Idle memory and binary size, accepted for now |

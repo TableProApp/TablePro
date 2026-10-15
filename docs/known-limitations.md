@@ -10,13 +10,15 @@ What the application does not do, or does differently from what you might expect
   page or a loaded query result instead. A per-engine consistent export path is
   an unselected future candidate; database snapshots for backup and restore are
   a separate feature accepted for 0.2.x ([ADR 0015](decisions/0015-database-snapshots.md)).
-- **Large results are capped and held in memory** (PERF-2, PERF-8 / [#554](https://github.com/cozyGarage/BookiE/issues/554)). Results stop at
-  1 million rows, 10 million cells or 64 MiB estimated size. The historical grid
-  measurement was about 2.5 times the result memory; #518 now shares immutable
-  values with materialized rows, and comparable profiling remains open. Core,
-  PostgreSQL and PolicyGuard cursor paths now exist, including per-page masking
-  and audit; the SQL editor does not yet use them and remains materialized under
-  these caps (ADR 0011).
+- **Large results still have materialization limits** (PERF-2, PERF-8 / [#554](https://github.com/cozyGarage/BookiE/issues/554)). Materialized
+  results stop at 1 million rows, 10 million cells or 64 MiB estimated size.
+  Single-statement PostgreSQL `SELECT`s in the SQL editor now stream cursor
+  pages through Core and PolicyGuard, retaining at most four pages of up to
+  5,000 rows each. That cache is bounded by page and row count, not by cell
+  bytes. Other engines and unsupported statement shapes remain materialized.
+  The historical grid measurement was about 2.5 times the result memory; #518
+  now shares immutable values with materialized rows, and comparable profiling
+  remains open (ADR 0011).
 - **SQL result filters apply only to loaded rows** ([#609](https://github.com/cozyGarage/BookiE/issues/609)). Filter and sort actions are local, show the visible and loaded counts, and do not re-run SQL. Clearing a filter restores loaded rows. Settings carry across reruns of the same statement and pin/unpin while the result remains current or pinned. Selection follows source-row identity when the same materialized result is rerendered; a fresh query resets selection. Settings do not survive an app restart.
 - **Long cells are shown as a preview** (PERF-10). Values over 8 KiB show a typed
   preview and byte count. View Value and Copy Value use the full value, including
