@@ -113,17 +113,31 @@ mod tests {
         })
     }
 
-    #[test]
-    fn editor_kind_for_cell_matrix() {
-        let free = |accepts_line_breaks| CellEditorKind::Inline {
+    const NUMBER: CellEditorKind = CellEditorKind::Inline {
+        accepts_line_breaks: false,
+        purpose: gtk::InputPurpose::Number,
+    };
+
+    fn free(accepts_line_breaks: bool) -> CellEditorKind {
+        CellEditorKind::Inline {
             accepts_line_breaks,
             purpose: gtk::InputPurpose::FreeForm,
-        };
-        let number = CellEditorKind::Inline {
-            accepts_line_breaks: false,
-            purpose: gtk::InputPurpose::Number,
-        };
-        let cases = [
+        }
+    }
+
+    fn assert_editors(cases: Vec<(ColumnKind, CellEditorKind)>) {
+        for (kind, expected) in cases {
+            assert_eq!(
+                CellEditorKind::for_cell(&column(kind.clone()), Ok(())),
+                expected,
+                "{kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn booleans_toggle_and_numbers_take_a_number_keyboard() {
+        assert_editors(vec![
             (
                 ColumnKind::Bool(BoolStorage::Native),
                 CellEditorKind::Toggle(BoolStorage::Native),
@@ -139,16 +153,22 @@ mod tests {
                     purpose: gtk::InputPurpose::Digits,
                 },
             ),
-            (integer(true), number),
-            (ColumnKind::Float(FloatWidth::F64), number),
+            (integer(true), NUMBER),
+            (ColumnKind::Float(FloatWidth::F64), NUMBER),
             (
                 ColumnKind::Decimal {
                     precision: Some(10),
                     scale: Some(2),
                 },
-                number,
+                NUMBER,
             ),
-            (ColumnKind::Money { scale: Some(2) }, number),
+            (ColumnKind::Money { scale: Some(2) }, NUMBER),
+        ]);
+    }
+
+    #[test]
+    fn text_like_kinds_edit_inline_and_only_text_takes_line_breaks() {
+        assert_editors(vec![
             (
                 ColumnKind::Text {
                     length: TextLength::Unbounded,
@@ -188,6 +208,12 @@ mod tests {
                 free(false),
             ),
             (ColumnKind::Other, free(true)),
+        ]);
+    }
+
+    #[test]
+    fn documents_and_dates_open_their_editor_and_opaque_kinds_stay_read_only() {
+        assert_editors(vec![
             (
                 ColumnKind::Json { binary: true },
                 CellEditorKind::Multiline { language: Some("json") },
@@ -218,15 +244,11 @@ mod tests {
                 ColumnKind::Composite,
                 CellEditorKind::ReadOnly(CellLock::Value(ReadOnlyReason::Composite)),
             ),
-        ];
-        for (kind, expected) in cases {
-            assert_eq!(
-                CellEditorKind::for_cell(&column(kind.clone()), Ok(())),
-                expected,
-                "{kind:?}"
-            );
-        }
+        ]);
+    }
 
+    #[test]
+    fn a_locked_cell_is_read_only_for_its_lock() {
         let text = column(ColumnKind::Text {
             length: TextLength::Unbounded,
         });

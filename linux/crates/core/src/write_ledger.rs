@@ -298,118 +298,27 @@ mod tests {
         }
     }
 
-    #[test]
-    fn outcome_table() {
-        use Outcome::{Partial, RolledBack, Unknown};
-        use Phase::*;
-        use StatementOutcome::{Failed, Unknown as InDoubt};
-        const TX: WriteAtomicity = WriteAtomicity::Transactional;
-        const STEP: WriteAtomicity = WriteAtomicity::StatementByStatement;
+    type Row = (Phase, bool, [Outcome; 3]);
+
+    fn partial(applied: usize, at: usize, failed: StatementOutcome) -> Outcome {
+        Outcome::Partial { applied, at, failed }
+    }
+
+    fn unknown(with_token: bool) -> Outcome {
+        Outcome::Unknown {
+            token: with_token.then(token),
+        }
+    }
+
+    /// Each row is a phase and whether a token was attached, with the
+    /// outcome for each fate in the order of `fates`.
+    fn assert_outcomes(atomicity: WriteAtomicity, rows: Vec<Row>) {
         let fates = [
             SessionFate::RolledBack,
             SessionFate::Discarded,
             SessionFate::RollbackIncomplete { executed: 2 },
         ];
-        let partial = |applied, at, failed| Partial { applied, at, failed };
-        let unknown = |with_token: bool| Unknown {
-            token: with_token.then(token),
-        };
-
-        // One row per atomicity, phase and token, with the outcome for
-        // each fate in the order above. A statement-by-statement engine
-        // has no COMMIT, so it has no commit phase.
-        let table = [
-            (
-                TX,
-                NothingSent,
-                false,
-                [RolledBack { at: 0 }, RolledBack { at: 0 }, partial(2, 0, Failed)],
-            ),
-            (
-                TX,
-                NothingSent,
-                true,
-                [RolledBack { at: 0 }, RolledBack { at: 0 }, partial(2, 0, Failed)],
-            ),
-            (
-                TX,
-                FirstInFlight,
-                false,
-                [RolledBack { at: 0 }, RolledBack { at: 0 }, partial(2, 0, Failed)],
-            ),
-            (
-                TX,
-                FirstInFlight,
-                true,
-                [RolledBack { at: 0 }, RolledBack { at: 0 }, partial(2, 0, Failed)],
-            ),
-            (
-                TX,
-                TwoConfirmed,
-                false,
-                [RolledBack { at: 2 }, RolledBack { at: 2 }, partial(2, 2, Failed)],
-            ),
-            (
-                TX,
-                TwoConfirmed,
-                true,
-                [RolledBack { at: 2 }, RolledBack { at: 2 }, partial(2, 2, Failed)],
-            ),
-            (
-                TX,
-                ThirdInFlight,
-                false,
-                [RolledBack { at: 2 }, RolledBack { at: 2 }, partial(2, 2, Failed)],
-            ),
-            (
-                TX,
-                ThirdInFlight,
-                true,
-                [RolledBack { at: 2 }, RolledBack { at: 2 }, partial(2, 2, Failed)],
-            ),
-            (TX, CommitSent, false, [unknown(false), unknown(false), unknown(false)]),
-            (TX, CommitSent, true, [unknown(true), unknown(true), unknown(true)]),
-            (
-                STEP,
-                NothingSent,
-                false,
-                [RolledBack { at: 0 }, RolledBack { at: 0 }, RolledBack { at: 0 }],
-            ),
-            (
-                STEP,
-                NothingSent,
-                true,
-                [RolledBack { at: 0 }, RolledBack { at: 0 }, RolledBack { at: 0 }],
-            ),
-            (
-                STEP,
-                FirstInFlight,
-                false,
-                [unknown(false), unknown(false), unknown(false)],
-            ),
-            (STEP, FirstInFlight, true, [unknown(true), unknown(true), unknown(true)]),
-            (
-                STEP,
-                TwoConfirmed,
-                false,
-                [partial(2, 2, Failed), partial(2, 2, Failed), partial(2, 2, Failed)],
-            ),
-            (
-                STEP,
-                TwoConfirmed,
-                true,
-                [partial(2, 2, Failed), partial(2, 2, Failed), partial(2, 2, Failed)],
-            ),
-            (
-                STEP,
-                ThirdInFlight,
-                false,
-                [partial(2, 2, InDoubt), partial(2, 2, InDoubt), partial(2, 2, InDoubt)],
-            ),
-            (STEP, ThirdInFlight, true, [unknown(true), unknown(true), unknown(true)]),
-        ];
-
-        for (atomicity, phase, with_token, expected) in table {
+        for (phase, with_token, expected) in rows {
             for (fate, expected) in fates.iter().zip(expected) {
                 let ledger = WriteLedger::new(atomicity);
                 phase.replay(&ledger);
@@ -426,6 +335,102 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_lost_transaction_rolls_back_until_its_commit_is_sent() {
+        use Outcome::RolledBack;
+        use Phase::*;
+        use StatementOutcome::Failed;
+        assert_outcomes(
+            WriteAtomicity::Transactional,
+            vec![
+                (
+                    NothingSent,
+                    false,
+                    [RolledBack { at: 0 }, RolledBack { at: 0 }, partial(2, 0, Failed)],
+                ),
+                (
+                    NothingSent,
+                    true,
+                    [RolledBack { at: 0 }, RolledBack { at: 0 }, partial(2, 0, Failed)],
+                ),
+                (
+                    FirstInFlight,
+                    false,
+                    [RolledBack { at: 0 }, RolledBack { at: 0 }, partial(2, 0, Failed)],
+                ),
+                (
+                    FirstInFlight,
+                    true,
+                    [RolledBack { at: 0 }, RolledBack { at: 0 }, partial(2, 0, Failed)],
+                ),
+                (
+                    TwoConfirmed,
+                    false,
+                    [RolledBack { at: 2 }, RolledBack { at: 2 }, partial(2, 2, Failed)],
+                ),
+                (
+                    TwoConfirmed,
+                    true,
+                    [RolledBack { at: 2 }, RolledBack { at: 2 }, partial(2, 2, Failed)],
+                ),
+                (
+                    ThirdInFlight,
+                    false,
+                    [RolledBack { at: 2 }, RolledBack { at: 2 }, partial(2, 2, Failed)],
+                ),
+                (
+                    ThirdInFlight,
+                    true,
+                    [RolledBack { at: 2 }, RolledBack { at: 2 }, partial(2, 2, Failed)],
+                ),
+                (CommitSent, false, [unknown(false), unknown(false), unknown(false)]),
+                (CommitSent, true, [unknown(true), unknown(true), unknown(true)]),
+            ],
+        );
+    }
+
+    /// A statement-by-statement engine has no COMMIT, so it has no
+    /// commit phase.
+    #[test]
+    fn a_lost_statement_by_statement_write_keeps_what_was_confirmed() {
+        use Outcome::RolledBack;
+        use Phase::*;
+        use StatementOutcome::{Failed, Unknown as InDoubt};
+        assert_outcomes(
+            WriteAtomicity::StatementByStatement,
+            vec![
+                (
+                    NothingSent,
+                    false,
+                    [RolledBack { at: 0 }, RolledBack { at: 0 }, RolledBack { at: 0 }],
+                ),
+                (
+                    NothingSent,
+                    true,
+                    [RolledBack { at: 0 }, RolledBack { at: 0 }, RolledBack { at: 0 }],
+                ),
+                (FirstInFlight, false, [unknown(false), unknown(false), unknown(false)]),
+                (FirstInFlight, true, [unknown(true), unknown(true), unknown(true)]),
+                (
+                    TwoConfirmed,
+                    false,
+                    [partial(2, 2, Failed), partial(2, 2, Failed), partial(2, 2, Failed)],
+                ),
+                (
+                    TwoConfirmed,
+                    true,
+                    [partial(2, 2, Failed), partial(2, 2, Failed), partial(2, 2, Failed)],
+                ),
+                (
+                    ThirdInFlight,
+                    false,
+                    [partial(2, 2, InDoubt), partial(2, 2, InDoubt), partial(2, 2, InDoubt)],
+                ),
+                (ThirdInFlight, true, [unknown(true), unknown(true), unknown(true)]),
+            ],
+        );
     }
 
     #[test]

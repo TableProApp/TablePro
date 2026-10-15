@@ -1,9 +1,9 @@
 use tablepro_core::column::{ColumnDefault, ColumnKind};
 use tablepro_core::ddl::ddl_sql::{column_list, create_index_sql, default_sql, foreign_key_sql, parenthesized};
 use tablepro_core::ddl::{
-    BuildDdlError, ColumnAttributes, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlDialect, DdlOperation,
-    DdlPlan, DraftColumn, DraftType, GeneratedStorage, IdentityStyle, Permission, ReferentialAction, RefusalReason,
-    ResolvedType, TableChanges, TableDefinition, TableDraft,
+    BuildDdlError, ColumnAlteration, ColumnAttributes, ColumnCapabilities, ColumnDefinition, DdlCapabilities,
+    DdlDialect, DdlOperation, DdlPlan, DraftColumn, DraftType, GeneratedStorage, IdentityStyle, Permission,
+    ReferentialAction, RefusalReason, ResolvedType, TableChanges, TableDefinition, TableDraft,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
@@ -34,6 +34,10 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     column_comments: true,
     drop_table_cascade: false,
 };
+
+fn alter_table(dialect: &MssqlDialect, table: &TableRef, action: &str) -> String {
+    format!("ALTER TABLE {} {action}", dialect.qualify(table))
+}
 
 /// T-SQL has no RESTRICT; the engine spells that behaviour NO ACTION.
 const REFERENTIAL_ACTIONS: &[ReferentialAction] = &[
@@ -157,7 +161,7 @@ impl DdlDialect for MssqlDialect {
         }
         let table = changes.target(&original.table);
         let qualified = self.qualify(&table);
-        let alter = |action: String| format!("ALTER TABLE {qualified} {action}");
+        let alter = |action: String| alter_table(self, &table, &action);
 
         for key in &changes.dropped_foreign_keys {
             statements.push(alter(format!("DROP CONSTRAINT {}", self.quote_identifier(&key.name))));
@@ -176,31 +180,7 @@ impl DdlDialect for MssqlDialect {
             statements.extend(self.drop_default(&table, column));
             statements.push(alter(format!("DROP COLUMN {}", self.quote_identifier(column.name()))));
         }
-        // A column bound to a default cannot change type, so its default
-        // goes first and comes back under the same name once the column
-        // and the columns added beside it are in place.
-        let mut defaults = Vec::new();
-        for alteration in &changes.altered_columns {
-            let changed = alteration.changed;
-            let bound = alteration.original.attributes.default_constraint_name.as_deref();
-            let dropped = bound.filter(|_| changed.column_type || changed.default);
-            statements.extend(dropped.and_then(|_| self.drop_default(&table, &alteration.original)));
-            if !(changed.default || dropped.is_some()) {
-                continue;
-            }
-            let draft = &alteration.draft;
-            let column_type = draft.column_type.column_type(self, &draft.name)?;
-            if let Some(default) = default_sql(self, &draft.name, &draft.default, &column_type)? {
-                let constraint = bound
-                    .map(|name| format!("CONSTRAINT {} ", self.quote_identifier(name)))
-                    .unwrap_or_default();
-                defaults.push(alter(format!(
-                    "ADD {constraint}DEFAULT {} FOR {}",
-                    default_clause(&draft.default, &default),
-                    self.quote_identifier(&draft.name)
-                )));
-            }
-        }
+        let defaults = self.rebind_defaults(&table, &changes.altered_columns, &mut statements)?;
         for rename in changes.ordered_renames(original) {
             let object = format!("{}.{}", qualified, self.quote_identifier(&rename.from));
             statements.push(format!(
@@ -210,47 +190,7 @@ impl DdlDialect for MssqlDialect {
             ));
         }
         for alteration in &changes.altered_columns {
-            let draft = &alteration.draft;
-            let name = self.quote_identifier(&draft.name);
-            let changed = alteration.changed;
-            // ALTER COLUMN carries nothing forward: an omitted collation is
-            // the database's, an omitted SPARSE is gone, and an omitted
-            // NULL or NOT NULL is NULL. So every one is restated.
-            if changed.column_type || changed.nullability {
-                let resolved = draft.column_type.resolve(self, &draft.name)?;
-                let attributes = &alteration.original.attributes;
-                let operation = match changed.column_type {
-                    true => DdlOperation::AlterColumnType,
-                    false => DdlOperation::AlterColumnNullability,
-                };
-                if changed.column_type {
-                    kept_on_new_type(&resolved, attributes).map_err(|attribute| BuildDdlError::Refused {
-                        column: alteration.original.name().to_owned(),
-                        operation,
-                        reason: RefusalReason::ConflictingAttribute(attribute),
-                    })?;
-                }
-                let mut parts = vec![format!("ALTER COLUMN {name}"), resolved.sql.clone()];
-                parts.extend(collate_clause(draft, &resolved, attributes, operation)?);
-                if attributes.sparse {
-                    parts.push("SPARSE".to_owned());
-                }
-                parts.push(if draft.nullable { "NULL" } else { "NOT NULL" }.to_owned());
-                statements.push(alter(parts.join(" ")));
-                // ALTER COLUMN takes a mask only in a statement of its own.
-                if let Some(function) = &attributes.masking_function {
-                    statements.push(alter(format!("ALTER COLUMN {name} ADD {}", masked_with(function))));
-                }
-            }
-            if changed.comment {
-                let had_comment = alteration
-                    .original
-                    .info
-                    .comment
-                    .as_deref()
-                    .is_some_and(|text| !text.is_empty());
-                statements.push(column_comment(&table, &draft.name, had_comment, draft.comment_text()));
-            }
+            self.alter_column(&table, alteration, &mut statements)?;
         }
         for column in &changes.added_columns {
             statements.push(alter(format!("ADD {}", self.column_definition(column)?)));
@@ -282,6 +222,99 @@ impl DdlDialect for MssqlDialect {
 }
 
 impl MssqlDialect {
+    /// A column bound to a default cannot change type, so its default
+    /// goes into `statements` first, and the statements returned add it
+    /// back under the same name once the column and the columns added
+    /// beside it are in place.
+    fn rebind_defaults(
+        &self,
+        table: &TableRef,
+        altered: &[ColumnAlteration],
+        statements: &mut Vec<String>,
+    ) -> Result<Vec<String>, BuildDdlError> {
+        let mut defaults = Vec::new();
+        for alteration in altered {
+            let changed = alteration.changed;
+            let bound = alteration.original.attributes.default_constraint_name.as_deref();
+            let dropped = bound.filter(|_| changed.column_type || changed.default);
+            statements.extend(dropped.and_then(|_| self.drop_default(table, &alteration.original)));
+            if !(changed.default || dropped.is_some()) {
+                continue;
+            }
+            let draft = &alteration.draft;
+            let column_type = draft.column_type.column_type(self, &draft.name)?;
+            if let Some(default) = default_sql(self, &draft.name, &draft.default, &column_type)? {
+                let constraint = bound
+                    .map(|name| format!("CONSTRAINT {} ", self.quote_identifier(name)))
+                    .unwrap_or_default();
+                defaults.push(alter_table(
+                    self,
+                    table,
+                    &format!(
+                        "ADD {constraint}DEFAULT {} FOR {}",
+                        default_clause(&draft.default, &default),
+                        self.quote_identifier(&draft.name)
+                    ),
+                ));
+            }
+        }
+        Ok(defaults)
+    }
+
+    fn alter_column(
+        &self,
+        table: &TableRef,
+        alteration: &ColumnAlteration,
+        statements: &mut Vec<String>,
+    ) -> Result<(), BuildDdlError> {
+        let draft = &alteration.draft;
+        let name = self.quote_identifier(&draft.name);
+        let changed = alteration.changed;
+        // ALTER COLUMN carries nothing forward: an omitted collation is
+        // the database's, an omitted SPARSE is gone, and an omitted
+        // NULL or NOT NULL is NULL. So every one is restated.
+        if changed.column_type || changed.nullability {
+            let resolved = draft.column_type.resolve(self, &draft.name)?;
+            let attributes = &alteration.original.attributes;
+            let operation = match changed.column_type {
+                true => DdlOperation::AlterColumnType,
+                false => DdlOperation::AlterColumnNullability,
+            };
+            if changed.column_type {
+                kept_on_new_type(&resolved, attributes).map_err(|attribute| BuildDdlError::Refused {
+                    column: alteration.original.name().to_owned(),
+                    operation,
+                    reason: RefusalReason::ConflictingAttribute(attribute),
+                })?;
+            }
+            let mut parts = vec![format!("ALTER COLUMN {name}"), resolved.sql.clone()];
+            parts.extend(collate_clause(draft, &resolved, attributes, operation)?);
+            if attributes.sparse {
+                parts.push("SPARSE".to_owned());
+            }
+            parts.push(if draft.nullable { "NULL" } else { "NOT NULL" }.to_owned());
+            statements.push(alter_table(self, table, &parts.join(" ")));
+            // ALTER COLUMN takes a mask only in a statement of its own.
+            if let Some(function) = &attributes.masking_function {
+                statements.push(alter_table(
+                    self,
+                    table,
+                    &format!("ALTER COLUMN {name} ADD {}", masked_with(function)),
+                ));
+            }
+        }
+        if changed.comment {
+            let had_comment = alteration
+                .original
+                .info
+                .comment
+                .as_deref()
+                .is_some_and(|text| !text.is_empty());
+            statements.push(column_comment(table, &draft.name, had_comment, draft.comment_text()));
+        }
+        Ok(())
+    }
+
     /// `name type [COLLATE c] [SPARSE] [MASKED WITH (..)] [IDENTITY(1,1)]
     /// NULL|NOT NULL [DEFAULT (..)]`, or a computed column read from the
     /// catalogue as `name AS (..)`.

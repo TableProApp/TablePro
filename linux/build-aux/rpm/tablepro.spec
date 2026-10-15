@@ -58,6 +58,11 @@ reach servers behind an SSH bastion.
 find vendor -type f -name '*.rs' -perm /111 -exec chmod a-x {} +
 
 %build
+# Cargo starts a rustc per CPU, and under Fedora's RUSTFLAGS (one codegen
+# unit, full debuginfo) one rustc of the app takes several GB, so the
+# jobs are also capped at one per 4 GB. %%check builds the tests the same.
+%constrain_build -m 4096
+export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 # Fedora's rustc runs out of 8 GB in the release profile's fat LTO link of
 # this binary; thin LTO fits a builder. %%check repeats it, since meson
 # test rebuilds the binary first.
@@ -76,6 +81,7 @@ export CARGO_PROFILE_RELEASE_LTO=thin
 # The same RUSTFLAGS and LTO as %%build, or cargo rebuilds every crate.
 %set_build_flags
 export CARGO_PROFILE_RELEASE_LTO=thin
+export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 desktop-file-validate %{buildroot}%{_datadir}/applications/app.tablepro.TablePro.desktop
 appstreamcli validate --no-net %{buildroot}%{_metainfodir}/app.tablepro.TablePro.metainfo.xml
 # %%meson_test expands to lines of its own; shrink joins them to this one.

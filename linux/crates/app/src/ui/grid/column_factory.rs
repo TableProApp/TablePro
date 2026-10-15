@@ -217,15 +217,7 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
     } = init;
     let factory = gtk::SignalListItemFactory::new();
 
-    let kind = match catalog.as_ref() {
-        Some(column) if tab_ctx.editable && column_takes_edits(column, &tab_ctx.identity, false) => {
-            match column.column_type.kind {
-                ColumnKind::Bool(_) => CellKind::Toggle,
-                _ => CellKind::Text,
-            }
-        }
-        _ => CellKind::ReadOnly,
-    };
+    let kind = CellKind::for_column(catalog.as_ref(), &tab_ctx);
     let auto_filled = catalog
         .as_ref()
         .is_some_and(|column| column.is_auto_increment || column.is_generated);
@@ -268,7 +260,37 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
         attach_cell_gesture(&grid_cell, &column_view, &grid_menus);
         cell.set_child(Some(&grid_cell));
     });
+    bind_rows_to_cells(&factory);
 
+    let column = gtk::ColumnViewColumn::builder()
+        .title(&info.name)
+        .factory(&factory)
+        .resizable(true)
+        .expand(true)
+        .build();
+    column.set_sorter(Some(&sorter));
+    // A number column is as wide as its widest number already.
+    let default_min_width = default_min_width.filter(|_| !drawing.figures.numbers());
+    size_column(&column, &info.name, &tab_ctx, default_min_width);
+    grid_columns.push(idx, &column, drawing);
+    column
+}
+
+impl CellKind {
+    fn for_column(catalog: Option<&ColumnInfo>, tab_ctx: &TabGridContext) -> CellKind {
+        match catalog {
+            Some(column) if tab_ctx.editable && column_takes_edits(column, &tab_ctx.identity, false) => {
+                match column.column_type.kind {
+                    ColumnKind::Bool(_) => CellKind::Toggle,
+                    _ => CellKind::Text,
+                }
+            }
+            _ => CellKind::ReadOnly,
+        }
+    }
+}
+
+fn bind_rows_to_cells(factory: &gtk::SignalListItemFactory) {
     factory.connect_bind(|_, item| {
         let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>() else {
             return;
@@ -290,23 +312,18 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
             grid_cell.unbind();
         }
     });
+}
 
-    let column = gtk::ColumnViewColumn::builder()
-        .title(&info.name)
-        .factory(&factory)
-        .resizable(true)
-        .expand(true)
-        .build();
-    column.set_sorter(Some(&sorter));
-    // A number column is as wide as its widest number already.
-    let default_min_width = default_min_width.filter(|_| !drawing.figures.numbers());
+/// The width the tab saved for the column, or `default_min_width`, and
+/// every later drag saved back.
+fn size_column(column: &gtk::ColumnViewColumn, name: &str, tab_ctx: &TabGridContext, default_min_width: Option<i32>) {
     if let Some(widths) = tab_ctx.column_widths.clone() {
-        if let Some(saved) = widths.width(&info.name) {
+        if let Some(saved) = widths.width(name) {
             column.set_fixed_width(saved);
         } else if let Some(min) = default_min_width {
             column.set_fixed_width(min);
         }
-        let column_name = info.name.clone();
+        let column_name = name.to_owned();
         column.connect_fixed_width_notify(move |column| {
             widths.record(&column_name, column.fixed_width());
         });
@@ -314,8 +331,6 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
         // Editor results remember no widths, but can be just as wide.
         column.set_fixed_width(min);
     }
-    grid_columns.push(idx, &column, drawing);
-    column
 }
 
 /// Every cell but a check box draws its value in an Inscription, which

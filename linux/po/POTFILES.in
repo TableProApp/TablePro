@@ -436,6 +436,7 @@ crates/app/src/ui/workspace/import.rs
 crates/app/src/ui/workspace/mod.rs
 crates/app/src/ui/workspace/row_ops.rs
 crates/app/src/ui/workspace/saves.rs
+crates/app/src/ui/workspace/session_watches.rs
 crates/app/src/ui/workspace/shell.rs
 crates/app/src/ui/workspace/sidebar/catalog_watch.rs
 crates/app/src/ui/workspace/sidebar/mod.rs

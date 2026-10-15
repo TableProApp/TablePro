@@ -379,8 +379,39 @@ async fn catalog_matches_information_schema(version: PostgresVersion) {
     assert_eq!(ours, theirs, "PostgreSQL {}", version.major());
 
     let column = |name: &str| columns.iter().find(|column| column.name == name).expect("a column");
+    for (name, kind, read_form) in typed_kinds() {
+        let info = column(name);
+        assert_eq!(info.column_type.kind, kind, "{name} on PostgreSQL {}", version.major());
+        assert_eq!(
+            info.column_type.read_form,
+            read_form,
+            "{name} on PostgreSQL {}",
+            version.major()
+        );
+    }
+    assert!(column("id").primary_key && column("id").is_auto_increment);
+    assert_eq!(column("id").default, ColumnDefault::None);
+    assert_eq!(column("small").default, ColumnDefault::Literal(Value::Int(7)));
+    assert_eq!(
+        column("name").default,
+        ColumnDefault::Literal(Value::Text("it's".to_owned()))
+    );
+    assert!(column("at").default.needs_server_evaluation());
+    assert_eq!(
+        column("count")
+            .column_type
+            .catalog
+            .as_ref()
+            .map(|catalog| catalog.cast_target.as_sql().to_owned()),
+        Some("positive".to_owned())
+    );
+}
+
+/// What each column of `CATALOG_TABLE` reads as, and how its values are
+/// read.
+fn typed_kinds() -> Vec<(&'static str, ColumnKind, ReadForm)> {
     let int = |width| ColumnKind::Integer(IntegerKind { width, signed: true });
-    let cases: Vec<(&str, ColumnKind, ReadForm)> = vec![
+    vec![
         ("id", int(IntegerWidth::W32), ReadForm::Native),
         ("small", int(IntegerWidth::W16), ReadForm::Native),
         (
@@ -448,33 +479,7 @@ async fn catalog_matches_information_schema(version: PostgresVersion) {
         ("tsv", ColumnKind::Other, ReadForm::ServerText),
         ("count", int(IntegerWidth::W32), ReadForm::Native),
         ("ratio", ColumnKind::Float(FloatWidth::F32), ReadForm::Native),
-    ];
-    for (name, kind, read_form) in cases {
-        let info = column(name);
-        assert_eq!(info.column_type.kind, kind, "{name} on PostgreSQL {}", version.major());
-        assert_eq!(
-            info.column_type.read_form,
-            read_form,
-            "{name} on PostgreSQL {}",
-            version.major()
-        );
-    }
-    assert!(column("id").primary_key && column("id").is_auto_increment);
-    assert_eq!(column("id").default, ColumnDefault::None);
-    assert_eq!(column("small").default, ColumnDefault::Literal(Value::Int(7)));
-    assert_eq!(
-        column("name").default,
-        ColumnDefault::Literal(Value::Text("it's".to_owned()))
-    );
-    assert!(column("at").default.needs_server_evaluation());
-    assert_eq!(
-        column("count")
-            .column_type
-            .catalog
-            .as_ref()
-            .map(|catalog| catalog.cast_target.as_sql().to_owned()),
-        Some("positive".to_owned())
-    );
+    ]
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -10,6 +10,7 @@ mod imp;
 mod import;
 mod row_ops;
 mod saves;
+mod session_watches;
 mod shell;
 mod sidebar;
 mod status_pages;
@@ -46,10 +47,10 @@ use relm4::{ComponentController, Controller};
 
 use tablepro_core::EditorSession;
 use tablepro_core::meta::{ObjectInfo, SchemaInfo};
-use tablepro_session::runtime::WatchForwarder;
 use tablepro_session::{ObjectListSnapshot, Session, SessionHealth, SessionKey};
 use uuid::Uuid;
 
+use self::session_watches::SessionWatches;
 use super::browse_tab::BrowseTab;
 use super::editor::SqlEditor;
 use super::export::{ExportLedger, ExportLedgerInit, ExportOffer, ExportReporter};
@@ -160,12 +161,29 @@ pub(crate) struct WorkspaceModel {
     /// Recently closed tabs for Ctrl+Shift+T. Pending edits are not
     /// kept: the close has already cleared them.
     closed_tabs_stack: Rc<RefCell<VecDeque<ClosedTabDescriptor>>>,
-    /// Feed the reconnect banner and the sidebar, and stop with the
-    /// workspace, so nothing reads for a session it let go of.
-    _health_watch: WatchForwarder,
-    _catalog_watch: WatchForwarder,
-    _reconnect_watch: WatchForwarder,
-    _link_watch: WatchForwarder,
+    _watches: SessionWatches,
+}
+
+/// The workspace's own slot: a tab reads it for the session, and it
+/// empties when the workspace goes.
+fn session_slot(window_context: &SessionContext, session: &Arc<Session>) -> Rc<SessionContext> {
+    let context = Rc::new(SessionContext {
+        active: crate::services::active_session::ActiveSession::new(),
+        ..window_context.clone()
+    });
+    context.active.replace(session.clone());
+    context
+}
+
+struct WorkspaceTabParts {
+    tab_view: adw::TabView,
+    index: Rc<tab_index::TabIndex>,
+    workspace_tabs: workspace_persistence::WorkspaceTabs,
+    change_trackers: Rc<ChangeTrackerRegistry>,
+    structure_trackers: Rc<StructureTrackerRegistry>,
+    naming: Rc<Cell<table_naming::TableNaming>>,
+    factory: Rc<tab_factory::TabFactory>,
+    workspace_handle: WorkspaceHandle,
 }
 
 /// Snapshot of a tab the user just closed, retained for Ctrl+Shift+T
@@ -469,21 +487,8 @@ impl Workspace {
         } = init;
         let workspace: Self = glib::Object::new();
         let imp = workspace.imp();
-        let (input, receiver) = crate::runtime::input_queue::<WorkspaceInput>();
-        imp.pump.replace(Some(crate::runtime::pump_inputs(
-            &workspace,
-            receiver,
-            |workspace, message| workspace.handle_input(message),
-        )));
-
-        // The workspace's own slot: a tab reads it for the session, and
-        // it empties when the workspace goes.
-        let context = Rc::new(SessionContext {
-            active: crate::services::active_session::ActiveSession::new(),
-            ..(*context).clone()
-        });
-        context.active.replace(session.clone());
-
+        let input = workspace.pump_inputs();
+        let context = session_slot(&context, &session);
         let settings = services.settings.clone();
         let storage = services.storage.clone();
         let tasks = services.tasks.clone();
@@ -493,94 +498,23 @@ impl Workspace {
             tasks.clone(),
         );
         let persistence = workspace_persistence::WorkspacePersistence::new(storage.workspaces().clone());
-        let change_trackers = Rc::new(ChangeTrackerRegistry::default());
-        let structure_trackers = Rc::new(StructureTrackerRegistry::default());
-        let workspace_tabs: workspace_persistence::WorkspaceTabs = Rc::new(RefCell::new(HashMap::new()));
-        let index = Rc::new(tab_index::TabIndex::default());
-        let tab_view = imp.tab_view.get();
-        let window_tabs = Rc::new(window_tabs::WindowTabs::new(
-            workspace_tabs.clone(),
-            index.clone(),
-            &tab_view,
-        ));
-        let events = input.clone();
-        let workspace_handle = WorkspaceHandle::new(crate::workspace::WorkspaceDeps {
-            session: context.active.clone(),
-            tasks: context.tasks.clone(),
-            hold: context.hold.clone(),
-            history: Some(history.clone()),
-            rows: change_trackers.clone(),
-            structures: structure_trackers.clone(),
-            directory: window_tabs,
-            events: Rc::new(move |event| events.deliver(WorkspaceInput::Workspace(event))),
-            engine: crate::workspace::EngineProfile::of(&context.drivers, &session.metadata().driver_id),
-        });
-        let saves = input.clone();
-        workspace_handle
-            .ledger()
-            .on_change(move |count| saves.deliver(WorkspaceInput::SavesInFlightChanged(count)));
-
-        let exports = ExportLedger::new(ExportLedgerInit {
-            tasks: tasks.clone(),
-            hold: context.hold.clone(),
-            reporter: ExportReporter::new(&window, &imp.toast_overlay.get()),
-            inhibitor: WindowInhibitor::new(ApplicationInhibit::new(&window)),
-        });
-        imp.export_operations_button.bind(&exports.jobs());
-        let ended = input.clone();
-        exports.on_ended(move |tab, outcome| ended.deliver(WorkspaceInput::ExportEnded { tab, outcome }));
-
+        let exports = workspace.export_ledger(&window, &tasks, &context, &input);
         let sidebar = sidebar::build(&workspace, &input, sidebar::SidebarAffordances::for_session(&session));
-        let naming = Rc::new(Cell::new(table_naming::TableNaming::default()));
-        let factory = tab_factory::TabFactory::new(tab_factory::TabFactoryParts {
-            view: tab_view.clone(),
-            tabs: workspace_tabs.clone(),
-            index: index.clone(),
-            input: input.clone(),
-            toasts: imp.toast_overlay.downgrade(),
-            context: context.clone(),
-            settings: settings.clone(),
-            storage: storage.clone(),
-            history: Some(history.clone()),
-            drafts: drafts.clone(),
-            draft_scope: crate::workspace::WorkspaceFileName::for_key(&key).draft_scope(),
-            change_trackers: change_trackers.clone(),
-            structure_trackers: structure_trackers.clone(),
-            read_only: session.read_only(),
-            naming: naming.clone(),
-        });
-        workspace_tabs::connect_tab_view(&tab_view, &index, &input);
+        let WorkspaceTabParts {
+            tab_view,
+            index,
+            workspace_tabs,
+            change_trackers,
+            structure_trackers,
+            naming,
+            factory,
+            workspace_handle,
+        } = workspace.build_tabs(&key, &session, &services, &context, &drafts, &input);
         let mut actions = workspace_actions::install(&window, &input);
         let shell = shell::install(&workspace, &window, &factory);
         actions.push(shell::SHOW_SIDEBAR);
         let history_gate = workspace_actions::spawn_history_gate(&window, history.availability());
-
-        let health_input = input.clone();
-        let health_watch = WatchForwarder::new(
-            session.health(),
-            move |health| health_input.deliver(WorkspaceInput::HealthChanged(health)),
-            sidebar::spawn_local,
-        );
-        let (listed, failed) = (input.clone(), input.clone());
-        let catalog_watch = sidebar::catalog_watch(
-            &session,
-            move |snapshot| listed.deliver(WorkspaceInput::CatalogChanged(snapshot)),
-            move |error| {
-                failed.deliver(WorkspaceInput::CatalogReadFailed(
-                    crate::ui::error_text::operation_error_message(&error),
-                ));
-            },
-        );
-        let committed = input.clone();
-        let reconnect_watch = sidebar::reconnect_watch(&session, move |snapshot| {
-            committed.deliver(WorkspaceInput::DefaultListCommitted(snapshot));
-        });
-        let relinked = input.clone();
-        let link_watch = WatchForwarder::new(
-            session.link_changes(),
-            move |_| relinked.deliver(WorkspaceInput::LinkChanged),
-            sidebar::spawn_local,
-        );
+        let watches = SessionWatches::new(&session, &input);
 
         let driver_id = session.metadata().driver_id.clone();
         let driver_name = context
@@ -633,14 +567,112 @@ impl Workspace {
             read_only: session.read_only(),
             workspace: persistence,
             closed_tabs_stack: Rc::new(RefCell::new(VecDeque::with_capacity(CLOSED_TABS_CAPACITY))),
-            _health_watch: health_watch,
-            _catalog_watch: catalog_watch,
-            _reconnect_watch: reconnect_watch,
-            _link_watch: link_watch,
+            _watches: watches,
         };
         imp.model.replace(Some(model));
         workspace.register_close_blocker(exports);
         workspace
+    }
+
+    fn pump_inputs(&self) -> WorkspaceSender {
+        let (input, receiver) = crate::runtime::input_queue::<WorkspaceInput>();
+        self.imp().pump.replace(Some(crate::runtime::pump_inputs(
+            self,
+            receiver,
+            |workspace, message| workspace.handle_input(message),
+        )));
+        input
+    }
+
+    /// The exports this workspace's grids start, shown in the header's
+    /// operations button and reported in its toasts.
+    fn export_ledger(
+        &self,
+        window: &adw::ApplicationWindow,
+        tasks: &tablepro_session::runtime::Tasks,
+        context: &SessionContext,
+        input: &WorkspaceSender,
+    ) -> Rc<ExportLedger> {
+        let imp = self.imp();
+        let exports = ExportLedger::new(ExportLedgerInit {
+            tasks: tasks.clone(),
+            hold: context.hold.clone(),
+            reporter: ExportReporter::new(window, &imp.toast_overlay.get()),
+            inhibitor: WindowInhibitor::new(ApplicationInhibit::new(window)),
+        });
+        imp.export_operations_button.bind(&exports.jobs());
+        let ended = input.clone();
+        exports.on_ended(move |tab, outcome| ended.deliver(WorkspaceInput::ExportEnded { tab, outcome }));
+        exports
+    }
+
+    /// The tab view's registries, the factory that builds every tab into
+    /// them, and the handle that saves and settles their changes.
+    fn build_tabs(
+        &self,
+        key: &SessionKey,
+        session: &Arc<Session>,
+        services: &AppServices,
+        context: &Rc<SessionContext>,
+        drafts: &Rc<crate::workspace::DraftWriter>,
+        input: &WorkspaceSender,
+    ) -> WorkspaceTabParts {
+        let change_trackers = Rc::new(ChangeTrackerRegistry::default());
+        let structure_trackers = Rc::new(StructureTrackerRegistry::default());
+        let workspace_tabs: workspace_persistence::WorkspaceTabs = Rc::new(RefCell::new(HashMap::new()));
+        let index = Rc::new(tab_index::TabIndex::default());
+        let tab_view = self.imp().tab_view.get();
+        let window_tabs = Rc::new(window_tabs::WindowTabs::new(
+            workspace_tabs.clone(),
+            index.clone(),
+            &tab_view,
+        ));
+        let events = input.clone();
+        let workspace_handle = WorkspaceHandle::new(crate::workspace::WorkspaceDeps {
+            session: context.active.clone(),
+            tasks: context.tasks.clone(),
+            hold: context.hold.clone(),
+            history: Some(services.history()),
+            rows: change_trackers.clone(),
+            structures: structure_trackers.clone(),
+            directory: window_tabs,
+            events: Rc::new(move |event| events.deliver(WorkspaceInput::Workspace(event))),
+            engine: crate::workspace::EngineProfile::of(&context.drivers, &session.metadata().driver_id),
+        });
+        let saves = input.clone();
+        workspace_handle
+            .ledger()
+            .on_change(move |count| saves.deliver(WorkspaceInput::SavesInFlightChanged(count)));
+
+        let naming = Rc::new(Cell::new(table_naming::TableNaming::default()));
+        let factory = tab_factory::TabFactory::new(tab_factory::TabFactoryParts {
+            view: tab_view.clone(),
+            tabs: workspace_tabs.clone(),
+            index: index.clone(),
+            input: input.clone(),
+            toasts: self.imp().toast_overlay.downgrade(),
+            context: context.clone(),
+            settings: services.settings.clone(),
+            storage: services.storage.clone(),
+            history: Some(services.history()),
+            drafts: drafts.clone(),
+            draft_scope: crate::workspace::WorkspaceFileName::for_key(key).draft_scope(),
+            change_trackers: change_trackers.clone(),
+            structure_trackers: structure_trackers.clone(),
+            read_only: session.read_only(),
+            naming: naming.clone(),
+        });
+        workspace_tabs::connect_tab_view(&tab_view, &index, input);
+        WorkspaceTabParts {
+            tab_view,
+            index,
+            workspace_tabs,
+            change_trackers,
+            structure_trackers,
+            naming,
+            factory,
+            workspace_handle,
+        }
     }
 
     /// Show the session: its tables, the empty tab area, and the tabs

@@ -1,7 +1,8 @@
 use std::rc::Rc;
+use std::sync::Arc;
 
 use gtk4::prelude::*;
-use gtk4::{self as gtk, gio};
+use gtk4::{self as gtk, gio, glib};
 
 use tablepro_core::column::ResultColumn;
 
@@ -173,7 +174,7 @@ fn build_cell_menu(shape: MenuShape) -> gio::Menu {
 pub(super) struct GridMenuInit<'a> {
     pub(super) column_view: &'a gtk::ColumnView,
     pub(super) sink: GridSink,
-    pub(super) columns: std::sync::Arc<[ResultColumn]>,
+    pub(super) columns: Arc<[ResultColumn]>,
     pub(super) tab_ctx: TabGridContext,
 }
 
@@ -185,203 +186,21 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         tab_ctx,
     } = init;
     let editable = tab_ctx.editable;
-    let context = Rc::new(CellContext::default());
-    // Every action closure holds the view weakly. The action group
-    // belongs to the ColumnView, so a strong clone in a closure is a
-    // cycle: the grid, its selection model, its store and every row it
-    // holds would outlive the page that built them.
-    let view = column_view.downgrade();
-    let tab = Rc::new(tab_ctx);
+    let kit = CellActionKit {
+        context: Rc::new(CellContext::default()),
+        view: column_view.downgrade(),
+        sink,
+        columns,
+        tab: Rc::new(tab_ctx),
+    };
 
     let group = gio::SimpleActionGroup::new();
-
-    macro_rules! cell_action {
-        ($name:literal, |$cell:ident, $row:ident, $rows:ident| $body:expr) => {{
-            let ctx = context.clone();
-            let view = view.clone();
-            gio::ActionEntry::builder($name)
-                .activate(move |_, _, _| {
-                    let Some(cv) = view.upgrade() else { return };
-                    let Some(target) = ctx.target(&cv) else { return };
-                    let MenuTarget {
-                        cell: $cell,
-                        row: $row,
-                        rows: $rows,
-                    } = target;
-                    let $cell = &$cell;
-                    $body;
-                })
-                .build()
-        }};
-    }
-    macro_rules! rows_action {
-        ($name:literal, |$cell:ident, $rows:ident| $body:expr) => {{ cell_action!($name, |$cell, _row, $rows| $body) }};
-    }
-    // The rows are taken as the grid shows them, sharing its cells, and
-    // the owner renders the copy off the GTK thread.
-    macro_rules! copy_action {
-        ($name:literal, |$cell:ident| $kind:expr) => {{
-            let s = sink.clone();
-            let tab = tab.clone();
-            let columns = columns.clone();
-            rows_action!($name, |$cell, rows| {
-                s(GridMsg::Copy(CopyRequest::Rows {
-                    columns: columns.clone(),
-                    rows: snapshots(&tab, &rows),
-                    kind: $kind,
-                }));
-            })
-        }};
-    }
-    macro_rules! send_action {
-        ($name:literal, |$cell:ident, $row:ident| $msg:expr) => {{
-            let s = sink.clone();
-            cell_action!($name, |$cell, $row, _rows| s($msg))
-        }};
-    }
-
-    // Editing opens on the cell, which must still show the row.
-    let edit_action = cell_action!("edit", |cell, row, _rows| if cell.row().as_ref() == Some(&row) {
-        begin_edit(cell)
-    });
-    // Plain Copy reads the cell's value, never the widget's text: the
-    // widget carries the display form, which is the `<NULL>` sentinel,
-    // the `(auto)` placeholder, `<N bytes>` for a blob and a value cut
-    // at the 10k display cap.
-    let copy_action = {
-        let s = sink.clone();
-        let tab = tab.clone();
-        let columns = columns.clone();
-        rows_action!("copy", |cell, rows| {
-            let kind = match rows.len() {
-                1 => CopyKind::Value(cell.column()),
-                _ => CopyKind::Rows,
-            };
-            s(GridMsg::Copy(CopyRequest::Rows {
-                columns: columns.clone(),
-                rows: snapshots(&tab, &rows),
-                kind,
-            }));
-        })
-    };
-    let copy_rows_action = copy_action!("copy-rows", |_cell| CopyKind::Rows);
-    let copy_rows_headers_action = copy_action!("copy-rows-headers", |_cell| CopyKind::RowsWithHeaders);
-    let copy_json_action = copy_action!("copy-json", |_cell| CopyKind::Json);
-    let copy_csv_action = copy_action!("copy-csv", |_cell| CopyKind::Csv);
-    let copy_csv_headers_action = copy_action!("copy-csv-headers", |_cell| CopyKind::CsvWithHeaders);
-    let copy_markdown_action = copy_action!("copy-markdown", |_cell| CopyKind::Markdown);
-    let copy_in_clause_action = {
-        let s = sink.clone();
-        let tab = tab.clone();
-        let columns = columns.clone();
-        rows_action!("copy-in-clause", |cell, rows| {
-            s(GridMsg::CopyInClause(InClauseRows {
-                columns: columns.clone(),
-                rows: snapshots(&tab, &rows),
-                column: cell.column(),
-            }));
-        })
-    };
-    let copy_column_name_action = {
-        let s = sink.clone();
-        let cols = columns.clone();
-        let view = view.clone();
-        cell_action!("copy-column-name", |cell, _row, _rows| {
-            let Some(cv) = view.upgrade() else { return };
-            let name = cols
-                .get(cell.column())
-                .map(|column| column.name.clone())
-                .unwrap_or_default();
-            crate::ui::clipboard::copy_text(&cv, name, |message| s(GridMsg::ShowToast(message.to_owned())));
-        })
-    };
-    let copy_row_insert_action = {
-        let s = sink.clone();
-        rows_action!("copy-row-insert", |_cell, rows| s(GridMsg::CopyRowsAsInsert { rows }))
-    };
-    let show_row_json_action = {
-        let s = sink.clone();
-        let cols = columns.clone();
-        let tab = tab.clone();
-        cell_action!("show-row-json", |_cell, row, _rows| s(GridMsg::ShowRowJson(
-            RowJsonRequest {
-                columns: cols.clone(),
-                row: tab.snapshot(&row),
-            }
-        )))
-    };
-    let set_empty_action = send_action!("set-empty", |cell, row| GridMsg::SetCellValue {
-        row,
-        column: cell.column(),
-        preset: CellPreset::Empty,
-    });
-    let set_null_action = send_action!("set-null", |cell, row| GridMsg::SetCellValue {
-        row,
-        column: cell.column(),
-        preset: CellPreset::Null,
-    });
-    let set_default_action = send_action!("set-default", |cell, row| GridMsg::SetCellValue {
-        row,
-        column: cell.column(),
-        preset: CellPreset::Default,
-    });
-    let export_action = {
-        let s = sink.clone();
-        let view = view.clone();
-        let cols = columns.clone();
-        let tab = tab.clone();
-        gio::ActionEntry::builder("export")
-            .activate(move |_, _, _| {
-                let Some(cv) = view.upgrade() else { return };
-                s(GridMsg::ExportResults(crate::ui::export::ExportSource::Rows {
-                    columns: cols.clone(),
-                    rows: export_snapshot(&cv, &tab),
-                }));
-            })
-            .build()
-    };
-    let insert_row_action = {
-        let s = sink.clone();
-        gio::ActionEntry::builder("insert-row")
-            .activate(move |_, _, _| s(GridMsg::InsertRow))
-            .build()
-    };
-    let delete_row_action = {
-        let s = sink.clone();
-        rows_action!("delete-row", |_cell, rows| s(GridMsg::DeleteRows { rows }))
-    };
-    let duplicate_row_action = {
-        let s = sink.clone();
-        rows_action!("duplicate-row", |_cell, rows| s(GridMsg::DuplicateRows { rows }))
-    };
-
-    let mut entries = vec![
-        copy_action,
-        copy_rows_action,
-        copy_rows_headers_action,
-        copy_json_action,
-        copy_csv_action,
-        copy_csv_headers_action,
-        copy_markdown_action,
-        copy_in_clause_action,
-        copy_column_name_action,
-        show_row_json_action,
-        export_action,
-    ];
+    let mut entries = kit.reading_entries();
     // A read-only grid registers none of the mutating actions: it
     // shows no menu item for them, and the editor throws their
     // messages away at the far end.
     if editable {
-        entries.extend([
-            edit_action,
-            set_empty_action,
-            set_null_action,
-            set_default_action,
-            copy_row_insert_action,
-            insert_row_action,
-            delete_row_action,
-            duplicate_row_action,
-        ]);
+        entries.extend(kit.editing_entries());
     }
     group.add_action_entries(entries);
     column_view.insert_action_group("cell", Some(&group));
@@ -394,6 +213,198 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         delete_row: editable.then(|| simple_action(&group, "delete-row")).flatten(),
     };
 
+    let (editable_popover, readonly_popover) = cell_popovers(column_view, editable);
+    let mut popovers_for_destroy = vec![editable_popover.clone()];
+    if readonly_popover != editable_popover {
+        popovers_for_destroy.push(readonly_popover.clone());
+    }
+    if editable {
+        popovers_for_destroy.push(install_empty_space_menu(column_view));
+    }
+    column_view.connect_destroy(move |_| {
+        for popover in &popovers_for_destroy {
+            popover.unparent();
+        }
+    });
+
+    GridMenus {
+        context: kit.context,
+        editable_popover,
+        readonly_popover,
+        actions,
+    }
+}
+
+type CellEntry = gio::ActionEntry<gio::SimpleActionGroup>;
+
+struct CellActionKit {
+    context: Rc<CellContext>,
+    /// Every action closure holds the view weakly. The action group
+    /// belongs to the ColumnView, so a strong clone in a closure is a
+    /// cycle: the grid, its selection model, its store and every row it
+    /// holds would outlive the page that built them.
+    view: glib::WeakRef<gtk::ColumnView>,
+    sink: GridSink,
+    columns: Arc<[ResultColumn]>,
+    tab: Rc<TabGridContext>,
+}
+
+impl CellActionKit {
+    /// An action on the cell the menu opened on, its row and the rows
+    /// the menu acts on.
+    fn on_target(&self, name: &str, act: impl Fn(&GridCell, RowObject, Vec<RowObject>) + 'static) -> CellEntry {
+        let ctx = self.context.clone();
+        let view = self.view.clone();
+        gio::ActionEntry::builder(name)
+            .activate(move |_, _, _| {
+                let Some(cv) = view.upgrade() else { return };
+                let Some(MenuTarget { cell, row, rows }) = ctx.target(&cv) else {
+                    return;
+                };
+                act(&cell, row, rows);
+            })
+            .build()
+    }
+
+    /// The rows are taken as the grid shows them, sharing its cells, and
+    /// the owner renders the copy off the GTK thread.
+    fn copy(&self, name: &str, kind: impl Fn(&GridCell, &[RowObject]) -> CopyKind + 'static) -> CellEntry {
+        let s = self.sink.clone();
+        let tab = self.tab.clone();
+        let columns = self.columns.clone();
+        self.on_target(name, move |cell, _row, rows| {
+            s(GridMsg::Copy(CopyRequest::Rows {
+                columns: columns.clone(),
+                rows: snapshots(&tab, &rows),
+                kind: kind(cell, &rows),
+            }));
+        })
+    }
+
+    fn send(&self, name: &str, msg: impl Fn(&GridCell, RowObject, Vec<RowObject>) -> GridMsg + 'static) -> CellEntry {
+        let s = self.sink.clone();
+        self.on_target(name, move |cell, row, rows| s(msg(cell, row, rows)))
+    }
+
+    /// The actions a read-only grid offers too.
+    fn reading_entries(&self) -> Vec<CellEntry> {
+        let mut entries = self.copy_entries();
+        entries.extend([self.copy_column_name(), self.show_row_json(), self.export()]);
+        entries
+    }
+
+    fn copy_entries(&self) -> Vec<CellEntry> {
+        vec![
+            // Plain Copy reads the cell's value, never the widget's text:
+            // the widget carries the display form, which is the `<NULL>`
+            // sentinel, the `(auto)` placeholder, `<N bytes>` for a blob and
+            // a value cut at the 10k display cap.
+            self.copy("copy", |cell, rows| match rows.len() {
+                1 => CopyKind::Value(cell.column()),
+                _ => CopyKind::Rows,
+            }),
+            self.copy("copy-rows", |_, _| CopyKind::Rows),
+            self.copy("copy-rows-headers", |_, _| CopyKind::RowsWithHeaders),
+            self.copy("copy-json", |_, _| CopyKind::Json),
+            self.copy("copy-csv", |_, _| CopyKind::Csv),
+            self.copy("copy-csv-headers", |_, _| CopyKind::CsvWithHeaders),
+            self.copy("copy-markdown", |_, _| CopyKind::Markdown),
+            self.copy_in_clause(),
+        ]
+    }
+
+    fn copy_in_clause(&self) -> CellEntry {
+        let tab = self.tab.clone();
+        let columns = self.columns.clone();
+        self.send("copy-in-clause", move |cell, _row, rows| {
+            GridMsg::CopyInClause(InClauseRows {
+                columns: columns.clone(),
+                rows: snapshots(&tab, &rows),
+                column: cell.column(),
+            })
+        })
+    }
+
+    fn copy_column_name(&self) -> CellEntry {
+        let s = self.sink.clone();
+        let cols = self.columns.clone();
+        let view = self.view.clone();
+        self.on_target("copy-column-name", move |cell, _row, _rows| {
+            let Some(cv) = view.upgrade() else { return };
+            let name = cols
+                .get(cell.column())
+                .map(|column| column.name.clone())
+                .unwrap_or_default();
+            crate::ui::clipboard::copy_text(&cv, name, |message| s(GridMsg::ShowToast(message.to_owned())));
+        })
+    }
+
+    fn show_row_json(&self) -> CellEntry {
+        let cols = self.columns.clone();
+        let tab = self.tab.clone();
+        self.send("show-row-json", move |_cell, row, _rows| {
+            GridMsg::ShowRowJson(RowJsonRequest {
+                columns: cols.clone(),
+                row: tab.snapshot(&row),
+            })
+        })
+    }
+
+    fn export(&self) -> CellEntry {
+        let s = self.sink.clone();
+        let view = self.view.clone();
+        let cols = self.columns.clone();
+        let tab = self.tab.clone();
+        gio::ActionEntry::builder("export")
+            .activate(move |_, _, _| {
+                let Some(cv) = view.upgrade() else { return };
+                s(GridMsg::ExportResults(crate::ui::export::ExportSource::Rows {
+                    columns: cols.clone(),
+                    rows: export_snapshot(&cv, &tab),
+                }));
+            })
+            .build()
+    }
+
+    /// The actions that change rows, which only an editable grid has.
+    fn editing_entries(&self) -> Vec<CellEntry> {
+        let set_value = |name: &str, preset: CellPreset| {
+            self.send(name, move |cell, row, _rows| GridMsg::SetCellValue {
+                row,
+                column: cell.column(),
+                preset,
+            })
+        };
+        let insert_row = {
+            let s = self.sink.clone();
+            gio::ActionEntry::builder("insert-row")
+                .activate(move |_, _, _| s(GridMsg::InsertRow))
+                .build()
+        };
+        vec![
+            // Editing opens on the cell, which must still show the row.
+            self.on_target("edit", |cell, row, _rows| {
+                if cell.row().as_ref() == Some(&row) {
+                    begin_edit(cell);
+                }
+            }),
+            set_value("set-empty", CellPreset::Empty),
+            set_value("set-null", CellPreset::Null),
+            set_value("set-default", CellPreset::Default),
+            self.send("copy-row-insert", |_cell, _row, rows| GridMsg::CopyRowsAsInsert {
+                rows,
+            }),
+            insert_row,
+            self.send("delete-row", |_cell, _row, rows| GridMsg::DeleteRows { rows }),
+            self.send("duplicate-row", |_cell, _row, rows| GridMsg::DuplicateRows { rows }),
+        ]
+    }
+}
+
+/// The menus a right click on a cell opens: one for a row that can be
+/// edited and one for a row that can't. A read-only grid has a single
+/// shape and both name it.
+fn cell_popovers(column_view: &gtk::ColumnView, editable: bool) -> (gtk::PopoverMenu, gtk::PopoverMenu) {
     // Popovers are parented eagerly so each PopoverMenu's action muxer
     // snapshots the ColumnView's `cell` group at set_parent() time.
     // Lazy parenting in the gesture handler drops every activation
@@ -404,56 +415,39 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         popover.set_parent(column_view);
         popover
     };
-    // A read-only grid has a single shape and both fields name it.
-    let (editable_popover, readonly_popover) = if editable {
+    if editable {
         (make_popover(MenuShape::FULL), make_popover(MenuShape::ROW_OPS))
     } else {
         let readonly = make_popover(MenuShape::READ_ONLY);
         (readonly.clone(), readonly)
-    };
-
-    let mut popovers_for_destroy = vec![editable_popover.clone()];
-    if readonly_popover != editable_popover {
-        popovers_for_destroy.push(readonly_popover.clone());
     }
+}
 
-    if editable {
-        let empty_menu = gio::Menu::new();
-        empty_menu.append(Some(&crate::i18n::gettext("Insert Row")), Some("cell.insert-row"));
-        let empty_popover = gtk::PopoverMenu::from_model_full(&empty_menu, gtk::PopoverMenuFlags::NESTED);
-        empty_popover.set_has_arrow(true);
-        empty_popover.set_parent(column_view);
-        popovers_for_destroy.push(empty_popover.clone());
+/// Insert Row on a right click below the last row.
+fn install_empty_space_menu(column_view: &gtk::ColumnView) -> gtk::PopoverMenu {
+    let empty_menu = gio::Menu::new();
+    empty_menu.append(Some(&crate::i18n::gettext("Insert Row")), Some("cell.insert-row"));
+    let empty_popover = gtk::PopoverMenu::from_model_full(&empty_menu, gtk::PopoverMenuFlags::NESTED);
+    empty_popover.set_has_arrow(true);
+    empty_popover.set_parent(column_view);
 
-        let view_for_empty = view.clone();
-        let empty_gesture = gtk::GestureClick::builder().button(3).build();
-        empty_gesture.connect_pressed(move |g, _, x, y| {
-            let Some(cv) = view_for_empty.upgrade() else { return };
-            let cv_widget: gtk::Widget = cv.clone().upcast();
-            if let Some(picked) = cv.pick(x, y, gtk::PickFlags::DEFAULT)
-                && picked != cv_widget
-            {
-                return;
-            }
-            g.set_state(gtk::EventSequenceState::Claimed);
-            empty_popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
-            empty_popover.popup();
-        });
-        column_view.add_controller(empty_gesture);
-    }
-
-    column_view.connect_destroy(move |_| {
-        for popover in &popovers_for_destroy {
-            popover.unparent();
+    let view = column_view.downgrade();
+    let popover = empty_popover.clone();
+    let empty_gesture = gtk::GestureClick::builder().button(3).build();
+    empty_gesture.connect_pressed(move |g, _, x, y| {
+        let Some(cv) = view.upgrade() else { return };
+        let cv_widget: gtk::Widget = cv.clone().upcast();
+        if let Some(picked) = cv.pick(x, y, gtk::PickFlags::DEFAULT)
+            && picked != cv_widget
+        {
+            return;
         }
+        g.set_state(gtk::EventSequenceState::Claimed);
+        popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+        popover.popup();
     });
-
-    GridMenus {
-        context,
-        editable_popover,
-        readonly_popover,
-        actions,
-    }
+    column_view.add_controller(empty_gesture);
+    empty_popover
 }
 
 /// The rows a menu item copies, as the grid shows them.

@@ -104,6 +104,7 @@ print_stderr = "deny"
 allow_attributes = "deny"
 allow_attributes_without_reason = "deny"
 ignore_without_reason = "deny"
+too_many_lines = "deny"
 
 [profile.release]
 lto = "fat"

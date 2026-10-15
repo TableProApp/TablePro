@@ -33,7 +33,6 @@ pub async fn ddl_plans_apply_and_read_back<E: ConformanceDdlEngine>(engine: E) -
     let connection = connect(case, &engine, writable()).await?;
     let dialect = connection.dialect();
     let ddl = ddl_of(case, dialect.as_ref())?;
-    let capabilities = *ddl.capabilities();
     let parent = engine.scratch_table(&unique("ddl_parent"));
     let child = engine.scratch_table(&unique("ddl_child"));
 
@@ -59,88 +58,9 @@ pub async fn ddl_plans_apply_and_read_back<E: ConformanceDdlEngine>(engine: E) -
         connection: connection.as_ref(),
         ddl,
     };
-    let note = DraftColumn::new("note", DraftType::Typed(engine.text_type().to_owned()));
-    step.apply(
-        &mut table,
-        "add column",
-        table_permission(capabilities.add_column),
-        |draft| draft.columns.push(note),
-    )
-    .await?;
-
-    let permission = column_permission(ddl, &table, "note", |permissions| permissions.rename);
-    step.apply(&mut table, "rename column", permission, |draft| {
-        rename(draft, "note", "remark")
-    })
-    .await?;
-    let remark = if table.column("remark").is_some() {
-        "remark"
-    } else {
-        "note"
-    };
-
-    let permission = column_permission(ddl, &table, remark, |permissions| permissions.alter_nullability);
-    step.apply(&mut table, "change nullability", permission, |draft| {
-        edit_column(draft, remark, |column| column.nullable = false)
-    })
-    .await?;
-
-    let permission = column_permission(ddl, &table, remark, |permissions| permissions.alter_default);
-    step.apply(&mut table, "change default", permission, |draft| {
-        edit_column(draft, remark, |column| {
-            column.default = ColumnDefault::Literal(Value::Text("none".to_owned()));
-        })
-    })
-    .await?;
-
-    let index = IndexInfo {
-        name: format!("{}_label", parent.name),
-        keys: vec![IndexKey::Column {
-            name: "label".to_owned(),
-            descending: false,
-        }],
-        unique: false,
-        primary: false,
-        predicate: None,
-    };
-    step.apply(
-        &mut table,
-        "create index",
-        table_permission(capabilities.create_index),
-        |draft| draft.indexes.push(index),
-    )
-    .await?;
-
-    let mut child_table = definition(connection.as_ref(), &child).await?;
-    let key = ForeignKeyInfo {
-        name: format!("{}_parent_fk", child.name),
-        columns: vec!["parent_id".to_owned()],
-        ref_schema: parent.schema.clone(),
-        ref_table: parent.name.clone(),
-        ref_columns: vec!["id".to_owned()],
-        on_delete: None,
-        on_update: None,
-    };
-    let key_name = key.name.clone();
-    let added = step
-        .apply(
-            &mut child_table,
-            "add foreign key",
-            table_permission(capabilities.add_foreign_key),
-            |draft| draft.foreign_keys.push(key),
-        )
-        .await?;
-    if added {
-        table = definition(connection.as_ref(), &parent).await?;
-        let permission = column_permission(ddl, &table, "label", |permissions| permissions.alter_primary_key);
-        let names_the_key = matches!(
-            &permission,
-            Permission::Refused(RefusalReason::ReferencedByForeignKeys(keys)) if keys.contains(&key_name)
-        );
-        expect(case, names_the_key, || {
-            format!("the referenced primary key reads as {permission:?}, not held by {key_name}")
-        })?;
-    }
+    let remark = step.change_columns(&mut table, engine.text_type()).await?;
+    step.index_label(&mut table, &parent).await?;
+    step.reference_the_key(&mut table, &parent, &child).await?;
 
     let permission = column_permission(ddl, &table, remark, |permissions| permissions.drop);
     step.apply(&mut table, "drop column", permission, |draft| {
@@ -148,57 +68,8 @@ pub async fn ddl_plans_apply_and_read_back<E: ConformanceDdlEngine>(engine: E) -
     })
     .await?;
 
-    let renamed = TableRef::new(parent.schema.clone(), unique("ddl_renamed"));
-    let new_name = renamed.name.clone();
-    let moved = step
-        .apply(
-            &mut table,
-            "rename table",
-            table_permission(capabilities.rename_table),
-            |draft| draft.table.name = new_name,
-        )
-        .await?;
-    // A name the server resolved against the session's default schema
-    // would have moved the table out of its own.
-    let parent = if moved {
-        let scope = renamed
-            .schema
-            .clone()
-            .map_or(ObjectScope::DefaultSchema, ObjectScope::Schema);
-        let objects = connection.list_objects(&scope, within(CALL_DEADLINE)).await?;
-        let listed = objects
-            .iter()
-            .any(|object| object.kind == ObjectKind::Table && object.name == renamed.name);
-        expect(case, listed, || {
-            format!("{} is not listed in {scope:?} after the rename", renamed.name)
-        })?;
-        renamed
-    } else {
-        parent
-    };
-
-    let drop = DropTableOptions {
-        if_exists: false,
-        cascade: capabilities.drop_table_cascade,
-    };
-    for dropped in [&child, &parent] {
-        let plan = ddl
-            .plan_drop_table(dropped, drop)
-            .map_err(|error| planned(case, "drop table", error))?;
-        run(connection.as_ref(), dropped, plan).await?;
-    }
-    let objects = connection
-        .list_objects(&ObjectScope::DefaultSchema, within(CALL_DEADLINE))
-        .await?;
-    let left: Vec<&str> = objects
-        .iter()
-        .filter(|object| object.kind == ObjectKind::Table)
-        .filter(|object| object.name == parent.name || object.name == child.name)
-        .map(|object| object.name.as_str())
-        .collect();
-    expect(case, left.is_empty(), || {
-        format!("{left:?} are still listed after the drop")
-    })?;
+    let parent = step.rename_table(&mut table, parent).await?;
+    step.drop_tables(&child, &parent).await?;
     connection.close().await?;
     Ok(())
 }
@@ -590,6 +461,176 @@ impl Step<'_> {
                 format!("{step}: the capabilities say {permission:?} and the plan answered {outcome:?}"),
             )),
         }
+    }
+
+    /// Add a column, then rename it, make it NOT NULL and give it a
+    /// default, as far as the engine allows. The column's name after.
+    async fn change_columns(
+        &self,
+        table: &mut TableDefinition,
+        text_type: &str,
+    ) -> Result<&'static str, ConformanceFailure> {
+        let ddl = self.ddl;
+        let note = DraftColumn::new("note", DraftType::Typed(text_type.to_owned()));
+        self.apply(
+            table,
+            "add column",
+            table_permission(ddl.capabilities().add_column),
+            |draft| draft.columns.push(note),
+        )
+        .await?;
+
+        let permission = column_permission(ddl, table, "note", |permissions| permissions.rename);
+        self.apply(table, "rename column", permission, |draft| {
+            rename(draft, "note", "remark")
+        })
+        .await?;
+        let remark = if table.column("remark").is_some() {
+            "remark"
+        } else {
+            "note"
+        };
+
+        let permission = column_permission(ddl, table, remark, |permissions| permissions.alter_nullability);
+        self.apply(table, "change nullability", permission, |draft| {
+            edit_column(draft, remark, |column| column.nullable = false)
+        })
+        .await?;
+
+        let permission = column_permission(ddl, table, remark, |permissions| permissions.alter_default);
+        self.apply(table, "change default", permission, |draft| {
+            edit_column(draft, remark, |column| {
+                column.default = ColumnDefault::Literal(Value::Text("none".to_owned()));
+            })
+        })
+        .await?;
+        Ok(remark)
+    }
+
+    async fn index_label(&self, table: &mut TableDefinition, parent: &TableRef) -> Result<(), ConformanceFailure> {
+        let index = IndexInfo {
+            name: format!("{}_label", parent.name),
+            keys: vec![IndexKey::Column {
+                name: "label".to_owned(),
+                descending: false,
+            }],
+            unique: false,
+            primary: false,
+            predicate: None,
+        };
+        self.apply(
+            table,
+            "create index",
+            table_permission(self.ddl.capabilities().create_index),
+            |draft| draft.indexes.push(index),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Point a foreign key of `child` at `parent`'s key, whose
+    /// permissions then name the foreign key that holds it. `table` is
+    /// `parent` read again.
+    async fn reference_the_key(
+        &self,
+        table: &mut TableDefinition,
+        parent: &TableRef,
+        child: &TableRef,
+    ) -> Result<(), ConformanceFailure> {
+        let mut child_table = definition(self.connection, child).await?;
+        let key = ForeignKeyInfo {
+            name: format!("{}_parent_fk", child.name),
+            columns: vec!["parent_id".to_owned()],
+            ref_schema: parent.schema.clone(),
+            ref_table: parent.name.clone(),
+            ref_columns: vec!["id".to_owned()],
+            on_delete: None,
+            on_update: None,
+        };
+        let key_name = key.name.clone();
+        let added = self
+            .apply(
+                &mut child_table,
+                "add foreign key",
+                table_permission(self.ddl.capabilities().add_foreign_key),
+                |draft| draft.foreign_keys.push(key),
+            )
+            .await?;
+        if !added {
+            return Ok(());
+        }
+        *table = definition(self.connection, parent).await?;
+        let permission = column_permission(self.ddl, table, "label", |permissions| permissions.alter_primary_key);
+        let names_the_key = matches!(
+            &permission,
+            Permission::Refused(RefusalReason::ReferencedByForeignKeys(keys)) if keys.contains(&key_name)
+        );
+        expect(self.case, names_the_key, || {
+            format!("the referenced primary key reads as {permission:?}, not held by {key_name}")
+        })
+    }
+
+    /// The table under its new name, or `parent` where the engine can't
+    /// rename a table.
+    async fn rename_table(
+        &self,
+        table: &mut TableDefinition,
+        parent: TableRef,
+    ) -> Result<TableRef, ConformanceFailure> {
+        let renamed = TableRef::new(parent.schema.clone(), unique("ddl_renamed"));
+        let new_name = renamed.name.clone();
+        let moved = self
+            .apply(
+                table,
+                "rename table",
+                table_permission(self.ddl.capabilities().rename_table),
+                |draft| draft.table.name = new_name,
+            )
+            .await?;
+        if !moved {
+            return Ok(parent);
+        }
+        // A name the server resolved against the session's default schema
+        // would have moved the table out of its own.
+        let scope = renamed
+            .schema
+            .clone()
+            .map_or(ObjectScope::DefaultSchema, ObjectScope::Schema);
+        let objects = self.connection.list_objects(&scope, within(CALL_DEADLINE)).await?;
+        let listed = objects
+            .iter()
+            .any(|object| object.kind == ObjectKind::Table && object.name == renamed.name);
+        expect(self.case, listed, || {
+            format!("{} is not listed in {scope:?} after the rename", renamed.name)
+        })?;
+        Ok(renamed)
+    }
+
+    async fn drop_tables(&self, child: &TableRef, parent: &TableRef) -> Result<(), ConformanceFailure> {
+        let drop = DropTableOptions {
+            if_exists: false,
+            cascade: self.ddl.capabilities().drop_table_cascade,
+        };
+        for dropped in [child, parent] {
+            let plan = self
+                .ddl
+                .plan_drop_table(dropped, drop)
+                .map_err(|error| planned(self.case, "drop table", error))?;
+            run(self.connection, dropped, plan).await?;
+        }
+        let objects = self
+            .connection
+            .list_objects(&ObjectScope::DefaultSchema, within(CALL_DEADLINE))
+            .await?;
+        let left: Vec<&str> = objects
+            .iter()
+            .filter(|object| object.kind == ObjectKind::Table)
+            .filter(|object| object.name == parent.name || object.name == child.name)
+            .map(|object| object.name.as_str())
+            .collect();
+        expect(self.case, left.is_empty(), || {
+            format!("{left:?} are still listed after the drop")
+        })
     }
 }
 

@@ -978,123 +978,150 @@ fn connect_source(
     demand: CredentialDemand,
     cancel: tokio_util::sync::CancellationToken,
 ) -> BoxFuture<'static, Result<Connected, AttemptError>> {
+    match source {
+        ConnectSource::Saved(saved) => connect_saved(&state.context, saved, read_only, demand, cancel),
+        ConnectSource::Intent(intent) => connect_intent(state, intent, read_only, cancel),
+        ConnectSource::File(identity) => connect_file(&state.context, identity, read_only, cancel),
+    }
+}
+
+fn connect_saved(
+    context: &SessionContext,
+    saved: &SavedConnection,
+    read_only: bool,
+    demand: CredentialDemand,
+    cancel: tokio_util::sync::CancellationToken,
+) -> BoxFuture<'static, Result<Connected, AttemptError>> {
+    let connector = context.connector.clone();
+    let interaction = context.attended();
+    let saved = saved.clone();
+    let mut opened = saved.clone();
+    opened.read_only |= read_only;
+    let drivers = context.drivers.clone();
+    let credentials = context.credentials_for(Some(&saved));
+    async move {
+        let connected = connect_flow::connect_saved(
+            &opened,
+            &drivers,
+            &*credentials,
+            &*connector,
+            interaction,
+            demand,
+            cancel,
+        )
+        .await;
+        match connected {
+            Ok(login) => Ok(Connected {
+                pending: login.pending,
+                saved: Some(saved),
+                warnings: login
+                    .refused
+                    .iter()
+                    .map(|(_, error)| crate::services::secret_save_report::not_saved_message(error))
+                    .collect(),
+                session_only: login.session_only,
+            }),
+            Err(error) => Err(match attempt_error(&error) {
+                AttemptError::Failed(failure) => AttemptError::Failed(ConnectFailure {
+                    reenter: secret_retry::refused_secret(&error, &saved),
+                    ..failure
+                }),
+                cancelled => cancelled,
+            }),
+        }
+    }
+    .boxed()
+}
+
+/// A connection typed into the connect dialog, saved first when the
+/// dialog asked for that.
+fn connect_intent(
+    state: &WindowState,
+    intent: &ConnectIntent,
+    read_only: bool,
+    cancel: tokio_util::sync::CancellationToken,
+) -> BoxFuture<'static, Result<Connected, AttemptError>> {
     let context = &state.context;
     let connector = context.connector.clone();
     let interaction = context.attended();
-    match source {
-        ConnectSource::Saved(saved) => {
-            let saved = (**saved).clone();
-            let mut opened = saved.clone();
-            opened.read_only |= read_only;
-            let drivers = context.drivers.clone();
-            let credentials = context.credentials_for(Some(&saved));
-            async move {
-                let connected = connect_flow::connect_saved(
-                    &opened,
-                    &drivers,
-                    &*credentials,
-                    &*connector,
-                    interaction,
-                    demand,
-                    cancel,
-                )
-                .await;
-                match connected {
-                    Ok(login) => Ok(Connected {
-                        pending: login.pending,
-                        saved: Some(saved),
-                        warnings: login
-                            .refused
-                            .iter()
-                            .map(|(_, error)| crate::services::secret_save_report::not_saved_message(error))
-                            .collect(),
-                        session_only: login.session_only,
-                    }),
-                    Err(error) => Err(match attempt_error(&error) {
-                        AttemptError::Failed(failure) => AttemptError::Failed(ConnectFailure {
-                            reenter: secret_retry::refused_secret(&error, &saved),
-                            ..failure
-                        }),
-                        cancelled => cancelled,
-                    }),
-                }
-            }
-            .boxed()
+    let mut request = intent.request.clone();
+    request.workspace_settings.read_only |= read_only;
+    let Some(pending_save) = intent.pending_save.clone() else {
+        return async move {
+            connect_flow::connect_request(&*connector, request, interaction, cancel)
+                .await
+                .map(unsaved)
+                .map_err(|error| attempt_error(&error))
         }
-        ConnectSource::Intent(intent) => {
-            let mut request = intent.request.clone();
-            request.workspace_settings.read_only |= read_only;
-            let Some(pending_save) = intent.pending_save.clone() else {
-                return async move {
-                    connect_flow::connect_request(&*connector, request, interaction, cancel)
-                        .await
-                        .map(|pending| Connected {
-                            pending,
-                            saved: None,
-                            warnings: Vec::new(),
-                            session_only: Vec::new(),
-                        })
-                        .map_err(|error| attempt_error(&error))
-                }
-                .boxed();
-            };
-            let secrets = context.secrets.clone();
-            let writes = StoreConnectionWrites::new(
-                state.services.storage.connections().clone(),
-                state.services.tasks.clone(),
-            );
-            async move {
-                let saving = connect_flow::connect_then_save(
-                    &*connector,
-                    request,
-                    interaction,
-                    cancel,
-                    &*secrets,
-                    &writes,
-                    pending_save,
-                )
-                .await;
-                match saving {
-                    Ok((pending, report)) => Ok(Connected {
-                        pending,
-                        // A keyring refusal must not be silent: the
-                        // connection opened, but the password will be
-                        // asked for next time.
-                        warnings: report
-                            .secret_failures
-                            .iter()
-                            .map(|(_, error)| crate::services::secret_save_report::not_saved_message(error))
-                            .collect(),
-                        session_only: report.secret_failures.iter().map(|(kind, _)| *kind).collect(),
-                        saved: Some(report.saved),
-                    }),
-                    Err(connect_flow::SubmitError::Connect(error)) => Err(attempt_error(&error)),
-                    Err(connect_flow::SubmitError::Save(error)) => {
-                        Err(AttemptError::Failed(ConnectFailure::new(crate::i18n::gettext_f(
-                            "The connection could not be saved: {error}",
-                            &[("error", &error.to_string())],
-                        ))))
-                    }
-                }
+        .boxed();
+    };
+    let secrets = context.secrets.clone();
+    let writes = StoreConnectionWrites::new(
+        state.services.storage.connections().clone(),
+        state.services.tasks.clone(),
+    );
+    async move {
+        let saving = connect_flow::connect_then_save(
+            &*connector,
+            request,
+            interaction,
+            cancel,
+            &*secrets,
+            &writes,
+            pending_save,
+        )
+        .await;
+        match saving {
+            Ok((pending, report)) => Ok(Connected {
+                pending,
+                // A keyring refusal must not be silent: the
+                // connection opened, but the password will be
+                // asked for next time.
+                warnings: report
+                    .secret_failures
+                    .iter()
+                    .map(|(_, error)| crate::services::secret_save_report::not_saved_message(error))
+                    .collect(),
+                session_only: report.secret_failures.iter().map(|(kind, _)| *kind).collect(),
+                saved: Some(report.saved),
+            }),
+            Err(connect_flow::SubmitError::Connect(error)) => Err(attempt_error(&error)),
+            Err(connect_flow::SubmitError::Save(error)) => {
+                Err(AttemptError::Failed(ConnectFailure::new(crate::i18n::gettext_f(
+                    "The connection could not be saved: {error}",
+                    &[("error", &error.to_string())],
+                ))))
             }
-            .boxed()
         }
-        ConnectSource::File(identity) => {
-            let request = resolve_file_identity::file_request(identity, &context.drivers, read_only);
-            async move {
-                let request = request.map_err(|error| attempt_error(&error))?;
-                connect_flow::connect_request(&*connector, request, interaction, cancel)
-                    .await
-                    .map(|pending| Connected {
-                        pending,
-                        saved: None,
-                        warnings: Vec::new(),
-                        session_only: Vec::new(),
-                    })
-                    .map_err(|error| attempt_error(&error))
-            }
-            .boxed()
-        }
+    }
+    .boxed()
+}
+
+fn connect_file(
+    context: &SessionContext,
+    identity: &FileIdentity,
+    read_only: bool,
+    cancel: tokio_util::sync::CancellationToken,
+) -> BoxFuture<'static, Result<Connected, AttemptError>> {
+    let connector = context.connector.clone();
+    let interaction = context.attended();
+    let request = resolve_file_identity::file_request(identity, &context.drivers, read_only);
+    async move {
+        let request = request.map_err(|error| attempt_error(&error))?;
+        connect_flow::connect_request(&*connector, request, interaction, cancel)
+            .await
+            .map(unsaved)
+            .map_err(|error| attempt_error(&error))
+    }
+    .boxed()
+}
+
+fn unsaved(pending: PendingSession) -> Connected {
+    Connected {
+        pending,
+        saved: None,
+        warnings: Vec::new(),
+        session_only: Vec::new(),
     }
 }
 
