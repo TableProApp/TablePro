@@ -48,7 +48,7 @@ mod tests {
     fn an_action_without_keys_announces_none() {
         let button = gtk::Button::from_icon_name("go-first-symbolic");
 
-        describe_icon_button(&button, "First page", Some("browse.first-page"));
+        describe_icon_button(&button, "First Page", Some("browse.first-page"));
 
         assert!(!gtk::test_accessible_has_property(
             &button,
