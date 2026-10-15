@@ -76,7 +76,7 @@ private struct ClearedCellFixture {
                 .timestamp(rawType: "TIMESTAMP"),
                 .json(rawType: "JSON")
             ],
-            columnNullable: ["deleted_at": true, "name": false, "created_at": false]
+            columnNullable: ["deleted_at": true, "name": true, "created_at": false]
         ))
         let store = store
         coordinator.tableRowsProvider = { store.tableRows }
@@ -110,7 +110,7 @@ struct ClearedCellCommitTests {
         #expect(boundValue == nil)
     }
 
-    @Test("Clearing a text cell keeps the empty string, which is a value there, NOT NULL or not")
+    @Test("Clearing a text cell keeps the empty string, which is a value there")
     func clearedTextStaysEmpty() {
         let fixture = ClearedCellFixture()
 
@@ -239,14 +239,19 @@ struct ClearedCellCommitTests {
     @Test("A pasted NULL is NULL where the type cannot hold the text, and text everywhere else")
     func pastedText() {
         let datetime = ColumnType.datetime(rawType: "DATETIME")
-        #expect(TableViewCoordinator.pastedText("NULL", columnType: datetime) == nil)
-        #expect(TableViewCoordinator.pastedText("NULL", columnType: .integer(rawType: "INT")) == nil)
-        #expect(TableViewCoordinator.pastedText("NULL", columnType: .text(rawType: "VARCHAR(20)")) == "NULL")
-        #expect(TableViewCoordinator.pastedText("NULL", columnType: .enumType(rawType: "ENUM", values: ["NULL", "a"])) == "NULL")
-        #expect(TableViewCoordinator.pastedText("NULL", columnType: nil) == "NULL")
-        #expect(TableViewCoordinator.pastedText("", columnType: datetime) == "")
-        #expect(TableViewCoordinator.pastedText("null", columnType: datetime) == "null")
+        let varchar = ColumnType.text(rawType: "VARCHAR(20)")
+        func pasted(_ field: String, _ columnType: ColumnType?) -> String? {
+            TableViewCoordinator.pastedText(field, columnType: columnType)
+        }
+        #expect(pasted("NULL", datetime) == nil)
+        #expect(pasted("NULL", .integer(rawType: "INT")) == nil)
+        #expect(pasted("NULL", varchar) == "NULL")
+        #expect(pasted("NULL", .enumType(rawType: "ENUM", values: ["NULL", "a"])) == "NULL")
+        #expect(pasted("NULL", nil) == "NULL")
+        #expect(pasted("", datetime) == "")
+        #expect(pasted("null", datetime) == "null")
     }
+
 }
 
 extension GlobalStateSuites {
@@ -285,6 +290,55 @@ extension GlobalStateSuites {
             #expect(fixture.coordinator.pasteCellsFromClipboard(anchorRow: 1, anchorColumn: ClearedCellFixture.name))
 
             #expect(fixture.value(row: 1, column: ClearedCellFixture.name) == .text("NULL"))
+        }
+
+        @Test("A NULL copied from the grid pastes as NULL into a text cell")
+        func copiedNullRoundTripsIntoText() throws {
+            let fixture = ClearedCellFixture()
+            fixture.coordinator.commitCellEdit(row: 0, columnIndex: ClearedCellFixture.name, newValue: nil)
+
+            fixture.coordinator.copyCellValue(at: 0, columnIndex: ClearedCellFixture.name)
+            let clipboard = try #require(RecordingClipboard.current)
+            #expect(clipboard.text == "NULL")
+            #expect(fixture.coordinator.pasteCellsFromClipboard(anchorRow: 1, anchorColumn: ClearedCellFixture.name))
+
+            #expect(fixture.value(row: 1, column: ClearedCellFixture.name) == .null)
+        }
+
+        @Test("The grid's copy pastes field by field, so a line break inside a value moves nothing")
+        func gridCopyKeepsFieldBoundaries() throws {
+            let clipboard = try #require(RecordingClipboard.current)
+            clipboard.writeCells(GridCellsClipboardPayload(text: "first\nsecond\nNULL", fields: [["first\nsecond"], [nil]]))
+            let fixture = ClearedCellFixture()
+
+            #expect(fixture.coordinator.pasteCellsFromClipboard(anchorRow: 0, anchorColumn: ClearedCellFixture.name))
+
+            #expect(fixture.value(row: 0, column: ClearedCellFixture.name) == .text("first\nsecond"))
+            #expect(fixture.value(row: 1, column: ClearedCellFixture.name) == .null)
+            #expect(fixture.value(row: 2, column: ClearedCellFixture.name) == .text("Carol"))
+        }
+
+        @Test("Fields left behind by text another app wrote over the copy are not used")
+        func staleGridCopyIsIgnored() throws {
+            let clipboard = try #require(RecordingClipboard.current)
+            clipboard.text = "NULL"
+            clipboard.gridCells = GridCellsClipboardPayload(text: "other", fields: [[nil]])
+            let fixture = ClearedCellFixture()
+
+            #expect(fixture.coordinator.pasteCellsFromClipboard(anchorRow: 0, anchorColumn: ClearedCellFixture.name))
+
+            #expect(fixture.value(row: 0, column: ClearedCellFixture.name) == .text("NULL"))
+        }
+
+        @Test("A stored 'NULL' copied from the grid pastes as the same text")
+        func copiedNullTextRoundTripsAsText() throws {
+            let fixture = ClearedCellFixture()
+            fixture.coordinator.commitCellEdit(row: 0, columnIndex: ClearedCellFixture.name, newValue: "NULL")
+
+            fixture.coordinator.copyCellValue(at: 0, columnIndex: ClearedCellFixture.name)
+            #expect(fixture.coordinator.pasteCellsFromClipboard(anchorRow: 2, anchorColumn: ClearedCellFixture.name))
+
+            #expect(fixture.value(row: 2, column: ClearedCellFixture.name) == .text("NULL"))
         }
 
         @Test("A copied NULL pasted into a NOT NULL column leaves the cell as it was")

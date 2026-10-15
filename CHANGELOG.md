@@ -124,7 +124,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Copilot language server pinned to a reviewed version and checksum instead of the latest npm release.
 - One unreadable setting, or one unknown AI provider, resetting its whole settings group to defaults.
 - Clearing a date, number or boolean cell saving an empty string, stored as `0000-00-00 00:00:00` on MySQL, instead of NULL.
-- Pasting a copied NULL into a date, number or boolean cell writing the text NULL, stored as a zero date or 0 on MySQL.
+- Pasting a copied NULL cell writing the text NULL instead of NULL.
+- Inspector's boolean picker showing false for a value set to NULL in the grid.
+- Clearing an Elasticsearch long, short or byte field sending an empty string the mapping refuses.
 - Empty line in pasted cells moving the values below it up a row, or cutting off the columns after it.
 
 ### Security

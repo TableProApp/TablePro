@@ -212,11 +212,14 @@ final class MultiRowEditState: ObservableObject {
             }
 
             // Mark externally modified columns (e.g., edited in data grid). A modified field that
-            // is now missing is one an edit removed.
+            // is now missing is one an edit removed, and one that now reads NULL is a pending NULL:
+            // written as an empty pending value it read as `''`, and the boolean picker showed false.
             if externallyModifiedColumns.contains(colIndex), pendingValue == nil, !isPendingNull, !isPendingDefault,
                !isPendingRemoval {
                 if isAbsent {
                     isPendingRemoval = true
+                } else if originalValue == nil, !hasMultipleValues {
+                    isPendingNull = true
                 } else {
                     pendingValue = originalValue ?? ""
                 }

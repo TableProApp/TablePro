@@ -917,8 +917,8 @@ struct MultiRowEditStateTests {
             #expect(sut.fields[1].pendingValue == "Alice")
         }
 
-        @Test("Uses empty string when original value is nil")
-        func usesEmptyStringWhenOriginalIsNil() {
+        @Test("A NULL the grid staged reads as a pending NULL, not an empty string")
+        func gridStagedNullIsPendingNull() {
             let sut = MultiRowEditState()
             sut.configure(
                 selectedRowIndices: [0],
@@ -928,7 +928,34 @@ struct MultiRowEditStateTests {
                 externallyModifiedColumns: [0]
             )
             #expect(sut.fields[0].hasEdit == true)
-            #expect(sut.fields[0].pendingValue == "")
+            #expect(sut.fields[0].pendingValue == nil)
+            #expect(FieldValueState.resolve(sut.fields[0]) == .pendingNull)
+        }
+
+        @Test("A boolean set to NULL in the grid shows NULL in the inspector's picker, not false")
+        func gridStagedNullBooleanIsPendingNull() {
+            let sut = MultiRowEditState()
+            sut.configure(
+                selectedRowIndices: [0],
+                allRows: [["1", nil]],
+                columns: ["id", "active"],
+                columnTypes: [.integer(rawType: "INT"), .boolean(rawType: "TINYINT(1)")],
+                externallyModifiedColumns: [1]
+            )
+            #expect(FieldValueState.resolve(sut.fields[1]) == .pendingNull)
+        }
+
+        @Test("Rows that disagree keep showing that they disagree after an edit elsewhere")
+        func multipleValuesAreNotPendingNull() {
+            let sut = MultiRowEditState()
+            sut.configure(
+                selectedRowIndices: [0, 1],
+                allRows: [["1", "Alice"], ["2", "Bob"]],
+                columns: ["id", "name"],
+                columnTypes: [.text(rawType: nil), .text(rawType: nil)],
+                externallyModifiedColumns: [1]
+            )
+            #expect(sut.fields[1].isPendingNull == false)
         }
     }
 

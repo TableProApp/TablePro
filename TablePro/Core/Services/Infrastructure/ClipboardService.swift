@@ -33,13 +33,26 @@ extension GridRowsClipboardPayload {
     }
 }
 
+/// A cell block the grid copied, each field as the grid held it.
+///
+/// The text alone loses two things a paste needs: a NULL copies as the text `NULL`, the same text a
+/// stored `'NULL'` copies as, and a value holding a tab or a line break splits into extra fields.
+struct GridCellsClipboardPayload: Codable, Equatable {
+    /// The text the copy wrote. A paste reads the fields only while the clipboard still holds it.
+    let text: String
+    /// The fields by line, in the order the copy wrote them, nil for a NULL.
+    let fields: [[String?]]
+}
+
 protocol ClipboardProvider {
     func readText() -> String?
     func readGridRows() -> GridRowsClipboardPayload?
+    func readGridCells() -> GridCellsClipboardPayload?
     func writeText(_ text: String)
     func writeCsv(_ csv: String)
     func writeImage(_ image: NSImage)
     func writeRows(tsv: String, html: String?, gridRows: GridRowsClipboardPayload)
+    func writeCells(_ cells: GridCellsClipboardPayload)
     var hasText: Bool { get }
     var hasGridRows: Bool { get }
 }
@@ -56,6 +69,7 @@ struct NSPasteboardClipboardProvider: ClipboardProvider {
     private static let tsvType = NSPasteboard.PasteboardType("public.utf8-tab-separated-values-text")
     private static let csvType = NSPasteboard.PasteboardType("public.comma-separated-values-text")
     private static let gridRowsType = NSPasteboard.PasteboardType("com.TablePro.gridRows")
+    private static let gridCellsType = NSPasteboard.PasteboardType("com.TablePro.gridCells")
 
     /// The convention clipboard managers watch for to keep an item out of their history.
     private static let concealedType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
@@ -70,6 +84,11 @@ struct NSPasteboardClipboardProvider: ClipboardProvider {
     func readGridRows() -> GridRowsClipboardPayload? {
         guard let data = NSPasteboard.general.data(forType: Self.gridRowsType) else { return nil }
         return try? JSONDecoder().decode(GridRowsClipboardPayload.self, from: data)
+    }
+
+    func readGridCells() -> GridCellsClipboardPayload? {
+        guard let data = NSPasteboard.general.data(forType: Self.gridCellsType) else { return nil }
+        return try? JSONDecoder().decode(GridCellsClipboardPayload.self, from: data)
     }
 
     func writeText(_ text: String) {
@@ -113,6 +132,13 @@ struct NSPasteboardClipboardProvider: ClipboardProvider {
         }
         if let data = try? JSONEncoder().encode(gridRows) {
             pb.setData(data, forType: Self.gridRowsType)
+        }
+    }
+
+    func writeCells(_ cells: GridCellsClipboardPayload) {
+        writeText(cells.text)
+        if let data = try? JSONEncoder().encode(cells) {
+            NSPasteboard.general.setData(data, forType: Self.gridCellsType)
         }
     }
 

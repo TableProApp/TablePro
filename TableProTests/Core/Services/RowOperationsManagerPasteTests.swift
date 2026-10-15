@@ -70,6 +70,32 @@ struct RowOperationsManagerPasteTests {
         #expect(values[2] == .null)
     }
 
+    @Test("Cells the grid copied as wide as the table paste field by field, NULL and line breaks kept")
+    func copiedCellsPasteFieldByField() {
+        let clipboard = RecordingClipboard()
+        clipboard.writeCells(GridCellsClipboardPayload(
+            text: "7\tSmith\nJohn\tNULL",
+            fields: [["7", "Smith\nJohn", nil]]
+        ))
+
+        let rows = pasteRows(clipboard, manager: makeManager())
+
+        #expect(rows.count == 1)
+        #expect(rows.first?[1] == .text("Smith\nJohn"))
+        #expect(rows.first?[2] == .null)
+    }
+
+    @Test("Copied cells stale against the clipboard's text are not used")
+    func staleCopiedCellsAreIgnored() {
+        let clipboard = RecordingClipboard()
+        clipboard.text = "7\tAnn\tann@test.com"
+        clipboard.gridCells = GridCellsClipboardPayload(text: "other", fields: [["7", "Bob", nil]])
+
+        let values = pasteValues(clipboard, manager: makeManager())
+
+        #expect(values[1] == .text("Ann"))
+    }
+
     @Test("Structured payload wins over plain text when both are present")
     func structuredPreferredOverText() {
         let clipboard = RecordingClipboard()
