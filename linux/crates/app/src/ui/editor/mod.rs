@@ -802,10 +802,10 @@ fn show_cursor_position(label: &gtk4::Label, buffer: &sourceview5::Buffer) {
 fn label_run_button(button: &gtk4::Button, has_selection: bool) {
     if has_selection {
         button.set_label(&crate::i18n::gettext("Run Selection"));
-        button.set_tooltip_text(Some(&crate::i18n::gettext("Run the selected text")));
+        button.set_tooltip_text(Some(&crate::i18n::gettext("Run the Selected Text")));
     } else {
         button.set_label(&crate::i18n::gettext("Run"));
-        button.set_tooltip_text(Some(&crate::i18n::gettext("Run the script")));
+        button.set_tooltip_text(Some(&crate::i18n::gettext("Run the Script")));
     }
 }
 
@@ -916,5 +916,5 @@ pub fn derive_tab_label(query: &str) -> String {
         }
         return cleaned;
     }
-    crate::i18n::gettext("Empty query")
+    crate::i18n::gettext("Empty Query")
 }

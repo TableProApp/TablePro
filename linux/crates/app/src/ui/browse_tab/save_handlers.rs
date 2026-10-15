@@ -26,7 +26,7 @@ impl BrowseModel {
             SaveInput::SaveFailed(message) => {
                 self.show_saving(false);
                 fx.output(BrowseTabOutput::ShowSelectionAlert {
-                    title: crate::i18n::gettext("Save failed"),
+                    title: crate::i18n::gettext("Save Failed"),
                     body: message,
                 });
             }

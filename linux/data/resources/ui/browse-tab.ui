@@ -126,7 +126,7 @@
                    filtering rows, and the search icons mean Ctrl+F's
                    other use. -->
               <object class="GtkButton" id="filter_button">
-                <property name="tooltip-text" translatable="yes">Filter rows</property>
+                <property name="tooltip-text" translatable="yes">Filter Rows</property>
                 <property name="action-name">browse.filter</property>
                 <style>
                   <class name="flat"/>

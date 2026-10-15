@@ -128,7 +128,7 @@ mod tests {
         let titles: Vec<String> = groups.iter().map(|group| group.title().to_string()).collect();
 
         assert_eq!(page.title(), "General");
-        assert_eq!(titles, ["Startup", "Data browser", "Query history"]);
+        assert_eq!(titles, ["Startup", "Data Browser", "Query History"]);
         assert!(groups[1].is::<DataBrowserGroup>());
         assert!(groups[2].is::<HistoryGroup>());
     }

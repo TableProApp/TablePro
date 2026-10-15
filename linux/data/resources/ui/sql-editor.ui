@@ -55,20 +55,20 @@
             </child>
             <child>
               <object class="GtkMenuButton" id="menu_button">
-                <property name="tooltip-text" translatable="yes">Editor options</property>
+                <property name="tooltip-text" translatable="yes">Editor Options</property>
                 <property name="menu-model">editor_menu</property>
                 <style>
                   <class name="flat"/>
                 </style>
                 <accessibility>
-                  <property name="label" translatable="yes">Editor options</property>
+                  <property name="label" translatable="yes">Editor Options</property>
                 </accessibility>
               </object>
             </child>
             <child>
               <object class="GtkButton" id="stop_button">
                 <property name="label" translatable="yes">Stop</property>
-                <property name="tooltip-text" translatable="yes">Stop the running query</property>
+                <property name="tooltip-text" translatable="yes">Stop the Running Query</property>
                 <property name="visible">false</property>
                 <style>
                   <class name="flat"/>
@@ -78,7 +78,7 @@
             <child>
               <object class="GtkButton" id="run_button">
                 <property name="label" translatable="yes">Run</property>
-                <property name="tooltip-text" translatable="yes">Run the script</property>
+                <property name="tooltip-text" translatable="yes">Run the Script</property>
                 <style>
                   <class name="suggested-action"/>
                 </style>

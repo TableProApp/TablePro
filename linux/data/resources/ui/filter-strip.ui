@@ -69,7 +69,7 @@
                 </child>
                 <child>
                   <object class="GtkButton" id="clear_button">
-                    <property name="label" translatable="yes">Clear all</property>
+                    <property name="label" translatable="yes">Clear All</property>
                     <property name="action-name">filter.clear</property>
                     <style>
                       <class name="flat"/>
@@ -154,7 +154,7 @@
                             </child>
                             <child>
                               <object class="GtkButton" id="add_rule_button">
-                                <property name="label" translatable="yes">Add rule</property>
+                                <property name="label" translatable="yes">Add Rule</property>
                                 <property name="halign">start</property>
                                 <property name="action-name">filter.add-rule</property>
                                 <style>

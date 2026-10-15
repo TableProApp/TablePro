@@ -1372,7 +1372,7 @@ fn add_foreign_key_from_the_tab_adds_the_key() {
     let name: adw::EntryRow = rows_titled(&form, "Name").expect("the Name row");
     wait_until(WAIT, || name.is_mapped()).expect("the form on screen");
     name.set_text("fk_account");
-    let table: adw::ComboRow = rows_titled(&form, "Referenced Table").expect("the table row");
+    let table: adw::ComboRow = rows_titled(&form, "Referenced table").expect("the table row");
     wait_until(WAIT, || table.is_sensitive()).expect("the tables to be read");
     table.set_selected(1);
     let id: adw::ActionRow = rows_titled(&form, "id").expect("the id check row");

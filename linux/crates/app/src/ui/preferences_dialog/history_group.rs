@@ -141,7 +141,7 @@ impl HistoryGroup {
 
     fn confirm_clear(&self, history: Option<tablepro_storage::QueryHistory>, tasks: &Tasks) {
         let alert = adw::AlertDialog::new(
-            Some(&crate::i18n::gettext("Clear all query history?")),
+            Some(&crate::i18n::gettext("Clear All Query History?")),
             Some(&crate::i18n::gettext(
                 "This permanently deletes every saved query, including pinned ones.",
             )),

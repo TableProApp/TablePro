@@ -100,15 +100,15 @@ impl BrowseModel {
             self.widgets.filter_badge.set_label("");
             self.widgets
                 .filter_button
-                .set_tooltip_text(Some(&crate::i18n::gettext("Filter rows")));
+                .set_tooltip_text(Some(&crate::i18n::gettext("Filter Rows")));
         } else {
             self.widgets.filter_badge.set_label(&n.to_string());
             self.widgets.filter_badge.set_visible(true);
             self.widgets
                 .filter_button
                 .set_tooltip_text(Some(&crate::i18n::ngettext_f(
-                    "{n} filter rule active. Click to edit",
-                    "{n} filter rules active. Click to edit",
+                    "{n} Filter Rule Active",
+                    "{n} Filter Rules Active",
                     u32::try_from(n).unwrap_or(u32::MAX),
                     &[("n", &n.to_string())],
                 )));

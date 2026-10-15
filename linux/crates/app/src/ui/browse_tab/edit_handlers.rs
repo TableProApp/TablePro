@@ -246,7 +246,7 @@ impl BrowseModel {
         self.actions.insert_row.set_enabled(has_columns && has_pk);
         if has_columns && !has_pk {
             self.widgets.insert_button.set_tooltip_text(Some(&crate::i18n::gettext(
-                "This table has no primary key. Inline editing is disabled.",
+                "This table has no primary key, so editing is turned off.",
             )));
         } else {
             self.widgets
@@ -304,8 +304,8 @@ impl BrowseModel {
     fn confirm_delete(&mut self, deletion: RowDeletion) {
         let count = deletion.len();
         let title = crate::i18n::ngettext_f(
-            "Delete {n} row?",
-            "Delete {n} rows?",
+            "Delete {n} Row?",
+            "Delete {n} Rows?",
             u32::try_from(count).unwrap_or(u32::MAX),
             &[("n", &count.to_string())],
         );

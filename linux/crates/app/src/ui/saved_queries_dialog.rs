@@ -115,7 +115,7 @@ impl Component for SavedQueriesDialog {
 
         let status_page = adw::StatusPage::builder()
             .icon_name(crate::ui::icons::DOCUMENT_OPEN_RECENT)
-            .title(crate::i18n::gettext("No saved queries"))
+            .title(crate::i18n::gettext("No Saved Queries"))
             .description(crate::i18n::gettext(
                 "Save a query from the editor and it will be listed here.",
             ))
@@ -256,12 +256,12 @@ impl SavedQueriesDialog {
         if groups.is_empty() {
             let searching = !self.search.text().to_string().trim().is_empty();
             if searching {
-                self.status_page.set_title(&crate::i18n::gettext("No matches"));
+                self.status_page.set_title(&crate::i18n::gettext("No Matches"));
                 self.status_page
                     .set_description(Some(&crate::i18n::gettext("Try a different search term.")));
                 self.status_page.set_icon_name(Some(crate::ui::icons::SYSTEM_SEARCH));
             } else {
-                self.status_page.set_title(&crate::i18n::gettext("No saved queries"));
+                self.status_page.set_title(&crate::i18n::gettext("No Saved Queries"));
                 self.status_page.set_description(Some(&crate::i18n::gettext(
                     "Save a query from the editor and it will be listed here.",
                 )));

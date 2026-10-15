@@ -135,7 +135,7 @@ impl WorkspaceModel {
         let rows = match import_rows(&import) {
             Ok(rows) => rows,
             Err(message) => {
-                self.show_error_alert(&crate::i18n::gettext("Couldn't import"), &message);
+                self.show_error_alert(&crate::i18n::gettext("Couldn't Import"), &message);
                 return;
             }
         };
@@ -171,7 +171,7 @@ impl WorkspaceModel {
                 Err(error) => {
                     let message = crate::ui::error_text::operation_error_message(&error);
                     input.deliver(WorkspaceInput::ShowAlert {
-                        title: crate::i18n::gettext("Couldn't import"),
+                        title: crate::i18n::gettext("Couldn't Import"),
                         body: message,
                     });
                 }

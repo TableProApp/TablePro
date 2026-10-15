@@ -2883,3 +2883,26 @@ fn icon_buttons_are_labelled_without_accelerator_hints() {
         );
     }
 }
+
+#[gtk4::test]
+fn filter_button_tooltip_counts_the_active_rules() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let mut two_rules = not_null_name();
+    two_rules.rules.extend(not_null("id").rules);
+    let harness = Harness::open_filtered(script, [], two_rules);
+    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
+    let button = harness.tab().imp().filter_button.get();
+    assert_eq!(button.tooltip_text().as_deref(), Some("2 Filter Rules Active"));
+
+    harness.tab().send(BrowseTabInput::FilterApplied(not_null_name()));
+    wait_until(WAIT, || {
+        button.tooltip_text().as_deref() == Some("1 Filter Rule Active")
+    })
+    .expect("the tooltip kept the old count");
+
+    harness.tab().send(BrowseTabInput::FilterApplied(FilterSet::default()));
+    wait_until(WAIT, || button.tooltip_text().as_deref() == Some("Filter Rows"))
+        .expect("the tooltip still counted rules after they were cleared");
+}

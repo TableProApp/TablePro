@@ -267,20 +267,20 @@ pub fn entry_title(index: usize, entry: &RunLogEntry) -> (String, &'static str) 
             rows_affected: Some(rows),
         } => (
             crate::i18n::ngettext_f(
-                "{n} row affected",
-                "{n} rows affected",
+                "{n} Row Affected",
+                "{n} Rows Affected",
                 u32::try_from(*rows).unwrap_or(u32::MAX),
                 &[("n", &rows.to_string())],
             ),
             icons::SUCCESS,
         ),
-        EntryKind::Command { rows_affected: None } => (crate::i18n::gettext("Command completed"), icons::SUCCESS),
+        EntryKind::Command { rows_affected: None } => (crate::i18n::gettext("Command Completed"), icons::SUCCESS),
         EntryKind::Notice { .. } => (crate::i18n::gettext("Notice"), icons::TEXT_X_GENERIC),
         EntryKind::Failed { .. } => (crate::i18n::gettext("Error"), icons::DIALOG_ERROR),
         EntryKind::ClientWarning { .. } => (crate::i18n::gettext("Warning"), icons::DIALOG_WARNING),
         EntryKind::Cancelled => (crate::i18n::gettext("Stopped"), icons::PROCESS_STOP),
-        EntryKind::TimedOut { .. } => (crate::i18n::gettext("Timed out"), icons::DIALOG_WARNING),
-        EntryKind::NotRun => (crate::i18n::gettext("Not run"), icons::STATEMENT_PENDING),
+        EntryKind::TimedOut { .. } => (crate::i18n::gettext("Timed Out"), icons::DIALOG_WARNING),
+        EntryKind::NotRun => (crate::i18n::gettext("Not Run"), icons::STATEMENT_PENDING),
     }
 }
 

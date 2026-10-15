@@ -9,14 +9,14 @@
     <child type="suffix">
       <object class="GtkButton" id="choose_button">
         <property name="label" translatable="yes">Choose…</property>
-        <property name="tooltip-text" translatable="yes">Open an existing database file</property>
+        <property name="tooltip-text" translatable="yes">Open an Existing Database File</property>
         <property name="valign">center</property>
       </object>
     </child>
     <child type="suffix">
       <object class="GtkButton" id="create_button">
         <property name="label" translatable="yes">New Database…</property>
-        <property name="tooltip-text" translatable="yes">Create a database file when you connect</property>
+        <property name="tooltip-text" translatable="yes">Create a Database File When You Connect</property>
         <property name="valign">center</property>
       </object>
     </child>

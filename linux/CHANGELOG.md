@@ -31,8 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Review before a structure save that drops data, rebuilds the table or can stop halfway, with the SQL it runs.
 - Arrow keys move between grid cells; F2 or Return edits one, Tab carries an edit to the next cell, and Shift+F10 opens the cell menu.
 - Screen readers name check box cells and say when a grid cell is modified or NULL and a row new or marked for deletion.
-- Connections open when TablePro quits open again at the next launch; Restore session in Preferences turns it off.
-- Save query history in Preferences turns the query history off and keeps the entries already saved.
+- Connections open when TablePro quits open again at the next launch; Restore Session in Preferences turns it off.
+- Save Query History in Preferences turns the query history off and keeps the entries already saved.
 - Try Again on a table tab's error page, and Retry on a banner over rows or a structure that could not be read again.
 - Table and structure tabs show a spinner in the tab bar while they read.
 - Count Rows in a table tab's paginator, with the reason on Try Again when a count fails.
@@ -40,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Export a table's current page or every row under its filter and sort, and an editor result's shown rows or all of them.
 - Banner over an editor result the row limit cut short, saying how many rows it shows, with Export All for every row.
 - Sort an editor result by clicking a column header, with text in your language's alphabetical order.
-- Copy as puts CSV, JSON, Markdown, SQL and tab-separated rows on the clipboard as their own type beside plain text.
+- Copy As puts CSV, JSON, Markdown, SQL and tab-separated rows on the clipboard as their own type beside plain text.
 - Shift+F10 opens the menu of a sidebar table or a query history entry, as the Menu key does.
 - Screen readers name icon-only buttons, and announce the shortcut of the table, SQL editor and filter buttons that have one.
 - An icon beside each table row with a pending change, and bold text in edited cells.
@@ -59,9 +59,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New rows in the table grid take a value for a primary key that is not auto-increment.
 - Show CREATE TABLE gives the server's own statement on MySQL, ClickHouse and SQLite.
 - Structure tab sets a column NOT NULL when it joins the primary key, and gives its nullability back when it leaves.
-- Auto increment in the Structure tab no longer needs the primary key on PostgreSQL and SQL Server.
+- Auto Increment in the Structure tab no longer needs the primary key on PostgreSQL and SQL Server.
 - SQLite foreign keys show the name their CREATE TABLE gives them.
-- Delete, Duplicate and Copy as in a grid cell's menu act on every selected row when the clicked row is selected.
+- Delete, Duplicate and Copy As in a grid cell's menu act on every selected row when the clicked row is selected.
 - Grid cells edit in place with the keyboard each type needs; dates open a calendar, and JSON, XML and long text a larger editor.
 - Set Value in a grid cell's menu is Set to Empty, Set to NULL and Set to DEFAULT, each shown only where the column takes it.
 - Set a grid cell to NULL with Ctrl+Backspace instead of Ctrl+Shift+N.
@@ -144,7 +144,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Text with a NUL character showed cut short in the grid, copied cut short, and editing it saved the cut value.
 - An edit, Set Value or row action in the table grid could land on another row once a row above it came or went.
 - Editing, undoing or deleting a row in the table grid dropped it from a selection of several rows.
-- Copy as INSERT could copy the wrong row, drop the schema or unsaved edits, or write a value where the server fills one.
+- Copy As INSERT could copy the wrong row, drop the schema or unsaved edits, or write a value where the server fills one.
 - Duplicate left out the row's unsaved edits.
 - Cells of a table without a primary key opened for editing, then dropped what was typed.
 - A row whose primary key the driver could not read opened for editing, then failed to save.
@@ -198,7 +198,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ctrl+Home and Ctrl+End jumped to the first or last tab instead of the start or end of the SQL editor or table.
 - Ctrl+N added a row to a read-only table or a table without a primary key.
 - Two SQL editor tabs could both be named Query 3 after an earlier editor tab closed.
-- After Clear all, the filter strip could show Match any while the next filter combined its rules with all.
+- After Clear All, the filter strip could show Match any while the next filter combined its rules with all.
 
 ### Security
 

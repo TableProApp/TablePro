@@ -10,7 +10,7 @@
         <property name="title" translatable="yes">Font</property>
         <child>
           <object class="AdwSwitchRow" id="system_font_row">
-            <property name="title" translatable="yes">Use the system monospace font</property>
+            <property name="title" translatable="yes">Use the System Monospace Font</property>
             <property name="subtitle" translatable="yes">Follows the font you picked in the desktop settings</property>
           </object>
         </child>
@@ -31,7 +31,7 @@
     </child>
     <child>
       <object class="AdwPreferencesGroup">
-        <property name="title" translatable="yes">Style scheme</property>
+        <property name="title" translatable="yes">Style Scheme</property>
         <child>
           <object class="GtkFlowBox" id="style_scheme_box">
             <property name="selection-mode">none</property>
@@ -45,7 +45,7 @@
     </child>
     <child>
       <object class="AdwPreferencesGroup">
-        <property name="title" translatable="yes">Running queries</property>
+        <property name="title" translatable="yes">Running Queries</property>
         <child>
           <object class="AdwSpinRow" id="timeout_row">
             <property name="title" translatable="yes">Query timeout (seconds)</property>

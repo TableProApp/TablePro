@@ -104,7 +104,7 @@ impl WorkspaceModel {
     pub(super) fn on_drop_table_confirmed(&mut self, schema: Option<String>, table: String) {
         let Some(session) = self.context.active.get() else {
             self.show_error_alert(
-                &crate::i18n::gettext("Cannot drop table"),
+                &crate::i18n::gettext("Cannot Drop Table"),
                 &crate::i18n::gettext("No active connection."),
             );
             return;
@@ -132,7 +132,7 @@ impl WorkspaceModel {
             match settled(result).and_then(|(_, written)| written) {
                 Ok(_) => input.deliver(WorkspaceInput::DropTableSucceeded(dropped)),
                 Err(error) => input.deliver(WorkspaceInput::ShowAlert {
-                    title: crate::i18n::gettext("Drop failed"),
+                    title: crate::i18n::gettext("Drop Failed"),
                     body: error_text::operation_error_message(&error),
                 }),
             }

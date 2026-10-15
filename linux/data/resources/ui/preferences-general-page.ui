@@ -10,7 +10,7 @@
         <property name="title" translatable="yes">Startup</property>
         <child>
           <object class="AdwSwitchRow" id="restore_session_row">
-            <property name="title" translatable="yes">Restore session</property>
+            <property name="title" translatable="yes">Restore Session</property>
             <property name="subtitle" translatable="yes">Reopen the connections that were open when TablePro quit</property>
           </object>
         </child>

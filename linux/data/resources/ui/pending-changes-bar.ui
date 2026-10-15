@@ -27,7 +27,7 @@
             <child type="end">
               <object class="GtkButton" id="save_button">
                 <property name="label" translatable="yes">Save</property>
-                <property name="tooltip-text" translatable="yes">Save pending edits</property>
+                <property name="tooltip-text" translatable="yes">Save Changes</property>
                 <style>
                   <class name="suggested-action"/>
                 </style>
@@ -36,7 +36,7 @@
             <child type="end">
               <object class="GtkButton" id="discard_button">
                 <property name="label" translatable="yes">Discard</property>
-                <property name="tooltip-text" translatable="yes">Discard all pending edits</property>
+                <property name="tooltip-text" translatable="yes">Discard All Changes</property>
               </object>
             </child>
             <child type="end">

@@ -32,8 +32,8 @@ where
         EntryKind::Command { rows_affected } => {
             let title = match rows_affected {
                 Some(rows) => crate::i18n::ngettext_f(
-                    "{n} row affected",
-                    "{n} rows affected",
+                    "{n} Row Affected",
+                    "{n} Rows Affected",
                     u32::try_from(*rows).unwrap_or(u32::MAX),
                     &[("n", &rows.to_string())],
                 ),

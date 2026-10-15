@@ -297,7 +297,7 @@
                 <property name="child">
                   <object class="AdwStatusPage" id="error_status">
                     <property name="icon-name">dialog-error-symbolic</property>
-                    <property name="title" translatable="yes">Couldn't load structure</property>
+                    <property name="title" translatable="yes">Couldn't Load Structure</property>
                     <property name="child">
                       <object class="GtkButton" id="retry_button">
                         <property name="label" translatable="yes">Try Again</property>

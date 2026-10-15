@@ -44,7 +44,7 @@ impl StructureModel {
                 self.show_saving(false);
                 self.recompute_dirty_state(fx);
                 fx.output(StructureTabOutput::ShowAlert {
-                    title: crate::i18n::gettext("Save failed"),
+                    title: crate::i18n::gettext("Save Failed"),
                     body: message,
                 });
             }
@@ -53,7 +53,7 @@ impl StructureModel {
                 self.show_saving(false);
                 self.recompute_dirty_state(fx);
                 fx.output(StructureTabOutput::ShowAlert {
-                    title: crate::i18n::gettext("Save failed"),
+                    title: crate::i18n::gettext("Save Failed"),
                     body: crate::i18n::gettext(
                         "The table changed after this tab read it, so nothing was saved. Discard the changes to read the table again, then make them again.",
                     ),
@@ -98,7 +98,7 @@ impl StructureModel {
                 fx.output(StructureTabOutput::SaveRequested);
             }
             Err(error) => fx.output(StructureTabOutput::ShowAlert {
-                title: crate::i18n::gettext("Cannot save"),
+                title: crate::i18n::gettext("Cannot Save"),
                 body: build_error_text(&error),
             }),
         }

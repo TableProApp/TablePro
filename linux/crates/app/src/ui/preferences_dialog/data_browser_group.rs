@@ -104,7 +104,7 @@ mod tests {
         let settings = MemorySettings::new();
         let group = bound_group(&settings);
 
-        assert_eq!(group.title(), "Data browser");
+        assert_eq!(group.title(), "Data Browser");
         assert_eq!(group.imp().page_size_row.title(), "Default page size");
     }
 }
