@@ -79,8 +79,8 @@ pub(crate) fn build_column_view(
     GridKeyboard::install(&column_view, grid_menus.clone(), sink.clone());
 
     // Sharing the viewport by `expand` alone leaves a wide table with 20
-    // to 30 px columns that show nothing, so a column with no saved width
-    // starts at a readable minimum there.
+    // to 30 px columns that show nothing, so a text column with no saved
+    // width starts at a readable minimum there.
     let default_min_width = if result_columns.len() > WIDE_TABLE_THRESHOLD {
         Some(MIN_COLUMN_WIDTH_PX)
     } else {
@@ -298,6 +298,8 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
         .expand(true)
         .build();
     column.set_sorter(Some(&sorter));
+    // A number column is as wide as its widest number already.
+    let default_min_width = default_min_width.filter(|_| !drawing.figures.numbers());
     if let Some(widths) = tab_ctx.column_widths.clone() {
         if let Some(saved) = widths.width(&info.name) {
             column.set_fixed_width(saved);
@@ -322,12 +324,10 @@ fn text_display(figures: &ColumnFigures) -> gtk::Inscription {
     let display = gtk::Inscription::new(None);
     display.set_hexpand(true);
     display.set_text_overflow(gtk::InscriptionOverflow::EllipsizeEnd);
-    display.set_min_chars(3);
-    display.set_nat_chars(14);
     display.set_margin_start(8);
     display.set_margin_end(8);
     display.add_css_class("tp-cell-text");
-    figures.apply(&display);
+    figures.apply(&display, "", true);
     display
 }
 

@@ -203,6 +203,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - After Clear All, the filter strip could show Match any while the next filter combined its rules with all.
 - Drop-downs in the connect and export dialogs cut their value short beside a long description.
 - PostgreSQL numbers in SQL editor results lined up on the left, unlike the table grid's.
+- Grid columns cut long numbers short at their default width.
 
 ### Security
 

@@ -102,7 +102,7 @@ impl ColumnDrawing {
             (false, Value::Null) if cell.editable => DisplayText::placeholder(&attributes.editable_null),
             (false, value) => display_text(value, &self.column_type, scratch),
         };
-        self.figures.apply(display);
+        self.figures.apply(display, shown.text, shown.placeholder);
         display.set_text(Some(shown.text));
         let widget = display.upcast_ref::<gtk::Widget>();
         widget.set_tooltip_text(cell_tooltip(shown.text, shown.truncated_bytes, shown.placeholder).as_deref());
