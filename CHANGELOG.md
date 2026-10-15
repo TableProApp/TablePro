@@ -266,6 +266,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Agent masking covers PostgreSQL XML serialization results and redacts driver errors that could contain masked values.
 - Administrative PostgreSQL function matching respects qualified names.
 - Constant numeric predicates are evaluated exactly when checking whether a write is scoped.
+- The built-in SSH client is updated to a release that fixes recent upstream security advisories.
 
 ## [0.1.5] - 2026-09-27
 - Choosing the system OpenSSH client inside the Flatpak build now stops immediately with a message to use the built-in SSH client.

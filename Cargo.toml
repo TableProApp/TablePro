@@ -36,7 +36,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order", "raw_value"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
 tokio-util = { version = "0.7", default-features = false }
-russh = "0.63"
+russh = "0.64"
 rust_xlsxwriter = { version = "0.99", default-features = false, features = ["chrono"] }
 secrecy = { version = "0.10", features = ["serde"] }
 tracing = "0.1"
