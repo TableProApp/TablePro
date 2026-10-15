@@ -54,7 +54,7 @@ From the repository root, through the verification wrapper, which keeps the full
 
 ## CI
 
-`.github/workflows/build-linux.yml` runs on a pull request that touches `linux/`:
+`.github/workflows/build-linux.yml` runs on a pull request that touches `linux/` or one of the three Linux workflows:
 
 - **Fast checks**: format, both clippy runs, build, every Meson suite, the Secret Service tests, `meson dist`, then the release-shaped Flatpak manifest rendered from the dist tarball.
 - **Supply chain**: `cargo deny check` against `deny.toml`, `cargo shear`, and `build-aux/update-third-party-licenses.sh`, failing when `data/licenses`, `build-aux/debian/copyright` or the spec's `License` tag differ from what it writes; then zizmor over the Linux workflows.

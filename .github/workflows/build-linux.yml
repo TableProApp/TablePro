@@ -6,10 +6,14 @@ on:
     paths:
       - "linux/**"
       - ".github/workflows/build-linux.yml"
+      - ".github/workflows/linux-packages.yml"
+      - ".github/workflows/release-linux.yml"
   pull_request:
     paths:
       - "linux/**"
       - ".github/workflows/build-linux.yml"
+      - ".github/workflows/linux-packages.yml"
+      - ".github/workflows/release-linux.yml"
   schedule:
     - cron: "13 14 * * 1"
   workflow_dispatch:
