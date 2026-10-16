@@ -95,7 +95,7 @@ crates/core/src/import/mod.rs 5
 crates/core/src/import/plan.rs 22
 crates/core/src/numeric_input.rs 2
 crates/core/src/operation.rs 7
-crates/core/src/pagination.rs 23
+crates/core/src/pagination.rs 22
 crates/core/src/query.rs 33
 crates/core/src/sql_ddl/column.rs 36
 crates/core/src/sql_ddl/comment_tests.rs 2

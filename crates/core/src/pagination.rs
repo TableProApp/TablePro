@@ -45,6 +45,9 @@ pub fn keyset_where_clause(
     let mut placeholder_idx = placeholder_start;
 
     for depth in 0..pk_columns.len() {
+        if matches!(last_values[depth], Value::Null) {
+            continue;
+        }
         let mut and_parts: Vec<String> = Vec::with_capacity(depth + 1);
         for eq_i in 0..depth {
             let ident = quote_ident(driver_id, pk_columns[eq_i]);
@@ -58,10 +61,6 @@ pub fn keyset_where_clause(
         }
 
         let ident = quote_ident(driver_id, pk_columns[depth]);
-        if matches!(last_values[depth], Value::Null) {
-            // NULL is not ordered; skip a strict-greater arm for this depth.
-            continue;
-        }
         and_parts.push(format!("{ident} > {}", placeholder_for(driver_id, placeholder_idx)));
         placeholder_idx += 1;
         params.push(last_values[depth].clone());
@@ -110,6 +109,21 @@ pub enum KeysetError {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_null_key_after_the_first_binds_exactly_one_value_per_placeholder() {
+        let (sql, params) = keyset_where_clause(
+            "postgres",
+            &["a", "b", "c"],
+            &[Value::Int(1), Value::Null, Value::Int(3)],
+            0,
+        )
+        .unwrap();
+
+        assert_eq!(sql, r#"("a" > $1 OR ("a" = $2 AND "b" IS NULL AND "c" > $3))"#);
+        assert_eq!(params, vec![Value::Int(1), Value::Int(1), Value::Int(3)]);
+    }
+
     use super::*;
 
     #[test]
