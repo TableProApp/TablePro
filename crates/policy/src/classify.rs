@@ -244,12 +244,12 @@ fn classify_statement_details(stmt: &Statement) -> StatementDetails {
     match stmt {
         Statement::Query(q) => classify_query(q),
         Statement::Insert(insert) => classify_insert(insert),
-        Statement::Update { table, selection, .. } => StatementDetails {
+        Statement::Update(update) => StatementDetails {
             effects: Effects::EMPTY,
             class: StatementClass::Update,
-            tables: table_factor_names(&table.relation),
-            has_where: selection.is_some(),
-            contains_unscoped_dml: selection.as_ref().is_none_or(is_constant_true),
+            tables: table_factor_names(&update.table.relation),
+            has_where: update.selection.is_some(),
+            contains_unscoped_dml: update.selection.as_ref().is_none_or(is_constant_true),
         },
         Statement::Delete(delete) => classify_delete(delete),
         Statement::CreateTable(c) => StatementDetails {
@@ -259,10 +259,10 @@ fn classify_statement_details(stmt: &Statement) -> StatementDetails {
             has_where: true,
             contains_unscoped_dml: false,
         },
-        Statement::CreateView { name, .. } => StatementDetails {
+        Statement::CreateView(view) => StatementDetails {
             effects: Effects::EMPTY,
             class: StatementClass::Ddl,
-            tables: object_name_strings(name),
+            tables: object_name_strings(&view.name),
             has_where: true,
             contains_unscoped_dml: false,
         },
@@ -276,10 +276,10 @@ fn classify_statement_details(stmt: &Statement) -> StatementDetails {
             has_where: true,
             contains_unscoped_dml: false,
         },
-        Statement::AlterTable { name, .. } => StatementDetails {
+        Statement::AlterTable(alter) => StatementDetails {
             effects: Effects::EMPTY,
             class: StatementClass::Ddl,
-            tables: object_name_strings(name),
+            tables: object_name_strings(&alter.name),
             has_where: true,
             contains_unscoped_dml: false,
         },
@@ -290,7 +290,7 @@ fn classify_statement_details(stmt: &Statement) -> StatementDetails {
             has_where: true,
             contains_unscoped_dml: false,
         },
-        Statement::Truncate { table_names, .. } => truncate_facts(table_names.iter().map(|table| &table.name)),
+        Statement::Truncate(truncate) => truncate_facts(truncate.table_names.iter().map(|table| &table.name)),
         Statement::CreateVirtualTable { .. }
         | Statement::CreateRole { .. }
         | Statement::CreateSecret { .. }
@@ -324,13 +324,12 @@ fn classify_statement_details(stmt: &Statement) -> StatementDetails {
         | Statement::CreateDomain(_)
         | Statement::CreateType { .. } => ddl_facts(Vec::new()),
         Statement::CreateFunction(f) => ddl_facts(object_name_strings(&f.name)),
-        Statement::Grant { objects, .. } | Statement::Revoke { objects, .. } => {
-            ddl_facts(objects.as_ref().map(grant_object_names).unwrap_or_default())
-        }
-        Statement::Merge { table, .. } => StatementDetails {
+        Statement::Grant(grant) => ddl_facts(grant.objects.as_ref().map(grant_object_names).unwrap_or_default()),
+        Statement::Revoke(revoke) => ddl_facts(revoke.objects.as_ref().map(grant_object_names).unwrap_or_default()),
+        Statement::Merge(merge) => StatementDetails {
             effects: Effects::EMPTY,
             class: StatementClass::Other,
-            tables: table_factor_names(table),
+            tables: table_factor_names(&merge.table),
             has_where: true,
             contains_unscoped_dml: false,
         },
@@ -419,6 +418,7 @@ fn classify_insert(insert: &Insert) -> StatementDetails {
     let tables = match &insert.table {
         TableObject::TableName(name) => object_name_strings(name),
         TableObject::TableFunction(f) => vec![f.name.to_string()],
+        TableObject::TableQuery(query) => classify_query(query).tables,
     };
     StatementDetails {
         effects: Effects::EMPTY,
@@ -597,9 +597,7 @@ fn function_arguments_are_administrative(arguments: &FunctionArguments) -> bool 
 
 fn set_expr_writes(body: &SetExpr) -> bool {
     match body {
-        SetExpr::Insert(_) | SetExpr::Update(_) | SetExpr::Delete(_) => true,
-        // VALUES is a read-only row constructor. INSERT ... VALUES is already
-        // represented by Statement::Insert and classified as a write above.
+        SetExpr::Insert(_) | SetExpr::Update(_) | SetExpr::Delete(_) | SetExpr::Merge(_) => true,
         SetExpr::Values(_) => false,
         SetExpr::Query(q) => classify_query(q).class.is_write(),
         SetExpr::SetOperation { left, right, .. } => set_expr_writes(left) || set_expr_writes(right),
@@ -626,7 +624,9 @@ fn set_expr_tables(body: &SetExpr) -> Vec<String> {
             t.extend(set_expr_tables(right));
             t
         }
-        SetExpr::Insert(stmt) | SetExpr::Update(stmt) | SetExpr::Delete(stmt) => classify_statement(stmt).tables,
+        SetExpr::Insert(s) | SetExpr::Update(s) | SetExpr::Delete(s) | SetExpr::Merge(s) => {
+            classify_statement(s).tables
+        }
         _ => Vec::new(),
     }
 }

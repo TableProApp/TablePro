@@ -53,7 +53,9 @@ fn select_projection_sensitivity(query: &Query, patterns: &[String]) -> Option<V
     let mut sensitive = Vec::with_capacity(select.projection.len());
     for item in &select.projection {
         match item {
-            SelectItem::UnnamedExpr(expr) | SelectItem::ExprWithAlias { expr, .. } => {
+            SelectItem::UnnamedExpr(expr)
+            | SelectItem::ExprWithAlias { expr, .. }
+            | SelectItem::ExprWithAliases { expr, .. } => {
                 sensitive.push(
                     expr_references_sensitive(expr, patterns) || projection_sources::references_record(expr, &records),
                 );

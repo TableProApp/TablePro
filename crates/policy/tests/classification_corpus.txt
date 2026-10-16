@@ -45,7 +45,7 @@ postgres|EXPLAIN ANALYZE DELETE FROM users|Delete|users|false|true|false|false
 postgres|CALL do_things()|Other||true|false|false|false
 postgres|COPY users TO STDOUT|Other|users|true|false|false|false
 postgres|COPY users FROM '/tmp/x.csv'|Administrative|users|true|false|false|false
-postgres|VACUUM users|Unparseable||false|false|false|true
+postgres|VACUUM users|Other||true|false|false|false
 postgres|COMMENT ON TABLE users IS 'x'|Ddl||true|false|false|false
 postgres|DO $$ BEGIN DELETE FROM users; END $$|Unparseable||false|false|false|true
 postgres|SELECT pg_sleep(1)|Select||true|false|false|false
@@ -57,7 +57,7 @@ mysql|SELECT * FROM `users` WHERE id = 1|Select|`users`|true|false|false|false
 mysql|INSERT INTO users SET name = 'x'|Insert|users|true|false|false|false
 mysql|INSERT INTO users (id) VALUES (1) ON DUPLICATE KEY UPDATE id = id|Insert|users|true|false|false|false
 mysql|REPLACE INTO users (id) VALUES (1)|Insert|users|true|false|false|false
-mysql|UPDATE users SET name = 'x' WHERE id = 1 LIMIT 1|Unparseable||false|false|false|true
+mysql|UPDATE users SET name = 'x' WHERE id = 1 LIMIT 1|Update|users|true|false|false|false
 mysql|UPDATE a JOIN b ON a.id = b.id SET a.x = 1 WHERE b.y = 2|Update|a|true|false|false|false
 mysql|DELETE FROM users WHERE id = 1 LIMIT 1|Delete|users|true|false|false|false
 mysql|DELETE a FROM a JOIN b ON a.id = b.id WHERE b.x = 1|Delete|a|true|false|false|false
@@ -80,7 +80,7 @@ sqlite|DROP TABLE t|Ddl|t|true|false|false|false
 sqlite|PRAGMA table_info(users)|Unparseable||false|false|false|true
 sqlite|PRAGMA writable_schema = 1|Other||true|false|false|false
 sqlite|ATTACH DATABASE 'x.db' AS x|Other||true|false|false|false
-sqlite|VACUUM|Unparseable||false|false|false|true
+sqlite|VACUUM|Other||true|false|false|false
 sqlite|BEGIN IMMEDIATE|Transaction||true|false|false|false
 mssql|SELECT TOP 5 * FROM dbo.users|Select|dbo.users|true|false|false|false
 mssql|UPDATE dbo.users SET name = 'x' WHERE id = 1|Update|dbo.users|true|false|false|false
@@ -95,3 +95,5 @@ clickhouse|INSERT INTO events VALUES (1)|Insert|events|true|false|false|false
 clickhouse|ALTER TABLE events DELETE WHERE id = 1|Unparseable||false|false|false|true
 clickhouse|OPTIMIZE TABLE events|Other||true|false|false|false
 clickhouse|DROP TABLE events|Ddl|events|true|false|false|false
+postgres|WITH s AS (SELECT 1 AS id) MERGE INTO users USING s ON users.id = s.id WHEN MATCHED THEN DELETE|Other|users|true|false|false|false
+duckdb|SELECT stack(2, a, b) AS (x, y) FROM t|Select|t|true|false|false|false

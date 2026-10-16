@@ -1,8 +1,8 @@
 use mongodb::bson::{Bson, Document, doc};
 use sqlparser::ast::{
     AssignmentTarget, BinaryOperator, Expr, FromTable, FunctionArg, FunctionArgExpr, FunctionArguments, GroupByExpr,
-    LimitClause, ObjectNamePart, OrderByKind, Query, Select, SelectItem, SetExpr, Statement, TableFactor,
-    Value as SqlValue,
+    LimitClause, ObjectNamePart, OrderByKind, OrderBySort, Query, Select, SelectItem, SetExpr, Statement, TableFactor,
+    Update, Value as SqlValue,
 };
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::Parser;
@@ -161,14 +161,14 @@ fn browse_leaf_selector(expr: &Expr, params: &[Value], index: &mut usize) -> Res
             expr,
             pattern,
             escape_char,
-        } => pattern_selector(expr, pattern, escape_char.as_ref(), *negated, false, params, index),
+        } => pattern_selector(expr, pattern, escape_char.as_deref(), *negated, false, params, index),
         Expr::ILike {
             negated,
             any: false,
             expr,
             pattern,
             escape_char,
-        } => pattern_selector(expr, pattern, escape_char.as_ref(), *negated, true, params, index),
+        } => pattern_selector(expr, pattern, escape_char.as_deref(), *negated, true, params, index),
         Expr::Between {
             expr,
             negated: false,
@@ -283,7 +283,7 @@ fn in_list_selector(
 fn pattern_selector(
     expr: &Expr,
     pattern: &Expr,
-    escape_char: Option<&SqlValue>,
+    escape_char: Option<&Expr>,
     negated: bool,
     insensitive: bool,
     params: &[Value],
@@ -298,7 +298,8 @@ fn pattern_selector(
         _ => return Err(browse_filter_error()),
     };
     let escape = match escape_char {
-        Some(value) => Some(value.clone().into_string().ok_or_else(browse_filter_error)?),
+        Some(Expr::Value(value)) => Some(value.value.clone().into_string().ok_or_else(browse_filter_error)?),
+        Some(_) => return Err(browse_filter_error()),
         None => None,
     };
     let escape = match escape {
@@ -446,7 +447,12 @@ fn browse_sort(query: &Query) -> Option<Document> {
         {
             return None;
         }
-        sort.insert(field, if item.options.asc == Some(false) { -1 } else { 1 });
+        let direction = match item.options.sort {
+            None | Some(OrderBySort::Asc) => 1,
+            Some(OrderBySort::Desc) => -1,
+            Some(OrderBySort::Using(_)) => return None,
+        };
+        sort.insert(field, direction);
     }
     Some(sort)
 }
@@ -531,11 +537,26 @@ fn simple_value_select(query: &Query) -> Option<&Select> {
         || !select.named_window.is_empty()
         || select.qualify.is_some()
         || select.value_table_mode.is_some()
-        || select.connect_by.is_some()
+        || !select.connect_by.is_empty()
     {
         return None;
     }
     Some(select)
+}
+
+fn plain_keyed_update_selection(update: &Update) -> Option<&Expr> {
+    if update.from.is_some()
+        || !update.table.joins.is_empty()
+        || update.returning.is_some()
+        || update.or.is_some()
+        || update.output.is_some()
+        || update.limit.is_some()
+        || !update.order_by.is_empty()
+        || !update.optimizer_hints.is_empty()
+    {
+        return None;
+    }
+    update.selection.as_ref()
 }
 
 pub(super) fn parse_keyed_update(
@@ -545,22 +566,14 @@ pub(super) fn parse_keyed_update(
 ) -> Result<Option<KeyedUpdate>, DriverError> {
     let statements = Parser::parse_sql(&GenericDialect {}, sql)
         .map_err(|error| DriverError::Unsupported(format!("invalid parameterized MongoDB update: {error}")))?;
-    let [
-        Statement::Update {
-            table,
-            assignments,
-            from,
-            selection: Some(selection),
-            returning: None,
-            or: None,
-        },
-    ] = statements.as_slice()
-    else {
+    let [Statement::Update(update)] = statements.as_slice() else {
         return Ok(None);
     };
-    if from.is_some() || !table.joins.is_empty() {
+    let Some(selection) = plain_keyed_update_selection(update) else {
         return Ok(None);
-    }
+    };
+    let table = &update.table;
+    let assignments = &update.assignments;
     let Some(collection) = collection_named(&table.relation, database) else {
         return Ok(None);
     };
@@ -1085,5 +1098,23 @@ mod filter_shape_tests {
     fn a_filter_with_unused_or_missing_parameters_is_not_translated() {
         assert!(filter("a = ?", &[text("x"), text("extra")]).unwrap().is_none());
         assert!(filter("a = ?", &[]).is_err());
+    }
+
+    #[test]
+    fn a_keyed_update_with_extra_clauses_is_not_translated() {
+        let params = [text("new"), text("key")];
+        let plain = parse_keyed_update("UPDATE records SET name = ? WHERE _id = ?", &params, "appdb").unwrap();
+        assert!(plain.is_some());
+        for sql in [
+            "UPDATE records SET name = ? WHERE _id = ? LIMIT 1",
+            "UPDATE records SET name = ? WHERE _id = ? ORDER BY name LIMIT 1",
+            "UPDATE records SET name = ? WHERE _id = ? RETURNING name",
+        ] {
+            let outcome = parse_keyed_update(sql, &params, "appdb");
+            assert!(
+                matches!(outcome, Err(DriverError::Unsupported(_)) | Ok(None)),
+                "{sql} was translated"
+            );
+        }
     }
 }

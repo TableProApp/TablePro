@@ -67,18 +67,16 @@ pub(crate) fn analyze_blast_radius(
 
 fn rewrite_for_statement(statement: &Statement, driver_id: &str) -> Option<BlastRadiusRewrite> {
     match statement {
-        Statement::Update {
-            table, from, selection, ..
-        } => {
-            let mut sources = vec![table.clone()];
-            if let Some(extra) = from {
+        Statement::Update(update) => {
+            let mut sources = vec![update.table.clone()];
+            if let Some(extra) = &update.from {
                 let (UpdateTableFromKind::BeforeSet(more) | UpdateTableFromKind::AfterSet(more)) = extra;
                 sources.extend(more.clone());
             }
             let tables = sources.iter().flat_map(table_names_from_with_joins).collect();
             Some(BlastRadiusRewrite::CountQuery(build_count_sql(
                 &sources,
-                selection.as_ref(),
+                update.selection.as_ref(),
                 tables,
                 driver_id,
             )))
@@ -114,6 +112,7 @@ fn count_sql_for_insert(insert: &Insert, driver_id: &str) -> Option<BlastRadiusR
     let tables = match &insert.table {
         TableObject::TableName(name) => vec![name.to_string()],
         TableObject::TableFunction(f) => vec![f.name.to_string()],
+        TableObject::TableQuery(_) => return None,
     };
     let Some(source) = &insert.source else {
         return Some(BlastRadiusRewrite::Known(1));

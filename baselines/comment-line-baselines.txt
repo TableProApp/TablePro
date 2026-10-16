@@ -148,7 +148,7 @@ crates/policy/src/approval.rs 4
 crates/policy/src/audit.rs 10
 crates/policy/src/blast_radius.rs 12
 crates/policy/src/catalog_effect.rs 1
-crates/policy/src/classify.rs 22
+crates/policy/src/classify.rs 20
 crates/policy/src/config.rs 13
 crates/policy/src/effects_classification.rs 3
 crates/policy/src/guard.rs 6

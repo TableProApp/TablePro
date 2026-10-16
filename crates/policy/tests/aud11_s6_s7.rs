@@ -57,11 +57,15 @@ fn administrative_host_access_needs_human_approval_in_local_and_staging() {
 
 #[test]
 fn merge_delete_needs_human_approval_in_local_and_staging() {
-    let sql = "MERGE INTO users USING staged ON users.id = staged.id WHEN MATCHED THEN DELETE";
-    for environment in [Environment::Local, Environment::Staging] {
-        let policy = PolicyConfig::default().for_environment(environment);
-        let decision = human_decision(sql, environment, &policy);
-        assert!(requires_approval(&decision), "{environment:?}: {decision:?}");
+    for sql in [
+        "MERGE INTO users USING staged ON users.id = staged.id WHEN MATCHED THEN DELETE",
+        "WITH staged AS (SELECT 1 AS id) MERGE INTO users USING staged ON users.id = staged.id WHEN MATCHED THEN DELETE",
+    ] {
+        for environment in [Environment::Local, Environment::Staging] {
+            let policy = PolicyConfig::default().for_environment(environment);
+            let decision = human_decision(sql, environment, &policy);
+            assert!(requires_approval(&decision), "{sql} in {environment:?}: {decision:?}");
+        }
     }
 }
 

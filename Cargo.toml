@@ -63,7 +63,7 @@ testcontainers = { version = "0.27", default-features = false, features = ["aws-
 testcontainers-modules = { version = "0.15", default-features = false, features = ["aws-lc-rs"] }
 oo7 = { version = "0.6", default-features = false, features = ["tokio", "native_crypto"] }
 relm4 = { version = "0.11", default-features = false, features = ["macros", "libadwaita"] }
-sqlparser = "0.58"
+sqlparser = "0.63"
 toml = "1"
 sha2 = "0.11"
 argon2 = { version = "0.6", default-features = false, features = ["alloc"] }
