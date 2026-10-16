@@ -428,6 +428,7 @@ crates/app/src/ui/tab_load/stale_banner.rs
 crates/app/src/ui/welcome_view.rs
 crates/app/src/ui/window_geometry.rs
 crates/app/src/ui/workspace/close_flow.rs
+crates/app/src/ui/workspace/close_tab_tests.rs
 crates/app/src/ui/workspace/editor_label.rs
 crates/app/src/ui/workspace/finished_work.rs
 crates/app/src/ui/workspace/health_banner.rs
