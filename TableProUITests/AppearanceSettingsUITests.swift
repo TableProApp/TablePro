@@ -60,11 +60,7 @@ final class AppearanceSettingsUITests: UITestCase {
 
         let last = row("Tokyo Night Light", in: list)
         XCTAssertTrue(last.waitToExist(timeout: 10))
-        let deadline = Date(timeIntervalSinceNow: 10)
-        while last.frame.maxY > list.frame.maxY, Date() < deadline {
-            list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).scroll(byDeltaX: 0, deltaY: -120)
-        }
-        XCTAssertLessThanOrEqual(last.frame.maxY, list.frame.maxY, "A scroll over the list should bring its last theme into view")
+        reveal(last, in: list, scrollingAt: CGVector(dx: 0.5, dy: 0.5))
 
         let first = outlineRow("Tokyo Night", in: list)
         let next = outlineRow("Tokyo Night Light", in: list)
@@ -178,6 +174,22 @@ final class AppearanceSettingsUITests: UITestCase {
             "The link should open the Appearance pane, the window is titled \(settings.title)"
         )
         return settings
+    }
+
+    /// A control clipped by its scroll view still reads as hittable, and a click on it lands on
+    /// whatever is drawn there, so the frames decide when it is in view.
+    private func reveal(_ control: XCUIElement, in scrollView: XCUIElement, scrollingAt point: CGVector) {
+        let deadline = Date(timeIntervalSinceNow: 10)
+        while control.frame.maxY > scrollView.frame.maxY || control.frame.minY < scrollView.frame.minY, Date() < deadline {
+            let overshoot = control.frame.maxY > scrollView.frame.maxY
+                ? scrollView.frame.maxY - control.frame.maxY - 20
+                : scrollView.frame.minY - control.frame.minY + 20
+            scrollView.coordinate(withNormalizedOffset: point).scroll(byDeltaX: 0, deltaY: overshoot)
+        }
+        XCTAssertTrue(
+            control.frame.minY >= scrollView.frame.minY && control.frame.maxY <= scrollView.frame.maxY,
+            "\(control.identifier) should scroll into view"
+        )
     }
 
     private func choose(_ title: String, in popup: XCUIElement) {
