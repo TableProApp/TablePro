@@ -33,8 +33,8 @@ pub use blast_radius::{BlastRadiusResult, BlastRadiusRewrite, count_sql_for_muta
 pub use classify::{StatementClass, StatementFacts, classify, statement_requires_write_capability};
 pub use config::{EnvPolicy, MaskRule, PolicyConfig, WritePolicy, load_from_path};
 pub use guard::{
-    BulkBatch, BulkInsertEnd, BulkInsertRequest, BulkInsertScope, ConnectionFaultSink, GuardContext,
-    MAX_BULK_ROW_BUDGET, PolicyGuard,
+    AdministrativeOperation, BulkBatch, BulkInsertEnd, BulkInsertRequest, BulkInsertScope, ConnectionFaultSink,
+    GuardContext, MAX_BULK_ROW_BUDGET, PolicyGuard,
 };
 pub use mask::{DEFAULT_SENSITIVE_PATTERNS, apply_masking, column_is_sensitive};
 pub use principal::Principal;
