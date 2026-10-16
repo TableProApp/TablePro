@@ -317,7 +317,7 @@ internal enum WorkspaceCloseAction {
     /// on an entry the strip no longer lists.
     private static func leave(_ workspace: WorkspaceID, in coordinators: [MainContentCoordinator]) {
         for coordinator in coordinators where coordinator.tabManager.visibleContainer == workspace.container {
-            coordinator.showBrowsedContainer()
+            coordinator.browseCursorCoordinator.showBrowsedContainer()
         }
     }
 

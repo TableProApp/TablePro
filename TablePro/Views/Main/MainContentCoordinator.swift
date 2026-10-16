@@ -153,6 +153,9 @@ final class MainContentCoordinator: ObservableObject {
     var browseDatabaseName: String {
         services.databaseManager.browseDatabaseName(for: connection)
     }
+    var newTabDatabaseName: String {
+        tabManager.openingDatabase(browsing: browseDatabaseName)
+    }
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
     /// The level the toolbar shows, and the floor under it with Agent mode's included, which is what
     /// the Safe Mode list offers from and what the toolbar's tooltip explains.
@@ -172,11 +175,6 @@ final class MainContentCoordinator: ObservableObject {
     let queryExecutor: QueryExecutor
     internal var executionGate: any ExecutionGate = ExecutionGateProvider.shared
     let windowSidebarState: WindowSidebarState
-    /// The browse-cursor move this window asked for last. Switches queue on the driver, so one that
-    /// lands after a newer request is stale and must not put back the entry the user already left.
-    internal var pendingCursorRequest: Int?
-    internal var cursorRequestCount = 0
-    internal var failedCursorFollow: String?
 
     // MARK: - Services
 
@@ -191,6 +189,7 @@ final class MainContentCoordinator: ObservableObject {
     private(set) var queryExecutionCoordinator: QueryExecutionCoordinator!
     private(set) var paginationCoordinator: PaginationCoordinator!
     private(set) var rowEditingCoordinator: RowEditingCoordinator!
+    private(set) lazy var browseCursorCoordinator = BrowseCursorCoordinator(parent: self)
 
     /// Stable identifier for this coordinator's window (set by MainContentView on appear)
     @Published var windowId: UUID?
@@ -728,13 +727,13 @@ final class MainContentCoordinator: ObservableObject {
         changeManager.undoManagerProvider = { [weak self] in self?.contentWindow?.undoManager }
         changeManager.onUndoApplied = { [weak self] result in self?.handleUndoResult(result) }
         tabManager.onVisibleContainerReconciled = { [weak self] in
-            self?.followVisibleContainer()
+            self?.browseCursorCoordinator.followVisibleContainer()
         }
         browseContainerCancellable = services.appEvents.browseContainerChanged
             .filter { [connectionId = connection.id] changed in changed == connectionId }
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                self?.browseContainerDidChange()
+                self?.browseCursorCoordinator.browseContainerDidChange()
             }
         tabManager.onTabRetargeted = { [weak self] tabId in
             self?.dataTabDelegate?.tableViewCoordinator?.flushPendingColumnLayoutPersistence()

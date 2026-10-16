@@ -54,7 +54,7 @@ struct VisibleContainerFollowingTests {
 
             tabManager.selectedTabId = tenantB.id
 
-            try await waitUntil { coordinator.browsedContainer == "db_b" }
+            try await waitUntil { coordinator.browseCursorCoordinator.browsedContainer == "db_b" }
             #expect(tabManager.visibleContainer == "db_b")
             #expect(tabManager.selectedTabId == tenantB.id)
             /// Picking a tab is not choosing a database to come back to.
@@ -75,7 +75,7 @@ struct VisibleContainerFollowingTests {
 
             try await waitUntil { tabManager.visibleContainer == "db_b" }
             #expect(tabManager.selectedTabId == tenantB.id)
-            #expect(coordinator.pendingCursorRequest == nil)
+            #expect(coordinator.browseCursorCoordinator.pendingRequest == nil)
         }
     }
 
@@ -83,12 +83,12 @@ struct VisibleContainerFollowingTests {
     @Test("Only the latest move this window asked for is applied when it lands")
     func staleLandingIsNotApplied() async throws {
         try await withConnectedCoordinator { coordinator, _, _ in
-            let first = coordinator.beginCursorRequest()
-            let second = coordinator.beginCursorRequest()
+            let first = coordinator.browseCursorCoordinator.beginRequest()
+            let second = coordinator.browseCursorCoordinator.beginRequest()
 
-            #expect(!coordinator.endCursorRequest(first))
-            #expect(coordinator.endCursorRequest(second))
-            #expect(coordinator.pendingCursorRequest == nil)
+            #expect(!coordinator.browseCursorCoordinator.endRequest(first))
+            #expect(coordinator.browseCursorCoordinator.endRequest(second))
+            #expect(coordinator.browseCursorCoordinator.pendingRequest == nil)
         }
     }
 
@@ -98,13 +98,13 @@ struct VisibleContainerFollowingTests {
     func followSupersedesAPendingSwitch() async throws {
         try await withConnectedCoordinator { coordinator, tabManager, _ in
             tabManager.tabs = [queryTab(database: "db_a")]
-            let earlier = coordinator.beginCursorRequest()
+            let earlier = coordinator.browseCursorCoordinator.beginRequest()
 
-            coordinator.followVisibleContainer()
+            coordinator.browseCursorCoordinator.followVisibleContainer()
 
-            try await waitUntil { coordinator.pendingCursorRequest == nil }
-            #expect(!coordinator.endCursorRequest(earlier))
-            #expect(coordinator.browsedContainer == "db_a")
+            try await waitUntil { coordinator.browseCursorCoordinator.pendingRequest == nil }
+            #expect(!coordinator.browseCursorCoordinator.endRequest(earlier))
+            #expect(coordinator.browseCursorCoordinator.browsedContainer == "db_a")
         }
     }
 
@@ -148,13 +148,13 @@ struct VisibleContainerFollowingTests {
         try await withConnectedCoordinator { coordinator, tabManager, _ in
             tabManager.tabs = [queryTab(database: "db_a")]
 
-            coordinator.goToEntry("db_b")
+            coordinator.browseCursorCoordinator.goToEntry("db_b")
 
-            #expect(coordinator.browsedContainer == "db_a")
+            #expect(coordinator.browseCursorCoordinator.browsedContainer == "db_a")
             #expect(coordinator.newTabDatabaseName == "db_b")
             tabManager.addTab(initialQuery: "SELECT 1", databaseName: coordinator.newTabDatabaseName)
             #expect(tabManager.visibleContainer == "db_b")
-            try await waitUntil { coordinator.browsedContainer == "db_b" }
+            try await waitUntil { coordinator.browseCursorCoordinator.browsedContainer == "db_b" }
         }
     }
 
@@ -165,12 +165,12 @@ struct VisibleContainerFollowingTests {
         try await withConnectedCoordinator { coordinator, tabManager, _ in
             tabManager.tabs = [queryTab(database: "db_a"), queryTab(database: "db_b")]
             tabManager.show(container: "db_b")
-            coordinator.followVisibleContainer()
+            coordinator.browseCursorCoordinator.followVisibleContainer()
 
-            coordinator.goToEntry("db_a")
+            coordinator.browseCursorCoordinator.goToEntry("db_a")
 
-            try await waitUntil { coordinator.pendingCursorRequest == nil }
-            #expect(coordinator.browsedContainer == "db_a")
+            try await waitUntil { coordinator.browseCursorCoordinator.pendingRequest == nil }
+            #expect(coordinator.browseCursorCoordinator.browsedContainer == "db_a")
             #expect(tabManager.visibleContainer == "db_a")
         }
     }
@@ -182,9 +182,9 @@ struct VisibleContainerFollowingTests {
             tabManager.tabs = [queryTab(database: "db_b")]
             tabManager.show(container: "db_b")
 
-            coordinator.followVisibleContainerOnActivation()
+            coordinator.browseCursorCoordinator.followVisibleContainerOnActivation()
 
-            try await waitUntil { coordinator.browsedContainer == "db_b" }
+            try await waitUntil { coordinator.browseCursorCoordinator.browsedContainer == "db_b" }
         }
     }
 
@@ -194,12 +194,12 @@ struct VisibleContainerFollowingTests {
         try await withConnectedCoordinator { coordinator, tabManager, _ in
             tabManager.tabs = [queryTab(database: "db_b")]
             tabManager.show(container: "db_b")
-            coordinator.failedCursorFollow = "db_b"
+            coordinator.browseCursorCoordinator.failedFollow = "db_b"
 
-            coordinator.followVisibleContainerOnActivation()
+            coordinator.browseCursorCoordinator.followVisibleContainerOnActivation()
 
-            #expect(coordinator.pendingCursorRequest == nil)
-            #expect(coordinator.browsedContainer == "db_a")
+            #expect(coordinator.browseCursorCoordinator.pendingRequest == nil)
+            #expect(coordinator.browseCursorCoordinator.browsedContainer == "db_a")
         }
     }
 

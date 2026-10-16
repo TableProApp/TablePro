@@ -544,7 +544,7 @@ internal final class WorkspaceRailViewController: NSViewController {
     }
 
     /// Going to an entry of a connection: its tabs come forward, and the object tree follows to its
-    /// container once the switch lands. `goToEntry` holds both halves, so the order cannot be got
+    /// container once the switch lands. `BrowseCursorCoordinator.goToEntry` holds both halves, so the order cannot be got
     /// wrong here.
     private func moveBrowseCursor(of window: NSWindow, to workspace: WorkspaceID) {
         guard !workspace.container.isEmpty else {
@@ -566,7 +566,7 @@ internal final class WorkspaceRailViewController: NSViewController {
             return
         }
         Self.logger.info("moveBrowseCursor to=\(Self.describe(workspace), privacy: .public)")
-        coordinator.goToEntry(workspace.container)
+        coordinator.browseCursorCoordinator.goToEntry(workspace.container)
     }
 
     /// The menu command is a commit, not a highlight: it names the workspace it goes to, so it

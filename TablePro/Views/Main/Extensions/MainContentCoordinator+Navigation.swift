@@ -466,11 +466,11 @@ extension MainContentCoordinator {
     /// `persist` records the database as the connection's saved default.
     @discardableResult
     func switchDatabase(to database: String, persist: Bool = true) async -> Bool {
-        let request = beginCursorRequest()
+        let request = browseCursorCoordinator.beginRequest()
         do {
             try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId, persist: persist)
-            if endCursorRequest(request) {
-                showBrowsedContainer()
+            if browseCursorCoordinator.endRequest(request) {
+                browseCursorCoordinator.showBrowsedContainer()
             }
             toolbarState.currentDatabase = database
             toolbarState.currentSchema = DatabaseManager.shared.session(for: connectionId)?.browseSchema
@@ -481,7 +481,7 @@ extension MainContentCoordinator {
             syncSidebarObjectSelection()
             return true
         } catch {
-            _ = endCursorRequest(request)
+            _ = browseCursorCoordinator.endRequest(request)
             navigationLogger.error("Failed to switch database: \(error.publicLogShape, privacy: .public)")
             /// A user who dismissed the password prompt already knows why nothing happened, and
             /// telling them their own decision failed is noise, not news.
@@ -541,7 +541,7 @@ extension MainContentCoordinator {
             let session = services.databaseManager.session(for: connectionId)
             /// A switch of this window's own still on its way to somewhere else would land after this
             /// one and take the window there, so being on the target already is not enough.
-            let isSettled = pendingCursorRequest == nil
+            let isSettled = browseCursorCoordinator.pendingRequest == nil
             switch step {
             case .database(let name):
                 guard name != session?.resolvedBrowseDatabase || !isSettled else { continue }
@@ -557,7 +557,7 @@ extension MainContentCoordinator {
         }
         /// Already there is still a request to be there: the window may be showing another entry.
         if !didSwitch {
-            showBrowsedContainer()
+            browseCursorCoordinator.showBrowsedContainer()
         }
     }
 
@@ -587,15 +587,15 @@ extension MainContentCoordinator {
         let previousSchema = toolbarState.currentSchema
         toolbarState.currentSchema = schema
 
-        let request = beginCursorRequest()
+        let request = browseCursorCoordinator.beginRequest()
         do {
             try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
-            if endCursorRequest(request) {
-                showBrowsedContainer()
+            if browseCursorCoordinator.endRequest(request) {
+                browseCursorCoordinator.showBrowsedContainer()
             }
             syncSidebarObjectSelection()
         } catch {
-            _ = endCursorRequest(request)
+            _ = browseCursorCoordinator.endRequest(request)
             /// A switch that waited for the driver is dropped when the connection was closed and
             /// opened again before its turn. The toolbar now belongs to that new session, so it is
             /// read back from it rather than restored to what the old one showed, and nothing failed

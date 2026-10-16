@@ -49,7 +49,7 @@ extension MainContentCommandActions {
     /// The entry this window shows, named the way this engine names containers. Comparing a
     /// schema-switching engine's tabs against a database name classified nothing.
     var shownContainerName: String {
-        coordinator?.tabManager.visibleContainer ?? coordinator?.browsedContainer ?? ""
+        coordinator?.tabManager.visibleContainer ?? coordinator?.browseCursorCoordinator.browsedContainer ?? ""
     }
 
     var closeTabsForOtherDatabasesTitle: String {
