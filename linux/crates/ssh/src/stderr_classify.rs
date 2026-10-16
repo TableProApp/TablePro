@@ -18,6 +18,10 @@ pub(crate) struct ClassifyContext<'a> {
     pub host: &'a str,
     pub forward_target: Option<&'a str>,
     pub declined_host_key: Option<&'a DeclinedHostKey>,
+    /// The known_hosts names of the hosts whose configuration sets
+    /// StrictHostKeyChecking yes. ssh prints the same changed-key error
+    /// for yes, ask and accept-new, so only `ssh -G` tells them apart.
+    pub strict_hosts: &'a [String],
 }
 
 pub(crate) fn classify(status: Option<i32>, stderr: &str, context: &ClassifyContext<'_>) -> TransportError {
@@ -89,12 +93,17 @@ fn changed_host_key(stderr: &str, context: &ClassifyContext<'_>) -> SshFailure {
             (PathBuf::from(path), line.trim().parse().unwrap_or(0))
         });
     let host = between(stderr, "Host key for ", " has changed").unwrap_or(context.host);
+    let strict = context
+        .strict_hosts
+        .iter()
+        .any(|strict| strict.eq_ignore_ascii_case(host));
     SshFailure::HostKeyChanged {
         host: host.to_owned(),
         algorithm: algorithm.to_owned(),
         sha256_fingerprint: fingerprint.to_owned(),
         known_hosts,
         line,
+        trust_allowed: !strict,
     }
 }
 
@@ -208,6 +217,7 @@ mod tests {
         host: "bastion",
         forward_target: Some("db:5432"),
         declined_host_key: None,
+        strict_hosts: &[],
     };
 
     fn fixture(stderr: &str) -> TransportError {
@@ -298,11 +308,34 @@ mod tests {
                 sha256_fingerprint,
                 known_hosts,
                 line: 1,
+                trust_allowed: true,
             }) if host == "[127.0.0.1]:32768"
                 && algorithm == "ED25519"
                 && sha256_fingerprint == "SHA256:hqQS4EIntVyXA99oGaFNB9YErcr85eUmEi96ZPSAEDg"
                 && known_hosts.ends_with("known_hosts")
         ));
+    }
+
+    /// ssh prints the same lines under StrictHostKeyChecking yes as under
+    /// ask, so the changed host's own configuration decides.
+    #[test]
+    fn a_changed_key_of_a_strict_host_cannot_be_trusted() {
+        let stderr = include_str!("../tests/fixtures/stderr/host_key_changed.txt");
+        let trust_allowed = |strict_hosts: &[String]| {
+            let context = ClassifyContext {
+                strict_hosts,
+                ..CONTEXT
+            };
+            match classify(Some(255), stderr, &context) {
+                TransportError::Ssh(SshFailure::HostKeyChanged { trust_allowed, .. }) => trust_allowed,
+                other => panic!("{other:?}"),
+            }
+        };
+
+        assert!(!trust_allowed(&["[127.0.0.1]:32768".to_owned()]));
+        assert!(!trust_allowed(&["jump".to_owned(), "[127.0.0.1]:32768".to_owned()]));
+        assert!(trust_allowed(&["127.0.0.1".to_owned(), "[127.0.0.1]:22".to_owned()]));
+        assert!(trust_allowed(&[]));
     }
 
     #[test]

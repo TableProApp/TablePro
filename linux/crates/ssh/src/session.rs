@@ -20,7 +20,7 @@ use crate::argv::{ControlOp, master_args};
 use crate::askpass_bridge::AskpassBridge;
 use crate::hop_config;
 use crate::host_key_checking::HostKeyChecking;
-use crate::known_hosts::spawn_failure;
+use crate::known_hosts::{known_hosts_lookup, spawn_failure};
 use crate::password_owner::password_owner;
 use crate::route::{JumpHop, Route, lookup, trace_route};
 use crate::stderr_classify::{ClassifyContext, classify};
@@ -67,6 +67,7 @@ struct MasterPlan {
     /// The `user@host` in the destination's password prompt.
     password_owner: Option<String>,
     host_keys: Option<HostKeyChecking>,
+    strict_hosts: Vec<String>,
     route: Route,
     master_config: Option<PathBuf>,
 }
@@ -101,6 +102,7 @@ impl MasterPlan {
         Ok(Self {
             password_owner,
             host_keys,
+            strict_hosts: strict_hosts(resolved.as_deref(), &route.hops),
             route,
             master_config,
         })
@@ -215,6 +217,7 @@ impl SshSession {
                     host: config.destination.host(),
                     forward_target: None,
                     declined_host_key: bridge.declined_host_key(),
+                    strict_hosts: &plan.strict_hosts,
                 };
                 return Err(classify(status, &stderr, &context));
             }
@@ -325,6 +328,20 @@ impl Drop for SshSession {
     fn drop(&mut self) {
         self.shutdown.cancel();
     }
+}
+
+/// The known_hosts names of the hosts whose configuration sets
+/// StrictHostKeyChecking yes. The master's `-o` and the pinned file
+/// raise only accept-new and no to ask, so yes is what ssh applies.
+fn strict_hosts(destination: Option<&str>, hops: &[JumpHop]) -> Vec<String> {
+    let destination = destination
+        .filter(|resolved| HostKeyChecking::from_ssh_g(resolved) == Some(HostKeyChecking::Yes))
+        .and_then(known_hosts_lookup);
+    let hops = hops
+        .iter()
+        .filter(|hop| hop.host_keys == Some(HostKeyChecking::Yes))
+        .filter_map(|hop| hop.known_hosts_name.clone());
+    destination.into_iter().chain(hops).collect()
 }
 
 /// The master's ssh_config when a jump host's own configuration would
@@ -514,6 +531,7 @@ fn protocol(detail: &str) -> TransportError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::SshDestination;
 
     #[tokio::test(start_paused = true)]
     async fn handshake_deadline_paused_while_prompting() {
@@ -523,6 +541,51 @@ mod tests {
         tokio::time::advance(Duration::from_secs(60)).await;
         deadline.resume();
         assert_eq!(deadline.deadline() - Instant::now(), Duration::from_secs(15));
+    }
+
+    /// Each host's own StrictHostKeyChecking decides, as the real
+    /// `ssh -G` resolves the destination and every jump host.
+    #[tokio::test]
+    async fn the_strict_hosts_are_those_whose_configuration_says_yes() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_file = dir.path().join("ssh_config");
+        std::fs::write(
+            &config_file,
+            "Host db\n    HostName 10.0.0.5\n    Port 2222\n    ProxyJump strict-jump,ask-jump\n    StrictHostKeyChecking yes\n\
+             Host strict-jump\n    HostName 192.0.2.1\n    StrictHostKeyChecking yes\n\
+             Host ask-jump\n    HostName 192.0.2.2\n    HostKeyAlias bastion\n    StrictHostKeyChecking ask\n\
+             Host new-jump\n    HostName 192.0.2.4\n    StrictHostKeyChecking accept-new\n\
+             Host open\n    HostName 192.0.2.3\n    StrictHostKeyChecking no\n\
+             Host unset\n    HostName 192.0.2.5\n",
+        )
+        .unwrap();
+        let services = SshServices {
+            runtime: Arc::new(crate::SshRuntimeCell::new(dir.path().join("runtime"))),
+            ssh_program: "ssh".into(),
+            ssh_keygen_program: "ssh-keygen".into(),
+            askpass_program: "tablepro-askpass".into(),
+            config_file: Some(config_file),
+        };
+        let strict_hosts = async |host: &str, jumps: &[&str]| {
+            let master_dir = tempfile::tempdir_in(dir.path()).unwrap();
+            let config = SshConfig {
+                destination: SshDestination::new(host, None, None).unwrap(),
+                jump_hosts: jumps
+                    .iter()
+                    .map(|jump| SshDestination::new(jump, None, None).unwrap())
+                    .collect(),
+                auth: SshAuth::Agent,
+            };
+            let plan = MasterPlan::resolve(&config, &services, master_dir.path(), &CancellationToken::new())
+                .await
+                .unwrap();
+            plan.strict_hosts
+        };
+
+        assert_eq!(strict_hosts("db", &[]).await, ["[10.0.0.5]:2222", "192.0.2.1"]);
+        assert_eq!(strict_hosts("open", &["strict-jump"]).await, ["192.0.2.1"]);
+        assert!(strict_hosts("unset", &["ask-jump", "new-jump"]).await.is_empty());
+        assert!(strict_hosts("open", &[]).await.is_empty());
     }
 
     #[test]

@@ -8,6 +8,7 @@ use tokio::process::Command;
 
 use crate::SshDestination;
 use crate::host_key_checking::HostKeyChecking;
+use crate::known_hosts::known_hosts_lookup;
 
 /// `ssh -G` does no network I/O, but a `Match exec` line can run a
 /// command, so each lookup is still bounded.
@@ -31,6 +32,8 @@ enum Resolved {
 pub(crate) struct JumpHop {
     pub(crate) destination: SshDestination,
     pub(crate) host_keys: Option<HostKeyChecking>,
+    /// The name ssh looks the hop's key up by in known_hosts.
+    pub(crate) known_hosts_name: Option<String>,
 }
 
 /// The jump hosts between this machine and the destination, as far as
@@ -75,6 +78,7 @@ pub(crate) async fn trace_route(ssh_program: &Path, config_file: Option<&Path>, 
             route.hops.push(JumpHop {
                 destination: chain[index].clone(),
                 host_keys: HostKeyChecking::from_ssh_g(&resolved),
+                known_hosts_name: known_hosts_lookup(&resolved),
             });
             output = resolved;
         }
@@ -280,6 +284,7 @@ esac"#,
             [JumpHop {
                 destination: hop("bastion"),
                 host_keys: Some(HostKeyChecking::AcceptNew),
+                known_hosts_name: Some("[192.0.2.10]:2222".to_owned()),
             }]
         );
     }

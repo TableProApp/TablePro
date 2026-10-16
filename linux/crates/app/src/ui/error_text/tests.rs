@@ -265,6 +265,7 @@ fn ssh_failures_say_what_to_change() {
             sha256_fingerprint: "SHA256:new".to_owned(),
             known_hosts: PathBuf::from("/home/u/.ssh/known_hosts"),
             line: 7,
+            trust_allowed: true,
         },
     )));
     assert!(changed.contains("known_hosts"), "{changed}");

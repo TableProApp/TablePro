@@ -58,6 +58,7 @@ impl SshSession {
                 host: &self.host,
                 forward_target: Some(&target_text),
                 declined_host_key: None,
+                strict_hosts: &[],
             };
             return Err(classify(
                 output.status.code(),

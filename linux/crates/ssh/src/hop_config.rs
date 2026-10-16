@@ -113,6 +113,7 @@ mod tests {
         JumpHop {
             destination: SshDestination::new(host, None, None).unwrap(),
             host_keys,
+            known_hosts_name: Some(host.to_owned()),
         }
     }
 
