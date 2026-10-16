@@ -48,7 +48,7 @@ candidate inventory as a release commitment.
 
 ## Peer-review delivery
 
-[#1026](https://github.com/cozyGarage/BookiE/issues/1026) owns the ordered small slices from the [October 16 review](archive/linux-peer-review-2026-10-16.md): current docs, executable GUI boundaries, active-edit close ownership, NULL/default intent, shared action guards, stream resource budgets and bounded server output. Each child has one lane and its own acceptance. Existing #550, #554, #893, #891, #943 and #983 retain their scope; the tracker does not add release blockers.
+[#1026](https://github.com/cozyGarage/BookiE/issues/1026) owns the ordered small slices from the [October 16 review](archive/linux-peer-review-2026-10-16.md): current docs, executable GUI boundaries, active-edit close ownership, NULL/default intent, shared action guards, stream resource budgets and bounded server output. Follow-ups #1054 (database-scoped workspace identity) and #1056 (SQLite metadata-name shadowing) are tracked as separate PEER-13 and PEER-14 slices. Each child has one lane and its own acceptance. Existing #550, #554, #893, #891, #943 and #983 retain their scope; the tracker does not add release blockers.
 
 ## Development tooling
 

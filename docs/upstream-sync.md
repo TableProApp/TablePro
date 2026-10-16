@@ -2,6 +2,16 @@
 
 The approved [BookiE convergence sprint](bookie-0.2-sprint.md) now includes shared Rust/Linux foundations as well as behavior review. Apple source trees remain excluded.
 
+## 2026-10-17: PR discussion and competitor follow-up
+
+Refreshed public branch heads after the October 16 scan. Bookie `linux` is at `dab338cc3` (the merged #1037 dependency-boundary guard); TablePro `linux` remains `7cd300f82`, TablePro `main` remains `bdbcb7de9`, dbx remains `cbdf5c9cd`, DBeaver remains `61c952984`, and Beekeeper Studio remains `f7ff968f3`. No new TablePro commit landed after the reviewed October 16 tips.
+
+Reviewed the recent GitHub conversation comments on PRs #996, #1020, #1046, #1037, #1047, #1050, #1002 and #1012, plus parent issue [#1026](https://github.com/cozyGarage/BookiE/issues/1026). The new PR comments record Linux syncs and SonarCloud results; they do not raise an unaddressed code-review finding. #1020 and #1046 are merged, #1037 is merged, and #996 remains open. PRs #1047, #1050, #1002 and #1012 remain with their existing peer issues. Separate PR #1055 is open but its Redis change is already contained in current `linux` after #1020 merged; the B4 owner can close the empty follow-up.
+
+The refreshed dbx issue and merge feed adds cases for Bookie to test or monitor, not claims that Bookie is affected: [#12484](https://github.com/t8y2/dbx/issues/12484) reports a phantom second page when a MySQL result has exactly 100 rows; [#12504](https://github.com/t8y2/dbx/issues/12504) reports MySQL LONGTEXT writes truncated at 4096 characters; and [#12478](https://github.com/t8y2/dbx/issues/12478) reports query-tab renaming mutating an object-tab label. Proposed dbx PR [#12509](https://github.com/t8y2/dbx/pull/12509) is closed without merge, so it is not evidence that the tab-identity bug was fixed. Merged PRs [#12434](https://github.com/t8y2/dbx/pull/12434), [#12435](https://github.com/t8y2/dbx/pull/12435) and [#12468](https://github.com/t8y2/dbx/pull/12468) reinforce exact page-boundary, bounded-metadata and budget-execution tests.
+
+The October 16 DBeaver [SQLite metadata shadowing fix](https://github.com/dbeaver/dbeaver/pull/42376) exposed a related Bookie edge case. Local reproduction now covers same-named user tables in both `temp` and `main`; [#1056](https://github.com/cozyGarage/BookiE/issues/1056) tracks a fix that must retain metadata visibility across pooled SQLite connections. The earlier peer-review note that Bookie did not use the same table-valued PRAGMA pattern is superseded by this reproduction; the archived review remains unchanged as a historical record. The workspace identity follow-up [#1054](https://github.com/cozyGarage/BookiE/issues/1054) also remains open under parent #1026.
+
 ## 2026-10-16: refreshed TablePro Linux and shared-product review
 
 Checked live GitHub branch tips on 2026-10-16: TablePro `linux` at `7cd300f82eaa4743d18ab049bf40a374d3ecf927`, TablePro `main` at `bdbcb7de95a267aab261e258fc6d5c745261848f`, and BookiE `linux` at `f2f9200b07d1e40aa6d1345135f589df73a9089c`. This is a bounded review of merged pull requests, not a full branch diff or runtime test. The detailed cross-client findings and BookiE dispositions are in the [October 16 peer review](archive/linux-peer-review-2026-10-16.md#2026-10-16-follow-up-source-scan).
