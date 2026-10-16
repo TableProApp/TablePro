@@ -963,6 +963,64 @@ async fn the_tables_own_expressions_using_a_dropped_column_hold_it() {
     }
 }
 
+/// An INSERT without a column list takes one value per column that is
+/// not generated, so adding or dropping one breaks it, natively or in a
+/// rebuild, while dropping a generated column or renaming one does not.
+#[tokio::test]
+async fn a_trigger_inserting_by_position_holds_the_tables_columns() {
+    let refused = |column: &str, operation| {
+        Err(BuildDdlError::Refused {
+            column: column.to_owned(),
+            operation,
+            reason: RefusalReason::InsertedByPosition(vec!["audit_copy".to_owned()]),
+        })
+    };
+    for unique in ["UNIQUE", ""] {
+        let file = TestFile::new().await;
+        let connection = file.open().await;
+        apply(
+            connection.as_ref(),
+            &[
+                &format!(
+                    "CREATE TABLE kept (id INTEGER PRIMARY KEY, code TEXT {unique}, note TEXT, next INTEGER AS (id + 1))"
+                ),
+                "CREATE TABLE audit (note TEXT)",
+                "CREATE TRIGGER audit_copy AFTER INSERT ON audit BEGIN INSERT INTO kept VALUES (NULL, new.note, 'x'); \
+                 END",
+            ],
+        )
+        .await
+        .unwrap();
+        let before = read(connection.as_ref(), &kept()).await;
+
+        let dropped = plan(connection.as_ref(), &before, drop_code);
+        let added = plan(connection.as_ref(), &before, |draft| {
+            draft
+                .columns
+                .push(DraftColumn::new("extra", DraftType::Typed("TEXT".to_owned())));
+        });
+        let generated = save(connection.as_ref(), &kept(), |draft| {
+            draft.columns.retain(|column| column.name != "next");
+        })
+        .await;
+        let renamed = save(connection.as_ref(), &kept(), |draft| {
+            column(draft, "note").name = "body".to_owned()
+        })
+        .await;
+
+        assert_eq!(dropped, refused("code", DdlOperation::DropColumn), "{unique}");
+        assert_eq!(added, refused("extra", DdlOperation::AddColumn), "{unique}");
+        assert!(generated.is_ok(), "{unique}: {generated:?}");
+        assert!(renamed.is_ok(), "{unique}: {renamed:?}");
+        apply(connection.as_ref(), &["INSERT INTO audit VALUES ('a')"])
+            .await
+            .unwrap();
+        let rows = query(connection.as_ref(), "SELECT code, body FROM kept").await;
+        assert_eq!(rows.rows, [vec![text("a"), text("x")]], "{unique}");
+        connection.close().await.unwrap();
+    }
+}
+
 /// The END that closes a trigger body or a CASE is a keyword, not the
 /// column `end`.
 #[tokio::test]

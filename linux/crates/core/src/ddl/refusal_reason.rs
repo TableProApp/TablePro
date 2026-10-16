@@ -38,6 +38,9 @@ pub enum RefusalReason {
     /// The server reads it against the new names, and the catalogue's
     /// text still has the old one.
     NamesRenamedColumn(String),
+    /// Triggers insert into the table without naming its columns, so they
+    /// take one value per column and break when one is added or dropped.
+    InsertedByPosition(Vec<String>),
 }
 
 impl fmt::Display for RefusalReason {
@@ -55,6 +58,9 @@ impl fmt::Display for RefusalReason {
             Self::UnreadableDefinition => f.write_str("the catalogue gave no definition to restate"),
             Self::ConflictingAttribute(name) => write!(f, "the column's {name} does not allow it"),
             Self::NamesRenamedColumn(name) => write!(f, "its definition names {name}, which the same change renames"),
+            Self::InsertedByPosition(triggers) => {
+                write!(f, "triggers {} insert into the table by position", triggers.join(", "))
+            }
         }
     }
 }

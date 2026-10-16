@@ -1309,6 +1309,45 @@ fn a_native_drop_of_a_column_a_trigger_lists_is_refused() {
     assert_eq!(allowed, ["ALTER TABLE \"kept\" DROP COLUMN \"status\""]);
 }
 
+/// A trigger elsewhere inserting into the table without a column list
+/// holds every column of it, in the native plan and in the rebuild.
+#[test]
+fn a_trigger_inserting_by_position_refuses_an_add_or_a_drop() {
+    let mut orders = orders();
+    if let Some(source) = orders.source.as_mut() {
+        source.dependents.push(object(
+            SchemaObjectKind::Trigger,
+            "customers_copy",
+            "customers",
+            "CREATE TRIGGER customers_copy AFTER INSERT ON customers BEGIN INSERT INTO orders SELECT NULL, new.id, \
+             0, ''; END",
+        ));
+    }
+    let refused = |column: &str, operation| {
+        Some((
+            column.to_owned(),
+            operation,
+            RefusalReason::InsertedByPosition(vec!["customers_copy".to_owned()]),
+        ))
+    };
+    let owned = |plan: Result<DdlPlan, BuildDdlError>| {
+        refusal(&plan).map(|(column, operation, reason)| (column.to_owned(), operation, reason.clone()))
+    };
+
+    let native_drop = alter(&orders, |draft| draft.columns.retain(|column| column.name != "note"));
+    let rebuild_drop = alter(&orders, |draft| {
+        draft.columns.retain(|column| column.name != "note");
+        retype(draft, "total", "NUMERIC");
+    });
+    let added = alter(&orders, |draft| draft.columns.push(typed("extra", "TEXT")));
+    let retyped = alter(&orders, |draft| retype(draft, "total", "NUMERIC"));
+
+    assert_eq!(owned(native_drop), refused("note", DdlOperation::DropColumn));
+    assert_eq!(owned(rebuild_drop), refused("note", DdlOperation::DropColumn));
+    assert_eq!(owned(added), refused("extra", DdlOperation::AddColumn));
+    assert!(retyped.is_ok(), "{retyped:?}");
+}
+
 #[test]
 fn an_unreadable_table_offers_no_foreign_key_or_key_change() {
     let virtual_table = table(

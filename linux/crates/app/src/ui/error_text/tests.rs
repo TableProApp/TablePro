@@ -365,6 +365,20 @@ fn unterminated_dollar_quote_diagnostic_names_line() {
 }
 
 #[test]
+fn a_change_a_positional_insert_would_break_names_its_triggers() {
+    let one = refusal_text(&tablepro_core::ddl::RefusalReason::InsertedByPosition(vec![
+        "audit_copy".to_owned(),
+    ]));
+    let two = refusal_text(&tablepro_core::ddl::RefusalReason::InsertedByPosition(vec![
+        "audit_copy".to_owned(),
+        "log_copy".to_owned(),
+    ]));
+
+    assert!(one.starts_with("Trigger audit_copy inserts"), "{one}");
+    assert!(two.starts_with("Triggers audit_copy, log_copy insert"), "{two}");
+}
+
+#[test]
 fn a_rebuild_refusal_names_the_dependent_rather_than_a_column() {
     let unreplayable = build_error_text(&tablepro_core::ddl::BuildDdlError::UnreplayableDependent(
         "big_orders".to_owned(),

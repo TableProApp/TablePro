@@ -7,7 +7,9 @@
 
 use std::collections::HashSet;
 
-use tablepro_core::ddl::{SchemaObjectKind, SchemaObjectSource};
+use tablepro_core::ddl::{
+    BuildDdlError, DdlOperation, RefusalReason, SchemaObjectKind, SchemaObjectSource, TableChanges, TableDefinition,
+};
 use tablepro_core::sql_syntax::script::ScriptTokenKind;
 
 use super::create_table_source::{Token, tokens, unquote};
@@ -20,35 +22,87 @@ pub(super) fn listing_triggers<'o>(
     column: &str,
 ) -> Vec<String> {
     let column = column.to_ascii_lowercase();
+    triggers_where(objects, table, |listed| listed.columns.contains(&column))
+}
+
+/// An INSERT without a column list takes one value per column, generated
+/// ones apart (insert.c, `sqlite3Insert`), and SQLite does not check it
+/// when it alters the table, so a trigger with one fails or fills the
+/// wrong columns once a column is added or dropped.
+pub(super) fn check_positional_inserts(
+    original: &TableDefinition,
+    changes: &TableChanges,
+) -> Result<(), BuildDdlError> {
+    let dropped = changes
+        .dropped_columns
+        .iter()
+        .find(|column| !column.info.is_generated)
+        .map(|column| (column.name(), DdlOperation::DropColumn));
+    let added = changes
+        .added_columns
+        .first()
+        .map(|column| (column.name.as_str(), DdlOperation::AddColumn));
+    let Some((column, operation)) = dropped.or(added) else {
+        return Ok(());
+    };
+    let dependents = original
+        .source
+        .as_ref()
+        .map_or(&[][..], |source| source.dependents.as_slice());
+    let triggers = triggers_where(dependents.iter(), &original.table.name, |listed| listed.by_position);
+    if triggers.is_empty() {
+        return Ok(());
+    }
+    Err(BuildDdlError::Refused {
+        column: column.to_owned(),
+        operation,
+        reason: RefusalReason::InsertedByPosition(triggers),
+    })
+}
+
+fn triggers_where<'o>(
+    objects: impl Iterator<Item = &'o SchemaObjectSource>,
+    table: &str,
+    uses: impl Fn(&Listed) -> bool,
+) -> Vec<String> {
     objects
         .filter(|object| object.kind == SchemaObjectKind::Trigger)
         .filter(|object| {
             let on_table = object.table.eq_ignore_ascii_case(table);
-            listed_columns(&object.sql, table, on_table).is_none_or(|listed| listed.contains(&column))
+            listed_columns(&object.sql, table, on_table).is_none_or(|listed| uses(&listed))
         })
         .map(|object| object.name.clone())
         .collect()
 }
 
-/// The columns of `table` that `trigger` lists, folded to ASCII
-/// lowercase: its UPDATE OF columns when it is `on_table`, and the
-/// columns its steps insert into or set in `table`. SQLite refuses a
+/// What a trigger names of one table where SQLite does not resolve it.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Listed {
+    /// Folded to ASCII lowercase.
+    columns: HashSet<String>,
+    /// An INSERT into the table without a column list.
+    by_position: bool,
+}
+
+/// What `trigger` lists of `table`: its UPDATE OF columns when it is
+/// `on_table`, the columns its steps insert into or set in `table`, and
+/// whether one inserts into it without naming columns. SQLite refuses a
 /// qualified table in a trigger step, so the step's bare name says
 /// which table it writes. `None` when the text does not read.
-fn listed_columns(trigger: &str, table: &str, on_table: bool) -> Option<HashSet<String>> {
+fn listed_columns(trigger: &str, table: &str, on_table: bool) -> Option<Listed> {
     let tokens = tokens(trigger).ok()?;
     let text = Text {
         sql: trigger,
         tokens: &tokens,
     };
     let is_table = |index: usize| text.name(index).is_some_and(|name| name.eq_ignore_ascii_case(table));
-    let mut listed = HashSet::new();
+    let mut listed = Listed::default();
     // DELETE, INSERT and UPDATE are reserved words, never names, so the
     // first of them is the trigger's event.
     let event =
         (0..tokens.len()).find(|&index| ["DELETE", "INSERT", "UPDATE"].iter().any(|word| text.word(index, word)))?;
     if on_table && text.word(event, "UPDATE") && text.word(event + 1, "OF") {
-        text.names_until(event + 2, |index| text.word(index, "ON"), &mut listed);
+        text.names_until(event + 2, |index| text.word(index, "ON"), &mut listed.columns);
     }
     // The table of the step's INSERT, whose upsert sets its columns.
     let mut inserting = None;
@@ -58,12 +112,17 @@ fn listed_columns(trigger: &str, table: &str, on_table: bool) -> Option<HashSet<
         } else if text.word(index, "INTO") {
             let target = index + 1;
             inserting = Some(target);
-            if is_table(target) && text.kind(target + 1) == Some(ScriptTokenKind::OpenParen) {
+            if !is_table(target) {
+                continue;
+            }
+            if text.kind(target + 1) == Some(ScriptTokenKind::OpenParen) {
                 text.names_until(
                     target + 2,
                     |index| text.kind(index) == Some(ScriptTokenKind::CloseParen),
-                    &mut listed,
+                    &mut listed.columns,
                 );
+            } else {
+                listed.by_position = true;
             }
         } else if text.word(index, "UPDATE") {
             let (target, set) = if text.word(index + 1, "SET") {
@@ -74,7 +133,7 @@ fn listed_columns(trigger: &str, table: &str, on_table: bool) -> Option<HashSet<
                 (Some(index + 1), index + 2)
             };
             if target.is_some_and(is_table) && text.word(set, "SET") {
-                text.assigned(set + 1, &mut listed);
+                text.assigned(set + 1, &mut listed.columns);
             }
         }
     }
@@ -171,8 +230,8 @@ impl Text<'_> {
 mod tests {
     use super::*;
 
-    fn sorted(columns: Option<HashSet<String>>) -> Vec<String> {
-        let mut columns: Vec<String> = columns.expect("the trigger reads").into_iter().collect();
+    fn sorted(listed: Option<Listed>) -> Vec<String> {
+        let mut columns: Vec<String> = listed.expect("the trigger reads").columns.into_iter().collect();
         columns.sort();
         columns
     }
@@ -210,6 +269,26 @@ mod tests {
                 Vec::<String>::new(),
                 "{trigger}"
             );
+        }
+    }
+
+    #[test]
+    fn an_insert_without_a_column_list_into_the_table_takes_values_by_position() {
+        let by_position = |trigger: &str| listed_columns(trigger, "kept", false).map(|listed| listed.by_position);
+
+        for trigger in [
+            "CREATE TRIGGER t AFTER INSERT ON log BEGIN INSERT INTO kept VALUES (new.a, 1); END",
+            "CREATE TRIGGER t AFTER INSERT ON log BEGIN INSERT OR IGNORE INTO \"Kept\" SELECT * FROM log; END",
+            "CREATE TRIGGER t AFTER INSERT ON log BEGIN SELECT 1; REPLACE INTO kept VALUES (1); END",
+        ] {
+            assert_eq!(by_position(trigger), Some(true), "{trigger}");
+        }
+        for trigger in [
+            "CREATE TRIGGER t AFTER INSERT ON log BEGIN INSERT INTO kept (a) VALUES (new.a); END",
+            "CREATE TRIGGER t AFTER INSERT ON kept BEGIN INSERT INTO log VALUES (new.a); END",
+            "CREATE TRIGGER t AFTER INSERT ON log BEGIN SELECT 'INSERT INTO kept VALUES (1)'; END",
+        ] {
+            assert_eq!(by_position(trigger), Some(false), "{trigger}");
         }
     }
 
