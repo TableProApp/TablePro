@@ -128,7 +128,7 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsTransactions: Bool { true }
 
     var capabilities: PluginCapabilities {
-        [.cancelQuery, .transactions, .alterTableDDL, .dataCompare]
+        [.cancelQuery, .transactions, .alterTableDDL, .dataCompare, .cellExpressions, .uuidCellText]
     }
 
     init(config: DriverConnectionConfig) {

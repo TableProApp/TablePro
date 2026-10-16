@@ -81,8 +81,8 @@ internal struct InspectorFieldListView: View {
     ///
     /// One answer, read by the editor, by the value menu and by the keyboard shortcuts alike. A
     /// PHP-serialized value cannot be round-tripped without PHP, so the field is presented but never
-    /// mutated: Set NULL, Set DEFAULT, Set EMPTY and the SQL functions would each overwrite the
-    /// serialized payload with something the app cannot rebuild.
+    /// mutated: every Set Value command would overwrite the serialized payload with something the app
+    /// cannot rebuild.
     internal static func isFieldEditable(
         _ field: FieldEditState,
         kind: FieldEditorKind,
@@ -146,6 +146,7 @@ internal struct InspectorFieldListView: View {
     private func row(for field: FieldEditState) -> some View {
         let kind = FieldEditorResolver.resolve(field: field)
         let editable = Self.isFieldEditable(field, kind: kind, rowIsEditable: isEditable)
+        let commands = editState.setValueCommands(for: field, isWritable: editable && offersDatabaseValues)
         InspectorFieldRow(
             context: context(for: field, kind: kind, isEditable: editable),
             layout: InspectorFieldLayout.resolve(for: kind, isSchemaField: field.isSchemaField),
@@ -155,10 +156,9 @@ internal struct InspectorFieldListView: View {
             isForeignKey: field.isForeignKey,
             databaseType: databaseType,
             isExpanded: expandedFieldID == field.id,
-            onSetNull: { editState.setFieldToNull(at: field.columnIndex) },
-            onSetDefault: { editState.setFieldToDefault(at: field.columnIndex) },
-            onSetEmpty: { editState.setFieldToEmpty(at: field.columnIndex) },
-            onSetFunction: { editState.setFieldToFunction(at: field.columnIndex, function: $0) },
+            commands: commands,
+            isPendingExpression: field.isPendingExpression,
+            onSetValue: { editState.setValue($0, at: field.columnIndex) },
             onRemoveField: offersFieldRemoval && !field.isSchemaField
                 ? { editState.removeField(at: field.columnIndex) }
                 : nil,
@@ -245,14 +245,25 @@ internal struct InspectorFieldListView: View {
               let focusedField,
               let field = editState.fields.first(where: { $0.id == focusedField }),
               !field.isSchemaField,
-              Self.isFieldEditable(field, kind: FieldEditorResolver.resolve(field: field), rowIsEditable: isEditable)
+              Self.isFieldEditable(field, kind: FieldEditorResolver.resolve(field: field), rowIsEditable: isEditable),
+              let command = Self.stateShortcutCommand(
+                  for: key, offered: editState.setValueCommands(for: field, isWritable: true)
+              )
         else { return .ignored }
-        if key == "n" {
-            editState.setFieldToNull(at: field.columnIndex)
-        } else {
-            editState.setFieldToDefault(at: field.columnIndex)
-        }
+        editState.setValue(command, at: field.columnIndex)
         return .handled
+    }
+
+    /// Control-Option-N and Control-Option-D do only what the field's menu offers. Unhandled, the key goes on
+    /// to the next responder rather than staging a NULL the column refuses.
+    internal static func stateShortcutCommand(for key: Character, offered: [SetValueCommand]) -> SetValueCommand? {
+        let command: SetValueCommand
+        switch key {
+        case "n": command = .null
+        case "d": command = .defaultValue
+        default: return nil
+        }
+        return offered.contains(command) ? command : nil
     }
 }
 

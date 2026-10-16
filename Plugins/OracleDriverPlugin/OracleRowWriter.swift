@@ -52,7 +52,11 @@ internal struct OracleRowWriter {
             case .insert:
                 guard insertedRowIndices.contains(change.rowIndex),
                       let values = insertedRowData[change.rowIndex],
-                      let write = try insert(values: values, rowIndex: change.rowIndex) else { continue }
+                      let write = try insert(
+                          values: values,
+                          rowIndex: change.rowIndex,
+                          expressionColumns: change.expressionColumns ?? []
+                      ) else { continue }
                 try flushDeletes()
                 writes.append(write)
             case .update:
@@ -72,18 +76,25 @@ internal struct OracleRowWriter {
 
     /// Oracle has no `DEFAULT VALUES`. A row whose every column is the server's is written as one column's `DEFAULT`,
     /// which an identity or virtual column takes (measured on 23ai).
-    private func insert(values: [PluginCellValue], rowIndex: Int) throws -> PluginRowWrite? {
+    private func insert(
+        values: [PluginCellValue],
+        rowIndex: Int,
+        expressionColumns: Set<Int>
+    ) throws -> PluginRowWrite? {
         guard let firstColumn = columns.first else { return nil }
         var names: [String] = []
         var placeholders: [String] = []
         var parameters: [PluginCellValue] = []
-        for (column, value) in zip(columns, values) where !context.serverOwnedColumns.contains(column) {
+        for (index, (column, value)) in zip(columns, values).enumerated()
+        where !context.serverOwnedColumns.contains(column) {
             names.append(Self.quote(column))
-            placeholders.append(
-                value == Self.defaultMarker
-                    ? "DEFAULT"
-                    : try sql(for: value, column: column, rowIndex: rowIndex, into: &parameters)
-            )
+            if value == Self.defaultMarker {
+                placeholders.append("DEFAULT")
+            } else if let expression = Self.expression(value, isMarked: expressionColumns.contains(index)) {
+                placeholders.append(expression)
+            } else {
+                placeholders.append(try sql(for: value, column: column, rowIndex: rowIndex, into: &parameters))
+            }
         }
         guard !names.isEmpty else {
             return PluginRowWrite(
@@ -101,10 +112,14 @@ internal struct OracleRowWriter {
         if let owned = change.cellChanges.first(where: { context.serverOwnedColumns.contains($0.columnName) }) {
             throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.serverOwnedReason(owned.columnName))
         }
+        let expressionColumns = change.expressionColumns ?? []
         var parameters: [PluginCellValue] = []
         let assignments = try change.cellChanges.map { cell -> String in
             let column = Self.quote(cell.columnName)
             guard cell.newValue != Self.defaultMarker else { return "\(column) = DEFAULT" }
+            if let expression = Self.expression(cell.newValue, isMarked: expressionColumns.contains(cell.columnIndex)) {
+                return "\(column) = \(expression)"
+            }
             let value = try sql(for: cell.newValue, column: cell.columnName, rowIndex: change.rowIndex, into: &parameters)
             return "\(column) = \(value)"
         }
@@ -267,6 +282,12 @@ internal struct OracleRowWriter {
 
     // MARK: - Helpers
 
+    // The host checked a marked cell's text against the engine's vocabulary before handing it over.
+    private static func expression(_ value: PluginCellValue, isMarked: Bool) -> String? {
+        guard isMarked, case .text(let sql) = value else { return nil }
+        return sql
+    }
+
     static func quote(_ name: String) -> String {
         "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
@@ -356,21 +377,14 @@ internal enum OracleValueKind: Equatable {
             return OracleNumericLiteral.isValid(text) ? text + "f" : nil
         case .binaryDouble:
             return OracleNumericLiteral.isValid(text) ? text + "d" : nil
-        case .date, .timestamp, .timestampWithTimeZone, .timestampWithLocalTimeZone:
-            let keyword = text.trimmingCharacters(in: .whitespaces).uppercased()
-            return Self.temporalFunctions.contains(keyword) ? keyword : nil
         case .nationalText:
             return OracleNationalText.sql(for: text, asLOB: false)
         case .nationalLOB:
             return OracleNationalText.sql(for: text, asLOB: true)
-        case .bfile, .other:
+        case .date, .timestamp, .timestampWithTimeZone, .timestampWithLocalTimeZone, .bfile, .other:
             return nil
         }
     }
-
-    private static let temporalFunctions: Set<String> = [
-        "SYSDATE", "SYSTIMESTAMP", "CURRENT_DATE", "CURRENT_TIMESTAMP", "LOCALTIMESTAMP"
-    ]
 }
 
 /// An Oracle numeric literal in ASCII: an optional sign, digits with at most one decimal point, and an optional

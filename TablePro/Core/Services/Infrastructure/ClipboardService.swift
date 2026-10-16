@@ -13,22 +13,35 @@ struct GridRowsClipboardPayload: Codable, Equatable {
     let rows: [[PluginCellValue]]
     /// Row index to the columns that row has no field for, so a paste leaves them missing.
     var absentCells: [Int: Set<Int>]?
+    /// Row index to the columns holding SQL the grid staged, so a paste stages it as SQL and every other value as text.
+    var expressionCells: [Int: Set<Int>]?
 }
 
 extension GridRowsClipboardPayload {
     /// Rows copied out of a grid, in the columns the copy carries. Every copy builds its payload
     /// here, so the fields a row has none of travel with its values rather than each copy path
     /// deciding for itself whether to carry them.
-    init(columns: [String], copying copiedRows: [Row], projection: VisibleColumnProjection) {
+    ///
+    /// `expressionColumns` are, per copied row, the data columns holding staged SQL.
+    init(
+        columns: [String],
+        copying copiedRows: [Row],
+        expressionColumns: [Set<Int>],
+        projection: VisibleColumnProjection
+    ) {
         var absentCells: [Int: Set<Int>] = [:]
+        var expressionCells: [Int: Set<Int>] = [:]
         for (index, row) in copiedRows.enumerated() {
             let absent = projection.absentColumns(row.absentColumns)
             if !absent.isEmpty { absentCells[index] = absent }
+            let marked = projection.positions(of: expressionColumns[safe: index] ?? [])
+            if !marked.isEmpty { expressionCells[index] = marked }
         }
         self.init(
             columns: columns,
             rows: copiedRows.map { projection.values(Array($0.values)) },
-            absentCells: absentCells.isEmpty ? nil : absentCells
+            absentCells: absentCells.isEmpty ? nil : absentCells,
+            expressionCells: expressionCells.isEmpty ? nil : expressionCells
         )
     }
 }
@@ -42,6 +55,8 @@ struct GridCellsClipboardPayload: Codable, Equatable {
     let text: String
     /// The fields by line, in the order the copy wrote them, nil for a NULL.
     let fields: [[String?]]
+    /// Line index to the fields in it holding SQL the grid staged.
+    var expressionFields: [Int: Set<Int>]?
 }
 
 protocol ClipboardProvider {

@@ -85,6 +85,7 @@ enum EditMenuBuilder {
                 shortcut: .duplicateRow,
                 keyboard: keyboard
             ),
+            setValueSubmenu(keyboard: keyboard),
             MenuItemFactory.item(
                 String(localized: "Edit Document…"),
                 action: #selector(MainSplitViewController.editDocument(_:))
@@ -138,6 +139,43 @@ enum EditMenuBuilder {
                 String(localized: "Copy as JSON"),
                 action: #selector(MainSplitViewController.copyRowsAsJson(_:)),
                 shortcut: .copyAsJson,
+                keyboard: keyboard
+            )
+        ])
+    }
+
+    // Only the focused data grid implements these, so anywhere else AppKit dims them rather than hiding them.
+    private static func setValueSubmenu(keyboard: KeyboardSettings) -> NSMenuItem {
+        MenuItemFactory.submenu(String(localized: "Set Value"), items: [
+            MenuItemFactory.item(
+                SetValueOptions.title(for: .empty),
+                action: #selector(SetValueCommandResponding.setValueEmpty(_:)),
+                shortcut: .setValueEmpty,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                SetValueOptions.title(for: .null),
+                action: #selector(SetValueCommandResponding.setValueNull(_:)),
+                shortcut: .setValueNull,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                SetValueOptions.title(for: .defaultValue),
+                action: #selector(SetValueCommandResponding.setValueDefault(_:)),
+                shortcut: .setValueDefault,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
+                SetValueOptions.title(for: .uuid(.v4)),
+                action: #selector(SetValueCommandResponding.generateUUIDv4(_:)),
+                shortcut: .generateUUIDv4,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                SetValueOptions.title(for: .uuid(.v7)),
+                action: #selector(SetValueCommandResponding.generateUUIDv7(_:)),
+                shortcut: .generateUUIDv7,
                 keyboard: keyboard
             )
         ])

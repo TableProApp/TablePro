@@ -250,6 +250,11 @@ let package = Package(
             path: "Tests/TableProBigtableCoreTests"
         ),
         .testTarget(
+            name: "TableProSpannerCoreTests",
+            dependencies: ["TableProSpannerCore"],
+            path: "Tests/TableProSpannerCoreTests"
+        ),
+        .testTarget(
             name: "TableProTabularIOTests",
             dependencies: ["TableProTabularIO", "TableProPluginKit"],
             path: "Tests/TableProTabularIOTests"

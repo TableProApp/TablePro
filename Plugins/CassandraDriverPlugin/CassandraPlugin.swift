@@ -154,6 +154,8 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             .parameterizedQueries,
             .materializedViews,
             .alterTableDDL,
+            .cellExpressions,
+            .uuidCellText,
         ]
     }
 

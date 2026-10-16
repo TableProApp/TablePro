@@ -86,4 +86,27 @@ struct RowVisualIndexTests {
         #expect(index.visualState(for: .existing(0)) == .empty)
         #expect(index.visualState(for: .inserted(UUID())) == .empty)
     }
+
+    @Test("A cell staged as SQL is marked, on a saved row's edit and on a new row alike")
+    func expressionCellsAreMarked() {
+        let manager = makeManager()
+        manager.recordCellChange(
+            rowID: .existing(1), columnIndex: 1, columnName: "name",
+            oldValue: "a", newValue: "now()", originalRow: ["1", "a"],
+            absence: FieldAbsence(), isExpression: true
+        )
+        manager.recordCellChange(
+            rowID: .existing(2), columnIndex: 1, columnName: "name",
+            oldValue: "b", newValue: "now()", originalRow: ["2", "b"]
+        )
+        let inserted = RowID.inserted(UUID())
+        manager.recordRowInsertion(rowID: inserted, values: [.null, "now()"], expressionColumns: [1])
+        let index = RowVisualIndex()
+
+        index.rebuild(from: AnyChangeManager(manager))
+
+        #expect(index.visualState(for: .existing(1)).expressionColumns == [1])
+        #expect(index.visualState(for: .existing(2)).expressionColumns.isEmpty)
+        #expect(index.visualState(for: inserted).expressionColumns == [1])
+    }
 }

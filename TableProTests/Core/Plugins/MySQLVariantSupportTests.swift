@@ -118,15 +118,24 @@ struct MySQLVariantSupportTests {
         #expect(PluginManager.shared.rowMatchTextTypePrefixes(for: .sqlite).isEmpty)
     }
 
-    @Test("The inspector's function menu offers only what each engine has")
+    /// The inspector's SQL Functions submenu reads the vocabulary for the column's kind, so `UUID()` and every
+    /// function the column cannot hold are gone, and Databend keeps only what it runs.
+    @Test("The inspector's function menu offers only what each engine runs on the column")
     func functionMenu() {
-        let tidb = SQLFunctionProvider.functions(for: .tidb).map(\.expression)
-        #expect(tidb.contains("CURDATE()"))
-        #expect(tidb.contains("UTC_TIMESTAMP()"))
-        let oceanbase = SQLFunctionProvider.functions(for: .oceanbase).map(\.expression)
-        #expect(oceanbase.contains("CURDATE()"))
-        let databend = SQLFunctionProvider.functions(for: .databend).map(\.expression)
-        #expect(databend == ["NOW()", "CURRENT_TIMESTAMP()", "UUID()"])
+        func functions(_ type: DatabaseType, _ columnType: ColumnType) -> [String] {
+            CellExpressionVocabulary.expressions(for: type, columnType: columnType).map(\.sql)
+        }
+        let date = ColumnType.date(rawType: "DATE")
+        let timestamp = ColumnType.timestamp(rawType: "TIMESTAMP")
+        #expect(functions(.tidb, date).contains("CURDATE()"))
+        #expect(functions(.tidb, timestamp).contains("UTC_TIMESTAMP()"))
+        #expect(functions(.oceanbase, date).contains("CURDATE()"))
+        #expect(functions(.databend, timestamp) == ["NOW()"])
+        #expect(functions(.databend, date) == ["TODAY()"])
+        for type in [DatabaseType.mysql, .mariadb, .tidb, .oceanbase, .databend] {
+            #expect(!functions(type, timestamp).contains("UUID()"))
+            #expect(functions(type, .text(rawType: "CHAR(36)")).isEmpty)
+        }
     }
 
     @Test("A double-quoted name is a string on TiDB and an identifier on Databend")

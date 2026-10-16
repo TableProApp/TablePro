@@ -13,7 +13,10 @@ protocol ChangeManaging: AnyObject {
     var modifiedCells: [RowID: Set<Int>] { get }
     var generatedColumns: Set<String> { get }
     var supportsFieldRemoval: Bool { get }
+    var cellWriterSupport: CellWriterSupport { get }
     func isRowDeleted(_ rowID: RowID) -> Bool
+    func isExpression(rowID: RowID, columnIndex: Int) -> Bool
+    func expressionColumns(forRow rowID: RowID) -> Set<Int>
     func recordCellChange(
         rowID: RowID,
         columnIndex: Int,
@@ -31,6 +34,16 @@ protocol ChangeManaging: AnyObject {
         originalRow: [PluginCellValue]?,
         absence: FieldAbsence
     )
+    func recordCellChange(
+        rowID: RowID,
+        columnIndex: Int,
+        columnName: String,
+        oldValue: PluginCellValue,
+        newValue: PluginCellValue,
+        originalRow: [PluginCellValue]?,
+        absence: FieldAbsence,
+        isExpression: Bool
+    )
     func undoRowDeletion(rowID: RowID)
 }
 
@@ -44,6 +57,12 @@ extension ChangeManaging {
     var modifiedCells: [RowID: Set<Int>] { [:] }
 
     var supportsFieldRemoval: Bool { false }
+
+    var cellWriterSupport: CellWriterSupport { .none }
+
+    func isExpression(rowID: RowID, columnIndex: Int) -> Bool { false }
+
+    func expressionColumns(forRow rowID: RowID) -> Set<Int> { [] }
 
     /// Only the data grid can show a row without a field; every other grid records the value.
     func recordCellChange(
@@ -64,6 +83,28 @@ extension ChangeManaging {
             originalRow: originalRow
         )
     }
+
+    /// Only the data grid writes SQL expressions; `cellWriterSupport` keeps every other grid from offering one.
+    func recordCellChange(
+        rowID: RowID,
+        columnIndex: Int,
+        columnName: String,
+        oldValue: PluginCellValue,
+        newValue: PluginCellValue,
+        originalRow: [PluginCellValue]?,
+        absence: FieldAbsence,
+        isExpression: Bool
+    ) {
+        recordCellChange(
+            rowID: rowID,
+            columnIndex: columnIndex,
+            columnName: columnName,
+            oldValue: oldValue,
+            newValue: newValue,
+            originalRow: originalRow,
+            absence: absence
+        )
+    }
 }
 
 @MainActor
@@ -79,9 +120,18 @@ final class AnyChangeManager: ObservableObject {
     var modifiedCells: [RowID: Set<Int>] { wrapped.modifiedCells }
     var generatedColumns: Set<String> { wrapped.generatedColumns }
     var supportsFieldRemoval: Bool { wrapped.supportsFieldRemoval }
+    var cellWriterSupport: CellWriterSupport { wrapped.cellWriterSupport }
 
     func isRowDeleted(_ rowID: RowID) -> Bool {
         wrapped.isRowDeleted(rowID)
+    }
+
+    func isExpression(rowID: RowID, columnIndex: Int) -> Bool {
+        wrapped.isExpression(rowID: rowID, columnIndex: columnIndex)
+    }
+
+    func expressionColumns(forRow rowID: RowID) -> Set<Int> {
+        wrapped.expressionColumns(forRow: rowID)
     }
 
     func recordCellChange(
@@ -119,6 +169,28 @@ final class AnyChangeManager: ObservableObject {
             newValue: newValue,
             originalRow: originalRow,
             absence: absence
+        )
+    }
+
+    func recordCellChange(
+        rowID: RowID,
+        columnIndex: Int,
+        columnName: String,
+        oldValue: PluginCellValue,
+        newValue: PluginCellValue,
+        originalRow: [PluginCellValue],
+        absence: FieldAbsence,
+        isExpression: Bool
+    ) {
+        wrapped.recordCellChange(
+            rowID: rowID,
+            columnIndex: columnIndex,
+            columnName: columnName,
+            oldValue: oldValue,
+            newValue: newValue,
+            originalRow: originalRow,
+            absence: absence,
+            isExpression: isExpression
         )
     }
 

@@ -124,6 +124,7 @@ extension QueryExecutionCoordinator {
         var columnNullable: [String: Bool] = [:]
         var columnComments: [String: String] = [:]
         var columnIdentity: [String: IdentityKind] = [:]
+        var columnDeclaredTypes: [String: String] = [:]
         var generatedColumns: Set<String> = []
         var rowMatchPolicy: RowMatchPolicy = .none
         var hasAuthoritativeSchema = false
@@ -157,6 +158,7 @@ extension QueryExecutionCoordinator {
             resolved.columnNullable = metadata.columnNullable
             resolved.columnComments = metadata.columnComments
             resolved.columnIdentity = metadata.columnIdentity
+            resolved.columnDeclaredTypes = metadata.columnDeclaredTypes
             resolved.generatedColumns = metadata.generatedColumns
             resolved.rowMatchPolicy = metadata.rowMatchPolicy
             resolved.hasAuthoritativeSchema = metadata.isAuthoritative
@@ -260,6 +262,7 @@ extension QueryExecutionCoordinator {
             columnNullable: resolved.columnNullable,
             columnComments: resolved.columnComments,
             columnIdentity: resolved.columnIdentity,
+            columnDeclaredTypes: resolved.columnDeclaredTypes,
             generatedColumns: generatedColumns,
             rowMatchPolicy: resolved.rowMatchPolicy,
             hasAuthoritativeSchema: resolved.hasAuthoritativeSchema,
@@ -585,6 +588,7 @@ extension QueryExecutionCoordinator {
             columnNullable: parsed.columnNullable,
             columnComments: parsed.columnComments,
             columnIdentity: parsed.columnIdentity,
+            columnDeclaredTypes: parsed.columnDeclaredTypes,
             generatedColumns: parsed.generatedColumns,
             rowMatchPolicy: parsed.rowMatchPolicy,
             hasAuthoritativeSchema: parsed.isAuthoritative
@@ -630,6 +634,7 @@ extension QueryExecutionCoordinator {
                 columnNullable: parsed.columnNullable,
                 columnComments: parsed.columnComments,
                 columnIdentity: parsed.columnIdentity,
+                columnDeclaredTypes: parsed.columnDeclaredTypes,
                 generatedColumns: parsed.generatedColumns,
                 rowMatchPolicy: parsed.rowMatchPolicy,
                 hasAuthoritativeSchema: parsed.isAuthoritative

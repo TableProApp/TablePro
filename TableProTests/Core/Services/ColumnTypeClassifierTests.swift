@@ -500,6 +500,15 @@ struct ColumnTypeClassifierTests {
             #expect(isText(classifier.classify(rawTypeName: "UUID")))
         }
 
+        @Test("Cassandra timeuuid is a UUID, not a time")
+        func timeuuidIsText() {
+            let type = classifier.classify(rawTypeName: "timeuuid")
+            #expect(type == .text(rawType: "timeuuid"))
+            #expect(type.isUUIDType)
+            #expect(type.isTimeUUIDType)
+            #expect(!type.isDateType)
+        }
+
         @Test("FixedString(36) classifies as text")
         func fixedString() {
             #expect(isText(classifier.classify(rawTypeName: "FixedString(36)")))

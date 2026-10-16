@@ -25,4 +25,8 @@ public struct PluginCapabilities: OptionSet, Sendable {
     public static let schemaCompare         = PluginCapabilities(rawValue: 1 << 13)
     public static let dataCompare           = PluginCapabilities(rawValue: 1 << 14)
     public static let resultSetBatches      = PluginCapabilities(rawValue: 1 << 15)
+    /// The driver writes the cells `PluginRowChange.expressionColumns` names unquoted, as SQL.
+    public static let cellExpressions       = PluginCapabilities(rawValue: 1 << 16)
+    /// The driver stores canonical UUID text written into a UUID-typed column as a UUID.
+    public static let uuidCellText          = PluginCapabilities(rawValue: 1 << 17)
 }

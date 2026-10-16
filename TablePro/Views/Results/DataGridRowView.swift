@@ -695,18 +695,22 @@ class DataGridRowView: NSTableRowView {
         tableRows: TableRows,
         coordinator: TableViewCoordinator
     ) {
-        let namesWritableColumn = dataColumnIndex >= 0 && dataColumnIndex < tableRows.columns.count
-            && coordinator.isColumnWritable(tableRows.columns[dataColumnIndex])
-        guard coordinator.isEditable, namesWritableColumn else { return }
+        guard coordinator.isEditable, dataColumnIndex >= 0 else { return }
 
-        let setValueMenu = buildSetValueMenu(dataColumnIndex: dataColumnIndex, tableRows: tableRows)
+        let clicked = SetValueTarget(displayRow: rowIndex, columnIndex: dataColumnIndex)
+        let setValueMenu = buildSetValueMenu(
+            commands: coordinator.setValueCommands(for: coordinator.setValueTargets(clicked: clicked)),
+            clickedColumn: dataColumnIndex
+        )
         if !setValueMenu.items.isEmpty {
             let setValueItem = NSMenuItem(title: String(localized: "Set Value"), action: nil, keyEquivalent: "")
             setValueItem.submenu = setValueMenu
             menu.addItem(setValueItem)
         }
 
-        guard coordinator.supportsFieldRemoval,
+        guard dataColumnIndex < tableRows.columns.count,
+              coordinator.isColumnWritable(tableRows.columns[dataColumnIndex]),
+              coordinator.supportsFieldRemoval,
               coordinator.displayRow(at: rowIndex)?.isAbsent(dataColumnIndex) == false else { return }
         let removeFieldItem = NSMenuItem(
             title: String(localized: "Remove Field"), action: #selector(removeFieldValue(_:)), keyEquivalent: "")
@@ -715,56 +719,39 @@ class DataGridRowView: NSTableRowView {
         menu.addItem(removeFieldItem)
     }
 
-    /// Empty is offered only where `''` is a value of the column's type, the way NULL is offered
-    /// only where the column takes it. On a date it wrote the server's zero date.
-    func buildSetValueMenu(dataColumnIndex: Int, tableRows: TableRows) -> NSMenu {
+    /// Placeholders, then the engine's functions, then UUIDs, a separator between the groups.
+    func buildSetValueMenu(commands: [SetValueCommand], clickedColumn: Int) -> NSMenu {
         let setValueMenu = NSMenu()
-
-        if tableRows.editingColumnType(at: dataColumnIndex)?.hasEmptyValue ?? true {
-            let emptyItem = NSMenuItem(
-                title: String(localized: "Empty"), action: #selector(setEmptyValue(_:)), keyEquivalent: "")
-            emptyItem.representedObject = dataColumnIndex
-            emptyItem.target = self
-            setValueMenu.addItem(emptyItem)
-        }
-
-        let columnName = dataColumnIndex < tableRows.columns.count
-            ? tableRows.columns[dataColumnIndex]
-            : nil
-
-        let isNullable = columnName.flatMap { tableRows.columnNullable[$0] } ?? true
-        if isNullable {
-            let nullItem = NSMenuItem(
-                title: String(localized: "NULL"), action: #selector(setNullValue(_:)), keyEquivalent: "")
-            nullItem.representedObject = dataColumnIndex
-            nullItem.target = self
-            setValueMenu.addItem(nullItem)
-        }
-
-        let serverAssignsValue = columnName.map { tableRows.serverAssignsValue(forColumn: $0) } ?? false
-        if serverAssignsValue {
-            let defaultItem = NSMenuItem(
-                title: String(localized: "Default"), action: #selector(setDefaultValue(_:)), keyEquivalent: "")
-            defaultItem.representedObject = dataColumnIndex
-            defaultItem.target = self
-            setValueMenu.addItem(defaultItem)
-        }
-
-        let columnType: ColumnType? = dataColumnIndex < tableRows.columnTypes.count
-            ? tableRows.columnTypes[dataColumnIndex]
-            : nil
-        if let columnType, columnType.isDateType {
-            setValueMenu.addItem(.separator())
-            for function in Self.dateValueFunctions(for: columnType) {
-                let item = NSMenuItem(
-                    title: function, action: #selector(setSqlFunctionValue(_:)), keyEquivalent: "")
-                item.representedObject = DateSetterContext(columnIndex: dataColumnIndex, value: function)
-                item.target = self
-                setValueMenu.addItem(item)
+        var lastGroup: Int?
+        for command in commands {
+            let group = Self.setValueMenuGroup(command)
+            if let lastGroup, lastGroup != group {
+                setValueMenu.addItem(.separator())
             }
+            lastGroup = group
+            let item = NSMenuItem(
+                title: SetValueOptions.title(for: command), action: #selector(applySetValue(_:)), keyEquivalent: ""
+            )
+            item.representedObject = SetValueMenuChoice(command: command, clickedColumn: clickedColumn)
+            item.target = self
+            setValueMenu.addItem(item)
         }
-
         return setValueMenu
+    }
+
+    private static func setValueMenuGroup(_ command: SetValueCommand) -> Int {
+        switch command {
+        case .empty, .null, .defaultValue: 0
+        case .expression: 1
+        case .uuid: 2
+        }
+    }
+
+    /// The targets are taken when the item is chosen, from the same selection the menu was built over.
+    @objc private func applySetValue(_ sender: NSMenuItem) {
+        guard let coordinator, let choice = sender.representedObject as? SetValueMenuChoice else { return }
+        let clicked = SetValueTarget(displayRow: rowIndex, columnIndex: choice.clickedColumn)
+        coordinator.applySetValue(choice.command, to: coordinator.setValueTargets(clicked: clicked))
     }
 
     @objc private func deleteRow() {
@@ -845,43 +832,9 @@ class DataGridRowView: NSTableRowView {
         )
     }
 
-    @objc private func setNullValue(_ sender: NSMenuItem) {
-        guard let columnIndex = sender.representedObject as? Int else { return }
-        coordinator?.setCellValueAtColumn(nil, at: rowIndex, columnIndex: columnIndex)
-    }
-
     @objc private func removeFieldValue(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int else { return }
         coordinator?.removeField(row: rowIndex, columnIndex: columnIndex)
-    }
-
-    /// Written as `''` itself rather than read as typed text, which would turn it into NULL.
-    @objc private func setEmptyValue(_ sender: NSMenuItem) {
-        guard let columnIndex = sender.representedObject as? Int else { return }
-        coordinator?.commitTypedCellEdit(row: rowIndex, columnIndex: columnIndex, newValue: .text(""))
-    }
-
-    @objc private func setDefaultValue(_ sender: NSMenuItem) {
-        guard let columnIndex = sender.representedObject as? Int else { return }
-        coordinator?.setCellValueAtColumn("__DEFAULT__", at: rowIndex, columnIndex: columnIndex)
-    }
-
-    @objc private func setSqlFunctionValue(_ sender: NSMenuItem) {
-        guard let context = sender.representedObject as? DateSetterContext else { return }
-        coordinator?.setCellValueAtColumn(context.value, at: rowIndex, columnIndex: context.columnIndex)
-    }
-
-    static func dateValueFunctions(for columnType: ColumnType) -> [String] {
-        switch columnType {
-        case .date:
-            return ["CURRENT_DATE"]
-        case .timestamp, .datetime:
-            return columnType.isTimeOnly
-                ? ["CURRENT_TIME"]
-                : ["NOW()", "CURRENT_TIMESTAMP"]
-        default:
-            return []
-        }
     }
 
     @objc private func copyAsInsert() {
@@ -972,14 +925,9 @@ class DataGridRowView: NSTableRowView {
     }
 }
 
-private final class DateSetterContext {
-    let columnIndex: Int
-    let value: String
-
-    init(columnIndex: Int, value: String) {
-        self.columnIndex = columnIndex
-        self.value = value
-    }
+private struct SetValueMenuChoice {
+    let command: SetValueCommand
+    let clickedColumn: Int
 }
 
 /// The view a row's data cells are drawn into.

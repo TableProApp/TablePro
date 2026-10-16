@@ -39282,6 +39282,10 @@
         }
       }
     },
+    "ClickHouse ended the result partway through a row, so the rows that arrived are incomplete." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "ClickHouse returned HTTP %lld." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -67277,6 +67281,10 @@
         }
       }
     },
+    "DynamoDB has no default values, so %@ cannot be set to DEFAULT." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "DynamoDB has no views" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -84064,6 +84072,12 @@
           }
         }
       }
+    },
+    "Generate UUID" : {
+
+    },
+    "Generate UUIDv7" : {
+
     },
     "Generated" : {
       "extractionState" : "manual",
@@ -112268,6 +112282,12 @@
           }
         }
       }
+    },
+    "New UUID" : {
+
+    },
+    "New UUIDv7" : {
+
     },
     "New View" : {
       "extractionState" : "stale",
@@ -160326,6 +160346,15 @@
         }
       }
     },
+    "Set Value to Default" : {
+
+    },
+    "Set Value to Empty" : {
+
+    },
+    "Set Value to NULL" : {
+
+    },
     "Sets the value to %@" : {
       "localizations" : {
         "fr" : {
@@ -185685,6 +185714,10 @@
         }
       }
     },
+    "The query names its own output format, %@. Remove its FORMAT clause to read it as rows." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The query returned no rows." : {
       "localizations" : {
         "fr" : {
@@ -187585,6 +187618,9 @@
           }
         }
       }
+    },
+    "The SQL staged for %@ is not one this database runs as a value." : {
+
     },
     "The SQLite extensions for this connection could not be loaded." : {
       "extractionState" : "manual",
@@ -191468,6 +191504,9 @@
         }
       }
     },
+    "This database cannot set %@ back to its default on a saved row." : {
+
+    },
     "This database cannot show the source of %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -191739,6 +191778,9 @@
           }
         }
       }
+    },
+    "This database's driver cannot write SQL into %@. Update the driver." : {
+
     },
     "This deletes only the queries listed here, across every connection. Queries the source, date, outcome and search filters are hiding stay. You cannot undo this." : {
       "comment" : "Message for the \"Delete this connection's query history\" button.",

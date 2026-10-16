@@ -15,24 +15,43 @@ struct DynamoDBWriteStatements {
     let columns: [String]
     let keyColumns: [String]
 
+    func rowWrites(
+        for changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>
+    ) throws -> [PluginRowWrite] {
+        try changes.compactMap { change in
+            let written: (statement: String, parameters: [PluginCellValue])?
+            switch change.type {
+            case .insert:
+                guard insertedRowIndices.contains(change.rowIndex) else { return nil }
+                written = insert(change, rowData: insertedRowData[change.rowIndex])
+            case .update:
+                written = try update(change)
+            case .delete:
+                guard deletedRowIndices.contains(change.rowIndex) else { return nil }
+                written = delete(change)
+            }
+            return written.map {
+                PluginRowWrite(statement: $0.statement, parameters: $0.parameters, rowIndices: [change.rowIndex])
+            }
+        }
+    }
+
     func statements(
         for changes: [PluginRowChange],
         insertedRowData: [Int: [PluginCellValue]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
     ) -> [(statement: String, parameters: [PluginCellValue])] {
-        changes.compactMap { change in
-            switch change.type {
-            case .insert:
-                guard insertedRowIndices.contains(change.rowIndex) else { return nil }
-                return insert(change, rowData: insertedRowData[change.rowIndex])
-            case .update:
-                return update(change)
-            case .delete:
-                guard deletedRowIndices.contains(change.rowIndex) else { return nil }
-                return delete(change)
-            }
-        }
+        let writes = (try? rowWrites(
+            for: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices
+        )) ?? []
+        return writes.map { (statement: $0.statement, parameters: $0.parameters) }
     }
 
     func insert(row: [PluginCellValue]) -> (statement: String, parameters: [PluginCellValue]) {
@@ -63,7 +82,7 @@ struct DynamoDBWriteStatements {
         return insert(row: row)
     }
 
-    private func update(_ change: PluginRowChange) -> (statement: String, parameters: [PluginCellValue])? {
+    private func update(_ change: PluginRowChange) throws -> (statement: String, parameters: [PluginCellValue])? {
         guard let original = change.originalRow, !change.cellChanges.isEmpty else { return nil }
         var assignments: [String] = []
         var assignedValues: [PluginCellValue] = []
@@ -72,6 +91,12 @@ struct DynamoDBWriteStatements {
         var guardValues: [PluginCellValue] = []
 
         for cell in change.cellChanges {
+            if case .text(let text) = cell.newValue, text == Self.defaultSentinel {
+                throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: String(
+                    format: String(localized: "DynamoDB has no default values, so %@ cannot be set to DEFAULT."),
+                    cell.columnName
+                ))
+            }
             let name = DynamoDBStatement.quote(cell.columnName)
             if case .null = cell.newValue {
                 removals.append(name)

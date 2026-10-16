@@ -112,7 +112,10 @@ struct RowChangeStatementFactory {
         insertedRowIDs: Set<RowID> = []
     ) throws -> RowWriteStatements {
         try refuseServerOwnedEdits(in: changes)
+        try refuseDefaultOnUpdate(in: changes)
+        try refuseUnwritableExpressions(in: changes, insertedRowData: insertedRowData)
         let insertedRowData = insertedRowData.mapValues(leavingServerOwnedColumnsToTheServer)
+        let changes = changes.map(droppingServerOwnedExpressions)
         if let driverStatements = try pluginRowWrites(
             for: changes,
             insertedRowData: insertedRowData,
@@ -152,6 +155,88 @@ struct RowChangeStatementFactory {
         }
     }
 
+    /// Where `SET c = DEFAULT` does not parse, the save is refused naming the column rather than sent to fail.
+    private func refuseDefaultOnUpdate(in changes: [RowChange]) throws {
+        guard !CellExpressionVocabulary.updateTakesDefault(databaseType) else { return }
+        for change in changes where change.type == .update {
+            guard let defaulted = change.cellChanges.first(where: { $0.newValue.isDefaultMarker }) else { continue }
+            throw DataWriteError.changeRefused(
+                table: tableName,
+                kind: .update,
+                reason: String(
+                    format: String(localized: "This database cannot set %@ back to its default on a saved row."),
+                    defaulted.columnName
+                )
+            )
+        }
+    }
+
+    /// A cell marked as SQL is written unquoted, so its text has to be one this engine's vocabulary holds, spelled
+    /// exactly, whichever path staged it. A driver that writes its own statements has to say it reads the mark;
+    /// one that does not would bind the SQL as text.
+    private func refuseUnwritableExpressions(
+        in changes: [RowChange],
+        insertedRowData: [RowID: [PluginCellValue]]
+    ) throws {
+        let marked = changes.flatMap { change in
+            Self.markedCells(of: change, insertedRowData: insertedRowData, columns: columns)
+        }
+        guard !marked.isEmpty else { return }
+        for cell in marked {
+            guard case .text(let sql) = cell.value, CellExpressionVocabulary.isCanonical(sql, for: databaseType)
+            else {
+                throw DataWriteError.changeRefused(
+                    table: tableName,
+                    kind: cell.kind,
+                    reason: String(
+                        format: String(localized: "The SQL staged for %@ is not one this database runs as a value."),
+                        cell.columnName
+                    )
+                )
+            }
+        }
+        if let pluginDriver, !pluginDriver.capabilities.contains(.cellExpressions), pluginOwnsStatementGeneration,
+           let first = marked.first {
+            throw DataWriteError.changeRefused(
+                table: tableName,
+                kind: first.kind,
+                reason: String(
+                    format: String(localized: "This database's driver cannot write SQL into %@. Update the driver."),
+                    first.columnName
+                )
+            )
+        }
+    }
+
+    private struct MarkedCell {
+        let kind: RowWriteKind
+        let columnName: String
+        let value: PluginCellValue
+    }
+
+    // Plugin writers read the mark by column, so every value written into a marked column is checked, not only the
+    // change that carries the mark.
+    private static func markedCells(
+        of change: RowChange,
+        insertedRowData: [RowID: [PluginCellValue]],
+        columns: [String]
+    ) -> [MarkedCell] {
+        guard let marked = PluginRowChange.expressionColumns(of: change) else { return [] }
+        let kind: RowWriteKind = change.type == .insert ? .insert : .update
+        let stored = change.type == .insert ? insertedRowData[change.rowID] : nil
+        return marked.sorted().flatMap { index in
+            let columnName = columns[safe: index] ?? ""
+            var values = change.cellChanges.filter { $0.columnIndex == index }.map(\.newValue)
+            if let stored {
+                values.append(stored[safe: index] ?? .null)
+            }
+            if values.isEmpty {
+                values = [.null]
+            }
+            return values.map { MarkedCell(kind: kind, columnName: columnName, value: $0) }
+        }
+    }
+
     /// A new row leaves every column the server owns to the server, whatever the row was staged with.
     private func leavingServerOwnedColumnsToTheServer(_ values: [PluginCellValue]) -> [PluginCellValue] {
         guard !generatedColumns.isEmpty else { return values }
@@ -159,6 +244,16 @@ struct RowChangeStatementFactory {
             guard columns.indices.contains(index), generatedColumns.contains(columns[index]) else { return value }
             return Self.defaultMarker
         }
+    }
+
+    /// The cell now holds the default marker, so it is no longer SQL to write.
+    private func droppingServerOwnedExpressions(_ change: RowChange) -> RowChange {
+        guard change.type == .insert, !change.expressionColumns.isEmpty, !generatedColumns.isEmpty else { return change }
+        var kept = change
+        kept.expressionColumns = change.expressionColumns.filter {
+            !(columns.indices.contains($0) && generatedColumns.contains(columns[$0]))
+        }
+        return kept
     }
 
     private static let defaultMarker = PluginCellValue.text("__DEFAULT__")
@@ -462,6 +557,20 @@ private extension PluginRowChange {
             originalRow: change.originalRow
         )
         absentColumns = Self.absentColumns(after: change)
+        expressionColumns = Self.expressionColumns(of: change)
+    }
+
+    static func expressionColumns(of change: RowChange) -> Set<Int>? {
+        let marked: Set<Int>
+        switch change.type {
+        case .update:
+            marked = Set(change.cellChanges.filter(\.newIsExpression).map(\.columnIndex))
+        case .insert:
+            marked = change.expressionColumns.union(change.cellChanges.filter(\.newIsExpression).map(\.columnIndex))
+        case .delete:
+            return nil
+        }
+        return marked.isEmpty ? nil : marked
     }
 
     /// The fields the row has none of once the change is written: the ones an update removes, or

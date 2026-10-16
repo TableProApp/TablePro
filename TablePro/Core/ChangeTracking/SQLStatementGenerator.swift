@@ -178,12 +178,14 @@ struct SQLStatementGenerator {
         -> ParameterizedStatement?
     {
         if let values = insertedRowData[change.rowID] {
-            return generateInsertSQLFromStoredData(values: values)
+            return generateInsertSQLFromStoredData(values: values, expressionColumns: change.expressionColumns)
         }
         return generateInsertSQLFromCellChanges(for: change)
     }
 
-    private func generateInsertSQLFromStoredData(values: [PluginCellValue])
+    /// A cell is written as SQL only when its change says so. Text that merely reads like a function, typed or
+    /// stored, is bound like any other value.
+    private func generateInsertSQLFromStoredData(values: [PluginCellValue], expressionColumns: Set<Int>)
         -> ParameterizedStatement?
     {
         var nonDefaultColumns: [String] = []
@@ -200,8 +202,8 @@ struct SQLStatementGenerator {
             nonDefaultColumns.append(quoteIdentifierFn(columnName))
 
             switch value {
-            case .text(let s) where isSQLFunctionExpression(s):
-                placeholderParts.append(s.trimmingCharacters(in: .whitespaces).uppercased())
+            case .text(let expression) where expressionColumns.contains(index):
+                placeholderParts.append(expression)
             default:
                 bindParameters.append(value.asAny)
                 placeholderParts.append(placeholder(at: bindParameters.count - 1))
@@ -296,8 +298,8 @@ struct SQLStatementGenerator {
         var parameters: [Any?] = []
         let placeholders = nonDefaultChanges.map { cellChange -> String in
             switch cellChange.newValue {
-            case .text(let s) where isSQLFunctionExpression(s):
-                return s.trimmingCharacters(in: .whitespaces).uppercased()
+            case .text(let expression) where cellChange.newIsExpression:
+                return expression
             default:
                 parameters.append(cellChange.newValue.asAny)
                 return placeholder(at: parameters.count - 1)
@@ -323,8 +325,8 @@ struct SQLStatementGenerator {
             switch cellChange.newValue {
             case .text(let s) where s == "__DEFAULT__":
                 return "\(quoteIdentifierFn(cellChange.columnName)) = DEFAULT"
-            case .text(let s) where isSQLFunctionExpression(s):
-                return "\(quoteIdentifierFn(cellChange.columnName)) = \(s.trimmingCharacters(in: .whitespaces).uppercased())"
+            case .text(let expression) where cellChange.newIsExpression:
+                return "\(quoteIdentifierFn(cellChange.columnName)) = \(expression)"
             default:
                 parameters.append(cellChange.newValue.asAny)
                 return "\(quoteIdentifierFn(cellChange.columnName)) = \(placeholder(at: parameters.count - 1))"
@@ -495,12 +497,5 @@ struct SQLStatementGenerator {
         let whereClause = rowClauses.joined(separator: " OR ")
         let sql = "DELETE FROM \(qualifiedTableName) WHERE \(whereClause)"
         return ParameterizedStatement(sql: sql, parameters: parameters)
-    }
-
-    // MARK: - Helper Functions
-
-    /// Check if a string is a SQL function expression that should not be quoted
-    private func isSQLFunctionExpression(_ value: String) -> Bool {
-        SQLEscaping.isTemporalFunction(value)
     }
 }

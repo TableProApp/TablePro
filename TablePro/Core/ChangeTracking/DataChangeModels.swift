@@ -29,6 +29,17 @@ struct FieldAbsence: Equatable, Sendable {
     }
 }
 
+/// Whether a cell held a SQL expression before an edit and holds one after it. The value alone cannot say: an
+/// expression is staged as its text, which a stored or typed value can also be.
+struct ExpressionTransition: Equatable, Sendable {
+    var wasExpression = false
+    var isExpression = false
+
+    var reversed: ExpressionTransition {
+        ExpressionTransition(wasExpression: isExpression, isExpression: wasExpression)
+    }
+}
+
 struct CellChange: Identifiable, Equatable {
     let id: UUID
     let columnIndex: Int
@@ -37,6 +48,10 @@ struct CellChange: Identifiable, Equatable {
     let newValue: PluginCellValue
     let oldIsAbsent: Bool
     let newIsAbsent: Bool
+    let oldIsExpression: Bool
+    /// The new value is `.text` holding SQL from `CellExpressionVocabulary`, written unquoted. Never set with
+    /// `newIsAbsent`.
+    let newIsExpression: Bool
 
     init(
         columnIndex: Int,
@@ -44,7 +59,9 @@ struct CellChange: Identifiable, Equatable {
         oldValue: PluginCellValue,
         newValue: PluginCellValue,
         oldIsAbsent: Bool = false,
-        newIsAbsent: Bool = false
+        newIsAbsent: Bool = false,
+        oldIsExpression: Bool = false,
+        newIsExpression: Bool = false
     ) {
         self.id = UUID()
         self.columnIndex = columnIndex
@@ -53,12 +70,14 @@ struct CellChange: Identifiable, Equatable {
         self.newValue = newValue
         self.oldIsAbsent = oldIsAbsent
         self.newIsAbsent = newIsAbsent
+        self.oldIsExpression = oldIsExpression
+        self.newIsExpression = newIsExpression
     }
 
-    /// Whether the edit leaves the cell as it was read: the same value, and the field there or
-    /// missing on both sides.
+    /// Whether the edit leaves the cell as it was read: the same value, the field there or missing on both sides,
+    /// and no expression in place of text that reads the same.
     var restoresOriginal: Bool {
-        oldValue == newValue && oldIsAbsent == newIsAbsent
+        oldValue == newValue && oldIsAbsent == newIsAbsent && oldIsExpression == newIsExpression
     }
 }
 
@@ -72,6 +91,10 @@ struct RowChange: Identifiable, Equatable {
     /// The columns the row has no field for: as it was read for an update or a delete, and as it
     /// stands for an insert. Empty on every engine that cannot tell a missing field from NULL.
     var absentColumns: Set<Int>
+
+    /// An insert's cells that hold a SQL expression, as the row stands. An update keeps its own on each
+    /// `CellChange`.
+    var expressionColumns: Set<Int>
 
     /// The order the user made this change in.
     ///
@@ -87,6 +110,7 @@ struct RowChange: Identifiable, Equatable {
         cellChanges: [CellChange] = [],
         originalRow: [PluginCellValue]? = nil,
         absentColumns: Set<Int> = [],
+        expressionColumns: Set<Int> = [],
         sequence: Int = 0
     ) {
         self.id = UUID()
@@ -95,6 +119,7 @@ struct RowChange: Identifiable, Equatable {
         self.cellChanges = cellChanges
         self.originalRow = originalRow
         self.absentColumns = absentColumns
+        self.expressionColumns = expressionColumns
         self.sequence = sequence
     }
 
@@ -121,11 +146,13 @@ struct InsertedRowLocation {
     let storageIndex: Int
 }
 
-/// What a new row held when its insertion was undone: its values, and the fields it had none of.
-/// Redoing the insertion puts back both, since the row's change is gone by then and cannot say.
+/// What a new row held when its insertion was undone: its values, the fields it had none of, and the cells that
+/// held an expression. Redoing the insertion puts back all three, since the row's change is gone by then and cannot
+/// say.
 struct InsertedRowImage {
     let values: [PluginCellValue]?
     let absentColumns: Set<Int>
+    var expressionColumns: Set<Int> = []
 }
 
 enum UndoAction {
@@ -136,7 +163,8 @@ enum UndoAction {
             previousValue: PluginCellValue,
             newValue: PluginCellValue,
             originalRow: [PluginCellValue]?,
-            absence: FieldAbsence = FieldAbsence()
+            absence: FieldAbsence = FieldAbsence(),
+            expression: ExpressionTransition = ExpressionTransition()
          )
     case rowInsertion(rowID: RowID, restoring: InsertedRowImage? = nil)
     case rowDeletion(rowID: RowID, originalRow: [PluginCellValue], absentColumns: Set<Int> = [])
@@ -147,6 +175,7 @@ enum UndoAction {
     case batchRowInsertion(
             rows: [InsertedRowLocation],
             rowValues: [[PluginCellValue]],
-            rowAbsentColumns: [Set<Int>] = []
+            rowAbsentColumns: [Set<Int>] = [],
+            rowExpressionColumns: [Set<Int>] = []
          )
 }

@@ -68,6 +68,8 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             .cancelQuery,
             .materializedViews,
             .dataCompare,
+            .cellExpressions,
+            .uuidCellText,
         ]
     }
 

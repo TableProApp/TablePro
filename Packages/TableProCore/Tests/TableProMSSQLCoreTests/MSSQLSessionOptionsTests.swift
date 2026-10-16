@@ -68,12 +68,13 @@ struct MSSQLServerBannerTests {
 
     @Test("A patched server's major version survives the banner")
     func patchedServerParses() {
-        #expect(MSSQLServerBanner.majorVersion(from: Self.sqlServer2022) == 16)
+        #expect(MSSQLServerBanner.server(from: Self.sqlServer2022)
+            == MSSQLServerBuild(major: 16, minor: 0, build: 4_275, isAzureSQL: false))
     }
 
     @Test("A fixed 50-character prefix would have lost it")
     func fixedPrefixLosesTheBuild() {
-        #expect(MSSQLServerBanner.majorVersion(from: String(Self.sqlServer2022.prefix(50))) == nil)
+        #expect(MSSQLServerBanner.server(from: String(Self.sqlServer2022.prefix(50))) == nil)
     }
 
     @Test("Display text is the product line alone")
@@ -87,14 +88,29 @@ struct MSSQLServerBannerTests {
     @Test("Azure SQL Database reports its version on the first line too")
     func azureParses() {
         let banner = "Microsoft SQL Azure (RTM) - 12.0.2000.8 \n\tOct 18 2025 12:00:00 \n\tCopyright (C) 2025 Microsoft Corporation"
-        #expect(MSSQLServerBanner.majorVersion(from: banner) == 12)
+        #expect(MSSQLServerBanner.server(from: banner)
+            == MSSQLServerBuild(major: 12, minor: 0, build: 2_000, isAzureSQL: true))
         #expect(MSSQLServerBanner.displayText(from: banner) == "Microsoft SQL Azure (RTM) - 12.0.2000.8")
     }
 
     @Test("A banner with no build number reports no version rather than a wrong one")
     func unparsableBanner() {
-        #expect(MSSQLServerBanner.majorVersion(from: "Microsoft SQL Server") == nil)
-        #expect(MSSQLServerBanner.majorVersion(from: nil) == nil)
+        #expect(MSSQLServerBanner.server(from: "Microsoft SQL Server") == nil)
+        #expect(MSSQLServerBanner.server(from: nil) == nil)
+    }
+
+    @Test(
+        "CREATE OR ALTER needs SQL Server 2016 SP1 or Azure SQL",
+        arguments: [
+            ("Microsoft SQL Server 2016 (RTM) - 13.0.1601.5 (X64)", false),
+            ("Microsoft SQL Server 2016 (SP1) (KB3182545) - 13.0.4001.0 (X64)", true),
+            ("Microsoft SQL Server 2014 (SP3) (KB4022619) - 12.0.6024.0 (X64)", false),
+            ("Microsoft SQL Server 2019 (RTM-CU18) (KB5017593) - 15.0.4261.1 (X64)", true),
+            ("Microsoft SQL Azure (RTM) - 12.0.2000.8", true),
+        ]
+    )
+    func createOrAlterGate(banner: String, expected: Bool) {
+        #expect(MSSQLServerBanner.server(from: banner)?.hasCreateOrAlter == expected)
     }
 
     @Test("A single-line banner is returned whole")

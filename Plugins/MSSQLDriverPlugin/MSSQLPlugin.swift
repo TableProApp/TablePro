@@ -302,6 +302,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .schemaCompare,
             .dataCompare,
             .resultSetBatches,
+            .cellExpressions,
+            .uuidCellText,
         ]
     }
 
@@ -312,8 +314,12 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - View Templates
 
+    private var hasCreateOrAlter: Bool {
+        MSSQLServerBanner.server(from: serverVersion)?.hasCreateOrAlter ?? false
+    }
+
     func createViewTemplate() -> String? {
-        if MSSQLCapabilities.parse(serverVersion).hasCreateOrAlterView {
+        if hasCreateOrAlter {
             return "CREATE OR ALTER VIEW view_name AS\nSELECT column1, column2\nFROM table_name\nWHERE condition;"
         }
         return "CREATE VIEW view_name AS\nSELECT column1, column2\nFROM table_name\nWHERE condition;"
@@ -323,7 +329,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         MSSQLObjectQueries.editViewTemplate(
             schema: effectiveSchema(nil),
             view: viewName,
-            createOrAlter: MSSQLCapabilities.parse(serverVersion).hasCreateOrAlterView
+            createOrAlter: hasCreateOrAlter
         )
     }
 

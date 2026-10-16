@@ -48,15 +48,16 @@ struct DataGridCellAppearance: Equatable {
         let baseColor: NSColor
 
         switch content.placeholder {
+        // A pending SQL expression is a value the server fills in on save, as a pending DEFAULT is, and shows its SQL.
+        case .none where state.visualState.isExpression(columnIndex: state.columnIndex), .defaultMarker:
+            font = palette.mediumFont
+            baseColor = deletedTextColor ?? .systemBlue
         case .none:
             font = palette.regularFont
             baseColor = deletedTextColor ?? textTone ?? valueTextColor(kind: kind, rawValue: content.rawValue, palette: palette)
         case .null, .empty, .absent:
             font = palette.italicFont
             baseColor = deletedTextColor ?? palette.placeholderText
-        case .defaultMarker:
-            font = palette.mediumFont
-            baseColor = deletedTextColor ?? .systemBlue
         }
 
         let findTint: NSColor? = state.isCurrentFindMatch ? palette.findMatchTint : nil

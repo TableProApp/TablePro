@@ -174,14 +174,14 @@ struct SQLStatementGeneratorTests {
         #expect(statements[0].parameters.count == 3)
     }
 
-    @Test("Insert with SQL function is inlined")
+    @Test("Insert with a cell marked as SQL inlines it")
     func testInsertWithSQLFunction() throws {
         let generator = try makeGenerator()
         let insertedRowData: [RowID: [PluginCellValue]] = [
             .existing(0): ["1", "John", "NOW()"]
         ]
         let changes: [RowChange] = [
-            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil)
+            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil, expressionColumns: [2])
         ]
 
         let statements = generator.generateStatements(
@@ -405,7 +405,7 @@ struct SQLStatementGeneratorTests {
         #expect(stmt.parameters.count == 1)
     }
 
-    @Test("Update with SQL function value is inlined")
+    @Test("Update with a cell marked as SQL inlines it")
     func testUpdateWithSQLFunction() throws {
         let generator = try makeGenerator()
         let changes: [RowChange] = [
@@ -413,7 +413,10 @@ struct SQLStatementGeneratorTests {
                 rowID: .existing(0),
                 type: .update,
                 cellChanges: [
-                    CellChange(columnIndex: 2, columnName: "email", oldValue: "old@example.com", newValue: "CURRENT_TIMESTAMP()")
+                    CellChange(
+                        columnIndex: 2, columnName: "email", oldValue: "old@example.com",
+                        newValue: "CURRENT_TIMESTAMP()", newIsExpression: true
+                    )
                 ],
                 originalRow: ["1", "John", "old@example.com"]
             )

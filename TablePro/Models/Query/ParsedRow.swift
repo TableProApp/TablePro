@@ -19,6 +19,9 @@ struct ParsedRow {
     /// The columns the row has no field for, for an engine that tells a missing field from NULL.
     var absentColumns: Set<Int> = []
 
+    /// The columns holding SQL the grid staged, which only the grid's own copy carries.
+    var expressionColumns: Set<Int> = []
+
     /// Check if row has valid data
     var isValid: Bool {
         !values.isEmpty

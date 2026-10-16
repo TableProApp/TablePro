@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Generate UUID and Generate UUIDv7 in Set Value, the row inspector and Fill Column, a new value for each cell. (#3443)
+- Edit > Set Value in the menu bar, with rows in Settings > Keyboard. (#3443)
+- New UUID in a UUID primary key the server does not fill, on Add Row, Duplicate Row and Paste. (#3443)
 - Solarized, GitHub, Catppuccin, Gruvbox and Tokyo Night themes in light and dark, plus One Dark and One Light.
 - VS Code color theme import in Settings > Appearance, from the theme's `.json` file.
 - Theme Editor window with a live preview, undo and Revert Changes. Open windows show each edit as you make it.
@@ -17,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Set Value applies to every selected cell, or to the clicked column across the selected rows. (#3443)
+- SQL functions in Set Value and the row inspector listed per database and only where they fit the column. (#3443)
+- UUID functions in SQL Functions replaced by Generate UUID, which writes the value itself. (#3443)
+- Text typed into a column that is not a date or time saved as typed, even when it reads like `now()`. (#3443)
+- Set NULL and Set DEFAULT in the row inspector shown only where the column takes them, as in the data grid. (#3443)
+- Default only on new rows on SQLite, libSQL, Turso, D1, ClickHouse, Databend, Snowflake, Trino, Cassandra. (#3443)
+- Pending SQL functions in the data grid drawn like a pending default. (#3443)
+- PluginKit ABI 39, additive: existing plugins keep loading. (#3443)
 - Appearance (System, Light or Dark) kept per Mac instead of syncing. Older versions that sync settings switch to System.
 - Data Files, Compare & Sync and Open in Window value windows show the theme in the titlebar on macOS 26 and later.
 - SQL aliases and parameters drawn in the editor text color instead of the NULL color.
@@ -29,6 +40,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Every ClickHouse query after connecting failing with `UNKNOWN_SETTING` on 23.8.0 to 23.8.8. (#3444)
+- ClickHouse users with a read-only profile unable to connect.
+- ClickHouse indexes, view definitions, functions, table comments and sizes failing to load on servers before 22.3.
+- A ClickHouse query that failed partway showing its partial rows and the error text as a row instead of the error.
+- A ClickHouse query with a `FORMAT` clause showing garbled rows in the grid and in an export.
+- ClickHouse SQL export writing the current database's table structure for a table in another database.
+- Opening a ClickHouse executable function's definition showing a syntax error.
+- SQL Server 2016 RTM offered a `CREATE OR ALTER VIEW` template it cannot run, and Azure SQL a drop-and-create one.
+- `gen_random_uuid()`, `UUID()`, `NEWID()` and `datetime('now')` from SQL Functions saved as quoted text. (#3443)
+- SQL functions saved as text on SQL Server, Teradata, Spanner and BigQuery. (#3443)
+- `NOW()` offered on SQLite, Oracle, Cassandra and MongoDB, where it fails or saves the text. (#3443)
+- SQLite's `datetime('now')` offered on DuckDB and `gen_random_uuid()` on Redshift. (#3443)
+- Stored text such as `CURRENT_DATE` turning into today's date on Duplicate Row or Restore Previous Values. (#3443)
+- Copy as INSERT and Copy as UPDATE quoting a staged SQL function. (#3443)
+- Default on a saved row failing on SQLite, and storing `__DEFAULT__` on Teradata and DynamoDB. (#3443)
+- Duplicate Row and Paste failing to save on a UUID primary key with no default. (#3443)
+- Date functions and a date picker offered on Cassandra and ScyllaDB `timeuuid` columns. (#3443)
+- MariaDB `uuid` columns read as `CHAR`. (#3443)
+- Empty field in the multi-row inspector after the selected rows were given different values. (#3443)
 - Inline cell editor, the array editor's Edit as Text, and the inspector's hex dump and map pane ignoring the theme.
 - No-match, invalid and NULL states in the JSON, PHP and array viewers drawn without the theme's background.
 - Agent result states and proposed SQL ignoring the theme.

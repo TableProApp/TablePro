@@ -63,6 +63,11 @@ public struct PluginRowChange: Sendable {
     /// shown rows with such cells, so every other driver can ignore it.
     public var absentColumns: Set<Int>?
 
+    /// The columns whose new value is a SQL expression the host vetted, such as `now()`, to be written as it is
+    /// rather than bound as text: an update's `cellChanges`, or a new row's `insertedRowData` cells. Only a driver
+    /// that declares `PluginCapabilities.cellExpressions` is handed any.
+    public var expressionColumns: Set<Int>?
+
     public init(
         rowIndex: Int,
         type: ChangeType,

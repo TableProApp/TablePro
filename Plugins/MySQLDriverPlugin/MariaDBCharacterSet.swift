@@ -137,16 +137,11 @@ nonisolated func mysqlTypeToString(_ fieldPtr: UnsafePointer<MYSQL_FIELD>) -> St
     let field = fieldPtr.pointee
     let flags = UInt(field.flags)
 
-    // MariaDB extended metadata: detect JSON stored as LONGTEXT.
-    // `MARIADB_CONST_STRING` is length-prefixed (not null-terminated), so we must read
-    // exactly `attr.length` bytes. `String(cString:)` would scan past the buffer into
-    // adjacent memory and intermittently fail the comparison when that memory is non-zero.
-    var attr = MARIADB_CONST_STRING()
-    if mariadb_field_attr(&attr, fieldPtr, MARIADB_FIELD_ATTR_FORMAT_NAME) == 0,
-       let str = attr.str, attr.length > 0,
-       let value = String(data: Data(bytes: str, count: Int(attr.length)), encoding: .utf8),
-       value == "json" {
-        return "JSON"
+    if let extended = mariaDBExtendedTypeName(
+        formatName: mariaDBFieldAttribute(fieldPtr, MARIADB_FIELD_ATTR_FORMAT_NAME),
+        dataTypeName: mariaDBFieldAttribute(fieldPtr, MARIADB_FIELD_ATTR_DATA_TYPE_NAME)
+    ) {
+        return extended
     }
 
     if (flags & mysqlEnumFlag) != 0 { return "ENUM" }
@@ -158,4 +153,15 @@ nonisolated func mysqlTypeToString(_ fieldPtr: UnsafePointer<MYSQL_FIELD>) -> St
         charsetnr: field.charsetnr,
         length: field.length
     )
+}
+
+// `MARIADB_CONST_STRING` is length-prefixed, not NUL-terminated: `String(cString:)` would scan past the buffer into
+// adjacent memory and intermittently fail the comparison when that memory is non-zero.
+nonisolated private func mariaDBFieldAttribute(
+    _ fieldPtr: UnsafePointer<MYSQL_FIELD>,
+    _ attribute: mariadb_field_attr_t
+) -> String? {
+    var value = MARIADB_CONST_STRING()
+    guard mariadb_field_attr(&value, fieldPtr, attribute) == 0, let str = value.str, value.length > 0 else { return nil }
+    return String(data: Data(bytes: str, count: Int(value.length)), encoding: .utf8)
 }

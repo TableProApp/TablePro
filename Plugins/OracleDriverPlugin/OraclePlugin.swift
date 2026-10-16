@@ -191,6 +191,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .multiSchema,
             .schemaCompare,
             .dataCompare,
+            .cellExpressions,
+            .uuidCellText,
         ]
     }
 

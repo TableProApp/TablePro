@@ -55,6 +55,7 @@ struct ParsedSchemaMetadata {
     /// value from that knowledge waits for it rather than guessing from an empty set.
     let isAuthoritative: Bool
     var rowMatchPolicy: RowMatchPolicy = .none
+    var columnDeclaredTypes: [String: String] = [:]
 
     /// The metadata a tab already holds, captured at the moment the cache decision is made.
     ///
@@ -73,7 +74,8 @@ struct ParsedSchemaMetadata {
             columnEnumValues: rows.columnEnumValues,
             columnComments: rows.columnComments,
             isAuthoritative: rows.hasAuthoritativeSchema,
-            rowMatchPolicy: rows.rowMatchPolicy
+            rowMatchPolicy: rows.rowMatchPolicy,
+            columnDeclaredTypes: rows.columnDeclaredTypes
         )
     }
 }
@@ -266,10 +268,12 @@ final class QueryExecutor {
         var defaults: [String: String?] = [:]
         var nullable: [String: Bool] = [:]
         var identity: [String: IdentityKind] = [:]
+        var declaredTypes: [String: String] = [:]
         for col in schema.columns {
             defaults[col.name] = col.defaultValue
             nullable[col.name] = col.isNullable
             identity[col.name] = col.identityKind
+            declaredTypes[col.name] = col.dataType
         }
         var fks: [String: ForeignKeyInfo]?
         if let foreignKeys = schema.foreignKeys {
@@ -309,7 +313,8 @@ final class QueryExecutor {
             rowMatchPolicy: RowMatchPolicy(
                 excludedColumns: columns(in: schema.columns, typedAnyOf: rowMatchExcludedTypePrefixes),
                 textColumns: columns(in: schema.columns, typedAnyOf: rowMatchTextTypePrefixes)
-            )
+            ),
+            columnDeclaredTypes: declaredTypes
         )
     }
 

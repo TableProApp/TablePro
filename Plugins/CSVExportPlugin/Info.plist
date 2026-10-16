@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>TableProPluginKitVersion</key>
-	<integer>38</integer>
+	<integer>39</integer>
 	<key>TableProProvidesExportFormatIds</key>
 	<array>
 		<string>csv</string>

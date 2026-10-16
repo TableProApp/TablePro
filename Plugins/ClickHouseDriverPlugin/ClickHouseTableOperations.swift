@@ -36,9 +36,9 @@ func clickHouseCommentStatement(
     database: String?,
     objectType: String,
     comment: String?,
-    capabilities: ClickHouseCapabilities
+    profile: ClickHouseServerProfile
 ) -> String? {
-    guard capabilities.hasModifyComment, objectType.uppercased() == "TABLE" else { return nil }
+    guard profile.hasModifyComment, objectType.uppercased() == "TABLE" else { return nil }
     let table = database.flatMap {
         $0.isEmpty ? nil : "\(clickHouseQuotedIdentifier($0)).\(clickHouseQuotedIdentifier(name))"
     } ?? clickHouseQuotedIdentifier(name)

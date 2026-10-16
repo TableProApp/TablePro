@@ -107,6 +107,26 @@ struct DataGridCellAppearanceTests {
         #expect(appearance.textColor == .systemBlue)
     }
 
+    @Test("A pending SQL expression draws like a pending DEFAULT and shows its SQL")
+    func expressionDrawsLikeDefault() {
+        let expression = resolve(
+            text: "now()",
+            rawValue: "now()",
+            visualState: RowVisualState(isDeleted: false, isInserted: false, modifiedColumns: [0], expressionColumns: [0])
+        )
+        let literal = resolve(
+            text: "now()",
+            rawValue: "now()",
+            visualState: RowVisualState(isDeleted: false, isInserted: false, modifiedColumns: [0])
+        )
+
+        #expect(expression.text == "now()")
+        #expect(expression.font == palette.mediumFont)
+        #expect(expression.textColor == .systemBlue)
+        #expect(literal.font == palette.regularFont)
+        #expect(literal.textColor == .labelColor)
+    }
+
     /// A large result blanks its placeholders rather than formatting every one of them.
     @Test("A large result draws no placeholder text")
     func largeDatasetBlanksPlaceholders() {

@@ -410,6 +410,50 @@ struct SQLRowToStatementConverterTests {
     }
 
     @Test
+    func insertWritesAnExpressionCellAsTheSQL() throws {
+        let converter = try mssqlConverter(columns: ["ID", "Name", "At"], unwritableColumns: ["ID"])
+        let staged = SQLRowToStatementConverter.SourceRow(
+            values: ["1761", "GETDATE()", "GETDATE()"], isPendingInsert: true, expressionColumns: [2]
+        )
+        #expect(
+            converter.generateInserts(rows: [staged])
+                == "INSERT INTO [Enterprise_App_Approved] ([Name], [At]) VALUES (N'GETDATE()', GETDATE());"
+        )
+    }
+
+    @Test
+    func updateWritesAnExpressionCellAsTheSQL() throws {
+        let converter = try mssqlConverter(columns: ["code", "At"], primaryKeyColumns: ["code"], unwritableColumns: [])
+        let staged = SQLRowToStatementConverter.SourceRow(values: ["a", "SYSDATETIME()"], expressionColumns: [1])
+        #expect(
+            converter.generateUpdates(rows: [staged])
+                == "UPDATE [Enterprise_App_Approved] SET [At] = SYSDATETIME() WHERE [code] = N'a';"
+        )
+    }
+
+    @Test
+    func aKeySetToAnExpressionThatSpellsItsStoredTextIsAssigned() throws {
+        let converter = try mssqlConverter(columns: ["At"], primaryKeyColumns: ["At"], unwritableColumns: [])
+        let staged = SQLRowToStatementConverter.SourceRow(
+            values: ["SYSDATETIME()"], storedValues: ["SYSDATETIME()"], expressionColumns: [0]
+        )
+        #expect(
+            converter.generateUpdates(rows: [staged])
+                == "UPDATE [Enterprise_App_Approved] SET [At] = SYSDATETIME() WHERE [At] = N'SYSDATETIME()';"
+        )
+    }
+
+    @Test
+    func anExpressionCellOutsideTheVocabularyIsQuoted() throws {
+        let converter = try mssqlConverter(columns: ["code", "At"], primaryKeyColumns: ["code"], unwritableColumns: [])
+        let staged = SQLRowToStatementConverter.SourceRow(values: ["a", "1; DROP TABLE x"], expressionColumns: [1])
+        #expect(
+            converter.generateUpdates(rows: [staged])
+                == "UPDATE [Enterprise_App_Approved] SET [At] = N'1; DROP TABLE x' WHERE [code] = N'a';"
+        )
+    }
+
+    @Test
     func aStoredValueThatReadsLikeTheDefaultMarkerIsCopiedAsData() throws {
         let converter = try mssqlConverter(columns: ["code", "Status"], primaryKeyColumns: ["code"], unwritableColumns: [])
         let stored = plain([["a", "__DEFAULT__"]])

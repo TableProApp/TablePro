@@ -24,11 +24,30 @@ enum TeradataRowEditSQL {
         }
     }
 
-    static func insert(target: String, columns: [String], values: [PluginCellValue]) -> String {
-        let written = zip(columns, values).filter { $0.1 != defaultMarker }
+    static func insert(
+        target: String,
+        columns: [String],
+        values: [PluginCellValue],
+        expressionColumns: Set<Int> = []
+    ) -> String {
+        let written = zip(columns, values).enumerated().filter { $0.element.1 != defaultMarker }
         guard !written.isEmpty else { return "INSERT INTO \(target) DEFAULT VALUES" }
-        let columnList = written.map { TeradataSchemaQueries.quoteIdentifier($0.0) }.joined(separator: ", ")
-        let valueList = written.map { literal($0.1) }.joined(separator: ", ")
+        let columnList = written.map { TeradataSchemaQueries.quoteIdentifier($0.element.0) }.joined(separator: ", ")
+        let valueList = written.map { cell in
+            value(cell.element.1, isExpression: expressionColumns.contains(cell.offset))
+        }.joined(separator: ", ")
         return "INSERT INTO \(target) (\(columnList)) VALUES (\(valueList))"
+    }
+
+    static func assignment(column: String, value: PluginCellValue, isExpression: Bool) -> String {
+        let name = TeradataSchemaQueries.quoteIdentifier(column)
+        guard value != defaultMarker else { return "\(name) = DEFAULT" }
+        return "\(name) = \(Self.value(value, isExpression: isExpression))"
+    }
+
+    // The host checked a marked cell's text against the engine's vocabulary before handing it over.
+    private static func value(_ value: PluginCellValue, isExpression: Bool) -> String {
+        guard isExpression, case .text(let sql) = value else { return literal(value) }
+        return sql
     }
 }
