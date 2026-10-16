@@ -654,6 +654,38 @@ mod tests {
         assert!(!cancellation.is_cancelled());
     }
 
+    #[tokio::test]
+    async fn an_http_body_over_the_request_limit_is_refused() {
+        use tokio::io::AsyncReadExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let tokens = Arc::new(crate::tokens::TokenStore::open(dir.path().join("tokens.json")).unwrap());
+        let router = http_router(Arc::new(McpBridge::new(Arc::new(NoProvider), tokens)));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, router).await });
+
+        let body = vec![b' '; MAX_REQUEST_BYTES + 1];
+        let mut stream = TcpStream::connect(address).await.unwrap();
+        let head = format!(
+            "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\
+             Connection: close\r\n\r\n",
+            body.len()
+        );
+        stream.write_all(head.as_bytes()).await.unwrap();
+        let _ = stream.write_all(&body).await;
+        let mut response = Vec::new();
+        let _ = stream.read_to_end(&mut response).await;
+        server.abort();
+
+        let status = String::from_utf8_lossy(&response);
+        assert!(
+            status.starts_with("HTTP/1.1 413"),
+            "{}",
+            status.lines().next().unwrap_or_default()
+        );
+    }
+
     struct PendingApproval {
         requested: Arc<Notify>,
     }

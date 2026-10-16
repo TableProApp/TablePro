@@ -546,3 +546,51 @@ async fn a_failed_guarded_call_never_cancels_the_callers_control() {
     assert!(!control.cancellation_token().is_cancelled());
     assert_eq!(calls.load(Ordering::SeqCst), 2, "the second call reached the driver");
 }
+fn outcomes_by_operation(audit: &SequenceAuditSink) -> std::collections::HashMap<Uuid, Vec<AuditTerminalStatus>> {
+    let mut outcomes: std::collections::HashMap<Uuid, Vec<AuditTerminalStatus>> = std::collections::HashMap::new();
+    for event in audit.events.lock().expect("events").iter() {
+        let entry = outcomes.entry(event.operation_id).or_default();
+        if event.phase == AuditRecordPhase::Outcome {
+            entry.push(event.terminal_status);
+        }
+    }
+    outcomes
+}
+
+#[tokio::test]
+async fn every_audited_read_ends_in_exactly_one_terminal_outcome() {
+    for (fail, controlled) in [(false, false), (false, true), (true, false), (true, true)] {
+        let (guard, _calls, audit) = catalog_guard(fail);
+        let control = control();
+        run_every_read(&guard, controlled.then_some(&control)).await;
+
+        let outcomes = outcomes_by_operation(&audit);
+        assert!(!outcomes.is_empty(), "fail={fail} controlled={controlled}");
+        for (operation, statuses) in &outcomes {
+            assert_eq!(
+                statuses.len(),
+                1,
+                "fail={fail} controlled={controlled} {operation}: {statuses:?}"
+            );
+            assert_eq!(
+                statuses[0] == AuditTerminalStatus::Succeeded,
+                !fail,
+                "fail={fail} controlled={controlled}: {statuses:?}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn no_read_under_a_cancelled_control_writes_two_outcomes() {
+    let (guard, _calls, audit) = catalog_guard(false);
+    let control = control();
+    control.cancellation_token().cancel();
+    run_every_read(&guard, Some(&control)).await;
+
+    let outcomes = outcomes_by_operation(&audit);
+    assert!(!outcomes.is_empty(), "a cancelled read still leaves an audit trail");
+    for (operation, statuses) in outcomes {
+        assert_eq!(statuses.len(), 1, "{operation}: {statuses:?}");
+    }
+}

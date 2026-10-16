@@ -1,6 +1,6 @@
 use super::*;
 use crate::export::test_support::column;
-use crate::export::{CsvDecimal, CsvDelimiter, render_csv};
+use crate::export::{CsvDecimal, CsvDelimiter, render_csv, render_tsv};
 use std::io;
 
 struct Sink {
@@ -138,4 +138,52 @@ fn value_contract_every_export_propagates_destination_write_failure() {
             assert_eq!(sink.bytes.len(), fail_after, "{format:?}");
         }
     }
+}
+
+fn render_value(format: ResultFormat, value: Value) -> Result<Vec<u8>, ExportError> {
+    let columns = vec![column("amount")];
+    let row = vec![value];
+    let options = CsvOptions::default();
+    let export = ResultExport {
+        format,
+        csv: &options,
+        sql: Some(SqlTarget {
+            driver_id: "postgres",
+            schema: None,
+            table: "items",
+        }),
+    };
+    let mut output = Vec::new();
+    let mut writer = writer_for(&export, 1)?;
+    writer.begin(&mut output, &columns)?;
+    writer.write_row(&mut output, 0, &row)?;
+    writer.finish(&mut output)?;
+    Ok(output)
+}
+
+#[test]
+fn value_contract_every_export_keeps_undecodable_distinct_from_null() {
+    let undecodable = || Value::Undecodable("NUMERIC".into());
+    for format in [
+        ResultFormat::Csv,
+        ResultFormat::Json,
+        ResultFormat::Markdown,
+        ResultFormat::Html,
+        ResultFormat::Xml,
+    ] {
+        let marked = String::from_utf8(render_value(format, undecodable()).unwrap()).unwrap();
+        let null = String::from_utf8(render_value(format, Value::Null).unwrap()).unwrap();
+        assert!(marked.contains("undecodable NUMERIC"), "{format:?}: {marked}");
+        assert_ne!(marked, null, "{format:?}");
+    }
+    assert_ne!(
+        render_value(ResultFormat::Xlsx, undecodable()).unwrap(),
+        render_value(ResultFormat::Xlsx, Value::Null).unwrap()
+    );
+    assert!(render_value(ResultFormat::Sql, undecodable()).is_err());
+
+    let columns = [column("amount")];
+    let copied = render_tsv(&columns, &[vec![undecodable()]], false);
+    assert!(copied.contains("undecodable NUMERIC"), "{copied}");
+    assert_ne!(copied, render_tsv(&columns, &[vec![Value::Null]], false));
 }

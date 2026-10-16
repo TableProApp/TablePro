@@ -919,3 +919,40 @@ async fn list_objects_rejects_an_unknown_kind_and_a_hostile_schema_before_connec
     assert!(hostile.contains("control characters"), "{hostile}");
     assert_eq!(provider.connection_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
+
+#[tokio::test]
+async fn every_tool_refuses_a_connection_outside_a_nonempty_allowlist() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = Arc::new(TokenStore::open(dir.path().join("tokens.json")).unwrap());
+    let (_metadata, plaintext) = store
+        .issue("rw".into(), TokenPermissions::ReadWrite, vec![Uuid::nil()], None)
+        .unwrap();
+    let provider = Arc::new(RecordingProvider::default());
+    let bridge = McpBridge::new(provider.clone(), store);
+    let token = bridge.authenticate(&plaintext).unwrap();
+    let outside = serde_json::json!({
+        "connection_id": Uuid::max().to_string(),
+        "table": "items",
+        "sql": "SELECT 1",
+        "format": "csv",
+        "kind": "sequence",
+    });
+
+    for tool in tablepro_mcp::TOOL_NAMES
+        .iter()
+        .filter(|tool| **tool != "list_connections")
+    {
+        let error = tablepro_mcp::dispatch(&bridge, &token, tool, outside.clone())
+            .await
+            .expect_err(tool);
+        assert!(
+            error.contains("not allowed to access this connection"),
+            "{tool}: {error}"
+        );
+    }
+    assert_eq!(
+        provider.connection_calls.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "no tool opened a connection outside the allowlist"
+    );
+}

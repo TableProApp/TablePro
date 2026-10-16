@@ -407,6 +407,46 @@ mod tests {
     }
 
     #[test]
+    fn an_expired_token_is_refused() {
+        let dir = TempDir::new().unwrap();
+        let store = TokenStore::open(dir.path().join("tokens.json")).unwrap();
+        let (_meta, expired) = store
+            .issue(
+                "old".into(),
+                TokenPermissions::ReadOnly,
+                vec![],
+                Some(Utc::now() - chrono::Duration::seconds(1)),
+            )
+            .unwrap();
+        let (_meta, current) = store
+            .issue(
+                "new".into(),
+                TokenPermissions::ReadOnly,
+                vec![],
+                Some(Utc::now() + chrono::Duration::hours(1)),
+            )
+            .unwrap();
+
+        let refused = store.authenticate(&expired).unwrap_err();
+        assert!(refused.contains("expired"), "{refused}");
+        assert_eq!(store.authenticate(&current).unwrap().name, "new");
+    }
+
+    #[test]
+    fn the_token_file_and_debug_never_hold_the_plaintext() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("tokens.json");
+        let store = TokenStore::open(path.clone()).unwrap();
+        let (meta, plain) = store
+            .issue("agent".into(), TokenPermissions::ReadWrite, vec![], None)
+            .unwrap();
+
+        assert!(!std::fs::read_to_string(&path).unwrap().contains(&plain));
+        assert_ne!(meta.token_hash, plain);
+        assert!(!format!("{meta:?}").contains(&plain));
+    }
+
+    #[test]
     fn revoke_blocks() {
         let dir = TempDir::new().unwrap();
         let store = TokenStore::open(dir.path().join("tokens.json")).unwrap();
