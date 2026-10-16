@@ -60,9 +60,21 @@ struct ClickHouseDatabaseMetadataTests {
 
     @Test("The aggregate reads system.tables once, grouped by database")
     func aggregateQueryGroupsSystemTables() {
-        let query = ClickHousePluginDriver.databaseTableAggregateQuery
+        let query = ClickHouseStubServer().connectedDriver().databaseTableAggregateQuery
 
         #expect(query.contains("FROM system.tables"))
         #expect(query.contains("GROUP BY database"))
+        #expect(query.contains("sum(total_bytes)"))
+    }
+
+    @Test("A server without system.tables.total_bytes reports the size as unknown")
+    func aggregateQueryWithoutTotals() throws {
+        let driver = ClickHouseStubServer().connectedDriver()
+        driver.serverProfile = .testing(catalog: [.tablesComment])
+
+        #expect(!driver.databaseTableAggregateQuery.contains("total_bytes"))
+        let allTables = try #require(driver.allTablesMetadataSQL(schema: nil))
+        #expect(!allTables.contains("total_rows"))
+        #expect(!allTables.contains("total_bytes"))
     }
 }

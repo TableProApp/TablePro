@@ -52,50 +52,50 @@ struct ClickHouseTableOperationsTests {
 
     // MARK: - Comments
 
-    private let commentCapable = ClickHouseCapabilities.parse("23.9")
+    private let commentCapable = ClickHouseServerProfile.testing(version: "23.9")
 
     @Test("A table comment uses MODIFY COMMENT")
     func tableCommentStatement() {
         #expect(clickHouseCommentStatement(
-            name: "orders", database: nil, objectType: "TABLE", comment: "Orders", capabilities: commentCapable
+            name: "orders", database: nil, objectType: "TABLE", comment: "Orders", profile: commentCapable
         ) == "ALTER TABLE `orders` MODIFY COMMENT 'Orders'")
     }
 
     @Test("A named database qualifies the table and backticks are doubled")
     func tableCommentQualifiesTheDatabase() {
         #expect(clickHouseCommentStatement(
-            name: "or`ders", database: "sh`op", objectType: "TABLE", comment: "x", capabilities: commentCapable
+            name: "or`ders", database: "sh`op", objectType: "TABLE", comment: "x", profile: commentCapable
         ) == "ALTER TABLE `sh``op`.`or``ders` MODIFY COMMENT 'x'")
         #expect(clickHouseCommentStatement(
-            name: "orders", database: "", objectType: "TABLE", comment: "x", capabilities: commentCapable
+            name: "orders", database: "", objectType: "TABLE", comment: "x", profile: commentCapable
         ) == "ALTER TABLE `orders` MODIFY COMMENT 'x'")
     }
 
     @Test("A nil or empty comment clears it with an empty literal", arguments: [nil, ""] as [String?])
     func emptyCommentClears(comment: String?) {
         #expect(clickHouseCommentStatement(
-            name: "orders", database: nil, objectType: "TABLE", comment: comment, capabilities: commentCapable
+            name: "orders", database: nil, objectType: "TABLE", comment: comment, profile: commentCapable
         ) == "ALTER TABLE `orders` MODIFY COMMENT ''")
     }
 
     @Test("Quotes, backslashes and line breaks are escaped")
     func commentIsEscaped() {
         #expect(clickHouseCommentStatement(
-            name: "t", database: nil, objectType: "TABLE", comment: "it's C:\\tmp\nnext", capabilities: commentCapable
+            name: "t", database: nil, objectType: "TABLE", comment: "it's C:\\tmp\nnext", profile: commentCapable
         ) == #"ALTER TABLE `t` MODIFY COMMENT 'it''s C:\\tmp\nnext'"#)
     }
 
     @Test("Views and materialized views get no comment statement", arguments: ["VIEW", "MATERIALIZED VIEW", "SYSTEM TABLE"])
     func nonTablesReturnNil(objectType: String) {
         #expect(clickHouseCommentStatement(
-            name: "v", database: nil, objectType: objectType, comment: "x", capabilities: commentCapable
+            name: "v", database: nil, objectType: objectType, comment: "x", profile: commentCapable
         ) == nil)
     }
 
     @Test("A server before 23.9, or of unknown version, gets no comment statement", arguments: ["23.8", "21.3.20.1", nil] as [String?])
     func olderServersReturnNil(version: String?) {
         #expect(clickHouseCommentStatement(
-            name: "t", database: nil, objectType: "TABLE", comment: "x", capabilities: ClickHouseCapabilities.parse(version)
+            name: "t", database: nil, objectType: "TABLE", comment: "x", profile: ClickHouseServerProfile.testing(version: version)
         ) == nil)
     }
 
@@ -116,7 +116,7 @@ struct ClickHouseTableOperationsTests {
     func commentStatementQuotesBackslashNames() {
         let statement = clickHouseCommentStatement(
             name: "x\\`y", database: "db", objectType: "TABLE", comment: "c",
-            capabilities: ClickHouseCapabilities.parse("24.3.1")
+            profile: ClickHouseServerProfile.testing(version: "24.3.1")
         )
         #expect(statement == "ALTER TABLE `db`.`x\\\\``y` MODIFY COMMENT 'c'")
     }

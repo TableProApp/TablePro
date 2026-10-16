@@ -21,13 +21,21 @@ extension ClickHousePluginDriver {
     /// `Code 62 SYNTAX_ERROR` under quote-only escaping, and one created as ``q\\' OR 1=1 -- ``
     /// closed the literal early and listed every table on the server.
     static func tableListSQL(schema: String?) -> String {
-        let database = schema.flatMap { $0.isEmpty ? nil : $0 }
-            .map { "'\(Self.escapeStringLiteral($0))'" } ?? "currentDatabase()"
-        return """
-            SELECT name, engine FROM system.tables
-            WHERE database = \(database) AND name NOT LIKE '.%'
-            ORDER BY name
-            """
+        """
+        SELECT name, engine FROM system.tables
+        WHERE database = \(databaseExpression(schema)) AND name NOT LIKE '.%'
+        ORDER BY name
+        """
+    }
+
+    /// Every metadata read names the database it was asked about, for the same reason as
+    /// `tableListSQL`: the export tree reads tables of other databases over one session.
+    static func databaseExpression(_ schema: String?) -> String {
+        schema.flatMap { $0.isEmpty ? nil : stringLiteral($0) } ?? "currentDatabase()"
+    }
+
+    static func stringLiteral(_ value: String) -> String {
+        "'\(escapeStringLiteral(value))'"
     }
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
@@ -41,11 +49,12 @@ extension ClickHousePluginDriver {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
+        let database = Self.databaseExpression(schema)
+        let tableLiteral = Self.stringLiteral(table)
 
         let pkSql = """
             SELECT primary_key, sorting_key FROM system.tables
-            WHERE database = currentDatabase() AND name = '\(escapedTable)'
+            WHERE database = \(database) AND name = \(tableLiteral)
             """
         let pkResult = try await execute(query: pkSql)
         let primaryKey = pkResult.rows.first.flatMap { $0[safe: 0]?.asText } ?? ""
@@ -56,7 +65,7 @@ extension ClickHousePluginDriver {
         let sql = """
             SELECT name, type, default_kind, default_expression, comment
             FROM system.columns
-            WHERE database = currentDatabase() AND table = '\(escapedTable)'
+            WHERE database = \(database) AND table = \(tableLiteral)
             ORDER BY position
             """
         let result = try await execute(query: sql)
@@ -99,9 +108,10 @@ extension ClickHousePluginDriver {
         // Pre-fetch PK columns for all tables. Falls back to sorting_key when
         // primary_key is empty (MergeTree without explicit PRIMARY KEY clause).
         // Note: expression-based keys like toDate(col) won't match bare column names.
+        let database = Self.databaseExpression(schema)
         let pkSql = """
             SELECT name, primary_key, sorting_key FROM system.tables
-            WHERE database = currentDatabase()
+            WHERE database = \(database)
             """
         let pkResult = try await execute(query: pkSql)
         var pkLookup: [String: Set<String>] = [:]
@@ -118,7 +128,7 @@ extension ClickHousePluginDriver {
         let sql = """
             SELECT table, name, type, default_kind, default_expression, comment
             FROM system.columns
-            WHERE database = currentDatabase()
+            WHERE database = \(database)
             ORDER BY table, position
             """
         let result = try await execute(query: sql)
@@ -168,12 +178,13 @@ extension ClickHousePluginDriver {
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
+        let database = Self.databaseExpression(schema)
+        let tableLiteral = Self.stringLiteral(table)
         var indexes: [PluginIndexInfo] = []
 
         let sortingKeySql = """
             SELECT sorting_key FROM system.tables
-            WHERE database = currentDatabase() AND name = '\(escapedTable)'
+            WHERE database = \(database) AND name = \(tableLiteral)
             """
         let sortingResult = try await execute(query: sortingKeySql)
         if let row = sortingResult.rows.first,
@@ -190,11 +201,10 @@ extension ClickHousePluginDriver {
             ))
         }
 
-        let caps = ClickHouseCapabilities.parse(serverVersion)
-        guard caps.hasDataSkippingIndicesTable else { return indexes }
+        guard serverProfile.hasDataSkippingIndices else { return indexes }
         let skippingSql = """
             SELECT name, expr FROM system.data_skipping_indices
-            WHERE database = currentDatabase() AND table = '\(escapedTable)'
+            WHERE database = \(database) AND table = \(tableLiteral)
             """
         let skippingResult = try await execute(query: skippingSql)
         for row in skippingResult.rows {
@@ -220,10 +230,9 @@ extension ClickHousePluginDriver {
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
         let sql = """
             SELECT sum(rows) FROM system.parts
-            WHERE database = currentDatabase() AND table = '\(escapedTable)' AND active = 1
+            WHERE database = \(Self.databaseExpression(schema)) AND table = \(Self.stringLiteral(table)) AND active = 1
             """
         let result = try await execute(query: sql)
         if let row = result.rows.first, let cell = row.first, let str = cell.asText {
@@ -233,7 +242,7 @@ extension ClickHousePluginDriver {
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let sql = "SHOW CREATE TABLE \(clickHouseQuotedIdentifier(table))"
+        let sql = "SHOW CREATE TABLE \(qualified(database: schema, name: table))"
         let result = try await execute(query: sql)
         return result.rows.first?.first?.asText ?? ""
     }
@@ -242,10 +251,14 @@ extension ClickHousePluginDriver {
     /// and engine clause. `as_select` is the `SELECT` alone and would describe it as an ordinary
     /// view, so the restore would build one and lose where the rows are actually kept.
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let escapedView = view.replacingOccurrences(of: "'", with: "''")
+        /// `system.tables` has no `as_select` on 21.8, and `SHOW CREATE TABLE` answers for a view
+        /// with its whole `CREATE VIEW` statement.
+        guard serverProfile.hasViewSelectText else {
+            return try await fetchTableDDL(table: view, schema: schema)
+        }
         let sql = """
             SELECT engine, as_select FROM system.tables
-            WHERE database = currentDatabase() AND name = '\(escapedView)'
+            WHERE database = \(Self.databaseExpression(schema)) AND name = \(Self.stringLiteral(view))
             """
         let result = try await execute(query: sql)
         guard let row = result.rows.first else {
@@ -268,11 +281,12 @@ extension ClickHousePluginDriver {
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
+        let database = Self.databaseExpression(schema)
+        let tableLiteral = Self.stringLiteral(table)
 
         let engineSql = """
-            SELECT engine, comment FROM system.tables
-            WHERE database = currentDatabase() AND name = '\(escapedTable)'
+            SELECT engine, \(serverProfile.hasTableComments ? "comment" : "''") FROM system.tables
+            WHERE database = \(database) AND name = \(tableLiteral)
             """
         let engineResult = try await execute(query: engineSql)
         let engine = engineResult.rows.first.flatMap { $0[safe: 0]?.asText }
@@ -281,7 +295,7 @@ extension ClickHousePluginDriver {
         let partsSql = """
             SELECT sum(rows), sum(bytes_on_disk)
             FROM system.parts
-            WHERE database = currentDatabase() AND table = '\(escapedTable)' AND active = 1
+            WHERE database = \(database) AND table = \(tableLiteral) AND active = 1
             """
         let partsResult = try await execute(query: partsSql)
         if let row = partsResult.rows.first {
@@ -306,10 +320,9 @@ extension ClickHousePluginDriver {
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        let escapedDb = database.replacingOccurrences(of: "'", with: "''")
         let sql = """
-            SELECT count() AS table_count, sum(total_bytes) AS size_bytes
-            FROM system.tables WHERE database = '\(escapedDb)'
+            SELECT count() AS table_count, \(totalBytesExpression) AS size_bytes
+            FROM system.tables WHERE database = \(Self.stringLiteral(database))
             """
         let result = try await execute(query: sql)
         if let row = result.rows.first {
@@ -325,16 +338,23 @@ extension ClickHousePluginDriver {
     }
 
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
-        let aggregate = try await execute(query: Self.databaseTableAggregateQuery)
+        let aggregate = try await execute(query: databaseTableAggregateQuery)
         let names = try await fetchDatabases()
         return Self.databaseMetadata(names: names, aggregateRows: aggregate.rows)
     }
 
-    static let databaseTableAggregateQuery = """
-        SELECT database, count() AS table_count, sum(total_bytes) AS size_bytes
+    var databaseTableAggregateQuery: String {
+        """
+        SELECT database, count() AS table_count, \(totalBytesExpression) AS size_bytes
         FROM system.tables
         GROUP BY database
         """
+    }
+
+    /// 19.16 and 20.3 have no `total_bytes`, and a size the server cannot give is unknown, not 0.
+    private var totalBytesExpression: String {
+        serverProfile.hasTableTotals ? "sum(total_bytes)" : "NULL"
+    }
 
     /// `SHOW DATABASES` is the list and `system.tables` only supplies the numbers. The aggregate has no row for a
     /// database that holds no tables, so a list read from it dropped every empty database.
@@ -394,16 +414,17 @@ extension ClickHousePluginDriver {
     // MARK: - All Tables Metadata
 
     func allTablesMetadataSQL(schema: String?) -> String? {
-        """
+        let profile = serverProfile
+        return """
         SELECT
             database as `schema`,
             name,
             engine as kind,
-            total_rows as estimated_rows,
-            formatReadableSize(total_bytes) as total_size,
-            comment
+            \(profile.hasTableTotals ? "total_rows" : "NULL") as estimated_rows,
+            \(profile.hasTableTotals ? "formatReadableSize(total_bytes)" : "NULL") as total_size,
+            \(profile.hasTableComments ? "comment" : "'' as comment")
         FROM system.tables
-        WHERE database = currentDatabase()
+        WHERE database = \(Self.databaseExpression(schema))
         ORDER BY name
         """
     }

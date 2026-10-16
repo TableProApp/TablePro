@@ -26,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Every ClickHouse query after connecting failing with `UNKNOWN_SETTING` on 23.8.0 to 23.8.8. (#3444)
+- ClickHouse users with a read-only profile unable to connect.
+- ClickHouse indexes, view definitions, functions, table comments and sizes failing to load on servers before 22.3.
+- A ClickHouse query that failed partway showing its partial rows and the error text as a row instead of the error.
+- A ClickHouse query with a `FORMAT` clause showing garbled rows in the grid and in an export.
+- ClickHouse SQL export writing the current database's table structure for a table in another database.
+- Opening a ClickHouse executable function's definition showing a syntax error.
+- SQL Server 2016 RTM offered a `CREATE OR ALTER VIEW` template it cannot run, and Azure SQL a drop-and-create one.
 - `gen_random_uuid()`, `UUID()`, `NEWID()` and `datetime('now')` from SQL Functions saved as quoted text. (#3443)
 - SQL functions saved as text on SQL Server, Teradata, Spanner and BigQuery. (#3443)
 - `NOW()` offered on SQLite, Oracle, Cassandra and MongoDB, where it fails or saves the text. (#3443)

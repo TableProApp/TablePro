@@ -147,7 +147,7 @@ struct ClickHouseError: Error, PluginDriverError {
     }
 
     static func httpFailure(statusCode: Int, body: String) -> ClickHouseError {
-        let serverText = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let serverText = ClickHouseServerException.message(inFailureBody: body)
         guard serverText.isEmpty else { return ClickHouseError(message: serverText) }
         return ClickHouseError(message: String(
             format: String(localized: "ClickHouse returned HTTP %lld."),
@@ -174,7 +174,9 @@ struct CHQueryResult {
 
 final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     let config: DriverConnectionConfig
+    private let sessionConfiguration: URLSessionConfiguration
     private var _serverVersion: String?
+    private var _serverProfile = ClickHouseServerProfile.bootstrap
 
     let lock = NSLock()
     var session: URLSession?
@@ -191,7 +193,12 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// column definition and `generateModifyColumnSQL` is synchronous, so it cannot ask again.
     var nonDefaultColumnKinds: Set<String> = []
 
-    var serverVersion: String? { _serverVersion }
+    var serverVersion: String? { lock.withLock { _serverVersion } }
+
+    var serverProfile: ClickHouseServerProfile {
+        get { lock.withLock { _serverProfile } }
+        set { lock.withLock { _serverProfile = newValue } }
+    }
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
 
@@ -232,8 +239,9 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func rollbackTransaction() async throws {}
     var currentSchema: String? { nil }
 
-    init(config: DriverConnectionConfig) {
+    init(config: DriverConnectionConfig, sessionConfiguration: URLSessionConfiguration = .default) {
         self.config = config
+        self.sessionConfiguration = sessionConfiguration
         self._currentDatabase = config.database
     }
 
@@ -251,7 +259,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
         let deadline = PluginConnectDeadline(milliseconds: connectTimeout)
 
-        let urlConfig = URLSessionConfiguration.default
+        let urlConfig = sessionConfiguration
         urlConfig.timeoutIntervalForRequest = max(
             HttpQueryTimeout.sessionBootstrapRequestTimeout,
             deadline.remainingSeconds()
@@ -266,8 +274,10 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
         }
 
+        let versionText: String?
         do {
-            _ = try await executeRaw("SELECT 1", requestTimeout: deadline.remainingSeconds())
+            let result = try await executeRaw("SELECT version()", requestTimeout: deadline.remainingSeconds())
+            versionText = result.rows.first?.first?.asText
         } catch {
             lock.withLock {
                 session?.invalidateAndCancel()
@@ -278,12 +288,38 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         report(.preparingSession)
-        if let result = try? await executeRaw("SELECT version()", requestTimeout: deadline.remainingSeconds()),
-           let versionStr = result.rows.first?.first?.asText {
-            _serverVersion = versionStr
+        let profile: ClickHouseServerProfile
+        do {
+            let settings = try await probe(ClickHouseServerProfile.settingsProbeQuery, deadline: deadline)
+            let catalog = try await probe(ClickHouseServerProfile.catalogProbeQuery, deadline: deadline)
+            profile = ClickHouseServerProfile(
+                versionText: versionText,
+                settings: settings.map { (columns: $0.columns, rows: $0.rows) },
+                catalogRow: catalog?.rows.first
+            )
+        } catch {
+            disconnect()
+            throw error
+        }
+        lock.withLock {
+            _serverVersion = versionText
+            _serverProfile = profile
         }
 
         Self.logger.debug("Connected to ClickHouse at \(self.config.host):\(self.config.port)")
+    }
+
+    /// A probe that fails leaves its half of the profile at a safe default, so the session still
+    /// opens. A cancelled connect stops here rather than sending the next probe.
+    private func probe(_ query: String, deadline: PluginConnectDeadline) async throws -> CHQueryResult? {
+        try Task.checkCancellation()
+        do {
+            return try await executeRaw(query, requestTimeout: deadline.remainingSeconds())
+        } catch {
+            try Task.checkCancellation()
+            Self.logger.error("ClickHouse capability probe failed, using defaults: \(error.localizedDescription, privacy: .private)")
+            return nil
+        }
     }
 
     func disconnect() {
@@ -526,7 +562,10 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let escapedId = queryId.replacingOccurrences(of: "'", with: "''")
             let request = try buildRequest(
                 query: "KILL QUERY WHERE query_id = '\(escapedId)'",
-                database: ""
+                database: "",
+                queryId: nil,
+                executionTimeLimit: nil,
+                shape: .buffered(parameters: nil)
             )
             let task = killSession.dataTask(with: request) { _, _, _ in
                 killSession.invalidateAndCancel()
@@ -544,12 +583,14 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// appended to the statement, which a query already carrying a `LIMIT` rejects outright.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
         let started = Date()
+        let isOutputCut = OSAllocatedUnfairLock(initialState: false)
         let stream = PluginRowStream.make { continuation, abort in
             let streamTask = Task {
                 do {
                     try await self.performBoundedStreamRows(
                         query: query,
                         rowCap: rowCap,
+                        isOutputCut: isOutputCut,
                         continuation: continuation
                     )
                 } catch {
@@ -558,27 +599,39 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
             abort.onAbort { streamTask.cancel() }
         }
-        return try await PluginBoundedStream.collect(stream, rowCap: rowCap, startedAt: started)
+        let result = try await PluginBoundedStream.collect(stream, rowCap: rowCap, startedAt: started)
+        guard isOutputCut.withLock({ $0 }) else { return result }
+        return PluginQueryResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: result.rows,
+            rowsAffected: result.rowsAffected,
+            timing: result.timing,
+            isTruncated: true
+        )
     }
 
     private func performBoundedStreamRows(
         query: String,
         rowCap: Int,
+        isOutputCut: OSAllocatedUnfairLock<Bool>,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let queryId = UUID().uuidString
         let (session, database, executionTimeLimit) = try streamingContext(queryId: queryId)
-        let request = try buildStreamRequest(
-            query: Self.withoutTrailingSemicolons(query),
+        var request = try buildRequest(
+            query: query,
             database: database,
             queryId: queryId,
             executionTimeLimit: executionTimeLimit,
-            rowCap: rowCap
+            shape: .streamed(rowCap: rowCap)
         )
+        request.timeoutInterval = _queryTimeout.requestTimeoutInterval
         try await streamTabSeparatedRows(
             request: request,
             session: session,
             batchSize: min(5_000, rowCap + 1),
+            boundedOutputCut: isOutputCut,
             continuation: continuation
         )
     }
@@ -587,13 +640,21 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// the columns arrive with the rows and survive a result holding none. It is the format the
     /// non-streaming read asks for too, which is what keeps an exported value and the same value in
     /// the grid the same text, and unlike a JSON string it can carry a byte no encoding covers.
+    ///
+    /// A `FORMAT` clause in the query wins over `default_format`. A bounded read shows that body as
+    /// one value, as the buffered path does, and sets `boundedOutputCut` before the stream finishes
+    /// so the collector reads it after the last element. An unbounded read is an export or a copy,
+    /// which needs rows, so it refuses the body rather than cut it or decode it as rows.
     private func streamTabSeparatedRows(
         request: URLRequest,
         session: URLSession,
         batchSize: Int,
+        boundedOutputCut: OSAllocatedUnfairLock<Bool>? = nil,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         var decoder = ClickHouseTabSeparatedRowDecoder()
+        var tail = ClickHouseStreamTail()
+        var otherFormatBody: Data?
         var headerSent = false
         var batch: [PluginRow] = []
         batch.reserveCapacity(batchSize)
@@ -608,18 +669,62 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )))
         }
 
-        try await ClickHouseHTTPChunks(session: session, request: request).forEachChunk { chunk in
-            try Task.checkCancellation()
-            let rows = decoder.consume(chunk)
-            if let header = decoder.header {
-                sendHeader(header)
+        let chunks = ClickHouseHTTPChunks(session: session, request: request)
+        do {
+            try await chunks.forEachChunk { chunk in
+                try Task.checkCancellation()
+                if otherFormatBody == nil,
+                   let format = chunks.headerValue("X-ClickHouse-Format"),
+                   format != ClickHouseResponseClassifier.requestedFormat {
+                    guard boundedOutputCut != nil else {
+                        throw ClickHouseError(message: String(
+                            format: String(localized: "The query names its own output format, %@. Remove its FORMAT clause to read it as rows."),
+                            format
+                        ))
+                    }
+                    otherFormatBody = Data()
+                }
+                if otherFormatBody != nil {
+                    otherFormatBody?.append(chunk)
+                    if let body = otherFormatBody, body.count > Self.otherFormatByteCap {
+                        throw OtherFormatBodyFull()
+                    }
+                    return
+                }
+                let rows = decoder.consume(tail.release(chunk))
+                if let header = decoder.header {
+                    sendHeader(header)
+                }
+                batch.append(contentsOf: rows)
+                guard batch.count >= batchSize else { return }
+                continuation.yield(.rows(batch))
+                batch.removeAll(keepingCapacity: true)
             }
-            batch.append(contentsOf: rows)
-            guard batch.count >= batchSize else { return }
-            continuation.yield(.rows(batch))
-            batch.removeAll(keepingCapacity: true)
+        } catch is OtherFormatBodyFull {}
+
+        if let otherFormatBody {
+            try ClickHouseServerException.throwIfTagged(
+                Array(otherFormatBody.suffix(ClickHouseStreamTail.heldByteCount)),
+                tag: chunks.headerValue("X-ClickHouse-Exception-Tag")
+            )
+            let outcome = ClickHouseResponseClassifier.classify(headers: chunks.headers, body: otherFormatBody)
+            sendHeader(ClickHouseTabSeparatedRowDecoder.Header(
+                columns: outcome.columns,
+                columnTypeNames: outcome.columnTypeNames
+            ))
+            if !outcome.rows.isEmpty {
+                continuation.yield(.rows(outcome.rows))
+            }
+            boundedOutputCut?.withLock { $0 = outcome.isTruncated }
+            continuation.finish()
+            return
         }
 
+        let rest = try tail.finish(
+            exceptionTag: chunks.headerValue("X-ClickHouse-Exception-Tag"),
+            header: decoder.header
+        )
+        batch.append(contentsOf: decoder.consume(rest))
         batch.append(contentsOf: decoder.finish())
         sendHeader(decoder.header ?? ClickHouseTabSeparatedRowDecoder.Header(columns: [], columnTypeNames: []))
         if !batch.isEmpty {
@@ -628,13 +733,11 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         continuation.finish()
     }
 
-    private static func withoutTrailingSemicolons(_ query: String) -> String {
-        var trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        while trimmed.hasSuffix(";") {
-            trimmed = String(trimmed.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return trimmed
-    }
+    /// The buffered path's cap for a body in another format. Past it the classifier marks the
+    /// value cut, so reading stops at the first chunk over it.
+    private static let otherFormatByteCap = 1_048_576
+
+    private struct OtherFormatBodyFull: Error {}
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
@@ -657,12 +760,14 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) async throws {
         let queryId = UUID().uuidString
         let (session, database, executionTimeLimit) = try streamingContext(queryId: queryId)
-        let request = try buildStreamRequest(
-            query: Self.withoutTrailingSemicolons(query),
+        var request = try buildRequest(
+            query: query,
             database: database,
             queryId: queryId,
-            executionTimeLimit: executionTimeLimit
+            executionTimeLimit: executionTimeLimit,
+            shape: .streamed(rowCap: nil)
         )
+        request.timeoutInterval = _queryTimeout.requestTimeoutInterval
         try await streamTabSeparatedRows(
             request: request,
             session: session,
@@ -679,59 +784,6 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             _lastQueryId = queryId
             return (session, _currentDatabase, acceptedExecutionTimeLimit)
         }
-    }
-
-    private func buildStreamRequest(
-        query: String,
-        database: String,
-        queryId: String,
-        executionTimeLimit: Int?,
-        rowCap: Int? = nil
-    ) throws -> URLRequest {
-        let useTLS = config.ssl.isEnabled
-
-        var components = URLComponents()
-        components.scheme = useTLS ? "https" : "http"
-        components.host = config.host
-        components.port = config.port
-        components.path = "/"
-
-        var queryItems = [URLQueryItem]()
-        if !database.isEmpty {
-            queryItems.append(URLQueryItem(name: "database", value: database))
-        }
-        queryItems.append(URLQueryItem(name: "query_id", value: queryId))
-        queryItems.append(URLQueryItem(
-            name: "default_format",
-            value: ClickHouseResponseClassifier.requestedFormat
-        ))
-        queryItems.append(contentsOf: Self.executionTimeLimitItems(executionTimeLimit))
-        if let rowCap {
-            /// The bound rides as an HTTP setting so the SQL in the body stays exactly what the
-            /// user wrote. One row past the cap, so a full page can be told from a truncated one.
-            queryItems.append(URLQueryItem(name: "max_result_rows", value: String(rowCap + 1)))
-            queryItems.append(URLQueryItem(name: "result_overflow_mode", value: "break"))
-            queryItems.append(URLQueryItem(name: "cancel_http_readonly_queries_on_client_close", value: "1"))
-        }
-        components.queryItems = queryItems
-
-        guard let url = components.url else {
-            throw ClickHouseError(message: "Failed to construct request URL")
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.timeoutInterval = _queryTimeout.requestTimeoutInterval
-
-        if let authorization = ClickHouseCredentials.basicAuthorizationHeader(
-            username: config.username,
-            password: config.password
-        ) {
-            request.setValue(authorization, forHTTPHeaderField: "Authorization")
-        }
-
-        request.httpBody = query.data(using: .utf8)
-        return request
     }
 
     // MARK: - Create Table DDL
@@ -849,11 +901,10 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func fetchStoredColumnTypes(table: String) async throws -> [(name: String, type: String)] {
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
         let result = try await execute(query: """
             SELECT name, type
             FROM system.columns
-            WHERE database = currentDatabase() AND table = '\(escapedTable)'
+            WHERE database = currentDatabase() AND table = \(Self.stringLiteral(table))
             ORDER BY position
             """)
         return result.rows.compactMap { row in
