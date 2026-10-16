@@ -595,7 +595,8 @@ impl SqlEditor {
     // numbers, so the closing editor takes back the script and the session.
     // GTK 4.24 gives the input method the view from construction until the
     // view's own dispose, and IBus takes a reference on it, so the view is
-    // never disposed unless it drops its input method first.
+    // never disposed unless it drops its input method first
+    // (https://github.com/ibus/ibus/issues/2968).
     fn release_view(&self) {
         let view = self.imp().source_view.get();
         view.set_im_module(Some("gtk-im-context-none"));

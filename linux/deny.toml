@@ -9,7 +9,7 @@ yanked = "deny"
 unmaintained = "workspace"
 ignore = [
     { id = "RUSTSEC-2023-0071", reason = "rsa is reached only through sqlx-mysql, which encrypts the MySQL password with the server's public key; no private-key operation runs in process, and OpenSSH signs SSH identities. The rsa ban below holds that scope. See docs/decisions/0009-crypto-provider-and-sources.md." },
-    { crate = "zip@8.6.0", reason = "Every zip 8 release is yanked for GHSA-4v9h-p7m9-rh26, GHSA-vv5m-jxxh-4627 and GHSA-4684-h2q9-2vcp, all in archive extraction. rust_xlsxwriter 0.99.1 requires ^8.3 and only writes archives, and core's export test reads entries without extracting. Drop this once rust_xlsxwriter takes zip 9." },
+    { crate = "zip@8.6.0", reason = "Every zip 8 release is yanked for GHSA-4v9h-p7m9-rh26, GHSA-vv5m-jxxh-4627 and GHSA-4684-h2q9-2vcp, all in archive extraction. rust_xlsxwriter 0.99.1 requires ^8.3 and only writes archives, and core's export test reads entries without extracting. Drop this once a rust_xlsxwriter release takes zip 9 (https://github.com/jmcnamara/rust_xlsxwriter/issues/205)." },
 ]
 
 [licenses]
