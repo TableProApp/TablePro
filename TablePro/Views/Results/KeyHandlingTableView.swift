@@ -4,6 +4,11 @@ final class KeyHandlingTableView: NSTableView {
     weak var coordinator: TableViewCoordinator?
     weak var selectionOverlay: GridSelectionOverlay?
 
+    /// A table with no grid draws the app's theme.
+    var themeScope: ThemeScope {
+        coordinator?.themeScope ?? .live
+    }
+
     private var isRaisingOverlay = false
 
     override var acceptsFirstResponder: Bool {
@@ -25,7 +30,7 @@ final class KeyHandlingTableView: NSTableView {
     /// the grid's own rather than `super`'s, for the reason on
     /// `DataGridBodyChrome.drawTableBackground(in:of:)`.
     override func drawBackground(inClipRect clipRect: NSRect) {
-        DataGridBodyChrome.drawTableBackground(in: clipRect, of: self)
+        DataGridBodyChrome.drawTableBackground(in: clipRect, of: self, scope: themeScope)
         guard let coordinator else { return }
         let lastRowBottom = numberOfRows > 0 ? rect(ofRow: numberOfRows - 1).maxY : bounds.minY
         let belowRows = clipRect.intersection(

@@ -194,10 +194,7 @@ struct DeeplinkImportSheet: View {
                 .foregroundStyle(.orange)
                 .font(.callout)
 
-                Text(startupCommands)
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                CodeWell(startupCommands, font: .system(.caption, design: .monospaced))
             } header: {
                 Text("Startup SQL")
             }

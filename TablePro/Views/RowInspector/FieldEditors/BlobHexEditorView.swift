@@ -4,10 +4,13 @@
 //
 
 import SwiftUI
+import TableProTheme
 
 internal struct BlobHexEditorView: View {
     @ObservedObject private var themeEngine = ThemeEngine.shared
     let context: FieldEditorContext
+    /// False inside a pane that is already a value well, the image field's source pane.
+    var drawsWell = true
 
     @FocusState private var isFocused: Bool
     @State private var hexEditText = ""
@@ -51,11 +54,13 @@ internal struct BlobHexEditorView: View {
         ScrollView([.horizontal, .vertical]) {
             Text(BlobFormattingService.shared.format(context.value.wrappedValue, for: .detail) ?? "")
                 .font(themeEngine.valueFontSwiftUI)
+                .themeForeground(.editorText, native: .primary)
                 .textSelection(.enabled)
                 .fixedSize()
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxHeight: 120)
+        .modifier(ThemedDumpWell(isEnabled: drawsWell))
     }
 
     /// A value past the cap shows the dump it can show, selectable, rather than a disabled field.
@@ -137,5 +142,26 @@ internal struct BlobHexEditorView: View {
         } else {
             context.value.wrappedValue = raw
         }
+    }
+}
+
+/// The dump sits straight on the inspector natively. Under a theme it takes the well every other
+/// value there sits in, so it does not read as system text beside the theme's wells.
+private struct ThemedDumpWell: ViewModifier {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    let isEnabled: Bool
+
+    private static let shape = RoundedRectangle(cornerRadius: 5)
+
+    func body(content: Content) -> some View {
+        let fill = isEnabled
+            ? ThemeShapeStyle.override(.editorBackground, engine: themeEngine, contrast: contrast)
+            : nil
+        content
+            .padding(fill == nil ? 0 : 6)
+            .background(fill ?? Color.clear, in: Self.shape)
+            .overlay(Self.shape.strokeBorder(fill == nil ? Color.clear : Color(nsColor: .separatorColor)))
     }
 }

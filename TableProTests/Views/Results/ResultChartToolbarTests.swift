@@ -3,8 +3,10 @@
 //  TableProTests
 //
 
+import AppKit
 import SwiftUI
 @testable import TablePro
+import TableProTheme
 import Testing
 
 @MainActor
@@ -48,6 +50,20 @@ struct ResultChartToolbarTests {
         #expect(cap.lowerBound < total.lowerBound)
     }
 
+    /// The bar's material reads as a system band over a themed pane; its siblings draw no fill.
+    @Test("The toolbar keeps its bar material until the window backdrop is themed, then draws nothing")
+    func barMaterialFollowsTheBackdrop() throws {
+        let corner = CGPoint(x: 0.002, y: 0.05)
+        try ThemeTestFixture.adopting(.builtIn, appearance: .dark) {
+            let native = try ThemeTestFixture.color(of: toolbar(width: 600), at: corner, colorScheme: .dark)
+            #expect(native.alphaComponent > 0.5, "the bar drew no material: \(native)")
+        }
+        try ThemeTestFixture.adopting([.windowBackdrop: ThemeTestFixture.windowHex], appearance: .dark) {
+            let themed = try ThemeTestFixture.color(of: toolbar(width: 600), at: corner, colorScheme: .dark)
+            #expect(themed.alphaComponent < 0.02, "the bar still drew a band: \(themed)")
+        }
+    }
+
     private func columns() -> [ResultChartColumn] {
         [
             ResultChartColumn(
@@ -72,6 +88,33 @@ struct ResultChartToolbarTests {
                 isPrimaryKey: false
             ),
         ]
+    }
+
+    private func toolbar(width: CGFloat) -> some View {
+        let all = columns()
+        let configuration = ResultChartConfiguration(
+            chartType: .bar,
+            xColumn: all[0].id,
+            yColumn: all[1].id,
+            seriesColumn: all[2].id
+        )
+        return ResultChartToolbar(
+            configuration: .constant(configuration),
+            columns: all,
+            resolved: configuration.resolved(in: all),
+            projection: ResultChartProjection(
+                points: [],
+                xAxisKind: .category,
+                limits: [],
+                loadedRowCount: 40,
+                skippedRowCount: 0,
+                xAxisLabel: "category",
+                yAxisLabel: "amount",
+                seriesLabel: nil
+            )
+        )
+        .frame(width: width)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func renderedHeight(width: CGFloat) throws -> Int {

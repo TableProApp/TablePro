@@ -12,6 +12,7 @@ import AppKit
 import Foundation
 import SwiftUI
 @testable import TablePro
+import TableProTheme
 import Testing
 
 @MainActor
@@ -35,7 +36,7 @@ struct NativeDefaultsTests {
 
     private static func bundledTheme(_ id: String) throws -> ThemeDefinition {
         let url = try #require(Bundle.main.url(forResource: id, withExtension: "json"))
-        return try ThemeDocument(data: try Data(contentsOf: url)).definition()
+        return try ThemeFileFormat.decode(try Data(contentsOf: url))
     }
 
     // MARK: - Definitions

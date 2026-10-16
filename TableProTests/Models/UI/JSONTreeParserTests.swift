@@ -5,6 +5,7 @@
 
 import AppKit
 import Foundation
+import TableProTheme
 import Testing
 
 @testable import TablePro
@@ -322,15 +323,15 @@ struct JSONTreeParserTests {
     ])
     func tonesUseTheDefaultSyntaxColors(appearance: NSAppearance.Name) throws {
         try ThemeTestFixture.adopting([:], appearance: .light) {
-            let theme = appearance == .aqua ? BuiltInThemes.light : BuiltInThemes.dark
+            let syntax = DefaultSyntaxPalette.colors(for: appearance == .aqua ? .light : .dark, highContrast: false)
             @MainActor func drawn(_ tone: TreeValueTone) -> String? { ThemeTestFixture.hex(tone.color, in: appearance) }
 
-            #expect(drawn(.key) == theme.overrides[.syntaxString]?.hex)
-            #expect(drawn(.string) == theme.overrides[.syntaxString]?.hex)
-            #expect(drawn(.number) == theme.overrides[.syntaxNumber]?.hex)
-            #expect(drawn(.literal) == theme.overrides[.syntaxNull]?.hex)
-            #expect(drawn(.serialized) == theme.overrides[.syntaxType]?.hex)
-            #expect(drawn(.reference) == theme.overrides[.syntaxComment]?.hex)
+            #expect(drawn(.key) == syntax[.syntaxString]?.hex)
+            #expect(drawn(.string) == syntax[.syntaxString]?.hex)
+            #expect(drawn(.number) == syntax[.syntaxNumber]?.hex)
+            #expect(drawn(.literal) == syntax[.syntaxNull]?.hex)
+            #expect(drawn(.serialized) == syntax[.syntaxType]?.hex)
+            #expect(drawn(.reference) == syntax[.syntaxComment]?.hex)
             #expect(drawn(.container) == ThemeTestFixture.hex(.textColor, in: appearance))
         }
     }

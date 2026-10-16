@@ -71,6 +71,8 @@ enum DataGridCellAccessoryGlyph {
     struct Glyph {
         let image: CGImage
         let pointSize: NSSize
+        /// Held so the color cannot be freed and its address reused while the bitmap is cached.
+        fileprivate let color: NSColor
     }
 
     private struct Key: Hashable {
@@ -83,24 +85,24 @@ enum DataGridCellAccessoryGlyph {
     private static var glyphsRevision: Int?
 
     /// Rasterizing resolves the dynamic symbol color, so a cached bitmap belongs to exactly one
-    /// appearance and one theme revision. Keying on the appearance is what keeps a dark window from
-    /// being served the light bitmap, and `NSAppearance.currentDrawing()` only reports the drawing
+    /// appearance and one color. Keying on the appearance is what keeps a dark window from being
+    /// served the light bitmap, and `NSAppearance.currentDrawing()` only reports the drawing
     /// appearance while AppKit is inside `draw(_:)`, `updateLayer` or `layout`.
-    static func image(for role: Role) -> Glyph? {
-        let engine = ThemeEngine.shared
-        if glyphsRevision != engine.revision {
+    /// The color is compared by identity on a hit, a pointer compare, since the palette hands every
+    /// cell the same object; a grid on another scope still gets its own bitmap.
+    static func image(for role: Role, color: NSColor) -> Glyph? {
+        let revision = ThemeEngine.shared.revision
+        if glyphsRevision != revision {
             glyphs.removeAll()
-            glyphsRevision = engine.revision
+            glyphsRevision = revision
         }
         let key = Key(
             role: role,
             appearance: NSAppearance.currentDrawing().name,
             increasedContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         )
-        if let cached = glyphs[key] { return cached }
-        guard let glyph = make(role, color: role.color(selectionText: engine.resolved[.gridSelectionText])) else {
-            return nil
-        }
+        if let cached = glyphs[key], cached.color === color { return cached }
+        guard let glyph = make(role, color: color) else { return nil }
         glyphs[key] = glyph
         return glyph
     }
@@ -112,7 +114,7 @@ enum DataGridCellAccessoryGlyph {
             .withSymbolConfiguration(config) else { return nil }
         var rect = CGRect(origin: .zero, size: image.size)
         guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return nil }
-        return Glyph(image: cgImage, pointSize: image.size)
+        return Glyph(image: cgImage, pointSize: image.size, color: color)
     }
 
     /// A symbol stretched to fill the accessory rect stops looking like a system symbol, so the

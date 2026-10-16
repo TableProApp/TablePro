@@ -1,9 +1,13 @@
 import Charts
 import SwiftUI
+import TableProTheme
 
 struct QueryInsightsActivityChart: View {
     let buckets: [QueryInsightsActivityBucket]
     let granularity: QueryInsightsGranularity
+
+    @ObservedObject private var themeEngine = ThemeEngine.shared
+    @Environment(\.colorSchemeContrast) private var contrast
 
     private enum Outcome: String, Plottable {
         case succeeded
@@ -35,8 +39,11 @@ struct QueryInsightsActivityChart: View {
         }
     }
 
+    // A chart plot takes the grid's lines and background, as the result chart does. Unthemed it keeps
+    // the default grid line and no plot fill.
     var body: some View {
-        QueryInsightsSection(
+        let gridLine = ThemeShapeStyle.override(.gridLine, engine: themeEngine, contrast: contrast)
+        return QueryInsightsSection(
             title: String(localized: "Activity"),
             systemImage: "chart.bar.xaxis",
             isEmpty: buckets.isEmpty,
@@ -58,7 +65,11 @@ struct QueryInsightsActivityChart: View {
             .chartLegend(position: .top, alignment: .trailing, spacing: 8)
             .chartYAxis {
                 AxisMarks(position: .leading) { value in
-                    AxisGridLine()
+                    if let gridLine {
+                        AxisGridLine().foregroundStyle(gridLine)
+                    } else {
+                        AxisGridLine()
+                    }
                     AxisValueLabel {
                         if let count = value.as(Int.self) {
                             Text(count.formatted())
@@ -69,9 +80,16 @@ struct QueryInsightsActivityChart: View {
             }
             .chartXAxis {
                 AxisMarks(values: .automatic(desiredCount: 6)) { _ in
-                    AxisGridLine()
+                    if let gridLine {
+                        AxisGridLine().foregroundStyle(gridLine)
+                    } else {
+                        AxisGridLine()
+                    }
                     AxisValueLabel(format: axisFormat, centered: false)
                 }
+            }
+            .chartPlotStyle { plotArea in
+                plotArea.themeBackground(.gridBackground, native: Color.clear, in: .rect(cornerRadius: 8))
             }
             .frame(height: 180)
             .padding(.top, 4)

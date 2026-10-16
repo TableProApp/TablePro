@@ -96,7 +96,7 @@ struct HistoryListPane: View {
             }
             .padding(.vertical, 6)
         }
-        .background(.bar)
+        .paneBarBackground()
     }
 
     private var emptyState: some View {

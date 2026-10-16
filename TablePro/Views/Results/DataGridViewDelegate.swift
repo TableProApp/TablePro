@@ -59,6 +59,9 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridSetCheckbox(_ isOn: Bool, rows: IndexSet, column: Int)
     /// What an assistive client reads for a cell in place of its drawn text, or nil to read the text.
     func dataGridAccessibilityText(row displayRow: Int, column: Int) -> String?
+    /// A status hue for a value cell's text, or nil for the grid text. A selection or find match still
+    /// draws its own text color over it.
+    func dataGridTextTone(row displayRow: Int, column: Int) -> NSColor?
     /// Nil lets the grid derive the rules from its column types and display formats.
     func dataGridSummaryColumnPolicy() -> SelectionSummaryColumnPolicy?
 }
@@ -71,6 +74,7 @@ extension DataGridViewDelegate {
     func dataGridCheckboxState(row: Int, column: Int) -> Bool? { nil }
     func dataGridSetCheckbox(_ isOn: Bool, rows: IndexSet, column: Int) {}
     func dataGridAccessibilityText(row displayRow: Int, column: Int) -> String? { nil }
+    func dataGridTextTone(row displayRow: Int, column: Int) -> NSColor? { nil }
     func dataGridSummaryColumnPolicy() -> SelectionSummaryColumnPolicy? { nil }
     func dataGridDidEditCell(row: Int, column: Int, newValue: String?) {}
     func dataGridDeleteRows(_ indices: Set<Int>) {}

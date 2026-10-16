@@ -11,6 +11,7 @@
 import AppKit
 import SwiftUI
 @testable import TablePro
+import TableProTheme
 import Testing
 
 @MainActor
@@ -437,7 +438,7 @@ struct ThemeTableChromeTests {
             #expect(ThemeTableChrome.recordsTextSlot(onThemedSelection: true, onEmphasizedSelection: false, highContrast: false) == .gridText)
             #expect(ThemeTableChrome.recordsTextSlot(onThemedSelection: false, onEmphasizedSelection: true, highContrast: false) == nil)
 
-            try ThemeTestFixture.adopt([.gridText: "#FF0000", .gridSelectionText: "#00AA00"], appearance: .light)
+            try ThemeTestFixture.adopt([.gridText: "#FF0000", .gridSelection: "#C8E1FF", .gridSelectionText: "#00AA00"], appearance: .light)
             #expect(ThemeTableChrome.recordsTextSlot(onThemedSelection: true, onEmphasizedSelection: false, highContrast: false) == .gridSelectionText)
             #expect(ThemeTableChrome.recordsTextSlot(onThemedSelection: false, onEmphasizedSelection: false, highContrast: false) == .gridText)
             #expect(ThemeTableChrome.recordsTextSlot(onThemedSelection: false, onEmphasizedSelection: true, highContrast: false) == nil)

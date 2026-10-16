@@ -9,12 +9,8 @@ import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
 
-/// Read-only statement text, rendered the one way the app renders statement text.
-///
-/// Extracted from `SQLReviewSheet` rather than copied, because the choice between the tree-sitter
-/// editor and the plain highlighted text view is a policy about statement length and language, not
-/// a detail of the review sheet: a second surface that picked differently would show the same
-/// `CREATE SCHEMA` two ways.
+/// One owner for the choice between the editor and the plain text view, so two surfaces never show the
+/// same statement two ways.
 struct SQLStatementPreview: View {
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     let prepared: SQLReviewSheet.Prepared
@@ -57,10 +53,7 @@ struct SQLStatementPreview: View {
         )
     }
 
-    /// A text view rather than a `Text` in a `ScrollView`: this path carries everything past the
-    /// tree-sitter cutoff, which for a confirmation is the whole statement however long it is, and
-    /// a single `Text` that size lays out for seconds. It wears the editor's own background, text
-    /// colour and syntax palette, which is what a hand-themed `Text` here was reaching for.
+    /// A text view, since this path carries a statement of any length and a `Text` that size lays out for seconds.
     private func plainTextEditor(_ text: String) -> some View {
         HighlightedSQLTextView(sql: text, databaseType: databaseType)
             .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -74,7 +67,7 @@ struct SQLStatementPreview: View {
         SourceEditorConfiguration(
             appearance: .init(
                 theme: TableProEditorTheme.make(),
-                font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+                font: ThemeEngine.shared.editorFonts.font,
                 wrapLines: true
             ),
             behavior: .init(isEditable: false),

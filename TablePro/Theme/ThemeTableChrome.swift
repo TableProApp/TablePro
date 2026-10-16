@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import TableProTheme
 
 /// Themes an `NSTableView` or `NSOutlineView` that shows content. Never a source list: its selection
 /// and background belong to the sidebar glass, which draws them without calling the row view.
@@ -39,6 +40,14 @@ internal final class ThemeTableChrome {
             }
         }
 
+        /// The data grid's header slots. A code table's header, where it has one, stays AppKit's.
+        internal var headerSlots: [ThemeSlot] {
+            switch self {
+            case .records: return [.gridHeaderBackground, .gridHeaderText]
+            case .code: return []
+            }
+        }
+
         internal func selection(emphasized: Bool) -> ThemeSlot {
             switch self {
             case .records: return emphasized ? .gridSelection : .gridInactiveSelection
@@ -53,6 +62,7 @@ internal final class ThemeTableChrome {
     }
 
     internal let family: Family
+    internal let scope: ThemeScope
 
     /// True while the theme sets the rows' background or a selection, which only a themed row class
     /// draws. A delegate returns AppKit's own row view otherwise.
@@ -67,19 +77,27 @@ internal final class ThemeTableChrome {
     private weak var themedScrollView: NSScrollView?
     private var scrollViewDrewBackground = true
     private var originalGridColor: NSColor?
+    private var originalHeaderView: NSTableHeaderView?
+    private var originalCornerView: NSView?
     private var themeCancellable: AnyCancellable?
 
     /// Attach before the table builds its rows, and once it is inside its scroll view.
-    internal init(tableView: NSTableView, family: Family) {
+    internal init(tableView: NSTableView, family: Family, scope: ThemeScope = .live) {
         self.tableView = tableView
         self.family = family
+        self.scope = scope
         restyle()
-        themeCancellable = AppEvents.shared.themeChanged
+        themeCancellable = scope.changes
             .sink { [weak self] _ in self?.apply() }
     }
 
     internal var isBackgroundThemed: Bool {
         backgroundOriginals != nil
+    }
+
+    /// True while the table's header is a `ThemeTableHeaderView` in place of the one its owner gave it.
+    internal var isHeaderThemed: Bool {
+        originalHeaderView != nil
     }
 
     internal func apply() {
@@ -102,7 +120,7 @@ internal final class ThemeTableChrome {
     /// stripes its rows itself: AppKit's stripes are the system pair whatever the table's color.
     internal func rowBackgroundColor(forRow row: Int) -> NSColor? {
         guard let originals = backgroundOriginals, row >= 0 else { return nil }
-        let palette = ThemeEngine.shared.palette
+        let palette = scope.palette
         guard originals.alternates, let alternate = family.alternateRow, !row.isMultiple(of: 2) else {
             return palette[family.background]
         }
@@ -112,7 +130,7 @@ internal final class ThemeTableChrome {
     /// Nil unless the theme sets its own selection, so a default theme keeps AppKit's, which follows
     /// Accent and focus.
     internal func selectionColor(emphasized: Bool) -> NSColor? {
-        let resolved = ThemeEngine.shared.resolved
+        let resolved = scope.resolved
         let slot = family.selection(emphasized: emphasized)
         return resolved.isOverridden(slot) ? resolved[slot] : nil
     }
@@ -123,10 +141,11 @@ internal final class ThemeTableChrome {
 
     private func restyle() {
         guard let tableView else { return }
-        let resolved = ThemeEngine.shared.resolved
+        let resolved = scope.resolved
         let backgroundSlots = [family.background] + [family.alternateRow].compactMap { $0 }
         applyBackground(to: tableView, themed: backgroundSlots.contains { resolved.isOverridden($0) })
         applyGridColor(to: tableView, themed: family.gridLine.map { resolved.isOverridden($0) } ?? false)
+        applyHeader(to: tableView, themed: family.headerSlots.contains { resolved.isOverridden($0) })
         let selectionSlots = [family.selection(emphasized: true), family.selection(emphasized: false)]
         themesRows = isBackgroundThemed || selectionSlots.contains { resolved.isOverridden($0) }
         tableView.needsDisplay = true
@@ -194,7 +213,7 @@ internal final class ThemeTableChrome {
                 alternates: tableView.usesAlternatingRowBackgroundColors
             )
         }
-        tableView.backgroundColor = ThemeEngine.shared.palette[family.background]
+        tableView.backgroundColor = scope.palette[family.background]
         tableView.usesAlternatingRowBackgroundColors = false
 
         if let scrollView = tableView.enclosingScrollView, scrollView !== themedScrollView {
@@ -230,7 +249,112 @@ internal final class ThemeTableChrome {
         if originalGridColor == nil {
             originalGridColor = tableView.gridColor
         }
-        tableView.gridColor = ThemeEngine.shared.palette[slot]
+        tableView.gridColor = scope.palette[slot]
+    }
+
+    /// AppKit's header paints its own band over anything beneath it, so a themed header is ours and
+    /// the owner's comes back when the theme stops coloring it.
+    private func applyHeader(to tableView: NSTableView, themed: Bool) {
+        guard themed else {
+            restoreHeader(of: tableView)
+            return
+        }
+        if let header = tableView.headerView as? ThemeTableHeaderView, header.chrome === self {
+            header.needsDisplay = true
+            tableView.cornerView?.needsDisplay = true
+            return
+        }
+        guard let original = tableView.headerView else { return }
+        originalHeaderView = original
+        originalCornerView = tableView.cornerView
+
+        let header = ThemeTableHeaderView(frame: original.frame)
+        header.chrome = self
+        header.menu = original.menu
+        tableView.headerView = header
+        let corner = ThemeTableCornerView(frame: originalCornerView?.frame ?? .zero)
+        corner.chrome = self
+        tableView.cornerView = corner
+    }
+
+    private func restoreHeader(of tableView: NSTableView) {
+        guard let original = originalHeaderView else { return }
+        tableView.headerView = original
+        tableView.cornerView = originalCornerView
+        originalHeaderView = nil
+        originalCornerView = nil
+    }
+}
+
+// MARK: - Header
+
+/// Drawn like the data grid's header. Each title goes through its cell's interior drawing, which
+/// keeps AppKit's alignment and truncation. The sort indicator is drawn here because AppKit draws it
+/// from the header view's own pass, which this replaces.
+internal final class ThemeTableHeaderView: NSTableHeaderView {
+    internal weak var chrome: ThemeTableChrome?
+
+    override internal func draw(_ dirtyRect: NSRect) {
+        guard let chrome, let tableView else {
+            super.draw(dirtyRect)
+            return
+        }
+        let scope = chrome.scope
+        SortableHeaderChrome.fillBackground(dirtyRect, scope: scope)
+        let textColor = scope.resolved[.gridHeaderText]
+        let dragged = draggedColumn
+        for index in tableView.tableColumns.indices where index != dragged {
+            drawHeading(ofColumn: index, at: headerRect(ofColumn: index), in: dirtyRect, textColor: textColor, scope: scope)
+        }
+        // A column being dragged follows the pointer over its neighbours, as AppKit's header draws it.
+        if dragged >= 0, dragged < tableView.tableColumns.count {
+            let floating = headerRect(ofColumn: dragged).offsetBy(dx: draggedDistance, dy: 0)
+            if floating.intersects(dirtyRect) {
+                SortableHeaderChrome.fillBackground(floating, scope: scope)
+            }
+            drawHeading(ofColumn: dragged, at: floating, in: dirtyRect, textColor: textColor, scope: scope)
+        }
+        SortableHeaderChrome.drawBottomSeparator(in: bounds, scope: scope)
+    }
+
+    private func drawHeading(ofColumn index: Int, at heading: NSRect, in dirtyRect: NSRect, textColor: NSColor, scope: ThemeScope) {
+        guard let tableView, heading.width > 0, heading.intersects(dirtyRect) else { return }
+        let column = tableView.tableColumns[index]
+        let cell = column.headerCell
+        let nativeTextColor = cell.textColor
+        cell.textColor = textColor
+        if let sort = sortState(of: column, in: tableView) {
+            var title = heading
+            title.size.width = max(0, cell.sortIndicatorRect(forBounds: heading).minX - heading.minX)
+            cell.drawInterior(withFrame: title, in: self)
+            cell.drawSortIndicator(withFrame: heading, in: self, ascending: sort.ascending, priority: sort.priority)
+        } else {
+            cell.drawInterior(withFrame: heading, in: self)
+        }
+        cell.textColor = nativeTextColor
+        SortableHeaderChrome.drawColumnDivider(in: heading, scope: scope)
+    }
+
+    /// AppKit shows only the primary sort key's indicator.
+    private func sortState(of column: NSTableColumn, in tableView: NSTableView) -> (ascending: Bool, priority: Int)? {
+        guard let key = column.sortDescriptorPrototype?.key,
+              let primary = tableView.sortDescriptors.first, primary.key == key
+        else { return nil }
+        return (primary.ascending, 0)
+    }
+}
+
+/// The square over the vertical scroller beside a themed header, which AppKit would paint in its own
+/// header band.
+internal final class ThemeTableCornerView: NSView {
+    internal weak var chrome: ThemeTableChrome?
+
+    override internal var isFlipped: Bool { true }
+
+    override internal func draw(_ dirtyRect: NSRect) {
+        let scope = chrome?.scope ?? .live
+        SortableHeaderChrome.fillBackground(dirtyRect, scope: scope)
+        SortableHeaderChrome.drawBottomSeparator(in: bounds, scope: scope)
     }
 }
 
@@ -337,10 +461,10 @@ internal extension ThemeTableChrome {
         onThemedSelection: Bool,
         onEmphasizedSelection: Bool,
         highContrast: Bool,
-        engine: ThemeEngine = .shared
+        scope: ThemeScope = .live
     ) -> ThemeSlot? {
         guard !onEmphasizedSelection else { return nil }
-        let theme = engine.activeTheme
+        let theme = scope.activeTheme
         if onThemedSelection, theme.isOverridden(.gridSelectionText, highContrast: highContrast) {
             return .gridSelectionText
         }
@@ -351,6 +475,7 @@ internal extension ThemeTableChrome {
     /// while its `ThemeTableRowView` sits on the theme's selection.
     final class HostingCell: NSHostingView<AnyView> {
         private let selection = RecordsCellSelection()
+        private var scope = ThemeScope.live
 
         internal var isOnThemedSelection: Bool {
             get { selection.isThemed }
@@ -360,13 +485,16 @@ internal extension ThemeTableChrome {
             }
         }
 
+        /// `scope` is the one the table's chrome reads, so the text matches the rows.
         internal static func make(
             _ identifier: NSUserInterfaceItemIdentifier,
             in tableView: NSTableView,
-            showing content: some View
+            showing content: some View,
+            scope: ThemeScope = .live
         ) -> HostingCell {
             let cell = tableView.makeView(withIdentifier: identifier, owner: nil) as? HostingCell
                 ?? HostingCell(identifier: identifier)
+            cell.scope = scope
             cell.show(content)
             return cell
         }
@@ -378,7 +506,7 @@ internal extension ThemeTableChrome {
         }
 
         internal func show(_ content: some View) {
-            rootView = AnyView(content.modifier(RecordsCellText(selection: selection)))
+            rootView = AnyView(content.modifier(RecordsCellText(selection: selection, scope: scope)))
         }
 
         /// A reused cell can land in another row, or in AppKit's own row view once the theme stops.
@@ -399,12 +527,14 @@ private struct RecordsCellText: ViewModifier {
     @ObservedObject private var themeEngine = ThemeEngine.shared
     @Environment(\.colorSchemeContrast) private var contrast
 
+    let scope: ThemeScope
+
     func body(content: Content) -> some View {
         if #available(macOS 14, *) {
             content.modifier(
                 ProminenceAwareRecordsCellText(
                     isOnThemedSelection: selection.isThemed,
-                    engine: themeEngine,
+                    scope: scope,
                     contrast: contrast
                 )
             )
@@ -421,7 +551,7 @@ private struct ProminenceAwareRecordsCellText: ViewModifier {
     @Environment(\.backgroundProminence) private var prominence
 
     let isOnThemedSelection: Bool
-    let engine: ThemeEngine
+    let scope: ThemeScope
     let contrast: ColorSchemeContrast
 
     func body(content: Content) -> some View {
@@ -429,10 +559,10 @@ private struct ProminenceAwareRecordsCellText: ViewModifier {
             onThemedSelection: isOnThemedSelection,
             onEmphasizedSelection: prominence == .increased,
             highContrast: contrast == .increased,
-            engine: engine
+            scope: scope
         )
-        if let slot, let color = ThemeShapeStyle.override(slot, engine: engine, contrast: contrast) {
-            content.foregroundStyle(color)
+        if let slot {
+            content.foregroundStyle(Color(nsColor: scope.palette[slot]))
         } else {
             content
         }

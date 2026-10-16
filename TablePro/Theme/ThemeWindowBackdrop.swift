@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import TableProTheme
 
 /// Fills a content window's backdrop with the theme's window background, which the sidebar,
 /// inspector and toolbar glass take their tone from on macOS 26 and later. Earlier sidebars blend
@@ -23,15 +24,14 @@ internal final class ThemeWindowBackdrop {
 
     internal func apply() {
         guard #available(macOS 26.0, *), let window else { return }
-        let engine = ThemeEngine.shared
-        guard engine.activeTheme.isOverridden(.windowBackdrop, in: window.effectiveAppearance) else {
+        guard ThemeBackdropState.isThemed(in: window.effectiveAppearance) else {
             restore(window)
             return
         }
         if original == nil {
             original = window.backgroundColor
         }
-        window.backgroundColor = engine.palette[.windowBackdrop]
+        window.backgroundColor = ThemeEngine.shared.palette[.windowBackdrop]
     }
 
     private func restore(_ window: NSWindow) {

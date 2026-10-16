@@ -7,6 +7,7 @@
 
 import AppKit
 import SwiftUI
+import TableProTheme
 
 struct JSONNodeRowView: View {
     @ObservedObject private var themeEngine = ThemeEngine.shared

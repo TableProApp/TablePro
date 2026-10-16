@@ -1,0 +1,50 @@
+{
+  "appearance": "light",
+  "author": "GitHub Inc.",
+  "dataGrid": {
+    "alternateRow": "#EAEAEB",
+    "background": "#FAFAFA",
+    "boolFalse": "#E45649",
+    "boolTrue": "#50A14F",
+    "deleted": "#FF141426",
+    "deletedText": "#E4564980",
+    "focusBorder": "#526FFF",
+    "gridLine": "#DBDBDC",
+    "headerBackground": "#EAEAEB",
+    "headerText": "#383A42",
+    "inactiveSelection": "#DBDBDC",
+    "inserted": "#2DB44826",
+    "modified": "#F2A60D26",
+    "nullValue": "#A0A1A7",
+    "rowNumber": "#9D9D9F",
+    "selection": "#DBDBDC",
+    "selectionText": "#232324",
+    "text": "#383A42"
+  },
+  "editor": {
+    "background": "#FAFAFA",
+    "currentLine": "#383A420C",
+    "currentStatement": "#383A420C",
+    "cursor": "#526FFF",
+    "invisibles": "#383A4233",
+    "lineNumber": "#9D9D9F",
+    "selection": "#E5E5E6",
+    "syntax": {
+      "comment": "#A0A1A7",
+      "function": "#4078F2",
+      "keyword": "#A626A4",
+      "null": "#986801",
+      "number": "#986801",
+      "operator": "#383A42",
+      "string": "#50A14F",
+      "type": "#C18401"
+    },
+    "text": "#383A42"
+  },
+  "id": "tablepro.one-light",
+  "name": "One Light",
+  "schema": 3,
+  "window": {
+    "background": "#FAFAFA"
+  }
+}

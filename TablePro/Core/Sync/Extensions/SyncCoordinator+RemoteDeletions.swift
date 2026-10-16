@@ -85,7 +85,8 @@ extension SyncCoordinator {
             applyRemoteTagDeletions(pending.tags),
             applyRemoteSSHProfileDeletions(pending.sshProfiles),
             applyRemoteCredentialProfileDeletions(pending.credentialProfiles),
-            applyRemoteColumnLayoutDeletions(pending.settingsRecordNames)
+            applyRemoteColumnLayoutDeletions(pending.settingsRecordNames),
+            applyRemoteThemeDeletions(pending.settingsRecordNames)
         ]
         effects.persistenceFailed = persisted.contains(false)
         applyRemoteTableFolderDeletions(folderIds: pending.tableFolders, itemSyncIds: pending.tableFolderItems)

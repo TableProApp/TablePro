@@ -9,6 +9,7 @@
 
 import AppKit
 @testable import TablePro
+import TableProTheme
 import Testing
 
 /// A bitmap cache converts through its own color space, so a theme color is held to the same color
@@ -110,6 +111,40 @@ struct ERDiagramThemeTests {
             #expect(palette.secondaryText == .secondaryLabelColor)
             #expect(palette.edge == mainEdge(in: appearance))
             #expect(palette.headerWash(cluster: .systemGreen) == mainClusterWash(.systemGreen, in: appearance))
+        }
+    }
+
+    @Test("A theme that colors only the grid background keeps the header's accent wash over the body")
+    func backgroundOnlyThemeKeepsHeaderWash() throws {
+        try Fixture.preservingEngine {
+            try Fixture.adopt([.gridBackground: "#2A6F4E"], appearance: .light)
+            let appearance = try appearance(.aqua)
+            let palette = ERDiagramPalette(appearance: appearance)
+            let (scene, rect) = scene()
+            let image = try #require(ERDiagramSceneRenderer.image(scene, appearance: appearance, scale: 1))
+            let rep = try #require(image.representations.first as? NSBitmapImageRep)
+            let padding = Int(ERDiagramSceneRenderer.exportPadding)
+            let body = try #require(Fixture.pixel(rep, x: padding + Int(rect.maxX) - 20, y: padding + Int(rect.maxY) - 10))
+            let header = try #require(Fixture.pixel(
+                rep, x: padding + Int(rect.maxX) - 20, y: padding + Int(ERDiagramLayout.headerHeight / 2)
+            ))
+
+            #expect(Fixture.hex(palette.nodeFill) == "#2A6F4E")
+            #expect(palette.headerFill == nil)
+            #expect(palette.headerWash(cluster: nil) == mainAccentWash(in: appearance))
+            #expect(Fixture.matches(body, try reference(palette.nodeFill)))
+            #expect(!Fixture.matches(header, try reference(palette.nodeFill)))
+        }
+    }
+
+    @Test("A header the theme sets apart from the body fills with its own color")
+    func distinctHeaderFillsItsOwnColor() throws {
+        try Fixture.preservingEngine {
+            try Fixture.adopt([.gridBackground: "#2A6F4E", .gridHeaderBackground: "#2A6F4E"], appearance: .light)
+            #expect(ERDiagramPalette(appearance: try appearance(.aqua)).headerFill == nil)
+
+            try Fixture.adopt([.gridHeaderBackground: "#7A3B8F"], appearance: .light)
+            #expect(Fixture.hex(ERDiagramPalette(appearance: try appearance(.aqua)).headerFill) == "#7A3B8F")
         }
     }
 

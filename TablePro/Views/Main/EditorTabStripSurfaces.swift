@@ -13,23 +13,30 @@ import SwiftUI
 /// measures a track of rgb(232) and a selected tab of rgb(253) in light, and rgb(71) and rgb(74)
 /// in dark. These resolve to rgb(220) and rgb(255) in light, and rgb(70) and rgb(116) in dark.
 internal enum EditorTabStripPalette {
-    /// Measured at rgb(220) light and rgb(70) dark. The system's own tab track measures rgb(232)
-    /// and rgb(71), so this is within a level of it in dark and slightly deeper in light.
-    @MainActor internal static var trackFill: Color {
-        Color(nsColor: trackColor(followsWindowBackdrop: followsWindowBackdrop))
+    internal static func trackFill(overThemedBackdrop: Bool) -> Color {
+        Color(nsColor: trackColor(overThemedBackdrop: overThemedBackdrop))
     }
 
-    /// The track sits in the titlebar, which takes the theme's window color only where `ThemeWindowBackdrop` sets it.
+    /// The track sits in the titlebar, which shows the theme's window color only where `ThemeWindowBackdrop` sets it.
     internal static var followsWindowBackdrop: Bool {
         if #available(macOS 26.0, *) { return true }
         return false
     }
 
     @MainActor
-    internal static func trackColor(followsWindowBackdrop: Bool, engine: ThemeEngine = .shared) -> NSColor {
+    internal static func isOverThemedBackdrop(highContrast: Bool) -> Bool {
+        followsWindowBackdrop && ThemeBackdropState.isThemed(highContrast: highContrast)
+    }
+
+    /// The system track measures rgb(220) light and rgb(70) dark against `NSTabBar`'s rgb(232) and rgb(71). Over a
+    /// themed window that opaque gray cuts a slab into the theme, while the window color itself leaves the selected
+    /// tab a step of 1.00 to 1.08 under a light theme. A translucent system fill keeps the theme's hue and a step of
+    /// 1.19 to 1.29 in light and 2.1 in dark, the closest of the system fills to the unthemed 1.37 and 2.02.
+    internal static func trackColor(overThemedBackdrop: Bool) -> NSColor {
         let native = NSColor.unemphasizedSelectedContentBackgroundColor
-        guard followsWindowBackdrop else { return native }
-        return engine.palette.color(.windowBackdrop, otherwise: native)
+        guard overThemedBackdrop else { return native }
+        if #available(macOS 14.0, *) { return .secondarySystemFill }
+        return native
     }
 
     /// Opaque white in light, and white at alpha 0.247 in dark. That asymmetry is the whole reason

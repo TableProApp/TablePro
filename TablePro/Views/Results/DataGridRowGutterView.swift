@@ -137,6 +137,7 @@ final class DataGridRowGutterView: NSView {
         let pageOffset = coordinator.paginationOffsetProvider()
         coordinator.cellRegistry.preparePalette(in: NSAppearance.currentDrawing())
         let palette = coordinator.cellRegistry.palette
+        let scope = coordinator.themeScope
 
         for band in DataGridBodyChrome.rowBands(in: dirtyRect, of: self, tableView: tableView) {
             let stripRect = NSRect(x: 0, y: band.rect.minY, width: bounds.width, height: band.rect.height)
@@ -146,7 +147,14 @@ final class DataGridRowGutterView: NSView {
             let state = band.isTableRow ? coordinator.visualState(for: band.row) : .empty
             DataGridBodyChrome.fill(
                 stripRect,
-                with: rowLayers(row: band.row, isSelected: isSelected, emphasized: emphasized, state: state, tableView: tableView),
+                with: rowLayers(
+                    row: band.row,
+                    isSelected: isSelected,
+                    emphasized: emphasized,
+                    state: state,
+                    tableView: tableView,
+                    scope: scope
+                ),
                 over: tableView.backgroundColor
             )
             guard band.isTableRow else { continue }
@@ -170,15 +178,16 @@ final class DataGridRowGutterView: NSView {
         isSelected: Bool,
         emphasized: Bool,
         state: RowVisualState,
-        tableView: NSTableView
+        tableView: NSTableView,
+        scope: ThemeScope
     ) -> [NSColor] {
         var layers: [NSColor] = []
-        if let stripe = DataGridBodyChrome.stripeColor(forRow: row, of: tableView) {
+        if let stripe = DataGridBodyChrome.stripeColor(forRow: row, of: tableView, scope: scope) {
             layers.append(stripe)
         }
         if isSelected {
-            layers.append(DataGridBodyChrome.selectionColor(emphasized: emphasized))
-        } else if let tint = state.tint {
+            layers.append(DataGridBodyChrome.selectionColor(emphasized: emphasized, scope: scope))
+        } else if let tint = state.tint(in: scope) {
             layers.append(tint)
         }
         return layers

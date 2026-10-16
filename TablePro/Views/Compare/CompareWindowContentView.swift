@@ -11,6 +11,7 @@
 //
 
 import SwiftUI
+import TableProTheme
 
 internal struct CompareWindowContentView: View {
     @ObservedObject internal var session: CompareSyncSession
@@ -40,7 +41,11 @@ internal struct CompareWindowContentView: View {
         /// total number of items in a window, the number of selected items".
         .safeAreaInset(edge: .bottom, spacing: 0) {
             CompareStatusBar(session: session)
+                .modifier(DetailPaneStatusBarMaterial())
         }
+        // Behind the panes on every macOS version, as the main window's detail pane is: before
+        // macOS 26 the window color does not take the theme.
+        .themeBackground(.windowBackdrop, native: Color.clear)
         .frame(minWidth: 720, minHeight: 460)
     }
 
@@ -74,10 +79,12 @@ internal struct CompareStatusStrip: View {
             if let target = session.target {
                 Divider().frame(height: 14)
                 HStack(spacing: 6) {
-                    Circle()
-                        .fill(target.color.indicatorColor ?? Color.secondary.opacity(0.35))
-                        .frame(width: 9, height: 9)
-                        .accessibilityHidden(true)
+                    ConnectionTile(
+                        type: target.databaseType,
+                        iconName: target.iconName,
+                        identityColor: target.color.isDefault ? nil : target.color,
+                        size: 16
+                    )
                     Text(String(format: String(localized: "Target: %@"), target.qualifiedDescription))
                         .font(.caption)
                         .foregroundStyle(.secondary)

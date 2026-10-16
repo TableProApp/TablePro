@@ -1,10 +1,19 @@
 import SwiftUI
 
-struct SlowQueryListView: View {
-    let queries: [DashboardSlowQuery]
-    let error: String?
+/// Slow queries are server records, so they draw in the data grid and take its theme. The server's
+/// order, slowest first, is kept: the drawn duration is a formatted span that would not sort.
+internal struct SlowQueryListView: View {
+    internal let queries: [DashboardSlowQuery]
+    internal let error: String?
+    internal let databaseType: DatabaseType
 
-    var body: some View {
+    @StateObject private var grid = StructureListGridModel<SlowQueryGridRows.RowID>(
+        accessibilityLabel: String(localized: "Slow Queries")
+    )
+    @StateObject private var selection = StructureListSelection<SlowQueryGridRows.RowID>()
+    @State private var columnLayout = ColumnLayoutState()
+
+    internal var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Label(String(localized: "Slow Queries"), systemImage: "tortoise")
@@ -30,44 +39,68 @@ struct SlowQueryListView: View {
                     .foregroundStyle(.secondary)
                     .font(.caption)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .gridStandInBackground()
             } else {
-                List {
-                    ForEach(queries) { query in
-                        slowQueryRow(query)
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
-                    }
-                }
-                .listStyle(.plain)
+                table
             }
         }
     }
 
-    private func slowQueryRow(_ query: DashboardSlowQuery) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text(query.duration)
-                .font(.system(.caption, design: .monospaced))
-                .monospacedDigit()
-                .foregroundStyle(.orange)
-                .frame(width: 50, alignment: .trailing)
+    private var table: some View {
+        let rows = SlowQueryGridRows.rows(for: queries)
+        let selection = selection
+        var hasher = Hasher()
+        hasher.combine(rows)
+        return StructureListGrid(
+            model: grid,
+            columns: SlowQueryGridRows.titles,
+            defaultWidths: SlowQueryGridRows.widths,
+            minimumWidths: SlowQueryGridRows.minimumWidths,
+            contentKey: hasher.finalize(),
+            rows: { rows },
+            databaseType: databaseType,
+            selectedIDs: { selection.ids },
+            select: { selection.ids = $0 },
+            sortState: nil,
+            columnLayout: $columnLayout
+        )
+    }
+}
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(query.query)
-                    .font(.system(.caption, design: .monospaced))
-                    .lineLimit(2)
-                    .truncationMode(.tail)
-                HStack(spacing: 8) {
-                    if !query.user.isEmpty {
-                        Text(query.user)
-                    }
-                    if !query.database.isEmpty {
-                        Text(query.database)
-                    }
-                }
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-            }
+internal enum SlowQueryGridRows {
+    // A running query keeps its row across refreshes while its duration grows, so the duration is
+    // not part of the identity; the same statement twice is told apart by its occurrence.
+    internal struct RowID: Hashable {
+        internal let statement: String
+        internal let user: String
+        internal let database: String
+        internal let occurrence: Int
+    }
+
+    internal static var titles: [String] {
+        [
+            String(localized: "Duration"),
+            String(localized: "Query"),
+            String(localized: "User"),
+            String(localized: "Database"),
+        ]
+    }
+
+    internal static let durationColumn = 0
+    internal static let widths: [CGFloat] = [80, 420, 100, 100]
+    internal static let minimumWidths: [CGFloat] = [50, 120, 60, 60]
+
+    internal static func rows(for queries: [DashboardSlowQuery]) -> [StructureListRow<RowID>] {
+        var seen: [RowID: Int] = [:]
+        return queries.map { query in
+            let base = RowID(statement: query.query, user: query.user, database: query.database, occurrence: 0)
+            let occurrence = seen[base, default: 0]
+            seen[base] = occurrence + 1
+            return StructureListRow(
+                id: RowID(statement: query.query, user: query.user, database: query.database, occurrence: occurrence),
+                values: [query.duration, query.query, query.user, query.database],
+                tones: [durationColumn: .caution]
+            )
         }
-        .padding(.vertical, 2)
     }
 }

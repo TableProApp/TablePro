@@ -6,6 +6,7 @@
 import AppKit
 import SwiftUI
 @testable import TablePro
+import TableProTheme
 import Testing
 
 /// Synchronous and main-actor, so nothing else on the main actor runs between an adopt and its restore.
@@ -64,11 +65,8 @@ internal extension ThemeTestFixture {
     static let editorHex = "#1B3A2C"
     static let gridHex = "#3A1E4F"
 
-    /// A theme that keeps a default id ignores its syntax overrides, so an overridden one takes a test id.
     static func theme(_ appearance: ThemeAppearance, _ overrides: [ThemeSlot: String]) throws -> ThemeDefinition {
         var theme = BuiltInThemes.default(for: appearance)
-        guard !overrides.isEmpty else { return theme }
-        theme.id = "user.test.\(appearance.rawValue)-\(overrides.keys.map(\.rawValue).sorted().joined(separator: "+"))"
         for (slot, hex) in overrides {
             theme.overrides[slot] = try ThemeColor(validating: hex)
         }

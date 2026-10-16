@@ -1,0 +1,50 @@
+{
+  "appearance": "dark",
+  "author": "Catppuccin",
+  "dataGrid": {
+    "alternateRow": "#181825",
+    "background": "#1E1E2E",
+    "boolFalse": "#F38BA8",
+    "boolTrue": "#A6E3A1",
+    "deleted": "#F38BA826",
+    "deletedText": "#F38BA880",
+    "focusBorder": "#CBA6F7",
+    "gridLine": "#45475A",
+    "headerBackground": "#181825",
+    "headerText": "#CDD6F4",
+    "inactiveSelection": "#313244",
+    "inserted": "#A6E3A126",
+    "modified": "#F9E2AF26",
+    "nullValue": "#9399B2",
+    "rowNumber": "#7F849C",
+    "selection": "#313244",
+    "selectionText": "#CDD6F4",
+    "text": "#CDD6F4"
+  },
+  "editor": {
+    "background": "#1E1E2E",
+    "currentLine": "#CDD6F412",
+    "currentStatement": "#CDD6F40C",
+    "cursor": "#F5E0DC",
+    "invisibles": "#9399B266",
+    "lineNumber": "#7F849C",
+    "selection": "#9399B240",
+    "syntax": {
+      "comment": "#9399B2",
+      "function": "#89B4FA",
+      "keyword": "#CBA6F7",
+      "null": "#F38BA8",
+      "number": "#FAB387",
+      "operator": "#94E2D5",
+      "string": "#A6E3A1",
+      "type": "#F9E2AF"
+    },
+    "text": "#CDD6F4"
+  },
+  "id": "tablepro.catppuccin-mocha",
+  "name": "Catppuccin Mocha",
+  "schema": 3,
+  "window": {
+    "background": "#1E1E2E"
+  }
+}

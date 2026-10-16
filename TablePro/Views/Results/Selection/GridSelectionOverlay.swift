@@ -1,4 +1,5 @@
 import AppKit
+import TableProTheme
 
 @MainActor
 final class GridSelectionOverlay: NSView {
@@ -41,8 +42,8 @@ final class GridSelectionOverlay: NSView {
         guard let tableView, let coordinator else { return }
         let editingCell = activeOverlayCell(in: coordinator)
 
-        let resolved = ThemeEngine.shared.resolved
-        resolved[.gridSelection].withAlphaComponent(Self.borderAlpha).setStroke()
+        let resolved = coordinator.themeScope.resolved
+        Self.rangeBorderColor(resolved).setStroke()
         for rect in selection.rectangles {
             guard let frame = frame(for: rect, in: tableView, coordinator: coordinator) else { continue }
             guard frame.intersects(dirtyRect) else { continue }
@@ -59,13 +60,24 @@ final class GridSelectionOverlay: NSView {
            selection.rectangles.count > 1 || (selection.rectangles.first?.rows.count ?? 0) > 1 || (selection.rectangles.first?.columns.count ?? 0) > 1,
            let frame = frame(for: GridRect(cell: active), in: tableView, coordinator: coordinator),
            frame.intersects(dirtyRect) {
-            let activeColor = resolved.isOverridden(.gridFocusBorder) ? resolved[.gridFocusBorder] : .controlAccentColor
-            activeColor.setStroke()
+            Self.activeCellBorderColor(resolved).setStroke()
             let inset = frame.insetBy(dx: Self.activeCellBorderWidth / 2, dy: Self.activeCellBorderWidth / 2)
             let path = NSBezierPath(rect: inset)
             path.lineWidth = Self.activeCellBorderWidth
             path.stroke()
         }
+    }
+
+    static func activeCellBorderColor(_ resolved: ResolvedTheme) -> NSColor {
+        resolved.isOverridden(.gridFocusBorder) ? resolved[.gridFocusBorder] : .controlAccentColor
+    }
+
+    /// A theme's opaque selection fill hides the selection at 70%, so the outline takes the active
+    /// cell's border color instead, the way the native outline and active cell share the accent.
+    static func rangeBorderColor(_ resolved: ResolvedTheme) -> NSColor {
+        let base = resolved.isOverridden(.gridSelection) ? activeCellBorderColor(resolved) : resolved[.gridSelection]
+        let alpha = borderAlpha
+        return NSColor(name: nil) { _ in base.withAlphaComponent(alpha) }
     }
 
     private func activeOverlayCell(in coordinator: TableViewCoordinator) -> GridCoord? {

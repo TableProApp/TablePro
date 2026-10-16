@@ -6,6 +6,7 @@
 import AppKit
 import Combine
 import TableProPluginKit
+import TableProTheme
 
 @MainActor
 class DataGridRowView: NSTableRowView {
@@ -40,6 +41,11 @@ class DataGridRowView: NSTableRowView {
 
     var visualState: RowVisualState {
         coordinator?.visualState(for: rowIndex) ?? .empty
+    }
+
+    /// A row outside a grid, as the copy tests build one, draws with the app's theme.
+    private var themeScope: ThemeScope {
+        coordinator?.themeScope ?? .live
     }
 
     /// Draws the row's data cells.
@@ -174,9 +180,8 @@ class DataGridRowView: NSTableRowView {
     /// The columns of an unselected row that a cell range covers with a theme's opaque selection,
     /// whose text has to switch to the theme's selection text like a selected row's does.
     func themedRangeColumns() -> Set<Int> {
-        guard !isSelected, isEmphasized,
-              DataGridBodyChrome.themedSelectionColor(emphasized: true) != nil,
-              let coordinator else { return [] }
+        guard !isSelected, isEmphasized, let coordinator,
+              DataGridBodyChrome.isSelectionThemed(emphasized: true, scope: coordinator.themeScope) else { return [] }
         let columns = coordinator.selectionController.selection.columns(in: rowIndex)
         return Set(columns.compactMap { coordinator.tableColumnIndex(forDisplayPosition: $0) })
     }
@@ -291,30 +296,31 @@ class DataGridRowView: NSTableRowView {
     }
 
     override func drawBackground(in dirtyRect: NSRect) {
-        drawRowBackground(in: dirtyRect)
-        if !isSelected, let tint = visualState.tint {
+        let scope = themeScope
+        drawRowBackground(in: dirtyRect, scope: scope)
+        if !isSelected, let tint = visualState.tint(in: scope) {
             tint.setFill()
             bounds.fill()
         }
-        drawCellSelectionFill(in: dirtyRect)
+        drawCellSelectionFill(in: dirtyRect, scope: scope)
     }
 
     /// The row's stripe from `DataGridBodyChrome`, the owner the pinned gutter and the area past the
     /// last row read too, rather than the `backgroundColor` the table assigns, which is only ever the
     /// system's. A row outside a table has no stripe, and AppKit's own drawing already leaves it clear:
     /// its `backgroundColor` is nil there, so it must not be read.
-    private func drawRowBackground(in dirtyRect: NSRect) {
+    private func drawRowBackground(in dirtyRect: NSRect, scope: ThemeScope) {
         guard let tableView = coordinator?.tableView else {
             super.drawBackground(in: dirtyRect)
             return
         }
-        DataGridBodyChrome.rowBackgroundColor(forRow: rowIndex, of: tableView).setFill()
+        DataGridBodyChrome.rowBackgroundColor(forRow: rowIndex, of: tableView, scope: scope).setFill()
         dirtyRect.fill()
     }
 
     override func drawSelection(in dirtyRect: NSRect) {
         guard isSelected else { return }
-        guard let themed = DataGridBodyChrome.themedSelectionColor(emphasized: isEmphasized) else {
+        guard let themed = DataGridBodyChrome.themedSelectionColor(emphasized: isEmphasized, scope: themeScope) else {
             super.drawSelection(in: dirtyRect)
             return
         }
@@ -324,7 +330,7 @@ class DataGridRowView: NSTableRowView {
 
     /// A cell range on a row the table has selected is already covered by the row's own selection
     /// fill, which runs after this, so only the remaining rows are painted here.
-    private func drawCellSelectionFill(in dirtyRect: NSRect) {
+    private func drawCellSelectionFill(in dirtyRect: NSRect, scope: ThemeScope) {
         guard !isSelected,
               let coordinator,
               let tableView = coordinator.tableView else { return }
@@ -333,7 +339,7 @@ class DataGridRowView: NSTableRowView {
         let columns = selection.columns(in: rowIndex)
         guard !columns.isEmpty else { return }
 
-        cellSelectionFill.setFill()
+        cellSelectionFill(scope: scope).setFill()
 
         for position in columns {
             guard let tableColumnIndex = coordinator.tableColumnIndex(forDisplayPosition: position) else { continue }
@@ -349,11 +355,13 @@ class DataGridRowView: NSTableRowView {
     /// left the range at 1.09:1 against a white grid, which is no visible selection at all. The
     /// system's emphasized accent is far too dark to sit behind text these rows do not recolour, so
     /// that one goes on as a tint; a theme's selection is chosen to sit behind its own text.
-    private var cellSelectionFill: NSColor {
-        let resolved = ThemeEngine.shared.resolved
-        let slot = DataGridBodyChrome.selectionSlot(emphasized: isEmphasized)
-        guard isEmphasized, !resolved.isOverridden(slot) else { return resolved[slot] }
-        return resolved[slot].withAlphaComponent(Self.emphasizedCellSelectionAlpha)
+    private func cellSelectionFill(scope: ThemeScope) -> NSColor {
+        if let themed = DataGridBodyChrome.themedSelectionColor(emphasized: isEmphasized, scope: scope) {
+            return themed
+        }
+        let native = scope.resolved[DataGridBodyChrome.selectionSlot(emphasized: isEmphasized)]
+        guard isEmphasized else { return native }
+        return native.withAlphaComponent(Self.emphasizedCellSelectionAlpha)
     }
 
     private static let emphasizedCellSelectionAlpha: CGFloat = 0.28

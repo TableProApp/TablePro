@@ -28,6 +28,7 @@ final class SyncCoordinator: ObservableObject {
     let metadataStorage: SyncMetadataStorage
     let recordCache: SyncRecordCache
     let columnLayouts: () -> FileColumnLayoutPersister
+    let themeCatalog: ThemeCatalog
     private let makeNetworkMonitor: () -> SyncNetworkMonitor?
     /// Why the license keeps sync off, or nil while it allows sync.
     private let licenseGate: @MainActor () -> DisableReason?
@@ -65,6 +66,7 @@ final class SyncCoordinator: ObservableObject {
         transport: @escaping @autoclosure () -> any SyncTransport = CloudKitSyncEngine(),
         makeNetworkMonitor: @escaping () -> SyncNetworkMonitor? = { SyncNetworkMonitor() },
         columnLayouts: @escaping @autoclosure () -> FileColumnLayoutPersister = .shared,
+        themeCatalog: ThemeCatalog = .shared,
         licenseGate: (@MainActor () -> DisableReason?)? = nil
     ) {
         self.services = services
@@ -74,6 +76,7 @@ final class SyncCoordinator: ObservableObject {
         self.metadataStorage = services.syncMetadataStorage
         self.recordCache = recordCache
         self.columnLayouts = columnLayouts
+        self.themeCatalog = themeCatalog
         let licenseManager = services.licenseManager
         self.licenseGate = licenseGate ?? {
             guard !licenseManager.isFeatureAvailable(.iCloudSync) else { return nil }
@@ -461,7 +464,8 @@ final class SyncCoordinator: ObservableObject {
         let settingsCategories = AppSettingsCategory.synced + [CustomSlashCommandStorage.syncCategory]
         let columnLayoutCategories = columnLayouts().customizedStorageKeys()
             .map { FileColumnLayoutPersister.syncCategory(for: $0) }
-        changeTracker.markDirty(.settings, ids: settingsCategories + columnLayoutCategories)
+        let themeCategories = themeCatalog.syncCategories
+        changeTracker.markDirty(.settings, ids: settingsCategories + columnLayoutCategories + themeCategories)
 
         let summary = [
             "connections=\(connections.count)",
@@ -470,7 +474,8 @@ final class SyncCoordinator: ObservableObject {
             "sshProfiles=\(sshProfiles.count)",
             "favoriteTables=\(favoriteTables.count)",
             "tableFolders=\(tableFolderIds.folders.count)",
-            "settings=\(AppSettingsCategory.synced.count + 1)"
+            "settings=\(AppSettingsCategory.synced.count + 1)",
+            "themes=\(themeCategories.count)"
         ].joined(separator: ", ")
         Self.logger.info("Marked all local data dirty: \(summary, privacy: .public)")
     }
@@ -663,13 +668,13 @@ final class SyncCoordinator: ObservableObject {
 
         do {
             let result = try await transport.pull(since: token)
-            return await applyPullResult(result, echoGuard: echoGuard) ? nil : .pullNotSaved
+            return await applyPull(result, isFullFetch: token == nil, echoGuard: echoGuard) ? nil : .pullNotSaved
         } catch let error where Self.isTokenExpired(error) {
             Self.logger.warning("Change token expired, clearing and retrying with full fetch")
             metadataStorage.saveToken(nil)
             do {
                 let result = try await transport.pull(since: nil)
-                return await applyPullResult(result, echoGuard: echoGuard) ? nil : .pullNotSaved
+                return await applyPull(result, isFullFetch: true, echoGuard: echoGuard) ? nil : .pullNotSaved
             } catch {
                 Self.logger.error("Full fetch after token expiry failed: \(error.localizedDescription)")
                 return SyncStepFailure(error)
@@ -678,6 +683,14 @@ final class SyncCoordinator: ObservableObject {
             Self.logger.error("Pull failed: \(error.localizedDescription)")
             return SyncStepFailure(error)
         }
+    }
+
+    private func applyPull(_ result: PullResult, isFullFetch: Bool, echoGuard: SyncEchoGuard?) async -> Bool {
+        guard await applyPullResult(result, echoGuard: echoGuard) else { return false }
+        if isFullFetch {
+            seedLocalThemesIfPending(after: result)
+        }
+        return true
     }
 
     @discardableResult
@@ -801,7 +814,9 @@ final class SyncCoordinator: ObservableObject {
                     persistenceFailed = true
                 }
             case .settings:
-                applyRemoteSettings(record, tombstoneIds: settingsTombstoneIds)
+                if applyRemoteSettings(record, tombstoneIds: settingsTombstoneIds) == .failed {
+                    persistenceFailed = true
+                }
             case .tableFavorite:
                 if let favorite = remoteTableFavorite(record, tombstoneIds: tableFavoriteTombstoneIds) {
                     tableFavorites.append(favorite)
@@ -1015,18 +1030,23 @@ final class SyncCoordinator: ObservableObject {
         services.sshProfileStorage.refreshLinkedConnections(with: remoteProfile)
     }
 
-    private func applyRemoteSettings(_ record: CKRecord, tombstoneIds: Set<String>) {
+    private func applyRemoteSettings(_ record: CKRecord, tombstoneIds: Set<String>) -> RemoteApplyOutcome {
         guard let category = SyncRecordMapper.settingsCategory(from: record),
               !tombstoneIds.contains(category),
               let data = SyncRecordMapper.settingsData(from: record)
-        else { return }
+        else { return .skipped }
+        if ThemeCatalog.themeId(forSyncCategory: category) != nil {
+            return themeCatalog.applyRemote(category: category, data: data, merge: remoteThemeMerge)
+        }
         do {
             try applySettingsData(data, for: category)
+            return .applied
         } catch {
             let recordName = record.recordID.recordName
             Self.logger.error(
                 "Skipping remote settings \(recordName, privacy: .private(mask: .hash)) (\(category, privacy: .private(mask: .hash))): \(error.publicLogShape, privacy: .public) \(error.localizedDescription, privacy: .private)"
             )
+            return .skipped
         }
     }
 
@@ -1089,12 +1109,14 @@ final class SyncCoordinator: ObservableObject {
         /// did not sync were passed over for good. The first run of a build that syncs more types
         /// fetches the zone again, which is how table folders made on an upgraded Mac reach one that
         /// upgrades later. Counted over the types verified in Production, because an unverified type
-        /// has no records on the server to fetch. Checked on every turn to on, because a sync turned
-        /// on mid-session after an upgrade would otherwise keep a token from before it.
-        if metadataStorage.adoptReadableRecordTypes(Set(SyncRecordType.verifiedInProduction.map(\.rawValue))) {
+        /// has no records on the server to fetch, plus the content kinds an older build skipped
+        /// inside a type it read (`readableContent`). Checked on every turn to on, because a sync
+        /// turned on mid-session after an upgrade would otherwise keep a token from before it.
+        if metadataStorage.adoptReadableRecordTypes(Self.readableContent) {
             metadataStorage.saveToken(nil)
             Self.logger.info("This build reads record types the last one did not: cleared sync token for full fetch")
         }
+        scheduleThemeSeedIfNeeded()
     }
 
     /// The run that follows reads the account and adopts its id, so a sign-out, a switch to another

@@ -195,7 +195,7 @@ if #available(macOS 14.0, *) {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(.bar)
+        .paneBarBackground()
     }
 
     private var enabledPlanCount: Int {

@@ -1,0 +1,50 @@
+{
+  "appearance": "light",
+  "author": "Ethan Schoonover",
+  "dataGrid": {
+    "alternateRow": "#EEE8D5",
+    "background": "#FDF6E3",
+    "boolFalse": "#DC322F",
+    "boolTrue": "#859900",
+    "deleted": "#DC322F26",
+    "deletedText": "#DC322F80",
+    "focusBorder": "#268BD2",
+    "gridLine": "#DDD6C1",
+    "headerBackground": "#EEE8D5",
+    "headerText": "#586E75",
+    "inactiveSelection": "#EEE0B5",
+    "inserted": "#85990026",
+    "modified": "#B5890026",
+    "nullValue": "#93A1A1",
+    "rowNumber": "#93A1A1",
+    "selection": "#DFCA88",
+    "selectionText": "#073642",
+    "text": "#657B83"
+  },
+  "editor": {
+    "background": "#FDF6E3",
+    "currentLine": "#EEE8D5",
+    "currentStatement": "#EEE8D580",
+    "cursor": "#657B83",
+    "invisibles": "#586E7580",
+    "lineNumber": "#93A1A1",
+    "selection": "#EEE8D5",
+    "syntax": {
+      "comment": "#93A1A1",
+      "function": "#268BD2",
+      "keyword": "#859900",
+      "null": "#B58900",
+      "number": "#D33682",
+      "operator": "#859900",
+      "string": "#2AA198",
+      "type": "#CB4B16"
+    },
+    "text": "#657B83"
+  },
+  "id": "tablepro.solarized-light",
+  "name": "Solarized Light",
+  "schema": 3,
+  "window": {
+    "background": "#FDF6E3"
+  }
+}

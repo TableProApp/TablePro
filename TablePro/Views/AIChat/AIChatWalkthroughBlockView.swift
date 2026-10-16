@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProTheme
 
 struct AIChatWalkthroughBlockView: View {
     @ObservedObject var block: ChatContentBlock

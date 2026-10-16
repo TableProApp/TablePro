@@ -526,6 +526,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     var settingsCancellable: AnyCancellable?
     var themeCancellable: AnyCancellable?
+    private(set) var themeScope: ThemeScope
     var systemTimeZoneCancellable: AnyCancellable?
     private var accessibilityActivationObserver: (any NSObjectProtocol)?
     private var accessibilityMountedRows = NSRange(location: 0, length: 0)
@@ -585,15 +586,17 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         isEditable: Bool,
         selectedRowIndices: Binding<Set<Int>>,
         delegate: (any DataGridViewDelegate)?,
-        layoutPersister: any ColumnLayoutPersisting
+        layoutPersister: any ColumnLayoutPersisting,
+        themeScope: ThemeScope = .live
     ) {
         self.changeManager = changeManager
         self.isEditable = isEditable
         self._selectedRowIndices = selectedRowIndices
         self.delegate = delegate
         self.layoutPersister = layoutPersister
+        self.themeScope = themeScope
         self.lastDataGridSettings = AppSettingsManager.shared.dataGrid
-        self.cellRegistry = DataGridCellRegistry()
+        self.cellRegistry = DataGridCellRegistry(scope: themeScope)
         super.init()
         cellRegistry.accessoryDelegate = self
         updateCache()
@@ -632,9 +635,20 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func observeThemeChanges() {
-        themeCancellable = AppEvents.shared.themeChanged
+        themeCancellable = themeScope.changes
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.themeDidChange() }
+    }
+
+    /// A fixed scope never changes, so the preview hands over a new one for each draft.
+    func adoptThemeScope(_ scope: ThemeScope) {
+        guard scope !== themeScope else { return }
+        themeScope = scope
+        cellRegistry.adopt(scope, in: tableView?.effectiveAppearance ?? NSApp?.effectiveAppearance ?? .currentDrawing())
+        if themeCancellable != nil {
+            observeThemeChanges()
+        }
+        themeDidChange()
     }
 
     /// `themeChanged` also fires for an Accent, Highlight or Increase Contrast change, and none of
@@ -642,7 +656,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     func themeDidChange() {
         guard let tableView else { return }
         cellRegistry.preparePalette(in: tableView.effectiveAppearance)
-        DataGridBodyChrome.applyThemeColors(to: tableView)
+        DataGridBodyChrome.applyThemeColors(to: tableView, scope: themeScope)
         tableView.headerView?.needsDisplay = true
         tableView.cornerView?.needsDisplay = true
         restyleRowNumberCells(in: tableView)

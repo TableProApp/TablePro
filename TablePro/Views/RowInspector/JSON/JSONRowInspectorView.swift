@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import TableProTheme
 
 struct JSONRowInspectorView: View {
     @ObservedObject var viewModel: JSONRowInspectorViewModel

@@ -5,6 +5,7 @@
 
 import AppKit
 import Combine
+import TableProTheme
 
 enum CellOverlayDismissReason {
     case userAction
@@ -24,6 +25,9 @@ class CellOverlayBase: NSObject {
     private var appResignObserver: NSObjectProtocol?
     private var windowResignKeyObserver: NSObjectProtocol?
     private var outsideClickMonitor: Any?
+    /// Held for the life of the open overlay: its subscription is what repaints the text on a theme
+    /// change.
+    private var textStyle: ThemeTextViewStyle?
     var onRemove: (() -> Void)?
 
     private(set) var row: Int = -1
@@ -85,6 +89,7 @@ class CellOverlayBase: NSObject {
         }
         activeContainer.removeFromSuperview()
         container = nil
+        textStyle = nil
         if let hostTableView {
             hostTableView.window?.makeFirstResponder(hostTableView)
         }
@@ -103,14 +108,26 @@ class CellOverlayBase: NSObject {
         return NSRect(x: cellFrame.origin.x, y: cellFrame.origin.y, width: cellFrame.width, height: height)
     }
 
-    static func makeContainer(frame: NSRect) -> CellOverlayContainerView {
+    /// The grid's own scope, so an overlay over the theme editor's preview wears the draft.
+    static func themeScope(of tableView: NSTableView) -> ThemeScope {
+        (tableView as? KeyHandlingTableView)?.themeScope ?? .live
+    }
+
+    static func makeContainer(frame: NSRect, scope: ThemeScope) -> CellOverlayContainerView {
         let container = CellOverlayContainerView(frame: frame)
         container.wantsLayer = true
         container.layer?.borderWidth = 2
         container.layer?.cornerRadius = 2
         container.layer?.masksToBounds = true
+        container.scope = scope
         container.applyLayerColors()
         return container
+    }
+
+    /// A value is content, so the box takes the editor's colors, caret and selection included, the
+    /// way the inspector and the pop-out editor show the same value.
+    func applyTheme(to textView: NSTextView, scope: ThemeScope) {
+        textStyle = ThemeTextViewStyle(textView: textView, scope: scope)
     }
 
     /// Lays a text view out the way an inline cell overlay needs.
@@ -135,7 +152,7 @@ class CellOverlayBase: NSObject {
         textView.textContainer?.containerSize = unbounded
     }
 
-    static func makeScrollView(in container: NSView) -> NSScrollView {
+    static func makeScrollView(in container: NSView, scope: ThemeScope) -> NSScrollView {
         let scrollView = NSScrollView(frame: container.bounds)
         scrollView.autoresizingMask = [.width, .height]
         scrollView.hasVerticalScroller = true
@@ -143,7 +160,7 @@ class CellOverlayBase: NSObject {
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = true
-        scrollView.backgroundColor = .textBackgroundColor
+        scrollView.backgroundColor = scope.palette.color(.editorBackground, otherwise: .textBackgroundColor)
         return scrollView
     }
 
@@ -238,13 +255,25 @@ class CellOverlayBase: NSObject {
 final class CellOverlayContainerView: NSView {
     override var isFlipped: Bool { true }
 
+    var scope: ThemeScope = .live {
+        didSet {
+            guard scope !== oldValue else { return }
+            themeCancellable = nil
+            subscribeIfInWindow()
+            applyLayerColors()
+        }
+    }
+
     private var themeCancellable: AnyCancellable?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard window != nil, themeCancellable == nil else { return }
+        subscribeIfInWindow()
+    }
 
-        themeCancellable = AppEvents.shared.themeChanged
+    private func subscribeIfInWindow() {
+        guard window != nil, themeCancellable == nil else { return }
+        themeCancellable = scope.changes
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.applyLayerColors() }
     }
@@ -258,9 +287,8 @@ final class CellOverlayContainerView: NSView {
     /// colours are reapplied whenever the appearance or the theme changes under an open overlay.
     func applyLayerColors() {
         let appearance = effectiveAppearance
-        layer?.borderColor = ThemeEngine.shared.resolved.cgColor(.gridFocusBorder, in: appearance)
-        appearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
-        }
+        let resolved = scope.resolved
+        layer?.borderColor = resolved.cgColor(.gridFocusBorder, in: appearance)
+        layer?.backgroundColor = resolved.cgColor(.editorBackground, otherwise: .textBackgroundColor, in: appearance)
     }
 }

@@ -199,3 +199,88 @@ extension GlobalStateSuites {
         }
     }
 }
+
+@MainActor
+struct StructureListGridToneTests {
+    private let palette = DataGridCellPalette(
+        regularFont: .systemFont(ofSize: 13),
+        italicFont: .systemFont(ofSize: 13),
+        mediumFont: .systemFont(ofSize: 13, weight: .medium),
+        text: .systemPurple,
+        placeholderText: .systemBrown,
+        booleanTrueText: .labelColor,
+        booleanFalseText: .labelColor,
+        rowNumberText: .secondaryLabelColor,
+        deletedRowText: .systemPink,
+        modifiedColumnTint: .systemYellow,
+        findMatchTint: .systemOrange,
+        selectionText: .systemIndigo
+    )
+
+    private func appearance(
+        tone: NSColor?,
+        placeholder: DataGridCellPlaceholder? = nil,
+        visualState: RowVisualState = .empty,
+        isCurrentFindMatch: Bool = false,
+        onEmphasizedSelection: Bool = false
+    ) -> DataGridCellAppearance {
+        DataGridCellAppearance.resolve(
+            kind: .text,
+            content: DataGridCellContent(displayText: "active", rawValue: "active", placeholder: placeholder),
+            state: DataGridCellState(
+                visualState: visualState,
+                isFocused: false,
+                isEditable: false,
+                isLargeDataset: false,
+                isCurrentFindMatch: isCurrentFindMatch,
+                row: 0,
+                columnIndex: 0
+            ),
+            palette: palette,
+            nullDisplayString: "NULL",
+            onEmphasizedSelection: onEmphasizedSelection,
+            hasOverlay: false,
+            textTone: tone
+        )
+    }
+
+    @Test("Each tone is a system status color")
+    func tonesAreSystemColors() {
+        #expect(StructureListTone.positive.color == .systemGreen)
+        #expect(StructureListTone.caution.color == .systemOrange)
+        #expect(StructureListTone.critical.color == .systemRed)
+        #expect(StructureListTone.secondary.color == .secondaryLabelColor)
+    }
+
+    @Test("A tone is answered for its own cell, and a row without tones answers none")
+    func modelAnswersTonePerCell() {
+        let model = StructureListGridModel<String>()
+        _ = model.ensureLoaded(key: 1, columns: ["Name", "State"]) {
+            [
+                StructureListRow(id: "a", values: ["alpha", "active"], tones: [1: .positive]),
+                StructureListRow(id: "b", values: ["beta", "idle"]),
+            ]
+        }
+
+        #expect(model.dataGridTextTone(row: 0, column: 1) == .systemGreen)
+        #expect(model.dataGridTextTone(row: 0, column: 0) == nil)
+        #expect(model.dataGridTextTone(row: 1, column: 1) == nil)
+        #expect(model.dataGridTextTone(row: 5, column: 1) == nil)
+    }
+
+    @Test("A toned value draws in its tone and turns to the selection text on an emphasized selection")
+    func toneGivesWayToTheSelection() {
+        #expect(appearance(tone: .systemGreen).textColor == .systemGreen)
+        #expect(appearance(tone: .systemGreen, onEmphasizedSelection: true).textColor == .systemIndigo)
+        #expect(appearance(tone: nil).textColor == .systemPurple)
+    }
+
+    @Test("A placeholder, a deleted row and a find match keep their own text color over a tone")
+    func toneLeavesOtherStatesAlone() {
+        let deleted = RowVisualState(isDeleted: true, isInserted: false, modifiedColumns: [])
+
+        #expect(appearance(tone: .systemGreen, placeholder: .empty).textColor == .systemBrown)
+        #expect(appearance(tone: .systemGreen, visualState: deleted).textColor == .systemPink)
+        #expect(appearance(tone: .systemGreen, isCurrentFindMatch: true).textColor == palette.findMatchText)
+    }
+}

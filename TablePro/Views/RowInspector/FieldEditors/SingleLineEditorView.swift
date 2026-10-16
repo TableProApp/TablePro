@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProTheme
 
 internal struct SingleLineEditorView: View {
     let context: FieldEditorContext

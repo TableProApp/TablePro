@@ -4,8 +4,18 @@
 //
 
 import AppKit
+import SwiftUI
 @testable import TablePro
+import TableProPluginKit
+import TableProTheme
 import Testing
+
+@MainActor
+private final class OverlayLayoutPersister: ColumnLayoutPersisting {
+    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
+    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
+    func clear(for key: ColumnLayoutTableKey) {}
+}
 
 /// `appAppearanceChangeRepaintsAnOpenOverlay` assigns `NSApp.appearance`, which is global. What keeps
 /// that from reaching a suite running in parallel is that the body is synchronous and `@MainActor`,
@@ -14,7 +24,7 @@ import Testing
 @MainActor
 struct CellOverlayAppearanceTests {
     private func makeContainer() -> CellOverlayContainerView {
-        CellOverlayBase.makeContainer(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
+        CellOverlayBase.makeContainer(frame: NSRect(x: 0, y: 0, width: 120, height: 24), scope: .live)
     }
 
     private func components(of color: CGColor?) throws -> (brightness: CGFloat, alpha: CGFloat) {
@@ -116,5 +126,122 @@ struct CellOverlayAppearanceTests {
         #expect(themed.greenComponent < 0.1)
         #expect(themed.blueComponent < 0.1)
         #expect(container.layer?.borderColor != nativeBorder)
+    }
+
+    // MARK: - The value inside the overlay
+
+    private struct OverlayGrid {
+        let window: NSWindow
+        let tableView: KeyHandlingTableView
+        let coordinator: TableViewCoordinator
+    }
+
+    /// A grid with one row, on `scope`, in a window an overlay can take first responder in.
+    private func makeGrid(scope: ThemeScope) -> OverlayGrid {
+        let coordinator = TableViewCoordinator(
+            changeManager: AnyChangeManager(DataChangeManager()),
+            isEditable: true,
+            selectedRowIndices: .constant([]),
+            delegate: nil,
+            layoutPersister: OverlayLayoutPersister(),
+            themeScope: scope
+        )
+        let tableRows = TableRows.from(
+            queryRows: [[PluginCellValue.text("value")]],
+            columns: ["name"],
+            columnTypes: [ColumnType.text(rawType: "TEXT")]
+        )
+        coordinator.tableRowsProvider = { tableRows }
+        coordinator.rebuildColumnMetadataCache(from: tableRows)
+        coordinator.updateCache()
+
+        let tableView = KeyHandlingTableView(frame: NSRect(x: 0, y: 0, width: 300, height: 120))
+        tableView.rowHeight = 21
+        tableView.coordinator = coordinator
+        tableView.dataSource = coordinator
+        tableView.delegate = coordinator
+        coordinator.tableView = tableView
+        coordinator.columnPool.reconcile(
+            tableView: tableView,
+            schema: coordinator.identitySchema,
+            columnTypes: tableRows.columnTypes,
+            savedLayout: nil,
+            isEditable: true,
+            hiddenColumnNames: [],
+            firstClickSortDirection: .ascending,
+            widthCalculator: { _, _ in 200 }
+        )
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 300, height: 120))
+        scrollView.documentView = tableView
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 300, height: 120),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .aqua)
+        window.contentView = scrollView
+        tableView.reloadData()
+        tableView.layoutSubtreeIfNeeded()
+        return OverlayGrid(window: window, tableView: tableView, coordinator: coordinator)
+    }
+
+    private func openEditor(on grid: OverlayGrid) throws -> (CellOverlayEditor, NSTextView) {
+        let column = try #require(grid.coordinator.tableColumnIndex(forDisplayPosition: 0))
+        let editor = CellOverlayEditor()
+        editor.show(in: grid.tableView, row: 0, column: column, columnIndex: 0, value: "value")
+        let container = try #require(editor.containerView)
+        let scrollView = try #require(container.subviews.first as? NSScrollView)
+        let textView = try #require(scrollView.documentView as? NSTextView)
+        return (editor, textView)
+    }
+
+    @Test("Under the default theme the inline editor keeps the system text colors")
+    func overlayEditorDefaultIsNative() throws {
+        let grid = makeGrid(scope: .fixed(BuiltInThemes.light))
+        let (editor, textView) = try openEditor(on: grid)
+        defer { editor.dismiss(commit: false) }
+
+        #expect(textView.backgroundColor === NSColor.textBackgroundColor)
+        #expect(textView.textColor === NSColor.labelColor)
+        let aqua = try #require(NSAppearance(named: .aqua))
+        #expect(ThemeTestFixture.hex(editor.containerView?.layer?.backgroundColor)
+            == ThemeTestFixture.hex(ThemeTestFixture.baked(.textBackgroundColor, in: aqua)))
+        withExtendedLifetime(grid.window) {}
+    }
+
+    /// The box used to be the system's text background with white text inside a theme's border, on
+    /// a themed grid.
+    @Test("Under a theme the inline editor and viewer take the editor's colors, through the grid's scope")
+    func overlayTakesTheEditorColors() throws {
+        var theme = try ThemeTestFixture.theme(.light, [
+            .editorBackground: "#282A36",
+            .editorText: "#F8F8F2",
+            .editorCursor: "#FF79C6",
+            .editorSelection: "#44475A",
+        ])
+        theme.id = "test.overlay-editor"
+        let grid = makeGrid(scope: .fixed(theme))
+        let (editor, textView) = try openEditor(on: grid)
+        defer { editor.dismiss(commit: false) }
+
+        #expect(ThemeTestFixture.hex(textView.backgroundColor) == "#282A36")
+        #expect(ThemeTestFixture.hex(textView.textColor) == "#F8F8F2")
+        #expect(ThemeTestFixture.hex(textView.insertionPointColor) == "#FF79C6")
+        #expect(ThemeTestFixture.hex(textView.selectedTextAttributes[.backgroundColor] as? NSColor) == "#44475A")
+        #expect(ThemeTestFixture.hex(editor.containerView?.layer?.backgroundColor) == "#282A36")
+        #expect(ThemeTestFixture.hex((textView.enclosingScrollView?.backgroundColor)) == "#282A36")
+
+        let viewer = CellOverlayViewer()
+        let column = try #require(grid.coordinator.tableColumnIndex(forDisplayPosition: 0))
+        viewer.show(in: grid.tableView, row: 0, column: column, columnIndex: 0, value: "value")
+        defer { viewer.dismiss() }
+        let viewerText = try #require(
+            (viewer.containerView?.subviews.first as? NSScrollView)?.documentView as? NSTextView
+        )
+        #expect(ThemeTestFixture.hex(viewerText.backgroundColor) == "#282A36")
+        #expect(ThemeTestFixture.hex(viewerText.textColor) == "#F8F8F2")
+        withExtendedLifetime(grid.window) {}
     }
 }

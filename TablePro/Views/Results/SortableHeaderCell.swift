@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import TableProTheme
 
 @MainActor
 final class SortableHeaderCell: NSTableHeaderCell {
@@ -58,27 +59,33 @@ final class SortableHeaderCell: NSTableHeaderCell {
         wraps = false
     }
 
+    /// A cell drawn outside the grid's header takes the app's theme.
+    private static func themeScope(of controlView: NSView?) -> ThemeScope {
+        (controlView as? SortableHeaderView)?.themeScope ?? .live
+    }
+
     override func draw(withFrame cellFrame: NSRect, in controlView: NSView) {
         if drawsDivider {
-            SortableHeaderChrome.drawColumnDivider(in: cellFrame)
+            SortableHeaderChrome.drawColumnDivider(in: cellFrame, scope: Self.themeScope(of: controlView))
         }
         guard drawsInterior else { return }
         drawInterior(withFrame: cellFrame, in: controlView)
     }
 
     override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
+        let scope = Self.themeScope(of: controlView)
         if isColumnSelected {
-            DataGridBodyChrome.selectionColor(emphasized: isEmphasized).setFill()
+            DataGridBodyChrome.selectionColor(emphasized: isEmphasized, scope: scope).setFill()
             cellFrame.fill()
         }
 
-        let foreground = foregroundColor(emphasized: isColumnSelected && isEmphasized)
+        let foreground = foregroundColor(emphasized: isColumnSelected && isEmphasized, scope: scope)
         drawTitle(
             in: titleRect(forBounds: cellFrame),
             font: titleFont(isSorted: sortDirection != nil && !isDefaultSort),
             color: foreground,
             comment: visibleComment(in: controlView),
-            commentColor: commentColor(emphasized: isColumnSelected && isEmphasized)
+            commentColor: commentColor(emphasized: isColumnSelected && isEmphasized, scope: scope)
         )
 
         var trailingCursorX = cellFrame.maxX - Self.indicatorPadding
@@ -87,7 +94,7 @@ final class SortableHeaderCell: NSTableHeaderCell {
             if isValueFiltered || isFunnelVisible {
                 let funnelImage = Self.funnelImage(
                     active: isValueFiltered,
-                    color: funnelColor(active: isValueFiltered, emphasized: isColumnSelected)
+                    color: funnelColor(active: isValueFiltered, emphasized: isColumnSelected, scope: scope)
                 )
                 let drawSize = funnelImage?.size ?? Self.funnelSize
                 let funnelRect = NSRect(
@@ -169,8 +176,8 @@ final class SortableHeaderCell: NSTableHeaderCell {
         return width + Self.indicatorPadding * 2
     }
 
-    private func funnelColor(active: Bool, emphasized: Bool) -> NSColor {
-        if emphasized { return ThemeEngine.shared.resolved[.gridSelectionText] }
+    private func funnelColor(active: Bool, emphasized: Bool, scope: ThemeScope) -> NSColor {
+        if emphasized { return scope.resolved[.gridSelectionText] }
         return active ? .controlAccentColor : .secondaryLabelColor
     }
 
@@ -193,12 +200,12 @@ final class SortableHeaderCell: NSTableHeaderCell {
         return headerView.comment(for: self)
     }
 
-    func foregroundColor(emphasized: Bool) -> NSColor {
-        ThemeEngine.shared.resolved[emphasized ? .gridSelectionText : .gridHeaderText]
+    func foregroundColor(emphasized: Bool, scope: ThemeScope) -> NSColor {
+        scope.resolved[emphasized ? .gridSelectionText : .gridHeaderText]
     }
 
-    private func commentColor(emphasized: Bool) -> NSColor {
-        emphasized ? ThemeEngine.shared.resolved[.gridSelectionText] : .secondaryLabelColor
+    private func commentColor(emphasized: Bool, scope: ThemeScope) -> NSColor {
+        emphasized ? scope.resolved[.gridSelectionText] : .secondaryLabelColor
     }
 
     private func drawTitle(

@@ -5,6 +5,7 @@
 
 import AppKit
 import os
+import TableProTheme
 
 struct HeaderSortTransition: Equatable {
     let newState: SortState
@@ -75,6 +76,10 @@ enum HeaderSortCycle {
 @MainActor
 final class SortableHeaderView: NSTableHeaderView {
     weak var coordinator: TableViewCoordinator?
+
+    var themeScope: ThemeScope {
+        coordinator?.themeScope ?? .live
+    }
 
     private static let clickDragThreshold: CGFloat = 4
     /// AppKit's own divider band, measured on macOS 27: a press from 3pt before a column's trailing
@@ -241,16 +246,39 @@ final class SortableHeaderView: NSTableHeaderView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        SortableHeaderChrome.fillBackground(dirtyRect)
+        let scope = themeScope
+        SortableHeaderChrome.fillBackground(dirtyRect, scope: scope)
         let rowNumberCell = rowNumberColumnIndex.flatMap {
             tableView?.tableColumns[$0].headerCell as? SortableHeaderCell
         }
         rowNumberCell?.drawsInterior = false
-        super.draw(dirtyRect)
+        drawHeadings(in: dirtyRect)
         rowNumberCell?.drawsInterior = true
         drawOverhang(in: dirtyRect)
         drawPinnedRowNumberHeading(in: dirtyRect)
-        SortableHeaderChrome.drawBottomSeparator(in: bounds.union(dirtyRect))
+        SortableHeaderChrome.drawBottomSeparator(in: bounds.union(dirtyRect), scope: scope)
+    }
+
+    /// `NSTableHeaderView.draw` paints AppKit's band over the fill before the cells, measured on
+    /// macOS 27, so a themed header draws its cells itself and the default theme keeps `super`.
+    private func drawHeadings(in rect: NSRect) {
+        let scope = themeScope
+        guard scope.resolved.isOverridden(.gridHeaderBackground), let tableView else {
+            super.draw(rect)
+            return
+        }
+        let dragged = draggedColumn
+        let columns = tableView.columnIndexes(in: NSRect(x: rect.minX, y: 0, width: rect.width, height: 1))
+        for index in columns where index != dragged {
+            let heading = headerRect(ofColumn: index)
+            guard heading.width > 0, heading.intersects(rect) else { continue }
+            tableView.tableColumns[index].headerCell.draw(withFrame: heading, in: self)
+        }
+        guard dragged >= 0, dragged < tableView.numberOfColumns else { return }
+        let floating = headerRect(ofColumn: dragged).offsetBy(dx: draggedDistance, dy: 0)
+        guard floating.intersects(rect) else { return }
+        SortableHeaderChrome.fillBackground(floating, scope: scope)
+        tableView.tableColumns[dragged].headerCell.draw(withFrame: floating, in: self)
     }
 
     /// Paints the part of the dirty rect outside the header's bounds, which a sideways bounce exposes,
@@ -287,8 +315,8 @@ final class SortableHeaderView: NSTableHeaderView {
                 context.saveGState()
                 band.clip()
                 context.translateBy(x: originX - heading.minX, y: 0)
-                SortableHeaderChrome.fillBackground(heading)
-                super.draw(heading)
+                SortableHeaderChrome.fillBackground(heading, scope: themeScope)
+                drawHeadings(in: heading)
                 context.restoreGState()
                 originX += heading.width
             }
@@ -339,8 +367,8 @@ final class SortableHeaderView: NSTableHeaderView {
         context.saveGState()
         pinned.clip()
         context.translateBy(x: pinned.minX - heading.minX, y: 0)
-        SortableHeaderChrome.fillBackground(heading)
-        super.draw(heading)
+        SortableHeaderChrome.fillBackground(heading, scope: themeScope)
+        drawHeadings(in: heading)
         context.restoreGState()
         drawnPinnedHeadingRect = pinned
     }

@@ -8,6 +8,7 @@
 import Combine
 import SwiftUI
 import TableProPluginKit
+import TableProTheme
 
 @MainActor
 final class ObjectSourceLoader: ObservableObject {
@@ -176,7 +177,7 @@ struct ObjectSourceTabView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(.bar)
+        .paneBarBackground()
     }
 
     @ViewBuilder

@@ -5,6 +5,7 @@
 
 import Combine
 import SwiftUI
+import TableProTheme
 
 /// A field whose value is a geometry: a map of that value, with the editor the field would
 /// otherwise get one segment away.
@@ -188,9 +189,7 @@ internal struct GeometryFieldView: View {
             ) {
                 mapContent(preview)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
+                    .geometryMapWell()
             }
             if case .drawable(_, let caption) = preview {
                 Text(caption)
@@ -345,5 +344,14 @@ internal final class GeometryFieldPreviewStore: ObservableObject {
         pending = nil
         preview = made
         token &+= 1
+    }
+}
+
+internal extension View {
+    /// The map pane's well, which shows while the map builds or for a value with nothing to draw.
+    func geometryMapWell() -> some View {
+        themeBackground(.editorBackground, native: Color(nsColor: .textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
     }
 }

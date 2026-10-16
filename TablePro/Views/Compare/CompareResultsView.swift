@@ -68,7 +68,7 @@ internal struct CompareResultsView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(.bar)
+        .paneBarBackground()
     }
 
     /// What the results pane is showing, so Select follows the search field and the identical

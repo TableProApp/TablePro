@@ -5,6 +5,7 @@
 
 import Combine
 import SwiftUI
+import TableProTheme
 
 internal struct VersionHistoryTabView: View {
     let tabId: UUID

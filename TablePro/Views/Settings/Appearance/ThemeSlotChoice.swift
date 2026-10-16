@@ -1,4 +1,5 @@
 import Foundation
+import TableProTheme
 
 /// What the Light or Dark theme popup offers and shows. The popup shows the theme the engine draws
 /// with, so a saved choice this Mac cannot honor (a theme synced from another Mac, a file that no
@@ -24,11 +25,10 @@ internal struct ThemeSlotChoice: Equatable {
 
         // The engine's own resolver, so the popup can never name a theme other than the one drawn.
         let inUse = ThemeResolver.resolve(
-            mode: slot == .dark ? .dark : .light,
             lightThemeId: savedId,
             darkThemeId: savedId,
             themes: themes,
-            systemIsDark: slot == .dark
+            effectiveAppearance: slot
         ).active
         selectedId = inUse.id
 

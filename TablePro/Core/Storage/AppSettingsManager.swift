@@ -25,12 +25,20 @@ final class AppSettingsManager: ObservableObject {
     @Published var appearance: AppearanceSettings {
         didSet {
             storage.saveAppearance(appearance)
-            themeEngine.apply(
-                mode: appearance.appearanceMode,
+            themeEngine.select(
                 lightThemeId: appearance.preferredLightThemeId,
                 darkThemeId: appearance.preferredDarkThemeId
             )
             syncTracker.markDirty(.settings, id: AppSettingsCategory.appearance)
+        }
+    }
+
+    // Device-local, like typography: each Mac picks Auto, Light or Dark for itself.
+    @Published var appearanceMode: AppAppearanceMode {
+        didSet {
+            guard appearanceMode != oldValue else { return }
+            storage.saveAppearanceMode(appearanceMode)
+            themeEngine.apply(mode: appearanceMode)
         }
     }
 
@@ -197,6 +205,7 @@ final class AppSettingsManager: ObservableObject {
 
         self.general = storage.loadGeneral()
         self.appearance = storage.loadAppearance()
+        self.appearanceMode = storage.loadAppearanceMode()
         self.editor = storage.loadEditor()
         self.dataGrid = storage.loadDataGrid()
         self.history = storage.loadHistory()
@@ -212,7 +221,7 @@ final class AppSettingsManager: ObservableObject {
 
         themeEngine.apply(typography: typography)
         themeEngine.apply(
-            mode: appearance.appearanceMode,
+            mode: appearanceMode,
             lightThemeId: appearance.preferredLightThemeId,
             darkThemeId: appearance.preferredDarkThemeId
         )
@@ -245,6 +254,7 @@ final class AppSettingsManager: ObservableObject {
     func resetToDefaults() {
         general = .default
         appearance = .default
+        appearanceMode = .auto
         editor = .default
         dataGrid = .default
         history = .default

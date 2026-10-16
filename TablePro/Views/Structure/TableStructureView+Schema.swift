@@ -10,6 +10,7 @@ import Combine
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProTheme
 import UniformTypeIdentifiers
 
 // MARK: - Schema Operations
@@ -117,12 +118,12 @@ extension TableStructureView {
                 .buttonStyle(.bordered)
             }
             .padding()
-            .background(.bar)
+            .paneBarBackground()
 
             Divider()
 
             if ddlStatement.isEmpty {
-                emptyState(String(localized: "No DDL available"))
+                StructureDDLUnavailableView()
             } else {
                 DDLTextView(ddl: ddlStatement, fontSize: $ddlFontSize, databaseType: connection.type)
             }
@@ -185,5 +186,21 @@ extension TableStructureView {
                 )
             }
         }
+    }
+}
+
+// Stands in for the DDL text view, so under a theme it keeps the editor's background.
+internal struct StructureDDLUnavailableView: View {
+    internal var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "tray")
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(String(localized: "No DDL available"))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .themeBackground(.editorBackground, native: Color.clear, ignoresSafeAreaEdges: [])
     }
 }

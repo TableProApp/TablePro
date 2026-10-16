@@ -29,7 +29,7 @@ internal struct VersionHistoryListPane: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                 }
-                .background(Color(nsColor: .controlBackgroundColor))
+                .paneBarBackground(Color(nsColor: .controlBackgroundColor))
             }
         }
     }

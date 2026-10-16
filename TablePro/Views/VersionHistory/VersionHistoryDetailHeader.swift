@@ -52,7 +52,7 @@ internal struct VersionHistoryDetailHeader: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .paneBarBackground(Color(nsColor: .controlBackgroundColor))
     }
 
     private func restoreSelection() {

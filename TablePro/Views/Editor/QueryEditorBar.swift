@@ -73,7 +73,7 @@ struct QueryEditorBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(.bar)
+        .paneBarBackground()
         .accessibilityIdentifier("query-editor-bar")
     }
 

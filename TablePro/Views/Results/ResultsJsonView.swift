@@ -168,10 +168,12 @@ internal struct ResultsJsonView: View {
                 systemImage: "curlybraces",
                 description: Text(String(localized: "Execute a query to view results as JSON"))
             )
+            .valueStandInBackground()
         } else if !hasRendered {
             ProgressView()
                 .controlSize(.small)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .valueStandInBackground()
         } else {
             switch viewMode {
             case .text:
@@ -181,8 +183,10 @@ internal struct ResultsJsonView: View {
                     JSONTreeView(rootNode: tree, searchText: $treeSearchText)
                 } else if let error = parseError {
                     treeErrorView(error)
+                        .valueStandInBackground()
                 } else {
                     treeErrorView(.invalidJSON)
+                        .valueStandInBackground()
                 }
             }
         }

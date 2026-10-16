@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProTheme
 
 internal struct CreateTableFormPreview: View {
     internal let preview: CreateTableFormState.Preview
@@ -26,6 +27,8 @@ internal struct CreateTableFormPreview: View {
                 }
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Stands in for the statement text view, so under a theme it keeps the editor's background.
+                .themeBackground(.editorBackground, native: Color.clear, ignoresSafeAreaEdges: [])
             }
         }
         .accessibilityElement(children: .contain)

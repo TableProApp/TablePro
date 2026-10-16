@@ -57,6 +57,17 @@ struct DatabaseEndpointTests {
     }
 
     @Test
+    @MainActor
+    func theConnectionIconSurvivesAScopeChange() {
+        let connection = DatabaseConnection(name: "prod", type: .postgresql, color: .red, iconName: "star")
+        let endpoint = DatabaseEndpoint.from(connection: connection, database: "app")
+
+        #expect(endpoint.iconName == "star")
+        #expect(endpoint.withDatabase("other").iconName == "star")
+        #expect(endpoint.withSchema("public").iconName == "star")
+    }
+
+    @Test
     func readOnlyEndpointIsRefusedAsATarget() {
         let readOnly = DatabaseEndpoint(
             scope: DatabaseScope(connectionId: connectionId, database: "prod", schema: nil),

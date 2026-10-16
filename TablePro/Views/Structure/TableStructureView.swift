@@ -578,18 +578,6 @@ struct TableStructureView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-
-    func emptyState(_ message: String) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: "tray")
-                .font(.largeTitle)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text(message)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
 }
 
 #Preview {

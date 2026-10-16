@@ -35,6 +35,18 @@ internal final class WorkspacePaneHost: NSViewController {
         preferredContentSize = viewController.preferredContentSize
     }
 
+    // Below every pane the container shows, so a swap between panes never uncovers the window.
+    internal func installBackdrop(_ backdrop: NSView) {
+        backdrop.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(backdrop, positioned: .below, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            backdrop.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            backdrop.topAnchor.constraint(equalTo: view.topAnchor),
+            backdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+    }
+
     internal func show(_ controller: NSViewController?) {
         guard shown !== controller else { return }
 

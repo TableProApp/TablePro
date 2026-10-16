@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Solarized, GitHub, Catppuccin, Gruvbox and Tokyo Night themes in light and dark, plus One Dark and One Light.
+- VS Code color theme import in Settings > Appearance, from the theme's `.json` file.
+- Theme Editor window with a live preview, undo and Revert Changes. Open windows show each edit as you make it.
+- iCloud sync of custom themes and the chosen light and dark themes, with Settings on in Settings > Sync.
+- Theme import by dropping files on the Themes list, and export by dragging a theme to Finder.
+
+### Changed
+
+- Appearance (System, Light or Dark) kept per Mac instead of syncing. Older versions that sync settings switch to System.
+- Data Files, Compare & Sync and Open in Window value windows show the theme in the titlebar on macOS 26 and later.
+- SQL aliases and parameters drawn in the editor text color instead of the NULL color.
+- SQL previews in history, filters, maintenance and review sheets highlighted as in the editor, in the editor font.
+- Server Dashboard sessions and slow queries shown as data grids, with Cancel Query and Terminate Session in the header.
+- Terminate Session and Cancel Query confirmations name the session's process ID and user.
+- Compare & Sync status bar shows the target connection's icon instead of a colored dot.
+- Themes move to the Trash instead of being deleted. Undo reverts a trash, rename, duplicate or import.
+- Editor tab strip over a themed window on macOS 26 and later drawn in a system fill instead of the theme color.
+
+### Fixed
+
+- Inline cell editor, the array editor's Edit as Text, and the inspector's hex dump and map pane ignoring the theme.
+- No-match, invalid and NULL states in the JSON, PHP and array viewers drawn without the theme's background.
+- Agent result states and proposed SQL ignoring the theme.
+- Connecting and Not connected panes, and Agent mode, in the system window color under a theme before macOS 26.
+- Selected text in SQL previews, such as query history, ignoring the theme's selection color.
+- Server Dashboard lists and the Query Insights chart ignoring the theme.
+- Compare & Sync row states and Data Files loading and failure states drawn without the theme's grid background.
+- Structure and Create Table code placeholders, Startup SQL in a link and the tunnel command preview ignoring the theme.
+- Bars in query, history, filter, structure, plan, compare and other panes drawing a system band over a themed window.
+- System header band on the data grid and the Query Plan and Users & Roles trees under a theme with header colors.
+- System-colored alternate rows, header and booleans in a theme that sets only the grid background and text.
+- Selected row text in white over a theme's selection color, or in the theme's color over the system selection.
+- Translucent theme selection, as in Dracula and Nord, in a different shade on rows, row numbers and column headers.
+- No outline around a selected cell range in Dracula and Nord.
+- Shapes in the result Map view keeping the previous Accent color after it changes.
+- Edit as Text in the array editor turning straight quotes and dashes into curly quotes and long dashes.
+- Theme editor bringing back a theme file deleted in Finder on the next change.
+- Changes to a theme file made outside TablePro not shown until Settings > Appearance was opened.
+- Theme files with a JSON syntax error reported without the line and column.
+- Two themes with the same name impossible to tell apart in the theme pickers.
+
 ## [0.81.0] - 2026-10-16
 
 Cloud Firestore, Firebase Realtime Database and Google Cloud Bigtable connect through new registry plugins.

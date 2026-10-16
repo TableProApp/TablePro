@@ -136,10 +136,7 @@ struct TunnelCommandTransportSections: View {
     private var previewSection: some View {
         if let preview = coordinator.tunnelCommandPreview {
             Section {
-                Text(verbatim: preview)
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                CodeWell(preview, font: .system(.caption, design: .monospaced))
             } header: {
                 Text("Will Run")
             }

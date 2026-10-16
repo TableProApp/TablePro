@@ -1,0 +1,50 @@
+{
+  "appearance": "dark",
+  "author": "GitHub Inc.",
+  "dataGrid": {
+    "alternateRow": "#21252B",
+    "background": "#282C34",
+    "boolFalse": "#E06C75",
+    "boolTrue": "#98C379",
+    "deleted": "#E0525226",
+    "deletedText": "#E06C7580",
+    "focusBorder": "#528BFF",
+    "gridLine": "#3E4452",
+    "headerBackground": "#21252B",
+    "headerText": "#ABB2BF",
+    "inactiveSelection": "#323842",
+    "inserted": "#43D08A26",
+    "modified": "#E0C28526",
+    "nullValue": "#7F848E",
+    "rowNumber": "#636D83",
+    "selection": "#3E4451",
+    "selectionText": "#D7DAE0",
+    "text": "#ABB2BF"
+  },
+  "editor": {
+    "background": "#282C34",
+    "currentLine": "#99BBFF0A",
+    "currentStatement": "#ABB2BF0C",
+    "cursor": "#528BFF",
+    "invisibles": "#FFFFFF1D",
+    "lineNumber": "#636D83",
+    "selection": "#3E4451",
+    "syntax": {
+      "comment": "#7F848E",
+      "function": "#61AFEF",
+      "keyword": "#C678DD",
+      "null": "#D19A66",
+      "number": "#D19A66",
+      "operator": "#56B6C2",
+      "string": "#98C379",
+      "type": "#E5C07B"
+    },
+    "text": "#ABB2BF"
+  },
+  "id": "tablepro.one-dark",
+  "name": "One Dark",
+  "schema": 3,
+  "window": {
+    "background": "#282C34"
+  }
+}

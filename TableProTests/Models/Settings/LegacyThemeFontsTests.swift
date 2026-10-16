@@ -35,9 +35,7 @@ struct LegacyThemeFontsTests {
         return url
     }
 
-    private func appearance(_ mode: AppAppearanceMode) -> AppearanceSettings {
-        AppearanceSettings(appearanceMode: mode, preferredLightThemeId: "user.light", preferredDarkThemeId: "user.dark")
-    }
+    private let slots = AppearanceSettings(preferredLightThemeId: "user.light", preferredDarkThemeId: "user.dark")
 
     @Test("Dark mode carries the fonts of the theme in the dark slot")
     func darkModeReadsTheDarkSlot() throws {
@@ -45,7 +43,7 @@ struct LegacyThemeFontsTests {
         try writeTheme(id: "user.light", editorSize: 12, in: directory)
         try writeTheme(id: "user.dark", editorSize: 16, in: directory)
 
-        let carried = LegacyThemeFonts.read(appearance: appearance(.dark), systemIsDark: false, themesDirectory: directory)
+        let carried = LegacyThemeFonts.read(appearance: slots, mode: .dark, systemIsDark: false, themesDirectory: directory)
         #expect(carried.editorFontSize == 16)
     }
 
@@ -55,8 +53,8 @@ struct LegacyThemeFontsTests {
         try writeTheme(id: "user.light", editorSize: 12, in: directory)
         try writeTheme(id: "user.dark", editorSize: 16, in: directory)
 
-        let night = LegacyThemeFonts.read(appearance: appearance(.auto), systemIsDark: true, themesDirectory: directory)
-        let day = LegacyThemeFonts.read(appearance: appearance(.auto), systemIsDark: false, themesDirectory: directory)
+        let night = LegacyThemeFonts.read(appearance: slots, mode: .auto, systemIsDark: true, themesDirectory: directory)
+        let day = LegacyThemeFonts.read(appearance: slots, mode: .auto, systemIsDark: false, themesDirectory: directory)
         #expect(night.editorFontSize == 16)
         #expect(day.editorFontSize == 12)
     }
@@ -67,7 +65,7 @@ struct LegacyThemeFontsTests {
         try writeTheme(id: "user.light", editorSize: 15, in: directory)
         try writeTheme(id: "user.dark", in: directory)
 
-        let carried = LegacyThemeFonts.read(appearance: appearance(.dark), systemIsDark: true, themesDirectory: directory)
+        let carried = LegacyThemeFonts.read(appearance: slots, mode: .dark, systemIsDark: true, themesDirectory: directory)
         #expect(carried.editorFontSize == 15)
     }
 
@@ -78,11 +76,11 @@ struct LegacyThemeFontsTests {
         try writeTheme(id: "user.dark", editorSize: 24, dataGridSize: 9, in: directory)
         try writeTheme(id: "user.light", editorSize: 9, dataGridSize: 24, in: directory)
 
-        let dark = LegacyThemeFonts.read(appearance: appearance(.dark), systemIsDark: true, themesDirectory: directory)
+        let dark = LegacyThemeFonts.read(appearance: slots, mode: .dark, systemIsDark: true, themesDirectory: directory)
         #expect(dark.editorFontSize == 18)
         #expect(dark.dataGridFontSize == 10)
 
-        let light = LegacyThemeFonts.read(appearance: appearance(.light), systemIsDark: false, themesDirectory: directory)
+        let light = LegacyThemeFonts.read(appearance: slots, mode: .light, systemIsDark: false, themesDirectory: directory)
         #expect(light.editorFontSize == 11)
         #expect(light.dataGridFontSize == 18)
     }
@@ -92,7 +90,7 @@ struct LegacyThemeFontsTests {
         let directory = try makeDirectory()
         try writeTheme(id: "user.dark", editorSize: 17, editorFamily: "Menlo", fileName: "My Theme.json", in: directory)
 
-        let carried = LegacyThemeFonts.read(appearance: appearance(.dark), systemIsDark: true, themesDirectory: directory)
+        let carried = LegacyThemeFonts.read(appearance: slots, mode: .dark, systemIsDark: true, themesDirectory: directory)
         #expect(carried.editorFontSize == 17)
         #expect(carried.editorFontFamily == "Menlo")
     }
@@ -100,7 +98,7 @@ struct LegacyThemeFontsTests {
     @Test("No old theme files leaves the default fonts")
     func nothingToCarry() throws {
         let directory = try makeDirectory()
-        let carried = LegacyThemeFonts.read(appearance: appearance(.dark), systemIsDark: true, themesDirectory: directory)
+        let carried = LegacyThemeFonts.read(appearance: slots, mode: .dark, systemIsDark: true, themesDirectory: directory)
         #expect(carried == .default)
     }
 
@@ -113,7 +111,8 @@ struct LegacyThemeFontsTests {
         let suite = try EphemeralDefaults()
         let defaults = suite.defaults
         let storage = AppSettingsStorage(userDefaults: defaults)
-        storage.saveAppearance(appearance(.dark))
+        storage.saveAppearance(slots)
+        storage.saveAppearanceMode(.dark)
 
         let first = storage.loadTypography(systemIsDark: true, legacyThemesDirectory: directory)
         #expect(first.editorFontSize == 16)
@@ -123,5 +122,20 @@ struct LegacyThemeFontsTests {
         try writeTheme(id: "user.dark", editorSize: 12, in: directory)
         let second = storage.loadTypography(systemIsDark: true, legacyThemesDirectory: directory)
         #expect(second.editorFontSize == 16)
+    }
+
+    @Test("An upgrade reads the mode out of the old appearance blob to pick the slot the fonts came from")
+    func upgradeUsesTheModeFromTheOldBlob() throws {
+        let directory = try makeDirectory()
+        try writeTheme(id: "user.light", editorSize: 12, in: directory)
+        try writeTheme(id: "user.dark", editorSize: 16, in: directory)
+
+        let suite = try EphemeralDefaults()
+        let blob = #"{"appearanceMode":"dark","preferredLightThemeId":"user.light","preferredDarkThemeId":"user.dark"}"#
+        suite.defaults.set(Data(blob.utf8), forKey: "com.TablePro.settings.appearance")
+        let storage = AppSettingsStorage(userDefaults: suite.defaults)
+
+        let carried = storage.loadTypography(systemIsDark: false, legacyThemesDirectory: directory)
+        #expect(carried.editorFontSize == 16)
     }
 }

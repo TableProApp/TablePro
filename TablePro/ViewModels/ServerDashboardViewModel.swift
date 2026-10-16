@@ -14,7 +14,9 @@ final class ServerDashboardViewModel: ObservableObject {
 
     // MARK: - Data
 
-    @Published var sessions: [DashboardSession] = []
+    @Published var sessions: [DashboardSession] = [] {
+        didSet { dropEndedSessionsFromSelection() }
+    }
     @Published var metrics: [DashboardMetric] = []
     @Published var slowQueries: [DashboardSlowQuery] = []
 
@@ -43,10 +45,15 @@ final class ServerDashboardViewModel: ObservableObject {
     // MARK: - Kill / Cancel Confirmation
 
     @Published var showKillConfirmation: Bool = false
-    @Published var pendingKillProcessId: String?
+    @Published var pendingKillSession: DashboardSession?
     @Published var showCancelConfirmation: Bool = false
-    @Published var pendingCancelProcessId: String?
+    @Published var pendingCancelSession: DashboardSession?
     @Published var actionError: String?
+
+    // MARK: - Selection
+
+    /// Kept here, not in the sessions pane, so the refresh that stops listing a session also drops it.
+    let sessionSelection = StructureListSelection<String>()
 
     // MARK: - Private
 
@@ -71,6 +78,13 @@ final class ServerDashboardViewModel: ObservableObject {
 
     func canCancel(_ session: DashboardSession) -> Bool {
         provider?.canCancel(session) ?? false
+    }
+
+    // A server hands a freed session id to its next connection, so a kept id would select that one.
+    private func dropEndedSessionsFromSelection() {
+        let kept = sessionSelection.ids.intersection(sessions.map(\.id))
+        guard kept != sessionSelection.ids else { return }
+        sessionSelection.ids = kept
     }
 
     // MARK: - Initialization
@@ -188,14 +202,25 @@ final class ServerDashboardViewModel: ObservableObject {
 
     // MARK: - Kill Session
 
-    func confirmKillSession(processId: String) {
-        pendingKillProcessId = processId
+    func confirmKillSession(_ session: DashboardSession) {
+        pendingKillSession = session
         showKillConfirmation = true
     }
 
+    static func killConfirmationMessage(for session: DashboardSession) -> String {
+        guard !session.user.isEmpty else {
+            return String(format: String(localized: "Terminate session %@? Any running queries will be aborted."), session.id)
+        }
+        return String(
+            format: String(localized: "Terminate session %1$@ (user %2$@)? Any running queries will be aborted."),
+            session.id,
+            session.user
+        )
+    }
+
     func executeKillSession() async {
-        guard let processId = pendingKillProcessId else { return }
-        pendingKillProcessId = nil
+        guard let processId = pendingKillSession?.id else { return }
+        pendingKillSession = nil
         showKillConfirmation = false
 
         guard let sql = provider?.killSessionSQL(processId: processId) else { return }
@@ -217,14 +242,25 @@ final class ServerDashboardViewModel: ObservableObject {
 
     // MARK: - Cancel Query
 
-    func confirmCancelQuery(processId: String) {
-        pendingCancelProcessId = processId
+    func confirmCancelQuery(_ session: DashboardSession) {
+        pendingCancelSession = session
         showCancelConfirmation = true
     }
 
+    static func cancelConfirmationMessage(for session: DashboardSession) -> String {
+        guard !session.user.isEmpty else {
+            return String(format: String(localized: "Cancel the running query for session %@?"), session.id)
+        }
+        return String(
+            format: String(localized: "Cancel the running query for session %1$@ (user %2$@)?"),
+            session.id,
+            session.user
+        )
+    }
+
     func executeCancelQuery() async {
-        guard let processId = pendingCancelProcessId else { return }
-        pendingCancelProcessId = nil
+        guard let processId = pendingCancelSession?.id else { return }
+        pendingCancelSession = nil
         showCancelConfirmation = false
 
         guard let sql = provider?.cancelQuerySQL(processId: processId) else { return }

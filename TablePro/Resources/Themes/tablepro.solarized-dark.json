@@ -1,0 +1,50 @@
+{
+  "appearance": "dark",
+  "author": "Ethan Schoonover",
+  "dataGrid": {
+    "alternateRow": "#00212B",
+    "background": "#002B36",
+    "boolFalse": "#DC322F",
+    "boolTrue": "#859900",
+    "deleted": "#DC322F26",
+    "deletedText": "#DC322F80",
+    "focusBorder": "#2AA198",
+    "gridLine": "#23464F",
+    "headerBackground": "#00212B",
+    "headerText": "#93A1A1",
+    "inactiveSelection": "#003846",
+    "inserted": "#85990026",
+    "modified": "#B5890026",
+    "nullValue": "#586E75",
+    "rowNumber": "#586E75",
+    "selection": "#005A6F",
+    "selectionText": "#EEE8D5",
+    "text": "#839496"
+  },
+  "editor": {
+    "background": "#002B36",
+    "currentLine": "#073642",
+    "currentStatement": "#07364280",
+    "cursor": "#DC322F",
+    "invisibles": "#93A1A180",
+    "lineNumber": "#586E75",
+    "selection": "#274642",
+    "syntax": {
+      "comment": "#586E75",
+      "function": "#268BD2",
+      "keyword": "#859900",
+      "null": "#B58900",
+      "number": "#D33682",
+      "operator": "#859900",
+      "string": "#2AA198",
+      "type": "#CB4B16"
+    },
+    "text": "#839496"
+  },
+  "id": "tablepro.solarized-dark",
+  "name": "Solarized Dark",
+  "schema": 3,
+  "window": {
+    "background": "#002B36"
+  }
+}

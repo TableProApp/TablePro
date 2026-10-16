@@ -58,7 +58,7 @@ internal struct ImageFieldView: View {
                 style: .code
             )
         case .hex:
-            BlobHexEditorView(context: context)
+            BlobHexEditorView(context: context, drawsWell: false)
                 .padding(8)
         }
     }

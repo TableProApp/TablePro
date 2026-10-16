@@ -10,6 +10,7 @@
 
 import SwiftUI
 import TableProPluginKit
+import TableProTheme
 
 struct RewindReviewSheet: View {
     @ObservedObject private var themeEngine = ThemeEngine.shared

@@ -43,6 +43,7 @@ internal struct AgentResultRowsView: View {
                 description: Text(String(localized: "Rows the session reads appear here."))
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .gridStandInBackground()
         } else {
             let run = runs.first { $0.id == selectedRunId } ?? runs[runs.count - 1]
             VStack(spacing: 0) {
@@ -127,9 +128,11 @@ internal struct AgentResultRowsView: View {
         }
     }
 
+    /// On the grid's background, so the pane keeps one color between a run with rows and one without.
     private func state(title: String, systemImage: String, description: String) -> some View {
         UnavailableStateView(title, systemImage: systemImage, description: Text(description))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .gridStandInBackground()
     }
 
     /// Grouped, because a count is read at a glance and "1,204" is legible where "1204" has to be

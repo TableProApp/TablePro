@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import TableProTheme
 
 struct QueryPlanDetailPane: View {
     let node: QueryPlanNode?

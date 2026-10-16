@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 @testable import TablePro
+import TableProTheme
 import Testing
 
 @MainActor

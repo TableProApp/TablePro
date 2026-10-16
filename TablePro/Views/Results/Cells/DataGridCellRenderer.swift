@@ -59,7 +59,7 @@ final class DataGridCellRenderer {
         NSGraphicsContext.current?.saveGraphicsState()
         NSBezierPath(rect: rect).addClip()
         drawText(appearance, in: rect)
-        drawAccessory(appearance.accessoryRole, in: accessoryRect)
+        drawAccessory(appearance.accessoryRole, color: appearance.accessoryColor, in: accessoryRect)
         if let mark = appearance.checkboxMark, let controlView {
             drawCheckbox(mark, in: rect, controlView: controlView)
         }
@@ -123,9 +123,9 @@ final class DataGridCellRenderer {
         return created
     }
 
-    private func drawAccessory(_ role: DataGridCellAccessoryGlyph.Role?, in rect: NSRect) {
-        guard !rect.isEmpty, let role else { return }
-        guard let glyph = DataGridCellAccessoryGlyph.image(for: role),
+    private func drawAccessory(_ role: DataGridCellAccessoryGlyph.Role?, color: NSColor?, in rect: NSRect) {
+        guard !rect.isEmpty, let role, let color else { return }
+        guard let glyph = DataGridCellAccessoryGlyph.image(for: role, color: color),
               let context = NSGraphicsContext.current?.cgContext else { return }
 
         let drawRect = DataGridCellAccessoryGlyph.centeredRect(pointSize: glyph.pointSize, in: rect)

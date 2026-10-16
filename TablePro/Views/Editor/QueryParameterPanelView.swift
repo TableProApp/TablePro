@@ -34,7 +34,7 @@ struct QueryParameterPanelView: View {
                 parameterList
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .paneBarBackground(Color(nsColor: .windowBackgroundColor))
     }
 
     private var panelHeader: some View {
@@ -62,7 +62,7 @@ struct QueryParameterPanelView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .paneBarBackground(Color(nsColor: .controlBackgroundColor))
     }
 
     private var parameterRows: some View {

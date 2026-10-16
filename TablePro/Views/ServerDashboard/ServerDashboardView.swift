@@ -21,21 +21,29 @@ struct ServerDashboardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { viewModel.startAutoRefresh() }
         .onDisappear { viewModel.stopAutoRefresh() }
-        .alert(String(localized: "Terminate Session"), isPresented: $viewModel.showKillConfirmation) {
-            Button(String(localized: "Cancel"), role: .cancel) { viewModel.pendingKillProcessId = nil }
+        .alert(
+            String(localized: "Terminate Session"),
+            isPresented: $viewModel.showKillConfirmation,
+            presenting: viewModel.pendingKillSession
+        ) { _ in
+            Button(String(localized: "Cancel"), role: .cancel) { viewModel.pendingKillSession = nil }
             Button(String(localized: "Terminate"), role: .destructive) {
                 Task { await viewModel.executeKillSession() }
             }
-        } message: {
-            Text(String(localized: "Are you sure you want to terminate this session? Any running queries will be aborted."))
+        } message: { session in
+            Text(ServerDashboardViewModel.killConfirmationMessage(for: session))
         }
-        .alert(String(localized: "Cancel Query"), isPresented: $viewModel.showCancelConfirmation) {
-            Button(String(localized: "Keep Running"), role: .cancel) { viewModel.pendingCancelProcessId = nil }
+        .alert(
+            String(localized: "Cancel Query"),
+            isPresented: $viewModel.showCancelConfirmation,
+            presenting: viewModel.pendingCancelSession
+        ) { _ in
+            Button(String(localized: "Keep Running"), role: .cancel) { viewModel.pendingCancelSession = nil }
             Button(String(localized: "Cancel Query"), role: .destructive) {
                 Task { await viewModel.executeCancelQuery() }
             }
-        } message: {
-            Text(String(localized: "Are you sure you want to cancel the running query for this session?"))
+        } message: { session in
+            Text(ServerDashboardViewModel.cancelConfirmationMessage(for: session))
         }
         .alert(String(localized: "Action Failed"), isPresented: Binding(
             get: { viewModel.actionError != nil },

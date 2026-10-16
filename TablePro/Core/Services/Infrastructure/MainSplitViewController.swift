@@ -329,6 +329,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         addSplitViewItem(sidebarSplitItem)
 
         detailPaneHost = WorkspacePaneHost()
+        detailPaneHost.installBackdrop(DetailColumnBackdrop.makeView())
         detailSplitItem = NSSplitViewItem(viewController: detailPaneHost)
         detailSplitItem.minimumThickness = Self.resolveDetailMinimumThickness(
             for: payload?.tabType,
@@ -526,7 +527,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         /// The transparency decision reads `window.toolbar?.isVisible`, so a window that gains its
         /// toolbar after that decision was taken keeps the opaque titlebar chosen for a
         /// toolbar-less one, over content that is no longer inset below it.
-        TabWindowController.applyTitlebarChrome(to: window)
+        (window as? ContentWindow)?.applyTitlebarPolicy()
     }
 
     /// The window's toolbar goes too. Dropping only the owner left the built `NSToolbar` on the

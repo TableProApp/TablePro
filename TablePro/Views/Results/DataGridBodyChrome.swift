@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import TableProTheme
 
 /// The single owner of the data grid body's column separators and of the table's background, as
 /// `SortableHeaderChrome` is for the header.
@@ -118,8 +119,8 @@ enum DataGridBodyChrome {
     /// `backgroundColor` for the area an elastic scroll uncovers, and the separators draw in its
     /// `gridColor`. A theme that declares neither leaves both at the table's own defaults,
     /// `controlBackgroundColor` and `separatorColor`.
-    static func applyThemeColors(to tableView: NSTableView) {
-        let resolved = ThemeEngine.shared.resolved
+    static func applyThemeColors(to tableView: NSTableView, scope: ThemeScope) {
+        let resolved = scope.resolved
         let gridColor = resolved[.gridLine]
         if tableView.gridColor != gridColor {
             tableView.gridColor = gridColor
@@ -135,9 +136,9 @@ enum DataGridBodyChrome {
     ///
     /// The theme's pair when it declares one, otherwise `NSColor.alternatingContentBackgroundColors`,
     /// which is the pair `NSTableView` itself hands its row views.
-    static func stripeColor(forRow row: Int, of tableView: NSTableView) -> NSColor? {
+    static func stripeColor(forRow row: Int, of tableView: NSTableView, scope: ThemeScope) -> NSColor? {
         guard tableView.usesAlternatingRowBackgroundColors else { return nil }
-        let resolved = ThemeEngine.shared.resolved
+        let resolved = scope.resolved
         return row.isMultiple(of: 2) ? resolved[.gridBackground] : resolved[.gridAlternateRow]
     }
 
@@ -150,16 +151,37 @@ enum DataGridBodyChrome {
     /// What a selected row shows, for the surfaces that paint it themselves: the pinned row gutter
     /// and a selected column's heading. Without a theme override it is the color `NSTableRowView`
     /// fills with, so they match the rows AppKit draws.
-    static func selectionColor(emphasized: Bool) -> NSColor {
-        ThemeEngine.shared.resolved[selectionSlot(emphasized: emphasized)]
+    static func selectionColor(emphasized: Bool, scope: ThemeScope) -> NSColor {
+        themedSelectionColor(emphasized: emphasized, scope: scope)
+            ?? scope.resolved[selectionSlot(emphasized: emphasized)]
+    }
+
+    static func isSelectionThemed(emphasized: Bool, scope: ThemeScope) -> Bool {
+        scope.resolved.isOverridden(selectionSlot(emphasized: emphasized))
     }
 
     /// Nil unless the theme declares its own selection; a row then leaves the selection to
     /// `NSTableRowView`, which follows Accent and focus.
-    static func themedSelectionColor(emphasized: Bool) -> NSColor? {
-        let resolved = ThemeEngine.shared.resolved
+    /// Opaque: the row, the gutter and a heading sit on three different bases, so a translucent
+    /// selection is laid over the grid background once and all three paint that.
+    static func themedSelectionColor(emphasized: Bool, scope: ThemeScope) -> NSColor? {
+        let resolved = scope.resolved
         let slot = selectionSlot(emphasized: emphasized)
-        return resolved.isOverridden(slot) ? resolved[slot] : nil
+        guard resolved.isOverridden(slot) else { return nil }
+        guard let selection = resolved.definition.value(for: slot).themedColor, !selection.isOpaque else {
+            return resolved[slot]
+        }
+        if let background = resolved.definition.value(for: .gridBackground).themedColor {
+            return selection.composited(over: background).nsColor
+        }
+        let nativeBackground = resolved[.gridBackground]
+        return NSColor(name: nil) { appearance in
+            var base = ThemeColor.white
+            appearance.performAsCurrentDrawingAppearance {
+                base = ThemeColor(nativeBackground)
+            }
+            return selection.composited(over: base.opaque).nsColor
+        }
     }
 
     /// What a row view lays down before its tint and selection: its stripe, or the table's own
@@ -167,8 +189,8 @@ enum DataGridBodyChrome {
     ///
     /// Painted by `DataGridRowView` itself rather than by `NSTableRowView`, which paints the system
     /// stripes whatever the theme declares.
-    static func rowBackgroundColor(forRow row: Int, of tableView: NSTableView) -> NSColor {
-        stripeColor(forRow: row, of: tableView) ?? tableView.backgroundColor
+    static func rowBackgroundColor(forRow row: Int, of tableView: NSTableView, scope: ThemeScope) -> NSColor {
+        stripeColor(forRow: row, of: tableView, scope: scope) ?? tableView.backgroundColor
     }
 
     /// Lays `background` down and blends `layers` over it bottom to top, which is the colour a row
@@ -191,11 +213,11 @@ enum DataGridBodyChrome {
     /// rows' 40, so the empty area striped brighter than the rows above it, and nothing that paints
     /// the stripe once could match it, the pinned row gutter included. Under the rows only the
     /// table's colour goes down, because a row view blends its own stripe over exactly that.
-    static func drawTableBackground(in rect: NSRect, of tableView: NSTableView) {
+    static func drawTableBackground(in rect: NSRect, of tableView: NSTableView, scope: ThemeScope) {
         tableView.backgroundColor.setFill()
         rect.fill()
         for band in rowBands(in: rect, of: tableView, tableView: tableView) where !band.isTableRow {
-            guard let stripe = stripeColor(forRow: band.row, of: tableView) else { continue }
+            guard let stripe = stripeColor(forRow: band.row, of: tableView, scope: scope) else { continue }
             stripe.setFill()
             band.rect.intersection(rect).fill(using: .sourceOver)
         }

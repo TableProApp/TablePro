@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import TableProTheme
 
 /// Puts a plain `NSTextView` on the editor's colors while the active theme sets them. A property the
 /// theme leaves alone is never written, and one it stops setting gets back the value it had before, so
@@ -44,6 +45,8 @@ internal final class ThemeTextViewStyle {
         }
     }
 
+    internal let scope: ThemeScope
+
     private weak var textView: NSTextView?
     private let givenNatives: Natives?
     private var natives: Natives?
@@ -51,17 +54,18 @@ internal final class ThemeTextViewStyle {
     private var themeCancellable: AnyCancellable?
 
     /// Without `natives`, the values the text view holds when a theme first reaches it are the natives.
-    internal init(textView: NSTextView, natives: Natives? = nil) {
+    internal init(textView: NSTextView, natives: Natives? = nil, scope: ThemeScope = .live) {
         self.textView = textView
         givenNatives = natives
+        self.scope = scope
         apply()
-        themeCancellable = AppEvents.shared.themeChanged
+        themeCancellable = scope.changes
             .sink { [weak self] _ in self?.apply() }
     }
 
     internal func apply() {
         guard let textView else { return }
-        let resolved = ThemeEngine.shared.resolved
+        let resolved = scope.resolved
         let wanted = Set(Property.allCases.filter { resolved.isOverridden($0.slot) })
         guard !wanted.isEmpty || !themed.isEmpty else { return }
 
@@ -70,7 +74,7 @@ internal final class ThemeTextViewStyle {
         }
         guard let natives else { return }
 
-        let palette = ThemeEngine.shared.palette
+        let palette = scope.palette
         for property in Property.allCases where wanted.contains(property) || themed.contains(property) {
             write(wanted.contains(property) ? palette[property.slot] : nil, to: property, natives: natives, of: textView)
         }

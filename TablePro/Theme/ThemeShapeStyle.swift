@@ -1,4 +1,5 @@
 import SwiftUI
+import TableProTheme
 
 /// What a SwiftUI surface draws for a slot: the theme's color while the active theme sets it, and the
 /// style the surface has always drawn otherwise, passed through untouched so a default theme draws

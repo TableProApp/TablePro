@@ -1,21 +1,25 @@
 import SwiftUI
+import TableProTheme
 
 internal struct AppearanceSettingsView: View {
     @Binding internal var settings: AppearanceSettings
 
     @ObservedObject private var catalog = ThemeCatalog.shared
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
 
     private static let modes: [AppAppearanceMode] = [.auto, .light, .dark]
 
     internal var body: some View {
         Form {
             Section {
-                Picker(String(localized: "Appearance"), selection: $settings.appearanceMode) {
+                Picker(String(localized: "Appearance"), selection: $settingsManager.appearanceMode) {
                     ForEach(Self.modes, id: \.self) { mode in
                         Text(Self.title(for: mode)).tag(mode)
                     }
                 }
                 .accessibilityIdentifier("appearance-mode-picker")
+            } footer: {
+                Text("Applies to this Mac.")
             }
 
             Section {
@@ -25,7 +29,7 @@ internal struct AppearanceSettingsView: View {
                 Text("Themes color the editor, the data grid, other content views and the window background. Controls, sidebars and Settings follow the system appearance.")
             }
 
-            CustomThemesSection(settings: $settings)
+            ThemeLibrarySection()
         }
         .formStyle(.grouped)
     }

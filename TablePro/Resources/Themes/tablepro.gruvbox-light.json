@@ -1,0 +1,50 @@
+{
+  "appearance": "light",
+  "author": "JD",
+  "dataGrid": {
+    "alternateRow": "#F2E5BC",
+    "background": "#FBF1C7",
+    "boolFalse": "#9D0006",
+    "boolTrue": "#79740E",
+    "deleted": "#9D000626",
+    "deletedText": "#9D000680",
+    "focusBorder": "#427B58",
+    "gridLine": "#D5C4A1",
+    "headerBackground": "#F2E5BC",
+    "headerText": "#3C3836",
+    "inactiveSelection": "#EBDBB2",
+    "inserted": "#79740E26",
+    "modified": "#D7992126",
+    "nullValue": "#928374",
+    "rowNumber": "#BDAE93",
+    "selection": "#D6DCB0",
+    "selectionText": "#3C3836",
+    "text": "#3C3836"
+  },
+  "editor": {
+    "background": "#FBF1C7",
+    "currentLine": "#EBDBB260",
+    "currentStatement": "#3C38360C",
+    "cursor": "#3C3836",
+    "invisibles": "#7C6F6420",
+    "lineNumber": "#BDAE93",
+    "selection": "#689D6A40",
+    "syntax": {
+      "comment": "#928374",
+      "function": "#B57614",
+      "keyword": "#9D0006",
+      "null": "#8F3F71",
+      "number": "#8F3F71",
+      "operator": "#427B58",
+      "string": "#79740E",
+      "type": "#B57614"
+    },
+    "text": "#3C3836"
+  },
+  "id": "tablepro.gruvbox-light",
+  "name": "Gruvbox Light",
+  "schema": 3,
+  "window": {
+    "background": "#FBF1C7"
+  }
+}

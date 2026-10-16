@@ -62,18 +62,7 @@ internal final class CompareSyncWindowController: NSWindowController,
     }
 
     private init(prefillSource connectionId: UUID?) {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1_100, height: 700),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.minSize = NSSize(width: 720, height: 460)
-        window.title = String(localized: "Compare & Sync")
-        window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.compareSync)
-        window.keepsKeyViewLoopCurrent()
-        window.isRestorable = false
-        window.isReleasedWhenClosed = false
+        let window = Self.makeWindow()
         windowBackdrop = ThemeWindowBackdrop(window: window)
         super.init(window: window)
 
@@ -92,6 +81,22 @@ internal final class CompareSyncWindowController: NSWindowController,
     @available(*, unavailable)
     internal required init?(coder: NSCoder) {
         fatalError("init(coder:) not supported")
+    }
+
+    internal static func makeWindow() -> NSWindow {
+        let window = ContentWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1_100, height: 700),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.minSize = NSSize(width: 720, height: 460)
+        window.title = String(localized: "Compare & Sync")
+        window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.compareSync)
+        window.keepsKeyViewLoopCurrent()
+        window.isRestorable = false
+        window.isReleasedWhenClosed = false
+        return window
     }
 
     private func makeContentController() -> NSViewController {

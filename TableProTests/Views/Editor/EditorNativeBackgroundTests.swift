@@ -8,6 +8,7 @@ import AppKit
 import TableProEditorKit
 import TableProGrammars
 import TableProTextEngine
+import TableProTheme
 import Testing
 
 @MainActor

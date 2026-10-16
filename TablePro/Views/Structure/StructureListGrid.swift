@@ -13,6 +13,25 @@ internal struct StructureListRow<ID: Hashable>: Hashable {
     internal let values: [String]
     /// Keyed by column, for a cell whose drawn text reads wrong aloud, such as YES for Enabled.
     internal var spokenValues: [Int: String] = [:]
+    internal var tones: [Int: StructureListTone] = [:]
+}
+
+/// A status hue on one cell's text. Status hues stay system under every theme, and the text still
+/// turns to the selection text on an emphasized selection, like the rest of the row.
+internal enum StructureListTone: Hashable {
+    case positive
+    case caution
+    case critical
+    case secondary
+
+    internal var color: NSColor {
+        switch self {
+        case .positive: return .systemGreen
+        case .caution: return .systemOrange
+        case .critical: return .systemRed
+        case .secondary: return .secondaryLabelColor
+        }
+    }
 }
 
 /// Selected row ids held by reference: a read made during a SwiftUI update gets a `State` or `Binding` snapshot.
@@ -32,6 +51,7 @@ internal final class StructureListGridModel<ID: Hashable>: ObservableObject, Dat
     internal private(set) var tableRows = TableRows()
     internal private(set) var rowIDs: [ID] = []
     private var spokenValues: [[Int: String]] = []
+    private var tones: [[Int: StructureListTone]] = []
     private var loadedKey: Int?
     private weak var coordinator: TableViewCoordinator?
 
@@ -50,6 +70,7 @@ internal final class StructureListGridModel<ID: Hashable>: ObservableObject, Dat
         let listed = rows()
         rowIDs = listed.map(\.id)
         spokenValues = listed.map(\.spokenValues)
+        tones = listed.map(\.tones)
         tableRows = TableRows.from(
             queryRows: listed.map { $0.values.map(PluginCellValue.text) },
             columns: columns,
@@ -113,6 +134,10 @@ internal final class StructureListGridModel<ID: Hashable>: ObservableObject, Dat
 
     internal func dataGridAccessibilityText(row: Int, column: Int) -> String? {
         rowIndex(forDisplayRow: row).flatMap { spokenValues[$0][column] }
+    }
+
+    internal func dataGridTextTone(row: Int, column: Int) -> NSColor? {
+        rowIndex(forDisplayRow: row).flatMap { tones[$0][column]?.color }
     }
 
     internal func dataGridSortStateChanged(_ state: SortState) {

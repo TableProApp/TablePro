@@ -277,20 +277,12 @@ internal struct CompareRowDiffPane: View {
         if let summary = plan.summary {
             let entries = filter.entries(in: summary)
             if entries.isEmpty {
-                UnavailableStateView {
-                    Label("No Rows Match", systemImage: "line.3.horizontal.decrease.circle")
-                } description: {
-                    Text("Change the filter to see the other rows.")
-                }
+                CompareRowsStandIn(reason: .noRowsMatch)
             } else {
                 CompareRowGrid(session: session, plan: plan, filter: filter, entries: entries)
             }
         } else {
-            UnavailableStateView {
-                Label("Not Compared Yet", systemImage: "arrow.clockwise")
-            } description: {
-                Text(notComparedDescription(for: plan))
-            }
+            CompareRowsStandIn(reason: .notCompared(notComparedDescription(for: plan)))
         }
     }
 
@@ -301,5 +293,35 @@ internal struct CompareRowDiffPane: View {
             ?? plan.comparisonFailure
             ?? session.compareDisabledReason
             ?? String(localized: "Include this table and compare again to see its rows.")
+    }
+}
+
+// Stands in for the row grid, so under a theme it keeps the grid's background.
+internal struct CompareRowsStandIn: View {
+    internal enum Reason: Equatable {
+        case noRowsMatch
+        case notCompared(String)
+    }
+
+    internal let reason: Reason
+
+    internal var body: some View {
+        Group {
+            switch reason {
+            case .noRowsMatch:
+                UnavailableStateView {
+                    Label("No Rows Match", systemImage: "line.3.horizontal.decrease.circle")
+                } description: {
+                    Text("Change the filter to see the other rows.")
+                }
+            case .notCompared(let description):
+                UnavailableStateView {
+                    Label("Not Compared Yet", systemImage: "arrow.clockwise")
+                } description: {
+                    Text(description)
+                }
+            }
+        }
+        .gridStandInBackground()
     }
 }

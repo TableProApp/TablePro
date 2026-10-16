@@ -16,6 +16,7 @@ import AppKit
 import Combine
 import os
 import TableProTextEngine
+import TableProTheme
 
 /// Manages Vim-style block cursor rendering on the text view
 @MainActor

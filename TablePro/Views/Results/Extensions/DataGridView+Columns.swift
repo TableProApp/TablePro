@@ -104,7 +104,8 @@ extension TableViewCoordinator {
             nullDisplayString: cellRegistry.nullDisplayString,
             onEmphasizedSelection: onEmphasizedSelection,
             hasOverlay: overlayCell == CellPosition(row: row, column: columnIndex),
-            checkboxMark: checkboxMark(row: row, columnIndex: columnIndex)
+            checkboxMark: checkboxMark(row: row, columnIndex: columnIndex),
+            textTone: delegate?.dataGridTextTone(row: row, column: columnIndex)
         )
     }
 

@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProTheme
 
 internal extension View {
     /// The rounded, bordered well a stored value sits in, on the editor's background while the active

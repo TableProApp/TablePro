@@ -24,6 +24,12 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
         applicationSupportRoot.appendingPathComponent("TablePro", isDirectory: true)
     }
 
+    // Nil means the user's Trash. A sandboxed run keeps what it trashes inside the sandbox, so a
+    // test never leaves files in the Trash of the Mac running it.
+    internal var trashDirectory: URL? {
+        isIsolated ? supportDirectory.appendingPathComponent("Trash", isDirectory: true) : nil
+    }
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppStorageEnvironment")
 
     internal static let uiTestingVariable = "TABLEPRO_UI_TESTING"

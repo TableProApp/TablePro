@@ -27,7 +27,7 @@ final class DataFileWindowController: NSWindowController, NSWindowDelegate, NSTo
     private let windowBackdrop: ThemeWindowBackdrop
 
     init(document: DataFileDocument) {
-        let window = NSWindow(
+        let window = ContentWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1_100, height: 680),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,

@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProTheme
 
 /// Reads the `fonts` object out of the theme files TablePro 0.80 wrote, once, on the first launch
 /// with no typography setting. It never writes a theme file.
@@ -25,11 +26,12 @@ internal enum LegacyThemeFonts {
 
     internal static func read(
         appearance: AppearanceSettings,
+        mode: AppAppearanceMode,
         systemIsDark: Bool,
         themesDirectory: URL
     ) -> TypographySettings {
         let fontsById = loadFonts(in: themesDirectory)
-        for id in candidateIds(appearance: appearance, systemIsDark: systemIsDark) {
+        for id in candidateIds(appearance: appearance, mode: mode, systemIsDark: systemIsDark) {
             guard let fonts = fontsById[id] else { continue }
             return settings(from: fonts)
         }
@@ -38,8 +40,12 @@ internal enum LegacyThemeFonts {
 
     /// 0.80 applied the fonts of the theme on screen, so the slot of the appearance in effect
     /// comes first and the other slot only fills in when that theme carried none.
-    internal static func candidateIds(appearance: AppearanceSettings, systemIsDark: Bool) -> [String] {
-        let effective = ThemeResolver.effectiveAppearance(mode: appearance.appearanceMode, systemIsDark: systemIsDark)
+    internal static func candidateIds(
+        appearance: AppearanceSettings,
+        mode: AppAppearanceMode,
+        systemIsDark: Bool
+    ) -> [String] {
+        let effective = mode.effectiveAppearance(systemIsDark: systemIsDark)
         switch effective {
         case .light: return [appearance.preferredLightThemeId, appearance.preferredDarkThemeId]
         case .dark: return [appearance.preferredDarkThemeId, appearance.preferredLightThemeId]

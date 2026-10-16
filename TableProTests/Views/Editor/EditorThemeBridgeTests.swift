@@ -9,6 +9,7 @@
 import AppKit
 @testable import TablePro
 import TableProEditorKit
+import TableProTheme
 import Testing
 
 @MainActor
@@ -28,7 +29,8 @@ struct EditorThemeBridgeTests {
         let theme = makeTheme(.builtIn, appearance: .light)
 
         #expect(hex(theme.keywords) == "#9B2393")
-        #expect(hex(theme.variables) == "#9B2393")
+        #expect(hex(theme.values) == "#9B2393")
+        #expect(hex(theme.attributes) == "#9B2393")
         #expect(hex(theme.strings) == "#C41A16")
         #expect(hex(theme.numbers) == "#1C00CF")
         #expect(hex(theme.comments) == "#5D6C79")
@@ -42,7 +44,8 @@ struct EditorThemeBridgeTests {
         let theme = makeTheme(.builtIn, appearance: .dark)
 
         #expect(hex(theme.keywords) == "#FC5FA3")
-        #expect(hex(theme.variables) == "#FC5FA3")
+        #expect(hex(theme.values) == "#FC5FA3")
+        #expect(hex(theme.attributes) == "#FC5FA3")
         #expect(hex(theme.strings) == "#FC6A5D")
         #expect(hex(theme.numbers) == "#D0BF69")
         #expect(hex(theme.comments) == "#6C7986")
@@ -84,6 +87,47 @@ struct EditorThemeBridgeTests {
             let second = makeTheme(.builtIn, appearance: appearance)
             #expect(first == second, "\(appearance)")
         }
+    }
+
+    /// The grammar tags aliases, parameters and properties as variables. They are names the user
+    /// wrote, so they draw in the editor text rather than in the NULL color.
+    @Test("Variables take the editor text, constants keep the NULL slot", arguments: [ThemeAppearance.light, .dark])
+    func variablesTakeTheEditorText(appearance: ThemeAppearance) throws {
+        let defaults = makeTheme(.builtIn, appearance: appearance)
+        #expect(defaults.variables == defaults.text)
+        #expect(defaults.variables.color === NSColor.textColor)
+        #expect(!defaults.variables.bold)
+
+        var custom = BuiltInThemes.default(for: appearance)
+        custom.overrides[.editorText] = try ThemeColor(validating: "#112233")
+        custom.overrides[.syntaxNull] = try ThemeColor(validating: "#AA5500")
+        let pair = appearance == .light
+            ? ThemePair(light: custom, dark: BuiltInThemes.dark)
+            : ThemePair(light: BuiltInThemes.light, dark: custom)
+        let themed = makeTheme(pair, appearance: appearance)
+
+        #expect(hex(themed.variables) == "#112233")
+        #expect(hex(themed.values) == "#AA5500")
+        #expect(hex(themed.attributes) == "#AA5500")
+    }
+
+    @Test("The factory builds the same theme the engine hands the editor")
+    func factoryMatchesTheEngine() {
+        let settings = AppSettingsManager.shared.editor
+        let made = EditorThemeFactory.make(
+            resolved: ThemeEngine.shared.resolved,
+            highlightsCurrentLine: settings.highlightCurrentLine,
+            highlightsCurrentStatement: settings.highlightCurrentStatement
+        )
+        #expect(made == ThemeEngine.shared.makeEditorTheme())
+
+        let plain = EditorThemeFactory.make(
+            resolved: ResolvedTheme(definition: BuiltInThemes.light),
+            highlightsCurrentLine: false,
+            highlightsCurrentStatement: false
+        )
+        #expect(plain.lineHighlight == .clear)
+        #expect(plain.statementHighlight == .clear)
     }
 
     @Test("The theme's operator and function colours reach the editor")

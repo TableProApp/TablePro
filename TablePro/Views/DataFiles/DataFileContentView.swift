@@ -5,6 +5,7 @@
 
 import SwiftUI
 import TableProTabular
+import TableProTheme
 
 struct DataFileContentView: View {
     @ObservedObject var controller: DataFileController
@@ -37,9 +38,11 @@ struct DataFileContentView: View {
         switch controller.loadState {
         case .idle, .loading:
             loadingView
+                .gridStandInBackground()
         case .failed(let message):
             UnavailableStateView(String(localized: "This file can’t be opened"), systemImage: "exclamationmark.triangle", description: Text(message))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .gridStandInBackground()
         case .loaded:
             ZStack {
                 grid

@@ -737,8 +737,12 @@
         }
       }
     },
-    "\"%@\" is a reserved theme identifier." : {
+    "“%@” Changed on Disk" : {
 
+    },
+    "\"%@\" is a reserved theme identifier." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "“%@” is compressed." : {
       "localizations" : {
@@ -877,6 +881,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "\"%@\" is not a TextMate theme." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "\"%@\" is not a URL. Enter an endpoint such as http://localhost:8000." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -904,7 +912,8 @@
       }
     },
     "\"%@\" is not a valid color. Use #RRGGBB or #RRGGBBAA." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "\"%@\" is not a valid entry point name." : {
       "extractionState" : "manual",
@@ -939,7 +948,8 @@
       }
     },
     "\"%@\" is not a valid theme identifier." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "\"%@\" is not an app profile ID." : {
       "extractionState" : "manual",
@@ -1076,6 +1086,9 @@
           }
         }
       }
+    },
+    "“%@” Was Deleted" : {
+
     },
     "\"%@\" was deleted or moved." : {
       "localizations" : {
@@ -1530,6 +1543,14 @@
       }
     },
     "“%1$@” refers to “%2$@”, which is not in the file" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "\"colors\" in the theme is not a list of colors." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "\"tokenColors\" must be a list of rules or the path to a .tmTheme file." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -2383,6 +2404,7 @@
       }
     },
     "%@ %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2969,7 +2991,8 @@
       }
     },
     "%@ changed on disk since it was opened. The newer file was kept and reloaded." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%@ changed while its documents were being checked, so nothing was changed. Save again." : {
       "extractionState" : "manual",
@@ -5275,6 +5298,10 @@
         }
       }
     },
+    "%@ was deleted outside TablePro." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%@ was given arguments it cannot use." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -6619,6 +6646,9 @@
           }
         }
       }
+    },
+    "%1$@ could not be read: %2$@" : {
+
     },
     "%1$@ could not represent %2$@ and other characters. Each was written as \"?\"." : {
       "extractionState" : "manual",
@@ -10583,6 +10613,7 @@
       }
     },
     "%lld of %lld selected" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -11261,6 +11292,12 @@
         }
       }
     },
+    "%lld statement had already run and was kept, because a statement in the file, such as COMMIT, CREATE, ALTER or DROP, committed the import's transaction as it ran." : {
+
+    },
+    "%lld statement had already run and was rolled back." : {
+
+    },
     "%lld statements" : {
       "localizations" : {
         "fr" : {
@@ -11397,6 +11434,12 @@
           }
         }
       }
+    },
+    "%lld statements had already run and were rolled back." : {
+
+    },
+    "%lld statements had already run. Some were kept, because a statement in the file, such as COMMIT, CREATE, ALTER or DROP, committed the import's transaction as it ran." : {
+
     },
     "%lld suggestions available, press Down Arrow to browse" : {
       "comment" : "Announced when the completion list opens under a filter field. The argument is the number of suggestions.",
@@ -14974,6 +15017,7 @@
       }
     },
     "A Data Pump job for %1$@ was started, writing to %2$@. Watch DBA_DATAPUMP_JOBS for its progress." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -15048,6 +15092,7 @@
       }
     },
     "A different file already exists at %@." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -15356,6 +15401,7 @@
       }
     },
     "A gs:// prefix. BigQuery shards its output, so several files are written under it." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -16651,6 +16697,26 @@
           }
         }
       }
+    },
+    "A theme author must be one line of at most %d characters." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "A theme name must be one line of at most %d characters." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "A theme named “%@” already exists." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "A token color scope in the theme has more than %d dot-separated parts." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "A token color scope in the theme is longer than %@ characters." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "A transaction cannot be combined with skip and continue: together they would leave the target half applied." : {
       "localizations" : {
@@ -18600,6 +18666,7 @@
       }
     },
     "Add a label at the end" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -19034,6 +19101,7 @@
       }
     },
     "Add Enum Label" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -19438,6 +19506,7 @@
       }
     },
     "Add Label" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -19448,6 +19517,7 @@
       }
     },
     "Add Label After…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -19458,6 +19528,7 @@
       }
     },
     "Add Label Before…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -20811,6 +20882,7 @@
       }
     },
     "AI and MCP queries" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -22715,6 +22787,7 @@
       }
     },
     "Allowing is remembered until TablePro quits." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -22821,6 +22894,8 @@
 
     },
     "Alternate Row" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -23661,6 +23736,7 @@
       }
     },
     "An external link wants to apply a filter:\n\n%@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -23837,6 +23913,7 @@
       }
     },
     "An internal or external stage. The role you are connected as needs write access to it." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -24173,6 +24250,7 @@
       }
     },
     "Anonymous (loopback)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -24305,6 +24383,9 @@
           }
         }
       }
+    },
+    "Another file is there" : {
+
     },
     "Another foreign key is already named %@." : {
       "localizations" : {
@@ -25042,6 +25123,9 @@
         }
       }
     },
+    "Appearance Change" : {
+
+    },
     "Appearance:" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -25094,6 +25178,7 @@
       }
     },
     "AppleScript queries" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -25304,6 +25389,9 @@
 
     },
     "Applies to the SQL editor, the JSON viewer's Text mode, and the previews." : {
+
+    },
+    "Applies to this Mac." : {
 
     },
     "Apply" : {
@@ -25644,6 +25732,7 @@
       }
     },
     "Apply Filter" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -25684,6 +25773,7 @@
       }
     },
     "Apply Filter from Link" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -26304,6 +26394,7 @@
       "generatesSymbol" : false
     },
     "Are you sure you want to cancel the running query for this session?" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -26625,6 +26716,7 @@
       }
     },
     "Are you sure you want to terminate this session? Any running queries will be aborted." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -28255,7 +28347,14 @@
         }
       }
     },
+    "Author" : {
+
+    },
+    "Author Change" : {
+
+    },
     "Auto" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -29486,6 +29585,8 @@
       }
     },
     "Background" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -29906,6 +30007,7 @@
       }
     },
     "Backups" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -30132,6 +30234,9 @@
     "base64 text" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Based on %@" : {
+
     },
     "Baseline" : {
       "localizations" : {
@@ -30617,6 +30722,7 @@
       }
     },
     "Block Size" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -30790,6 +30896,8 @@
       "generatesSymbol" : false
     },
     "Bool False" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -30830,6 +30938,8 @@
       }
     },
     "Bool True" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -31556,6 +31666,9 @@
         }
       }
     },
+    "Built-in themes can't be changed." : {
+
+    },
     "Bulk actions" : {
       "localizations" : {
         "fr" : {
@@ -32054,6 +32167,7 @@
       }
     },
     "Cache Size" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -32642,6 +32756,12 @@
           }
         }
       }
+    },
+    "Cancel the running query for session %@?" : {
+
+    },
+    "Cancel the running query for session %1$@ (user %2$@)?" : {
+
     },
     "Cancel the running query on a server session, or kill the session outright. Takes a process id from get_server_dashboard. Needs tools:write and the user's approval." : {
       "localizations" : {
@@ -34859,6 +34979,8 @@
       }
     },
     "Changes" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -40502,6 +40624,9 @@
         }
       }
     },
+    "Close Without Saving" : {
+
+    },
     "Closes the INSERT at this size or the row count, whichever comes first. MySQL and MariaDB reject a statement larger than max_allowed_packet, and a table of wide rows reaches that long before it reaches the row count." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -40803,6 +40928,7 @@
       }
     },
     "Cloud Storage URI" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -42128,6 +42254,9 @@
           }
         }
       }
+    },
+    "Color Change" : {
+
     },
     "Color preview" : {
 
@@ -45971,6 +46100,9 @@
         }
       }
     },
+    "Connect Using" : {
+
+    },
     "Connect via" : {
       "localizations" : {
         "fr" : {
@@ -48011,6 +48143,9 @@
         }
       }
     },
+    "Connects through the socket file on the General tab." : {
+
+    },
     "Constraint name" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -49817,6 +49952,7 @@
       }
     },
     "Copy Label" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -51305,9 +51441,6 @@
         }
       }
     },
-    "Could not create the theme" : {
-
-    },
     "Could not decode image" : {
       "localizations" : {
         "fr" : {
@@ -51379,9 +51512,6 @@
           }
         }
       }
-    },
-    "Could not delete the theme" : {
-
     },
     "could not derive the SCRAM key" : {
       "extractionState" : "manual",
@@ -51573,6 +51703,7 @@
     },
     "Could not export the theme" : {
       "comment" : "Title of an error sheet when exporting a theme fails.",
+      "extractionState" : "stale",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "fr" : {
@@ -51814,9 +51945,6 @@
           }
         }
       }
-    },
-    "Could not import the theme" : {
-
     },
     "Could not initialize SQL projection" : {
       "extractionState" : "manual",
@@ -52553,6 +52681,7 @@
       }
     },
     "Could not remove %@." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -52591,9 +52720,6 @@
           }
         }
       }
-    },
-    "Could not rename the theme" : {
-
     },
     "Could Not Render This Image" : {
       "localizations" : {
@@ -52737,9 +52863,6 @@
         }
       }
     },
-    "Could not save the theme" : {
-
-    },
     "Could not search the referenced table" : {
       "localizations" : {
         "fr" : {
@@ -52803,6 +52926,7 @@
       }
     },
     "Could not write %@." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -53030,6 +53154,15 @@
         }
       }
     },
+    "Couldn't Duplicate the Theme" : {
+
+    },
+    "Couldn't Export the Theme" : {
+
+    },
+    "Couldn't Import “%@”" : {
+
+    },
     "Couldn't Move File to Trash" : {
       "localizations" : {
         "fr" : {
@@ -53069,6 +53202,12 @@
           }
         }
       }
+    },
+    "Couldn't Move the File to the Trash" : {
+
+    },
+    "Couldn't Move the Theme to the Trash" : {
+
     },
     "Couldn't publish to the team catalog" : {
       "localizations" : {
@@ -53150,6 +53289,9 @@
         }
       }
     },
+    "Couldn't Put the Theme Back" : {
+
+    },
     "Couldn't reach the plugin registry. Check your connection and try again." : {
       "localizations" : {
         "fr" : {
@@ -53210,6 +53352,9 @@
         }
       }
     },
+    "Couldn't Rename the Theme" : {
+
+    },
     "Couldn't Restore Version" : {
       "localizations" : {
         "fr" : {
@@ -53219,6 +53364,9 @@
           }
         }
       }
+    },
+    "Couldn't Save “%@”" : {
+
     },
     "Couldn't Save File" : {
       "localizations" : {
@@ -53920,6 +54068,7 @@
       }
     },
     "Create New Group" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -55098,6 +55247,8 @@
       }
     },
     "Current Line" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -55259,7 +55410,8 @@
       }
     },
     "Current Statement" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Current value" : {
       "localizations" : {
@@ -55353,6 +55505,8 @@
       }
     },
     "Cursor" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -55706,9 +55860,6 @@
         }
       }
     },
-    "Custom Themes" : {
-
-    },
     "Custom…" : {
       "localizations" : {
         "fr" : {
@@ -56048,6 +56199,7 @@
 
     },
     "Dashboard" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -56262,6 +56414,8 @@
       }
     },
     "Data Grid" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -56300,6 +56454,34 @@
           }
         }
       }
+    },
+    "Data Grid Alternate Row" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Background" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Bool False" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Bool True" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Deleted" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Deleted Text" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Focus Border" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Data Grid Font" : {
       "extractionState" : "stale",
@@ -56341,6 +56523,50 @@
           }
         }
       }
+    },
+    "Data Grid Header Background" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Header Text" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Inactive Selection" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Inserted" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Line" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Modified" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid NULL Value" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Row Number" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Selected Text" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Selection" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Data Grid Text" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Data loss" : {
       "localizations" : {
@@ -59214,6 +59440,10 @@
       }
     },
     "Default Dark" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Default Dark color" : {
 
     },
     "Default entry point" : {
@@ -59267,6 +59497,10 @@
       }
     },
     "Default Light" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Default Light color" : {
 
     },
     "Default Operator" : {
@@ -59532,6 +59766,7 @@
       }
     },
     "Default token" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -61069,6 +61304,7 @@
       }
     },
     "Delete Theme" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -61389,6 +61625,8 @@
       }
     },
     "Deleted" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -61479,6 +61717,8 @@
       }
     },
     "Deleted Text" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -62875,6 +63115,7 @@
       }
     },
     "Directory object" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -66637,6 +66878,9 @@
         }
       }
     },
+    "Duplicate a theme or import one to customize colors." : {
+
+    },
     "Duplicate column name: %@" : {
       "localizations" : {
         "fr" : {
@@ -68377,6 +68621,8 @@
       }
     },
     "Editor" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -68456,6 +68702,22 @@
         }
       }
     },
+    "Editor Background" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Editor Current Line" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Editor Current Statement" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Editor Cursor" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Editor Font" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -68496,6 +68758,18 @@
           }
         }
       }
+    },
+    "Editor Invisibles" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Editor Line Number" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Editor Selection" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Editor Tabs" : {
       "comment" : "A label displayed above the tabs in the editor.",
@@ -68538,6 +68812,10 @@
           }
         }
       }
+    },
+    "Editor Text" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Effective" : {
       "localizations" : {
@@ -75021,6 +75299,7 @@
       }
     },
     "Export as SQL" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -76126,6 +76405,7 @@
       }
     },
     "Exports" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -78863,6 +79143,7 @@
       }
     },
     "Fetch all rows" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -81738,7 +82019,8 @@
       }
     },
     "Focus Border" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Focus Editor" : {
       "localizations" : {
@@ -82049,7 +82331,6 @@
       }
     },
     "Font" : {
-      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -84744,6 +85025,9 @@
         }
       }
     },
+    "Google Cloud wide-column store for large data" : {
+
+    },
     "Google did not return a refresh token. Remove TablePro's access in your Google Account settings, then sign in again." : {
       "localizations" : {
         "fr" : {
@@ -85448,7 +85732,8 @@
       "generatesSymbol" : false
     },
     "Grid Line" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Group" : {
       "localizations" : {
@@ -85970,10 +86255,12 @@
       }
     },
     "Header Background" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Header Text" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Heart" : {
       "extractionState" : "manual",
@@ -87256,6 +87543,9 @@
         }
       }
     },
+    "Host and Port" : {
+
+    },
     "Host and Port are unused. The SSH tunnel forwards to the socket path set on the Network tab." : {
       "localizations" : {
         "fr" : {
@@ -88034,6 +88324,7 @@
 
     },
     "iCloud Connected" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -89039,6 +89330,7 @@
       }
     },
     "Import Connections" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -89985,6 +90277,12 @@
         }
       }
     },
+    "Imported %d themes." : {
+
+    },
+    "Imported 1 theme." : {
+
+    },
     "Imported connections ask for a password on first connect." : {
       "localizations" : {
         "fr" : {
@@ -90340,7 +90638,8 @@
       }
     },
     "Inactive Selection" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Include" : {
       "localizations" : {
@@ -92646,6 +92945,8 @@
       }
     },
     "Inserted" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -94359,6 +94660,8 @@
       }
     },
     "Invisibles" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -94798,6 +95101,12 @@
         }
       }
     },
+    "It was changed outside TablePro and no longer loads. Settings > Appearance lists it under Not Loaded with the reason." : {
+
+    },
+    "It was changed outside TablePro. The editor now shows the newer version." : {
+
+    },
     "Item count is approximate, updated about every six hours" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -94974,6 +95283,7 @@
       }
     },
     "Journal Mode" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -95104,6 +95414,9 @@
           }
         }
       }
+    },
+    "JSON tree database that syncs in real time" : {
+
     },
     "JSON Viewer" : {
       "localizations" : {
@@ -95862,6 +96175,9 @@
           }
         }
       }
+    },
+    "Keep Theme" : {
+
     },
     "Keep this plan when history is cleaned up" : {
       "localizations" : {
@@ -96684,6 +97000,8 @@
       }
     },
     "Keyword" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -97134,6 +97452,7 @@
       }
     },
     "Labels" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -99955,6 +100274,8 @@
       }
     },
     "Line Number" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -100039,7 +100360,6 @@
       }
     },
     "Linked" : {
-      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -106271,6 +106591,7 @@
       }
     },
     "Memory Limit" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -107682,6 +108003,8 @@
       }
     },
     "Modified" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -111813,7 +112136,6 @@
       }
     },
     "New Theme" : {
-      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -111897,6 +112219,7 @@
       }
     },
     "New Type…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -113476,9 +113799,6 @@
           }
         }
       }
-    },
-    "No Custom Themes" : {
-
     },
     "No Data" : {
       "localizations" : {
@@ -117741,6 +118061,9 @@
         }
       }
     },
+    "No Themes Imported" : {
+
+    },
     "No token in response" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -118626,6 +118949,7 @@
       }
     },
     "Not Available" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -119227,6 +119551,7 @@
       }
     },
     "Not connected." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -119569,6 +119894,9 @@
           }
         }
       }
+    },
+    "Not linked" : {
+
     },
     "Not Loaded" : {
 
@@ -120361,6 +120689,9 @@
         }
       }
     },
+    "Nothing is at this path. Start the server, or check the path." : {
+
+    },
     "Nothing is left to copy once the target is taken into account." : {
       "localizations" : {
         "fr" : {
@@ -120712,6 +121043,7 @@
       }
     },
     "Notify about" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -120873,6 +121205,8 @@
       }
     },
     "NULL" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -121196,6 +121530,8 @@
       }
     },
     "NULL Value" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -121823,6 +122159,7 @@
       }
     },
     "Object copies" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -124596,6 +124933,9 @@
     "Open Link" : {
 
     },
+    "Open MCP Settings" : {
+
+    },
     "Open or focus a TablePro window for a saved connection. Returns once the window has a tab, with the window id that list_recent_tabs reports." : {
       "localizations" : {
         "fr" : {
@@ -125883,6 +126223,8 @@
       }
     },
     "Operator" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -127419,6 +127761,7 @@
       }
     },
     "Page Count" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -127499,6 +127842,7 @@
       }
     },
     "Page Size" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -132503,6 +132847,9 @@
         }
       }
     },
+    "Preferred leaves a socket connection unencrypted. Required encrypts it." : {
+
+    },
     "Preferred performs a 2-pass connect: tries TLS first, falls back to plain only on SSL handshake errors. Required by Cloud SQL and Azure MySQL." : {
       "localizations" : {
         "fr" : {
@@ -133166,9 +133513,6 @@
           }
         }
       }
-    },
-    "Preview of %@" : {
-
     },
     "Preview Query" : {
       "localizations" : {
@@ -138053,6 +138397,9 @@
         }
       }
     },
+    "Quit Without Saving" : {
+
+    },
     "Quitting stops the run against %@. Statements that already ran stay applied." : {
       "localizations" : {
         "fr" : {
@@ -139596,7 +139943,11 @@
         }
       }
     },
+    "Read the live server panels TablePro shows: active sessions, server metrics, and slow queries. Available on PostgreSQL, MySQL, SQL Server, ClickHouse, and Typesense." : {
+
+    },
     "Read the live server panels TablePro shows: active sessions, server metrics, and slow queries. Available on PostgreSQL, MySQL, SQL Server, ClickHouse, DuckDB, and SQLite." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -144179,6 +144530,7 @@
       }
     },
     "Rename Enum Label" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -144238,10 +144590,8 @@
         }
       }
     },
-    "Rename Theme" : {
-
-    },
     "Rename…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -145057,6 +145407,7 @@
       }
     },
     "Require authentication" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -147940,6 +148291,9 @@
         }
       }
     },
+    "Revert Changes" : {
+
+    },
     "review" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -149369,6 +149723,7 @@
       }
     },
     "Row edits" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -149589,6 +149944,8 @@
       }
     },
     "Row Number" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -154274,6 +154631,7 @@
       }
     },
     "Schema SQL" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -157724,9 +158082,12 @@
       }
     },
     "Selected Text" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Selection" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -158880,6 +159241,7 @@
       }
     },
     "Server-Side Export" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -158890,6 +159252,7 @@
       }
     },
     "Server-Side Export…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -158898,6 +159261,9 @@
           }
         }
       }
+    },
+    "Serverless document database from Google" : {
+
     },
     "Serverless SQLite at the edge" : {
       "localizations" : {
@@ -162446,6 +162812,7 @@
     },
     "Showing %lld of %lld" : {
       "comment" : "A description of the number of visible databases in the sidebar. The first argument is the number of visible databases. The second argument is the number of all databases.",
+      "extractionState" : "stale",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "en" : {
@@ -163191,6 +163558,7 @@
       }
     },
     "Sign in to iCloud in System Settings to enable sync." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -163231,6 +163599,7 @@
       }
     },
     "Sign in to iCloud to enable sync" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -167192,6 +167561,7 @@
       "generatesSymbol" : false
     },
     "SRID %d is a projected coordinate system. Maps places longitude and latitude only, so these shapes cannot be drawn. Query ST_Transform(geom, 4326) to see them." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -168506,6 +168876,7 @@
       "generatesSymbol" : false
     },
     "Stage" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -169182,6 +169553,7 @@
       }
     },
     "Statement batches" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -170817,6 +171189,7 @@
       }
     },
     "Stopping…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -171057,6 +171430,8 @@
       }
     },
     "String" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -171187,6 +171562,7 @@
       }
     },
     "Structure changes" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -173531,7 +173907,8 @@
       }
     },
     "Syntax" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Syntax Colors" : {
       "extractionState" : "stale",
@@ -173574,6 +173951,38 @@
         }
       }
     },
+    "Syntax Comment" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Syntax Function" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Syntax Keyword" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Syntax NULL" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Syntax Number" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Syntax Operator" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Syntax String" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Syntax Type" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "System" : {
       "localizations" : {
         "fr" : {
@@ -173613,6 +174022,9 @@
           }
         }
       }
+    },
+    "System color" : {
+
     },
     "System Databases and Schemas" : {
       "localizations" : {
@@ -175721,6 +176133,7 @@
       }
     },
     "TablePro could not do this for you. Run this in Terminal instead:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -176003,7 +176416,8 @@
 
     },
     "TablePro does not use these theme keys: %@." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro doesn't recognize the database type “%@”." : {
       "localizations" : {
@@ -178216,6 +178630,12 @@
         }
       }
     },
+    "Terminate session %@? Any running queries will be aborted." : {
+
+    },
+    "Terminate session %1$@ (user %2$@)? Any running queries will be aborted." : {
+
+    },
     "Tertiary Text" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -178472,6 +178892,8 @@
       }
     },
     "Text" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -178510,6 +178932,9 @@
           }
         }
       }
+    },
+    "Text contrast is %@:1. Aim for at least 4.5:1." : {
+
     },
     "Text Encoding" : {
       "localizations" : {
@@ -178716,6 +179141,7 @@
       }
     },
     "That destination is not valid for this engine." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -180896,6 +181322,7 @@
       }
     },
     "The color marks this connection in the connection list and its window." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -182541,7 +182968,8 @@
       }
     },
     "The file does not declare a theme format version." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The file goes back to its last committed version. You can't undo this action." : {
       "localizations" : {
@@ -182665,6 +183093,10 @@
         }
       }
     },
+    "The file is not valid JSON." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The file is too large to read from Git." : {
       "localizations" : {
         "fr" : {
@@ -182675,6 +183107,23 @@
         }
       }
     },
+    "The file is too large. A theme file can be at most %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The file moves to the Trash. Dark windows switch to %@." : {
+
+    },
+    "The file moves to the Trash. Light and dark windows switch to their default themes." : {
+
+    },
+    "The file moves to the Trash. Light windows switch to %@." : {
+
+    },
+    "The file nests arrays and objects more than %d levels deep." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The file or its staged version changed before it could be written. Nothing was replaced." : {
       "localizations" : {
         "fr" : {
@@ -182684,6 +183133,9 @@
           }
         }
       }
+    },
+    "The file was removed outside TablePro, possibly on another Mac." : {
+
     },
     "The filter field is not in the toolbar." : {
       "localizations" : {
@@ -183765,6 +184217,9 @@
         }
       }
     },
+    "The MCP server is turned off. Turn it on in Settings > MCP." : {
+
+    },
     "The MCP server started without a port" : {
       "localizations" : {
         "fr" : {
@@ -183908,6 +184363,7 @@
       }
     },
     "The name of a DIRECTORY object, not a path. The DBA who created it chose where it points." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -185533,6 +185989,9 @@
         }
       }
     },
+    "The rollback did not undo everything. A statement in the file, such as COMMIT, CREATE, ALTER or DROP, committed the import's transaction as it ran, so some of the statements before the failure were kept." : {
+
+    },
     "The root of the database" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -186375,6 +186834,7 @@
       }
     },
     "The server is writing the file…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -186559,6 +187019,7 @@
       }
     },
     "The server writes the file, so it lands where the server can reach, not on this Mac." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -186569,6 +187030,7 @@
       }
     },
     "The server wrote %1$@ to %2$@." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -186587,6 +187049,9 @@
           }
         }
       }
+    },
+    "The server's socket file on this Mac. SELECT @@socket in the mysql client shows it." : {
+
     },
     "The server's TLS certificate could not be verified against any trusted root." : {
       "extractionState" : "manual",
@@ -186695,6 +187160,9 @@
           }
         }
       }
+    },
+    "The settings it was created with could not be read, so it gets the target's own." : {
+
     },
     "The shell drops a field named __proto__ from a new document. Remove the field, then set it on the saved document." : {
       "extractionState" : "manual",
@@ -188519,14 +188987,41 @@
         }
       }
     },
+    "The theme has more than %@ token color rules." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The theme has no colors TablePro can use." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The theme identifier \"%1$@\" is already used by %2$@." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The theme includes \"%@\", which is not next to it." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The theme includes \"%@\", which is outside its folder. Put that file next to the theme and import again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The theme includes itself through \"%@\"." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The theme is missing the required field \"%@\"." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The theme nests includes more than %d levels deep." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The theme sets \"%@\" more than once." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "the TLS handshake failed" : {
       "extractionState" : "manual",
@@ -189266,9 +189761,14 @@
       }
     },
     "Theme format %1$d is no longer supported. This version of TablePro reads format %2$d." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Theme format %1$d was made for a newer TablePro. This version reads format %2$d." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Theme Preview" : {
 
     },
     "Theme:" : {
@@ -189311,6 +189811,9 @@
           }
         }
       }
+    },
+    "Themes" : {
+
     },
     "Themes color the editor, the data grid, other content views and the window background. Controls, sidebars and Settings follow the system appearance." : {
 
@@ -189558,6 +190061,7 @@
       }
     },
     "These connections open their tunnel by running a command on this Mac, every time they connect:\n\n%@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -190810,6 +191314,7 @@
       }
     },
     "This database cannot change an enum's labels" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -192203,6 +192708,13 @@
           }
         }
       }
+    },
+    "This file is not a socket." : {
+
+    },
+    "This file is not a TablePro theme or a VS Code color theme." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This file is not a valid TablePro export" : {
       "extractionState" : "manual",
@@ -195606,6 +196118,7 @@
       }
     },
     "Threads" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -196591,6 +197104,15 @@
           }
         }
       }
+    },
+    "To add it to your PATH, run this in Terminal:" : {
+
+    },
+    "To remove it, run this in Terminal:" : {
+
+    },
+    "To replace that file with a link to this app, run this in Terminal:" : {
+
     },
     "to view data" : {
       "localizations" : {
@@ -197602,6 +198124,7 @@
       }
     },
     "Total Blocks" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -203502,6 +204025,12 @@
         }
       }
     },
+    "Use Default Color" : {
+
+    },
+    "Use Default Color for %@" : {
+
+    },
     "Use environment variables in connection fields." : {
       "localizations" : {
         "fr" : {
@@ -203541,6 +204070,12 @@
           }
         }
       }
+    },
+    "Use for Dark Appearance" : {
+
+    },
+    "Use for Light Appearance" : {
+
     },
     "Use IAM database authentication" : {
       "localizations" : {
@@ -203721,6 +204256,12 @@
           }
         }
       }
+    },
+    "Use System Color" : {
+
+    },
+    "Use System Color for %@" : {
+
     },
     "Use text mode to enter JSON." : {
 
@@ -205439,6 +205980,7 @@
       }
     },
     "Values from %d loaded rows" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -209519,7 +210061,8 @@
       }
     },
     "Window Background" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -209798,6 +210341,9 @@
           }
         }
       }
+    },
+    "With Increase Contrast on, the window uses the system background." : {
+
     },
     "With no precision on the source, the column keeps %1$lld digits, %2$lld after the point. A value with more is rounded or refused." : {
       "localizations" : {

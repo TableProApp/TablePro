@@ -174,7 +174,7 @@ struct QueryPlanResultView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .paneBarBackground(Color(nsColor: .controlBackgroundColor))
     }
 
     // MARK: - Toolbar
@@ -231,7 +231,7 @@ struct QueryPlanResultView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .paneBarBackground(Color(nsColor: .controlBackgroundColor))
     }
 
     /// Which earlier run this plan is measured against. It sits in the pane's own bar beside the

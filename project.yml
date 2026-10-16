@@ -403,7 +403,7 @@ targets:
       - package: Sparkle
       - package: Yams
       - package: TableProCore
-        products: [TableProAnalytics, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProRedisCore, TableProSQLGrammar, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO]
+        products: [TableProAnalytics, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProRedisCore, TableProSQLGrammar, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme]
       - package: TableProMacCore
         products: [TableProAutocomplete, TableProMCP, TableProSSHConfig, TableProUtilities]
     settings:

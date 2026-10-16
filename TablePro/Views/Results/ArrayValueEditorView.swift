@@ -223,11 +223,18 @@ struct ArrayValueEditorView: View {
         )
     }
 
+    /// `TextEditor` left quote and dash substitution on, which rewrote the literal. No inset, as
+    /// `TextEditor` laid it out.
     private var rawTextEditor: some View {
         VStack(alignment: .leading, spacing: 4) {
-            TextEditor(text: $rawText)
-                .font(themeEngine.valueFontSwiftUI)
-                .frame(minHeight: 90)
+            TextValueEditor(
+                text: $rawText,
+                isEditable: !(isNull || isReadOnly),
+                font: themeEngine.valueFont,
+                textContainerInset: .zero,
+                style: .code
+            )
+            .frame(minHeight: 90)
             if PostgresArrayLiteralCodec.parse(rawText, delimiter: delimiter) == nil {
                 Label {
                     Text("This is not a value the list editor can read back.")

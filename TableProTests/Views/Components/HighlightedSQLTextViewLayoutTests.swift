@@ -7,6 +7,7 @@ import AppKit
 import SwiftUI
 @testable import TablePro
 import TableProPluginKit
+import TableProTheme
 import Testing
 
 @MainActor
@@ -137,18 +138,22 @@ struct HighlightedSQLTextViewLayoutTests {
         }
     }
 
+    /// A double-quoted name is a string in the MongoDB grammar and an identifier in SQL.
     @Test("The maintenance preview highlights in the connection's query language")
     func maintenancePreviewUsesConnectionLanguage() throws {
         try ThemeTestFixture.adopting(.builtIn, appearance: .light) {
+            let command = #"db.runCommand({"compact": "orders"})"#
             let window = ThemeTestFixture.host(
-                maintenanceSheet(["db.orders.reIndex()"], databaseType: .mongodb),
+                maintenanceSheet([command], databaseType: .mongodb),
                 size: Self.maintenanceSize
             )
             let textView = try #require(ThemeTestFixture.textViews(in: window).first)
-            let color = textView.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+            let location = (textView.string as NSString).range(of: #""orders""#).location
+            try #require(location != NSNotFound)
+            let color = textView.textStorage?.attribute(.foregroundColor, at: location, effectiveRange: nil) as? NSColor
             let palette = ThemeEngine.shared.palette
 
-            #expect(ThemeTestFixture.hex(color) == ThemeTestFixture.hex(palette[.syntaxKeyword]))
+            #expect(ThemeTestFixture.hex(color) == ThemeTestFixture.hex(palette[.syntaxString]))
             #expect(ThemeTestFixture.hex(color) != ThemeTestFixture.hex(palette[.editorText]))
             withExtendedLifetime(window) {}
         }

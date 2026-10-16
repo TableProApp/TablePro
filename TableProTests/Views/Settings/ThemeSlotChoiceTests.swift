@@ -1,4 +1,5 @@
 @testable import TablePro
+import TableProTheme
 import Testing
 
 struct ThemeSlotChoiceTests {
@@ -56,11 +57,10 @@ struct ThemeSlotChoiceTests {
         for savedId in ["user.aaaa0002", "user.missing", "user.aaaa0001", "tablepro.dracula"] {
             let choice = ThemeSlotChoice(slot: .dark, savedId: savedId, themes: catalog)
             let resolved = ThemeResolver.resolve(
-                mode: .dark,
                 lightThemeId: BuiltInThemes.defaultLightId,
                 darkThemeId: savedId,
                 themes: catalog,
-                systemIsDark: true
+                effectiveAppearance: .dark
             )
             #expect(choice.selectedId == resolved.active.id, "\(savedId)")
         }

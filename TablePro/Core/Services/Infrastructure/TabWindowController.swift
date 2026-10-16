@@ -11,7 +11,7 @@ import SwiftUI
 /// `NSDraggingDestination`, so without it Swift emits no selector for these and AppKit, which
 /// dispatches a drag by selector, runs `NSWindow`'s own refusal instead.
 @MainActor
-private final class EditorWindow: NSWindow, NSDraggingDestination {
+private final class EditorWindow: ContentWindow, NSDraggingDestination {
     /// A window that draws its own tabs says so by redefining the close command, which is the
     /// mechanism AppKit gives native tabbed windows for free. The editor's meaning of Close lives
     /// in one place behind it, so the menu, the keyboard and any other sender cannot disagree.
@@ -29,13 +29,6 @@ private final class EditorWindow: NSWindow, NSDraggingDestination {
             initialFirstResponder = (contentViewController as? MainSplitViewController)?
                 .initialFirstResponderContainer
         }
-    }
-
-    /// Hiding the toolbar is what drops the content pane's top safe area, so the titlebar has to be
-    /// reconsidered every time the user sends this from View > Show Toolbar.
-    override func toggleToolbarShown(_ sender: Any?) {
-        super.toggleToolbarShown(sender)
-        TabWindowController.applyTitlebarChrome(to: self)
     }
 
     /// Deciding what a drag carries reads the head of each file, and `draggingUpdated:` fires on
@@ -183,7 +176,9 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.keepsKeyViewLoopCurrent()
         window.toolbarStyle = .unified
         window.titleVisibility = .visible
-        applyTitlebarChrome(to: window)
+        // A toolbar and content of one color get a half-width rule separating nothing. From macOS 26
+        // only the transparent titlebar removes it; this property no longer reaches it there.
+        window.titlebarSeparatorStyle = .none
         /// `.automatic` is AppKit reading the user's own tabbing preference. Hard-coding
         /// `.preferred` overrode that setting, which an app that draws its own editor tabs has no
         /// reason to do.
@@ -191,33 +186,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.tabbingIdentifier = WindowManager.mainTabbingIdentifier
         window.collectionBehavior.insert([.fullScreenPrimary, .managed])
         return window
-    }
-
-    /// AppKit rules a line between the toolbar and the content pane, and stops it at the sidebar
-    /// divider, so a window whose toolbar and content are the same colour gets a half-width rule
-    /// separating nothing. `titlebarSeparatorStyle` is the property for that, and it stopped
-    /// reaching the rule in macOS 26: the content section's titlebar background now draws it
-    /// through a scroll pocket, and `.none`, `.line` and `.shadow` all render identically there.
-    ///
-    /// `isFullScreen` is passed in for the transition hooks, which run either side of the style
-    /// mask changing rather than at the moment it does.
-    internal static func applyTitlebarChrome(to window: NSWindow, isFullScreen: Bool? = nil) {
-        window.titlebarSeparatorStyle = .none
-        guard #available(macOS 26.0, *) else { return }
-        window.titlebarAppearsTransparent = titlebarIsTransparent(
-            isFullScreen: isFullScreen ?? window.styleMask.contains(.fullScreen),
-            toolbarVisible: window.toolbar?.isVisible ?? false
-        )
-    }
-
-    /// A transparent titlebar is what removes that rule, and it is free while the content pane is
-    /// inset below the titlebar, which it is in every state but one. A full-screen window with its
-    /// toolbar hidden has a top safe area of zero, so its content owns the whole screen, and the
-    /// titlebar AppKit slides back down over that content needs a background of its own to stay
-    /// legible. Nothing is lost by making it opaque there, because a titlebar that only appears on
-    /// demand has no rule to suppress.
-    internal static func titlebarIsTransparent(isFullScreen: Bool, toolbarVisible: Bool) -> Bool {
-        isFullScreen ? toolbarVisible : true
     }
 
     // MARK: - NSWindowDelegate
@@ -236,19 +204,6 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     internal func windowDidMove(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
         window.saveFrame(usingAutosaveName: Self.frameAutosaveName)
-    }
-
-    /// Both hooks name the state they are moving to, because neither runs at the moment the style
-    /// mask flips: `willEnter` still reads windowed, and `didExit` is the first point that reads
-    /// windowed again.
-    internal func windowWillEnterFullScreen(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow else { return }
-        Self.applyTitlebarChrome(to: window, isFullScreen: true)
-    }
-
-    internal func windowDidExitFullScreen(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow else { return }
-        Self.applyTitlebarChrome(to: window, isFullScreen: false)
     }
 
     internal func windowDidBecomeKey(_ notification: Notification) {

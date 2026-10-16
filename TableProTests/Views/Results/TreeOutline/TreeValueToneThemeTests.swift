@@ -12,6 +12,7 @@ import Foundation
 @testable import TablePro
 import TableProEditorKit
 import TableProGrammars
+import TableProTheme
 import Testing
 
 @MainActor

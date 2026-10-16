@@ -1,0 +1,50 @@
+{
+  "appearance": "dark",
+  "author": "JD",
+  "dataGrid": {
+    "alternateRow": "#32302F",
+    "background": "#282828",
+    "boolFalse": "#FB4934",
+    "boolTrue": "#B8BB26",
+    "deleted": "#FB493426",
+    "deletedText": "#FB493480",
+    "focusBorder": "#689D6A",
+    "gridLine": "#504945",
+    "headerBackground": "#32302F",
+    "headerText": "#EBDBB2",
+    "inactiveSelection": "#3C3836",
+    "inserted": "#B8BB2626",
+    "modified": "#D7992126",
+    "nullValue": "#928374",
+    "rowNumber": "#665C54",
+    "selection": "#384539",
+    "selectionText": "#EBDBB2",
+    "text": "#EBDBB2"
+  },
+  "editor": {
+    "background": "#282828",
+    "currentLine": "#3C383660",
+    "currentStatement": "#EBDBB20C",
+    "cursor": "#EBDBB2",
+    "invisibles": "#A8998420",
+    "lineNumber": "#665C54",
+    "selection": "#689D6A40",
+    "syntax": {
+      "comment": "#928374",
+      "function": "#FABD2F",
+      "keyword": "#FB4934",
+      "null": "#D3869B",
+      "number": "#D3869B",
+      "operator": "#8EC07C",
+      "string": "#B8BB26",
+      "type": "#FABD2F"
+    },
+    "text": "#EBDBB2"
+  },
+  "id": "tablepro.gruvbox-dark",
+  "name": "Gruvbox Dark",
+  "schema": 3,
+  "window": {
+    "background": "#282828"
+  }
+}

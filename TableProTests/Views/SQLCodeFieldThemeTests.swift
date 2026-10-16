@@ -10,6 +10,7 @@ import AppKit
 import SwiftUI
 @testable import TablePro
 import TableProPluginKit
+import TableProTheme
 import Testing
 
 @MainActor

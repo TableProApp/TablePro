@@ -8,6 +8,7 @@
 
 import AppKit
 import SwiftUI
+import TableProTheme
 
 internal enum CompareStatusStyle {
     internal static let notComparedTitle = String(localized: "Not compared")

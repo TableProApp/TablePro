@@ -51,7 +51,8 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
         )
         context.coordinator.slowQueriesController?.rootView = SlowQueryListView(
             queries: viewModel.slowQueries,
-            error: viewModel.panelErrors[.slowQueries]
+            error: viewModel.panelErrors[.slowQueries],
+            databaseType: viewModel.databaseType
         )
     }
 
@@ -91,7 +92,8 @@ struct ServerDashboardSplitView: NSViewControllerRepresentable {
             let controller = NSHostingController(
                 rootView: SlowQueryListView(
                     queries: viewModel.slowQueries,
-                    error: viewModel.panelErrors[.slowQueries]
+                    error: viewModel.panelErrors[.slowQueries],
+                    databaseType: viewModel.databaseType
                 )
             )
             controller.sizingOptions = []

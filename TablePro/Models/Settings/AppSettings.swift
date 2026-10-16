@@ -11,41 +11,27 @@ import SwiftUI
 
 // MARK: - Appearance Settings
 
-/// Controls which appearance the app uses: forced light, forced dark, or follow system.
 enum AppAppearanceMode: String, Codable, CaseIterable {
     case light
     case dark
     case auto
-
-    var displayName: String {
-        switch self {
-        case .light: return String(localized: "Light")
-        case .dark: return String(localized: "Dark")
-        case .auto: return String(localized: "Auto")
-        }
-    }
 }
 
-/// Appearance settings — couples appearance mode with theme selection.
-/// Each appearance (light/dark) has its own preferred theme so the active theme
-/// always matches the window chrome.
+// The appearance mode is not here: it is per Mac (`AppSettingsManager.appearanceMode`), and this
+// struct is the synced `appearance` category.
 struct AppearanceSettings: Codable, Equatable {
-    var appearanceMode: AppAppearanceMode
     var preferredLightThemeId: String
     var preferredDarkThemeId: String
 
     static let `default` = AppearanceSettings(
-        appearanceMode: .auto,
-        preferredLightThemeId: "tablepro.default-light",
-        preferredDarkThemeId: "tablepro.default-dark"
+        preferredLightThemeId: BuiltInThemes.defaultLightId,
+        preferredDarkThemeId: BuiltInThemes.defaultDarkId
     )
 
     init(
-        appearanceMode: AppAppearanceMode = .auto,
-        preferredLightThemeId: String = "tablepro.default-light",
-        preferredDarkThemeId: String = "tablepro.default-dark"
+        preferredLightThemeId: String = BuiltInThemes.defaultLightId,
+        preferredDarkThemeId: String = BuiltInThemes.defaultDarkId
     ) {
-        self.appearanceMode = appearanceMode
         self.preferredLightThemeId = preferredLightThemeId
         self.preferredDarkThemeId = preferredDarkThemeId
     }
@@ -53,13 +39,12 @@ struct AppearanceSettings: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let fallback = Self.default
-        appearanceMode = container.decodeSetting(.appearanceMode, default: fallback.appearanceMode)
         preferredLightThemeId = container.decodeSetting(.preferredLightThemeId, default: fallback.preferredLightThemeId)
         preferredDarkThemeId = container.decodeSetting(.preferredDarkThemeId, default: fallback.preferredDarkThemeId)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case appearanceMode, preferredLightThemeId, preferredDarkThemeId
+        case preferredLightThemeId, preferredDarkThemeId
     }
 }
 

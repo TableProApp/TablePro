@@ -34,7 +34,7 @@ struct HistoryPanelToolbar: View {
 
             Divider()
         }
-        .background(.bar)
+        .paneBarBackground()
         .onChange(of: state.searchText) { _ in
             viewModel.scheduleSearchReload()
         }

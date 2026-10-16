@@ -50,7 +50,7 @@ struct PrivilegeEditorPane: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .paneBarBackground(Color(nsColor: .controlBackgroundColor))
         .onChange(of: viewModel.scopeMode) { _ in
             viewModel.applyScopeMode()
         }

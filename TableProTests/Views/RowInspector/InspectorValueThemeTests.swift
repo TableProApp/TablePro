@@ -9,6 +9,7 @@
 import AppKit
 import SwiftUI
 @testable import TablePro
+import TableProTheme
 import Testing
 
 @MainActor
@@ -129,6 +130,71 @@ struct InspectorValueThemeTests {
             let themed = try ThemeTestFixture.filled(hex: Self.editorBackground, colorScheme: .light)
             let corner = try pixel(of: jsonTab(), size: Self.paneSize, x: 4, fromBottom: 4)
             #expect(ThemeTestFixture.matches(corner, themed), "\(corner) against \(themed)")
+        }
+    }
+
+    // MARK: - Binary dump
+
+    private static let dumpSize = CGSize(width: 240, height: 120)
+
+    /// Inside the well's margin, left of the dump's own text.
+    private func dumpMarginPixel(_ view: some View) throws -> NSColor {
+        try pixel(of: view, size: Self.dumpSize, x: 3)
+    }
+
+    private func dump(drawsWell: Bool = true) -> BlobHexEditorView {
+        BlobHexEditorView(context: context("Hello, world"), drawsWell: drawsWell)
+    }
+
+    @Test("Under the default pair a read-only binary dump sits straight on the inspector, with no well")
+    func dumpDefaultHasNoWell() throws {
+        try ThemeTestFixture.adopting([:], appearance: .light) {
+            let margin = try dumpMarginPixel(dump())
+            #expect(margin.alphaComponent < 0.02, "drew \(margin)")
+        }
+    }
+
+    @Test("Under a theme a read-only binary dump sits in an editor well like the values beside it")
+    func dumpThemedTakesAWell() throws {
+        try ThemeTestFixture.adopting([.editorBackground: Self.editorBackground], appearance: .light) {
+            let themed = try ThemeTestFixture.filled(hex: Self.editorBackground, colorScheme: .light)
+            let margin = try dumpMarginPixel(dump())
+            #expect(ThemeTestFixture.matches(margin, themed), "\(margin) against \(themed)")
+        }
+    }
+
+    @Test("A dump inside the image field's own well draws no second one")
+    func dumpInsideAWellDrawsNone() throws {
+        try ThemeTestFixture.adopting([.editorBackground: Self.editorBackground], appearance: .light) {
+            let margin = try dumpMarginPixel(dump(drawsWell: false))
+            #expect(margin.alphaComponent < 0.02, "drew \(margin)")
+        }
+    }
+
+    // MARK: - Geometry map
+
+    /// The map's well, with no map drawn over it: the state a field is in while the map builds.
+    private func mapWellPixel() throws -> NSColor {
+        let well = Color.clear.frame(width: 200, height: 100).geometryMapWell()
+        let rep = try ThemeTestFixture.bitmap(of: well, colorScheme: .light)
+        return try #require(ThemeTestFixture.pixel(rep, x: rep.pixelsWide / 2, y: rep.pixelsHigh / 2))
+    }
+
+    @Test("Under the default pair the geometry map's well keeps the text background it always drew")
+    func geometryWellDefaultIsNative() throws {
+        try ThemeTestFixture.adopting([:], appearance: .light) {
+            let native = try ThemeTestFixture.filled(.textBackgroundColor, colorScheme: .light)
+            let drawn = try mapWellPixel()
+            #expect(ThemeTestFixture.matches(drawn, native), "\(drawn) against \(native)")
+        }
+    }
+
+    @Test("Under a theme the geometry map's well takes the editor background while it has no map")
+    func geometryWellFollowsTheTheme() throws {
+        try ThemeTestFixture.adopting([.editorBackground: Self.editorBackground], appearance: .light) {
+            let themed = try ThemeTestFixture.filled(hex: Self.editorBackground, colorScheme: .light)
+            let drawn = try mapWellPixel()
+            #expect(ThemeTestFixture.matches(drawn, themed), "\(drawn) against \(themed)")
         }
     }
 }

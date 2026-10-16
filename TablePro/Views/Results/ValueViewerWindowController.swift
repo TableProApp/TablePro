@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProTheme
 
 /// The detached window a popped-out cell value opens in. Subclasses supply the content and the
 /// window's identity; the bookkeeping that keeps a detached window alive lives here once.
@@ -66,7 +67,7 @@ internal class ValueViewerWindowController {
         title: String,
         @ViewBuilder content: (@escaping () -> Void) -> Content
     ) -> NSWindow {
-        let window = NSWindow(
+        let window = ContentWindow(
             contentRect: NSRect(origin: .zero, size: defaultSize),
             styleMask: styleMask,
             backing: .buffered,

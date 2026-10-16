@@ -31,7 +31,7 @@ struct FilterPanelView: View {
                 filterList
             }
         }
-        .themeBackground(.windowBackdrop, native: Color(nsColor: .windowBackgroundColor))
+        .paneBarBackground(Color(nsColor: .windowBackgroundColor), ignoresSafeAreaEdges: .all)
         .focusSection()
         .onExitCommand {
             closePanelAndFocusGrid()
@@ -104,7 +104,7 @@ struct FilterPanelView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .themeBackground(.windowBackdrop, native: Color(nsColor: .controlBackgroundColor))
+        .paneBarBackground(Color(nsColor: .controlBackgroundColor), ignoresSafeAreaEdges: .all)
         .contentShape(Rectangle())
         .alert(String(localized: "Save Filter Preset"), isPresented: $showSavePresetAlert) {
             TextField(String(localized: "Preset Name"), text: $newPresetName)

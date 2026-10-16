@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import TableProTheme
 
 @MainActor
 struct DataGridCellPalette: Equatable {
@@ -84,29 +85,34 @@ struct DataGridCellPalette: Equatable {
     }
 }
 
-extension ThemeEngine {
+extension ThemeScope {
     /// The row-state tints are dynamic providers, which cost four times a catalog color on every
     /// fill and `CTLineDraw`, so they are resolved here once in the appearance the grid draws in.
-    /// The catalog colors stay dynamic and resolve at draw time.
-    func dataGridCellPalette(in appearance: NSAppearance) -> DataGridCellPalette {
-        DataGridCellPalette(
-            regularFont: dataGridFonts.regular,
-            italicFont: dataGridFonts.italic,
-            mediumFont: dataGridFonts.medium,
+    /// The catalog colors stay dynamic and resolve at draw time. Fonts are the user's typography,
+    /// not the theme's, so every scope draws in the engine's.
+    func dataGridCellPalette(
+        in appearance: NSAppearance,
+        fonts: DataGridFontCache = ThemeEngine.shared.dataGridFonts
+    ) -> DataGridCellPalette {
+        let resolved = resolved
+        return DataGridCellPalette(
+            regularFont: fonts.regular,
+            italicFont: fonts.italic,
+            mediumFont: fonts.medium,
             text: resolved[.gridText],
             placeholderText: resolved[.gridNullValue],
             booleanTrueText: resolved[.gridBoolTrue],
             booleanFalseText: resolved[.gridBoolFalse],
             rowNumberText: resolved[.gridRowNumber],
-            deletedRowText: resolvedTint(.gridDeletedText, in: appearance),
-            modifiedColumnTint: resolvedTint(.gridModified, in: appearance),
+            deletedRowText: Self.resolvedTint(.gridDeletedText, of: resolved, in: appearance),
+            modifiedColumnTint: Self.resolvedTint(.gridModified, of: resolved, in: appearance),
             findMatchTint: .findHighlightColor,
             selectionText: resolved[.gridSelectionText],
             focusRing: resolved[.gridFocusBorder]
         )
     }
 
-    private func resolvedTint(_ slot: ThemeSlot, in appearance: NSAppearance) -> NSColor {
+    private static func resolvedTint(_ slot: ThemeSlot, of resolved: ResolvedTheme, in appearance: NSAppearance) -> NSColor {
         guard !resolved.isOverridden(slot) else { return resolved[slot] }
         return NSColor(cgColor: resolved.cgColor(slot, in: appearance)) ?? resolved[slot]
     }

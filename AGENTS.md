@@ -44,7 +44,7 @@ Every capability is core, a module or a plugin. The first rule that fits decides
 - **Plugins.** `PluginManager` loads `DriverPlugin` bundles; `DatabaseDriverFactory` finds one by `pluginTypeId`; `PluginDriverAdapter` bridges its `PluginDatabaseDriver` to `DatabaseDriver`; `DatabaseManager` owns sessions. A new requirement gets a default implementation, then the adapter (`.claude/rules/plugin-system.md`).
 - **Main window.** `MainContentCoordinator`, split into `Views/Main/Extensions/`; one `ConnectionWorkspace` per connection (`.claude/rules/connection-window.md`).
 - **Change tracking.** `DataChangeManager` holds edits behind `AnyChangeManager`; `SQLStatementGenerator` writes them on Save. Undo: `StructureChangeManager`'s `UndoManager`, `ConnectionWorkspace.undoManager`.
-- **Editor and theme.** `ThemeCatalog` lists themes, `ThemeResolver` picks the light and dark pair, `ThemeEngine` holds the palette and font caches; fonts come from `TypographySettings`. A theme colors content and window backdrop, never chrome (`.claude/rules/theme.md`). `QueryCompletionAdapter` bridges `CompletionEngine`; `EditorTabStrip` draws tabs (`.claude/rules/editor.md`).
+- **Editor and theme.** `TableProTheme` holds slots, fallbacks, the file format and `ThemeResolver` (picks the light and dark pair). `ThemeCatalog` owns and syncs the theme files; `ThemeEngine` owns the mode and theme ids, follows the catalog, and holds the palette and font caches; fonts come from `TypographySettings`. A theme colors content and window backdrop, never chrome (`.claude/rules/theme.md`). `QueryCompletionAdapter` bridges `CompletionEngine`; `EditorTabStrip` draws tabs (`.claude/rules/editor.md`).
 - **Storage.** Passwords in the Keychain, preferences in UserDefaults, query history in SQLite FTS5, tab state as JSON (`.claude/rules/data-sync-storage.md`).
 
 ## Commands
@@ -143,7 +143,7 @@ Claude Code loads a rule when it reads or edits a file the rule covers. Under Co
 | `redis-driver.md` | `Plugins/RedisDriverPlugin`, `Packages/TableProCore/Sources/TableProRedisCore` |
 | `split-views.md` | `TablePro/**/*Split*.swift`, `TablePro/Core/Services/Infrastructure/WorkspacePane*.swift` |
 | `tests.md` | `TableProTests`, `TableProUITests`, `Plugins/*Tests`, `Packages/*/Tests`, `TableProMobile/TableProMobileTests`, `TestPlans`, `scripts/ci/check-test-plans.py`, `scripts/clean-test-residue.sh` |
-| `theme.md` | `TablePro/Theme`, `TablePro/Views`, `TablePro/Core/Services/Infrastructure/*Window*` |
+| `theme.md` | `TablePro/Theme`, `TablePro/Views`, `TablePro/Core/Services/Infrastructure/*Window*`, `Packages/TableProCore/Sources/TableProTheme` |
 | `ui-lifecycle.md` | `TablePro/Views`, `TablePro/ViewModels`, `TablePro/Core/Services/Infrastructure`, `Packages/TableProEditor` |
 | `ui-tests.md` | `TableProUITests`, `TestPlans/UI.xctestplan` |
 | `welcome-library.md` | `TablePro/Views/Welcome`, `TablePro/ViewModels/WelcomeViewModel*.swift`, `Packages/TableProCore/Sources/TableProConnectionLibrary` |

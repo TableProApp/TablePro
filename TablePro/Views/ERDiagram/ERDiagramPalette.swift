@@ -1,4 +1,5 @@
 import AppKit
+import TableProTheme
 
 /// Key, link and cluster hues carry meaning, so they stay system colors under a theme.
 @MainActor
@@ -6,7 +7,8 @@ internal struct ERDiagramPalette {
     internal let appearance: NSAppearance
     internal let backdrop: CGColor
     internal let nodeFill: CGColor
-    /// Nil keeps the accent wash a table header has always had.
+    /// Nil keeps the accent wash a table header has always had, also while the theme draws the
+    /// header in the body's color, as the derived header does.
     internal let headerFill: CGColor?
     internal let rule: CGColor
     internal let selectionRule: CGColor
@@ -32,9 +34,7 @@ internal struct ERDiagramPalette {
 
         backdrop = Self.bake(color(.windowBackdrop, otherwise: .controlBackgroundColor), in: appearance)
         nodeFill = Self.bake(color(.gridBackground, otherwise: .controlBackgroundColor), in: appearance)
-        headerFill = theme.isOverridden(.gridHeaderBackground, in: appearance)
-            ? Self.bake(theme.color(for: .gridHeaderBackground), in: appearance)
-            : nil
+        headerFill = Self.headerFill(of: theme, in: appearance)
         rule = Self.bake(color(.gridLine, otherwise: .tertiaryLabelColor), in: appearance)
         // The grid outlines its own selection with the focus border, not the row fill.
         selectionRule = Self.bake(color(.gridFocusBorder, otherwise: .controlAccentColor), in: appearance)
@@ -54,6 +54,13 @@ internal struct ERDiagramPalette {
     internal func headerWash(cluster: NSColor?) -> CGColor {
         guard let cluster else { return accentWash }
         return clusterWashes[cluster] ?? Self.wash(cluster, alpha: Self.clusterWashAlpha, in: appearance)
+    }
+
+    private static func headerFill(of theme: ThemeDefinition, in appearance: NSAppearance) -> CGColor? {
+        let highContrast = appearance.isHighContrast
+        guard let header = theme.value(for: .gridHeaderBackground, highContrast: highContrast).themedColor,
+              header != theme.value(for: .gridBackground, highContrast: highContrast).themedColor else { return nil }
+        return bake(header.nsColor, in: appearance)
     }
 
     private static func bake(_ color: NSColor, in appearance: NSAppearance) -> CGColor {

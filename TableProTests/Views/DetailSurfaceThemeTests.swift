@@ -10,6 +10,7 @@ import AppKit
 import Foundation
 import SwiftUI
 @testable import TablePro
+import TableProTheme
 import Testing
 
 @MainActor
@@ -68,14 +69,6 @@ struct DetailSurfaceThemeTests {
         try assertSurface(view, at: CGPoint(x: 0.03, y: 0.95), slot: .editorBackground, native: .textBackgroundColor)
     }
 
-    @Test("A data file window's content fills the window backdrop")
-    func dataFileRoot() throws {
-        let controller = DataFileController()
-        let view = DataFileContentView(controller: controller, gridDelegate: DataFileGridDelegate(controller: controller))
-            .frame(width: Self.size.width, height: Self.size.height)
-        try assertSurface(view, at: CGPoint(x: 0.03, y: 0.05), slot: .windowBackdrop, native: .windowBackgroundColor)
-    }
-
     @Test("A data file with no rows covers the grid in the grid's own background")
     func dataFileEmptyRows() async throws {
         let directory = FileManager.default.temporaryDirectory
@@ -94,23 +87,5 @@ struct DetailSurfaceThemeTests {
         let view = DataFileContentView(controller: controller, gridDelegate: DataFileGridDelegate(controller: controller))
             .frame(width: Self.size.width, height: Self.size.height)
         try assertSurface(view, at: CGPoint(x: 0.03, y: 0.05), slot: .gridBackground, native: .textBackgroundColor)
-    }
-
-    @Test("The filter panel header keeps its control background until the theme colors the window")
-    func filterPanelHeader() throws {
-        let view = FilterPanelView(
-            state: .constant(TabFilterState()),
-            configuration: FilterPanelConfiguration(
-                columns: [],
-                primaryKeyColumn: nil,
-                offersRawFilter: false,
-                caseMatching: .inMemory,
-                sqlPreview: nil,
-                presetStore: nil
-            ),
-            actions: DataFileController()
-        )
-        .frame(width: 480)
-        try assertSurface(view, at: CGPoint(x: 0.004, y: 0.1), slot: .windowBackdrop, native: .controlBackgroundColor)
     }
 }

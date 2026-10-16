@@ -11,6 +11,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import TableProTheme
 
 @MainActor
 final class DiagramViewportController: ObservableObject {

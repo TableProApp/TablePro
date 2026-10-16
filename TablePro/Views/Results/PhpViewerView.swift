@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProTheme
 
 internal enum PhpViewMode: String, CaseIterable {
     case tree
@@ -110,6 +111,7 @@ internal struct PhpViewerView: View {
             ProgressView()
                 .controlSize(.small)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .valueStandInBackground()
         case .parsed(let node):
             PhpTreeView(rootNode: node, searchText: $searchText)
         case .tooLarge:
@@ -118,12 +120,14 @@ internal struct PhpViewerView: View {
                 detail: String(localized: "This value is too large to parse. Use raw mode to inspect it as text."),
                 systemImage: "doc.text"
             )
+            .valueStandInBackground()
         case .failed:
             errorPlaceholder(
                 title: String(localized: "Invalid PHP Serialized Value"),
                 detail: String(localized: "The value could not be parsed. Use raw mode to inspect it as text."),
                 systemImage: "exclamationmark.triangle"
             )
+            .valueStandInBackground()
         }
     }
 

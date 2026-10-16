@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import TableProTheme
 
 internal extension TreeValueTone {
     /// The slot the JSON text view draws the same token in: its grammar captures a key as a string,

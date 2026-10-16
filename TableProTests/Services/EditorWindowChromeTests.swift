@@ -49,39 +49,10 @@ struct EditorWindowChromeTests {
         }
     }
 
-    /// A full-screen window with no toolbar has a top safe area of zero, so its content reaches the
-    /// screen edge and the titlebar that slides down over it has to bring its own background.
-    @Test(
-        "The titlebar stays opaque only in full screen with the toolbar hidden",
-        arguments: [
-            (isFullScreen: false, toolbarVisible: false, transparent: true),
-            (isFullScreen: false, toolbarVisible: true, transparent: true),
-            (isFullScreen: true, toolbarVisible: true, transparent: true),
-            (isFullScreen: true, toolbarVisible: false, transparent: false),
-        ]
-    )
-    func transparencyFollowsTheSafeArea(state: (isFullScreen: Bool, toolbarVisible: Bool, transparent: Bool)) {
-        #expect(
-            TabWindowController.titlebarIsTransparent(
-                isFullScreen: state.isFullScreen,
-                toolbarVisible: state.toolbarVisible
-            ) == state.transparent
-        )
-    }
-
-    @Test("Entering full screen with the toolbar hidden restores the titlebar background")
-    func enteringFullScreenWithoutAToolbarRestoresTheBackground() {
+    @Test("The editor window is a content window, so it follows the shared titlebar policy")
+    func editorWindowIsAContentWindow() {
         withEditorWindow { window in
-            TabWindowController.applyTitlebarChrome(to: window, isFullScreen: true)
-
-            if #available(macOS 26.0, *) {
-                #expect(!window.titlebarAppearsTransparent)
-            }
-
-            TabWindowController.applyTitlebarChrome(to: window, isFullScreen: false)
-            if #available(macOS 26.0, *) {
-                #expect(window.titlebarAppearsTransparent)
-            }
+            #expect(window is ContentWindow)
         }
     }
 }

@@ -88,17 +88,22 @@ internal enum CodeBlockHighlighter {
         let specialCharacters: [ClassifiedSpecialCharacter]
     }
 
-    @concurrent
-    nonisolated private static func markup(of code: String, language: CodeLanguage) async -> Markup {
+    /// The grammar's captures over the whole lines before the cap. `HighlightedSQLTextView` colors with these too,
+    /// so a statement reads the same in a chat block, a preview and the editor.
+    nonisolated internal static func captures(in code: String, language: CodeLanguage) -> [HighlightRange] {
         let nsCode = code as NSString
         let highlightedLength = nsCode.length > maximumHighlightedLength
             ? nsCode.lineRange(for: NSRange(location: maximumHighlightedLength, length: 0)).location
             : nsCode.length
-        var highlights: [HighlightRange] = []
-        if highlightedLength > 0, language.id != CodeLanguage.default.id {
-            let source = highlightedLength == nsCode.length ? code : nsCode.substring(to: highlightedLength)
-            highlights = TreeSitterClient.highlightRanges(in: source, language: language) ?? []
-        }
+        guard highlightedLength > 0, language.id != CodeLanguage.default.id else { return [] }
+        let source = highlightedLength == nsCode.length ? code : nsCode.substring(to: highlightedLength)
+        return TreeSitterClient.highlightRanges(in: source, language: language) ?? []
+    }
+
+    @concurrent
+    nonisolated private static func markup(of code: String, language: CodeLanguage) async -> Markup {
+        let nsCode = code as NSString
+        let highlights = captures(in: code, language: language)
         var specialCharacters: [ClassifiedSpecialCharacter] = []
         var index = 0
         while index < nsCode.length {

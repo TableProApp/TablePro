@@ -6,6 +6,7 @@
 import AppKit
 import SwiftUI
 import TableProPluginKit
+import TableProTheme
 import Testing
 
 @testable import TablePro
@@ -161,7 +162,7 @@ struct DataGridBodyChromeTests {
         let stock = NSTableView()
         tableView.gridColor = .systemRed
         tableView.backgroundColor = .systemRed
-        DataGridBodyChrome.applyThemeColors(to: tableView)
+        DataGridBodyChrome.applyThemeColors(to: tableView, scope: .live)
 
         #expect(tableView.gridColor == .separatorColor)
         #expect(tableView.gridColor == stock.gridColor)
@@ -181,7 +182,7 @@ struct DataGridBodyChromeTests {
         engine.adopt(ThemeSelection(pair: ThemePair(light: theme, dark: BuiltInThemes.dark), effectiveAppearance: .light))
 
         let tableView = NSTableView()
-        DataGridBodyChrome.applyThemeColors(to: tableView)
+        DataGridBodyChrome.applyThemeColors(to: tableView, scope: .live)
 
         #expect(tableView.gridColor == engine.resolved[.gridLine])
         #expect(tableView.backgroundColor == engine.resolved[.gridBackground])
@@ -282,7 +283,7 @@ struct DataGridBodyChromeTests {
         context.cgContext.translateBy(x: 0, y: bounds.height)
         context.cgContext.scaleBy(x: 1, y: -1)
         dark.performAsCurrentDrawingAppearance {
-            DataGridBodyChrome.drawTableBackground(in: bounds, of: grid.tableView)
+            DataGridBodyChrome.drawTableBackground(in: bounds, of: grid.tableView, scope: .live)
         }
         NSGraphicsContext.restoreGraphicsState()
 

@@ -27,8 +27,9 @@ final class CellOverlayEditor: CellOverlayBase, NSTextViewDelegate {
         guard let window = tableView.window else { return }
 
         let frame = Self.overlayFrame(for: cellFrame, value: value)
-        let containerView = Self.makeContainer(frame: frame)
-        let scrollView = Self.makeScrollView(in: containerView)
+        let scope = Self.themeScope(of: tableView)
+        let containerView = Self.makeContainer(frame: frame, scope: scope)
+        let scrollView = Self.makeScrollView(in: containerView, scope: scope)
 
         let textView = OverlayTextView(frame: scrollView.bounds)
         textView.overlayEditor = self
@@ -38,6 +39,7 @@ final class CellOverlayEditor: CellOverlayBase, NSTextViewDelegate {
         textView.font = ThemeEngine.shared.valueFont
         textView.textColor = .labelColor
         textView.backgroundColor = .textBackgroundColor
+        applyTheme(to: textView, scope: scope)
         textView.focusRingType = .none
         Self.applyCellTextLayout(to: textView)
         textView.delegate = self

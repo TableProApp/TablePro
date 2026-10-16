@@ -10,6 +10,7 @@ import AppKit
 import Combine
 @testable import TablePro
 import TableProPluginKit
+import TableProTheme
 import Testing
 
 /// Each test adopts a pair on the shared `ThemeEngine` and restores it in a `defer`. The bodies are

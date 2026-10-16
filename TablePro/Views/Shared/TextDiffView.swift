@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProTheme
 
 internal enum TextDiffLayout: Hashable {
     case split

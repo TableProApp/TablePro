@@ -4,6 +4,7 @@ import Foundation
 import os
 import SwiftUI
 import TableProEditorKit
+import TableProTheme
 
 internal enum DataGridFontVariant {
     static let regular = 0
@@ -51,12 +52,13 @@ internal struct DataGridFontCache: Equatable {
     }
 }
 
-/// Owns the active palette and the font caches, and nothing else: the catalog is `ThemeCatalog`,
-/// the choice is `ThemeResolver`, and the fonts come from settings. It never writes settings back,
-/// so the flow is one way.
+/// Owns the selection (mode and the two theme ids), the active palette and the font caches. The
+/// catalog is `ThemeCatalog`, the choice is `ThemeResolver`, and the fonts come from settings. It
+/// never writes settings back, so the flow is one way, and it follows the catalog itself, so a save,
+/// an import or a file changed on disk repaints with no view involved.
 @MainActor
 internal final class ThemeEngine: ObservableObject {
-    internal static let shared = ThemeEngine()
+    internal static let shared = ThemeEngine(catalog: .shared, source: .shared, changes: AppEvents.shared.themeChanged)
 
     @Published internal private(set) var pair: ThemePair
     @Published internal private(set) var effectiveAppearance: ThemeAppearance
@@ -65,6 +67,10 @@ internal final class ThemeEngine: ObservableObject {
     @Published internal private(set) var resolved: ResolvedTheme
     @Published internal private(set) var editorFonts: EditorFontCache
     @Published internal private(set) var dataGridFonts: DataGridFontCache
+
+    internal private(set) var mode: AppAppearanceMode = .auto
+    internal private(set) var lightThemeId = BuiltInThemes.defaultLightId
+    internal private(set) var darkThemeId = BuiltInThemes.defaultDarkId
 
     internal var activeTheme: ThemeDefinition { pair[effectiveAppearance] }
 
@@ -80,7 +86,12 @@ internal final class ThemeEngine: ObservableObject {
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEngine")
 
-    private var mode: AppAppearanceMode = .auto
+    private let catalog: ThemeCatalog
+    private let source: ThemeSource
+    private let changes: PassthroughSubject<ThemeChange, Never>
+    private var drafts: [String: ThemeDefinition] = [:]
+    private var isResolveScheduled = false
+    private var catalogCancellable: AnyCancellable?
     private var typography: TypographySettings = .default
     private var generation = 0
     private var systemFingerprint: SystemColorFingerprint?
@@ -89,15 +100,25 @@ internal final class ThemeEngine: ObservableObject {
     private var accessibilityObserver: NSObjectProtocol?
     private var lastAccessibilityScale: CGFloat = 1
 
-    private init() {
+    /// The shared engine draws the app. Another one, on its own source and change subject, touches
+    /// nothing the app draws with.
+    internal init(
+        catalog: ThemeCatalog,
+        source: ThemeSource = ThemeSource(),
+        changes: PassthroughSubject<ThemeChange, Never> = PassthroughSubject()
+    ) {
+        self.catalog = catalog
+        self.source = source
+        self.changes = changes
         pair = .builtIn
         effectiveAppearance = .light
         revision = 1
-        palette = ThemePalette(revision: 1)
-        resolved = ResolvedTheme(definition: BuiltInThemes.light)
+        palette = ThemePalette(revision: 1, source: source)
+        resolved = ResolvedTheme(definition: BuiltInThemes.light, source: source)
         editorFonts = EditorFontCache(from: .default)
         dataGridFonts = DataGridFontCache(from: .default)
 
+        observeCatalog()
         observeSystemColorChanges()
         observeAccessibilityChanges()
     }
@@ -132,19 +153,22 @@ internal final class ThemeEngine: ObservableObject {
     // MARK: - Settings entry points
 
     internal func apply(mode: AppAppearanceMode, lightThemeId: String, darkThemeId: String) {
+        self.lightThemeId = lightThemeId
+        self.darkThemeId = darkThemeId
+        apply(mode: mode)
+    }
+
+    internal func apply(mode: AppAppearanceMode) {
         self.mode = mode
         applyApplicationAppearance(mode)
         observeApplicationAppearance()
+        resolve()
+    }
 
-        let selection = ThemeResolver.resolve(
-            mode: mode,
-            lightThemeId: lightThemeId,
-            darkThemeId: darkThemeId,
-            themes: ThemeCatalog.shared.themes,
-            systemIsDark: Self.systemIsDark()
-        )
-
-        adopt(selection)
+    internal func select(lightThemeId: String, darkThemeId: String) {
+        self.lightThemeId = lightThemeId
+        self.darkThemeId = darkThemeId
+        resolve()
     }
 
     internal func apply(typography: TypographySettings) {
@@ -156,14 +180,25 @@ internal final class ThemeEngine: ObservableObject {
         publishChange()
     }
 
-    /// Called when the catalog changes under a selection that is already live, so a saved edit is
-    /// visible without a settings round trip.
-    internal func reapply(lightThemeId: String, darkThemeId: String) {
-        apply(mode: mode, lightThemeId: lightThemeId, darkThemeId: darkThemeId)
+    // MARK: - Draft preview
+
+    /// Stands in for the theme with the draft's id until `endPreview(id:)`, so an editor repaints the
+    /// real windows on every change without a file write. A draft no pair slot selects draws nothing.
+    internal func beginPreview(_ draft: ThemeDefinition) {
+        guard drafts[draft.id] != draft else { return }
+        drafts[draft.id] = draft
+        scheduleResolve()
     }
 
-    /// The resolver's output applied to the engine. Every entry point above funnels here, and it
-    /// is the seam a test uses to put a known pair in front of the grid without touching settings.
+    internal func endPreview(id: String) {
+        guard drafts.removeValue(forKey: id) != nil else { return }
+        scheduleResolve()
+    }
+
+    // MARK: - Resolution
+
+    /// The resolver's output applied to the engine. Every entry point funnels here, and it is the
+    /// seam a test uses to put a known pair in front of the grid without touching settings.
     internal func adopt(_ selection: ThemeSelection) {
         let appearanceChanged = selection.effectiveAppearance != effectiveAppearance
         let pairChanged = selection.pair != pair
@@ -172,38 +207,76 @@ internal final class ThemeEngine: ObservableObject {
 
         pair = selection.pair
         effectiveAppearance = selection.effectiveAppearance
-        ThemeSource.shared.update(selection.pair)
+        source.update(selection.pair)
 
         if pairChanged {
             bumpRevision()
         }
-        resolved = ResolvedTheme(definition: activeTheme)
+        resolved = ResolvedTheme(definition: activeTheme, source: source)
 
         publishChange()
         Self.logger.info("Theme \(self.activeTheme.id, privacy: .public) revision \(self.revision)")
     }
 
+    private func resolve() {
+        adopt(ThemeResolver.resolve(
+            lightThemeId: lightThemeId,
+            darkThemeId: darkThemeId,
+            themes: resolverInput(),
+            effectiveAppearance: mode.effectiveAppearance(systemIsDark: Self.systemIsDark())
+        ))
+    }
+
+    private func resolverInput() -> [ThemeDefinition] {
+        var themes = catalog.themes.map { drafts[$0.id] ?? $0 }
+        let listed = Set(themes.map(\.id))
+        themes += drafts.values.filter { !listed.contains($0.id) }
+        return ThemeOrdering.sorted(themes)
+    }
+
+    /// A color well reports every drag tick, and one catalog reload can publish more than once, so a
+    /// burst costs one resolution. Common modes, because a well drag runs the event-tracking mode.
+    private func scheduleResolve() {
+        guard !isResolveScheduled else { return }
+        isResolveScheduled = true
+        RunLoop.main.perform(inModes: [.common]) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.isResolveScheduled = false
+                self.resolve()
+            }
+        }
+    }
+
+    /// `@Published` sends before the property changes, so the scheduled resolution reads the new list.
+    private func observeCatalog() {
+        catalogCancellable = catalog.$themes
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in self?.scheduleResolve() }
+    }
+
     private func bumpRevision() {
         revision += 1
-        palette = ThemePalette(revision: revision)
+        palette = ThemePalette(revision: revision, source: source)
     }
 
     private func publishChange() {
         generation += 1
         systemFingerprint = SystemColorFingerprint.current()
-        AppEvents.shared.themeChanged.send(change)
+        changes.send(change)
     }
 
     /// A system color change gets new palette objects, because SwiftUI caches a resolved
     /// `Color(nsColor:)` by object identity and would keep the old accent otherwise.
     private func systemColorsMayHaveChanged() {
-        let appearance = ThemeResolver.effectiveAppearance(mode: mode, systemIsDark: Self.systemIsDark())
+        let appearance = mode.effectiveAppearance(systemIsDark: Self.systemIsDark())
         let appearanceChanged = appearance != effectiveAppearance
         guard appearanceChanged || SystemColorFingerprint.current() != systemFingerprint else { return }
 
         if appearanceChanged {
             effectiveAppearance = appearance
-            resolved = ResolvedTheme(definition: activeTheme)
+            resolved = ResolvedTheme(definition: activeTheme, source: source)
         }
         bumpRevision()
         publishChange()

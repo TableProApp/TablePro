@@ -5,6 +5,7 @@
 
 import Charts
 import SwiftUI
+import TableProTheme
 
 struct ResultChartCanvas: View {
     /// Solid first, then patterns that stay legible in monochrome and to a colour-blind reader,

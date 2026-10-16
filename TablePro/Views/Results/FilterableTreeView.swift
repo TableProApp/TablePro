@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProTheme
 
 internal struct FilterableTreeView<Node: FilterableTreeNode>: View {
     let rootNode: Node
@@ -122,8 +123,13 @@ internal struct FilterableTreeView<Node: FilterableTreeNode>: View {
         }
     }
 
-    @ViewBuilder
     private func noMatchesView(isTruncated: Bool) -> some View {
+        noMatchesState(isTruncated: isTruncated)
+            .valueStandInBackground()
+    }
+
+    @ViewBuilder
+    private func noMatchesState(isTruncated: Bool) -> some View {
         if isTruncated {
             UnavailableStateView {
                 Label(String(localized: "No Results"), systemImage: "magnifyingglass")
@@ -157,5 +163,13 @@ internal struct FilterableTreeView<Node: FilterableTreeNode>: View {
             containerPaths: cache.documentInfo(for: rootNode).allContainerPaths,
             isFiltered: isFiltered
         )
+    }
+}
+
+internal extension View {
+    /// A state that takes the place of a value's tree or text sits on that view's background, so a
+    /// failed parse or an empty filter does not swap the theme for the material behind it.
+    func valueStandInBackground() -> some View {
+        themeBackground(.editorBackground, native: Color.clear, ignoresSafeAreaEdges: [])
     }
 }

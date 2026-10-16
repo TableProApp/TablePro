@@ -173,6 +173,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard alert.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
         }
 
+        guard ThemeEditorWindows.shared.prepareToTerminate() else { return .terminateCancel }
+
         let hasUnsaved = MainContentCoordinator.hasAnyUnsavedChanges()
         if hasUnsaved {
             /// Quitting can be asked for from outside the app, so this alert has to come forward on

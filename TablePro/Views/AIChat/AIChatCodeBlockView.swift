@@ -6,6 +6,7 @@
 import AppKit
 import SwiftUI
 import TableProGrammars
+import TableProTheme
 
 /// A fenced code block in a chat reply: selectable text in the editor's font and colors, as tall as its code.
 ///

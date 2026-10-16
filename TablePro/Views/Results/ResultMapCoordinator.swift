@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import MapKit
 import os
 import TableProGeometry
@@ -46,6 +47,7 @@ final class ResultMapCoordinator: NSObject, MKMapViewDelegate {
     private var polygonRowIDs: [RowID] = []
     private var polylineRowIDs: [RowID] = []
     private var lastFitToken: Int?
+    private var systemColorsCancellable: AnyCancellable?
 
     init(fitPolicy: FitPolicy = .result, onSelect: @escaping (RowID?) -> Void) {
         self.fitPolicy = fitPolicy
@@ -64,9 +66,16 @@ final class ResultMapCoordinator: NSObject, MKMapViewDelegate {
             guard let self, let mapView else { return }
             self.handleClick(at: point, in: mapView)
         }
+        systemColorsCancellable = AppEvents.shared.themeChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self, weak mapView] _ in
+                guard let self, let mapView else { return }
+                self.restyleOverlays(in: mapView)
+            }
     }
 
     func detach(from mapView: MKMapView) {
+        systemColorsCancellable = nil
         (mapView as? ResultMapSurface)?.onClick = nil
         mapView.delegate = nil
         mapView.removeOverlays(mapView.overlays)
@@ -251,25 +260,40 @@ final class ResultMapCoordinator: NSObject, MKMapViewDelegate {
     /// aggregates of the same two types, and identity is also a constant-time question where
     /// searching the selection was linear in it.
     func mapView(_ mapView: MKMapView, rendererFor overlay: any MKOverlay) -> MKOverlayRenderer {
+        let renderer: MKOverlayPathRenderer
         if let multiPolygon = overlay as? MKMultiPolygon {
-            let isHighlight = multiPolygon === highlightPolygonOverlay
-            let renderer = MKMultiPolygonRenderer(multiPolygon: multiPolygon)
-            let color: NSColor = isHighlight ? .systemOrange : .controlAccentColor
-            renderer.fillColor = color.withAlphaComponent(isHighlight ? 0.45 : 0.22)
-            renderer.strokeColor = isHighlight ? color : color.withAlphaComponent(0.9)
-            renderer.lineWidth = isHighlight ? 2.5 : 1
-            return renderer
+            renderer = MKMultiPolygonRenderer(multiPolygon: multiPolygon)
+        } else if let multiPolyline = overlay as? MKMultiPolyline {
+            renderer = MKMultiPolylineRenderer(multiPolyline: multiPolyline)
+        } else {
+            return MKOverlayRenderer(overlay: overlay)
         }
-        if let multiPolyline = overlay as? MKMultiPolyline {
-            let isHighlight = multiPolyline === highlightPolylineOverlay
-            let renderer = MKMultiPolylineRenderer(multiPolyline: multiPolyline)
-            renderer.strokeColor = isHighlight
-                ? .systemOrange
-                : NSColor.controlAccentColor.withAlphaComponent(0.9)
-            renderer.lineWidth = isHighlight ? 4 : 2
-            return renderer
+        style(renderer, for: overlay, in: mapView.effectiveAppearance)
+        return renderer
+    }
+
+    /// The renderers hold baked colors, so an Accent change or a light/dark flip paints them again
+    /// rather than leaving the shapes on the old accent until the next projection.
+    func restyleOverlays(in mapView: MKMapView) {
+        let appearance = mapView.effectiveAppearance
+        for overlay in mapView.overlays {
+            guard let renderer = mapView.renderer(for: overlay) as? MKOverlayPathRenderer else { continue }
+            style(renderer, for: overlay, in: appearance)
+            renderer.setNeedsDisplay()
         }
-        return MKOverlayRenderer(overlay: overlay)
+        refreshPointHighlights(in: mapView)
+    }
+
+    private func style(_ renderer: MKOverlayPathRenderer, for overlay: any MKOverlay, in appearance: NSAppearance) {
+        let paint: ResultMapOverlayPaint
+        if overlay is MKMultiPolygon {
+            paint = .polygon(isHighlight: overlay === highlightPolygonOverlay, in: appearance)
+        } else {
+            paint = .polyline(isHighlight: overlay === highlightPolylineOverlay, in: appearance)
+        }
+        renderer.fillColor = paint.fill
+        renderer.strokeColor = paint.stroke
+        renderer.lineWidth = paint.lineWidth
     }
 
     /// MapKit asks this for a cluster it built as well as for a point, so both answers live here.
@@ -427,5 +451,42 @@ final class ResultMapAnnotation: NSObject, MKAnnotation {
             coordinate.latitude,
             coordinate.longitude
         )
+    }
+}
+
+/// Baked in the map view's appearance: MapKit draws overlays with no drawing appearance, and a tint
+/// made outside a provider freezes at the Accent current when it was made.
+internal struct ResultMapOverlayPaint: Equatable {
+    internal let fill: NSColor?
+    internal let stroke: NSColor
+    internal let lineWidth: CGFloat
+
+    @MainActor
+    internal static func polygon(isHighlight: Bool, in appearance: NSAppearance) -> ResultMapOverlayPaint {
+        let base: NSColor = isHighlight ? .systemOrange : .controlAccentColor
+        return ResultMapOverlayPaint(
+            fill: baked(base, alpha: isHighlight ? 0.45 : 0.22, in: appearance),
+            stroke: baked(base, alpha: isHighlight ? 1 : 0.9, in: appearance),
+            lineWidth: isHighlight ? 2.5 : 1
+        )
+    }
+
+    @MainActor
+    internal static func polyline(isHighlight: Bool, in appearance: NSAppearance) -> ResultMapOverlayPaint {
+        ResultMapOverlayPaint(
+            fill: nil,
+            stroke: isHighlight ? baked(.systemOrange, alpha: 1, in: appearance) : baked(.controlAccentColor, alpha: 0.9, in: appearance),
+            lineWidth: isHighlight ? 4 : 2
+        )
+    }
+
+    @MainActor
+    private static func baked(_ base: NSColor, alpha: CGFloat, in appearance: NSAppearance) -> NSColor {
+        let tint = NSColor(name: nil) { _ in base.withAlphaComponent(alpha) }
+        var cgColor: CGColor?
+        appearance.performAsCurrentDrawingAppearance {
+            cgColor = tint.cgColor
+        }
+        return cgColor.flatMap { NSColor(cgColor: $0) } ?? tint
     }
 }

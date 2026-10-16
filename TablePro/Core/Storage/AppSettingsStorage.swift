@@ -23,6 +23,7 @@ final class AppSettingsStorage: Sendable {
     private enum Keys {
         static let general = "com.TablePro.settings.general"
         static let appearance = "com.TablePro.settings.appearance"
+        static let appearanceMode = "com.TablePro.settings.appearanceMode"
         static let editor = "com.TablePro.settings.editor"
         static let dataGrid = "com.TablePro.settings.dataGrid"
         static let history = "com.TablePro.settings.history"
@@ -86,6 +87,44 @@ final class AppSettingsStorage: Sendable {
         load(key: Keys.appearance, default: .default)
     }
 
+    func saveAppearance(_ settings: AppearanceSettings) {
+        save(settings, key: Keys.appearance)
+    }
+
+    // Older builds kept the mode inside the synced appearance blob. The first load carries it to its
+    // own key and writes it there, because the next save of the blob drops the field.
+    func loadAppearanceMode() -> AppAppearanceMode {
+        if let stored = defaults.string(forKey: Keys.appearanceMode) {
+            guard let mode = AppAppearanceMode(rawValue: stored) else {
+                Self.logger.error("Unknown appearance mode \(stored, privacy: .public)")
+                return .auto
+            }
+            return mode
+        }
+
+        let carried = legacyAppearanceMode() ?? .auto
+        saveAppearanceMode(carried)
+        return carried
+    }
+
+    func saveAppearanceMode(_ mode: AppAppearanceMode) {
+        defaults.set(mode.rawValue, forKey: Keys.appearanceMode)
+    }
+
+    private struct LegacyAppearanceModeField: Decodable {
+        var appearanceMode: AppAppearanceMode?
+    }
+
+    private func legacyAppearanceMode() -> AppAppearanceMode? {
+        guard let data = defaults.data(forKey: Keys.appearance) else { return nil }
+        do {
+            return try decoder.decode(LegacyAppearanceModeField.self, from: data).appearanceMode
+        } catch {
+            Self.logger.error("Failed to read the appearance mode from the appearance settings: \(error)")
+            return nil
+        }
+    }
+
     /// The first launch with no typography setting lifts the fonts out of the old theme files once,
     /// so an upgrade does not return everyone to System Mono 13.
     func loadTypography(
@@ -103,6 +142,7 @@ final class AppSettingsStorage: Sendable {
 
         let carried = LegacyThemeFonts.read(
             appearance: loadAppearance(),
+            mode: loadAppearanceMode(),
             systemIsDark: systemIsDark,
             themesDirectory: legacyThemesDirectory
         )
@@ -112,10 +152,6 @@ final class AppSettingsStorage: Sendable {
 
     func saveTypography(_ settings: TypographySettings) {
         save(settings, key: Keys.typography)
-    }
-
-    func saveAppearance(_ settings: AppearanceSettings) {
-        save(settings, key: Keys.appearance)
     }
 
     // MARK: - Editor Settings
@@ -251,6 +287,7 @@ final class AppSettingsStorage: Sendable {
     func resetToDefaults() {
         saveGeneral(.default)
         saveAppearance(.default)
+        saveAppearanceMode(.auto)
         saveEditor(.default)
         saveDataGrid(.default)
         saveHistory(.default)

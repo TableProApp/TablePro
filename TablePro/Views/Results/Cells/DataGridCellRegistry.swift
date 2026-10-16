@@ -13,6 +13,7 @@ final class DataGridCellRegistry {
 
     private(set) var nullDisplayString: String
     private(set) var palette: DataGridCellPalette
+    private(set) var scope: ThemeScope
     private var paletteKey: PaletteKey
     private var settingsCancellable: AnyCancellable?
 
@@ -24,11 +25,12 @@ final class DataGridCellRegistry {
         let appearance: NSAppearance.Name
     }
 
-    init() {
+    init(scope: ThemeScope = .live) {
+        self.scope = scope
         nullDisplayString = AppSettingsManager.shared.dataGrid.nullDisplay
         let appearance = NSApp?.effectiveAppearance ?? NSAppearance.currentDrawing()
         paletteKey = Self.paletteKey(for: appearance)
-        palette = ThemeEngine.shared.dataGridCellPalette(in: appearance)
+        palette = scope.dataGridCellPalette(in: appearance)
         settingsCancellable = AppEvents.shared.dataGridSettingsChanged
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
@@ -42,9 +44,17 @@ final class DataGridCellRegistry {
         let key = Self.paletteKey(for: appearance)
         guard key != paletteKey else { return }
         paletteKey = key
-        palette = ThemeEngine.shared.dataGridCellPalette(in: appearance)
+        palette = scope.dataGridCellPalette(in: appearance)
     }
 
+    /// A fixed scope never moves the key, so a new one rebuilds the palette here.
+    func adopt(_ scope: ThemeScope, in appearance: NSAppearance) {
+        self.scope = scope
+        paletteKey = Self.paletteKey(for: appearance)
+        palette = scope.dataGridCellPalette(in: appearance)
+    }
+
+    /// The engine's counters for every scope: a system color change reaches every scope through it.
     private static func paletteKey(for appearance: NSAppearance) -> PaletteKey {
         let change = ThemeEngine.shared.change
         return PaletteKey(revision: change.revision, generation: change.generation, appearance: appearance.name)

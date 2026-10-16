@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProTheme
 
 internal struct FileConflictDiffSheet: View {
     let fileName: String

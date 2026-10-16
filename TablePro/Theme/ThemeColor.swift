@@ -1,93 +1,47 @@
 import AppKit
 import SwiftUI
+import TableProTheme
 
-/// One color a theme declares, held as canonical `#RRGGBB` or `#RRGGBBAA` in sRGB. It is a fixed
-/// value by design: a theme that wants the system color leaves the slot out.
-internal struct ThemeColor: Hashable, Sendable {
-    internal let hex: String
-    internal let nsColor: NSColor
-
-    internal init(validating raw: String) throws {
-        guard let canonical = HexColor.canonicalize(raw) else {
-            throw ThemeLoadError.invalidColor(raw)
-        }
-        hex = canonical
-        nsColor = HexColor.color(canonical)
-    }
-
-    internal init(_ color: NSColor) {
-        hex = HexColor.string(from: color)
-        nsColor = HexColor.color(hex)
-    }
-
-    internal static func == (lhs: ThemeColor, rhs: ThemeColor) -> Bool {
-        lhs.hex == rhs.hex
-    }
-
-    internal func hash(into hasher: inout Hasher) {
-        hasher.combine(hex)
-    }
-
-    internal var swiftUIColor: Color {
-        Color(nsColor: nsColor)
-    }
-}
-
-/// The parser rejects any string it does not consume whole, and only ASCII hex digits:
-/// `Character.isHexDigit` is also true for the fullwidth forms, which `Scanner` then refuses.
-internal enum HexColor {
-    private static let digits = Set("0123456789ABCDEFabcdef")
-
-    internal static func canonicalize(_ raw: String) -> String? {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("#") else { return nil }
-
-        let body = trimmed.dropFirst()
-        guard body.count == 6 || body.count == 8 else { return nil }
-        guard body.allSatisfy({ digits.contains($0) }) else { return nil }
-
-        return "#" + body.uppercased()
-    }
-
-    internal static func color(_ canonical: String) -> NSColor {
-        let body = canonical.dropFirst()
-        var value: UInt64 = 0
-        guard Scanner(string: String(body)).scanHexInt64(&value) else { return .labelColor }
-
-        if body.count == 8 {
-            return NSColor(
-                srgbRed: CGFloat((value >> 24) & 0xFF) / 255,
-                green: CGFloat((value >> 16) & 0xFF) / 255,
-                blue: CGFloat((value >> 8) & 0xFF) / 255,
-                alpha: CGFloat(value & 0xFF) / 255
-            )
-        }
-
-        return NSColor(
-            srgbRed: CGFloat((value >> 16) & 0xFF) / 255,
-            green: CGFloat((value >> 8) & 0xFF) / 255,
-            blue: CGFloat(value & 0xFF) / 255,
-            alpha: 1
+internal extension ThemeColor {
+    var nsColor: NSColor {
+        NSColor(
+            srgbRed: CGFloat(red) / 255,
+            green: CGFloat(green) / 255,
+            blue: CGFloat(blue) / 255,
+            alpha: CGFloat(alpha) / 255
         )
     }
 
-    internal static func string(from color: NSColor) -> String {
-        guard let converted = color.usingColorSpace(.sRGB) else { return "#808080" }
-
+    /// A color that cannot convert to sRGB, a pattern for one, becomes mid grey rather than failing.
+    init(_ color: NSColor) {
+        guard let converted = color.usingColorSpace(.sRGB) else {
+            self.init(red: 0x80, green: 0x80, blue: 0x80)
+            return
+        }
         var red: CGFloat = 0
         var green: CGFloat = 0
         var blue: CGFloat = 0
         var alpha: CGFloat = 0
         converted.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        self.init(red: Self.byte(red), green: Self.byte(green), blue: Self.byte(blue), alpha: Self.byte(alpha))
+    }
 
-        let redValue = Int(round(red * 255))
-        let greenValue = Int(round(green * 255))
-        let blueValue = Int(round(blue * 255))
+    var swiftUIColor: Color {
+        Color(nsColor: nsColor)
+    }
 
-        guard alpha < 1 else {
-            return String(format: "#%02X%02X%02X", redValue, greenValue, blueValue)
-        }
-        return String(format: "#%02X%02X%02X%02X", redValue, greenValue, blueValue, Int(round(alpha * 255)))
+    private static func byte(_ component: CGFloat) -> UInt8 {
+        UInt8(min(max((component * 255).rounded(), 0), 255))
+    }
+}
+
+internal enum HexColor {
+    internal static func string(from color: NSColor) -> String {
+        ThemeColor(color).hex
+    }
+
+    internal static func color(_ hex: String) -> NSColor {
+        ThemeColor(hex: hex)?.nsColor ?? .labelColor
     }
 }
 

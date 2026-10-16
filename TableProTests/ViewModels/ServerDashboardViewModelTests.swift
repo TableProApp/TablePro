@@ -152,20 +152,71 @@ struct ServerDashboardViewModelTests {
         #expect(payload["can_cancel"]?.boolValue == vm.canCancel(session))
     }
 
-    @Test("confirmKillSession stores process id and shows confirmation")
+    private func listed(_ id: String, user: String = "app") -> DashboardSession {
+        DashboardSession(
+            id: id, user: user, database: "shop", state: "active", durationSeconds: 1, duration: "1s", query: "SELECT 1"
+        )
+    }
+
+    @Test("confirmKillSession stores the session and shows confirmation")
     func confirmKillSessionUpdatesState() {
         let vm = makeViewModel(databaseType: .mysql)
-        vm.confirmKillSession(processId: "42")
-        #expect(vm.pendingKillProcessId == "42")
+        vm.confirmKillSession(listed("42"))
+        #expect(vm.pendingKillSession?.id == "42")
         #expect(vm.showKillConfirmation)
     }
 
-    @Test("confirmCancelQuery stores process id and shows confirmation")
+    @Test("confirmCancelQuery stores the session and shows confirmation")
     func confirmCancelQueryUpdatesState() {
         let vm = makeViewModel(databaseType: .mysql)
-        vm.confirmCancelQuery(processId: "99")
-        #expect(vm.pendingCancelProcessId == "99")
+        vm.confirmCancelQuery(listed("99"))
+        #expect(vm.pendingCancelSession?.id == "99")
         #expect(vm.showCancelConfirmation)
+    }
+
+    @Test("The Terminate and Cancel confirmations name the session's PID and user")
+    func confirmationsNameTheSession() {
+        let session = listed("57", user: "sa")
+        #expect(ServerDashboardViewModel.killConfirmationMessage(for: session)
+            == "Terminate session 57 (user sa)? Any running queries will be aborted.")
+        #expect(ServerDashboardViewModel.cancelConfirmationMessage(for: session)
+            == "Cancel the running query for session 57 (user sa)?")
+    }
+
+    @Test("A session the server lists with no user is named by its PID alone")
+    func confirmationsWithoutAUser() {
+        let session = listed("1733", user: "")
+        #expect(ServerDashboardViewModel.killConfirmationMessage(for: session)
+            == "Terminate session 1733? Any running queries will be aborted.")
+        #expect(ServerDashboardViewModel.cancelConfirmationMessage(for: session)
+            == "Cancel the running query for session 1733?")
+    }
+
+    @Test("A selected session that ends leaves the selection, and a new session reusing its id starts unselected")
+    func endedSessionLeavesTheSelection() {
+        let vm = makeViewModel(databaseType: .mssql)
+        vm.sessions = [listed("57"), listed("60")]
+        vm.sessionSelection.ids = ["57"]
+
+        vm.sessions = [listed("60")]
+        #expect(vm.sessionSelection.ids.isEmpty)
+
+        vm.sessions = [listed("60"), listed("57", user: "other")]
+        #expect(vm.sessionSelection.ids.isEmpty)
+        #expect(SessionGridColumns.actionTarget(vm.sessionSelection.ids, in: vm.sessions) == nil)
+    }
+
+    @Test("A refresh that still lists the selected session keeps it selected")
+    func listedSessionKeepsItsSelection() {
+        let vm = makeViewModel(databaseType: .postgresql)
+        vm.sessions = [listed("10"), listed("7")]
+        vm.sessionSelection.ids = ["10", "7"]
+
+        vm.sessions = [listed("7"), listed("10"), listed("12")]
+        #expect(vm.sessionSelection.ids == ["10", "7"])
+
+        vm.sessions = [listed("10")]
+        #expect(vm.sessionSelection.ids == ["10"])
     }
 
     @Test("stopAutoRefresh clears the refreshing flag")

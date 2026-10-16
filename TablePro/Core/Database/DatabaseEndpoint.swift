@@ -22,6 +22,7 @@ internal struct DatabaseEndpoint: Hashable, Identifiable, Sendable {
     internal let databaseType: DatabaseType
     internal let safeModeLevel: SafeModeLevel
     internal let color: ConnectionColor
+    internal let iconName: String?
 
     /// What a person reads where the database is named. A file-based engine's database *is* an
     /// absolute path, so spelling it out put `/Users/…/Library/Application Support/…/Chinook.sqlite`
@@ -36,6 +37,7 @@ internal struct DatabaseEndpoint: Hashable, Identifiable, Sendable {
         databaseType: DatabaseType,
         safeModeLevel: SafeModeLevel,
         color: ConnectionColor,
+        iconName: String? = nil,
         databaseLabel: String? = nil
     ) {
         self.scope = scope
@@ -43,6 +45,7 @@ internal struct DatabaseEndpoint: Hashable, Identifiable, Sendable {
         self.databaseType = databaseType
         self.safeModeLevel = safeModeLevel
         self.color = color
+        self.iconName = iconName
         self.databaseLabel = databaseLabel ?? scope.database
     }
 
@@ -93,6 +96,7 @@ internal struct DatabaseEndpoint: Hashable, Identifiable, Sendable {
             databaseType: databaseType,
             safeModeLevel: safeModeLevel,
             color: color,
+            iconName: iconName,
             databaseLabel: label ?? database
         )
     }
@@ -104,6 +108,7 @@ internal struct DatabaseEndpoint: Hashable, Identifiable, Sendable {
             databaseType: databaseType,
             safeModeLevel: safeModeLevel,
             color: color,
+            iconName: iconName,
             databaseLabel: databaseLabel
         )
     }
@@ -123,6 +128,7 @@ internal extension DatabaseEndpoint {
             databaseType: connection.type,
             safeModeLevel: connection.safeModeLevel,
             color: connection.color,
+            iconName: connection.iconName,
             databaseLabel: label(for: resolved, type: connection.type)
         )
     }

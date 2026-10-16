@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProTheme
 
 internal extension QueryResultContent {
     /// A diagram, chart, map, tree or structure view draws its own surface.

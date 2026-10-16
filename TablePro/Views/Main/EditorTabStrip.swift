@@ -496,21 +496,21 @@ private struct EditorTabStripNewButton: View {
     }
 }
 
-/// An opaque tone rather than a wash, for the same reason the system's own track is one: a
-/// wash tints whatever is behind it, and the track has to stay below the selected tab whatever
-/// that happens to be. The system's own tab bar measures a track of rgb(232) in light against
-/// this fill's rgb(220), and rgb(71) in dark against this fill's rgb(70).
+/// Opaque over the system window, so the track stays below the selected tab whatever is behind the window. Over a
+/// themed window it is a translucent system fill, since the color behind it is then the theme's and known.
 internal struct EditorTabStripTrackSurface: ViewModifier {
-    /// The fill reads the theme's window color, which an edit in place changes without rebuilding the strip.
+    /// Whether the window color is the theme's changes with an edit in place, which does not rebuild the strip.
     @ObservedObject private var themeEngine = ThemeEngine.shared
+    @Environment(\.colorSchemeContrast) private var contrast
 
     internal let rowCount: Int
 
     internal func body(content: Content) -> some View {
         let shape = EditorTabStripLayout.trackShape(forRowCount: rowCount)
+        let isOverThemedBackdrop = EditorTabStripPalette.isOverThemedBackdrop(highContrast: contrast == .increased)
         return content.background(
             shape
-                .fill(EditorTabStripPalette.trackFill)
+                .fill(EditorTabStripPalette.trackFill(overThemedBackdrop: isOverThemedBackdrop))
                 .overlay(
                     shape
                         .stroke(

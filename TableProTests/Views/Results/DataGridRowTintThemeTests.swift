@@ -6,6 +6,7 @@
 import AppKit
 import SwiftUI
 @testable import TablePro
+import TableProTheme
 import Testing
 
 @MainActor
@@ -132,8 +133,8 @@ struct DataGridRowTintThemeTests {
         let tint = try renderedTint(of: harness.rowView)
 
         #expect(tint.redComponent > tint.blueComponent)
-        #expect(Self.deleted.highlighted(highlight).tint == engine.resolved[.gridDeleted])
-        #expect(RowVisualState.empty.highlighted(highlight).tint == HighlightColor.blue.washColor)
+        #expect(Self.deleted.highlighted(highlight).tint(in: .live) == engine.resolved[.gridDeleted])
+        #expect(RowVisualState.empty.highlighted(highlight).tint(in: .live) == HighlightColor.blue.washColor)
     }
 
     @Test("A row with no deleted or inserted state stays untinted across a theme change")

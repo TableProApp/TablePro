@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import TableProTheme
 
 struct QueryPlanDiagramView: View {
     @Binding var selectedNodeId: UUID?

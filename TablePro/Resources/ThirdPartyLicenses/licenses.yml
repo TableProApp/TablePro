@@ -11,6 +11,20 @@
 # The iOS app reads TableProMobile/TableProMobile/Acknowledgements/Acknowledgements.json, the
 # projection of every ios entry. Run scripts/generate-ios-acknowledgements.py after editing an
 # ios entry; scripts/ci/check-license-inventory.py fails while that file is stale.
+- id: vscode-theme-onelight
+  name: Atom One Light Theme
+  version: vendored at 5866e900d, 2023-10-07
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2015 Mahmoud Ali
+  homepageURL: https://github.com/akamud/vscode-theme-onelight
+  licenseTextURL: https://github.com/akamud/vscode-theme-onelight/blob/5866e900db932d580e978a58db42f65cde07998b/LICENSE
+  textFile: texts/vscode-theme-onelight.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: Color values only, for the built-in One Light theme (TablePro/Resources/Themes/tablepro.one-light.json),
+    read from themes/OneLight.json (package version 2.3.0). No code or file from the project ships.
 - id: bigint
   name: BigInt
   version: 5.7.0
@@ -27,6 +41,23 @@
     diacritics (Karoly Lorentey, with o-acute and o-double-acute) in the original file; reproduce it from
     texts/bigint.LICENSE.txt rather than from this YAML, which is ASCII-folded. Transitive via oracle-nio.
     Zero `$s6BigInt` symbols in the app dylib.
+- id: catppuccin-vscode
+  name: Catppuccin for VSCode
+  version: 3.18.1
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2021 Catppuccin
+  homepageURL: https://github.com/catppuccin/vscode
+  licenseTextURL: https://github.com/catppuccin/vscode/blob/155479e33394c54eab2bcc40c2d8de9c17ab4599/LICENSE
+  textFile: texts/catppuccin-vscode.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: Color values only, for the built-in Catppuccin Mocha and Catppuccin Latte themes
+    (TablePro/Resources/Themes/tablepro.catppuccin-mocha.json and tablepro.catppuccin-latte.json), read
+    from themes/mocha.json and themes/latte.json in the npm package @catppuccin/vscode 3.18.1 (tag
+    @catppuccin/vscode-v3.18.1 at 155479e33394). The package carries the same LICENSE as the repository.
+    No code or file from the project ships.
 - id: chinook
   name: Chinook Database
   version: vendored at ac32dbc3d, 2025-10-04
@@ -95,6 +126,21 @@
     edit made inside the script, not a file under scripts/patches/, so patched is false but the tree is
     not byte-identical to upstream. The build uses Homebrew openssl@3 (build-cassandra.sh:99), not the
     pinned OpenSSL.'
+- id: dracula-visual-studio-code
+  name: Dracula Theme Official
+  version: vendored at a08a206f2, 2026-09-14
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2016 Dracula Theme
+  homepageURL: https://github.com/dracula/visual-studio-code
+  licenseTextURL: https://github.com/dracula/visual-studio-code/blob/a08a206f2c8420ba3c05f0e8d01d43b2f933fdf8/LICENSE
+  textFile: texts/dracula-visual-studio-code.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: Color values only, for the built-in Dracula theme (TablePro/Resources/Themes/tablepro.dracula.json).
+    Every value in that file is in src/dracula.yml (package version 2.25.1). No code or file from the
+    project ships.
 - id: duckdb
   name: DuckDB
   version: v1.5.2
@@ -149,6 +195,25 @@
     sources, so the modified library stays LGPL-2.0-or-later and the modification must be offered alongside.
     Static-linked LGPL: same relinking obligation as MariaDB Connector/C. One source tree serves the macOS
     and both iOS slices, so the patch covers all of them.'
+- id: github-vscode-theme
+  name: GitHub Theme
+  version: 6.3.5
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2020 Primer
+  homepageURL: https://github.com/primer/github-vscode-theme
+  licenseTextURL: https://github.com/primer/github-vscode-theme/blob/v6.3.5/LICENSE
+  textFile: texts/github-vscode-theme.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: 'Color values only, for the built-in GitHub Light and GitHub Dark themes
+    (TablePro/Resources/Themes/tablepro.github-light.json and tablepro.github-dark.json), read from
+    themes/light-default.json and themes/dark-default.json in the 6.3.5 VSIX on Open VSX (SHA-256
+    a85236a58ad490b1600ec5a0fd0cea7eec56fb9d33660a1ac82c6da639ad3af4; tag v6.3.5 at ad3f17519f2f). The
+    built files carry no editor.selectionBackground: src/theme.js sets alpha(accent.fg, 0.2) at line 188
+    and overwrites it at line 198, so TablePro uses the line 188 value. No code or file from the project
+    ships.'
 - id: go
   name: Go (runtime and standard library)
   version: 1.27.1
@@ -206,6 +271,26 @@
     LICENSE at the tag is byte-identical to the Go distribution''s LICENSE, but this is a separate module
     with its own version, so it has its own entry. Reaches users only through the registry-only SAP HANA
     plugin.'
+- id: vscode-theme-gruvbox
+  name: Gruvbox Theme
+  version: 1.29.1
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2017 JD
+  homepageURL: https://github.com/jdinhify/vscode-theme-gruvbox
+  licenseTextURL: https://github.com/jdinhify/vscode-theme-gruvbox/blob/v1.29.1/LICENSE
+  textFile: texts/vscode-theme-gruvbox.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: 'Color values only, for the built-in Gruvbox Dark and Gruvbox Light themes
+    (TablePro/Resources/Themes/tablepro.gruvbox-dark.json and tablepro.gruvbox-light.json), read from
+    themes/gruvbox-dark-medium.json and themes/gruvbox-light-medium.json in the 1.29.1 VSIX on Open VSX
+    (jdinhlife.gruvbox, SHA-256 8fd3166439d3bdc421ebc3d3f6d33f33985e173cb57d396c231daaaeb7e09240) and the
+    palette in src/shared.ts at tag v1.29.1. The original Gruvbox palette, morhetz/gruvbox, publishes no
+    license file, so this port is the source of record. The holder line uses the copyright sign in the
+    original file; reproduce it from texts/vscode-theme-gruvbox.txt rather than from this YAML, which is
+    ASCII-folded. No code or file from the project ships.'
 - id: hiredis
   name: hiredis
   version: 1.2.0
@@ -329,6 +414,68 @@
     grant), mongoc.css_t, zlib, common-md5.c and utf8proc. The full text is saved in the extra text file.
     Tarball is the GitHub release archive for 1.28.1 (build-libmongoc.sh:74), SHA-256 pinned at line 42.
     The script writes the flat Libs/libmongoc.a and Libs/libbson.a itself (build-libmongoc.sh:219).'
+- id: nord-visual-studio-code
+  name: Nord Visual Studio Code
+  version: vendored at 8ead09822, 2023-05-03
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2016-present Sven Greb <development@svengreb.de> (https://www.svengreb.de)
+  homepageURL: https://github.com/nordtheme/visual-studio-code
+  licenseTextURL: https://github.com/nordtheme/visual-studio-code/blob/8ead09822c02d0d49d0f764104505e5a34d3689f/license
+  textFile: texts/nord-visual-studio-code.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: Color values only, for the built-in Nord theme (TablePro/Resources/Themes/tablepro.nord.json). Every
+    value in that file is in themes/nord-color-theme.json (package version 0.19.0). The palette repository,
+    nordtheme/nord, carries the same license and holder. No code or file from the project ships.
+- id: one-dark-pro
+  name: One Dark Pro
+  version: 3.20.3
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2013-2022 Binaryify
+  homepageURL: https://github.com/Binaryify/OneDark-Pro
+  licenseTextURL: https://github.com/Binaryify/OneDark-Pro/blob/3.20.3/LICENSE.txt
+  textFile: texts/one-dark-pro.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: Color values only, for the built-in One Dark theme (TablePro/Resources/Themes/tablepro.one-dark.json),
+    read from themes/OneDark-Pro.json at tag 3.20.3 (ce79c5f71166). The selection, gutter, current line
+    and change colors come from Atom's One Dark Syntax instead. No code or file from the project ships.
+- id: one-dark-syntax
+  name: One Dark Syntax
+  version: vendored at 9c96f4454, 2018-09-05
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2016 GitHub Inc.
+  homepageURL: https://github.com/atom/one-dark-syntax
+  licenseTextURL: https://github.com/atom/one-dark-syntax/blob/9c96f4454362267ac45322063e193ccf9d2debb1/LICENSE.md
+  textFile: texts/one-dark-syntax.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: Color values only, for the built-in One Dark theme (TablePro/Resources/Themes/tablepro.one-dark.json).
+    Atom's original One Dark palette (styles/colors.less and styles/syntax-variables.less, package version
+    1.8.4; the repository is archived) supplies its selection, gutter, current line and git colors. No code
+    or file from the project ships.
+- id: one-light-syntax
+  name: One Light Syntax
+  version: vendored at d84579027, 2018-09-06
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2016 GitHub Inc.
+  homepageURL: https://github.com/atom/one-light-syntax
+  licenseTextURL: https://github.com/atom/one-light-syntax/blob/d84579027410c576086dfca14d934c4bd74b0438/LICENSE.md
+  textFile: texts/one-light-syntax.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: Color values only, for the built-in One Light theme (TablePro/Resources/Themes/tablepro.one-light.json).
+    Atom's original One Light palette (styles/colors.less and styles/syntax-variables.less, package version
+    1.8.4; the repository is archived) supplies its git colors and confirms the editor values. No code or
+    file from the project ships.
 - id: openssl
   name: OpenSSL
   version: 3.4.3
@@ -413,6 +560,41 @@
   notes: 'Transitive (via TextStory / TextFormation). LICENSE is 1518 bytes, 5 bytes longer than the other
     Chime files, because the holder is "Chime Systems Inc." rather than "Chime". Confirmed shipping: 544
     `$s9Rearrange` symbols.'
+- id: solarized
+  name: Solarized
+  version: vendored at 62f656a02, 2018-04-02
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2011 Ethan Schoonover
+  homepageURL: https://github.com/altercation/solarized
+  licenseTextURL: https://github.com/altercation/solarized/blob/62f656a02f93c5190a8753159e34b385588d5ff3/LICENSE
+  textFile: texts/solarized.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: Color values only. The sixteen-color palette in README.md is the base of the built-in Solarized Light
+    and Solarized Dark themes (TablePro/Resources/Themes/tablepro.solarized-light.json and
+    tablepro.solarized-dark.json), including the line number and change colors the VS Code port leaves
+    out. No code or file from the project ships.
+- id: vscode-solarized
+  name: Solarized for Visual Studio Code
+  version: vendored at f93fdeb45, 2026-10-01
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2015 - present Microsoft Corporation
+  homepageURL: https://github.com/microsoft/vscode/tree/main/extensions/theme-solarized-dark
+  licenseTextURL: https://github.com/microsoft/vscode/blob/f93fdeb454a0f0fafe5f310408cec48dd3b6f58a/LICENSE.txt
+  textFile: texts/vscode-solarized.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: 'Color values only, for the built-in Solarized Light and Solarized Dark themes, read from
+    extensions/theme-solarized-light/themes/solarized-light-color-theme.json (last changed 0132168df99a)
+    and extensions/theme-solarized-dark/themes/solarized-dark-color-theme.json (f93fdeb454a0) in
+    microsoft/vscode: the selection, sidebar, list selection and border colors. The cgmanifest.json of
+    both extensions registers Colorsublime-Themes 0.1.0 (MIT, "Copyright (c) 2015 Colorsublime.com",
+    reproduced in VS Code''s ThirdPartyNotices.txt) as their upstream. No code or file from the project
+    ships.'
 - id: sparkle
   name: Sparkle
   version: 2.10.0
@@ -722,6 +904,22 @@
     YEAR differs from the other two Chime packages (2020 vs 2021 vs 2022) and the HOLDER STRING differs
     from Rearrange ("Chime" vs "Chime Systems Inc."), so the four BSD notices must be reproduced separately,
     not collapsed into one.'
+- id: tokyo-night-vscode-theme
+  name: Tokyo Night
+  version: vendored at 7c0f11eae, 2025-02-05
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2018-present Enkia
+  homepageURL: https://github.com/enkia/tokyo-night-vscode-theme
+  licenseTextURL: https://github.com/enkia/tokyo-night-vscode-theme/blob/7c0f11eaef322f293621ca7befe462214b7ea468/LICENSE.txt
+  textFile: texts/tokyo-night-vscode-theme.txt
+  source: manual
+  patched: false
+  platforms: [macos]
+  notes: Color values only, for the built-in Tokyo Night and Tokyo Night Light themes
+    (TablePro/Resources/Themes/tablepro.tokyo-night.json and tablepro.tokyo-night-light.json), read from
+    themes/tokyo-night-color-theme.json and themes/tokyo-night-light-color-theme.json. No code or file from
+    the project ships.
 - id: tree-sitter
   name: tree-sitter
   version: 0.25.10

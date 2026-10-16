@@ -150,12 +150,15 @@ internal struct JSONViewerView: View {
             switch parsedTree?.document {
             case .emptyValue?:
                 emptyValueView
+                    .valueStandInBackground()
             case .tree(let tree)?:
                 JSONTreeView(rootNode: tree, searchText: $treeSearchText)
             case .unavailable(let error)?:
                 treeErrorView(error)
+                    .valueStandInBackground()
             case nil:
                 Color.clear
+                    .valueStandInBackground()
             }
         }
     }

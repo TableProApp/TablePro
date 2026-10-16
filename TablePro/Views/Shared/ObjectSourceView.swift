@@ -71,7 +71,7 @@ struct ObjectSourceView: View {
             .disabled(!hasSource)
         }
         .padding()
-        .background(.bar)
+        .paneBarBackground()
     }
 
     private var fontStepper: some View {
@@ -136,6 +136,6 @@ struct ObjectAttributeStrip: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(.bar)
+        .paneBarBackground()
     }
 }

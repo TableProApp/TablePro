@@ -100,6 +100,7 @@ internal struct ArrayJsonElementEditor: View {
             } description: {
                 Text("Select an element to read or edit its JSON.")
             }
+            .valueStandInBackground()
         }
     }
 
@@ -124,6 +125,7 @@ internal struct ArrayJsonElementEditor: View {
             .font(themeEngine.valueFontSwiftUI)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .valueStandInBackground()
     }
 
     private func elementLabel(for row: ArrayEditorRow) -> String {

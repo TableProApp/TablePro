@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProTheme
 
 /// Read-only code or a stored value in a rounded well, with selectable text that scrolls sideways
 /// rather than wrap. It wears the editor's background and text while the active theme sets them.

@@ -11,6 +11,7 @@ import Combine
 import os
 import SwiftUI
 import TableProPluginKit
+import TableProTheme
 
 private enum CreateTableTab: CaseIterable {
     case columns
@@ -226,7 +227,7 @@ struct CreateTableView: View {
             Spacer()
         }
         .padding()
-        .background(.bar)
+        .paneBarBackground()
         .onChange(of: draft.tableOptions.charset) { newCharset in
             if let first = CreateTableOptions.collations[newCharset]?.first {
                 draft.tableOptions.collation = first
@@ -421,39 +422,21 @@ struct CreateTableView: View {
     private var sqlPreviewView: some View {
         if let composed = draft.composed {
             if composed.statements.isEmpty {
-                sqlPreviewPlaceholder(composed.issues.first?.qualifiedMessage)
+                CreateTableSQLPreviewStandIn(content: .message(composed.issues.first?.qualifiedMessage))
             } else {
                 DDLTextView(ddl: composed.preview, fontSize: .constant(13), databaseType: connection.type)
             }
         } else if let failure = draft.compositionFailure {
-            sqlPreviewPlaceholder(failure)
+            CreateTableSQLPreviewStandIn(content: .message(failure))
         } else {
             uncomposedPreview(plan: draft.plan(for: connection.type))
         }
     }
 
-    @ViewBuilder
     private func uncomposedPreview(plan: CreateTablePlan) -> some View {
-        if plan.definition == nil {
-            sqlPreviewPlaceholder(plan.issues.first?.qualifiedMessage)
-        } else {
-            ProgressView()
-                .controlSize(.small)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    private func sqlPreviewPlaceholder(_ message: String?) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: "doc.plaintext")
-                .font(.largeTitle)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text(message ?? String(localized: "Add columns to see the CREATE TABLE statement"))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        CreateTableSQLPreviewStandIn(
+            content: plan.definition == nil ? .message(plan.issues.first?.qualifiedMessage) : .composing
+        )
     }
 
     // Cell editing, row operations, undo/redo handled by CreateTableGridDelegate
@@ -622,5 +605,41 @@ struct CreateTableView: View {
             showStructure: showStructure
         )
         AppCommands.shared.objectChanged.send(created)
+    }
+}
+
+// Stands in for the statement text view, so under a theme it keeps the editor's background.
+internal struct CreateTableSQLPreviewStandIn: View {
+    internal enum Content: Equatable {
+        case message(String?)
+        case composing
+    }
+
+    internal let content: Content
+
+    internal var body: some View {
+        stateView
+            .themeBackground(.editorBackground, native: Color.clear, ignoresSafeAreaEdges: [])
+    }
+
+    @ViewBuilder
+    private var stateView: some View {
+        switch content {
+        case .message(let message):
+            VStack(spacing: 8) {
+                Image(systemName: "doc.plaintext")
+                    .font(.largeTitle)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text(message ?? String(localized: "Add columns to see the CREATE TABLE statement"))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .composing:
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 }

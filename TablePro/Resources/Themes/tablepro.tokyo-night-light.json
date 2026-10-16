@@ -1,0 +1,50 @@
+{
+  "appearance": "light",
+  "author": "Enkia",
+  "dataGrid": {
+    "alternateRow": "#D6D8DF",
+    "background": "#E6E7ED",
+    "boolFalse": "#8C4351",
+    "boolTrue": "#385F0D",
+    "deleted": "#E8686826",
+    "deletedText": "#8C435180",
+    "focusBorder": "#2959AA",
+    "gridLine": "#C1C2C7",
+    "headerBackground": "#D6D8DF",
+    "headerText": "#343B59",
+    "inactiveSelection": "#C9CBD6",
+    "inserted": "#2D9C9126",
+    "modified": "#8F5E1526",
+    "nullValue": "#888B94",
+    "rowNumber": "#9DA0AB",
+    "selection": "#ACB0BF",
+    "selectionText": "#343B59",
+    "text": "#343B59"
+  },
+  "editor": {
+    "background": "#E6E7ED",
+    "currentLine": "#DCDEE3",
+    "currentStatement": "#DCDEE380",
+    "cursor": "#363C4D",
+    "invisibles": "#C1C2C7",
+    "lineNumber": "#9DA0AB",
+    "selection": "#ACB0BF40",
+    "syntax": {
+      "comment": "#888B94",
+      "function": "#2959AA",
+      "keyword": "#0F4B6E",
+      "null": "#965027",
+      "number": "#965027",
+      "operator": "#65359D",
+      "string": "#385F0D",
+      "type": "#343B58"
+    },
+    "text": "#343B59"
+  },
+  "id": "tablepro.tokyo-night-light",
+  "name": "Tokyo Night Light",
+  "schema": 3,
+  "window": {
+    "background": "#E6E7ED"
+  }
+}
