@@ -638,11 +638,11 @@ fn closed_editor_drops_its_theme_and_font_handlers() {
     let editor = unconnected_editor(&settings, runtime.tasks());
     // Held past the editor, so a handler left behind has a view to repaint.
     let view = editor.imp().source_view.get();
-    let scheme = scheme_id(&view);
 
     drop(editor);
     crate::test_support::drain_main_context();
-    settings.get().set_style_scheme("classic").expect("a style scheme");
+    let scheme = scheme_id(&view);
+    settings.get().set_style_scheme("cobalt").expect("a style scheme");
     style.set_color_scheme(adw::ColorScheme::ForceDark);
     let after = scheme_id(&view);
     style.set_color_scheme(adw::ColorScheme::Default);
@@ -689,9 +689,42 @@ impl InWindow {
 
 impl Drop for InWindow {
     fn drop(&mut self) {
+        crate::test_support::drop_focus(&self.0);
         self.0.set_child(None::<&gtk4::Widget>);
         self.0.destroy();
     }
+}
+
+#[gtk4::test]
+fn a_closed_editor_lets_go_of_its_script_and_completion() {
+    let harness = editor_with(answering(), "SELECT 1");
+    let view = harness.editor.imp().source_view.get();
+    let script = harness.editor.buffer().downgrade();
+    let providers: Vec<glib::WeakRef<sourceview5::CompletionProvider>> = harness
+        .editor
+        .imp()
+        .completion_providers
+        .borrow()
+        .iter()
+        .map(ObjectExt::downgrade)
+        .collect();
+    assert_eq!(providers.len(), 2, "the catalog and the document words");
+    {
+        let shown = InWindow::new(&harness.editor);
+        shown.0.present();
+        wait_until(WAIT, || view.is_mapped()).expect("the editor on screen");
+        crate::test_support::after_next_frame(&view);
+    }
+
+    drop(view);
+    drop(harness);
+    crate::test_support::drain_main_context();
+
+    assert!(script.upgrade().is_none(), "the script outlived its editor");
+    assert!(
+        providers.iter().all(|provider| provider.upgrade().is_none()),
+        "the completion, which holds the session, outlived its editor"
+    );
 }
 
 fn editor_keys(harness: &Harness) -> gtk4::ShortcutController {

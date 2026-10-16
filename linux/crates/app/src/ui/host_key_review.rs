@@ -209,7 +209,7 @@ mod tests {
     use gtk4::glib;
 
     use super::*;
-    use crate::test_support::wait_until;
+    use crate::test_support::{OwnedWindow, wait_until};
     use crate::workspace::dialog_response::visible_alert;
 
     fn failure(kind: HostKeyFailureKind, fingerprint: &str) -> HostKeyFailure {
@@ -281,8 +281,7 @@ mod tests {
     #[gtk4::test]
     fn review_dialog_built_from_spec() {
         adw::init().expect("libadwaita initialises under the test backend");
-        let window = adw::Window::new();
-        window.present();
+        let window = OwnedWindow::presented(adw::Window::new());
         let failure = failure(HostKeyFailureKind::Unknown { trust_allowed: true }, "SHA256:new");
         let outcome = std::rc::Rc::new(std::cell::Cell::new(None));
         let sink = outcome.clone();

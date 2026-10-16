@@ -87,6 +87,9 @@ impl ForeignKeyDialog {
         let (form, dialog) = FormDialog::new(&crate::i18n::gettext("Add Foreign Key"), &crate::i18n::gettext("_Add"));
         let details = adw::PreferencesGroup::new();
         let name_row = FormDialog::entry_row(&crate::i18n::gettext("Name"));
+        // The form opens in its first field, where Enter submits. Left to
+        // the dialog, GTK 4.24 focuses Cancel, and Enter there cancels.
+        dialog.set_focus(Some(&name_row));
         details.add(&name_row);
 
         let tables = gio::ListStore::new::<TableChoiceObject>();
@@ -507,12 +510,12 @@ mod tests {
 
     use super::super::form_dialog::tests::{WAIT, window};
     use super::*;
-    use crate::test_support::{FakeSession, drain_main_context, wait_until};
+    use crate::test_support::{FakeSession, OwnedWindow, drain_main_context, wait_until};
 
     struct Harness {
         dialog: Option<ForeignKeyDialog>,
         added: Rc<RefCell<Vec<ForeignKeyInfo>>>,
-        _window: adw::Window,
+        window: OwnedWindow<adw::Window>,
         _fake: FakeSession,
         runtime: Option<crate::runtime::AppRuntime>,
     }
@@ -539,7 +542,7 @@ mod tests {
             Self {
                 dialog: Some(dialog),
                 added,
-                _window: window,
+                window,
                 _fake: fake,
                 runtime: Some(runtime),
             }
@@ -581,6 +584,7 @@ mod tests {
             if let Some(dialog) = self.dialog.take() {
                 dialog.dialog.force_close();
             }
+            self.window.destroy();
             drain_main_context();
             if let Some(runtime) = self.runtime.take() {
                 runtime.shutdown();
@@ -627,6 +631,16 @@ mod tests {
             .filter_map(|position| inner.tables.item(position).and_downcast::<TableChoiceObject>())
             .map(|choice| choice.label())
             .collect()
+    }
+
+    #[gtk4::test]
+    fn opens_with_the_cursor_in_the_name() {
+        let harness = Harness::open(catalog());
+        let name_row = harness.inner().name_row.clone();
+        wait_until(WAIT, || name_row.is_mapped()).expect("the form never appeared");
+
+        let text = gtk::prelude::EditableExt::delegate(&name_row).expect("an AdwEntryRow delegates to a GtkText");
+        wait_until(WAIT, || text.is_focus()).expect("the form opened with the focus elsewhere");
     }
 
     #[gtk4::test]

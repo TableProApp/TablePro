@@ -144,6 +144,7 @@ pub(super) mod tests {
     use std::time::Duration;
 
     use super::*;
+    use crate::test_support::OwnedWindow;
 
     pub(crate) const WAIT: Duration = Duration::from_secs(5);
 
@@ -159,11 +160,9 @@ pub(super) mod tests {
     /// A mapped window: GtkButton refuses to activate an unrealized
     /// button, so a form that is not on screen would pass an Enter test
     /// for the wrong reason.
-    pub(crate) fn window() -> adw::Window {
+    pub(crate) fn window() -> OwnedWindow<adw::Window> {
         adw::init().expect("libadwaita initialises under the test backend");
-        let window = adw::Window::new();
-        window.present();
-        window
+        OwnedWindow::presented(adw::Window::new())
     }
 
     #[test]

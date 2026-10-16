@@ -231,8 +231,8 @@ mod tests {
 
     #[gtk4::test]
     fn a_window_without_an_application_inhibits_nothing() {
-        let window = gtk::Window::new();
-        let target = ApplicationInhibit::new(&window);
+        let window = crate::test_support::OwnedWindow::new(gtk::Window::new());
+        let target = ApplicationInhibit::new(&*window);
 
         assert_eq!(target.inhibit(gtk::ApplicationInhibitFlags::LOGOUT, "unsaved"), 0);
         target.uninhibit(3);

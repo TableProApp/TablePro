@@ -92,7 +92,7 @@ mod tests {
 
     #[gtk4::test]
     fn actions_live_on_application_window_map() {
-        let window = adw::ApplicationWindow::builder().build();
+        let window = crate::test_support::OwnedWindow::new(adw::ApplicationWindow::builder().build());
         let (input, mut receiver) = crate::runtime::input_queue::<SessionWindowInput>();
 
         install(&window, &input);
@@ -109,7 +109,7 @@ mod tests {
                 "win.{moved} is still on the window"
             );
         }
-        WidgetExt::activate_action(&window, "win.export-connections", None)
+        WidgetExt::activate_action(&*window, "win.export-connections", None)
             .expect("win resolves to the window's own map");
         assert!(matches!(receiver.try_recv(), Ok(SessionWindowInput::ExportConnections)));
     }

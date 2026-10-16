@@ -157,14 +157,13 @@ mod tests {
     #[gtk4::test]
     fn delete_hands_over_the_history_choice() {
         adw::init().expect("libadwaita initialises under the test backend");
-        let window = adw::Window::new();
-        window.present();
+        let window = crate::test_support::OwnedWindow::presented(adw::Window::new());
         let chosen = Rc::new(Cell::new(None));
         let ask = || {
             let asking = DeleteConnectionDialog::new("Prod");
             let sink = chosen.clone();
             asking.connect_delete(move |options| sink.set(Some(options)));
-            asking.dialog.present(Some(&window));
+            asking.dialog.present(Some(&*window));
             asking
         };
 

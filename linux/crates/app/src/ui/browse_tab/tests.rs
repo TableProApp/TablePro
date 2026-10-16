@@ -292,6 +292,7 @@ impl Shown {
 
 impl Drop for Shown {
     fn drop(&mut self) {
+        crate::test_support::drop_focus(&self.0);
         self.0.set_child(None::<&gtk4::Widget>);
         self.0.destroy();
     }

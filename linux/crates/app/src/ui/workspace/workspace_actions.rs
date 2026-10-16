@@ -86,7 +86,7 @@ mod tests {
 
     #[gtk4::test]
     fn the_history_gate_follows_availability() {
-        let window = adw::ApplicationWindow::builder().build();
+        let window = crate::test_support::OwnedWindow::new(adw::ApplicationWindow::builder().build());
         let (input, _receiver) = crate::runtime::input_queue::<WorkspaceInput>();
         install(&window, &input);
         let (sender, receiver) = tokio::sync::watch::channel(HistoryAvailability::Starting);
@@ -113,13 +113,13 @@ mod tests {
 
     #[gtk4::test]
     fn workspace_actions_live_on_the_windows_own_map() {
-        let window = adw::ApplicationWindow::builder().build();
+        let window = crate::test_support::OwnedWindow::new(adw::ApplicationWindow::builder().build());
         let (input, mut receiver) = crate::runtime::input_queue::<WorkspaceInput>();
 
         let names = install(&window, &input);
 
         assert!(names.contains(&"new-editor-tab"));
-        WidgetExt::activate_action(&window, "win.new-editor-tab", None).expect("win resolves to the window's own map");
+        WidgetExt::activate_action(&*window, "win.new-editor-tab", None).expect("win resolves to the window's own map");
         crate::test_support::drain_main_context();
         assert!(matches!(receiver.try_recv(), Ok(WorkspaceInput::NewEditorTab)));
     }

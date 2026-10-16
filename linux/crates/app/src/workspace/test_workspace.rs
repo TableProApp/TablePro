@@ -26,7 +26,7 @@ use crate::services::structure_tracker_handle::StructureTrackerHandle;
 use crate::services::structure_tracker_registry::StructureTrackerRegistry;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_edit::TrackerEdit;
-use crate::test_support::{FakeSession, wait_until};
+use crate::test_support::{FakeSession, OwnedWindow, wait_until};
 
 pub(crate) const WAIT: Duration = Duration::from_secs(10);
 
@@ -100,14 +100,12 @@ pub(crate) fn edited_table(edit: impl FnOnce(&mut TableDraft)) -> PendingStructu
 }
 
 /// A mapped window for a save's review and the close prompts.
-pub(crate) fn window() -> adw::Window {
+pub(crate) fn window() -> OwnedWindow<adw::Window> {
     adw::init().expect("libadwaita initialises under the test backend");
     if let Some(settings) = gtk::Settings::default() {
         settings.set_gtk_enable_animations(false);
     }
-    let window = adw::Window::new();
-    window.present();
-    window
+    OwnedWindow::presented(adw::Window::new())
 }
 
 /// A workspace with one tab, over a fake connection that writes as its

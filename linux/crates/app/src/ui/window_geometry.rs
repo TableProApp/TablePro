@@ -36,7 +36,7 @@ pub(crate) fn persist(window: &libadwaita::ApplicationWindow, settings: &AppSett
 mod tests {
     use tablepro_storage::WindowGeometry;
 
-    use crate::test_support::MemorySettings;
+    use crate::test_support::{MemorySettings, OwnedWindow};
 
     use super::*;
 
@@ -54,7 +54,7 @@ mod tests {
         let application = libadwaita::Application::builder()
             .application_id(crate::config::APP_ID)
             .build();
-        let window = libadwaita::ApplicationWindow::new(&application);
+        let window = OwnedWindow::new(libadwaita::ApplicationWindow::new(&application));
 
         restore(&window, settings.get());
 
@@ -69,7 +69,7 @@ mod tests {
         let application = libadwaita::Application::builder()
             .application_id(crate::config::APP_ID)
             .build();
-        let window = libadwaita::ApplicationWindow::new(&application);
+        let window = OwnedWindow::new(libadwaita::ApplicationWindow::new(&application));
         window.set_default_size(1440, 900);
 
         persist(&window, settings.get());

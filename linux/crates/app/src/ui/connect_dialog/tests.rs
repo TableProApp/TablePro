@@ -297,9 +297,10 @@ fn encryption_combo_lists_only_capability_modes() {
 #[gtk4::test]
 fn a_described_choice_shows_its_whole_value() {
     let harness = dialog();
-    let window = adw::Window::builder().default_width(1000).default_height(700).build();
-    window.present();
-    harness.dialog.present(Some(&window));
+    let window = crate::test_support::OwnedWindow::presented(
+        adw::Window::builder().default_width(1000).default_height(700).build(),
+    );
+    harness.dialog.present(Some(&*window));
     let ssh = harness.dialog.imp().ssh_section.get();
     ssh.enable();
     let rows = [

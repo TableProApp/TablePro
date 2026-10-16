@@ -527,6 +527,7 @@ impl OnScreen {
 
 impl Drop for OnScreen {
     fn drop(&mut self) {
+        crate::test_support::drop_focus(&self.window);
         self.window.destroy();
     }
 }

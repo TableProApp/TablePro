@@ -1,5 +1,6 @@
 mod accessible_label;
 mod alert_response;
+mod application_end;
 mod fake_clocks;
 mod fake_reachability;
 mod fake_session;
@@ -9,6 +10,7 @@ mod key_injection_error;
 mod key_injector;
 mod main_loop;
 mod memory_settings;
+mod owned_window;
 #[path = "../tests/support/settings_schema.rs"]
 pub(crate) mod settings_schema;
 pub(crate) mod shortcut_keys;
@@ -20,6 +22,7 @@ mod widget_lookup;
 
 pub(crate) use accessible_label::{assert_labelled, test_backend_records_properties};
 pub(crate) use alert_response::{click_response, respond};
+pub(crate) use application_end::end_application;
 pub(crate) use fake_clocks::FakeClocks;
 pub(crate) use fake_reachability::{Attached, FakeProbe, attach_remote};
 pub(crate) use fake_session::FakeSession;
@@ -31,6 +34,7 @@ pub(crate) use key_injection_error::KeyInjectionError;
 pub(crate) use key_injector::KeyInjector;
 pub(crate) use main_loop::{after_next_frame, drain_main_context, finish_on_main, wait_until};
 pub(crate) use memory_settings::MemorySettings;
+pub(crate) use owned_window::{OwnedWindow, drop_focus};
 pub(crate) use signal_log::SignalLog;
 pub(crate) use unlabelled_widget::UnlabelledWidget;
 pub(crate) use wait_timed_out::WaitTimedOut;

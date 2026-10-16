@@ -118,14 +118,13 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::test_support::finish_on_main;
+    use crate::test_support::{OwnedWindow, finish_on_main};
     use crate::workspace::visible_alert;
 
     #[gtk4::test]
     fn history_export_failure_presents_alert() {
         adw::init().expect("libadwaita initialises under the test backend");
-        let window = adw::Window::new();
-        window.present();
+        let window = OwnedWindow::presented(adw::Window::new());
         let dir = tempfile::tempdir().expect("tempdir");
         let file = gio::File::for_path(dir.path().join("missing").join("history.csv"));
         let parent = window.clone().upcast::<gtk::Widget>();

@@ -97,6 +97,7 @@ crates/app/src/storage.rs
 crates/app/src/test_support.rs
 crates/app/src/test_support/accessible_label.rs
 crates/app/src/test_support/alert_response.rs
+crates/app/src/test_support/application_end.rs
 crates/app/src/test_support/fake_clocks.rs
 crates/app/src/test_support/fake_reachability.rs
 crates/app/src/test_support/fake_session.rs
@@ -106,6 +107,7 @@ crates/app/src/test_support/key_injection_error.rs
 crates/app/src/test_support/key_injector.rs
 crates/app/src/test_support/main_loop.rs
 crates/app/src/test_support/memory_settings.rs
+crates/app/src/test_support/owned_window.rs
 crates/app/src/test_support/shortcut_keys.rs
 crates/app/src/test_support/signal_log.rs
 crates/app/src/test_support/tests.rs

@@ -73,7 +73,7 @@ mod tests {
         show_whole_value(&row);
         let group = adw::PreferencesGroup::new();
         group.add(&row);
-        adw::Window::builder().content(&group).build().present();
+        let _window = crate::test_support::OwnedWindow::presented(adw::Window::builder().content(&group).build());
         wait_until(WAIT, || shown_value(&row).is_some_and(|label| label.width() > 0)).expect("the row is laid out");
 
         let value = shown_value(&row).expect("the value label");

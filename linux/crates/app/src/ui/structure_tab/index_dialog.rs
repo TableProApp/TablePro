@@ -48,6 +48,9 @@ impl IndexDialog {
         let (form, dialog) = FormDialog::new(&crate::i18n::gettext("Add Index"), &crate::i18n::gettext("_Add"));
         let details = adw::PreferencesGroup::new();
         let name_row = FormDialog::entry_row(&crate::i18n::gettext("Name"));
+        // The form opens in its first field, where Enter submits. Left to
+        // the dialog, GTK 4.24 focuses Cancel, and Enter there cancels.
+        dialog.set_focus(Some(&name_row));
         let unique_row = adw::SwitchRow::builder()
             .title(crate::i18n::gettext("Unique"))
             .subtitle(crate::i18n::gettext("Refuse rows that repeat the key columns' values"))
@@ -431,6 +434,19 @@ mod tests {
             dialog.inner.keys_group.description().as_deref(),
             Some("Add the columns the index sorts by.")
         );
+    }
+
+    #[gtk4::test]
+    fn opens_with_the_cursor_in_the_name() {
+        let window = window();
+        let added = Rc::new(RefCell::new(Vec::new()));
+        let dialog = dialog(&added);
+        dialog.present(window.upcast_ref());
+        let name_row = dialog.inner.name_row.clone();
+        wait_until(WAIT, || name_row.is_mapped()).expect("the form never appeared");
+
+        let text = gtk::prelude::EditableExt::delegate(&name_row).expect("an AdwEntryRow delegates to a GtkText");
+        wait_until(WAIT, || text.is_focus()).expect("the form opened with the focus elsewhere");
     }
 
     #[gtk4::test]

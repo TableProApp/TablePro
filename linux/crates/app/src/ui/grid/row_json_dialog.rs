@@ -141,12 +141,21 @@ fn row_json_dialog(json: RowJson) -> adw::Dialog {
     toolbar.add_top_bar(&banner);
     toolbar.set_content(Some(&toasts));
 
-    adw::Dialog::builder()
+    let dialog = adw::Dialog::builder()
         .title(crate::i18n::gettext("Row as JSON"))
         .content_width(560)
         .content_height(480)
         .child(&toolbar)
-        .build()
+        .build();
+    // GtkSourceView before 5.21 never frees a view that has drawn its line
+    // numbers, so the closed dialog takes the row's text back.
+    let shown_in = view.downgrade();
+    dialog.connect_closed(move |_| {
+        if let Some(view) = shown_in.upgrade() {
+            view.set_buffer(Some(&sourceview5::Buffer::new(None)));
+        }
+    });
+    dialog
 }
 
 #[cfg(test)]
@@ -156,7 +165,9 @@ mod tests {
     use tablepro_core::column::ColumnType;
 
     use super::*;
-    use crate::test_support::{descendants, finish_on_main, first_descendant_of_type};
+    use crate::test_support::{
+        OwnedWindow, after_next_frame, descendants, finish_on_main, first_descendant_of_type, wait_until,
+    };
 
     fn local_text(clipboard: &gtk::gdk::Clipboard) -> Option<String> {
         clipboard.content()?.value(String::static_type()).ok()?.get().ok()
@@ -165,8 +176,7 @@ mod tests {
     #[gtk4::test]
     fn row_json_dialog_caps_display_but_copies_full_value() {
         adw::init().expect("libadwaita initialises under the test backend");
-        let window = adw::Window::new();
-        window.present();
+        let window = OwnedWindow::presented(adw::Window::new());
         let runtime = crate::test_support::test_runtime();
         let long = "x".repeat(25_000);
         let request = RowJsonRequest {
@@ -219,5 +229,27 @@ mod tests {
         assert_eq!(parsed["body"], serde_json::json!(long));
         dialog.close();
         runtime.shutdown();
+    }
+
+    #[gtk4::test]
+    fn a_closed_dialog_lets_go_of_the_row() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let window = OwnedWindow::presented(adw::Window::new());
+        let dialog = row_json_dialog(RowJson {
+            full: r#"{"id": 1}"#.to_owned(),
+            shown: r#"{"id": 1}"#.to_owned(),
+            shortened: false,
+        });
+        dialog.present(Some(&*window));
+        let view = first_descendant_of_type::<sourceview5::View>(&dialog).expect("the text");
+        wait_until(Duration::from_secs(10), || view.is_mapped()).expect("the dialog on screen");
+        after_next_frame(&view);
+        let row = view.buffer().downgrade();
+
+        drop(view);
+        dialog.force_close();
+        drop(dialog);
+
+        wait_until(Duration::from_secs(10), || row.upgrade().is_none()).expect("the row's text outlived its dialog");
     }
 }

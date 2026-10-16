@@ -579,13 +579,27 @@ impl SqlEditor {
 
     fn connect_completion(&self, buffer: &sourceview5::Buffer) {
         let completion = self.imp().source_view.completion();
+        let mut providers = self.imp().completion_providers.borrow_mut();
         if let Some(deps) = self.deps() {
             let catalog = completion::SqlCompletionProvider::new(deps.session.clone(), deps.tasks.clone());
             completion.add_provider(&catalog);
+            providers.push(catalog.upcast());
         }
         let words = sourceview5::CompletionWords::new(Some(&crate::i18n::pgettext("completion group", "Document")));
         words.register(buffer);
         completion.add_provider(&words);
+        providers.push(words.upcast());
+    }
+
+    // GtkSourceView before 5.21 never frees a view that has drawn its line
+    // numbers, so the closing editor takes back the script and the session.
+    fn release_view(&self) {
+        let view = self.imp().source_view.get();
+        let completion = view.completion();
+        for provider in self.imp().completion_providers.take() {
+            completion.remove_provider(&provider);
+        }
+        view.set_buffer(Some(&sourceview5::Buffer::new(None)));
     }
 
     fn connect_buffer(&self, buffer: &sourceview5::Buffer) {

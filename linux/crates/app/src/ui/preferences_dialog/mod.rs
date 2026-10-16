@@ -211,10 +211,9 @@ mod tests {
 
     /// An AdwDialog needs a real window to present into before its
     /// toast overlay renders anything.
-    fn present_on_a_window(dialog: &PreferencesDialog) -> adw::Window {
-        let window = adw::Window::new();
-        window.present();
-        dialog.present(Some(&window));
+    fn present_on_a_window(dialog: &PreferencesDialog) -> crate::test_support::OwnedWindow<adw::Window> {
+        let window = crate::test_support::OwnedWindow::presented(adw::Window::new());
+        dialog.present(Some(&*window));
         crate::test_support::wait_until(WAIT, || clear_button(dialog).is_mapped()).expect("the dialog never appeared");
         window
     }

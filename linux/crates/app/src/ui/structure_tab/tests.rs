@@ -17,7 +17,9 @@ use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 
 use super::*;
-use crate::test_support::{FakeSession, descendants, drain_main_context, first_descendant_of_type, wait_until};
+use crate::test_support::{
+    FakeSession, OwnedWindow, descendants, drain_main_context, first_descendant_of_type, wait_until,
+};
 
 const WAIT: Duration = Duration::from_secs(10);
 
@@ -1294,7 +1296,7 @@ fn a_default_the_parser_refuses_is_marked_until_it_parses() {
 
 /// The tab in a window of its own, which the add rows open their forms
 /// on.
-fn in_window(harness: &Harness) -> adw::Window {
+fn in_window(harness: &Harness) -> OwnedWindow<adw::Window> {
     let window = super::form_dialog::tests::window();
     window.set_content(Some(harness.tab()));
     window

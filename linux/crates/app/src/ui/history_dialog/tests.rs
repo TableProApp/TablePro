@@ -16,7 +16,7 @@ use uuid::Uuid;
 use super::*;
 use crate::runtime::AppRuntime;
 use crate::services::history_preferences::HistoryPreferences;
-use crate::test_support::{descendants, test_runtime, wait_until};
+use crate::test_support::{descendants, drain_main_context, test_runtime, wait_until};
 use crate::ui::file_reveal::RecordingRevealer;
 
 /// Long enough that a loaded machine cannot decide the outcome; a
@@ -147,6 +147,14 @@ impl Harness {
         .into_iter()
         .map(|entry| entry.query)
         .collect()
+    }
+}
+
+impl Drop for Harness {
+    fn drop(&mut self) {
+        crate::test_support::drop_focus(&self.window);
+        self.window.destroy();
+        drain_main_context();
     }
 }
 

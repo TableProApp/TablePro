@@ -175,6 +175,9 @@ impl TestApp {
 
 impl Drop for TestApp {
     fn drop(&mut self) {
+        if self.app.is_registered() {
+            crate::test_support::end_application(&self.app);
+        }
         for window in self.app.windows() {
             window.destroy();
         }

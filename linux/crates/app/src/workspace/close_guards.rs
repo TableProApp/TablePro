@@ -204,28 +204,30 @@ mod tests {
     use super::*;
     use crate::services::change_tracker::RowKey;
     use crate::services::tracker_edit::TrackerEdit;
-    use crate::test_support::{drain_main_context, wait_until};
+    use crate::test_support::{OwnedWindow, drain_main_context, wait_until};
     use crate::workspace::dialog_response::{answer, visible_alert};
     use crate::workspace::test_workspace::{WAIT, Workspace};
 
-    fn window() -> adw::Window {
+    fn window() -> OwnedWindow<adw::Window> {
         adw::init().expect("libadwaita initialises under the test backend");
         if let Some(settings) = gtk::Settings::default() {
             settings.set_gtk_enable_animations(false);
         }
-        let window = adw::Window::new();
-        window.present();
-        window
+        OwnedWindow::presented(adw::Window::new())
     }
 
     /// A window whose close goes through `guards`, and how many times it
     /// closed.
-    fn guarded_window(guards: &Rc<CloseGuards>, workspace: &Workspace) -> (adw::Window, Rc<Cell<usize>>) {
+    fn guarded_window(guards: &Rc<CloseGuards>, workspace: &Workspace) -> (OwnedWindow<adw::Window>, Rc<Cell<usize>>) {
         let window = window();
         let closes = Rc::new(Cell::new(0));
         let sink = closes.clone();
         let handle = workspace.handle.clone();
-        guards.connect_window(&window, move || Some(handle.clone()), move |_| sink.set(sink.get() + 1));
+        guards.connect_window(
+            &*window,
+            move || Some(handle.clone()),
+            move |_| sink.set(sink.get() + 1),
+        );
         (window, closes)
     }
 
@@ -282,7 +284,7 @@ mod tests {
         let window = window();
         let closes = Rc::new(Cell::new(0));
         let sink = closes.clone();
-        guards.connect_window(&window, || None, move |_| sink.set(sink.get() + 1));
+        guards.connect_window(&*window, || None, move |_| sink.set(sink.get() + 1));
 
         window.close();
 
@@ -337,7 +339,7 @@ mod tests {
         let (window, closes) = guarded_window(&guards, &workspace);
         let (decision, sink) = decision_sink();
 
-        guards.request_window_close(&window, sink);
+        guards.request_window_close(&*window, sink);
 
         assert_eq!(decision.get(), Some(CloseDecision::Approved));
         assert_eq!(closes.get(), 1);
@@ -350,14 +352,14 @@ mod tests {
         let (window, closes) = guarded_window(&guards, &workspace);
 
         let (kept, sink) = decision_sink();
-        guards.request_window_close(&window, sink);
+        guards.request_window_close(&*window, sink);
         let first = answer_next(&window, "Save Changes?", "cancel", None);
         wait_until(WAIT, || kept.get().is_some()).expect("a decision");
         assert_eq!(kept.get(), Some(CloseDecision::Cancelled));
         assert!(window.is_visible() && closes.get() == 0);
 
         let (approved, sink) = decision_sink();
-        guards.request_window_close(&window, sink);
+        guards.request_window_close(&*window, sink);
         answer_next(&window, "Save Changes?", "discard", Some(&first));
         wait_until(WAIT, || approved.get().is_some()).expect("a decision");
         assert_eq!(approved.get(), Some(CloseDecision::Approved));
@@ -376,7 +378,7 @@ mod tests {
         let shown = visible_alert(&window);
 
         let (decision, sink) = decision_sink();
-        guards.request_window_close(&window, sink);
+        guards.request_window_close(&*window, sink);
         drain_main_context();
         assert_eq!(visible_alert(&window), shown, "the request dismissed the prompt");
         assert_eq!(decision.get(), None);
@@ -395,11 +397,11 @@ mod tests {
         let (window, closes) = guarded_window(&guards, &workspace);
         let other = adw::AlertDialog::new(Some("Elsewhere"), None);
         other.add_response("close", "Close");
-        other.present(Some(&window));
+        other.present(Some(&*window));
         wait_until(WAIT, || visible_alert(&window).is_some()).expect("the dialog");
 
         let (decision, sink) = decision_sink();
-        guards.request_window_close(&window, sink);
+        guards.request_window_close(&*window, sink);
 
         assert_eq!(decision.get(), Some(CloseDecision::Cancelled));
         assert_eq!(closes.get(), 0);

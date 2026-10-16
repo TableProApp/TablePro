@@ -243,6 +243,8 @@ Helpers live in `crates/app/src/test_support`, compiled only for tests:
 
 - `drain_main_context()` runs pending main-loop sources. `wait_until(timeout, condition)` iterates the main loop until the condition holds or the timeout passes, so a missing signal fails the test instead of hanging it. `finish_on_main(timeout, future)` runs a future on the main context and gives it up at the timeout.
 - `SignalLog::connect(object, signal, extract)` records emissions and disconnects when dropped.
+- `OwnedWindow` holds a window a test presents, and on drop clears its focus, destroys it and drains the main context. GTK keeps every window, and whatever its widgets hold, until it is destroyed, and GTK 4.22 leaks a focused widget that is hidden and then unparented. The `cargo test` run of the gtk suite is one process, which package builds start with a limit of 1024 open files, so a leaked window's runtime and SQLite pool add up across tests.
+- `end_application(app)` ends an application a test registered the way `g_application_run` ends one: `shutdown`, then leaving the session bus. GtkApplication holds itself from startup until shutdown, so a registered application a test only drops leaks with every service it owns. `TestWindow` and the application tests' `TestApp` call it when dropped.
 - `descendants`, `find_by_action_name` and `first_descendant_of_type` walk a widget tree.
 - `MemorySettings` compiles the schema into a `TempDir` behind the memory backend, so a test never touches the developer's dconf database.
 - `FakeSession` is a session over a fake connection; `FakeClocks` and `FakeProbe` stand in for the suspend clocks and the reachability check.

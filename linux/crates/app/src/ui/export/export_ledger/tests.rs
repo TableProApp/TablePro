@@ -114,7 +114,9 @@ impl Harness {
 
 impl Drop for Harness {
     fn drop(&mut self) {
-        self.window.close();
+        crate::test_support::drop_focus(&self.window);
+        self.window.destroy();
+        crate::test_support::drain_main_context();
         if let Some(runtime) = self.runtime.take() {
             runtime.shutdown();
         }

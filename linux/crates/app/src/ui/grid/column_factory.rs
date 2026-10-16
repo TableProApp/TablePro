@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use gtk4::prelude::*;
@@ -87,6 +88,7 @@ pub(crate) fn build_column_view(
         None
     };
     let mut columns: Vec<gtk::ColumnViewColumn> = Vec::with_capacity(result_columns.len());
+    let mut releases = Vec::with_capacity(result_columns.len() + 1);
     let attributes = Rc::new(GridAttributes::new());
     for (i, column) in result_columns.iter().enumerate() {
         let sorter = match sorting {
@@ -95,7 +97,7 @@ pub(crate) fn build_column_view(
             GridSorting::Server { .. } => gtk::CustomSorter::new(|_, _| gtk::Ordering::Equal).upcast(),
             GridSorting::Client => column_sorter(i, column),
         };
-        let col = build_column(ColumnInit {
+        let (col, width_saver) = build_column(ColumnInit {
             info: column,
             idx: i,
             rows: &rows,
@@ -110,12 +112,32 @@ pub(crate) fn build_column_view(
             attributes: attributes.clone(),
         });
         column_view.append_column(&col);
+        releases.push(ColumnRelease {
+            column: col.downgrade(),
+            width_saver,
+        });
         columns.push(col);
     }
     if tab_ctx.tracks_changes() {
-        column_view.insert_column(0, &row_state_column(tab_ctx.clone()));
+        let state_column = row_state_column(tab_ctx.clone());
+        column_view.insert_column(0, &state_column);
+        releases.push(ColumnRelease {
+            column: state_column.downgrade(),
+            width_saver: None,
+        });
     }
+    release_columns_with(&column_view, releases);
+    wire_server_sorting(&column_view, columns, sorting, sink);
 
+    (column_view, selection)
+}
+
+fn wire_server_sorting(
+    column_view: &gtk::ColumnView,
+    columns: Vec<gtk::ColumnViewColumn>,
+    sorting: GridSorting,
+    sink: GridSink,
+) {
     // Applied before the notify handlers are wired, so it does not echo
     // back as a SortChanged.
     if let GridSorting::Server {
@@ -140,17 +162,13 @@ pub(crate) fn build_column_view(
         // `primary-sort-order`, so both notifies are wired. Each sends the
         // sorter's post-click pair, which the receiver drops when it
         // already matches.
-        let dispatch = {
-            let sink = sink.clone();
-            let columns = columns.clone();
-            move |sorter: &gtk::ColumnViewSorter| {
-                let Some(active) = sorter.primary_sort_column() else {
-                    return;
-                };
-                let ascending = matches!(sorter.primary_sort_order(), gtk::SortType::Ascending);
-                if let Some(idx) = columns.iter().position(|col| col == &active) {
-                    sink(GridMsg::SortChanged(idx, ascending));
-                }
+        let dispatch = move |sorter: &gtk::ColumnViewSorter| {
+            let Some(active) = sorter.primary_sort_column() else {
+                return;
+            };
+            let ascending = matches!(sorter.primary_sort_order(), gtk::SortType::Ascending);
+            if let Some(idx) = columns.iter().position(|col| col == &active) {
+                sink(GridMsg::SortChanged(idx, ascending));
             }
         };
         view_sorter.connect_primary_sort_column_notify({
@@ -159,8 +177,6 @@ pub(crate) fn build_column_view(
         });
         view_sorter.connect_primary_sort_order_notify(move |sorter| dispatch(sorter));
     }
-
-    (column_view, selection)
 }
 
 /// A selection over `store` sorted by `sorter`, sorted at once on each
@@ -200,7 +216,7 @@ struct ColumnInit<'a> {
     attributes: Rc<GridAttributes>,
 }
 
-fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
+fn build_column(init: ColumnInit<'_>) -> (gtk::ColumnViewColumn, Option<glib::SignalHandlerId>) {
     let ColumnInit {
         info,
         idx,
@@ -271,9 +287,32 @@ fn build_column(init: ColumnInit<'_>) -> gtk::ColumnViewColumn {
     column.set_sorter(Some(&sorter));
     // A number column is as wide as its widest number already.
     let default_min_width = default_min_width.filter(|_| !drawing.figures.numbers());
-    size_column(&column, &info.name, &tab_ctx, default_min_width);
+    let width_saver = size_column(&column, &info.name, &tab_ctx, default_min_width);
     grid_columns.push(idx, &column, drawing);
-    column
+    (column, width_saver)
+}
+
+struct ColumnRelease {
+    column: glib::WeakRef<gtk::ColumnViewColumn>,
+    width_saver: Option<glib::SignalHandlerId>,
+}
+
+// GTK 4.22 leaks a reference to the column next to the focus column when
+// the view removes the focus column, so a column can outlive its view.
+// Its factory and width saver must not keep the grid alive with it.
+fn release_columns_with(column_view: &gtk::ColumnView, releases: Vec<ColumnRelease>) {
+    let releases = RefCell::new(releases);
+    column_view.connect_destroy(move |_| {
+        for release in releases.take() {
+            let Some(column) = release.column.upgrade() else {
+                continue;
+            };
+            if let Some(handler) = release.width_saver {
+                column.disconnect(handler);
+            }
+            column.set_factory(None::<&gtk::ListItemFactory>);
+        }
+    });
 }
 
 impl CellKind {
@@ -316,7 +355,12 @@ fn bind_rows_to_cells(factory: &gtk::SignalListItemFactory) {
 
 /// The width the tab saved for the column, or `default_min_width`, and
 /// every later drag saved back.
-fn size_column(column: &gtk::ColumnViewColumn, name: &str, tab_ctx: &TabGridContext, default_min_width: Option<i32>) {
+fn size_column(
+    column: &gtk::ColumnViewColumn,
+    name: &str,
+    tab_ctx: &TabGridContext,
+    default_min_width: Option<i32>,
+) -> Option<glib::SignalHandlerId> {
     if let Some(widths) = tab_ctx.column_widths.clone() {
         if let Some(saved) = widths.width(name) {
             column.set_fixed_width(saved);
@@ -324,12 +368,15 @@ fn size_column(column: &gtk::ColumnViewColumn, name: &str, tab_ctx: &TabGridCont
             column.set_fixed_width(min);
         }
         let column_name = name.to_owned();
-        column.connect_fixed_width_notify(move |column| {
+        Some(column.connect_fixed_width_notify(move |column| {
             widths.record(&column_name, column.fixed_width());
-        });
-    } else if let Some(min) = default_min_width {
-        // Editor results remember no widths, but can be just as wide.
-        column.set_fixed_width(min);
+        }))
+    } else {
+        if let Some(min) = default_min_width {
+            // Editor results remember no widths, but can be just as wide.
+            column.set_fixed_width(min);
+        }
+        None
     }
 }
 
@@ -358,7 +405,7 @@ mod tests {
     use crate::services::change_tracker::RowKey;
     use crate::services::tab_tracker_handle::TabTrackerHandle;
     use crate::services::tracker_edit::TrackerEdit;
-    use crate::test_support::{descendants, drain_main_context, first_descendant_of_type, wait_until};
+    use crate::test_support::{OwnedWindow, descendants, drain_main_context, first_descendant_of_type, wait_until};
     use crate::ui::grid::cell_editability::column_takes_edits;
     use crate::ui::grid::display_text::editable_null_sentinel;
     use crate::ui::grid::test_grid::{
@@ -823,6 +870,50 @@ mod tests {
 
         assert!(column.upgrade().is_none(), "the column outlived its column view");
         assert!(view_ref.upgrade().is_none(), "the column view outlived its owner");
+    }
+
+    #[gtk4::test]
+    fn a_column_left_behind_by_its_view_lets_go_of_the_grid() {
+        let columns = vec![named("id", "integer", true), named("name", "text", false)];
+        let rows = vec![vec![Value::Int(7), Value::Text("a".into())]];
+        let tracker = TabTrackerHandle::default();
+        let (sink, messages) = recorder();
+        let (view, selection) = build_column_view(
+            content(&columns, persisted(&rows)),
+            &columns,
+            sink,
+            GridSorting::Server { initial: None },
+            tracked(&tracker),
+        );
+        let window = OwnedWindow::presented(gtk::Window::new());
+        window.set_child(Some(&view));
+        // GTK 4.22 leaks the column after the focus column as the view
+        // removes its columns from the first.
+        let id = crate::ui::grid::data_columns(&view)
+            .into_iter()
+            .next()
+            .expect("the id column");
+        wait_until(WAIT, || descendants(&view).iter().any(|widget| widget.is::<GridCell>()))
+            .expect("the cells are drawn");
+        view.scroll_to(0, Some(&id), gtk::ListScrollFlags::FOCUS, None);
+        view.grab_focus();
+        wait_until(WAIT, || {
+            gtk::prelude::GtkWindowExt::focus(&*window)
+                .and_then(|focus| GridCell::from_focus(&focus))
+                .is_some_and(|cell| cell.column() == 0)
+        })
+        .expect("the id cell takes the focus");
+
+        drop(id);
+        drop(window);
+        drop((view, selection));
+        drain_main_context();
+
+        assert_eq!(
+            std::rc::Rc::strong_count(&messages),
+            1,
+            "a column the view left behind kept the grid's sink"
+        );
     }
 
     fn menu_gesture(cell: &gtk::Widget) -> Option<gtk::GestureClick> {

@@ -42,14 +42,14 @@ pub(crate) async fn respond(dialog: &adw::AlertDialog, parent: &gtk::Widget) -> 
 /// Answer the alert `window` shows with `response` by clicking its
 /// button, so the signals come in the order a user's click sends them.
 #[cfg(test)]
-pub(crate) fn answer(window: &impl IsA<gtk::Widget>, response: &str) -> bool {
+pub(crate) fn answer(window: &impl AsRef<gtk::Widget>, response: &str) -> bool {
     visible_alert(window).is_some_and(|dialog| crate::test_support::click_response(&dialog, response))
 }
 
 /// The alert `window` shows, if any. `window` is an `AdwWindow` or an
 /// `AdwApplicationWindow`, the two that host dialogs.
 #[cfg(test)]
-pub(crate) fn visible_alert(window: &impl IsA<gtk::Widget>) -> Option<adw::AlertDialog> {
+pub(crate) fn visible_alert(window: &impl AsRef<gtk::Widget>) -> Option<adw::AlertDialog> {
     let widget = window.as_ref();
     let dialog = match widget.downcast_ref::<adw::ApplicationWindow>() {
         Some(window) => window.visible_dialog(),
@@ -63,7 +63,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::test_support::wait_until;
+    use crate::test_support::{OwnedWindow, wait_until};
 
     const WAIT: Duration = Duration::from_secs(10);
 
@@ -85,8 +85,7 @@ mod tests {
     #[gtk4::test]
     fn a_clicked_response_answers_and_closes_the_alert() {
         adw::init().expect("libadwaita initialises under the test backend");
-        let window = adw::Window::new();
-        window.present();
+        let window = OwnedWindow::presented(adw::Window::new());
         let (_dialog, answered) = alert(&window);
 
         assert!(answer(&window, "stop"));
@@ -99,8 +98,7 @@ mod tests {
     #[gtk4::test]
     fn an_alert_forced_shut_answers_with_its_close_response() {
         adw::init().expect("libadwaita initialises under the test backend");
-        let window = adw::Window::new();
-        window.present();
+        let window = OwnedWindow::presented(adw::Window::new());
         let (dialog, answer) = alert(&window);
 
         dialog.force_close();

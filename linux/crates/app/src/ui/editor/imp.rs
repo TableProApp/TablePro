@@ -55,6 +55,7 @@ pub struct SqlEditor {
     /// Theme and font handlers on the app-wide style manager and
     /// settings, which would otherwise outlive the tab.
     pub(super) app_handlers: RefCell<Vec<HandlerGuard>>,
+    pub(super) completion_providers: RefCell<Vec<sourceview5::CompletionProvider>>,
 }
 
 #[glib::object_subclass]
@@ -106,6 +107,7 @@ impl ObjectImpl for SqlEditor {
     fn dispose(&self) {
         self.obj().shutdown();
         self.app_handlers.take();
+        self.obj().release_view();
     }
 }
 
