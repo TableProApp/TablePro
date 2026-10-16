@@ -341,13 +341,20 @@ impl Session for PolicySession {
             None => Ok(()),
         };
         let cleanup = if let Some(batch) = self.batch {
-            if self.is_usable() && !batch.uncertain {
+            if !self.is_usable() && batch.read_only && !batch.wrote {
+                record_ended_read_only_batch(&self.guard, batch.id).await;
+                Ok(())
+            } else if self.is_usable() && !batch.uncertain {
                 let control = OperationControl::with_timeout(CLOSE_ROLLBACK_TIMEOUT);
                 let rollback = self.finish("ROLLBACK", &control, Finish::Rollback, false).await;
                 if rollback.is_err()
                     && let Some(open_batch) = self.batch
                 {
-                    record_abandoned_transaction(&self.guard, open_batch.id).await;
+                    if open_batch.read_only && !open_batch.wrote {
+                        record_ended_read_only_batch(&self.guard, open_batch.id).await;
+                    } else {
+                        record_abandoned_transaction(&self.guard, open_batch.id).await;
+                    }
                 }
                 rollback.map(|_| ())
             } else {
@@ -784,8 +791,12 @@ impl PolicySession {
         if matches!(result, Err(DriverError::Disconnected)) {
             self.retired = true;
         }
-        let (terminal_status, transaction_outcome, error_category, ambiguous) =
+        let (mut terminal_status, mut transaction_outcome, error_category, mut ambiguous) =
             finish_outcome(kind, batch.aborted, &result);
+        if ambiguous && batch.read_only && !batch.wrote {
+            (terminal_status, transaction_outcome, ambiguous) =
+                (AuditTerminalStatus::Failed, AuditTransactionOutcome::RolledBack, false);
+        }
         if ambiguous {
             self.guard.ctx.audit_state.disable_governed_writes();
         }
@@ -815,6 +826,19 @@ impl PolicySession {
         pending_write.disarm();
         result
     }
+}
+
+async fn record_ended_read_only_batch(guard: &PolicyGuard, batch_id: Uuid) {
+    let operation = finish_operation(Finish::Rollback, batch_id);
+    let _ = guard.record_intent(&operation).await;
+    let outcome = AuditOutcome {
+        terminal_status: AuditTerminalStatus::Failed,
+        transaction_outcome: AuditTransactionOutcome::RolledBack,
+        rows_affected: None,
+        error_category: Some(error_category(&DriverError::Disconnected)),
+        duration_ms: 0,
+    };
+    let _ = guard.handle_write_outcome_failure(guard.record_outcome(&operation, outcome).await);
 }
 
 async fn record_abandoned_transaction(guard: &PolicyGuard, batch_id: Uuid) {
