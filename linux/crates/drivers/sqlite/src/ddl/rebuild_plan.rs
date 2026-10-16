@@ -28,7 +28,8 @@ use tablepro_core::statement::{Statement, StatementBuilder};
 use tablepro_core::{ForeignKeyCheck, ForeignKeyMode};
 
 use super::column_constraint_segment::ColumnConstraintKind;
-use super::create_table_source::{CreateTableSource, Token, tokens, unquote};
+use super::create_table_source::{CreateTableSource, tokens};
+use super::listed_columns::listed_columns;
 use super::native_change_rules::names;
 use super::source_element::{SourceColumn, SourceElement, TableConstraint, TableConstraintKind};
 use super::{default_clause, foreign_key_constraint};
@@ -38,6 +39,10 @@ use crate::dialect::SqliteDialect;
 /// The new table is built under this prefix and renamed over the old
 /// one once the rows are in it.
 const REBUILD_PREFIX: &str = "_tablepro_rebuild_";
+
+/// An empty table is renamed to this prefix to have SQLite check the
+/// schema the rebuild leaves.
+const CHECK_PREFIX: &str = "_tablepro_check_";
 
 /// An added column whose name a kept column holds until its own rename
 /// runs is created under this prefix and renamed last.
@@ -225,6 +230,7 @@ impl Rebuild<'_> {
                 .ok_or_else(|| BuildDdlError::UnreplayableDependent(object.name.clone()))?;
             statements.push(sql);
         }
+        statements.extend(self.schema_check(&temporary));
         for rename in self.naming.ordered_renames() {
             statements.push(format!(
                 "ALTER TABLE {qualified} RENAME COLUMN {} TO {}",
@@ -561,9 +567,38 @@ impl Rebuild<'_> {
         }
     }
 
-    /// Refuse to drop a column something the rebuild keeps still uses.
-    /// SQLite would refuse the new table, or worse, make the trigger or
-    /// view again and let it fail on its next use.
+    /// CREATE VIEW and CREATE TRIGGER resolve no names, so one made again
+    /// above that reads a dropped column would fail only on its next use.
+    /// An ALTER TABLE reparses the whole schema and fails on what no
+    /// longer resolves, naming the object and the column
+    /// (lang_altertable.html, section 5.1). Renaming an empty table is
+    /// that reparse with nothing of the user's to rewrite.
+    fn schema_check(&self, temporary: &TableRef) -> Vec<String> {
+        let unresolved = self.recreated().any(|object| object.kind != SchemaObjectKind::Index);
+        if self.changes.dropped_columns.is_empty() || !unresolved {
+            return Vec::new();
+        }
+        // The temporary name is free again since its rename above.
+        let checked = TableRef::new(
+            temporary.schema.clone(),
+            format!("{CHECK_PREFIX}{}", self.original.table.name),
+        );
+        vec![
+            format!("CREATE TABLE {} (x)", self.dialect.qualify(temporary)),
+            format!(
+                "ALTER TABLE {} RENAME TO {}",
+                self.dialect.qualify(temporary),
+                self.dialect.quote_identifier(&checked.name)
+            ),
+            format!("DROP TABLE {}", self.dialect.qualify(&checked)),
+        ]
+    }
+
+    /// Refuse, before Save, to drop a column the table's own keys,
+    /// constraints and indexes use, which SQLite would refuse naming only
+    /// the column, or that a trigger the rebuild makes again lists. What
+    /// a view or trigger reads SQLite checks in `schema_check`, naming
+    /// the view or trigger.
     fn check_dropped_columns(&self) -> Result<(), BuildDdlError> {
         for column in &self.changes.dropped_columns {
             let name = column.name();
@@ -604,9 +639,15 @@ impl Rebuild<'_> {
                     users.push(other.name.clone());
                 }
             }
+            let table = &self.original.table.name;
             users.extend(
                 self.recreated()
-                    .filter(|object| self.mentions(object).contains(&folded))
+                    .filter(|object| match object.kind {
+                        SchemaObjectKind::Index => words(&object.sql).contains(&folded),
+                        SchemaObjectKind::Trigger => listed_columns(&object.sql, table, self.owned(object))
+                            .is_none_or(|listed| listed.contains(&fold(name))),
+                        SchemaObjectKind::View => false,
+                    })
                     .map(|object| object.name.clone()),
             );
             if !users.is_empty() {
@@ -618,41 +659,6 @@ impl Rebuild<'_> {
             }
         }
         Ok(())
-    }
-
-    /// The names a recreated object mentions, lowercased and unquoted.
-    /// In a trigger on another table, `new.x` and `old.x` are that
-    /// table's columns, never this one's.
-    fn mentions(&self, object: &SchemaObjectSource) -> HashSet<String> {
-        if object.kind != SchemaObjectKind::Trigger || self.owned(object) {
-            return words(&object.sql);
-        }
-        let Ok(scanned) = tokens(&object.sql) else {
-            return words(&object.sql);
-        };
-        let text = |token: &Token| object.sql.get(token.range.clone()).unwrap_or_default();
-        let is = |index: Option<usize>, kind: ScriptTokenKind, spellings: &[&str]| {
-            index.and_then(|index| scanned.get(index)).is_some_and(|token| {
-                token.kind == kind
-                    && spellings
-                        .iter()
-                        .any(|spelling| text(token).eq_ignore_ascii_case(spelling))
-            })
-        };
-        let mut mentions = HashSet::new();
-        for (index, token) in scanned.iter().enumerate() {
-            let name = match token.kind {
-                ScriptTokenKind::Word => text(token).to_lowercase(),
-                ScriptTokenKind::QuotedIdentifier => unquote(text(token)).to_lowercase(),
-                _ => continue,
-            };
-            let row_reference = is(index.checked_sub(1), ScriptTokenKind::Punct, &["."])
-                && is(index.checked_sub(2), ScriptTokenKind::Word, &["new", "old"]);
-            if !row_reference {
-                mentions.insert(name);
-            }
-        }
-        mentions
     }
 
     fn element(&self, index: usize) -> &SourceElement {

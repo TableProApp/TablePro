@@ -24,6 +24,10 @@ pub(crate) fn connect_options(path: &Path, read_only: bool, busy_timeout: Durati
         // A schema in a file from elsewhere cannot run SQL functions
         // with side effects through a view or a trigger.
         .pragma("trusted_schema", "OFF")
+        // A table rebuild relies on ALTER TABLE checking every view and
+        // trigger, which the legacy ALTER TABLE skips, and a build can
+        // make that the default.
+        .pragma("legacy_alter_table", "OFF")
         // sqlx's cache keeps a statement's columns from its first prepare,
         // and SQLite re-prepares it with more after an ALTER TABLE: the
         // worker then reads past the old list and panics.

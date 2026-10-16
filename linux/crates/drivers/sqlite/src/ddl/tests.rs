@@ -685,20 +685,114 @@ fn autoincrement_carries_the_sequence_through_the_rebuild() {
 }
 
 #[test]
-fn dropping_a_column_a_view_uses_is_refused_in_a_rebuild() {
-    let orders = orders();
-
-    let plan = alter(&orders, |draft| {
+fn a_rebuild_that_drops_a_column_has_sqlite_check_what_it_makes_again() {
+    let mut orders = orders();
+    let drop_total = |draft: &mut TableDraft| {
         draft.columns.retain(|column| column.name != "total");
         retype(draft, "note", "BLOB");
-    });
+    };
+
+    let dropped = sql(alter(&orders, drop_total));
+    let retyped = sql(alter(&orders, |draft| retype(draft, "note", "BLOB")));
+    orders.table = TableRef::new(Some("aux".to_owned()), "orders");
+    orders.inbound_foreign_keys.clear();
+    let attached = sql(alter(&orders, drop_total));
 
     assert_eq!(
-        refusal(&plan),
+        dropped[dropped.len() - 5..],
+        [
+            "CREATE VIEW big_orders AS SELECT id, total FROM orders WHERE total > 100",
+            "CREATE TRIGGER customers_cleanup AFTER DELETE ON customers BEGIN DELETE FROM orders WHERE customer = \
+             old.id; END",
+            "CREATE TABLE \"_tablepro_rebuild_orders\" (x)",
+            "ALTER TABLE \"_tablepro_rebuild_orders\" RENAME TO \"_tablepro_check_orders\"",
+            "DROP TABLE \"_tablepro_check_orders\"",
+        ]
+    );
+    assert_eq!(
+        attached[attached.len() - 3..],
+        [
+            "CREATE TABLE \"aux\".\"_tablepro_rebuild_orders\" (x)",
+            "ALTER TABLE \"aux\".\"_tablepro_rebuild_orders\" RENAME TO \"_tablepro_check_orders\"",
+            "DROP TABLE \"aux\".\"_tablepro_check_orders\"",
+        ]
+    );
+    assert!(!retyped.iter().any(|statement| statement.contains("_tablepro_check_")));
+}
+
+/// Only what SQLite resolves to the column uses it: not the END of a
+/// trigger body, a string, a comment, or another table's column.
+#[test]
+fn a_word_in_a_trigger_or_view_does_not_hold_a_dropped_column() {
+    let mut events = table(
+        "events",
+        vec![
+            rowid_alias("id"),
+            column("end", "TEXT", false),
+            column("note", "TEXT", false),
+        ],
+        "CREATE TABLE events (id INTEGER PRIMARY KEY, \"end\" TEXT UNIQUE, note TEXT UNIQUE)",
+    );
+    if let Some(source) = events.source.as_mut() {
+        source.dependents = vec![
+            object(
+                SchemaObjectKind::Trigger,
+                "events_log",
+                "events",
+                "CREATE TRIGGER events_log AFTER INSERT ON events BEGIN INSERT INTO log (note) VALUES ('end' /* \
+                 end */); UPDATE log SET note = CASE WHEN new.id > 0 THEN 1 END; END",
+            ),
+            object(
+                SchemaObjectKind::View,
+                "logged",
+                "logged",
+                "CREATE VIEW logged AS SELECT events.id, log.note FROM events JOIN log USING (id) -- end",
+            ),
+        ];
+    }
+    let drop = |name: &'static str| move |draft: &mut TableDraft| draft.columns.retain(|column| column.name != name);
+
+    let end = alter(&events, drop("end"));
+    let note = alter(&events, drop("note"));
+
+    assert!(end.is_ok(), "{end:?}");
+    assert!(note.is_ok(), "{note:?}");
+}
+
+/// An UPDATE OF list names the columns of the trigger's own table.
+#[test]
+fn a_trigger_watching_a_dropped_column_holds_it() {
+    let mut events = table(
+        "events",
+        vec![rowid_alias("id"), column("note", "TEXT", false)],
+        "CREATE TABLE events (id INTEGER PRIMARY KEY, note TEXT UNIQUE)",
+    );
+    let watch = |name: &str, table: &str| {
+        object(
+            SchemaObjectKind::Trigger,
+            name,
+            table,
+            &format!("CREATE TRIGGER {name} AFTER UPDATE OF note ON {table} BEGIN DELETE FROM events; END"),
+        )
+    };
+    if let Some(source) = events.source.as_mut() {
+        source.dependents = vec![watch("log_watch", "log")];
+    }
+    let drop_note = |draft: &mut TableDraft| draft.columns.retain(|column| column.name != "note");
+    let elsewhere = alter(&events, drop_note);
+    if let Some(source) = events.source.as_mut() {
+        source.dependents.push(watch("events_watch", "events"));
+    }
+
+    let own = alter(&events, drop_note);
+
+    assert!(elsewhere.is_ok(), "{elsewhere:?}");
+    assert_eq!(
+        refusal(&own),
         Some((
-            "total",
+            "note",
             DdlOperation::DropColumn,
-            &RefusalReason::ColumnInUse(vec!["big_orders".to_owned()])
+            &RefusalReason::ColumnInUse(vec!["events_watch".to_owned()])
         ))
     );
 }

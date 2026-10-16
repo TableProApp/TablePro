@@ -4,6 +4,7 @@
 mod column_constraint_segment;
 mod create_table_source;
 mod declared_shape;
+mod listed_columns;
 mod native_change_rules;
 mod rebuild_plan;
 mod source_element;

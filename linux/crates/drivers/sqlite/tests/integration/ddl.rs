@@ -767,36 +767,193 @@ async fn rename_with_rebuild_moves_the_children_keys() {
     connection.close().await.unwrap();
 }
 
+fn drop_code(draft: &mut TableDraft) {
+    draft.columns.retain(|column| column.name != "code");
+}
+
+const CODES_SCHEMA: [&str; 3] = [
+    "CREATE TABLE kept (id INTEGER PRIMARY KEY, code TEXT UNIQUE, note TEXT)",
+    "CREATE TABLE audit (note TEXT)",
+    "INSERT INTO kept VALUES (1, 'x', 'a')",
+];
+
+/// SQLite resolves the views and triggers the rebuild makes again, and
+/// its error names the one that reads the dropped column.
 #[tokio::test]
-async fn dropping_a_column_a_view_needs_is_refused_before_anything_runs() {
+async fn a_dropped_column_something_reads_rolls_the_rebuild_back() {
+    let readers = [
+        (
+            "CREATE VIEW codes AS SELECT code FROM kept",
+            "error in view codes: no such column: code",
+        ),
+        (
+            "CREATE TRIGGER kept_audit AFTER INSERT ON kept BEGIN INSERT INTO audit VALUES (new.code); END",
+            "error in trigger kept_audit: no such column: new.code",
+        ),
+        (
+            "CREATE TRIGGER audit_match AFTER INSERT ON audit BEGIN DELETE FROM kept WHERE code = new.note; END",
+            "error in trigger audit_match: no such column: code",
+        ),
+    ];
+    for (sql, error) in readers {
+        let file = TestFile::new().await;
+        let connection = file.open().await;
+        apply(connection.as_ref(), &CODES_SCHEMA).await.unwrap();
+        apply(connection.as_ref(), &[sql]).await.unwrap();
+        let before = read(connection.as_ref(), &kept()).await;
+        let rows_sql = "SELECT id, code, note FROM kept";
+        let rows = query(connection.as_ref(), rows_sql).await.rows;
+
+        let outcome = save(connection.as_ref(), &kept(), drop_code).await;
+
+        let Err(DriverError::RolledBack { source, .. }) = &outcome else {
+            panic!("{sql}: {outcome:?}");
+        };
+        assert!(source.to_string().contains(error), "{sql}: {source}");
+        assert_eq!(read(connection.as_ref(), &kept()).await, before, "{sql}");
+        assert_eq!(query(connection.as_ref(), rows_sql).await.rows, rows, "{sql}");
+        assert_eq!(rebuild_tables_left(connection.as_ref()).await, Value::Int(0), "{sql}");
+        connection.close().await.unwrap();
+    }
+}
+
+/// SQLite never resolves a trigger's UPDATE OF list, an INSERT's columns
+/// or the columns an UPDATE sets, and would make the trigger again to
+/// fail when it fires.
+#[tokio::test]
+async fn a_trigger_listing_a_dropped_column_refuses_the_rebuild_before_save() {
+    let listers = [
+        "CREATE TRIGGER lists_code AFTER INSERT ON audit BEGIN UPDATE kept SET code = new.note; END",
+        "CREATE TRIGGER lists_code AFTER INSERT ON audit BEGIN INSERT INTO kept (code) VALUES (new.note); END",
+        "CREATE TRIGGER lists_code AFTER UPDATE OF code ON kept BEGIN INSERT INTO audit VALUES (new.note); END",
+    ];
+    for sql in listers {
+        let file = TestFile::new().await;
+        let connection = file.open().await;
+        apply(connection.as_ref(), &CODES_SCHEMA).await.unwrap();
+        apply(connection.as_ref(), &[sql]).await.unwrap();
+        let before = read(connection.as_ref(), &kept()).await;
+
+        let refused = plan(connection.as_ref(), &before, drop_code);
+
+        assert_eq!(
+            refused,
+            Err(BuildDdlError::Refused {
+                column: "code".to_owned(),
+                operation: DdlOperation::DropColumn,
+                reason: RefusalReason::ColumnInUse(vec!["lists_code".to_owned()]),
+            }),
+            "{sql}"
+        );
+        connection.close().await.unwrap();
+    }
+}
+
+/// The END that closes a trigger body or a CASE is a keyword, not the
+/// column `end`.
+#[tokio::test]
+async fn a_column_named_end_drops_past_a_trigger() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE kept (id INTEGER PRIMARY KEY, \"end\" TEXT UNIQUE, note TEXT)",
+            "CREATE TABLE audit (note TEXT)",
+            "CREATE TRIGGER kept_audit AFTER INSERT ON kept BEGIN INSERT INTO audit VALUES (CASE WHEN new.note \
+             IS NULL THEN 'none' ELSE new.note END); END",
+            "INSERT INTO kept VALUES (1, 'x', 'a')",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let saved = save(connection.as_ref(), &kept(), |draft| {
+        draft.columns.retain(|column| column.name != "end");
+    })
+    .await;
+
+    assert!(saved.is_ok(), "{saved:?}");
+    let after = read(connection.as_ref(), &kept()).await;
+    assert_eq!(names(&after), ["id", "note"]);
+    assert_eq!(dependent_names(&after), ["kept_audit"]);
+    apply(connection.as_ref(), &["INSERT INTO kept (note) VALUES (NULL)"])
+        .await
+        .unwrap();
+    let audit = query(connection.as_ref(), "SELECT note FROM audit ORDER BY rowid").await;
+    assert_eq!(audit.rows, [vec![text("a")], vec![text("none")]]);
+    assert_eq!(rebuild_tables_left(connection.as_ref()).await, Value::Int(0));
+    connection.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_name_in_a_string_or_comment_does_not_hold_a_column() {
     let file = TestFile::new().await;
     let connection = file.open().await;
     apply(
         connection.as_ref(),
         &[
             "CREATE TABLE kept (id INTEGER PRIMARY KEY, code TEXT UNIQUE, note TEXT)",
-            "CREATE VIEW codes AS SELECT code FROM kept",
+            "INSERT INTO kept VALUES (1, 'x', 'a')",
+            "CREATE VIEW notes AS SELECT id, note, 'code' AS kind FROM kept -- not code",
+            "CREATE TRIGGER kept_stamp AFTER INSERT ON kept BEGIN /* code */ UPDATE kept SET note = 'code' WHERE \
+             id = new.id; END",
         ],
     )
     .await
     .unwrap();
-    let before = read(connection.as_ref(), &kept()).await;
-    let mut draft = TableDraft::from_definition(&before);
-    draft.columns.retain(|column| column.name != "code");
 
-    let plan = connection
-        .dialect()
-        .ddl()
-        .unwrap()
-        .plan_alter_table(&before, &diff_table(&before, &draft));
+    let saved = save(connection.as_ref(), &kept(), drop_code).await;
 
+    assert!(saved.is_ok(), "{saved:?}");
+    let after = read(connection.as_ref(), &kept()).await;
+    assert_eq!(names(&after), ["id", "note"]);
+    assert_eq!(dependent_names(&after), ["notes", "kept_stamp"]);
+    apply(connection.as_ref(), &["INSERT INTO kept (id) VALUES (2)"])
+        .await
+        .unwrap();
+    let notes = query(connection.as_ref(), "SELECT note, kind FROM notes ORDER BY id").await;
     assert_eq!(
-        plan,
-        Err(BuildDdlError::Refused {
-            column: "code".to_owned(),
-            operation: DdlOperation::DropColumn,
-            reason: RefusalReason::ColumnInUse(vec!["codes".to_owned()]),
-        })
+        notes.rows,
+        [vec![text("a"), text("code")], vec![text("code"), text("code")]]
+    );
+    connection.close().await.unwrap();
+}
+
+/// A name SQLite resolves to another table's column is that table's,
+/// however it is spelled.
+#[tokio::test]
+async fn another_tables_column_of_the_same_name_does_not_hold_a_column() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE kept (id INTEGER PRIMARY KEY, note TEXT UNIQUE)",
+            "CREATE TABLE audit (id INTEGER, note TEXT)",
+            "CREATE TRIGGER kept_audit AFTER INSERT ON kept BEGIN INSERT INTO audit (id, note) VALUES (new.id, \
+             'added'); UPDATE audit SET note = 'seen' WHERE note IS NULL; END",
+            "CREATE VIEW audited AS SELECT kept.id, audit.note FROM kept JOIN audit USING (id)",
+            "INSERT INTO kept VALUES (1, 'a')",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let saved = save(connection.as_ref(), &kept(), |draft| {
+        draft.columns.retain(|column| column.name != "note");
+    })
+    .await;
+
+    assert!(saved.is_ok(), "{saved:?}");
+    assert_eq!(names(&read(connection.as_ref(), &kept()).await), ["id"]);
+    apply(connection.as_ref(), &["INSERT INTO kept (id) VALUES (2)"])
+        .await
+        .unwrap();
+    let audited = query(connection.as_ref(), "SELECT id, note FROM audited ORDER BY id").await;
+    assert_eq!(
+        audited.rows,
+        [vec![Value::Int(1), text("added")], vec![Value::Int(2), text("added")]]
     );
     connection.close().await.unwrap();
 }
