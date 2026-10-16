@@ -140,12 +140,7 @@ impl EditorSession for ClickHouseEditorSession {
 #[cfg(test)]
 mod tests {
     use async_trait::async_trait;
-    use secrecy::SecretString;
-    use tablepro_core::{
-        ConnectEnvironment, Credentials, LivenessPolicy, NetworkEndpoint, NetworkTarget, ResultEvent, RunEnd, SinkFlow,
-        TlsConfig,
-    };
-    use tablepro_net::DirectTcpTransport;
+    use tablepro_core::{LivenessPolicy, ResultEvent, RunEnd, SinkFlow};
     use tablepro_test_fixtures::ClickHouseFixture;
     use tablepro_test_support::conformance::test_liveness;
 
@@ -170,26 +165,12 @@ mod tests {
             .await
     }
 
-    fn endpoint(fixture: &ClickHouseFixture, liveness: LivenessPolicy) -> ClickHouseEndpoint {
-        let address = NetworkEndpoint::new(fixture.host(), fixture.http_port()).expect("an endpoint");
-        let credentials = fixture.password_credentials();
-        let target = NetworkTarget {
-            transport: Arc::new(DirectTcpTransport::new(address, &liveness)),
-            credentials: Credentials::Password {
-                username: credentials.username.clone(),
-                password: SecretString::from(credentials.password.clone()),
-            },
-            database: Some("tablepro".to_owned()),
-            tls: TlsConfig::disabled(),
-        };
-        ClickHouseEndpoint::new(&target, liveness, &ConnectEnvironment::new("test"), false).expect("an endpoint")
-    }
-
     #[tokio::test]
     #[ignore = "requires docker"]
     async fn a_session_the_server_let_expire_is_lost_not_replaced() {
         let fixture = ClickHouseFixture::start().await.expect("a ClickHouse container");
-        let endpoint = endpoint(&fixture, test_liveness()).with_session_timeout(Duration::from_secs(1));
+        let endpoint =
+            ClickHouseEndpoint::for_fixture(&fixture, test_liveness()).with_session_timeout(Duration::from_secs(1));
         let session =
             ClickHouseEditorSession::open(&endpoint, EditorSessionOptions::default(), CancellationToken::new())
                 .await
@@ -223,7 +204,7 @@ mod tests {
             cancel_grace: Duration::from_millis(300),
             ..test_liveness()
         };
-        let endpoint = endpoint(&fixture, liveness);
+        let endpoint = ClickHouseEndpoint::for_fixture(&fixture, liveness);
         let session =
             ClickHouseEditorSession::open(&endpoint, EditorSessionOptions::default(), CancellationToken::new())
                 .await
@@ -263,7 +244,7 @@ mod tests {
             cancel_grace: Duration::from_secs(10),
             ..test_liveness()
         };
-        let endpoint = endpoint(&fixture, liveness);
+        let endpoint = ClickHouseEndpoint::for_fixture(&fixture, liveness);
         let session =
             ClickHouseEditorSession::open(&endpoint, EditorSessionOptions::default(), CancellationToken::new())
                 .await

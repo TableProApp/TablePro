@@ -4,11 +4,11 @@
 //! An ALTER runs its mutation wait inside the interpreter, so while it
 //! waits the query log has no entry for it at all, and a wait that fails
 //! is logged as ExceptionBeforeStart with no table named. The statement
-//! is therefore looked for in `system.processes` when the log is silent,
-//! and its mutation in `system.mutations` by table and creation time when
-//! its ALTER failed while the mutation may live on. The table comes from
-//! the write itself when the log names none. `system.mutations` has no
-//! column linking a mutation to its ALTER, so any doubt is Unresolvable.
+//! is therefore looked for in `system.processes` too, and its mutation in
+//! `system.mutations` by table and creation time when its ALTER failed
+//! while the mutation may live on. The table comes from the write itself
+//! when the log names none. `system.mutations` has no column linking a
+//! mutation to its ALTER, so any doubt is Unresolvable.
 
 use tablepro_core::meta::TableRef;
 use tablepro_core::{CommitResolution, CommitToken, DriverError, Value};
@@ -44,13 +44,10 @@ pub(crate) struct MutatedTable {
     pub(crate) table: String,
 }
 
-/// What the log alone says, or what else to ask.
+/// What the log says, or what else to ask.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum LogVerdict {
     Resolved(CommitResolution),
-    /// Nothing says the statement ended, so only the server's list of
-    /// running queries can tell whether it is still going.
-    NotEnded,
     /// A mutation's ALTER failed while the mutation may live on.
     Mutation {
         table: Option<MutatedTable>,
@@ -72,7 +69,11 @@ fn mutation_may_live_on(exception_code: i32) -> bool {
     )
 }
 
-pub(crate) fn read_log(entries: &[LogEntry]) -> LogVerdict {
+/// `listed` is whether `system.processes` held the statement before the
+/// log was flushed. The server queues a statement's last log entry
+/// before it takes the statement off that list, so a statement in
+/// neither is one the server cannot account for.
+pub(crate) fn read_log(entries: &[LogEntry], listed: bool) -> LogVerdict {
     let find = |event: &str| entries.iter().find(|entry| entry.event == event);
     if find("QueryFinish").is_some() {
         return LogVerdict::Resolved(CommitResolution::Applied);
@@ -80,7 +81,11 @@ pub(crate) fn read_log(entries: &[LogEntry]) -> LogVerdict {
     let before_start = find("ExceptionBeforeStart");
     let failed = before_start.or_else(|| find("ExceptionWhileProcessing"));
     let Some(failed) = failed else {
-        return LogVerdict::NotEnded;
+        return LogVerdict::Resolved(if listed {
+            CommitResolution::StillRunning
+        } else {
+            CommitResolution::Unresolvable
+        });
     };
     let mutation =
         failed.query_kind == "Alter" && (before_start.is_none() || mutation_may_live_on(failed.exception_code));
@@ -142,40 +147,72 @@ pub(crate) fn compose(first_unconfirmed: usize, statements: usize, statement: Co
     }
 }
 
+/// The statement a resolution asks about: the first one the write could
+/// not confirm.
+struct Unconfirmed<'a> {
+    query_id: Uuid,
+    index: usize,
+    statements: usize,
+    written: &'a TableRef,
+}
+
+impl<'a> Unconfirmed<'a> {
+    fn of(token: &'a CommitToken) -> Option<Self> {
+        let CommitToken::ClickHouseQuery {
+            query_ids,
+            first_unconfirmed,
+            table,
+        } = token
+        else {
+            return None;
+        };
+        Some(Self {
+            query_id: *query_ids.get(*first_unconfirmed)?,
+            index: *first_unconfirmed,
+            statements: query_ids.len(),
+            written: table,
+        })
+    }
+}
+
 /// Ask the server about the first statement a write could not confirm.
+///
+/// The process list is read before the log is flushed, so a statement
+/// that ends between the two reads is either still listed or has its end
+/// in the flushed log. Read the other way round, it would be in neither.
 pub(crate) async fn resolve(calls: &CallClient, token: &CommitToken) -> Result<CommitResolution, DriverError> {
-    let CommitToken::ClickHouseQuery {
-        query_ids,
-        first_unconfirmed,
-        table: written,
-    } = token
-    else {
+    let Some(statement) = Unconfirmed::of(token) else {
         return Ok(CommitResolution::Unresolvable);
     };
-    let Some(query_id) = query_ids.get(*first_unconfirmed) else {
-        return Ok(CommitResolution::Unresolvable);
-    };
+    let listed = listed(calls, statement.query_id).await?;
+    from_log(calls, &statement, listed).await
+}
+
+async fn from_log(
+    calls: &CallClient,
+    statement: &Unconfirmed<'_>,
+    listed: bool,
+) -> Result<CommitResolution, DriverError> {
     match drain(calls.raw("SYSTEM FLUSH LOGS")?).await {
         Ok(_) => {}
         Err(error) if server_code(&error) == Some(code::ACCESS_DENIED) => {}
         Err(error) => return Err(error),
     }
-    let entries = match log_entries(calls, *query_id).await {
+    let entries = match log_entries(calls, statement.query_id).await {
         Ok(entries) => entries,
         Err(error) if matches!(server_code(&error), Some(code::ACCESS_DENIED | UNKNOWN_TABLE)) => {
             return Ok(CommitResolution::Unresolvable);
         }
         Err(error) => return Err(error),
     };
-    let statement = match read_log(&entries) {
+    let resolution = match read_log(&entries, listed) {
         LogVerdict::Resolved(resolution) => resolution,
-        LogVerdict::NotEnded => still_running(calls, *query_id).await?,
-        LogVerdict::Mutation { table, started, ended } => match mutation_table(table, written) {
+        LogVerdict::Mutation { table, started, ended } => match mutation_table(table, statement.written) {
             Some(table) => mutation(calls, &table, &started, &ended).await?,
             None => CommitResolution::Unresolvable,
         },
     };
-    Ok(compose(*first_unconfirmed, query_ids.len(), statement))
+    Ok(compose(statement.index, statement.statements, resolution))
 }
 
 async fn log_entries(calls: &CallClient, query_id: Uuid) -> Result<Vec<LogEntry>, DriverError> {
@@ -199,24 +236,25 @@ async fn log_entries(calls: &CallClient, query_id: Uuid) -> Result<Vec<LogEntry>
         .collect()
 }
 
-/// Logged as started and never ended: still running if the server still
-/// lists it, and lost otherwise.
-async fn still_running(calls: &CallClient, query_id: Uuid) -> Result<CommitResolution, DriverError> {
+/// The stock config's `select_from_system_db_requires_grant` refuses
+/// `system.processes` to a login without a grant. Such a login learns
+/// nothing here, which leaves the log to answer.
+async fn listed(calls: &CallClient, query_id: Uuid) -> Result<bool, DriverError> {
     let query = calls
         .raw("SELECT count() FROM system.processes WHERE query_id = {id:String}")?
         .param("id", query_id.to_string());
-    let result = read_table(query, None).await?;
+    let result = match read_table(query, None).await {
+        Ok(result) => result,
+        Err(error) if server_code(&error) == Some(code::ACCESS_DENIED) => return Ok(false),
+        Err(error) => return Err(error),
+    };
     let running = result
         .rows
         .first()
         .and_then(|row| row.first())
         .and_then(Value::as_exact_u64)
         .unwrap_or(0);
-    Ok(if running > 0 {
-        CommitResolution::StillRunning
-    } else {
-        CommitResolution::Unresolvable
-    })
+    Ok(running > 0)
 }
 
 async fn mutation(
@@ -245,7 +283,17 @@ async fn mutation(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use tablepro_core::StopRequest;
+    use tablepro_test_fixtures::ClickHouseFixture;
+    use tablepro_test_support::conformance::test_liveness;
+    use tokio::time::Instant;
+
     use super::*;
+    use crate::cancel::ClickHouseStop;
+    use crate::endpoint::ClickHouseEndpoint;
 
     fn entry(event: &str, query_kind: &str, exception_code: i32) -> LogEntry {
         LogEntry {
@@ -259,10 +307,17 @@ mod tests {
         }
     }
 
+    /// A logged end answers the same whatever the list said.
+    fn ended(entries: &[LogEntry]) -> LogVerdict {
+        let verdict = read_log(entries, true);
+        assert_eq!(read_log(entries, false), verdict, "{entries:?}");
+        verdict
+    }
+
     fn resolved(entries: &[LogEntry]) -> Option<CommitResolution> {
-        match read_log(entries) {
+        match ended(entries) {
             LogVerdict::Resolved(resolution) => Some(resolution),
-            _ => None,
+            LogVerdict::Mutation { .. } => None,
         }
     }
 
@@ -285,19 +340,12 @@ mod tests {
     fn mapping_table() {
         use CommitResolution::{Applied, NotApplied, StillRunning, Unresolvable};
 
-        assert_eq!(
-            read_log(&[]),
-            LogVerdict::NotEnded,
-            "an ALTER still waiting logs nothing"
-        );
         for kind in ["Insert", "Alter", "Create"] {
-            let start = entry("QueryStart", kind, 0);
             assert_eq!(
-                resolved(&[start.clone(), entry("QueryFinish", kind, 0)]),
+                resolved(&[entry("QueryStart", kind, 0), entry("QueryFinish", kind, 0)]),
                 Some(Applied),
                 "{kind} finished"
             );
-            assert_eq!(read_log(&[start]), LogVerdict::NotEnded, "{kind} only started");
             assert_eq!(
                 resolved(&[entry("ExceptionBeforeStart", kind, 62)]),
                 Some(NotApplied),
@@ -323,7 +371,7 @@ mod tests {
             "a failed statement that is not a mutation"
         );
         assert_eq!(
-            read_log(&[
+            ended(&[
                 entry("QueryStart", "Alter", 0),
                 entry("ExceptionWhileProcessing", "Alter", 241)
             ]),
@@ -334,7 +382,7 @@ mod tests {
             failed.databases.clear();
             failed.tables.clear();
             assert_eq!(
-                read_log(&[failed]),
+                ended(&[failed]),
                 mutation(None),
                 "an ALTER whose wait ended with {code}"
             );
@@ -350,6 +398,33 @@ mod tests {
         for (done, expected) in mutation_rows {
             assert_eq!(read_mutations(done), expected, "{done:?}");
         }
+    }
+
+    #[test]
+    fn with_no_logged_end_the_list_answers() {
+        use CommitResolution::{StillRunning, Unresolvable};
+        let start = entry("QueryStart", "Alter", 0);
+
+        assert_eq!(
+            read_log(&[], true),
+            LogVerdict::Resolved(StillRunning),
+            "an ALTER still waiting logs nothing"
+        );
+        assert_eq!(
+            read_log(std::slice::from_ref(&start), true),
+            LogVerdict::Resolved(StillRunning),
+            "only started"
+        );
+        assert_eq!(
+            read_log(&[], false),
+            LogVerdict::Resolved(Unresolvable),
+            "neither listed nor logged"
+        );
+        assert_eq!(
+            read_log(&[start], false),
+            LogVerdict::Resolved(Unresolvable),
+            "off the list with no end queued"
+        );
     }
 
     #[test]
@@ -396,5 +471,66 @@ mod tests {
         );
         assert_eq!(compose(1, 3, StillRunning), StillRunning);
         assert_eq!(compose(1, 3, Unresolvable), Unresolvable);
+    }
+
+    async fn wait_until_listed(calls: &CallClient, query_id: Uuid, listing: bool) -> bool {
+        let give_up = Instant::now() + Duration::from_secs(10);
+        while listed(calls, query_id).await.expect("the process list") != listing {
+            assert!(Instant::now() < give_up, "listed stayed {}", !listing);
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        listing
+    }
+
+    /// Stopped merges hold the ALTER in its mutation wait while the list
+    /// is read, and it ends before the log is. The old order, log then
+    /// list, found it in neither and answered Unresolvable.
+    #[tokio::test]
+    #[ignore = "requires docker"]
+    async fn an_alter_that_ends_between_the_list_and_the_log_is_applied() {
+        let fixture = ClickHouseFixture::start().await.expect("a ClickHouse container");
+        let endpoint = ClickHouseEndpoint::for_fixture(&fixture, test_liveness());
+        let client = endpoint.workspace();
+        for sql in [
+            "CREATE TABLE held (id Int32, n Int32) ENGINE = MergeTree ORDER BY id",
+            "INSERT INTO held VALUES (1, 0)",
+            "SYSTEM STOP MERGES held",
+        ] {
+            client.query(sql).execute().await.expect(sql);
+        }
+        let query_id = Uuid::new_v4();
+        let altering = tokio::spawn(
+            client
+                .query("ALTER TABLE held UPDATE n = 1 WHERE 1")
+                .with_setting("query_id", query_id.to_string())
+                .execute(),
+        );
+        let control = endpoint.control().clone();
+        let calls = CallClient::new(
+            control.clone(),
+            Arc::new(ClickHouseStop::new(control)),
+            StopRequest::new(),
+        );
+        let token = CommitToken::ClickHouseQuery {
+            query_ids: vec![query_id],
+            first_unconfirmed: 0,
+            table: TableRef::new(Some("tablepro".to_owned()), "held"),
+        };
+        let statement = Unconfirmed::of(&token).expect("a ClickHouse token");
+
+        let listed = wait_until_listed(&calls, query_id, true).await;
+        assert_eq!(resolve(&calls, &token).await, Ok(CommitResolution::StillRunning));
+        client
+            .query("SYSTEM START MERGES held")
+            .execute()
+            .await
+            .expect("the merges");
+        altering.await.expect("the ALTER task").expect("the ALTER");
+        wait_until_listed(&calls, query_id, false).await;
+
+        assert_eq!(
+            from_log(&calls, &statement, listed).await,
+            Ok(CommitResolution::Applied)
+        );
     }
 }
