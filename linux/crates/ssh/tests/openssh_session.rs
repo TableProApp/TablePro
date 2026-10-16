@@ -349,49 +349,165 @@ async fn dropping_last_arc_ends_master() {
     assert!(!process_alive(pid));
 }
 
-#[tokio::test]
-#[ignore = "requires docker"]
-async fn changed_key_reports_file_and_line_then_forget_allows_new_key() {
-    let fixture = start().await.unwrap();
-    let keys = tempfile::tempdir().unwrap();
+/// Puts a key the server does not have in known_hosts for the server
+/// at `host`:`port`, the way a reinstalled server looks to ssh.
+fn trust_a_stale_key(known_hosts: &Path, host: &str, port: u16) -> TestResult<()> {
+    let keys = tempfile::tempdir()?;
     let stale_key = keys.path().join("stale");
     let generated = std::process::Command::new("ssh-keygen")
         .args(["-q", "-t", "ed25519", "-N", "", "-f"])
         .arg(&stale_key)
-        .status()
-        .unwrap();
+        .status()?;
     assert!(generated.success());
-    let public = std::fs::read_to_string(stale_key.with_extension("pub")).unwrap();
+    let public = std::fs::read_to_string(stale_key.with_extension("pub"))?;
     let mut fields = public.split_whitespace();
-    let entry = format!(
-        "[{}]:{} {} {}\n",
-        fixture.host,
-        fixture.port,
-        fields.next().unwrap(),
-        fields.next().unwrap()
+    let (Some(algorithm), Some(key)) = (fields.next(), fields.next()) else {
+        return Err("ssh-keygen wrote no public key".into());
+    };
+    std::fs::write(known_hosts, format!("[{host}]:{port} {algorithm} {key}\n"))?;
+    Ok(())
+}
+
+/// The master asks about a key ssh does not know under every
+/// StrictHostKeyChecking but yes, so the new key can be trusted once the
+/// old one is gone.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn changed_key_reports_file_and_line_then_forget_allows_new_key() {
+    let fixture = start().await.unwrap();
+    for strict in ["ask", "accept-new", "no"] {
+        write_config(&fixture.config, &fixture.known_hosts, strict).unwrap();
+        trust_a_stale_key(&fixture.known_hosts, &fixture.host, fixture.port).unwrap();
+
+        let (session, _) = connect(&fixture, password_auth(), Vec::new()).await;
+        let Err(TransportError::Ssh(SshFailure::HostKeyChanged {
+            known_hosts,
+            line,
+            trust_allowed,
+            ..
+        })) = &session
+        else {
+            panic!("{strict}: expected a changed host key, got {session:?}");
+        };
+        assert_eq!(known_hosts, &fixture.known_hosts, "{strict}");
+        assert_eq!(*line, 1, "{strict}");
+        assert!(*trust_allowed, "{strict}: the new key could not be trusted");
+
+        forget_host_key(
+            &fixture.services,
+            &config(&fixture, password_auth()).unwrap(),
+            &fixture.known_hosts,
+        )
+        .await
+        .unwrap();
+        let (session, prompter) = connect(&fixture, password_auth(), vec![accept()]).await;
+        let session = session.unwrap_or_else(|error| panic!("{strict}: {error:?}"));
+        assert!(
+            matches!(
+                prompter.requests().as_slice(),
+                [request] if matches!(request.purpose, PromptPurpose::SshHostKeyConfirmation { .. })
+            ),
+            "{strict}: {:?}",
+            prompter.requests()
+        );
+        session.shutdown(Duration::from_secs(5)).await;
+    }
+}
+
+/// ssh prints the same changed-key error under StrictHostKeyChecking yes
+/// as under ask, but without the old key it refuses the new one rather
+/// than asking, so the report says the app cannot trust it.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_changed_key_under_strict_checking_cannot_be_trusted_from_the_app() {
+    let fixture = start().await.unwrap();
+    write_config(&fixture.config, &fixture.known_hosts, "yes").unwrap();
+    trust_a_stale_key(&fixture.known_hosts, &fixture.host, fixture.port).unwrap();
+
+    let (session, _) = connect(&fixture, password_auth(), Vec::new()).await;
+
+    assert!(
+        matches!(
+            &session,
+            Err(TransportError::Ssh(SshFailure::HostKeyChanged {
+                trust_allowed: false,
+                ..
+            }))
+        ),
+        "{session:?}"
     );
-    std::fs::write(&fixture.known_hosts, entry).unwrap();
-
-    let auth = SshAuth::Password {
-        password: SecretString::from("s3cret"),
-    };
-    let (session, _) = connect(&fixture, auth.clone(), Vec::new()).await;
-    let TransportError::Ssh(SshFailure::HostKeyChanged { known_hosts, line, .. }) = session.unwrap_err() else {
-        panic!("expected a changed host key");
-    };
-    assert_eq!(known_hosts, fixture.known_hosts);
-    assert_eq!(line, 1);
-
     forget_host_key(
         &fixture.services,
-        &config(&fixture, auth.clone()).unwrap(),
+        &config(&fixture, password_auth()).unwrap(),
         &fixture.known_hosts,
     )
     .await
     .unwrap();
-    let (session, prompter) = connect(&fixture, auth, vec![accept()]).await;
-    assert!(session.is_ok());
-    assert_eq!(prompter.requests().len(), 1);
+    let (session, prompter) = connect(&fixture, password_auth(), vec![accept()]).await;
+    assert!(
+        matches!(
+            &session,
+            Err(TransportError::Ssh(SshFailure::HostKeyUnknown {
+                trust_allowed: false,
+                ..
+            }))
+        ),
+        "{session:?}"
+    );
+    assert!(prompter.requests().is_empty(), "{:?}", prompter.requests());
+}
+
+/// A jump host's key is checked under the jump host's own configuration,
+/// not the destination's.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_jump_hosts_changed_key_follows_its_own_strict_checking() {
+    let fixture = start().await.unwrap();
+    let services = SshServices {
+        ssh_program: PathBuf::from("ssh"),
+        config_file: Some(fixture.config.clone()),
+        ..fixture.services.clone()
+    };
+    for (jump_checking, destination_checking, expected) in [("yes", "ask", false), ("ask", "yes", true)] {
+        std::fs::write(
+            &fixture.config,
+            format!(
+                "Host tablepro-jump\n  HostName {}\n  Port {}\n  User deploy\n  StrictHostKeyChecking {jump_checking}\n\
+                 Host *\n  UserKnownHostsFile {}\n  GlobalKnownHostsFile /dev/null\n  StrictHostKeyChecking {destination_checking}\n  \
+                 IdentityAgent none\n  IdentitiesOnly yes\n  PubkeyAuthentication no\n",
+                fixture.host,
+                fixture.port,
+                fixture.known_hosts.display()
+            ),
+        )
+        .unwrap();
+        trust_a_stale_key(&fixture.known_hosts, &fixture.host, fixture.port).unwrap();
+        let config = SshConfig {
+            destination: SshDestination::new("127.0.0.1", Some(2222), Some("deploy".to_owned())).unwrap(),
+            jump_hosts: vec![SshDestination::new("tablepro-jump", None, None).unwrap()],
+            auth: password_auth(),
+        };
+        let prompter = Arc::new(FakePrompter::new(Vec::new()));
+
+        let session = SshSession::connect(
+            &config,
+            &services,
+            &LivenessPolicy::DESKTOP,
+            CredentialInteraction::Attended(prompter),
+            CancellationToken::new(),
+        )
+        .await;
+
+        let jump = format!("[{}]:{}", fixture.host, fixture.port);
+        assert!(
+            matches!(
+                &session,
+                Err(TransportError::Ssh(SshFailure::HostKeyChanged { host, trust_allowed, .. }))
+                    if *host == jump && *trust_allowed == expected
+            ),
+            "jump {jump_checking}, destination {destination_checking}: {session:?}"
+        );
+    }
 }
 
 #[tokio::test]

@@ -30,6 +30,24 @@ pub fn ssh_failure_message(failure: &SshFailure) -> String {
             "The host key of {host} was not trusted, so the connection was not made.",
             &[("host", host)],
         ),
+        // ssh refuses under StrictHostKeyChecking yes before it shows the
+        // key, so there is no fingerprint and nothing to review.
+        SshFailure::HostKeyUnknown {
+            host,
+            trust_allowed: false,
+            ..
+        } => crate::i18n::gettext_f(
+            "The SSH configuration for {host} accepts only keys already in known_hosts. Add the server's key to known_hosts outside TablePro, then retry.",
+            &[("host", host)],
+        ),
+        SshFailure::HostKeyUnknown {
+            host,
+            sha256_fingerprint,
+            ..
+        } if sha256_fingerprint.is_empty() => crate::i18n::gettext_f(
+            "{host} is not in known_hosts. Connect once to review and trust its key.",
+            &[("host", host)],
+        ),
         SshFailure::HostKeyUnknown {
             host,
             sha256_fingerprint,

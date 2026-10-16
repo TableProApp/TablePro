@@ -2,9 +2,9 @@ xgettext = find_program('xgettext', required: false)
 
 if xgettext.found()
   xgettext_version = run_command(xgettext, '--version', check: false).stdout().split('\n')[0].split(' ')[-1]
-  if xgettext_version.version_compare('< 0.24')
+  if xgettext_version.version_compare('< 1.0')
     warning(
-      'xgettext @0@ predates 0.24, which taught xgettext to read Rust. Regenerating the POT needs 0.24 or newer.'.format(
+      'xgettext @0@ predates 1.0, the first that reads a call through a path such as crate::i18n::gettext. Regenerating the POT needs 1.0 or newer.'.format(
         xgettext_version,
       ),
     )

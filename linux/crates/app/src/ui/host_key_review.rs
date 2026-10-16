@@ -101,6 +101,29 @@ pub(crate) fn host_key_dialog_spec(failure: &HostKeyFailure) -> HostKeyDialogSpe
                 &[("host", host)],
             ),
         ),
+        // ssh would refuse the new key without asking once the old one is
+        // gone, so a replace would only lose the old key.
+        HostKeyFailureKind::Changed {
+            known_hosts,
+            line,
+            trust_allowed: false,
+        } => fixed_elsewhere(
+            crate::i18n::gettext("SSH Host Key Changed"),
+            match known_hosts.as_os_str().is_empty() {
+                true => crate::i18n::gettext_f(
+                    "The key “{host}” sent is not the one trusted in known_hosts. Someone may be intercepting the connection, or the server was reinstalled. The SSH configuration for this host accepts only keys already in known_hosts, so if your server administrator confirms the new fingerprint, replace the key there yourself, then retry.",
+                    &[("host", host)],
+                ),
+                false => crate::i18n::gettext_f(
+                    "The key “{host}” sent is not the one trusted in {file}, line {line}. Someone may be intercepting the connection, or the server was reinstalled. The SSH configuration for this host accepts only keys already in known_hosts, so if your server administrator confirms the new fingerprint, replace the key in that file yourself, then retry.",
+                    &[
+                        ("host", host),
+                        ("file", &known_hosts.display().to_string()),
+                        ("line", &line.to_string()),
+                    ],
+                ),
+            },
+        ),
         // Without the file ssh named, there is no key to replace.
         HostKeyFailureKind::Changed { known_hosts, .. } if known_hosts.as_os_str().is_empty() => fixed_elsewhere(
             crate::i18n::gettext("SSH Host Key Changed"),
@@ -109,7 +132,7 @@ pub(crate) fn host_key_dialog_spec(failure: &HostKeyFailure) -> HostKeyDialogSpe
                 &[("host", host)],
             ),
         ),
-        HostKeyFailureKind::Changed { known_hosts, line } => HostKeyDialogSpec {
+        HostKeyFailureKind::Changed { known_hosts, line, .. } => HostKeyDialogSpec {
             heading: crate::i18n::gettext("SSH Host Key Changed"),
             body: crate::i18n::gettext_f(
                 "The key “{host}” sent is not the one trusted in {file}, line {line}. Someone may be intercepting the connection, or the server was reinstalled. Replace the key only if your server administrator confirms the new fingerprint.",
@@ -237,6 +260,23 @@ mod tests {
             HostKeyFailureKind::Changed {
                 known_hosts: PathBuf::from("/home/u/.ssh/known_hosts"),
                 line: 3,
+                trust_allowed: true,
+            },
+            "SHA256:new",
+        ));
+        let strict_changed = host_key_dialog_spec(&failure(
+            HostKeyFailureKind::Changed {
+                known_hosts: PathBuf::from("/home/u/.ssh/known_hosts"),
+                line: 3,
+                trust_allowed: false,
+            },
+            "SHA256:new",
+        ));
+        let strict_unplaced = host_key_dialog_spec(&failure(
+            HostKeyFailureKind::Changed {
+                known_hosts: PathBuf::new(),
+                line: 0,
+                trust_allowed: false,
             },
             "SHA256:new",
         ));
@@ -250,6 +290,7 @@ mod tests {
             HostKeyFailureKind::Changed {
                 known_hosts: PathBuf::new(),
                 line: 0,
+                trust_allowed: true,
             },
             "SHA256:new",
         ));
@@ -266,7 +307,24 @@ mod tests {
         assert!(revoked.body.contains("/etc/ssh/krl"), "{}", revoked.body);
         assert_eq!(ids(&unplaced), [CLOSE, RETRY]);
         assert!(!unplaced.body.contains(", line 0"), "{}", unplaced.body);
-        for spec in [&unknown, &unseen, &strict, &changed, &revoked, &unplaced] {
+        assert_eq!(ids(&strict_changed), [CLOSE, RETRY]);
+        assert!(
+            strict_changed.body.contains("/home/u/.ssh/known_hosts, line 3"),
+            "{}",
+            strict_changed.body
+        );
+        assert_eq!(ids(&strict_unplaced), [CLOSE, RETRY]);
+        assert!(!strict_unplaced.body.contains(", line 0"), "{}", strict_unplaced.body);
+        for spec in [
+            &unknown,
+            &unseen,
+            &strict,
+            &changed,
+            &revoked,
+            &unplaced,
+            &strict_changed,
+            &strict_unplaced,
+        ] {
             assert!(spec.body.contains("bastion"), "{}", spec.body);
             assert_eq!(spec.default, spec.close, "{spec:?}");
             let default = spec.responses.iter().find(|response| response.id == spec.default);

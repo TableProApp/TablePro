@@ -44,6 +44,10 @@ pub enum SshFailure {
         sha256_fingerprint: String,
         known_hosts: PathBuf,
         line: usize,
+        /// False when the host's ssh configuration takes only keys already
+        /// in known_hosts, so ssh would refuse the new key without asking
+        /// once the old one is removed.
+        trust_allowed: bool,
     },
 
     #[error("the host key for {host} is revoked: {detail}")]
@@ -155,6 +159,7 @@ mod tests {
                     sha256_fingerprint: "SHA256:abc".to_owned(),
                     known_hosts: PathBuf::from("/home/user/.ssh/known_hosts"),
                     line: 3,
+                    trust_allowed: true,
                 },
                 ErrorCategory::Authentication,
             ),

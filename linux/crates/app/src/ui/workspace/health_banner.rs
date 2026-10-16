@@ -297,6 +297,7 @@ mod tests {
             HostKeyFailureKind::Changed {
                 known_hosts: PathBuf::from("/home/u/.ssh/known_hosts"),
                 line: 1,
+                trust_allowed: true,
             },
             HostKeyFailureKind::Revoked {
                 detail: "revoked".to_owned(),
@@ -403,12 +404,19 @@ mod tests {
     /// Open the review from the banner and click `response`, the way a
     /// user does.
     fn review_and_answer(test: &TestWindow, response: &str) {
+        answer(test, &open_review(test), response);
+    }
+
+    fn open_review(test: &TestWindow) -> adw::AlertDialog {
         gtk::prelude::WidgetExt::activate_action(&test.window, &format!("win.{REVIEW_HOST_KEY}"), None)
             .expect("the review action");
         wait_until(WAIT, || alert(test).is_some()).expect("the review dialog");
-        let dialog = alert(test).expect("the review dialog");
+        alert(test).expect("the review dialog")
+    }
+
+    fn answer(test: &TestWindow, dialog: &adw::AlertDialog, response: &str) {
         let label = dialog.response_label(response);
-        descendants(&dialog)
+        descendants(dialog)
             .into_iter()
             .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
             .find(|button| button.label().as_deref() == Some(label.as_str()))
@@ -517,10 +525,10 @@ mod tests {
     }
 
     fn changed_key(known_hosts: &Path) -> FakeEstablish {
-        changed_key_of("[bastion]:2222", known_hosts)
+        changed_key_of("[bastion]:2222", known_hosts, true)
     }
 
-    fn changed_key_of(host: &str, known_hosts: &Path) -> FakeEstablish {
+    fn changed_key_of(host: &str, known_hosts: &Path, trust_allowed: bool) -> FakeEstablish {
         FakeEstablish::Fail(ConnectError::Driver(DriverError::Transport(TransportError::Ssh(
             SshFailure::HostKeyChanged {
                 host: host.to_owned(),
@@ -528,6 +536,7 @@ mod tests {
                 sha256_fingerprint: FINGERPRINT.to_owned(),
                 known_hosts: known_hosts.to_owned(),
                 line: 1,
+                trust_allowed,
             },
         ))))
     }
@@ -651,7 +660,7 @@ mod tests {
             }
             let test = parked_with(
                 name,
-                vec![changed_key_of(host, &reported)],
+                vec![changed_key_of(host, &reported, true)],
                 Some(resolving_ssh(dir.path(), &known_hosts)),
                 Some(tunnel()),
             );
@@ -664,6 +673,40 @@ mod tests {
             assert_eq!(std::fs::read_to_string(&reported).unwrap(), keys, "{name}");
             assert_eq!(test.connector.calls().len(), 2, "{name}: a refused replace retried");
         }
+    }
+
+    /// Under StrictHostKeyChecking yes ssh would refuse the new key once
+    /// the old one is gone, so the review offers no replace and the old
+    /// key stays.
+    #[gtk4::test]
+    fn review_offers_no_replace_when_the_configuration_takes_only_known_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let known_hosts = dir.path().join("known_hosts");
+        let keys = format!("[bastion]:2222 {KEY}\n");
+        std::fs::write(&known_hosts, &keys).unwrap();
+        let test = parked_with(
+            "ReviewStrictChanged",
+            vec![
+                changed_key_of("[bastion]:2222", &known_hosts, false),
+                FakeEstablish::Connect(healthy()),
+            ],
+            Some(resolving_ssh(dir.path(), &known_hosts)),
+            Some(tunnel()),
+        );
+        wait_for_button(&test, "Review Key…");
+
+        let dialog = open_review(&test);
+
+        assert!(!dialog.has_response("replace"), "a replace was offered");
+        assert!(dialog.has_response("retry"));
+        assert!(
+            dialog.body().contains(&known_hosts.display().to_string()),
+            "{}",
+            dialog.body()
+        );
+        answer(&test, &dialog, "retry");
+        wait_until(WAIT, || health(&test) == SessionHealth::Online).expect("the session back online");
+        assert_eq!(std::fs::read_to_string(&known_hosts).unwrap(), keys);
     }
 
     #[gtk4::test]

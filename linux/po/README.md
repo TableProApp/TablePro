@@ -76,11 +76,14 @@ the committed file differs in anything but its creation date. It then
 uploads the template it wrote as the `tablepro-pot` artifact, which can be
 committed as it is.
 
-This needs **gettext 0.24 or newer**, which is the first release whose
-xgettext reads Rust. Fedora 44 ships 0.26; Ubuntu 26.04 ships 0.23.2. An
-older xgettext falls back to its C lexer, which misreads lifetimes such as
-`'static` as character constants and produces a template you should not
-commit. `meson setup` warns when the xgettext it found is too old.
+This needs **gettext 1.0 or newer**, the first release whose xgettext
+reads a call through a path such as `crate::i18n::gettext(...)`, the way
+most of the app calls it. Ubuntu 26.10 ships 1.0; Fedora 44 ships 0.26 and
+Ubuntu 26.04 0.23.2. gettext 0.24 to 0.26 read Rust but skip every
+path-qualified call, and anything older falls back to its C lexer, which
+misreads lifetimes such as `'static` as character constants. Neither
+template should be committed. `meson setup` warns when the xgettext it
+found is too old.
 
 Use `msgmerge` to fold new strings into existing translations:
 

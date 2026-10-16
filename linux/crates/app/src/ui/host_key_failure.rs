@@ -23,10 +23,12 @@ pub(crate) enum HostKeyFailureKind {
     Unknown {
         trust_allowed: bool,
     },
-    /// The old key is at `line` of `known_hosts`.
+    /// The old key is at `line` of `known_hosts`. `trust_allowed` is as
+    /// for `Unknown`, for the new key once the old one is removed.
     Changed {
         known_hosts: PathBuf,
         line: usize,
+        trust_allowed: bool,
     },
     Revoked {
         detail: String,
@@ -63,6 +65,7 @@ impl HostKeyFailure {
                 sha256_fingerprint,
                 known_hosts,
                 line,
+                trust_allowed,
             } => Some(Self {
                 host: host.clone(),
                 algorithm: algorithm.clone(),
@@ -70,6 +73,7 @@ impl HostKeyFailure {
                 kind: HostKeyFailureKind::Changed {
                     known_hosts: known_hosts.clone(),
                     line: *line,
+                    trust_allowed: *trust_allowed,
                 },
             }),
             SshFailure::HostKeyRevoked { host, detail } => Some(Self {
@@ -108,6 +112,7 @@ mod tests {
             sha256_fingerprint: "SHA256:new".to_owned(),
             known_hosts: PathBuf::from("/home/u/.ssh/known_hosts"),
             line: 3,
+            trust_allowed: false,
         });
         let revoked = ssh(SshFailure::HostKeyRevoked {
             host: "bastion".to_owned(),
@@ -125,7 +130,8 @@ mod tests {
             changed.kind,
             HostKeyFailureKind::Changed {
                 known_hosts: PathBuf::from("/home/u/.ssh/known_hosts"),
-                line: 3
+                line: 3,
+                trust_allowed: false,
             }
         );
         assert!(matches!(

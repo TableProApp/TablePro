@@ -59,6 +59,7 @@ mod tests {
             sha256_fingerprint: "SHA256:abc".to_owned(),
             known_hosts: "/home/u/.ssh/known_hosts".into(),
             line: 3,
+            trust_allowed: true,
         }));
 
         assert_eq!(ProbeOutcome::classify(Ok(())), ProbeOutcome::Healthy);
