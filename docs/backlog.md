@@ -48,7 +48,7 @@ candidate inventory as a release commitment.
 
 ## Peer-review delivery
 
-[#1026](https://github.com/cozyGarage/BookiE/issues/1026) owns the ordered small slices from the [October 16 review](archive/linux-peer-review-2026-10-16.md): current docs, executable GUI boundaries, active-edit close ownership, NULL/default intent, shared action guards, stream resource budgets and bounded server output. Follow-ups #1054 (database-scoped workspace identity) and #1056 (SQLite metadata-name shadowing) are tracked as separate PEER-13 and PEER-14 slices. Each child has one lane and its own acceptance. Existing #550, #554, #893, #891, #943 and #983 retain their scope; the tracker does not add release blockers.
+[#1026](https://github.com/cozyGarage/BookiE/issues/1026) owns the ordered small slices from the [October 16 review](archive/linux-peer-review-2026-10-16.md). The dependency-boundary slice is closed through [#1037](https://github.com/cozyGarage/BookiE/pull/1037); active-edit close ownership, NULL/default intent, shared action guards, stream resource budgets and bounded server output remain in their child issues. Follow-ups #1054 (database-scoped workspace identity) and #1056 (SQLite metadata-name shadowing) are tracked as separate PEER-13 and PEER-14 slices. Sequence the dependent work: B3 backend contract #1033 precedes GTK consumer #1034, stream retention #1032 waits for #1002/#1012 and #1016, and workspace identity #1054 waits for #1051. Each child has one lane and its own acceptance. Existing #550, #554, #893, #891, #943 and #983 retain their scope; the tracker does not add release blockers.
 
 ## Development tooling
 
