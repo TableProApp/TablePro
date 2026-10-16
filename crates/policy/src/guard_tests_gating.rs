@@ -686,3 +686,69 @@ async fn transaction_control_on_the_shared_connection_is_denied_before_dispatch(
         }
     }
 }
+
+fn transaction_guard(driver_id: &str, executes: Arc<AtomicUsize>, audit: Arc<SequenceAuditSink>) -> PolicyGuard {
+    let mut guard_context = context(
+        Principal::human_gui(),
+        Environment::Local,
+        PolicyConfig::default(),
+        Arc::new(AutoApproveSink),
+        audit,
+        Arc::new(AuditState::new()),
+    );
+    guard_context.driver_id = driver_id.into();
+    PolicyGuard::new(
+        Arc::new(CountingConn {
+            executes,
+            commits: Arc::new(AtomicUsize::new(0)),
+        }),
+        guard_context,
+    )
+}
+
+#[tokio::test]
+async fn mysql_ddl_inside_a_rollback_able_transaction_is_denied_before_dispatch() {
+    for statement in [
+        "DROP TABLE t",
+        "ALTER TABLE t ADD COLUMN c int",
+        "CREATE TABLE u (id int)",
+        "TRUNCATE TABLE t",
+    ] {
+        let executes = Arc::new(AtomicUsize::new(0));
+        let audit = Arc::new(SequenceAuditSink::new(vec![]));
+        let guard = transaction_guard("mysql", executes.clone(), audit.clone());
+
+        let mut transaction = guard.begin().await.expect("begin");
+        let executed = transaction.execute(statement).await;
+
+        assert!(
+            matches!(executed, Err(DriverError::PolicyDenied(_))),
+            "{statement}: {executed:?}"
+        );
+        assert_eq!(executes.load(Ordering::SeqCst), 0, "{statement} reached the driver");
+        let events = audit.events.lock().expect("audit events");
+        assert!(
+            events
+                .iter()
+                .any(|event| event.decision_rule == "ddl_commits_transaction"),
+            "{statement}: the denial is audited"
+        );
+    }
+}
+
+#[tokio::test]
+async fn transactional_ddl_and_mysql_dml_still_run_inside_a_transaction() {
+    for (driver_id, statement) in [
+        ("postgres", "DROP TABLE t"),
+        ("sqlite", "CREATE TABLE u (id int)"),
+        ("mysql", "UPDATE t SET a = 1 WHERE id = 1"),
+    ] {
+        let executes = Arc::new(AtomicUsize::new(0));
+        let guard = transaction_guard(driver_id, executes.clone(), Arc::new(SequenceAuditSink::new(vec![])));
+
+        let mut transaction = guard.begin().await.expect("begin");
+        transaction.execute(statement).await.expect(statement);
+
+        assert_eq!(executes.load(Ordering::SeqCst), 1, "{driver_id}: {statement}");
+    }
+}

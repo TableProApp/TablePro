@@ -23,7 +23,8 @@ use crate::effects::Effects;
 use crate::mask::apply_masking;
 use crate::principal::Principal;
 use crate::rules::{
-    Decision, evaluate_categorical, evaluate_eligible_write, evaluate_with_effects, shared_connection_decision,
+    Decision, evaluate_categorical, evaluate_eligible_write, evaluate_with_effects, interactive_transaction_decision,
+    shared_connection_decision,
 };
 
 const BLAST_RADIUS_TIMEOUT: Duration = Duration::from_secs(30);
@@ -139,6 +140,18 @@ impl PolicyGuard {
             return self.resolve_authorization(sql, analysis, decision, None, control).await;
         }
         self.authorize_with_bound(sql, analysis, enforced_rows, control).await
+    }
+
+    async fn authorize_in_transaction(
+        &self,
+        sql: &str,
+        control: Option<&OperationControl>,
+    ) -> Result<Authorization, DriverError> {
+        let analysis = self.analyze_statement(sql);
+        if let Some(decision) = interactive_transaction_decision(&self.ctx.driver_id, &analysis.facts) {
+            return self.resolve_authorization(sql, analysis, decision, None, control).await;
+        }
+        self.authorize_analysis(sql, analysis, None, control).await
     }
 
     async fn authorize_classified(
