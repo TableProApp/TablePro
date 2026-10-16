@@ -643,6 +643,17 @@ mod tests {
         assert!(observed.load(std::sync::atomic::Ordering::SeqCst));
     }
 
+    #[tokio::test]
+    async fn a_completed_http_request_delivers_its_response_and_never_cancels() {
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel::<u8>();
+        let cancellation = tokio_util::sync::CancellationToken::new();
+
+        supervise_disconnect_aware(response_tx, cancellation.clone(), async { 7 }).await;
+
+        assert_eq!(response_rx.await, Ok(7));
+        assert!(!cancellation.is_cancelled());
+    }
+
     struct PendingApproval {
         requested: Arc<Notify>,
     }

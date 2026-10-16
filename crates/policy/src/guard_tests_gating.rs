@@ -752,3 +752,32 @@ async fn transactional_ddl_and_mysql_dml_still_run_inside_a_transaction() {
         assert_eq!(executes.load(Ordering::SeqCst), 1, "{driver_id}: {statement}");
     }
 }
+
+#[tokio::test]
+async fn an_approved_controlled_write_never_cancels_the_callers_token() {
+    let executes = Arc::new(AtomicUsize::new(0));
+    let guard = PolicyGuard::new(
+        connection(executes.clone(), Arc::new(AtomicUsize::new(0))),
+        context(
+            Principal::human_gui(),
+            Environment::Prod,
+            PolicyConfig::default(),
+            Arc::new(AutoApproveSink),
+            Arc::new(SequenceAuditSink::new(vec![])),
+            Arc::new(AuditState::new()),
+        ),
+    );
+    let control = OperationControl::with_timeout(std::time::Duration::from_secs(30));
+
+    guard
+        .execute_controlled("UPDATE jobs SET status = 'done' WHERE id = 1", &control)
+        .await
+        .expect("the approved write runs");
+    guard
+        .execute_controlled("UPDATE jobs SET status = 'new' WHERE id = 2", &control)
+        .await
+        .expect("the next statement on the same control runs");
+
+    assert_eq!(executes.load(Ordering::SeqCst), 2);
+    assert!(!control.cancellation_token().is_cancelled());
+}

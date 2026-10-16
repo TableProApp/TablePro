@@ -123,6 +123,8 @@ These apply to the GUI, the MCP server and `tablepro-agentd`.
 
 Unit tests sit next to pure logic; integration tests live in each crate's `tests/`. Driver behaviour is tested against a real database (testcontainers or an isolated local database); filesystem tests use `tempfile`. Policy and MCP changes test denied and allowed cases, scopes, allowlists, approval, masking, timeouts and audit terminal states. GTK-only behaviour that automation cannot reach gets manual steps in [manual verification](docs/manual-verification-0.2-features.md). Never change a test to accept incorrect behaviour; confirm a new regression test fails on the unfixed code.
 
+[Contract guardrail tests](docs/testing.md#contract-guardrails) pin invariants other code relies on. When one fails, fix the change, not the guardrail; weakening one needs the contract owner's agreement.
+
 Rules for pull requests that add tests (any agent, including Cursor):
 
 - Assert observable behaviour, such as an outcome, a stored value or an error kind, and not rule names, message text or internal identifiers that the code owner may rename.

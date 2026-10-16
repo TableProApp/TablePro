@@ -516,3 +516,33 @@ async fn a_write_that_returns_rows_inside_a_guarded_transaction_is_audited_as_a_
         .count();
     assert_eq!(mutations, 2);
 }
+
+#[tokio::test]
+async fn guarded_calls_leave_the_callers_control_usable_for_the_next_statement() {
+    let (guard, _calls, _audit) = catalog_guard(false);
+    let control = control();
+
+    guard.query_controlled("SELECT 1", &control).await.unwrap();
+    guard
+        .execute_controlled("INSERT INTO t VALUES (1)", &control)
+        .await
+        .unwrap();
+    let mut transaction = guard.begin_controlled(&control).await.unwrap();
+    transaction.query_controlled("SELECT 1", &control).await.unwrap();
+    transaction.commit().await.unwrap();
+
+    assert!(!control.cancellation_token().is_cancelled());
+    guard.query_controlled("SELECT 2", &control).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_failed_guarded_call_never_cancels_the_callers_control() {
+    let (failing, calls, _audit) = catalog_guard(true);
+    let control = control();
+
+    assert!(failing.query_controlled("SELECT 1", &control).await.is_err());
+    assert!(failing.query_controlled("SELECT 2", &control).await.is_err());
+
+    assert!(!control.cancellation_token().is_cancelled());
+    assert_eq!(calls.load(Ordering::SeqCst), 2, "the second call reached the driver");
+}
