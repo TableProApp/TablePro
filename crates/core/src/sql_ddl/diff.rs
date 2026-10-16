@@ -5,7 +5,7 @@ use super::index_fk::{
     build_add_foreign_key, build_create_index, build_drop_constraint, build_drop_foreign_key, build_drop_index,
 };
 use super::table::{build_create_table, build_rename_table};
-use super::types::{BuildDdlError, DraftColumn, StructureOp};
+use super::types::{BuildDdlError, DraftColumn, StructureOp, mssql_drop_default_constraint};
 
 /// Diff a loaded snapshot against the user's current edits and emit
 /// the `StructureOp` list that materializes them. Pure function — no
@@ -90,6 +90,7 @@ pub fn diff_to_ops(
                 schema: schema_owned.clone(),
                 table: table.clone(),
                 column_name: orig.name.clone(),
+                has_default: orig.default_value.is_some(),
             });
         }
     }
@@ -224,8 +225,17 @@ pub fn materialize_ops(ops: &[StructureOp], driver_id: &str) -> Result<Vec<Strin
             schema,
             table,
             column_name,
+            has_default,
         } = op
         {
+            if driver_id == "mssql" && *has_default {
+                out.push(mssql_drop_default_constraint(
+                    driver_id,
+                    schema.as_deref(),
+                    table,
+                    column_name,
+                ));
+            }
             out.push(build_drop_column(driver_id, schema.as_deref(), table, column_name)?);
         }
     }

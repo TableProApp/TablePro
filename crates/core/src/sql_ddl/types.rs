@@ -361,6 +361,7 @@ pub enum StructureOp {
         schema: Option<String>,
         table: String,
         column_name: String,
+        has_default: bool,
     },
     /// Single op for any combination of name / type / nullable /
     /// default / pk / auto-increment changes on one column. Driver

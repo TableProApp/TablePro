@@ -632,8 +632,8 @@ fn alter_column_mssql_applies_default_alongside_type_change() {
     };
     let stmts = build_alter_column("mssql", None, "t", &col).unwrap();
     assert_eq!(stmts.len(), 3);
-    assert_eq!(stmts[0], "ALTER TABLE [t] ALTER COLUMN [x] bigint NULL");
-    assert!(stmts[1].contains("DROP CONSTRAINT"));
+    assert!(stmts[0].contains("DROP CONSTRAINT"));
+    assert_eq!(stmts[1], "ALTER TABLE [t] ALTER COLUMN [x] bigint NULL");
     assert_eq!(stmts[2], "ALTER TABLE [t] ADD DEFAULT (0) FOR [x]");
 }
 

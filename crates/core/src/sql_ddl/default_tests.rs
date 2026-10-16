@@ -1,6 +1,6 @@
 use crate::query::ColumnInfo;
 
-use super::{DraftColumn, build_alter_column};
+use super::{DraftColumn, build_alter_column, diff_to_ops, materialize_ops};
 
 fn loaded(default: Option<&str>) -> DraftColumn {
     DraftColumn::from_info(ColumnInfo {
@@ -16,6 +16,13 @@ fn loaded(default: Option<&str>) -> DraftColumn {
         enum_type: None,
         domain_type: None,
     })
+}
+
+fn named(name: &str, default: Option<&str>) -> ColumnInfo {
+    ColumnInfo {
+        name: name.into(),
+        ..loaded(default).original.unwrap()
+    }
 }
 
 fn with_default(default: Option<&str>, edited: Option<&str>) -> DraftColumn {
@@ -219,4 +226,58 @@ fn sqlite_refuses_a_new_primary_key_column_instead_of_dropping_the_key() {
         super::build_add_column("sqlite", None, "t", &key),
         Err(super::BuildDdlError::SqliteNotSupported(_))
     ));
+}
+
+#[test]
+fn a_sql_server_type_change_drops_the_default_first_and_adds_it_again_afterwards() {
+    let mut column = loaded(Some("0"));
+    column.data_type = "int".into();
+    let statements = build_alter_column("mssql", Some("dbo"), "t", &column).unwrap();
+    assert_eq!(statements.len(), 3, "{statements:#?}");
+    assert!(statements[0].contains("sys.default_constraints"), "{}", statements[0]);
+    assert_eq!(statements[1], "ALTER TABLE [dbo].[t] ALTER COLUMN [status] int NULL");
+    assert_eq!(statements[2], "ALTER TABLE [dbo].[t] ADD DEFAULT (0) FOR [status]");
+}
+
+#[test]
+fn a_sql_server_type_change_without_a_default_adds_no_default_statements() {
+    let mut column = loaded(None);
+    column.data_type = "int".into();
+    assert_eq!(
+        build_alter_column("mssql", Some("dbo"), "t", &column).unwrap(),
+        vec!["ALTER TABLE [dbo].[t] ALTER COLUMN [status] int NULL"]
+    );
+}
+
+#[test]
+fn a_sql_server_default_edit_drops_the_old_constraint_before_any_alter() {
+    let mut column = with_default(Some("0"), Some("1"));
+    column.data_type = "int".into();
+    let statements = build_alter_column("mssql", Some("dbo"), "t", &column).unwrap();
+    assert!(statements[0].contains("sys.default_constraints"), "{statements:#?}");
+    assert_eq!(statements[1], "ALTER TABLE [dbo].[t] ALTER COLUMN [status] int NULL");
+    assert_eq!(statements[2], "ALTER TABLE [dbo].[t] ADD DEFAULT (1) FOR [status]");
+}
+
+#[test]
+fn dropping_a_sql_server_column_with_a_default_drops_its_constraint_first() {
+    let original = vec![named("n", Some("0")), named("plain", None), named("kept", None)];
+    let current = vec![DraftColumn::from_info(named("kept", None))];
+    let ops = diff_to_ops(Some("dbo"), "t", "t", &original, &current, &[], &[], &[], &[]);
+    let statements = materialize_ops(&ops, "mssql").unwrap();
+    let drop_default = statements
+        .iter()
+        .position(|statement| statement.contains("sys.default_constraints") && statement.contains("'n'"))
+        .expect("the default constraint of n is dropped");
+    let drop_column = statements
+        .iter()
+        .position(|statement| statement == "ALTER TABLE [dbo].[t] DROP COLUMN [n]")
+        .expect("n is dropped");
+    assert!(drop_default < drop_column, "{statements:#?}");
+    assert!(
+        !statements
+            .iter()
+            .any(|statement| statement.contains("sys.default_constraints") && statement.contains("'plain'")),
+        "{statements:#?}"
+    );
 }
