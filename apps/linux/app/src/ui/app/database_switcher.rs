@@ -188,20 +188,9 @@ impl App {
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
-                    match tablepro_storage::load_connections().await {
-                        Ok(mut saved) => {
-                            if let Some(connection) = saved.iter_mut().find(|connection| connection.id == id) {
-                                connection.database = name;
-                                if let Err(error) =
-                                    tablepro_storage::save_connections(std::slice::from_ref(connection)).await
-                                {
-                                    tracing::warn!(%error, "the switched database was not saved");
-                                }
-                            }
-                        }
-                        Err(error) => {
-                            tracing::warn!(%error, "saved connections could not be read to keep the database")
-                        }
+                    let update = tablepro_storage::update_connection(id, |connection| connection.database = name).await;
+                    if let Err(error) = update {
+                        tracing::warn!(%error, "the switched database was not saved");
                     }
                     reply.input(AppMsg::ReloadConnections);
                 })

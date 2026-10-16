@@ -17,6 +17,16 @@ const MAX_CONNECTION_VALUE_BYTES: usize = 64 * 1024;
 #[path = "connections_migration_tests.rs"]
 mod migration_tests;
 
+#[path = "connections_copy.rs"]
+mod copy;
+pub use copy::duplicate_connection;
+#[cfg(test)]
+use copy::duplicate_from;
+
+#[cfg(test)]
+#[path = "connections_update_tests.rs"]
+mod update_tests;
+
 #[cfg(test)]
 #[path = "connections_socket_tests.rs"]
 mod socket_tests;
@@ -226,47 +236,6 @@ pub async fn restore_connection(previous: Option<&SavedConnection>, id: Uuid) ->
     }
 }
 
-/// A copy of `id` under a fresh `Uuid` and a distinct name. The new id
-/// has no Secret Service entries, so the copy starts without any saved
-/// credentials and the caller must say so.
-pub async fn duplicate_connection(id: Uuid) -> Result<SavedConnection, StorageError> {
-    duplicate_from(&connections_path()?, id).await
-}
-
-async fn duplicate_from(path: &Path, id: Uuid) -> Result<SavedConnection, StorageError> {
-    let _guard = lock_path(path).await?;
-    let mut existing = load_from(path).await?;
-    let Some(source) = existing.iter().find(|connection| connection.id == id) else {
-        return Err(StorageError::Schema("no saved connection with that id".into()));
-    };
-    let copy = SavedConnection {
-        id: Uuid::new_v4(),
-        name: distinct_copy_name(&source.name, &existing),
-        last_opened_at: None,
-        ..source.clone()
-    };
-    existing.push(copy.clone());
-    save_to_unlocked(path, &existing).await?;
-    Ok(copy)
-}
-
-/// `name (copy)`, then `name (copy 2)` upward, so a second duplicate
-/// does not produce two rows the user cannot tell apart.
-fn distinct_copy_name(source: &str, existing: &[SavedConnection]) -> String {
-    let taken = |candidate: &str| existing.iter().any(|connection| connection.name == candidate);
-    let first = format!("{source} (copy)");
-    if !taken(&first) {
-        return first;
-    }
-    for suffix in 2..=MAX_CONNECTIONS {
-        let candidate = format!("{source} (copy {suffix})");
-        if !taken(&candidate) {
-            return candidate;
-        }
-    }
-    format!("{source} (copy {})", Uuid::new_v4())
-}
-
 async fn delete_from(path: &Path, id: Uuid) -> Result<(), StorageError> {
     let _guard = lock_path(path).await?;
     let mut existing = load_from(path).await?;
@@ -280,17 +249,32 @@ async fn delete_from(path: &Path, id: Uuid) -> Result<(), StorageError> {
 /// opened from the dialog without ticking "Save"); the missing-id case
 /// is silent because there is nothing to update.
 pub async fn touch_last_opened(id: Uuid) -> Result<(), StorageError> {
-    touch_last_opened_from(&connections_path()?, id).await
+    update_connection(id, |connection| connection.last_opened_at = Some(Utc::now()))
+        .await
+        .map(drop)
 }
 
-async fn touch_last_opened_from(path: &Path, id: Uuid) -> Result<(), StorageError> {
+pub async fn update_connection(
+    id: Uuid,
+    change: impl FnOnce(&mut SavedConnection),
+) -> Result<Option<SavedConnection>, StorageError> {
+    update_connection_in(&connections_path()?, id, change).await
+}
+
+pub(crate) async fn update_connection_in(
+    path: &Path,
+    id: Uuid,
+    change: impl FnOnce(&mut SavedConnection),
+) -> Result<Option<SavedConnection>, StorageError> {
     let _guard = lock_path(path).await?;
     let mut existing = load_from(path).await?;
     let Some(connection) = existing.iter_mut().find(|connection| connection.id == id) else {
-        return Ok(());
+        return Ok(None);
     };
-    connection.last_opened_at = Some(Utc::now());
-    save_to_unlocked(path, &existing).await
+    change(connection);
+    let updated = connection.clone();
+    save_to_unlocked(path, &existing).await?;
+    Ok(Some(updated))
 }
 
 pub(crate) async fn load_from(path: &Path) -> Result<Vec<SavedConnection>, StorageError> {

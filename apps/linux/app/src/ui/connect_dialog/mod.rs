@@ -68,6 +68,8 @@ struct DriverEntry {
     maturity: DriverMaturity,
 }
 
+static CONNECTION_SAVE_TURN: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 fn auth_mode_label(mode: AuthMode) -> String {
     match mode {
         AuthMode::Password => crate::tr!("Password"),
@@ -1087,8 +1089,10 @@ async fn run_connect(request: ConnectRequest) -> Result<Option<connection_servic
     } = opened;
 
     let tls_mode = opts_clone.tls.mode;
+    let _save_turn = CONNECTION_SAVE_TURN.lock().await;
+    let existing = find_existing(&identity).await.or(existing);
     let saved = SavedConnection {
-        id,
+        id: existing.as_ref().map_or(id, |connection| connection.id),
         name: label.clone(),
         driver_id: driver_id.clone(),
         host: opts_clone.host.clone(),
