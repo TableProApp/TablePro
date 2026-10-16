@@ -159,6 +159,7 @@ impl DdlDialect for SqliteDialect {
         changes.check(self, original)?;
         let source = CreateTableSource::of(original);
         let Some(change) = native_change_rules::first_rebuild_change(original, source.as_ref().ok(), changes) else {
+            native_change_rules::check_native_drops(original, changes)?;
             return self.native_plan(original, changes);
         };
         let source = source.map_err(|error| {

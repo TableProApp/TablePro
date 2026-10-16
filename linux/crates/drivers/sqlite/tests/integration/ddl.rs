@@ -818,19 +818,25 @@ async fn a_dropped_column_something_reads_rolls_the_rebuild_back() {
 }
 
 /// SQLite never resolves a trigger's UPDATE OF list, an INSERT's columns
-/// or the columns an UPDATE sets, and would make the trigger again to
-/// fail when it fires.
+/// or the columns an UPDATE sets, so its DROP COLUMN, like a rebuild,
+/// would keep the trigger to fail when it fires.
 #[tokio::test]
-async fn a_trigger_listing_a_dropped_column_refuses_the_rebuild_before_save() {
+async fn a_trigger_listing_a_dropped_column_refuses_the_drop_before_save() {
     let listers = [
         "CREATE TRIGGER lists_code AFTER INSERT ON audit BEGIN UPDATE kept SET code = new.note; END",
         "CREATE TRIGGER lists_code AFTER INSERT ON audit BEGIN INSERT INTO kept (code) VALUES (new.note); END",
         "CREATE TRIGGER lists_code AFTER UPDATE OF code ON kept BEGIN INSERT INTO audit VALUES (new.note); END",
     ];
-    for sql in listers {
+    // UNIQUE has the drop rebuild the table; without it SQLite drops it.
+    let tables = [
+        "CREATE TABLE kept (id INTEGER PRIMARY KEY, code TEXT UNIQUE, note TEXT)",
+        "CREATE TABLE kept (id INTEGER PRIMARY KEY, code TEXT, note TEXT)",
+    ];
+    for (table, sql) in tables.into_iter().flat_map(|table| listers.map(|sql| (table, sql))) {
         let file = TestFile::new().await;
         let connection = file.open().await;
-        apply(connection.as_ref(), &CODES_SCHEMA).await.unwrap();
+        apply(connection.as_ref(), &[table]).await.unwrap();
+        apply(connection.as_ref(), &CODES_SCHEMA[1..]).await.unwrap();
         apply(connection.as_ref(), &[sql]).await.unwrap();
         let before = read(connection.as_ref(), &kept()).await;
 
@@ -843,7 +849,7 @@ async fn a_trigger_listing_a_dropped_column_refuses_the_rebuild_before_save() {
                 operation: DdlOperation::DropColumn,
                 reason: RefusalReason::ColumnInUse(vec!["lists_code".to_owned()]),
             }),
-            "{sql}"
+            "{table}: {sql}"
         );
         connection.close().await.unwrap();
     }

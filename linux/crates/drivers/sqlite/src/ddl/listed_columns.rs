@@ -7,16 +7,35 @@
 
 use std::collections::HashSet;
 
+use tablepro_core::ddl::{SchemaObjectKind, SchemaObjectSource};
 use tablepro_core::sql_syntax::script::ScriptTokenKind;
 
 use super::create_table_source::{Token, tokens, unquote};
+
+/// The names of the triggers among `objects` that list `column` of
+/// `table`, or whose text does not read and so might.
+pub(super) fn listing_triggers<'o>(
+    objects: impl Iterator<Item = &'o SchemaObjectSource>,
+    table: &str,
+    column: &str,
+) -> Vec<String> {
+    let column = column.to_ascii_lowercase();
+    objects
+        .filter(|object| object.kind == SchemaObjectKind::Trigger)
+        .filter(|object| {
+            let on_table = object.table.eq_ignore_ascii_case(table);
+            listed_columns(&object.sql, table, on_table).is_none_or(|listed| listed.contains(&column))
+        })
+        .map(|object| object.name.clone())
+        .collect()
+}
 
 /// The columns of `table` that `trigger` lists, folded to ASCII
 /// lowercase: its UPDATE OF columns when it is `on_table`, and the
 /// columns its steps insert into or set in `table`. SQLite refuses a
 /// qualified table in a trigger step, so the step's bare name says
 /// which table it writes. `None` when the text does not read.
-pub(super) fn listed_columns(trigger: &str, table: &str, on_table: bool) -> Option<HashSet<String>> {
+fn listed_columns(trigger: &str, table: &str, on_table: bool) -> Option<HashSet<String>> {
     let tokens = tokens(trigger).ok()?;
     let text = Text {
         sql: trigger,

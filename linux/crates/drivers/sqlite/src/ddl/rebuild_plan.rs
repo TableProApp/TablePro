@@ -29,7 +29,7 @@ use tablepro_core::{ForeignKeyCheck, ForeignKeyMode};
 
 use super::column_constraint_segment::ColumnConstraintKind;
 use super::create_table_source::{CreateTableSource, tokens};
-use super::listed_columns::listed_columns;
+use super::listed_columns::listing_triggers;
 use super::native_change_rules::names;
 use super::source_element::{SourceColumn, SourceElement, TableConstraint, TableConstraintKind};
 use super::{default_clause, foreign_key_constraint};
@@ -639,17 +639,12 @@ impl Rebuild<'_> {
                     users.push(other.name.clone());
                 }
             }
-            let table = &self.original.table.name;
             users.extend(
                 self.recreated()
-                    .filter(|object| match object.kind {
-                        SchemaObjectKind::Index => words(&object.sql).contains(&folded),
-                        SchemaObjectKind::Trigger => listed_columns(&object.sql, table, self.owned(object))
-                            .is_none_or(|listed| listed.contains(&fold(name))),
-                        SchemaObjectKind::View => false,
-                    })
+                    .filter(|object| object.kind == SchemaObjectKind::Index && words(&object.sql).contains(&folded))
                     .map(|object| object.name.clone()),
             );
+            users.extend(listing_triggers(self.recreated(), &self.original.table.name, name));
             if !users.is_empty() {
                 return Err(BuildDdlError::Refused {
                     column: name.to_owned(),

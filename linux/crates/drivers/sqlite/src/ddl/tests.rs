@@ -1242,6 +1242,73 @@ fn a_trigger_elsewhere_naming_its_own_row_does_not_hold_a_dropped_column() {
     );
 }
 
+/// SQLite's own DROP COLUMN keeps a trigger that lists the column, to
+/// fail when it fires.
+#[test]
+fn a_native_drop_of_a_column_a_trigger_lists_is_refused() {
+    let mut kept = table(
+        "kept",
+        vec![
+            rowid_alias("id"),
+            column("status", "TEXT", false),
+            column("note", "TEXT", false),
+        ],
+        "CREATE TABLE kept (id INTEGER PRIMARY KEY, status TEXT, note TEXT)",
+    );
+    let drop_status = |draft: &mut TableDraft| draft.columns.retain(|column| column.name != "status");
+    let set_dependents = |kept: &mut TableDefinition, dependents: Vec<SchemaObjectSource>| {
+        if let Some(source) = kept.source.as_mut() {
+            source.dependents = dependents;
+        }
+    };
+    let others_own = object(
+        SchemaObjectKind::Trigger,
+        "others_own",
+        "others",
+        "CREATE TRIGGER others_own AFTER UPDATE OF status ON others BEGIN UPDATE kept SET note = new.status; END",
+    );
+    set_dependents(&mut kept, vec![others_own.clone()]);
+    let allowed = sql(alter(&kept, drop_status));
+    let listers = [
+        (
+            "others_set",
+            "others",
+            "AFTER INSERT ON others BEGIN UPDATE kept SET status = new.status; END",
+        ),
+        (
+            "others_add",
+            "others",
+            "AFTER INSERT ON others BEGIN INSERT INTO kept (status) VALUES (new.status); END",
+        ),
+        (
+            "kept_watch",
+            "kept",
+            "AFTER UPDATE OF status ON kept BEGIN SELECT 1; END",
+        ),
+    ];
+
+    for (name, owner, body) in listers {
+        let lister = object(
+            SchemaObjectKind::Trigger,
+            name,
+            owner,
+            &format!("CREATE TRIGGER {name} {body}"),
+        );
+        set_dependents(&mut kept, vec![others_own.clone(), lister]);
+
+        assert_eq!(
+            refusal(&alter(&kept, drop_status)),
+            Some((
+                "status",
+                DdlOperation::DropColumn,
+                &RefusalReason::ColumnInUse(vec![name.to_owned()])
+            )),
+            "{name}"
+        );
+    }
+    assert_eq!(allowed, ["ALTER TABLE \"kept\" DROP COLUMN \"status\""]);
+}
+
 #[test]
 fn an_unreadable_table_offers_no_foreign_key_or_key_change() {
     let virtual_table = table(

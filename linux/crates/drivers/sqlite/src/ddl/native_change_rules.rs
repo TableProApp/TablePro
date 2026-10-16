@@ -2,11 +2,14 @@
 //! lang_altertable.html. Anything else rebuilds the table.
 
 use tablepro_core::column::ColumnDefault;
-use tablepro_core::ddl::{ColumnDefinition, DdlOperation, DraftColumn, TableChanges, TableDefinition};
+use tablepro_core::ddl::{
+    BuildDdlError, ColumnDefinition, DdlOperation, DraftColumn, RefusalReason, TableChanges, TableDefinition,
+};
 use tablepro_core::value::Value;
 
 use super::column_constraint_segment::ColumnConstraintKind;
 use super::create_table_source::CreateTableSource;
+use super::listed_columns::listing_triggers;
 use super::source_element::TableConstraintKind;
 
 /// The first change that needs a rebuild, named as the error that
@@ -89,10 +92,9 @@ fn adds_natively(column: &DraftColumn) -> bool {
 }
 
 /// DROP COLUMN refuses a key or UNIQUE column, which a rebuild can drop
-/// with its constraint. Every other use, by an index, a CHECK, a
-/// generated column, a trigger or a view, SQLite checks against the
-/// schema itself and refuses by name, which no rebuild could improve on
-/// without breaking that use.
+/// with its constraint. Any other use SQLite finds by checking the
+/// schema without the column, except in a trigger's column lists, which
+/// `check_native_drops` refuses.
 fn drops_natively(
     original: &TableDefinition,
     source: Option<&CreateTableSource<'_>>,
@@ -127,6 +129,28 @@ fn drops_natively(
         _ => false,
     });
     !own_unique && !unique_alone
+}
+
+/// SQLite's DROP COLUMN checks the schema without the column but
+/// resolves no trigger's column lists (alter.c, `sqlite3AlterDropColumn`
+/// and `renameResolveTrigger`), so it keeps a trigger that lists the
+/// column and fails when it fires.
+pub(super) fn check_native_drops(original: &TableDefinition, changes: &TableChanges) -> Result<(), BuildDdlError> {
+    let dependents = original
+        .source
+        .as_ref()
+        .map_or(&[][..], |source| source.dependents.as_slice());
+    for column in &changes.dropped_columns {
+        let users = listing_triggers(dependents.iter(), &original.table.name, column.name());
+        if !users.is_empty() {
+            return Err(BuildDdlError::Refused {
+                column: column.name().to_owned(),
+                operation: DdlOperation::DropColumn,
+                reason: RefusalReason::ColumnInUse(users),
+            });
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn names(columns: &[String], name: &str) -> bool {
