@@ -855,6 +855,114 @@ async fn a_trigger_listing_a_dropped_column_refuses_the_drop_before_save() {
     }
 }
 
+/// A function, a type, a collation or a keyword spelled like a column is
+/// not the column, in a rebuild or in SQLite's own DROP COLUMN.
+#[tokio::test]
+async fn a_word_in_the_tables_own_expressions_does_not_hold_a_column() {
+    for unique in ["UNIQUE", ""] {
+        let file = TestFile::new().await;
+        let connection = file.open().await;
+        apply(
+            connection.as_ref(),
+            &[
+                &format!(
+                    "CREATE TABLE kept (id INTEGER PRIMARY KEY, date TEXT {unique}, \"end\" TEXT {unique}, text TEXT \
+                     {unique}, nocase TEXT {unique}, note TEXT CHECK (CAST(note AS text) <> '' COLLATE nocase), \
+                     CHECK (date(note) IS NOT NULL), CHECK (CASE WHEN note IS NULL THEN 0 ELSE 1 END))"
+                ),
+                "CREATE INDEX kept_day ON kept (date(note) DESC) WHERE CASE WHEN note > '' THEN 1 END",
+                "INSERT INTO kept VALUES (1, 'd', 'e', 't', 'n', '2026-10-16')",
+            ],
+        )
+        .await
+        .unwrap();
+
+        let saved = save(connection.as_ref(), &kept(), |draft| {
+            draft
+                .columns
+                .retain(|column| !["date", "end", "text", "nocase"].contains(&column.name.as_str()));
+        })
+        .await;
+
+        assert!(saved.is_ok(), "{unique}: {saved:?}");
+        let after = read(connection.as_ref(), &kept()).await;
+        assert_eq!(names(&after), ["id", "note"], "{unique}");
+        assert_eq!(dependent_names(&after), ["kept_day"], "{unique}");
+        let rows = query(connection.as_ref(), "SELECT id, note FROM kept").await;
+        assert_eq!(rows.rows, [vec![Value::Int(1), text("2026-10-16")]], "{unique}");
+        connection.close().await.unwrap();
+    }
+}
+
+/// What SQLite refuses only as "no such column", without naming the
+/// constraint or index, is refused before Save by name. SQLite's own
+/// DROP COLUMN names an index, so there it refuses the drop itself.
+#[tokio::test]
+async fn the_tables_own_expressions_using_a_dropped_column_hold_it() {
+    let uses = [
+        ("CHECK (code <> note)", None, "CHECK (code <> note)"),
+        ("CONSTRAINT coded CHECK (\"code\" IS NOT NULL)", None, "coded"),
+        ("UNIQUE (code, note)", None, "UNIQUE (code, note)"),
+        ("label TEXT CHECK (length(code) > 0)", None, "label"),
+        ("label TEXT AS (upper(code))", None, "label"),
+        (
+            "label TEXT",
+            Some("CREATE INDEX kept_lower ON kept (lower(code))"),
+            "kept_lower",
+        ),
+        (
+            "label TEXT",
+            Some("CREATE INDEX kept_lower ON kept (note) WHERE code IS NOT NULL"),
+            "kept_lower",
+        ),
+    ];
+    for unique in ["UNIQUE", ""] {
+        for (element, index, user) in uses {
+            let file = TestFile::new().await;
+            let connection = file.open().await;
+            apply(
+                connection.as_ref(),
+                &[&format!(
+                    "CREATE TABLE kept (id INTEGER PRIMARY KEY, code TEXT {unique}, note TEXT, {element})"
+                )],
+            )
+            .await
+            .unwrap();
+            if let Some(index) = index {
+                apply(connection.as_ref(), &[index]).await.unwrap();
+            }
+            let before = read(connection.as_ref(), &kept()).await;
+
+            let planned = plan(connection.as_ref(), &before, drop_code);
+
+            if index.is_some() && unique.is_empty() {
+                let outcome = save(connection.as_ref(), &kept(), drop_code).await;
+                let Err(DriverError::RolledBack { source, .. }) = &outcome else {
+                    panic!("{element}: {outcome:?}");
+                };
+                assert!(
+                    source
+                        .to_string()
+                        .contains("error in index kept_lower after drop column: no such column: code"),
+                    "{source}"
+                );
+                assert_eq!(read(connection.as_ref(), &kept()).await, before);
+            } else {
+                assert_eq!(
+                    planned,
+                    Err(BuildDdlError::Refused {
+                        column: "code".to_owned(),
+                        operation: DdlOperation::DropColumn,
+                        reason: RefusalReason::ColumnInUse(vec![user.to_owned()]),
+                    }),
+                    "{unique}: {element} {index:?}"
+                );
+            }
+            connection.close().await.unwrap();
+        }
+    }
+}
+
 /// The END that closes a trigger body or a CASE is a keyword, not the
 /// column `end`.
 #[tokio::test]

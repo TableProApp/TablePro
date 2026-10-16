@@ -17,7 +17,7 @@ use tablepro_core::column::{
 use tablepro_core::sql_syntax::{LiteralToken, MAX_EXPRESSION_LEN, SqlGrammar, parse_expression};
 use tablepro_core::value::{SqlDecimal, Value};
 
-pub(crate) use dependents::{SchemaRow, select_dependents, words};
+pub(crate) use dependents::{SchemaRow, select_dependents};
 pub use runtime_version::{SQLITE_MIN_VERSION, SqliteVersion, check_runtime_version};
 pub(crate) use sqlite_column_row::{SqliteColumnRow, TableFacts};
 pub(crate) use table_definition::{InboundKeyRow, foreign_key_names, generated_expressions, inbound_foreign_keys};

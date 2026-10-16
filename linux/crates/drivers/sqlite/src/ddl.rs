@@ -4,6 +4,7 @@
 mod column_constraint_segment;
 mod create_table_source;
 mod declared_shape;
+mod expression_columns;
 mod listed_columns;
 mod native_change_rules;
 mod rebuild_plan;
@@ -159,7 +160,7 @@ impl DdlDialect for SqliteDialect {
         changes.check(self, original)?;
         let source = CreateTableSource::of(original);
         let Some(change) = native_change_rules::first_rebuild_change(original, source.as_ref().ok(), changes) else {
-            native_change_rules::check_native_drops(original, changes)?;
+            native_change_rules::check_native_drops(original, source.as_ref().ok(), changes)?;
             return self.native_plan(original, changes);
         };
         let source = source.map_err(|error| {

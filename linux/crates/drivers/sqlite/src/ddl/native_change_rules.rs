@@ -93,8 +93,8 @@ fn adds_natively(column: &DraftColumn) -> bool {
 
 /// DROP COLUMN refuses a key or UNIQUE column, which a rebuild can drop
 /// with its constraint. Any other use SQLite finds by checking the
-/// schema without the column, except in a trigger's column lists, which
-/// `check_native_drops` refuses.
+/// schema without the column, and `check_native_drops` refuses before
+/// Save what it would miss or name only by the table.
 fn drops_natively(
     original: &TableDefinition,
     source: Option<&CreateTableSource<'_>>,
@@ -131,17 +131,25 @@ fn drops_natively(
     !own_unique && !unique_alone
 }
 
-/// SQLite's DROP COLUMN checks the schema without the column but
-/// resolves no trigger's column lists (alter.c, `sqlite3AlterDropColumn`
-/// and `renameResolveTrigger`), so it keeps a trigger that lists the
-/// column and fails when it fires.
-pub(super) fn check_native_drops(original: &TableDefinition, changes: &TableChanges) -> Result<(), BuildDdlError> {
+/// SQLite's DROP COLUMN checks the schema without the column (alter.c,
+/// `sqlite3AlterDropColumn`). A CHECK, generated column or UNIQUE of the
+/// table that still names it fails as "error in table ... no such
+/// column", naming no constraint, and a trigger's column lists it never
+/// resolves (`renameResolveTrigger`), keeping a trigger that fails when
+/// it fires. An index it refuses by name, so that is left to it.
+pub(super) fn check_native_drops(
+    original: &TableDefinition,
+    source: Option<&CreateTableSource<'_>>,
+    changes: &TableChanges,
+) -> Result<(), BuildDdlError> {
     let dependents = original
         .source
         .as_ref()
         .map_or(&[][..], |source| source.dependents.as_slice());
+    let dropped = |name: &str| names_dropped(changes, name);
     for column in &changes.dropped_columns {
-        let users = listing_triggers(dependents.iter(), &original.table.name, column.name());
+        let mut users = source.map_or_else(Vec::new, |source| source.users_of(column.name(), |_, _| true, dropped));
+        users.extend(listing_triggers(dependents.iter(), &original.table.name, column.name()));
         if !users.is_empty() {
             return Err(BuildDdlError::Refused {
                 column: column.name().to_owned(),
@@ -151,6 +159,13 @@ pub(super) fn check_native_drops(original: &TableDefinition, changes: &TableChan
         }
     }
     Ok(())
+}
+
+fn names_dropped(changes: &TableChanges, name: &str) -> bool {
+    changes
+        .dropped_columns
+        .iter()
+        .any(|column| column.name().eq_ignore_ascii_case(name))
 }
 
 pub(super) fn names(columns: &[String], name: &str) -> bool {

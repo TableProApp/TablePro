@@ -18,6 +18,7 @@ use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptToken
 
 use super::column_constraint_segment::{ColumnConstraintKind, ColumnConstraintSegment};
 use super::declared_shape::DeclaredShape;
+use super::expression_columns::{Terms, first_group, named_columns};
 use super::source_element::{
     ElementKind, ForeignKeyTarget, SourceColumn, SourceElement, SourceForeignKey, TableConstraint, TableConstraintKind,
 };
@@ -245,18 +246,58 @@ impl<'a> CreateTableSource<'a> {
             .any(|segment| matches!(segment.kind, ColumnConstraintKind::PrimaryKey { descending: true, .. }))
     }
 
-    /// The names `range` mentions, lowercased and unquoted. A name inside
-    /// a string literal is not a mention.
-    pub(crate) fn mentions(&self, range: Range<usize>) -> HashSet<String> {
+    /// What in the definition names `column`, apart from the column
+    /// itself: a table constraint the new table `keeps`, and the CHECK or
+    /// generated expression of a column not `dropped` too. Foreign keys
+    /// are left to the catalogue's list of them.
+    pub(crate) fn users_of(
+        &self,
+        column: &str,
+        keeps: impl Fn(usize, &TableConstraint) -> bool,
+        dropped: impl Fn(&str) -> bool,
+    ) -> Vec<String> {
+        let folded = column.to_ascii_lowercase();
+        let mut users = Vec::new();
+        for (index, constraint) in self.constraints() {
+            let range = self.elements[index].range.clone();
+            let uses = keeps(index, constraint)
+                && match &constraint.kind {
+                    TableConstraintKind::PrimaryKey { columns, .. } | TableConstraintKind::Unique { columns } => {
+                        columns.iter().any(|name| name.eq_ignore_ascii_case(column))
+                    }
+                    TableConstraintKind::Check => self.named_in(range.clone()).contains(&folded),
+                    TableConstraintKind::ForeignKey { .. } | TableConstraintKind::NameOnly => false,
+                };
+            if uses {
+                users.push(constraint.name.clone().unwrap_or_else(|| self.text(range).to_owned()));
+            }
+        }
+        for (_, other) in self.columns() {
+            if other.name.eq_ignore_ascii_case(column) || dropped(&other.name) {
+                continue;
+            }
+            let uses = other.segments.iter().any(|segment| {
+                matches!(
+                    segment.kind,
+                    ColumnConstraintKind::Check | ColumnConstraintKind::Generated
+                ) && self.named_in(segment.range.clone()).contains(&folded)
+            });
+            if uses {
+                users.push(other.name.clone());
+            }
+        }
+        users
+    }
+
+    /// The columns the expression in the first parentheses of `range`
+    /// names.
+    fn named_in(&self, range: Range<usize>) -> HashSet<String> {
+        let start = self.tokens.partition_point(|token| token.range.start < range.start);
+        let end = self.tokens.partition_point(|token| token.range.end <= range.end);
         self.tokens
-            .iter()
-            .filter(|token| token.range.start >= range.start && token.range.end <= range.end)
-            .filter_map(|token| match token.kind {
-                ScriptTokenKind::Word => Some(self.text(token.range.clone()).to_lowercase()),
-                ScriptTokenKind::QuotedIdentifier => Some(unquote(self.text(token.range.clone())).to_lowercase()),
-                _ => None,
-            })
-            .collect()
+            .get(start..end)
+            .and_then(first_group)
+            .map_or_else(HashSet::new, |group| named_columns(self.sql, group, Terms::Expression))
     }
 }
 
@@ -1031,7 +1072,6 @@ mod tests {
             .collect();
         assert_eq!(texts, ["id INTEGER /* inline */ PRIMARY KEY", "name TEXT"]);
         assert_eq!(source.text(source.close..source.close + 1), ")");
-        assert!(!source.mentions(source.elements[0].range.clone()).contains("inline"));
     }
 
     #[test]
@@ -1126,11 +1166,17 @@ mod tests {
     }
 
     #[test]
-    fn mentions_skip_strings_and_unquote_names() {
-        let source = read("CREATE TABLE t (a INT CHECK (\"B\" > 0 AND a <> 'c'))");
+    fn a_constraint_or_expression_of_the_table_uses_the_columns_it_names() {
+        let source = read(
+            "CREATE TABLE t (a INT CHECK (\"B\" > 0 AND a <> 'c'), b INT, c AS (lower(d)), d TEXT, e TEXT, \
+             CONSTRAINT both UNIQUE (b, e), CHECK (date(e) IS NOT NULL))",
+        );
+        let users = |column: &str| source.users_of(column, |_, _| true, |_| false);
 
-        let mentions = source.mentions(source.elements[0].range.clone());
-        assert!(mentions.contains("b") && mentions.contains("a"));
-        assert!(!mentions.contains("c"));
+        assert_eq!(users("b"), ["both", "a"]);
+        assert_eq!(users("d"), ["c"]);
+        assert_eq!(users("e"), ["both", "CHECK (date(e) IS NOT NULL)"]);
+        assert!(users("date").is_empty());
+        assert!(source.users_of("b", |_, _| false, |other| other == "a").is_empty());
     }
 }

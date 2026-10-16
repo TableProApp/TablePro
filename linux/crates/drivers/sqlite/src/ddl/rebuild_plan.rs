@@ -29,11 +29,12 @@ use tablepro_core::{ForeignKeyCheck, ForeignKeyMode};
 
 use super::column_constraint_segment::ColumnConstraintKind;
 use super::create_table_source::{CreateTableSource, tokens};
+use super::expression_columns::index_columns;
 use super::listed_columns::listing_triggers;
 use super::native_change_rules::names;
 use super::source_element::{SourceColumn, SourceElement, TableConstraint, TableConstraintKind};
 use super::{default_clause, foreign_key_constraint};
-use crate::catalog::{MAIN_SCHEMA, words};
+use crate::catalog::MAIN_SCHEMA;
 use crate::dialect::SqliteDialect;
 
 /// The new table is built under this prefix and renamed over the old
@@ -595,15 +596,14 @@ impl Rebuild<'_> {
     }
 
     /// Refuse, before Save, to drop a column the table's own keys,
-    /// constraints and indexes use, which SQLite would refuse naming only
-    /// the column, or that a trigger the rebuild makes again lists. What
-    /// a view or trigger reads SQLite checks in `schema_check`, naming
-    /// the view or trigger.
+    /// constraints and indexes use, or that a trigger the rebuild makes
+    /// again lists. SQLite would refuse the new table or index with "no
+    /// such column", naming neither, and the trigger not at all. What a
+    /// view or trigger reads SQLite checks in `schema_check`, naming the
+    /// view or trigger.
     fn check_dropped_columns(&self) -> Result<(), BuildDdlError> {
         for column in &self.changes.dropped_columns {
             let name = column.name();
-            // Mentions are lowercased whole, which can only find more.
-            let folded = name.to_lowercase();
             let mut users: Vec<String> = self
                 .original
                 .foreign_keys
@@ -611,37 +611,17 @@ impl Rebuild<'_> {
                 .filter(|key| names(&key.columns, name) && !self.changes.dropped_foreign_keys.contains(key))
                 .map(|key| key.name.clone())
                 .collect();
-            for (index, constraint) in self.source.constraints() {
-                let range = self.element(index).range.clone();
-                let uses = !matches!(constraint.kind, TableConstraintKind::ForeignKey { .. })
-                    && !self.constraint_removed(index, constraint)
-                    && self.source.mentions(range.clone()).contains(&folded);
-                if uses {
-                    users.push(
-                        constraint
-                            .name
-                            .clone()
-                            .unwrap_or_else(|| self.source.text(range).to_owned()),
-                    );
-                }
-            }
-            for (_, other) in self.source.columns() {
-                if other.name.eq_ignore_ascii_case(name) || dropped(self.changes, &other.name) {
-                    continue;
-                }
-                let uses = other.segments.iter().any(|segment| {
-                    matches!(
-                        segment.kind,
-                        ColumnConstraintKind::Check | ColumnConstraintKind::Generated
-                    ) && self.source.mentions(segment.range.clone()).contains(&folded)
-                });
-                if uses {
-                    users.push(other.name.clone());
-                }
-            }
+            users.extend(self.source.users_of(
+                name,
+                |index, constraint| !self.constraint_removed(index, constraint),
+                |other| dropped(self.changes, other),
+            ));
             users.extend(
                 self.recreated()
-                    .filter(|object| object.kind == SchemaObjectKind::Index && words(&object.sql).contains(&folded))
+                    .filter(|object| {
+                        object.kind == SchemaObjectKind::Index
+                            && index_columns(&object.sql).is_some_and(|columns| columns.contains(&fold(name)))
+                    })
                     .map(|object| object.name.clone()),
             );
             users.extend(listing_triggers(self.recreated(), &self.original.table.name, name));
