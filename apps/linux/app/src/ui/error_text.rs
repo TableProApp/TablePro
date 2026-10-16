@@ -62,6 +62,14 @@ pub fn driver_message(error: &DriverError) -> String {
             "Kerberos login failed: {detail}. Check that klist shows a valid ticket, run kinit if it does not, and make sure the server's SPN matches the host you typed."
         )
         .replace("{detail}", detail),
+        DriverError::Transaction { .. }
+        | DriverError::PartiallyApplied { .. }
+        | DriverError::TransactionRollbackFailed { .. } => save_failure_message(error),
+    }
+}
+
+fn save_failure_message(error: &DriverError) -> String {
+    match error {
         DriverError::Transaction {
             statement_index,
             source,
@@ -70,6 +78,14 @@ pub fn driver_message(error: &DriverError) -> String {
                 .replace("{n}", &(statement_index + 1).to_string())
                 .replace("{error}", &driver_message(source))
         }
+        DriverError::PartiallyApplied {
+            statement_index,
+            source,
+        } => crate::tr!(
+            "Save failed at statement {n}: {error}. This database cannot roll a save back, so the statements before it were applied. Refresh the table before saving again."
+        )
+        .replace("{n}", &(statement_index + 1).to_string())
+        .replace("{error}", &driver_message(source)),
         DriverError::TransactionRollbackFailed {
             statement_index,
             source,
@@ -80,6 +96,7 @@ pub fn driver_message(error: &DriverError) -> String {
         .replace("{n}", &(statement_index + 1).to_string())
         .replace("{error}", &driver_message(source))
         .replace("{rollback_error}", &driver_message(rollback_error)),
+        other => driver_message(other),
     }
 }
 
@@ -183,6 +200,17 @@ mod tests {
         assert!(message.contains("Rollback also failed"));
         assert!(message.contains("Database changes may have been applied"));
         assert!(!message.contains("no rows were changed"));
+    }
+
+    #[test]
+    fn a_partially_applied_save_says_earlier_statements_stayed_applied() {
+        let message = driver_message(&DriverError::non_atomic_batch_failure(
+            2,
+            DriverError::query("statement failed"),
+        ));
+        assert!(message.contains("statement 3"));
+        assert!(message.contains("before it were applied"));
+        assert!(!message.contains("rollback request succeeded"));
     }
 
     #[test]

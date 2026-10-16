@@ -328,10 +328,7 @@ impl Connection for ClickhouseConnection {
             match self.execute_params(sql, params).await {
                 Ok(r) => affected.push(r.rows_affected),
                 Err(e) => {
-                    return Err(DriverError::Transaction {
-                        statement_index: i,
-                        source: Box::new(e),
-                    });
+                    return Err(DriverError::non_atomic_batch_failure(i, e));
                 }
             }
         }

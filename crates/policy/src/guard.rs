@@ -966,6 +966,9 @@ fn transaction_error_outcome(error: &DriverError) -> (AuditTerminalStatus, Audit
         DriverError::Cancelled => (AuditTerminalStatus::Cancelled, AuditTransactionOutcome::Pending, false),
         DriverError::TimedOut => (AuditTerminalStatus::TimedOut, AuditTransactionOutcome::Pending, false),
         DriverError::Transaction { .. } => (AuditTerminalStatus::Failed, AuditTransactionOutcome::RolledBack, false),
+        DriverError::PartiallyApplied { source, .. } if !is_ambiguous_post_dispatch(source) => {
+            (AuditTerminalStatus::Failed, AuditTransactionOutcome::Failed, false)
+        }
         _ => (AuditTerminalStatus::Unknown, AuditTransactionOutcome::Unknown, true),
     }
 }
@@ -988,7 +991,9 @@ fn is_ambiguous_post_dispatch(error: &DriverError) -> bool {
         | DriverError::Tls(_)
         | DriverError::Internal(_)
         | DriverError::OperationOutcomeUnknown { .. } => true,
-        DriverError::Transaction { source, .. } => is_ambiguous_post_dispatch(source),
+        DriverError::Transaction { source, .. } | DriverError::PartiallyApplied { source, .. } => {
+            is_ambiguous_post_dispatch(source)
+        }
         DriverError::TransactionRollbackFailed { .. } => true,
         DriverError::Query { .. }
         | DriverError::ConcurrentModification
@@ -1014,7 +1019,7 @@ fn error_category(error: &DriverError) -> AuditErrorCategory {
         DriverError::Cancelled => AuditErrorCategory::Cancelled,
         DriverError::TimedOut => AuditErrorCategory::Timeout,
         DriverError::OperationOutcomeUnknown { .. } => AuditErrorCategory::Unknown,
-        DriverError::Transaction { .. } => AuditErrorCategory::Transaction,
+        DriverError::Transaction { .. } | DriverError::PartiallyApplied { .. } => AuditErrorCategory::Transaction,
         DriverError::TransactionRollbackFailed { .. } => AuditErrorCategory::Unknown,
     }
 }

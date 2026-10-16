@@ -90,6 +90,7 @@ impl App {
                             // whole grid.
                             let failed_statement = match &e {
                                 DriverError::Transaction { statement_index, .. }
+                                | DriverError::PartiallyApplied { statement_index, .. }
                                 | DriverError::TransactionRollbackFailed { statement_index, .. } => {
                                     Some(*statement_index)
                                 }

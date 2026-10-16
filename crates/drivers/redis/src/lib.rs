@@ -276,10 +276,7 @@ impl Connection for RedisConnection {
             match self.execute_params(sql, params).await {
                 Ok(res) => affected.push(res.rows_affected),
                 Err(e) => {
-                    return Err(DriverError::Transaction {
-                        statement_index: idx,
-                        source: Box::new(e),
-                    });
+                    return Err(DriverError::non_atomic_batch_failure(idx, e));
                 }
             }
         }

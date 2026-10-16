@@ -60,6 +60,12 @@ pub enum DriverError {
         source: Box<DriverError>,
     },
 
+    #[error("batch failed at statement {statement_index} after the statements before it were applied: {source}")]
+    PartiallyApplied {
+        statement_index: usize,
+        source: Box<DriverError>,
+    },
+
     #[error("transaction failed at statement {statement_index}: {source}; rollback also failed: {rollback_error}")]
     TransactionRollbackFailed {
         statement_index: usize,
@@ -69,6 +75,21 @@ pub enum DriverError {
 }
 
 impl DriverError {
+    pub fn non_atomic_batch_failure(statement_index: usize, source: DriverError) -> Self {
+        let source = Box::new(source);
+        if statement_index == 0 {
+            Self::Transaction {
+                statement_index,
+                source,
+            }
+        } else {
+            Self::PartiallyApplied {
+                statement_index,
+                source,
+            }
+        }
+    }
+
     pub fn query(message: impl Into<String>) -> Self {
         Self::Query {
             message: message.into(),

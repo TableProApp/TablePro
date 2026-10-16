@@ -112,6 +112,26 @@ fn confirmed_transaction_rollback_is_not_audited_as_an_unknown_outcome() {
 }
 
 #[test]
+fn a_partially_applied_batch_is_not_audited_as_rolled_back() {
+    let error = DriverError::non_atomic_batch_failure(2, DriverError::query("statement failed"));
+
+    assert_eq!(
+        super::super::transaction_error_outcome(&error),
+        (AuditTerminalStatus::Failed, AuditTransactionOutcome::Failed, false)
+    );
+    let first = DriverError::non_atomic_batch_failure(0, DriverError::query("statement failed"));
+    assert_eq!(
+        super::super::transaction_error_outcome(&first),
+        (AuditTerminalStatus::Failed, AuditTransactionOutcome::RolledBack, false)
+    );
+    let lost = DriverError::non_atomic_batch_failure(1, DriverError::Disconnected);
+    assert_eq!(
+        super::super::transaction_error_outcome(&lost),
+        (AuditTerminalStatus::Unknown, AuditTransactionOutcome::Unknown, true)
+    );
+}
+
+#[test]
 fn read_only_transaction_error_is_a_known_failure_without_disabling_writes() {
     assert_eq!(
         super::super::interactive_transaction_error_outcome(&DriverError::ReadOnly),
