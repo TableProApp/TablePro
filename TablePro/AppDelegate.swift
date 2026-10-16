@@ -159,38 +159,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if CompareSyncRunRegistry.shared.isApplying {
-            let alert = NSAlert()
-            alert.messageText = String(localized: "A sync is still running")
-            alert.informativeText = String(
-                format: String(localized: "Quitting stops the run against %@. Statements that already ran stay applied."),
-                CompareSyncRunRegistry.shared.applyingTargetNames.joined(separator: ", ")
-            )
-            alert.alertStyle = .critical
-            alert.addButton(withTitle: String(localized: "Keep Running"))
-            alert.addButton(withTitle: String(localized: "Stop and Quit"))
-            alert.buttons[1].hasDestructiveAction = true
-            guard alert.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
-        }
-
-        guard ThemeEditorWindows.shared.prepareToTerminate() else { return .terminateCancel }
-
-        let hasUnsaved = MainContentCoordinator.hasAnyUnsavedChanges()
-        if hasUnsaved {
-            /// Quitting can be asked for from outside the app, so this alert has to come forward on
-            /// its own: it blocks termination in a nested modal loop, and a background process has
-            /// no Dock icon to reach it by.
-            AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
-            let alert = NSAlert()
-            alert.messageText = String(localized: "You have unsaved changes")
-            alert.informativeText = String(localized: "Some tabs have unsaved edits. Quitting will discard these changes.")
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: String(localized: "Cancel"))
-            alert.addButton(withTitle: String(localized: "Quit Anyway"))
-            alert.buttons[1].hasDestructiveAction = true
-            let response = alert.runModal()
-            guard response == .alertSecondButtonReturn else { return .terminateCancel }
-        }
+        guard QuitApproval.approve() else { return .terminateCancel }
 
         Task {
             await MCPServerManager.shared.stop()
