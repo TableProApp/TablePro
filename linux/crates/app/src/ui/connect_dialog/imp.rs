@@ -75,6 +75,9 @@ pub struct ConnectDialog {
     pub mode: RefCell<ConnectDialogMode>,
     /// An Edit's save in flight, which keeps Save from running twice.
     pub saving: Cell<bool>,
+    /// The user can close the dialog while a save runs, and the save
+    /// must not close it again when it lands.
+    pub has_closed: Cell<bool>,
     pub pem: PemValidation,
     /// The TLS settings the last file check read, so a keystroke in an
     /// unrelated row does not read the files again.
@@ -124,6 +127,7 @@ impl WidgetImpl for ConnectDialog {}
 
 impl AdwDialogImpl for ConnectDialog {
     fn closed(&self) {
+        self.has_closed.set(true);
         self.tests.cancel();
         self.testing.set(false);
         self.parent_closed();

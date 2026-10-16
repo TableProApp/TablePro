@@ -128,6 +128,28 @@ fn caps_of(driver_id: &str) -> &'static DriverCapabilities {
         .unwrap_or_else(|| panic!("{driver_id} is registered"))
 }
 
+/// The dialog in a window, as the app shows it before anyone can press
+/// Connect or Save. Without animations it closes before the next line.
+fn present(dialog: &ConnectDialog) -> crate::test_support::OwnedWindow<adw::Window> {
+    if let Some(settings) = gtk4::Settings::default() {
+        settings.set_gtk_enable_animations(false);
+    }
+    let window = crate::test_support::OwnedWindow::presented(
+        adw::Window::builder().default_width(1000).default_height(700).build(),
+    );
+    dialog.present(Some(&*window));
+    window
+}
+
+/// Runs `step` with GLib criticals fatal, so a close of a dialog that
+/// is not presented aborts the test.
+fn without_criticals(step: impl FnOnce()) {
+    let previous = glib::log_set_always_fatal(glib::LogLevels::LEVEL_CRITICAL);
+    step();
+    crate::test_support::drain_main_context();
+    glib::log_set_always_fatal(previous);
+}
+
 #[gtk4::test]
 fn dialog_opens_with_remembered_driver_and_its_port() {
     let harness = open(Options {
@@ -297,10 +319,7 @@ fn encryption_combo_lists_only_capability_modes() {
 #[gtk4::test]
 fn a_described_choice_shows_its_whole_value() {
     let harness = dialog();
-    let window = crate::test_support::OwnedWindow::presented(
-        adw::Window::builder().default_width(1000).default_height(700).build(),
-    );
-    harness.dialog.present(Some(&*window));
+    let window = present(&harness.dialog);
     let ssh = harness.dialog.imp().ssh_section.get();
     ssh.enable();
     let rows = [
@@ -461,13 +480,16 @@ fn invalid_ca_marks_row_error_and_disables_connect() {
 #[gtk4::test]
 fn connect_emits_submission_without_establishing() {
     let harness = dialog();
+    let _window = present(&harness.dialog);
     fill_network(&harness.dialog);
     let submissions = SignalLog::connect(&harness.dialog, "submitted", |values| {
         values[1].get::<ConnectSubmission>().expect("a submission")
     });
+    let closed = SignalLog::connect(&harness.dialog, "closed", |_| ());
 
-    harness.dialog.imp().connect_button.emit_clicked();
+    without_criticals(|| harness.dialog.imp().connect_button.emit_clicked());
 
+    assert_eq!(closed.count(), 1, "Connect left the dialog open");
     let mut sent = submissions.take();
     assert_eq!(sent.len(), 1);
     assert!(harness.connector.calls().is_empty(), "the dialog connected by itself");
@@ -492,11 +514,12 @@ fn connect_emits_submission_without_establishing() {
 #[gtk4::test]
 fn a_reopened_entry_keeps_its_id_after_the_host_changes() {
     let first = dialog();
+    let _first_window = present(&first.dialog);
     fill_network(&first.dialog);
     let log = SignalLog::connect(&first.dialog, "submitted", |values| {
         values[1].get::<ConnectSubmission>().expect("a submission")
     });
-    first.dialog.imp().connect_button.emit_clicked();
+    without_criticals(|| first.dialog.imp().connect_button.emit_clicked());
     let saved = log.take().remove(0).pending_save.connection;
     drop(log);
 
@@ -508,13 +531,14 @@ fn a_reopened_entry_keeps_its_id_after_the_host_changes() {
         }),
         ..Options::default()
     });
+    let _reopened_window = present(&reopened.dialog);
     assert_eq!(reopened.dialog.imp().host_row.text(), "db.example.com");
     assert_eq!(reopened.dialog.imp().password_row.text(), "s3cret");
     reopened.dialog.imp().host_row.set_text("db2.example.com");
     let log = SignalLog::connect(&reopened.dialog, "submitted", |values| {
         values[1].get::<ConnectSubmission>().expect("a submission")
     });
-    reopened.dialog.imp().connect_button.emit_clicked();
+    without_criticals(|| reopened.dialog.imp().connect_button.emit_clicked());
 
     let edited = log.take().remove(0).pending_save;
     assert_eq!(edited.connection.id, saved.id);
@@ -530,13 +554,14 @@ fn a_connect_from_new_connection_keeps_a_renamed_entry_s_name() {
         saved: vec![saved.clone()],
         ..Options::default()
     });
+    let _window = present(&harness.dialog);
     fill_network(&harness.dialog);
     assert_eq!(harness.dialog.imp().name_row.text(), "");
     let log = SignalLog::connect(&harness.dialog, "submitted", |values| {
         values[1].get::<ConnectSubmission>().expect("a submission")
     });
 
-    harness.dialog.imp().connect_button.emit_clicked();
+    without_criticals(|| harness.dialog.imp().connect_button.emit_clicked());
 
     let submitted = log.take().remove(0).pending_save;
     assert_eq!(submitted.connection.id, saved.id);
@@ -755,6 +780,7 @@ fn editing(saved: &SavedConnection, connector: FakeConnector) -> Harness {
 fn edit_dialog_prefills_and_saves_same_id() {
     let saved = shop();
     let harness = editing(&saved, FakeConnector::new([]));
+    let _window = present(&harness.dialog);
     let imp = harness.dialog.imp();
     assert_eq!(harness.dialog.title(), "Edit Connection");
     assert_eq!(imp.connect_button.label().as_deref(), Some("Save"));
@@ -770,12 +796,16 @@ fn edit_dialog_prefills_and_saves_same_id() {
     let log = SignalLog::connect(&harness.dialog, "saved", |values| {
         values[1].get::<String>().expect("an id")
     });
+    let closed = SignalLog::connect(&harness.dialog, "closed", |_| ());
     imp.name_row.set_text("Shop (EU)");
     imp.host_row.set_text("db2.example.com");
 
-    imp.connect_button.emit_clicked();
-    wait_until(WAIT, || log.count() == 1).expect("the save");
+    without_criticals(|| {
+        imp.connect_button.emit_clicked();
+        wait_until(WAIT, || log.count() == 1).expect("the save");
+    });
 
+    assert_eq!(closed.count(), 1, "the landed save left the dialog open");
     assert_eq!(log.take(), [saved.id.to_string()]);
     let stored = harness.store.load_blocking().expect("the list");
     assert_eq!(stored.len(), 1, "the edit added an entry");
@@ -812,6 +842,30 @@ fn a_refused_save_keeps_the_dialog_open_with_the_reason() {
     assert!(imp.toasts.borrow()[0].contains("locked"), "{:?}", imp.toasts.borrow());
     assert!(imp.connect_button.is_sensitive(), "Save stayed off after the failure");
     assert_eq!(harness.store.load_blocking().expect("the list")[0], saved);
+}
+
+#[gtk4::test]
+fn a_save_landing_after_the_user_closed_the_dialog_does_not_close_it_again() {
+    let saved = shop();
+    let harness = editing(&saved, FakeConnector::new([]));
+    let _window = present(&harness.dialog);
+    let imp = harness.dialog.imp();
+    let log = SignalLog::connect(&harness.dialog, "saved", |_| ());
+    let closed = SignalLog::connect(&harness.dialog, "closed", |_| ());
+    imp.host_row.set_text("db2.example.com");
+
+    without_criticals(|| {
+        imp.connect_button.emit_clicked();
+        harness.dialog.close();
+        wait_until(WAIT, || log.count() == 1).expect("the save");
+    });
+
+    assert_eq!(closed.count(), 1);
+    assert_eq!(
+        harness.store.load_blocking().expect("the list")[0].host,
+        "db2.example.com",
+        "closing the dialog lost the save"
+    );
 }
 
 #[gtk4::test]
