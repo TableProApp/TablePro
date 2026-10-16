@@ -210,6 +210,13 @@ impl World {
         let settings = Rc::new(settings(dir.path())?);
         let paths = StoragePaths::under(dir.path(), "tablepro", tablepro_app::config::APP_ID);
         let storage = AppStorage::new(paths, Arc::new(FakeSecretVault::new()), &runtime.tasks());
+        // Saved, as a picker's connection is: one the list does not hold
+        // opens as deleted if the window's read of the list lands first.
+        let saved = saved_connection(&dir.path().join("fake.db"));
+        storage
+            .connections()
+            .upsert_blocking(saved.clone())
+            .map_err(|error| format!("could not save the connection: {error}"))?;
 
         let mut script = ConnectionScript {
             close: plan.connection_close,
@@ -246,7 +253,6 @@ impl World {
             storage,
             tasks: runtime.tasks(),
         });
-        let saved = saved_connection(&dir.path().join("fake.db"));
         Ok(Self {
             app: TableProApplication::new(services),
             runtime,

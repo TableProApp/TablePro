@@ -3,8 +3,8 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 
-use super::TableProApplication;
 use super::imp::RestoreState;
+use super::{AppServices, TableProApplication};
 use crate::runtime::{DeliverInput, Delivery};
 use crate::ui::SessionWindowInput;
 use crate::workspace::{CloseDecision, CloseReason};
@@ -24,7 +24,9 @@ use crate::workspace::{CloseDecision, CloseReason};
 /// An approved quit can leave the process running with no window while
 /// a session closes, and a second launch then activates it. That
 /// activate restores the record as a new process would, after the
-/// record is written if it lands while the quit writes it.
+/// record is written if it lands while the quit writes it. A quit
+/// approved while the record is still read keeps the windows it names
+/// from opening.
 pub struct QuitSequence;
 
 impl QuitSequence {
@@ -49,22 +51,7 @@ impl QuitSequence {
         app.imp().quit_asking.set(None);
         if let Some(services) = &services {
             match decision {
-                CloseDecision::Approved => {
-                    let restore = &app.imp().restore;
-                    let restorable = restore.get() == RestoreState::Done;
-                    if restorable {
-                        restore.set(RestoreState::Quitting { relaunched: false });
-                    }
-                    services.open_sessions().flush().await;
-                    services.open_sessions().end_quit();
-                    if restorable {
-                        let relaunched = restore.get() == RestoreState::Quitting { relaunched: true };
-                        restore.set(RestoreState::NotAttempted);
-                        if relaunched {
-                            app.restore_session();
-                        }
-                    }
-                }
+                CloseDecision::Approved => end_approved(&app, services).await,
                 CloseDecision::Cancelled => services.open_sessions().thaw(|key| {
                     services
                         .sessions
@@ -75,6 +62,38 @@ impl QuitSequence {
         }
         drop(hold);
         decision
+    }
+}
+
+/// Keep the record for the next launch. Only the keys of a finished
+/// restore are written: before it, the keys in memory are empty and the
+/// record on disk still names the sessions to reopen.
+async fn end_approved(app: &TableProApplication, services: &AppServices) {
+    let imp = app.imp();
+    let before = imp.restore.get();
+    let restorable = matches!(before, RestoreState::Done | RestoreState::Loading);
+    if restorable {
+        imp.restore.set(RestoreState::Quitting { relaunched: false });
+    }
+    match before {
+        RestoreState::Done => services.open_sessions().flush().await,
+        RestoreState::Loading => {
+            // Handed over before the quit, so their windows would open
+            // after it.
+            imp.pending_files.take();
+            if let Some(loading) = imp.restoring.take() {
+                let _ = loading.await;
+            }
+        }
+        RestoreState::NotAttempted | RestoreState::Quitting { .. } => {}
+    }
+    services.open_sessions().end_quit();
+    if restorable {
+        let relaunched = imp.restore.get() == RestoreState::Quitting { relaunched: true };
+        imp.restore.set(RestoreState::NotAttempted);
+        if relaunched {
+            app.restore_session();
+        }
     }
 }
 

@@ -162,6 +162,17 @@ impl TestApp {
             .expect("the window")
     }
 
+    /// A quit polled once before anything else runs, so it finds the
+    /// restore where it is now.
+    fn quit_now(&self) -> std::pin::Pin<Box<impl Future<Output = CloseDecision> + use<>>> {
+        let mut quit = Box::pin(QuitSequence::run(self.app.clone()));
+        let polled = quit
+            .as_mut()
+            .poll(&mut std::task::Context::from_waker(std::task::Waker::noop()));
+        assert!(polled.is_pending(), "the quit ended in its first poll");
+        quit
+    }
+
     /// Wait for every key to show its workspace in a window of its own.
     fn wait_for_sessions(&self, keys: &[SessionKey]) {
         let services = self.services();
@@ -555,6 +566,114 @@ fn an_activate_during_the_quit_flush_restores_the_record_once_written() {
     drop(closing);
 }
 
+/// The desktop file's New Window starts TablePro over D-Bus with that
+/// action and no activate, and its window must not write over the
+/// sessions recorded at the last quit.
+#[gtk4::test]
+fn a_new_window_before_any_activate_restores_the_record() {
+    let test = TestApp::started("NewWindowRestores");
+    let first = test.database("first.db");
+    test.record(std::slice::from_ref(&first));
+
+    test.app.activate_action("new-window", None);
+    test.wait_for_sessions(std::slice::from_ref(&first));
+
+    let _ = wait_until(Duration::from_millis(300), || test.app.windows().len() > 1);
+    assert_eq!(
+        test.app.windows().len(),
+        1,
+        "a picker opened beside the restored window"
+    );
+    assert_eq!(test.recorded(), [first]);
+}
+
+/// `--new-window` from a second launch reaches a process an approved
+/// quit left running, which has nothing restored yet.
+#[gtk4::test]
+fn a_new_window_after_an_approved_quit_restores_its_record() {
+    let test = TestApp::started("QuitThenNewWindow");
+    let (first, second) = (test.database("first.db"), test.database("second.db"));
+    test.record(&[first.clone(), second.clone()]);
+    test.app.activate();
+    test.wait_for_sessions(&[first.clone(), second.clone()]);
+    let services = test.services();
+    let closing = services.hold().acquire();
+    let decision = finish_on_main(WAIT, QuitSequence::run(test.app.clone())).expect("the quit to finish");
+    assert_eq!(decision, CloseDecision::Approved);
+
+    test.app.activate_action("new-window", None);
+    test.wait_for_sessions(&[first.clone(), second.clone()]);
+
+    assert_eq!(
+        test.app.windows().len(),
+        2,
+        "a picker opened beside the restored windows"
+    );
+    assert_eq!(test.recorded(), [first, second]);
+    drop(closing);
+}
+
+/// Over D-Bus, a quit can reach a process that nothing launched yet.
+#[gtk4::test]
+fn a_quit_before_any_launch_keeps_the_record() {
+    let test = TestApp::started("QuitBeforeLaunch");
+    let first = test.database("first.db");
+    test.record(std::slice::from_ref(&first));
+
+    let decision = finish_on_main(WAIT, QuitSequence::run(test.app.clone())).expect("the quit to finish");
+
+    assert_eq!(decision, CloseDecision::Approved);
+    assert_eq!(test.recorded(), [first]);
+}
+
+/// With no window yet, the quit can only come over D-Bus.
+#[gtk4::test]
+fn a_quit_while_the_record_loads_keeps_it_and_opens_nothing() {
+    let test = TestApp::started("QuitWhileLoading");
+    let (first, second) = (test.database("first.db"), test.database("second.db"));
+    test.record(std::slice::from_ref(&first));
+    let SessionKey::File(uri) = &second else {
+        unreachable!("a database file opens as a file key");
+    };
+
+    test.app.activate();
+    test.app.open(&[gio::File::for_uri(uri)], "");
+    let decision = finish_on_main(WAIT, test.quit_now()).expect("the quit to finish");
+
+    assert_eq!(decision, CloseDecision::Approved);
+    let _ = wait_until(Duration::from_millis(500), || !test.app.windows().is_empty());
+    assert!(test.app.windows().is_empty(), "a window opened after the quit");
+    assert_eq!(test.recorded(), std::slice::from_ref(&first));
+    test.app.activate();
+    test.wait_for_sessions(std::slice::from_ref(&first));
+    let _ = wait_until(Duration::from_millis(300), || test.app.windows().len() > 1);
+    assert_eq!(
+        test.app.windows().len(),
+        1,
+        "a file handed over before the quit opened after it"
+    );
+}
+
+/// The read the quit waited out opens nothing, and the launch restores
+/// the record once.
+#[gtk4::test]
+fn a_launch_during_a_quit_over_the_loading_record_restores_it_once() {
+    let test = TestApp::started("QuitLoadingRelaunch");
+    let first = test.database("first.db");
+    test.record(std::slice::from_ref(&first));
+    test.app.activate();
+    let quit = test.quit_now();
+
+    test.app.activate();
+    let decision = finish_on_main(WAIT, quit).expect("the quit to finish");
+
+    assert_eq!(decision, CloseDecision::Approved);
+    test.wait_for_sessions(std::slice::from_ref(&first));
+    let _ = wait_until(Duration::from_millis(300), || test.app.windows().len() > 1);
+    assert_eq!(test.app.windows().len(), 1, "the record was restored twice");
+    assert_eq!(test.services().open_sessions().keys(), [first]);
+}
+
 #[gtk4::test]
 fn a_cancelled_quit_forgets_a_restore_that_failed_during_it() {
     let test = TestApp::started("QuitFailedRestore");
@@ -614,7 +733,8 @@ fn a_quit_without_close_requests_keeps_the_sessions_recorded() {
 #[gtk4::test]
 fn new_window_action_opens_another_window() {
     let test = TestApp::started("NewWindow");
-    test.window();
+    test.app.activate();
+    wait_until(WAIT, || test.app.windows().len() == 1).expect("the picker");
 
     test.app.activate_action("new-window", None);
 
