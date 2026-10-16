@@ -1,26 +1,18 @@
 use async_trait::async_trait;
 use tablepro_core::{
-    AuthMode, ConnectOptions, DriverError, MAX_QUERY_ROWS, OperationControl, QueryResult, QueryResultBatch, Value,
+    ConnectOptions, DriverError, MAX_QUERY_ROWS, OperationControl, QueryResult, QueryResultBatch, Value,
     check_pre_dispatch, run_server_cancellable,
 };
 
 use crate::variant_guard::is_unsupported_result;
-use crate::{
-    CONNECT_TIMEOUT, MssqlClient, build_target, open_client, open_kerberos_client, run_batch_sets, run_query_sets,
-};
+use crate::{MssqlClient, open_for, run_batch_sets, run_query_sets};
 
 pub(crate) struct MssqlSession {
     client: Option<MssqlClient>,
 }
 
 pub(crate) async fn open(options: &ConnectOptions) -> Result<Box<dyn tablepro_core::Session>, DriverError> {
-    let target = build_target(options)?;
-    let client = match options.auth_mode {
-        AuthMode::Password => tokio::time::timeout(CONNECT_TIMEOUT, open_client(target))
-            .await
-            .map_err(|_| DriverError::ConnectionRefused)??,
-        AuthMode::Kerberos => open_kerberos_client(target).await?,
-    };
+    let client = open_for(options).await?;
     Ok(Box::new(MssqlSession { client: Some(client) }))
 }
 

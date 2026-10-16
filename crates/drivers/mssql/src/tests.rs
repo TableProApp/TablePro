@@ -270,3 +270,41 @@ async fn retire_wakes_the_fault_sink_and_leaves_the_outcome_unknown() {
     let woke = tokio::time::timeout(std::time::Duration::from_millis(1), notified).await;
     assert!(woke.is_ok(), "retire must wake the fault sink");
 }
+
+#[test]
+fn only_prefer_may_continue_without_encryption() {
+    let with_mode = |mode| ConnectOptions {
+        tls: tablepro_core::TlsConfig {
+            mode,
+            ..tablepro_core::TlsConfig::default()
+        },
+        ..direct_options()
+    };
+    assert!(
+        build_target(&with_mode(tablepro_core::TlsMode::Prefer))
+            .unwrap()
+            .plaintext_fallback
+    );
+    for strict in [
+        tablepro_core::TlsMode::Disabled,
+        tablepro_core::TlsMode::Require,
+        tablepro_core::TlsMode::VerifyCa,
+        tablepro_core::TlsMode::VerifyFull,
+    ] {
+        assert!(
+            !build_target(&with_mode(strict)).unwrap().plaintext_fallback,
+            "{strict:?}"
+        );
+    }
+}
+
+#[test]
+fn a_server_that_declines_encryption_is_reported_as_a_tls_failure() {
+    let error = map_tiberius_error(tiberius::error::Error::Protocol(
+        "Server does not allow the requested encryption level.".into(),
+    ));
+    assert!(
+        matches!(error, DriverError::Tls(ref message) if message == ENCRYPTION_DECLINED),
+        "{error:?}"
+    );
+}

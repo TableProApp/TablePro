@@ -90,14 +90,7 @@ impl DatabaseDriver for MssqlDriver {
     }
 
     async fn connect(&self, opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError> {
-        let target = build_target(&opts)?;
-        let client = match opts.auth_mode {
-            AuthMode::Password => tokio::time::timeout(CONNECT_TIMEOUT, open_client(target))
-                .await
-                .map_err(|_| DriverError::ConnectionRefused)??,
-            AuthMode::Kerberos => open_kerberos_client(target).await?,
-        };
-
+        let client = open_for(&opts).await?;
         Ok(Box::new(MssqlConnection::new(client, opts)))
     }
 }
@@ -106,7 +99,10 @@ struct MssqlTarget {
     config: Config,
     dial_host: String,
     dial_port: u16,
+    plaintext_fallback: bool,
 }
+
+const ENCRYPTION_DECLINED: &str = "the server does not offer the requested encryption";
 
 fn build_target(opts: &ConnectOptions) -> Result<MssqlTarget, DriverError> {
     let (service_host, service_port) = opts.service_address();
@@ -137,6 +133,7 @@ fn build_target(opts: &ConnectOptions) -> Result<MssqlTarget, DriverError> {
         config,
         dial_host: dial_host(&opts.host).to_string(),
         dial_port: opts.port,
+        plaintext_fallback: opts.tls.mode == TlsMode::Prefer,
     })
 }
 
@@ -154,6 +151,29 @@ fn auth_method(opts: &ConnectOptions) -> Result<AuthMethod, DriverError> {
 
 fn dial_host(host: &str) -> &str {
     if host == "." { "localhost" } else { host }
+}
+
+pub(crate) async fn open_for(options: &ConnectOptions) -> Result<MssqlClient, DriverError> {
+    let target = build_target(options)?;
+    let plaintext_fallback = target.plaintext_fallback;
+    match open_with_auth(options.auth_mode, target).await {
+        Err(DriverError::Tls(message)) if plaintext_fallback && message == ENCRYPTION_DECLINED => {
+            tracing::warn!("SQL Server offers no encryption; the Prefer TLS mode continues without it");
+            let mut plain = build_target(options)?;
+            plain.config.encryption(EncryptionLevel::NotSupported);
+            open_with_auth(options.auth_mode, plain).await
+        }
+        other => other,
+    }
+}
+
+async fn open_with_auth(mode: AuthMode, target: MssqlTarget) -> Result<MssqlClient, DriverError> {
+    match mode {
+        AuthMode::Password => tokio::time::timeout(CONNECT_TIMEOUT, open_client(target))
+            .await
+            .map_err(|_| DriverError::ConnectionRefused)?,
+        AuthMode::Kerberos => open_kerberos_client(target).await,
+    }
 }
 
 async fn open_kerberos_client(target: MssqlTarget) -> Result<MssqlClient, DriverError> {
@@ -951,6 +971,9 @@ fn map_tiberius_error(err: tiberius::error::Error) -> DriverError {
     match err {
         E::Io { .. } => DriverError::Disconnected,
         E::Tls(msg) => DriverError::Tls(msg),
+        E::Protocol(message) if message.contains("does not allow the requested encryption level") => {
+            DriverError::Tls(ENCRYPTION_DECLINED.into())
+        }
         E::Server(token) => map_server_error(token.code(), token.message(), token.state()),
         #[cfg(feature = "kerberos")]
         E::Gssapi(detail) => DriverError::IntegratedAuth(detail),

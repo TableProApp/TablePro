@@ -126,6 +126,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 
 ### Fixed
 - Structure column expanders now point right when collapsed and down when open.
+- A SQL Server connection with TLS set to Prefer failed against a server that offers no encryption; it now continues without TLS, as Prefer does for PostgreSQL and MySQL, and a server that refuses encryption under Require reports a TLS failure.
 - A ClickHouse, Redis or MongoDB save that failed partway now says the changes before the failing one were applied, and the audit journal no longer records it as rolled back.
 - Creating a SQLite table with a foreign key in the Structure tab failed; the key is now declared with the table, and Add Foreign Key is unavailable on existing SQLite tables, which cannot take one.
 - A read-only query that failed, hit its row limit or lost its connection no longer blocks saving changes until the next reconnect.
