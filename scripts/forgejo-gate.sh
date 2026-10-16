@@ -48,7 +48,7 @@ if [ "$remote_sha" = "$sha" ]; then
 else
   after="$(latest_run_id)"
   for attempt in 1 2 3; do
-    git push --quiet "$remote" "$branch:$target" && break
+    git push --quiet "$remote" "$sha:refs/heads/$target" && break
     [ "$attempt" -lt 3 ] || exit 1
     sleep 10
   done
