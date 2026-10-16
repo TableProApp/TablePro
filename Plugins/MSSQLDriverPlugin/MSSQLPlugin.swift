@@ -302,6 +302,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .schemaCompare,
             .dataCompare,
             .resultSetBatches,
+            .cellExpressions,
+            .uuidCellText,
         ]
     }
 

@@ -39,7 +39,7 @@ struct MultiRowEditStateClearedFieldTests {
             nonNullableColumns: ["created_at"]
         )
         state.onFieldChanged = { index, value, _ in recorder.values[index] = value }
-        state.onDetachedFieldChanged = { index, value, _ in recorder.detachedValues[index] = value }
+        state.onDetachedFieldChanged = { index, value, _, _ in recorder.detachedValues[index] = value }
         return state
     }
 

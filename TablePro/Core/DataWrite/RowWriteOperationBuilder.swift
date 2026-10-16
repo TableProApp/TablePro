@@ -5,7 +5,7 @@
 //  Turns the pending change set into the record of what each row looked like before and after.
 //
 //  This runs at plan time, before the write, because after the write the pre-image is gone. It
-//  is also where a row is declared beyond rescue: a column set to NOW(), a key the server is
+//  is also where a row is declared beyond rescue: a column set to SQL such as now(), a key the server is
 //  about to choose, a value too large to keep. Deciding that here means the review sheet can say
 //  why a row cannot be restored instead of failing at the moment someone asks it to.
 //
@@ -102,7 +102,9 @@ enum RowWriteOperationBuilder {
     ) -> RewindRefusal? {
         if containsTableOperation { return .destructiveTableOperation }
         if primaryKeyColumns.isEmpty || preImage == nil { return .noPrimaryKey }
-        if change.cellChanges.contains(where: { isServerComputed($0.newValue) }) { return .serverComputedValue }
+        if change.cellChanges.contains(where: { $0.newIsExpression || $0.newValue.isDefaultMarker }) {
+            return .serverComputedValue
+        }
         if change.cellChanges.contains(where: { generatedColumns.contains($0.columnName) }) {
             return .serverComputedValue
         }
@@ -156,9 +158,13 @@ enum RowWriteOperationBuilder {
                     return .serverAssignedKey
                 }
                 let value = values[index]
-                if value.isNull || value.isDefaultMarker { return .serverAssignedKey }
+                if value.isNull || value.isDefaultMarker || change.expressionColumns.contains(index) {
+                    return .serverAssignedKey
+                }
             }
-            if values.contains(where: isServerComputed) { return .serverComputedValue }
+            if values.contains(where: \.isDefaultMarker) || !change.expressionColumns.isEmpty {
+                return .serverComputedValue
+            }
             if values.contains(where: exceedsCapture) { return .valueTooLarge }
             return nil
         }()
@@ -174,13 +180,6 @@ enum RowWriteOperationBuilder {
             refusal: refusal,
             postImageAbsentColumns: change.absentColumns
         )
-    }
-
-    /// A value the server decides, so the app never learns what was actually stored.
-    private static func isServerComputed(_ value: PluginCellValue) -> Bool {
-        if value.isDefaultMarker { return true }
-        guard case .text(let text) = value else { return false }
-        return SQLEscaping.isTemporalFunction(text)
     }
 
     private static func exceedsCapture(_ value: PluginCellValue) -> Bool {

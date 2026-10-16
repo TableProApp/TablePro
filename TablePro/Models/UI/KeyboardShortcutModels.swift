@@ -107,6 +107,11 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case clearSelection
     case addRow
     case duplicateRow
+    case setValueEmpty
+    case setValueNull
+    case setValueDefault
+    case generateUUIDv4
+    case generateUUIDv7
     case restorePreviousValues
     case truncateTable
     case toggleHeaderRow
@@ -180,6 +185,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
             return .editor
         case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
              .paste, .delete, .selectAll, .clearSelection, .addRow, .duplicateRow,
+             .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7,
              .restorePreviousValues,
              .truncateTable, .toggleHeaderRow, .previewFKReference, .saveAsFavorite, .previousPage,
              .nextPage, .firstPage, .lastPage, .refresh, .export, .importData, .jumpToColumn:
@@ -213,6 +219,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .previewSQL, .aiReviewQuery, .aiExplainQuery, .aiOptimizeQuery:
             return .editor
         case .previousPage, .nextPage, .firstPage, .lastPage, .addRow, .duplicateRow,
+             .setValueEmpty, .setValueNull, .setValueDefault, .generateUUIDv4, .generateUUIDv7,
              .delete, .truncateTable, .previewFKReference, .saveAsFavorite,
              .copyRowsExplicit, .copyWithHeaders, .copyAsJson, .toggleFilters, .jumpToColumn,
              /// Named rather than left to the `default:` below. It reverses a row the grid is
@@ -297,6 +304,11 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .clearSelection: return String(localized: "Clear Selection")
         case .addRow: return String(localized: "Add Row")
         case .duplicateRow: return String(localized: "Duplicate Row")
+        case .setValueEmpty: return String(localized: "Set Value to Empty")
+        case .setValueNull: return String(localized: "Set Value to NULL")
+        case .setValueDefault: return String(localized: "Set Value to Default")
+        case .generateUUIDv4: return SetValueOptions.title(for: .uuid(.v4))
+        case .generateUUIDv7: return SetValueOptions.title(for: .uuid(.v7))
         case .restorePreviousValues: return String(localized: "Restore Previous Values")
         case .truncateTable: return String(localized: "Truncate Table")
         case .toggleHeaderRow: return String(localized: "Switch First Row Between Header/Data")
@@ -393,7 +405,10 @@ extension ShortcutAction {
             (.character("q", command: true), String(localized: "Quit TablePro")),
             (.character("m", command: true), String(localized: "Minimize")),
             (.character("t", command: true, option: true), String(localized: "Show Toolbar")),
-            (.character("f", command: true, control: true), String(localized: "Enter Full Screen"))
+            (.character("f", command: true, control: true), String(localized: "Enter Full Screen")),
+            // The inspector's own keys: a menu item bound to either would take it first, even while disabled.
+            (.character("n", option: true, control: true), String(localized: "Set NULL")),
+            (.character("d", option: true, control: true), String(localized: "Set DEFAULT"))
         ]
         for number in 1...9 {
             shortcuts.append((

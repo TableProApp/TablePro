@@ -22,12 +22,21 @@ public struct SpannerRowChange: Sendable, Equatable {
     public let kind: Kind
     public let cellChanges: [CellChange]
     public let originalRow: [SpannerCell]?
+    // Keyed by name, as the writer collapses a row's cell changes to one value per column.
+    public let expressionColumns: Set<String>
 
-    public init(rowIndex: Int, kind: Kind, cellChanges: [CellChange] = [], originalRow: [SpannerCell]? = nil) {
+    public init(
+        rowIndex: Int,
+        kind: Kind,
+        cellChanges: [CellChange] = [],
+        originalRow: [SpannerCell]? = nil,
+        expressionColumns: Set<String> = []
+    ) {
         self.rowIndex = rowIndex
         self.kind = kind
         self.cellChanges = cellChanges
         self.originalRow = originalRow
+        self.expressionColumns = expressionColumns
     }
 }
 
@@ -108,7 +117,9 @@ internal struct SpannerRowEditTarget {
             ?? Self.lastValuePerColumn(change.cellChanges)
         let written = cells.filter { !Self.isDefaultSentinel($0.value) }
         guard written.isEmpty else {
-            return Self.insertStatement(table: table, cells: written, dialect: dialect)
+            return Self.insertStatement(
+                table: table, cells: written, dialect: dialect, expressionColumns: change.expressionColumns
+            )
         }
         guard let firstColumn = columns.first else { return nil }
         return SpannerRenderedStatement(
@@ -122,6 +133,7 @@ internal struct SpannerRowEditTarget {
         let assignments = Self.lastValuePerColumn(change.cellChanges).map { cell in
             let column = dialect.quoteIdentifier(cell.column)
             guard !Self.isDefaultSentinel(cell.value) else { return "\(column) = DEFAULT" }
+            if let sql = Self.expression(cell, in: change.expressionColumns) { return "\(column) = \(sql)" }
             parameters.append(cell.value)
             return "\(column) = ?"
         }
@@ -139,14 +151,26 @@ internal struct SpannerRowEditTarget {
     static func insertStatement(
         table: String,
         cells: [SpannerRowChange.CellChange],
-        dialect: SpannerDialect
+        dialect: SpannerDialect,
+        expressionColumns: Set<String> = []
     ) -> SpannerRenderedStatement {
         let names = cells.map { dialect.quoteIdentifier($0.column) }.joined(separator: ", ")
-        let placeholders = Array(repeating: "?", count: cells.count).joined(separator: ", ")
+        var parameters: [SpannerCell] = []
+        let values = cells.map { cell -> String in
+            if let sql = expression(cell, in: expressionColumns) { return sql }
+            parameters.append(cell.value)
+            return "?"
+        }
         return SpannerRenderedStatement(
-            sql: "INSERT INTO \(table) (\(names)) VALUES (\(placeholders))",
-            parameters: cells.map(\.value)
+            sql: "INSERT INTO \(table) (\(names)) VALUES (\(values.joined(separator: ", ")))",
+            parameters: parameters
         )
+    }
+
+    // The host checked a marked cell's text against the engine's vocabulary before handing it over.
+    private static func expression(_ cell: SpannerRowChange.CellChange, in expressionColumns: Set<String>) -> String? {
+        guard expressionColumns.contains(cell.column), case .text(let sql) = cell.value else { return nil }
+        return sql
     }
 
     private func keyPredicate(for change: SpannerRowChange) -> (sql: String, parameters: [SpannerCell])? {

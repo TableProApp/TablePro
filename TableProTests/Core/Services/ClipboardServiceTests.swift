@@ -68,6 +68,30 @@ struct ClipboardServiceTests {
         #expect(provider.readGridCells() == cells)
     }
 
+    @Test("Expression marks round-trip, and a copy written before them decodes with none")
+    func expressionMarksAreOptional() throws {
+        let rows = GridRowsClipboardPayload(columns: ["at"], rows: [[.text("now()")]], expressionCells: [0: [0]])
+        let cells = GridCellsClipboardPayload(text: "now()", fields: [["now()"]], expressionFields: [0: [0]])
+        #expect(try JSONDecoder().decode(GridRowsClipboardPayload.self, from: JSONEncoder().encode(rows)) == rows)
+        #expect(try JSONDecoder().decode(GridCellsClipboardPayload.self, from: JSONEncoder().encode(cells)) == cells)
+
+        var olderRows = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(rows)) as? [String: Any]
+        )
+        olderRows.removeValue(forKey: "expressionCells")
+        let decodedRows = try JSONDecoder().decode(
+            GridRowsClipboardPayload.self, from: JSONSerialization.data(withJSONObject: olderRows)
+        )
+        #expect(decodedRows.rows == rows.rows)
+        #expect(decodedRows.expressionCells == nil)
+
+        let decodedCells = try JSONDecoder().decode(
+            GridCellsClipboardPayload.self, from: Data(#"{"text":"now()","fields":[["now()"]]}"#.utf8)
+        )
+        #expect(decodedCells.fields == [["now()"]])
+        #expect(decodedCells.expressionFields == nil)
+    }
+
     @Test("A later plain write drops the fields with the text they described")
     func writeTextClearsFields() {
         let provider = NSPasteboardClipboardProvider()

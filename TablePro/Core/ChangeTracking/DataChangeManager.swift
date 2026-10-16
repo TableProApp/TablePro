@@ -91,9 +91,11 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         var newValue: PluginCellValue
         let originalRow: [PluginCellValue]?
         var absence: FieldAbsence
+        var expression: ExpressionTransition
 
         var isNoOp: Bool {
             previousValue == newValue && absence.wasAbsent == absence.isAbsent
+                && expression.wasExpression == expression.isExpression
         }
     }
 
@@ -191,6 +193,17 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         return PluginManager.shared.supportsFieldRemoval(for: databaseType)
     }
 
+    /// Asked of the driver instance, not of the plugin's metadata: ScyllaDB is a variant of the Cassandra plugin and
+    /// takes its curated entry, not the plugin's flags.
+    var cellWriterSupport: CellWriterSupport {
+        guard let pluginDriver else { return .host }
+        let capabilities = pluginDriver.capabilities
+        return CellWriterSupport(
+            acceptsExpressions: capabilities.contains(.cellExpressions),
+            acceptsUUIDText: capabilities.contains(.uuidCellText)
+        )
+    }
+
     /// Whether the app may send a value for this column at all: the server computes or allocates it,
     /// or the driver declares it immutable, as MongoDB does for `_id`. Both halves belong here,
     /// because this is the boundary every staging path crosses and the grid's own copy of the
@@ -234,10 +247,29 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         originalRow: [PluginCellValue]?,
         absence: FieldAbsence
     ) {
+        recordCellChange(
+            rowID: rowID, columnIndex: columnIndex, columnName: columnName,
+            oldValue: oldValue, newValue: newValue, originalRow: originalRow,
+            absence: absence, isExpression: false
+        )
+    }
+
+    /// `isExpression` stages `newValue`, a `.text` holding SQL from `CellExpressionVocabulary`, to be written
+    /// unquoted.
+    func recordCellChange(
+        rowID: RowID,
+        columnIndex: Int,
+        columnName: String,
+        oldValue: PluginCellValue,
+        newValue: PluginCellValue,
+        originalRow: [PluginCellValue]?,
+        absence: FieldAbsence,
+        isExpression: Bool
+    ) {
         record(
             rowID: rowID, columnIndex: columnIndex, columnName: columnName,
             oldValue: oldValue, newValue: newValue, originalRow: originalRow,
-            absence: absence, coalescesWithPrevious: false
+            absence: absence, isExpression: isExpression, coalescesWithPrevious: false
         )
     }
 
@@ -250,12 +282,13 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         oldValue: PluginCellValue,
         newValue: PluginCellValue,
         originalRow: [PluginCellValue]? = nil,
-        absence: FieldAbsence = FieldAbsence()
+        absence: FieldAbsence = FieldAbsence(),
+        isExpression: Bool = false
     ) {
         record(
             rowID: rowID, columnIndex: columnIndex, columnName: columnName,
             oldValue: oldValue, newValue: newValue, originalRow: originalRow,
-            absence: absence, coalescesWithPrevious: true
+            absence: absence, isExpression: isExpression, coalescesWithPrevious: true
         )
     }
 
@@ -267,6 +300,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         newValue: PluginCellValue,
         originalRow: [PluginCellValue]?,
         absence: FieldAbsence,
+        isExpression: Bool,
         coalescesWithPrevious: Bool
     ) {
         /// The last gate before a change becomes pending, and the only one every path crosses. The
@@ -280,6 +314,10 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             )
             return
         }
+        let expression = ExpressionTransition(
+            wasExpression: pending.isExpression(rowID: rowID, columnIndex: columnIndex),
+            isExpression: isExpression
+        )
         let recorded = pending.recordCellChange(
             rowID: rowID,
             columnIndex: columnIndex,
@@ -287,7 +325,8 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             oldValue: oldValue,
             newValue: newValue,
             originalRow: originalRow,
-            absence: absence
+            absence: absence,
+            isExpression: isExpression
         )
         guard recorded else {
             hasChanges = !pending.isEmpty
@@ -296,14 +335,15 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         if coalescesWithPrevious {
             bufferCoalescedEdit(
                 rowID: rowID, columnIndex: columnIndex, columnName: columnName,
-                oldValue: oldValue, newValue: newValue, originalRow: originalRow, absence: absence
+                oldValue: oldValue, newValue: newValue, originalRow: originalRow,
+                absence: absence, expression: expression
             )
         } else {
             registerUndo(actionName: String(localized: "Edit Cell")) { target in
                 target.applyDataUndo(.cellEdit(
                     rowID: rowID, columnIndex: columnIndex, columnName: columnName,
                     previousValue: oldValue, newValue: newValue, originalRow: originalRow,
-                    absence: absence
+                    absence: absence, expression: expression
                 ))
             }
         }
@@ -317,18 +357,21 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         oldValue: PluginCellValue,
         newValue: PluginCellValue,
         originalRow: [PluginCellValue]?,
-        absence: FieldAbsence
+        absence: FieldAbsence,
+        expression: ExpressionTransition
     ) {
         let key = CoalescedCellKey(rowID: rowID, columnIndex: columnIndex)
         if var existing = coalescedEdits[key] {
             existing.newValue = newValue
             existing.absence.isAbsent = absence.isAbsent
+            existing.expression.isExpression = expression.isExpression
             coalescedEdits[key] = existing
             return
         }
         coalescedEdits[key] = CoalescedCellEdit(
             rowID: rowID, columnIndex: columnIndex, columnName: columnName,
-            previousValue: oldValue, newValue: newValue, originalRow: originalRow, absence: absence
+            previousValue: oldValue, newValue: newValue, originalRow: originalRow,
+            absence: absence, expression: expression
         )
         coalescedOrder.append(key)
     }
@@ -350,7 +393,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
                 target.applyDataUndo(.cellEdit(
                     rowID: edit.rowID, columnIndex: edit.columnIndex, columnName: edit.columnName,
                     previousValue: edit.previousValue, newValue: edit.newValue, originalRow: edit.originalRow,
-                    absence: edit.absence
+                    absence: edit.absence, expression: edit.expression
                 ))
             }
         }
@@ -398,8 +441,16 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         hasChanges = true
     }
 
-    func recordRowInsertion(rowID: RowID, values: [PluginCellValue], absentColumns: Set<Int> = []) {
-        pending.recordRowInsertion(rowID: rowID, values: values, absentColumns: absentColumns)
+    /// `expressionColumns` are cells of `values` staged as SQL, as a duplicate of a pending row carries them.
+    func recordRowInsertion(
+        rowID: RowID,
+        values: [PluginCellValue],
+        absentColumns: Set<Int> = [],
+        expressionColumns: Set<Int> = []
+    ) {
+        pending.recordRowInsertion(
+            rowID: rowID, values: values, absentColumns: absentColumns, expressionColumns: expressionColumns
+        )
         registerUndo(actionName: String(localized: "Insert Row")) { target in
             target.applyDataUndo(.rowInsertion(rowID: rowID))
         }
@@ -417,12 +468,14 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         let validRows = rows.filter { pending.isRowInserted($0.rowID) }
         guard !validRows.isEmpty else { return }
         let rowAbsentColumns = validRows.map { pending.insertedAbsentColumns(forRow: $0.rowID) }
+        let rowExpressionColumns = validRows.map { pending.insertedExpressionColumns(forRow: $0.rowID) }
         let rowValues = pending.undoBatchRowInsertion(
             rowIDs: validRows.map(\.rowID), columnCount: columns.count
         )
         registerUndo(actionName: String(localized: "Insert Rows")) { target in
             target.applyDataUndo(.batchRowInsertion(
-                rows: validRows, rowValues: rowValues, rowAbsentColumns: rowAbsentColumns
+                rows: validRows, rowValues: rowValues, rowAbsentColumns: rowAbsentColumns,
+                rowExpressionColumns: rowExpressionColumns
             ))
         }
         hasChanges = !pending.isEmpty
@@ -433,11 +486,11 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
     private func applyDataUndo(_ action: UndoAction) {
         switch action {
         case .cellEdit(let rowID, let columnIndex, let columnName, let previousValue, let newValue, let originalRow,
-                       let absence):
+                       let absence, let expression):
             applyCellEditUndo(
                 rowID: rowID, columnIndex: columnIndex, columnName: columnName,
                 previousValue: previousValue, newValue: newValue, originalRow: originalRow,
-                absence: absence, action: action
+                absence: absence, expression: expression, action: action
             )
 
         case .rowInsertion(let rowID, let image):
@@ -449,9 +502,10 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         case .batchRowDeletion(let rows, let absentColumns):
             applyBatchRowDeletionUndo(rows: rows, absentColumns: absentColumns, action: action)
 
-        case .batchRowInsertion(let rows, let rowValues, let rowAbsentColumns):
+        case .batchRowInsertion(let rows, let rowValues, let rowAbsentColumns, let rowExpressionColumns):
             applyBatchRowInsertionUndo(
-                rows: rows, rowValues: rowValues, rowAbsentColumns: rowAbsentColumns, action: action
+                rows: rows, rowValues: rowValues, rowAbsentColumns: rowAbsentColumns,
+                rowExpressionColumns: rowExpressionColumns, action: action
             )
         }
 
@@ -465,13 +519,13 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
     private func applyCellEditUndo(
         rowID: RowID, columnIndex: Int, columnName: String,
         previousValue: PluginCellValue, newValue: PluginCellValue, originalRow: [PluginCellValue]?,
-        absence: FieldAbsence, action: UndoAction
+        absence: FieldAbsence, expression: ExpressionTransition, action: UndoAction
     ) {
         registerUndo(actionName: String(localized: "Edit Cell")) { target in
             target.applyDataUndo(.cellEdit(
                 rowID: rowID, columnIndex: columnIndex, columnName: columnName,
                 previousValue: newValue, newValue: previousValue, originalRow: originalRow,
-                absence: absence.reversed
+                absence: absence.reversed, expression: expression.reversed
             ))
         }
 
@@ -480,20 +534,22 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
                 pending.revertUpdateCell(
                     rowID: rowID, columnIndex: columnIndex,
                     columnName: columnName, previousValue: previousValue,
-                    previousIsAbsent: absence.wasAbsent
+                    previousIsAbsent: absence.wasAbsent,
+                    previousIsExpression: expression.wasExpression
                 )
             }
         } else if pending.change(forRow: rowID, type: .insert) != nil {
             pending.updateInsertedCellDirectly(
                 rowID: rowID, columnIndex: columnIndex,
-                columnName: columnName, newValue: previousValue, isAbsent: absence.wasAbsent
+                columnName: columnName, newValue: previousValue,
+                isAbsent: absence.wasAbsent, isExpression: expression.wasExpression
             )
         } else {
             pending.reapplyCellChange(
                 rowID: rowID,
                 columnIndex: columnIndex, columnName: columnName,
                 originalDBValue: newValue, newValue: previousValue, originalRow: originalRow,
-                absence: absence.reversed
+                absence: absence.reversed, expression: expression.reversed
             )
         }
         lastUndoResult = UndoResult(
@@ -510,7 +566,8 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             }
             let absentColumns = image?.absentColumns ?? []
             pending.reinsertRow(
-                rowID: rowID, columns: columns, savedValues: image?.values, absentColumns: absentColumns
+                rowID: rowID, columns: columns, savedValues: image?.values, absentColumns: absentColumns,
+                expressionColumns: image?.expressionColumns ?? []
             )
             lastUndoResult = UndoResult(
                 action: action, needsRowRemoval: false, needsRowRestore: true, restoreRow: image?.values,
@@ -521,7 +578,8 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
 
         let removed = InsertedRowImage(
             values: pending.savedInsertedValues(forRow: rowID),
-            absentColumns: pending.insertedAbsentColumns(forRow: rowID)
+            absentColumns: pending.insertedAbsentColumns(forRow: rowID),
+            expressionColumns: pending.insertedExpressionColumns(forRow: rowID)
         )
         registerUndo(actionName: String(localized: "Insert Row")) { target in
             target.applyDataUndo(.rowInsertion(rowID: rowID, restoring: removed))
@@ -586,11 +644,16 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
     }
 
     private func applyBatchRowInsertionUndo(
-        rows: [InsertedRowLocation], rowValues: [[PluginCellValue]], rowAbsentColumns: [Set<Int>], action: UndoAction
+        rows: [InsertedRowLocation],
+        rowValues: [[PluginCellValue]],
+        rowAbsentColumns: [Set<Int>],
+        rowExpressionColumns: [Set<Int>],
+        action: UndoAction
     ) {
         registerUndo(actionName: String(localized: "Insert Rows")) { target in
             target.applyDataUndo(.batchRowInsertion(
-                rows: rows, rowValues: rowValues, rowAbsentColumns: rowAbsentColumns
+                rows: rows, rowValues: rowValues, rowAbsentColumns: rowAbsentColumns,
+                rowExpressionColumns: rowExpressionColumns
             ))
         }
 
@@ -603,7 +666,8 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             )
         } else {
             pending.reinsertBatch(
-                rowIDs: rowIDs, rowValues: rowValues, rowAbsentColumns: rowAbsentColumns, columns: columns
+                rowIDs: rowIDs, rowValues: rowValues, rowAbsentColumns: rowAbsentColumns,
+                rowExpressionColumns: rowExpressionColumns, columns: columns
             )
             lastUndoResult = UndoResult(
                 action: action, needsRowRemoval: false, needsRowRestore: true, restoreRow: nil
@@ -770,5 +834,14 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
 
     func getModifiedColumnsForRow(_ rowID: RowID) -> Set<Int> {
         pending.modifiedColumns(forRow: rowID)
+    }
+
+    func isExpression(rowID: RowID, columnIndex: Int) -> Bool {
+        pending.isExpression(rowID: rowID, columnIndex: columnIndex)
+    }
+
+    /// The row's cells staged as SQL, which Copy as INSERT or UPDATE writes unquoted.
+    func expressionColumns(forRow rowID: RowID) -> Set<Int> {
+        pending.expressionColumns(forRow: rowID)
     }
 }

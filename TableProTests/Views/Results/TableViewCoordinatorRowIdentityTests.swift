@@ -152,7 +152,7 @@ struct TableViewCoordinatorRowIdentityTests {
         filterToInactive(coordinator)
         manager.recordRowDeletion(rowID: .existing(3), originalRow: ["4", "inactive"])
 
-        coordinator.applyFillColumn(columnIndex: 1, value: .text("gone"))
+        coordinator.applyFillColumn(columnIndex: 1, content: .value(.text("gone")))
 
         #expect(manager.isCellModified(rowID: .existing(1), columnIndex: 1))
         #expect(!manager.isCellModified(rowID: .existing(3), columnIndex: 1))

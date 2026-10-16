@@ -1200,3 +1200,131 @@ struct MainMenuBuilderTests {
         }
     }
 }
+
+@MainActor
+struct EditSetValueMenuTests {
+    private struct Leaf {
+        let command: SetValueCommand
+        let action: Selector
+        let shortcut: ShortcutAction
+    }
+
+    private static let leaves: [Leaf] = [
+        Leaf(command: .empty, action: #selector(SetValueCommandResponding.setValueEmpty(_:)), shortcut: .setValueEmpty),
+        Leaf(command: .null, action: #selector(SetValueCommandResponding.setValueNull(_:)), shortcut: .setValueNull),
+        Leaf(
+            command: .defaultValue,
+            action: #selector(SetValueCommandResponding.setValueDefault(_:)),
+            shortcut: .setValueDefault
+        ),
+        Leaf(
+            command: .uuid(.v4),
+            action: #selector(SetValueCommandResponding.generateUUIDv4(_:)),
+            shortcut: .generateUUIDv4
+        ),
+        Leaf(
+            command: .uuid(.v7),
+            action: #selector(SetValueCommandResponding.generateUUIDv7(_:)),
+            shortcut: .generateUUIDv7
+        ),
+    ]
+
+    private func editMenu() throws -> NSMenu {
+        try #require(EditMenuBuilder.build(keyboard: KeyboardSettings()).submenu)
+    }
+
+    private func setValueItem(in edit: NSMenu) throws -> NSMenuItem {
+        try #require(edit.items.first { $0.title == String(localized: "Set Value") })
+    }
+
+    @Test("Set Value sits between Duplicate Row and Edit Document, outside Edit > Data")
+    func placement() throws {
+        let edit = try editMenu()
+        let titles = edit.items.map(\.title)
+        let duplicate = try #require(titles.firstIndex(of: String(localized: "Duplicate Row")))
+        let setValue = try #require(titles.firstIndex(of: String(localized: "Set Value")))
+        let editDocument = try #require(titles.firstIndex(of: String(localized: "Edit Document…")))
+        #expect(duplicate + 1 == setValue)
+        #expect(setValue + 1 == editDocument)
+
+        let item = edit.items[setValue]
+        #expect(item.submenu != nil)
+        #expect(item.identifier != EditDataMenuGroup.submenuIdentifier)
+        #expect(item.identifier != EditDataMenuGroup.separatorIdentifier)
+    }
+
+    @Test("Set Value says what the grid's context menu says, in its order")
+    func leavesMatchTheContextMenu() throws {
+        let setValue = try setValueItem(in: editMenu())
+        let items = try #require(setValue.submenu).items
+        let separators = items.map { $0.isSeparatorItem }
+        #expect(separators == [false, false, false, true, false, false])
+
+        let commands = items.filter { !$0.isSeparatorItem }
+        let titles = commands.map { $0.title }
+        let actions = commands.map { $0.action }
+        let identifiers = commands.map { $0.identifier }
+        let expectedTitles = Self.leaves.map { SetValueOptions.title(for: $0.command) }
+        let expectedActions: [Selector?] = Self.leaves.map { $0.action }
+        let expectedIdentifiers: [NSUserInterfaceItemIdentifier?] = Self.leaves.map {
+            MenuItemFactory.identifier(for: $0.shortcut)
+        }
+        #expect(titles == expectedTitles)
+        #expect(actions == expectedActions)
+        #expect(identifiers == expectedIdentifiers)
+        for item in commands {
+            #expect(item.target == nil, "\(item.title) bypasses the responder chain")
+            #expect(item.keyEquivalent.isEmpty, "\(item.title) ships with a key")
+        }
+    }
+
+    @Test("Only the data grid answers Set Value, so the items dim wherever else focus is")
+    func onlyTheGridAnswers() {
+        for leaf in Self.leaves {
+            let name = NSStringFromSelector(leaf.action)
+            #expect(KeyHandlingTableView.instancesRespond(to: leaf.action), "\(name) reaches no grid")
+            #expect(!MainSplitViewController.instancesRespond(to: leaf.action), "\(name) answered by the window")
+            #expect(!DataFileSplitViewController.instancesRespond(to: leaf.action), "\(name) answered by the window")
+        }
+    }
+
+    @Test("Showing or hiding Edit > Data leaves Set Value in place")
+    func dataGroupLeavesSetValueVisible() throws {
+        let edit = try editMenu()
+        let setValue = try setValueItem(in: edit)
+        let children = setValue.submenu?.items ?? []
+        #expect(children.count == 6)
+        for shown in [true, false] {
+            EditDataMenuGroup.setShown(shown, in: edit)
+            #expect(!setValue.isHidden, "data group shown: \(shown)")
+            #expect(children.allSatisfy { !$0.isHidden }, "data group shown: \(shown)")
+        }
+    }
+
+    @Test("Each Set Value command is a Data Grid row in Settings with no default key")
+    func shortcutRowsShipUnbound() {
+        for leaf in Self.leaves {
+            let action = leaf.shortcut
+            #expect(action.category == .dataGrid, "\(action.rawValue)")
+            #expect(action.context == .dataGrid, "\(action.rawValue)")
+            #expect(KeyboardSettings.defaultShortcuts[action] == nil, "\(action.rawValue)")
+            #expect(KeyboardSettings.default.shortcut(for: action) == nil, "\(action.rawValue)")
+            #expect(!action.displayName.isEmpty, "\(action.rawValue)")
+        }
+        #expect(ShortcutAction.generateUUIDv4.displayName == SetValueOptions.title(for: .uuid(.v4)))
+        #expect(ShortcutAction.generateUUIDv7.displayName == SetValueOptions.title(for: .uuid(.v7)))
+    }
+
+    @Test("A key the user gives a Set Value command reaches its menu item")
+    func reboundSetValueCommandApplies() {
+        let menu = buildMenu()
+        var keyboard = KeyboardSettings()
+        keyboard.setShortcut(.character("u", command: true, option: true, control: true), for: .generateUUIDv4)
+        MainMenuKeyEquivalentSync.apply(keyboard: keyboard, to: menu)
+
+        let item = flatten(menu).first { $0.identifier == MenuItemFactory.identifier(for: .generateUUIDv4) }
+        #expect(item?.title == SetValueOptions.title(for: .uuid(.v4)))
+        #expect(item?.keyEquivalent == "u")
+        #expect(item?.keyEquivalentModifierMask == [.command, .option, .control])
+    }
+}

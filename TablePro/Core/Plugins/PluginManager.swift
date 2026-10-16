@@ -135,7 +135,12 @@ final class PluginManager: ObservableObject {
     /// succeeded, such as an Oracle password in its grace period. The default is `nil`, so an
     /// already-built plugin keeps loading and reports none; the minimum stays and no bulk re-release
     /// is needed.
-    nonisolated static let currentPluginKitVersion = 38
+    ///
+    /// 39 adds `PluginRowChange.expressionColumns` and the `cellExpressions` and `uuidCellText` bits of
+    /// `PluginCapabilities`. An already-built plugin declares neither bit, so the host hands it no
+    /// expression and offers no generated UUID through it; the minimum stays and no bulk re-release is
+    /// needed.
+    nonisolated static let currentPluginKitVersion = 39
 
     /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19

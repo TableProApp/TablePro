@@ -76,12 +76,19 @@ internal struct BigQueryStatementGenerator {
     ) -> Statement? {
         guard let firstColumn = columns.first else { return nil }
         let values = insertValues(for: change, insertedRowData: insertedRowData)
+        let expressionColumns = change.expressionColumns ?? []
         var names: [String] = []
+        var placeholders: [String] = []
         var parameters: [PluginCellValue] = []
-        for column in columns {
+        for (index, column) in columns.enumerated() {
             guard let value = values[column], !Self.isDefaultSentinel(value) else { continue }
             names.append(GoogleSQLLiteral.quotedIdentifier(column))
-            parameters.append(value)
+            if let sql = Self.expression(value, isMarked: expressionColumns.contains(index)) {
+                placeholders.append(sql)
+            } else {
+                placeholders.append(Self.placeholder)
+                parameters.append(value)
+            }
         }
 
         guard !names.isEmpty else {
@@ -89,8 +96,8 @@ internal struct BigQueryStatementGenerator {
             return (statement: "INSERT INTO \(qualifiedTable) (\(target)) VALUES (DEFAULT)", parameters: [])
         }
 
-        let placeholders = Array(repeating: Self.placeholder, count: parameters.count).joined(separator: ", ")
-        let statement = "INSERT INTO \(qualifiedTable) (\(names.joined(separator: ", "))) VALUES (\(placeholders))"
+        let statement = "INSERT INTO \(qualifiedTable) (\(names.joined(separator: ", "))) "
+            + "VALUES (\(placeholders.joined(separator: ", ")))"
         return (statement: statement, parameters: parameters)
     }
 
@@ -113,10 +120,17 @@ internal struct BigQueryStatementGenerator {
 
     private func updateStatement(for change: PluginRowChange) -> Statement? {
         guard let key = keyCondition(for: change) else { return nil }
+        let expressionColumns = change.expressionColumns ?? []
         var parameters: [PluginCellValue] = []
         let assignments = change.cellChanges.map { cellChange -> String in
             let column = GoogleSQLLiteral.quotedIdentifier(cellChange.columnName)
             guard !Self.isDefaultSentinel(cellChange.newValue) else { return "\(column) = DEFAULT" }
+            if let sql = Self.expression(
+                cellChange.newValue,
+                isMarked: expressionColumns.contains(cellChange.columnIndex)
+            ) {
+                return "\(column) = \(sql)"
+            }
             parameters.append(cellChange.newValue)
             return "\(column) = \(Self.placeholder)"
         }
@@ -173,5 +187,11 @@ internal struct BigQueryStatementGenerator {
 
     private static func isDefaultSentinel(_ value: PluginCellValue) -> Bool {
         value.asText == defaultSentinel
+    }
+
+    // The host checked a marked cell's text against the engine's vocabulary before handing it over.
+    private static func expression(_ value: PluginCellValue, isMarked: Bool) -> String? {
+        guard isMarked, case .text(let sql) = value else { return nil }
+        return sql
     }
 }

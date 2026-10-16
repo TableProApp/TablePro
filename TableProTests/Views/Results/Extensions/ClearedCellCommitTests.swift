@@ -43,12 +43,12 @@ private struct ClearedCellFixture {
     let coordinator: TableViewCoordinator
     let store: ClearedCellRowStore
 
-    init() {
+    init(tableRows: TableRows = Self.usersRows) {
         manager = DataChangeManager()
         manager.configureForTable(
             tableName: "users",
-            columns: Self.columns,
-            primaryKeyColumns: ["id"],
+            columns: tableRows.columns,
+            primaryKeyColumns: [tableRows.columns[0]],
             databaseType: .mysql,
             generatedColumns: []
         )
@@ -59,15 +59,24 @@ private struct ClearedCellFixture {
             delegate: nil,
             layoutPersister: NoopClearedCellLayoutPersister()
         )
+        coordinator.databaseType = .mysql
+        store = ClearedCellRowStore(tableRows)
+        let store = store
+        coordinator.tableRowsProvider = { store.tableRows }
+        coordinator.tableRowsMutator = { mutation in mutation(&store.tableRows) }
+        coordinator.updateCache()
+    }
+
+    static var usersRows: TableRows {
         let created: PluginCellValue = .text("2023-12-01 09:00:00")
         let doc: PluginCellValue = .text("{\"a\":1}")
-        store = ClearedCellRowStore(TableRows.from(
+        return TableRows.from(
             queryRows: [
                 [.text("1"), .text("2024-01-01 10:00:00"), .text("Alice"), .text("3"), created, doc],
                 [.text("2"), .text("2024-02-02 10:00:00"), .text("Bob"), .text("4"), created, doc],
                 [.text("3"), .text("2024-03-03 10:00:00"), .text("Carol"), .text("5"), created, doc]
             ],
-            columns: Self.columns,
+            columns: columns,
             columnTypes: [
                 .integer(rawType: "INT"),
                 .datetime(rawType: "DATETIME"),
@@ -77,11 +86,12 @@ private struct ClearedCellFixture {
                 .json(rawType: "JSON")
             ],
             columnNullable: ["deleted_at": true, "name": true, "created_at": false]
-        ))
-        let store = store
-        coordinator.tableRowsProvider = { store.tableRows }
-        coordinator.tableRowsMutator = { mutation in mutation(&store.tableRows) }
-        coordinator.updateCache()
+        )
+    }
+
+    func setValueTitles(row: Int = 0, column: Int) -> [String] {
+        let targets = coordinator.setValueTargets(clicked: SetValueTarget(displayRow: row, columnIndex: column))
+        return coordinator.setValueCommands(for: targets).map { SetValueOptions.title(for: $0) }
     }
 
     func value(row: Int, column: Int) -> PluginCellValue {
@@ -153,11 +163,11 @@ struct ClearedCellCommitTests {
     @Test("An empty Fill Column on a date writes NULL into every row")
     func emptyFillOnDateIsNull() throws {
         let fixture = ClearedCellFixture()
-        let value = try #require(
-            fixture.coordinator.fillColumnValue(text: "", setNull: false, columnIndex: ClearedCellFixture.deletedAt)
+        let content = try #require(
+            fixture.coordinator.fillColumnContent(choice: .value, text: "", columnIndex: ClearedCellFixture.deletedAt)
         )
 
-        fixture.coordinator.applyFillColumn(columnIndex: ClearedCellFixture.deletedAt, value: value)
+        fixture.coordinator.applyFillColumn(columnIndex: ClearedCellFixture.deletedAt, content: content)
 
         for row in 0..<3 {
             #expect(fixture.stagedValue(row: row, column: ClearedCellFixture.deletedAt) == .null)
@@ -168,27 +178,21 @@ struct ClearedCellCommitTests {
     func emptyFillOnNotNullTimestampIsRefused() {
         let fixture = ClearedCellFixture()
 
-        #expect(fixture.coordinator.fillColumnValue(text: "", setNull: false, columnIndex: ClearedCellFixture.createdAt) == nil)
+        let coordinator = fixture.coordinator
+        #expect(coordinator.fillColumnContent(choice: .value, text: "", columnIndex: ClearedCellFixture.createdAt) == nil)
         #expect(
-            fixture.coordinator.fillColumnValue(text: "2024-05-05 00:00:00", setNull: false, columnIndex: ClearedCellFixture.createdAt)
-                == .text("2024-05-05 00:00:00")
+            coordinator.fillColumnContent(choice: .value, text: "2024-05-05 00:00:00", columnIndex: ClearedCellFixture.createdAt)
+                == .value(.text("2024-05-05 00:00:00"))
         )
     }
 
     @Test("Set Value offers Empty on a text column and not on a date or a number")
     func setValueEmptyFollowsColumnType() {
         let fixture = ClearedCellFixture()
-        let rowView = DataGridRowView()
 
-        let dateTitles = rowView.buildSetValueMenu(
-            dataColumnIndex: ClearedCellFixture.deletedAt, tableRows: fixture.store.tableRows
-        ).items.map { $0.title }
-        let numberTitles = rowView.buildSetValueMenu(
-            dataColumnIndex: ClearedCellFixture.visits, tableRows: fixture.store.tableRows
-        ).items.map { $0.title }
-        let textTitles = rowView.buildSetValueMenu(
-            dataColumnIndex: ClearedCellFixture.name, tableRows: fixture.store.tableRows
-        ).items.map { $0.title }
+        let dateTitles = fixture.setValueTitles(column: ClearedCellFixture.deletedAt)
+        let numberTitles = fixture.setValueTitles(column: ClearedCellFixture.visits)
+        let textTitles = fixture.setValueTitles(column: ClearedCellFixture.name)
 
         #expect(!dateTitles.contains("Empty"))
         #expect(dateTitles.contains("NULL"))
@@ -198,28 +202,27 @@ struct ClearedCellCommitTests {
 
     @Test("Set Value offers Empty on an enum only when one of its labels is empty")
     func setValueEmptyOnEnumFollowsLabels() {
-        let tableRows = TableRows.from(
+        let fixture = ClearedCellFixture(tableRows: TableRows.from(
             queryRows: [[.text("a"), .text("x")]],
             columns: ["plain", "withEmpty"],
             columnTypes: [.enumType(rawType: "ENUM", values: nil), .enumType(rawType: "ENUM", values: nil)],
             columnEnumValues: ["plain": ["a", "b"], "withEmpty": ["", "x"]]
-        )
-        let rowView = DataGridRowView()
+        ))
 
-        #expect(!rowView.buildSetValueMenu(dataColumnIndex: 0, tableRows: tableRows).items.map { $0.title }.contains("Empty"))
-        #expect(rowView.buildSetValueMenu(dataColumnIndex: 1, tableRows: tableRows).items.map { $0.title }.contains("Empty"))
+        #expect(!fixture.setValueTitles(column: 0).contains("Empty"))
+        #expect(fixture.setValueTitles(column: 1).contains("Empty"))
     }
 
     @Test("A NOT NULL number with no default offers no Set Value items at all")
     func setValueMenuEmptyForNotNullNumber() {
-        let tableRows = TableRows.from(
+        let fixture = ClearedCellFixture(tableRows: TableRows.from(
             queryRows: [[.text("1")]],
             columns: ["visits"],
             columnTypes: [.integer(rawType: "INT")],
             columnNullable: ["visits": false]
-        )
+        ))
 
-        #expect(DataGridRowView().buildSetValueMenu(dataColumnIndex: 0, tableRows: tableRows).items.isEmpty)
+        #expect(fixture.setValueTitles(column: 0).isEmpty)
     }
 
     @Test("Pasted lines keep an empty line as a value and drop the closing line breaks")

@@ -105,7 +105,7 @@ struct MultiRowEditStateFieldAbsenceTests {
         let state = configured(rows: [["1", nil]], absentCells: [[1]])
         var reverted: Set<RowID>?
         state.onFieldChanged = { _, _, _ in }
-        state.onFieldReverted = { _, _, absentRows in reverted = absentRows }
+        state.onFieldReverted = { _, _, absentRows, _ in reverted = absentRows }
 
         state.updateField(at: 1, value: "Ada")
         state.updateField(at: 1, value: nil)

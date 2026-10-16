@@ -2,9 +2,6 @@
 //  MultiRowEditState.swift
 //  TablePro
 //
-//  State management for multi-row editing in right sidebar.
-//  Tracks pending edits across multiple selected rows.
-//
 
 import Combine
 import Foundation
@@ -47,18 +44,32 @@ struct FieldEditState: Identifiable {
     /// False for a NOT NULL column. Nil from the schema reads as nullable, as the grid's menus do.
     var isNullable = true
 
-    /// The value already differs from the loaded schema because the edit is recorded elsewhere.
+    /// Leaving the column out of an INSERT makes the server fill it, which is what Set DEFAULT gives.
+    var serverAssignsValue = false
+
+    var displayFormat: ValueDisplayFormat?
+
+    /// A value the selected rows hold. A lengthless MySQL `CHAR` takes the compact UUID form only when its values do.
+    var sampleText: String?
+
+    var declaredType: String?
+
+    /// The edit is recorded elsewhere: by the grid that owns a schema row, or in the change manager for rows
+    /// that now disagree, which no single pending value can stand for.
     var hasCommittedEdit: Bool = false
 
     var originalValue: String?
 
-    let hasMultipleValues: Bool
+    var hasMultipleValues: Bool
 
     var pendingValue: String?
 
     var isPendingNull: Bool
 
     var isPendingDefault: Bool
+
+    /// `pendingValue` is SQL from `CellExpressionVocabulary`, staged to be written unquoted.
+    var isPendingExpression = false
 
     /// No selected row has a field for the column, which only an engine that tells a missing field
     /// from NULL reports.
@@ -96,28 +107,37 @@ struct InspectorFieldEdit: Equatable {
     /// The edit takes the field out of the row, which `newValue` cannot say: it reads nil for NULL
     /// as well.
     var removesField = false
+    /// `newValue` is SQL picked from the field's menu, written unquoted.
+    var isExpression = false
 }
 
-/// Manages edit state for multi-row editing in sidebar
 @MainActor
 final class MultiRowEditState: ObservableObject {
     @Published var fields: [FieldEditState] = []
 
-    /// A field's new value, and whether it arrived a character at a time. Typing is folded into one
-    /// undo step; choosing NULL, DEFAULT, a function or a picker value is its own step.
+    /// A field's new literal value, and whether it arrived a character at a time. Typing is folded into one
+    /// undo step; choosing NULL, DEFAULT or a picker value is its own step.
     @Published var onFieldChanged: ((Int, PluginCellValue, FieldEditContinuity) -> Void)?
 
-    /// A field cleared back to what the rows held, when they disagree on it or some of them have
-    /// no field for it. It has no single value to send, so it asks for each row's own configured
-    /// value instead, and for the field to go missing again on the rows that lacked it.
-    @Published var onFieldReverted: ((Int, [RowID: PluginCellValue], Set<RowID>) -> Void)?
+    /// A field set to SQL the database evaluates, picked from its menu or typed. `onFieldChanged` cannot carry
+    /// that, and a plain `.text` must never be read as SQL.
+    @Published var onFieldExpressionChanged: ((Int, String, FieldEditContinuity) -> Void)?
+
+    /// A value of its own for each row, such as a fresh UUID: one value over several rows would repeat a key.
+    @Published var onFieldValuesChanged: ((Int, [RowID: PluginCellValue]) -> Void)?
+
+    /// A field cleared back to what the rows held, when they disagree on it, some of them have
+    /// no field for it, or some held SQL. It has no single value to send, so it asks for each row's own
+    /// configured value instead, for the field to go missing again on the rows that lacked it (the first set),
+    /// and for SQL again on the rows that held it (the second).
+    @Published var onFieldReverted: ((Int, [RowID: PluginCellValue], Set<RowID>, Set<RowID>) -> Void)?
 
     /// Remove Field on a field, for the rows the selection was configured with.
     @Published var onFieldRemoved: ((Int, [RowID]) -> Void)?
 
     /// A value window still open over a selection that has moved on. It names the rows it was
-    /// opened for, because the fields it was opened from are gone.
-    @Published var onDetachedFieldChanged: ((Int, PluginCellValue, [RowID]) -> Void)?
+    /// opened for, because the fields it was opened from are gone. The flag says the value is SQL.
+    @Published var onDetachedFieldChanged: ((Int, PluginCellValue, [RowID], Bool) -> Void)?
 
     @Published private(set) var selectedRowIndices: Set<Int> = []
 
@@ -131,9 +151,17 @@ final class MultiRowEditState: ObservableObject {
     @Published private(set) var allRows: [[String?]] = []
     /// The columns each row in `allRows` has no field for.
     @Published private(set) var absentCells: [Set<Int>] = []
+    /// The columns each row in `allRows` holds staged SQL in.
+    @Published private(set) var expressionCells: [Set<Int>] = []
     @Published private(set) var columns: [String] = []
     @Published private(set) var columnTypes: [ColumnType] = []
     private var nonNullableColumns: Set<String> = []
+
+    /// The engine whose vocabulary typed text is read against, and what the table's writer takes. Nil and
+    /// `.none` offer no Set Value command and promote nothing.
+    private(set) var databaseType: DatabaseType?
+    private(set) var cellWriter: CellWriterSupport = .none
+    private(set) var rowsAreInserted = false
 
     var hasEdits: Bool {
         fields.contains { $0.hasEdit }
@@ -144,6 +172,7 @@ final class MultiRowEditState: ObservableObject {
         rowIDs: [RowID] = [],
         allRows: [[String?]],
         absentCells: [Set<Int>] = [],
+        expressionCells: [Set<Int>] = [],
         columns: [String],
         columnTypes: [ColumnType],
         externallyModifiedColumns: Set<Int> = [],
@@ -151,10 +180,13 @@ final class MultiRowEditState: ObservableObject {
         foreignKeyColumns: Set<String> = [],
         serverOwnedColumns: Set<String> = [],
         nonNullableColumns: Set<String> = [],
+        serverAssignedColumns: Set<String> = [],
         displayFormats: [ValueDisplayFormat?] = [],
-        binaryColumns: Set<Int> = []
+        declaredTypes: [String: String] = [:],
+        binaryColumns: Set<Int> = [],
+        databaseType: DatabaseType? = nil,
+        cellWriter: CellWriterSupport = .none
     ) {
-        // Check if the underlying data has changed (not just edits)
         let columnsChanged = self.columns != columns
         let selectionChanged = self.selectedRowIndices != selectedRowIndices
 
@@ -162,9 +194,13 @@ final class MultiRowEditState: ObservableObject {
         self.rowIDs = rowIDs
         self.allRows = allRows
         self.absentCells = absentCells
+        self.expressionCells = expressionCells
         self.columns = columns
         self.columnTypes = columnTypes
         self.nonNullableColumns = nonNullableColumns
+        self.databaseType = databaseType
+        self.cellWriter = cellWriter
+        rowsAreInserted = !rowIDs.isEmpty && rowIDs.allSatisfy { $0.isInserted }
 
         var newFields: [FieldEditState] = []
 
@@ -178,9 +214,11 @@ final class MultiRowEditState: ObservableObject {
                 values.append(value)
             }
             let absence = allRows.indices.map { absentCells[safe: $0]?.contains(colIndex) == true }
+            let expression = allRows.indices.map { expressionCells[safe: $0]?.contains(colIndex) == true }
 
             let allSame = values.dropFirst().allSatisfy { $0 == values.first }
                 && absence.dropFirst().allSatisfy { $0 == absence.first }
+                && expression.dropFirst().allSatisfy { $0 == expression.first }
             let hasMultipleValues = !allSame
             let isAbsent = !hasMultipleValues && absence.first == true
 
@@ -191,39 +229,46 @@ final class MultiRowEditState: ObservableObject {
                 originalValue = values.first.flatMap { $0 }
             }
 
-            // Preserve pending edits if data hasn't changed
             var preservedId: UUID?
             var pendingValue: String?
             var isPendingNull = false
             var isPendingDefault = false
+            var isPendingExpression = false
             var isPendingRemoval = false
+            var hasCommittedEdit = false
 
             if !columnsChanged, !selectionChanged, colIndex < fields.count {
                 let oldField = fields[colIndex]
-                // Preserve pending edits when original data matches
                 if oldField.originalValue == originalValue && oldField.hasMultipleValues == hasMultipleValues
                     && oldField.isAbsent == isAbsent {
                     preservedId = oldField.id
                     pendingValue = oldField.pendingValue
                     isPendingNull = oldField.isPendingNull
                     isPendingDefault = oldField.isPendingDefault
+                    isPendingExpression = oldField.isPendingExpression
                     isPendingRemoval = oldField.isPendingRemoval
                 }
             }
 
-            // Mark externally modified columns (e.g., edited in data grid). A modified field that
-            // is now missing is one an edit removed, and one that now reads NULL is a pending NULL:
-            // written as an empty pending value it read as `''`, and the boolean picker showed false.
+            /// A column edited elsewhere, in the grid or by an earlier inspector edit. A modified field that is now
+            /// missing is one an edit removed, and one that now reads NULL is a pending NULL: written as an empty
+            /// pending value it read as `''`, and the boolean picker showed false. Rows that now disagree stay
+            /// Multiple values: an empty pending value there read as one value, and typing into it looked like
+            /// editing a single cell.
             if externallyModifiedColumns.contains(colIndex), pendingValue == nil, !isPendingNull, !isPendingDefault,
                !isPendingRemoval {
                 if isAbsent {
                     isPendingRemoval = true
-                } else if originalValue == nil, !hasMultipleValues {
+                } else if hasMultipleValues {
+                    hasCommittedEdit = true
+                } else if originalValue == nil {
                     isPendingNull = true
                 } else {
-                    pendingValue = originalValue ?? ""
+                    pendingValue = originalValue
+                    isPendingExpression = expression.first == true
                 }
             }
+            let displayFormat = colIndex < displayFormats.count ? displayFormats[colIndex] : nil
 
             let isJson = columnTypeEnum.isJsonType || (originalValue ?? "").looksLikeJson
 
@@ -238,11 +283,17 @@ final class MultiRowEditState: ObservableObject {
                 isForeignKey: foreignKeyColumns.contains(columnName),
                 isServerOwned: serverOwnedColumns.contains(columnName),
                 isNullable: !nonNullableColumns.contains(columnName),
+                serverAssignsValue: serverAssignedColumns.contains(columnName),
+                displayFormat: displayFormat,
+                sampleText: values.first(where: { $0 != nil }) ?? nil,
+                declaredType: declaredTypes[columnName],
+                hasCommittedEdit: hasCommittedEdit,
                 originalValue: originalValue,
                 hasMultipleValues: hasMultipleValues,
                 pendingValue: pendingValue,
                 isPendingNull: isPendingNull,
                 isPendingDefault: isPendingDefault,
+                isPendingExpression: isPendingExpression,
                 isAbsent: isAbsent,
                 isPendingRemoval: isPendingRemoval
             )
@@ -257,7 +308,7 @@ final class MultiRowEditState: ObservableObject {
                 for: columnTypeEnum,
                 isLongText: isLongText,
                 originalValue: originalValue,
-                displayFormatOverride: colIndex < displayFormats.count ? displayFormats[colIndex] : nil,
+                displayFormatOverride: displayFormat,
                 isBinaryValue: newField.isBinaryValue
             )
             newFields.append(newField)
@@ -301,6 +352,10 @@ final class MultiRowEditState: ObservableObject {
         selectedRowIndices = [displayRow]
         rowIDs = []
         absentCells = []
+        expressionCells = []
+        databaseType = nil
+        cellWriter = .none
+        rowsAreInserted = false
         columns = names
         columnTypes = Array(repeating: .text(rawType: nil), count: names.count)
         allRows = [schemaFields.map(\.value)]
@@ -343,11 +398,44 @@ final class MultiRowEditState: ObservableObject {
         return FieldValueState.resolve(fields[index]).editableText
     }
 
+    /// What Set Value can do to the field, the same answer the grid's menu gives for the column.
+    func setValueCommands(for field: FieldEditState, isWritable: Bool) -> [SetValueCommand] {
+        setValueContext(for: field, isWritable: isWritable).map(SetValueOptions.commands(for:)) ?? []
+    }
+
+    func setValueContext(for field: FieldEditState, isWritable: Bool) -> SetValueContext? {
+        guard let databaseType, !field.isSchemaField else { return nil }
+        return SetValueContext(
+            columnType: field.columnTypeEnum,
+            isNullable: field.isNullable,
+            serverAssignsValue: field.serverAssignsValue,
+            isForeignKey: field.isForeignKey,
+            isWritable: isWritable && !field.isServerOwned,
+            displayFormat: field.displayFormat,
+            sampleText: field.sampleText,
+            declaredType: field.declaredType,
+            databaseType: databaseType,
+            rowIsInserted: rowsAreInserted,
+            writer: cellWriter
+        )
+    }
+
+    func setValue(_ command: SetValueCommand, at index: Int) {
+        switch command {
+        case .empty: setFieldToEmpty(at: index)
+        case .null: setFieldToNull(at: index)
+        case .defaultValue: setFieldToDefault(at: index)
+        case .expression(let expression): setFieldToExpression(at: index, expression: expression)
+        case .uuid(let version): generateUUID(at: index, version: version)
+        }
+    }
+
     func updateField(at index: Int, value: String?) {
         guard index < fields.count else { return }
         let hadPendingEdit = fields[index].hasEdit
         let original = fields[index].originalValue
         var pending = Self.resolvePendingValue(value, original: original, isJson: fields[index].isJson)
+        let expression = pending.flatMap { typedExpression($0, columnType: fields[index].columnTypeEnum) }
         var staged = pending.map { PluginCellValue.entered($0, columnType: fields[index].columnTypeEnum) }
         /// A NOT NULL column whose type has no empty value holds nothing an emptied field could
         /// mean, so the field goes back to its stored value, as the grid's cell does.
@@ -355,13 +443,13 @@ final class MultiRowEditState: ObservableObject {
             pending = nil
             staged = nil
         }
+        resetPending(at: index)
         fields[index].pendingValue = pending
-        fields[index].isPendingNull = false
-        fields[index].isPendingDefault = false
-        fields[index].isPendingRemoval = false
         /// The field keeps its empty text while the change it stages is NULL: swapping the editor
         /// for the pending NULL pill would take the field away in the middle of typing a new value.
-        if let staged {
+        if let expression {
+            onFieldExpressionChanged?(index, expression, .typing)
+        } else if let staged {
             onFieldChanged?(index, staged, .typing)
         } else if hadPendingEdit {
             /// `originalValue` is nil for three different situations, and only one of them is a
@@ -369,12 +457,23 @@ final class MultiRowEditState: ObservableObject {
             /// not have. Sending it as one value wrote NULL into every selected row when the user
             /// cleared a field they all disagreed on, which the field then reported as unedited.
             let absentRows = configuredAbsentRows(atColumn: index)
-            if fields[index].hasMultipleValues || !absentRows.isEmpty {
-                onFieldReverted?(index, configuredValues(atColumn: index), absentRows)
+            let expressionRows = configuredExpressionRows(atColumn: index)
+            if fields[index].hasMultipleValues || !absentRows.isEmpty || !expressionRows.isEmpty {
+                onFieldReverted?(index, configuredValues(atColumn: index), absentRows, expressionRows)
             } else {
                 onFieldChanged?(index, storedCell(original, atColumn: index), .typing)
             }
         }
+    }
+
+    /// The vocabulary's SQL for typed text, as the grid reads a typed cell. A value the rows were configured
+    /// with never comes through here, so stored text that spells a function stays text.
+    private func typedExpression(_ text: String, columnType: ColumnType?) -> String? {
+        guard let databaseType,
+              let entry = CellEntry.typed(text, columnType: columnType, databaseType: databaseType, writer: cellWriter),
+              entry.isExpression,
+              case .text(let sql) = entry.value else { return nil }
+        return sql
     }
 
     /// What each row held when the selection was configured, which is what a field with no value of
@@ -399,6 +498,10 @@ final class MultiRowEditState: ObservableObject {
         Set(rowIDs.indices.filter { absentCells[safe: $0]?.contains(index) == true }.map { rowIDs[$0] })
     }
 
+    private func configuredExpressionRows(atColumn index: Int) -> Set<RowID> {
+        Set(rowIDs.indices.filter { expressionCells[safe: $0]?.contains(index) == true }.map { rowIDs[$0] })
+    }
+
     /// A commit from a detached value window, which outlives the selection it was opened from.
     ///
     /// While that selection is still the one on screen this is an ordinary field edit. Once it has
@@ -410,9 +513,13 @@ final class MultiRowEditState: ObservableObject {
             updateField(at: columnIndex, value: value)
             return
         }
+        if let value, let sql = typedExpression(value, columnType: columnTypes[safe: columnIndex]) {
+            onDetachedFieldChanged?(columnIndex, .text(sql), rowIDs, true)
+            return
+        }
         let staged = PluginCellValue.entered(value, columnType: columnTypes[safe: columnIndex])
         if staged.isNull, columns[safe: columnIndex].map(nonNullableColumns.contains) == true { return }
-        onDetachedFieldChanged?(columnIndex, staged, rowIDs)
+        onDetachedFieldChanged?(columnIndex, staged, rowIDs, false)
     }
 
     private static func resolvePendingValue(_ value: String?, original: String?, isJson: Bool) -> String? {
@@ -429,22 +536,25 @@ final class MultiRowEditState: ObservableObject {
         return value
     }
 
-    func setFieldToBytes(at index: Int, data: Data) {
-        guard index < fields.count else { return }
-        let encoded = String(data: data, encoding: .isoLatin1) ?? ""
-        fields[index].pendingValue = encoded
+    private func resetPending(at index: Int) {
+        fields[index].pendingValue = nil
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = false
+        fields[index].isPendingExpression = false
         fields[index].isPendingRemoval = false
+    }
+
+    func setFieldToBytes(at index: Int, data: Data) {
+        guard index < fields.count else { return }
+        resetPending(at: index)
+        fields[index].pendingValue = String(data: data, encoding: .isoLatin1) ?? ""
         onFieldChanged?(index, .bytes(data), .discrete)
     }
 
     func setFieldToNull(at index: Int) {
         guard index < fields.count else { return }
-        fields[index].pendingValue = nil
+        resetPending(at: index)
         fields[index].isPendingNull = true
-        fields[index].isPendingDefault = false
-        fields[index].isPendingRemoval = false
         onFieldChanged?(index, .null, .discrete)
     }
 
@@ -455,39 +565,81 @@ final class MultiRowEditState: ObservableObject {
     /// which leaves nothing pending, exactly as typing a field's own value back does.
     func removeField(at index: Int) {
         guard index < fields.count, !rowIDs.isEmpty else { return }
-        fields[index].pendingValue = nil
-        fields[index].isPendingNull = false
-        fields[index].isPendingDefault = false
+        resetPending(at: index)
         fields[index].isPendingRemoval = !fields[index].isAbsent
         onFieldRemoved?(index, rowIDs)
     }
 
     func setFieldToDefault(at index: Int) {
         guard index < fields.count else { return }
-        fields[index].pendingValue = nil
-        fields[index].isPendingNull = false
+        resetPending(at: index)
         fields[index].isPendingDefault = true
-        fields[index].isPendingRemoval = false
         onFieldChanged?(index, .text("__DEFAULT__"), .discrete)
     }
 
-    func setFieldToFunction(at index: Int, function: String) {
+    func setFieldToExpression(at index: Int, expression: CellExpression) {
         guard index < fields.count else { return }
-        fields[index].pendingValue = function
-        fields[index].isPendingNull = false
-        fields[index].isPendingDefault = false
-        fields[index].isPendingRemoval = false
-        onFieldChanged?(index, .text(function), .discrete)
+        resetPending(at: index)
+        fields[index].pendingValue = expression.sql
+        fields[index].isPendingExpression = true
+        onFieldExpressionChanged?(index, expression.sql, .discrete)
+    }
+
+    /// Several rows each get a UUID of their own, so the field then reads Multiple values, and typing over it
+    /// writes the typed value to every row as on any field the rows disagree on.
+    func generateUUID(at index: Int, version: UUIDVersion, generator: UUIDValueGenerator = .shared) {
+        guard fields.indices.contains(index),
+              let context = setValueContext(for: fields[index], isWritable: true),
+              let form = SetValueOptions.uuidForm(for: context) else { return }
+        guard rowIDs.count > 1 else {
+            guard allRows.count <= 1 else { return }
+            switch form.value(for: generator.make(version)) {
+            case .bytes(let data):
+                setFieldToBytes(at: index, data: data)
+            case .text(let text):
+                resetPending(at: index)
+                fields[index].pendingValue = text
+                onFieldChanged?(index, .text(text), .discrete)
+            case .null:
+                break
+            }
+            return
+        }
+        let values = Dictionary(
+            rowIDs.map { ($0, form.value(for: generator.make(version))) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        /// The rows hold these values now, so clearing a later edit goes back to them, as it does once the
+        /// inspector is rebuilt from the rows.
+        for (position, rowID) in rowIDs.enumerated() {
+            guard let value = values[rowID], allRows.indices.contains(position),
+                  allRows[position].indices.contains(index) else { continue }
+            allRows[position][index] = Self.configuredText(of: value)
+            if absentCells.indices.contains(position) { absentCells[position].remove(index) }
+            if expressionCells.indices.contains(position) { expressionCells[position].remove(index) }
+        }
+        resetPending(at: index)
+        fields[index].originalValue = nil
+        fields[index].hasMultipleValues = true
+        fields[index].hasCommittedEdit = true
+        if form == .bytes { fields[index].isBinaryValue = true }
+        onFieldValuesChanged?(index, values)
+    }
+
+    private static func configuredText(of value: PluginCellValue) -> String? {
+        switch value {
+        case .null: nil
+        case .text(let text): text
+        case .bytes(let data): String(data: data, encoding: .isoLatin1) ?? ""
+        }
     }
 
     func setFieldToEmpty(at index: Int) {
         guard index < fields.count else { return }
         let hadPendingEdit = fields[index].hasEdit
         let isStoredValue = fields[index].originalValue == ""
+        resetPending(at: index)
         fields[index].pendingValue = isStoredValue ? nil : ""
-        fields[index].isPendingNull = false
-        fields[index].isPendingDefault = false
-        fields[index].isPendingRemoval = false
         if isStoredValue, hadPendingEdit {
             onFieldChanged?(index, storedCell("", atColumn: index), .discrete)
         } else if !isStoredValue {
@@ -495,20 +647,17 @@ final class MultiRowEditState: ObservableObject {
         }
     }
 
-    /// Clear all pending edits
     func clearEdits() {
-        for i in 0..<fields.count {
-            fields[i].pendingValue = nil
-            fields[i].isPendingNull = false
-            fields[i].isPendingDefault = false
-            fields[i].isPendingRemoval = false
+        for index in fields.indices {
+            resetPending(at: index)
         }
     }
 
-    /// Release all data to free memory on disconnect
     func releaseData() {
         fields = []
         onFieldChanged = nil
+        onFieldExpressionChanged = nil
+        onFieldValuesChanged = nil
         onFieldReverted = nil
         onFieldRemoved = nil
         onDetachedFieldChanged = nil
@@ -516,12 +665,15 @@ final class MultiRowEditState: ObservableObject {
         rowIDs = []
         allRows = []
         absentCells = []
+        expressionCells = []
         columns = []
         columnTypes = []
         nonNullableColumns = []
+        databaseType = nil
+        cellWriter = .none
+        rowsAreInserted = false
     }
 
-    /// Get all edited fields with their new values
     func getEditedFields() -> [InspectorFieldEdit] {
         fields.compactMap { field in
             guard field.hasEdit else { return nil }
@@ -529,7 +681,8 @@ final class MultiRowEditState: ObservableObject {
                 columnIndex: field.columnIndex,
                 columnName: field.columnName,
                 newValue: field.effectiveValue,
-                removesField: field.isPendingRemoval
+                removesField: field.isPendingRemoval,
+                isExpression: field.isPendingExpression
             )
         }
     }

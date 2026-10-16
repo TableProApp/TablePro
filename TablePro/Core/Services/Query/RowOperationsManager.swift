@@ -13,6 +13,8 @@ final class RowOperationsManager {
         let rowID: RowID
         let values: [PluginCellValue]
         let delta: Delta
+        /// Key columns given a fresh UUID, which the caret skips.
+        var prefilledColumns: Set<Int> = []
     }
 
     struct DeleteRowsResult {
@@ -46,29 +48,42 @@ final class RowOperationsManager {
     /// A new row holds DEFAULT where the server assigns the value and NULL elsewhere. On an engine
     /// that tells a missing field from NULL those other fields start missing instead, so a document
     /// saved as it was added holds only what the user typed.
-    func addNewRow(tableRows: inout TableRows) -> AddNewRowResult? {
+    ///
+    /// `uuidKeyForms` are the UUID keys the server does not fill, by column. Each gets a fresh UUID, since NULL
+    /// there is a key the INSERT is refused for.
+    func addNewRow(tableRows: inout TableRows, uuidKeyForms: [Int: UUIDCellForm] = [:]) -> AddNewRowResult? {
         var newRowValues: [PluginCellValue] = []
         var absentColumns: Set<Int> = []
+        var prefilled: Set<Int> = []
         for (index, column) in tableRows.columns.enumerated() {
             if tableRows.generatedColumns.contains(column) || tableRows.serverAssignsValue(forColumn: column) {
                 newRowValues.append(.text("__DEFAULT__"))
+            } else if let form = uuidKeyForms[index] {
+                newRowValues.append(Self.freshUUID(form))
+                prefilled.insert(index)
             } else {
                 newRowValues.append(.null)
                 if changeManager.supportsFieldRemoval { absentColumns.insert(index) }
             }
         }
-        return appendInsertedRow(values: newRowValues, absentColumns: absentColumns, to: &tableRows)
+        return appendInsertedRow(
+            values: newRowValues, absentColumns: absentColumns, prefilledColumns: prefilled, to: &tableRows
+        )
     }
 
+    /// A pending source row keeps the SQL staged in it, so a copy of `now()` is `now()` again, not the text.
     func duplicateRow(
         sourceRowIndex: Int,
-        tableRows: inout TableRows
+        tableRows: inout TableRows,
+        uuidKeyForms: [Int: UUIDCellForm] = [:]
     ) -> AddNewRowResult? {
         guard sourceRowIndex >= 0, sourceRowIndex < tableRows.count else { return nil }
 
         let source = tableRows.rows[sourceRowIndex]
         var newValues = Array(source.values)
         var absentColumns = source.absentColumns
+        var expressionColumns = changeManager.expressionColumns(forRow: source.id).filter { $0 < newValues.count }
+        var prefilled: Set<Int> = []
 
         /// An identity column is not always the primary key, and copying its value verbatim is
         /// what the server rejects.
@@ -77,22 +92,42 @@ final class RowOperationsManager {
             + Array(tableRows.columnIdentity.keys)
         for resetColumn in resetColumns {
             if let index = tableRows.columns.firstIndex(of: resetColumn), index < newValues.count {
-                newValues[index] = .text("__DEFAULT__")
+                if let form = uuidKeyForms[index] {
+                    newValues[index] = Self.freshUUID(form)
+                    prefilled.insert(index)
+                } else {
+                    newValues[index] = .text("__DEFAULT__")
+                }
                 absentColumns.remove(index)
+                expressionColumns.remove(index)
             }
         }
-        return appendInsertedRow(values: newValues, absentColumns: absentColumns, to: &tableRows)
+        return appendInsertedRow(
+            values: newValues,
+            absentColumns: absentColumns,
+            expressionColumns: expressionColumns,
+            prefilledColumns: prefilled,
+            to: &tableRows
+        )
+    }
+
+    private static func freshUUID(_ form: UUIDCellForm) -> PluginCellValue {
+        form.value(for: UUIDValueGenerator.shared.make(.v4))
     }
 
     private func appendInsertedRow(
         values: [PluginCellValue],
         absentColumns: Set<Int>,
+        expressionColumns: Set<Int> = [],
+        prefilledColumns: Set<Int> = [],
         to tableRows: inout TableRows
     ) -> AddNewRowResult {
         let rowID = RowID.inserted(UUID())
         let delta = tableRows.appendInsertedRow(id: rowID, values: values, absentColumns: absentColumns)
-        changeManager.recordRowInsertion(rowID: rowID, values: values, absentColumns: absentColumns)
-        return AddNewRowResult(rowID: rowID, values: values, delta: delta)
+        changeManager.recordRowInsertion(
+            rowID: rowID, values: values, absentColumns: absentColumns, expressionColumns: expressionColumns
+        )
+        return AddNewRowResult(rowID: rowID, values: values, delta: delta, prefilledColumns: prefilledColumns)
     }
 
     func deleteSelectedRows(
@@ -164,7 +199,7 @@ final class RowOperationsManager {
 
     func applyUndoResult(_ result: UndoResult, tableRows: inout TableRows) -> UndoApplicationResult {
         switch result.action {
-        case .cellEdit(let rowID, let columnIndex, _, let previousValue, _, _, let absence):
+        case .cellEdit(let rowID, let columnIndex, _, let previousValue, _, _, let absence, _):
             guard let storageRow = tableRows.index(of: rowID) else {
                 return UndoApplicationResult(adjustedSelection: nil, delta: .none)
             }
@@ -194,7 +229,7 @@ final class RowOperationsManager {
         case .rowDeletion, .batchRowDeletion:
             return UndoApplicationResult(adjustedSelection: nil, delta: result.delta)
 
-        case .batchRowInsertion(let rows, let rowValues, let rowAbsentColumns):
+        case .batchRowInsertion(let rows, let rowValues, let rowAbsentColumns, _):
             if result.needsRowRemoval {
                 let delta = tableRows.remove(rowIDs: Set(rows.map(\.rowID)))
                 return UndoApplicationResult(adjustedSelection: nil, delta: delta)
@@ -291,7 +326,12 @@ final class RowOperationsManager {
             result.append("\n(truncated, showing first \(Self.maxClipboardRows) of \(totalSelected) rows)")
         }
 
-        let payload = GridRowsClipboardPayload(columns: columns, copying: copiedRows, projection: projection)
+        let payload = GridRowsClipboardPayload(
+            columns: columns,
+            copying: copiedRows,
+            expressionColumns: copiedRows.map { changeManager.expressionColumns(forRow: $0.id) },
+            projection: projection
+        )
         ClipboardService.shared.writeRows(tsv: result, html: nil, gridRows: payload)
     }
 
@@ -299,6 +339,7 @@ final class RowOperationsManager {
         columns: [String],
         primaryKeyColumns: [String],
         tableRows: inout TableRows,
+        uuidKeyForms: [Int: UUIDCellForm] = [:],
         clipboard: ClipboardProvider? = nil,
         parser: RowDataParser? = nil
     ) -> PasteRowsResult {
@@ -313,7 +354,7 @@ final class RowOperationsManager {
             let parsedRows = Self.reconcileStructuredRows(
                 payload, schema: schema, keepsMissingFields: keepsMissingFields
             )
-            return insertParsedRows(parsedRows, into: &tableRows)
+            return insertParsedRows(parsedRows, uuidKeyForms: uuidKeyForms, into: &tableRows)
         }
 
         guard let clipboardText = clipboardProvider.readText() else {
@@ -324,6 +365,7 @@ final class RowOperationsManager {
             let parsedRows = Self.rows(fromCopiedCells: cells, schema: schema, tableRows: tableRows)
             return insertParsedRows(
                 keepsMissingFields ? parsedRows.map(Self.nullsAsMissingFields) : parsedRows,
+                uuidKeyForms: uuidKeyForms,
                 into: &tableRows
             )
         }
@@ -335,6 +377,7 @@ final class RowOperationsManager {
         case .success(let parsedRows):
             return insertParsedRows(
                 keepsMissingFields ? parsedRows.map(Self.nullsAsMissingFields) : parsedRows,
+                uuidKeyForms: uuidKeyForms,
                 into: &tableRows
             )
 
@@ -355,42 +398,60 @@ final class RowOperationsManager {
 
         return payload.rows.enumerated().map { index, row in
             let sourceAbsent = payload.absentCells?[index] ?? []
+            let sourceExpressions = payload.expressionCells?[index] ?? []
             var absentColumns: Set<Int> = []
+            var expressionColumns: Set<Int> = []
             var values: [PluginCellValue] = sourceForDestination.enumerated().map { destination, sourceIndex in
                 guard let sourceIndex, sourceIndex < row.count else {
                     if keepsMissingFields { absentColumns.insert(destination) }
                     return .null
                 }
                 if keepsMissingFields, sourceAbsent.contains(sourceIndex) { absentColumns.insert(destination) }
+                if sourceExpressions.contains(sourceIndex), case .text = row[sourceIndex] {
+                    expressionColumns.insert(destination)
+                }
                 return row[sourceIndex]
             }
 
             if let pkIndex = schema.primaryKeyIndex, pkIndex < values.count {
                 values[pkIndex] = .text("__DEFAULT__")
                 absentColumns.remove(pkIndex)
+                expressionColumns.remove(pkIndex)
             }
 
-            return ParsedRow(values: values, sourceLineNumber: index + 1, absentColumns: absentColumns)
+            return ParsedRow(
+                values: values,
+                sourceLineNumber: index + 1,
+                absentColumns: absentColumns,
+                expressionColumns: expressionColumns.subtracting(absentColumns)
+            )
         }
     }
 
     /// Cells the grid copied, as wide as the table, become rows field by field, so a value holding a
     /// tab or a line break stays one value and a NULL stays NULL. An empty field is read for its
-    /// column, as a typed one is.
+    /// column, as a typed one is, and a field the copy marked as SQL stays SQL.
     private static func rows(
         fromCopiedCells cells: GridCellsClipboardPayload,
         schema: TableSchema,
         tableRows: TableRows
     ) -> [ParsedRow] {
         cells.fields.enumerated().map { index, fields in
+            let marked = cells.expressionFields?[index] ?? []
+            var expressionColumns: Set<Int> = []
             var values: [PluginCellValue] = (0..<schema.columnCount).map { column in
                 guard column < fields.count, let text = fields[column] else { return .null }
+                if marked.contains(column) {
+                    expressionColumns.insert(column)
+                    return .text(text)
+                }
                 return .entered(text, columnType: tableRows.editingColumnType(at: column))
             }
             if let pkIndex = schema.primaryKeyIndex, pkIndex < values.count {
                 values[pkIndex] = .text("__DEFAULT__")
+                expressionColumns.remove(pkIndex)
             }
-            return ParsedRow(values: values, sourceLineNumber: index + 1)
+            return ParsedRow(values: values, sourceLineNumber: index + 1, expressionColumns: expressionColumns)
         }
     }
 
@@ -432,8 +493,11 @@ final class RowOperationsManager {
         return containsComma ? CSVRowParser() : TSVRowParser()
     }
 
+    /// Every paste path resets the key to `__DEFAULT__` before it gets here. A UUID key the server does not
+    /// fill takes a fresh UUID in its place, one per row.
     private func insertParsedRows(
         _ parsedRows: [ParsedRow],
+        uuidKeyForms: [Int: UUIDCellForm],
         into tableRows: inout TableRows
     ) -> PasteRowsResult {
         var pastedRowInfo: [PastedRowInfo] = []
@@ -449,12 +513,21 @@ final class RowOperationsManager {
         for parsedRow in parsedRows {
             var rowValues = parsedRow.values
             var absentColumns = parsedRow.absentColumns
+            var expressionColumns = parsedRow.expressionColumns.filter { $0 < rowValues.count }
             for index in serverOwned where index < rowValues.count {
                 rowValues[index] = .text("__DEFAULT__")
                 absentColumns.remove(index)
+                expressionColumns.remove(index)
+            }
+            for (index, form) in uuidKeyForms where index < rowValues.count && rowValues[index] == .text("__DEFAULT__") {
+                rowValues[index] = Self.freshUUID(form)
+                absentColumns.remove(index)
+                expressionColumns.remove(index)
             }
             insertedIndices.insert(tableRows.count)
-            let inserted = appendInsertedRow(values: rowValues, absentColumns: absentColumns, to: &tableRows)
+            let inserted = appendInsertedRow(
+                values: rowValues, absentColumns: absentColumns, expressionColumns: expressionColumns, to: &tableRows
+            )
             pastedRowInfo.append(PastedRowInfo(rowID: inserted.rowID, values: rowValues))
         }
 

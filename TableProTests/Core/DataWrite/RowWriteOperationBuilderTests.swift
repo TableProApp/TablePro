@@ -34,12 +34,14 @@ struct RowWriteOperationBuilderTests {
         )
     }
 
-    private func cellEdit(column: String, index: Int, from old: PluginCellValue, to new: PluginCellValue) -> RowChange {
+    private func cellEdit(
+        column: String, index: Int, from old: PluginCellValue, to new: PluginCellValue, isExpression: Bool = false
+    ) -> RowChange {
         RowChange(
             rowID: .existing(0),
             type: .update,
             cellChanges: [
-                CellChange(columnIndex: index, columnName: column, oldValue: old, newValue: new),
+                CellChange(columnIndex: index, columnName: column, oldValue: old, newValue: new, newIsExpression: isExpression),
             ],
             originalRow: ["7", "Ada", "2026-01-01"]
         )
@@ -68,7 +70,9 @@ struct RowWriteOperationBuilderTests {
 
     @Test("A value the server computes leaves no after-image, so the row is refused")
     func serverComputedValueIsRefused() {
-        let now = operations(changes: [cellEdit(column: "updated_at", index: 2, from: "2026-01-01", to: "NOW()")])
+        let now = operations(
+            changes: [cellEdit(column: "updated_at", index: 2, from: "2026-01-01", to: "NOW()", isExpression: true)]
+        )
         #expect(now.first?.refusal == .serverComputedValue)
 
         let marker = operations(
@@ -134,6 +138,40 @@ struct RowWriteOperationBuilderTests {
             insertedRowIDs: [.existing(0)]
         )
         #expect(withNull.first?.refusal == .serverAssignedKey)
+    }
+
+    @Test("Text that reads like a function but is not marked as SQL is a value, so the edit stays reversible")
+    func unmarkedFunctionTextIsAValue() {
+        let result = operations(changes: [cellEdit(column: "name", index: 1, from: "Ada", to: "NOW()")])
+        #expect(result.first?.refusal == nil)
+        #expect(result.first?.postImage == ["7", "NOW()", "2026-01-01"])
+    }
+
+    @Test("A new row whose key is SQL gets its key from the server")
+    func expressionKeyIsServerAssigned() {
+        let result = operations(
+            changes: [RowChange(rowID: .existing(0), type: .insert, expressionColumns: [0])],
+            insertedRowData: [.existing(0): ["now()", "Ada", "2026-01-01"]],
+            insertedRowIDs: [.existing(0)]
+        )
+        #expect(result.first?.refusal == .serverAssignedKey)
+    }
+
+    @Test("A new row with SQL in another column is server computed")
+    func expressionValueIsServerComputed() {
+        let result = operations(
+            changes: [RowChange(rowID: .existing(0), type: .insert, expressionColumns: [2])],
+            insertedRowData: [.existing(0): ["7", "Ada", "now()"]],
+            insertedRowIDs: [.existing(0)]
+        )
+        #expect(result.first?.refusal == .serverComputedValue)
+
+        let literal = operations(
+            changes: [RowChange(rowID: .existing(0), type: .insert)],
+            insertedRowData: [.existing(0): ["7", "Ada", "now()"]],
+            insertedRowIDs: [.existing(0)]
+        )
+        #expect(literal.first?.refusal == nil)
     }
 
     @Test("An insert carrying its own key is reversible")

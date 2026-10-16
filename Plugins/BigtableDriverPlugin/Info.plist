@@ -5,7 +5,7 @@
 	<key>TableProMinAppVersion</key>
 	<string>0.81.0</string>
 	<key>TableProPluginKitVersion</key>
-	<integer>38</integer>
+	<integer>39</integer>
 	<key>TableProProvidesDatabaseTypeIds</key>
 	<array>
 		<string>Bigtable</string>

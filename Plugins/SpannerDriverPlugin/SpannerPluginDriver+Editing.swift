@@ -80,7 +80,7 @@ extension SpannerPluginDriver {
             table: table,
             columns: columns,
             primaryKey: primaryKeyColumns,
-            changes: changes.map(Self.rowChange),
+            changes: changes.map { Self.rowChange($0, columns: columns) },
             insertedRows: insertedRowData.mapValues { $0.map(Self.spannerCell) },
             deletedRows: deletedRowIndices,
             insertedRowIndices: insertedRowIndices,
@@ -174,15 +174,28 @@ extension SpannerPluginDriver {
         )
     }
 
-    private static func rowChange(_ change: PluginRowChange) -> SpannerRowChange {
+    private static func rowChange(_ change: PluginRowChange, columns: [String]) -> SpannerRowChange {
         SpannerRowChange(
             rowIndex: change.rowIndex,
             kind: rowChangeKind(change.type),
             cellChanges: change.cellChanges.map {
                 SpannerRowChange.CellChange(column: $0.columnName, value: spannerCell($0.newValue))
             },
-            originalRow: change.originalRow?.map(spannerCell)
+            originalRow: change.originalRow?.map(spannerCell),
+            expressionColumns: expressionColumnNames(of: change, columns: columns)
         )
+    }
+
+    private static func expressionColumnNames(of change: PluginRowChange, columns: [String]) -> Set<String> {
+        guard let marked = change.expressionColumns, !marked.isEmpty else { return [] }
+        switch change.type {
+        case .update:
+            return Set(change.cellChanges.filter { marked.contains($0.columnIndex) }.map(\.columnName))
+        case .insert:
+            return Set(marked.compactMap { columns.indices.contains($0) ? columns[$0] : nil })
+        case .delete:
+            return []
+        }
     }
 
     private static func rowChangeKind(_ type: PluginRowChange.ChangeType) -> SpannerRowChange.Kind {

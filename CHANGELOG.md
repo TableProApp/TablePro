@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Generate UUID and Generate UUIDv7 in Set Value, the row inspector and Fill Column, a new value for each cell. (#3443)
+- Edit > Set Value in the menu bar, with rows in Settings > Keyboard. (#3443)
+- New UUID in a UUID primary key the server does not fill, on Add Row, Duplicate Row and Paste. (#3443)
+
+### Changed
+
+- Set Value applies to every selected cell, or to the clicked column across the selected rows. (#3443)
+- SQL functions in Set Value and the row inspector listed per database and only where they fit the column. (#3443)
+- UUID functions in SQL Functions replaced by Generate UUID, which writes the value itself. (#3443)
+- Text typed into a column that is not a date or time saved as typed, even when it reads like `now()`. (#3443)
+- Set NULL and Set DEFAULT in the row inspector shown only where the column takes them, as in the data grid. (#3443)
+- Default only on new rows on SQLite, libSQL, Turso, D1, ClickHouse, Databend, Snowflake, Trino, Cassandra. (#3443)
+- Pending SQL functions in the data grid drawn like a pending default. (#3443)
+- PluginKit ABI 39, additive: existing plugins keep loading. (#3443)
+
+### Fixed
+
+- `gen_random_uuid()`, `UUID()`, `NEWID()` and `datetime('now')` from SQL Functions saved as quoted text. (#3443)
+- SQL functions saved as text on SQL Server, Teradata, Spanner and BigQuery. (#3443)
+- `NOW()` offered on SQLite, Oracle, Cassandra and MongoDB, where it fails or saves the text. (#3443)
+- SQLite's `datetime('now')` offered on DuckDB and `gen_random_uuid()` on Redshift. (#3443)
+- Stored text such as `CURRENT_DATE` turning into today's date on Duplicate Row or Restore Previous Values. (#3443)
+- Copy as INSERT and Copy as UPDATE quoting a staged SQL function. (#3443)
+- Default on a saved row failing on SQLite, and storing `__DEFAULT__` on Teradata and DynamoDB. (#3443)
+- Duplicate Row and Paste failing to save on a UUID primary key with no default. (#3443)
+- Date functions and a date picker offered on Cassandra and ScyllaDB `timeuuid` columns. (#3443)
+- MariaDB `uuid` columns read as `CHAR`. (#3443)
+- Empty field in the multi-row inspector after the selected rows were given different values. (#3443)
+
 ## [0.81.0] - 2026-10-16
 
 Cloud Firestore, Firebase Realtime Database and Google Cloud Bigtable connect through new registry plugins.

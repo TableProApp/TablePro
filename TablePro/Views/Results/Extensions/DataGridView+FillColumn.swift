@@ -6,6 +6,18 @@
 import AppKit
 import TableProPluginKit
 
+enum FillColumnChoice: Equatable {
+    case value
+    case null
+    case uuid(UUIDVersion)
+}
+
+/// A UUID is drawn for each row.
+enum FillColumnContent: Equatable {
+    case value(PluginCellValue, isExpression: Bool = false)
+    case uuid(UUIDVersion, UUIDCellForm)
+}
+
 extension TableViewCoordinator {
     @objc func fillColumn(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int else { return }
@@ -22,8 +34,7 @@ extension TableViewCoordinator {
         guard rowCount > 0 else { return }
 
         let columnName = tableRows.columns[columnIndex]
-        let allowsNull = tableRows.columnNullable[columnName] ?? true
-        let accessory = FillColumnAccessoryView(allowsNull: allowsNull)
+        let accessory = FillColumnAccessoryView(choices: fillColumnChoices(columnIndex: columnIndex))
 
         let alert = NSAlert()
         alert.messageText = String(format: String(localized: "Fill column \"%@\""), columnName)
@@ -36,34 +47,62 @@ extension TableViewCoordinator {
 
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn, let self else { return }
-            guard let value = self.fillColumnValue(
-                text: accessory.enteredText, setNull: accessory.setsNull, columnIndex: columnIndex
+            guard let content = self.fillColumnContent(
+                choice: accessory.choice, text: accessory.enteredText, columnIndex: columnIndex
             ) else {
                 NSSound.beep()
                 return
             }
-            self.applyFillColumn(columnIndex: columnIndex, value: value)
+            self.applyFillColumn(columnIndex: columnIndex, content: content)
         }
     }
 
-    func applyFillColumn(columnIndex: Int, value: PluginCellValue) {
+    func fillColumnChoices(columnIndex: Int) -> [FillColumnChoice] {
+        let tableRows = tableRowsProvider()
+        guard tableRows.columns.indices.contains(columnIndex) else { return [.value] }
+        var choices: [FillColumnChoice] = [.value]
+        if tableRows.columnNullable[tableRows.columns[columnIndex]] ?? true {
+            choices.append(.null)
+        }
+        if fillUUIDForm(columnIndex: columnIndex, in: tableRows) != nil {
+            choices += [.uuid(.v4), .uuid(.v7)]
+        }
+        return choices
+    }
+
+    func applyFillColumn(columnIndex: Int, content: FillColumnContent) {
         let targetRows = fillTargetRows()
         guard !targetRows.isEmpty else { return }
 
         let undoManager = tableView?.window?.undoManager
         undoManager?.beginUndoGrouping()
-        undoManager?.setActionName(String(localized: "Fill Column"))
 
         var didEdit = false
-        for row in targetRows where recordCellEdit(row: row, columnIndex: columnIndex, newValue: value) != nil {
-            didEdit = true
+        for row in targetRows {
+            let staged = Self.fillValue(content)
+            if recordCellEdit(
+                row: row, columnIndex: columnIndex, newValue: staged.value, isExpression: staged.isExpression
+            ) != nil {
+                didEdit = true
+            }
         }
 
+        // After the loop: each cell's own step names the open group "Edit Cell".
+        undoManager?.setActionName(String(localized: "Fill Column"))
         undoManager?.endUndoGrouping()
 
         guard didEdit else { return }
         invalidateAllDisplayCaches()
         tableView?.reloadData()
+    }
+
+    private static func fillValue(_ content: FillColumnContent) -> (value: PluginCellValue, isExpression: Bool) {
+        switch content {
+        case .value(let value, let isExpression):
+            return (value: value, isExpression: isExpression)
+        case .uuid(let version, let form):
+            return (value: form.value(for: UUIDValueGenerator.shared.make(version)), isExpression: false)
+        }
     }
 
     private func fillTargetRows() -> [Int] {
@@ -81,10 +120,26 @@ extension TableViewCoordinator {
         return (0..<rowCount).filter { !isRowDeleted($0) }
     }
 
-    /// The value a fill writes, read for the column the way a typed cell is: an empty fill of a date
-    /// is NULL. Nil when the column holds neither the text nor NULL in its place.
-    func fillColumnValue(text: String, setNull: Bool, columnIndex: Int) -> PluginCellValue? {
-        setNull ? .null : tableRowsProvider().enteredValue(text, forColumn: columnIndex)
+    /// The value is read the way a typed cell is: an empty date is NULL, a function the engine runs there is SQL. Nil
+    /// when the column holds neither the text nor NULL in its place.
+    func fillColumnContent(choice: FillColumnChoice, text: String, columnIndex: Int) -> FillColumnContent? {
+        switch choice {
+        case .value:
+            return enteredCell(text, columnIndex: columnIndex).map {
+                FillColumnContent.value($0.value, isExpression: $0.isExpression)
+            }
+        case .null:
+            return .value(.null)
+        case .uuid(let version):
+            return fillUUIDForm(columnIndex: columnIndex, in: tableRowsProvider()).map {
+                FillColumnContent.uuid(version, $0)
+            }
+        }
+    }
+
+    private func fillUUIDForm(columnIndex: Int, in tableRows: TableRows) -> UUIDCellForm? {
+        setValueContext(forColumn: columnIndex, rowIsInserted: false, in: tableRows)
+            .flatMap { SetValueOptions.uuidForm(for: $0) }
     }
 
     static func fillImpactDescription(rowCount: Int) -> String {
@@ -98,41 +153,74 @@ extension TableViewCoordinator {
     }
 }
 
+/// Value, NULL and the UUIDs are radio buttons with one superview and one action, which AppKit groups by itself.
 @MainActor
 private final class FillColumnAccessoryView: NSView {
-    private let valueField = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
-    private let nullCheckbox: NSButton?
+    private static let width: CGFloat = 260
+    private static let valueRowHeight: CGFloat = 24
+    private static let choiceRowHeight: CGFloat = 22
 
-    init(allowsNull: Bool) {
-        nullCheckbox = allowsNull
-            ? NSButton(checkboxWithTitle: String(localized: "Set to NULL"), target: nil, action: nil)
-            : nil
-        super.init(frame: NSRect(x: 0, y: 0, width: 260, height: allowsNull ? 50 : 24))
+    private let valueField = NSTextField(frame: .zero)
+    private var radios: [(choice: FillColumnChoice, button: NSButton)] = []
+
+    init(choices: [FillColumnChoice]) {
+        let others = choices.filter { $0 != .value }
+        let height = Self.valueRowHeight + CGFloat(others.count) * Self.choiceRowHeight
+        super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: height))
 
         valueField.usesSingleLineMode = true
         valueField.placeholderString = String(localized: "Value")
-        valueField.frame = NSRect(x: 0, y: allowsNull ? 26 : 0, width: 260, height: 24)
         addSubview(valueField)
 
-        guard let nullCheckbox else { return }
-        nullCheckbox.frame = NSRect(x: 0, y: 0, width: 260, height: 18)
-        nullCheckbox.target = self
-        nullCheckbox.action = #selector(nullStateChanged)
-        addSubview(nullCheckbox)
+        let valueRowY = height - Self.valueRowHeight
+        guard !others.isEmpty else {
+            valueField.frame = NSRect(x: 0, y: valueRowY, width: Self.width, height: Self.valueRowHeight)
+            return
+        }
+
+        let valueRadio = addRadio(.value, at: valueRowY, rowHeight: Self.valueRowHeight)
+        valueRadio.state = .on
+        let fieldX = valueRadio.frame.maxX + 6
+        valueField.frame = NSRect(
+            x: fieldX, y: valueRowY, width: Self.width - fieldX, height: Self.valueRowHeight
+        )
+        for (index, choice) in others.enumerated() {
+            addRadio(choice, at: valueRowY - CGFloat(index + 1) * Self.choiceRowHeight, rowHeight: Self.choiceRowHeight)
+        }
     }
 
     required init?(coder: NSCoder) {
-        nullCheckbox = nil
         super.init(coder: coder)
     }
 
     var enteredText: String { valueField.stringValue }
 
-    var setsNull: Bool { nullCheckbox?.state == .on }
+    var choice: FillColumnChoice {
+        radios.first { $0.button.state == .on }?.choice ?? .value
+    }
 
     var firstResponderView: NSView { valueField }
 
-    @objc private func nullStateChanged() {
-        valueField.isEnabled = nullCheckbox?.state != .on
+    @discardableResult
+    private func addRadio(_ choice: FillColumnChoice, at rowY: CGFloat, rowHeight: CGFloat) -> NSButton {
+        let button = NSButton(radioButtonWithTitle: Self.title(for: choice), target: self, action: #selector(choiceChanged))
+        button.sizeToFit()
+        button.frame.origin = NSPoint(x: 0, y: rowY + (rowHeight - button.frame.height) / 2)
+        addSubview(button)
+        radios.append((choice, button))
+        return button
+    }
+
+    private static func title(for choice: FillColumnChoice) -> String {
+        switch choice {
+        case .value: String(localized: "Value")
+        case .null: String(localized: "NULL")
+        case .uuid(.v4): String(localized: "New UUID")
+        case .uuid(.v7): String(localized: "New UUIDv7")
+        }
+    }
+
+    @objc private func choiceChanged() {
+        valueField.isEnabled = choice == .value
     }
 }

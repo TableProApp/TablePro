@@ -190,6 +190,19 @@ enum ColumnType: Equatable, Sendable {
         "INET", "CIDR", "MACADDR", "MACADDR8", "IPV4", "IPV6", "INTERVAL"
     ]
 
+    /// A column the engine types as a UUID. Cassandra's `timeuuid` is one, though it takes version 1 only.
+    var isUUIDType: Bool {
+        guard case .text(let rawType) = self else { return false }
+        return Self.uuidTypeNames.contains(Self.baseTypeName(rawType))
+    }
+
+    var isTimeUUIDType: Bool {
+        guard case .text(let rawType) = self else { return false }
+        return Self.baseTypeName(rawType) == "TIMEUUID"
+    }
+
+    private static let uuidTypeNames: Set<String> = ["UUID", "UNIQUEIDENTIFIER", "TIMEUUID"]
+
     /// `Nullable(UUID)`, `year(4)` and `INTERVAL DAY TO SECOND` all name their type in the first word.
     private static func baseTypeName(_ rawType: String?) -> String {
         guard var name = rawType?.uppercased() else { return "" }

@@ -6,7 +6,7 @@
 import SwiftUI
 
 /// One field of the inspected row. Its value menu is always drawn: it is the only route to Set
-/// NULL, Set DEFAULT and the SQL functions, and a hover-gated one hid them from the keyboard.
+/// NULL, Set DEFAULT, Generate UUID and the SQL functions, and a hover-gated one hid them from the keyboard.
 internal struct InspectorFieldRow: View {
     @ObservedObject private var themeEngine = ThemeEngine.shared
     internal let context: FieldEditorContext
@@ -17,10 +17,9 @@ internal struct InspectorFieldRow: View {
     internal let isForeignKey: Bool
     internal let databaseType: DatabaseType
     internal let isExpanded: Bool
-    internal let onSetNull: () -> Void
-    internal let onSetDefault: () -> Void
-    internal let onSetEmpty: () -> Void
-    internal let onSetFunction: (String) -> Void
+    internal let commands: [SetValueCommand]
+    internal var isPendingExpression = false
+    internal let onSetValue: (SetValueCommand) -> Void
     internal var onRemoveField: (() -> Void)?
     internal var onToggleExpand: (() -> Void)?
     internal var onPopOut: ((String) -> Void)?
@@ -180,15 +179,13 @@ internal struct InspectorFieldRow: View {
         FieldMenuContent(
             value: context.copyableValue,
             columnType: context.columnType,
-            sqlFunctions: SQLFunctionProvider.functions(for: databaseType),
+            commands: commands,
             canMutate: context.canMutate,
             isPendingNull: context.valueState == .pendingNull,
             isPendingDefault: context.valueState == .pendingDefault,
             isPendingRemoval: context.valueState == .pendingRemoval,
-            onSetNull: onSetNull,
-            onSetDefault: onSetDefault,
-            onSetEmpty: onSetEmpty,
-            onSetFunction: onSetFunction,
+            isPendingExpression: isPendingExpression,
+            onSetValue: onSetValue,
             onRemoveField: context.valueState == .absent || context.valueState == .pendingRemoval
                 ? nil : onRemoveField,
             onClear: { context.value.wrappedValue = context.originalValue ?? "" }
@@ -202,8 +199,8 @@ internal struct InspectorFieldRow: View {
             context: context,
             kind: kind,
             databaseType: databaseType,
-            onSetNull: context.canMutate ? onSetNull : nil,
-            onSetDefault: context.canMutate ? onSetDefault : nil,
+            onSetNull: context.canMutate && commands.contains(.null) ? { onSetValue(.null) } : nil,
+            onSetDefault: context.canMutate && commands.contains(.defaultValue) ? { onSetValue(.defaultValue) } : nil,
             onPopOut: onPopOut,
             isExpanded: isExpanded,
             onTabStopChange: onTabStopChange

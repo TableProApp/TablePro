@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import TableProPluginKit
 
 extension TableViewCoordinator {
     /// Splitting the clipboard into a cell block costs a pass over the whole string, and menu
@@ -37,7 +38,6 @@ extension TableViewCoordinator {
 
         let undoManager = tableView?.window?.undoManager
         undoManager?.beginUndoGrouping()
-        undoManager?.setActionName(String(localized: "Paste Cells"))
 
         let tableRows = tableRowsProvider()
         var refusedCell = false
@@ -50,15 +50,28 @@ extension TableViewCoordinator {
                 let targetPosition = anchorPosition + gridCol
                 guard targetPosition < maxCol else { break }
                 guard let targetCol = dataColumnIndex(atDisplayPosition: targetPosition) else { continue }
-                let text = block.isGridCopy
-                    ? field
-                    : field.flatMap { Self.pastedText($0, columnType: tableRows.editingColumnType(at: targetCol)) }
-                if !commitEnteredText(text, row: targetRow, columnIndex: targetCol) {
+                let isCommitted: Bool
+                if block.isGridCopy {
+                    isCommitted = commitCopiedField(
+                        field,
+                        isExpression: block.isExpression(line: gridRow, field: gridCol),
+                        row: targetRow,
+                        columnIndex: targetCol
+                    )
+                } else {
+                    let text = field.flatMap {
+                        Self.pastedText($0, columnType: tableRows.editingColumnType(at: targetCol))
+                    }
+                    isCommitted = commitEnteredText(text, row: targetRow, columnIndex: targetCol)
+                }
+                if !isCommitted {
                     refusedCell = true
                 }
             }
         }
 
+        // After the loop: each cell's own step names the open group "Edit Cell".
+        undoManager?.setActionName(String(localized: "Paste Cells"))
         undoManager?.endUndoGrouping()
         if refusedCell {
             NSSound.beep()
@@ -73,9 +86,15 @@ extension TableViewCoordinator {
     struct CellPasteBlock {
         let lines: [[String?]]
         let isGridCopy: Bool
+        /// Line index to the fields the grid's copy marked as staged SQL.
+        var expressionFields: [Int: Set<Int>] = [:]
 
         /// The widest line, since an empty line holds one field and may come first.
         var width: Int { lines.map(\.count).max() ?? 0 }
+
+        func isExpression(line: Int, field: Int) -> Bool {
+            expressionFields[line]?.contains(field) == true
+        }
     }
 
     /// The clipboard as a cell block, or nil when it belongs to the row-paste path instead.
@@ -122,7 +141,19 @@ extension TableViewCoordinator {
     /// in it would become several fields and a NULL would read as the text `NULL`.
     private static func gridCopiedBlock(matching text: String) -> CellPasteBlock? {
         guard let copied = ClipboardService.shared.readGridCells(), copied.text == text else { return nil }
-        return CellPasteBlock(lines: copied.fields, isGridCopy: true)
+        return CellPasteBlock(lines: copied.fields, isGridCopy: true, expressionFields: copied.expressionFields ?? [:])
+    }
+
+    /// The grid's copy says which fields were SQL, so a field it marked stages as SQL for the save to check against
+    /// this engine, and any other field is text however it reads: a stored `CURRENT_TIMESTAMP` is not promoted.
+    private func commitCopiedField(_ field: String?, isExpression: Bool, row: Int, columnIndex: Int) -> Bool {
+        if isExpression, let field {
+            commitTypedCellEdit(row: row, columnIndex: columnIndex, newValue: .text(field), isExpression: true)
+            return true
+        }
+        guard let value = tableRowsProvider().enteredValue(field, forColumn: columnIndex) else { return false }
+        commitTypedCellEdit(row: row, columnIndex: columnIndex, newValue: value)
+        return true
     }
 
     /// Text from another app has no NULL of its own. A date, number or boolean cannot hold the

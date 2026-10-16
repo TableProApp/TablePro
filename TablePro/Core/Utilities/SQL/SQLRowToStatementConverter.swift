@@ -15,22 +15,26 @@ internal struct SQLRowToStatementConverter {
     ///
     /// `defaultedColumns` names the cells the grid staged as left to the server's default. The grid spells that as the
     /// text `__DEFAULT__`, which a stored value can also be, so only a cell named here is read as the marker.
+    /// `expressionColumns` names the cells staged as SQL, which go out unquoted; text anywhere else is a literal.
     internal struct SourceRow {
         internal let values: [PluginCellValue]
         internal let storedValues: [PluginCellValue]
         internal let isPendingInsert: Bool
         internal let defaultedColumns: Set<Int>
+        internal let expressionColumns: Set<Int>
 
         internal init(
             values: [PluginCellValue],
             storedValues: [PluginCellValue]? = nil,
             isPendingInsert: Bool = false,
-            defaultedColumns: Set<Int> = []
+            defaultedColumns: Set<Int> = [],
+            expressionColumns: Set<Int> = []
         ) {
             self.values = values
             self.storedValues = storedValues ?? values
             self.isPendingInsert = isPendingInsert
             self.defaultedColumns = defaultedColumns
+            self.expressionColumns = expressionColumns
         }
     }
 
@@ -95,15 +99,17 @@ internal struct SQLRowToStatementConverter {
     private func insertStatement(row: SourceRow) -> String? {
         let written = zip(columns.indices, zip(columns, row.values)).filter { index, cell in
             !unwritableColumns.contains(cell.0) && !row.defaultedColumns.contains(index)
-        }.map(\.1)
+        }
         guard !written.isEmpty else {
             let firstWritable = columns.first { !unwritableColumns.contains($0) }.map(quoteIdentifierFn)
             return AllDefaultsInsert.sql(
                 into: qualifiedTable, databaseType: databaseType, firstWritableColumn: firstWritable
             ).map { "\($0);" }
         }
-        let columnList = written.map { quoteIdentifierFn($0.0) }.joined(separator: ", ")
-        let values = written.map { formatValue($0.1) }.joined(separator: ", ")
+        let columnList = written.map { quoteIdentifierFn($0.1.0) }.joined(separator: ", ")
+        let values = written.map { index, cell in
+            formatValue(cell.1, isExpression: row.expressionColumns.contains(index))
+        }.joined(separator: ", ")
         return "INSERT INTO \(qualifiedTable) (\(columnList)) VALUES (\(values));"
     }
 
@@ -134,12 +140,12 @@ internal struct SQLRowToStatementConverter {
         return (settableColumns ?? columns).compactMap { column -> String? in
             guard !unwritableColumns.contains(column), let index = columns.firstIndex(of: column) else { return nil }
             let value = row.values.indices.contains(index) ? row.values[index] : .null
-            if keys.contains(column) {
+            if keys.contains(column), !row.expressionColumns.contains(index) {
                 let stored = row.storedValues.indices.contains(index) ? row.storedValues[index] : .null
                 guard value != stored else { return nil }
             }
             guard !row.defaultedColumns.contains(index) else { return "\(quoteIdentifierFn(column)) = DEFAULT" }
-            return "\(quoteIdentifierFn(column)) = \(formatValue(value))"
+            return "\(quoteIdentifierFn(column)) = \(formatValue(value, isExpression: row.expressionColumns.contains(index)))"
         }
     }
 
@@ -166,6 +172,14 @@ internal struct SQLRowToStatementConverter {
     }
 
     // MARK: - Literals
+
+    /// A marked cell is written raw only when the engine's vocabulary holds its text exactly.
+    private func formatValue(_ value: PluginCellValue, isExpression: Bool) -> String {
+        if isExpression, case .text(let sql) = value, CellExpressionVocabulary.isCanonical(sql, for: databaseType) {
+            return sql
+        }
+        return formatValue(value)
+    }
 
     private func formatValue(_ value: PluginCellValue) -> String {
         switch value {

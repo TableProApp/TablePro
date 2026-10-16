@@ -74,7 +74,7 @@ struct MultiRowEditStateBinaryRevertTests {
             columnTypes: [.spatial(rawType: "POINT")]
         )
         var reverted: [RowID: PluginCellValue] = [:]
-        sut.onFieldReverted = { _, values, _ in reverted = values }
+        sut.onFieldReverted = { _, values, _, _ in reverted = values }
 
         sut.setFieldToNull(at: 0)
         clear(sut, at: 0)
@@ -109,7 +109,7 @@ struct MultiRowEditStateBinaryRevertTests {
         var sent: [PluginCellValue] = []
         var reverted: [RowID: PluginCellValue] = [:]
         sut.onFieldChanged = { _, value, _ in sent.append(value) }
-        sut.onFieldReverted = { _, values, _ in reverted = values }
+        sut.onFieldReverted = { _, values, _, _ in reverted = values }
 
         sut.setFieldToNull(at: 0)
         clear(sut, at: 0)

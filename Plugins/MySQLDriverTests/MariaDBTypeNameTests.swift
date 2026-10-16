@@ -99,6 +99,26 @@ struct MariaDBTypeNameTests {
         #expect(resolve(typeRaw: 251, charsetnr: 33, flags: 0) == "LONGTEXT")
     }
 
+    // MARK: - MariaDB extended metadata
+
+    @Test("A MariaDB uuid column is named UUID, not the CHAR its type code says")
+    func extendedUUID() {
+        #expect(mariaDBExtendedTypeName(formatName: nil, dataTypeName: "uuid") == "UUID")
+    }
+
+    @Test("A MariaDB json column is named JSON, not the LONGTEXT its type code says")
+    func extendedJSON() {
+        #expect(mariaDBExtendedTypeName(formatName: "json", dataTypeName: nil) == "JSON")
+    }
+
+    @Test(
+        "inet4, inet6 and a server that sends no attribute keep the type code's name",
+        arguments: [nil, "inet4", "inet6"] as [String?]
+    )
+    func extendedOtherNames(dataTypeName: String?) {
+        #expect(mariaDBExtendedTypeName(formatName: nil, dataTypeName: dataTypeName) == nil)
+    }
+
     @Test("Generic BLOB (252) routes by length and binary flag")
     func blobLengthRouting() {
         let (flags, charsetnr) = binaryFlagAndCharset

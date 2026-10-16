@@ -2,15 +2,11 @@
 //  MainContentCoordinator+SidebarSave.swift
 //  TablePro
 //
-//  Sidebar save logic extracted from MainContentView.
-//
 
 import Foundation
 import TableProPluginKit
 
 extension MainContentCoordinator {
-    // MARK: - Sidebar Save
-
     func saveSidebarEdits(
         editState: MultiRowEditState
     ) async throws {
@@ -40,12 +36,7 @@ extension MainContentCoordinator {
         guard !editedFields.isEmpty else { return [] }
 
         let tableRows = tabSessionRegistry.tableRows(for: tab.id)
-        /// Typed text is read for its column, as the grid reads a cell, and text a NOT NULL column can
-        /// hold neither as itself nor as NULL writes nothing. An explicit NULL stays NULL.
-        let writes: [(field: InspectorFieldEdit, value: PluginCellValue)] = editedFields.compactMap { field in
-            guard !field.removesField, let text = field.newValue else { return (field, .null) }
-            return tableRows.enteredValue(text, forColumn: field.columnIndex).map { (field, $0) }
-        }
+        let writes = editedFields.compactMap { sidebarWrite(for: $0, in: tableRows) }
         guard !writes.isEmpty else { return [] }
         let displayIDs = activeGridDisplayIDs
         let changes: [RowChange] = selectionState.indices.sorted().compactMap { rowIndex -> RowChange? in
@@ -58,7 +49,8 @@ extension MainContentCoordinator {
             return RowChange(
                 rowID: resolvedRow.id,
                 type: .update,
-                cellChanges: writes.map { field, newValue in
+                cellChanges: writes.map { write in
+                    let field = write.field
                     let oldValue: PluginCellValue = field.columnIndex < originalRow.count
                         ? originalRow[field.columnIndex]
                         : .null
@@ -66,9 +58,10 @@ extension MainContentCoordinator {
                         columnIndex: field.columnIndex,
                         columnName: field.columnName,
                         oldValue: oldValue,
-                        newValue: newValue,
+                        newValue: write.value,
                         oldIsAbsent: resolvedRow.isAbsent(field.columnIndex),
-                        newIsAbsent: field.removesField
+                        newIsAbsent: field.removesField,
+                        newIsExpression: write.isExpression
                     )
                 },
                 originalRow: originalRow,
@@ -77,5 +70,25 @@ extension MainContentCoordinator {
         }
 
         return try changeManager.generateSQL(for: changes)
+    }
+
+    /// Typed text is read for its column, as the grid reads a cell: a function name on a date column is the
+    /// function, and text a NOT NULL column can hold neither as itself nor as NULL writes nothing. An explicit
+    /// NULL stays NULL, and SQL picked from the menu is already the vocabulary's spelling.
+    private func sidebarWrite(
+        for field: InspectorFieldEdit,
+        in tableRows: TableRows
+    ) -> (field: InspectorFieldEdit, value: PluginCellValue, isExpression: Bool)? {
+        guard !field.removesField, let text = field.newValue else { return (field, .null, false) }
+        if field.isExpression { return (field, .text(text), true) }
+        if let typed = CellEntry.typed(
+            text,
+            columnType: tableRows.editingColumnType(at: field.columnIndex),
+            databaseType: changeManager.databaseType ?? connection.type,
+            writer: changeManager.cellWriterSupport
+        ) {
+            return (field, typed.value, typed.isExpression)
+        }
+        return tableRows.enteredValue(text, forColumn: field.columnIndex).map { (field, $0, false) }
     }
 }

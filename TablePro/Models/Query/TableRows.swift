@@ -17,6 +17,8 @@ struct TableRows: Sendable {
     var columnNullable: [String: Bool]
     var columnComments: [String: String]
     var columnIdentity: [String: IdentityKind]
+    // A result set can drop the length (MySQL types `CHAR(32)` as `CHAR`), so the schema's spelling is kept beside it.
+    var columnDeclaredTypes: [String: String]
     /// Columns the app must never write. Held here as well as on `DataChangeManager` because the
     /// change manager is rebuilt by `configureForTable` on every execution and only the schema
     /// fetch refills it, so a rerun that answered from cache left a generated or `GENERATED ALWAYS
@@ -43,6 +45,7 @@ struct TableRows: Sendable {
         columnNullable: [String: Bool] = [:],
         columnComments: [String: String] = [:],
         columnIdentity: [String: IdentityKind] = [:],
+        columnDeclaredTypes: [String: String] = [:],
         generatedColumns: Set<String> = [],
         rowMatchPolicy: RowMatchPolicy = .none,
         hasAuthoritativeSchema: Bool = false,
@@ -58,6 +61,7 @@ struct TableRows: Sendable {
         self.columnNullable = columnNullable
         self.columnComments = columnComments
         self.columnIdentity = columnIdentity
+        self.columnDeclaredTypes = columnDeclaredTypes
         self.generatedColumns = generatedColumns
         self.rowMatchPolicy = rowMatchPolicy
         self.hasAuthoritativeSchema = hasAuthoritativeSchema
@@ -101,6 +105,10 @@ struct TableRows: Sendable {
         guard columns.indices.contains(index),
               let labels = columnEnumValues[columns[index]], !labels.isEmpty else { return columnType }
         return columnType.withAllowedValues(labels)
+    }
+
+    func declaredType(at index: Int) -> String? {
+        columns.indices.contains(index) ? columnDeclaredTypes[columns[index]] : nil
     }
 
     /// What text entered for a column stages, or nil when the column holds neither it nor NULL.
@@ -310,6 +318,7 @@ struct TableRows: Sendable {
         columnNullable: [String: Bool]? = nil,
         columnComments: [String: String]? = nil,
         columnIdentity: [String: IdentityKind]? = nil,
+        columnDeclaredTypes: [String: String]? = nil,
         generatedColumns: Set<String>? = nil,
         rowMatchPolicy: RowMatchPolicy? = nil,
         hasAuthoritativeSchema: Bool? = nil
@@ -346,6 +355,10 @@ struct TableRows: Sendable {
             self.columnIdentity = columnIdentity
             didChange = true
         }
+        if let columnDeclaredTypes, columnDeclaredTypes != self.columnDeclaredTypes {
+            self.columnDeclaredTypes = columnDeclaredTypes
+            didChange = true
+        }
         if let generatedColumns, generatedColumns != self.generatedColumns {
             self.generatedColumns = generatedColumns
             didChange = true
@@ -371,6 +384,7 @@ struct TableRows: Sendable {
         columnNullable: [String: Bool] = [:],
         columnComments: [String: String] = [:],
         columnIdentity: [String: IdentityKind] = [:],
+        columnDeclaredTypes: [String: String] = [:],
         generatedColumns: Set<String> = [],
         rowMatchPolicy: RowMatchPolicy = .none,
         hasAuthoritativeSchema: Bool = false,
@@ -398,6 +412,7 @@ struct TableRows: Sendable {
             columnNullable: columnNullable,
             columnComments: columnComments,
             columnIdentity: columnIdentity,
+            columnDeclaredTypes: columnDeclaredTypes,
             generatedColumns: generatedColumns,
             rowMatchPolicy: rowMatchPolicy,
             hasAuthoritativeSchema: hasAuthoritativeSchema,

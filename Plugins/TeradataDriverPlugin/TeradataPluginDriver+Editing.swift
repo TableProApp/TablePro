@@ -32,9 +32,22 @@ extension TeradataPluginDriver {
             case .insert:
                 guard insertedRowIndices.contains(change.rowIndex),
                       let values = insertedRowData[change.rowIndex], values.count == columns.count else { continue }
-                statements.append((TeradataRowEditSQL.insert(target: target, columns: columns, values: values), []))
+                let insert = TeradataRowEditSQL.insert(
+                    target: target,
+                    columns: columns,
+                    values: values,
+                    expressionColumns: change.expressionColumns ?? []
+                )
+                statements.append((insert, []))
             case .update:
-                let assignments = change.cellChanges.map { "\(quote($0.columnName)) = \(sqlLiteral($0.newValue))" }
+                let expressionColumns = change.expressionColumns ?? []
+                let assignments = change.cellChanges.map {
+                    TeradataRowEditSQL.assignment(
+                        column: $0.columnName,
+                        value: $0.newValue,
+                        isExpression: expressionColumns.contains($0.columnIndex)
+                    )
+                }
                 guard !assignments.isEmpty else { continue }
                 let whereClause = keyPredicate(primaryKeyColumns, columns: columns, change: change)
                 statements.append(("UPDATE \(target) SET \(assignments.joined(separator: ", "))\(whereClause)", []))

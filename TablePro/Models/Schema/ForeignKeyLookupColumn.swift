@@ -56,8 +56,7 @@ struct ForeignKeyLookupColumn: Equatable, Sendable, Identifiable {
 
     /// A UUID takes no `LIKE`, but it does take equality against a literal the engine can parse.
     var isUuid: Bool {
-        guard let base = Self.baseTypeName(of: type.rawType) else { return false }
-        return Self.uuidTypeNames.contains(base)
+        type.isUUIDType
     }
 
     private static let characterTypeNames: Set<String> = [
@@ -67,8 +66,6 @@ struct ForeignKeyLookupColumn: Equatable, Sendable, Identifiable {
         "BPCHAR", "CITEXT",
         "TINYTEXT", "MEDIUMTEXT", "LONGTEXT",
     ]
-
-    private static let uuidTypeNames: Set<String> = ["UUID", "UNIQUEIDENTIFIER"]
 
     /// The same shape `ColumnTypeClassifier` reads: the wrappers off, the parameters off, uppercased.
     static func baseTypeName(of rawType: String?) -> String? {

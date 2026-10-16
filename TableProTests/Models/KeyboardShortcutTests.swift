@@ -117,6 +117,19 @@ struct ReservedShortcutTests {
         let key = BoundKey.special(.delete, command: true)
         #expect(ShortcutAction.reservedConflict(for: key, context: .dataGrid) == nil)
     }
+
+    // A disabled menu item still takes its key, so a binding here would starve the inspector's field shortcuts.
+    @Test("Control-Option-N and D stay with the inspector, so no action can be bound to them")
+    func inspectorStateChordsAreReserved() {
+        let setNull = BoundKey.character("n", option: true, control: true)
+        let setDefault = BoundKey.character("d", option: true, control: true)
+        for context in [ShortcutContext.global, .editor, .dataGrid] {
+            #expect(ShortcutAction.reservedConflict(for: setNull, context: context) == String(localized: "Set NULL"))
+            #expect(
+                ShortcutAction.reservedConflict(for: setDefault, context: context) == String(localized: "Set DEFAULT")
+            )
+        }
+    }
 }
 
 struct StandardTextEditingBindingTests {

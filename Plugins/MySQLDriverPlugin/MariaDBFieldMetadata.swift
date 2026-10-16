@@ -24,6 +24,13 @@ nonisolated internal func makeColumnMeta(name: String, typeName: String, flags: 
     )
 }
 
+// MariaDB 10.5+ extended metadata: a `json` column arrives as LONGTEXT and a `uuid` one as CHAR. MySQL sends neither.
+nonisolated internal func mariaDBExtendedTypeName(formatName: String?, dataTypeName: String?) -> String? {
+    if formatName == "json" { return "JSON" }
+    if dataTypeName == "uuid" { return "UUID" }
+    return nil
+}
+
 nonisolated internal func mariaDBTypeName(
     typeRaw: UInt32,
     flags: UInt,

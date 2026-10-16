@@ -19,6 +19,24 @@ extension DynamoDBPluginDriver {
         )
     }
 
+    func generateRowWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>
+    ) throws -> [PluginRowWrite]? {
+        try DynamoDBWriteStatements(table: table, columns: columns, keyColumns: primaryKeyColumns).rowWrites(
+            for: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices
+        )
+    }
+
     func generateIdentityPreservingInsert(
         table: String,
         schema: String?,

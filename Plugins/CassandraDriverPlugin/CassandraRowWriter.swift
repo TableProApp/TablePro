@@ -15,11 +15,6 @@ enum CassandraRowWriter {
     static let defaultSentinel = "__DEFAULT__"
     static let unappliedMarker = "[applied]"
 
-    private static let functionCalls: Set<String> = [
-        "now()", "uuid()", "currenttimestamp()", "currentdate()", "currenttime()", "currenttimeuuid()",
-        "totimestamp(now())", "todate(now())"
-    ]
-
     static func rowWrites(
         keyspace: String?,
         table: String,
@@ -82,13 +77,14 @@ enum CassandraRowWriter {
                 ))
             }
             let row = values ?? rowFromCellChanges(change)
+            let expressionColumns = change.expressionColumns ?? []
             var names: [String] = []
             var placeholders: [String] = []
             var parameters: [PluginCellValue] = []
             for (index, value) in row.enumerated() where index < columns.count {
                 if value.asText == defaultSentinel { continue }
                 names.append(CassandraBrowseRenderer.quote(columns[index]))
-                if let call = functionCall(value) {
+                if let call = expression(value, isMarked: expressionColumns.contains(index)) {
                     placeholders.append(call)
                 } else {
                     placeholders.append("?")
@@ -111,6 +107,7 @@ enum CassandraRowWriter {
 
         func update(_ change: PluginRowChange) throws -> PluginRowWrite? {
             guard !change.cellChanges.isEmpty else { return nil }
+            let expressionColumns = change.expressionColumns ?? []
             var assignments: [String] = []
             var parameters: [PluginCellValue] = []
             for cell in change.cellChanges {
@@ -128,7 +125,7 @@ enum CassandraRowWriter {
                     ))
                 }
                 let column = CassandraBrowseRenderer.quote(cell.columnName)
-                if let call = functionCall(cell.newValue) {
+                if let call = expression(cell.newValue, isMarked: expressionColumns.contains(cell.columnIndex)) {
                     assignments.append("\(column) = \(call)")
                 } else {
                     assignments.append("\(column) = ?")
@@ -175,10 +172,10 @@ enum CassandraRowWriter {
             return row
         }
 
-        private func functionCall(_ value: PluginCellValue) -> String? {
-            guard let text = value.asText?.trimmingCharacters(in: .whitespaces) else { return nil }
-            let lowered = text.lowercased()
-            return functionCalls.contains(lowered) ? lowered : nil
+        // The host checked a marked cell's text against the engine's vocabulary before handing it over.
+        private func expression(_ value: PluginCellValue, isMarked: Bool) -> String? {
+            guard isMarked, case .text(let cql) = value else { return nil }
+            return cql
         }
     }
 }

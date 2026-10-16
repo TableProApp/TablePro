@@ -49,13 +49,15 @@ final class RowEditingCoordinator: ObservableObject {
         let tabId = tab.id
         /// A new row is pre-filled from the schema's account of which columns the server owns, so
         /// staging one before that account exists writes NULL into an identity column.
-        guard parent.tabSessionRegistry.tableRows(for: tabId).hasAuthoritativeSchema else { return }
+        let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
+        guard tableRows.hasAuthoritativeSchema else { return }
 
         parent.dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
 
+        let uuidKeys = uuidKeyForms(in: tableRows, tab: tab)
         var addResult: RowOperationsManager.AddNewRowResult?
         parent.mutateActiveTableRows(for: tabId) { rows in
-            let result = parent.rowOperationsManager.addNewRow(tableRows: &rows)
+            let result = parent.rowOperationsManager.addNewRow(tableRows: &rows, uuidKeyForms: uuidKeys)
             addResult = result
             return result?.delta ?? .none
         }
@@ -64,7 +66,7 @@ final class RowEditingCoordinator: ObservableObject {
 
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
-        selectAndEditInsertedRow(result.rowID, tabId: tabId)
+        selectAndEditInsertedRow(result.rowID, tabId: tabId, skipping: result.prefilledColumns)
     }
 
     func deleteSelectedRows(indices: Set<Int>) {
@@ -124,11 +126,13 @@ final class RowEditingCoordinator: ObservableObject {
 
         parent.dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
 
+        let uuidKeys = uuidKeyForms(in: tableRows, tab: tab)
         var dupResult: RowOperationsManager.AddNewRowResult?
         parent.mutateActiveTableRows(for: tabId) { rows in
             let result = parent.rowOperationsManager.duplicateRow(
                 sourceRowIndex: storageIndex,
-                tableRows: &rows
+                tableRows: &rows,
+                uuidKeyForms: uuidKeys
             )
             dupResult = result
             return result?.delta ?? .none
@@ -138,14 +142,73 @@ final class RowEditingCoordinator: ObservableObject {
 
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
-        selectAndEditInsertedRow(result.rowID, tabId: tabId)
+        selectAndEditInsertedRow(result.rowID, tabId: tabId, skipping: result.prefilledColumns)
     }
 
-    private func selectAndEditInsertedRow(_ rowID: RowID, tabId: UUID) {
+    /// The caret skips a key the row was given a fresh UUID for, so the first keystroke does not replace it.
+    private func selectAndEditInsertedRow(_ rowID: RowID, tabId: UUID, skipping prefilled: Set<Int>) {
         guard selectionPointsTheGrid,
               let displayIndex = displayIndex(of: rowID, tabId: tabId) else { return }
         parent.selectionState.indices = [displayIndex]
-        parent.dataTabDelegate?.tableViewCoordinator?.beginEditingFirstEditableColumn(displayRow: displayIndex)
+        parent.dataTabDelegate?.tableViewCoordinator?.beginEditingFirstEditableColumn(
+            displayRow: displayIndex, skipping: prefilled
+        )
+    }
+
+    private func uuidKeyForms(in tableRows: TableRows, tab: QueryTab) -> [Int: UUIDCellForm] {
+        let changeManager = parent.changeManager
+        return Self.uuidKeyForms(
+            in: tableRows,
+            primaryKeyColumns: changeManager.primaryKeyColumns,
+            displayFormats: parent.displayFormats(for: tab),
+            databaseType: parent.connection.type,
+            writer: changeManager.cellWriterSupport,
+            isColumnWritable: { changeManager.isColumnWritable($0) }
+        )
+    }
+
+    /// The key columns a new, duplicated or pasted row gets a fresh UUID in: a UUID key the server does not fill,
+    /// whose `__DEFAULT__` would leave the key out of the INSERT. Asked of `SetValueOptions`, so a foreign key, a
+    /// read-only column or a writer that cannot store UUID text gets none, exactly as Generate UUID is hidden.
+    static func uuidKeyForms(
+        in tableRows: TableRows,
+        primaryKeyColumns: [String],
+        displayFormats: [ValueDisplayFormat?],
+        databaseType: DatabaseType,
+        writer: CellWriterSupport,
+        isColumnWritable: (String) -> Bool
+    ) -> [Int: UUIDCellForm] {
+        let keys = Set(primaryKeyColumns)
+        guard writer.acceptsUUIDText, !keys.isEmpty else { return [:] }
+        var forms: [Int: UUIDCellForm] = [:]
+        for (index, column) in tableRows.columns.enumerated() where keys.contains(column) {
+            guard !tableRows.serverAssignsValue(forColumn: column),
+                  !tableRows.generatedColumns.contains(column) else { continue }
+            let context = SetValueContext(
+                columnType: tableRows.editingColumnType(at: index),
+                isNullable: tableRows.columnNullable[column] ?? true,
+                serverAssignsValue: false,
+                isForeignKey: tableRows.columnForeignKeys[column] != nil,
+                isWritable: isColumnWritable(column),
+                displayFormat: displayFormats[safe: index] ?? nil,
+                sampleText: sampleText(atColumn: index, in: tableRows),
+                declaredType: tableRows.declaredType(at: index),
+                databaseType: databaseType,
+                rowIsInserted: true,
+                writer: writer
+            )
+            if let form = SetValueOptions.uuidForm(for: context) {
+                forms[index] = form
+            }
+        }
+        return forms
+    }
+
+    private static func sampleText(atColumn index: Int, in tableRows: TableRows) -> String? {
+        for row in tableRows.rows where row.values.indices.contains(index) {
+            if case .text(let text) = row.values[index], text != "__DEFAULT__" { return text }
+        }
+        return nil
     }
 
     private func displayIndex(of rowID: RowID, tabId: UUID) -> Int? {
@@ -164,29 +227,38 @@ final class RowEditingCoordinator: ObservableObject {
         return Set(displayIDs.indices.filter { rowIDs.contains(displayIDs[$0]) })
     }
 
-    /// Stages a row inspector field edit exactly as the grid's own cell editor stages one: the
-    /// change, the shared `TableRows` buffer both surfaces read, and the repaint.
-    ///
-    /// The rows are named by `RowID` rather than by the display positions the selection carries,
-    /// and each contributes its own `oldValue`. A shared one is wrong the moment a multi-row
-    /// selection disagrees on the field, where the inspector holds no value for it at all.
     /// Ends the typed run an inspector field was building, so the next thing to register an undo
     /// step lands after it rather than inside it.
     func endInspectorEditRun() {
         parent.changeManager.endCoalescedUndoRun()
     }
 
+    /// Stages a row inspector field edit exactly as the grid's own cell editor stages one: the
+    /// change, the shared `TableRows` buffer both surfaces read, and the repaint.
+    ///
+    /// The rows are named by `RowID` rather than by the display positions the selection carries,
+    /// and each contributes its own `oldValue`. A shared one is wrong the moment a multi-row
+    /// selection disagrees on the field, where the inspector holds no value for it at all.
+    ///
+    /// `isExpression` stages `value`, SQL from `CellExpressionVocabulary`, to be written unquoted.
     func stageInspectorFieldEdit(
         columnIndex: Int,
         value: PluginCellValue,
         rowIDs: [RowID],
-        continuity: FieldEditContinuity
+        continuity: FieldEditContinuity,
+        isExpression: Bool = false
     ) {
         stageInspectorEdits(
             valuesByRow: Dictionary(rowIDs.map { ($0, value) }, uniquingKeysWith: { first, _ in first }),
             columnIndex: columnIndex,
-            continuity: continuity
+            continuity: continuity,
+            expressionRowIDs: isExpression ? Set(rowIDs) : []
         )
+    }
+
+    /// A value of its own for each row, one undo step for all of them.
+    func stageInspectorFieldValues(columnIndex: Int, valuesByRow: [RowID: PluginCellValue]) {
+        stageInspectorEdits(valuesByRow: valuesByRow, columnIndex: columnIndex, continuity: .discrete)
     }
 
     /// Puts a field back to the values the inspector was configured with.
@@ -194,17 +266,20 @@ final class RowEditingCoordinator: ObservableObject {
     /// A field the selected rows disagree on has no value of its own, and clearing it asks for each
     /// row's own value back rather than for one value across all of them.
     ///
-    /// `absentRowIDs` are the rows that had no field for the column, which it goes back to missing.
+    /// `absentRowIDs` are the rows that had no field for the column, which it goes back to missing, and
+    /// `expressionRowIDs` the rows whose value was staged SQL, which goes back as SQL rather than as text.
     func revertInspectorFieldEdit(
         columnIndex: Int,
         valuesByRow: [RowID: PluginCellValue],
-        absentRowIDs: Set<RowID> = []
+        absentRowIDs: Set<RowID> = [],
+        expressionRowIDs: Set<RowID> = []
     ) {
         stageInspectorEdits(
             valuesByRow: valuesByRow,
             columnIndex: columnIndex,
             continuity: .typing,
-            removingFieldFrom: absentRowIDs
+            removingFieldFrom: absentRowIDs,
+            expressionRowIDs: expressionRowIDs
         )
     }
 
@@ -224,7 +299,8 @@ final class RowEditingCoordinator: ObservableObject {
         valuesByRow: [RowID: PluginCellValue],
         columnIndex: Int,
         continuity: FieldEditContinuity,
-        removingFieldFrom removedRowIDs: Set<RowID> = []
+        removingFieldFrom removedRowIDs: Set<RowID> = [],
+        expressionRowIDs: Set<RowID> = []
     ) {
         if continuity == .discrete {
             endInspectorEditRun()
@@ -250,8 +326,11 @@ final class RowEditingCoordinator: ObservableObject {
             let absence = FieldAbsence(
                 wasAbsent: row.isAbsent(columnIndex), isAbsent: removesField, originalRow: row.absentColumns
             )
+            let isExpression = expressionRowIDs.contains(rowID) && !removesField
+            let wasExpression = parent.changeManager.isExpression(rowID: rowID, columnIndex: columnIndex)
             guard values.indices.contains(columnIndex),
-                  values[columnIndex] != value || absence.wasAbsent != absence.isAbsent else { continue }
+                  values[columnIndex] != value || absence.wasAbsent != absence.isAbsent
+                    || wasExpression != isExpression else { continue }
             if continuity == .typing {
                 parent.changeManager.recordTypedCellChange(
                     rowID: rowID,
@@ -260,7 +339,8 @@ final class RowEditingCoordinator: ObservableObject {
                     oldValue: values[columnIndex],
                     newValue: value,
                     originalRow: values,
-                    absence: absence
+                    absence: absence,
+                    isExpression: isExpression
                 )
             } else {
                 parent.changeManager.recordCellChange(
@@ -270,7 +350,8 @@ final class RowEditingCoordinator: ObservableObject {
                     oldValue: values[columnIndex],
                     newValue: value,
                     originalRow: values,
-                    absence: absence
+                    absence: absence,
+                    isExpression: isExpression
                 )
             }
             edits.append((row: storageRow, column: columnIndex, value: value))
@@ -377,15 +458,18 @@ final class RowEditingCoordinator: ObservableObject {
         let tabId = tab.id
         /// Pasted rows hand the columns the server owns back to it, which only the schema names, so pasting waits for
         /// it the way Add Row does rather than staging an identity value the save would send.
-        guard parent.tabSessionRegistry.tableRows(for: tabId).hasAuthoritativeSchema else { return }
-        let columns = parent.tabSessionRegistry.tableRows(for: tabId).columns
+        let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
+        guard tableRows.hasAuthoritativeSchema else { return }
+        let columns = tableRows.columns
+        let uuidKeys = uuidKeyForms(in: tableRows, tab: tab)
 
         var pasteResult = RowOperationsManager.PasteRowsResult(pastedRows: [], delta: .none)
         parent.mutateActiveTableRows(for: tabId) { rows in
             let result = parent.rowOperationsManager.pasteRowsFromClipboard(
                 columns: columns,
                 primaryKeyColumns: parent.changeManager.primaryKeyColumns,
-                tableRows: &rows
+                tableRows: &rows,
+                uuidKeyForms: uuidKeys
             )
             pasteResult = result
             return result.delta

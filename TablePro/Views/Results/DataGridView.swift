@@ -25,6 +25,8 @@ struct RowVisualState: Equatable {
     let isInserted: Bool
     let modifiedColumns: Set<Int>
     let struckColumns: Set<Int>
+    /// Pending cells staged as SQL, which draw like a pending DEFAULT.
+    let expressionColumns: Set<Int>
     let vocabulary: DataGridChangeVocabulary
     let highlight: RowHighlight
 
@@ -33,6 +35,7 @@ struct RowVisualState: Equatable {
         isInserted: Bool,
         modifiedColumns: Set<Int>,
         struckColumns: Set<Int> = [],
+        expressionColumns: Set<Int> = [],
         vocabulary: DataGridChangeVocabulary = .pendingEdit,
         highlight: RowHighlight = .none
     ) {
@@ -40,6 +43,7 @@ struct RowVisualState: Equatable {
         self.isInserted = isInserted
         self.modifiedColumns = modifiedColumns
         self.struckColumns = struckColumns
+        self.expressionColumns = expressionColumns
         self.vocabulary = vocabulary
         self.highlight = highlight
     }
@@ -52,12 +56,17 @@ struct RowVisualState: Equatable {
         struckColumns.contains(columnIndex)
     }
 
+    func isExpression(columnIndex: Int) -> Bool {
+        expressionColumns.contains(columnIndex)
+    }
+
     func highlighted(_ highlight: RowHighlight) -> RowVisualState {
         RowVisualState(
             isDeleted: isDeleted,
             isInserted: isInserted,
             modifiedColumns: modifiedColumns,
             struckColumns: struckColumns,
+            expressionColumns: expressionColumns,
             vocabulary: vocabulary,
             highlight: highlight
         )

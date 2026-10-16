@@ -46,13 +46,13 @@ extension TableViewCoordinator {
 
         let tsv = tsvRows.joined(separator: "\n")
         let html = HtmlTableEncoder.encode(rows: htmlRows, headers: columns)
-        let payload = GridRowsClipboardPayload(columns: columns, copying: copiedRows, projection: projection)
+        let payload = GridRowsClipboardPayload(
+            columns: columns,
+            copying: copiedRows,
+            expressionColumns: copiedRows.map { changeManager.expressionColumns(forRow: $0.id) },
+            projection: projection
+        )
         ClipboardService.shared.writeRows(tsv: tsv, html: html, gridRows: payload)
-    }
-
-    @MainActor
-    func setCellValueAtColumn(_ value: String?, at rowIndex: Int, columnIndex: Int) {
-        commitCellEdit(row: rowIndex, columnIndex: columnIndex, newValue: value)
     }
 
     func copyCellValue(at rowIndex: Int, columnIndex: Int) {
@@ -61,6 +61,12 @@ extension TableViewCoordinator {
         guard let row = displayRow(at: rowIndex), columnIndex < row.values.count else { return }
 
         let cell = row.values[columnIndex]
+        if changeManager.isExpression(rowID: row.id, columnIndex: columnIndex), let sql = cell.asText {
+            ClipboardService.shared.writeCells(
+                GridCellsClipboardPayload(text: sql, fields: [[sql]], expressionFields: [0: [0]])
+            )
+            return
+        }
         let columnTypes = tableRows.columnTypes
         let columnType = columnTypes.indices.contains(columnIndex) ? columnTypes[columnIndex] : nil
         let text = cellCopyText(cell, columnIndex: columnIndex, columnType: columnType)
@@ -107,7 +113,8 @@ extension TableViewCoordinator {
             let rows = indices.sorted().compactMap(displayRow(at:)).map { row in
                 SQLRowToStatementConverter.SourceRow(
                     values: projection.values(Array(row.values)),
-                    defaultedColumns: projection.positions(of: stagedDefaults(of: row))
+                    defaultedColumns: projection.positions(of: stagedDefaults(of: row)),
+                    expressionColumns: projection.positions(of: stagedExpressions(of: row))
                 )
             }
             writeCopiedStatements(converter.generateInserts(rows: rows))
@@ -157,7 +164,8 @@ extension TableViewCoordinator {
             values: Array(row.values),
             storedValues: stored,
             isPendingInsert: changeManager.insertedRowIDs.contains(row.id),
-            defaultedColumns: stagedDefaults(of: row)
+            defaultedColumns: stagedDefaults(of: row),
+            expressionColumns: stagedExpressions(of: row)
         )
     }
 
@@ -170,6 +178,10 @@ extension TableViewCoordinator {
         }
         let pendingUpdate = changeManager.rowChanges.first { $0.rowID == row.id && $0.type == .update }
         return Set(pendingUpdate?.cellChanges.filter { $0.newValue == marker }.map(\.columnIndex) ?? [])
+    }
+
+    private func stagedExpressions(of row: Row) -> Set<Int> {
+        changeManager.expressionColumns(forRow: row.id)
     }
 
     /// A copy that produced no statement leaves the clipboard as it was, rather than replacing it with nothing.
@@ -406,11 +418,13 @@ extension TableViewCoordinator {
 
         var copiedLines: [[String?]] = []
         copiedLines.reserveCapacity(rowRange.count)
+        var expressionFields: [Int: Set<Int>] = [:]
         for rowIndex in rowRange {
             guard let row = displayRow(at: rowIndex) else {
                 copiedLines.append(Array(repeating: "", count: positions.count))
                 continue
             }
+            let expressionColumns = changeManager.expressionColumns(forRow: row.id)
             var fields: [String?] = []
             fields.reserveCapacity(positions.count)
             for position in positions {
@@ -420,8 +434,14 @@ extension TableViewCoordinator {
                     fields.append("")
                     continue
                 }
+                let cell = row.values[columnIndex]
+                if expressionColumns.contains(columnIndex), let sql = cell.asText {
+                    expressionFields[copiedLines.count, default: []].insert(fields.count)
+                    fields.append(sql)
+                    continue
+                }
                 let columnType = columnTypes.indices.contains(columnIndex) ? columnTypes[columnIndex] : nil
-                fields.append(RowValueCopyFormatter.copyText(cell: row.values[columnIndex], columnType: columnType))
+                fields.append(RowValueCopyFormatter.copyText(cell: cell, columnType: columnType))
             }
             copiedLines.append(fields)
         }
@@ -430,6 +450,10 @@ extension TableViewCoordinator {
         if isTruncated {
             text.append("\n(truncated, showing first \(maxRows) of \(selectedRowCount) rows)")
         }
-        ClipboardService.shared.writeCells(GridCellsClipboardPayload(text: text, fields: copiedLines))
+        ClipboardService.shared.writeCells(GridCellsClipboardPayload(
+            text: text,
+            fields: copiedLines,
+            expressionFields: expressionFields.isEmpty ? nil : expressionFields
+        ))
     }
 }

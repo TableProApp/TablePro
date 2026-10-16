@@ -34,7 +34,11 @@ struct MSSQLStatementGenerator {
             case .insert:
                 guard insertedRowIndices.contains(change.rowIndex),
                       let values = insertedRowData[change.rowIndex] else { continue }
-                let statement = try insertStatement(values: values, rowIndex: change.rowIndex)
+                let statement = try insertStatement(
+                    values: values,
+                    rowIndex: change.rowIndex,
+                    expressionColumns: change.expressionColumns ?? []
+                )
                 writes.append(PluginRowWrite(statement: statement.statement, parameters: statement.parameters, rowIndices: [change.rowIndex]))
             case .update:
                 guard let statement = try updateStatement(for: change) else { continue }
@@ -66,20 +70,28 @@ struct MSSQLStatementGenerator {
 
     func insertStatement(
         values: [PluginCellValue],
-        rowIndex: Int = 0
+        rowIndex: Int = 0,
+        expressionColumns: Set<Int> = []
     ) throws -> (statement: String, parameters: [PluginCellValue]) {
-        let written = zip(columns, values).filter { $0.1 != Self.defaultMarker }
-        if let owned = written.first(where: { context.serverOwnedColumns.contains($0.0) }) {
-            throw PluginRowWriteRefusal(rowIndex: rowIndex, reason: Self.serverOwnedReason(owned.0))
+        let written = zip(columns, values).enumerated()
+            .filter { $0.element.1 != Self.defaultMarker }
+            .map { (index: $0.offset, column: $0.element.0, value: $0.element.1) }
+        if let owned = written.first(where: { context.serverOwnedColumns.contains($0.column) }) {
+            throw PluginRowWriteRefusal(rowIndex: rowIndex, reason: Self.serverOwnedReason(owned.column))
         }
         guard !written.isEmpty else {
             return (statement: "INSERT INTO \(qualifiedTable) DEFAULT VALUES", parameters: [])
         }
-        let columnList = written.map { Self.quote($0.0) }.joined(separator: ", ")
-        let placeholders = written.map { _ in "?" }.joined(separator: ", ")
+        var parameters: [PluginCellValue] = []
+        let valueList = written.map { cell -> String in
+            if let sql = Self.expression(cell.value, isMarked: expressionColumns.contains(cell.index)) { return sql }
+            parameters.append(cell.value)
+            return "?"
+        }
+        let columnList = written.map { Self.quote($0.column) }.joined(separator: ", ")
         return (
-            statement: "INSERT INTO \(qualifiedTable) (\(columnList)) VALUES (\(placeholders))",
-            parameters: written.map(\.1)
+            statement: "INSERT INTO \(qualifiedTable) (\(columnList)) VALUES (\(valueList.joined(separator: ", ")))",
+            parameters: parameters
         )
     }
 
@@ -89,10 +101,17 @@ struct MSSQLStatementGenerator {
             throw PluginRowWriteRefusal(rowIndex: change.rowIndex, reason: Self.serverOwnedReason(owned.columnName))
         }
 
+        let expressionColumns = change.expressionColumns ?? []
         var parameters: [PluginCellValue] = []
         let assignments = change.cellChanges.map { cellChange -> String in
             let column = Self.quote(cellChange.columnName)
             guard cellChange.newValue != Self.defaultMarker else { return "\(column) = DEFAULT" }
+            if let sql = Self.expression(
+                cellChange.newValue,
+                isMarked: expressionColumns.contains(cellChange.columnIndex)
+            ) {
+                return "\(column) = \(sql)"
+            }
             parameters.append(cellChange.newValue)
             return "\(column) = ?"
         }
@@ -167,6 +186,12 @@ struct MSSQLStatementGenerator {
             format: String(localized: "This table has no primary key, and %@ cannot be compared to find the row."),
             column
         )
+    }
+
+    // The host checked a marked cell's text against the engine's vocabulary before handing it over.
+    private static func expression(_ value: PluginCellValue, isMarked: Bool) -> String? {
+        guard isMarked, case .text(let sql) = value else { return nil }
+        return sql
     }
 
     static func quote(_ name: String) -> String {

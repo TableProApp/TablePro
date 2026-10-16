@@ -56,9 +56,12 @@ struct InspectorFieldEditStagingTests {
                     columnIndex: columnIndex, value: value, rowIDs: rows, continuity: continuity
                 )
             }
-            state.onFieldReverted = { [coordinator] columnIndex, valuesByRow, absentRowIDs in
-                coordinator.revertInspectorFieldEdit(
-                    columnIndex: columnIndex, valuesByRow: valuesByRow, absentRowIDs: absentRowIDs
+            state.onFieldReverted = { [coordinator] columnIndex, valuesByRow, absentRowIDs, expressionRowIDs in
+                coordinator.rowEditingCoordinator.revertInspectorFieldEdit(
+                    columnIndex: columnIndex,
+                    valuesByRow: valuesByRow,
+                    absentRowIDs: absentRowIDs,
+                    expressionRowIDs: expressionRowIDs
                 )
             }
             return state

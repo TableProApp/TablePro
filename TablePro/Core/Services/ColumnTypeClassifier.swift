@@ -234,7 +234,7 @@ struct ColumnTypeClassifier {
             "TEXT", "VARCHAR", "CHAR", "NVARCHAR", "NCHAR", "NTEXT",
             "VARCHAR2", "NVARCHAR2", "CLOB", "NCLOB", "ROWID", "UROWID", "REF", "BFILE",
             "STRING", "FIXEDSTRING",
-            "UUID", "UNIQUEIDENTIFIER", "SQL_VARIANT",
+            "UUID", "TIMEUUID", "UNIQUEIDENTIFIER", "SQL_VARIANT",
             "TINYTEXT", "MEDIUMTEXT", "LONGTEXT"
         ] {
             map[key] = { .text(rawType: $0) }

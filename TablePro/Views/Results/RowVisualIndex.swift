@@ -67,7 +67,19 @@ final class RowVisualIndex {
         return RowVisualState(
             isDeleted: isDeleted,
             isInserted: isInserted,
-            modifiedColumns: modifiedColumns
+            modifiedColumns: modifiedColumns,
+            expressionColumns: expressionColumns(of: rowChange)
         )
+    }
+
+    private static func expressionColumns(of rowChange: RowChange) -> Set<Int> {
+        switch rowChange.type {
+        case .insert:
+            rowChange.expressionColumns
+        case .update:
+            Set(rowChange.cellChanges.lazy.filter(\.newIsExpression).map(\.columnIndex))
+        case .delete:
+            []
+        }
     }
 }
