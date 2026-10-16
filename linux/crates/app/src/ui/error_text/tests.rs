@@ -286,6 +286,34 @@ fn ssh_failures_say_what_to_change() {
     assert!(declined.contains("not trusted"), "{declined}");
 }
 
+/// Under StrictHostKeyChecking yes ssh refuses before it shows the key,
+/// so there is no fingerprint to print and no review the user can do.
+#[test]
+fn an_unknown_key_says_what_the_configuration_allows() {
+    let unknown = |sha256_fingerprint: &str, trust_allowed: bool| {
+        ssh_failure_message(&SshFailure::HostKeyUnknown {
+            host: "[bastion]:2222".to_owned(),
+            algorithm: "ED25519".to_owned(),
+            sha256_fingerprint: sha256_fingerprint.to_owned(),
+            trust_allowed,
+            declined: false,
+        })
+    };
+    let strict = unknown("", false);
+    let unseen = unknown("", true);
+    let reviewable = unknown("SHA256:abc", true);
+
+    for message in [&strict, &unseen] {
+        assert!(message.contains("[bastion]:2222"), "{message}");
+        assert!(!message.contains("key )") && !message.contains("(key"), "{message}");
+    }
+    assert!(strict.contains("known_hosts outside TablePro"), "{strict}");
+    assert!(!strict.contains("review"), "{strict}");
+    assert!(unseen.contains("review"), "{unseen}");
+    assert!(reviewable.contains("(key SHA256:abc)"), "{reviewable}");
+    assert!(reviewable.contains("review"), "{reviewable}");
+}
+
 #[test]
 fn connect_error_text_covers_every_variant() {
     let errors = [

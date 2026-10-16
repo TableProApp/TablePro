@@ -276,16 +276,19 @@ mod tests {
         ));
     }
 
+    /// Under StrictHostKeyChecking yes ssh names the key type and host
+    /// but refuses before it prints a fingerprint.
     #[test]
     fn stderr_classification_fixture_host_key_unknown_strict() {
         assert!(matches!(
             fixture(include_str!("../tests/fixtures/stderr/host_key_unknown_strict.txt")),
             TransportError::Ssh(SshFailure::HostKeyUnknown {
+                host,
                 algorithm,
+                sha256_fingerprint,
                 trust_allowed: false,
                 declined: false,
-                ..
-            }) if algorithm == "ED25519"
+            }) if host == "[127.0.0.1]:32768" && algorithm == "ED25519" && sha256_fingerprint.is_empty()
         ));
     }
 
