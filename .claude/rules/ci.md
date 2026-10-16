@@ -102,6 +102,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 - A push to main: the same minus PR title, never cancelled, `AllPlugins` always, the SPM cache saved on a miss. Every code push runs both plans in full; a docs-only or release-only push skips the suites through the detector.
 - A `v*` tag runs only `build.yml`; a `plugin-*-v*` tag runs only `build-plugin.yml` (`RELEASING.md`). The test workflows never run on a tag.
 - `workflow_dispatch` exists on every workflow except `pr-title.yml`.
+- `build-linux.yml` is on `main` only for its Monday schedule, which GitHub runs from the default branch. Until the Linux app's directory lands on `main`, every build job skips and `weekly-dispatch` starts the workflow on the branch the `LINUX_BRANCH` variable names (the linux branch when unset), whose testing guide describes the jobs.
 
 ## Caches and runner budget
 

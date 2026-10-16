@@ -1,0 +1,648 @@
+name: Build Linux
+
+on:
+  push:
+    branches: [main, linux, "linux/**", "feat/linux-**"]
+    paths:
+      - "linux/**"
+      - ".github/workflows/build-linux.yml"
+      - ".github/workflows/linux-packages.yml"
+      - ".github/workflows/release-linux.yml"
+  pull_request:
+    paths:
+      - "linux/**"
+      - ".github/workflows/build-linux.yml"
+      - ".github/workflows/linux-packages.yml"
+      - ".github/workflows/release-linux.yml"
+  schedule:
+    - cron: "13 14 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-linux-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_ABOUT_VERSION: 0.9.2
+  CARGO_DENY_VERSION: 0.20.2
+  CARGO_NEXTEST_VERSION: 0.9.144
+  CARGO_SHEAR_VERSION: 1.13.4
+  ZIZMOR_VERSION: 1.30.1
+  LYCHEE_VERSION: 0.24.2
+  LYCHEE_SHA256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+
+jobs:
+  # The same file runs on main, where linux/ does not exist until the
+  # first Linux release. Every build job waits for this one and is skipped
+  # there.
+  detect:
+    name: Linux tree
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      linux: ${{ steps.tree.outputs.linux }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: linux/meson.build
+          sparse-checkout-cone-mode: false
+      - name: Look for linux/meson.build
+        id: tree
+        run: |
+          if [ -f linux/meson.build ]; then
+            echo "linux=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "linux=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # GitHub runs a schedule only from the default branch. Until linux/ is
+  # on main, the weekly run starts this workflow on the Linux branch.
+  weekly-dispatch:
+    name: Start the weekly run on the Linux branch
+    needs: detect
+    if: github.event_name == 'schedule' && needs.detect.outputs.linux == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch this workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LINUX_BRANCH: ${{ vars.LINUX_BRANCH || 'linux' }}
+        run: gh workflow run build-linux.yml --repo "$GITHUB_REPOSITORY" --ref "$LINUX_BRANCH"
+
+  fast:
+    name: Fast checks
+    needs: detect
+    if: needs.detect.outputs.linux == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    # The host runner ships GLib 2.80, below the GNOME 50 floor.
+    # ubuntu:26.04 gives GLib 2.88 plus the meson, appstream and
+    # desktop-file-utils packages the data suite validates with.
+    container:
+      image: ubuntu:26.04
+      env:
+        DEBIAN_FRONTEND: noninteractive
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      # Before the checkout, not after: actions/checkout falls back to
+      # downloading a tarball when git is missing, which leaves no .git
+      # for `meson dist` to read. The workspace is owned by the host's
+      # runner user and every step here runs as root, so git also needs
+      # to be told the checkout is not a stranger's.
+      - name: Install git
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        working-directory: /
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install system dependencies
+        # ubuntu:26.04 is minimal: curl for rust-toolchain's rustup
+        # install, then the meson toolchain, the -dev packages the
+        # workspace links, the runtime pieces the test suites need (xvfb,
+        # dbus, gnome-keyring for the Secret Service step, openssh-client
+        # for the SSH transport).
+        run: |
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            curl \
+            pkgconf \
+            meson \
+            ninja-build \
+            gettext \
+            desktop-file-utils \
+            appstream \
+            libglib2.0-bin \
+            libxml2-utils \
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            libgtksourceview-5-dev \
+            libsqlite3-dev \
+            libkrb5-dev \
+            clang \
+            libclang-dev \
+            adwaita-icon-theme \
+            locales \
+            gnome-keyring \
+            openssh-client \
+            xvfb \
+            xauth \
+            dbus-daemon
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: "1.98"
+          components: rustfmt, clippy
+      # Meson points Cargo at _build/cargo-home and _build/cargo-target,
+      # so those are what the cache keeps.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: linux -> _build/cargo-target
+          cache-directories: linux/_build/cargo-home
+      - name: Generate the en_US.UTF-8 locale
+        # glibc loads no catalogue under C or C.UTF-8, so the i18n
+        # catalogue test needs a real locale on the machine.
+        run: localedef -i en_US -f UTF-8 en_US.UTF-8
+      - name: Configure
+        run: meson setup _build -Dprofile=development
+      - name: Format check
+        run: cargo fmt --all -- --check
+      - name: No thread-local state in app services
+        # Trackers belong to a workspace; a thread_local! registry shares
+        # one window's unsaved edits with every other window.
+        run: |
+          if grep -rn 'thread_local!' crates/app/src/services; then
+            echo "::error::crates/app/src/services must not hold thread_local! state"
+            exit 1
+          fi
+      - name: No blocking file I/O in the UI code
+        # This code runs on the GTK thread, where a slow disk or a
+        # network mount freezes the window. A storage call ending in
+        # _blocking is handed to spawn_blocking_task on the same line,
+        # which is what this check can see. A Path method that stats the
+        # disk blocks the same way. Tests may do either.
+        run: |
+          # The $0 in the awk program is awk's record, not a shell variable.
+          # shellcheck disable=SC2016
+          found=$(find crates/app/src/ui -name '*.rs' ! -name tests.rs -print0 \
+            | xargs -0 awk '/^mod tests \{/ { nextfile } /std::fs::/ || /\.(exists|try_exists|is_dir|is_file|is_symlink|canonicalize|read_dir|read_link|symlink_metadata)\(/ || (/_blocking\(/ && !/spawn_blocking_task\(/) { print FILENAME ":" FNR ": " $0 }')
+          if [ -n "$found" ]; then
+            echo "$found"
+            echo "::error::crates/app/src/ui must not call std::fs or a Path method that reads the disk, or a _blocking function outside spawn_blocking_task"
+            exit 1
+          fi
+      - name: Window actions on the window's own map
+        # GTK exports a window's own action map as win. A group inserted
+        # under that name hides it from the application's accelerators
+        # and from D-Bus.
+        run: |
+          if grep -rn 'insert_action_group("win"' crates/app/src; then
+            echo "::error::add window actions with add_action_entries on the window, not a group inserted as win"
+            exit 1
+          fi
+      - name: Tab ids in the tab index
+        # TabIndex maps a page to its tab. qdata on a page is unsafe to
+        # read and outlives the tab it names.
+        run: |
+          if grep -rn 'set_qdata' crates/app/src; then
+            echo "::error::map a tab page to its tab through TabIndex, not set_qdata"
+            exit 1
+          fi
+      - name: No em dash in user-facing text
+        # The GNOME writing style leaves the em dash out. The paths are
+        # the ones po/POTFILES.in lists. The dash is spelt as its UTF-8
+        # bytes so this file holds none. git grep exits 1 for no match,
+        # and above 1 when it could not search at all.
+        run: |
+          em_dash=$(printf '\342\200\224')
+          status=0
+          git grep -nF "$em_dash" -- 'crates/app/src/*.rs' 'data/resources/*.ui' 'data/*.desktop.in.in' \
+            'data/*.gschema.xml.in' 'data/*.metainfo.xml.in.in' || status=$?
+          case "$status" in
+            0)
+              echo "::error::write a comma, a colon or two sentences instead of an em dash"
+              exit 1
+              ;;
+            1) ;;
+            *)
+              echo "::error::git grep failed with status $status, so no file was checked"
+              exit "$status"
+              ;;
+          esac
+      - name: Docs name paths and types that exist
+        # A renamed type or a moved file stays named in prose until
+        # something asks. GTK and GLib names resolve against the GIR
+        # files the -dev packages install.
+        run: |
+          ../scripts/check-doc-symbols.sh \
+            linux/ARCHITECTURE.md \
+            linux/docs/state-management.md \
+            linux/docs/storage.md \
+            linux/docs/testing.md \
+            linux/docs/decisions/0012-window-per-session.md
+      - name: Clippy
+        run: meson devenv -C _build cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Clippy without default features
+        run: meson devenv -C _build cargo clippy --locked --workspace --all-targets --no-default-features -- -D warnings
+      - name: Build
+        run: meson compile -C _build
+      - name: Tests
+        run: xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs
+      # Meson prints only the last 100 lines of a failed suite, which leaves
+      # out the names of the tests that failed.
+      - name: Keep the Meson test log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: meson-testlog
+          path: linux/_build/meson-logs/testlog.txt
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Secret Service tests
+        run: |
+          dbus-run-session -- bash -c "gnome-keyring-daemon --components=secrets --daemonize --unlock <<< ci \
+            && meson devenv -C _build cargo test --locked -p tablepro-storage --test secret_service -- --ignored"
+      - name: Dist
+        run: meson dist -C _build --no-tests --formats xztar
+
+  # Launchpad builds the PPA package with rustc-X.Y and cargo-X.Y, X.Y being
+  # the workspace rust-version, so the workspace is checked with that
+  # compiler and not with rustup's.
+  msrv:
+    name: Minimum Rust version
+    needs: detect
+    if: needs.detect.outputs.linux == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    container:
+      image: ubuntu:26.04
+      env:
+        DEBIAN_FRONTEND: noninteractive
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the package's build dependencies
+        # The toolchain comes from ppa:rust-toolchain/staging, as on
+        # Launchpad. The test-only ones are left out: no test runs here.
+        # Cargo needs the CA certificates to fetch the crates.
+        id: toolchain
+        run: |
+          version="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)"
+          sh build-aux/packaging/add-rust-toolchain-ppa.sh "$version"
+          apt-get install -y --no-install-recommends ca-certificates
+          apt-get build-dep -y --no-install-recommends -P nocheck ./build-aux
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Check with and without default features
+        env:
+          RUST_VERSION: ${{ steps.toolchain.outputs.version }}
+        run: |
+          "cargo-$RUST_VERSION" check --workspace --all-targets --locked
+          "cargo-$RUST_VERSION" check --workspace --all-targets --locked --no-default-features
+
+  docs:
+    name: Documentation links
+    needs: detect
+    if: needs.detect.outputs.linux == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install lychee
+        run: |
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/lychee.tar.gz" \
+            "https://github.com/lycheeverse/lychee/releases/download/lychee-v$LYCHEE_VERSION/lychee-x86_64-unknown-linux-gnu.tar.gz"
+          echo "$LYCHEE_SHA256  $RUNNER_TEMP/lychee.tar.gz" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/lychee"
+          tar -xzf "$RUNNER_TEMP/lychee.tar.gz" -C "$RUNNER_TEMP/lychee" --strip-components=1 \
+            lychee-x86_64-unknown-linux-gnu/lychee
+          echo "$RUNNER_TEMP/lychee" >> "$GITHUB_PATH"
+      - name: Links and anchors in the Linux docs resolve
+        # Offline, so only links to files and headings in the tree are
+        # checked: the ones a rename or a move breaks.
+        run: lychee --offline --include-fragments --no-progress 'linux/**/*.md'
+
+  supply-chain:
+    name: Supply chain
+    needs: detect
+    if: needs.detect.outputs.linux == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: "1.98"
+      - uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+        with:
+          tool: cargo-deny@${{ env.CARGO_DENY_VERSION }},cargo-shear@${{ env.CARGO_SHEAR_VERSION }},cargo-about@${{ env.CARGO_ABOUT_VERSION }},zizmor@${{ env.ZIZMOR_VERSION }}
+      - name: Advisories, bans, licenses and sources
+        # deny.toml checks every feature, both Linux targets and the
+        # dev-dependencies, so a test-only crate is held to the same rules.
+        run: cargo deny --locked check advisories bans licenses sources
+      - name: No unused or misplaced dependencies
+        run: cargo shear
+      - name: Regenerate the notices from Cargo.lock
+        run: build-aux/update-third-party-licenses.sh
+      - name: The committed notices cover every shipped crate
+        # A crate added to or bumped in Cargo.lock changes the regenerated
+        # files, and so does one whose license text changed. The Debian
+        # copyright file and the RPM License tag follow data/licenses.
+        run: |
+          if ! git diff --exit-code -- data/licenses build-aux/debian/copyright build-aux/rpm/tablepro.spec; then
+            echo "::error::the license files do not match Cargo.lock: run linux/build-aux/update-third-party-licenses.sh and commit the result"
+            exit 1
+          fi
+      - name: The Linux workflows
+        # Offline, so the verdict depends on these files alone and not on
+        # where a branch the pins name has moved since.
+        working-directory: .
+        run: |
+          zizmor --offline --format=github --min-severity=medium \
+            .github/workflows/build-linux.yml \
+            .github/workflows/linux-packages.yml \
+            .github/workflows/release-linux.yml
+
+  i18n:
+    name: Translations
+    needs: detect
+    if: needs.detect.outputs.linux == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # fedora:44 ships gettext 0.26; 0.24 is the first release whose
+    # xgettext reads Rust. An older one falls back to its C lexer and
+    # misreads lifetimes.
+    container:
+      image: fedora:44
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      # Same reason as the fast job: without git, actions/checkout
+      # downloads a tarball and every `git` below has no repository to
+      # read.
+      - name: Install git
+        run: |
+          dnf install -y --setopt=install_weak_deps=False git
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        working-directory: /
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install system dependencies
+        run: |
+          dnf install -y --setopt=install_weak_deps=False \
+            gcc pkgconf meson ninja-build gettext \
+            desktop-file-utils appstream glib2-devel \
+            gtk4-devel libadwaita-devel gtksourceview5-devel \
+            sqlite-devel krb5-devel clang-devel cargo rust
+      - name: POTFILES.in is current
+        run: |
+          git ls-files 'crates/app/src/*.rs' 'data/resources/*.ui' 'data/*.desktop.in.in' \
+            'data/*.gschema.xml.in' 'data/*.metainfo.xml.in.in' > po/POTFILES.in
+          git diff --exit-code po/POTFILES.in
+      - name: Configure
+        # Fatal, so an xgettext older than 0.24 fails here.
+        run: meson setup _build --fatal-meson-warnings
+      - name: The POT template is current
+        # The creation date changes on every run, so it is the one line
+        # allowed to differ.
+        run: |
+          meson compile -C _build tablepro-pot
+          if ! git diff --exit-code --ignore-matching-lines='^"POT-Creation-Date: ' -- po/tablepro.pot; then
+            echo "::error::po/tablepro.pot does not match the strings in the code: run meson compile -C _build tablepro-pot with gettext 0.24 or newer, or take the tablepro-pot artifact of this run, and commit it"
+            exit 1
+          fi
+      - name: Keep the regenerated template
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tablepro-pot
+          path: linux/po/tablepro.pot
+          if-no-files-found: ignore
+          retention-days: 7
+
+  flatpak-devel:
+    name: Flatpak Devel (${{ matrix.arch }})
+    needs: detect
+    if: needs.detect.outputs.linux == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      options: --privileged
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Every Meson suite runs inside the sandbox, from a source tree with
+      # no .git. The action gives the tests a display and a session bus.
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
+        with:
+          manifest-path: linux/build-aux/flatpak/app.tablepro.TablePro.Devel.json
+          arch: ${{ matrix.arch }}
+          run-tests: true
+          build-bundle: false
+          cache-key: flatpak-devel-${{ matrix.arch }}-${{ hashFiles('linux/Cargo.lock') }}
+      # The image is built on the linter's own. Only the findings in
+      # lint-exceptions.json may remain. The repository is not linted: its
+      # screenshot checks need images mirrored from the release tag.
+      - name: Lint the manifest
+        if: ${{ !cancelled() && matrix.arch == 'x86_64' }}
+        run: |
+          flatpak-builder-lint --exceptions --user-exceptions linux/build-aux/flatpak/lint-exceptions.json \
+            manifest linux/build-aux/flatpak/app.tablepro.TablePro.Devel.json
+
+  integration:
+    name: Docker tests (${{ matrix.package }})
+    needs: [detect, fast]
+    if: needs.detect.outputs.linux == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - tablepro-driver-postgres
+          - tablepro-driver-mysql
+          - tablepro-driver-mssql
+          - tablepro-driver-clickhouse
+          - tablepro-ssh
+          - tablepro-test-fixtures
+        include:
+          - package: tablepro-ssh
+            apt: openssh-client
+          - package: tablepro-test-fixtures
+            apt: openssh-client
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install system dependencies
+        env:
+          EXTRA_PACKAGES: ${{ matrix.apt }}
+        run: |
+          sudo apt-get update
+          # shellcheck disable=SC2086 # the matrix names zero or more packages
+          sudo apt-get install -y build-essential pkg-config $EXTRA_PACKAGES
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: "1.98"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: linux
+          key: ${{ matrix.package }}
+      - uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+        with:
+          tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
+      - name: Verify docker is available
+        run: docker version
+      - name: Docker tests
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: cargo nextest run --locked --profile ci -p "$PACKAGE" --run-ignored only
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-${{ matrix.package }}
+          path: linux/target/nextest/ci/junit.xml
+
+  integration-session:
+    # The session crate builds tablepro-storage, which links GIO 2.88,
+    # and the host runner ships 2.80, so this entry runs in the fast
+    # job's image instead of the matrix above. The host's Docker socket
+    # is mounted; testcontainers sees /.dockerenv and reaches the
+    # containers it starts through the bridge gateway.
+    name: Docker tests (tablepro-session)
+    needs: [detect, fast]
+    if: needs.detect.outputs.linux == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    container:
+      image: ubuntu:26.04
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      options: -v /var/run/docker.sock:/var/run/docker.sock
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - name: Install git
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        working-directory: /
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install system dependencies
+        # The glib, sqlite and clang development packages the fast job
+        # builds storage with, plus openssh-client for the tunnel tests.
+        run: |
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            curl \
+            pkgconf \
+            libglib2.0-dev \
+            libsqlite3-dev \
+            clang \
+            libclang-dev \
+            openssh-client
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: "1.98"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: linux
+          key: tablepro-session
+      - uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+        with:
+          tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
+      - name: Verify docker is available
+        # No Docker CLI in the image; the API answers on the socket.
+        run: curl --fail --silent --show-error --unix-socket /var/run/docker.sock http://localhost/_ping
+      - name: Docker tests
+        run: cargo nextest run --locked --profile ci -p tablepro-session --run-ignored only
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-tablepro-session
+          path: linux/target/nextest/ci/junit.xml
+
+  integration-app:
+    # The app links GTK 4.22 and libadwaita 1.9, which the host runner
+    # cannot build, so this runs in the fast job's image like the
+    # session job. Only the named test targets run: the app's startup
+    # test needs Meson and the fast job already covers it.
+    name: Docker tests (tablepro)
+    needs: [detect, fast]
+    if: needs.detect.outputs.linux == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    container:
+      image: ubuntu:26.04
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      options: -v /var/run/docker.sock:/var/run/docker.sock
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - name: Install git
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        working-directory: /
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install system dependencies
+        # The -dev packages the app links, as in the fast job.
+        run: |
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            curl \
+            pkgconf \
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            libgtksourceview-5-dev \
+            libsqlite3-dev \
+            libkrb5-dev \
+            clang \
+            libclang-dev
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: "1.98"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: linux
+          key: tablepro-app
+      - uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+        with:
+          tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
+      - name: Verify docker is available
+        # No Docker CLI in the image; the API answers on the socket.
+        run: curl --fail --silent --show-error --unix-socket /var/run/docker.sock http://localhost/_ping
+      - name: Docker tests
+        run: cargo nextest run --locked --profile ci -p tablepro --test tracker_save_postgres --run-ignored only
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-tablepro
+          path: linux/target/nextest/ci/junit.xml
