@@ -212,8 +212,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     # Holds APPCAST_DEPLOY_KEY, released only to v* tags.
     environment: release
-    # Ten deltas at about a minute of CPU each, built two at a time.
-    timeout-minutes: 30
+    timeout-minutes: 10
     permissions:
       contents: write
 
@@ -369,13 +368,6 @@ jobs:
           fi
           echo "::warning::This release is marked critical and will interrupt every user"
 
-      # A step of its own, so the token that reads releases never shares an environment with the
-      # signing key.
-      - name: Fetch earlier update archives for deltas
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: scripts/ci/fetch-delta-bases.sh "${GITHUB_REF#refs/tags/}" 5 delta-bases
-
       - name: Sign update archives with Sparkle
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
@@ -408,10 +400,8 @@ jobs:
           PRERELEASE: ${{ contains(github.ref, '-beta') || contains(github.ref, '-alpha') || contains(github.ref, '-rc') }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          # A first release has nothing to build deltas from.
-          shopt -s nullglob
           scripts/ci/draft-release.sh --prerelease "$PRERELEASE" "$TAG" "$TAG" release_notes.md \
-            artifacts/*.dmg artifacts/*.tar.xz artifacts/*.delta
+            artifacts/*.dmg artifacts/*.tar.xz
 
       - name: Publish the release
         if: steps.draft.outputs.id != ''

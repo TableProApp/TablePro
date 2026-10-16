@@ -19,7 +19,6 @@ SPARKLE_NS = "http://www.andymatuschak.org/xml-namespaces/sparkle"
 SHORT_VERSION = f"{{{SPARKLE_NS}}}shortVersionString"
 BUNDLE_VERSION = f"{{{SPARKLE_NS}}}version"
 HARDWARE = f"{{{SPARKLE_NS}}}hardwareRequirements"
-DELTAS = f"{{{SPARKLE_NS}}}deltas"
 ED_SIGNATURE = f"{{{SPARKLE_NS}}}edSignature"
 
 
@@ -66,11 +65,7 @@ def item_bundle_version(item):
 
 
 def item_enclosures(item):
-    enclosures = list(item.findall("enclosure"))
-    deltas = item.find(DELTAS)
-    if deltas is not None:
-        enclosures.extend(deltas.findall("enclosure"))
-    return enclosures
+    return list(item.findall("enclosure"))
 
 
 SKIPPABLE = (("<![CDATA[", "]]>", "CDATA section"), ("<!--", "-->", "comment"))

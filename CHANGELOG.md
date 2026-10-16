@@ -45,7 +45,7 @@ Plugins signed by other developers stop loading, and HTML and XML export are rem
 - tablepro command ships inside the app, linked from a Terminal line in Settings > General without an admin prompt. (#3372)
 - MCP server runs only while Enable MCP Server is on in Settings > MCP, including for clients and pairing. (#3368)
 - Edit > Data shown only in data file windows. (#3364)
-- Smaller updates: about 6 MB from any of the last five releases and 21 MB from older ones, down from 34 MB. (#3363)
+- Smaller updates: 20 MB on Apple silicon and 23 MB on Intel, down from 32 MB and 35 MB. (#3363)
 - PostgreSQL on iPhone and iPad commits several statements one at a time, keeping the ones before a failure. (#3399, #3404)
 - MySQL dumps write TIMESTAMP values in UTC and turn off foreign key checks while they load, as mysqldump does. (#3427)
 - AI chat code blocks show all their code in the editor font and colors, without line numbers. (#3432)

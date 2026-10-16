@@ -26,7 +26,7 @@ import appcast_feed  # noqa: E402
 PREFIX = "https://github.com/TableProApp/TablePro/releases/download/v0.75.0/"
 
 
-def item(version, build, arch, notes="Fixed a thing.", deltas=(), prefix=None):
+def item(version, build, arch, notes="Fixed a thing.", prefix=None):
     prefix = PREFIX if prefix is None else prefix
     hardware = (
         f"            <sparkle:hardwareRequirements>arch</sparkle:hardwareRequirements>\n".replace(
@@ -35,14 +35,6 @@ def item(version, build, arch, notes="Fixed a thing.", deltas=(), prefix=None):
         if arch
         else ""
     )
-    delta_block = ""
-    if deltas:
-        enclosures = "\n".join(
-            f'                <enclosure url="{url}" sparkle:deltaFrom="129" length="1" '
-            f'sparkle:edSignature="dsig==" type="application/octet-stream"/>'
-            for url in deltas
-        )
-        delta_block = f"            <sparkle:deltas>\n{enclosures}\n            </sparkle:deltas>\n"
     suffix = f"-{arch}" if arch else "-x86_64"
     return (
         "        <item>\n"
@@ -53,7 +45,6 @@ def item(version, build, arch, notes="Fixed a thing.", deltas=(), prefix=None):
         "            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>\n"
         f"{hardware}"
         f"            <description><![CDATA[<p>{notes}</p>]]></description>\n"
-        f"{delta_block}"
         f'            <enclosure url="{prefix}TablePro-{version}{suffix}.zip" '
         f'sparkle:edSignature="sig==" length="123" type="application/octet-stream"/>\n'
         "        </item>\n"
@@ -174,45 +165,10 @@ class MergeAppcastTests(unittest.TestCase):
         stray = feed(item("0.75.0", 131, "arm64")).replace(PREFIX, PREFIX.replace("v0.75.0", "v0.74.0"))
         self.assertRefused("is not under", arm64=stray)
 
-    def test_refuses_a_delta_enclosure_outside_the_release_directory(self):
-        strayed = feed(
-            item("0.75.0", 131, "arm64", deltas=[PREFIX.replace("v0.75.0", "v0.74.0") + "d.delta"])
-        )
-        self.assertRefused("is not under", arm64=strayed)
-
-    def test_accepts_a_delta_enclosure_inside_the_release_directory(self):
-        merged = self.merge(
-            arm64=feed(item("0.75.0", 131, "arm64", deltas=[PREFIX + "TablePro0.74.0-0.75.0.delta"]))
-        )
-        self.assertIn("sparkle:deltas", merged)
-
-    def test_keeps_both_architectures_deltas_byte_for_byte(self):
-        arm64 = item("0.75.0", 131, "arm64", deltas=[PREFIX + "TablePro-0.75.0-from-130-arm64.delta", PREFIX + "TablePro-0.75.0-from-129-arm64.delta"])
-        x86_64 = item("0.75.0", 131, None, deltas=[PREFIX + "TablePro-0.75.0-from-130-x86_64.delta", PREFIX + "TablePro-0.75.0-from-129-x86_64.delta"])
-        merged = self.merge(arm64=feed(arm64), x86_64=feed(x86_64))
-        self.assertIn(arm64 + x86_64, merged)
-        items = merge_appcast.channel_items(merge_appcast.parse_text(merged), "merged")
-        for new_item in items[:2]:
-            self.assertEqual(len(new_item.find(appcast_feed.DELTAS).findall("enclosure")), 2)
-
-    def test_refuses_a_delta_both_architectures_advertise(self):
-        shared = PREFIX + "TablePro131-130.delta"
-        self.assertRefused(
-            "is advertised twice",
-            arm64=feed(item("0.75.0", 131, "arm64", deltas=[shared])),
-            x86_64=feed(item("0.75.0", 131, None, deltas=[shared])),
-        )
-
     def test_refuses_an_unsigned_enclosure(self):
         """generate_appcast drops the signature and still exits 0 when SUPublicEDKey is absent."""
         unsigned = feed(item("0.75.0", 131, "arm64")).replace(' sparkle:edSignature="sig=="', "")
         self.assertRefused("carries no sparkle:edSignature", arm64=unsigned)
-
-    def test_refuses_an_unsigned_delta_enclosure(self):
-        strayed = feed(item("0.75.0", 131, "arm64", deltas=[PREFIX + "d.delta"])).replace(
-            ' sparkle:edSignature="dsig=="', ""
-        )
-        self.assertRefused("carries no sparkle:edSignature", arm64=strayed)
 
     def test_refuses_more_than_one_item_per_architecture(self):
         two = feed(item("0.75.0", 131, "arm64"), item("0.74.0", 130, "arm64"))

@@ -3,9 +3,8 @@
 
 `generate_appcast` keeps only what it is handed, so the release used to hand it the whole
 published feed as a seed. That is safe only while the staging directory holds nothing but the new
-archive, and it stops being true as soon as anything else is staged, which generating deltas
-requires. Verified in the pinned Sparkle 2.9.5 source: `FeedXML.swift:333-339` matches an existing
-item by version, and two writes then run outside the resulting `if createNewItem` guard. Line 603
+archive, and it stops being true as soon as anything else is staged. Verified in the pinned
+Sparkle 2.9.5 source: `FeedXML.swift:333-339` matches an existing item by version, and two writes then run outside the resulting `if createNewItem` guard. Line 603
 assigns the enclosure's attributes unconditionally, so a seeded item matched by a staged archive
 has its download URL rewritten into the current release's directory, which is a permanent 404.
 Lines 523-525 remove that item's `<description>` when the staged archive has no sibling notes
@@ -89,7 +88,6 @@ def check_new_items(arm64_item, x86_64_item, version, download_prefix):
             f"arm64 {arm64_bundle!r}, x86_64 {x86_64_bundle!r}"
         )
 
-    advertised = {}
     for label, item in (("arm64", arm64_item), ("x86_64", x86_64_item)):
         enclosures = item_enclosures(item)
         if not enclosures:
@@ -100,11 +98,6 @@ def check_new_items(arm64_item, x86_64_item, version, download_prefix):
                 raise FeedError(
                     f"the {label} item advertises {url!r}, which is not under {download_prefix!r}"
                 )
-            # One release directory holds both architectures, so a shared name is one asset
-            # serving two different files.
-            if url in advertised:
-                raise FeedError(f"{url!r} is advertised twice, by the {advertised[url]} and {label} items")
-            advertised[url] = label
             # generate_appcast signs an archive only when the app's own Info.plist declares
             # SUPublicEDKey (Appcast.swift:199 in 2.9.5). Drop that key and it writes an unsigned
             # enclosure, reports "Wrote 1 new update" and exits 0, and every installed updater

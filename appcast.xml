@@ -24,13 +24,6 @@ Plugins signed by other developers stop loading, and HTML and XML export are rem
 [View full changelog](https://docs.tablepro.app/changelog)
 ]]></description>
             <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.81.0/TablePro-0.81.0-arm64.tar.xz" length="21031520" type="application/octet-stream" sparkle:edSignature="oX/vZ7mefH5HbArzgCwsLfRFYAfkzYsOVo2zSUlEOWry5dxYY0CTkp1+U+AKE82PHXii/SfRLDgxVu/MmwixBA=="/>
-            <sparkle:deltas>
-                <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.81.0/TablePro-0.81.0-from-139-arm64.delta" sparkle:deltaFrom="139" length="15076138" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="eWfZAaiGAXxbKzLDFgu2g1U2BQcI976mv9ycEVWZCnEwZmnQgZJBldC7DJNLxxkVoDAvelUr0maBU2z2as29Aw=="/>
-                <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.81.0/TablePro-0.81.0-from-138-arm64.delta" sparkle:deltaFrom="138" length="15723602" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="lZFeE11V/MIrMx1vniOvwjYgFU2zhlsGqUykiYZ1NQvJWQveLebcM7fFnwaTcEASWNPSWMQ5sBP8vvSSAj2PDQ=="/>
-                <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.81.0/TablePro-0.81.0-from-137-arm64.delta" sparkle:deltaFrom="137" length="15785870" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="+ODaOsw70dDFQ/Y9jhpVfy073GewU6uZrtTKZ2uw1PoooILsE3UEMJ8Kl/HiQC9N58TT0GRdDLFzlLF9qEAUCg=="/>
-                <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.81.0/TablePro-0.81.0-from-136-arm64.delta" sparkle:deltaFrom="136" length="16054146" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="MIB14omVWwe2WmHIsC8+brXHbsm0wsDvBB56kOyOMYFwrpnMPuFmv5a2WCuILpoR88TWFyv8tSOgNPqi/jx5CQ=="/>
-                <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.81.0/TablePro-0.81.0-from-135-arm64.delta" sparkle:deltaFrom="135" length="16134514" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="H0TJn8fyhIOHW8IxHow8BV8D5vCFwuqHI6BQoK4NYxUnZCFi761BfMBjkrZgR2yxQyeua4aaMW100TM9qvWxBQ=="/>
-            </sparkle:deltas>
         </item>
         <item>
             <title>0.81.0</title>
@@ -53,13 +46,6 @@ Plugins signed by other developers stop loading, and HTML and XML export are rem
 [View full changelog](https://docs.tablepro.app/changelog)
 ]]></description>
             <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.81.0/TablePro-0.81.0-x86_64.tar.xz" length="24299872" type="application/octet-stream" sparkle:edSignature="+AtQqogGVMWwCKR9DDLpKmUC4JMcp8Un6FiBuIefOMUtfNgNOlkNAzmyorLgQOhW6VXAF7QP/FL3FHNncfhRDg=="/>
-            <sparkle:deltas>
-                <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.81.0/TablePro-0.81.0-from-139-x86_64.delta" sparkle:deltaFrom="139" length="17555770" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="FaGWHyNDDe2aGHkem30Fhs0XFYxqeuY+hTjXUGsfDmzIZM6zYAU023SVp8LzNDZ+YLpJlzi7t8f+oE7erhJ8Bg=="/>
-                <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.81.0/TablePro-0.81.0-from-138-x86_64.delta" sparkle:deltaFrom="138" length="18273326" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="SnajrARCQIEAsOcFKrKWv/c7l8gyPzOuEc/DzR1cepQRMtijjUklr3PPPADJEa8eRdtL3tiiyyOCD76tiI3aAg=="/>
-                <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.81.0/TablePro-0.81.0-from-137-x86_64.delta" sparkle:deltaFrom="137" length="18346618" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="hj8lOu9n4voEzW3bLcBAsuY1r086pTwrDAEPZy59ajJBEL5qZ+fK+NlHbhyaj3tMy2ak+Iv4Ox6zKFptz87qBA=="/>
-                <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.81.0/TablePro-0.81.0-from-136-x86_64.delta" sparkle:deltaFrom="136" length="18627454" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="VbqTIq8pkDQ4PLsbK+F0DfLblcLeS9uMvmDmLzzoaSTfnYOJjGdogvy+7STmF23z/JyKR5fOLORGZp83AAPVDA=="/>
-                <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.81.0/TablePro-0.81.0-from-135-x86_64.delta" sparkle:deltaFrom="135" length="18725834" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="976432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="yp+s9Je7B0CPC6f2AV49MT2ePuUO+s37jS3+JGzhfHV5ADytleQqt1X4muW3Mgl1GO5mFixltOLCzc/+m6NyAA=="/>
-            </sparkle:deltas>
         </item>
         <item>
             <title>0.80.0</title>

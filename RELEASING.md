@@ -93,11 +93,10 @@ ref, so a dispatch from a branch only builds. The tag runs no test suite.
   the tag disagrees with `MARKETING_VERSION` (`tag v... does not match MARKETING_VERSION ...`).
 - It also fails when `CURRENT_PROJECT_VERSION` is not above the newest published release's. Sparkle
   compares that number as `<sparkle:version>`, so a flat one ships a release no install is offered.
-- It signs both update archives with the Sparkle key, builds deltas from the previous five
-  releases' archives, and takes the notes from `CHANGELOG.md`.
-- It checks that the appcast deploy key works before publishing anything. Then it puts both DMGs,
-  both update archives and the deltas on a draft release, publishes the draft in one step, and only
-  then commits `appcast.xml`, whose download URLs 404 until the release is public.
+- It signs both update archives with the Sparkle key and takes the notes from `CHANGELOG.md`.
+- It checks that the appcast deploy key works before publishing anything. Then it puts both DMGs
+  and both update archives on a draft release, publishes the draft in one step, and only then
+  commits `appcast.xml`, whose download URLs 404 until the release is public.
 - The appcast is merged with the tag's own copy of `scripts/ci/merge-appcast.py` and pushed with
   `APPCAST_DEPLOY_KEY`, up to 3 attempts, each re-merging onto the current `origin/main`.
 - `generate_appcast` sees only the new release. The merge script splices its items in and moves
