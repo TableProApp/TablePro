@@ -2,6 +2,26 @@
 
 The approved [BookiE convergence sprint](bookie-0.2-sprint.md) now includes shared Rust/Linux foundations as well as behavior review. Apple source trees remain excluded.
 
+## 2026-10-16: refreshed TablePro Linux and shared-product review
+
+Checked live GitHub branch tips on 2026-10-16: TablePro `linux` at `7cd300f82eaa4743d18ab049bf40a374d3ecf927`, TablePro `main` at `bdbcb7de95a267aab261e258fc6d5c745261848f`, and BookiE `linux` at `f2f9200b07d1e40aa6d1345135f589df73a9089c`. This is a bounded review of merged pull requests, not a full branch diff or runtime test. The detailed cross-client findings and BookiE dispositions are in the [October 16 peer review](archive/linux-peer-review-2026-10-16.md#2026-10-16-follow-up-source-scan).
+
+New Linux fixes reviewed:
+
+- [#3455](https://github.com/TableProApp/TablePro/pull/3455) exposed both false positives and misses in SQLite column-drop dependency detection. It lets SQLite validate the rebuilt schema after restoring dependent objects. Transfer the test matrix (same-named tokens in unrelated SQL, plus triggers that actually reference the dropped column); do not replace BookiE's driver path based on the PR description alone.
+- [#3451](https://github.com/TableProApp/TablePro/pull/3451) removes an SSH host-key replacement choice when `StrictHostKeyChecking yes` makes replacement unusable, and fixes the resulting guidance. Verify BookiE's prompt against the effective OpenSSH policy before changing its flow.
+- [#3449](https://github.com/TableProApp/TablePro/pull/3449) closes a ClickHouse mutation-outcome race by checking active queries before flushing and reading the query log. The transferable invariant is to order observations around the server's completion guarantee; this does not establish equivalent BookiE query-log semantics.
+- [#3448](https://github.com/TableProApp/TablePro/pull/3448) connects a visible deletion-confirmation preference to the operation it describes. Test preferences through the actual action path, and test late save completion after its dialog closes.
+- [#3438](https://github.com/TableProApp/TablePro/pull/3438) documents a GTK 4.22 focus/parenting hang and dropped active edits on close. BookiE tracks the analogous lifecycle matrix in [#1029](https://github.com/cozyGarage/BookiE/issues/1029); PR [#1047](https://github.com/cozyGarage/BookiE/pull/1047) is active, so do not create a competing fix.
+
+Main-branch probes reviewed:
+
+- [#3428](https://github.com/TableProApp/TablePro/pull/3428) makes blank typed cells produce NULL for selected types while retaining empty text/binary, across grid, inspector, fill and paste. BookiE's blank/default distinction is tracked in [#1030](https://github.com/cozyGarage/BookiE/issues/1030); preserve its current contract until B3 resolves it with stored-value tests.
+- [#3436](https://github.com/TableProApp/TablePro/pull/3436) scopes tabs by selected database. BookiE confirmed connection-only workspace identity and tracks same-connection database isolation in [#1054](https://github.com/cozyGarage/BookiE/issues/1054); its issue requires legacy-state and two-database tests.
+- [#3456](https://github.com/TableProApp/TablePro/pull/3456) is a useful Settings accessibility/scrolling probe, but it is SwiftUI-specific. Reproduce the behavior in GTK before adopting a UI change.
+
+No upstream implementation was copied, and no new BookiE issue was opened by this review. The unreviewed remainder of either branch and all platform runtime behavior remain outside this checkpoint.
+
 ## 2026-10-15: upstream Linux changelog review
 
 Reviewed upstream `linux` at `20ed72497` (`fix(linux): require the GLES library GTK loads at runtime in the rpm`) from `0e542e3c1` (`chore(linux): drop files main already deleted`, 2026-09-18), against BookiE `linux` at `46a4979b3`. Fourteen commits touch `linux/`. Most are the driver contract v2 switch and remediation steps 31 to 66 on a session crate we do not share. Upstream also rewrote `linux/CHANGELOG.md`, so its Fixed and Security lines were screened as hypotheses against our code. Upstream is AGPL-3.0; every fix below is reimplemented here, not copied.
