@@ -132,7 +132,11 @@ fn analyze_statement_inner(
     }
 
     let (effects, contains_administrative_call) = sql_effects_from_tokens(trimmed, dialect.as_ref(), driver_id);
-    let facts = classify_statements(&statements, effects, contains_administrative_call);
+    let facts = crate::select_writes::with_locking_backstop(
+        classify_statements(&statements, effects, contains_administrative_call),
+        trimmed,
+        dialect.as_ref(),
+    );
     let (blast_radius, sensitive_positions, known_statement_rows) = if include_execution_plans {
         let (blast_radius, known_statement_rows) = blast_radius::analyze_blast_radius(&statements, driver_id);
         (
@@ -628,28 +632,6 @@ fn set_expr_tables(body: &SetExpr) -> Vec<String> {
             classify_statement(s).tables
         }
         _ => Vec::new(),
-    }
-}
-
-pub(crate) fn expr_writes(expr: &Expr) -> bool {
-    match expr {
-        Expr::Subquery(q) => classify_query(q).class.is_write(),
-        Expr::BinaryOp { left, right, .. } => expr_writes(left) || expr_writes(right),
-        Expr::UnaryOp { expr, .. } => expr_writes(expr),
-        Expr::Nested(e) => expr_writes(e),
-        Expr::Case {
-            operand,
-            conditions,
-            else_result,
-            ..
-        } => {
-            operand.as_ref().is_some_and(|e| expr_writes(e))
-                || conditions
-                    .iter()
-                    .any(|c| expr_writes(&c.condition) || expr_writes(&c.result))
-                || else_result.as_ref().is_some_and(|e| expr_writes(e))
-        }
-        _ => false,
     }
 }
 
