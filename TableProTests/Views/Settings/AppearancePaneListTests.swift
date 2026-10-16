@@ -35,15 +35,19 @@ struct AppearancePaneListTests {
 
     @Test("The Themes list scrolls on its own when it holds more themes than it shows")
     func themesListScrolls() throws {
+        let paneSize = SettingsPaneTabViewController.paneSize
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 520),
+            contentRect: NSRect(origin: .zero, size: paneSize),
             styleMask: [.titled],
             backing: .buffered,
             defer: false
         )
         window.isReleasedWhenClosed = false
-        window.contentViewController = NSHostingController(rootView: AppearanceSettingsView(settings: .constant(.default)))
-        window.setContentSize(NSSize(width: 640, height: 520))
+        // As the Settings window hosts a pane: the window keeps its size whatever the content asks.
+        let hosting = NSHostingController(rootView: AppearanceSettingsView(settings: .constant(.default)))
+        hosting.sizingOptions = []
+        window.contentViewController = hosting
+        window.setContentSize(paneSize)
         window.layoutIfNeeded()
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
         defer { window.orderOut(nil) }
