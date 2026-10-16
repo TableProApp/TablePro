@@ -8,7 +8,7 @@ The product repository is [`cozyGarage/BookiE`](https://github.com/cozyGarage/Bo
 
 | Path | Holds |
 | --- | --- |
-| `crates/` | GTK-free workspace crates: `core`, `policy`, `storage`, `ssh`, `transport`, `app-services`, `mcp`, `agentd`, and `drivers/*`. None depends on GTK. |
+| `crates/` | GTK-free workspace crates: `core`, `policy`, `storage`, `ssh`, `transport`, `app-services`, `dump`, `mcp`, `agentd`, and `drivers/*`. None depends on GTK. |
 | `apps/linux/` | The GTK application (`app/`) and what only it needs: `data/`, `po/`, `flatpak/`, `packaging/`. |
 | `tests/` | Cross-crate test crates (`release/`, `driver-tls/`), fixtures and shared test data (`data/`). Unit tests stay beside their code; per-crate integration tests stay in `crates/<name>/tests`. |
 | `scripts/`, `ci/`, `vendor/`, `docs/` | Tooling, CI helpers, vendored patches and documentation. |
@@ -96,6 +96,10 @@ flowchart TB
         storage["tablepro-storage<br/>connections, keyring, history, journal"]
     end
 
+    subgraph tooling["Vendor client tooling"]
+        dump["tablepro-dump<br/>supervised PostgreSQL dump/restore"]
+    end
+
     subgraph contracts["Contracts"]
         core["tablepro-core<br/>DatabaseDriver, Connection,<br/>Value, OperationControl"]
     end
@@ -118,6 +122,7 @@ flowchart TB
     transport --> policy
     transport --> core
     policy --> core
+    dump --> core
     storage --> policy
     storage --> core
     drv --> core
@@ -135,6 +140,7 @@ flowchart TB
 | `tablepro-storage` | Saved connections, Secret Service, query history, audit journal. |
 | `tablepro-ssh` | Built-in `russh` tunnels and optional system OpenSSH backend. |
 | `tablepro-transport` | Saved-connection → dial options, SSH chain, tunnel, TLS service identity. |
+| `tablepro-dump` | GTK-free vendor-tool supervision, private password files and PostgreSQL dump/restore requests. Depends on `core`; GUI integration remains pending in [#1017](https://github.com/cozyGarage/BookiE/pull/1017). [ADR 0019](docs/decisions/0019-database-tooling-without-sidecars.md) governs the feature. |
 | `tablepro-mcp` | MCP auth, scopes, connection allowlists, rate limits, tools. Never exposes a raw driver connection. |
 | `tablepro-driver-*` | One static crate per engine. |
 | `tablepro-driver-tls-tests` / `tablepro-release-tests` | Test-only fixtures. |
@@ -157,7 +163,7 @@ These traits are the seams that keep engines and UI replaceable. Behaviour detai
 
 Adding an engine means implementing `DatabaseDriver` + `Connection` behind those traits, not teaching the UI a new driver id ([ADR 0001](docs/decisions/0001-no-plugin-system.md)).
 
-The optional cursor path is governed by `PolicyGuard`: it accepts one read statement in a read-only session snapshot, masks and audits each fetched page under the same operation, and closes the cursor on terminal outcomes. PostgreSQL is the only driver that supports it today. The SQL editor still uses materialized results and their existing caps ([ADR 0011](docs/decisions/0011-paged-query-results.md)).
+The optional cursor path is governed by `PolicyGuard`: it accepts one read statement in a read-only session snapshot, masks and audits each fetched page under the same operation, and closes the cursor on terminal outcomes. PostgreSQL is the only driver that supports it today. The SQL editor uses this path for supported single-statement PostgreSQL `SELECT`s and retains at most four pages of up to 5,000 rows. Other engines and unsupported query shapes use materialized results and their existing caps ([ADR 0011](docs/decisions/0011-paged-query-results.md)).
 
 ## Governed request pipeline
 
@@ -218,6 +224,7 @@ tablepro-mcp        ──► policy, storage, core
 tablepro-transport  ──► storage, ssh, policy, core
 tablepro-storage    ──► policy (audit types), core
 tablepro-policy     ──► core
+tablepro-dump       ──► core
 tablepro-ssh        ──► (leaf for tunnels; saved SSH config types live in storage)
 tablepro-driver-*   ──► core
 tablepro-core       ──► (no workspace crate)
@@ -344,7 +351,7 @@ Each engine exports a type implementing `tablepro_core::DatabaseDriver`. Connect
 | Command scope | Component-scoped commands for tab/component lifetime. Detached Relm4 tasks only for independent persistence/cleanup. |
 | Tabs | `AdwTabView` workspaces; Relm4 controllers keyed by tab UUID. |
 | Browse grid | Bounded pages in `RowStore` (`gio::ListModel`); weakly cached `RowObject`s. |
-| SQL editor results | Core, PostgreSQL and PolicyGuard cursor paths exist, including per-page masking and audit; the editor does not yet use them, so results remain materialized up to caps ([ADR 0011](docs/decisions/0011-paged-query-results.md), PERF-2/PERF-8). |
+| SQL editor results | Supported single-statement PostgreSQL `SELECT`s stream guarded cursor pages, retaining at most four pages of up to 5,000 rows. Other engines and query shapes use capped materialization; retained-page count is not a process-memory ceiling ([ADR 0011](docs/decisions/0011-paged-query-results.md), PERF-2/PERF-8). |
 | Identity | Sidebar refresh tokens hold a weak session reference. Tab results keep their tab UUID across connection switches. |
 
 ## Persistence

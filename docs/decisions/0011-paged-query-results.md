@@ -2,7 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-10-07
-- **Clarified**: 2026-10-15 for status. The Decision describes the target design; the Implementation status section records what has shipped. The editor does not use the cursor yet.
+- **Clarified**: 2026-10-16 for implementation status. The Decision describes the target design; the Implementation status section records shipped PostgreSQL editor integration and remaining resource acceptance.
 
 ## Context
 
@@ -29,7 +29,7 @@ Add an optional driver capability that opens a forward-only cursor over a single
 
 ## Implementation status
 
-Core and PostgreSQL cursor support and PostgreSQL read-only snapshot sessions have landed. `PolicyGuard` now authorizes one read statement in a read-only snapshot, masks each fetched page, and records page and terminal audit outcomes. PostgreSQL is the only driver with cursor support; other drivers return `Unsupported`. The SQL editor is not wired to this path yet, so its results remain materialized under the existing caps. The guarded cursor lifecycle is covered by policy tests; editor integration and its retained-page behavior remain open.
+Core and PostgreSQL cursor support and PostgreSQL read-only snapshot sessions have landed. `PolicyGuard` now authorizes one read statement in a read-only snapshot, masks each fetched page, and records page and terminal audit outcomes. PostgreSQL is the only driver with cursor support; other drivers return `Unsupported`. The SQL editor uses this path for supported single-statement PostgreSQL `SELECT`s, retaining at most four pages of up to 5,000 rows. Pages evicted from this forward-only window cannot be revisited in the grid. Other engines and unsupported query shapes keep the capped materialized path. Driver decoding still applies the result byte/cell budget; the UI cache bounds page count rather than one aggregate byte budget. Broader memory profiling and lifecycle acceptance remain under [#554](https://github.com/cozyGarage/BookiE/issues/554). This status update does not qualify installed GTK or a release candidate.
 
 ## Open questions
 

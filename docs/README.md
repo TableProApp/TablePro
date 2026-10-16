@@ -80,6 +80,7 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 
 ## Client research (October 2026)
 
+- [Peer-review delivery tracker](https://github.com/cozyGarage/BookiE/issues/1026) and its lane-owned slices are the current work queue for the review below.
 - [Linux documentation update plan and peer review, October 16](archive/linux-peer-review-2026-10-16.md): current-source findings, completed-work reconciliation, dbx and other client lessons, and TablePro main/Linux port candidates.
 - [dbx architecture, boundaries and reuse review](archive/2026-10-15-dbx-review.md).
 - [PostgreSQL client review](archive/2026-10-15-postgresql-client-research/review.md), with [46 regression candidates](archive/2026-10-15-postgresql-client-research/cases.csv), [machine-readable cases](archive/2026-10-15-postgresql-client-research/cases.json) and [source pins and probe evidence](archive/2026-10-15-postgresql-client-research/manifest.json). These dated observations do not override current ADRs or sprint priorities.

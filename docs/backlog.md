@@ -15,7 +15,6 @@ candidate inventory as a release commitment.
 | UI-1b | Edit SSH jump chains in the form | Storage, transport, bundle v2 and per-hop passphrase coverage merged in #490, #492, #494 and #528; GTK editing stays refused until its complete path passes |
 | UI-19 | Foreign key value picker, estimated counts | FK navigation, paste TSV and the ENUM and SET pickers (PostgreSQL, MySQL, MariaDB) landed |
 | UI-38 | Local filters and sorting for materialized SQL results | Exact-value filtering and local sort are implemented; settings are retained per statement/result set across reruns and pin/unpin. Selection follows the same materialized result, and app-restart persistence is not included |
-| UI-39 | Full-value text and JSON editor | PostgreSQL JSON source carrier landed in #730; bounded text and JSON editing is implemented in the current #610 pull request, with final acceptance still open |
 | UI-20 | Server output (NOTICE, PRINT) and a timing breakdown | with PERF-4 |
 | UI-22, UI-23, UI-26 | Multi-cursor editing, typed PostgreSQL activity console, reusable SSH profiles | accepted for later; preview tabs, split panes, SQL code folding and the docked query history panel have landed (#618, #630, #754, #619); PostgreSQL catalog objects are already built (UI-23) |
 | PKG-2 | Debian and GNOME desktop pass (UI-D1 to D4) | the packages keep building and passing the distro floor in CI; this is the desktop acceptance |
@@ -43,10 +42,13 @@ candidate inventory as a release commitment.
 | TEST-34 | Import Python coverage for repository tooling into SonarCloud without lowering the coverage gate; #830 added tests but SonarCloud reported 0.0% new-code coverage |
 | AUD-5 | About 4,700 comment lines in `src/` to move into docs, file by file |
 | DOC-3, DOC-5 | Orca and high contrast pass; value comparison with DBeaver and dbx |
-| PEER-1 | MCP tool annotations (`read_only_hint`, `destructive_hint`, `idempotent_hint`) on every tool so clients see policy intent, as dbx does |
 | PEER-2 | One per-dialect lexer profile (backslash escapes, `E''` strings, `--` rule, quote characters) shared by the statement splitter, the classifier and export quoting; dbx's `SqlDialectProfile` closed a class of splitter and export disagreements |
 | PEER-3 | A Redis command table with arity and safety class that fails closed on unknown commands, instead of relying on the SQL classifier |
 | B4-9, B4-11, B4-17, B4-21 | Route and TLS acceptance evidence, failed-batch rollback on optional MySQL engines and package acceptance, native multi-hop trust flow, SQL Server Kerberos Windows AD interoperability and package acceptance |
+
+## Peer-review delivery
+
+[#1026](https://github.com/cozyGarage/BookiE/issues/1026) owns the ordered small slices from the [October 16 review](archive/linux-peer-review-2026-10-16.md): current docs, executable GUI boundaries, active-edit close ownership, NULL/default intent, shared action guards, stream resource budgets and bounded server output. Each child has one lane and its own acceptance. Existing #550, #554, #893, #891, #943 and #983 retain their scope; the tracker does not add release blockers.
 
 ## Development tooling
 
