@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tablepro 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/TableProApp/TablePro/issues\n"
-"POT-Creation-Date: 2026-10-16 15:34+0000\n"
+"POT-Creation-Date: 2026-10-16 16:58+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -999,6 +999,17 @@ msgid ""
 msgstr ""
 
 #: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid ""
+"Trigger {triggers} inserts into this table without naming its columns, so "
+"adding or removing a column would break it."
+msgid_plural ""
+"Triggers {triggers} insert into this table without naming its columns, so "
+"adding or removing a column would break them."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/error_text/ddl.rs
 msgid "Table name is required."
 msgstr ""
 
@@ -1668,6 +1679,18 @@ msgstr ""
 #: crates/app/src/ui/error_text/ssh.rs
 #, rust-format
 msgid "The host key of {host} was not trusted, so the connection was not made."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid ""
+"The SSH configuration for {host} accepts only keys already in known_hosts. "
+"Add the server's key to known_hosts outside TablePro, then retry."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "{host} is not in known_hosts. Connect once to review and trust its key."
 msgstr ""
 
 #: crates/app/src/ui/error_text/ssh.rs
@@ -2513,6 +2536,26 @@ msgstr ""
 
 #: crates/app/src/ui/host_key_review.rs
 msgid "SSH Host Key Changed"
+msgstr ""
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid ""
+"The key “{host}” sent is not the one trusted in known_hosts. Someone may be "
+"intercepting the connection, or the server was reinstalled. The SSH "
+"configuration for this host accepts only keys already in known_hosts, so if "
+"your server administrator confirms the new fingerprint, replace the key "
+"there yourself, then retry."
+msgstr ""
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid ""
+"The key “{host}” sent is not the one trusted in {file}, line {line}. Someone "
+"may be intercepting the connection, or the server was reinstalled. The SSH "
+"configuration for this host accepts only keys already in known_hosts, so if "
+"your server administrator confirms the new fingerprint, replace the key in "
+"that file yourself, then retry."
 msgstr ""
 
 #: crates/app/src/ui/host_key_review.rs
