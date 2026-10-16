@@ -593,8 +593,12 @@ impl SqlEditor {
 
     // GtkSourceView before 5.21 never frees a view that has drawn its line
     // numbers, so the closing editor takes back the script and the session.
+    // GTK 4.24 gives the input method the view from construction until the
+    // view's own dispose, and IBus takes a reference on it, so the view is
+    // never disposed unless it drops its input method first.
     fn release_view(&self) {
         let view = self.imp().source_view.get();
+        view.set_im_module(Some("gtk-im-context-none"));
         let completion = view.completion();
         for provider in self.imp().completion_providers.take() {
             completion.remove_provider(&provider);
