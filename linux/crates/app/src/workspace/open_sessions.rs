@@ -96,9 +96,9 @@ impl OpenSessions {
         self.write();
     }
 
-    /// After an approved quit has written the record, go back to how a
-    /// launch starts: nothing open and nothing frozen, so the next
-    /// restore reads the record from disk.
+    /// After an approved quit, go back to how a launch starts: nothing
+    /// open and nothing frozen, so the next restore reads the record
+    /// from disk.
     pub fn end_quit(&self) {
         self.keys.borrow_mut().clear();
         self.frozen.set(false);

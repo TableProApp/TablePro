@@ -1,5 +1,5 @@
 pub const DEFAULT_PAGE_SIZE: &str = "default-page-size";
-pub const CONFIRM_DESTRUCTIVE: &str = "confirm-destructive";
+pub const CONFIRM_BULK_DELETE: &str = "confirm-bulk-delete";
 pub const SAVE_QUERY_HISTORY: &str = "save-query-history";
 pub const HISTORY_RETENTION_DAYS: &str = "history-retention-days";
 pub const QUERY_TIMEOUT_SECS: &str = "query-timeout-secs";

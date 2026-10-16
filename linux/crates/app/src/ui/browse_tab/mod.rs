@@ -54,6 +54,7 @@ mod total_tests;
 
 use std::cell::Cell;
 use std::collections::{BTreeSet, VecDeque};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use gtk4 as gtk;
@@ -67,6 +68,7 @@ use tablepro_core::meta::{RowIdentity, TableRef};
 use tablepro_session::operation::DeadlinePolicy;
 use tablepro_session::runtime::{Tasks, WatchForwarder};
 use tablepro_session::{LinkGeneration, Session};
+use tablepro_storage::AppSettings;
 
 use self::browse_actions::BrowseActions;
 pub(crate) use self::browse_command::{BrowseCommand, ColumnsReply};
@@ -104,13 +106,8 @@ use crate::ui::export::ExportOffer;
 
 const PAGE_SIZE_OPTIONS: &[u64] = &[100, 500, 1_000, 5_000, 10_000];
 const DEFAULT_PAGE_SIZE: u64 = 1_000;
-/// Bulk-delete safety net: when the user marks at least this many
-/// rows pending-delete in one shot, surface a confirmation dialog
-/// before tracking. The marker is reversible via Discard / Ctrl+Z,
-/// but a 200-row Ctrl+A → Delete sequence is destructive enough at
-/// a glance that an explicit confirmation matches GNOME Files'
-/// "Delete N items?" pattern.
-const BULK_DELETE_CONFIRM_THRESHOLD: usize = 10;
+/// A delete of fewer rows never asks, since Undo and Discard bring them back.
+pub(crate) const BULK_DELETE_CONFIRM_THRESHOLD: usize = 10;
 
 glib::wrapper! {
     pub struct BrowseTab(ObjectSubclass<imp::BrowseTab>)
@@ -135,6 +132,7 @@ pub struct BrowseTabInit {
     pub tasks: Tasks,
     /// The session's deadlines, which a count that ran out names.
     pub deadlines: Arc<dyn DeadlinePolicy>,
+    pub settings: Rc<AppSettings>,
 }
 
 impl BrowseTab {
@@ -183,6 +181,7 @@ impl BrowseTab {
             filter_settings: init.filter_settings,
             pager: BrowsePager::new(init.page_size, init.initial_offset),
             deadlines: init.deadlines,
+            settings: init.settings,
             current_sort: init.initial_sort,
             current_filter: initial_filter,
             current_columns: Vec::new(),
@@ -488,6 +487,8 @@ pub(crate) struct BrowseModel {
     /// Where the page the tab reads starts, and how many rows it holds.
     pager: BrowsePager,
     deadlines: Arc<dyn DeadlinePolicy>,
+    /// Read at each delete, so a change in Preferences reaches open tabs.
+    settings: Rc<AppSettings>,
     current_sort: Option<(usize, bool)>,
     /// The WHERE every page and count reads under, kept per connection,
     /// schema and table.

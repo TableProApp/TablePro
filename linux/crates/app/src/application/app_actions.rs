@@ -4,16 +4,14 @@ use gtk4::subclass::prelude::*;
 use libadwaita::prelude::*;
 use uuid::Uuid;
 
+use super::TableProApplication;
 use super::about_dialog::build_about_dialog;
-use super::{TableProApplication, WindowLaunch};
 use crate::runtime::DeliverInput;
 use crate::ui::{PreferencesDialog, SessionWindowInput};
 
 pub fn install_app_actions(app: &TableProApplication) {
     let new_window = gio::ActionEntry::builder("new-window")
-        .activate(|app: &TableProApplication, _, _| {
-            app.open_window(WindowLaunch::Picker);
-        })
+        .activate(|app: &TableProApplication, _, _| app.open_launch_windows())
         .build();
     let quit = gio::ActionEntry::builder("quit")
         .activate(|app: &TableProApplication, _, _| app.request_quit())

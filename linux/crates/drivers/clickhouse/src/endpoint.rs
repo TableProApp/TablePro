@@ -50,6 +50,26 @@ impl ClickHouseEndpoint {
     }
 
     #[cfg(test)]
+    pub(crate) fn for_fixture(fixture: &tablepro_test_fixtures::ClickHouseFixture, liveness: LivenessPolicy) -> Self {
+        use secrecy::SecretString;
+        use tablepro_core::{Credentials, NetworkEndpoint, TlsConfig};
+        use tablepro_net::DirectTcpTransport;
+
+        let address = NetworkEndpoint::new(fixture.host(), fixture.http_port()).expect("an endpoint");
+        let credentials = fixture.password_credentials();
+        let target = NetworkTarget {
+            transport: Arc::new(DirectTcpTransport::new(address, &liveness)),
+            credentials: Credentials::Password {
+                username: credentials.username.clone(),
+                password: SecretString::from(credentials.password.clone()),
+            },
+            database: Some("tablepro".to_owned()),
+            tls: TlsConfig::disabled(),
+        };
+        Self::new(&target, liveness, &ConnectEnvironment::new("test"), false).expect("an endpoint")
+    }
+
+    #[cfg(test)]
     pub(crate) fn with_session_timeout(mut self, timeout: Duration) -> Self {
         self.session_timeout = timeout;
         self

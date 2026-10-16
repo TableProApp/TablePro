@@ -673,7 +673,9 @@ impl ConnectDialog {
                 match outcome {
                     Ok(Ok(saved)) => {
                         dialog.emit_by_name::<()>("saved", &[&saved.id.to_string()]);
-                        dialog.close();
+                        if !dialog.imp().has_closed.get() {
+                            dialog.close();
+                        }
                     }
                     Ok(Err(error)) => {
                         tracing::warn!(%error, "could not save the edited connection");

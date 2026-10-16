@@ -114,6 +114,21 @@ impl TableProApplication {
         true
     }
 
+    /// What activate and the new-window action open: the sessions open
+    /// at the last quit the first time, a picker after. A picker opened
+    /// first would write its session over the ones still to reopen.
+    fn open_launch_windows(&self) {
+        let imp = self.imp();
+        match imp.restore.get() {
+            imp::RestoreState::NotAttempted => self.restore_session(),
+            imp::RestoreState::Loading => {}
+            imp::RestoreState::Quitting { .. } => imp.restore.set(imp::RestoreState::Quitting { relaunched: true }),
+            imp::RestoreState::Done => {
+                self.open_window(WindowLaunch::Picker);
+            }
+        }
+    }
+
     /// Open the windows whose sessions were open when the application
     /// last quit, then any files handed over meanwhile, or the picker
     /// when that opens nothing.
@@ -132,15 +147,21 @@ impl TableProApplication {
         let hold = services.hold().acquire();
         let loading = services.open_sessions().load();
         let app = self.clone();
-        glib::spawn_future_local(async move {
-            let keys = match loading.await {
-                OpenSessionsLoad::Restored(record) => services.open_sessions().restore(record),
-                OpenSessionsLoad::Empty => Vec::new(),
-            };
-            app.imp().restore.set(imp::RestoreState::Done);
-            app.finish_restore(keys);
+        let restoring = glib::spawn_future_local(async move {
+            let loaded = loading.await;
+            // A quit approved during the read leaves the record for the
+            // next launch and opens nothing.
+            if app.imp().restore.get() == imp::RestoreState::Loading {
+                let keys = match loaded {
+                    OpenSessionsLoad::Restored(record) => services.open_sessions().restore(record),
+                    OpenSessionsLoad::Empty => Vec::new(),
+                };
+                app.imp().restore.set(imp::RestoreState::Done);
+                app.finish_restore(keys);
+            }
             drop(hold);
         });
+        imp.restoring.replace(Some(restoring));
     }
 
     fn finish_restore(&self, keys: Vec<SessionKey>) {

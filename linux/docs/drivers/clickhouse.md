@@ -79,8 +79,9 @@ A failed statement is sorted by whether it can have landed. A server error that 
 
 `CommitResolutionSupport::QueryLog`. `resolve_commit` asks about the first statement the save could not confirm:
 
-1. `SYSTEM FLUSH LOGS`, so the log has the latest entries. A login without the privilege skips it.
-2. That query id in `system.query_log` from today and yesterday:
+1. Whether `system.processes` lists that query id. It is read before the flush: the server queues a query's last log entry before it takes the query off the list, so a query that ends between the two reads is still listed or has its end in the flushed log. A login refused `system.processes` (the stock config's `select_from_system_db_requires_grant` refuses it without a grant) learns nothing here, and a query still running reads as `Unresolvable` for it.
+2. `SYSTEM FLUSH LOGS`, so the log has the latest entries. A login without the privilege skips it, and then a query that ended within the server's `query_log` flush interval (7.5 s by default) reads as `Unresolvable`.
+3. That query id in `system.query_log` from today and yesterday:
 
 | What the log says | `CommitResolution` |
 |---|---|
@@ -88,11 +89,11 @@ A failed statement is sorted by whether it can have landed. A server error that 
 | `ExceptionBeforeStart`, unless an `ALTER` as in the mutation row | `NotApplied` |
 | `ExceptionWhileProcessing`, not an `ALTER` | `Unresolvable`: an `INSERT` may have written some blocks |
 | An `ALTER` that failed while processing, or whose wait ended with 394, 159, 341, 209 or 210 (cancelled, timed out, the wait gave up, a network error) | The mutation, below |
-| Started, never ended | `StillRunning` if `system.processes` still lists it, else `Unresolvable` |
+| No end, or no entry at all | `StillRunning` if step 1 found it listed, else `Unresolvable` |
 | No `system.query_log`, or no access to it | `Unresolvable` |
 
-3. For a mutation: `system.mutations` has no column that links a mutation to its `ALTER`, so the driver looks for mutations on the table the log names, or the token's table when the log names none, created between the `ALTER`'s start and end. One that is done is `Applied`; one still running is `StillRunning`. None, because someone ran `KILL MUTATION` (which removes the row and keeps the parts already changed), or more than one, is `Unresolvable`.
-4. The batch's answer: statements confirmed before the unconfirmed one, or not yet sent after it, turn a whole answer into `PartiallyApplied`.
+4. For a mutation: `system.mutations` has no column that links a mutation to its `ALTER`, so the driver looks for mutations on the table the log names, or the token's table when the log names none, created between the `ALTER`'s start and end. One that is done is `Applied`; one still running is `StillRunning`. None, because someone ran `KILL MUTATION` (which removes the row and keeps the parts already changed), or more than one, is `Unresolvable`.
+5. The batch's answer: statements confirmed before the unconfirmed one, or not yet sent after it, turn a whole answer into `PartiallyApplied`.
 
 The query log and the process list are each node's own, and the driver asks the node its connection reaches; it does not query the cluster. Behind a load balancer that sends the next request to another node, that node's log has no entry for the statement and the answer is `Unresolvable`.
 

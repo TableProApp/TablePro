@@ -497,11 +497,11 @@ fn the_loading_page_names_a_table_with_an_ampersand() {
         outcome: Ok(rows(&["late"])),
     });
     let fake = crate::test_support::FakeSession::start(script, [], runtime.tasks());
-    let root = tempfile::tempdir().expect("tempdir");
+    let stores = super::tests::TabStores::new();
     let tab = super::tests::table_tab(
         &fake.session,
         &runtime,
-        &root,
+        &stores,
         "R&D",
         Default::default(),
         Default::default(),

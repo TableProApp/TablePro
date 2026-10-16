@@ -67,12 +67,13 @@ impl AppSettings {
         self.set_uint(keys::DEFAULT_PAGE_SIZE, rows)
     }
 
-    pub fn confirm_destructive(&self) -> bool {
-        self.settings.boolean(keys::CONFIRM_DESTRUCTIVE)
+    /// Whether deleting many rows at once asks first; fewer never ask.
+    pub fn confirm_bulk_delete(&self) -> bool {
+        self.settings.boolean(keys::CONFIRM_BULK_DELETE)
     }
 
-    pub fn set_confirm_destructive(&self, confirm: bool) -> Result<(), SettingsError> {
-        self.set_boolean(keys::CONFIRM_DESTRUCTIVE, confirm)
+    pub fn set_confirm_bulk_delete(&self, confirm: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::CONFIRM_BULK_DELETE, confirm)
     }
 
     /// Whether runs go into the query history. Off records nothing and

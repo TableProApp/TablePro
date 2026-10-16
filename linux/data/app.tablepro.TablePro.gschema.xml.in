@@ -52,10 +52,10 @@
       <description>How many rows a table page fetches at a time.</description>
     </key>
 
-    <key name="confirm-destructive" type="b">
+    <key name="confirm-bulk-delete" type="b">
       <default>true</default>
-      <summary>Confirm destructive actions</summary>
-      <description>Ask before dropping a table, deleting rows, or discarding pending edits.</description>
+      <summary>Confirm before deleting rows</summary>
+      <description>Ask before deleting 10 or more rows at once in a table tab. Deleted rows stay marked until Save, and Undo brings them back.</description>
     </key>
 
     <key name="save-query-history" type="b">

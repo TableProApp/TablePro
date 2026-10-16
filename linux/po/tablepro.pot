@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tablepro 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/TableProApp/TablePro/issues\n"
-"POT-Creation-Date: 2026-10-15 16:09+0000\n"
+"POT-Creation-Date: 2026-10-16 15:28+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -780,12 +780,13 @@ msgid "How many rows a table page fetches at a time."
 msgstr ""
 
 #: data/app.tablepro.TablePro.gschema.xml.in
-msgid "Confirm destructive actions"
+msgid "Confirm before deleting rows"
 msgstr ""
 
 #: data/app.tablepro.TablePro.gschema.xml.in
 msgid ""
-"Ask before dropping a table, deleting rows, or discarding pending edits."
+"Ask before deleting 10 or more rows at once in a table tab. Deleted rows "
+"stay marked until Save, and Undo brings them back."
 msgstr ""
 
 #: data/app.tablepro.TablePro.gschema.xml.in
@@ -1515,10 +1516,6 @@ msgid "Data Browser"
 msgstr ""
 
 #: data/resources/ui/preferences-data-browser-group.ui
-msgid "Tunes the row paginator and destructive-action confirmation."
-msgstr ""
-
-#: data/resources/ui/preferences-data-browser-group.ui
 msgid "Default page size"
 msgstr ""
 
@@ -1528,10 +1525,6 @@ msgstr ""
 
 #: data/resources/ui/preferences-data-browser-group.ui
 msgid "Confirm Before Deleting Rows"
-msgstr ""
-
-#: data/resources/ui/preferences-data-browser-group.ui
-msgid "Show a confirmation dialog before each destructive action"
 msgstr ""
 
 #: data/resources/ui/preferences-editor-page.ui

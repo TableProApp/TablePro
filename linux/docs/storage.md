@@ -252,7 +252,7 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `window-height` | `i` | `760` | 294 to 32767 |
 | `is-maximized` | `b` | `false` | |
 | `default-page-size` | `u` | `1000` | 100 to 100000 |
-| `confirm-destructive` | `b` | `true` | |
+| `confirm-bulk-delete` | `b` | `true` | |
 | `restore-session` | `b` | `true` | |
 | `connect-dialog-driver` | `s` | `postgres` | |
 | `save-query-history` | `b` | `true` | |

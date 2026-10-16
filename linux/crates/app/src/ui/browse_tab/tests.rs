@@ -21,7 +21,7 @@ use crate::services::change_tracker::{RowKey, StatementSource};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
 use crate::services::tracker_edit::TrackerEdit;
-use crate::test_support::{FakeSession, after_next_frame, drain_main_context, wait_until};
+use crate::test_support::{FakeSession, MemorySettings, after_next_frame, drain_main_context, wait_until};
 use crate::ui::clipboard::InsertRow;
 use crate::ui::grid::{GridCell, GridRowIndex, RowObject};
 
@@ -152,7 +152,7 @@ pub(super) struct Harness {
     pub(super) session: Arc<Session>,
     pub(super) connection: Arc<FakeConnection>,
     pub(super) fake: FakeSession,
-    root: tempfile::TempDir,
+    pub(super) stores: TabStores,
     runtime: Option<crate::runtime::AppRuntime>,
 }
 
@@ -184,9 +184,9 @@ impl Harness {
         crate::register_test_resources();
         let runtime = crate::test_support::test_runtime();
         let fake = FakeSession::start(script, reconnects, runtime.tasks());
-        let root = tempfile::tempdir().expect("tempdir");
+        let stores = TabStores::new();
         let tracker = TabTrackerHandle::default();
-        let tab = filtered_users_tab(&fake.session, &runtime, &root, saved, tracker.clone(), read_only);
+        let tab = filtered_users_tab(&fake.session, &runtime, &stores, saved, tracker.clone(), read_only);
         Self {
             tab: Some(tab),
             tracker,
@@ -194,7 +194,7 @@ impl Harness {
             session: fake.session.clone(),
             connection: fake.connection.clone(),
             fake,
-            root,
+            stores,
             runtime: Some(runtime),
         }
     }
@@ -206,7 +206,7 @@ impl Harness {
     /// Another tab on the same table and session.
     pub(super) fn open_another(&mut self) -> BrowseTab {
         let runtime = self.runtime.as_ref().expect("the runtime is running");
-        let tab = users_tab(&self.session, runtime, &self.root);
+        let tab = users_tab(&self.session, runtime, &self.stores);
         self.others.push(tab.clone());
         tab
     }
@@ -298,15 +298,26 @@ impl Drop for Shown {
     }
 }
 
-pub(super) fn users_tab(
-    session: &Arc<Session>,
-    runtime: &crate::runtime::AppRuntime,
-    root: &tempfile::TempDir,
-) -> BrowseTab {
+/// The files and preferences a test tab reads.
+pub(super) struct TabStores {
+    root: tempfile::TempDir,
+    pub(super) settings: MemorySettings,
+}
+
+impl TabStores {
+    pub(super) fn new() -> Self {
+        Self {
+            root: tempfile::tempdir().expect("tempdir"),
+            settings: MemorySettings::new(),
+        }
+    }
+}
+
+pub(super) fn users_tab(session: &Arc<Session>, runtime: &crate::runtime::AppRuntime, stores: &TabStores) -> BrowseTab {
     filtered_users_tab(
         session,
         runtime,
-        root,
+        stores,
         FilterSet::default(),
         TabTrackerHandle::default(),
         false,
@@ -316,18 +327,18 @@ pub(super) fn users_tab(
 pub(super) fn filtered_users_tab(
     session: &Arc<Session>,
     runtime: &crate::runtime::AppRuntime,
-    root: &tempfile::TempDir,
+    stores: &TabStores,
     saved: FilterSet,
     tracker: TabTrackerHandle,
     read_only: bool,
 ) -> BrowseTab {
-    table_tab(session, runtime, root, "users", saved, tracker, read_only)
+    table_tab(session, runtime, stores, "users", saved, tracker, read_only)
 }
 
 pub(super) fn table_tab(
     session: &Arc<Session>,
     runtime: &crate::runtime::AppRuntime,
-    root: &tempfile::TempDir,
+    stores: &TabStores,
     table: &str,
     saved: FilterSet,
     tracker: TabTrackerHandle,
@@ -335,7 +346,8 @@ pub(super) fn table_tab(
 ) -> BrowseTab {
     let tasks = runtime.tasks();
     let connection_id = uuid::Uuid::new_v4();
-    let filter_settings = crate::persistence::FilterSettingsStore::load(root.path().join("filters.json"), &tasks);
+    let root = stores.root.path();
+    let filter_settings = crate::persistence::FilterSettingsStore::load(root.join("filters.json"), &tasks);
     filter_settings.set_filters(connection_id, None, table, saved);
     BrowseTab::new(BrowseTabInit {
         tracker,
@@ -346,13 +358,14 @@ pub(super) fn table_tab(
         page_size: 100,
         initial_offset: 0,
         initial_sort: None,
-        column_widths: crate::persistence::ColumnWidthStore::load(root.path().join("column-widths.json"), &tasks),
+        column_widths: crate::persistence::ColumnWidthStore::load(root.join("column-widths.json"), &tasks),
         filter_settings,
         session: session.clone(),
         tasks,
         deadlines: Arc::new(tablepro_session::operation::DefaultDeadlines::new(
             tablepro_core::LivenessPolicy::DESKTOP,
         )),
+        settings: stores.settings.get().clone(),
     })
 }
 
@@ -2865,6 +2878,59 @@ fn a_second_delete_replaces_the_waiting_confirmation() {
     );
     assert_eq!(confirming(harness.tab()).map(|(ticket, _)| ticket), Some(second));
     answer_delete(&dialog);
+    assert_eq!(harness.tracker.pending_count(), DOZEN.len());
+}
+
+#[gtk4::test]
+fn a_bulk_delete_with_the_confirmation_off_marks_its_rows_at_once() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&DOZEN)));
+    let harness = Harness::open(script, []);
+    let _shown = Shown::new(harness.tab());
+    wait_until(WAIT, || harness.shown().len() == DOZEN.len()).expect("the first page");
+
+    harness
+        .stores
+        .settings
+        .get()
+        .set_confirm_bulk_delete(false)
+        .expect("turn the confirmation off");
+    harness.selection().select_all();
+    delete_rows(harness.tab());
+    drain_main_context();
+
+    assert!(
+        confirming(harness.tab()).is_none(),
+        "the delete asked with the switch off"
+    );
+    assert_eq!(harness.tracker.pending_count(), DOZEN.len());
+}
+
+#[gtk4::test]
+fn turning_the_confirmation_back_on_asks_again_in_an_open_tab() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&DOZEN)));
+    let harness = Harness::open(script, []);
+    let _shown = Shown::new(harness.tab());
+    let settings = harness.stores.settings.get();
+    settings
+        .set_confirm_bulk_delete(false)
+        .expect("turn the confirmation off");
+    wait_until(WAIT, || harness.shown().len() == DOZEN.len()).expect("the first page");
+    harness.selection().select_all();
+    delete_rows(harness.tab());
+    drain_main_context();
+    assert_eq!(harness.tracker.pending_count(), DOZEN.len());
+    harness.tab().send(EditInput::Undo);
+    assert_eq!(harness.tracker.pending_count(), 0);
+
+    settings
+        .set_confirm_bulk_delete(true)
+        .expect("turn the confirmation on");
+    let dialog = ask_to_delete_every_row(&harness);
+    crate::test_support::respond(&dialog, "delete");
+    drain_main_context();
+
     assert_eq!(harness.tracker.pending_count(), DOZEN.len());
 }
 

@@ -15,6 +15,7 @@ use crate::{ContainerFile, ExecOutput, FixtureCredentials, FixtureError, Fixture
 const HTTP_PORT: u16 = ClickHouseFixture::HTTP_PORT;
 const HTTPS_PORT: u16 = ClickHouseFixture::HTTPS_PORT;
 const PASSWORD_USER: &str = "tablepro";
+const LIMITED_USER: &str = "tablepro_limited";
 const DATABASE: &str = "tablepro";
 const SERVICE: &str = "clickhouse";
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
@@ -110,6 +111,16 @@ impl ClickHouseFixture {
              <networks><ip>::/0</ip></networks>\n\
              <profile>default</profile><quota>default</quota>\n\
              </{PASSWORD_USER}>\n\
+             <{LIMITED_USER}>\n\
+             <password>{password}</password>\n\
+             <networks><ip>::/0</ip></networks>\n\
+             <profile>default</profile><quota>default</quota>\n\
+             <grants>\n\
+             <query>GRANT SELECT ON {DATABASE}.*</query>\n\
+             <query>GRANT SELECT ON system.query_log</query>\n\
+             <query>GRANT SYSTEM FLUSH LOGS ON *.*</query>\n\
+             </grants>\n\
+             </{LIMITED_USER}>\n\
              <{client}>\n\
              <ssl_certificates><common_name>{client}</common_name></ssl_certificates>\n\
              <networks><ip>::/0</ip></networks>\n\
@@ -154,6 +165,12 @@ impl ClickHouseFixture {
 
     pub fn password_credentials(&self) -> FixtureCredentials {
         FixtureCredentials::new(PASSWORD_USER, &self.password)
+    }
+
+    /// A login granted the query log but not `system.processes`, which the
+    /// stock server config holds back without a grant.
+    pub fn limited_credentials(&self) -> FixtureCredentials {
+        FixtureCredentials::new(LIMITED_USER, &self.password)
     }
 
     pub fn certificate_credentials(&self) -> FixtureCredentials {

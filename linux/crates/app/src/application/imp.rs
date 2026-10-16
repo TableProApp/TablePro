@@ -10,7 +10,7 @@ use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 
 use super::session_signals::SessionSignals;
-use super::{AppServices, WindowLaunch, WindowRegistry, install_app_actions, install_application_accelerators};
+use super::{AppServices, WindowRegistry, install_app_actions, install_application_accelerators};
 use crate::workspace::CloseDecision;
 
 pub(super) const NEW_WINDOW_OPTION: &str = "new-window";
@@ -27,6 +27,9 @@ pub struct TableProApplication {
     pub(super) session_signals: RefCell<Option<SessionSignals>>,
     /// Only the first activate restores the last session.
     pub(super) restore: Cell<RestoreState>,
+    /// The restore waiting on the record, which a quit approved
+    /// meanwhile waits for too.
+    pub(super) restoring: RefCell<Option<glib::JoinHandle<()>>>,
     /// Files handed over while the record is read, opened after the
     /// windows it restores.
     pub(super) pending_files: RefCell<Vec<gio::File>>,
@@ -39,9 +42,10 @@ pub(super) enum RestoreState {
     /// The record is being read, and the windows open once it is.
     Loading,
     Done,
-    /// An approved quit is writing the record. A launch meanwhile asks
-    /// for it to be restored once written: read earlier, it would race
-    /// the write, and the quit then empties the list it restored into.
+    /// An approved quit is writing the record, or waiting out a read of
+    /// it whose windows it keeps from opening. A launch meanwhile asks
+    /// for it to be restored after: read earlier, it would race the
+    /// write, and the quit then empties the list it restored into.
     Quitting {
         relaunched: bool,
     },
@@ -93,14 +97,7 @@ impl ApplicationImpl for TableProApplication {
             window.present();
             return;
         }
-        match self.restore.get() {
-            RestoreState::NotAttempted => app.restore_session(),
-            RestoreState::Loading => {}
-            RestoreState::Quitting { .. } => self.restore.set(RestoreState::Quitting { relaunched: true }),
-            RestoreState::Done => {
-                app.open_window(WindowLaunch::Picker);
-            }
-        }
+        app.open_launch_windows();
     }
 
     /// The files from Open With in the file manager, or from the command

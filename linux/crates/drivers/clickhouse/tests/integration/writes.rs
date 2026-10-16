@@ -5,14 +5,15 @@ use std::time::Duration;
 
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate};
 use tablepro_core::{
-    CommitResolution, CommitToken, Connection, DriverError, ReadOnlyRefusal, RunEnd, ServerCode, StatementOutcome,
-    Value, WriteKind,
+    CommitResolution, CommitToken, Connection, DriverError, ReadOnlyRefusal, RowLimit, RunEnd, ServerCode,
+    StatementOutcome, TlsConfig, Value, WorkspaceSettings, WriteKind,
 };
+use tablepro_test_support::conformance::test_liveness;
 use tokio::time::Instant;
 
 use crate::support::{
-    CALL, DATABASE, admin, apply, batch_on, connect, count, flush_logs, planned, quoted, run, scalar, session, setup,
-    start, table, text, unique, within,
+    CALL, DATABASE, admin, apply, batch_on, connect, connect_with, count, direct, flush_logs, options_over, password,
+    planned, quoted, run, scalar, session, setup, start, statement, table, text, unique, within,
 };
 
 /// A mutation that takes seconds on a small table, so it cannot finish
@@ -190,17 +191,28 @@ async fn write_statements_never_carry_max_execution_time() {
     connection.close().await.expect("a close");
 }
 
+/// Stopped merges hold the mutation, so the ALTER is still waiting when
+/// first asked about.
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn alter_update_deadline_commit_outcome_unknown_resolves_still_running_then_applied() {
     let fixture = start().await;
     let connection = connect(&fixture, false).await;
     let name = unique("deadline");
-    let qualified = slow_table(connection.as_ref(), &name).await;
+    let qualified = quoted(&name);
+    setup(
+        connection.as_ref(),
+        &[
+            &format!("CREATE TABLE {qualified} (id Int32, n Int32) ENGINE = MergeTree ORDER BY id"),
+            &format!("INSERT INTO {qualified} VALUES (1, 0)"),
+        ],
+    )
+    .await;
+    admin(connection.as_ref(), &format!("SYSTEM STOP MERGES {qualified}")).await;
 
     let outcome = connection
         .write_batch(
-            &batch_on(&name, &[&slow_update(&qualified)]),
+            &batch_on(&name, &[&format!("ALTER TABLE {qualified} UPDATE n = 1 WHERE 1")]),
             within(Duration::from_secs(1)),
         )
         .await;
@@ -212,16 +224,25 @@ async fn alter_update_deadline_commit_outcome_unknown_resolves_still_running_the
         resolution(connection.as_ref(), &token).await,
         CommitResolution::StillRunning
     );
+    admin(connection.as_ref(), &format!("SYSTEM START MERGES {qualified}")).await;
     let give_up = Instant::now() + Duration::from_secs(120);
     loop {
         match resolution(connection.as_ref(), &token).await {
             CommitResolution::Applied => break,
             CommitResolution::StillRunning if Instant::now() < give_up => {
-                tokio::time::sleep(Duration::from_millis(500)).await;
+                tokio::time::sleep(Duration::from_millis(100)).await;
             }
             other => panic!("the mutation resolved as {other:?}"),
         }
     }
+    assert_eq!(
+        count(
+            connection.as_ref(),
+            &format!("SELECT count() FROM {qualified} WHERE n = 1")
+        )
+        .await,
+        1
+    );
     connection.close().await.expect("a close");
 }
 
@@ -415,6 +436,67 @@ async fn resolve_finished_insert_applied() {
 
     assert_eq!(resolution(connection.as_ref(), &token).await, CommitResolution::Applied);
     connection.close().await.expect("a close");
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn resolve_refused_the_process_list_answers_from_the_log() {
+    let fixture = start().await;
+    let owner = connect(&fixture, false).await;
+    let name = unique("limited");
+    let qualified = quoted(&name);
+    setup(
+        owner.as_ref(),
+        &[
+            &format!("CREATE TABLE {qualified} (id Int32) ENGINE = MergeTree ORDER BY id"),
+            &format!("INSERT INTO {qualified} VALUES (1)"),
+        ],
+    )
+    .await;
+    let query_id = logged_query_id(
+        owner.as_ref(),
+        &format!("type = 'QueryFinish' AND query_kind = 'Insert' AND has(tables, '{DATABASE}.{name}')"),
+    )
+    .await;
+    let liveness = test_liveness();
+    let limited = connect_with(options_over(
+        direct(fixture.host(), fixture.http_port(), &liveness),
+        password(&fixture.limited_credentials()),
+        TlsConfig::disabled(),
+        WorkspaceSettings::workspace(false),
+        liveness,
+    ))
+    .await;
+    let refused = limited
+        .query_bound(
+            &statement("SELECT count() FROM system.processes"),
+            RowLimit::EDITOR_DEFAULT,
+            within(CALL),
+        )
+        .await;
+    assert!(
+        matches!(&refused, Err(DriverError::Server(diagnostics))
+            if diagnostics.code == Some(ServerCode::ClickHouse { code: 497 })),
+        "{refused:?}"
+    );
+
+    let finished = CommitToken::ClickHouseQuery {
+        query_ids: vec![query_id],
+        first_unconfirmed: 0,
+        table: table(&name),
+    };
+    let unknown = CommitToken::ClickHouseQuery {
+        query_ids: vec![uuid::Uuid::new_v4()],
+        first_unconfirmed: 0,
+        table: table(&name),
+    };
+    assert_eq!(resolution(limited.as_ref(), &finished).await, CommitResolution::Applied);
+    assert_eq!(
+        resolution(limited.as_ref(), &unknown).await,
+        CommitResolution::Unresolvable
+    );
+    limited.close().await.expect("a close");
+    owner.close().await.expect("a close");
 }
 
 #[tokio::test]
