@@ -117,10 +117,7 @@ struct ScratchFile(PathBuf);
 impl ScratchFile {
     fn create(contents: &str) -> std::io::Result<Self> {
         use std::os::unix::fs::OpenOptionsExt;
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |elapsed| elapsed.as_nanos());
-        let path = std::env::temp_dir().join(format!("tablepro-revoked-{}-{nanos}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("tablepro-revoked-{}", uuid::Uuid::new_v4().simple()));
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -156,9 +153,63 @@ fn is_revoked(host: &str, port: u16, key: &PublicKey, known_hosts: &Path) -> Res
     if revoked.is_empty() {
         return Ok(false);
     }
+    if revoked.lines().any(|line| revoked_by_pattern(line, host, port, key)) {
+        return Ok(true);
+    }
     let scratch = ScratchFile::create(&revoked).map_err(|error| error.to_string())?;
     let keys = known_host_keys_path(host, port, &scratch.0).map_err(|error| error.to_string())?;
     Ok(keys.iter().any(|(_, known)| known == key))
+}
+
+fn revoked_by_pattern(line: &str, host: &str, port: u16, key: &PublicKey) -> bool {
+    let mut fields = line.split_whitespace();
+    let (Some(patterns), Some(_), Some(base64)) = (fields.next(), fields.next(), fields.next()) else {
+        return false;
+    };
+    if patterns.starts_with('|') || !host_patterns_match(patterns, host, port) {
+        return false;
+    }
+    russh::keys::parse_public_key_base64(base64).is_ok_and(|revoked| &revoked == key)
+}
+
+fn host_patterns_match(patterns: &str, host: &str, port: u16) -> bool {
+    let host = host.to_ascii_lowercase();
+    let name = if port == 22 { host } else { format!("[{host}]:{port}") };
+    let mut matched = false;
+    for pattern in patterns.split(',').map(str::to_ascii_lowercase) {
+        match pattern.strip_prefix('!') {
+            Some(negated) if wildcard_match(negated.as_bytes(), name.as_bytes()) => return false,
+            Some(_) => {}
+            None => matched |= wildcard_match(pattern.as_bytes(), name.as_bytes()),
+        }
+    }
+    matched
+}
+
+fn wildcard_match(pattern: &[u8], text: &[u8]) -> bool {
+    let (mut p, mut t) = (0, 0);
+    let mut star: Option<(usize, usize)> = None;
+    while t < text.len() {
+        match pattern.get(p) {
+            Some(b'*') => {
+                star = Some((p, t));
+                p += 1;
+            }
+            Some(&c) if c == b'?' || c == text[t] => {
+                p += 1;
+                t += 1;
+            }
+            _ => match star {
+                Some((star_p, star_t)) => {
+                    p = star_p + 1;
+                    t = star_t + 1;
+                    star = Some((star_p, star_t + 1));
+                }
+                None => return false,
+            },
+        }
+    }
+    pattern[p.min(pattern.len())..].iter().all(|c| *c == b'*')
 }
 
 fn record_known_host(host: &str, port: u16, key: &PublicKey, known_hosts: &Path, fingerprint: &str) -> HostKeyOutcome {
@@ -602,6 +653,56 @@ mod tests {
 
         let outcome = learn_then(&path, "bastion.example.com", 22, KEY_A_BASE64, UnknownHostKey::Learn);
         assert!(matches!(outcome, HostKeyOutcome::KnownHostsIo(message) if message.contains("@revoked")));
+    }
+
+    #[test]
+    fn a_revoked_wildcard_entry_is_matched() {
+        for (pattern, host, port) in [
+            ("*", "bastion.example.com", 22),
+            ("*.example.com", "bastion.example.com", 22),
+            ("bastion?.example.com", "bastion1.example.com", 22),
+            ("[*.example.com]:2222", "bastion.example.com", 2222),
+            ("other.example.com,*.EXAMPLE.com", "bastion.example.com", 22),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("known_hosts");
+            std::fs::write(&path, format!("@revoked {pattern} ssh-ed25519 {KEY_A_BASE64}\n")).unwrap();
+
+            let outcome = learn_then(&path, host, port, KEY_A_BASE64, UnknownHostKey::Learn);
+            assert!(
+                matches!(&outcome, HostKeyOutcome::KnownHostsIo(message) if message.contains("@revoked")),
+                "{pattern} for {host}:{port}: {outcome:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_negated_or_non_matching_revoked_pattern_does_not_block() {
+        for (pattern, host, port) in [
+            ("*.example.com,!bastion.example.com", "bastion.example.com", 22),
+            ("*.example.org", "bastion.example.com", 22),
+            ("[*.example.com]:2222", "bastion.example.com", 22),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("known_hosts");
+            std::fs::write(&path, format!("@revoked {pattern} ssh-ed25519 {KEY_A_BASE64}\n")).unwrap();
+
+            let outcome = learn_then(&path, host, port, KEY_A_BASE64, UnknownHostKey::Learn);
+            assert!(
+                matches!(outcome, HostKeyOutcome::LearnedNew { .. }),
+                "{pattern} for {host}:{port}: {outcome:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn wildcards_follow_openssh_rules() {
+        assert!(wildcard_match(b"*", b""));
+        assert!(wildcard_match(b"a*c", b"abbbc"));
+        assert!(wildcard_match(b"a?c", b"abc"));
+        assert!(!wildcard_match(b"a?c", b"ac"));
+        assert!(!wildcard_match(b"*.example.com", b"example.com"));
+        assert!(wildcard_match(b"*.*.com", b"a.b.com"));
     }
 
     #[test]
