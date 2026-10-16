@@ -24,7 +24,7 @@ for base in "${images[@]}"; do
     dockerfile=scripts/distro-floor/Dockerfile.runtime
   fi
   docker build -q -t "$tag" --build-arg "BASE=$base" -f "$dockerfile" scripts/distro-floor >/dev/null
-  docker run --rm "${previous_mount[@]}" "${prebuilt_mount[@]}" -v "$PWD:/src:ro" -v "${tag}-target:/target" -v "${tag}-cargo:/opt/cargo/registry" -v "${tag}-git:/opt/cargo/git" -e CARGO_TARGET_DIR=/target "$tag" bash -ceu '
+  docker run --rm "${previous_mount[@]}" "${prebuilt_mount[@]}" -v "$PWD:/src:ro" -v "${tag}-target:/target" -v "${tag}-cargo:/opt/cargo/registry" -v "${tag}-git:/opt/cargo/git" -e CARGO_TARGET_DIR=/target "$tag" bash -ceux '
     apt-get update -qq
     apt-get install -y -qq --no-install-recommends desktop-file-utils >/dev/null
     if [ -n "${PREBUILT_DEB_NAME:-}" ]; then
