@@ -10,6 +10,15 @@ internal struct AppearanceSettingsView: View {
     private static let modes: [AppAppearanceMode] = [.auto, .light, .dark]
 
     internal var body: some View {
+        VStack(spacing: 0) {
+            settingsForm
+            ThemeLibrarySection()
+        }
+    }
+
+    // A List inside a scrolling grouped Form neither scrolls nor takes keyboard focus (measured on
+    // macOS 27), so the Form keeps its own height and the theme list sits below it.
+    private var settingsForm: some View {
         Form {
             Section {
                 Picker(String(localized: "Appearance"), selection: $settingsManager.appearanceMode) {
@@ -28,10 +37,10 @@ internal struct AppearanceSettingsView: View {
             } footer: {
                 Text("Themes color the editor, the data grid, other content views and the window background. Controls, sidebars and Settings follow the system appearance.")
             }
-
-            ThemeLibrarySection()
         }
         .formStyle(.grouped)
+        .scrollDisabled(true)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private static func title(for mode: AppAppearanceMode) -> String {

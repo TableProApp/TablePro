@@ -52,12 +52,37 @@ final class AppearanceSettingsUITests: UITestCase {
         )
     }
 
+    func testThemesListScrollsAndTakesArrowKeys() throws {
+        let app = try launchOpeningURL("tablepro://settings/appearance")
+        let settings = try appearancePane(in: app)
+        let list = settings.outlines["appearance-themes-list"]
+        XCTAssertTrue(list.waitToExist(timeout: 10), "The Themes list should be on the Appearance pane")
+
+        let last = row("Tokyo Night Light", in: list)
+        XCTAssertTrue(last.waitToExist(timeout: 10))
+        let deadline = Date(timeIntervalSinceNow: 10)
+        while last.frame.maxY > list.frame.maxY, Date() < deadline {
+            list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).scroll(byDeltaX: 0, deltaY: -120)
+        }
+        XCTAssertLessThanOrEqual(last.frame.maxY, list.frame.maxY, "A scroll over the list should bring its last theme into view")
+
+        let first = outlineRow("Tokyo Night", in: list)
+        let next = outlineRow("Tokyo Night Light", in: list)
+        XCTAssertTrue(waitUntilHittable(first, timeout: 5))
+        first.click()
+        XCTAssertTrue(waitForPredicate(timeout: 5) { first.isSelected }, "A click should select the theme")
+        settings.typeKey(.downArrow, modifierFlags: [])
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { next.isSelected && !first.isSelected },
+            "Down Arrow should move the selection, so the click must have given the list keyboard focus"
+        )
+    }
+
     // MARK: - Steps
 
     private func createTheme(basedOn source: String, in window: XCUIElement) {
         let add = element("appearance-theme-add", in: window)
         XCTAssertTrue(add.waitToExist(timeout: 10), "The Themes list should offer its add menu")
-        revealInForm(add, in: window)
         XCTAssertTrue(waitUntilHittable(add, timeout: 10), "The Themes list should offer its add menu")
         XCTAssertTrue(
             add.label == "Add Theme" || add.title == "Add Theme",
@@ -108,7 +133,6 @@ final class AppearanceSettingsUITests: UITestCase {
 
         let actions = element("appearance-theme-actions", in: window)
         XCTAssertTrue(actions.waitToExist(timeout: 10))
-        revealInForm(actions, in: window)
         XCTAssertTrue(waitUntilHittable(actions, timeout: 10))
         XCTAssertTrue(
             actions.label == "Theme Actions" || actions.title == "Theme Actions",
@@ -134,7 +158,6 @@ final class AppearanceSettingsUITests: UITestCase {
         themeRow.click()
         let remove = window.buttons["appearance-theme-remove"]
         XCTAssertTrue(remove.waitToExist(timeout: 5))
-        revealInForm(remove, in: window)
         XCTAssertEqual(remove.label, "Move to Trash")
         XCTAssertTrue(waitForPredicate(timeout: 5) { remove.isEnabled }, "A selected custom theme can be trashed")
         remove.click()
@@ -157,30 +180,6 @@ final class AppearanceSettingsUITests: UITestCase {
         return settings
     }
 
-    /// The Settings pane scrolls over its top sections, because a scroll over the theme list
-    /// scrolls the list instead.
-    private func revealInForm(_ control: XCUIElement, in window: XCUIElement) {
-        let form = window.scrollViews.firstMatch
-        XCTAssertTrue(form.waitToExist(timeout: 5))
-        reveal(control, in: form, scrollingAt: CGVector(dx: 0.5, dy: 0.05))
-    }
-
-    /// A control clipped by its scroll view still reads as hittable, and a click on it lands on
-    /// whatever is drawn there, so the frames decide when it is in view.
-    private func reveal(_ control: XCUIElement, in scrollView: XCUIElement, scrollingAt point: CGVector) {
-        let deadline = Date(timeIntervalSinceNow: 10)
-        while control.frame.maxY > scrollView.frame.maxY || control.frame.minY < scrollView.frame.minY, Date() < deadline {
-            let overshoot = control.frame.maxY > scrollView.frame.maxY
-                ? scrollView.frame.maxY - control.frame.maxY - 20
-                : scrollView.frame.minY - control.frame.minY + 20
-            scrollView.coordinate(withNormalizedOffset: point).scroll(byDeltaX: 0, deltaY: overshoot)
-        }
-        XCTAssertTrue(
-            control.frame.minY >= scrollView.frame.minY && control.frame.maxY <= scrollView.frame.maxY,
-            "\(control.identifier) should scroll into view"
-        )
-    }
-
     private func choose(_ title: String, in popup: XCUIElement) {
         XCTAssertTrue(waitUntilHittable(popup, timeout: 10))
         popup.click()
@@ -196,6 +195,10 @@ final class AppearanceSettingsUITests: UITestCase {
     // SwiftUI text carries its string in `value` with no label, so a subscript by title finds nothing.
     private func row(_ name: String, in window: XCUIElement) -> XCUIElement {
         window.staticTexts.matching(NSPredicate(format: "value == %@", name)).firstMatch
+    }
+
+    private func outlineRow(_ name: String, in list: XCUIElement) -> XCUIElement {
+        list.outlineRows.containing(NSPredicate(format: "value == %@", name)).firstMatch
     }
 
     private func themeDocument(named name: String) -> [String: Any]? {
