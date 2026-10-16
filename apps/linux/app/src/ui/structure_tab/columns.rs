@@ -154,17 +154,15 @@ fn bind_expander_arrow(row: &adw::ExpanderRow) {
     };
     arrow.remove_css_class("expander-row-arrow");
     arrow.add_css_class("tp-structure-expander-arrow");
-    let row = row.clone();
-    let signal_row = row.clone();
-    let update = move || {
+    let update = move |row: &adw::ExpanderRow| {
         arrow.set_icon_name(Some(if row.is_expanded() {
             "pan-down-symbolic"
         } else {
             "pan-end-symbolic"
         }));
     };
-    update();
-    signal_row.connect_expanded_notify(move |_| update());
+    update(row);
+    row.connect_expanded_notify(update);
 }
 
 /// Build one collapsible column row as `adw::ExpanderRow`. Collapsed
@@ -499,6 +497,7 @@ mod tests {
     fn a_structure_expander_arrow_matches_its_expansion_state() {
         adw::init().unwrap();
         let row = adw::ExpanderRow::new();
+        let weak_row = row.downgrade();
         bind_expander_arrow(&row);
         let arrow = expander_arrow(row.upcast_ref()).unwrap();
 
@@ -506,6 +505,9 @@ mod tests {
         row.set_expanded(true);
         pump();
         assert_eq!(arrow.icon_name().as_deref(), Some("pan-down-symbolic"));
+        drop(arrow);
+        drop(row);
+        assert!(weak_row.upgrade().is_none());
     }
 
     #[test]
