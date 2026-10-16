@@ -402,6 +402,8 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn('apt-get install -y -qq "/package/$DISTRO_FLOOR_DEB_NAME"', floor_script)
         self.assertLess(floor_script.index('if [ -n "${DISTRO_FLOOR_DEB_NAME:-}" ]'), floor_script.index("pkg-config --modversion"))
         self.assertIn('cp "/prebuilt/$PREBUILT_DEB_NAME"', (ROOT / "scripts/test-deb-package.sh").read_text())
+        gtk_safety_script = (ROOT / "scripts/test-gtk-safety.sh").read_text()
+        self.assertIn('timeout 600s python3 -u "$ROOT/apps/linux/app/tests/gtk_safety.py"', gtk_safety_script)
         runtime_image = (ROOT / "scripts/distro-floor/Dockerfile.runtime").read_text()
         self.assertIn("python3-pyatspi", runtime_image)
         self.assertIn("gir1.2-gtk-4.0", runtime_image)
