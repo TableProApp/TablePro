@@ -1,6 +1,6 @@
 #[derive(Debug, thiserror::Error)]
 pub enum DumpError {
-    #[error("{tool} was not found; install it or choose its location")]
+    #[error("{tool} was not found in /usr/bin or /usr/local/bin; install the PostgreSQL client tools")]
     ToolMissing { tool: String },
     #[error("{tool} reported a version BookiE cannot read")]
     ToolVersionUnknown { tool: String },

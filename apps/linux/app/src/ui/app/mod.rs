@@ -1,3 +1,4 @@
+mod backup;
 mod browse;
 mod bundle;
 mod connection;
@@ -193,6 +194,7 @@ pub struct App {
     /// The running CSV import's progress window, held while its batches
     /// run and dropped when it reaches its terminal state.
     csv_import_progress: Option<crate::ui::import_dialog::ImportProgress>,
+    backup_progress: Option<crate::ui::progress_dialog::CancellableDialog>,
     /// Serialized connection-switch state. The candidate is fully validated
     /// before it can replace the active connection.
     connection_transition: ConnectionTransition,
@@ -590,6 +592,7 @@ impl SimpleComponent for App {
             connected: false,
             connection_id: None,
             csv_import_progress: None,
+            backup_progress: None,
             connection_transition: ConnectionTransition::Idle,
             prepared_connection: None,
             switch_saves_pending: std::collections::HashMap::new(),
@@ -1059,6 +1062,10 @@ impl SimpleComponent for App {
             AppMsg::StartCsvImport(choice) => self.on_start_csv_import(*choice, sender),
             AppMsg::CsvImportProgress(committed) => self.on_csv_import_progress(committed),
             AppMsg::CsvImportFinished(report) => self.on_csv_import_finished(*report, sender),
+            AppMsg::BackUpDatabase => self.on_back_up_database(sender),
+            AppMsg::RestoreDatabase => self.on_restore_database(sender),
+            AppMsg::StartBackupJob(job) => self.on_start_backup_job(job, sender),
+            AppMsg::BackupJobFinished(report) => self.on_backup_job_finished(*report, sender),
             AppMsg::ShowFilterDialog => self.on_show_filter_dialog(),
         }
     }

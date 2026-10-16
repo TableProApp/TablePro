@@ -275,4 +275,8 @@ pub enum AppMsg {
     StartCsvImport(Box<crate::ui::import_dialog::ImportChoice>),
     CsvImportProgress(u64),
     CsvImportFinished(Box<super::import::CsvImportReport>),
+    BackUpDatabase,
+    RestoreDatabase,
+    StartBackupJob(tablepro_app_services::database_backup::BackupJob),
+    BackupJobFinished(Box<super::backup::BackupReport>),
 }

@@ -33,7 +33,9 @@ ALLOWED = {
     "tablepro-policy": {"tablepro-core"},
     "tablepro-storage": {"tablepro-core", "tablepro-policy"},
     "tablepro-transport": {"tablepro-core", "tablepro-policy", "tablepro-ssh", "tablepro-storage"},
-    "tablepro-app-services": {"tablepro-core", "tablepro-policy", "tablepro-storage", "tablepro-transport"},
+    "tablepro-app-services": {
+        "tablepro-core", "tablepro-dump", "tablepro-policy", "tablepro-storage", "tablepro-transport",
+    },
     "tablepro-mcp": {"tablepro-core", "tablepro-policy", "tablepro-storage"},
     "tablepro-agentd": {
         "tablepro-core", "tablepro-policy", "tablepro-ssh", "tablepro-storage", "tablepro-transport",

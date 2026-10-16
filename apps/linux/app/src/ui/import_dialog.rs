@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::services::csv_import_mappings::{CsvMappingScope, CsvMappingStore};
+use crate::ui::progress_dialog::CancellableDialog;
 use relm4::adw::prelude::*;
 use relm4::{adw, gtk};
 use tablepro_core::export::CsvDelimiter;
@@ -706,19 +707,16 @@ fn build_dialog(page: &adw::PreferencesPage, start_button: &gtk::Button) -> adw:
     dialog
 }
 
-/// The running import's progress window. The app holds it while the
-/// batches run and drops it when the import reaches its terminal state.
 pub(crate) struct ImportProgress {
-    dialog: adw::Dialog,
+    window: CancellableDialog,
     bar: gtk::ProgressBar,
     label: gtk::Label,
     total: u64,
-    cancel: CancellationToken,
 }
 
 impl ImportProgress {
     pub(crate) fn cancel_token(&self) -> CancellationToken {
-        self.cancel.clone()
+        self.window.cancel_token()
     }
 
     pub(crate) fn set_committed(&self, committed: u64) {
@@ -728,58 +726,30 @@ impl ImportProgress {
             committed as f64 / self.total as f64
         };
         self.bar.set_fraction(fraction);
-        self.label.set_label(
-            &crate::tr!("{done} of {total} rows")
-                .replace("{done}", &committed.to_string())
-                .replace("{total}", &self.total.to_string()),
-        );
+        self.label.set_label(&rows_label(committed, self.total));
     }
 
     pub(crate) fn close(&self) {
-        self.dialog.force_close();
+        self.window.close();
     }
 }
 
+fn rows_label(committed: u64, total: u64) -> String {
+    crate::tr!("{done} of {total} rows")
+        .replace("{done}", &committed.to_string())
+        .replace("{total}", &total.to_string())
+}
+
 pub(crate) fn present_progress(parent: &adw::ApplicationWindow, table: &str, total: u64) -> ImportProgress {
-    let cancel = CancellationToken::new();
-    let label = gtk::Label::new(Some(
-        &crate::tr!("{done} of {total} rows")
-            .replace("{done}", "0")
-            .replace("{total}", &total.to_string()),
-    ));
+    let label = gtk::Label::new(Some(&rows_label(0, total)));
     let bar = gtk::ProgressBar::new();
-    let stop = gtk::Button::with_label(&crate::tr!("Cancel"));
-    let content = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .spacing(12)
-        .margin_top(24)
-        .margin_bottom(24)
-        .margin_start(24)
-        .margin_end(24)
-        .build();
-    content.append(&label);
-    content.append(&bar);
-    content.append(&stop);
-    let dialog = adw::Dialog::builder()
-        .title(crate::tr!("Importing into {table}").replace("{table}", table))
-        .content_width(400)
-        .child(&content)
-        .can_close(false)
-        .build();
-    stop.connect_clicked({
-        let cancel = cancel.clone();
-        move |button| {
-            cancel.cancel();
-            button.set_sensitive(false);
-        }
-    });
-    dialog.present(Some(parent));
+    let title = crate::tr!("Importing into {table}").replace("{table}", table);
+    let window = CancellableDialog::present(parent, &title, &[label.upcast_ref(), bar.upcast_ref()]);
     ImportProgress {
-        dialog,
+        window,
         bar,
         label,
         total,
-        cancel,
     }
 }
 
@@ -799,10 +769,13 @@ mod tests {
         window.present();
         let progress = present_progress(&window, "items", 2);
 
-        assert!(wait_until(|| progress.dialog.is_mapped()));
+        assert!(wait_until(|| progress.window.dialog().is_mapped()));
         let closed = std::rc::Rc::new(std::cell::Cell::new(false));
         let closed_for_signal = closed.clone();
-        progress.dialog.connect_closed(move |_| closed_for_signal.set(true));
+        progress
+            .window
+            .dialog()
+            .connect_closed(move |_| closed_for_signal.set(true));
         progress.close();
         assert!(wait_until(|| closed.get()));
         window.close();

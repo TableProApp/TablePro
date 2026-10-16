@@ -26,3 +26,5 @@ done
 cd "$ROOT"
 TABLEPRO_TEST_PG_DUMP="$work_root/pg_dump" TABLEPRO_TEST_PG_RESTORE="$work_root/pg_restore" \
   cargo test --locked -p tablepro-dump --test pg_dump_roundtrip -- --include-ignored --test-threads=1
+TABLEPRO_TEST_PG_DUMP="$work_root/pg_dump" TABLEPRO_TEST_PG_RESTORE="$work_root/pg_restore" \
+  cargo test --locked -p tablepro-app-services --test database_backup_postgres -- --include-ignored --test-threads=1

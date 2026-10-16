@@ -302,3 +302,13 @@ Use a keyed table with a nullable text column and values above 8 KiB. Include CR
 - [ ] On PostgreSQL, create distinct `users` and `"Users"` relations, plus a relation with a space or escaped quote in its name. Use Ctrl+Space to open completion, select each relation with the arrow keys, and accept with Enter or Tab. Run the resulting SELECT and confirm the intended relation. Repeat in the split editor view.
 - [ ] Complete an alias-qualified column in the middle of a query. The alias and following SQL stay intact. Undo restores the original identifier in one step.
 - [ ] With a screen reader, confirm completion names can be read and selected. This remains a manual accessibility check; provider activation tests do not establish screen reader behavior.
+
+## PostgreSQL backup and restore
+
+- [ ] With `pg_dump` and `pg_restore` installed, connect to a PostgreSQL database, choose Back Up Database… from the main menu and save the file. A progress window with Cancel appears and closes, a toast says the backup was saved, and the `.dump` file exists.
+- [ ] Change some rows, choose Restore from Backup…, pick the file and approve the prompt. The rows return to their backed-up state and the open browse tab refreshes. Deny the prompt on a second try: nothing changes.
+- [ ] Repeat both through an SSH tunnel (built-in and system OpenSSH) and with TLS Verify Full.
+- [ ] On a read-only connection, Back Up Database… works and Restore from Backup… is refused before a file is chosen. On a MySQL connection both explain that backups are PostgreSQL only.
+- [ ] Press Cancel during a large backup: the window closes, nothing is written next to the chosen file, and `audit.jsonl` shows a Cancelled administrative outcome after its intent.
+- [ ] Remove `pg_dump` from `/usr/bin` (or test on a host without it): the error names the missing tool and how to install it.
+

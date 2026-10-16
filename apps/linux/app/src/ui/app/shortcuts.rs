@@ -10,6 +10,8 @@ pub(super) fn primary_menu_model() -> gio::Menu {
     let disconnect_item = gio::MenuItem::new(Some(&crate::tr!("Disconnect")), Some("win.disconnect"));
     disconnect_item.set_attribute_value("hidden-when", Some(&"action-disabled".to_variant()));
     connection_section.append_item(&disconnect_item);
+    connection_section.append(Some(&crate::tr!("Back Up Database…")), Some("win.back-up-database"));
+    connection_section.append(Some(&crate::tr!("Restore from Backup…")), Some("win.restore-database"));
     menu.append_section(None, &connection_section);
     let query_section = gio::Menu::new();
     query_section.append(Some(&crate::tr!("Open Quickly")), Some("win.open-quickly"));
@@ -81,6 +83,8 @@ pub(super) fn install_window_actions(
         input_action!("open-quickly", AppMsg::ShowQuickSwitcher),
         input_action!("save-favorite", AppMsg::SaveQueryAsFavorite),
         input_action!("show-saved-queries", AppMsg::ShowSavedQueries),
+        input_action!("back-up-database", AppMsg::BackUpDatabase),
+        input_action!("restore-database", AppMsg::RestoreDatabase),
     ]);
     let disconnect_action = gio::SimpleAction::new("disconnect", None);
     let disconnect_sender = sender.clone();

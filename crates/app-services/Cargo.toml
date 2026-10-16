@@ -12,6 +12,9 @@ path = "src/lib.rs"
 
 [dependencies]
 tablepro-core = { path = "../core" }
+tablepro-dump = { path = "../dump" }
+tablepro-policy = { path = "../policy" }
+tablepro-transport = { path = "../transport" }
 tablepro-storage = { path = "../storage" }
 serde.workspace = true
 tracing.workspace = true
@@ -21,8 +24,14 @@ tokio-util.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+async-trait.workspace = true
+secrecy.workspace = true
+tablepro-driver-postgres = { path = "../drivers/postgres" }
+tablepro-ssh = { path = "../ssh" }
 tempfile.workspace = true
-tokio = { workspace = true, features = ["test-util"] }
+testcontainers.workspace = true
+testcontainers-modules = { workspace = true, features = ["postgres"] }
+tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
 
 [lints]
 workspace = true

@@ -6274,11 +6274,20 @@ dependencies = [
 name = "tablepro-app-services"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "secrecy",
  "serde",
  "serde_json",
  "tablepro-core",
+ "tablepro-driver-postgres",
+ "tablepro-dump",
+ "tablepro-policy",
+ "tablepro-ssh",
  "tablepro-storage",
+ "tablepro-transport",
  "tempfile",
+ "testcontainers",
+ "testcontainers-modules",
  "tokio",
  "tokio-util",
  "tracing",

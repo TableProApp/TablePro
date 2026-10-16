@@ -1,6 +1,7 @@
 pub mod approval_wait;
 pub mod column_widths;
 pub mod config_io;
+pub mod database_backup;
 pub mod filter_settings;
 pub mod ordered_refresh;
 pub mod read_scopes;
