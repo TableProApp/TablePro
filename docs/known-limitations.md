@@ -1,6 +1,6 @@
 # Known limitations of BookiE 0.2
 
-What the application does not do, or does differently from what you might expect, and the bugs we know about. Entries link to their owning issue, decision or evidence when one exists. Reviewed 2026-10-14.
+What the application does not do, or does differently from what you might expect, and the bugs we know about. Entries link to their owning issue, decision or evidence when one exists. Reviewed 2026-10-16.
 
 ## Data and values
 
@@ -15,7 +15,10 @@ What the application does not do, or does differently from what you might expect
   Single-statement PostgreSQL `SELECT`s in the SQL editor now stream cursor
   pages through Core and PolicyGuard, retaining at most four pages of up to
   5,000 rows each. That cache is bounded by page and row count, not by cell
-  bytes. Other engines and unsupported statement shapes remain materialized.
+  bytes. A synthetic profile with four pinned results and one active stream
+  reached 1,325 MiB RSS; see the [profile evidence](evidence/stream-retention-synthetic-2026-10-16/README.md).
+  This does not measure normal queries or the complete process ceiling. Other
+  engines and unsupported statement shapes remain materialized.
   The historical grid measurement was about 2.5 times the result memory; #518
   now shares immutable values with materialized rows, and comparable profiling
   remains open (ADR 0011).

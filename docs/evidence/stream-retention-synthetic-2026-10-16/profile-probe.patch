@@ -1,0 +1,110 @@
+diff --git i/apps/linux/app/src/ui/editor/pinned.rs w/apps/linux/app/src/ui/editor/pinned.rs
+index 1d082b93c..f5df5eb84 100644
+--- i/apps/linux/app/src/ui/editor/pinned.rs
++++ w/apps/linux/app/src/ui/editor/pinned.rs
+@@ -261,4 +261,105 @@ fn unpinning_returns_the_latest_run_alone() {
+         assert_eq!(remaining.len(), 1);
+         assert_eq!(remaining[0].sql_preview, "SELECT 2");
+     }
++
++    #[test]
++    #[ignore = "one-off resource profile"]
++    fn profile_maximum_stream_and_pin_retention() {
++        use std::sync::Weak;
++        use tablepro_core::{QueryResultBudget, MAX_QUERY_RESULT_BYTES};
++
++        fn rss_mib() -> usize {
++            let status = std::fs::read_to_string("/proc/self/status").expect("process status");
++            let kib = status
++                .lines()
++                .find_map(|line| {
++                    line.strip_prefix("VmRSS:")?
++                        .split_whitespace()
++                        .next()?
++                        .parse::<usize>()
++                        .ok()
++                })
++                .expect("resident set size");
++            kib / 1024
++        }
++
++        fn page(weak_pages: &mut Vec<Weak<QueryResult>>) -> Arc<QueryResult> {
++            let row = vec![Value::Text("x".repeat(MAX_QUERY_RESULT_BYTES - 1024))];
++            assert!(QueryResultBudget::default().admit(&row));
++            let result = Arc::new(QueryResult {
++                columns: vec![ColumnInfo {
++                    name: "payload".into(),
++                    data_type: "TEXT".into(),
++                    nullable: true,
++                    primary_key: false,
++                    is_auto_increment: false,
++                    default_value: None,
++                    is_generated: false,
++                    comment: None,
++                    collation: None,
++                    enum_type: None,
++                    domain_type: None,
++                }],
++                rows: vec![row],
++                truncated: false,
++            });
++            weak_pages.push(Arc::downgrade(&result));
++            result
++        }
++
++        fn outcome(pages: Vec<Arc<QueryResult>>) -> StatementOutcome {
++            let total_rows = pages.iter().map(|page| page.rows.len()).sum();
++            StatementOutcome {
++                identity: super::super::StatementIdentity::default(),
++                sql_preview: "SELECT payload".into(),
++                elapsed_ms: 1,
++                kind: StatementOutcomeKind::Streamed(Box::new(super::super::stream_pages::StreamedResult {
++                    pages,
++                    first_page: 0,
++                    total_pages: super::super::stream_pages::MAX_RETAINED_STREAM_PAGES as u64,
++                    total_rows,
++                    terminal: super::super::stream_pages::StreamTerminal::Loading,
++                    export: None,
++                })),
++                pinned: false,
++            }
++        }
++
++        let mut weak_pages = Vec::new();
++        let mut pins = PinnedResults::default();
++        println!("baseline_rss_mib={}", rss_mib());
++        for _ in 0..MAX_PINNED {
++            let pages = (0..super::super::stream_pages::MAX_RETAINED_STREAM_PAGES)
++                .map(|_| page(&mut weak_pages))
++                .collect();
++            pins.show(vec![outcome(pages)]);
++            pins.pin_last();
++        }
++        println!("four_pins_rss_mib={}", rss_mib());
++        let active_pages = (0..super::super::stream_pages::MAX_RETAINED_STREAM_PAGES)
++            .map(|_| page(&mut weak_pages))
++            .collect();
++        let shown = pins.show(vec![outcome(active_pages)]);
++        println!("four_pins_plus_active_rss_mib={}", rss_mib());
++        let visible_rows = shown
++            .iter()
++            .flat_map(|outcome| match &outcome.kind {
++                StatementOutcomeKind::Streamed(result) => result
++                    .pages
++                    .iter()
++                    .filter_map(|page| crate::ui::row_object::RowObject::from_shared(page, 0, None))
++                    .collect::<Vec<_>>(),
++                _ => Vec::new(),
++            })
++            .collect::<Vec<_>>();
++        for row in &visible_rows {
++            row.preview_values_from_result();
++        }
++        println!("twenty_visible_previews_rss_mib={}", rss_mib());
++        assert_eq!(weak_pages.iter().filter(|page| page.upgrade().is_some()).count(), 20);
++        drop(shown);
++        drop(pins);
++        assert_eq!(weak_pages.iter().filter(|page| page.upgrade().is_some()).count(), 0);
++        println!("live_pages_after_owners_drop=0");
++    }
+ }
