@@ -55,21 +55,28 @@ final class AppearanceSettingsUITests: UITestCase {
     func testThemesListScrollsAndTakesArrowKeys() throws {
         let app = try launchOpeningURL("tablepro://settings/appearance")
         let settings = try appearancePane(in: app)
-        let list = settings.outlines["appearance-themes-list"]
+        let list = settings.outlines.containing(NSPredicate(format: "value == %@", "Default Light")).firstMatch
         XCTAssertTrue(list.waitToExist(timeout: 10), "The Themes list should be on the Appearance pane")
+        // The bar under the list marks where its visible rows end; an outline's own frame spans every row.
+        let footer = element("appearance-theme-add", in: settings)
+        XCTAssertTrue(footer.waitToExist(timeout: 10))
 
         let last = row("Tokyo Night Light", in: list)
         XCTAssertTrue(last.waitToExist(timeout: 10))
-        reveal(last, in: list, scrollingAt: CGVector(dx: 0.5, dy: 0.5))
+        let deadline = Date(timeIntervalSinceNow: 10)
+        while last.frame.maxY > footer.frame.minY, Date() < deadline {
+            list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).scroll(byDeltaX: 0, deltaY: -60)
+        }
+        XCTAssertLessThanOrEqual(last.frame.maxY, footer.frame.minY, "A scroll over the list should bring its last theme into view")
 
-        let first = outlineRow("Tokyo Night", in: list)
+        let previous = outlineRow("Tokyo Night", in: list)
         let next = outlineRow("Tokyo Night Light", in: list)
-        XCTAssertTrue(waitUntilHittable(first, timeout: 5))
-        first.click()
-        XCTAssertTrue(waitForPredicate(timeout: 5) { first.isSelected }, "A click should select the theme")
+        XCTAssertTrue(waitUntilHittable(previous, timeout: 5), "Tokyo Night should be visible above the last row")
+        previous.click()
+        XCTAssertTrue(waitForPredicate(timeout: 5) { previous.isSelected }, "A click should select the theme")
         settings.typeKey(.downArrow, modifierFlags: [])
         XCTAssertTrue(
-            waitForPredicate(timeout: 5) { next.isSelected && !first.isSelected },
+            waitForPredicate(timeout: 5) { next.isSelected && !previous.isSelected },
             "Down Arrow should move the selection, so the click must have given the list keyboard focus"
         )
     }
