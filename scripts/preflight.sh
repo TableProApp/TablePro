@@ -25,6 +25,7 @@ CRATES=(
   tablepro-transport
   tablepro-app-services
   tablepro-ssh
+  tablepro-dump
   tablepro-mcp
   tablepro-agentd
   tablepro-driver-postgres

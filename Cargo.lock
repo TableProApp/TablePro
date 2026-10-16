@@ -6489,6 +6489,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "tablepro-dump"
+version = "0.1.0"
+dependencies = [
+ "secrecy",
+ "tablepro-core",
+ "tempfile",
+ "testcontainers",
+ "testcontainers-modules",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "tablepro-mcp"
 version = "0.1.0"
 dependencies = [

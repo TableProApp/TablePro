@@ -1,0 +1,29 @@
+[package]
+name = "tablepro-dump"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "tablepro_dump"
+path = "src/lib.rs"
+
+[dependencies]
+secrecy.workspace = true
+tablepro-core = { path = "../core" }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["io-util", "process", "fs"] }
+tokio-util.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+testcontainers.workspace = true
+testcontainers-modules = { workspace = true, features = ["postgres"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+
+[lints]
+workspace = true

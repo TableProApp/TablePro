@@ -96,6 +96,14 @@ For the deterministic direct Unix-socket fixture:
 
 It exposes a PostgreSQL 16 socket directory from a disposable container and verifies query, write, pre-dispatch cancellation, close, and reconnect without opening a TCP database port.
 
+For the backup and restore runner:
+
+```bash
+./scripts/test-pg-dump.sh
+```
+
+It runs `pg_dump` and `pg_restore` from the `postgres:18-alpine` image through wrappers, so the host needs Docker but no PostgreSQL client. Set `TABLEPRO_PG_DUMP_IMAGE` to test another client version. Forgejo runs it as the `pg-dump` job.
+
 ## Manual verification after the 0.2 feature sprint
 
 The upstream feature adoption merged in September 2026 added GTK surfaces whose logic is unit-tested and whose layout has never been displayed. The checklist is [manual-verification-0.2-features.md](manual-verification-0.2-features.md). Treat it as outstanding until each line carries a result.

@@ -29,6 +29,7 @@ TEST_CRATES = {"tablepro-driver-tls-tests", "tablepro-release-tests"}
 ALLOWED = {
     "tablepro-core": set(),
     "tablepro-ssh": set(),
+    "tablepro-dump": {"tablepro-core"},
     "tablepro-policy": {"tablepro-core"},
     "tablepro-storage": {"tablepro-core", "tablepro-policy"},
     "tablepro-transport": {"tablepro-core", "tablepro-policy", "tablepro-ssh", "tablepro-storage"},

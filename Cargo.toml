@@ -9,6 +9,7 @@ members = [
     "crates/mcp",
     "crates/agentd",
     "crates/ssh",
+    "crates/dump",
     "crates/storage",
     "crates/transport",
     "tests/driver-tls",
