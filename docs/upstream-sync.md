@@ -26,6 +26,8 @@ Does not apply:
 
 The remaining changelog lines that touch shared behaviour, together with the dbx and DBeaver probes, are in the intake issue [#983](https://github.com/cozyGarage/BookiE/issues/983).
 
+Addendum 2026-10-16: three later commits to `45d49a23f` (`build(linux): allow the yanked zip 8.6.0 rust_xlsxwriter still needs`). `2d7089204` (cell edits asked about on close, and a close hang on GTK 4.22) is recorded as two checks on [#983](https://github.com/cozyGarage/BookiE/issues/983); we run GTK 4.22.4. `45d49a23f` does not apply because our `deny.toml` only warns on yanked crates, and `0dc391484` is their release channels. For `1155d3eb1`, a guardrail test now pins that a finished call never cancels its caller's operation control ([#1035](https://github.com/cozyGarage/BookiE/pull/1035)).
+
 ## 2026-10-03: macOS main applicability review
 
 Follow-up: [U1 SQL Server handoff](archive/upstream-u1-sql-server-2026-10-03.md) records the manual metadata fix for rowversion and temporal period columns, the failing-before/passing-after native regression, and remaining U1 consumers.
