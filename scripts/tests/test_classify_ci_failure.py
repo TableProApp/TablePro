@@ -55,6 +55,18 @@ class ClassifyCiFailureTests(unittest.TestCase):
         text = "AssertionError: application did not expose its expected window: Gtk-CRITICAL **: gtk_widget_measure: assertion 'for_size >= -1' failed"
         self.assertEqual(self.tag(text), "code")
 
+    def test_a_linker_bus_error_is_infrastructure_not_a_lint_failure(self):
+        text = "collect2: fatal error: ld terminated with signal 7 [Bus error]\nerror: could not compile `tablepro-agentd` (bin \"tablepro-agentd\") due to 1 previous error\nJob failed"
+        self.assertEqual(self.tag(text), "infra")
+
+    def test_a_missing_fixture_image_is_infrastructure(self):
+        text = "Error response from daemon: No such image: clickhouse/clickhouse-server:24.8-alpine\nJob failed"
+        self.assertEqual(self.tag(text), "infra")
+
+    def test_a_fixture_container_that_exited_before_the_tests_is_infrastructure(self):
+        text = "container tablepro-driver-tls-mongo-1 exited (48)\nJob failed"
+        self.assertEqual(self.tag(text), "infra")
+
     def test_an_unrecognised_log_is_unknown(self):
         self.assertEqual(self.tag("everything is fine\nJob failed"), "unknown")
 
