@@ -30,6 +30,7 @@ pub struct InlineEditor {
 impl InlineEditor {
     pub(super) fn begin(cell: &GridCell, snapshot: EditSnapshot, initial: &str, options: InlineOptions) {
         cell.cancel_edit();
+        cell.remove_closed_field();
         let text = gtk::Text::new();
         text.set_hexpand(true);
         text.set_margin_start(8);
@@ -55,11 +56,18 @@ impl InlineEditor {
         &self.text
     }
 
-    /// Take the field out of the cell and show the display again, with
-    /// the text the field held.
+    /// Show the display again, with the text the field held. GTK ends a
+    /// focus change by walking up from the widget that lost the focus, and
+    /// GTK 4.22 loops forever when that widget has no parent by then, so a
+    /// field that lost it stays in the cell, hidden, until the next edit.
     pub(super) fn close(self, cell: &GridCell) -> String {
         let typed = self.text.text().to_string();
-        self.text.unparent();
+        if holds_window_focus(self.text.upcast_ref()) {
+            self.text.unparent();
+        } else {
+            self.text.set_visible(false);
+            cell.keep_closed_field(self.text);
+        }
         if let Some(display) = cell.content() {
             display.set_visible(true);
         }
@@ -72,7 +80,7 @@ pub(super) fn commit_inline(cell: &GridCell) {
     finish_inline(cell, true);
 }
 
-/// End the cell's one-line edit. The field leaves before the commit is
+/// End the cell's one-line edit. The field closes before the commit is
 /// sent, so the redraw the commit causes meets no open editor.
 fn finish_inline(cell: &GridCell, commit: bool) {
     let Some(editor) = cell.take_inline() else {

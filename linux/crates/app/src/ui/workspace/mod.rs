@@ -3,6 +3,8 @@
 //! disconnect drops it and the window shows the connection picker.
 
 mod close_flow;
+#[cfg(test)]
+mod close_tab_tests;
 mod editor_label;
 mod finished_work;
 mod health_banner;
@@ -696,6 +698,14 @@ impl Workspace {
     /// The saves and the close prompts' view of the tabs.
     pub(crate) fn handle(&self) -> Option<WorkspaceHandle> {
         self.read(|model| model.workspace_handle.clone())
+    }
+
+    /// Make a value typed into a cell an unsaved change, as the focus
+    /// leaving the cell does, so the close prompts ask about it.
+    pub(crate) fn commit_cell_edits(&self) {
+        for browse in self.read(|model| model.browse_tabs(None)).unwrap_or_default() {
+            browse.commit_cell_edit();
+        }
     }
 
     /// The exports running from this workspace.

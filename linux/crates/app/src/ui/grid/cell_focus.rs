@@ -5,6 +5,7 @@ use super::GridCell;
 use super::cell_edit::begin_edit;
 use super::edit_navigation::{EditDirection, next_edit_target};
 use super::grid_columns::ShownColumn;
+use super::inline_editor::commit_inline;
 use super::selection::row_at;
 
 fn window_focus(widget: &impl IsA<gtk::Widget>) -> Option<gtk::Widget> {
@@ -55,6 +56,18 @@ pub(super) fn return_focus(cell: &GridCell) {
     {
         focus_cell(&view, position, &column);
     }
+}
+
+/// Commit the one-line edit open in `view`, as Return does.
+pub(crate) fn commit_open_edit(view: &gtk::ColumnView) {
+    let Some(cell) = focused_cell(view) else {
+        return;
+    };
+    if cell.inline_text().is_none() || cell.column_view().as_ref() != Some(view) {
+        return;
+    }
+    commit_inline(&cell);
+    return_focus(&cell);
 }
 
 /// Edit the cell Tab or Shift+Tab goes to from `cell`. With none left
@@ -245,6 +258,29 @@ mod tests {
         assert!(!name.is_editing());
         assert_eq!(grid.focused_cell().as_ref(), Some(&name), "the focus did not come back");
         assert!(grid.take_messages().is_empty(), "Escape sent the typed text");
+    }
+
+    /// GTK ends the focus change by walking up from the field the edit
+    /// was in. GTK 4.22 logs a critical forever and never returns when the
+    /// field has left its cell by then.
+    #[gtk4::test]
+    fn the_focus_moving_to_another_cell_commits_the_edit() {
+        let grid = mixed_rows();
+        let name = grid.focus(0, 1);
+        crate::ui::grid::begin_edit(&name);
+        name.inline_text().expect("an editor").set_text("a2");
+
+        let previous = glib::log_set_always_fatal(glib::LogLevels::LEVEL_CRITICAL);
+        let note = grid.focus(1, 3);
+        glib::log_set_always_fatal(previous);
+
+        assert!(!name.is_editing(), "the edit outlived the focus");
+        assert_eq!(edited_rows(&grid.take_messages()), vec![(Some(key(1)), 1, text("a2"))]);
+        assert_eq!(grid.focused_cell().as_ref(), Some(&note));
+        assert!(
+            !name.state_flags().contains(gtk::StateFlags::FOCUS_WITHIN),
+            "the cell the edit left still shows the focus"
+        );
     }
 
     /// Another window taking the focus is no focus change in this one,

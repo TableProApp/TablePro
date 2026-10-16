@@ -290,8 +290,12 @@ impl SessionWindow {
         }
     }
 
+    /// What the close prompts ask about, with a value typed into a cell
+    /// counted among the unsaved changes.
     fn workspace_handle(&self) -> Option<WorkspaceHandle> {
-        self.workspace().and_then(|workspace| workspace.handle())
+        let workspace = self.workspace()?;
+        workspace.commit_cell_edits();
+        workspace.handle()
     }
 
     fn handle_input(&self, message: SessionWindowInput) {

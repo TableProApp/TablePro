@@ -1,8 +1,10 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use gtk4 as gtk;
 use gtk4::glib;
-use gtk4::prelude::*;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 use tablepro_core::EditorSession;
 use uuid::Uuid;
 
@@ -10,6 +12,7 @@ use super::unsaved_icon::apply_unsaved_icon;
 use super::workspace_persistence::WorkspaceTabs;
 use super::{WorkspaceInput, WorkspaceModel, WorkspaceTab};
 use crate::runtime::DeliverInput;
+use crate::ui::browse_tab::BrowseTab;
 use crate::workspace::CloseDecision;
 
 /// Every editor tab's connection, taken from its tab. Each tab's run is
@@ -61,9 +64,26 @@ impl WorkspaceModel {
         take_editor_sessions(&self.workspace_tabs)
     }
 
+    /// The table tabs, or only `id` when it is one.
+    pub(super) fn browse_tabs(&self, id: Option<Uuid>) -> Vec<BrowseTab> {
+        self.workspace_tabs
+            .borrow()
+            .iter()
+            .filter(|(tab, _)| id.is_none_or(|id| id == **tab))
+            .filter_map(|(_, tab)| match tab {
+                WorkspaceTab::Table(slot) => Some(slot.browse.clone()),
+                WorkspaceTab::Editor(_) | WorkspaceTab::Structure(_) => None,
+            })
+            .collect()
+    }
+
     /// A tab asked to close. One with nothing to lose closes now; any
-    /// other waits for the prompts.
+    /// other waits for the prompts. A value typed into a cell is an
+    /// unsaved change by then, as it is once the focus leaves the cell.
     pub(super) fn close_workspace_tab_by_id(&mut self, id: Uuid) {
+        for browse in self.browse_tabs(Some(id)) {
+            browse.commit_cell_edit();
+        }
         let tab_view = self.tab_view.clone();
         if self.close_guards.may_close_tab(&self.workspace_handle, id) {
             self.finish_close_workspace_tab(id, &tab_view);
@@ -80,6 +100,36 @@ impl WorkspaceModel {
                     approved: decision == CloseDecision::Approved,
                 });
             });
+    }
+
+    /// Take the keyboard focus out of `page` before it closes. The page
+    /// the view selects next is selected first, so the view hands it the
+    /// focus while `page` is still whole. GTK 4.22 leaks a focus that is
+    /// hidden and then unparented in one go, which the close does when
+    /// that page takes no focus.
+    pub(super) fn move_focus_off(&self, page: &adw::TabPage) {
+        let Some(window) = self.window() else {
+            return;
+        };
+        let child = page.child();
+        let holds_focus = || {
+            gtk::prelude::GtkWindowExt::focus(&window).is_some_and(|focus| focus == child || focus.is_ancestor(&child))
+        };
+        if !holds_focus() {
+            return;
+        }
+        // The documented choice for a page with no parent, and this
+        // workspace never gives one. The last page leaves the focus to
+        // the empty page the stack shows next.
+        if page.is_selected() && !self.tab_view.select_next_page() && !self.tab_view.select_previous_page() {
+            return;
+        }
+        // Where GTK moves a focus left in a removed widget, from the
+        // window's first control.
+        if holds_focus() {
+            gtk::prelude::GtkWindowExt::set_focus(&window, None::<&gtk::Widget>);
+            window.child_focus(gtk::DirectionType::TabForward);
+        }
     }
 
     pub(super) fn on_tab_close_decided(&mut self, id: Uuid, approved: bool) {

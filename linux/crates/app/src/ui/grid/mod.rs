@@ -50,7 +50,7 @@ mod value_order;
 #[cfg(test)]
 pub(crate) use self::cell_edit::begin_edit;
 pub(crate) use self::cell_editability::cell_editability;
-pub(crate) use self::cell_focus::edit_row;
+pub(crate) use self::cell_focus::{commit_open_edit, edit_row};
 pub(crate) use self::cell_lock::CellLock;
 pub(crate) use self::cell_preset::{CellPreset, cell_presets};
 pub(crate) use self::column_factory::{GridSorting, build_column_view};

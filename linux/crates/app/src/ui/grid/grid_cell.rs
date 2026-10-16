@@ -30,6 +30,9 @@ mod imp {
         pub content: OnceCell<gtk::Widget>,
         /// The one-line editor, laid over the hidden display while open.
         pub inline: RefCell<Option<InlineEditor>>,
+        /// A one-line field that lost the focus, hidden until the cell's
+        /// next edit.
+        pub closed_field: RefCell<Option<gtk::Text>>,
         /// An open editor popover. Unbind pops it down, or the recycled
         /// cell is finalized with a GtkPopover child still in it.
         pub popover: RefCell<Option<gtk::Popover>>,
@@ -68,6 +71,9 @@ mod imp {
             self.edit.take();
             if let Some(editor) = self.inline.take() {
                 editor.widget().unparent();
+            }
+            if let Some(field) = self.closed_field.take() {
+                field.unparent();
             }
             if let Some(popover) = self.popover.take() {
                 popover.unparent();
@@ -290,6 +296,18 @@ impl GridCell {
 
     pub(super) fn take_inline(&self) -> Option<InlineEditor> {
         self.imp().inline.take()
+    }
+
+    pub(super) fn keep_closed_field(&self, field: gtk::Text) {
+        if let Some(previous) = self.imp().closed_field.replace(Some(field)) {
+            previous.unparent();
+        }
+    }
+
+    pub(super) fn remove_closed_field(&self) {
+        if let Some(field) = self.imp().closed_field.take() {
+            field.unparent();
+        }
     }
 
     /// Parent `popover` to the cell and keep it there until it closes.

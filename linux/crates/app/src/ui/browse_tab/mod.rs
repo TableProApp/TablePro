@@ -270,6 +270,14 @@ impl BrowseTab {
         }
     }
 
+    /// Commit the cell edit open in the grid, as Return does, so the close
+    /// prompts count what was typed.
+    pub fn commit_cell_edit(&self) {
+        if let Some(view) = self.read(|model| model.current_column_view.clone()).flatten() {
+            super::grid::commit_open_edit(&view);
+        }
+    }
+
     /// `None` once the tab is closed, and while it is handling an input.
     fn read<T>(&self, read: impl FnOnce(&BrowseModel) -> T) -> Option<T> {
         self.imp().model.try_borrow().ok()?.as_ref().map(read)

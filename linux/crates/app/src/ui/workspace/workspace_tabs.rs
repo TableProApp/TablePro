@@ -213,6 +213,7 @@ impl WorkspaceModel {
         }
         let page = removed.page().clone();
         self.index.remove(&page);
+        self.move_focus_off(&page);
         tab_view.close_page_finish(&page, true);
         drop(removed);
         self.persist_workspace_state();
