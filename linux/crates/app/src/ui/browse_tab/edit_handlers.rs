@@ -294,7 +294,7 @@ impl BrowseModel {
         if deletion.is_empty() {
             return;
         }
-        if deletion.len() < BULK_DELETE_CONFIRM_THRESHOLD {
+        if deletion.len() < BULK_DELETE_CONFIRM_THRESHOLD || !self.settings.confirm_bulk_delete() {
             fx.input(EditInput::MarkRowsDeleted(deletion));
             return;
         }

@@ -4,7 +4,6 @@
   <requires lib="libadwaita" version="1.9"/>
   <template class="TableProDataBrowserGroup" parent="AdwPreferencesGroup">
     <property name="title" translatable="yes">Data Browser</property>
-    <property name="description" translatable="yes">Tunes the row paginator and destructive-action confirmation.</property>
     <child>
       <object class="AdwSpinRow" id="page_size_row">
         <property name="title" translatable="yes">Default page size</property>
@@ -22,7 +21,6 @@
     <child>
       <object class="AdwSwitchRow" id="confirm_row">
         <property name="title" translatable="yes">Confirm Before Deleting Rows</property>
-        <property name="subtitle" translatable="yes">Show a confirmation dialog before each destructive action</property>
       </object>
     </child>
   </template>

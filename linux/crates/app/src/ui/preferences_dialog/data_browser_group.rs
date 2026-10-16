@@ -6,6 +6,7 @@ use tablepro_storage::AppSettings;
 use tablepro_storage::settings::keys;
 
 mod imp {
+    use libadwaita::prelude::*;
     use libadwaita::subclass::prelude::*;
 
     use super::*;
@@ -34,7 +35,18 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for DataBrowserGroup {}
+    impl ObjectImpl for DataBrowserGroup {
+        fn constructed(&self) {
+            self.parent_constructed();
+            let threshold = crate::ui::browse_tab::BULK_DELETE_CONFIRM_THRESHOLD;
+            self.confirm_row.set_subtitle(&crate::i18n::ngettext_f(
+                "Ask before deleting {n} or more rows at once",
+                "Ask before deleting {n} or more rows at once",
+                u32::try_from(threshold).unwrap_or(u32::MAX),
+                &[("n", &threshold.to_string())],
+            ));
+        }
+    }
     impl WidgetImpl for DataBrowserGroup {}
     impl PreferencesGroupImpl for DataBrowserGroup {}
 }
@@ -61,7 +73,7 @@ impl DataBrowserGroup {
             .bind(keys::DEFAULT_PAGE_SIZE, &imp.page_size_row.get(), "value")
             .build();
         gio_settings
-            .bind(keys::CONFIRM_DESTRUCTIVE, &imp.confirm_row.get(), "active")
+            .bind(keys::CONFIRM_BULK_DELETE, &imp.confirm_row.get(), "active")
             .build();
     }
 }
@@ -84,7 +96,7 @@ mod tests {
     fn preference_rows_are_bound() {
         let settings = MemorySettings::new();
         settings.get().set_default_page_size(500).expect("store the page size");
-        settings.get().set_confirm_destructive(false).expect("store the flag");
+        settings.get().set_confirm_bulk_delete(false).expect("store the flag");
 
         let group = bound_group(&settings);
         let imp = group.imp();
@@ -96,7 +108,7 @@ mod tests {
         imp.confirm_row.set_active(true);
 
         assert_eq!(settings.get().default_page_size(), 2_500);
-        assert!(settings.get().confirm_destructive());
+        assert!(settings.get().confirm_bulk_delete());
     }
 
     #[gtk4::test]
@@ -106,5 +118,16 @@ mod tests {
 
         assert_eq!(group.title(), "Data Browser");
         assert_eq!(group.imp().page_size_row.title(), "Default page size");
+    }
+
+    #[gtk4::test]
+    fn the_confirm_row_names_the_rows_a_delete_asks_at() {
+        let settings = MemorySettings::new();
+        let group = bound_group(&settings);
+
+        assert_eq!(
+            group.imp().confirm_row.subtitle().as_deref(),
+            Some("Ask before deleting 10 or more rows at once")
+        );
     }
 }

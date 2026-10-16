@@ -150,6 +150,7 @@ impl TabFactory {
             session,
             tasks: parts.context.tasks.clone(),
             deadlines: parts.context.deadlines.clone(),
+            settings: parts.settings.clone(),
         });
         connect_browse(&browse, id, &parts.input);
         let tab_page = self.append(&browse, id);

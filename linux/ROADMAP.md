@@ -47,7 +47,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Sorting | A header click sorts tables on the server and query results in the grid |
 | Cell editing | Editors by column kind: inline text, a multi-line editor, a calendar for dates, a toggle for booleans, JSON checked before saving; values are edited from their exact text, never from what the cell displays |
 | Rows | Insert, duplicate and delete; Set NULL and Empty, and DEFAULT on a new row; undo and redo; save or discard pending changes, and stop a save |
-| Bulk delete | Deleting 10 rows or more asks first |
+| Bulk delete | Deleting 10 rows or more asks first, unless Confirm Before Deleting Rows is off in Preferences |
 | Copy | Copy, and Copy As rows, with headers, JSON, CSV, Markdown, IN clause or INSERT; Show Row as JSON |
 | Column widths | Kept per table |
 | CSV import | Into an existing table, with a column mapping, in one write batch |
@@ -102,7 +102,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Session restore | The windows open at quit open again at launch, behind a preference |
 | Closing safely | Unsaved edits, a save in flight or a running export ask before a window closes or the app quits; logout waits while edits are unsaved, a save runs or an export writes |
 | Notifications | Work that finishes in a tab you are not looking at sends a notification |
-| Preferences | Restore session, page size, query history, editor font and scheme, query timeout. A Confirm Before Deleting Rows switch is shown but nothing reads it yet (see the backlog) |
+| Preferences | Restore session, page size, the bulk delete confirmation, query history, editor font and scheme, query timeout |
 | Shortcuts and About | A shortcuts dialog, and About from the metainfo with third-party licenses and debug info |
 
 ### Packaging and platform
@@ -132,7 +132,6 @@ Not built yet, in no order.
 - Edit binary columns from and to a file. They are read-only today.
 - Time and timestamp pickers. Dates have a calendar; times are typed.
 - Save the column order per table.
-- Make the Confirm Before Deleting Rows preference take effect. The switch is stored, but deleting rows does not read it.
 - Functions, procedures, sequences and triggers in the sidebar.
 - The CREATE INDEX statement for one index. Show CREATE TABLE lists them after the table on PostgreSQL, SQL Server and SQLite.
 - Jump from a foreign key to the table it references.

@@ -160,7 +160,7 @@ mod tests {
         imp.data_browser_group.imp().confirm_row.set_active(false);
         imp.history_group.imp().save_history_row.set_active(false);
 
-        assert!(!settings.get().confirm_destructive());
+        assert!(!settings.get().confirm_bulk_delete());
         assert!(!settings.get().save_query_history());
     }
 }

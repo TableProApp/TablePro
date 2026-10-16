@@ -43,7 +43,7 @@ fn defaults_match_schema() -> TestResult {
     let fixture = Fixture::new()?;
 
     assert_eq!(fixture.settings.default_page_size(), 1_000);
-    assert!(fixture.settings.confirm_destructive());
+    assert!(fixture.settings.confirm_bulk_delete());
     assert_eq!(fixture.settings.history_retention_days(), 30);
     assert_eq!(fixture.settings.query_timeout(), Some(Duration::from_secs(60)));
     assert_eq!(fixture.settings.style_scheme(), "Adwaita");
@@ -60,6 +60,17 @@ fn restore_session_round_trip() -> TestResult {
     fixture.settings.set_restore_session(false)?;
 
     assert!(!fixture.settings.restore_session());
+    Ok(())
+}
+
+#[test]
+fn confirm_bulk_delete_round_trip() -> TestResult {
+    let fixture = Fixture::new()?;
+
+    fixture.settings.set_confirm_bulk_delete(false)?;
+    assert!(!fixture.settings.confirm_bulk_delete());
+    fixture.settings.set_confirm_bulk_delete(true)?;
+    assert!(fixture.settings.confirm_bulk_delete());
     Ok(())
 }
 
