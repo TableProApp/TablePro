@@ -14,6 +14,7 @@ struct ClickHouseStubRequest: Sendable {
 struct ClickHouseStubReply: Sendable {
     let statusCode: Int
     let body: String
+    var headers: [String: String] = [:]
 
     static let oneRow = ClickHouseStubReply(statusCode: 200, body: "n\nUInt8\n1\n")
     static let empty = ClickHouseStubReply(statusCode: 200, body: "")
@@ -51,7 +52,12 @@ final class ClickHouseHTTPStubProtocol: URLProtocol, @unchecked Sendable {
         }
         guard let responder,
               let reply = responder(stubRequest),
-              let response = HTTPURLResponse(url: url, statusCode: reply.statusCode, httpVersion: nil, headerFields: nil)
+              let response = HTTPURLResponse(
+                  url: url,
+                  statusCode: reply.statusCode,
+                  httpVersion: nil,
+                  headerFields: reply.headers
+              )
         else { return }
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(reply.body.utf8))
@@ -89,17 +95,29 @@ struct ClickHouseStubServer {
     }
 
     func connectedDriver() -> ClickHousePluginDriver {
-        let driver = ClickHousePluginDriver(config: DriverConnectionConfig(
-            host: host,
-            port: 8_123,
-            username: "default",
-            password: "",
-            database: "default"
-        ))
+        let driver = unconnectedDriver()
+        driver.session = URLSession(configuration: Self.stubConfiguration())
+        return driver
+    }
+
+    /// A driver whose own `connect()` reaches this stub.
+    func unconnectedDriver() -> ClickHousePluginDriver {
+        ClickHousePluginDriver(
+            config: DriverConnectionConfig(
+                host: host,
+                port: 8_123,
+                username: "default",
+                password: "",
+                database: "default"
+            ),
+            sessionConfiguration: Self.stubConfiguration()
+        )
+    }
+
+    private static func stubConfiguration() -> URLSessionConfiguration {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ClickHouseHTTPStubProtocol.self]
-        driver.session = URLSession(configuration: configuration)
-        return driver
+        return configuration
     }
 
     func firstRequest(where matches: (ClickHouseStubRequest) -> Bool) async -> ClickHouseStubRequest? {

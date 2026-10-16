@@ -28,16 +28,33 @@ public enum ClickHouseObjectQueries {
         ORDER BY name
         """
 
-    /// system.functions.create_query is documented as obsolete and is empty on several versions,
-    /// so it is the fallback rather than the source.
+    /// 21.10 has `CREATE FUNCTION` and `create_query` but no `origin`. A built-in has no
+    /// `create_query`, so the SQL functions a user created are the ones that do.
+    public static let functionListWithoutOrigin = """
+        SELECT name, '' AS origin, is_aggregate, create_query
+        FROM system.functions
+        WHERE create_query != ''
+        ORDER BY name
+        """
+
+    /// ClickHouse has no `SHOW CREATE FUNCTION`: every version answers it with a syntax error.
+    /// `create_query` is the definition of a SQL function and empty for an executable one, which
+    /// lives in the server's configuration.
     public static func functionDefinition(name: String) -> String {
-        "SHOW CREATE FUNCTION \(quoteIdentifier(name))"
+        "SELECT create_query FROM system.functions WHERE name = '\(escapeLiteral(name))'"
     }
 }
 
 extension ClickHousePluginDriver {
+    /// A server without `system.functions.create_query` (21.8 and older) predates
+    /// `CREATE FUNCTION`, so it has no user-defined function to list.
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
-        let result = try await execute(query: ClickHouseObjectQueries.functionList)
+        let profile = serverProfile
+        guard profile.hasFunctionCreateQuery else { return [] }
+        let query = profile.hasFunctionOrigin
+            ? ClickHouseObjectQueries.functionList
+            : ClickHouseObjectQueries.functionListWithoutOrigin
+        let result = try await execute(query: query)
         return result.rows.compactMap { row -> PluginRoutineInfo? in
             guard let name = row[safe: 0]?.asText, !name.isEmpty else { return nil }
             var attributes: [PluginObjectAttribute] = []

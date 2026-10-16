@@ -39160,6 +39160,10 @@
         }
       }
     },
+    "ClickHouse ended the result partway through a row, so the rows that arrived are incomplete." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "ClickHouse returned HTTP %lld." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -185228,6 +185232,10 @@
           }
         }
       }
+    },
+    "The query names its own output format, %@. Remove its FORMAT clause to read it as rows." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The query returned no rows." : {
       "localizations" : {

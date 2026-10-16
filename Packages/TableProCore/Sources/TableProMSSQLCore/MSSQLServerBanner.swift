@@ -23,14 +23,37 @@ public enum MSSQLServerBanner {
 
     /// Matches against the whole banner rather than the first line alone, so a future layout that
     /// moves the build number cannot silently return nil the way the fixed prefix did.
-    public static func majorVersion(from banner: String?) -> Int? {
+    public static func server(from banner: String?) -> MSSQLServerBuild? {
         guard let banner else { return nil }
-        guard let regex = try? NSRegularExpression(pattern: #"(\d+)\.\d+\.\d+"#),
-              let match = regex.firstMatch(in: banner, range: NSRange(banner.startIndex..., in: banner)),
-              let range = Range(match.range(at: 1), in: banner)
+        guard let regex = try? NSRegularExpression(pattern: #"(\d+)\.(\d+)\.(\d+)"#),
+              let match = regex.firstMatch(in: banner, range: NSRange(banner.startIndex..., in: banner))
         else {
             return nil
         }
-        return Int(banner[range])
+        let parts = (1...3).compactMap { index in
+            Range(match.range(at: index), in: banner).flatMap { Int(banner[$0]) }
+        }
+        guard parts.count == 3 else { return nil }
+        return MSSQLServerBuild(
+            major: parts[0],
+            minor: parts[1],
+            build: parts[2],
+            isAzureSQL: banner.hasPrefix("Microsoft SQL Azure")
+        )
+    }
+}
+
+/// Azure SQL Database and Managed Instance report `12.0.2000.x` whatever engine they run, so their
+/// features cannot be read off the number.
+public struct MSSQLServerBuild: Sendable, Equatable {
+    public let major: Int
+    public let minor: Int
+    public let build: Int
+    public let isAzureSQL: Bool
+
+    /// `CREATE OR ALTER` applies to "Azure SQL Database and SQL Server (starting with SQL Server
+    /// 2016 (13.x) SP1)" (CREATE VIEW, Microsoft Learn). 13.0.4001 is 2016 SP1; RTM is 13.0.1601.
+    public var hasCreateOrAlter: Bool {
+        isAzureSQL || (major, minor, build) >= (13, 0, 4_001)
     }
 }

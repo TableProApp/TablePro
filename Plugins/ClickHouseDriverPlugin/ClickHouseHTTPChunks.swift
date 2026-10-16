@@ -16,8 +16,9 @@ import TableProPluginKit
 /// rather than letting the rest of the result pile up in memory. That resume is why the body is
 /// read through `forEachChunk` and not by iterating a sequence: a caller cannot forget it.
 internal final class ClickHouseHTTPChunks: NSObject, URLSessionDataDelegate, @unchecked Sendable {
-    /// An error body is text the user reads, not a result, so it is held whole up to this and the
-    /// rest dropped. ClickHouse exception text runs to a few kilobytes at most.
+    /// An error body is text the user reads, not a result. Its last bytes are kept, because a
+    /// failure on 25.10 and later can arrive as HTTP 500 with the rows written so far ahead of
+    /// the text. ClickHouse exception text runs to a few kilobytes at most.
     private static let errorBodyByteCap = 65_536
 
     private let stream: AsyncThrowingStream<Data, Error>
@@ -27,6 +28,7 @@ internal final class ClickHouseHTTPChunks: NSObject, URLSessionDataDelegate, @un
     private var isTransferSuspended = false
     private var failureStatusCode: Int?
     private var failureBody = Data()
+    private var responseHeaders: [String: String] = [:]
 
     internal init(session: URLSession, request: URLRequest) {
         (stream, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
@@ -37,6 +39,15 @@ internal final class ClickHouseHTTPChunks: NSObject, URLSessionDataDelegate, @un
         lock.withLock { task = dataTask }
         continuation.onTermination = { _ in dataTask.cancel() }
         dataTask.resume()
+    }
+
+    /// Set before the first chunk is handed over, so a reader can look at it from there on.
+    internal var headers: [String: String] {
+        lock.withLock { responseHeaders }
+    }
+
+    internal func headerValue(_ name: String) -> String? {
+        headers.first { $0.key.caseInsensitiveCompare(name) == .orderedSame }?.value
     }
 
     /// The transfer is torn down on every way out, a thrown error and a cancellation included. A
@@ -56,8 +67,13 @@ internal final class ClickHouseHTTPChunks: NSObject, URLSessionDataDelegate, @un
         didReceive response: URLResponse,
         completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
     ) {
-        if let statusCode = (response as? HTTPURLResponse)?.statusCode, statusCode >= 400 {
-            lock.withLock { failureStatusCode = statusCode }
+        let httpResponse = response as? HTTPURLResponse
+        let fields = ClickHousePluginDriver.headerFields(httpResponse)
+        lock.withLock {
+            responseHeaders = fields
+            if let httpResponse, ClickHousePluginDriver.isFailure(httpResponse) {
+                failureStatusCode = httpResponse.statusCode
+            }
         }
         completionHandler(.allow)
     }
@@ -65,8 +81,10 @@ internal final class ClickHouseHTTPChunks: NSObject, URLSessionDataDelegate, @un
     internal func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         let isFailure = lock.withLock { () -> Bool in
             guard failureStatusCode != nil else { return false }
-            let room = Self.errorBodyByteCap - failureBody.count
-            if room > 0 { failureBody.append(data.prefix(room)) }
+            failureBody.append(data)
+            if failureBody.count > Self.errorBodyByteCap {
+                failureBody = Data(failureBody.suffix(Self.errorBodyByteCap))
+            }
             return true
         }
         guard !isFailure else { return }

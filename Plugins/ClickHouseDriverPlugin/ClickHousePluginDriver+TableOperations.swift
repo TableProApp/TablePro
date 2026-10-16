@@ -17,7 +17,7 @@ extension ClickHousePluginDriver {
             database: schema,
             objectType: objectType,
             comment: comment,
-            capabilities: ClickHouseCapabilities.parse(serverVersion)
+            profile: serverProfile
         )
     }
 }
