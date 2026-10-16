@@ -47,10 +47,17 @@ def execution_evidence(kind, output):
         return True
     if kind == "python-tests":
         return bool(re.search(r"Ran [1-9]\d* tests? in", output) and re.search(r"^OK$", output, re.M))
-    summaries = re.findall(r"test result: (\w+)\. (\d+) passed; (\d+) failed;", output)
-    return bool(summaries) and sum(int(row[1]) for row in summaries) > 0 and all(
-        row[0] == "ok" and int(row[2]) == 0 for row in summaries
-    )
+    output = re.sub(r"\x1b\[[0-9;]*m", "", output)
+    libtest = [
+        (row[0] == "ok" and row[2] == "0", int(row[1]))
+        for row in re.findall(r"test result: (\w+)\. (\d+) passed; (\d+) failed;", output)
+    ]
+    nextest = [
+        (run == passed, int(passed))
+        for run, passed in re.findall(r"Summary \[[^\]]*\] (\d+) tests? run: (\d+) passed", output)
+    ]
+    summaries = libtest + nextest
+    return bool(summaries) and sum(count for _, count in summaries) > 0 and all(ok for ok, _ in summaries)
 
 
 def stop_process(process, force=False):

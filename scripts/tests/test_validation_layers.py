@@ -46,6 +46,19 @@ class LayerRunnerTests(unittest.TestCase):
         self.assertFalse(runner.execution_evidence("python-tests", "Ran 0 tests in 0.01s\n\nOK\n"))
         self.assertFalse(runner.execution_evidence("python-tests", "Ran 3 tests in 0.01s\n\nOK (skipped=1)\n"))
 
+    def test_nextest_summaries_count_as_rust_test_evidence(self):
+        passed = "\x1b[32;1m     Summary\x1b[0m [  24.136s] 1675 tests run: 1675 passed, 15 skipped"
+        self.assertTrue(runner.execution_evidence("rust-tests", passed))
+        mixed = "test result: ok. 2 passed; 0 failed; 0 ignored;\n     Summary [   0.2s] 1 test run: 1 passed, 0 skipped"
+        self.assertTrue(runner.execution_evidence("rust-tests", mixed))
+        for output in [
+            "     Summary [   0.1s] 0 tests run: 0 passed, 3 skipped",
+            "     Summary [   9.0s] 5 tests run: 4 passed, 1 failed, 0 skipped",
+            "     Summary [   9.0s] 5 tests run: 4 passed, 1 timed out, 0 skipped",
+            "     Summary [   9.0s] 5 tests run: 5 passed, 0 skipped\ntest result: FAILED. 1 passed; 1 failed;",
+        ]:
+            self.assertFalse(runner.execution_evidence("rust-tests", output), output)
+
     def test_timeout_and_missing_executable_fail_explicitly(self):
         self.assertEqual(self.execute(self.step("import time; time.sleep(60)", timeout=0.05))["status"], "timed_out")
         step = {"argv": ["/missing/bookie-fixture"], "evidence": "exit", "timeout_seconds": 1}

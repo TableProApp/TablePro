@@ -1,0 +1,16 @@
+nextest-version = { required = "0.9.148" }
+
+[profile.default]
+fail-fast = false
+retries = 0
+slow-timeout = { period = "60s", terminate-after = 5 }
+
+[profile.ci]
+fail-fast = false
+retries = 0
+slow-timeout = { period = "60s", terminate-after = 5 }
+status-level = "fail"
+final-status-level = "slow"
+
+[profile.ci.junit]
+path = "junit.xml"

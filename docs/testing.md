@@ -10,6 +10,10 @@ The [active sprint](bookie-0.2-sprint.md) owns current acceptance. Start with th
 
 Database fixtures, the GTK scenarios and the distro-floor jobs run in containers or virtual displays. A pass there shows the code behaves as designed against a disposable database; it is not acceptance of a connection path. Unix sockets, IPv6 loopback, desktop portals and the Secret Service behave differently across containers and desktop sessions; a container run has already hidden one such difference (Docker does not publish `::1`). Acceptance for those paths is the installed package connecting to a real database in the target native desktop session, on the host or a supported VM, as recorded under PKG-1 and in the [manual checklist](manual-verification-0.2-features.md).
 
+## Test runner
+
+The unit and sandbox tiers run under [cargo-nextest](https://nexte.st), one process per test. `scripts/ensure-nextest.sh` downloads the pinned release, checks its SHA-256 and caches it under `~/.cache/bookie-tools` (Forgejo uses `/var/cache/ci/tools`); `.config/nextest.toml` requires that version. Both profiles keep `retries = 0`, so a flaky test fails instead of passing on a hidden retry, and stop a test that runs for five minutes. The `ci` profile also writes `target/nextest/ci/junit.xml`. Nextest runs the same tests as `cargo test` for these tiers (1690 unit and 1706 sandbox names on 2026-10-16); its pass total is lower only because libtest also counts subprocess helpers that a parent test launches. Driver, release, GTK and keyring tiers stay on `cargo test` until the PostgreSQL shared fixture has ownership across processes ([#892](https://github.com/cozyGarage/BookiE/issues/892)). Doc tests are not part of these tiers.
+
 ## Local checks and fixtures
 
 Select Cargo test targets deliberately: `tablepro-app` puts UI and service tests in the `tablepro_app` library, while `agentd` has library, binary and integration tests. DuckDB stays out of the default gate because its optional native build is large. Contributor lint and test-target rules live in [AGENTS.md](../AGENTS.md).

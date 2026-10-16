@@ -73,8 +73,12 @@ jobs:
           git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Unit tests
+        env:
+          TABLEPRO_TOOL_DIR: /var/cache/ci/tools
         run: |
-          cd src && cargo test --workspace --exclude tablepro-driver-duckdb --lib --bins
+          cd src
+          NEXTEST="$(bash scripts/ensure-nextest.sh)"
+          "$NEXTEST" nextest run --workspace --exclude tablepro-driver-duckdb --lib --bins --profile ci --no-tests=pass
 
   sandbox:
     runs-on: any-host
@@ -88,6 +92,9 @@ jobs:
           git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Sandbox tier
+        env:
+          TABLEPRO_TOOL_DIR: /var/cache/ci/tools
+          TABLEPRO_NEXTEST_PROFILE: ci
         run: |
           cd src && bash scripts/test-sandbox.sh
 
