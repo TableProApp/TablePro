@@ -40,11 +40,11 @@ pub struct McpBridge {
     provider: Arc<dyn ConnectionProvider>,
     tokens: Arc<TokenStore>,
     rate_limiter: RateLimiter,
-    /// Bounds every call to `authenticate`, not just successful ones. It is
+    /// Bounds failed calls to `authenticate`. It is
     /// keyed on a single fixed key rather than the bearer string tried --
     /// a brute-force caller sends a different string on every attempt, so
     /// keying on the string would never throttle it -- so this bounds the
-    /// aggregate rate of authentication attempts against the whole server.
+    /// aggregate rate of failed authentication attempts against the server.
     /// Without it, a failed authenticate never resolves to a token id to
     /// key `rate_limiter` on, so it was unbounded: unlimited guesses, each
     /// one taking the same cross-process token-store file lock issue and
@@ -130,7 +130,11 @@ impl McpBridge {
     pub fn authenticate(&self, bearer: &str) -> Result<McpToken, String> {
         self.auth_rate_limiter.check(AUTH_ATTEMPT_KEY)?;
         let token = bearer.strip_prefix("Bearer ").unwrap_or(bearer).trim();
-        self.tokens.authenticate(token)
+        let authenticated = self.tokens.authenticate(token);
+        if authenticated.is_ok() {
+            self.auth_rate_limiter.release(AUTH_ATTEMPT_KEY);
+        }
+        authenticated
     }
 
     pub fn check_rate(&self, token: &McpToken) -> Result<(), String> {
@@ -655,6 +659,33 @@ mod tests {
             },
         );
 
+        assert!(bridge.authenticate("guess-1").is_err());
+        assert!(bridge.authenticate("guess-2").is_err());
+        let third = bridge.authenticate("guess-3").unwrap_err();
+        assert!(third.contains("rate limit"), "{third}");
+    }
+
+    #[test]
+    fn valid_tokens_are_not_throttled_by_the_failed_attempt_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(TokenStore::open(dir.path().join("tokens.json")).unwrap());
+        let (_meta, plaintext) = store
+            .issue("agent".into(), crate::auth::TokenPermissions::ReadOnly, vec![], None)
+            .unwrap();
+        let bridge = McpBridge::with_limits(
+            Arc::new(NoProvider),
+            store,
+            McpLimits {
+                requests_per_minute: 2,
+                ..McpLimits::default()
+            },
+        );
+
+        for _ in 0..5 {
+            bridge
+                .authenticate(&plaintext)
+                .expect("a valid token keeps authenticating");
+        }
         assert!(bridge.authenticate("guess-1").is_err());
         assert!(bridge.authenticate("guess-2").is_err());
         let third = bridge.authenticate("guess-3").unwrap_err();
