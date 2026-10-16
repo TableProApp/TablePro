@@ -69,7 +69,67 @@ class CrateBoundaryTests(unittest.TestCase):
 
     def test_an_external_crate_cannot_hide_a_forbidden_edge_behind_a_dev_dependency(self):
         metadata = graph(BASE, ["gtk4"], [("tablepro-core", "gtk4", "dev")])
+        self.assertTrue(checker.check(metadata))
+
+    def test_headless_crates_refuse_gui_dependencies_of_every_kind(self):
+        for source in ("tablepro-core", "tablepro-app-services", "tablepro-driver-postgres"):
+            for kind in (None, "build", "dev"):
+                with self.subTest(source=source, kind=kind):
+                    metadata = graph(BASE, ["gtk4"], [(source, "gtk4", kind)])
+                    self.assertTrue(checker.check(metadata))
+
+    def test_a_dev_dependency_cannot_reach_gui_through_its_build_dependencies(self):
+        metadata = graph(
+            BASE,
+            ["helper", "glib"],
+            [("tablepro-app-services", "helper", "dev"), ("helper", "glib", "build")],
+        )
+        self.assertTrue(checker.check(metadata))
+
+    def test_a_permitted_workspace_dev_dependency_cannot_reach_gui(self):
+        metadata = graph(
+            BASE,
+            ["gtk4"],
+            [("tablepro-driver-postgres", "tablepro-policy", "dev"), ("tablepro-policy", "gtk4", None)],
+        )
+        problems = checker.check(metadata)
+        self.assertTrue(any("tablepro-driver-postgres" in problem for problem in problems))
+
+    def test_an_external_dependency_does_not_compile_its_own_dev_dependencies(self):
+        for kind in (None, "build", "dev"):
+            with self.subTest(kind=kind):
+                metadata = graph(
+                    BASE,
+                    ["helper", "gtk4"],
+                    [("tablepro-app-services", "helper", kind), ("helper", "gtk4", "dev")],
+                )
+                self.assertEqual(checker.check(metadata), [])
+
+    def test_a_workspace_dependency_does_not_compile_its_own_tests_for_its_consumer(self):
+        metadata = graph(
+            BASE,
+            ["helper", "glib"],
+            [("tablepro-driver-postgres", "tablepro-policy", "dev"), ("tablepro-policy", "helper", None),
+             ("helper", "glib", "dev")],
+        )
         self.assertEqual(checker.check(metadata), [])
+
+    def test_the_application_may_use_gui_in_each_dependency_kind(self):
+        for kind in (None, "build", "dev"):
+            with self.subTest(kind=kind):
+                metadata = graph(BASE, ["gtk4"], [("tablepro-app", "gtk4", kind)])
+                self.assertEqual(checker.check(metadata), [])
+
+    def test_gui_reachability_handles_repeated_edges_and_cycles(self):
+        metadata = graph(
+            BASE,
+            ["helper", "other", "gtk4"],
+            [("tablepro-app-services", "helper", "dev"), ("tablepro-app-services", "helper", None),
+             ("helper", "other", None), ("other", "helper", "build"), ("other", "gtk4", None)],
+        )
+        problems = checker.check(metadata)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("tablepro-app-services", problems[0])
 
 
 class PreflightListTests(unittest.TestCase):

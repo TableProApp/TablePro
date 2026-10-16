@@ -85,13 +85,15 @@ def unlisted_in_preflight(metadata, preflight):
 
 
 def closure(start, nodes, names):
-    seen, stack = set(), [start]
+    seen, stack = {start}, [start]
     while stack:
-        for dep in nodes[stack.pop()]["deps"]:
-            if kinds(dep) & {None, "build"} and dep["pkg"] not in seen:
+        current = stack.pop()
+        included = {None, "build", "dev"} if current == start else {None, "build"}
+        for dep in nodes[current]["deps"]:
+            if kinds(dep) & included and dep["pkg"] not in seen:
                 seen.add(dep["pkg"])
                 stack.append(dep["pkg"])
-    return {names[package_id] for package_id in seen}
+    return {names[package_id] for package_id in seen if package_id != start}
 
 
 def main():

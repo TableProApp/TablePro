@@ -4,6 +4,7 @@ import json
 import re
 import subprocess
 import tempfile
+import tomllib
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -370,6 +371,11 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("unittest discover -s scripts/tests", workflow)
         self.assertIn("coverage xml -o target/sonar/python-coverage.xml", workflow)
         self.assertIn("-Dsonar.python.coverage.reportPaths=target/sonar/python-coverage.xml", workflow)
+
+    def test_sonar_excludes_python_test_sources_from_coverage(self):
+        workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())
+        exclusions = workspace["workspace"]["metadata"]["sonar"]["sonar.coverage.exclusions"]
+        self.assertIn("scripts/tests/test_check_crate_boundaries.py", exclusions)
 
 
     def test_arch_package_container_mounts_the_repository_root(self):
