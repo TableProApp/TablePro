@@ -406,7 +406,7 @@ impl StructureTab {
         let sender_for_add = sender.clone();
         let parent_box = self.fks_box.clone();
         let driver_id_for_dialog = driver_id.clone();
-        append_add_button(&list, &crate::tr!("Add Foreign Key…"), move || {
+        let add_row = append_add_button(&list, &crate::tr!("Add Foreign Key…"), move || {
             present_fk_dialog(
                 parent_box.upcast_ref(),
                 &columns_for_dialog.borrow(),
@@ -414,6 +414,12 @@ impl StructureTab {
                 sender_for_add.clone(),
             );
         });
+        if !fks::can_add_foreign_key(&driver_id, &self.mode.borrow()) {
+            let reason = crate::tr!("Adding a foreign key to an existing table isn't supported by SQLite.");
+            add_row.set_sensitive(false);
+            add_row.set_subtitle(&reason);
+            add_row.set_tooltip_text(Some(&reason));
+        }
         self.fks_box.append(&list);
     }
 }
@@ -446,11 +452,12 @@ fn clear_box(b: &gtk::Box) {
 /// mutation for Add Column, a dialog launcher for Add Index / Add
 /// Foreign Key) is the only thing that varies between the columns,
 /// indexes, and FKs views.
-fn append_add_button(list: &gtk::ListBox, label: &str, on_activate: impl Fn() + 'static) {
+fn append_add_button(list: &gtk::ListBox, label: &str, on_activate: impl Fn() + 'static) -> adw::ActionRow {
     let row = adw::ActionRow::builder().title(label).activatable(true).build();
     row.add_prefix(&gtk::Image::from_icon_name("list-add-symbolic"));
     row.connect_activated(move |_| on_activate());
     list.append(&row);
+    row
 }
 
 impl SimpleComponent for StructureTab {

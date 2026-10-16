@@ -97,6 +97,7 @@ Right-click a table in the sidebar, then Import CSV. Separately, use the second 
 ## Structure tab, column comments
 
 - [ ] Open an existing Structure tab and make an unsaved change: its title keeps the `· Structure` suffix alongside the dirty marker. The regression test in [#796](https://github.com/cozyGarage/BookiE/pull/796) covers title state; installed Wayland retest pending.
+- [ ] SQLite: create a new table with a foreign key in the Structure tab and save; the table is created with the key. On an existing SQLite table, Add Foreign Key… is greyed out and says SQLite cannot add one to an existing table.
 - [ ] A Comment row appears per column on PostgreSQL, MySQL, SQL Server and ClickHouse. **2026-10-12 Hyprland dark:** PostgreSQL passed; others not run.
 - [ ] On ClickHouse the field is populated but not editable for an existing column, with a tooltip saying why.
 - [ ] No Comment row appears on SQLite or DuckDB.

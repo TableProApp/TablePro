@@ -95,6 +95,19 @@ pub fn build_add_foreign_key(
     fk: &ForeignKeyInfo,
 ) -> Result<String, BuildDdlError> {
     validate_table(table)?;
+    if driver_id == "sqlite" {
+        return Err(BuildDdlError::SqliteNotSupported(
+            "ADD FOREIGN KEY (requires table rebuild)",
+        ));
+    }
+    Ok(format!(
+        "ALTER TABLE {} ADD {}",
+        qualified_table(driver_id, schema, table),
+        foreign_key_clause(driver_id, fk)?
+    ))
+}
+
+pub(super) fn foreign_key_clause(driver_id: &str, fk: &ForeignKeyInfo) -> Result<String, BuildDdlError> {
     if fk.name.trim().is_empty() {
         return Err(BuildDdlError::EmptyForeignKeyName);
     }
@@ -103,10 +116,13 @@ pub fn build_add_foreign_key(
     }
     let cols: Vec<String> = fk.columns.iter().map(|c| quote_ident(driver_id, c)).collect();
     let ref_cols: Vec<String> = fk.ref_columns.iter().map(|c| quote_ident(driver_id, c)).collect();
-    let ref_table = qualified_table(driver_id, fk.ref_schema.as_deref(), &fk.ref_table);
+    let ref_table = if driver_id == "sqlite" {
+        quote_ident(driver_id, &fk.ref_table)
+    } else {
+        qualified_table(driver_id, fk.ref_schema.as_deref(), &fk.ref_table)
+    };
     let mut clauses = vec![format!(
-        "ALTER TABLE {} ADD CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({})",
-        qualified_table(driver_id, schema, table),
+        "CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({})",
         quote_ident(driver_id, &fk.name),
         cols.join(", "),
         ref_table,

@@ -1,7 +1,7 @@
 use crate::query::{ForeignKeyInfo, IndexInfo};
 use crate::sql_dialect::quote_ident;
 
-use super::index_fk::{build_add_foreign_key, build_create_index};
+use super::index_fk::{build_add_foreign_key, build_create_index, foreign_key_clause};
 use super::types::{
     BuildDdlError, DraftColumn, column_comment_statement, qualified_table, render_column_definition, sql_literal,
     validate_table,
@@ -24,21 +24,8 @@ pub fn build_create_table(
     if columns.is_empty() {
         return Err(BuildDdlError::NoColumns);
     }
-    let pk_count = columns.iter().filter(|c| c.primary_key).count();
-    let inline_pk = pk_count == 1;
-
-    let mut col_defs: Vec<String> = Vec::with_capacity(columns.len() + 1);
-    for col in columns {
-        col_defs.push(render_column_definition(driver_id, col, inline_pk)?);
-    }
-    if pk_count > 1 {
-        let pk_cols: Vec<String> = columns
-            .iter()
-            .filter(|c| c.primary_key)
-            .map(|c| quote_ident(driver_id, &c.name))
-            .collect();
-        col_defs.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
-    }
+    let inline_fks = driver_id == "sqlite";
+    let col_defs = table_definitions(driver_id, columns, if inline_fks { fks } else { &[] })?;
 
     let mut out = Vec::with_capacity(1 + indexes.len() + fks.len());
 
@@ -72,11 +59,38 @@ pub fn build_create_table(
         // CREATE TABLE flow self-contained.
         out.push("PRAGMA foreign_keys = ON".into());
     }
-    for fk in fks {
-        out.push(build_add_foreign_key(driver_id, schema, table, fk)?);
+    if !inline_fks {
+        for fk in fks {
+            out.push(build_add_foreign_key(driver_id, schema, table, fk)?);
+        }
     }
 
     Ok(out)
+}
+
+fn table_definitions(
+    driver_id: &str,
+    columns: &[DraftColumn],
+    inline_fks: &[ForeignKeyInfo],
+) -> Result<Vec<String>, BuildDdlError> {
+    let pk_count = columns.iter().filter(|c| c.primary_key).count();
+    let inline_pk = pk_count == 1;
+    let mut col_defs: Vec<String> = Vec::with_capacity(columns.len() + 1 + inline_fks.len());
+    for col in columns {
+        col_defs.push(render_column_definition(driver_id, col, inline_pk)?);
+    }
+    if pk_count > 1 {
+        let pk_cols: Vec<String> = columns
+            .iter()
+            .filter(|c| c.primary_key)
+            .map(|c| quote_ident(driver_id, &c.name))
+            .collect();
+        col_defs.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
+    }
+    for fk in inline_fks {
+        col_defs.push(foreign_key_clause(driver_id, fk)?);
+    }
+    Ok(col_defs)
 }
 
 pub fn build_drop_table(

@@ -6,10 +6,14 @@ use relm4::{ComponentSender, adw, gtk};
 
 use tablepro_core::ForeignKeyInfo;
 
-use super::{StructureTab, StructureTabInput};
+use super::{StructureMode, StructureTab, StructureTabInput};
 
 fn driver_can_drop_foreign_key(driver_id: &str) -> bool {
     !matches!(driver_id, "sqlite")
+}
+
+pub(super) fn can_add_foreign_key(driver_id: &str, mode: &StructureMode) -> bool {
+    driver_id != "sqlite" || matches!(mode, StructureMode::New)
 }
 
 /// Foreign-key row as a native `AdwActionRow`. Subtitle encodes both
@@ -63,4 +67,16 @@ pub(super) fn build_fk_row(
     row.add_suffix(&remove_button);
 
     row
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{StructureMode, can_add_foreign_key};
+
+    #[test]
+    fn sqlite_takes_foreign_keys_only_on_a_new_table() {
+        assert!(can_add_foreign_key("sqlite", &StructureMode::New));
+        assert!(!can_add_foreign_key("sqlite", &StructureMode::Edit));
+        assert!(can_add_foreign_key("postgres", &StructureMode::Edit));
+    }
 }

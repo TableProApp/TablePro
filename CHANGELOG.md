@@ -126,6 +126,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 
 ### Fixed
 - Structure column expanders now point right when collapsed and down when open.
+- Creating a SQLite table with a foreign key in the Structure tab failed; the key is now declared with the table, and Add Foreign Key is unavailable on existing SQLite tables, which cannot take one.
 - A read-only query that failed, hit its row limit or lost its connection no longer blocks saving changes until the next reconnect.
 
 - PostgreSQL completion keeps quoted case, dots, spaces and embedded quotes distinct when loading table columns.

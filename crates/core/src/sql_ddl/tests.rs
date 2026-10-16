@@ -166,7 +166,7 @@ fn create_table_with_foreign_key() {
 }
 
 #[test]
-fn create_table_sqlite_emits_pragma_for_fk() {
+fn create_table_sqlite_declares_foreign_keys_inline() {
     let cols = vec![nn(pk(dc("id", "INTEGER"))), nn(dc("user_id", "INTEGER"))];
     let fk = ForeignKeyInfo {
         name: "fk_user".into(),
@@ -178,8 +178,14 @@ fn create_table_sqlite_emits_pragma_for_fk() {
         on_update: None,
     };
     let stmts = build_create_table("sqlite", None, "orders", &cols, &[], &[fk]).unwrap();
-    assert_eq!(stmts.len(), 3);
+    assert_eq!(stmts.len(), 2);
+    assert!(
+        stmts[0].contains("CONSTRAINT \"fk_user\" FOREIGN KEY (\"user_id\") REFERENCES \"users\" (\"id\")"),
+        "{}",
+        stmts[0]
+    );
     assert_eq!(stmts[1], "PRAGMA foreign_keys = ON");
+    assert!(stmts.iter().all(|statement| !statement.contains("ADD CONSTRAINT")));
 }
 
 #[test]
