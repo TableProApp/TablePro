@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tablepro 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/TableProApp/TablePro/issues\n"
-"POT-Creation-Date: 2026-10-16 15:28+0000\n"
+"POT-Creation-Date: 2026-10-16 15:34+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -23,6 +23,10 @@ msgstr ""
 msgid "translator-credits"
 msgstr ""
 
+#: crates/app/src/application/imp.rs
+msgid "Open a new window"
+msgstr ""
+
 #: crates/app/src/i18n.rs crates/app/src/ui/export/export_scope.rs
 #: crates/app/src/ui/history_dialog/history_formatting.rs
 #: crates/app/src/ui/result_pane/mod.rs
@@ -32,17 +36,175 @@ msgid_plural "{n} rows"
 msgstr[0] ""
 msgstr[1] ""
 
+#: crates/app/src/services/deletion_error.rs
+#: crates/app/src/ui/session_window/connections.rs
+msgid "The stored passwords could not be deleted, so the connection was kept."
+msgstr ""
+
+#: crates/app/src/services/deletion_error.rs
+#, rust-format
+msgid ""
+"“{name}” is still listed, but its stored passwords were deleted. Connecting "
+"will ask for them."
+msgstr ""
+
+#: crates/app/src/services/deletion_error.rs
+#, rust-format
+msgid "“{name}” could not be deleted"
+msgstr ""
+
+#: crates/app/src/services/deletion_report.rs
+#, rust-format
+msgid ""
+"“{name}” was deleted, but some saved tabs or settings could not be removed"
+msgstr ""
+
+#: crates/app/src/services/deletion_report.rs
+#, rust-format
+msgid ""
+"“{name}” was deleted, but some of what was stored for it could not be removed"
+msgstr ""
+
+#: crates/app/src/services/deletion_report.rs
+#, rust-format
+msgid ""
+"“{name}” was deleted, but its saved queries and query history could not be "
+"removed"
+msgstr ""
+
+#: crates/app/src/services/deletion_report.rs
+#, rust-format
+msgid "“{name}” was deleted, but its saved queries could not be removed"
+msgstr ""
+
+#: crates/app/src/services/deletion_report.rs
+#, rust-format
+msgid "“{name}” was deleted, but its query history could not be removed"
+msgstr ""
+
+#: crates/app/src/services/duplicate_name.rs
+#, rust-format
+msgid "{name} (Copy)"
+msgstr ""
+
+#: crates/app/src/services/duplicate_name.rs
+#, rust-format
+msgid "{name} (Copy {n})"
+msgstr ""
+
+#: crates/app/src/services/secret_labels.rs
+#, rust-format
+msgid "TablePro database password for {target}"
+msgstr ""
+
+#: crates/app/src/services/secret_labels.rs
+#, rust-format
+msgid "TablePro SSH password for {target}"
+msgstr ""
+
+#: crates/app/src/services/secret_labels.rs
+#, rust-format
+msgid "TablePro SSH key passphrase for {target}"
+msgstr ""
+
+#: crates/app/src/services/secret_save_report.rs
+#, rust-format
+msgid "Password not saved in the keyring: {reason}"
+msgstr ""
+
 #: crates/app/src/ui/browse_tab/browse_actions.rs
-#: data/resources/shortcuts-dialog.ui
+#: crates/app/src/ui/browse_tab/edit_handlers.rs
+#: crates/app/src/ui/grid/grid_menus.rs data/resources/shortcuts-dialog.ui
 msgid "Insert Row"
 msgstr ""
 
 #: crates/app/src/ui/browse_tab/browse_actions.rs
+#: crates/app/src/ui/browse_tab/selection_handlers.rs
 msgid "Delete Selected Rows"
 msgstr ""
 
 #: crates/app/src/ui/browse_tab/browse_actions.rs
 msgid "Export Rows…"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/clipboard_handlers.rs
+#: crates/app/src/ui/editor/mod.rs
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+#: crates/app/src/ui/workspace/import.rs
+msgid "Connect to a database first."
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/clipboard_handlers.rs
+msgid "Pasting rows isn't supported yet"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/clipboard_handlers.rs
+msgid "Nothing to export"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/count_failure_text.rs
+#, rust-format
+msgid "Counting took longer than {seconds} second and was stopped."
+msgid_plural "Counting took longer than {seconds} seconds and was stopped."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/browse_tab/edit_handlers.rs
+msgid "This cell can't take the column's default"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/edit_handlers.rs
+msgid "This row is being saved. Change it again once the save finishes."
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/edit_handlers.rs
+msgid "This table has no primary key, so editing is turned off."
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/edit_handlers.rs
+#, rust-format
+msgid "Delete {n} Row?"
+msgid_plural "Delete {n} Rows?"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/browse_tab/edit_handlers.rs
+#: crates/app/src/ui/credential_prompt/prompt_form.rs
+#: crates/app/src/ui/delete_connection_dialog.rs
+#: crates/app/src/ui/editor/mod.rs crates/app/src/ui/grid/multiline_editor.rs
+#: crates/app/src/ui/history_dialog/mod.rs crates/app/src/ui/host_key_review.rs
+#: crates/app/src/ui/picker/new_group_dialog.rs
+#: crates/app/src/ui/preferences_dialog/history_group.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
+#: crates/app/src/ui/session_window/connections.rs
+#: crates/app/src/ui/workspace/status_pages.rs
+#: crates/app/src/ui/workspace/structure.rs
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+#: data/resources/ui/connecting-page.ui
+msgid "Cancel"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/edit_handlers.rs
+#: crates/app/src/ui/delete_connection_dialog.rs
+#: crates/app/src/ui/grid/grid_menus.rs crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
+#: data/resources/ui/history-dialog.ui data/resources/ui/history-row.ui
+msgid "Delete"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/edit_handlers.rs
+msgid ""
+"The table's primary key changed, so no rows were marked for deletion. Select "
+"them again."
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/mod.rs
+#, rust-format
+msgid "Fetching rows from {table}"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/page_label.rs
+msgid "No rows on this page"
 msgstr ""
 
 #: crates/app/src/ui/browse_tab/pager_bar.rs
@@ -76,6 +238,78 @@ msgstr ""
 
 #: crates/app/src/ui/browse_tab/pager_bar.rs data/resources/shortcuts-dialog.ui
 msgid "Next Page"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/paging_handlers.rs
+#: data/resources/shortcuts-dialog.ui data/resources/ui/browse-tab.ui
+msgid "Filter Rows"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/paging_handlers.rs
+#, rust-format
+msgid "{n} Filter Rule Active"
+msgid_plural "{n} Filter Rules Active"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/browse_tab/pending_changes_bar.rs
+msgid "1 unsaved change"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/pending_changes_bar.rs
+#, rust-format
+msgid "{n} unsaved change"
+msgid_plural "{n} unsaved changes"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/browse_tab/row_deletion.rs
+msgid ""
+"These rows will be marked for deletion. They aren't removed until you click "
+"Save."
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/row_deletion.rs
+msgid ""
+"These rows were never saved. They're removed now, and Undo won't bring them "
+"back."
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/row_deletion.rs
+msgid ""
+"Saved rows will be marked for deletion and aren't removed until you click "
+"Save. Rows never saved are removed now, and Undo won't bring them back."
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/row_total.rs
+#, rust-format
+msgid "Rows {start} – {end} of {total}"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/row_total.rs
+#, rust-format
+msgid "Rows {start} – {end} of about {total}"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/row_total.rs
+#, rust-format
+msgid "Rows {start} – {end}"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/save_handlers.rs
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+msgid "Save Failed"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/save_handlers.rs
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+#: crates/app/src/workspace/unknown_outcome_dialog.rs
+msgid "Save Result Unknown"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/selection_handlers.rs
+#, rust-format
+msgid "{n} selected · press Delete to remove"
 msgstr ""
 
 #: crates/app/src/ui/clipboard/clipboard_copy.rs
@@ -127,8 +361,1033 @@ msgstr ""
 msgid "Nothing to copy: an IN clause can't carry NULL or binary values"
 msgstr ""
 
-#: crates/app/src/ui/editor/tests.rs
+#: crates/app/src/ui/clipboard/clipboard_writer.rs
+msgid "Values with a NUL character can't be copied"
+msgstr ""
+
+#: crates/app/src/ui/clipboard/clipboard_writer.rs
+msgid "Couldn't copy to the clipboard"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/connect_form.rs
+msgid "Choose a database file, or create a new one."
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/connect_form.rs
+msgid "Enter the username to log in with."
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+#: crates/app/src/ui/grid/multiline_editor.rs
+#: crates/app/src/ui/workspace/status_pages.rs
+#: data/resources/ui/pending-changes-bar.ui data/resources/ui/structure-tab.ui
+msgid "Save"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+msgid "Leave password fields empty to keep the saved passwords."
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/mod.rs data/resources/ui/connect-dialog.ui
+msgid "Database"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+msgid "Database (optional)"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+msgid "Edit Connection"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+#, rust-format
+msgid "Connect to {name}"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+msgid "Checking the certificate files…"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+msgid "No driver selected"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/mod.rs data/resources/ui/sql-editor.ui
+msgid "Stop"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+msgid "Stop the Test"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+msgid "Connection works"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/mod.rs data/resources/ui/connect-dialog.ui
+msgid "Test"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/mod.rs data/resources/ui/connect-dialog.ui
+msgid "Connect Once to Check the Settings"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+#: crates/app/src/ui/credential_prompt/prompt_form.rs
+#: crates/app/src/ui/ssh_inputs.rs data/resources/ui/connect-dialog.ui
+#: data/resources/ui/ssh-section.ui
+msgid "Password"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/mod.rs
+msgid "Windows (Kerberos)"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/read_only_row.rs
+msgid "The database refuses changes on this connection."
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/read_only_row.rs
+msgid ""
+"Changes are refused unless a statement turns read-only off. Use a read-only "
+"login for a guarantee."
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/read_only_row.rs
+msgid "SQL Server cannot enforce this. Use a login granted only SELECT."
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/sqlite_file_row.rs
+msgid "Open Database File"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/sqlite_file_row.rs
+msgid "New Database File"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/sqlite_file_row.rs
+#: data/resources/ui/sqlite-file-row.ui
+msgid "No file chosen"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/sqlite_file_row.rs
+#, rust-format
+msgid "{path}, created when you connect"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/sqlite_file_row.rs
+msgid "SQLite databases"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/sqlite_file_row.rs
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+#: crates/app/src/ui/ssh_section.rs
+msgid "All files"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+msgid "The system's certificate authorities"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+#: crates/app/src/ui/structure_tab/table_choice_object.rs
+msgid "None"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+#: data/resources/ui/tls-section.ui
+msgid "Choose CA Certificate"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+#: data/resources/ui/tls-section.ui
+msgid "Choose Client Certificate"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+#: data/resources/ui/tls-section.ui
+msgid "Choose Client Key"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+msgid "Disable"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+msgid "Require"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+msgid "Verify full"
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+msgid "Not encrypted. Anyone on the network can read the traffic."
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+msgid "Encrypted. The server certificate is not checked."
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+msgid "Encrypted. The certificate must be valid for the server name."
+msgstr ""
+
+#: crates/app/src/ui/connect_dialog/tls_section.rs
+msgid "PEM certificates and keys"
+msgstr ""
+
+#: crates/app/src/ui/connection_list_banner.rs
+msgid "Reset…"
+msgstr ""
+
+#: crates/app/src/ui/connection_list_banner.rs
+msgid "Saved connections were created by a newer version of TablePro"
+msgstr ""
+
+#: crates/app/src/ui/connection_list_banner.rs
+msgid "Saved connections could not be read"
+msgstr ""
+
+#: crates/app/src/ui/connection_list_banner.rs
+#, rust-format
+msgid "Saved connections were reset. The old file is {name}."
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_form.rs
+#: data/resources/ui/ssh-section.ui
+msgid "Passphrase"
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "Password Required"
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#, rust-format
+msgid "Enter the database password for {target}."
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#: crates/app/src/ui/host_key_review.rs
+#: crates/app/src/ui/picker/connection_menu.rs
+#: data/resources/ui/connect-dialog.ui
+msgid "Connect"
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#, rust-format
+msgid "Enter the SSH password for {target}."
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "Passphrase Required"
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#, rust-format
+msgid "Enter the passphrase for the SSH key {path}."
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "Authentication Required"
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#, rust-format
+msgid "The SSH server {target} asks for more."
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "Continue"
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#, rust-format
+msgid "Trust {host}?"
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#, rust-format
+msgid ""
+"This is the first connection to {host}. Its {algorithm} key fingerprint is "
+"{fingerprint}. Connect only if it matches the fingerprint the server's "
+"administrator gave you."
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#: crates/app/src/ui/host_key_review.rs
+msgid "Trust and Connect"
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "Remember Passphrase"
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+#: data/resources/ui/connect-dialog.ui
+msgid "Remember Password"
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "No password is saved for this connection."
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "The keyring is locked, so the saved one could not be read."
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "No keyring is available, so it cannot be read or saved."
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "The server refused the one it was given."
+msgstr ""
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
+#, rust-format
+msgid "Delete “{name}”?"
+msgstr ""
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+msgid ""
+"The connection, its stored passwords and its saved queries will be removed. "
+"This cannot be undone."
+msgstr ""
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+msgid "Delete Query History"
+msgstr ""
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+msgid "No queries were run on this connection"
+msgstr ""
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+#, rust-format
+msgid "Removes {n} query run on this connection"
+msgid_plural "Removes {n} queries run on this connection"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+msgid "The query history is not available"
+msgstr ""
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+#, rust-format
+msgid "“{name}” Is Open"
+msgstr ""
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+msgid "Disconnect it or close its window, then delete it."
+msgstr ""
+
+#: crates/app/src/ui/delete_connection_dialog.rs
+msgid "Show Window"
+msgstr ""
+
+#: crates/app/src/ui/editor/completion/sql_completion_provider_imp.rs
+msgctxt "completion group"
+msgid "Database"
+msgstr ""
+
+#: crates/app/src/ui/editor/editor_session_slot.rs
+#, rust-format
+msgid "Could not open a connection for this editor: {error}"
+msgstr ""
+
+#: crates/app/src/ui/editor/find_bar.rs data/resources/shortcuts-dialog.ui
+msgid "Previous Match"
+msgstr ""
+
+#: crates/app/src/ui/editor/find_bar.rs data/resources/shortcuts-dialog.ui
+msgid "Next Match"
+msgstr ""
+
+#: crates/app/src/ui/editor/find_bar.rs
+msgid "Search Options"
+msgstr ""
+
+#: crates/app/src/ui/editor/find_bar.rs data/resources/shortcuts-dialog.ui
+msgid "Find and Replace"
+msgstr ""
+
+#: crates/app/src/ui/editor/find_bar.rs
+#, rust-format
+msgid "Replaced {count} occurrence"
+msgid_plural "Replaced {count} occurrences"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/editor/find_state.rs
+msgid "No results"
+msgstr ""
+
+#: crates/app/src/ui/editor/find_state.rs
+#, rust-format
+msgid "{position} of {count}"
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "Query replaced"
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "There is nothing to run."
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "No statement at the cursor."
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "Connect to a database to run a query."
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "Running…"
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs
+msgctxt "completion group"
+msgid "Document"
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "Replace the Editor Contents?"
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs
+msgid ""
+"The file is loaded into this tab, and what is written here now is replaced. "
+"Undo brings it back."
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs data/resources/ui/find-bar.ui
+msgid "Replace"
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs
+#: crates/app/src/ui/history_dialog/history_export.rs
+msgid "SQL files"
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "Open SQL File"
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs
+#, rust-format
+msgid "Ln {line}, Col {column}"
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "Run Selection"
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs
+msgid "Run the Selected Text"
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs data/resources/ui/sql-editor.ui
+msgid "Run"
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs data/resources/ui/sql-editor.ui
+msgid "Run the Script"
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs crates/app/src/ui/editor/tests.rs
 msgid "query-results"
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs
+#: crates/app/src/ui/history_dialog/history_formatting.rs
+msgid "Empty Query"
+msgstr ""
+
+#: crates/app/src/ui/editor/result_widgets.rs
+#: crates/app/src/ui/editor/results_pane.rs
+#, rust-format
+msgid "{n} Row Affected"
+msgid_plural "{n} Rows Affected"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/editor/result_widgets.rs
+#: crates/app/src/ui/editor/results_pane.rs
+msgid "Command Completed"
+msgstr ""
+
+#: crates/app/src/ui/editor/result_widgets.rs
+#: crates/app/src/ui/editor/results_pane.rs
+msgid "Notice"
+msgstr ""
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid "Statement Failed"
+msgstr ""
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid "Go to Error"
+msgstr ""
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid "Check the Script"
+msgstr ""
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid "Query Stopped"
+msgstr ""
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid "The running query was stopped."
+msgstr ""
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid ""
+"The statement ran past the time limit set in Preferences, so the server "
+"stopped it."
+msgstr ""
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid ""
+"The statement ran past the time limit set in Preferences. The server may "
+"still be running it."
+msgstr ""
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid "Query Timed Out"
+msgstr ""
+
+#: crates/app/src/ui/editor/result_widgets.rs
+#: crates/app/src/ui/editor/results_pane.rs
+msgid "Not Run"
+msgstr ""
+
+#: crates/app/src/ui/editor/result_widgets.rs
+msgid "Skipped because an earlier statement failed or the run was stopped."
+msgstr ""
+
+#: crates/app/src/ui/editor/results_pane.rs
+msgid "Error"
+msgstr ""
+
+#: crates/app/src/ui/editor/results_pane.rs
+msgid "Warning"
+msgstr ""
+
+#: crates/app/src/ui/editor/results_pane.rs
+msgid "Stopped"
+msgstr ""
+
+#: crates/app/src/ui/editor/results_pane.rs
+msgid "Timed Out"
+msgstr ""
+
+#: crates/app/src/ui/editor/run_history.rs
+msgid "The statement ran past the time limit set in Preferences."
+msgstr ""
+
+#: crates/app/src/ui/editor/run_log.rs
+#, rust-format
+msgid "{error} This tab's connection was lost; the next run opens a new one."
+msgstr ""
+
+#: crates/app/src/ui/editor/run_log.rs
+#, rust-format
+msgid "{n} result in {ms} ms"
+msgid_plural "{n} results in {ms} ms"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/editor/run_log.rs
+#, rust-format
+msgid "{n} failed"
+msgid_plural "{n} failed"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/editor/sql_file.rs
+msgid "Only regular files can be opened in the editor."
+msgstr ""
+
+#: crates/app/src/ui/editor/sql_file.rs
+msgid "That file is too large to open in the editor."
+msgstr ""
+
+#: crates/app/src/ui/editor/sql_file.rs
+msgid "That file is not UTF-8 text."
+msgstr ""
+
+#: crates/app/src/ui/editor/sql_file.rs
+#: crates/app/src/ui/session_window/connections.rs
+#: crates/app/src/ui/workspace/import.rs
+msgid "That file could not be read."
+msgstr ""
+
+#: crates/app/src/ui/editor/transaction_dirty.rs
+msgid "Transaction open"
+msgstr ""
+
+#: crates/app/src/ui/editor/transaction_dirty.rs
+msgid "Transaction failed, roll back to continue"
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "This database can't make this change."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid ""
+"This column is part of the table's sorting or partition key, which only "
+"rebuilding the table can change."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "The database computes this column."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "The database numbers this column, so it has no default."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "Only an integer column can number itself."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid ""
+"The database numbers this column while it is the table's integer primary "
+"key. Change its type or the primary key to stop it."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "This column has an attribute TablePro can't restate: {attribute}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Still used by {users}."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Foreign keys on other tables depend on it: {keys}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "The database didn't report this column's full definition."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "This column's {attribute} doesn't allow this change."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid ""
+"Its definition names column {column}, which this save renames. Save the "
+"rename on its own first."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "Table name is required."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "At least one column is required."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "Every column needs a name."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Duplicate column name: {name}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Column {name} needs a type."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Primary key columns must be NOT NULL: {name}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Column {column} is removed but {users} still use it. Remove them first."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#: crates/app/src/ui/structure_tab/index_draft.rs
+msgid "Index name is required."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Index {name} has no columns."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#: crates/app/src/ui/structure_tab/foreign_key_draft.rs
+msgid "Foreign key name is required."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Foreign key {name} needs as many referenced columns as source columns."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "Fix the highlighted fields first."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Column {column} can't be changed this way. {reason}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid ""
+"A NOT NULL column needs a default here, since the rows already in the table "
+"need a value."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "Column {column} has a type this database doesn't accept: {error}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "The default of column {column} can't be written as SQL: {error}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "The database didn't report the type of column {column}."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid "This database doesn't take {action} on a foreign key."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid "The database gave no CREATE statement for this table."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+#, rust-format
+msgid ""
+"The table can't be rebuilt: the stored statement of {name}, which uses it, "
+"can't be run again."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ddl.rs
+msgid ""
+"The changes were edited or the connection changed during the review, so "
+"nothing was saved. Save again to review them."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The secure connection failed."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The server refused the request."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#: crates/app/src/ui/error_text/operation.rs
+msgid "Stopped."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The connection was closed. Try reconnecting."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"This tab is still running a statement. Stop it or wait for it to finish."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"The server has no room for another connection right now. Try again shortly."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "This database has no {feature}."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The connection settings cannot be used."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "Enter the server's host name."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The host name has spaces or control characters in it."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The port must be a number from 1 to 65535."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "Use a full path, starting with /."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "This database does not offer that TLS mode."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "A CA certificate needs TLS turned on and a database that accepts one."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"A client certificate needs TLS turned on and a database that accepts one."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "A client certificate needs both its certificate file and its key file."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "The CA certificate {path} cannot be used: {problem}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "The client certificate {path} cannot be used: {problem}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The TLS server name is not a valid host name or IP address."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"This database cannot check the certificate against another server name here."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "This database does not support that way of logging in."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "Enter the name of the database to open."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "{host}:{port} refused the connection. Is the database running?"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "Could not look up {host}."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "Could not reach {host}:{port}."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The server could not be reached."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "Username or password is wrong. The server said: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid ""
+"Kerberos login failed: {detail}. Check that klist shows a valid ticket, run "
+"kinit if it does not, and make sure the server's SPN matches the host you "
+"typed."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "Username or password is wrong."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "The server refused the write: {message}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"This connection is read-only. Reopen it without read-only mode to make "
+"changes."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "Query failed ({code}): {message}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "Query failed: {message}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "Hint: {hint}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "SQLSTATE {code}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "MySQL error {code}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "SQL Server error {code}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "ClickHouse code {code}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "SQLite error {code}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The server took too long to answer."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The server did not answer the connection in time."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The server did not finish the login in time."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The SSH server did not finish the handshake in time."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The SSH server did not open the tunnel to the database in time."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"Another session holds a lock this needs. Try again when it has finished."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The statement ran past its time limit, so the server stopped it."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The server did not answer a check in time."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid ""
+"Save failed at statement {n}: {error}. The transaction was rolled back; no "
+"rows were changed."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid ""
+"The save matched {actual} rows where it expected {expected}, so the row is "
+"not the one that was loaded. Nothing was changed; reload and try again."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid ""
+"{applied} of the save's statements were applied before statement {n} failed, "
+"and this database has no transaction to undo them. Reload to see what the "
+"server has."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"The connection was lost after the save was sent, so whether it was applied "
+"is not known. Reload to see what the server has."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "No database file at {path}."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "No permission to open {path}."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "{path} is not a database file."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "Could not write {path}: {reason}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The database file cannot be used."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"This database does not report how many rows a statement changed, so the save "
+"cannot be checked. Use a table with a primary key."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "Could not read column {column}: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "The driver could not read the server's reply: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid "The driver hit an internal error."
 msgstr ""
 
 #: crates/app/src/ui/error_text/edit.rs
@@ -236,6 +1495,293 @@ msgstr ""
 
 #: crates/app/src/ui/error_text/edit.rs
 msgid "Values whose type changes by row can't be edited here"
+msgstr ""
+
+#: crates/app/src/ui/error_text/operation.rs
+#, rust-format
+msgid "TablePro hit an internal error: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/operation.rs
+msgid "The connection is closed."
+msgstr ""
+
+#: crates/app/src/ui/error_text/operation.rs
+msgid ""
+"No password is saved for this connection, and none was entered. Connect "
+"again to type it."
+msgstr ""
+
+#: crates/app/src/ui/error_text/operation.rs
+#, rust-format
+msgid "This build of TablePro has no {driver} driver."
+msgstr ""
+
+#: crates/app/src/ui/error_text/operation.rs
+msgid "The connection was cancelled."
+msgstr ""
+
+#: crates/app/src/ui/error_text/operation.rs
+#, rust-format
+msgid "This change cannot be saved: {reason}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/operation.rs
+#, rust-format
+msgid "This filter cannot be applied: {reason}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/operation.rs
+#, rust-format
+msgid "This structure change cannot be written: {reason}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/operation.rs
+#, rust-format
+msgid "This page of the table cannot be read: {reason}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/operation.rs
+msgid ""
+"Rows in this table cannot be edited, because nothing identifies a single "
+"row. Add a primary key to edit them."
+msgstr ""
+
+#: crates/app/src/ui/error_text/operation.rs
+msgid "No changes to save."
+msgstr ""
+
+#: crates/app/src/ui/error_text/operation.rs
+msgid ""
+"Part of this row's key could not be read from the server, so the row cannot "
+"be changed."
+msgstr ""
+
+#: crates/app/src/ui/error_text/saved_connection.rs
+#: crates/app/src/ui/session_window/connections.rs
+#: crates/app/src/ui/session_window/locate_file.rs
+#: crates/app/src/ui/session_window/mod.rs
+#: crates/app/src/ui/session_window/session_restore.rs
+msgid "The connection was deleted."
+msgstr ""
+
+#: crates/app/src/ui/error_text/saved_connection.rs
+msgid "The saved connections could not be read, so nothing was changed."
+msgstr ""
+
+#: crates/app/src/ui/error_text/saved_connection.rs
+#, rust-format
+msgid "The saved connections could not be written: {reason}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/script.rs
+#, rust-format
+msgid ""
+"The string starting on line {line} is never closed. It is sent as written."
+msgstr ""
+
+#: crates/app/src/ui/error_text/script.rs
+#, rust-format
+msgid ""
+"The quoted name starting on line {line} is never closed. It is sent as "
+"written."
+msgstr ""
+
+#: crates/app/src/ui/error_text/script.rs
+#, rust-format
+msgid ""
+"The comment starting on line {line} is never closed. It is sent as written."
+msgstr ""
+
+#: crates/app/src/ui/error_text/script.rs
+#, rust-format
+msgid ""
+"The dollar-quoted string starting on line {line} is never closed. It is sent "
+"as written."
+msgstr ""
+
+#: crates/app/src/ui/error_text/secret.rs
+msgid ""
+"No keyring is running, so saved passwords cannot be read. Start a keyring, "
+"or enter the password by hand."
+msgstr ""
+
+#: crates/app/src/ui/error_text/secret.rs
+msgid ""
+"The secret portal is unavailable, so saved passwords cannot be read inside "
+"the sandbox."
+msgstr ""
+
+#: crates/app/src/ui/error_text/secret.rs
+msgid "The keyring is locked. Unlock it and try again."
+msgstr ""
+
+#: crates/app/src/ui/error_text/secret.rs
+msgid "The keyring stayed locked because the unlock prompt was dismissed."
+msgstr ""
+
+#: crates/app/src/ui/error_text/secret.rs
+msgid "The stored password is not readable text. Enter it again to replace it."
+msgstr ""
+
+#: crates/app/src/ui/error_text/secret.rs
+#, rust-format
+msgid "The keyring reported: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid ""
+"The OpenSSH client {program} is not installed. Install openssh-client to "
+"connect over SSH."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid ""
+"TablePro's SSH helper is missing at {program}. Reinstall TablePro to connect "
+"over SSH."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "The SSH host or jump host is not valid: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid ""
+"ssh refused the configuration. Check ~/.ssh/config for this host: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid ""
+"The runtime directory path is too long for an SSH control socket. Use a "
+"shorter XDG_RUNTIME_DIR."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "The SSH runtime directory {path} cannot be used safely: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "The host key of {host} was not trusted, so the connection was not made."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid ""
+"{host} is not in known_hosts (key {fingerprint}). Connect once to review and "
+"trust its key."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid ""
+"The host key of {host} changed since it was trusted ({file}, line {line}). "
+"This can mean someone is intercepting the connection; check with the "
+"server's administrator before removing the old key."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "The host key of {host} is revoked, so the connection was refused."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid ""
+"The SSH server {host} refused the login for {user}. Check the key, the agent "
+"or the password."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+msgid "The SSH login was cancelled."
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "The SSH server would not forward to {target}: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "The SSH server could not reach {target}: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "The SSH connection ended: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "ssh printed something unexpected: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/ssh.rs
+#, rust-format
+msgid "SSH failed: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid ""
+"The server's certificate was signed by an authority this machine does not "
+"know. Choose a CA certificate for this connection."
+msgstr ""
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid ""
+"The server's certificate is for a different name. Set the TLS server name to "
+"the one on the certificate."
+msgstr ""
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid "The server's certificate has expired."
+msgstr ""
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid "The server's certificate is not valid yet."
+msgstr ""
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid "The server's certificate was revoked."
+msgstr ""
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid "The server does not accept TLS on this port."
+msgstr ""
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid "The server requires TLS. Turn TLS on for this connection."
+msgstr ""
+
+#: crates/app/src/ui/error_text/tls.rs
+#, rust-format
+msgid "The server ended the secure handshake: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid "The chosen CA certificate file could not be read."
+msgstr ""
+
+#: crates/app/src/ui/error_text/tls.rs
+msgid "The client certificate or key could not be read."
+msgstr ""
+
+#: crates/app/src/ui/error_text/tls.rs
+#, rust-format
+msgid "TLS failed: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/tls_remedy.rs
+msgid "Choose CA Certificate…"
+msgstr ""
+
+#: crates/app/src/ui/error_text/tls_remedy.rs
+msgid "Set TLS Server Name"
 msgstr ""
 
 #: crates/app/src/ui/export/export_failure_text.rs
@@ -360,6 +1906,7 @@ msgstr ""
 
 #: crates/app/src/ui/export/export_failure_text.rs
 #: crates/app/src/ui/history_dialog/history_export.rs
+#: crates/app/src/workspace/close_guard.rs
 msgid "_Close"
 msgstr ""
 
@@ -440,10 +1987,198 @@ msgid ""
 "CSV instead."
 msgstr ""
 
+#: crates/app/src/ui/export_dialog.rs
+msgid "Convert NULL to Empty"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+msgid "Convert Line Breaks to Spaces"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+msgid "Put Field Names in the First Row"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+msgid "Sanitize Formula-Like Values"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+msgid ""
+"Prefix values starting with =, +, - or @ so spreadsheets do not run them"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs crates/app/src/ui/import_dialog.rs
+msgid "Delimiter"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+msgid "Comma (,)"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+msgid "Semicolon (;)"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs crates/app/src/ui/import_dialog.rs
+msgid "Tab"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+msgid "Pipe (|)"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+msgid "Quote"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+msgid "Always"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+msgid "Quote if needed"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+msgid "Never"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+msgid "Line break"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+msgid "Decimal separator"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+msgid "Period (.)"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+msgid "CSV Options"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs crates/app/src/ui/grid/grid_menus.rs
+msgid "Rows"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs data/resources/ui/sql-editor.ui
+msgid "Format"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs crates/app/src/ui/grid/grid_menus.rs
+msgid "Export…"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+msgid "Reset to Defaults"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+msgid "Export Rows"
+msgstr ""
+
+#: crates/app/src/ui/export_dialog.rs
+#, rust-format
+msgid "{format} files"
+msgstr ""
+
 #: crates/app/src/ui/file_reveal/reveal_failure_toast.rs
 msgid "Could not show the file in Files"
 msgstr ""
 
+#: crates/app/src/ui/filter_strip/imp.rs crates/app/src/ui/host_key_review.rs
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid "Close"
+msgstr ""
+
+#: crates/app/src/ui/filter_strip/rule_row.rs
+msgid "Remove Rule"
+msgstr ""
+
+#: crates/app/src/ui/filter_strip/rule_value_editor.rs
+msgid "Value"
+msgstr ""
+
+#: crates/app/src/ui/filter_strip/rule_value_editor.rs
+msgid "From"
+msgstr ""
+
+#: crates/app/src/ui/filter_strip/rule_value_editor.rs
+msgid "To"
+msgstr ""
+
+#: crates/app/src/ui/filter_strip/rule_value_editor.rs
+msgid "a, b, c"
+msgstr ""
+
+#: crates/app/src/ui/grid/calendar_editor.rs
+msgid "Type a Value"
+msgstr ""
+
+#: crates/app/src/ui/grid/cell_accessibility.rs
+msgid "Modified, NULL value"
+msgstr ""
+
+#: crates/app/src/ui/grid/cell_accessibility.rs
+msgid "Modified"
+msgstr ""
+
+#: crates/app/src/ui/grid/cell_accessibility.rs
+msgid "NULL value"
+msgstr ""
+
+#: crates/app/src/ui/grid/cell_accessibility.rs
+msgid "New row"
+msgstr ""
+
+#: crates/app/src/ui/grid/cell_accessibility.rs
+msgid "Marked for deletion"
+msgstr ""
+
+#: crates/app/src/ui/grid/cell_accessibility.rs
+msgid "Not saved"
+msgstr ""
+
+#: crates/app/src/ui/grid/cell_edit.rs
+msgid "Values with a NUL character can't be edited here"
+msgstr ""
+
+#: crates/app/src/ui/grid/cell_tooltip.rs
+msgid "Use Show Row as JSON to see the full value"
+msgstr ""
+
+#: crates/app/src/ui/grid/delete_availability.rs
+msgid "Rows without a primary key or unique key can't be deleted here"
+msgstr ""
+
+#: crates/app/src/ui/grid/delete_availability.rs
+msgid "This connection is read-only"
+msgstr ""
+
+#: crates/app/src/ui/grid/display_text.rs
+msgid "<NULL>"
+msgstr ""
+
+#: crates/app/src/ui/grid/display_text.rs
+msgid "(auto)"
+msgstr ""
+
+#: crates/app/src/ui/grid/display_text.rs
+#, rust-format
+msgid "<{count} byte>"
+msgid_plural "<{count} bytes>"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/grid/display_text.rs
+#, rust-format
+msgid "<unreadable {type}>"
+msgstr ""
+
+#: crates/app/src/ui/grid/display_text.rs
 #: crates/app/src/ui/grid/row_json_dialog.rs
 #, rust-format
 msgid "… ({count} more byte)"
@@ -451,15 +2186,90 @@ msgid_plural "… ({count} more bytes)"
 msgstr[0] ""
 msgstr[1] ""
 
+#: crates/app/src/ui/grid/edit_commit.rs
+msgid "Required"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Edit Cell"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Set to Empty"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Set to NULL"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Set to DEFAULT"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "With Headers"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "JSON"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "CSV"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "CSV With Headers"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Markdown"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "IN Clause"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "INSERT Statement"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+#: crates/app/src/ui/grid/row_json_dialog.rs
+msgid "Copy"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Copy As"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Copy Column Name"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Show Row as JSON"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Duplicate"
+msgstr ""
+
+#: crates/app/src/ui/grid/row_json_dialog.rs
+msgid "Long values are shortened here. Copy includes them in full."
+msgstr ""
+
+#: crates/app/src/ui/grid/row_json_dialog.rs
+msgid "Row as JSON"
+msgstr ""
+
 #: crates/app/src/ui/history_dialog/connection_filter.rs
 msgid "All Connections"
 msgstr ""
 
 #: crates/app/src/ui/history_dialog/history_export.rs
-msgid "SQL files"
-msgstr ""
-
-#: crates/app/src/ui/history_dialog/history_export.rs
+#: crates/app/src/ui/workspace/import.rs
 msgid "CSV files"
 msgstr ""
 
@@ -521,10 +2331,6 @@ msgstr ""
 
 #: crates/app/src/ui/history_dialog/history_filters.rs
 msgid "Time window"
-msgstr ""
-
-#: crates/app/src/ui/history_dialog/history_formatting.rs
-msgid "Empty Query"
 msgstr ""
 
 #: crates/app/src/ui/history_dialog/history_formatting.rs
@@ -601,22 +2407,23 @@ msgid "The queries could not be restored."
 msgstr ""
 
 #: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/preferences_dialog/history_group.rs
 msgid "Clear All Query History?"
 msgstr ""
 
 #: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/preferences_dialog/history_group.rs
 msgid "This permanently deletes every saved query, including pinned ones."
 msgstr ""
 
-#: crates/app/src/ui/history_dialog/mod.rs data/resources/ui/connecting-page.ui
-msgid "Cancel"
-msgstr ""
-
-#: crates/app/src/ui/history_dialog/mod.rs data/resources/ui/tls-section.ui
+#: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/preferences_dialog/history_group.rs
+#: data/resources/ui/tls-section.ui
 msgid "Clear"
 msgstr ""
 
 #: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/preferences_dialog/history_group.rs
 msgid "The query history could not be cleared."
 msgstr ""
 
@@ -625,6 +2432,7 @@ msgid "The query history could not be read."
 msgstr ""
 
 #: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
 msgid "No Matches"
 msgstr ""
 
@@ -653,25 +2461,285 @@ msgid "All Queries"
 msgstr ""
 
 #: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
+#: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
 msgid "Open in New Tab"
 msgstr ""
 
 #: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
 msgid "Replace Current Tab"
 msgstr ""
 
 #: crates/app/src/ui/history_dialog/mod.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
+#: crates/app/src/ui/structure_tab/imp.rs
 msgid "Copy SQL"
 msgstr ""
 
-#: crates/app/src/ui/history_dialog/mod.rs data/resources/ui/history-dialog.ui
-#: data/resources/ui/history-row.ui
-msgid "Delete"
+#: crates/app/src/ui/host_key_review.rs
+#: crates/app/src/ui/session_window/connections.rs
+#: crates/app/src/ui/tab_load/stale_banner.rs
+#: crates/app/src/ui/workspace/health_banner.rs
+#: data/resources/ui/connect-failed-page.ui data/resources/ui/workspace.ui
+msgid "Retry"
+msgstr ""
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid ""
+"TablePro has not connected to “{host}” before and cannot confirm its "
+"identity. Compare the fingerprint with the one from your server "
+"administrator."
+msgstr ""
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid ""
+"TablePro has not connected to “{host}” before. Connect to see its key’s "
+"fingerprint and decide whether to trust it."
+msgstr ""
+
+#: crates/app/src/ui/host_key_review.rs
+msgid "Unknown SSH Host"
+msgstr ""
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid ""
+"The SSH configuration for “{host}” accepts only keys already in known_hosts. "
+"Add the server’s key there, then retry."
+msgstr ""
+
+#: crates/app/src/ui/host_key_review.rs
+msgid "SSH Host Key Changed"
+msgstr ""
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid ""
+"The key “{host}” sent is not the one trusted in known_hosts. Someone may be "
+"intercepting the connection, or the server was reinstalled. If your server "
+"administrator confirms the new fingerprint, remove the old key from "
+"known_hosts, then retry."
+msgstr ""
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid ""
+"The key “{host}” sent is not the one trusted in {file}, line {line}. Someone "
+"may be intercepting the connection, or the server was reinstalled. Replace "
+"the key only if your server administrator confirms the new fingerprint."
 msgstr ""
 
 #: crates/app/src/ui/host_key_review.rs
 msgid "Replace Key and Connect"
 msgstr ""
+
+#: crates/app/src/ui/host_key_review.rs
+msgid "SSH Host Key Revoked"
+msgstr ""
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid ""
+"The key “{host}” sent is revoked, so TablePro will not connect to it. Ask "
+"your server administrator for its current key. ssh reported: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/host_key_review.rs
+msgid "Key fingerprint"
+msgstr ""
+
+#: crates/app/src/ui/host_key_review.rs
+#, rust-format
+msgid "{algorithm} key fingerprint"
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs crates/app/src/ui/workspace/import.rs
+msgid "Import CSV"
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "Import"
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "File"
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "Comma"
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "Semicolon"
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "Pipe"
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "First Row Is a Header"
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "Its values name the fields instead of being imported."
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "Text that means NULL"
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+#: data/resources/ui/structure-tab.ui
+msgid "Columns"
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid ""
+"Each table column takes one field from the file. A column set to Skip keeps "
+"its own default."
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "Every column is set to Skip, so there is nothing to import."
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "Skip"
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "Uses the column's own default"
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "The file could not be read."
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+#, rust-format
+msgid ""
+"{fields} fields. Showing the first {rows} rows; the whole file is imported."
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+#, rust-format
+msgid "{fields} fields, {rows} row."
+msgid_plural "{fields} fields, {rows} rows."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "NULL"
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "No values in the file"
+msgstr ""
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Edit…"
+msgstr ""
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Colour"
+msgstr ""
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Move to Group"
+msgstr ""
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Delete…"
+msgstr ""
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "No Colour"
+msgstr ""
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "No Group"
+msgstr ""
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "New Group…"
+msgstr ""
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Blue"
+msgstr ""
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Teal"
+msgstr ""
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Green"
+msgstr ""
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Yellow"
+msgstr ""
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Orange"
+msgstr ""
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Red"
+msgstr ""
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Pink"
+msgstr ""
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Purple"
+msgstr ""
+
+#: crates/app/src/ui/picker/connection_menu.rs
+msgid "Slate"
+msgstr ""
+
+#: crates/app/src/ui/picker/connection_row.rs
+msgid "Connection Options"
+msgstr ""
+
+#: crates/app/src/ui/picker/new_group_dialog.rs
+msgid "New Group"
+msgstr ""
+
+#: crates/app/src/ui/picker/new_group_dialog.rs
+#: crates/app/src/ui/saved_queries_dialog.rs
+#: crates/app/src/ui/structure_tab/columns.rs
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+#: crates/app/src/ui/workspace/status_pages.rs
+#: data/resources/ui/connect-dialog.ui data/resources/ui/structure-tab.ui
+msgid "Name"
+msgstr ""
+
+#: crates/app/src/ui/picker/new_group_dialog.rs
+msgid "Create"
+msgstr ""
+
+#: crates/app/src/ui/preferences_dialog/data_browser_group.rs
+#, rust-format
+msgid "Ask before deleting {n} or more rows at once"
+msgid_plural "Ask before deleting {n} or more rows at once"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/preferences_dialog/history_group.rs
+#, rust-format
+msgid "{count} query cleared"
+msgid_plural "{count} queries cleared"
+msgstr[0] ""
+msgstr[1] ""
 
 #: crates/app/src/ui/result_pane/result_limit_banner.rs
 msgid "Export All…"
@@ -701,10 +2769,675 @@ msgstr ""
 msgid "Result {n} ({rows})"
 msgstr ""
 
+#: crates/app/src/ui/saved_queries_dialog.rs data/resources/gtk/menus.ui
+msgid "Saved Queries"
+msgstr ""
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Search saved queries"
+msgstr ""
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "No Saved Queries"
+msgstr ""
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Save a query from the editor and it will be listed here."
+msgstr ""
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "That name is already used by another saved query."
+msgstr ""
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Could not delete that saved query."
+msgstr ""
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Try a different search term."
+msgstr ""
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Rename…"
+msgstr ""
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Saved Query Options"
+msgstr ""
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Rename Saved Query"
+msgstr ""
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "Rename"
+msgstr ""
+
+#: crates/app/src/ui/saved_queries_dialog.rs
+msgid "The saved query is removed. The SQL itself is not run or changed."
+msgstr ""
+
+#: crates/app/src/ui/session_window/connecting_page.rs
+#, rust-format
+msgid "Connecting to {name}"
+msgstr ""
+
+#: crates/app/src/ui/session_window/connecting_page.rs
+msgid "Connecting"
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+#: crates/app/src/ui/session_window/mod.rs
+#, rust-format
+msgid "The connection could not be saved: {error}"
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "this connection"
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "Changes apply the next time you connect"
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+#, rust-format
+msgid "The connection could not be duplicated. {reason}"
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+#, rust-format
+msgid "The group could not be saved. {reason}"
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+#, rust-format
+msgid "The colour could not be saved. {reason}"
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "The connections could not be read."
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "Import Connections"
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "That file has no connections in it."
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+#, rust-format
+msgid "Imported {n} connection."
+msgid_plural "Imported {n} connections."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "That file is not a TablePro connection export."
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "The connections could not be imported."
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "Reset Saved Connections?"
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid ""
+"The unreadable file will be renamed so it can be recovered. Stored passwords "
+"stay in the keyring."
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid "Reset"
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+#, rust-format
+msgid "Could not reset the saved connections: {error}"
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "Export Connections"
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "Connections exported."
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "The connections could not be written to that file."
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+#: crates/app/src/ui/workspace/import.rs
+msgid "Only regular files can be imported."
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "That file is too large to be a connection export."
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "JSON files"
+msgstr ""
+
+#: crates/app/src/ui/session_window/locate_file.rs
+msgid "Locate Database File"
+msgstr ""
+
+#: crates/app/src/ui/session_window/locate_file.rs
+msgid "Database File Not Found"
+msgstr ""
+
+#: crates/app/src/ui/session_window/locate_file.rs
+#, rust-format
+msgid ""
+"{file} could not be found. If it was moved or renamed, locate it to update "
+"the connection."
+msgstr ""
+
+#: crates/app/src/ui/session_window/locate_file.rs
+#: crates/app/src/ui/session_window/sqlite_location_dialog.rs
+#: crates/app/src/ui/structure_tab/form_dialog.rs
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#: crates/app/src/workspace/open_transaction_dialog.rs
+#: crates/app/src/workspace/save_changes_dialog.rs
+msgid "_Cancel"
+msgstr ""
+
+#: crates/app/src/ui/session_window/locate_file.rs
+msgid "_Locate…"
+msgstr ""
+
+#: crates/app/src/ui/session_window/locate_file.rs
+msgid "The new location could not be saved."
+msgstr ""
+
+#. Translators: TablePro is the product name and is not translated.
+#: crates/app/src/ui/session_window/mod.rs
+#: crates/app/src/ui/session_window/session_teardown.rs
+#: data/app.tablepro.TablePro.desktop.in.in data/resources/ui/picker-page.ui
+#: data/resources/ui/session-window.ui
+msgid "TablePro"
+msgstr ""
+
+#: crates/app/src/ui/session_window/mod.rs
+msgid "This connection is already open in another window."
+msgstr ""
+
+#: crates/app/src/ui/session_window/mod.rs
+#: data/resources/ui/connect-failed-page.ui
+msgid "Edit Connection…"
+msgstr ""
+
+#: crates/app/src/ui/session_window/mod.rs
+#, rust-format
+msgid "{file} is not on this computer. Copy it to a local folder to open it."
+msgstr ""
+
+#: crates/app/src/ui/session_window/mod.rs
+#, rust-format
+msgid "{file} could not be found."
+msgstr ""
+
+#: crates/app/src/ui/session_window/mod.rs
+#, rust-format
+msgid "{file} could not be opened. {reason}"
+msgstr ""
+
+#: crates/app/src/ui/session_window/notification_request.rs
+msgid "Query Finished"
+msgstr ""
+
+#: crates/app/src/ui/session_window/notification_request.rs
+msgid "Query Failed"
+msgstr ""
+
+#: crates/app/src/ui/session_window/notification_request.rs
+msgid "Changes Saved"
+msgstr ""
+
+#: crates/app/src/ui/session_window/notification_request.rs
+msgid "Changes Not Saved"
+msgstr ""
+
+#: crates/app/src/ui/session_window/notification_request.rs
+msgid "Export Finished"
+msgstr ""
+
+#: crates/app/src/ui/session_window/notification_request.rs
+msgid "Export Failed"
+msgstr ""
+
+#: crates/app/src/ui/session_window/notification_request.rs
+#, rust-format
+msgid "{tab} · {connection}"
+msgstr ""
+
+#: crates/app/src/ui/session_window/picker_page.rs
+msgid "New Connection"
+msgstr ""
+
+#: crates/app/src/ui/session_window/secret_retry.rs
+#: data/resources/ui/connect-failed-page.ui
+msgid "Enter Password…"
+msgstr ""
+
+#: crates/app/src/ui/session_window/secret_retry.rs
+msgid "Enter SSH Password…"
+msgstr ""
+
+#: crates/app/src/ui/session_window/secret_retry.rs
+msgid "Enter Passphrase…"
+msgstr ""
+
+#: crates/app/src/ui/session_window/sqlite_location_dialog.rs
+msgid "Database on a Network Filesystem"
+msgstr ""
+
+#: crates/app/src/ui/session_window/sqlite_location_dialog.rs
+msgid ""
+"SQLite can corrupt a database on a network or FUSE filesystem when more than "
+"one program writes to it."
+msgstr ""
+
+#: crates/app/src/ui/session_window/sqlite_location_dialog.rs
+msgid "Open _Read-Only"
+msgstr ""
+
+#: crates/app/src/ui/session_window/sqlite_location_dialog.rs
+msgid "Open Read-_Write"
+msgstr ""
+
+#: crates/app/src/ui/shell/primary_menu_button.rs
+msgid "Main Menu"
+msgstr ""
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "SSH agent"
+msgstr ""
+
+#: crates/app/src/ui/ssh_inputs.rs data/resources/ui/ssh-section.ui
+msgid "Private key"
+msgstr ""
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "Keyboard-interactive"
+msgstr ""
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "Keys from the SSH agent and your SSH configuration"
+msgstr ""
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "A key file, unlocked with its passphrase if it has one"
+msgstr ""
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "The SSH server's own password"
+msgstr ""
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "The SSH server asks its own questions, such as a code"
+msgstr ""
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "Enter the SSH server's host name or its alias."
+msgstr ""
+
+#: crates/app/src/ui/ssh_inputs.rs
+#, rust-format
+msgid "The SSH host cannot be used: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "The SSH port must be a number from 1 to 65535."
+msgstr ""
+
+#: crates/app/src/ui/ssh_inputs.rs
+#, rust-format
+msgid "The SSH username cannot be used: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/ssh_inputs.rs
+#, rust-format
+msgid "The jump hosts cannot be used: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/ssh_inputs.rs
+msgid "Choose the private key file."
+msgstr ""
+
+#: crates/app/src/ui/ssh_section.rs
+msgid "SSH keys"
+msgstr ""
+
+#: crates/app/src/ui/ssh_section.rs data/resources/ui/ssh-section.ui
+msgid "Choose Private Key"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "A primary key column can't take NULL."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "Remove Column"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "Type"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "Nullable"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "Default value"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "Primary Key"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "Auto Increment"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "Comment"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/columns.rs
+msgid "Suggested Types"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/context.rs
+msgid "Connect to a database to check the default."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/draft_column_object.rs
+msgid "nullable"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/draft_column_object.rs
+msgid "NOT NULL"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/draft_column_object.rs
+msgid "Primary key"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/draft_column_object.rs
+msgid "auto-increment"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/fks.rs
+msgid "Remove Foreign Key"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+msgid "Add Foreign Key"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "_Add"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+msgid "Referenced Columns"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+msgid "Referenced table"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+msgid "The columns of this table that hold the reference."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+msgid "On delete"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+msgid "On update"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+msgid "Actions"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+#, rust-format
+msgid "Couldn't read the tables: {error}"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+#, rust-format
+msgid "Couldn't read the columns of {table}: {error}"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/foreign_key_dialog.rs
+#, rust-format
+msgid "{column} references"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/foreign_key_draft.rs
+msgid "The table already has a foreign key with this name."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/foreign_key_draft.rs
+msgid "Choose the table the key references."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/foreign_key_draft.rs
+msgid "Choose at least one column."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/foreign_key_draft.rs
+#, rust-format
+msgid "Choose the column “{column}” references."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Add Index"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Unique"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Refuse rows that repeat the key columns' values"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Add Key Column"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Key Columns"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Add the columns the index sorts by."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Descending"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Sort _Descending"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Move _Up"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Move D_own"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "_Remove"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/index_dialog.rs
+msgid "Key Options"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/index_draft.rs
+msgid "The table already has an index with this name."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/index_draft.rs
+msgid "Add at least one key column."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/indexes.rs
+msgid "UNIQUE"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/indexes.rs
+msgid "PRIMARY"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/indexes.rs
+msgid "Remove Index"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/indexes.rs
+msgid "Primary-key index can't be dropped here; clear the PK on the column."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/indexes.rs
+msgid "no keys"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/referential_action_label.rs
+msgid "Database Default"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/referential_action_label.rs
+msgid "database default"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/referential_action_label.rs
+msgid "not reported"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid "Apply {count} Change to “{table}”?"
+msgid_plural "Apply {count} Changes to “{table}”?"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+msgid "_Apply"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid ""
+"{engine} applies each statement separately. If one fails, the statements "
+"before it stay applied."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid "Drops column “{column}” and the data in it."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid ""
+"Changes column “{column}” from {from} to {to}. A value the new type can't "
+"hold is converted or refused."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid "Drops index “{index}”."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid "Drops foreign key “{key}”."
+msgstr ""
+
 #: crates/app/src/ui/structure_tab/review_dialog.rs
 msgid ""
 "Rebuilds the table: copies its rows into a new table and drops the old one."
 msgstr ""
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid "Drops and creates again: {objects}."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+msgid "The rows get new rowids."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid "index “{name}”"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid "trigger “{name}”"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
+msgid "view “{name}”"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+msgid "SQL to run"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+msgid ""
+"The table changed after this tab read it, so nothing was saved. Discard the "
+"changes to read the table again, then make them again."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+msgid "Nothing to save."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+#: crates/app/src/ui/workspace/saves.rs
+msgid "Cannot Save"
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+msgid ""
+"The table couldn't be read after the save. Retry, then make the change again."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+msgid "Wait for the save to finish, then make the change again."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/save_handlers.rs
+#, rust-format
+msgid "{n} pending change"
+msgid_plural "{n} pending changes"
+msgstr[0] ""
+msgstr[1] ""
 
 #: crates/app/src/ui/structure_tab/sql_preview.rs
 msgid "-- Connect to a database to see the SQL."
@@ -722,10 +3455,514 @@ msgstr ""
 msgid "-- No pending changes."
 msgstr ""
 
-#. Translators: TablePro is the product name and is not translated.
-#: data/app.tablepro.TablePro.desktop.in.in data/resources/ui/picker-page.ui
-#: data/resources/ui/session-window.ui
-msgid "TablePro"
+#: crates/app/src/ui/tab_load/load_failure.rs
+msgid ""
+"This table has no columns you can read. It may have been dropped, or your "
+"account can't read it."
+msgstr ""
+
+#: crates/app/src/ui/tab_load/load_failure.rs
+msgid ""
+"The table's columns changed while its rows were read. Try again to read it "
+"as it is now."
+msgstr ""
+
+#: crates/app/src/ui/welcome_view.rs data/resources/ui/welcome-view.ui
+msgid "Saved Connections"
+msgstr ""
+
+#: crates/app/src/ui/welcome_view.rs
+msgid "Connections"
+msgstr ""
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid "Review Key…"
+msgstr ""
+
+#: crates/app/src/ui/workspace/health_banner.rs
+#, rust-format
+msgid "The old key for {host} could not be removed from {file}: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid "it is not a key this connection uses"
+msgstr ""
+
+#: crates/app/src/ui/workspace/health_banner.rs
+#, rust-format
+msgid "Connection lost. Reconnecting (attempt {n})."
+msgstr ""
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid "Offline. Waiting for the network."
+msgstr ""
+
+#: crates/app/src/ui/workspace/health_banner.rs
+#, rust-format
+msgid "The SSH host {host} is not trusted yet."
+msgstr ""
+
+#: crates/app/src/ui/workspace/health_banner.rs
+#, rust-format
+msgid "The SSH host key for {host} does not match."
+msgstr ""
+
+#: crates/app/src/ui/workspace/health_banner.rs
+#, rust-format
+msgid "The SSH host key for {host} is revoked."
+msgstr ""
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid "The server refused the login. Retry to enter the password again."
+msgstr ""
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid "The secure connection failed. Check the connection's TLS settings."
+msgstr ""
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid "The connection settings no longer work. Check them and retry."
+msgstr ""
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid "The SSH server's host key is not trusted yet."
+msgstr ""
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid ""
+"The SSH server's host key changed. Check with its administrator before "
+"connecting again."
+msgstr ""
+
+#: crates/app/src/ui/workspace/health_banner.rs
+msgid "The SSH server's host key was revoked."
+msgstr ""
+
+#: crates/app/src/ui/workspace/import.rs
+#: crates/app/src/workspace/save_rejection.rs
+msgid "This connection is read-only."
+msgstr ""
+
+#: crates/app/src/ui/workspace/import.rs
+msgid "The table's columns could not be read."
+msgstr ""
+
+#: crates/app/src/ui/workspace/import.rs
+msgid "Couldn't Import"
+msgstr ""
+
+#: crates/app/src/ui/workspace/import.rs
+msgid "That file has no rows to import."
+msgstr ""
+
+#: crates/app/src/ui/workspace/import.rs
+#, rust-format
+msgid "Imported {n} row."
+msgid_plural "Imported {n} rows."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/workspace/import.rs
+msgid "That file is too large to import in one go."
+msgstr ""
+
+#: crates/app/src/ui/workspace/import.rs
+#, rust-format
+msgid "Line {line}, column {column}: {reason} (the value was “{text}”)"
+msgstr ""
+
+#: crates/app/src/ui/workspace/saves.rs
+msgid "Saved"
+msgstr ""
+
+#: crates/app/src/ui/workspace/shell.rs
+msgid "Search Tables"
+msgstr ""
+
+#: crates/app/src/ui/workspace/shell.rs
+msgid "Show Sidebar"
+msgstr ""
+
+#: crates/app/src/ui/workspace/shell.rs
+msgid "New Query"
+msgstr ""
+
+#: crates/app/src/ui/workspace/shell.rs
+msgid "View Open Tabs"
+msgstr ""
+
+#: crates/app/src/ui/workspace/sidebar/mod.rs
+#, rust-format
+msgid "Could not refresh the table list: {error}"
+msgstr ""
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_header_factory.rs
+#, rust-format
+msgid "New Table in {schema}…"
+msgstr ""
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_header_factory.rs
+msgid "New Table…"
+msgstr ""
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
+msgid "Edit Structure"
+msgstr ""
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
+msgid "Show CREATE TABLE"
+msgstr ""
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
+msgid "Import CSV…"
+msgstr ""
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
+#: data/resources/ui/structure-tab.ui
+msgid "Drop Table…"
+msgstr ""
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_object.rs
+msgctxt "object kind"
+msgid "View"
+msgstr ""
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_object.rs
+msgctxt "object kind"
+msgid "Materialized View"
+msgstr ""
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_object.rs
+msgctxt "object kind"
+msgid "Table"
+msgstr ""
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_object.rs
+#: crates/app/src/ui/workspace/sidebar/sidebar_view.rs
+msgid "Tables"
+msgstr ""
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_view.rs
+msgid "No Matching Tables"
+msgstr ""
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_view.rs
+msgid "Try a different search."
+msgstr ""
+
+#: crates/app/src/ui/workspace/sidebar/sidebar_view.rs
+msgid "No Tables"
+msgstr ""
+
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid "Open a SQL editor tab to save a query."
+msgstr ""
+
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid "There is nothing in the editor to save."
+msgstr ""
+
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid "Save Query"
+msgstr ""
+
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid "The query database is not open yet."
+msgstr ""
+
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid ""
+"Connect to a database first: a saved query is kept under its connection."
+msgstr ""
+
+#: crates/app/src/ui/workspace/status_pages.rs
+#, rust-format
+msgid "Replaced “{name}”."
+msgstr ""
+
+#: crates/app/src/ui/workspace/status_pages.rs
+#, rust-format
+msgid "Saved “{name}”."
+msgstr ""
+
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid "Could not save that query."
+msgstr ""
+
+#: crates/app/src/ui/workspace/structure.rs
+msgid "Tables on this database are created in the SQL editor."
+msgstr ""
+
+#: crates/app/src/ui/workspace/structure.rs
+#, rust-format
+msgid "Drop {table}?"
+msgstr ""
+
+#: crates/app/src/ui/workspace/structure.rs
+msgid ""
+"All rows and the table definition will be removed. This can't be undone from "
+"inside TablePro."
+msgstr ""
+
+#: crates/app/src/ui/workspace/structure.rs
+msgid "Drop"
+msgstr ""
+
+#: crates/app/src/ui/workspace/structure.rs
+msgid "Cannot Drop Table"
+msgstr ""
+
+#: crates/app/src/ui/workspace/structure.rs
+#: crates/app/src/workspace/save_rejection.rs
+msgid "No active connection."
+msgstr ""
+
+#: crates/app/src/ui/workspace/structure.rs
+msgid "Drop Failed"
+msgstr ""
+
+#: crates/app/src/ui/workspace/structure.rs
+#, rust-format
+msgid "Table {table} has no columns."
+msgstr ""
+
+#: crates/app/src/ui/workspace/structure.rs
+#, rust-format
+msgid "Couldn't build SQL: {error}"
+msgstr ""
+
+#: crates/app/src/ui/workspace/structure.rs
+#, rust-format
+msgid "Couldn't read the table: {error}"
+msgstr ""
+
+#: crates/app/src/ui/workspace/tab_factory.rs
+msgid "Undo"
+msgstr ""
+
+#: crates/app/src/ui/workspace/tab_title.rs
+#, rust-format
+msgid "{table} · Structure"
+msgstr ""
+
+#: crates/app/src/ui/workspace/tab_title.rs
+msgid "New Table"
+msgstr ""
+
+#: crates/app/src/ui/workspace/tab_title.rs
+#, rust-format
+msgid "Query {n}"
+msgstr ""
+
+#: crates/app/src/ui/workspace/window_title.rs
+#, rust-format
+msgid "{tab} ({connection}) - TablePro"
+msgstr ""
+
+#: crates/app/src/ui/workspace/window_title.rs
+#, rust-format
+msgid "{connection} - TablePro"
+msgstr ""
+
+#: crates/app/src/ui/workspace/window_title.rs
+#, rust-format
+msgid "{name} · Read-Only"
+msgstr ""
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+#, rust-format
+msgid "Saved text of {n} query tab could not be read. The file was kept."
+msgid_plural ""
+"Saved text of {n} query tabs could not be read. The files were kept."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid "Saved tabs could not be read"
+msgstr ""
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid "Saved tabs could not be reset"
+msgstr ""
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid "Discard Pending Changes?"
+msgstr ""
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid ""
+"Refreshing reloads the table from the database and drops every unsaved edit "
+"on this tab."
+msgstr ""
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid "Discard and Refresh"
+msgstr ""
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid "Close Other Tabs"
+msgstr ""
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid "Close Tabs to the Right"
+msgstr ""
+
+#: crates/app/src/ui/workspace/workspace_tabs.rs
+msgid "No recently closed tab"
+msgstr ""
+
+#: crates/app/src/workspace/close_guard.rs
+#, rust-format
+msgid "“{tab}”: {reason}"
+msgstr ""
+
+#: crates/app/src/workspace/close_guard.rs
+msgid "Could Not Save"
+msgstr ""
+
+#: crates/app/src/workspace/dirty_tab.rs
+#, rust-format
+msgid "“{name}”"
+msgstr ""
+
+#: crates/app/src/workspace/inhibit_reason.rs
+msgid "There are unsaved changes"
+msgstr ""
+
+#: crates/app/src/workspace/inhibit_reason.rs
+msgid "Saving changes"
+msgstr ""
+
+#: crates/app/src/workspace/inhibit_reason.rs
+msgid "Exporting data"
+msgstr ""
+
+#: crates/app/src/workspace/open_transaction_dialog.rs
+msgid "Close With Open Transactions?"
+msgstr ""
+
+#: crates/app/src/workspace/open_transaction_dialog.rs
+#, rust-format
+msgid ""
+"Closing ends the database sessions of {tabs}. The server rolls back "
+"uncommitted work."
+msgstr ""
+
+#: crates/app/src/workspace/open_transaction_dialog.rs
+msgid "_Close Anyway"
+msgstr ""
+
+#: crates/app/src/workspace/rollback_cause.rs
+msgid ""
+"The connection was lost while saving, and the database says the changes were "
+"not saved."
+msgstr ""
+
+#: crates/app/src/workspace/save_changes_dialog.rs
+msgid "Save Changes?"
+msgstr ""
+
+#: crates/app/src/workspace/save_changes_dialog.rs
+msgid "Changes that are not saved are permanently lost."
+msgstr ""
+
+#: crates/app/src/workspace/save_changes_dialog.rs
+msgid "_Discard"
+msgstr ""
+
+#: crates/app/src/workspace/save_changes_dialog.rs
+msgid "_Discard All"
+msgstr ""
+
+#: crates/app/src/workspace/save_changes_dialog.rs
+msgid "_Save"
+msgstr ""
+
+#: crates/app/src/workspace/save_rejection.rs
+msgid ""
+"The last save may already be in the database. Discard these changes to see "
+"what the table holds now."
+msgstr ""
+
+#: crates/app/src/workspace/save_rejection.rs
+msgid "These changes are already being saved."
+msgstr ""
+
+#: crates/app/src/workspace/save_rejection.rs
+msgid "The table's columns have not been read yet. Try again in a moment."
+msgstr ""
+
+#: crates/app/src/workspace/save_rejection.rs
+#, rust-format
+msgid ""
+"The table changed after these edits were made, and the edits to {columns} no "
+"longer fit it. Nothing was saved. Discard the changes and make them again."
+msgstr ""
+
+#: crates/app/src/workspace/save_rejection.rs
+msgid ""
+"The table's primary key changed after these edits were made, so the rows "
+"they change can no longer be found. Nothing was saved. Discard the changes "
+"and make them again."
+msgstr ""
+
+#: crates/app/src/workspace/save_rejection.rs
+msgid "The changes were not applied."
+msgstr ""
+
+#: crates/app/src/workspace/save_rejection.rs
+msgid "The review of these changes is still open."
+msgstr ""
+
+#: crates/app/src/workspace/unknown_cause.rs
+#, rust-format
+msgid ""
+"Saving {tabs} was stopped before the database confirmed it. The changes may "
+"already be in the database."
+msgstr ""
+
+#: crates/app/src/workspace/unknown_cause.rs
+#, rust-format
+msgid ""
+"TablePro hit an internal error while saving {tabs}. The changes may already "
+"be in the database."
+msgstr ""
+
+#: crates/app/src/workspace/unknown_cause.rs
+#, rust-format
+msgid ""
+"The connection was lost while saving {tabs}. The changes may already be in "
+"the database."
+msgstr ""
+
+#: crates/app/src/workspace/unknown_outcome_dialog.rs
+#: crates/app/src/workspace/waiting_dialog.rs
+msgid "_Keep Open"
+msgstr ""
+
+#: crates/app/src/workspace/unknown_outcome_dialog.rs
+msgid "_Reload Table"
+msgstr ""
+
+#: crates/app/src/workspace/unknown_outcome_dialog.rs
+msgid "_Discard Changes"
+msgstr ""
+
+#: crates/app/src/workspace/waiting_dialog.rs
+msgid "Stopping the save."
+msgstr ""
+
+#: crates/app/src/workspace/waiting_dialog.rs
+msgid "Wait for the save to finish, or stop it."
+msgstr ""
+
+#: crates/app/src/workspace/waiting_dialog.rs
+msgid "Saving Changes"
+msgstr ""
+
+#: crates/app/src/workspace/waiting_dialog.rs
+#: data/resources/ui/pending-changes-bar.ui data/resources/ui/structure-tab.ui
+msgid "_Stop Saving"
 msgstr ""
 
 #: data/app.tablepro.TablePro.desktop.in.in
@@ -1023,10 +4260,6 @@ msgid "Query History"
 msgstr ""
 
 #: data/resources/gtk/menus.ui
-msgid "Saved Queries"
-msgstr ""
-
-#: data/resources/gtk/menus.ui
 msgid "Disconnect"
 msgstr ""
 
@@ -1106,10 +4339,6 @@ msgstr ""
 
 #: data/resources/shortcuts-dialog.ui
 msgid "Browse Table"
-msgstr ""
-
-#: data/resources/shortcuts-dialog.ui data/resources/ui/browse-tab.ui
-msgid "Filter Rows"
 msgstr ""
 
 #: data/resources/shortcuts-dialog.ui
@@ -1237,18 +4466,6 @@ msgid "Find"
 msgstr ""
 
 #: data/resources/shortcuts-dialog.ui
-msgid "Find and Replace"
-msgstr ""
-
-#: data/resources/shortcuts-dialog.ui
-msgid "Next Match"
-msgstr ""
-
-#: data/resources/shortcuts-dialog.ui
-msgid "Previous Match"
-msgstr ""
-
-#: data/resources/shortcuts-dialog.ui
 msgid "Save the Query Under a Name"
 msgstr ""
 
@@ -1285,22 +4502,6 @@ msgid "Rows:"
 msgstr ""
 
 #: data/resources/ui/connect-dialog.ui
-msgid "Connect"
-msgstr ""
-
-#: data/resources/ui/connect-dialog.ui
-msgid "Test"
-msgstr ""
-
-#: data/resources/ui/connect-dialog.ui
-msgid "Connect Once to Check the Settings"
-msgstr ""
-
-#: data/resources/ui/connect-dialog.ui data/resources/ui/structure-tab.ui
-msgid "Name"
-msgstr ""
-
-#: data/resources/ui/connect-dialog.ui
 msgid "Driver"
 msgstr ""
 
@@ -1310,10 +4511,6 @@ msgstr ""
 
 #: data/resources/ui/connect-dialog.ui data/resources/ui/ssh-section.ui
 msgid "Port"
-msgstr ""
-
-#: data/resources/ui/connect-dialog.ui
-msgid "Database"
 msgstr ""
 
 #: data/resources/ui/connect-dialog.ui data/resources/ui/ssh-section.ui
@@ -1326,14 +4523,6 @@ msgstr ""
 
 #: data/resources/ui/connect-dialog.ui data/resources/ui/ssh-section.ui
 msgid "Username"
-msgstr ""
-
-#: data/resources/ui/connect-dialog.ui data/resources/ui/ssh-section.ui
-msgid "Password"
-msgstr ""
-
-#: data/resources/ui/connect-dialog.ui
-msgid "Remember Password"
 msgstr ""
 
 #: data/resources/ui/connect-dialog.ui
@@ -1350,18 +4539,6 @@ msgstr ""
 
 #: data/resources/ui/connect-failed-page.ui
 msgid "Could Not Connect"
-msgstr ""
-
-#: data/resources/ui/connect-failed-page.ui
-msgid "Enter Password…"
-msgstr ""
-
-#: data/resources/ui/connect-failed-page.ui data/resources/ui/workspace.ui
-msgid "Retry"
-msgstr ""
-
-#: data/resources/ui/connect-failed-page.ui
-msgid "Edit Connection…"
 msgstr ""
 
 #: data/resources/ui/connect-failed-page.ui
@@ -1427,10 +4604,6 @@ msgid "Regular Expressions"
 msgstr ""
 
 #: data/resources/ui/find-bar.ui
-msgid "Replace"
-msgstr ""
-
-#: data/resources/ui/find-bar.ui
 msgid "Replace with"
 msgstr ""
 
@@ -1491,10 +4664,6 @@ msgstr ""
 msgid "Saving…"
 msgstr ""
 
-#: data/resources/ui/pending-changes-bar.ui data/resources/ui/structure-tab.ui
-msgid "Save"
-msgstr ""
-
 #: data/resources/ui/pending-changes-bar.ui
 msgid "Save Changes"
 msgstr ""
@@ -1505,10 +4674,6 @@ msgstr ""
 
 #: data/resources/ui/pending-changes-bar.ui
 msgid "Discard All Changes"
-msgstr ""
-
-#: data/resources/ui/pending-changes-bar.ui data/resources/ui/structure-tab.ui
-msgid "_Stop Saving"
 msgstr ""
 
 #: data/resources/ui/preferences-data-browser-group.ui
@@ -1634,10 +4799,6 @@ msgid "Save Query…"
 msgstr ""
 
 #: data/resources/ui/sql-editor.ui
-msgid "Format"
-msgstr ""
-
-#: data/resources/ui/sql-editor.ui
 msgid "Find…"
 msgstr ""
 
@@ -1650,19 +4811,7 @@ msgid "Editor Options"
 msgstr ""
 
 #: data/resources/ui/sql-editor.ui
-msgid "Stop"
-msgstr ""
-
-#: data/resources/ui/sql-editor.ui
 msgid "Stop the Running Query"
-msgstr ""
-
-#: data/resources/ui/sql-editor.ui
-msgid "Run"
-msgstr ""
-
-#: data/resources/ui/sql-editor.ui
-msgid "Run the Script"
 msgstr ""
 
 #: data/resources/ui/sql-editor.ui
@@ -1671,10 +4820,6 @@ msgstr ""
 
 #: data/resources/ui/sqlite-file-row.ui
 msgid "Database file"
-msgstr ""
-
-#: data/resources/ui/sqlite-file-row.ui
-msgid "No file chosen"
 msgstr ""
 
 #: data/resources/ui/sqlite-file-row.ui data/resources/ui/tls-section.ui
@@ -1714,19 +4859,7 @@ msgid "Jump hosts"
 msgstr ""
 
 #: data/resources/ui/ssh-section.ui
-msgid "Private key"
-msgstr ""
-
-#: data/resources/ui/ssh-section.ui
 msgid "Choose a Private Key File"
-msgstr ""
-
-#: data/resources/ui/ssh-section.ui
-msgid "Choose Private Key"
-msgstr ""
-
-#: data/resources/ui/ssh-section.ui
-msgid "Passphrase"
 msgstr ""
 
 #: data/resources/ui/structure-tab.ui
@@ -1743,10 +4876,6 @@ msgstr ""
 
 #: data/resources/ui/structure-tab.ui
 msgid "Add a name and at least one column to save."
-msgstr ""
-
-#: data/resources/ui/structure-tab.ui
-msgid "Columns"
 msgstr ""
 
 #: data/resources/ui/structure-tab.ui
@@ -1777,10 +4906,6 @@ msgstr ""
 msgid "Couldn't Load Structure"
 msgstr ""
 
-#: data/resources/ui/structure-tab.ui
-msgid "Drop Table…"
-msgstr ""
-
 #: data/resources/ui/tls-section.ui
 msgid "Security"
 msgstr ""
@@ -1806,19 +4931,11 @@ msgid "Clear CA Certificate"
 msgstr ""
 
 #: data/resources/ui/tls-section.ui
-msgid "Choose CA Certificate"
-msgstr ""
-
-#: data/resources/ui/tls-section.ui
 msgid "Client certificate"
 msgstr ""
 
 #: data/resources/ui/tls-section.ui
 msgid "Clear Client Certificate"
-msgstr ""
-
-#: data/resources/ui/tls-section.ui
-msgid "Choose Client Certificate"
 msgstr ""
 
 #: data/resources/ui/tls-section.ui
@@ -1830,15 +4947,7 @@ msgid "Clear Client Key"
 msgstr ""
 
 #: data/resources/ui/tls-section.ui
-msgid "Choose Client Key"
-msgstr ""
-
-#: data/resources/ui/tls-section.ui
 msgid "TLS server name"
-msgstr ""
-
-#: data/resources/ui/welcome-view.ui
-msgid "Saved Connections"
 msgstr ""
 
 #: data/resources/ui/welcome-view.ui
