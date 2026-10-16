@@ -34,11 +34,14 @@ internal struct ThemeLibrarySection: View {
     /// the edges of the sections above it.
     private static let formContentWidth: CGFloat = 704
     private static let formMargin: CGFloat = 20
+    /// How far a grouped Form indents its section headers from the section's edge.
+    private static let headerInset: CGFloat = 10
 
     internal var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Themes")
                 .font(.headline)
+                .padding(.horizontal, Self.headerInset)
                 .accessibilityAddTraits(.isHeader)
             list
                 .alert(
