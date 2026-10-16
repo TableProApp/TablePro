@@ -5,7 +5,6 @@ use sqlparser::ast::{
 };
 use sqlparser::dialect::{Dialect, GenericDialect, MsSqlDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect};
 use sqlparser::parser::Parser;
-use sqlparser::tokenizer::{Token, Tokenizer, Whitespace};
 
 use crate::admin_functions::is_administrative_function_name;
 use crate::constant_predicate::is_constant_true;
@@ -118,8 +117,8 @@ fn analyze_statement_inner(
         return failed_analysis("empty SQL");
     }
 
-    if driver_id == "mysql" && sql_contains_mysql_executable_comment(trimmed, dialect.as_ref()) {
-        return failed_analysis("MySQL executable comments are not safely classified");
+    if let Some(reason) = crate::input_refusal::refusal(trimmed, driver_id, dialect.as_ref()) {
+        return failed_analysis(reason);
     }
 
     let statements = match Parser::parse_sql(dialect.as_ref(), trimmed) {
@@ -209,17 +208,6 @@ fn failed_analysis(message: impl Into<String>) -> StatementAnalysis {
         sensitive_positions: None,
         known_statement_rows: Vec::new(),
     }
-}
-
-fn sql_contains_mysql_executable_comment(sql: &str, dialect: &dyn Dialect) -> bool {
-    let Ok(tokens) = Tokenizer::new(dialect, sql).tokenize() else {
-        return false;
-    };
-
-    tokens.iter().any(|token| {
-        matches!(token, Token::Whitespace(Whitespace::MultiLineComment(comment))
-            if comment.starts_with('!') || comment.starts_with("M!"))
-    })
 }
 
 /// Detect administrative calls anywhere in a successfully parsed statement.
@@ -672,6 +660,7 @@ fn table_factor_names(factor: &TableFactor) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     #[test]
