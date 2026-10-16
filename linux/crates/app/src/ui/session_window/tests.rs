@@ -287,13 +287,10 @@ impl Drop for TestWindow {
     fn drop(&mut self) {
         for window in self.app.windows() {
             crate::test_support::drop_focus(&window);
-        }
-        crate::test_support::end_application(&self.app);
-        for window in self.app.windows() {
-            crate::test_support::drop_focus(&window);
             window.destroy();
         }
         drain_main_context();
+        crate::test_support::end_application(&self.app);
         if let Some(runtime) = self.runtime.take() {
             runtime.shutdown();
         }

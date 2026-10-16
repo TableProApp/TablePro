@@ -51,10 +51,7 @@ mod tests {
                 maximized: false,
             })
             .expect("store the geometry");
-        let application = libadwaita::Application::builder()
-            .application_id(crate::config::APP_ID)
-            .build();
-        let window = OwnedWindow::new(libadwaita::ApplicationWindow::new(&application));
+        let window = OwnedWindow::new(libadwaita::ApplicationWindow::builder().build());
 
         restore(&window, settings.get());
 
@@ -66,10 +63,7 @@ mod tests {
     #[gtk4::test]
     fn persist_round_trips_through_settings() {
         let settings = MemorySettings::new();
-        let application = libadwaita::Application::builder()
-            .application_id(crate::config::APP_ID)
-            .build();
-        let window = OwnedWindow::new(libadwaita::ApplicationWindow::new(&application));
+        let window = OwnedWindow::new(libadwaita::ApplicationWindow::builder().build());
         window.set_default_size(1440, 900);
 
         persist(&window, settings.get());

@@ -6,9 +6,12 @@ use gtk4::prelude::*;
 ///
 /// GtkApplication holds itself from startup until shutdown, so a test
 /// that registers one and drops it leaks it with every service it owns.
-/// The run activates the application once, which presents a window it
-/// still has or opens one, and quits at its first main loop iteration.
+/// Destroy the windows first, as a quit closes them. The run would then
+/// activate the application, which restores a session or opens a window
+/// after the test is over, so `activate` stops before the application's
+/// own handler, and the run quits at its first main loop iteration.
 pub(crate) fn end_application(app: &impl IsA<gio::Application>) {
+    let inert = app.connect_activate(|app| app.stop_signal_emission_by_name("activate"));
     let quitting = app.clone();
     glib::idle_add_local_once(move || {
         #[expect(
@@ -18,4 +21,5 @@ pub(crate) fn end_application(app: &impl IsA<gio::Application>) {
         quitting.quit();
     });
     app.run_with_args::<&str>(&[]);
+    app.disconnect(inert);
 }
