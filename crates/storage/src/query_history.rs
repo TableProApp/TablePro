@@ -316,12 +316,15 @@ fn from_unix(s: i64) -> SystemTime {
 }
 
 impl HistoryStore {
-    pub async fn record(&self, entry: NewEntry) -> Result<i64, StorageError> {
+    pub async fn record(&self, entry: NewEntry) -> Result<Option<i64>, StorageError> {
         if entry.query.len() > MAX_QUERY_BYTES {
             return Err(StorageError::TooLarge {
                 got: entry.query.len(),
                 limit: MAX_QUERY_BYTES,
             });
+        }
+        if tablepro_core::sql_credentials::carries_credentials(&entry.query, &entry.driver_id) {
+            return Ok(None);
         }
         let pool = &self.pool;
         let executed_at = to_unix(entry.executed_at);
@@ -354,7 +357,7 @@ impl HistoryStore {
         .execute(pool)
         .await?
         .last_insert_rowid();
-        Ok(id)
+        Ok(Some(id))
     }
 
     pub async fn search(&self, filter: SearchFilter) -> Result<Vec<Entry>, StorageError> {
@@ -882,6 +885,35 @@ mod tests {
         assert_eq!(structure.len(), 1);
         assert_eq!(structure[0].source, Source::Structure);
         assert_eq!(store.search(SearchFilter::default()).await.unwrap().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn statements_that_carry_credentials_never_reach_the_history_file() {
+        let store = fresh_store().await;
+        for (driver_id, query) in [
+            ("postgres", "ALTER ROLE app PASSWORD 'secret'"),
+            ("mysql", "CREATE USER 'u'@'%' IDENTIFIED BY 'secret'"),
+            ("postgres", "SELECT dblink_connect('host=h password=secret')"),
+        ] {
+            store
+                .record(NewEntry {
+                    query: query.into(),
+                    driver_id: driver_id.into(),
+                    ..sample_new_entry()
+                })
+                .await
+                .unwrap();
+        }
+        store.record(sample_new_entry()).await.unwrap();
+
+        let entries = store.search(SearchFilter::default()).await.unwrap();
+        assert_eq!(entries.len(), 1, "only the plain statement is kept");
+        assert_eq!(entries[0].query, "SELECT 1");
+        let stored: i64 = sqlx::query_scalar("SELECT count(*) FROM history WHERE query LIKE '%secret%'")
+            .fetch_one(&store.pool)
+            .await
+            .unwrap();
+        assert_eq!(stored, 0);
     }
 
     #[tokio::test]

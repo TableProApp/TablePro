@@ -20,6 +20,7 @@ mod query;
 mod registry;
 mod session;
 mod shortcut_label;
+pub mod sql_credentials;
 pub mod sql_ddl;
 pub mod sql_diagnostics;
 pub mod sql_dialect;
