@@ -3,10 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tablepro_core::Environment;
 use tablepro_core::{AuthMode, ConnectOptions, Connection, DatabaseDriver, DriverError, TlsConfig, TlsMode};
-use tablepro_policy::{
-    AuditErrorCategory, AuditEvent, AuditSink, AuditState, AuditTerminalStatus, AuditTransportClient,
-    AuditTransportOutcome, Principal,
-};
+use tablepro_policy::{AuditSink, AuditState, Principal};
 use tablepro_ssh::{SshAuth, SshConfig, SshTunnel};
 use tablepro_storage::{
     SavedConnection, SavedSshAuth, SavedSshConfig, SshClient, load_password, load_ssh_passphrase, load_ssh_password,
@@ -21,7 +18,13 @@ pub use session_material::session_material_digest;
 
 const DATABASE_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
+mod audit;
 mod local_socket;
+mod tool_endpoint;
+
+use audit::{audit_client, record_transport_attempt};
+
+pub use tool_endpoint::open_tool_endpoint;
 
 use local_socket::validate_local_socket;
 
@@ -229,85 +232,18 @@ pub async fn establish_with_cancellation(
     environment: &SshEnvironment,
     cancellation: tokio_util::sync::CancellationToken,
 ) -> Result<(Box<dyn Connection>, Option<Tunnel>), TransportError> {
-    let client = match ssh.as_ref() {
-        Some(SshRoute::Builtin(_)) => Some(AuditTransportClient::BuiltinSsh),
-        Some(SshRoute::OpenSsh(_)) => Some(AuditTransportClient::SystemOpenSsh),
-        None => None,
-    };
+    let client = audit_client(ssh.as_ref());
     let started = std::time::Instant::now();
     let result = tokio::select! {
         biased;
         () = cancellation.cancelled() => Err(TransportError::Cancelled),
         result = establish_inner(driver, opts, ssh, environment, cancellation.clone()) => result,
     };
-    if let (Some(client), Some(context)) = (client, environment.audit.as_ref()) {
-        let (outcome, status, category) = classify_transport_result(&result);
-        let event = AuditEvent::transport_attempt(
-            Uuid::new_v4(),
-            context.principal.clone(),
-            context.connection_id,
-            context.connection_name.clone(),
-            context.environment,
-            context.driver_id.clone(),
-            client,
-            outcome,
-            status,
-            category,
-            started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
-        );
-        if let Err(error) = context.sink.record(event).await {
-            context.state.disable_after_audit_failure();
-            drop(result);
-            return Err(TransportError::AuditWriteFailed(error.to_string()));
-        }
+    if let Err(error) = record_transport_attempt(environment, client, started, &result).await {
+        drop(result);
+        return Err(error);
     }
     result
-}
-
-fn classify_transport_result(
-    result: &Result<(Box<dyn Connection>, Option<Tunnel>), TransportError>,
-) -> (AuditTransportOutcome, AuditTerminalStatus, Option<AuditErrorCategory>) {
-    use AuditTerminalStatus as Status;
-    use AuditTransportOutcome as Outcome;
-    match result {
-        Ok(_) => (Outcome::Connected, Status::Succeeded, None),
-        Err(TransportError::HostKeyRefused(_)) => (
-            Outcome::HostKeyRefused,
-            Status::Denied,
-            Some(AuditErrorCategory::Authentication),
-        ),
-        Err(TransportError::HostKeyChanged(_)) => (
-            Outcome::HostKeyChanged,
-            Status::Denied,
-            Some(AuditErrorCategory::Authentication),
-        ),
-        Err(TransportError::HostKeyRevoked(_)) => (
-            Outcome::HostKeyRevoked,
-            Status::Denied,
-            Some(AuditErrorCategory::Authentication),
-        ),
-        Err(TransportError::Cancelled) => (
-            Outcome::Cancelled,
-            Status::Cancelled,
-            Some(AuditErrorCategory::Cancelled),
-        ),
-        Err(TransportError::SshTimeout(_) | TransportError::DatabaseTimeout { .. }) => {
-            (Outcome::TimedOut, Status::TimedOut, Some(AuditErrorCategory::Timeout))
-        }
-        Err(TransportError::Driver(DriverError::Tls(_))) => {
-            (Outcome::TlsFailed, Status::Failed, Some(AuditErrorCategory::Tls))
-        }
-        Err(TransportError::Driver(DriverError::AuthFailed)) => (
-            Outcome::AuthenticationFailed,
-            Status::Failed,
-            Some(AuditErrorCategory::Authentication),
-        ),
-        Err(_) => (
-            Outcome::ConnectionFailed,
-            Status::Failed,
-            Some(AuditErrorCategory::Connection),
-        ),
-    }
 }
 
 async fn establish_inner(
@@ -384,8 +320,18 @@ async fn open_tunnel(
     environment: &SshEnvironment,
     cancellation: tokio_util::sync::CancellationToken,
 ) -> Result<Tunnel, TransportError> {
+    let socket_name = forwarded_socket_name(driver, opts.tls.mode, opts.port);
+    open_tunnel_with(opts, route, environment, socket_name, cancellation).await
+}
+
+async fn open_tunnel_with(
+    opts: &mut ConnectOptions,
+    route: SshRoute,
+    environment: &SshEnvironment,
+    socket_name: Option<String>,
+    cancellation: tokio_util::sync::CancellationToken,
+) -> Result<Tunnel, TransportError> {
     let remote = (std::mem::take(&mut opts.host), opts.port);
-    let socket_name = forwarded_socket_name(driver, opts.tls.mode, remote.1);
     let tunnel = match route {
         SshRoute::Builtin(hops) => Tunnel::Builtin(open_builtin(&hops, &remote, socket_name, environment).await?),
         SshRoute::OpenSsh(config) => Tunnel::OpenSsh(
@@ -572,6 +518,7 @@ async fn saved_ssh_passphrase(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tablepro_policy::{AuditEvent, AuditTerminalStatus, AuditTransportClient};
 
     #[derive(Default)]
     struct RecordingAudit(std::sync::Mutex<Vec<AuditEvent>>);
@@ -712,6 +659,68 @@ mod tests {
             Some(SshRoute::Builtin(Vec::new())),
             &environment,
             cancellation,
+        )
+        .await;
+        assert!(matches!(result, Err(TransportError::AuditWriteFailed(_))));
+        assert!(state.governed_writes_disabled());
+    }
+
+    #[tokio::test]
+    async fn a_tool_endpoint_without_ssh_is_the_saved_endpoint_and_is_not_audited() {
+        let sink = Arc::new(RecordingAudit::default());
+        let environment = audit_environment(sink.clone(), Arc::new(AuditState::new()));
+        let mut opts = ConnectOptions {
+            host: "db.example".into(),
+            port: 5432,
+            ..Default::default()
+        };
+        opts.forwarded_socket_dir = Some("/run/stale".into());
+        let (endpoint, tunnel) =
+            open_tool_endpoint(opts, None, &environment, tokio_util::sync::CancellationToken::new())
+                .await
+                .expect("endpoint");
+        assert!(tunnel.is_none());
+        assert_eq!((endpoint.host.as_str(), endpoint.port), ("db.example", 5432));
+        assert!(endpoint.forwarded_socket_dir.is_none());
+        assert!(sink.0.lock().expect("audit events").is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_tool_endpoint_records_its_ssh_attempt_like_a_connection() {
+        let sink = Arc::new(RecordingAudit::default());
+        let environment = audit_environment(sink.clone(), Arc::new(AuditState::new()));
+        let cancellation = tokio_util::sync::CancellationToken::new();
+        cancellation.cancel();
+        let result = open_tool_endpoint(
+            ConnectOptions::default(),
+            Some(SshRoute::Builtin(Vec::new())),
+            &environment,
+            cancellation,
+        )
+        .await;
+        assert!(matches!(result, Err(TransportError::Cancelled)));
+        let failed = open_tool_endpoint(
+            ConnectOptions::default(),
+            Some(SshRoute::Builtin(Vec::new())),
+            &environment,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await;
+        assert!(matches!(failed, Err(TransportError::Ssh(_))));
+        let events = sink.0.lock().expect("audit events");
+        let statuses: Vec<_> = events.iter().map(|event| event.terminal_status).collect();
+        assert_eq!(statuses, [AuditTerminalStatus::Cancelled, AuditTerminalStatus::Failed]);
+    }
+
+    #[tokio::test]
+    async fn a_tool_endpoint_fails_closed_when_its_audit_cannot_be_written() {
+        let state = Arc::new(AuditState::new());
+        let environment = audit_environment(Arc::new(FailingAudit), state.clone());
+        let result = open_tool_endpoint(
+            ConnectOptions::default(),
+            Some(SshRoute::Builtin(Vec::new())),
+            &environment,
+            tokio_util::sync::CancellationToken::new(),
         )
         .await;
         assert!(matches!(result, Err(TransportError::AuditWriteFailed(_))));
