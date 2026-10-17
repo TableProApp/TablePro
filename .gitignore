@@ -143,6 +143,7 @@ Derived/
 
 # Build artifacts
 *.xcarchive
+/dist/
 
 # Static libraries (downloaded from GitHub Releases via scripts/download-libs.sh)
 Libs/*.a

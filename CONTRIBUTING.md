@@ -28,7 +28,7 @@ Select the **TablePro** scheme and **My Mac**, then press `Cmd+R`.
 
 ### Static libraries
 
-`scripts/download-libs.sh` fetches two archives from the `libs-v1` GitHub Release: the macOS `.a` files (libmariadb, libpq, libduckdb, libmongoc and the rest) and the iOS xcframeworks. None of it is in git, so a build that skips this step fails at link time. Every run, including one that downloads nothing, verifies `Libs/` against the checksums committed at `HEAD`. Publishing a rebuilt library is in `RELEASING.md`, Static libraries.
+`scripts/download-libs.sh` fetches two archives from the `libs-<n>` GitHub release that `Libs/release` names: the macOS `.a` files (libmariadb, libpq, libduckdb, libmongoc and the rest) and the iOS xcframeworks. None of it is in git, so a build that skips this step fails at link time. Every run, including one that downloads nothing, verifies `Libs/` against the checksums committed at `HEAD`. Publishing a rebuilt library is in `RELEASING.md`, Static libraries.
 
 ## Building with a personal Apple team
 

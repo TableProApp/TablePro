@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://tablepro.app">웹사이트</a> ·
   <a href="https://docs.tablepro.app">문서</a> ·
-  <a href="https://github.com/TableProApp/TablePro/releases">다운로드</a> ·
+  <a href="https://github.com/TableProApp/TablePro/releases/latest">다운로드</a> ·
   <a href="https://discord.gg/hCNmUUbnD4">Discord</a>
 </p>
 
@@ -70,9 +70,6 @@ TablePro는 네 번째 선택지입니다. 네이티브이고 여러 데이터�
 
 ## 지원 데이터베이스
 
-- **내장**: MySQL, MariaDB, TiDB, OceanBase, Databend, PostgreSQL, Amazon Redshift, CockroachDB, PGlite, SQLite, ClickHouse, Redis
-- **플러그인**: Microsoft SQL Server, MongoDB, Oracle Database, Snowflake, BigQuery, Spanner, DynamoDB, DuckDB, Cassandra, ScyllaDB, Elasticsearch, Kafka, Trino, Teradata, SAP HANA, Dameng DM8, SurrealDB, Typesense, Weaviate, etcd, Cloudflare D1, Cloudflare R2 SQL, libSQL, Turso, Beancount
-
 내장 드라이버는 앱에 포함되어 있습니다. 플러그인 드라이버는 [플러그인 레지스트리](https://github.com/TableProApp/plugins)에서 필요할 때 설치됩니다. 최신 목록과 엔진별 지원 기능은 [tablepro.app/databases](https://tablepro.app/databases)에서 확인할 수 있습니다.
 
 ## 주요 기능
@@ -103,7 +100,7 @@ TablePro는 네 번째 선택지입니다. 네이티브이고 여러 데이터�
 brew install --cask tablepro
 ```
 
-또는 [GitHub Releases](https://github.com/TableProApp/TablePro/releases)에서 다운로드하세요.
+또는 [GitHub Releases](https://github.com/TableProApp/TablePro/releases/latest)에서 다운로드하세요.
 
 ## 빌드 방법
 

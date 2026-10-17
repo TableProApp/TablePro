@@ -64,7 +64,7 @@ TableProPluginKit is built with Library Evolution, so an already-built plugin ke
 ## Structure
 
 - PluginKit-free logic a plugin shares with the iOS app lives in a TableProCore product, such as `TableProMySQLCore`, `TableProPostgreSQLCore` or `TableProRedisCore`.
-- A new driver needs: its `project.yml` target and an `AllPlugins` entry, a `DatabaseType` constant, an entry in `.github/plugin-registry.json` keyed by its tag slug, a curated snapshot in `PluginMetadataRegistry` (without it the type never appears in the New Connection picker), a row in `../tablepro-docs/databases/index.mdx` through a paired docs PR, and a CHANGELOG entry.
+- A new driver needs: its `project.yml` target and a `RegistryPlugins` entry (`BundledPlugins` and the app's `copy: { destination: plugins }` dependency for a bundled one), a `DatabaseType` constant, an entry in `.github/plugin-registry.json` keyed by its tag slug, a curated snapshot in `PluginMetadataRegistry` (without it the type never appears in the New Connection picker), a row in `../tablepro-docs/databases/index.mdx` through a paired docs PR, and a CHANGELOG entry.
 - A new engine ships as a registry plugin (`AGENTS.md`, Scope).
 - Where a plugin's tests go, and how a test target is added in `project.yml`: `.claude/rules/tests.md`, Where a test goes and Adding a test target.
 

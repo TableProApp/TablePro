@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://tablepro.app">官网</a> ·
   <a href="https://docs.tablepro.app">文档</a> ·
-  <a href="https://github.com/TableProApp/TablePro/releases">下载</a> ·
+  <a href="https://github.com/TableProApp/TablePro/releases/latest">下载</a> ·
   <a href="https://discord.gg/hCNmUUbnD4">Discord</a>
 </p>
 
@@ -70,9 +70,6 @@ TablePro 补上缺失的第四类:原生、多数据库、开源。
 
 ## 支持的数据库
 
-- **内置**:MySQL、MariaDB、TiDB、OceanBase、Databend、PostgreSQL、Amazon Redshift、CockroachDB、PGlite、SQLite、ClickHouse、Redis
-- **插件**:Microsoft SQL Server、MongoDB、Oracle Database、Snowflake、BigQuery、Spanner、DynamoDB、DuckDB、Cassandra、ScyllaDB、Elasticsearch、Kafka、Trino、Teradata、SAP HANA、达梦 DM8、SurrealDB、Typesense、Weaviate、etcd、Cloudflare D1、Cloudflare R2 SQL、libSQL、Turso、Beancount
-
 内置驱动随应用一起发布。插件驱动按需从[插件仓库](https://github.com/TableProApp/plugins)安装。最新列表以及每个引擎支持的功能见 [tablepro.app/databases](https://tablepro.app/databases)。
 
 ## 主要功能
@@ -103,7 +100,7 @@ TablePro 补上缺失的第四类:原生、多数据库、开源。
 brew install --cask tablepro
 ```
 
-或从 [GitHub Releases](https://github.com/TableProApp/TablePro/releases) 下载。
+或从 [GitHub Releases](https://github.com/TableProApp/TablePro/releases/latest) 下载。
 
 ## 文档
 

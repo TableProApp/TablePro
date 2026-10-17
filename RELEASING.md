@@ -45,27 +45,21 @@ notarizes the DMG too.
 
 ## Static libraries
 
-The `.a` files under `Libs/` and the xcframeworks under `Libs/ios/` live on the `libs-v1` GitHub
-release, not in git. Each set has a checksum baseline committed beside it, and
-`scripts/download-libs.sh` verifies the working copy against the baseline at `HEAD` on every run,
-including runs that download nothing. An archive and its baseline move together, so publish through
-the scripts, which do both:
+The `.a` files under `Libs/` and the xcframeworks under `Libs/ios/` live on the immutable
+`libs-<n>` GitHub release that `Libs/release` names, not in git. `scripts/download-libs.sh` fetches
+it and verifies every file against the checksums at `HEAD` on every run. Publish a rebuilt library
+through the script, then commit what it writes:
 
 ```bash
 scripts/publish-libs.sh libmongoc_arm64.a libmongoc_x86_64.a libmongoc_universal.a libmongoc.a
-git add Libs/checksums.sha256 && git commit -m "build: update static library checksums"
+git add Libs/release Libs/checksums.sha256 Libs/ios/checksums.sha256
+git commit -m "build(libs): publish libs-<n>"
 ```
 
-- Name every library you rebuilt. `publish-libs.sh` verifies each one you did not name against the
-  checksums at `HEAD`, regenerates `Libs/checksums.sha256` and uploads the archive with `--clobber`.
-- The iOS xcframeworks go through `scripts/publish-ios-libs.sh`, then a commit of
-  `Libs/ios/checksums.sha256`. It takes `--dry-run` and refuses a publish that changes nothing.
-- `libs-v1` predates release immutability, so GitHub keeps it mutable. Both scripts stop before
-  touching a checksum file if it ever reports immutable.
-- Never write a checksum file by hand. Regenerating one from a stale `Libs/` reverts every library
-  you did not rebuild: that shipped a broken libmongoc and rolled DuckDB back a version.
-- Never upload with a bare `tar` and `gh release upload`. That put 299 MB on the release with no
-  baseline behind it, and the next `download-libs.sh` run stopped on every machine and CI job.
+- Name every library you rebuilt, added or removed. The script verifies every other one against the
+  checksums at `HEAD`, creates the next `libs-<n>` and rewrites `Libs/release` and both checksum files.
+- `--dry-run` prints what it would publish.
+- A published `libs-<n>` never changes; a fix is the next `<n>`.
 
 ## The release pipeline
 

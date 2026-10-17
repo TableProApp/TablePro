@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://tablepro.app">Website</a> ·
   <a href="https://docs.tablepro.app">Tài liệu</a> ·
-  <a href="https://github.com/TableProApp/TablePro/releases">Tải xuống</a> ·
+  <a href="https://github.com/TableProApp/TablePro/releases/latest">Tải xuống</a> ·
   <a href="https://discord.gg/hCNmUUbnD4">Discord</a>
 </p>
 
@@ -70,9 +70,6 @@ TablePro là mảnh thứ tư còn thiếu: native, đa database, và mã nguồ
 
 ## Database hỗ trợ
 
-- **Tích hợp sẵn**: MySQL, MariaDB, TiDB, OceanBase, Databend, PostgreSQL, Amazon Redshift, CockroachDB, PGlite, SQLite, ClickHouse, Redis
-- **Plugin**: Microsoft SQL Server, MongoDB, Oracle Database, Snowflake, BigQuery, Spanner, DynamoDB, DuckDB, Cassandra, ScyllaDB, Elasticsearch, Kafka, Trino, Teradata, SAP HANA, Dameng DM8, SurrealDB, Typesense, Weaviate, etcd, Cloudflare D1, Cloudflare R2 SQL, libSQL, Turso, Beancount
-
 Driver tích hợp sẵn đi kèm app. Driver dạng plugin cài thêm khi cần từ [plugin registry](https://github.com/TableProApp/plugins). Danh sách hiện tại và những gì từng engine hỗ trợ có tại [tablepro.app/databases](https://tablepro.app/databases).
 
 ## Bên trong có gì
@@ -103,7 +100,7 @@ Các gói và giá có tại [tablepro.app/pricing](https://tablepro.app/pricing
 brew install --cask tablepro
 ```
 
-Hoặc tải về từ [GitHub Releases](https://github.com/TableProApp/TablePro/releases).
+Hoặc tải về từ [GitHub Releases](https://github.com/TableProApp/TablePro/releases/latest).
 
 ## Tài liệu
 
