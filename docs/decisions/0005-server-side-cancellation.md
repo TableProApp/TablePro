@@ -49,7 +49,7 @@ Accepted:
 
 Gained:
 
-- Stop and query timeouts stop the statement rather than only the client's interest in it.
+- On engines with confirmed cancellation, Stop and query timeouts stop the statement rather than only the client's interest in it.
 - A cancelled or timed-out operation no longer disables governed writes for the session on the engines that implement it.
 - Drivers report `Cancelled` or `TimedOut` only after the server confirms the abort. An unconfirmed result stays `OperationOutcomeUnknown`; stateful connections are discarded where required, and `PolicyGuard` blocks governed writes after an ambiguous write.
 
