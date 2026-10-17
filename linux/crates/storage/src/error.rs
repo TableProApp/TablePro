@@ -44,6 +44,9 @@ pub enum StorageError {
     #[error("a name is required")]
     EmptyName,
 
+    #[error("another saved query of the connection has that name")]
+    NameTaken,
+
     #[error("export encoding failed: {0}")]
     Encode(#[from] tablepro_core::export::RenderError),
 

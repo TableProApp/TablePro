@@ -335,6 +335,7 @@ crates/app/src/ui/host_key_review.rs
 crates/app/src/ui/icons.rs
 crates/app/src/ui/import_dialog.rs
 crates/app/src/ui/mod.rs
+crates/app/src/ui/name_entry.rs
 crates/app/src/ui/picker/connection_menu.rs
 crates/app/src/ui/picker/connection_row.rs
 crates/app/src/ui/picker/mod.rs

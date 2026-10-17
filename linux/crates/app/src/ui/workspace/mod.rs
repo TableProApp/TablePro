@@ -455,8 +455,6 @@ pub(crate) enum WorkspaceInput {
         tab: Uuid,
         outcome: crate::workspace::WorkOutcome,
     },
-    /// Text to copy as it is, such as a saved query.
-    CopyText(String),
     WorkspaceTabClosed(Uuid),
     /// Each tab still asks about its own unsaved changes.
     CloseOtherWorkspaceTabs(Uuid),
@@ -1024,7 +1022,6 @@ impl WorkspaceModel {
             WorkspaceInput::ExportEnded { tab, outcome } => {
                 self.report_work(tab, crate::workspace::WorkKind::Export, outcome);
             }
-            WorkspaceInput::CopyText(text) => self.on_copy_text(text),
             WorkspaceInput::ReopenClosedTab => self.on_reopen_closed_tab(),
             WorkspaceInput::RefreshTab(id) => self.on_refresh_tab(id),
             WorkspaceInput::FocusTab(id) => self.focus_tab(id),

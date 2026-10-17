@@ -155,7 +155,11 @@ impl SavedQueries {
             .bind(to_unix(SystemTime::now()))
             .bind(id)
             .execute(&self.pool)
-            .await?
+            .await
+            .map_err(|error| match &error {
+                sqlx::Error::Database(database) if database.is_unique_violation() => StorageError::NameTaken,
+                _ => StorageError::Database(error),
+            })?
             .rows_affected();
         match affected {
             0 => Err(StorageError::NotFound),
@@ -390,7 +394,7 @@ mod tests {
 
         let error = store.rename(saved.id, "taken").await.expect_err("the name is taken");
 
-        assert!(matches!(error, StorageError::Database(_)), "{error:?}");
+        assert!(matches!(error, StorageError::NameTaken), "{error:?}");
         // The failed rename left both queries as they were.
         assert_eq!(store.list(Some(connection)).await.expect("list").len(), 2);
     }

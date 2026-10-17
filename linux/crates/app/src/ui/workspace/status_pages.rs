@@ -75,8 +75,6 @@ impl WorkspaceModel {
                         SavedQueriesDialogOutput::ReplaceCurrentTabQuery(text) => {
                             WorkspaceInput::ReplaceActiveTabQuery(text)
                         }
-                        SavedQueriesDialogOutput::CopyToClipboard(text) => WorkspaceInput::CopyText(text),
-                        SavedQueriesDialogOutput::ShowToast(text) => WorkspaceInput::ShowToast(text),
                     });
                 }
             });
@@ -102,7 +100,10 @@ impl WorkspaceModel {
         }
 
         let dialog = adw::AlertDialog::new(Some(&crate::i18n::gettext("Save Query")), None);
-        let entry = adw::EntryRow::builder().title(crate::i18n::gettext("Name")).build();
+        let entry = adw::EntryRow::builder()
+            .title(crate::i18n::gettext("Name"))
+            .activates_default(true)
+            .build();
         entry.set_text(&suggested_query_name(&query));
         let group = adw::PreferencesGroup::new();
         group.add(&entry);
@@ -112,6 +113,7 @@ impl WorkspaceModel {
         dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
         dialog.set_default_response(Some("save"));
         dialog.set_close_response("cancel");
+        crate::ui::name_entry::require_name(&dialog, "save", &entry);
 
         let input = self.input.clone();
         dialog.connect_response(None, move |_, response| {

@@ -20,6 +20,8 @@ pub struct SavedQueriesDialog {
     store: Option<SavedQueries>,
     active_connection: Option<Uuid>,
     root: adw::Dialog,
+    /// The dialog's own, since it covers the window's.
+    toasts: adw::ToastOverlay,
     search: gtk::SearchEntry,
     groups: gtk::Box,
     stack: gtk::Stack,
@@ -53,8 +55,6 @@ pub enum SavedQueriesDialogInput {
 pub enum SavedQueriesDialogOutput {
     OpenInNewTab(String),
     ReplaceCurrentTabQuery(String),
-    CopyToClipboard(String),
-    ShowToast(String),
 }
 
 #[derive(Debug)]
@@ -146,12 +146,15 @@ impl Component for SavedQueriesDialog {
         stack.add_named(&error_page, Some("error"));
         stack.set_visible_child_name("empty");
         toolbar.set_content(Some(&stack));
-        root.set_child(Some(&toolbar));
+        let toasts = adw::ToastOverlay::new();
+        toasts.set_child(Some(&toolbar));
+        root.set_child(Some(&toasts));
 
         let model = SavedQueriesDialog {
             store: init.store,
             active_connection: init.active_connection,
             root: root.clone(),
+            toasts,
             search,
             groups,
             stack,
@@ -183,7 +186,7 @@ impl Component for SavedQueriesDialog {
             }
             SavedQueriesDialogInput::CopySql(id) => {
                 if let Some(query) = self.query_for(id) {
-                    let _ = sender.output(SavedQueriesDialogOutput::CopyToClipboard(query));
+                    crate::ui::clipboard::copy_text(&self.root, query, |message| self.toast(message));
                 }
             }
             SavedQueriesDialogInput::RenameRequested(id) => self.prompt_rename(id, &sender),
@@ -192,14 +195,9 @@ impl Component for SavedQueriesDialog {
                 sender.oneshot_command(async move {
                     match store.rename(id, &name).await {
                         Ok(()) => SavedQueriesDialogCmd::Changed,
-                        // The only rename that fails for a reason the
-                        // user can act on is a name the connection
-                        // already has.
                         Err(error) => {
                             tracing::warn!(%error, "could not rename the saved query");
-                            SavedQueriesDialogCmd::Failed(crate::i18n::gettext(
-                                "That name is already used by another saved query.",
-                            ))
+                            SavedQueriesDialogCmd::Failed(rename_failure_text(&error))
                         }
                     }
                 });
@@ -227,16 +225,14 @@ impl Component for SavedQueriesDialog {
                 self.loaded = true;
                 self.render(&sender);
             }
-            SavedQueriesDialogCmd::LoadFailed(reason) if self.loaded => {
-                let _ = sender.output(SavedQueriesDialogOutput::ShowToast(reason));
-            }
+            SavedQueriesDialogCmd::LoadFailed(reason) if self.loaded => self.toast(&reason),
             SavedQueriesDialogCmd::LoadFailed(reason) => {
                 self.error_page.set_description(Some(&reason));
                 self.stack.set_visible_child_name("error");
             }
             SavedQueriesDialogCmd::Changed => sender.deliver(SavedQueriesDialogInput::Refresh),
             SavedQueriesDialogCmd::Failed(message) => {
-                let _ = sender.output(SavedQueriesDialogOutput::ShowToast(message));
+                self.toast(&message);
                 sender.deliver(SavedQueriesDialogInput::Refresh);
             }
         }
@@ -246,6 +242,10 @@ impl Component for SavedQueriesDialog {
 impl SavedQueriesDialog {
     pub fn dialog(&self) -> &adw::Dialog {
         &self.root
+    }
+
+    fn toast(&self, message: &str) {
+        self.toasts.add_toast(crate::ui::plain_toast(message));
     }
 
     fn load(&self, sender: &ComponentSender<Self>) {
@@ -374,7 +374,10 @@ impl SavedQueriesDialog {
             return;
         };
         let dialog = adw::AlertDialog::new(Some(&crate::i18n::gettext("Rename Saved Query")), None);
-        let entry = adw::EntryRow::builder().title(crate::i18n::gettext("Name")).build();
+        let entry = adw::EntryRow::builder()
+            .title(crate::i18n::gettext("Name"))
+            .activates_default(true)
+            .build();
         entry.set_text(&current);
         let group = adw::PreferencesGroup::new();
         group.add(&entry);
@@ -384,6 +387,7 @@ impl SavedQueriesDialog {
         dialog.set_response_appearance("rename", adw::ResponseAppearance::Suggested);
         dialog.set_default_response(Some("rename"));
         dialog.set_close_response("cancel");
+        crate::ui::name_entry::require_name(&dialog, "rename", &entry);
 
         let sender = sender.clone();
         dialog.connect_response(None, move |_, response| {
@@ -422,6 +426,18 @@ impl SavedQueriesDialog {
             }
         });
         dialog.present(Some(&self.root));
+    }
+}
+
+/// What a failed rename tells the user. A taken name is the one the
+/// user can fix from the dialog.
+fn rename_failure_text(error: &tablepro_storage::StorageError) -> String {
+    use tablepro_storage::StorageError;
+    match error {
+        StorageError::NameTaken => crate::i18n::gettext("That name is already used by another saved query."),
+        StorageError::TooLarge { .. } => crate::i18n::gettext("That name is too long."),
+        StorageError::NotFound => crate::i18n::gettext("That saved query was deleted elsewhere."),
+        _ => crate::i18n::gettext("The saved query could not be renamed."),
     }
 }
 
@@ -743,6 +759,51 @@ mod dialog_tests {
             visible_page(&dialog.model()).as_deref(),
             Some("error"),
             "Try Again found the table back"
+        );
+    }
+
+    #[gtk4::test]
+    fn copying_a_query_says_so_inside_the_dialog() {
+        let (_root, store, local, _staging) = seeded();
+        let dialog = SavedQueriesDialog::builder().launch(SavedQueriesDialogInit {
+            store: Some(store),
+            active_connection: Some(local),
+        });
+        crate::test_support::wait_until(RENDER_WAIT, || row_titles(&dialog.model()).len() == 2)
+            .expect("the saved queries never rendered");
+        let id = dialog.model().queries[0].id;
+
+        dialog
+            .sender()
+            .send(SavedQueriesDialogInput::CopySql(id))
+            .expect("send");
+        crate::test_support::drain_main_context();
+
+        let toasts = dialog.model().toasts.clone();
+        assert!(
+            crate::test_support::descendants(&toasts)
+                .iter()
+                .filter_map(|widget| widget.downcast_ref::<gtk::Label>())
+                .any(|label| label.label() == "Copied to clipboard"),
+            "the toast went somewhere the dialog covers"
+        );
+    }
+
+    #[test]
+    fn a_rename_failure_says_what_went_wrong() {
+        use tablepro_storage::StorageError;
+
+        assert_eq!(
+            rename_failure_text(&StorageError::NameTaken),
+            "That name is already used by another saved query."
+        );
+        assert_eq!(
+            rename_failure_text(&StorageError::NotFound),
+            "That saved query was deleted elsewhere."
+        );
+        assert_eq!(
+            rename_failure_text(&StorageError::NotInitialised),
+            "The saved query could not be renamed."
         );
     }
 

@@ -23,6 +23,7 @@ mod host_key_failure;
 mod host_key_review;
 pub(crate) mod icons;
 mod import_dialog;
+mod name_entry;
 mod picker;
 mod plain_toast;
 mod preferences_dialog;
