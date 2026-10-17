@@ -1,8 +1,3 @@
-//
-//  PluginManagerReconciliationTests.swift
-//  TableProTests
-//
-
 import Foundation
 import Testing
 @testable import TablePro
@@ -10,6 +5,8 @@ import Testing
 @Suite("PluginManager reconciliation helpers", .serialized)
 @MainActor
 struct PluginManagerReconciliationTests {
+    private let minimumKit = PluginManager.minimumCompatiblePluginKitVersion
+    private let currentKit = PluginManager.currentPluginKitVersion
 
     private func makeManifest(pluginIds: [String]) -> RegistryManifest {
         let plugins = pluginIds.map { id -> RegistryPlugin in
@@ -79,54 +76,42 @@ struct PluginManagerReconciliationTests {
 
     @Test("rejectedAction awaits while the manifest is still loading")
     func rejectedActionAwaitsWithoutManifest() throws {
-        let plugin = try makeRegistryPlugin(kitVersions: [18])
-        let action = PluginManager.rejectedAction(
-            registryPlugin: plugin, manifestLoaded: false, currentKitVersion: 18, minimumKitVersion: 18
-        )
+        let plugin = try makeRegistryPlugin(kitVersions: [currentKit])
+        let action = PluginManager.rejectedAction(registryPlugin: plugin, manifestLoaded: false)
         #expect(kind(action) == "awaitingCompatibleBuild")
     }
 
     @Test("rejectedAction reports notInRegistry when no manifest entry matches")
     func rejectedActionNotInRegistry() {
-        let action = PluginManager.rejectedAction(
-            registryPlugin: nil, manifestLoaded: true, currentKitVersion: 18, minimumKitVersion: 18
-        )
+        let action = PluginManager.rejectedAction(registryPlugin: nil, manifestLoaded: true)
         #expect(kind(action) == "notInRegistry")
     }
 
     @Test("rejectedAction offers an update when a current-kit binary exists")
     func rejectedActionUpdateAvailable() throws {
-        let plugin = try makeRegistryPlugin(kitVersions: [17, 18])
-        let action = PluginManager.rejectedAction(
-            registryPlugin: plugin, manifestLoaded: true, currentKitVersion: 18, minimumKitVersion: 18
-        )
+        let plugin = try makeRegistryPlugin(kitVersions: [minimumKit - 1, currentKit])
+        let action = PluginManager.rejectedAction(registryPlugin: plugin, manifestLoaded: true)
         #expect(kind(action) == "updateAvailable")
     }
 
     @Test("rejectedAction offers an update for a resilient older-kit binary under a newer app")
     func rejectedActionUpdateAvailableForwardCompat() throws {
-        let plugin = try makeRegistryPlugin(kitVersions: [18])
-        let action = PluginManager.rejectedAction(
-            registryPlugin: plugin, manifestLoaded: true, currentKitVersion: 19, minimumKitVersion: 18
-        )
+        let plugin = try makeRegistryPlugin(kitVersions: [minimumKit])
+        let action = PluginManager.rejectedAction(registryPlugin: plugin, manifestLoaded: true)
         #expect(kind(action) == "updateAvailable")
     }
 
     @Test("rejectedAction asks for an app update when only a newer-kit binary exists")
     func rejectedActionRequiresAppUpdate() throws {
-        let plugin = try makeRegistryPlugin(kitVersions: [18, 19])
-        let action = PluginManager.rejectedAction(
-            registryPlugin: plugin, manifestLoaded: true, currentKitVersion: 17, minimumKitVersion: 17
-        )
+        let plugin = try makeRegistryPlugin(kitVersions: [currentKit + 1, currentKit + 2])
+        let action = PluginManager.rejectedAction(registryPlugin: plugin, manifestLoaded: true)
         #expect(kind(action) == "requiresAppUpdate")
     }
 
     @Test("rejectedAction awaits when only pre-floor binaries are published")
     func rejectedActionAwaitsForOlderKits() throws {
-        let plugin = try makeRegistryPlugin(kitVersions: [16, 17])
-        let action = PluginManager.rejectedAction(
-            registryPlugin: plugin, manifestLoaded: true, currentKitVersion: 18, minimumKitVersion: 18
-        )
+        let plugin = try makeRegistryPlugin(kitVersions: [minimumKit - 2, minimumKit - 1])
+        let action = PluginManager.rejectedAction(registryPlugin: plugin, manifestLoaded: true)
         #expect(kind(action) == "awaitingCompatibleBuild")
     }
 
@@ -220,8 +205,7 @@ struct PluginManagerReconciliationTests {
     func permanentFailuresClassified() {
         #expect(PluginError.noCompatibleBinary.isPermanentReconciliationFailure)
         #expect(PluginError.incompatibleVersion(required: 15, current: 14).isPermanentReconciliationFailure)
-        #expect(PluginError.incompatibleWithCurrentApp(minimumRequired: "0.44.0").isPermanentReconciliationFailure)
-        #expect(PluginError.appVersionTooOld(minimumRequired: "0.44.0", currentApp: "0.43.3").isPermanentReconciliationFailure)
+        #expect(PluginError.appTooOldForPlugin(oldestPublishedKit: 15, appKit: 14).isPermanentReconciliationFailure)
     }
 
     @Test("transient errors are retried, not surfaced as permanent failures")

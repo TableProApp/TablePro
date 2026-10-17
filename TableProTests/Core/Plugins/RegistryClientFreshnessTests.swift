@@ -1,8 +1,3 @@
-//
-//  RegistryClientFreshnessTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import Testing
@@ -61,6 +56,7 @@ struct RegistryClientFreshnessTests {
     private func manifestData(includingTestPlugin: Bool) -> Data {
         var plugins = ""
         if includingTestPlugin {
+            let kit = PluginManager.currentPluginKitVersion + 1
             plugins = """
             {
                 "id": "com.test.freshness-driver",
@@ -70,10 +66,9 @@ struct RegistryClientFreshnessTests {
                 "author": {"name": "Tester"},
                 "category": "database-driver",
                 "databaseTypeIds": ["\(Self.testTypeId)"],
-                "minAppVersion": "999.0.0",
                 "binaries": [
-                    {"architecture": "arm64", "downloadURL": "https://x", "sha256": "deadbeef", "pluginKitVersion": 18},
-                    {"architecture": "x86_64", "downloadURL": "https://x", "sha256": "deadbeef", "pluginKitVersion": 18}
+                    {"architecture": "arm64", "downloadURL": "https://x", "sha256": "deadbeef", "pluginKitVersion": \(kit)},
+                    {"architecture": "x86_64", "downloadURL": "https://x", "sha256": "deadbeef", "pluginKitVersion": \(kit)}
                 ]
             }
             """
@@ -206,7 +201,7 @@ struct RegistryClientFreshnessTests {
             if case .notFound = error {
                 Issue.record("Lookup missed a plugin the forced revalidation should have found")
             }
-            guard case .incompatibleWithCurrentApp = error else {
+            guard case .appTooOldForPlugin = error else {
                 Issue.record("Unexpected error: \(error)")
                 return
             }
@@ -258,7 +253,7 @@ struct RegistryClientFreshnessTests {
             try await manager.installMissingExportFormat(format, registryClient: client) { _ in }
             Issue.record("Expected install to fail at compatibility validation")
         } catch let error as PluginError {
-            guard case .incompatibleWithCurrentApp = error else {
+            guard case .appTooOldForPlugin = error else {
                 Issue.record("Unexpected error: \(error)")
                 return
             }
