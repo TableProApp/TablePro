@@ -607,6 +607,7 @@ impl App {
             .insert(tab_id, WorkspaceTab::Editor(slot));
         tab_view.set_selected_page(&page);
         self.workspace_outer_stack.set_visible_child_name("tabs");
+        self.show_in_content_holder(&self.workspace_outer_stack);
         self.refresh_window_title();
         self.refresh_schema_index();
         self.persist_workspace_state();

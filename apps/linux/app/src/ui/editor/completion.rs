@@ -35,6 +35,15 @@ impl SchemaIndex {
         self.generation = self.generation.wrapping_add(1);
         self.columns.clear();
     }
+
+    pub fn clear(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
+        self.tables.clear();
+        self.columns.clear();
+        self.grammar = None;
+        self.connection = None;
+    }
+
     pub fn sync_connection(&mut self, connection: &crate::services::database_service::ConnectionIdentity) -> bool {
         let unchanged = self.connection.as_ref() == Some(connection);
         if unchanged {
@@ -663,6 +672,41 @@ mod tests {
             index.set_columns(table, columns.iter().map(|column| column.to_string()).collect());
         }
         index
+    }
+
+    #[test]
+    fn clearing_connection_metadata_removes_cached_candidates_and_retires_requests() {
+        let mut index = SchemaIndex {
+            grammar: Some(SqlGrammar::PostgreSql),
+            ..SchemaIndex::default()
+        };
+        index.tables.push("public.safety_items".into());
+        index.set_columns("public.safety_items", vec!["note".into()]);
+        let request = index.request("public.safety_items".into());
+        assert!(
+            super::candidates("SELECT * FROM ", 14, &index, false, str::to_string)
+                .iter()
+                .any(|candidate| candidate == "public.safety_items")
+        );
+
+        index.clear();
+
+        assert!(index.tables.is_empty());
+        assert!(index.columns.is_empty());
+        assert_eq!(index.grammar, None);
+        assert!(!index.accepts(&request));
+        let keyword_candidates = super::super::completion_proposals::candidates("SEL", 3, &index);
+        assert!(
+            keyword_candidates
+                .values
+                .iter()
+                .any(|(label, value)| label == "SELECT" && value == "SELECT")
+        );
+        assert!(
+            !super::candidates("SELECT * FROM ", 14, &index, false, str::to_string)
+                .iter()
+                .any(|candidate| candidate == "public.safety_items")
+        );
     }
 
     #[test]

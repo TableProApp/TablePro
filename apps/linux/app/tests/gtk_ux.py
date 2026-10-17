@@ -1518,6 +1518,21 @@ GLib.MainLoop().run()
 
     restart_with_an_untouched_editor_restores_without_layout_criticals.needs_restart = True
 
+    def disconnected_editor_remains_usable_without_cached_table_names(_database, _base):
+        ui.invoke_accessible_action("win.disconnect")
+        ui.wait_for_node(name="Open connection")
+        ui.invoke_accessible_action("win.open-editor")
+        ui.wait_for_node(name="Run", role=pyatspi.ROLE_PUSH_BUTTON)
+        editor = ui.set_editor_text("SELECT * FROM ")
+        extents = editor.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
+        x11_click(extents.x + 120, extents.y + 12, button=1)
+        ui.press_x11_key("End", ("Control_L",))
+        ui.press_x11_key("space", ("Control_L",))
+        time.sleep(0.3)
+        assert ui.find_node(name="safety_items", role=pyatspi.ROLE_LABEL) is None, (
+            "a disconnected editor offered a cached table"
+        )
+
     result = [
         sqlite_grid_context_menu_columns_action_is_reachable_via_atspi,
         editing_a_saved_connection_prefills_it_and_saves_the_new_name,
@@ -1549,6 +1564,7 @@ GLib.MainLoop().run()
         paste_past_the_loaded_rows_changes_nothing,
         window_controls_follow_the_desktop_button_layout,
         restart_with_an_untouched_editor_restores_without_layout_criticals,
+        disconnected_editor_remains_usable_without_cached_table_names,
     ]
     if os.environ.get("TABLEPRO_PROFILE_ROWS"):
         result.append(profile_large_result_in_the_grid)

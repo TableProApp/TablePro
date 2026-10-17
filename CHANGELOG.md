@@ -5,6 +5,7 @@
 Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the user-facing map for that development line since the last tagged package, [0.1.5](#015---2026-09-27). Compare: [`linux-v0.1.5...linux`](https://github.com/cozyGarage/BookiE/compare/linux-v0.1.5...linux). Entries stay here until the next tagged release.
 
 ### Added
+- Opening a new SQL editor while disconnected now shows the editor and removes completion suggestions cached from the previous connection.
 - SQL completion inserts complete dialect-quoted table and column names, preserves aliases, and offers scoped metadata instead of arbitrary editor words.
 - Large SQL query results stream in bounded pages, can be pinned, and can be fully exported by running the guarded query again.
 - CSV imports into PostgreSQL, MySQL/MariaDB and SQLite can preserve explicit auto-increment values from mapped columns; generated columns remain database-owned.
