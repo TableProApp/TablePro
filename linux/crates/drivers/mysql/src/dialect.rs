@@ -87,7 +87,11 @@ impl SqlDialect for MySqlDialect {
             BindTarget::Column(column) => column_param_type(column),
         };
         let (value, param_type) = adapt(value, param_type)?;
-        Ok(Placeholder::bound("?", BoundParam::new(value, param_type)?))
+        let marker = match param_type {
+            ParamType::TimestampTz => crate::server_zone::TIMESTAMP_PLACEHOLDER,
+            _ => "?",
+        };
+        Ok(Placeholder::bound(marker, BoundParam::new(value, param_type)?))
     }
 
     fn literal(&self, value: &Value, _column: &ColumnType) -> Result<String, LiteralError> {
@@ -241,8 +245,8 @@ fn column_param_type(column: &ColumnInfo) -> ParamType {
         ColumnKind::Date => ParamType::Date,
         ColumnKind::Time { with_offset: false, .. } => ParamType::Time,
         ColumnKind::Time { with_offset: true, .. } => ParamType::TimeTz,
-        // A workspace session's zone is UTC, so the instant binds as
-        // its UTC wall time.
+        // The instant binds as its UTC wall time, which the placeholder
+        // converts to whatever zone the session is in.
         ColumnKind::Timestamp {
             zone: TemporalZone::Offset,
             ..
@@ -605,9 +609,22 @@ mod tests {
         )
         .expect("a typed null");
         assert_eq!(
+            stamp.sql, "CONVERT_TZ(?, '+00:00', @@session.time_zone)",
+            "a write runs in the server's zone, so the UTC wall time is converted there"
+        );
+        assert_eq!(
             stamp.param.map(|param| param.param_type().clone()),
             Some(ParamType::TimestampTz)
         );
+        let naive = bind(
+            Value::Null,
+            ColumnKind::Timestamp {
+                fractional_digits: None,
+                zone: TemporalZone::Naive,
+            },
+        )
+        .expect("a DATETIME null");
+        assert_eq!(naive.sql, "?", "a DATETIME is wall time in any zone");
         assert!(matches!(
             bind(Value::Text("x".to_owned()), ColumnKind::Date),
             Err(BindError::ValueTypeMismatch { .. })

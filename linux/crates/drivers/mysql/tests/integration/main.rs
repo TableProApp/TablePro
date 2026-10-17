@@ -15,6 +15,7 @@ mod lenient_server;
 mod metadata;
 mod non_transactional;
 mod row_limit;
+mod server_time_zone;
 mod support;
 mod tls;
 mod write_batch;

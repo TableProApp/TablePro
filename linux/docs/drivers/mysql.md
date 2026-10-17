@@ -44,13 +44,23 @@ SET SESSION innodb_lock_wait_timeout = 10
 
 A workspace session also pins what the app's generated SQL depends on:
 
-- `time_zone = '+00:00'`, so a `TIMESTAMP` reads as the instant it names.
+- `time_zone = '+00:00'` for reads, so a `TIMESTAMP` reads as the instant it names. UTC repeats no hour, so the read is exact.
 - `sql_mode` without `NO_BACKSLASH_ESCAPES`, because generated DDL writes literals such as `COMMENT '...'` that have no hex form.
 - `sql_mode` with `STRICT_ALL_TABLES`. Without strict mode the server stores what it can and only warns: a too-long string is cut, an unknown `ENUM` label becomes `''`, a number out of range is clamped, and a column made `NOT NULL` turns its NULLs into `0` or `''`. Strict mode makes each of these an error, so a save, an import or a schema change stores what it was given or fails.
 
 An editor session keeps the server's own zone and `sql_mode`, as the mysql client would.
 
 sqlx's own session statements (`PIPES_AS_CONCAT`, `NO_ENGINE_SUBSTITUTION`, its `SET NAMES`) are turned off. Its time zone is off too, except on a workspace session, where sqlx's `time_zone` option sends the `+00:00` above. Its statement cache is 0 so no prepared statement outlives its call, and its statement logging is off.
+
+### Time zone of a write
+
+A save or a schema change runs in the server's own zone, `@@GLOBAL.time_zone`, and the batch puts `+00:00` back when it ends; a connection where that fails is closed. In UTC, `DATETIME DEFAULT CURRENT_TIMESTAMP` would store UTC wall time, 7 hours off on a `+07:00` server, and an `ALTER` from `DATETIME` to `TIMESTAMP` would shift every value.
+
+- A `TIMESTAMP` value binds as its UTC wall time inside `CONVERT_TZ(?, '+00:00', @@session.time_zone)`, which does nothing on a read and gives the server's wall time on a write.
+- In the hour a daylight-saving zone repeats, one wall time names two instants and the server picks one, so a key compared there can match the other row. Before a write sends anything, each instant it binds goes to the server's zone and back; one that changes refuses the batch. A zone written as an offset (`+07:00`) skips the check.
+- A `TIMESTAMP` column's constant default is read from `SHOW CREATE TABLE` and converted to the server's zone, so a `MODIFY` restates the same instant. MySQL's `COLUMN_DEFAULT` keeps the text in the zone of whoever last altered the table, so it is not used for this.
+
+`crates/drivers/mysql/src/server_zone.rs` has the reasoning.
 
 ## TLS
 
