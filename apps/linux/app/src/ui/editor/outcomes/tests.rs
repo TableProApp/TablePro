@@ -629,9 +629,10 @@ fn streamed_result_notebook(
     total_rows: usize,
     terminal: StreamTerminal,
 ) -> gtk::Notebook {
+    let page_indices = (first_page..first_page.saturating_add(pages.len() as u64)).collect();
     let streamed = StreamedResult {
         pages,
-        first_page,
+        page_indices,
         total_pages,
         total_rows,
         terminal,
@@ -968,7 +969,7 @@ fn exporting_after_partial_view_uses_the_guarded_query_and_its_bind_values() {
     };
     let streamed = StreamedResult {
         pages: vec![page],
-        first_page: 2,
+        page_indices: vec![2],
         total_pages: 4,
         total_rows: tablepro_core::MAX_QUERY_CURSOR_PAGE_ROWS * 3 + 2,
         terminal: StreamTerminal::Loading,
@@ -1042,4 +1043,68 @@ fn summary_label_multi_statement_includes_counts() {
     let s = summary_label(3, 2, 100, true);
     assert!(s.contains("2/3"));
     assert!(s.contains("100"));
+}
+
+fn outcome_with(kind: StatementOutcomeKind, pinned: bool) -> super::StatementOutcome {
+    super::StatementOutcome {
+        identity: StatementIdentity::default(),
+        sql_preview: "SELECT 1".into(),
+        elapsed_ms: 0,
+        kind,
+        pinned,
+    }
+}
+
+fn streamed_kind(terminal: StreamTerminal) -> StatementOutcomeKind {
+    StatementOutcomeKind::Streamed(Box::new(StreamedResult {
+        pages: Vec::new(),
+        page_indices: Vec::new(),
+        total_pages: 0,
+        total_rows: 0,
+        terminal,
+        export: None,
+    }))
+}
+
+#[test]
+fn a_failed_or_timed_out_stream_is_the_result_shown_first() {
+    for terminal in [
+        StreamTerminal::Failed("division by zero".into()),
+        StreamTerminal::TimedOut,
+    ] {
+        let outcomes = vec![
+            outcome_with(StatementOutcomeKind::Rows(Vec::new()), true),
+            outcome_with(streamed_kind(terminal), false),
+        ];
+        assert_eq!(super::first_failure(&outcomes), Some(1));
+    }
+    let complete = vec![
+        outcome_with(StatementOutcomeKind::Rows(Vec::new()), true),
+        outcome_with(streamed_kind(StreamTerminal::Complete), false),
+    ];
+    assert_eq!(super::first_failure(&complete), None);
+}
+
+#[test]
+fn skipped_empty_stream_page_does_not_shift_retained_result_identity() {
+    let mut cache = super::super::stream_pages::StreamPageCache::default();
+    for (index, values, has_next_page) in [(0, &[1][..], true), (1, &[][..], true), (2, &[2][..], false)] {
+        cache
+            .append(index, std::sync::Arc::new(cursor_page(values, has_next_page).result))
+            .unwrap();
+    }
+    let outcome = super::StatementOutcome {
+        identity: StatementIdentity::default(),
+        sql_preview: "SELECT id FROM items".into(),
+        elapsed_ms: 0,
+        kind: StatementOutcomeKind::Streamed(Box::new(cache.snapshot(StreamTerminal::Complete, None))),
+        pinned: false,
+    };
+
+    let indexes = super::result_view_keys(&[outcome])
+        .into_iter()
+        .map(|key| key.result_set_index)
+        .collect::<std::collections::HashSet<_>>();
+
+    assert_eq!(indexes, std::collections::HashSet::from([0, 2]));
 }

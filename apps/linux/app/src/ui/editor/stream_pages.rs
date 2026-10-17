@@ -24,7 +24,7 @@ pub enum StreamTerminal {
 #[derive(Debug, Clone)]
 pub struct StreamedResult {
     pub(super) pages: Vec<Arc<QueryResult>>,
-    pub(super) first_page: u64,
+    pub(super) page_indices: Vec<u64>,
     pub(super) total_pages: u64,
     pub(super) total_rows: usize,
     pub(super) terminal: StreamTerminal,
@@ -36,6 +36,7 @@ pub(super) struct StreamPageCache {
     pages: VecDeque<(u64, Arc<QueryResult>)>,
     columns: Option<Vec<ColumnInfo>>,
     next_page: u64,
+    empty_pages: u64,
     total_rows: usize,
 }
 
@@ -53,6 +54,11 @@ impl StreamPageCache {
         if self.columns.is_none() {
             self.columns = Some(result.columns.clone());
         }
+        if index > 0 && result.rows.is_empty() {
+            self.next_page = self.next_page.saturating_add(1);
+            self.empty_pages = self.empty_pages.saturating_add(1);
+            return Ok(());
+        }
         self.total_rows = self.total_rows.saturating_add(result.rows.len());
         self.pages.push_back((index, result));
         self.next_page = self.next_page.saturating_add(1);
@@ -67,6 +73,7 @@ impl StreamPageCache {
         &self.pages
     }
 
+    #[cfg(test)]
     pub(super) fn first_page(&self) -> u64 {
         self.pages.front().map_or(self.next_page, |(index, _)| *index)
     }
@@ -90,8 +97,8 @@ impl StreamPageCache {
             .map(|(query, columns)| crate::ui::export_dialog::StreamExportRequest { query, columns });
         StreamedResult {
             pages: self.pages.iter().map(|(_, page)| page.clone()).collect(),
-            first_page: self.first_page(),
-            total_pages: self.next_page,
+            page_indices: self.pages.iter().map(|(index, _)| *index).collect(),
+            total_pages: self.next_page.saturating_sub(self.empty_pages),
             total_rows: self.total_rows,
             terminal,
             export,
@@ -185,5 +192,44 @@ mod tests {
 
         assert_eq!(cache.total_rows(), 0);
         assert_eq!(cache.columns().map(|columns| columns[0].name.as_str()), Some("id"));
+    }
+
+    #[test]
+    fn an_empty_page_after_the_first_ends_the_stream_without_evicting_rows() {
+        let mut cache = StreamPageCache::default();
+        for index in 0..MAX_RETAINED_STREAM_PAGES as u64 {
+            cache.append(index, page(&["id"], &[index as i64])).unwrap();
+        }
+
+        cache
+            .append(MAX_RETAINED_STREAM_PAGES as u64, page(&["id"], &[]))
+            .unwrap();
+
+        assert_eq!(cache.pages().len(), MAX_RETAINED_STREAM_PAGES);
+        assert_eq!(cache.first_page(), 0);
+        let snapshot = cache.snapshot(StreamTerminal::Complete, None);
+        assert_eq!(snapshot.total_pages, MAX_RETAINED_STREAM_PAGES as u64);
+        assert!(snapshot.pages.iter().all(|page| !page.rows.is_empty()));
+    }
+
+    #[test]
+    fn an_empty_first_page_is_kept_for_its_columns() {
+        let mut cache = StreamPageCache::default();
+        cache.append(0, page(&["id"], &[])).unwrap();
+        assert_eq!(cache.pages().len(), 1);
+        assert_eq!(cache.snapshot(StreamTerminal::Complete, None).total_pages, 1);
+    }
+
+    #[test]
+    fn a_page_after_a_skipped_empty_page_is_still_in_order() {
+        let mut cache = StreamPageCache::default();
+        cache.append(0, page(&["id"], &[1])).unwrap();
+        cache.append(1, page(&["id"], &[])).unwrap();
+
+        cache
+            .append(2, page(&["id"], &[2]))
+            .expect("the next page is not out of order");
+
+        assert_eq!(cache.snapshot(StreamTerminal::Complete, None).total_pages, 2);
     }
 }

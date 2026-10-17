@@ -846,16 +846,13 @@ impl SimpleComponent for SqlEditor {
                 }
                 self.cancel_token = None;
                 self.status.set_label(&crate::tr!("cancelled"));
-                clear_box(&self.results_holder);
-                self.pinned.show(Vec::new());
-                self.refresh_pin_button();
                 let cancelled_page = adw::StatusPage::builder()
                     .title(crate::tr!("Query cancelled"))
                     .description(crate::tr!("The running query was stopped."))
                     .icon_name("process-stop-symbolic")
                     .vexpand(true)
                     .build();
-                self.results_holder.append(&cancelled_page);
+                self.show_pins_above(&cancelled_page);
             }
 
             SqlEditorInput::ShowTimedOut { generation, secs } => {
@@ -874,16 +871,13 @@ impl SimpleComponent for SqlEditor {
                 }
                 self.cancel_token = None;
                 self.status.set_label(&crate::tr!("timed out"));
-                clear_box(&self.results_holder);
-                self.pinned.show(Vec::new());
-                self.refresh_pin_button();
                 let page = adw::StatusPage::builder()
                     .title(crate::tr!("Query timed out"))
                     .description(&reason)
                     .icon_name("dialog-warning-symbolic")
                     .vexpand(true)
                     .build();
-                self.results_holder.append(&page);
+                self.show_pins_above(&page);
             }
 
             SqlEditorInput::InsertDroppedSql { request, text } => {

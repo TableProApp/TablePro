@@ -51,9 +51,8 @@ impl SqlEditor {
             cache: StreamPageCache::default(),
             error: None,
         });
-        clear_box(&self.results_holder);
         let loading = waiting_for_stream_page();
-        self.results_holder.append(&loading);
+        self.show_pins_above(&loading);
         let _ = accepted.send(true);
     }
 

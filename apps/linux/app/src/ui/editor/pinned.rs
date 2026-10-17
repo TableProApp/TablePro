@@ -1,13 +1,16 @@
+use super::stream_pages::StreamTerminal;
 use super::{SqlEditor, StatementOutcome, StatementOutcomeKind, clear_box, render_outcomes};
+use relm4::gtk;
 use relm4::gtk::prelude::*;
 
 pub(super) const MAX_PINNED: usize = 4;
 
 fn has_grid_result(outcome: &StatementOutcome) -> bool {
-    matches!(
-        outcome.kind,
-        StatementOutcomeKind::Rows(_) | StatementOutcomeKind::Streamed(_)
-    )
+    match &outcome.kind {
+        StatementOutcomeKind::Rows(_) => true,
+        StatementOutcomeKind::Streamed(result) => !matches!(result.terminal, StreamTerminal::Loading),
+        _ => false,
+    }
 }
 
 #[derive(Default)]
@@ -68,6 +71,23 @@ impl SqlEditor {
         self.pin_button.set_label(&label);
         self.pin_button
             .set_sensitive(self.pinned.is_pinned() || self.pinned.has_results());
+    }
+
+    pub(super) fn show_pins_above(&mut self, page: &impl IsA<gtk::Widget>) {
+        clear_box(&self.results_holder);
+        let pins = self.pinned.show(Vec::new());
+        if !pins.is_empty() {
+            render_outcomes(
+                &self.results_holder,
+                &pins,
+                &self.grid_sender,
+                self.connection_id,
+                self.database.clone(),
+                self.result_view_settings.clone(),
+            );
+        }
+        self.results_holder.append(page);
+        self.refresh_pin_button();
     }
 
     pub(super) fn toggle_pin(&mut self) {
@@ -260,5 +280,18 @@ mod tests {
         assert!(!pins.is_pinned());
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].sql_preview, "SELECT 2");
+    }
+
+    #[test]
+    fn a_stream_still_loading_is_not_pinned() {
+        let mut pins = PinnedResults::default();
+        pins.show(vec![streamed(
+            "SELECT id FROM items",
+            &[1],
+            super::super::stream_pages::StreamTerminal::Loading,
+        )]);
+
+        assert!(!pins.has_results());
+        assert_eq!(pins.pin_last(), 0);
     }
 }
