@@ -114,7 +114,7 @@ scripts/generate-project.sh [both|macos|ios]  # needs the libs; rerun after edit
 - `scripts/banned-words.txt` is the list; never copy its terms. `scripts/check-banned-words.sh --staged` checks a staged change; the `PR title` job checks a PR's added lines and body.
 - One home per fact; others point to it by repo path and section. No drifting counts or timings; a plan is not a fact.
 - Budgets: this file 16 KiB, a rule 200 lines, a `SKILL.md` 500, a skill description 1,536 characters.
-- `verify.sh agent-docs` checks backticked names in the Every change 5 files and each Area rules row against its rule's `paths:`. Never state a plugin count in prose.
+- `verify.sh agent-docs` checks backticked names in the Every change 5 files. Never state a plugin count in prose.
 
 ## CI
 
