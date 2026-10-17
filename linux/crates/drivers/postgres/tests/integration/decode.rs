@@ -176,8 +176,13 @@ async fn an_exported_array_inserts_back_as_it_was() {
         .await
         .expect("the read");
 
-    let insert =
-        tablepro_core::export::render_sql_insert(connection.dialect().as_ref(), "copied", &read.columns, &read.rows);
+    let insert = tablepro_core::export::render_sql_insert(
+        connection.dialect().as_ref(),
+        &tablepro_core::TableRef::unqualified("copied"),
+        &read.columns,
+        &[],
+        &read.rows,
+    );
     crate::support::apply(
         connection.as_ref(),
         tablepro_core::WriteKind::RowChanges,
