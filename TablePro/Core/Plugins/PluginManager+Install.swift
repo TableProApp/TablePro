@@ -19,7 +19,7 @@ extension PluginManager {
         defer { installsInFlight.remove(registryPlugin.id) }
 
         let registryPlugin = await registryClient.refreshedPlugin(matching: registryPlugin)
-        let binary = try registryPlugin.resolvedBinary()
+        let binary = try validateRegistryCompatibility(registryPlugin)
 
         let finalURL = try await PluginInstaller.shared.install(
             registryPlugin,
@@ -55,7 +55,7 @@ extension PluginManager {
         let registryPlugin = refreshManifest
             ? await RegistryClient.shared.refreshedPlugin(matching: registryPlugin)
             : registryPlugin
-        let binary = try registryPlugin.resolvedBinary()
+        let binary = try validateRegistryCompatibility(registryPlugin)
 
         let result = try await PluginInstaller.shared.update(
             registryPlugin,
@@ -134,6 +134,11 @@ extension PluginManager {
         await PluginInstaller.shared.discardStagedUpdate(pluginId: pluginId)
         stagedUpdates.removeValue(forKey: pluginId)
         PluginInstallTracker.shared.clearInstall(pluginId: pluginId)
+    }
+
+    @discardableResult
+    func validateRegistryCompatibility(_ registryPlugin: RegistryPlugin) throws -> RegistryBinary {
+        try registryPlugin.resolvedBinary(for: .current, kits: Self.compatibleKits)
     }
 
     func pluginHasLiveConnections(_ registryPlugin: RegistryPlugin) -> Bool {

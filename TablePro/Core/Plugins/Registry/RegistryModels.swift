@@ -95,11 +95,11 @@ struct RegistryPlugin: Codable, Sendable, Identifiable {
 }
 
 extension RegistryPlugin {
-    func resolvedBinary(for arch: PluginArchitecture = .current) throws -> RegistryBinary {
+    func resolvedBinary(for arch: PluginArchitecture = .current, kits: ClosedRange<Int>) throws -> RegistryBinary {
         let forThisArchitecture = binaries.filter { $0.architecture == arch }
         let highestInRange = forThisArchitecture
             .compactMap { binary -> (binary: RegistryBinary, kit: Int)? in
-                guard let kit = binary.pluginKitVersion, PluginManager.isCompatibleKit(kit) else {
+                guard let kit = binary.pluginKitVersion, kits.contains(kit) else {
                     return nil
                 }
                 return (binary, kit)
@@ -110,10 +110,9 @@ extension RegistryPlugin {
             return highestInRange.binary
         }
 
-        let appKit = PluginManager.currentPluginKitVersion
         let publishedKits = forThisArchitecture.compactMap(\.pluginKitVersion)
-        if let oldest = publishedKits.min(), oldest > appKit {
-            throw PluginError.appTooOldForPlugin(oldestPublishedKit: oldest, appKit: appKit)
+        if let oldest = publishedKits.min(), oldest > kits.upperBound {
+            throw PluginError.appTooOldForPlugin(oldestPublishedKit: oldest, appKit: kits.upperBound)
         }
 
         throw PluginError.noCompatibleBinary

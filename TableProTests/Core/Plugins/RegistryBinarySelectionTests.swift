@@ -3,8 +3,6 @@ import Testing
 @testable import TablePro
 
 struct RegistryBinarySelectionTests {
-    private let minimumKit = PluginManager.minimumCompatiblePluginKitVersion
-    private let currentKit = PluginManager.currentPluginKitVersion
 
     private func makePlugin(binaries: [RegistryBinary]) -> RegistryPlugin {
         let payload: [String: Any] = [
@@ -31,11 +29,11 @@ struct RegistryBinarySelectionTests {
     @Test("exact pluginKitVersion + arch match wins")
     func exactMatchSelected() throws {
         let plugin = makePlugin(binaries: [
-            RegistryBinary(architecture: .arm64, downloadURL: "https://a/current", sha256: "aaa", pluginKitVersion: currentKit),
-            RegistryBinary(architecture: .arm64, downloadURL: "https://a/old", sha256: "bbb", pluginKitVersion: minimumKit - 1)
+            RegistryBinary(architecture: .arm64, downloadURL: "https://a/13", sha256: "aaa", pluginKitVersion: 13),
+            RegistryBinary(architecture: .arm64, downloadURL: "https://a/12", sha256: "bbb", pluginKitVersion: 12)
         ])
-        let resolved = try plugin.resolvedBinary(for: .arm64)
-        #expect(resolved.downloadURL == "https://a/current")
+        let resolved = try plugin.resolvedBinary(for: .arm64, kits: 13...13)
+        #expect(resolved.downloadURL == "https://a/13")
     }
 
     @Test("nil pluginKitVersion is no longer a universal fallback")
@@ -44,7 +42,7 @@ struct RegistryBinarySelectionTests {
             RegistryBinary(architecture: .arm64, downloadURL: "https://legacy", sha256: "abc", pluginKitVersion: nil)
         ])
         #expect(throws: PluginError.self) {
-            _ = try plugin.resolvedBinary(for: .arm64)
+            _ = try plugin.resolvedBinary(for: .arm64, kits: 13...13)
         }
     }
 
@@ -52,68 +50,69 @@ struct RegistryBinarySelectionTests {
     func validBinaryFoundAlongsideNilKit() throws {
         let plugin = makePlugin(binaries: [
             RegistryBinary(architecture: .arm64, downloadURL: "https://legacy", sha256: "abc", pluginKitVersion: nil),
-            RegistryBinary(architecture: .arm64, downloadURL: "https://a/current", sha256: "def", pluginKitVersion: currentKit)
+            RegistryBinary(architecture: .arm64, downloadURL: "https://a/14", sha256: "def", pluginKitVersion: 14)
         ])
-        let resolved = try plugin.resolvedBinary(for: .arm64)
-        #expect(resolved.downloadURL == "https://a/current")
+        let resolved = try plugin.resolvedBinary(for: .arm64, kits: 14...14)
+        #expect(resolved.downloadURL == "https://a/14")
     }
 
     @Test("resilient older-kit binary is served to a newer app without re-publish")
     func forwardCompatibleBinarySelected() throws {
         let plugin = makePlugin(binaries: [
-            RegistryBinary(architecture: .arm64, downloadURL: "https://a/minimum", sha256: "aaa", pluginKitVersion: minimumKit)
+            RegistryBinary(architecture: .arm64, downloadURL: "https://a/18", sha256: "aaa", pluginKitVersion: 18)
         ])
-        let resolved = try plugin.resolvedBinary(for: .arm64)
-        #expect(resolved.downloadURL == "https://a/minimum")
+        let resolved = try plugin.resolvedBinary(for: .arm64, kits: 18...19)
+        #expect(resolved.downloadURL == "https://a/18")
     }
 
     @Test("highest binary within the compatible range wins")
     func highestInRangeSelected() throws {
         let plugin = makePlugin(binaries: [
-            RegistryBinary(architecture: .arm64, downloadURL: "https://a/minimum", sha256: "aaa", pluginKitVersion: minimumKit),
-            RegistryBinary(architecture: .arm64, downloadURL: "https://a/current", sha256: "bbb", pluginKitVersion: currentKit)
+            RegistryBinary(architecture: .arm64, downloadURL: "https://a/18", sha256: "aaa", pluginKitVersion: 18),
+            RegistryBinary(architecture: .arm64, downloadURL: "https://a/19", sha256: "bbb", pluginKitVersion: 19),
+            RegistryBinary(architecture: .arm64, downloadURL: "https://a/20", sha256: "ccc", pluginKitVersion: 20)
         ])
-        let resolved = try plugin.resolvedBinary(for: .arm64)
-        #expect(resolved.downloadURL == "https://a/current")
+        let resolved = try plugin.resolvedBinary(for: .arm64, kits: 18...20)
+        #expect(resolved.downloadURL == "https://a/20")
     }
 
     @Test("binary below the floor is rejected")
     func belowFloorRejected() {
         let plugin = makePlugin(binaries: [
-            RegistryBinary(architecture: .arm64, downloadURL: "https://a/old", sha256: "aaa", pluginKitVersion: minimumKit - 1)
+            RegistryBinary(architecture: .arm64, downloadURL: "https://a/17", sha256: "aaa", pluginKitVersion: 17)
         ])
         #expect(throws: PluginError.self) {
-            _ = try plugin.resolvedBinary(for: .arm64)
+            _ = try plugin.resolvedBinary(for: .arm64, kits: 18...18)
         }
     }
 
     @Test("binary built for a newer app is rejected")
     func aboveCurrentRejected() {
         let plugin = makePlugin(binaries: [
-            RegistryBinary(architecture: .arm64, downloadURL: "https://a/new", sha256: "aaa", pluginKitVersion: currentKit + 1)
+            RegistryBinary(architecture: .arm64, downloadURL: "https://a/19", sha256: "aaa", pluginKitVersion: 19)
         ])
         #expect(throws: PluginError.self) {
-            _ = try plugin.resolvedBinary(for: .arm64)
+            _ = try plugin.resolvedBinary(for: .arm64, kits: 18...18)
         }
     }
 
     @Test("throws noCompatibleBinary when no arch match")
     func noArchitectureMatch() {
         let plugin = makePlugin(binaries: [
-            RegistryBinary(architecture: .x86_64, downloadURL: "https://intel", sha256: "x", pluginKitVersion: currentKit)
+            RegistryBinary(architecture: .x86_64, downloadURL: "https://intel", sha256: "x", pluginKitVersion: 13)
         ])
         #expect(throws: PluginError.self) {
-            _ = try plugin.resolvedBinary(for: .arm64)
+            _ = try plugin.resolvedBinary(for: .arm64, kits: 13...13)
         }
     }
 
     @Test("throws noCompatibleBinary when arch matches but no kit version match and no legacy")
     func noKitVersionMatchNoLegacy() {
         let plugin = makePlugin(binaries: [
-            RegistryBinary(architecture: .arm64, downloadURL: "https://a/old", sha256: "bbb", pluginKitVersion: minimumKit - 1)
+            RegistryBinary(architecture: .arm64, downloadURL: "https://a/12", sha256: "bbb", pluginKitVersion: 12)
         ])
         #expect(throws: PluginError.self) {
-            _ = try plugin.resolvedBinary(for: .arm64)
+            _ = try plugin.resolvedBinary(for: .arm64, kits: 13...13)
         }
     }
 
@@ -140,8 +139,6 @@ struct RegistryBinarySelectionTests {
 }
 
 struct RegistryStaleAppTests {
-    private let minimumKit = PluginManager.minimumCompatiblePluginKitVersion
-    private let currentKit = PluginManager.currentPluginKitVersion
 
     private func makePlugin(kits: [Int]) -> RegistryPlugin {
         let payload: [String: Any] = [
@@ -164,44 +161,41 @@ struct RegistryStaleAppTests {
         return try! JSONDecoder().decode(RegistryPlugin.self, from: data)
     }
 
-    // Measured on 2026-09-13: apps on kits 19 and 20 got no binary when the registry's oldest kit was 21,
-    // and were told their architecture was unsupported.
+    // 2026-09-13: apps on kits 19 and 20 were told their architecture was unsupported when the oldest published kit was 21.
     @Test("An app below every published binary is named as the stale side, not the architecture")
     func staleAppIsReportedAsStale() {
-        let plugin = makePlugin(kits: [currentKit + 1, currentKit + 2])
-        let expectedOldest = currentKit + 1
-        let expectedAppKit = currentKit
+        let plugin = makePlugin(kits: [21, 25, 30])
 
         #expect {
-            _ = try plugin.resolvedBinary(for: .arm64)
+            _ = try plugin.resolvedBinary(for: .arm64, kits: 19...19)
         } throws: { error in
             guard case PluginError.appTooOldForPlugin(let oldest, let appKit) = error else { return false }
-            return oldest == expectedOldest && appKit == expectedAppKit
+            return oldest == 21 && appKit == 19
         }
     }
 
     @Test("A binary above the app's kit is skipped for a lower one that fits")
     func picksTheHighestBinaryTheAppCanLoad() throws {
-        let plugin = makePlugin(kits: [minimumKit, currentKit, currentKit + 1])
-        let resolved = try plugin.resolvedBinary(for: .arm64)
+        let plugin = makePlugin(kits: [21, 25, 30])
+        let resolved = try plugin.resolvedBinary(for: .arm64, kits: 19...25)
 
-        #expect(resolved.downloadURL == "https://a/\(currentKit)")
+        #expect(resolved.downloadURL == "https://a/25")
     }
 
     @Test("A plugin the app is new enough for still resolves")
     func newestAppResolvesNewestBinary() throws {
-        let plugin = makePlugin(kits: [minimumKit, currentKit])
-        let resolved = try plugin.resolvedBinary(for: .arm64)
+        let plugin = makePlugin(kits: [21, 25, 30])
+        let resolved = try plugin.resolvedBinary(for: .arm64, kits: 19...30)
 
-        #expect(resolved.downloadURL == "https://a/\(currentKit)")
+        #expect(resolved.downloadURL == "https://a/30")
     }
 
     @Test("A binary too old for the app is not reported as a stale app")
     func binaryBelowTheMinimumKeepsTheOriginalError() {
-        let plugin = makePlugin(kits: [minimumKit - 1])
+        let plugin = makePlugin(kits: [12])
 
         #expect {
-            _ = try plugin.resolvedBinary(for: .arm64)
+            _ = try plugin.resolvedBinary(for: .arm64, kits: 19...30)
         } throws: { error in
             guard case PluginError.noCompatibleBinary = error else { return false }
             return true
@@ -210,10 +204,10 @@ struct RegistryStaleAppTests {
 
     @Test("A missing architecture is still an architecture problem")
     func missingArchitectureKeepsTheOriginalError() {
-        let plugin = makePlugin(kits: [currentKit])
+        let plugin = makePlugin(kits: [30])
 
         #expect {
-            _ = try plugin.resolvedBinary(for: .x86_64)
+            _ = try plugin.resolvedBinary(for: .x86_64, kits: 19...30)
         } throws: { error in
             guard case PluginError.noCompatibleBinary = error else { return false }
             return true

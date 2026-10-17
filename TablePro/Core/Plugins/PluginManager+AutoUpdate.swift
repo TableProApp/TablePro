@@ -110,7 +110,7 @@ extension PluginManager {
             reconciliationAttempts.removeValue(forKey: lookupId)
             return .resolved
         } catch let error as PluginError where error.isPermanentReconciliationFailure {
-            let action = Self.rejectedAction(registryPlugin: registryPlugin, manifestLoaded: true)
+            let action = Self.rejectedAction(registryPlugin: registryPlugin, manifestLoaded: true, kits: Self.compatibleKits)
             updateRejectedReason(url: rejected.url, reason: incompatibleBuildReason(for: registryPlugin))
             if case .noCompatibleBinary = error, case .awaitingCompatibleBuild = action {
                 Self.logger.warning("Reconciliation: no compatible build published yet for '\(rejected.name)', will retry")
@@ -230,20 +230,25 @@ extension PluginManager {
     func rejectedAction(for rejected: RejectedPlugin) -> RejectedPluginAction {
         Self.rejectedAction(
             registryPlugin: registryPlugin(for: rejected),
-            manifestLoaded: RegistryClient.shared.manifest != nil
+            manifestLoaded: RegistryClient.shared.manifest != nil,
+            kits: Self.compatibleKits
         )
     }
 
-    static func rejectedAction(registryPlugin: RegistryPlugin?, manifestLoaded: Bool) -> RejectedPluginAction {
+    static func rejectedAction(
+        registryPlugin: RegistryPlugin?,
+        manifestLoaded: Bool,
+        kits: ClosedRange<Int>
+    ) -> RejectedPluginAction {
         guard manifestLoaded else { return .awaitingCompatibleBuild }
         guard let registryPlugin else { return .notInRegistry }
         let availableKits = registryPlugin.binaries
             .filter { $0.architecture == .current }
             .compactMap(\.pluginKitVersion)
-        if availableKits.contains(where: isCompatibleKit) {
+        if availableKits.contains(where: { kits.contains($0) }) {
             return .updateAvailable(registryPlugin)
         }
-        if availableKits.contains(where: { $0 > currentPluginKitVersion }) {
+        if availableKits.contains(where: { $0 > kits.upperBound }) {
             return .requiresAppUpdate
         }
         return .awaitingCompatibleBuild

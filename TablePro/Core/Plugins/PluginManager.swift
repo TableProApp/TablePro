@@ -460,8 +460,10 @@ final class PluginManager: ObservableObject {
         let bundle: Bundle
     }
 
+    nonisolated internal static let compatibleKits = minimumCompatiblePluginKitVersion...currentPluginKitVersion
+
     nonisolated internal static func isCompatibleKit(_ kit: Int) -> Bool {
-        (minimumCompatiblePluginKitVersion...currentPluginKitVersion).contains(kit)
+        compatibleKits.contains(kit)
     }
 
     nonisolated internal static func validateBundleVersions(_ bundle: Bundle) throws {
