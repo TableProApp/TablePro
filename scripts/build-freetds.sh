@@ -48,8 +48,7 @@ fi
 
 mkdir -p "$BUILD_DIR" "$LIBS_DIR" "$IOS_LIBS_DIR"
 
-# Cached outside the per-run build directory, so moving off a fixed /tmp build root does not turn
-# every run into a fresh download. Verified on every run, not only after a download.
+# Verified on every run, not only after a download.
 TARBALL="$CACHE_DIR/freetds-${FREETDS_VERSION}.tar.gz"
 echo "==> Downloading FreeTDS ${FREETDS_VERSION}..."
 if [ ! -f "$TARBALL" ]; then
@@ -190,7 +189,6 @@ lipo -create \
 
 # The flat committed archives the macOS plugin links directly (TablePro.xcodeproj force_loads
 # Libs/libsybdb.a). The universal slice is kept until the xcframework is assembled, then cleaned up.
-# Publish with scripts/publish-libs.sh libsybdb_arm64.a libsybdb_x86_64.a libsybdb_universal.a libsybdb.a
 echo "==> Writing committed macOS archives (libsybdb.a, libsybdb_arm64.a, libsybdb_x86_64.a, libsybdb_universal.a)..."
 cp "$LIBS_DIR/libsybdb_macos-arm64.a"     "$LIBS_DIR/libsybdb_arm64.a"
 cp "$LIBS_DIR/libsybdb_macos-x86_64.a"    "$LIBS_DIR/libsybdb_x86_64.a"
