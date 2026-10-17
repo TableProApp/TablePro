@@ -3,7 +3,7 @@ name: iOS and Package Tests
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'release/**']
   workflow_dispatch:
 
 concurrency:

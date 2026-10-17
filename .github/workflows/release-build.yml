@@ -1,0 +1,111 @@
+name: Release Build
+
+# The Release configuration of the app and every registry plugin, universal and unsigned, packaged
+# the way a tag packages it, so a packaging failure shows on the commit instead of on the tag.
+
+on:
+  push:
+    branches: [main, 'release/**']
+  workflow_dispatch:
+
+# Each commit has a group of its own and is never cancelled, as in macos-tests.yml.
+concurrency:
+  group: release-build-${{ github.sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Changes (Release)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether the Release build runs
+        id: decide
+        env:
+          BASE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          run=$(scripts/ci/detect-changed-paths.sh --base "$BASE" release)
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+  # Reads "not false" so a failed changes job builds instead of passing.
+  build:
+    name: Release Build
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
+    runs-on: xcode-27
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-xcode
+
+      - uses: ./.github/actions/setup-xcodegen
+
+      - name: Download static libraries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/download-libs.sh
+
+      - name: Generate the Xcode project
+        run: scripts/generate-project.sh macos
+
+      # macos-tests.yml saves this cache.
+      - name: Restore Swift package checkouts
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.spm-cache
+          key: spm-${{ runner.os }}-${{ hashFiles('TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Set up Go for the SAP HANA helper
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: Native/HanaBridge/go.mod
+          cache: false
+
+      # The Dameng and HANA targets copy these artifacts in and never build them.
+      - name: Build the native bridges
+        run: |
+          scripts/build-dameng.sh both
+          scripts/build-hana.sh both
+
+      - name: Install create-dmg
+        run: brew list create-dmg > /dev/null 2>&1 || brew install create-dmg
+
+      - name: Build the app
+        id: app
+        run: scripts/release/build.sh app --unsigned
+
+      # Runs after an app failure too, so one run reports both.
+      - name: Build the registry plugins
+        id: plugins
+        if: ${{ !cancelled() }}
+        run: scripts/release/build.sh plugins --unsigned
+
+      - name: Package the app
+        if: ${{ !cancelled() && steps.app.outcome == 'success' }}
+        run: scripts/release/package.sh app 0.0.0-dev --unsigned
+
+      - name: Package the plugins
+        if: ${{ !cancelled() && steps.plugins.outcome == 'success' }}
+        run: scripts/release/package.sh plugins 0.0.0-dev --unsigned
+
+      - name: Upload the build logs
+        if: ${{ failure() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-build-logs-${{ github.run_attempt }}
+          path: build/release/logs
+          if-no-files-found: ignore
+          retention-days: 7

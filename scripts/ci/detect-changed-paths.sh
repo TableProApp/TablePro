@@ -2,11 +2,7 @@
 set -euo pipefail
 
 # Prints "true" when a suite has to run for the changes since <base>, "false" when it can skip.
-#
-# Usage: detect-changed-paths.sh [--base <sha>] macos|plugins|ios|oracle|hana
-#
-# A pull request passes its base, a push passes github.event.before. No base, or the all-zero
-# sha of a new ref, runs everything.
+# Usage: detect-changed-paths.sh [--base <sha>] macos|plugins|ios|oracle|hana|release
 
 BASE=""
 SUITE=""
@@ -20,6 +16,7 @@ done
 
 cd "$(git rev-parse --show-toplevel)"
 
+SKIP=""
 case "$SUITE" in
     macos)
         PATTERNS=('TablePro/' 'TableProTests/' 'TableProUITests/' 'TestPlans/' 'Plugins/' 'Packages/'
@@ -53,12 +50,27 @@ case "$SUITE" in
             '\.github/actions/setup-xcode/' '\.github/workflows/ios-tests\.yml$') ;;
     hana)
         PATTERNS=('Native/HanaBridge/' '\.github/workflows/repo-hygiene\.yml$') ;;
+    release)
+        # A Release build compiles no test target, so the test folders under Plugins/ and
+        # Packages/ are skipped too.
+        PATTERNS=('TablePro/' 'Plugins/' 'Packages/' 'Native/' 'Configs/' 'Libs/' 'project\.yml$'
+            'TablePro\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/Package\.resolved$'
+            '\.github/plugin-registry\.json$'
+            'scripts/(generate-project|download-libs|create-openssl-dylibs|build-dameng|build-hana)\.sh$'
+            'scripts/lib/' 'scripts/release/' 'scripts/ci/(detect-changed-paths|verify-plugin-loads)\.sh$'
+            '\.github/actions/setup-xcode(gen)?/' '\.github/workflows/release-build\.yml$')
+        SKIP='Plugins/[^/]+Tests/|Packages/[^/]+/Tests/' ;;
     *)
-        echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle or hana, got '$SUITE'" >&2
+        echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana or release, got '$SUITE'" >&2
         exit 2 ;;
 esac
 
-if [ -z "$BASE" ] || [ -z "${BASE//0/}" ]; then
+# A new branch has no previous commit, so it is compared with the point where it left main.
+if [ -n "$BASE" ] && [ -z "${BASE//0/}" ]; then
+    BASE="$(git merge-base HEAD origin/main 2> /dev/null || true)"
+fi
+
+if [ -z "$BASE" ]; then
     echo "true"
     exit 0
 fi
@@ -73,13 +85,16 @@ OTHER_EDITS="$(awk '/^@@/ { hunk = 1; next }
     hunk && /^[+-]/ && !/^[+-](MARKETING_VERSION|CURRENT_PROJECT_VERSION) = [0-9.]+$/' <<< "$VERSION_DIFF")"
 [ -n "$OTHER_EDITS" ] || RELEASE_ONLY+='|Configs/Version\.xcconfig'
 
+IGNORED="^($RELEASE_ONLY)\$"
+[ -z "$SKIP" ] || IGNORED+="|^($SKIP)"
+
 # Raw NUL-separated paths: core.quotePath would quote a non-ASCII path and defeat the ^ anchor.
 # Files rather than $(...), which drops NUL bytes and would hide grep's exit status.
 CHANGED="$(mktemp)"
 RELEVANT="$(mktemp)"
 trap 'rm -f "$CHANGED" "$RELEVANT"' EXIT
 git -c core.quotePath=false diff --no-renames --name-only -z "$BASE" HEAD > "$CHANGED"
-LC_ALL=C grep -zvE "^($RELEASE_ONLY)$" "$CHANGED" > "$RELEVANT" || [ $? -eq 1 ]
+LC_ALL=C grep -zvE "$IGNORED" "$CHANGED" > "$RELEVANT" || [ $? -eq 1 ]
 
 JOINED="$(IFS='|'; echo "${PATTERNS[*]}")"
 status=0

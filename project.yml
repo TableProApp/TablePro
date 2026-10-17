@@ -246,6 +246,7 @@ targetTemplates:
   # in a directory from mktemp: the user-script sandbox lets the phase write its declared output
   # and nothing beside it, codesign writes a temporary file next to whatever it signs, and it
   # reads every parent of that file, which the sandbox refuses inside the build folders.
+  # scripts/release/build.sh passes OTHER_CODE_SIGN_FLAGS=--timestamp; other builds skip the timestamp server.
   HanaHelperEmbedding:
     postBuildScripts:
       - name: Embed tablepro-hana-helper
@@ -266,7 +267,7 @@ targetTemplates:
           trap 'rm -rf "$staging"' EXIT
           cp "$helper" "$staging/tablepro-hana-helper"
           if [ "${CODE_SIGNING_ALLOWED:-NO}" = "YES" ]; then
-              /usr/bin/codesign --force --options runtime --timestamp=none --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" "$staging/tablepro-hana-helper"
+              /usr/bin/codesign --force --options runtime ${OTHER_CODE_SIGN_FLAGS:---timestamp=none} --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" "$staging/tablepro-hana-helper"
           fi
           cp -f "$staging/tablepro-hana-helper" "$SCRIPT_OUTPUT_FILE_0"
 
@@ -350,8 +351,7 @@ targets:
         removeHeaders: false
         copy:
           destination: executables
-      # Plugins shipped inside the app bundle. Everything else under Plugins/ is
-      # published to the registry and is built by its own scheme or by AllPlugins.
+      # Plugins shipped inside the app bundle: the BundledPlugins aggregate lists the same set.
       - target: MySQLDriver
         embed: true
         copy: { destination: plugins }
@@ -508,6 +508,8 @@ targets:
       base:
         ENABLE_HARDENED_RUNTIME: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.tablepro-mcp
+        # The app embeds it; installed on its own it turns the app archive into a generic one.
+        SKIP_INSTALL: YES
         PRODUCT_NAME: tablepro-mcp
         SWIFT_APPROACHABLE_CONCURRENCY: YES
         SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
@@ -529,6 +531,8 @@ targets:
       base:
         ENABLE_HARDENED_RUNTIME: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.tablepro-imagerender
+        # The app embeds it; installed on its own it turns the app archive into a generic one.
+        SKIP_INSTALL: YES
         PRODUCT_NAME: tablepro-imagerender
         SWIFT_APPROACHABLE_CONCURRENCY: YES
         SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
@@ -1203,18 +1207,33 @@ targets:
       - package: TableProCore
         product: TableProWeaviateCore
 
-# Compile-checks every plugin, including the registry-only ones the app does not
-# embed. CI builds this scheme so a registry plugin cannot rot between releases.
+# Every plugin is in exactly one of BundledPlugins (embedded in the app) and RegistryPlugins (each
+# release publishes it); scripts/ci/check-plugin-manifest.py enforces it. AllPlugins compiles both.
 aggregateTargets:
-  AllPlugins:
+  BundledPlugins:
+    targets:
+      - CSVExport
+      - CSVImport
+      - ClickHouseDriver
+      - JSONExport
+      - JSONImport
+      - MQLExport
+      - MarkdownExport
+      - MySQLDriver
+      - PostgreSQLDriver
+      - RedisDriver
+      - SQLExport
+      - SQLImport
+      - SQLiteDriver
+      - XLSXExport
+      - XLSXImport
+
+  RegistryPlugins:
     targets:
       - BeancountDriver
       - BigQueryDriverPlugin
       - BigtableDriverPlugin
-      - CSVExport
-      - CSVImport
       - CassandraDriver
-      - ClickHouseDriver
       - CloudflareD1DriverPlugin
       - CloudflareR2SQLDriverPlugin
       - DamengDriver
@@ -1224,23 +1243,12 @@ aggregateTargets:
       - EtcdDriverPlugin
       - FirebaseDriverPlugin
       - HanaDriver
-      - JSONExport
-      - JSONImport
       - KafkaDriverPlugin
       - LibSQLDriverPlugin
-      - MQLExport
       - MSSQLDriver
       - MongoDBDriver
-      - MySQLDriver
       - OracleDriver
-      - PostgreSQLDriver
-      - RedisDriver
-      - MarkdownExport
       - ParquetExport
-      - SQLExport
-      - XLSXImport
-      - SQLImport
-      - SQLiteDriver
       - SnowflakeDriverPlugin
       - SpannerDriverPlugin
       - SurrealDBDriverPlugin
@@ -1248,7 +1256,12 @@ aggregateTargets:
       - TrinoDriverPlugin
       - TypesenseDriverPlugin
       - WeaviateDriverPlugin
-      - XLSXExport
+    scheme: {}
+
+  AllPlugins:
+    targets:
+      - BundledPlugins
+      - RegistryPlugins
     scheme: {}
 
 schemes:

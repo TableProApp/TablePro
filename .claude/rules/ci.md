@@ -17,7 +17,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 ## Rulesets and required checks
 
 - There are no gate jobs. A test job runs on `!cancelled() && needs.changes.outputs.run != 'false'`. A job its `if:` skips reports success, and a failed changes job runs the suite rather than skipping it.
-- `Changes (macOS)` and `Changes (iOS)` are not required checks.
+- `Changes (macOS)`, `Changes (iOS)` and `Changes (Release)` are not required checks.
 - A PR need not be up to date with main to merge (`strict_required_status_checks_policy: false`).
 - A second ruleset blocks force-push and deletion of `main`, with no bypass.
 - A required check's name is its job's `name:`. Renaming a job changes the ruleset in the same change, and every open PR then merges main in before its checks report the new name.
@@ -31,7 +31,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 
 ## macOS Tests (`macos-tests.yml`)
 
-- Triggers: pull request, push to main, dispatch. A PR keeps only its newest run; each main commit has its own concurrency group and is never cancelled.
+- Triggers: pull request, push to main or `release/**`, dispatch. A PR keeps only its newest run; each pushed commit has its own concurrency group and is never cancelled.
 - `Changes (macOS)` outputs `run` (detector `macos`) and `plugins` (detector `plugins`). The test job has a 120-minute limit and sets `NSUnbufferedIO=YES`.
 - Setup, in order: checkout, setup-xcode, setup-xcodegen, `scripts/download-libs.sh`, `generate-project.sh macos`, SPM restore, resolve, SPM save.
 - One `build-for-testing` with no `-testPlan` builds both plans and writes one `.xctestrun` per plan, with signing, the index store and the compilation cache off.
@@ -48,6 +48,15 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 - `swift test --package-path Packages/TableProCore --parallel`, then TableProOracle with `--force-resolved-versions` when its detector is not false. Each step has `if: !cancelled()`, so one red step never hides the next.
 - The summary step always runs. Evidence uploads only on failure.
 
+## Release Build (`release-build.yml`)
+
+- Push to main or `release/**`, and dispatch; never a PR. Each commit has its own concurrency group and is never cancelled. Not a required check.
+- `Changes (Release)` outputs `run` (detector `release`). `Release Build` runs on `xcode-27` with a 150-minute limit.
+- Setup as macOS Tests up to the SPM restore, which it never saves; then Go, `build-dameng.sh both`, `build-hana.sh both` and create-dmg.
+- `scripts/release/build.sh app --unsigned` archives the `TablePro` scheme; `build.sh plugins --unsigned` builds `RegistryPlugins` and copies the publish set (the `.github/plugin-registry.json` entries not bundled) to `build/release/plugins`. Both build universal and run `lipo -verify_arch arm64 x86_64` and `verify-plugin-loads.sh`.
+- `scripts/release/package.sh app 0.0.0-dev --unsigned` writes the release assets: the DMG, the `.tar.xz` (extracted and compared with the app) and the dSYMs zip; `package.sh plugins` writes one zip per plugin and the plugin dSYMs zip.
+- The plugins build runs after an app failure too. The xcodebuild logs in `build/release/logs` upload only on failure.
+
 ## Summaries (`scripts/ci/summarize-xcresult.sh`)
 
 - Runs `scripts/lib/xcresult-cases.py summary`. `verify.sh` reads its verdicts through the same parser, and `scripts/lib/test_xcresult_cases.py` tests it in Repo Hygiene.
@@ -59,7 +68,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 
 ## SwiftLint (`swiftlint.yml`)
 
-- PR, push to main, dispatch; Ubuntu, 10 minutes.
+- PR, push to main or `release/**`, dispatch; Ubuntu, 10 minutes.
 - Runs the digest-pinned `ghcr.io/realm/swiftlint` image over the whole repo with `lint --strict`. The image's entrypoint is `swiftlint`, so the command never repeats it.
 - Fails when stderr has `Invalid configuration` or `is not a valid rule identifier`, because SwiftLint drops a custom rule whose regex does not compile and still exits 0.
 
@@ -70,7 +79,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 
 ## Repo Hygiene (`repo-hygiene.yml`)
 
-- PR, push to main, dispatch, no path filter; Ubuntu, 15 minutes.
+- PR, push to main or `release/**`, dispatch, no path filter; Ubuntu, 15 minutes.
 - Steps, in order:
   - actionlint, which also shellchecks every inline `run:` block;
   - `shellcheck --severity=warning` on every `*.sh` under `scripts` and `.claude/skills`;
@@ -86,12 +95,13 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 
 ## Change detector (`scripts/ci/detect-changed-paths.sh`)
 
-- `detect-changed-paths.sh [--base <sha>] macos|plugins|ios|oracle|hana` prints `true` or `false`. An unknown suite or flag exits 2.
-- A PR passes its base SHA, a push `github.event.before`. No base, or the all-zero SHA of a new ref, prints true.
+- `detect-changed-paths.sh [--base <sha>] macos|plugins|ios|oracle|hana|release` prints `true` or `false`. An unknown suite or flag exits 2.
+- A PR passes its base SHA, a push `github.event.before`. No base prints true. The all-zero SHA of a new ref diffs against `git merge-base HEAD origin/main`, so a branch cut from main skips what main already ran; with no merge base it prints true.
 - `macos` watches the app, test, plugin, package, native, config and libs folders, `TestPlans/`, `project.yml`, the app's `Package.resolved`, the build scripts and CI scripts it runs, both setup actions and its workflow. `Packages/` covers TableProMacCore.
 - `plugins` watches `Plugins/`, `Packages/TableProCore/`, `Packages/TableProOracle/`, `Native/`, `Libs/`, `Configs/`, `project.yml`, the bridge scripts and `verify-plugin-loads.sh`.
 - `ios` watches `TableProMobile/`, `Libs/`, `Plugins/TableProPluginKit/` (the package target is a symlink to it), and every `../` path it reads out of `TableProMobile/project.yml`.
 - `oracle` watches `Packages/TableProOracle/`; `hana` watches `Native/HanaBridge/`. Each suite also watches its own workflow.
+- `release` watches what the Release build reads: the app, plugin, package, native, config and libs folders, `project.yml`, the app's `Package.resolved`, `.github/plugin-registry.json`, `scripts/release/`, the build and CI scripts it runs and both setup actions. It skips `Plugins/*Tests/` and `Packages/*/Tests/`.
 - A path a suite newly reads joins that suite's pattern in the same change, or the suite skips on it.
 - Release-only files never trigger a suite: `CHANGELOG.md`, `appcast.xml`, `TablePro/Resources/WhatsNew.md`, `.github/release-flags.json`, and `Configs/Version.xcconfig` while its diff touches only the two version keys.
 - Every file the release commit stages (`.claude/skills/release/SKILL.md`, Commit, tag, push) is on that list; `appcast.xml` is `build.yml`'s own push.
@@ -100,15 +110,15 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 ## What runs where
 
 - A pull request: both changes jobs; macOS Tests and iOS and Package Tests unless their detector says false (Oracle only when its detector is not false); SwiftLint; Repo Hygiene; PR title. `AllPlugins` only when the `plugins` detector is not false.
-- A push to main: the same minus PR title, never cancelled, `AllPlugins` always, the SPM cache saved on a miss. Every code push runs both plans in full; a docs-only or release-only push skips the suites through the detector.
+- A push to main or `release/**`: the same minus PR title, plus Release Build; never cancelled, `AllPlugins` always, the SPM cache saved on a miss. Every code push runs both plans in full; a docs-only or release-only push skips the suites through the detector.
 - A `v*` tag runs only `build.yml`; a `plugin-*-v*` tag runs only `build-plugin.yml` (`RELEASING.md`). The test workflows never run on a tag.
 - `workflow_dispatch` exists on every workflow except `pr-title.yml`.
 - `build-linux.yml` is on `main` only for its Monday schedule, which GitHub runs from the default branch. Until the Linux app's directory lands on `main`, every build job skips and `weekly-dispatch` starts the workflow on the branch the `LINUX_BRANCH` variable names (the linux branch when unset), whose testing guide describes the jobs.
 
 ## Caches and runner budget
 
-- Swift package checkouts live in `~/.spm-cache`, keyed `spm-<os>-<hash of the app's Package.resolved>` with prefix restore. The cache is saved only on a push to main and only on a miss: a cache saved on a PR ref is visible to that PR alone.
-- `build.yml` restores that cache and never saves it, since a save in tag scope is unreadable from other tags.
+- Swift package checkouts live in `~/.spm-cache`, keyed `spm-<os>-<hash of the app's Package.resolved>` with prefix restore. macOS Tests saves it only on a push and only on a miss: a cache saved on a PR ref is visible to that PR alone.
+- `build.yml` and `release-build.yml` restore that cache and never save it; a save in tag scope is unreadable from other tags.
 - There is no other cache: no libs or DerivedData cache, and none in the iOS, plugin or Ubuntu workflows.
 - CI fits the GitHub Free and Pro plans: no paid larger runner, no self-hosted Mac. At most 5 macOS jobs run at once, and main runs queue behind PR runs for those slots.
 

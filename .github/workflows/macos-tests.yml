@@ -3,7 +3,7 @@ name: macOS Tests
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'release/**']
   workflow_dispatch:
 
 # A pull request keeps only its newest run. Each main commit gets a group of its own, so no main
