@@ -1072,6 +1072,37 @@ fn invalid_regex_marks_entry_error() {
     assert_eq!(entry.tooltip_text(), None);
 }
 
+/// The count and a pattern's error show away from the text the reader
+/// is on, so they are said, and the error marks the field.
+#[gtk4::test]
+fn the_match_count_and_a_bad_pattern_are_said() {
+    let harness = editor_with(answering(), "SELECT 1; SELECT 2");
+    let _window = InWindow::new(&harness.editor);
+    let bar = search(&harness, "SELECT");
+    let said = |text: &str| {
+        crate::ui::a11y::announced_in(&bar)
+            .iter()
+            .any(|(message, _)| message == text)
+    };
+    wait_until(WAIT, || said(&bar.count_text())).expect("the count to be said");
+
+    WidgetExt::activate_action(&bar, "find.regex-enabled", None).expect("find.regex-enabled");
+    let entry = bar.search_entry();
+    entry.set_text("(");
+    let text = entry.delegate().expect("the entry's text field");
+    wait_until(WAIT, || {
+        gtk4::test_accessible_has_state(&text, gtk4::AccessibleState::Invalid)
+            && entry.tooltip_text().is_some_and(|error| said(&error))
+    })
+    .expect("the pattern's error to be said and marked");
+
+    entry.set_text("SEL+");
+    wait_until(WAIT, || {
+        !gtk4::test_accessible_has_state(&text, gtk4::AccessibleState::Invalid)
+    })
+    .expect("the mark to clear");
+}
+
 #[gtk4::test]
 fn case_sensitive_action_toggles_settings() {
     let harness = editor_with(answering(), "SELECT 1");

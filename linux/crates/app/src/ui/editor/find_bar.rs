@@ -11,6 +11,9 @@ use sourceview5::prelude::*;
 
 use super::find_state::FindStatus;
 
+/// Long enough for a typed word, short enough to answer the last key.
+const ANNOUNCE_AFTER: std::time::Duration = std::time::Duration::from_millis(600);
+
 mod imp {
     use libadwaita::subclass::prelude::*;
 
@@ -43,6 +46,11 @@ mod imp {
         /// A move asked for while the search was still counting, made
         /// once it has counted.
         pub(super) pending: Cell<Option<super::Direction>>,
+        /// The count said once typing pauses, rather than at each key.
+        pub(super) announcing: std::cell::RefCell<Option<glib::SourceId>>,
+        /// What was last said or is about to be, so a refresh that changes
+        /// nothing says nothing.
+        pub(super) announcement: std::cell::RefCell<Option<String>>,
     }
 
     #[glib::object_subclass]
@@ -388,6 +396,7 @@ impl FindBar {
         let imp = self.imp();
         let status = self.status();
         imp.count_label.set_label(&status.label());
+        self.announce_when_settled(status.announcement());
         if let Some(actions) = imp.actions.get() {
             for name in ["replace", "replace-all"] {
                 if let Some(action) = actions.lookup_action(name).and_downcast::<gio::SimpleAction>() {
@@ -397,8 +406,38 @@ impl FindBar {
         }
     }
 
+    /// The count and the pattern's error show only in a label and on the
+    /// entry, away from the text the reader is on.
+    fn announce_when_settled(&self, announcement: Option<String>) {
+        let imp = self.imp();
+        if *imp.announcement.borrow() == announcement {
+            return;
+        }
+        imp.announcement.replace(announcement.clone());
+        if let Some(pending) = imp.announcing.take() {
+            pending.remove();
+        }
+        let Some(announcement) = announcement else {
+            return;
+        };
+        let bar = self.downgrade();
+        let pending = glib::timeout_add_local_once(ANNOUNCE_AFTER, move || {
+            let Some(bar) = bar.upgrade() else {
+                return;
+            };
+            bar.imp().announcing.take();
+            crate::ui::a11y::announce(
+                &bar.imp().search_entry.get(),
+                &announcement,
+                gtk::AccessibleAnnouncementPriority::Medium,
+            );
+        });
+        imp.announcing.replace(Some(pending));
+    }
+
     fn show_regex_error(&self, error: Option<&glib::Error>) {
         let entry = self.imp().search_entry.get();
+        crate::ui::a11y::show_invalid(&entry, error.map(glib::Error::message));
         match error {
             Some(error) => {
                 entry.add_css_class("error");
