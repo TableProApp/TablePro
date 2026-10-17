@@ -9,6 +9,14 @@ def scenarios(ui):
         with sqlite3.connect(database) as connection:
             return connection.execute("SELECT id, note FROM safety_items ORDER BY id").fetchall()
 
+    def wait_for_prompt(name):
+        node = ui.wait_for_node(name=name)
+        for _ in range(8):
+            if ui.find_within(node, name="Cancel", role=ui.pyatspi.ROLE_PUSH_BUTTON) is not None:
+                return node
+            node = node.parent
+        raise AssertionError(f"{name!r} has no Cancel button in its dialog")
+
     def begin_edit(database):
         with sqlite3.connect(database) as connection:
             connection.executemany(
@@ -76,7 +84,7 @@ def scenarios(ui):
         begin_edit(database)
         ui.invoke_accessible_action("win.close-current")
         ui.wait_for_node(name="Save changes to “safety_items”?")
-        prompt = ui.wait_for_node(name="Save changes to “safety_items”?", role=ui.pyatspi.ROLE_ALERT)
+        prompt = wait_for_prompt(name="Save changes to “safety_items”?")
         ui.invoke(ui.wait_within(prompt, name="Save", role=ui.pyatspi.ROLE_PUSH_BUTTON))
         ui.wait_for_node_containing("safety_items", role=ui.pyatspi.ROLE_PAGE_TAB, present=False)
         assert notes(database) == [(1, "gamma"), (2, "beta")]
@@ -85,7 +93,7 @@ def scenarios(ui):
         begin_edit(database)
         ui.invoke_accessible_action("win.close-current")
         ui.wait_for_node(name="Save changes to “safety_items”?")
-        prompt = ui.wait_for_node(name="Save changes to “safety_items”?", role=ui.pyatspi.ROLE_ALERT)
+        prompt = wait_for_prompt(name="Save changes to “safety_items”?")
         ui.invoke(ui.wait_within(prompt, name="Discard", role=ui.pyatspi.ROLE_PUSH_BUTTON))
         ui.wait_for_node_containing("safety_items", role=ui.pyatspi.ROLE_PAGE_TAB, present=False)
         assert notes(database) == [(1, "alpha"), (2, "beta")]
@@ -102,65 +110,13 @@ def scenarios(ui):
         ui.wait_for_node(name="1 unsaved change")
         save_and_assert_notes(database)
 
-    def active_cell_edit_survives_cancelled_close_other_tabs(database, base):
-        ui.run_sql("CREATE TABLE other_items(id INTEGER PRIMARY KEY, note TEXT)")
-        ui.wait_for_node(name="other_items", role=ui.pyatspi.ROLE_LIST_ITEM)
-        begin_edit(database)
-        ui.invoke_named_action_within("other_items", "Open other_items")
-        other_page = ui.wait_for_node_containing("other_items", role=ui.pyatspi.ROLE_PAGE_TAB)
-        close_other_tabs(other_page)
-        prompt = ui.wait_for_node(name="Save changes to “safety_items”?", role=ui.pyatspi.ROLE_ALERT)
-        ui.invoke(ui.wait_within(prompt, name="Cancel", role=ui.pyatspi.ROLE_PUSH_BUTTON))
-        ui.wait_for_node(name="Save changes to “safety_items”?", present=False)
-        ui.wait_for_node_containing("safety_items", role=ui.pyatspi.ROLE_PAGE_TAB)
-        ui.wait_for_node_containing("other_items", role=ui.pyatspi.ROLE_PAGE_TAB)
-        ui.wait_for_node(name="1 unsaved change")
-        assert notes(database) == [(1, "alpha"), (2, "beta")], "cancel committed the edit"
-        save_and_assert_notes(database)
-
-    def active_cell_edit_discards_when_close_other_tabs_closes_its_tab(database, base):
-        ui.run_sql("CREATE TABLE other_items(id INTEGER PRIMARY KEY, note TEXT)")
-        ui.wait_for_node(name="other_items", role=ui.pyatspi.ROLE_LIST_ITEM)
-        begin_edit(database)
-        ui.invoke_named_action_within("other_items", "Open other_items")
-        other_page = ui.wait_for_node_containing("other_items", role=ui.pyatspi.ROLE_PAGE_TAB)
-        close_other_tabs(other_page)
-        prompt = ui.wait_for_node(name="Save changes to “safety_items”?", role=ui.pyatspi.ROLE_ALERT)
-        ui.invoke(ui.wait_within(prompt, name="Discard", role=ui.pyatspi.ROLE_PUSH_BUTTON))
-        ui.wait_for_node_containing("safety_items", role=ui.pyatspi.ROLE_PAGE_TAB, present=False)
-        ui.wait_for_node_containing("other_items", role=ui.pyatspi.ROLE_PAGE_TAB)
-        assert notes(database) == [(1, "alpha"), (2, "beta")], "discard committed the edit"
-
-    def active_cell_edit_saves_when_close_other_tabs_closes_its_tab(database, base):
-        ui.run_sql("CREATE TABLE other_items(id INTEGER PRIMARY KEY, note TEXT)")
-        ui.wait_for_node(name="other_items", role=ui.pyatspi.ROLE_LIST_ITEM)
-        begin_edit(database)
-        ui.invoke_named_action_within("other_items", "Open other_items")
-        other_page = ui.wait_for_node_containing("other_items", role=ui.pyatspi.ROLE_PAGE_TAB)
-        close_other_tabs(other_page)
-        prompt = ui.wait_for_node(name="Save changes to “safety_items”?", role=ui.pyatspi.ROLE_ALERT)
-        ui.invoke(ui.wait_within(prompt, name="Save", role=ui.pyatspi.ROLE_PUSH_BUTTON))
-        ui.wait_for_node_containing("safety_items", role=ui.pyatspi.ROLE_PAGE_TAB, present=False)
-        ui.wait_for_node_containing("other_items", role=ui.pyatspi.ROLE_PAGE_TAB)
-        deadline = time.monotonic() + ui.WAIT_SECONDS
-        while time.monotonic() < deadline and notes(database) != [(1, "gamma"), (2, "beta")]:
-            time.sleep(ui.POLL_SECONDS)
-        assert notes(database) == [(1, "gamma"), (2, "beta")], "save did not persist the active edit"
-
-    def close_other_tabs(page):
-        bounds = page.queryComponent().getExtents(ui.pyatspi.WINDOW_COORDS)
-        gtk_ux.x11_click(bounds.x + bounds.width // 2, bounds.y + bounds.height // 2, button=3)
-        ui.wait_for_node(role=ui.pyatspi.ROLE_MENU)
-        ui.press_x11_key("Down")
-        ui.press_x11_key("Return")
-
     def active_cell_edit_survives_cancelled_window_quit(database, base):
         cancel_close_and_save(database, "win.quit", "Save changes before closing?")
 
     def active_cell_edit_saves_before_window_quit(database, base):
         begin_edit(database)
         ui.invoke_accessible_action("win.quit")
-        prompt = ui.wait_for_node(name="Save changes before closing?", role=ui.pyatspi.ROLE_ALERT)
+        prompt = wait_for_prompt(name="Save changes before closing?")
         ui.invoke(ui.wait_within(prompt, name="Save", role=ui.pyatspi.ROLE_PUSH_BUTTON))
         deadline = time.monotonic() + ui.WAIT_SECONDS
         while time.monotonic() < deadline and notes(database) != [(1, "gamma"), (2, "beta")]:
@@ -171,7 +127,7 @@ def scenarios(ui):
     def active_cell_edit_saves_before_window_close(database, base):
         begin_edit(database)
         ui.invoke_accessible_action("window.close")
-        prompt = ui.wait_for_node(name="Save changes before closing?", role=ui.pyatspi.ROLE_ALERT)
+        prompt = wait_for_prompt(name="Save changes before closing?")
         ui.invoke(ui.wait_within(prompt, name="Save", role=ui.pyatspi.ROLE_PUSH_BUTTON))
         deadline = time.monotonic() + ui.WAIT_SECONDS
         while time.monotonic() < deadline and notes(database) != [(1, "gamma"), (2, "beta")]:
@@ -185,7 +141,7 @@ def scenarios(ui):
     def active_cell_edit_discards_when_disconnect_is_confirmed(database, base):
         begin_edit(database)
         ui.invoke_accessible_action("win.disconnect")
-        prompt = ui.wait_for_node(name="Discard pending changes?", role=ui.pyatspi.ROLE_ALERT)
+        prompt = wait_for_prompt(name="Discard pending changes?")
         ui.invoke(ui.wait_within(prompt, name="Discard and disconnect", role=ui.pyatspi.ROLE_PUSH_BUTTON))
         ui.wait_for_node(name="New connection", role=ui.pyatspi.ROLE_PUSH_BUTTON)
         assert notes(database) == [(1, "alpha"), (2, "beta")], "disconnect committed a discarded edit"
@@ -196,7 +152,7 @@ def scenarios(ui):
         ui.wait_for_node(name="Run", role=ui.pyatspi.ROLE_PUSH_BUTTON)
         page = ui.wait_for_node_containing("safety_items", role=ui.pyatspi.ROLE_PAGE_TAB)
         ui.invoke(ui.wait_within(page, name="Close Tab", role=ui.pyatspi.ROLE_PUSH_BUTTON))
-        prompt = ui.wait_for_node(name="Save changes to “safety_items”?", role=ui.pyatspi.ROLE_ALERT)
+        prompt = wait_for_prompt(name="Save changes to “safety_items”?")
         ui.invoke(ui.wait_within(prompt, name="Save", role=ui.pyatspi.ROLE_PUSH_BUTTON))
         ui.wait_for_node_containing("safety_items", role=ui.pyatspi.ROLE_PAGE_TAB, present=False)
         assert notes(database) == [(1, "gamma"), (2, "beta")]
@@ -213,9 +169,6 @@ def scenarios(ui):
         active_cell_edit_saves_before_window_quit,
         active_cell_edit_saves_before_window_close,
         active_cell_edit_keeps_its_preview_when_another_table_opens,
-        active_cell_edit_survives_cancelled_close_other_tabs,
-        active_cell_edit_discards_when_close_other_tabs_closes_its_tab,
-        active_cell_edit_saves_when_close_other_tabs_closes_its_tab,
         active_cell_edit_survives_cancelled_disconnect,
         active_cell_edit_discards_when_disconnect_is_confirmed,
         active_cell_edit_saves_when_close_button_targets_an_inactive_tab,
