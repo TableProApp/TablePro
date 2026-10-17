@@ -224,7 +224,7 @@ fn json_encoder_output_parses_and_matches_render_json() {
     // rows before the encoders.
     let expected: Vec<serde_json::Value> = rows
         .iter()
-        .map(|row| serde_json::from_str(&row_to_json(&columns, row)).expect("a JSON row"))
+        .map(|row| serde_json::from_str(&row_to_json(&columns, row).expect("a readable row")).expect("a JSON row"))
         .collect();
     assert_eq!(parsed, expected);
     assert_eq!(parsed.len(), 10_000);
