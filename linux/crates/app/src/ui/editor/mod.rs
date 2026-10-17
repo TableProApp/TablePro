@@ -473,7 +473,12 @@ impl SqlEditor {
                 }
             },
         };
-        Some(result_widgets::entry_widget(entry, grid_sink, actions))
+        Some(result_widgets::entry_widget(
+            usize::try_from(index).ok()?,
+            entry,
+            grid_sink,
+            actions,
+        ))
     }
 
     fn finish_run(

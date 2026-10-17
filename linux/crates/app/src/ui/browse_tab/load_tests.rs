@@ -42,6 +42,19 @@ fn keyed(ids: &[i64]) -> QueryResult {
 }
 
 #[gtk4::test]
+fn the_grid_is_named_after_its_table() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
+
+    assert!(gtk4::test_accessible_has_property(
+        &column_view(harness.tab()),
+        gtk4::AccessibleProperty::Label
+    ));
+}
+
+#[gtk4::test]
 fn refresh_keeps_grid_visible_and_sets_tab_loading() {
     let mut script = serving_table();
     script

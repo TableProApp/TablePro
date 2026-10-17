@@ -240,6 +240,8 @@ impl BrowseModel {
             },
             self.grid_context(),
         );
+        // A screen reader names the grid as the tab does.
+        column_view.update_property(&[gtk::accessible::Property::Label(&self.table_label())]);
         self.current_selection = Some(selection);
         self.current_column_view = Some(column_view.clone());
         self.view_columns = data_columns(&column_view);

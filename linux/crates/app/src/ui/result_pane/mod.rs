@@ -17,16 +17,18 @@ use crate::ui::export::ExportSource;
 use crate::ui::format::{format_thousands, plural_count};
 use crate::ui::grid::{GridSink, RowObject, TabGridContext, build_result_grid, export_snapshot};
 
-/// The page for `view`. Export All on its banner hands `export_all` the
-/// rows the grid shows, in the order it shows them, for the dialog's
-/// Shown Rows.
+/// The page for `view`, its grid named `name` as the results list names
+/// it. Export All on its banner hands `export_all` the rows the grid
+/// shows, in the order it shows them, for the dialog's Shown Rows.
 pub(crate) fn result_set_page(
     view: &ResultSetView,
+    name: &str,
     sink: GridSink,
     export_all: impl Fn(ExportSource) + 'static,
 ) -> gtk::Widget {
     let rows = view.rows.iter().cloned().map(RowObject::result).collect();
     let (column_view, _selection) = build_result_grid(view.columns.clone(), rows, sink);
+    column_view.update_property(&[gtk::accessible::Property::Label(name)]);
     let banner = ResultLimitBanner::new(&view.summary);
     let columns = view.columns.clone();
     let grid = column_view.downgrade();
