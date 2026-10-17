@@ -15,6 +15,8 @@ A repository admin does these once. The workflow's header names the same secrets
 5. **Launchpad**: a team that owns the PPA, and the PPA with a dependency on `~rust-toolchain/staging`, amd64 and arm64 turned on under its processors, and debug symbol publishing on (Launchpad's admins turn it on when the PPA's settings do not offer it). Register the signing key's public half on an account in the team. Launchpad mails a failed build to the owner of the key that signed the upload, so that account's mail has to reach someone.
 6. **COPR**: a project with the Fedora 44 x86_64 and aarch64 chroots, following Fedora branching, with AppStream metadata generation on, and a package named `tablepro` with the custom source method from `build-aux/rpm/copr-sources.sh` (the command is in its header). Turn on build failure emails for the project's admins.
 
+[README.md](../README.md#install) gives users `ppa:tablepro/tablepro` and `@tablepro/tablepro`; change it if the PPA or the COPR project gets another name.
+
 ## A release
 
 1. **The release commit**, on `linux`, sets one version and one date (UTC) everywhere:
@@ -22,6 +24,7 @@ A repository admin does these once. The workflow's header names the same secrets
    - A new first `<release>` in `data/app.tablepro.TablePro.metainfo.xml.in.in`, with the date and a short description.
    - `Version`, `Release: 1%{?dist}` and a new first `%changelog` entry in `build-aux/rpm/tablepro.spec`, with the same date.
    - `## [Unreleased]` in `CHANGELOG.md` becomes `## [X.Y.Z] - YYYY-MM-DD`, and a new empty `## [Unreleased]` goes above it.
+   - The `.TH` line of `data/tablepro.1`: the date and `TablePro X.Y.Z`.
 
    The `release-metadata` Meson test checks that they agree once the changelog heading exists, so the pull request fails before the tag does.
 2. **The tag**: `linux-vX.Y.Z` on the merged commit, pushed the same UTC day. The workflow compares the metainfo date with the commit date.
@@ -55,3 +58,7 @@ The next version's release commit sets `Release` back to 1.
 ## A fix release
 
 0.1.1 is a release like any other, from `linux`. When `linux` already holds work that should wait for 0.2.0, branch `linux-0.1` from the `linux-v0.1.0` tag, cherry-pick the fixes and the release commit onto it, set `LINUX_BRANCH` to `linux-0.1` and allow that branch in the environment, push the tag, then set both back. Merge the release commit's version, dates and changelog section into `linux` afterwards.
+
+## Downgrades
+
+An older build never writes over what a newer one stored; it refuses it until the user resets it or upgrades again. [troubleshooting.md](troubleshooting.md#after-a-downgrade) tells users what they see.
