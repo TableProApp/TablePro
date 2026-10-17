@@ -6,7 +6,7 @@ use tablepro_policy::{
     AuditAdministrativeAction, AuditEvent, AuditOperationClass, AuditRecordPhase, AuditSink, AuditTerminalStatus,
     AuditTransactionOutcome, Principal,
 };
-use tablepro_storage::{AuditJournal, sample_event};
+use tablepro_storage::{AuditJournal, StorageError, sample_event};
 use uuid::Uuid;
 
 const GENESIS_HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
@@ -336,6 +336,33 @@ async fn recovered_transaction_rollback_has_unknown_transaction_outcome() {
 
     assert_eq!(outcome.terminal_status, AuditTerminalStatus::Unknown);
     assert_eq!(outcome.transaction_outcome, AuditTransactionOutcome::Unknown);
+}
+
+#[tokio::test]
+async fn recovered_unknown_rollback_blocks_only_the_owning_connection() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("audit.jsonl");
+    let connection_a = Uuid::from_u128(0xA);
+    let connection_b = Uuid::from_u128(0xB);
+    let journal = AuditJournal::open_validated(path.clone()).unwrap();
+    let mut rollback = intent_event(Uuid::from_u128(0xC), AuditOperationClass::TransactionRollback);
+    rollback.connection_id = connection_a;
+    journal.append_durable(rollback).await.unwrap();
+    drop(journal);
+
+    let recovered = AuditJournal::open_validated(path).unwrap();
+    assert_eq!(recovered.recovery().unresolved_connection_ids(), &[connection_a]);
+
+    let mut blocked_write = intent_event(Uuid::from_u128(0xD), AuditOperationClass::Mutation);
+    blocked_write.connection_id = connection_a;
+    assert!(matches!(
+        recovered.append_durable(blocked_write).await,
+        Err(StorageError::UnresolvedWrite)
+    ));
+
+    let mut unrelated_write = intent_event(Uuid::from_u128(0xE), AuditOperationClass::Mutation);
+    unrelated_write.connection_id = connection_b;
+    recovered.append_durable(unrelated_write).await.unwrap();
 }
 
 #[tokio::test]
