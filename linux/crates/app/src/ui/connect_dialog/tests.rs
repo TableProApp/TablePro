@@ -548,15 +548,18 @@ fn a_reopened_entry_keeps_its_id_after_the_host_changes() {
 }
 
 #[gtk4::test]
-fn a_connect_from_new_connection_keeps_a_renamed_entry_s_name() {
-    let saved = shop();
+fn a_connect_from_new_connection_never_writes_over_a_saved_entry() {
+    let saved = SavedConnection {
+        read_only: true,
+        ..shop()
+    };
     let harness = open(Options {
         saved: vec![saved.clone()],
         ..Options::default()
     });
     let _window = present(&harness.dialog);
     fill_network(&harness.dialog);
-    assert_eq!(harness.dialog.imp().name_row.text(), "");
+    harness.dialog.imp().name_row.set_text("Shop RW");
     let log = SignalLog::connect(&harness.dialog, "submitted", |values| {
         values[1].get::<ConnectSubmission>().expect("a submission")
     });
@@ -564,8 +567,10 @@ fn a_connect_from_new_connection_keeps_a_renamed_entry_s_name() {
     without_criticals(|| harness.dialog.imp().connect_button.emit_clicked());
 
     let submitted = log.take().remove(0).pending_save;
-    assert_eq!(submitted.connection.id, saved.id);
-    assert_eq!(submitted.connection.name, "Shop", "the connect undid the rename");
+    assert!(submitted.is_new, "the connect replaced the saved entry");
+    assert_ne!(submitted.connection.id, saved.id);
+    assert_eq!(submitted.connection.name, "Shop RW");
+    assert!(!submitted.connection.read_only);
 }
 
 #[gtk4::test]

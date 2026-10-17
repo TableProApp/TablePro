@@ -36,8 +36,8 @@ use tablepro_storage::{CredentialDemand, SavedConnection};
 use uuid::Uuid;
 
 pub use self::connect_dialog_mode::ConnectDialogMode;
+use self::connect_form::ValidatedForm;
 pub use self::connect_form::{ConnectForm, driver_shows_server_name};
-use self::connect_form::{ValidatedForm, match_saved_connection};
 pub use self::connect_submission::ConnectSubmission;
 pub use self::form_errors::FormErrors;
 pub use self::form_field::FormField;
@@ -585,16 +585,14 @@ impl ConnectDialog {
             .services()
             .map(|services| services.saved_connections.clone())
             .unwrap_or_else(|| Arc::from(Vec::new()));
-        let candidate = form.saved_connection(caps, &valid, Uuid::new_v4(), None);
+        // Only the entry the dialog was reopened on is written over. One
+        // that merely reaches the same database may differ in its name
+        // or its read-only switch, and New Connection must not undo them.
         let reopened = self.imp().prefill_id.get();
         let existing = saved_connections
             .iter()
-            .find(|saved| Some(saved.id) == reopened && saved.driver_id == entry.id)
-            .or_else(|| {
-                match_saved_connection(&saved_connections, &candidate, caps.is_file_based())
-                    .and_then(|id| saved_connections.iter().find(|saved| saved.id == id))
-            });
-        let id = existing.map_or(candidate.id, |saved| saved.id);
+            .find(|saved| Some(saved.id) == reopened && saved.driver_id == entry.id);
+        let id = existing.map_or_else(Uuid::new_v4, |saved| saved.id);
         let connection = form.submitted_connection(caps, &valid, id, existing);
         let request = connect_request(&entry, &form, &valid, &connection);
         let pending_save = PendingSave {
