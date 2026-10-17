@@ -136,6 +136,29 @@ fn toggle_opens_onto_the_sql_field_and_closes_again() {
     assert!(!strip.imp().revealer.reveals_child());
 }
 
+/// Closing the strip gives the focus back to where it came from, before
+/// GTK moves it to the window's first control.
+#[gtk4::test]
+fn close_gives_the_focus_back() {
+    let strip = strip_with(vec![rule("a")]);
+    let outside = gtk::Button::with_label("Rows");
+    let column = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    column.append(&strip);
+    column.append(&outside);
+    let window = crate::test_support::OwnedWindow::presented(gtk::Window::builder().child(&column).build());
+    let focus = || gtk::prelude::GtkWindowExt::focus(&*window);
+    assert!(outside.grab_focus());
+
+    strip.toggle();
+    assert!(strip.revealed());
+    assert!(crate::ui::a11y::holds_focus(&strip));
+
+    strip.activate_action("filter.close", None).expect("filter.close");
+
+    assert!(!strip.revealed());
+    assert_eq!(focus().as_ref(), Some(outside.upcast_ref()));
+}
+
 #[gtk4::test]
 fn strip_freed_after_drop() {
     let strip = strip_with(vec![rule("a"), rule("b")]);

@@ -1779,6 +1779,31 @@ fn pending_bar_shown(tab: &BrowseTab) -> bool {
     tab.imp().pending_bar.imp().revealer.reveals_child()
 }
 
+/// Discard empties the footer, which slides away with the focus in it,
+/// so the focus goes to the rows.
+#[gtk4::test]
+fn discard_hands_the_focus_to_the_grid() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let shown = Shown::new(harness.tab());
+    harness.tab().send(EditInput::InsertRow);
+    wait_until(WAIT, || pending_bar_shown(harness.tab())).expect("the footer");
+    let discard = harness.tab().imp().pending_bar.imp().discard_button.get();
+    assert!(discard.grab_focus());
+
+    harness.tab().send(SaveInput::DiscardAll);
+
+    let view = column_view(harness.tab());
+    let focus = gtk4::prelude::GtkWindowExt::focus(&shown.0);
+    assert!(
+        focus.is_some_and(|focus| focus == *view.upcast_ref::<gtk4::Widget>() || focus.is_ancestor(&view)),
+        "the focus left with the footer"
+    );
+}
+
 #[gtk4::test]
 fn deleting_a_draft_removes_its_row() {
     let mut script = serving_table();

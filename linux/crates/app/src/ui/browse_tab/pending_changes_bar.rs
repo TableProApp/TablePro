@@ -134,13 +134,26 @@ impl PendingChangesBar {
     }
 
     /// While a save runs, Save and Discard are off, so a double click
-    /// cannot send two, and Stop Saving takes their place.
+    /// cannot send two, and Stop Saving takes their place, the focus
+    /// with it.
     pub(super) fn show_saving(&self, saving: bool) {
         let imp = self.imp();
-        imp.save_button.set_sensitive(!saving);
-        imp.discard_button.set_sensitive(!saving);
-        imp.saving_spinner.set_visible(saving);
-        imp.stop_button.set_visible(saving);
+        let save = imp.save_button.get();
+        let stop = imp.stop_button.get();
+        if saving {
+            imp.saving_spinner.set_visible(true);
+            stop.set_visible(true);
+            for button in [&save, &imp.discard_button.get()] {
+                crate::ui::a11y::pass_focus(button, &stop);
+                button.set_sensitive(false);
+            }
+        } else {
+            save.set_sensitive(true);
+            imp.discard_button.set_sensitive(true);
+            crate::ui::a11y::pass_focus(&stop, &save);
+            stop.set_visible(false);
+            imp.saving_spinner.set_visible(false);
+        }
     }
 
     fn connect_buttons(&self) {
@@ -235,5 +248,21 @@ mod tests {
         bar.show_saving(false);
         assert!(!imp.stop_button.is_visible() && !imp.saving_spinner.is_visible());
         assert!(imp.save_button.is_sensitive() && imp.discard_button.is_sensitive());
+    }
+
+    #[gtk4::test]
+    fn the_focus_follows_save_to_stop_saving_and_back() {
+        let bar = bar();
+        let window = crate::test_support::OwnedWindow::presented(gtk::Window::builder().child(&bar).build());
+        let imp = bar.imp();
+        bar.show_pending(2);
+        assert!(imp.save_button.grab_focus());
+        let focus = || gtk::prelude::GtkWindowExt::focus(&*window);
+
+        bar.show_saving(true);
+        assert_eq!(focus().as_ref(), Some(imp.stop_button.upcast_ref()));
+
+        bar.show_saving(false);
+        assert_eq!(focus().as_ref(), Some(imp.save_button.upcast_ref()));
     }
 }

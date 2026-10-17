@@ -49,11 +49,29 @@ impl FilterStrip {
     /// Slide in, or out. Opening puts the cursor in the SQL field, the
     /// strip's main input.
     pub fn toggle(&self) {
-        let opening = !self.revealed();
-        self.set_revealed(opening);
-        if opening {
-            self.imp().raw_entry.grab_focus();
+        match self.revealed() {
+            true => self.close(),
+            false => self.open(),
         }
+    }
+
+    fn open(&self) {
+        let focus = self.root().and_then(|root| root.focus());
+        self.imp().focus_before.set(focus.as_ref());
+        self.set_revealed(true);
+        self.imp().raw_entry.grab_focus();
+    }
+
+    /// Slide out. The focus inside goes back where it came from, before
+    /// GTK moves it to the window's first control.
+    fn close(&self) {
+        if crate::ui::a11y::holds_focus(self)
+            && let Some(before) = self.imp().focus_before.upgrade()
+            && before.root() == self.root()
+        {
+            before.grab_focus();
+        }
+        self.set_revealed(false);
     }
 
     /// Rebuild the rows against new columns: each row's column and
@@ -129,7 +147,7 @@ impl FilterStrip {
 
     fn emit_applied(&self, set: FilterSet) {
         self.emit_by_name::<()>("applied", &[&glib::BoxedAnyObject::new(set)]);
-        self.set_revealed(false);
+        self.close();
     }
 
     fn add_rule(&self) {
