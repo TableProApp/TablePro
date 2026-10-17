@@ -20,7 +20,7 @@ use tokio_util::sync::CancellationToken;
 use crate::services::history_service::HistoryService;
 use crate::ui::error_text::{driver_message, operation_error_message};
 use crate::ui::file_read::{FileReadError, read_capped_file};
-use crate::ui::import_dialog::{CsvImport, MAX_CSV_FILE_BYTES};
+use crate::ui::import_dialog::{CsvImport, MAX_CSV_FILE_BYTES, import_error_text};
 
 use super::{WorkspaceInput, WorkspaceModel};
 use crate::runtime::DeliverInput;
@@ -129,7 +129,6 @@ impl WorkspaceModel {
                 move |_, out| {
                     input.deliver(match out {
                         ImportCsvDialogOutput::Import(import) => WorkspaceInput::ImportCsvRun(import),
-                        ImportCsvDialogOutput::ShowToast(text) => WorkspaceInput::ShowToast(text),
                     });
                 }
             });
@@ -428,7 +427,7 @@ async fn read_columns(session: Arc<Session>, table: TableRef) -> Result<Vec<Impo
 fn import_rows(import: &CsvImport) -> Result<Vec<Vec<CellInput>>, String> {
     use tablepro_core::import::{read_csv, row_to_cells};
 
-    let sheet = read_csv(&import.bytes, &import.options, None).map_err(|error| error.to_string())?;
+    let sheet = read_csv(&import.bytes, &import.options, None).map_err(|error| import_error_text(&error))?;
     let first_line = first_data_line(import);
     sheet
         .rows
