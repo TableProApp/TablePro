@@ -493,6 +493,7 @@ impl SessionWindow {
         };
         let connections = state.services.storage.connections().clone();
         let tasks = state.services.tasks.clone();
+        let file = path.clone();
         crate::runtime::spawn_held(&state.services.tasks, &*state.services.hold(), async move {
             let imported = tasks
                 .spawn_blocking_task(move || connections.import_blocking(&path, &bytes))
@@ -507,7 +508,7 @@ impl SessionWindow {
                 ),
                 Ok(Err(error)) => {
                     tracing::warn!(%error, "could not import the connections");
-                    crate::i18n::gettext("That file is not a TablePro connection export.")
+                    import_failure_message(error, &file)
                 }
                 Err(error) => {
                     tracing::warn!(%error, "the import task did not finish");
@@ -641,6 +642,22 @@ fn ask_where_to_export(window: &SessionWindow, bytes: Vec<u8>, input: InputSende
     });
 }
 
+/// Why an import changed nothing. Only a problem with the chosen file
+/// is the file's fault; the saved list may be unreadable or the disk
+/// full.
+fn import_failure_message(error: tablepro_storage::StorageError, file: &std::path::Path) -> String {
+    match error {
+        tablepro_storage::StorageError::DocumentUnavailable(problem) if problem.path == file => {
+            if problem.is_newer_version() {
+                crate::i18n::gettext("That export comes from a newer version of TablePro.")
+            } else {
+                crate::i18n::gettext("That file is not a TablePro connection export.")
+            }
+        }
+        other => crate::ui::error_text::saved_connection_error_message(&SavedConnectionError::Storage(other)),
+    }
+}
+
 /// An export holds names, hosts and options, never secrets, so even
 /// thousands of connections come to well under this.
 const MAX_CONNECTIONS_FILE_BYTES: usize = 8 * 1024 * 1024;
@@ -721,6 +738,25 @@ mod tests {
         let refused = read(&path).expect_err("a refusal");
 
         assert!(refused.contains("too large"), "{refused}");
+    }
+
+    #[test]
+    fn only_a_problem_with_the_chosen_file_blames_it() {
+        use tablepro_storage::{DocumentProblem, DocumentProblemKind, StorageError};
+
+        let chosen = std::path::Path::new("/home/u/export.json");
+        let problem = |path: &str| {
+            StorageError::DocumentUnavailable(DocumentProblem::new(path, DocumentProblemKind::MissingVersion))
+        };
+
+        assert_eq!(
+            import_failure_message(problem("/home/u/export.json"), chosen),
+            "That file is not a TablePro connection export."
+        );
+        let list_unreadable = import_failure_message(problem("/home/u/.local/share/connections.json"), chosen);
+        assert!(!list_unreadable.contains("That file"), "{list_unreadable}");
+        let disk_full = import_failure_message(StorageError::Schema("the disk is full".to_owned()), chosen);
+        assert!(disk_full.contains("the disk is full"), "{disk_full}");
     }
 
     #[gtk4::test]
