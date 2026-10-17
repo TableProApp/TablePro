@@ -48,7 +48,9 @@ impl DatabaseDriver for MysqlDriver {
         if let Some(tls) = CAPABILITIES.tls.as_ref() {
             target.tls.validate(tls, target.transport.kind().class())?;
         }
-        let endpoint = Arc::new(MysqlEndpoint::new(target, options.liveness)?);
+        let (setup_target, liveness) = (target.clone(), options.liveness);
+        let endpoint =
+            Arc::new(tablepro_net::tls::set_up_off_runtime(move || MysqlEndpoint::new(&setup_target, liveness)).await?);
         let pool = build_pool(endpoint.clone(), SessionLimits::workspace(&options.workspace_settings))?;
         // The first pool member is opened here, so a connect fails with
         // the reason the server gave and a cancel abandons the login.

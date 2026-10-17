@@ -30,8 +30,8 @@ pub fn build_client_config(tls: &TlsConfig) -> Result<Option<Arc<ClientConfig>>,
         .with_custom_certificate_verifier(verifier);
     let config = match &tls.client_identity {
         Some(identity) => {
-            let (certificates, key) = read_identity(identity)?;
-            builder.with_client_auth_cert(certificates, key)?
+            let files = read_identity(identity)?;
+            builder.with_client_auth_cert(files.certificates, files.key)?
         }
         None => builder.with_no_client_auth(),
     };
