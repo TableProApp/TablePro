@@ -140,7 +140,7 @@ flowchart TB
 | `tablepro-storage` | Saved connections, Secret Service, query history, audit journal. |
 | `tablepro-ssh` | Built-in `russh` tunnels and optional system OpenSSH backend. |
 | `tablepro-transport` | Saved-connection → dial options, SSH chain, tunnel, TLS service identity. |
-| `tablepro-dump` | GTK-free vendor-tool supervision, private password files and PostgreSQL dump/restore requests. Depends on `core`; GUI integration remains pending in [#1017](https://github.com/cozyGarage/BookiE/pull/1017). [ADR 0019](docs/decisions/0019-database-tooling-without-sidecars.md) governs the feature. |
+| `tablepro-dump` | GTK-free vendor-tool supervision, private password files and PostgreSQL dump/restore requests. The GTK app exposes guarded backup and restore actions through `PolicyGuard::run_administrative`. Depends on `core`; [ADR 0019](docs/decisions/0019-database-tooling-without-sidecars.md) governs the feature. |
 | `tablepro-mcp` | MCP auth, scopes, connection allowlists, rate limits, tools. Never exposes a raw driver connection. |
 | `tablepro-driver-*` | One static crate per engine. |
 | `tablepro-driver-tls-tests` / `tablepro-release-tests` | Test-only fixtures. |
