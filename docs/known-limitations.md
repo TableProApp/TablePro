@@ -1,6 +1,6 @@
 # Known limitations of BookiE 0.2
 
-What the application does not do, or does differently from what you might expect, and the bugs we know about. Entries link to their owning issue, decision or evidence when one exists. Reviewed 2026-10-16.
+What the application does not do, or does differently from what you might expect, and the bugs we know about. Entries link to their owning issue, decision or evidence when one exists. Reviewed 2026-10-17.
 
 ## Data and values
 
@@ -49,7 +49,7 @@ What the application does not do, or does differently from what you might expect
 - **PostgreSQL behind a connection pooler:** PgBouncer in session mode works. In transaction mode it works when the pooler supports prepared statements (PgBouncer 1.21 or newer with `max_prepared_statements` above 0); without that the server answers "prepared statement already exists" and the error now says so. Session features of the editor (`SET`, temporary tables, an open transaction across statements) need session pooling by design.
 - **SSH jump chains cannot be edited in the form** (UI-1b / [#548](https://github.com/cozyGarage/BookiE/issues/548)). They connect and run, but editing remains disabled until the complete GTK editor path is implemented and accepted.
 - **Reusable SSH profiles cannot be edited** (UI-26).
-- **Local socket endpoint differences:** PostgreSQL selects a socket directory plus port; MySQL and MariaDB select the full socket-file path. Both local routes reject TLS and SSH and never fall back to TCP. Connection URLs cannot express local socket endpoints; configure them in the form or import a connection bundle ([#579](https://github.com/cozyGarage/BookiE/issues/579)). An imported MySQL connection with a directory-style `socket_dir` can still pass validation even though MySQL requires a socket-file path ([#638](https://github.com/cozyGarage/BookiE/issues/638)).
+- **Local socket endpoint differences:** PostgreSQL selects a socket directory plus port; MySQL and MariaDB select the full socket-file path. Both local routes reject TLS and SSH and never fall back to TCP. Connection URLs cannot express local socket endpoints; configure them in the form or import a connection bundle ([#579](https://github.com/cozyGarage/BookiE/issues/579)).
 - **SQL Server with Kerberos** has a Samba AD and verified-TLS fixture that passed the Kerberos selectors; Windows AD interoperability and package acceptance remain open (B4-21).
 - **A timed-out SQL Server query cannot be stopped on the server yet.** Its outcome is unknown and BookiE retires that connection or session; Tiberius 0.13 has a cancellation API, but BookiE has not verified it against the session lifecycle (B4-23 / [#850](https://github.com/cozyGarage/BookiE/issues/850)).
 - **DuckDB read-only flat files** need Linux and a writable directory on the same filesystem as the file (the application pins the file through a private link there). A read-only in-memory DuckDB connection is refused.
@@ -63,7 +63,7 @@ What the application does not do, or does differently from what you might expect
 - No foreign-key value picker or estimated row counts (UI-19 / [#549](https://github.com/cozyGarage/BookiE/issues/549)). Enum and set pickers and tab-separated row paste are implemented.
 - PostgreSQL schemas can be hidden from the sidebar per connection ([#580](https://github.com/cozyGarage/BookiE/issues/580)); this display filter does not reduce catalog query work. Many-schema performance and restricted-role metadata remain open under B6.
 - Database snapshots and one-click rollback remain unavailable (SNAP-1 accepted the feature for 0.2.x; implementation is SNAP-2 to SNAP-4 / [#547](https://github.com/cozyGarage/BookiE/issues/547)). PostgreSQL logical backup and restore are available through the installed `pg_dump` and `pg_restore` tools; see the [user guide](user-guide.md#back-up-and-restore-postgresql). They are not point-in-time snapshots.
-- Accessibility is not fully verified with Orca, keyboard-only navigation or high contrast (DOC-3). Concrete gaps are tracked in [#658](https://github.com/cozyGarage/BookiE/issues/658): some connection controls and text fields are missing names or actions in the accessibility tree, and grid menu items are not exposed consistently.
+- Accessibility is not fully verified with Orca, keyboard-only navigation or high contrast (DOC-3). The specific missing-name and action reports in [#658](https://github.com/cozyGarage/BookiE/issues/658) were rechecked and resolved in [#920](https://github.com/cozyGarage/BookiE/pull/920); broader accessibility acceptance remains open.
 
 ## Platforms and packaging
 
