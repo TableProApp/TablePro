@@ -127,6 +127,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 
 ### Fixed
 - Structure column expanders now point right when collapsed and down when open.
+- Renaming a MySQL table in a database other than the connection's moved it into the connection's database, and renaming a ClickHouse table failed.
 - In a Session editor tab, a PostgreSQL SELECT with a typo or an error partway through no longer ends the session and its temporary tables, and Export all rows of such a result reads through the same session.
 - A MySQL `TINYINT(1)` holding a value other than 0 or 1 showed as true, and saving another change in its row could report that the row had changed; it now shows the stored number.
 - SQL Server `real`, MySQL `FLOAT` and DuckDB `FLOAT` values showed extra digits, such as 0.10000000149011612 for 0.1, in the grid, copies and exports.
