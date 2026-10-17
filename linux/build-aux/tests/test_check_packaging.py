@@ -52,6 +52,11 @@ Depends:
 RULES = """export PATH := {rust_bin}:$(PATH)
 """
 
+MAN = """.TH TABLEPRO 1 {man_date} "TablePro {man_version}" "User Commands"
+.SH NAME
+tablepro \\- work with your databases
+"""
+
 NOTES = """# Changelog
 
 ## [Unreleased]
@@ -87,6 +92,8 @@ class ProblemsTests(unittest.TestCase):
         release="1%{?dist}",
         spec_date="Wed Oct 14 2026",
         later="",
+        man_date="2026-10-14",
+        man_version="1.2.0",
     ):
         workdir = tempfile.TemporaryDirectory()
         self.addCleanup(workdir.cleanup)
@@ -109,6 +116,7 @@ class ProblemsTests(unittest.TestCase):
             (check_packaging.CARGO, CARGO.format(rust_version=rust_version)),
             (check_packaging.CONTROL, CONTROL.format(toolchain=toolchain)),
             (check_packaging.RULES, RULES.format(rust_bin=rust_bin)),
+            (check_packaging.MAN, MAN.format(man_date=man_date, man_version=man_version)),
         ):
             (root / path).parent.mkdir(parents=True, exist_ok=True)
             (root / path).write_text(content, encoding="utf-8")
@@ -147,6 +155,7 @@ class ProblemsTests(unittest.TestCase):
             releases='<release version="1.2.0" date="2026-10-01"/>',
             notes=NOTES.replace("## [1.2.0] - 2026-10-14", "## [1.2.0] - 2026-10-01"),
             spec_date="Thu Oct 01 2026",
+            man_date="2026-10-01",
         )
 
         found = check_packaging.problems(root, "1.2.0", "linux-v1.2.0", "2026-10-14")
@@ -202,6 +211,7 @@ class ProblemsTests(unittest.TestCase):
             version="1.2.0~rc.1",
             changelog="1.2.0~rc.1",
             notes=NOTES.replace("## [1.2.0]", "## [1.2.0-rc.1]"),
+            man_version="1.2.0-rc.1",
         )
 
         self.assertEqual(check_packaging.problems(root, "1.2.0-rc.1", "linux-v1.2.0-rc.1", "2026-10-14"), [])
@@ -211,6 +221,7 @@ class ProblemsTests(unittest.TestCase):
             releases='<release version="1.2.0-rc.1" date="2026-10-14"/>',
             version="1.2.0-rc.1",
             changelog="1.2.0~rc.1",
+            man_version="1.2.0-rc.1",
         )
 
         found = check_packaging.problems(root, "1.2.0-rc.1")
@@ -302,6 +313,24 @@ class ProblemsTests(unittest.TestCase):
 
         self.assertEqual(len(found), 1, found)
         self.assertIn("has Release 2%{?dist}, not 1%{?dist}", found[0])
+
+    def test_the_man_page_names_the_built_version(self):
+        found = check_packaging.problems(self.tree(man_version="1.1.0"), "1.2.0")
+
+        self.assertEqual(found, ["data/tablepro.1 names version 1.1.0, not 1.2.0"])
+
+    def test_a_man_page_without_a_title_line_fails(self):
+        root = self.tree()
+        (root / check_packaging.MAN).write_text(".SH NAME\n", encoding="utf-8")
+
+        found = check_packaging.problems(root, "1.2.0")
+
+        self.assertEqual(found, ['data/tablepro.1 has no .TH line naming "TablePro X.Y.Z"'])
+
+    def test_the_man_page_carries_the_release_date(self):
+        found = check_packaging.problems(self.tree(man_date="2026-09-01"), "1.2.0")
+
+        self.assertEqual(found, ["data/tablepro.1 is dated 2026-09-01, the metainfo 2026-10-14"])
 
     def test_main_writes_the_release_notes(self):
         root = self.tree()

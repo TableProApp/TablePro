@@ -65,10 +65,13 @@ glib::wrapper! {
 
 impl TableProApplication {
     pub fn new(services: AppServices) -> Self {
+        // GApplication answers --version from this, before it registers
+        // on the bus, so the running instance never sees the call.
         let app: Self = glib::Object::builder()
             .property("application-id", config::APP_ID)
             .property("resource-base-path", config::RESOURCE_BASE_PATH)
             .property("flags", gio::ApplicationFlags::HANDLES_OPEN)
+            .property("version", config::VERSION)
             .build();
         services.bind_application(&app);
         // Only `new` sets it, and it has just built the object.

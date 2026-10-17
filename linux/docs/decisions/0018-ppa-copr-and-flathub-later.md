@@ -116,10 +116,10 @@ development and CI. It does not keep a manifest for Flathub.
 - An upstream pre-release such as `0.2.0-rc.1` packages as `0.2.0~rc.1`,
   as Debian and Fedora version rules expect.
 - Each release commit bumps `meson.build`, the newest metainfo
-  `<release>`, the spec's `Version` and `%changelog`, and moves
-  `[Unreleased]` in `CHANGELOG.md` under the version. The
-  `release-metadata` Meson test keeps them in step. `build-source.sh`
-  writes `debian/changelog` per series at upload, as
+  `<release>`, the spec's `Version` and `%changelog`, and the man page's
+  `.TH` line, and moves `[Unreleased]` in `CHANGELOG.md` under the
+  version. The `release-metadata` Meson test keeps them in step.
+  `build-source.sh` writes `debian/changelog` per series at upload, as
   `X.Y.Z-0ppaN~YY.MM`. A packaging fix uploads a released version again
   with a higher N, from the release's own tarballs, by a manual run of
   `release-linux.yml` ([releasing.md](../releasing.md#a-packaging-fix)).

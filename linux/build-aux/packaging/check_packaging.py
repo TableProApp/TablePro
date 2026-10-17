@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-# Checks that the version Meson builds is the one the metainfo releases and
-# the RPM spec package, that the spec collects translations exactly when
-# po/LINGUAS ships one, and that the Debian package builds with the Rust
-# the workspace names as its rust-version. The release workflow adds the
-# tag and its date, and then CHANGELOG.md must carry that version's notes
-# and the spec must be the version's first package release.
+# Checks that the version Meson builds is the one the metainfo releases, the
+# RPM spec packages and the man page names, that the spec collects
+# translations exactly when po/LINGUAS ships one, and that the Debian
+# package builds with the Rust the workspace names as its rust-version. The
+# release workflow adds the tag and its date, and then CHANGELOG.md must
+# carry that version's notes and the spec must be the version's first
+# package release.
 #
 # Once CHANGELOG.md has a heading for the version, the release commit has
-# set its dates, and the heading and the spec's %changelog entry must
-# carry the metainfo's release date.
+# set its dates, and the heading, the spec's %changelog entry and the man
+# page must carry the metainfo's release date.
 
 import argparse
 import re
@@ -25,6 +26,7 @@ CHANGELOG = Path("CHANGELOG.md")
 CARGO = Path("Cargo.toml")
 CONTROL = Path("build-aux/debian/control")
 RULES = Path("build-aux/debian/rules")
+MAN = Path("data/tablepro.1")
 
 # X.Y.Z, or a pre-release such as X.Y.Z-rc.1 with no '-' after the first,
 # so the package version below stays a plain substitution.
@@ -34,6 +36,7 @@ SPEC_CHANGELOG = re.compile(r"^%changelog\s*\n\*[^\n]*\s-\s(\S+)\s*$", re.MULTIL
 SPEC_RELEASE = re.compile(r"^Release:\s*(\S+)\s*$", re.MULTILINE)
 SPEC_ENTRY = re.compile(r"^\*\s+(\w{3}\s+\w{3}\s+\d{1,2}\s+\d{4})\s.*\s-\s(\S+)\s*$", re.MULTILINE)
 FIRST_PACKAGE_RELEASE = "1%{?dist}"
+MAN_TITLE = re.compile(r'^\.TH\s+\S+\s+\S+\s+"?([^"\s]*)"?\s+"TablePro ([^"]*)"', re.MULTILINE)
 FIND_LANG = re.compile(r"^%find_lang\b", re.MULTILINE)
 CONTROL_TOOLCHAIN = re.compile(r"\b(cargo|rustc)-(\d+\.\d+)\b")
 RULES_TOOLCHAIN = re.compile(r"/usr/lib/rust-(\d+\.\d+)/bin\b")
@@ -101,8 +104,17 @@ def spec_entry_date(spec, release):
     return None
 
 
+def man_title(root):
+    """The date and version on the man page's .TH line, or None without one."""
+    match = MAN_TITLE.search((root / MAN).read_text(encoding="utf-8"))
+    return (match.group(1), match.group(2)) if match else None
+
+
 def release_date_problems(root, version, spec, released, spec_opens_with_version):
     found = []
+    title = man_title(root)
+    if title is not None and title[0] != released:
+        found.append(f"{MAN} is dated {title[0] or 'nothing'}, the metainfo {released}")
     heading = release_heading_date(root / CHANGELOG, version)
     if heading == "":
         found.append(f"{CHANGELOG} has no YYYY-MM-DD date on ## [{version}]")
@@ -196,6 +208,12 @@ def problems(root, version, tag=None, tag_date=None):
                 f"{SPEC} has Release {', '.join(releases) or 'nothing'}, not {FIRST_PACKAGE_RELEASE} "
                 f"for a new version"
             )
+
+    title = man_title(root)
+    if title is None:
+        found.append(f'{MAN} has no .TH line naming "TablePro X.Y.Z"')
+    elif title[1] != version:
+        found.append(f"{MAN} names version {title[1] or 'nothing'}, not {version}")
 
     if bool(linguas(root / LINGUAS)) != bool(FIND_LANG.search(spec)):
         found.append(
