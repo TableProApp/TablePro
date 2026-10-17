@@ -37,11 +37,12 @@ use world::{World, drain_main_context, wait_until};
 
 type Scenario = fn() -> Result<Vec<Finding>, String>;
 
-const SCENARIOS: [(&str, Scenario); 6] = [
+const SCENARIOS: [(&str, Scenario); 7] = [
     ("picker_page_controls_are_labelled", picker_page),
     ("connecting_page_controls_are_labelled", connecting_page),
     ("connect_failed_page_controls_are_labelled", connect_failed_page),
     ("workspace_controls_are_labelled", workspace),
+    ("structure_forms_are_labelled", structure_forms),
     ("connect_dialog_fields_are_labelled", connect_dialog),
     ("preferences_dialog_fields_are_labelled", preferences_dialog),
 ];
@@ -135,39 +136,14 @@ fn connect_failed_page() -> Result<Vec<Finding>, String> {
 }
 
 /// A table tab, a structure tab and an editor tab, each audited while it
-/// is the one in front, with the sidebar's search and the editor's find
-/// and replace open.
+/// is the one in front, with the table's filter strip, the sidebar's
+/// search and the editor's find and replace open, then the table tab
+/// again with a cell's editor open.
 fn workspace() -> Result<Vec<Finding>, String> {
-    let script = one_table();
-    let world = World::start(
-        "Workspace",
-        fake_driver(),
-        FakeConnector::new([]).always(FakeEstablish::Connect(script)),
-    )?;
-    let window = world.open(WindowLaunch::Connect(Box::new(world.saved.clone())))?;
-    wait_until("the table in the sidebar", || {
-        shows(&window, "TableProWorkspace") && shows_text(window.upcast_ref(), TABLE)
-    })?;
-    let sidebar = descendants(window.upcast_ref())
-        .into_iter()
-        .find(|widget| widget.is::<gtk4::ListView>())
-        .ok_or("the sidebar has no list")?;
-    let table = (Some("public".to_owned()), TABLE.to_owned()).to_variant();
-
-    sidebar
-        .activate_action("sidebar.open-in-new-tab", Some(&table))
-        .map_err(|error| format!("sidebar.open-in-new-tab: {error}"))?;
-    wait_until("the table's rows", || shows_text(window.upcast_ref(), CELL))?;
-    sidebar
-        .activate_action("sidebar.edit-structure", Some(&table))
-        .map_err(|error| format!("sidebar.edit-structure: {error}"))?;
-    wait_until("the table's structure", || {
-        widgets_of(window.upcast_ref(), "TableProStructureTab")
-            .iter()
-            .flat_map(descendants)
-            .filter_map(|widget| widget.downcast::<gtk4::Stack>().ok())
-            .any(|stack| stack.visible_child_name().as_deref() == Some("editor"))
-    })?;
+    let (_world, window) = connected("Workspace")?;
+    open_table(&window)?;
+    open_filter_strip(&window)?;
+    open_structure(&window)?;
     WidgetExt::activate_action(&window, "win.new-editor-tab", None)
         .map_err(|error| format!("win.new-editor-tab: {error}"))?;
     let mut editor = None;
@@ -199,7 +175,129 @@ fn workspace() -> Result<Vec<Finding>, String> {
         drain_main_context();
         merge(&mut findings, audit(&window));
     }
+    tabs.set_selected_page(&tabs.nth_page(0));
+    drain_main_context();
+    open_cell_editor(&window)?;
+    merge(&mut findings, audit(&window));
     Ok(findings)
+}
+
+/// The Add Index and Add Foreign Key forms of the structure tab.
+fn structure_forms() -> Result<Vec<Finding>, String> {
+    let (_world, window) = connected("StructureForms")?;
+    open_structure(&window)?;
+    let mut findings = Vec::new();
+    for title in ["Add Index…", "Add Foreign Key…"] {
+        let row = descendants(window.upcast_ref())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<adw::ButtonRow>().ok())
+            .find(|row| row.title() == title)
+            .ok_or_else(|| format!("the structure tab has no {title} row"))?;
+        row.emit_by_name::<()>("activated", &[]);
+        let mut shown = None;
+        wait_until(title, || {
+            shown = window.visible_dialog();
+            shown.is_some()
+        })?;
+        let dialog = shown.ok_or("no dialog")?;
+        drain_main_context();
+        merge(&mut findings, audit(&dialog));
+        dialog.close();
+        wait_until("the form to close", || window.visible_dialog().is_none())?;
+    }
+    Ok(findings)
+}
+
+/// A window connected to `one_table`, on its workspace.
+fn connected(name: &str) -> Result<(World, adw::ApplicationWindow), String> {
+    let world = World::start(
+        name,
+        fake_driver(),
+        FakeConnector::new([]).always(FakeEstablish::Connect(one_table())),
+    )?;
+    let window = world.open(WindowLaunch::Connect(Box::new(world.saved.clone())))?;
+    wait_until("the table in the sidebar", || {
+        shows(&window, "TableProWorkspace") && shows_text(window.upcast_ref(), TABLE)
+    })?;
+    Ok((world, window))
+}
+
+fn sidebar_action(window: &adw::ApplicationWindow, action: &str) -> Result<(), String> {
+    let sidebar = descendants(window.upcast_ref())
+        .into_iter()
+        .find(|widget| widget.is::<gtk4::ListView>())
+        .ok_or("the sidebar has no list")?;
+    let table = (Some("public".to_owned()), TABLE.to_owned()).to_variant();
+    sidebar
+        .activate_action(action, Some(&table))
+        .map_err(|error| format!("{action}: {error}"))
+}
+
+fn open_table(window: &adw::ApplicationWindow) -> Result<(), String> {
+    sidebar_action(window, "sidebar.open-in-new-tab")?;
+    wait_until("the table's rows", || shows_text(window.upcast_ref(), CELL))
+}
+
+fn open_structure(window: &adw::ApplicationWindow) -> Result<(), String> {
+    sidebar_action(window, "sidebar.edit-structure")?;
+    wait_until("the table's structure", || {
+        widgets_of(window.upcast_ref(), "TableProStructureTab")
+            .iter()
+            .flat_map(descendants)
+            .filter_map(|widget| widget.downcast::<gtk4::Stack>().ok())
+            .any(|stack| stack.visible_child_name().as_deref() == Some("editor"))
+    })
+}
+
+/// The table tab's filter strip, open on its rule editor with one rule.
+fn open_filter_strip(window: &adw::ApplicationWindow) -> Result<(), String> {
+    let tab = widgets_of(window.upcast_ref(), "TableProBrowseTab")
+        .pop()
+        .ok_or("no table tab")?;
+    tab.activate_action("browse.filter", None)
+        .map_err(|error| format!("browse.filter: {error}"))?;
+    let strip = widgets_of(&tab, "TableProFilterStrip").pop().ok_or("no filter strip")?;
+    strip
+        .activate_action("filter.add-rule", None)
+        .map_err(|error| format!("filter.add-rule: {error}"))?;
+    for expander in descendants(&strip)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk4::Expander>().ok())
+    {
+        expander.set_expanded(true);
+    }
+    wait_until("the filter rule", || {
+        !widgets_of(&strip, "TableProFilterRuleRow").is_empty()
+    })
+}
+
+/// The editor of the cell that shows `CELL`, opened from its menu the
+/// way the Menu key opens it.
+fn open_cell_editor(window: &adw::ApplicationWindow) -> Result<(), String> {
+    let cell = widgets_of(window.upcast_ref(), "TableProGridCell")
+        .into_iter()
+        .find(|cell| shows_text(cell, CELL))
+        .ok_or("no cell shows the row")?;
+    let controllers = cell.observe_controllers();
+    let menu = (0..controllers.n_items())
+        .filter_map(|index| controllers.item(index).and_downcast::<gtk4::GestureClick>())
+        .find(|gesture| gesture.button() == 3)
+        .ok_or("the cell has no menu")?;
+    menu.emit_by_name::<()>("pressed", &[&1i32, &1.0f64, &1.0f64]);
+    for popover in descendants(window.upcast_ref())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk4::PopoverMenu>().ok())
+    {
+        popover.popdown();
+    }
+    drain_main_context();
+    cell.activate_action("cell.edit", None)
+        .map_err(|error| format!("cell.edit: {error}"))?;
+    wait_until("the cell's editor", || {
+        descendants(&cell)
+            .iter()
+            .any(|widget| widget.is::<gtk4::Text>() && widget.is_visible())
+    })
 }
 
 /// The dialog for a new connection, on a server engine and then on a

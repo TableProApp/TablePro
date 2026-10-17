@@ -163,7 +163,11 @@ fn named(widget: &gtk4::Widget) -> bool {
 /// of its own. A text view that never takes the focus is text on the
 /// page rather than a field.
 fn is_field(widget: &gtk4::Widget) -> bool {
-    widget.is::<gtk4::Entry>()
+    // A bare text field, such as a cell's editor; one inside an entry or
+    // a spin button is met as that control.
+    widget.is::<gtk4::Text>()
+        || widget.is::<gtk4::Calendar>()
+        || widget.is::<gtk4::Entry>()
         || widget.is::<gtk4::PasswordEntry>()
         || widget.is::<gtk4::SearchEntry>()
         || widget.is::<gtk4::SpinButton>()
