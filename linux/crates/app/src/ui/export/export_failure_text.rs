@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use gtk4::prelude::*;
 use gtk4::{self as gtk, gio, glib};
 use libadwaita as adw;
@@ -10,6 +12,7 @@ use tablepro_session::runtime::TaskFailure;
 use super::{AbortOutcome, ExpectedRows, ExportFailure, ExportOutcome, ExportStreamFailure};
 use crate::i18n::{gettext, gettext_f, ngettext_f};
 use crate::ui::error_text::operation_error_message;
+use crate::ui::file_reveal::{FileRevealer, reveal_failure_toast};
 use crate::ui::format::{format_thousands, plural_count};
 
 pub(crate) fn exported_text(rows: u64, name: &str) -> String {
@@ -132,17 +135,29 @@ fn document_text(error: &RenderError) -> String {
 
 /// Where an export's outcome is told: a toast on the workspace, or an
 /// alert over its window for a failure.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct ExportReporter {
     parent: glib::WeakRef<gtk::Widget>,
     toasts: glib::WeakRef<adw::ToastOverlay>,
+    revealer: Rc<dyn FileRevealer>,
+}
+
+impl std::fmt::Debug for ExportReporter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExportReporter").finish_non_exhaustive()
+    }
 }
 
 impl ExportReporter {
-    pub(crate) fn new(parent: &impl IsA<gtk::Widget>, toasts: &adw::ToastOverlay) -> Self {
+    pub(crate) fn new(
+        parent: &impl IsA<gtk::Widget>,
+        toasts: &adw::ToastOverlay,
+        revealer: Rc<dyn FileRevealer>,
+    ) -> Self {
         Self {
             parent: parent.as_ref().downgrade(),
             toasts: toasts.downgrade(),
+            revealer,
         }
     }
 
@@ -151,8 +166,8 @@ impl ExportReporter {
             ExportOutcome::Exported { rows } => {
                 let toast = crate::ui::plain_toast(&exported_text(*rows, name));
                 toast.set_button_label(Some(&gettext("Show in Files")));
-                let (file, parent) = (file.clone(), self.parent.clone());
-                toast.connect_button_clicked(move |_| show_in_files(&file, &parent));
+                let (file, reporter) = (file.clone(), self.clone());
+                toast.connect_button_clicked(move |_| reporter.show_in_files(&file));
                 self.toast(toast);
             }
             ExportOutcome::Stopped(left) => self.toast(crate::ui::plain_toast(&stopped_text(*left, name))),
@@ -178,19 +193,23 @@ impl ExportReporter {
             toasts.add_toast(toast);
         }
     }
-}
 
-fn show_in_files(file: &gio::File, parent: &glib::WeakRef<gtk::Widget>) {
-    let window = parent
-        .upgrade()
-        .and_then(|parent| parent.root())
-        .and_downcast::<gtk::Window>();
-    let launcher = gtk::FileLauncher::new(Some(file));
-    glib::spawn_future_local(async move {
-        if let Err(error) = launcher.open_containing_folder_future(window.as_ref()).await {
-            tracing::warn!(%error, "the export's folder could not be shown");
-        }
-    });
+    /// A file manager that could not show the file is said in a toast,
+    /// as Preferences and History do.
+    pub(crate) fn show_in_files(&self, file: &gio::File) {
+        let window = self
+            .parent
+            .upgrade()
+            .and_then(|parent| parent.root())
+            .and_downcast::<gtk::Window>();
+        let revealing = self.revealer.reveal(file.clone(), window);
+        let reporter = self.clone();
+        glib::spawn_future_local(async move {
+            if let Some(toast) = reveal_failure_toast(&revealing.await) {
+                reporter.toast(toast);
+            }
+        });
+    }
 }
 
 #[cfg(test)]
@@ -248,6 +267,30 @@ mod tests {
             multiple,
             "This statement returned more than one result, so it can't be exported as one file."
         );
+    }
+
+    #[gtk4::test]
+    fn a_failed_show_in_files_is_said_in_a_toast() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let toasts = adw::ToastOverlay::new();
+        let window = adw::Window::new();
+        window.set_content(Some(&toasts));
+        let window = crate::test_support::OwnedWindow::presented(window);
+        let reporter = ExportReporter::new(
+            &*window,
+            &toasts,
+            Rc::new(crate::ui::file_reveal::RecordingRevealer::failing()),
+        );
+
+        reporter.show_in_files(&gio::File::for_path("/tmp/rows.csv"));
+
+        crate::test_support::wait_until(std::time::Duration::from_secs(10), || {
+            crate::test_support::descendants(&toasts)
+                .iter()
+                .filter_map(|widget| widget.downcast_ref::<gtk::Label>())
+                .any(|label| label.label() == "Could not show the file in Files")
+        })
+        .expect("a toast said the file could not be shown");
     }
 
     #[test]

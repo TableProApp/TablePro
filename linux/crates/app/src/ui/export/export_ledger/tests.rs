@@ -70,7 +70,11 @@ impl Harness {
         let ledger = ExportLedger::new(ExportLedgerInit {
             tasks: runtime.tasks(),
             hold: hold.clone(),
-            reporter: ExportReporter::new(&window, &toasts),
+            reporter: ExportReporter::new(
+                &window,
+                &toasts,
+                Rc::new(crate::ui::file_reveal::RecordingRevealer::succeeding()),
+            ),
             inhibitor: WindowInhibitor::new(session.clone()),
         });
         Self {

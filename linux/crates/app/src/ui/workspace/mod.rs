@@ -532,7 +532,7 @@ impl Workspace {
             tasks.clone(),
         );
         let persistence = workspace_persistence::WorkspacePersistence::new(storage.workspaces().clone());
-        let exports = workspace.export_ledger(&window, &tasks, &context, &input);
+        let exports = workspace.export_ledger(&window, &services, &context, &input);
         let sidebar = sidebar::build(&workspace, &input, sidebar::SidebarAffordances::for_session(&session));
         let WorkspaceTabParts {
             tab_view,
@@ -627,15 +627,15 @@ impl Workspace {
     fn export_ledger(
         &self,
         window: &adw::ApplicationWindow,
-        tasks: &tablepro_session::runtime::Tasks,
+        services: &AppServices,
         context: &SessionContext,
         input: &WorkspaceSender,
     ) -> Rc<ExportLedger> {
         let imp = self.imp();
         let exports = ExportLedger::new(ExportLedgerInit {
-            tasks: tasks.clone(),
+            tasks: services.tasks.clone(),
             hold: context.hold.clone(),
-            reporter: ExportReporter::new(window, &imp.toast_overlay.get()),
+            reporter: ExportReporter::new(window, &imp.toast_overlay.get(), services.file_revealer.clone()),
             inhibitor: WindowInhibitor::new(ApplicationInhibit::new(window)),
         });
         imp.export_operations_button.bind(&exports.jobs());
