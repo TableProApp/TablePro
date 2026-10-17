@@ -74,6 +74,7 @@ jobs:
     uses: ./.github/workflows/linux-packages.yml
     with:
       deb-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
+      rpm-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
 
   github-release:
     name: GitHub release

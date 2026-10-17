@@ -8,6 +8,7 @@ name: Linux packages
 # fedora:44 with only its BuildRequires. Each package is then installed in
 # another fresh container with only its runtime dependencies and started.
 # release-linux.yml calls this workflow and uploads the source packages.
+# A run by hand can add arm64, which pushes and pull requests leave out.
 
 on:
   pull_request:
@@ -31,10 +32,19 @@ on:
       - "linux/**"
       - ".github/workflows/linux-packages.yml"
   workflow_dispatch:
+    inputs:
+      arm64:
+        description: Also build, test and install the arm64 .deb and .rpm
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       deb-runners:
         description: JSON list of runners; each series' .deb is built once per runner architecture.
+        type: string
+        default: '["ubuntu-24.04"]'
+      rpm-runners:
+        description: JSON list of runners; the .rpm is built once per runner architecture.
         type: string
         default: '["ubuntu-24.04"]'
 
@@ -112,7 +122,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: ${{ fromJSON(inputs.deb-runners || '["ubuntu-24.04"]') }}
+        runner: ${{ fromJSON(inputs.deb-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
         series: ${{ fromJSON(needs.source-package.outputs.series) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 300
@@ -151,9 +161,13 @@ jobs:
           if-no-files-found: error
 
   rpm:
-    name: RPM package
+    name: RPM package (${{ matrix.runner }})
     needs: sources
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 300
     container:
       image: fedora:44
@@ -174,20 +188,24 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: linux-rpm-testlog
+          name: linux-rpm-testlog-${{ runner.arch }}
           path: _packages/rpm/testlog.txt
           if-no-files-found: ignore
           retention-days: 7
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: linux-rpm
+          name: linux-rpm-${{ runner.arch }}
           path: _packages/rpm
           if-no-files-found: error
 
   rpm-install:
-    name: Install the RPM package
+    name: Install the RPM package (${{ matrix.runner }})
     needs: rpm
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     container:
       image: fedora:44
@@ -197,7 +215,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: linux-rpm
+          name: linux-rpm-${{ runner.arch }}
           path: _packages/rpm
       - name: Install, start and validate
         run: linux/build-aux/packaging/smoke-test.sh "$(find _packages/rpm -name 'tablepro-[0-9]*.rpm' ! -name '*.src.rpm')"
