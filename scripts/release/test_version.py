@@ -92,7 +92,7 @@ class FakeGitHub:
 
 def green_on(sha, prefix="run"):
     runs, jobs = {}, {}
-    for workflow, job in version.REQUIRED_RUNS:
+    for workflow, job, _ in version.REQUIRED_RUNS:
         run_id = f"{prefix}-{workflow}"
         runs[(workflow, sha)] = [[(run_id, "completed", "success")]]
         jobs[(run_id, job)] = ["success"]
@@ -127,13 +127,22 @@ class CheckTests(unittest.TestCase):
         self.git = version.Git(self.repo.path)
         self.slept = []
         self.logged = []
+        self.diffs = []
+        self.changed_suites = set()
         self.base = self.repo.commit("0.81.0", MAIN_CHANGELOG)
         self.repo.git("tag", "v0.81.0")
         self.cut = self.repo.commit("feat: something")
         self.repo.line("0.82", self.cut)
 
+    def changed(self, base, suite):
+        self.diffs.append((base, suite))
+        return suite in self.changed_suites
+
     def check(self, tag, github):
-        return version.check(tag, self.git, github, sleep=self.slept.append, log=self.logged.append)
+        if self.git.exists(f"refs/tags/{tag}"):
+            self.repo.git("checkout", "--quiet", "--detach", tag)
+        return version.check(tag, self.git, github, changed=self.changed, sleep=self.slept.append,
+                             log=self.logged.append)
 
     def test_a_first_beta_on_a_green_cut_commit_builds(self):
         self.repo.git("tag", "v0.82.0-beta.1", self.cut)
@@ -146,12 +155,38 @@ class CheckTests(unittest.TestCase):
         self.repo.line("0.82", release_commit)
         self.repo.git("tag", "v0.82.0-beta.1", release_commit)
         runs, jobs = green_on(self.cut)
-        for workflow, job in version.REQUIRED_RUNS:
+        for workflow, job, _ in version.REQUIRED_RUNS:
             runs[(workflow, release_commit)] = [[("skip-" + workflow, "completed", "success")]]
             jobs[("skip-" + workflow, job)] = ["skipped"]
         github = FakeGitHub(releases=[("v0.81.0", False)], runs=runs, jobs=jobs)
         self.assertEqual(self.check("v0.82.0-beta.1", github), [])
         self.assertIn(f"macOS Tests: green on {self.cut}", self.logged)
+        self.assertEqual(self.diffs, [(self.cut, "macos"), (self.cut, "ios"), (self.cut, "release")])
+
+    def test_a_borrowed_verdict_must_still_cover_the_tag(self):
+        unrun = self.repo.commit("fix: pushed with no run")
+        self.repo.line("0.82", unrun)
+        self.repo.git("tag", "v0.82.0-beta.1", unrun)
+        self.changed_suites = {"macos"}
+        runs, jobs = green_on(self.cut)
+        github = FakeGitHub(releases=[("v0.81.0", False)], runs=runs, jobs=jobs)
+        self.assertEqual(self.check("v0.82.0-beta.1", github),
+                         [f"macOS Tests passed on {self.cut}, but files it reads changed before v0.82.0-beta.1"])
+
+    def test_a_green_tag_commit_needs_no_diff(self):
+        self.repo.git("tag", "v0.82.0-beta.1", self.cut)
+        runs, jobs = green_on(self.cut)
+        self.changed_suites = {"macos", "ios", "release"}
+        github = FakeGitHub(releases=[("v0.81.0", False)], runs=runs, jobs=jobs)
+        self.assertEqual(self.check("v0.82.0-beta.1", github), [])
+        self.assertEqual(self.diffs, [])
+
+    def test_the_walk_needs_the_tag_checked_out(self):
+        self.repo.git("tag", "v0.82.0-beta.1", self.base)
+        self.repo.line("0.82", self.cut)
+        errors = version.check("v0.82.0-beta.1", self.git, FakeGitHub(releases=[("v0.81.0", False)]),
+                               changed=self.changed, sleep=self.slept.append, log=self.logged.append)
+        self.assertEqual(errors, ["check out v0.82.0-beta.1 first: the coverage check diffs against HEAD"])
 
     def test_a_pending_run_is_waited_for(self):
         self.repo.git("tag", "v0.82.0-beta.1", self.cut)
@@ -183,7 +218,7 @@ class CheckTests(unittest.TestCase):
     def test_a_success_on_another_branch_run_of_the_same_commit_counts(self):
         self.repo.git("tag", "v0.82.0-beta.1", self.cut)
         runs, jobs = green_on(self.cut)
-        for workflow, job in version.REQUIRED_RUNS:
+        for workflow, job, _ in version.REQUIRED_RUNS:
             runs[(workflow, self.cut)][0].append(("branch-" + workflow, "completed", "success"))
             jobs[("branch-" + workflow, job)] = ["skipped"]
         github = FakeGitHub(releases=[("v0.81.0", False)], runs=runs, jobs=jobs)
@@ -277,6 +312,22 @@ class CheckTests(unittest.TestCase):
         github = FakeGitHub()
         self.assertEqual(self.check("v0.82.1-beta.1", github), ["0.82.1-beta.1: a beta exists only on PATCH 0"])
         self.assertEqual(github.run_queries, [])
+
+
+class DetectorTests(unittest.TestCase):
+    def test_the_detector_answer_is_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            script = root / version.DETECTOR
+            script.parent.mkdir(parents=True)
+            script.write_text('#!/bin/sh\n[ "$3" = macos ] && echo true || echo false\n', encoding="utf-8")
+            script.chmod(0o755)
+            changed = version.detector(root)
+            self.assertTrue(changed("abc", "macos"))
+            self.assertFalse(changed("abc", "ios"))
+            script.write_text("#!/bin/sh\necho broken >&2\nexit 2\n", encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "broken"):
+                changed("abc", "ios")
 
 
 class GitHubTests(unittest.TestCase):

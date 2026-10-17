@@ -20,10 +20,11 @@ STABLE_RANK = 99
 GRAMMAR = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-beta\.(0|[1-9][0-9]*))?")
 
 REQUIRED_RUNS = (
-    ("macos-tests.yml", "macOS Tests"),
-    ("ios-tests.yml", "iOS and Package Tests"),
-    ("release-build.yml", "Release Build"),
+    ("macos-tests.yml", "macOS Tests", "macos"),
+    ("ios-tests.yml", "iOS and Package Tests", "ios"),
+    ("release-build.yml", "Release Build", "release"),
 )
+DETECTOR = "scripts/ci/detect-changed-paths.sh"
 WALK_DEPTH = 50
 POLL_SECONDS = 60
 PENDING_STATUSES = {"queued", "in_progress", "waiting", "requested", "pending"}
@@ -107,6 +108,9 @@ class Git:
             raise RuntimeError(f"git {' '.join(args)}: {result.stderr.strip()}")
         return result
 
+    def commit(self, ref: str) -> str:
+        return self._git("rev-parse", "--verify", f"{ref}^{{commit}}").stdout.strip()
+
     def exists(self, ref: str) -> bool:
         return self._git("rev-parse", "--quiet", "--verify", f"{ref}^{{commit}}", check=False).returncode == 0
 
@@ -158,6 +162,16 @@ class GitHub:
 
 class CheckFailure(Exception):
     pass
+
+
+def detector(root: Path, run: Callable = subprocess.run) -> Callable[[str, str], bool]:
+    def changed(base: str, suite: str) -> bool:
+        result = run([str(root / DETECTOR), "--base", base, suite], cwd=root, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"{DETECTOR} --base {base} {suite}: {result.stderr.strip()}")
+        return result.stdout.strip() != "false"
+
+    return changed
 
 
 def published_stables(releases: List[Tuple[str, bool]]) -> List[Version]:
@@ -246,25 +260,31 @@ def is_green(github: GitHub, workflow: str, job: str, sha: str,
     return any(conclusion == "success" for _, conclusion in conclusions)
 
 
-def ci_errors(git: Git, github: GitHub, version: Version,
+def ci_errors(git: Git, github: GitHub, version: Version, changed: Callable[[str, str], bool],
               sleep: Callable[[float], None] = time.sleep, log: Callable[[str], None] = print) -> List[str]:
-    errors = []
+    tag_commit = git.commit(version.tag)
+    if git.commit("HEAD") != tag_commit:
+        return [f"check out {version.tag} first: the coverage check diffs against HEAD"]
     shas = git.first_parents(version.tag, WALK_DEPTH)
-    for workflow, job in REQUIRED_RUNS:
+    errors = []
+    for workflow, job, suite in REQUIRED_RUNS:
         try:
-            for sha in shas:
-                if is_green(github, workflow, job, sha, sleep, log):
-                    log(f"{job}: green on {sha}")
-                    break
-            else:
-                errors.append(f"no {job} run that was not skipped among the {len(shas)} first-parent commits "
-                              f"of {version.tag}")
+            green = next((sha for sha in shas if is_green(github, workflow, job, sha, sleep, log)), None)
         except CheckFailure as failure:
             errors.append(str(failure))
+            continue
+        if green is None:
+            errors.append(f"no {job} run that was not skipped among the {len(shas)} first-parent commits "
+                          f"of {version.tag}")
+        # A commit with no run of its own would otherwise borrow a verdict that never covered it.
+        elif green != tag_commit and changed(green, suite):
+            errors.append(f"{job} passed on {green}, but files it reads changed before {version.tag}")
+        else:
+            log(f"{job}: green on {green}")
     return errors
 
 
-def check(tag: str, git: Git, github: GitHub,
+def check(tag: str, git: Git, github: GitHub, changed: Optional[Callable[[str, str], bool]] = None,
           sleep: Callable[[float], None] = time.sleep, log: Callable[[str], None] = print) -> List[str]:
     try:
         version = parse_tag(tag)
@@ -278,7 +298,7 @@ def check(tag: str, git: Git, github: GitHub,
     errors += changelog_errors(git.show(tag, "CHANGELOG.md"), version, published_stables(releases))
     if errors:
         return errors
-    return ci_errors(git, github, version, sleep, log)
+    return ci_errors(git, github, version, changed or detector(git.root), sleep, log)
 
 
 def main(argv: Optional[List[str]] = None) -> int:

@@ -309,6 +309,17 @@ class DocsTests(unittest.TestCase):
             self.block("0.81.0"),
         )
 
+    def test_mdx_syntax_outside_code_is_escaped(self):
+        section = notes.Section("0.80.0", "2026-10-11", False, [], [
+            "### Changed",
+            "",
+            '- "{1 keys}" for one key, and `{1 keys}` or `<pane>` in code.',
+            "- tablepro://settings/<pane> links.",
+        ])
+        block = notes.render_update(section, "TableProApp/TablePro")
+        self.assertIn('  - "\\{1 keys\\}" for one key, and `{1 keys}` or `<pane>` in code.', block)
+        self.assertIn("  - tablepro://settings/\\<pane> links.", block)
+
     def test_the_date_has_no_leading_zero(self):
         self.assertEqual(notes.docs_date("2026-10-05"), "October 5, 2026")
 

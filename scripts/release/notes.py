@@ -293,11 +293,13 @@ def assemble(root: Path, version: str, author_of: Callable[[int], Author], lead_
         raise NotesError(f"git add CHANGELOG.md: {added.stderr.strip()}")
 
 
-def _link(text: str, repository: str) -> str:
+def _mdx(text: str, repository: str) -> str:
     pieces = re.split(r"(`+[^`]*`+)", text)
     for index in range(0, len(pieces), 2):
+        # MDX reads { as an expression and < as a tag.
+        piece = re.sub(r"([{}<])", r"\\\1", pieces[index])
         piece = re.sub(r"(?<![\w\[/&])#([0-9]+)\b(?!\])",
-                       rf"[#\1](https://github.com/{repository}/issues/\1)", pieces[index])
+                       rf"[#\1](https://github.com/{repository}/issues/\1)", piece)
         pieces[index] = re.sub(r"(?<![\w\[/`])@([A-Za-z0-9][A-Za-z0-9-]*)(?![\w\]])",
                                r"[@\1](https://github.com/\1)", piece)
     return "".join(pieces)
@@ -313,14 +315,14 @@ def render_update(section: Section, repository: str) -> str:
         raise NotesError(f"## [{section.version}] has no date")
     lines = [f'<Update label="v{section.version}" description="{docs_date(section.date)}">']
     for line in section.lead:
-        lines += [f"  {_link(line, repository)}", ""]
+        lines += [f"  {_mdx(line, repository)}", ""]
     for line in section.entries:
         subsection = re.fullmatch(r"### (.+?)\s*", line)
         if subsection:
             name = subsection.group(1)
             lines.append(f"  ### {DOCS_SECTIONS.get(name, name)}")
         elif line.strip():
-            lines.append(f"  {_link(line, repository)}")
+            lines.append(f"  {_mdx(line, repository)}")
         else:
             lines.append("")
     while lines and not lines[-1]:
