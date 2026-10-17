@@ -48,6 +48,24 @@ def problems(text):
     return found
 
 
+def indexed_issues(text):
+    if INDEX_HEADING not in text:
+        return []
+    section = text.split(INDEX_HEADING, 1)[1].split("\n## ", 1)[0]
+    entries = []
+    for line in section.splitlines():
+        match = ROW.match(line)
+        if not match:
+            continue
+        ident, issue, lane = (cell.strip() for cell in match.groups())
+        if ident in {"ID", "---"} or ident.startswith("---") or lane not in LANES:
+            continue
+        issue_match = ISSUE.match(issue)
+        if issue_match:
+            entries.append((ident, int(issue_match.group(1))))
+    return entries
+
+
 def main():
     path = Path(__file__).resolve().parents[1] / "docs/known-issues.md"
     text = path.read_text()

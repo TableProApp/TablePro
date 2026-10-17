@@ -20,7 +20,8 @@ This page is an index of ledger IDs to issues. Do not track evidence, owners or 
 | PEER-15 | [#1062](https://github.com/cozyGarage/BookiE/issues/1062) | UX |
 | PEER-16 | [#1065](https://github.com/cozyGarage/BookiE/issues/1065) | B3 |
 | PEER-17 | [#1067](https://github.com/cozyGarage/BookiE/issues/1067) | UX |
-| PEER-18 | [#1071](https://github.com/cozyGarage/BookiE/issues/1071) | UX |
+| PEER-18 | [#1069](https://github.com/cozyGarage/BookiE/issues/1069) | UX |
+| PEER-19 | [#1071](https://github.com/cozyGarage/BookiE/issues/1071) | UX |
 | UI-1b | [#548](https://github.com/cozyGarage/BookiE/issues/548) | B4 |
 | UI-14b | [#592](https://github.com/cozyGarage/BookiE/issues/592) | B3 |
 | UI-19 | [#549](https://github.com/cozyGarage/BookiE/issues/549) | B3 |
@@ -48,8 +49,6 @@ This page is an index of ledger IDs to issues. Do not track evidence, owners or 
 | TEST-31 | [#556](https://github.com/cozyGarage/BookiE/issues/556) | UX |
 | TEST-32 | [#594](https://github.com/cozyGarage/BookiE/issues/594) | UX |
 | TEST-35 | [#961](https://github.com/cozyGarage/BookiE/issues/961) | UX |
-| TEST-36 | [#1075](https://github.com/cozyGarage/BookiE/issues/1075) | UX |
-| TEST-33 | [#595](https://github.com/cozyGarage/BookiE/issues/595) | B3 |
 | DOC-3 | [#561](https://github.com/cozyGarage/BookiE/issues/561) | Maintainer |
 | DOC-5 | [#561](https://github.com/cozyGarage/BookiE/issues/561) | Maintainer |
 | PERF-2 | [#554](https://github.com/cozyGarage/BookiE/issues/554) | B4 |
@@ -65,7 +64,6 @@ This page is an index of ledger IDs to issues. Do not track evidence, owners or 
 | AUD-12 | [#947](https://github.com/cozyGarage/BookiE/issues/947) | B4 |
 | AUD-13 | [#1041](https://github.com/cozyGarage/BookiE/issues/1041) | B4 |
 | B4-23 | [#850](https://github.com/cozyGarage/BookiE/issues/850) | B4 |
-| B4-24 | [#1038](https://github.com/cozyGarage/BookiE/issues/1038) | B4 |
 | SNAP-2 | [#547](https://github.com/cozyGarage/BookiE/issues/547) | UX |
 | SNAP-3 | [#547](https://github.com/cozyGarage/BookiE/issues/547) | UX |
 | SNAP-4 | [#547](https://github.com/cozyGarage/BookiE/issues/547) | UX |

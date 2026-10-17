@@ -108,6 +108,10 @@ Check every required result against the exact commit under review. A skipped che
 
 Treat static-analysis findings as evidence to review. Fix valid findings in a focused change. For a confirmed false positive or accepted exception, record a short reason in the tool; keep a reusable explanation here only when it helps other contributors.
 
+### Live issue-state report
+
+Run `python3 scripts/check-github-issue-status.py` when reconciling the open-work index with GitHub. It requires an authenticated `gh` CLI and makes an explicit network request. It reports closed or unverified issue entries but never edits the ledger or Project #3. This point-in-time report is separate from offline `check-known-issues.py` and does not run in preflight or CI. Authentication, network, timeout, or API-shape failures mean the live state is unavailable, not that an issue is closed.
+
 Use isolated fixtures with synthetic data and credentials. Do not put credentials, customer data, personal file paths, internal host names or machine-specific instructions in source, test output or committed evidence. Keep untrusted change validation isolated from production data and personal sessions.
 
 ## Build reuse and safe parallel work
