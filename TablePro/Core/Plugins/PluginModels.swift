@@ -1,8 +1,3 @@
-//
-//  PluginModels.swift
-//  TablePro
-//
-
 import Foundation
 import TableProPluginKit
 
@@ -13,6 +8,7 @@ struct PluginEntry: Identifiable {
     let source: PluginSource
     let name: String
     var version: String
+    var build: Int = 0
     let pluginDescription: String
     let capabilities: [PluginCapability]
 
