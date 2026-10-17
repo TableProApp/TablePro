@@ -672,7 +672,7 @@ fn duck_value_ref_to_value(v: ValueRef<'_>, uuid_column: bool) -> Value {
                 Value::Text(i.to_string())
             }
         }
-        ValueRef::Float(f) => Value::Float(f as f64),
+        ValueRef::Float(f) => Value::Float(tablepro_core::single_precision_as_f64(f)),
         ValueRef::Double(f) => Value::Float(f),
         ValueRef::Decimal(d) => rust_decimal_or_text(d),
         ValueRef::Text(t) => match std::str::from_utf8(t) {
@@ -787,6 +787,12 @@ fn map_duck_error(err: duckdb::Error) -> DriverError {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_float_keeps_the_digits_duckdb_shows() {
+        assert_eq!(duck_value_ref_to_value(ValueRef::Float(0.1), false), Value::Float(0.1));
+    }
+
     use super::*;
 
     #[cfg(target_os = "linux")]

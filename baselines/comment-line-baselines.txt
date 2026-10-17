@@ -127,7 +127,8 @@ crates/drivers/mongodb/src/shell.rs 7
 crates/drivers/mssql/src/codec.rs 20
 crates/drivers/mssql/src/lib.rs 64
 crates/drivers/mssql/src/tests.rs 7
-crates/drivers/mysql/src/lib.rs 84
+crates/drivers/mysql/src/decode.rs 16
+crates/drivers/mysql/src/lib.rs 68
 crates/drivers/mysql/src/session.rs 5
 crates/drivers/mysql/src/temporal.rs 1
 crates/drivers/postgres/src/array.rs 4

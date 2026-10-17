@@ -45,7 +45,7 @@ pub use filter::{
     equality_rule, filter_value_kind,
 };
 pub use numeric_input::{
-    FloatInputError, is_numeric_input, parse_float_input, sqlite_affinity_decimal,
+    FloatInputError, is_numeric_input, parse_float_input, single_precision_as_f64, sqlite_affinity_decimal,
     sqlite_declared_type_has_numeric_affinity,
 };
 pub use operation::{

@@ -42,7 +42,9 @@ fn column_data_to_value(cd: &ColumnData<'static>) -> Value {
         ColumnData::I16(v) => (*v).map(|n| Value::Int(i64::from(n))).unwrap_or(Value::Null),
         ColumnData::I32(v) => (*v).map(|n| Value::Int(i64::from(n))).unwrap_or(Value::Null),
         ColumnData::I64(v) => (*v).map(Value::Int).unwrap_or(Value::Null),
-        ColumnData::F32(v) => (*v).map(|n| Value::Float(f64::from(n))).unwrap_or(Value::Null),
+        ColumnData::F32(v) => (*v)
+            .map(|n| Value::Float(tablepro_core::single_precision_as_f64(n)))
+            .unwrap_or(Value::Null),
         ColumnData::F64(v) => (*v).map(Value::Float).unwrap_or(Value::Null),
         ColumnData::String(v) => v.as_ref().map(|s| Value::Text(s.to_string())).unwrap_or(Value::Null),
         ColumnData::Binary(v) => v.as_ref().map(|b| Value::Bytes(b.to_vec())).unwrap_or(Value::Null),
@@ -180,6 +182,16 @@ fn column_type_to_string(ct: ColumnType) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_real_keeps_the_digits_sql_server_shows() {
+        assert_eq!(column_data_to_value(&ColumnData::F32(Some(0.1))), Value::Float(0.1));
+        assert_eq!(
+            column_data_to_value(&ColumnData::F32(Some(3.4e38))),
+            Value::Float(3.4e38)
+        );
+    }
+
     use super::*;
 
     #[test]

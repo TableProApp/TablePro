@@ -90,3 +90,24 @@ async fn mariadb_unsigned_subtraction_obeys_session_mode_and_signed_boundaries()
     let (_container, options) = crate::start_mariadb().await;
     assert_unsigned_subtraction_mode(options, "MariaDB").await;
 }
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_float_column_keeps_the_digits_mysql_shows() {
+    let (_c, options) = crate::start_mysql().await;
+    let connection = connect(options).await;
+    let table = format!("float_digits_{}", uuid::Uuid::new_v4().simple());
+    connection
+        .execute(&format!("CREATE TABLE {table} (f FLOAT, d DOUBLE)"))
+        .await
+        .unwrap();
+    connection
+        .execute(&format!("INSERT INTO {table} VALUES (0.1, 0.1)"))
+        .await
+        .unwrap();
+
+    let result = connection.query(&format!("SELECT f, d FROM {table}")).await.unwrap();
+
+    assert_eq!(result.rows, vec![vec![Value::Float(0.1), Value::Float(0.1)]]);
+    connection.execute(&format!("DROP TABLE {table}")).await.unwrap();
+}

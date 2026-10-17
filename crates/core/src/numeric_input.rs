@@ -8,6 +8,10 @@ pub enum FloatInputError {
     Underflow,
 }
 
+pub fn single_precision_as_f64(value: f32) -> f64 {
+    value.to_string().parse().unwrap_or(f64::from(value))
+}
+
 pub fn parse_float_input(text: &str) -> Result<f64, FloatInputError> {
     let text = text.trim();
     let value = text.parse::<f64>().map_err(|_| FloatInputError::Invalid)?;
@@ -58,6 +62,16 @@ pub fn sqlite_affinity_decimal(text: &str) -> Option<rust_decimal::Decimal> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_single_precision_value_keeps_its_shortest_digits() {
+        assert_eq!(super::single_precision_as_f64(0.1), 0.1);
+        assert_eq!(super::single_precision_as_f64(16_777_216.0), 16_777_216.0);
+        assert!(super::single_precision_as_f64(f32::NAN).is_nan());
+        assert_eq!(super::single_precision_as_f64(f32::INFINITY), f64::INFINITY);
+        assert_eq!(super::single_precision_as_f64(f32::NEG_INFINITY), f64::NEG_INFINITY);
+    }
+
     use super::*;
 
     #[test]

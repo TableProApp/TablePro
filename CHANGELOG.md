@@ -127,6 +127,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 
 ### Fixed
 - Structure column expanders now point right when collapsed and down when open.
+- SQL Server `real`, MySQL `FLOAT` and DuckDB `FLOAT` values showed extra digits, such as 0.10000000149011612 for 0.1, in the grid, copies and exports.
 - Streamed query results: a result of exactly a whole number of pages no longer ends on an empty page, a failed or timed-out stream is shown first, a stream still loading can no longer be pinned as if complete, and pinned results stay visible while a query runs or after it is stopped.
 - MCP clients with valid tokens were refused with a rate-limit error once all agents together exceeded one token's per-minute limit; only failed sign-in attempts now count toward the shared limit.
 - Dropping a SQL Server column that has a default, or changing its type, failed in the Structure tab; the default is now removed first and kept after a type change.

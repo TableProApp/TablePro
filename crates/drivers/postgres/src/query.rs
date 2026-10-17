@@ -534,7 +534,9 @@ fn extract_non_null_value(row: &PgRow, idx: usize, type_name: &str, raw: &sqlx::
         "INT2" => row.try_get::<i16, _>(idx).map(|v| Value::Int(v as i64)),
         "INT4" => row.try_get::<i32, _>(idx).map(|v| Value::Int(v as i64)),
         "INT8" => row.try_get::<i64, _>(idx).map(Value::Int),
-        "FLOAT4" => row.try_get::<f32, _>(idx).map(|v| Value::Float(float4_as_f64(v))),
+        "FLOAT4" => row
+            .try_get::<f32, _>(idx)
+            .map(|v| Value::Float(tablepro_core::single_precision_as_f64(v))),
         "FLOAT8" => row.try_get::<f64, _>(idx).map(Value::Float),
         "DATE" => row.try_get::<chrono::NaiveDate, _>(idx).map(Value::Date),
         "TIME" => row.try_get::<chrono::NaiveTime, _>(idx).map(Value::Time),
@@ -575,10 +577,6 @@ fn requires_server_text_result(type_info: &PgTypeInfo) -> bool {
     .any(|candidate| name.eq_ignore_ascii_case(candidate))
 }
 
-fn float4_as_f64(value: f32) -> f64 {
-    value.to_string().parse().unwrap_or(f64::from(value))
-}
-
 fn extract_enum_value(raw: &sqlx::postgres::PgValueRef<'_>, idx: usize, type_name: &str) -> Value {
     let label = match raw.format() {
         sqlx::postgres::PgValueFormat::Binary => raw.as_bytes().ok().and_then(|bytes| std::str::from_utf8(bytes).ok()),
@@ -600,16 +598,8 @@ pub(super) fn undecodable(idx: usize, type_name: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{float4_as_f64, has_enum_leaf};
+    use super::has_enum_leaf;
 
-    #[test]
-    fn a_float4_keeps_the_digits_the_server_shows() {
-        assert_eq!(float4_as_f64(0.1_f32), 0.1);
-        assert_eq!(float4_as_f64(16_777_216.0_f32), 16_777_216.0);
-        assert!(float4_as_f64(f32::NAN).is_nan());
-        assert_eq!(float4_as_f64(f32::INFINITY), f64::INFINITY);
-        assert_eq!(float4_as_f64(-0.0_f32).to_bits(), (-0.0_f64).to_bits());
-    }
     use sqlx::{Postgres, Type};
 
     #[test]
