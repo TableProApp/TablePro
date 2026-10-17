@@ -208,7 +208,7 @@ impl BrowseTab {
                 self.show_projection_error();
                 return;
             }
-            self.refresh_grid_chrome(&result);
+            self.refresh_grid_chrome();
             self.restore_focused_row();
             let _ = sender.output(BrowseTabOutput::StateChanged);
             return;
@@ -312,7 +312,7 @@ impl BrowseTab {
             .vexpand(true)
             .build();
         self.grid_holder.append(&scrolled);
-        self.refresh_grid_chrome(&result);
+        self.refresh_grid_chrome();
         self.restore_focused_row();
         let _ = sender.output(BrowseTabOutput::StateChanged);
     }
@@ -383,14 +383,13 @@ impl BrowseTab {
 
     /// Update paginator label, button sensitivity, and stack child —
     /// chrome that depends on the result but not the column structure.
-    pub(super) fn refresh_grid_chrome(&self, result: &QueryResult) {
+    pub(super) fn refresh_grid_chrome(&self) {
         self.refresh_crud_buttons();
         self.update_paginator_label();
         let on_first_page = self.current_offset == 0;
         self.first_button.set_sensitive(!on_first_page);
         self.prev_button.set_sensitive(!on_first_page);
-        let n_rows = result.rows.len() as u64;
-        self.next_button.set_sensitive(n_rows == self.page_size);
+        self.update_next_page_sensitivity();
         // Last only enables when we know the total AND we aren't
         // already there. Without a known total, the button stays
         // disabled — matches `RowCountLoaded`-gated UX everywhere

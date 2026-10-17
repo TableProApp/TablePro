@@ -411,6 +411,19 @@ impl BrowseTab {
             .update_property(&[gtk::accessible::Property::Label(text)]);
     }
 
+    pub(super) fn update_next_page_sensitivity(&self) {
+        let loaded_rows = self
+            .current_result
+            .as_ref()
+            .map_or(0, |result| result.rows.len() as u64);
+        self.next_button.set_sensitive(next_page_available(
+            self.current_offset,
+            self.page_size,
+            self.current_total_rows,
+            loaded_rows,
+        ));
+    }
+
     pub(super) fn update_paginator_label(&self) {
         let Some(result) = self.current_result.as_ref() else {
             self.set_paginator_text("");
@@ -479,6 +492,18 @@ impl BrowseTab {
             .description(message)
             .build();
         self.replace_status_child("error", &page);
+    }
+}
+
+pub(super) fn next_page_available(
+    current_offset: u64,
+    page_size: u64,
+    total_rows: Option<u64>,
+    loaded_rows: u64,
+) -> bool {
+    match total_rows {
+        Some(total) => current_offset.saturating_add(loaded_rows) < total,
+        None => loaded_rows == page_size,
     }
 }
 

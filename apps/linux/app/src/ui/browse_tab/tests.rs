@@ -3,9 +3,19 @@ use super::paste::parse_clipboard_grid;
 use super::value_parse::parse_grid_cell_input;
 use super::{
     BrowsePageRequest, BrowseTab, BrowseTabInit, BrowseTabInput, BrowseTabOutput, PageRequestTracker,
-    RowCountRequestTracker, columns_for_browse_page, projection_for_loaded_page,
+    RowCountRequestTracker, columns_for_browse_page, next_page_available, projection_for_loaded_page,
 };
 use relm4::{Component, ComponentController};
+
+#[test]
+fn browse_next_page_uses_known_total_and_page_size_fallback() {
+    assert!(!next_page_available(0, 2, Some(2), 2));
+    assert!(next_page_available(0, 2, Some(3), 2));
+    assert!(!next_page_available(2, 2, Some(4), 2));
+    assert!(next_page_available(2, 2, Some(5), 2));
+    assert!(next_page_available(0, 2, None, 2));
+    assert!(!next_page_available(0, 2, None, 1));
+}
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 use uuid::Uuid;
 
@@ -107,6 +117,86 @@ fn browse_page_fetch_waits_until_the_new_columns_are_applied() {
     assert!(fetched_page);
     assert!(fetched_count);
     assert_eq!(controller.model().columns()[0].name, "email");
+    controller.detach_runtime();
+}
+
+fn spin_until(context: &relm4::gtk::glib::MainContext, mut condition: impl FnMut() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while !condition() && std::time::Instant::now() < deadline {
+        context.iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert!(condition());
+}
+
+fn spin_for(context: &relm4::gtk::glib::MainContext, duration: std::time::Duration) {
+    let deadline = std::time::Instant::now() + duration;
+    while std::time::Instant::now() < deadline {
+        context.iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+#[test]
+#[ignore = "requires isolated GTK display"]
+fn browse_next_page_is_disabled_when_known_total_matches_page_end() {
+    use relm4::gtk::prelude::WidgetExt;
+    relm4::gtk::init().unwrap();
+    let (output_sender, output_receiver) = relm4::channel::<BrowseTabOutput>();
+    relm4::spawn_local(async move { while output_receiver.recv().await.is_some() {} });
+    let mut controller = BrowseTab::builder()
+        .launch(BrowseTabInit {
+            tab_id: Uuid::new_v4(),
+            schema: Some("main".into()),
+            table: "items".into(),
+            driver_id: "sqlite".into(),
+            connection_id: None,
+            read_only: false,
+            page_size: 2,
+            initial_offset: 0,
+            initial_sort: None,
+            persistence: crate::services::persistence_stores::PersistenceStores {
+                column_widths: None,
+                filter_settings: None,
+                csv_import_mappings: None,
+                named_filter_presets: None,
+            },
+            database: std::sync::Arc::new(crate::services::database_service::DatabaseService::new_isolated()),
+        })
+        .forward(&output_sender, |output| output);
+    let context = relm4::gtk::glib::MainContext::default();
+    controller
+        .sender()
+        .send(BrowseTabInput::ColumnsLoaded(vec![column("id", "integer", true)]))
+        .unwrap();
+    spin_until(&context, || controller.model().current_columns.len() == 1);
+    let page_request = controller.model().page_requests.begin(0);
+    let count_request = controller.model().row_count_requests.begin();
+    controller
+        .sender()
+        .send(BrowseTabInput::RowsLoaded {
+            request: page_request,
+            result: QueryResult {
+                columns: Vec::new(),
+                rows: vec![vec![Value::Int(1)], vec![Value::Int(2)]],
+                truncated: false,
+            },
+            projected_columns: None,
+        })
+        .unwrap();
+    spin_until(&context, || controller.model().current_result.is_some());
+    controller
+        .sender()
+        .send(BrowseTabInput::RowCountLoaded {
+            request: count_request,
+            count: 2,
+        })
+        .unwrap();
+    spin_until(&context, || controller.model().current_total_rows == Some(2));
+    assert!(!controller.model().next_button.is_sensitive());
+    controller.sender().send(BrowseTabInput::NextPage).unwrap();
+    spin_for(&context, std::time::Duration::from_millis(10));
+    assert_eq!(controller.model().current_offset, 0);
     controller.detach_runtime();
 }
 

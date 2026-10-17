@@ -255,6 +255,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::browse_tab::tests::browse_next_page_is_disabled_when_known_total_matches_page_end"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::icons::tests::schema_filter_icon_exists_in_the_active_theme"
     ],
     [
