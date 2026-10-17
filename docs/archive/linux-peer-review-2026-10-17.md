@@ -2,6 +2,8 @@
 
 Reviewed 2026-10-17 at 04:20 UTC. This is a bounded source and public-tracker review, not a runtime audit or release gate. It refreshes the October 16 peer review and feature comparison; it does not change the 0.2.0 scope.
 
+Follow-up checked at 12:00 UTC against current GitHub refs. BookiE Linux is `fe310a20763b1025c325b33e993c58358b020420`; TablePro Linux remains `6fd0d19326c2aa7404215972e9b0bb53948f9542`, TablePro main `2be4682f3faf924237225f7662174b8a26e36216`, dbx main `ab921297529deb9a996ebf43622340916f2a84a4`, DBeaver `devel` `61c9529849c9fa500c303d1a385897a4088d6656`, and Beekeeper `master` `f7ff968f39699c22d4f9a4674f38a5ecfbfbe586`. Latest checked releases remain TablePro 0.81.0, dbx 0.6.46, DBeaver 26.2.2 and Beekeeper 6.1.6. Since the prior BookiE pin, #1057 and #1040 merged; since the prior dbx pin, its only code change is Mycat proxy database/table listing. No competitor builds or runtime tests were performed.
+
 ## Pins and method
 
 | Project | Ref checked | Release checked |
@@ -60,3 +62,17 @@ Source: [dbx trigger SQL builder and tests](https://github.com/t8y2/dbx/pull/125
 - Thirteen UX-owned PR branches were synced to Linux `6ab7d79e1`; merge-only comments record each exact head and GitHub check snapshot. No failures were present at the refresh; some inexpensive jobs remained in progress. Forgejo/native acceptance remains separate and was not run in this review.
 
 The longer October 16 source review remains at [linux-peer-review-2026-10-16.md](linux-peer-review-2026-10-16.md). The comparison table is maintained in [0.2-feature-comparison.md](../0.2-feature-comparison.md); open work and order remain on Project #3 and the active sprint.
+
+## 2026-10-17 12:00 UTC: current issue and PR follow-up
+
+Beekeeper Studio [#4818](https://github.com/beekeeper-studio/beekeeper-studio/issues/4818) reports that clipboard export loses all but the last value when result columns have duplicate labels. BookiE's CSV/TSV and Markdown writers traverse cells by index, and JSON export creates collision-free field names in `json_field_names`; this source inspection does not show the same overwrite path. Keep [#1073](https://github.com/cozyGarage/BookiE/issues/1073) as regression coverage across formats and assert every value and its order. Do not change the established JSON naming policy without a compatibility decision.
+
+DBeaver [#40884](https://github.com/dbeaver/dbeaver/issues/40884) documents a PostgreSQL catalog query that loads millions of relation rows and grows both server and client memory. It reinforces the existing Bookie [#580](https://github.com/cozyGarage/BookiE/issues/580) scope-filter and catalog-performance work; it does not justify replacing the query without profiling Bookie's own sidebar paths. DBeaver [#42129](https://github.com/dbeaver/dbeaver/issues/42129) also records a `.deb` startup failure on Ubuntu while the tarball worked, later confirmed fixed. Bookie's installed-package acceptance remains the right evidence boundary; the competitor report does not identify a transferable root cause.
+
+dbx [#11013](https://github.com/t8y2/dbx/pull/11013) implements OpenSSH `ProxyCommand` support through a helper process and an explicit executable allowlist, without invoking a shell. This is a useful security boundary for any future proxy-command support. Bookie has explicit `russh` and system OpenSSH connection paths and does not import arbitrary `ProxyCommand` configuration; this is a deliberate boundary pending a product issue and threat review, not a missing implementation to copy. Existing [#970](https://github.com/cozyGarage/BookiE/issues/970) remains the specific jump-host host-key-policy issue.
+
+dbx [#10374](https://github.com/t8y2/dbx/issues/10374) originally attributed editor stalls to synchronous debug-log persistence and batched writes in #10375. The report was later corrected: the user's debugging log was disabled and empty while the stall persisted, so the shipped fix was not the root cause of that observed editor lag. This is a useful investigation lesson: validate the suspected path is active in the exact reproducer, and keep correlation, a fixed adjacent defect, and the user's reported cause separate. Bookie has no equivalent browser `localStorage` path.
+
+Beekeeper [#4861](https://github.com/beekeeper-studio/beekeeper-studio/issues/4861) reports leading comments being stripped before SQL Server `CREATE PROCEDURE`. Bookie's lexical span splitter retains source text around comments, but this scan did not run an installed SQL Server reproduction through the complete editor path. Treat it as a test prompt only; do not file a Bookie defect until the actual `ScriptPlan`/GO-batch path is exercised.
+
+The PR discussion pass found no new human-authored review request; the new non-owner comments were automated SonarCloud results. Current GitHub Linux advanced to `fe310a207`; UX-owned open PR branches were updated to it, with checks restarting. PR #1074 still has a failed SonarCloud quality gate at its current synced head and needs that result resolved before it is review-ready. This review does not run or replace the Forgejo gate.
