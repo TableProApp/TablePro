@@ -1104,12 +1104,12 @@ fn connect_intent(
                 saved: Some(report.saved),
             }),
             Err(connect_flow::SubmitError::Connect(error)) => Err(attempt_error(&error, server_name_shown)),
-            Err(connect_flow::SubmitError::Save(error)) => {
-                Err(AttemptError::Failed(ConnectFailure::new(crate::i18n::gettext_f(
-                    "The connection could not be saved: {error}",
-                    &[("error", &error.to_string())],
-                ))))
-            }
+            Err(connect_flow::SubmitError::Save(error)) => Err(AttemptError::Failed(ConnectFailure {
+                heading: Some(crate::i18n::gettext("Could Not Save the Connection")),
+                ..ConnectFailure::new(crate::ui::error_text::saved_connection_error_message(
+                    &crate::services::saved_connection_error::SavedConnectionError::Storage(error),
+                ))
+            })),
         }
     }
     .boxed()
@@ -1164,6 +1164,7 @@ fn attempt_error(error: &ConnectError, server_name_shown: bool) -> AttemptError 
                 ConnectError::Driver(DriverError::FileNotFound { path }) => Some(path.clone()),
                 _ => None,
             },
+            heading: None,
         }),
     }
 }

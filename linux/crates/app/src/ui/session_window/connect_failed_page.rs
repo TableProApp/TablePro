@@ -75,6 +75,9 @@ impl ConnectFailedPage {
         let imp = page.imp();
         imp.header_bar.pack_end(&crate::ui::shell::primary_menu_button(app));
         imp.status_page.set_icon_name(Some(crate::ui::icons::NETWORK_ERROR));
+        if let Some(heading) = &view.heading {
+            imp.status_page.set_title(heading);
+        }
         // The description is markup, and the reason quotes server text,
         // file paths and host names.
         imp.status_page
@@ -157,5 +160,30 @@ impl ConnectFailedPage {
     #[cfg(test)]
     pub fn announced(&self) -> Vec<(String, gtk::AccessibleAnnouncementPriority)> {
         self.imp().announced.borrow().clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn page(heading: Option<&str>) -> ConnectFailedPage {
+        let _ = adw::init();
+        crate::register_test_resources();
+        let view = ConnectFailureView {
+            message: "The saved connections could not be written: the disk is full".to_owned(),
+            can_edit: true,
+            heading: heading.map(str::to_owned),
+        };
+        ConnectFailedPage::new(&view, "Edit Connection…", None, None)
+    }
+
+    #[gtk4::test]
+    fn a_save_that_failed_after_the_connect_is_not_called_a_failed_connect() {
+        assert_eq!(page(None).status_page().title(), "Could Not Connect");
+        assert_eq!(
+            page(Some("Could Not Save the Connection")).status_page().title(),
+            "Could Not Save the Connection"
+        );
     }
 }
