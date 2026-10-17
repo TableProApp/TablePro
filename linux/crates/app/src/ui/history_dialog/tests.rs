@@ -212,6 +212,30 @@ pub(super) fn menu_item(menu: &gio::MenuModel, label: &str) -> Option<(String, O
     None
 }
 
+/// Every row has the same check box, Pin and Delete, so each says which
+/// query it acts on.
+#[gtk4::test]
+fn each_rows_controls_name_their_query() {
+    let harness = Harness::new();
+    harness.record("SELECT 1");
+    let dialog = harness.presented_dialog();
+    wait_until(WAIT, || !rows(&dialog).is_empty()).expect("the row");
+    let row = rows(&dialog).remove(0);
+
+    let controls: Vec<gtk::Widget> = descendants(&row)
+        .into_iter()
+        .filter(|widget| widget.is::<gtk::CheckButton>() || widget.is::<gtk::Button>())
+        .collect();
+    assert_eq!(controls.len(), 3, "the check box, Pin and Delete");
+    for control in controls {
+        assert!(
+            gtk::test_accessible_has_relation(&control, gtk::AccessibleRelation::DescribedBy),
+            "{} does not name its query",
+            control.type_().name()
+        );
+    }
+}
+
 #[gtk4::test]
 fn list_view_shows_pinned_section_header() {
     let harness = Harness::new();

@@ -103,6 +103,9 @@ fn job_row(item: &ExportJobItem) -> gtk::Widget {
 
     let stop = gtk::Button::from_icon_name(crate::ui::icons::PROCESS_STOP);
     crate::ui::a11y::describe_icon_button(&stop, &gettext("Stop Export"), None);
+    // Every job has a bar and a Stop Export, so each says which file.
+    progress.update_relation(&[gtk::accessible::Relation::LabelledBy(&[title.upcast_ref()])]);
+    stop.update_relation(&[gtk::accessible::Relation::DescribedBy(&[title.upcast_ref()])]);
     stop.set_valign(gtk::Align::Center);
     stop.add_css_class("flat");
     stop.add_css_class("circular");
