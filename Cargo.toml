@@ -98,6 +98,7 @@ exclusions = [
     "scripts/tests/test_ci_workflow.py",
     "scripts/tests/test_change_contracts.py",
     "scripts/tests/test_check_crate_boundaries.py",
+    "scripts/tests/test_deb_package.py",
     "scripts/tests/test_panic_sites.py",
     "apps/linux/app/tests/**",
 ]

@@ -4,6 +4,8 @@
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+source scripts/command-failure-context.sh
+bookie_enable_command_failure_context
 images=("$@")
 [ ${#images[@]} -gt 0 ] || images=(ubuntu:24.04 debian:13)
 previous_mount=()
@@ -25,6 +27,8 @@ for base in "${images[@]}"; do
   fi
   docker build -q -t "$tag" --build-arg "BASE=$base" -f "$dockerfile" scripts/distro-floor >/dev/null
   docker run --rm "${previous_mount[@]}" "${prebuilt_mount[@]}" -v "$PWD:/src:ro" -v "${tag}-target:/target" -v "${tag}-cargo:/opt/cargo/registry" -v "${tag}-git:/opt/cargo/git" -e CARGO_TARGET_DIR=/target "$tag" bash -ceux '
+    source /src/scripts/command-failure-context.sh
+    bookie_enable_command_failure_context
     apt-get update -qq
     apt-get install -y -qq --no-install-recommends desktop-file-utils >/dev/null
     if [ -n "${PREBUILT_DEB_NAME:-}" ]; then

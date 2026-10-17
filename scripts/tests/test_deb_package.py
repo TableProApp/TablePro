@@ -84,12 +84,25 @@ def check_builder_builds_and_installs_the_askpass_helper(source: Path) -> None:
     assert "usr/bin/tablepro-askpass" in builder, "build-deb.sh does not install the SSH askpass helper"
 
 
+def check_package_test_reports_the_failing_command(source: Path) -> None:
+    helper = source / "scripts/command-failure-context.sh"
+    result = subprocess.run(
+        ["bash", "-c", 'source "$1"; bookie_enable_command_failure_context; fail() { false; }; fail', "test", str(helper)],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1
+    assert "command failed at" in result.stderr, result.stderr
+    assert "false" in result.stderr, result.stderr
+
+
 def main() -> None:
-    check_builder_builds_and_installs_the_askpass_helper(Path(__file__).resolve().parents[2])
+    source = Path(__file__).resolve().parents[2]
+    check_builder_builds_and_installs_the_askpass_helper(source)
+    check_package_test_reports_the_failing_command(source)
     if shutil.which("dpkg-deb") is None:
         print("Debian package validation skipped: dpkg-deb is unavailable")
         return
-    source = Path(__file__).resolve().parents[2]
     validator = source / "scripts/validate-deb-package.sh"
     with tempfile.TemporaryDirectory(prefix="bookie-deb-test-") as temporary:
         root = Path(temporary)
