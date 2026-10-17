@@ -94,6 +94,25 @@ pub enum RunEvent {
     Finished,
 }
 
+/// The rows a batch may still keep under its run's limit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RowRoom {
+    /// The run's limit, which a result it cuts short names.
+    pub run_limit: u64,
+    pub left: u64,
+    /// The statement was sent with `left` as its row limit, below its
+    /// own, so a result the driver cut short was cut by the run's limit.
+    pub limits_statement: bool,
+}
+
+impl RowRoom {
+    pub const UNLIMITED: Self = Self {
+        run_limit: u64::MAX,
+        left: u64::MAX,
+        limits_statement: false,
+    };
+}
+
 /// Turns the events of one run into results list lines, on the runtime,
 /// so only finished lines cross to the GTK thread.
 #[derive(Debug)]
@@ -103,6 +122,7 @@ pub struct BatchCollector {
     entries: Vec<EntryKind>,
     /// Where each result set of this run sits in `entries`.
     sets: Vec<usize>,
+    room: RowRoom,
 }
 
 impl BatchCollector {
@@ -111,7 +131,13 @@ impl BatchCollector {
             statement,
             entries: Vec::new(),
             sets: Vec::new(),
+            room: RowRoom::UNLIMITED,
         }
+    }
+
+    /// Rows past `room` are dropped, and the result says why.
+    pub fn within(self, room: RowRoom) -> Self {
+        Self { room, ..self }
     }
 
     pub fn record(&mut self, event: ResultEvent) {
@@ -128,36 +154,46 @@ impl BatchCollector {
                     result.columns = columns;
                 }
             }
-            ResultEvent::Rows(rows) => match self.last_set() {
-                Some(result) => {
-                    result.rows.extend(rows.into_iter().map(Into::into));
-                    result.summary.retained = result.rows.len() as u64;
+            ResultEvent::Rows(rows) => {
+                if self.sets.is_empty() {
+                    // Rows with no columns would draw a grid that cannot
+                    // say what any cell is.
+                    tracing::warn!(rows = rows.len(), "rows arrived before their result set");
+                    return;
                 }
-                // Rows with no columns would draw a grid that cannot say
-                // what any cell is.
-                None => tracing::warn!(rows = rows.len(), "rows arrived before their result set"),
-            },
+                let kept = usize::try_from(self.room.left).unwrap_or(usize::MAX).min(rows.len());
+                self.room.left -= kept as u64;
+                let cut_by = (kept < rows.len()).then_some(self.room.run_limit);
+                if let Some(result) = self.last_set() {
+                    result.rows.extend(rows.into_iter().take(kept).map(Into::into));
+                    result.summary.retained = result.rows.len() as u64;
+                    result.summary.run_limit = result.summary.run_limit.or(cut_by);
+                }
+            }
             // Until the set ends and says how far the read went, all
             // that is known is that more rows were left behind.
-            ResultEvent::RowLimitReached { retained } => {
+            ResultEvent::RowLimitReached { .. } => {
+                let cut_by = self.room.limits_statement.then_some(self.room.run_limit);
                 if let Some(result) = self.last_set() {
                     result.summary = ResultSummary {
-                        retained,
+                        retained: result.rows.len() as u64,
                         total_rows: None,
                         truncation: Truncation::ServerStopped,
+                        run_limit: result.summary.run_limit.or(cut_by),
                     };
                 }
             }
             ResultEvent::ResultSetFinished {
-                retained,
-                total_rows,
-                truncation,
+                total_rows, truncation, ..
             } => {
+                let cut_by = (self.room.limits_statement && truncation == Truncation::ReadPastLimit)
+                    .then_some(self.room.run_limit);
                 if let Some(result) = self.last_set() {
                     result.summary = ResultSummary {
-                        retained,
+                        retained: result.rows.len() as u64,
                         total_rows,
                         truncation,
+                        run_limit: result.summary.run_limit.or(cut_by),
                     };
                 }
             }
@@ -514,11 +550,43 @@ mod tests {
                 retained: 2,
                 total_rows: Some(5),
                 truncation: Truncation::ServerStopped,
+                run_limit: None,
             }
         );
         assert_eq!(result.statement.as_str(), "SELECT a FROM t");
         assert!(matches!(&entries[1], EntryKind::Notice { message } if message.contains("vacuumed")));
         assert!(matches!(entries[2], EntryKind::Command { rows_affected: Some(4) }));
+    }
+
+    #[test]
+    fn a_set_the_driver_cut_at_the_runs_room_names_the_run_limit() {
+        let room = RowRoom {
+            run_limit: 100,
+            left: 1,
+            limits_statement: true,
+        };
+        let mut collector = BatchCollector::new(UserSql::new("SELECT a FROM t")).within(room);
+        for event in [
+            ResultEvent::ResultSetStarted {
+                columns: columns(&["a"]),
+            },
+            ResultEvent::Rows(vec![vec![Value::Int(1)]]),
+            ResultEvent::RowLimitReached { retained: 1 },
+            ResultEvent::ResultSetFinished {
+                retained: 1,
+                total_rows: None,
+                truncation: Truncation::ReadPastLimit,
+            },
+        ] {
+            collector.record(event);
+        }
+        let (entries, _, _) = collector.finish(summary(RunEnd::Completed), EditorSessionState::Ready, 0);
+
+        let EntryKind::ResultSet(result) = &entries[0] else {
+            panic!("expected rows: {entries:?}");
+        };
+        assert_eq!(result.row_count(), 1);
+        assert_eq!(result.summary.run_limit, Some(100));
     }
 
     #[test]
@@ -552,11 +620,13 @@ mod tests {
             retained: 100,
             total_rows: None,
             truncation: Truncation::ServerStopped,
+            run_limit: None,
         };
         let counted = ResultSummary {
             retained: 100,
             total_rows: Some(250),
             truncation: Truncation::ReadPastLimit,
+            run_limit: None,
         };
         let history = |entries: Vec<EntryKind>| {
             let mut log = RunLog::new(vec![UserSql::new("SELECT a FROM t")], Vec::new());
