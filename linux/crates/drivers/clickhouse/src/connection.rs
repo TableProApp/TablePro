@@ -278,7 +278,7 @@ impl Connection for ClickHouseConnection {
         let table = self.catalog_table(table);
         self.workspace_read(options, move |calls| async move {
             let rows = catalog::column_rows(&calls, &table).await?;
-            Ok(rows.iter().map(catalog::ClickHouseColumnRow::info).collect())
+            Ok(rows.iter().map(catalog::ClickHouseColumnRow::row_info).collect())
         })
         .await
     }

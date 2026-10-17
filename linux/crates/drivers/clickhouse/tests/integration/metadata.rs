@@ -92,6 +92,45 @@ async fn catalog_classifies_datetime64_decimal76() {
     connection.close().await.expect("a close");
 }
 
+/// The server refuses an UPDATE of any sorting or partition key column,
+/// so the grid locks and keys rows by all of them, past the PRIMARY KEY.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn every_sorting_and_partition_key_column_keys_the_grid() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let name = unique("keyed");
+    setup(
+        connection.as_ref(),
+        &[&format!(
+            "CREATE TABLE {} (region String, a Int32, b Int32, v String) ENGINE = MergeTree \
+             PARTITION BY region ORDER BY (a, b) PRIMARY KEY a",
+            quoted(&name)
+        )],
+    )
+    .await;
+
+    let columns = connection
+        .fetch_columns(&table(&name), within(CALL))
+        .await
+        .expect("the columns");
+    let definition = connection
+        .fetch_table_definition(&table(&name), within(CALL))
+        .await
+        .expect("the definition");
+
+    let keyed: Vec<(&str, bool)> = columns
+        .iter()
+        .map(|column| (column.name.as_str(), column.primary_key))
+        .collect();
+    assert_eq!(keyed, [("region", true), ("a", true), ("b", true), ("v", false)]);
+    assert_eq!(
+        definition.primary_key.map(|key| key.columns),
+        Some(vec!["a".to_owned()])
+    );
+    connection.close().await.expect("a close");
+}
+
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn fetch_table_definition_reports_keys_comment_and_source() {
