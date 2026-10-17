@@ -40,6 +40,7 @@ candidate inventory as a release commitment.
 | UI-21, TEST-28 | Fake connection for the GTK tier, native Ubuntu AT-SPI menu reachability |
 | TEST-30 | Remaining SonarCloud and CodeQL findings | #562 has no Lane set on Project #3 yet, so it is not listed in the lane index. |
 | TEST-34 | Import Python coverage for repository tooling into SonarCloud without lowering the coverage gate; #830 added tests but SonarCloud reported 0.0% new-code coverage |
+| TEST-36 | Record duration for each installed GTK scenario and retry so distro-floor suite growth can be measured before changing its timeout or shard layout ([#1075](https://github.com/cozyGarage/BookiE/issues/1075)); keep the existing 600-second bound until measured |
 | AUD-5 | About 4,700 comment lines in `src/` to move into docs, file by file |
 | DOC-3, DOC-5 | Orca and high contrast pass; value comparison with DBeaver and dbx |
 | PEER-2 | One per-dialect lexer profile (backslash escapes, `E''` strings, `--` rule, quote characters) shared by the statement splitter, the classifier and export quoting; dbx's `SqlDialectProfile` closed a class of splitter and export disagreements |

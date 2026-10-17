@@ -376,6 +376,7 @@ class CiWorkflowTests(unittest.TestCase):
         workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())
         exclusions = workspace["workspace"]["metadata"]["sonar"]["sonar.coverage.exclusions"]
         self.assertIn("scripts/tests/test_check_crate_boundaries.py", exclusions)
+        self.assertIn("scripts/tests/test_gtk_runner.py", exclusions)
 
 
     def test_arch_package_container_mounts_the_repository_root(self):
