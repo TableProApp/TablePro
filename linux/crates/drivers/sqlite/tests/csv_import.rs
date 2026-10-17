@@ -171,6 +171,32 @@ async fn a_column_the_file_does_not_name_keeps_its_default() {
 }
 
 #[tokio::test]
+async fn an_empty_field_is_kept_as_an_empty_string_over_the_default() {
+    let (_directory, connection) = open().await.expect("a database file");
+    create(
+        connection.as_ref(),
+        "CREATE TABLE accounts (id INTEGER PRIMARY KEY, status TEXT NOT NULL DEFAULT 'active')",
+    )
+    .await
+    .expect("the table");
+
+    import(
+        connection.as_ref(),
+        "accounts",
+        b"id,status\n1,\n",
+        &CsvImportOptions::default(),
+    )
+    .await
+    .expect("the import");
+
+    let rows = query(connection.as_ref(), "SELECT status FROM accounts")
+        .await
+        .expect("the rows");
+    assert_eq!(rows.rows[0][0], Value::Text(String::new()));
+    connection.close().await.expect("the close");
+}
+
+#[tokio::test]
 async fn a_row_the_table_cannot_hold_leaves_the_table_as_it_was() {
     let (_directory, connection) = open().await.expect("a database file");
     create(

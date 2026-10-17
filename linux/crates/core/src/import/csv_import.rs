@@ -177,15 +177,16 @@ pub fn row_to_cells(
 
 fn cell_for(text: &str, column: &ColumnInfo, options: &CsvImportOptions) -> Result<CellInput, String> {
     if text == options.null_marker {
+        // An empty string is a value in its own right for a text
+        // column, and the marker being empty is the common case. The
+        // file holds it, so it wins over the column's default.
+        if options.null_marker.is_empty() && column.column_type.kind.accepts_empty_string() {
+            return Ok(CellInput::Value(crate::value::Value::Text(String::new())));
+        }
         // A NOT NULL column with a default is better served by its
         // default than by an insert the server will refuse.
         if !column.nullable && !column.default.is_none() {
             return Ok(CellInput::Default);
-        }
-        // An empty string is a value in its own right for a text
-        // column, and the marker being empty is the common case.
-        if options.null_marker.is_empty() && column.column_type.kind.accepts_empty_string() {
-            return Ok(CellInput::Value(crate::value::Value::Text(String::new())));
         }
         return Ok(CellInput::Value(crate::value::Value::Null));
     }
@@ -413,6 +414,17 @@ mod tests {
         let cells = row_to_cells(&[String::new()], &[Some(0)], &columns, &options(), 2).expect("cells");
 
         assert_eq!(cells[0], CellInput::Default);
+    }
+
+    #[test]
+    fn an_empty_field_for_a_not_null_text_column_with_a_default_stays_empty() {
+        let mut columns = vec![text_column("status")];
+        columns[0].nullable = false;
+        columns[0].default = ColumnDefault::Literal(Value::Text("active".to_owned()));
+
+        let cells = row_to_cells(&[String::new()], &[Some(0)], &columns, &options(), 2).expect("cells");
+
+        assert_eq!(cells[0], CellInput::Value(Value::Text(String::new())));
     }
 
     #[test]
