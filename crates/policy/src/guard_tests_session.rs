@@ -582,9 +582,11 @@ async fn a_lost_rollback_of_a_read_only_snapshot_keeps_governed_writes_available
         .await
         .expect("begin read only");
     let _ = run(&mut session, "ROLLBACK").await;
+    let _ = session.close().await;
 
     assert!(!h.audit_state.governed_writes_disabled());
     let rollbacks = outcomes_of(&h.audit, AuditOperationClass::TransactionRollback);
+    assert_eq!(rollbacks.len(), 1, "the ended snapshot is recorded once: {rollbacks:?}");
     assert!(
         rollbacks
             .iter()

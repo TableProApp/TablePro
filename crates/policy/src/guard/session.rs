@@ -793,7 +793,8 @@ impl PolicySession {
         }
         let (mut terminal_status, mut transaction_outcome, error_category, mut ambiguous) =
             finish_outcome(kind, batch.aborted, &result);
-        if ambiguous && batch.read_only && !batch.wrote {
+        let read_only_ended = ambiguous && batch.read_only && !batch.wrote;
+        if read_only_ended {
             (terminal_status, transaction_outcome, ambiguous) =
                 (AuditTerminalStatus::Failed, AuditTransactionOutcome::RolledBack, false);
         }
@@ -815,6 +816,7 @@ impl PolicySession {
             .await;
         let is_retryable = matches!(result, Err(DriverError::Cancelled | DriverError::TimedOut));
         self.batch = match (&result, kind) {
+            _ if read_only_ended => None,
             (Ok(_), _) => chain.then(|| OpenBatch::new(batch.read_only)),
             (Err(_), Finish::Commit) if !ambiguous && !is_retryable => None,
             _ => Some(OpenBatch {
