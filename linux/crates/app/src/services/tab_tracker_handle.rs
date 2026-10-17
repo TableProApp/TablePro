@@ -5,7 +5,7 @@ use tablepro_core::dml::BuildSqlError;
 use tablepro_core::edit::CellInput;
 use tablepro_core::{ColumnInfo, Value};
 
-use super::cell_overlay::CellOverlay;
+use super::cell_overlay::{CellMarks, CellOverlay};
 use super::change_tracker::{DraftRow, ErrorFlash, RowKey, RowState, TabChangeTracker, TrackedChanges};
 use super::save_batch::{SaveBatch, SaveTarget};
 use super::tracker_delta::TrackerDelta;
@@ -21,6 +21,10 @@ pub struct TabTrackerHandle(Rc<RefCell<TabChangeTracker>>);
 impl TabTrackerHandle {
     pub fn cell_overlay(&self, row_key: &RowKey, col: usize) -> CellOverlay {
         self.0.borrow().cell_overlay(row_key, col)
+    }
+
+    pub fn cell_marks(&self, row_key: &RowKey, col: usize) -> CellMarks {
+        self.0.borrow().cell_marks(row_key, col)
     }
 
     pub fn row_state(&self, row_key: &RowKey) -> RowState {
