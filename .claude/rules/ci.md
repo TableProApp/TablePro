@@ -50,9 +50,10 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 
 ## Summaries (`scripts/ci/summarize-xcresult.sh`)
 
+- Runs `scripts/lib/xcresult-cases.py summary`. `verify.sh` reads its verdicts through the same parser, and `scripts/lib/test_xcresult_cases.py` tests it in Repo Hygiene.
 - Reads `.xcresult` bundles and `swift test` xunit files, and skips a missing input.
-- Writes build errors with file and line, per-bundle counts and minutes, up to 50 failed cases and the 20 slowest to the step summary.
-- Exits 1 when a bundle or a `swift test` run executed nothing, because `xcodebuild` and `swift test` both call that success.
+- Writes build errors with file and 1-based line, runner failures ("System Failures"), per-bundle counts and minutes, up to 50 failed cases and the 20 slowest to the step summary.
+- Exits 1 when a bundle or a `swift test` run executed nothing, because `xcodebuild` and `swift test` both call that success. A runner failure is not an executed test.
 - For `X.xml` it also reads `X-swift-testing.xml`.
 - It never fails on a failed case; the test step already did.
 
@@ -73,7 +74,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 - Steps, in order:
   - actionlint, which also shellchecks every inline `run:` block;
   - `shellcheck --severity=warning` on every `*.sh` under `scripts` and `.claude/skills`;
-  - the tooling tests: `scripts/ci/test_*.py`, `scripts/test_localization.py`, `.github/scripts/test_update_registry.py` and two shell tests;
+  - the tooling tests: `scripts/ci/test_*.py`, `scripts/lib/test_*.py`, `scripts/test_localization.py`, `.github/scripts/test_update_registry.py` and two shell tests;
   - `check-lib-sourcing.py`, `check-plugin-manifest.py`, `check-deployment-target.sh`, `check-ios-shared-isolation.py`;
   - `localization.py plugins` and `plugins --target ios`;
   - `check-string-catalogs.py`, `check-license-inventory.py`, `check-entitlements.py`, `check-test-plans.py`;

@@ -39,7 +39,7 @@ diagnose_environment() {
         found=0
     fi
     if grep -q 'Unable to open base configuration reference file' "$log" 2> /dev/null; then
-        note "cause: Secrets.xcconfig is missing from this checkout. A fresh worktree needs it symlinked from the main checkout."
+        note "cause: the generated project names an xcconfig this checkout lacks. Rerun scripts/generate-project.sh (verify.sh generate)."
         found=0
     fi
     if grep -q 'The test runner hung before establishing connection' "$log" 2> /dev/null; then
@@ -207,111 +207,23 @@ test_regex() {
 
 # ---------------------------------------------------------------------------- test results
 
-# Every test case in a result bundle as "<target>/<suite>/<case><TAB><result><TAB>retried?". A runner
-# that crashed or never started is reported as a case under "System Failures"; it is not a test.
-xcresult_cases() {
-    xcrun xcresulttool get test-results tests --path "$1" --compact 2> /dev/null | jq -r '
-        [.. | objects | select((.nodeType // "") | endswith("test bundle"))][] | .name as $target
-        | .children[]? | (.nodeType == "Test Suite" and .name == "System Failures") as $system
-        | .. | objects | select(.nodeType == "Test Case")
-        | [ "\($target)/\(.nodeIdentifier // .name)", (if $system then "System Failure" else .result end),
-            (if .result == "Passed" and any(.children[]?; .nodeType == "Repetition" and .result == "Failed")
-             then "retried" else "" end) ] | @tsv'
-}
+# Beside this script, not under --root, so the parser always matches the tally format read here.
+XCRESULT_CASES="$SCRIPT_DIR/../../../../scripts/lib/xcresult-cases.py"
 
-# Every test case in swift test's xunit files as "<target>.<suite>/<case><TAB><result>".
-xunit_cases() {
-    local file
-    for file in "$@"; do
-        [ -f "$file" ] || continue
-        xmllint --format "$file" 2> /dev/null | awk '
-            function attr(line, name,    v) {
-                if (!match(line, " " name "=\"[^\"]*\"")) return ""
-                v = substr(line, RSTART + length(name) + 3, RLENGTH - length(name) - 4)
-                gsub(/&quot;/, "\"", v); gsub(/&apos;/, "\047", v)
-                gsub(/&lt;/, "<", v); gsub(/&gt;/, ">", v); gsub(/&amp;/, "\\&", v)
-                return v
-            }
-            function flush() { if (open) print key "\t" state; open = 0 }
-            /<testcase[ >]/ {
-                flush()
-                # A nested Swift Testing suite comes as Target.Outer.Inner; its filters use Outer/Inner.
-                cls = attr($0, "classname"); dot = index(cls, ".")
-                if (dot) { rest = substr(cls, dot + 1); gsub(/\./, "/", rest); cls = substr(cls, 1, dot) rest }
-                key = cls "/" attr($0, "name"); state = "Passed"; open = 1
-                if ($0 ~ /\/>[[:space:]]*$/) flush()
-                next
-            }
-            open && /<skipped/ { state = "Skipped" }
-            open && /<(failure|error)[ >\/]/ { state = "Failed" }
-            /<\/testcase>/ { flush() }
-            END { flush() }'
-    done
-}
-
-# Tallies a case list against the run's filters ("<label><TAB><regex>[<TAB>...]"). Prints the notes,
-# then a last line "<executed> <failed> <filters that ran nothing> <runner failures>".
-tally_cases() {
-    local cases="$1" filters="$2" sep="$3"
-    awk -F'\t' -v sep="$sep" '
-        FILENAME == ARGV[1] { if ($0 != "") { n++; label[n] = $1; re[n] = $2 }; next }
-        $0 == "" { next }
-        {
-            target = $1
-            cut = index(target, sep)
-            if (cut) target = substr(target, 1, cut - 1)
-            if ($2 == "System Failure") { runner++; next }
-            if (!(target in seen)) { seen[target] = 1; order[++targets] = target }
-            if ($2 == "Skipped") { skipped++; tskipped[target]++; next }
-            executed++; tran[target]++
-            if ($2 == "Passed") passed++
-            else if ($2 == "Failed") failed++
-            else expected++
-            if ($3 == "retried") retried[++nretried] = $1
-            for (i = 1; i <= n; i++) if ($1 ~ re[i]) hits[i]++
-        }
-        END {
-            line = "tests: " executed + 0 " executed, " passed + 0 " passed, " failed + 0 " failed, " skipped + 0 " skipped"
-            if (expected) line = line ", " expected " expected failures"
-            if (runner) line = line ", " runner " runner failures"
-            print line
-            if (targets) {
-                line = "targets:"
-                for (i = 1; i <= targets; i++) {
-                    t = order[i]
-                    line = line (i > 1 ? "," : "") " " t " " tran[t] + 0
-                    if (tskipped[t]) line = line " (" tskipped[t] " skipped)"
-                }
-                print line
-            }
-            zero = 0
-            for (i = 1; i <= n; i++) if (!hits[i]) { zero++; print "ran nothing: " label[i] }
-            if (nretried) {
-                print "passed only on retry, a flake to fix:"
-                for (i = 1; i <= nretried; i++) print "  " retried[i]
-            }
-            print executed + 0, failed + 0, zero, runner + 0
-        }' "$filters" "$cases"
-}
-
-# Sets RUN_EXECUTED, RUN_FAILED, RUN_ZERO and RUN_SYSTEM from a case list, and notes the tallies.
+# Sets RUN_EXECUTED, RUN_FAILED, RUN_ZERO and RUN_SYSTEM from the cases in a result bundle or xunit
+# file, counted against the run's filters ("<label><TAB><regex>[<TAB>...]"), and notes the tallies.
 apply_tally() {
-    local out counts
-    out="$(tally_cases "$@")"
-    counts="$(tail -1 <<< "$out")"
-    read -r RUN_EXECUTED RUN_FAILED RUN_ZERO RUN_SYSTEM <<< "$counts"
+    local filters="$1" input="$2" out
+    out="$(python3 "$XCRESULT_CASES" tally --filters "$filters" "$input")" \
+        || out="cause: scripts/lib/xcresult-cases.py failed, so no case was read."$'\n'"0 0 0 0"
+    read -r RUN_EXECUTED RUN_FAILED RUN_ZERO RUN_SYSTEM <<< "$(tail -1 <<< "$out")"
     note "$(sed '$d' <<< "$out")"
 }
 
 # Build errors with their file and line, which the result bundle keeps even when the log interleaves them.
 report_build_errors() {
     local errors
-    errors="$(xcrun xcresulttool get build-results --path "$1" --compact 2> /dev/null | jq -r '
-        .errors[]? | select(.message | startswith("Testing cancelled") | not)
-        | if .sourceURL then
-            (.sourceURL | capture("^file://(?<path>[^#]*)#.*StartingLineNumber=(?<line>[0-9]+)")) as $at
-            | "\($at.path | split("/") | last):\($at.line | tonumber + 1): \(.message)"
-          else .message end' | head -12)"
+    errors="$(python3 "$XCRESULT_CASES" errors "$1" | head -12)"
     [ -n "$errors" ] || return 1
     note "errors:"
     note "$(sed 's/^/  /' <<< "$errors")"
@@ -319,15 +231,8 @@ report_build_errors() {
 
 # The result bundle is the verdict. The log only explains a run that left no tests in it.
 report_xcresult() {
-    local bundle="$1" code="$2" filters="$3" log="$4" cases
-    cases="${bundle%.xcresult}.cases"
-    xcresult_cases "$bundle" > "$cases"
-    apply_tally "$cases" "$filters" /
-    rm -f "$cases"
-    if [ "$RUN_FAILED" -gt 0 ] || [ "$RUN_SYSTEM" -gt 0 ]; then
-        note "$(xcrun xcresulttool get test-results summary --path "$bundle" --compact 2> /dev/null | jq -r '
-            .testFailures[:10][] | "  \(.targetName)/\(.testIdentifierString): \(.failureText | split("\n")[0])"')"
-    fi
+    local bundle="$1" code="$2" filters="$3" log="$4"
+    apply_tally "$filters" "$bundle"
     if [ "$RUN_EXECUTED" -eq 0 ] && [ "$RUN_FAILED" -eq 0 ] && [ "$RUN_SYSTEM" -eq 0 ] && report_build_errors "$bundle"; then
         RUN_STATUS=FAIL
         note "cause: the test build failed, so no test ran."
@@ -353,12 +258,9 @@ report_xcresult() {
 }
 
 report_xunit() {
-    local log="$1" code="$2" filters="$3" xunit="${1%.log}.xml" cases
+    local log="$1" code="$2" filters="$3" xunit="${1%.log}.xml"
     note "results: $xunit"
-    cases="${log%.log}.cases"
-    xunit_cases "$xunit" "${xunit%.xml}-swift-testing.xml" > "$cases"
-    apply_tally "$cases" "$filters" .
-    rm -f "$cases"
+    apply_tally "$filters" "$xunit"
     if [ "$code" -ne 0 ] || [ "$RUN_FAILED" -gt 0 ]; then
         RUN_STATUS=FAIL
         note "$(report_errors "$log")"
@@ -533,6 +435,7 @@ platform_step() {
             [ "$STEP" = "uitest" ] && plan=UI other=test
             require_tool jq
             require_tool git
+            require_tool python3
             [ -f "$REPO_ROOT/TestPlans/$plan.xctestplan" ] || { echo "no TestPlans/$plan.xctestplan in $REPO_ROOT" >&2; exit 3; }
             TEST_TARGETS="$(test_targets_table)"
             plan_tests="" swift_tests="" packages=""
@@ -578,7 +481,6 @@ platform_step() {
             fi
             for package in $packages; do
                 require_tool swift
-                require_tool xmllint
                 # The first run writes the step's own log; each later one gets its own beside it.
                 if [ -z "$run_log" ]; then
                     run_log="$log"
@@ -643,7 +545,7 @@ platform_step() {
             STEP_DETAIL="$1${2:+ --filter $2}"
             setup_toolchain
             require_tool swift
-            require_tool xmllint
+            require_tool python3
             log="$(new_log "package-$1")"
             : > "${log%.log}.filters"
             [ $# -ge 2 ] && printf '%s\t%s\n' "$2" "$2" > "${log%.log}.filters"
@@ -657,7 +559,7 @@ platform_step() {
             STEP_DETAIL="TableProMobileTests: $*"
             setup_toolchain
             require_tool xcodebuild
-            require_tool jq
+            require_tool python3
             wait_for_free_toolchain
             name="$(printf '%s' "$1" | tr -c 'A-Za-z0-9_-' '_')"
             log="$(new_log "ios-$name")"

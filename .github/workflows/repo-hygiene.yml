@@ -47,6 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest discover -s scripts/ci -p 'test_*.py'
+          python3 -m unittest discover -s scripts/lib -p 'test_*.py'
           python3 -m unittest discover -s scripts -p 'test_localization.py'
           python3 .github/scripts/test_update_registry.py
           bash scripts/ci/test_create_dmg_args.sh
