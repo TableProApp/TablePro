@@ -1,9 +1,11 @@
+use std::collections::{HashMap, HashSet};
+
 use gtk4 as gtk;
 use gtk4::gio;
 use gtk4::prelude::*;
 
 use crate::services::change_tracker::RowKey;
-use crate::ui::grid::{GridCell, GridRowIndex, RowObject, selected_positions};
+use crate::ui::grid::{GridCell, RowObject, selected_positions};
 
 /// The selected rows and the focused cell, by row key, so a page read
 /// again can put them back wherever the rows land in it.
@@ -39,16 +41,16 @@ impl SelectionSnapshot {
     /// the header does not change.
     pub(crate) fn restore(
         &self,
-        index: &mut GridRowIndex,
         store: &gio::ListStore,
         selection: &gtk::MultiSelection,
         column_view: &gtk::ColumnView,
         columns: &[gtk::ColumnViewColumn],
     ) {
+        let positions = self.positions_in(store);
         let selected = gtk::Bitset::new_empty();
         for key in &self.keys {
-            if let Some(position) = index.position_in(store, key) {
-                selected.add(position);
+            if let Some(position) = positions.get(key) {
+                selected.add(*position);
             }
         }
         let mask = gtk::Bitset::new_range(0, selection.n_items());
@@ -56,7 +58,7 @@ impl SelectionSnapshot {
         let focused = self
             .focus
             .as_ref()
-            .and_then(|(key, column)| Some((index.position_in(store, key)?, *column)));
+            .and_then(|(key, column)| Some((*positions.get(key)?, *column)));
         match focused {
             Some((position, column)) => {
                 column_view.scroll_to(position, columns.get(column), gtk::ListScrollFlags::FOCUS, None);
@@ -67,5 +69,87 @@ impl SelectionSnapshot {
             }
             None => {}
         }
+    }
+
+    /// Where each captured row sits in `store` now, in one pass over it:
+    /// a lookup per row would scan the page once for every row of a
+    /// Select All.
+    fn positions_in(&self, store: &gio::ListStore) -> HashMap<RowKey, u32> {
+        let wanted: HashSet<&RowKey> = self
+            .keys
+            .iter()
+            .chain(self.focus.as_ref().map(|(key, _)| key))
+            .collect();
+        (0..store.n_items())
+            .filter_map(|position| {
+                let key = store.item(position).and_downcast::<RowObject>()?.id().tracker_key()?;
+                wanted.contains(&key).then_some((key, position))
+            })
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{Duration, Instant};
+
+    use gtk4 as gtk;
+    use gtk4::gio;
+    use tablepro_core::Value;
+
+    use super::SelectionSnapshot;
+    use crate::services::change_tracker::RowKey;
+    use crate::ui::grid::{RowObject, selected_positions};
+
+    fn key(id: i64) -> RowKey {
+        RowKey::from_pk_values(&[Value::Int(id)]).expect("a key")
+    }
+
+    fn page(ids: impl Iterator<Item = i64>) -> gio::ListStore {
+        let store = gio::ListStore::new::<RowObject>();
+        let rows: Vec<RowObject> = ids
+            .map(|id| RowObject::persisted(Some(key(id)), vec![Value::Int(id)].into()))
+            .collect();
+        store.splice(0, 0, &rows);
+        store
+    }
+
+    fn restored(snapshot: &SelectionSnapshot, store: &gio::ListStore) -> Vec<u32> {
+        let selection = gtk::MultiSelection::new(Some(store.clone()));
+        let view = gtk::ColumnView::new(Some(selection.clone()));
+        snapshot.restore(store, &selection, &view, &[]);
+        selected_positions(&selection)
+    }
+
+    #[gtk4::test]
+    fn the_selection_follows_its_rows_to_where_they_landed() {
+        let snapshot = SelectionSnapshot {
+            keys: vec![key(3), key(9), key(1)],
+            focus: None,
+        };
+
+        assert_eq!(restored(&snapshot, &page([9, 5, 3, 7].into_iter())), [0, 2]);
+    }
+
+    /// Select All on a large page, then a refresh: each row's place used
+    /// to be a scan of the whole page.
+    #[gtk4::test]
+    fn a_whole_large_page_selection_comes_back_in_one_pass() {
+        let rows = 20_000;
+        let snapshot = SelectionSnapshot {
+            keys: (0..rows).map(key).collect(),
+            focus: Some((key(rows - 1), 0)),
+        };
+        let store = page((0..rows).rev());
+        let started = Instant::now();
+
+        let selected = restored(&snapshot, &store);
+
+        assert_eq!(selected.len(), 20_000);
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "restoring the selection took {:?}",
+            started.elapsed()
+        );
     }
 }
