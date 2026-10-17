@@ -1,8 +1,3 @@
-//
-//  PluginManager+Install.swift
-//  TablePro
-//
-
 import Foundation
 import os
 
@@ -26,18 +21,11 @@ extension PluginManager {
         let registryPlugin = await registryClient.refreshedPlugin(matching: registryPlugin)
         let binary = try validateRegistryCompatibility(registryPlugin)
 
-        let userPluginsDir = self.userPluginsDir
-        let stateHandler: @Sendable (StagedInstallState) async -> Void = { state in
-            if case .downloading(let fraction) = state {
-                await MainActor.run { progress(fraction) }
-            }
-        }
-
         let finalURL = try await PluginInstaller.shared.install(
             registryPlugin,
             binary: binary,
             into: userPluginsDir,
-            progressHandler: stateHandler
+            progress: { fraction in await progress(fraction) }
         )
 
         saveRegistryMetadata(pluginId: registryPlugin.id, pluginURL: finalURL)
@@ -48,7 +36,6 @@ extension PluginManager {
 
     func updateFromRegistry(
         _ registryPlugin: RegistryPlugin,
-        existingPluginLoaded: Bool = true,
         refreshManifest: Bool = true,
         progress: @escaping @MainActor @Sendable (Double) -> Void
     ) async throws -> PluginUpdateOutcome {
@@ -70,20 +57,12 @@ extension PluginManager {
             : registryPlugin
         let binary = try validateRegistryCompatibility(registryPlugin)
 
-        let hasLive = pluginHasLiveConnections(registryPlugin)
-        let userPluginsDir = self.userPluginsDir
-        let stateHandler: @Sendable (StagedInstallState) async -> Void = { state in
-            if case .downloading(let fraction) = state {
-                await MainActor.run { progress(fraction) }
-            }
-        }
-
         let result = try await PluginInstaller.shared.update(
             registryPlugin,
             binary: binary,
             into: userPluginsDir,
-            hasLiveConnections: hasLive,
-            progressHandler: stateHandler
+            hasLiveConnections: pluginHasLiveConnections(registryPlugin),
+            progress: { fraction in await progress(fraction) }
         )
 
         switch result {
@@ -224,11 +203,7 @@ extension PluginManager {
             throw PluginError.invalidBundle("Cannot create bundle from \(bundleURL.lastPathComponent)")
         }
         try PluginCodeSignatureVerifier.verify(bundle: bundle)
-        try PluginInstaller.validateStagedABI(
-            bundleURL: bundleURL,
-            currentKit: Self.currentPluginKitVersion,
-            minimumKit: Self.minimumCompatiblePluginKitVersion
-        )
+        try Self.validateBundleVersions(bundle)
         PluginInstaller.stripQuarantine(at: bundleURL)
 
         let bundleId = bundle.bundleIdentifier ?? bundleURL.lastPathComponent

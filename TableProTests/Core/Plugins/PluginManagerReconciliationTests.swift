@@ -216,19 +216,6 @@ struct PluginManagerReconciliationTests {
         #expect(!pm.hasOutdatedRejectedPlugin(forTypeId: "TestDriverType"))
     }
 
-    @Test("outdatedReconcileReason surfaces the rejected plugin's reason for the type")
-    func outdatedReconcileReasonReturnsReason() {
-        let pm = PluginManager.shared
-        let rejected = makeRejected(
-            reason: "A newer version of TablePro is required for this plugin.",
-            providedDatabaseTypeIds: ["TestDriverType"]
-        )
-        pm.rejectedPlugins.append(rejected)
-        defer { pm.removeFromRejected(url: rejected.url) }
-        #expect(pm.outdatedReconcileReason(forTypeId: "TestDriverType") == "A newer version of TablePro is required for this plugin.")
-        #expect(pm.outdatedReconcileReason(forTypeId: "OtherDriverType") == nil)
-    }
-
     @Test("incompatible-build errors are permanent reconciliation failures")
     func permanentFailuresClassified() {
         #expect(PluginError.noCompatibleBinary.isPermanentReconciliationFailure)
@@ -250,12 +237,5 @@ struct PluginManagerReconciliationTests {
         #expect(!PluginManager.reconciliationShouldRetry(sawTransientFailure: true, retryRemaining: false))
         #expect(!PluginManager.reconciliationShouldRetry(sawTransientFailure: false, retryRemaining: true))
         #expect(!PluginManager.reconciliationShouldRetry(sawTransientFailure: false, retryRemaining: false))
-    }
-
-    @Test("forceRefresh manifest request bypasses the local cache and sends no If-None-Match")
-    func forceRefreshRequestBypassesCache() {
-        let request = RegistryClient.shared.makeManifestRequest(forceRefresh: true)
-        #expect(request.cachePolicy == .reloadIgnoringLocalCacheData)
-        #expect(request.value(forHTTPHeaderField: "If-None-Match") == nil)
     }
 }

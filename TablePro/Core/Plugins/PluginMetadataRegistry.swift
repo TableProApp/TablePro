@@ -1,8 +1,3 @@
-//
-//  PluginMetadataRegistry.swift
-//  TablePro
-//
-
 import Foundation
 import os
 import TableProPluginKit
@@ -801,10 +796,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             ),
             connection: PluginMetadataSnapshot.ConnectionConfig(
                 additionalConnectionFields: additionalConnectionFields,
-                category: existingSnapshot?.connection.category
-                    ?? Self.fallbackCategory(forTypeId: driverType.databaseTypeId),
-                tagline: existingSnapshot?.connection.tagline
-                    ?? Self.fallbackTagline(forTypeId: driverType.databaseTypeId),
+                category: existingSnapshot?.connection.category ?? .other,
+                tagline: existingSnapshot?.connection.tagline ?? "",
                 hidesBuiltInPassword: existingSnapshot?.connection.hidesBuiltInPassword ?? false,
                 hidesBuiltInDatabase: existingSnapshot?.connection.hidesBuiltInDatabase ?? false,
                 defaultUnixSocketPath: existingSnapshot?.connection.defaultUnixSocketPath,
@@ -812,68 +805,6 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 defaultHost: existingSnapshot?.connection.defaultHost
             )
         )
-    }
-
-    // MARK: - Category / Tagline Fallback Table
-
-    /// Seed table for plugin types that don't have a built-in snapshot yet (separately distributed plugins).
-    /// Keyed by `databaseTypeId`. Stale plugins from the registry inherit these on registration.
-    static func fallbackCategory(forTypeId typeId: String) -> DatabaseCategory {
-        switch typeId {
-        case "MySQL", "MariaDB", "PostgreSQL", "SQLite", "Oracle", "MSSQL":
-            return .relational
-        case "Redshift", "ClickHouse", "DuckDB", "BigQuery":
-            return .analytical
-        case "Spanner":
-            return .relational
-        case "MongoDB", "Elasticsearch", "SurrealDB", "Typesense", "Weaviate", "Firestore", "Firebase Realtime Database":
-            return .document
-        case "Redis":
-            return .keyValue
-        case "Cassandra", "ScyllaDB", "Bigtable":
-            return .wideColumn
-        case "etcd", "Etcd":
-            return .coordination
-        case "Cloudflare D1", "libSQL", "DynamoDB":
-            return .cloud
-        case "Kafka":
-            return .streaming
-        default:
-            return .other
-        }
-    }
-
-    static func fallbackTagline(forTypeId typeId: String) -> String {
-        switch typeId {
-        case "MySQL":          return String(localized: "Most popular open-source SQL database")
-        case "MariaDB":        return String(localized: "Open-source fork of MySQL")
-        case "PostgreSQL":     return String(localized: "Advanced object-relational SQL")
-        case "Redshift":       return String(localized: "Amazon's columnar warehouse on Postgres")
-        case "SQLite":         return String(localized: "Embedded zero-config SQL database")
-        case "MSSQL":          return String(localized: "Microsoft's enterprise SQL database")
-        case "Oracle":         return String(localized: "Enterprise SQL with PL/SQL")
-        case "MongoDB":        return String(localized: "JSON-style document database")
-        case "Elasticsearch":  return String(localized: "Search and analytics engine")
-        case "Redis":          return String(localized: "In-memory data store and cache")
-        case "ClickHouse":     return String(localized: "Column-oriented OLAP for big data")
-        case "DuckDB":         return String(localized: "Embedded analytical SQL")
-        case "Cassandra":      return String(localized: "Distributed wide-column store")
-        case "ScyllaDB":       return String(localized: "C++ rewrite of Cassandra, faster")
-        case "etcd", "Etcd":   return String(localized: "Distributed key-value store for service discovery")
-        case "Cloudflare D1":  return String(localized: "Serverless SQLite at the edge")
-        case "libSQL":         return String(localized: "Distributed SQLite by Turso")
-        case "DynamoDB":       return String(localized: "AWS managed key-value/document store")
-        case "BigQuery":       return String(localized: "Google Cloud serverless data warehouse")
-        case "Spanner":        return String(localized: "Google Cloud globally distributed SQL")
-        case "SurrealDB":      return String(localized: "Multi-model database with SurrealQL")
-        case "Kafka":          return String(localized: "Event streaming platform")
-        case "Typesense":      return String(localized: "Typo-tolerant open-source search engine")
-        case "Weaviate":       return String(localized: "Open-source vector database")
-        case "Firestore":      return String(localized: "Serverless document database from Google")
-        case "Bigtable":       return String(localized: "Google Cloud wide-column store for large data")
-        case "Firebase Realtime Database": return String(localized: "JSON tree database that syncs in real time")
-        default:               return ""
-        }
     }
 
     func allFileExtensions() -> [String: String] {

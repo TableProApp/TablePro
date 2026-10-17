@@ -1,12 +1,37 @@
-//
-//  PluginInstallerHelpersTests.swift
-//  TableProTests
-//
-
 import Darwin
 import Foundation
 import Testing
 @testable import TablePro
+
+private final class ChunkedDownloadProtocol: URLProtocol, @unchecked Sendable {
+    static let payload = Data(repeating: 7, count: 256 * 1024)
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func stopLoading() {}
+
+    override func startLoading() {
+        guard let url = request.url else { return }
+        let headers = url.lastPathComponent == "sized.zip" ? ["Content-Length": "\(Self.payload.count)"] : [:]
+        guard let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: headers) else {
+            return
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        let chunk = Self.payload.count / 8
+        for offset in stride(from: 0, to: Self.payload.count, by: chunk) {
+            client?.urlProtocol(self, didLoad: Self.payload.subdata(in: offset..<min(offset + chunk, Self.payload.count)))
+        }
+        client?.urlProtocolDidFinishLoading(self)
+    }
+}
+
+private actor FractionRecorder {
+    private(set) var fractions: [Double] = []
+
+    func record(_ fraction: Double) {
+        fractions.append(fraction)
+    }
+}
 
 struct PluginInstallerHelpersTests {
 
@@ -82,36 +107,103 @@ struct PluginInstallerHelpersTests {
         PluginInstaller.stripQuarantine(at: bundle)
     }
 
-    @Test("validateStagedABI rejects bundle missing TableProPluginKitVersion")
-    func validateStagedABIRejectsMissingKey() throws {
-        let dir = try makeTempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
-
-        let bundle = dir.appendingPathComponent("Bad.tableplugin", isDirectory: true)
-        try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
-        let contents = bundle.appendingPathComponent("Contents", isDirectory: true)
+    private func makeBundle(in directory: URL, kitVersion: Int?) throws -> Bundle {
+        let bundleURL = directory.appendingPathComponent("Kit.tableplugin", isDirectory: true)
+        let contents = bundleURL.appendingPathComponent("Contents", isDirectory: true)
         try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
-        let emptyPlist = """
+        let kitEntry = kitVersion.map { "<key>TableProPluginKitVersion</key><integer>\($0)</integer>" } ?? ""
+        let payload = """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0">
-        <dict/>
+        <dict>
+            <key>CFBundleIdentifier</key><string>com.example.Kit</string>
+            \(kitEntry)
+        </dict>
         </plist>
         """
-        try emptyPlist.write(to: contents.appendingPathComponent("Info.plist"), atomically: true, encoding: .utf8)
-
-        #expect(throws: PluginError.self) {
-            try PluginInstaller.validateStagedABI(bundleURL: bundle, currentKit: 13, minimumKit: 13)
-        }
+        try payload.write(to: contents.appendingPathComponent("Info.plist"), atomically: true, encoding: .utf8)
+        return try #require(Bundle(url: bundleURL))
     }
 
-    @Test("validateStagedABI passes when plist matches current kit version")
-    func validateStagedABIPassesMatch() throws {
+    @Test("validateBundleVersions refuses a bundle with no PluginKit version")
+    func bundleVersionsRejectsMissingKey() throws {
         let dir = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        let bundle = try makeFakeBundle(at: dir, name: "Driver")
-        try PluginInstaller.validateStagedABI(bundleURL: bundle, currentKit: 13, minimumKit: 13)
+        let bundle = try makeBundle(in: dir, kitVersion: nil)
+        let error = #expect(throws: PluginError.self) { try PluginManager.validateBundleVersions(bundle) }
+        #expect(error?.isOutdated == true)
+    }
+
+    @Test("validateBundleVersions refuses a bundle built for a newer PluginKit")
+    func bundleVersionsRejectsNewerKit() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let bundle = try makeBundle(in: dir, kitVersion: PluginManager.currentPluginKitVersion + 1)
+        let error = #expect(throws: PluginError.self) { try PluginManager.validateBundleVersions(bundle) }
+        guard case .incompatibleVersion(let required, let current) = error else {
+            Issue.record("Expected incompatibleVersion, got \(String(describing: error))")
+            return
+        }
+        #expect(required == PluginManager.currentPluginKitVersion + 1)
+        #expect(current == PluginManager.currentPluginKitVersion)
+    }
+
+    @Test("validateBundleVersions refuses a bundle below the PluginKit floor")
+    func bundleVersionsRejectsKitBelowFloor() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let bundle = try makeBundle(in: dir, kitVersion: PluginManager.minimumCompatiblePluginKitVersion - 1)
+        let error = #expect(throws: PluginError.self) { try PluginManager.validateBundleVersions(bundle) }
+        #expect(error?.isOutdated == true)
+    }
+
+    @Test("validateBundleVersions accepts the current PluginKit and the floor", arguments: [
+        PluginManager.currentPluginKitVersion,
+        PluginManager.minimumCompatiblePluginKitVersion
+    ])
+    func bundleVersionsAcceptsSupportedKit(kitVersion: Int) throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let bundle = try makeBundle(in: dir, kitVersion: kitVersion)
+        try PluginManager.validateBundleVersions(bundle)
+    }
+
+    private func download(_ name: String) async throws -> (data: Data, fractions: [Double]) {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [ChunkedDownloadProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.finishTasksAndInvalidate() }
+        let recorder = FractionRecorder()
+        let url = try #require(URL(string: "https://plugins.example.invalid/\(name)"))
+        let (file, _) = try await PluginInstaller.download(url, with: session) { fraction in
+            await recorder.record(fraction)
+        }
+        defer { try? FileManager.default.removeItem(at: file) }
+        return (try Data(contentsOf: file), await recorder.fractions)
+    }
+
+    @Test("download reports the task's own progress and ends at 1")
+    func downloadReportsTaskProgress() async throws {
+        let (data, fractions) = try await download("sized.zip")
+
+        #expect(data == ChunkedDownloadProtocol.payload)
+        #expect(fractions.contains { $0 < 1 })
+        #expect(fractions.last == 1)
+        #expect(fractions.allSatisfy { $0 > 0 && $0 <= 1 })
+        #expect(zip(fractions, fractions.dropFirst()).allSatisfy { $0 <= $1 })
+    }
+
+    @Test("download reports no fraction until the end when the length is unknown")
+    func downloadWithoutLengthStaysIndeterminate() async throws {
+        let (data, fractions) = try await download("unsized.zip")
+
+        #expect(data == ChunkedDownloadProtocol.payload)
+        #expect(fractions == [1])
     }
 
     @Test("findBundle returns the single .tableplugin in a directory")

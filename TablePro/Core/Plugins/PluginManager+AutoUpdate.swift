@@ -1,8 +1,3 @@
-//
-//  PluginManager+AutoUpdate.swift
-//  TablePro
-//
-
 import Combine
 import Foundation
 import os
@@ -101,7 +96,6 @@ extension PluginManager {
         do {
             let outcome = try await updateFromRegistry(
                 registryPlugin,
-                existingPluginLoaded: false,
                 refreshManifest: false,
                 progress: { _ in }
             )
@@ -269,10 +263,6 @@ extension PluginManager {
 
     func hasOutdatedRejectedPlugin(forTypeId typeId: String) -> Bool {
         rejectedPlugins.contains { $0.isOutdated && $0.providedDatabaseTypeIds.contains(typeId) }
-    }
-
-    func outdatedReconcileReason(forTypeId typeId: String) -> String? {
-        rejectedPlugins.first { $0.isOutdated && $0.providedDatabaseTypeIds.contains(typeId) }?.reason
     }
 
     func prepareForConnecting(to type: DatabaseType, registryClient: RegistryClient = .shared) async throws {

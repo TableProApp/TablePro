@@ -558,7 +558,7 @@ custom_rules:
   plugin_principal_class_gate:
     name: "Principal Class Behind The Gate"
     included: ['.*/TablePro/Core/Plugins/[^/]+\.swift$']
-    regex: '\bfunc\s+(?!(?:registerBundle|activateLazyBundle|validateDependencies)\b)\w+(?:(?!\bfunc\b)[\s\S])*?(\.principalClass\b)'
+    regex: '\bfunc\s+(?!(?:registerBundle|activateLazyBundle)\b)\w+(?:(?!\bfunc\b)[\s\S])*?(\.principalClass\b)'
     capture_group: 1
     message: "Bundle.principalClass loads the executable. Read it only in a function that already called assertLoadable."
     severity: error

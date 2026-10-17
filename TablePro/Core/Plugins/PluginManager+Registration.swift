@@ -1,8 +1,3 @@
-//
-//  PluginManager+Registration.swift
-//  TablePro
-//
-
 import Foundation
 import os
 import Security
@@ -138,36 +133,6 @@ extension PluginManager {
                     reason: "additionalDatabaseTypeId '\(additionalId)' is already registered by '\(existingName)'"
                 )
             }
-        }
-    }
-
-    /// Warn-level connection field validation. Called lazily on first access via
-    /// `additionalConnectionFields(for:)`, not during plugin loading (protocol witness
-    /// tables may be unstable for dynamically loaded bundles during the loading path).
-    func validateConnectionFields(_ fields: [ConnectionField], pluginId: String) {
-        var seenIds = Set<String>()
-        for field in fields {
-            if field.id.trimmingCharacters(in: .whitespaces).isEmpty {
-                Self.logger.warning("Plugin '\(pluginId)': connection field has empty id")
-            }
-            if field.label.trimmingCharacters(in: .whitespaces).isEmpty {
-                Self.logger.warning("Plugin '\(pluginId)': connection field '\(field.id)' has empty label")
-            }
-            if !seenIds.insert(field.id).inserted {
-                Self.logger.warning("Plugin '\(pluginId)': duplicate connection field id '\(field.id)'")
-            }
-            if case .dropdown(let options) = field.fieldType, options.isEmpty {
-                Self.logger.warning("Plugin '\(pluginId)': connection field '\(field.id)' is a dropdown with no options")
-            }
-        }
-    }
-
-    func validateDialectDescriptor(_ dialect: SQLDialectDescriptor, pluginId: String) {
-        if dialect.identifierQuote.trimmingCharacters(in: .whitespaces).isEmpty {
-            Self.logger.warning("Plugin '\(pluginId)': sqlDialect.identifierQuote is empty")
-        }
-        if dialect.keywords.isEmpty {
-            Self.logger.warning("Plugin '\(pluginId)': sqlDialect.keywords is empty")
         }
     }
 

@@ -1,27 +1,8 @@
-//
-//  PluginMetadataRegistryTypeCountTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import Testing
 
-/// The number of engines TablePro offers is published in three places that cannot see each other:
-/// this registry, `snippets/driver-counts.mdx` in TableProApp/docs, and the marketing site. Nothing at runtime
-/// reconciles them, and by August 2026 they read 28, 27 and 25 at once.
-///
-/// The answer is 40, and the reason it once read 28 is worth keeping. Turso is served by
-/// the libSQL plugin and was the only alias in `reverseTypeIndex` with no curated entry of its
-/// own, so it was the only type the picker could not offer before its plugin was installed.
-/// ScyllaDB is the shape every other alias already had: an alias of Cassandra with a curated
-/// entry all the same. Turso now matches it, so the count falls out of the registry rather than
-/// being asserted on top of it. Do not "correct" it downwards by deleting that entry.
-///
-/// A failure here means a driver was added or removed, which is a deliberate act. Update
-/// `expectedTypeIds`, then, in TableProApp/docs, `snippets/driver-counts.mdx` and the `and N more`
-/// count in the `index.mdx` frontmatter, and the engine count on tablepro.app. The docs repository's
-/// `scripts/check-docs-against-source.py` reads this registry and holds the docs half.
+// A change here also changes the engine counts in TableProApp/docs and on tablepro.app.
 @MainActor
 struct PluginMetadataRegistryTypeCountTests {
     private static let expectedTypeIds: Set<String> = [

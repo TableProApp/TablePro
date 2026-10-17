@@ -1,15 +1,10 @@
-//
-//  PluginNotificationService.swift
-//  TablePro
-//
-
 import Combine
 import Foundation
 import os
 import UserNotifications
 
 @MainActor
-final class PluginNotificationService: ObservableObject {
+final class PluginNotificationService {
     static let shared = PluginNotificationService()
 
     static let identifierPrefix = "com.TablePro.plugin."
@@ -17,8 +12,6 @@ final class PluginNotificationService: ObservableObject {
     private static let updateFailedCategoryId = "com.TablePro.pluginUpdateFailed"
     private static let failedIdentifierPrefix = identifierPrefix + "failed."
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "PluginNotifications")
-
-    @Published private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
 
     private var cancellables: Set<AnyCancellable> = []
     private var deliveredFailureIdentifiers: Set<String> = []
@@ -29,22 +22,11 @@ final class PluginNotificationService: ObservableObject {
         registerCategories()
         NotificationRouter.shared.register(self, forCategory: Self.updateFailedCategoryId)
         subscribeToEvents()
-        Task { await refreshAuthorizationStatus() }
-    }
-
-    /// Routed through the one requester in the app. The options a grant carries are frozen by the
-    /// first request ("Subsequent authorization requests don't prompt the person"), so two services
-    /// asking separately would mean whichever asked first silently decided what the other could
-    /// ever do.
-    func requestPermissionIfNeeded() async {
-        _ = await NotificationAuthorization.shared.ensureAuthorized()
-        await refreshAuthorizationStatus()
     }
 
     func notifyAutoUpdateFailed(plugins: [RejectedPlugin]) async {
         guard !plugins.isEmpty else { return }
         guard await NotificationAuthorization.shared.ensureAuthorized() else { return }
-        await refreshAuthorizationStatus()
 
         let center = UNUserNotificationCenter.current()
         let incomingIdentifiers = Set(plugins.map(Self.failureIdentifier))
@@ -112,10 +94,6 @@ final class PluginNotificationService: ObservableObject {
                 }
             }
             .store(in: &cancellables)
-    }
-
-    private func refreshAuthorizationStatus() async {
-        authorizationStatus = await NotificationAuthorization.shared.refresh()
     }
 }
 

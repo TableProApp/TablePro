@@ -1,8 +1,3 @@
-//
-//  PluginUpdateCoordinator.swift
-//  TablePro
-//
-
 import Foundation
 
 extension PluginManager {
@@ -21,27 +16,8 @@ extension PluginManager {
                 tracker.completeInstall(pluginId: registryPlugin.id)
                 return .succeeded(entry: entry)
             case .staged:
-                tracker.markStaged(pluginId: registryPlugin.id, newVersion: registryPlugin.version)
                 return .staged
             }
-        } catch {
-            tracker.failInstall(pluginId: registryPlugin.id, error: error.localizedDescription)
-            return .failed(error: error)
-        }
-    }
-
-    func performRegistryInstall(_ registryPlugin: RegistryPlugin) async -> PluginActionResult {
-        let tracker = PluginInstallTracker.shared
-        tracker.beginInstall(pluginId: registryPlugin.id)
-        do {
-            let entry = try await installFromRegistry(registryPlugin) { fraction in
-                tracker.updateProgress(pluginId: registryPlugin.id, fraction: fraction)
-                if fraction >= 1.0 {
-                    tracker.markInstalling(pluginId: registryPlugin.id)
-                }
-            }
-            tracker.completeInstall(pluginId: registryPlugin.id)
-            return .succeeded(entry: entry)
         } catch {
             tracker.failInstall(pluginId: registryPlugin.id, error: error.localizedDescription)
             return .failed(error: error)

@@ -1,8 +1,3 @@
-//
-//  PluginManager.swift
-//  TablePro
-//
-
 import Combine
 import Foundation
 import Network
@@ -14,144 +9,13 @@ import TableProPluginKit
 @MainActor
 final class PluginManager: ObservableObject {
     static let shared = PluginManager(userDefaults: AppStorageEnvironment.shared.defaults)
-    /// Raised to 29 for `maintenanceOperations` on `PluginDatabaseDriver`, plus the
-    /// `PluginMaintenanceOperation`, `PluginMaintenanceOption`, `PluginMaintenanceScope` and
-    /// `PluginObjectKind` it answers with. Together they say which object kinds a maintenance
-    /// operation may name, whether its statement names an object at all, and which options it reads,
-    /// none of which the older list of bare names could.
-    ///
-    /// Raised to 28 before that for `fetchCommentDDL` on `PluginDatabaseDriver` and `PluginExportDataSource`,
-    /// which is what lets a dump reattach a relation's own comment and its column comments instead
-    /// of leaving whether they appear at all to each driver's `fetchTableDDL`.
-    ///
-    /// Raised to 27 before that for `hasLostConnection`, `unsupportedStructureColumnFields`,
-    /// `unsupportedIndexTypes` and `schemaOperationRefusal` on `PluginDatabaseDriver`, plus the
-    /// `PluginSchemaOperation` the last one answers about.
-    ///
-    /// Raised to 26 before that for `objectCommentStatement`, `refreshMaterializedViewStatement` and
-    /// `concurrentRefreshAvailability` on `PluginDatabaseDriver`, plus the
-    /// `PluginConcurrentRefreshAvailability` the last one answers with.
-    ///
-    /// Raised to 23 for `releasableResourceCommandTitle` and `releaseIdleResource` on
-    /// `PluginDatabaseDriver`, plus the `PluginResourceRelease` they answer with. Together they let
-    /// a driver hand back a resource its session is holding without ending the session. DuckDB is
-    /// the first to answer them: it takes a whole-file write lock for the life of its handle, so an
-    /// idle connection stops every other process from opening the same database.
-    ///
-    /// Raised to 30 for `ExportFormatResult.notes` and its `init(warnings:notes:)`, which is what lets
-    /// an export report a fact about what it wrote without the summary alert reading it as a problem.
-    /// The old `init(warnings:)` is kept verbatim as `@_disfavoredOverload`, so every already-built
-    /// export plugin keeps loading and only a plugin rebuilt against the new initializer needs a host
-    /// that has it.
-    ///
-    /// Raised to 22 before that for `fetchIndexDDL` on `PluginDatabaseDriver` and `PluginExportDataSource`,
-    /// which is what lets a dump write a table's indexes after its rows instead of leaving whether
-    /// they appear at all to each driver's `fetchTableDDL`.
-    ///
-    /// Raised to 21 before that for two additions: `tableDDLIncludesForeignKeys` on `PluginDatabaseDriver` and
-    /// `PluginExportDataSource`, and `PluginQueryTiming` with the `PluginQueryResult` initializer
-    /// that carries it. Raised to 20 before that for the whole-schema index and table metadata
-    /// requirements.
-    ///
-    /// Every one of these is safe in the direction Library Evolution covers, so an already-built
-    /// v19 or v20 plugin keeps loading here. The break is the other way round: a plugin compiled
-    /// against the new API emits undefined references to symbols an older host does not have.
-    /// Measured on a rebuilt ClickHouseDriver, whose `nm -u` lists
-    /// `PluginQueryTiming.init(total:firstRow:server:)` and that type's metadata accessor, and on a
-    /// rebuilt CassandraDriver for the v20 requirements it implements none of. Left at 20, such a
-    /// plugin passes `validateBundleVersions` in a shipped v20 app and then fails
-    /// `Bundle.loadAndReturnError`; at 21 that app refuses it and says to update.
-    ///
-    /// 31 adds `aliasType`, `tableType` and `clrType` to `PluginUserDefinedTypeKind` and
-    /// `adoptingSchema` to `PluginUserDefinedTypeInfo`. The enum is not `@frozen` and every app-side
-    /// switch over it already carries `@unknown default`, so an already-built plugin keeps loading;
-    /// the minimum stays where it is and no bulk re-release is needed.
-    ///
-    /// 32 adds the spellings a catalog read carries for a DDL writer: `ddlSpelling`, `ddlDefault`,
-    /// `ddlGenerationExpression` and `ddlCollation` on `PluginColumnInfo`, and `expressions`,
-    /// `includedColumns`, `ddlMethodAndKeys` and `ddlWhereClause` on `PluginIndexInfo`, plus the open
-    /// `IndexType`. Each arrives through an added initializer while every published one stays
-    /// byte-identical and disfavoured.
-    ///
-    /// 33 adds `classificationTypeName` to `PluginColumnInfo`, the name the app classifies a column
-    /// by where its declared spelling names no kind: a PostgreSQL enum, a domain and a PostGIS
-    /// geometry all classify as text otherwise, which takes the value picker off an enum and the
-    /// spatial rendering off a geometry.
-    ///
-    /// 33 also adds `checkConstraintRefusal`, which reports why the connected server has no check
-    /// constraints even though the engine does, and `sessionTransactionState()`, which reports what
-    /// the session already has open so nothing the app owns wraps a transaction the user opened.
-    /// Both have defaults (nil and `.unknown`), so an already-built plugin keeps loading and
-    /// answers them; the minimum stays where it is and no bulk re-release is needed.
-    ///
-    /// 33 also adds `isValid` to `PluginIndexInfo`, through an added initializer with the previous
-    /// full one disfavoured; nil means the driver does not report it.
-    ///
-    /// 33 also adds `generateModifyIndexSQL(table:oldIndexName:newIndex:)`, which replaces an index
-    /// in one statement where the engine's DDL is not transactional, the public `SQLiteIndexCatalog`
-    /// that SQLite, libSQL and Cloudflare D1 read and write indexes through, and the public
-    /// `SQLIndexKeyList` it and DuckDB read a stored `CREATE INDEX` with. The requirement defaults
-    /// to nil, so an already-built plugin keeps loading and the app splits the change into a drop
-    /// and an add as before.
-    ///
-    /// 33 also adds `createTableFormSpec(schema:)` and `createTableStatements(for:schema:)`, the
-    /// Create Table form a driver describes for tables that are not a list of typed columns. The
-    /// defaults answer nil and throw, so an already-built plugin keeps the column grid. It adds the
-    /// `modifyIndex` and `dropIndex` cases to the non-frozen `PluginSchemaOperation`, which an
-    /// already-built plugin answers through its `@unknown default`.
-    ///
-    /// 33 also adds the `modifyColumn` and `dropColumn` cases to `PluginSchemaOperation`, the
-    /// `PluginSchemaChangeReview` value, and `reviewSchemaChange(table:schema:operations:)`,
-    /// `schemaChangeRefusalBeforeWriting(table:schema:operations:review:)` and
-    /// `schemaChangeShortfallAfterWriting(table:schema:operations:review:)`, the save-level
-    /// questions a document store needs the server to answer, and
-    /// `tableDefinitionDidChange(table:schema:)`, which tells the session's driver to drop what it
-    /// learned about a table another connection changed. The defaults approve every save, find
-    /// every save finished and keep nothing, so an already-built plugin keeps loading and saves as
-    /// before.
-    ///
-    /// 34 adds `PluginRowWriteContext` and `generateRowWrites(...context:)`, which hands a driver
-    /// that writes its own statements the columns the server owns and how a keyless row match has to
-    /// compare each column. The default forwards to the requirement without the context, so an
-    /// already-built plugin keeps loading and writes what it wrote before; the minimum stays where it
-    /// is and no bulk re-release is needed.
-    ///
-    /// 35 adds `PluginRowWriteContext.columnTypeNames`, the type each column was read as. A plugin
-    /// built against it reads a property a 34 host does not have, so the number moves; an
-    /// already-built plugin never reads it, so the minimum stays and no bulk re-release is needed.
-    ///
-    /// 36 adds `PluginStatementContext` and the `context:` variants of `execute`,
-    /// `executeParameterized`, `executeUserQuery` and `streamRows`, which tell a driver the host ran
-    /// a statement as a proven read. The defaults forward to the requirements without the context,
-    /// so an already-built plugin keeps loading and runs what it ran before; the minimum stays and no
-    /// bulk re-release is needed.
-    ///
-    /// 37 adds `GoogleCloudSQLAuthFields`, the Cloud SQL IAM choices on the Authentication picker,
-    /// and `DriverConnectionConfig.refreshPassword`, which mints a token password again for a
-    /// sign-in the driver makes on its own. The old initializer keeps its symbol, so the minimum
-    /// stays and no bulk re-release is needed.
-    ///
-    /// 38 adds `PluginDatabaseDriver.connectionWarning`, the warning a server sent with a login that
-    /// succeeded, such as an Oracle password in its grace period. The default is `nil`, so an
-    /// already-built plugin keeps loading and reports none; the minimum stays and no bulk re-release
-    /// is needed.
-    ///
-    /// 39 adds `PluginRowChange.expressionColumns` and the `cellExpressions` and `uuidCellText` bits of
-    /// `PluginCapabilities`. An already-built plugin declares neither bit, so the host hands it no
-    /// expression and offers no generated UUID through it; the minimum stays and no bulk re-release is
-    /// needed.
     nonisolated static let currentPluginKitVersion = 39
 
-    /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19
 
     private let builtInPluginsURL: URL?
     internal let userPluginsDir: URL
 
-    /// Every plugin collection here is published. The class was `@Observable` until #2874, which
-    /// tracked these without a word, and Settings > Plugins and the rejected-plugin banner are
-    /// written against that: without it an install, an update or a rejection changed nothing on
-    /// screen until the pane was reopened.
     @Published internal(set) var plugins: [PluginEntry] = []
 
     @Published internal(set) var stagedUpdates: [String: StagedPluginUpdate] = [:]
@@ -245,8 +109,6 @@ final class PluginManager: ObservableObject {
     internal var lastNetworkSatisfied = false
     internal var installsInFlight: Set<String> = []
 
-    /// User-installed bundles discovered but not yet signature-checked. `sweepPluginSignatures()`
-    /// drains it after the first frame.
     internal var pendingSignatureChecks: [URL] = []
 
     @Published var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
@@ -354,7 +216,6 @@ final class PluginManager: ObservableObject {
             self.recordEagerLoadFailures(loaded.failures)
             let validated = loaded.validated
             self.registerValidatedBundles(validated)
-            self.validateDependencies()
             self.hasFinishedInitialLoad = true
             let eagerCount = validated.count
             Self.logger.info("Loaded \(self.plugins.count) plugin(s): \(lazyCount) lazy + \(eagerCount) eager (\(self.driverPlugins.count) driver(s) active, \(self.exportPlugins.count) export(s) active, \(self.importPlugins.count) import(s) active)")
@@ -408,23 +269,6 @@ final class PluginManager: ObservableObject {
 
     private func registerLazyManifest(at url: URL, source: PluginSource, manifest: PluginManifest) {
         guard let bundle = Bundle(url: url) else { return }
-        do {
-            try Self.validateBundleVersions(bundle)
-        } catch {
-            Self.logger.error("Lazy plugin '\(manifest.bundleId)' failed version check: \(error.localizedDescription)")
-            if source == .userInstalled {
-                rejectedPlugins.append(RejectedPlugin(
-                    url: url,
-                    bundleId: manifest.bundleId,
-                    registryId: Self.readRegistryMetadata(for: url)?.pluginId,
-                    name: manifest.bundleId,
-                    reason: error.localizedDescription,
-                    isOutdated: (error as? PluginError)?.isOutdated ?? false,
-                    providedDatabaseTypeIds: manifest.providedDatabaseTypeIds
-                ))
-            }
-            return
-        }
         let bundleId = manifest.bundleId
         let primaryTypeId = manifest.providedDatabaseTypeIds.first
         let additionalTypeIds = Array(manifest.providedDatabaseTypeIds.dropFirst())
@@ -676,9 +520,7 @@ final class PluginManager: ObservableObject {
 
     private struct EagerLoadFailure {
         let url: URL
-        let source: PluginSource
         let reason: String
-        let isOutdated: Bool
     }
 
     nonisolated private static func validateAndLoadBundles(
@@ -692,12 +534,7 @@ final class PluginManager: ObservableObject {
                 results.append(ValidatedBundle(url: entry.url, source: entry.source, bundle: bundle))
             } catch {
                 logger.error("Failed to load plugin at \(entry.url.lastPathComponent): \(error.localizedDescription)")
-                failures.append(EagerLoadFailure(
-                    url: entry.url,
-                    source: entry.source,
-                    reason: error.localizedDescription,
-                    isOutdated: (error as? PluginError)?.isOutdated ?? false
-                ))
+                failures.append(EagerLoadFailure(url: entry.url, reason: error.localizedDescription))
             }
         }
         return (results, failures)
@@ -713,7 +550,7 @@ final class PluginManager: ObservableObject {
                 registryId: registryId,
                 name: failure.url.deletingPathExtension().lastPathComponent,
                 reason: failure.reason,
-                isOutdated: failure.source == .userInstalled && failure.isOutdated,
+                isOutdated: false,
                 providedDatabaseTypeIds: Self.databaseTypeIds(of: bundle, registryId: registryId)
             ))
         }
@@ -907,22 +744,6 @@ final class PluginManager: ObservableObject {
         }
     }
 
-    func loadPendingPluginsAsync(clearRestartFlag: Bool = false) async {
-        if clearRestartFlag {
-            needsRestart = false
-        }
-        guard !pendingPluginURLs.isEmpty else { return }
-        let pending = pendingPluginURLs
-        pendingPluginURLs.removeAll()
-
-        let loaded = await Self.validateAndLoadBundles(pending)
-        recordEagerLoadFailures(loaded.failures)
-        registerValidatedBundles(loaded.validated)
-        hasFinishedInitialLoad = true
-        validateDependencies()
-        Self.logger.info("Loaded \(self.plugins.count) plugin(s): \(self.driverPlugins.count) driver(s), \(self.exportPlugins.count) export format(s), \(self.importPlugins.count) import format(s)")
-    }
-
     private func discoverPlugin(at url: URL, source: PluginSource) throws {
         guard let bundle = Bundle(url: url) else {
             throw PluginError.invalidBundle("Cannot create bundle from \(url.lastPathComponent)")
@@ -930,12 +751,7 @@ final class PluginManager: ObservableObject {
 
         try Self.validateBundleVersions(bundle)
 
-        /// The signature is not checked here. `SecStaticCodeCheckValidity` hashes the whole bundle,
-        /// measured at 13ms per user-installed plugin and linear in how many are installed, and
-        /// discovery loads nothing: it only records the URL. The two gates that decide whether a
-        /// bundle's code runs both stay where they are, `validateAndLoadBundle` for an eager plugin
-        /// and `activateLazyBundle` for a lazy one, and `sweepPluginSignatures()` re-checks these
-        /// off the main actor once the first window is up so the Plugins pane still lists a bad one.
+        // Discovery loads no code; the signature is checked at load and by sweepPluginSignatures().
         if source == .userInstalled {
             pendingSignatureChecks.append(url)
         }

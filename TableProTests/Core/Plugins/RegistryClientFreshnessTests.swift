@@ -112,7 +112,6 @@ struct RegistryClientFreshnessTests {
         let (client, _, _) = try makeEnvironment()
         let request = client.makeManifestRequest(forceRefresh: false)
         #expect(request.cachePolicy == .reloadRevalidatingCacheData)
-        #expect(request.value(forHTTPHeaderField: "If-None-Match") == nil)
     }
 
     @Test("forced manifest request bypasses the local cache entirely")
