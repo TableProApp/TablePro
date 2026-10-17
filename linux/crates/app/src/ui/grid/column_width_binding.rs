@@ -28,4 +28,9 @@ impl ColumnWidthBinding {
         self.store
             .record(self.connection_id, self.schema.as_deref(), &self.table, column, width);
     }
+
+    pub(super) fn forget(&self, column: &str) {
+        self.store
+            .forget(self.connection_id, self.schema.as_deref(), &self.table, column);
+    }
 }

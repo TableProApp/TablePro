@@ -17,7 +17,8 @@ impl BrowseModel {
             PagingInput::PrevPage => self.turn_page(self.pager.prev(), fx),
             PagingInput::NextPage => self.turn_page(self.pager.next(self.rows_on_page()), fx),
             PagingInput::LastPage => self.turn_page(self.pager.last(&self.total), fx),
-            PagingInput::SortChanged { col_idx, ascending } => self.sort_by((col_idx, ascending), fx),
+            PagingInput::SortChanged { col_idx, ascending } => self.sort_by(Some((col_idx, ascending)), fx),
+            PagingInput::SortCleared => self.sort_by(None, fx),
             PagingInput::PageSizeChanged(size) => {
                 if self.suppress_combo_emit.get() || self.pager.page_size() == size {
                     return;
@@ -60,13 +61,13 @@ impl BrowseModel {
         fx.output(BrowseTabOutput::StateChanged);
     }
 
-    fn sort_by(&mut self, next: (usize, bool), fx: &mut Effects) {
+    fn sort_by(&mut self, next: Option<(usize, bool)>, fx: &mut Effects) {
         // The sorter notifies twice for one click on a new column
         // (column, then order), with the same final pair.
-        if self.current_sort == Some(next) {
+        if self.current_sort == next {
             return;
         }
-        self.current_sort = Some(next);
+        self.current_sort = next;
         self.pager.go_to(0);
         self.capture_selection();
         self.fetch(BrowseRequestKind::Page, fx);

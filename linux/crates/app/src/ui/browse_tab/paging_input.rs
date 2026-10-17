@@ -19,6 +19,7 @@ pub(crate) enum PagingInput {
         col_idx: usize,
         ascending: bool,
     },
+    SortCleared,
     PageSizeChanged(u64),
     /// Count Rows, or Try Again after a count failed.
     CountRows,

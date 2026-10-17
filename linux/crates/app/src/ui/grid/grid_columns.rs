@@ -21,6 +21,7 @@ struct GridColumn {
     /// The view owns its columns, and their cells hold this.
     view_column: glib::WeakRef<gtk::ColumnViewColumn>,
     drawing: Rc<ColumnDrawing>,
+    default_width: Option<i32>,
 }
 
 #[derive(Clone)]
@@ -29,6 +30,8 @@ pub(super) struct ShownColumn {
     /// The column's place in the result, which is what its cells hold.
     pub(super) index: usize,
     drawing: Rc<ColumnDrawing>,
+    /// The width it opens at with none saved, `None` for its natural one.
+    pub(super) default_width: Option<i32>,
 }
 
 impl ShownColumn {
@@ -47,11 +50,18 @@ impl ShownColumn {
 }
 
 impl GridColumns {
-    pub(super) fn push(&self, index: usize, view_column: &gtk::ColumnViewColumn, drawing: Rc<ColumnDrawing>) {
+    pub(super) fn push(
+        &self,
+        index: usize,
+        view_column: &gtk::ColumnViewColumn,
+        drawing: Rc<ColumnDrawing>,
+        default_width: Option<i32>,
+    ) {
         self.columns.borrow_mut().push(GridColumn {
             index,
             view_column: view_column.downgrade(),
             drawing,
+            default_width,
         });
     }
 
@@ -80,6 +90,7 @@ impl GridColumns {
                     view_column,
                     index: column.index,
                     drawing: column.drawing.clone(),
+                    default_width: column.default_width,
                 })
             })
             .collect()

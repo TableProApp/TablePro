@@ -271,6 +271,51 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn the_cell_menu_sorts_the_results_and_restores_their_order() {
+        let columns = [named("id", "integer", false), named("name", "text", false)];
+        let (view, selection) = grid(
+            &columns,
+            vec![
+                vec![Value::Int(2), text("b")],
+                vec![Value::Int(3), text("c")],
+                vec![Value::Int(1), text("a")],
+            ],
+            recorder().0,
+        );
+        let window = gtk::Window::new();
+        window.set_default_size(600, 400);
+        window.set_child(Some(&view));
+        window.present();
+        let cell = || {
+            descendants(&view)
+                .into_iter()
+                .filter_map(|widget| widget.downcast::<GridCell>().ok())
+                .find(|cell| cell.position() == Some(0) && cell.column() == 0 && cell.row().is_some())
+        };
+        wait_until(WAIT, || cell().is_some()).expect("the cells are drawn");
+        let open_menu = || {
+            let cell = cell().expect("the first row's cell");
+            let controllers = cell.observe_controllers();
+            let gesture = (0..controllers.n_items())
+                .filter_map(|index| controllers.item(index).and_downcast::<gtk::GestureClick>())
+                .find(|gesture| gesture.button() == 3)
+                .expect("a cell answers a right-click");
+            gesture.emit_by_name::<()>("pressed", &[&1i32, &1.0f64, &1.0f64]);
+        };
+
+        open_menu();
+        view.activate_action("cell.sort-descending", None)
+            .expect("the menu's Sort Descending");
+        assert_eq!(shown(&selection, 0), [Value::Int(3), Value::Int(2), Value::Int(1)]);
+
+        open_menu();
+        view.activate_action("cell.clear-sort", None)
+            .expect("the menu's Clear Sort");
+        assert_eq!(shown(&selection, 0), [Value::Int(2), Value::Int(3), Value::Int(1)]);
+        window.close();
+    }
+
+    #[gtk4::test]
     fn copy_after_sort_copies_displayed_row() {
         let columns = [named("id", "integer", false), named("name", "text", false)];
         let (sink, messages) = recorder();

@@ -10,6 +10,7 @@ use super::cell_edit::begin_edit;
 use super::cell_editor_kind::CellEditorKind;
 use super::cell_preset::cell_presets;
 use super::context_menu::{CellContext, MenuTarget};
+use super::grid_columns::ShownColumn;
 use super::row_json_dialog::RowJsonRequest;
 use super::selection::export_snapshot;
 use super::{
@@ -31,6 +32,8 @@ pub(super) struct CellActions {
     /// Shown insensitive while disabled, since a menu item cannot carry
     /// a tooltip to say why.
     delete_row: Option<gio::SimpleAction>,
+    /// On while the rows are sorted.
+    clear_sort: Option<gio::SimpleAction>,
 }
 
 impl CellActions {
@@ -64,6 +67,12 @@ impl CellActions {
             let availability = delete_availability(rows.iter().map(RowObject::id), false);
             delete_row.set_enabled(availability == DeleteAvailability::Available);
         }
+        let sorted = cell
+            .column_view()
+            .and_then(|view| view.sorter())
+            .and_downcast::<gtk::ColumnViewSorter>()
+            .is_some_and(|sorter| sorter.primary_sort_column().is_some());
+        enable(&self.clear_sort, sorted);
     }
 }
 
@@ -160,6 +169,23 @@ fn build_cell_menu(shape: MenuShape) -> gio::Menu {
     );
     menu.append_section(None, &json_section);
 
+    // A header's click and drag, which no key reaches.
+    let column_section = gio::Menu::new();
+    column_section.append(
+        Some(&crate::i18n::gettext("Sort Ascending")),
+        Some("cell.sort-ascending"),
+    );
+    column_section.append(
+        Some(&crate::i18n::gettext("Sort Descending")),
+        Some("cell.sort-descending"),
+    );
+    column_section.append(Some(&crate::i18n::gettext("Clear Sort")), Some("cell.clear-sort"));
+    column_section.append(
+        Some(&crate::i18n::gettext("Reset Column Width")),
+        Some("cell.reset-width"),
+    );
+    menu.append_section(None, &column_section);
+
     let action_section = gio::Menu::new();
     action_section.append(Some(&crate::i18n::gettext("Export…")), Some("cell.export"));
     if shape.row_ops {
@@ -211,6 +237,7 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         set_null: editable.then(|| simple_action(&group, "set-null")).flatten(),
         set_default: editable.then(|| simple_action(&group, "set-default")).flatten(),
         delete_row: editable.then(|| simple_action(&group, "delete-row")).flatten(),
+        clear_sort: simple_action(&group, "clear-sort"),
     };
 
     let (editable_popover, readonly_popover) = cell_popovers(column_view, editable);
@@ -290,7 +317,53 @@ impl CellActionKit {
     fn reading_entries(&self) -> Vec<CellEntry> {
         let mut entries = self.copy_entries();
         entries.extend([self.copy_column_name(), self.show_row_json(), self.export()]);
+        entries.extend(self.column_entries());
         entries
+    }
+
+    /// Sort by the cell's column, as a header click does, or reset the
+    /// width a header drag set.
+    fn column_entries(&self) -> Vec<CellEntry> {
+        let sort = |name: &str, order: gtk::SortType| {
+            let view = self.view.clone();
+            self.on_target(name, move |cell, _row, _rows| {
+                let Some(cv) = view.upgrade() else { return };
+                if let Some(column) = shown_column(&cv, cell) {
+                    cv.sort_by_column(Some(&column.view_column), order);
+                }
+            })
+        };
+        let clear_sort = {
+            let view = self.view.clone();
+            let sink = self.sink.clone();
+            self.on_target("clear-sort", move |_cell, _row, _rows| {
+                let Some(cv) = view.upgrade() else { return };
+                cv.sort_by_column(None, gtk::SortType::Ascending);
+                // The server sorts a browse page, and an unsorted view
+                // tells it nothing by itself.
+                sink(GridMsg::SortCleared);
+            })
+        };
+        let reset_width = {
+            let view = self.view.clone();
+            let tab = self.tab.clone();
+            let columns = self.columns.clone();
+            self.on_target("reset-width", move |cell, _row, _rows| {
+                let Some(column) = view.upgrade().and_then(|cv| shown_column(&cv, cell)) else {
+                    return;
+                };
+                column.view_column.set_fixed_width(column.default_width.unwrap_or(-1));
+                if let (Some(widths), Some(info)) = (&tab.column_widths, columns.get(column.index)) {
+                    widths.forget(&info.name);
+                }
+            })
+        };
+        vec![
+            sort("sort-ascending", gtk::SortType::Ascending),
+            sort("sort-descending", gtk::SortType::Descending),
+            clear_sort,
+            reset_width,
+        ]
     }
 
     fn copy_entries(&self) -> Vec<CellEntry> {
@@ -448,6 +521,14 @@ fn install_empty_space_menu(column_view: &gtk::ColumnView) -> gtk::PopoverMenu {
     });
     column_view.add_controller(empty_gesture);
     empty_popover
+}
+
+/// The view's column that `cell` sits in.
+fn shown_column(view: &gtk::ColumnView, cell: &GridCell) -> Option<ShownColumn> {
+    cell.columns()?
+        .shown(view)
+        .into_iter()
+        .find(|column| column.index == cell.column())
 }
 
 /// The rows a menu item copies, as the grid shows them.

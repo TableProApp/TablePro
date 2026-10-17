@@ -113,8 +113,10 @@ mod tests {
 
     use crate::services::change_tracker::RowKey;
     use crate::test_support::{FocusThief, after_next_frame, descendants, drain_main_context, wait_until};
-    use crate::ui::grid::test_grid::{Grid, WAIT, focus_in_grid, key, page, two_text_rows};
-    use crate::ui::grid::{GridCell, GridMsg, RowObject};
+    use crate::ui::grid::test_grid::{
+        Grid, WAIT, focus_in_grid, key, page, two_text_columns, two_text_rows, two_text_values,
+    };
+    use crate::ui::grid::{ColumnWidthBinding, GridCell, GridMsg, RowObject};
 
     fn open_menu(cell: &GridCell) {
         let controllers = cell.observe_controllers();
@@ -167,6 +169,64 @@ mod tests {
         );
 
         assert_eq!(acted_on(&grid), Vec::new(), "the menu acted on a row of the new page");
+    }
+
+    fn sorts(grid: &Grid) -> Vec<Option<(usize, bool)>> {
+        let mut sorts: Vec<Option<(usize, bool)>> = grid
+            .take_messages()
+            .into_iter()
+            .filter_map(|msg| match msg {
+                GridMsg::SortChanged(column, ascending) => Some(Some((column, ascending))),
+                GridMsg::SortCleared => Some(None),
+                _ => None,
+            })
+            .collect();
+        // A sort on a new column notifies the column, then the order.
+        sorts.dedup();
+        sorts
+    }
+
+    /// A header's click and drag take a pointer, so the menu, which the
+    /// Menu key opens, sorts and resets the width too.
+    #[gtk4::test]
+    fn the_menu_sorts_by_its_column_and_clears_the_sort() {
+        let grid = two_text_rows();
+        open_menu(&grid.cell_of(1, 1));
+        choose(&grid, &["cell.clear-sort"]);
+        assert!(sorts(&grid).is_empty(), "Clear Sort was on with no sort");
+
+        choose(&grid, &["cell.sort-descending"]);
+        open_menu(&grid.cell_of(1, 1));
+        choose(&grid, &["cell.clear-sort"]);
+
+        assert_eq!(sorts(&grid), [Some((1, false)), None]);
+        let sorter = grid
+            .view
+            .sorter()
+            .and_downcast::<gtk::ColumnViewSorter>()
+            .expect("the view's sorter");
+        assert!(sorter.primary_sort_column().is_none());
+    }
+
+    #[gtk4::test]
+    fn reset_width_forgets_the_dragged_width() {
+        let runtime = crate::test_support::test_runtime();
+        let root = tempfile::tempdir().expect("tempdir");
+        let widths = ColumnWidthBinding {
+            store: crate::persistence::ColumnWidthStore::load(root.path().join("column-widths.json"), &runtime.tasks()),
+            connection_id: uuid::Uuid::new_v4(),
+            schema: None,
+            table: "t".to_owned(),
+        };
+        let grid = Grid::open_with_widths(two_text_columns(), two_text_values(), widths.clone());
+        grid.column(1).set_fixed_width(300);
+        assert_eq!(widths.width("name"), Some(300));
+
+        open_menu(&grid.cell_of(1, 1));
+        choose(&grid, &["cell.reset-width"]);
+
+        assert_eq!(grid.column(1).fixed_width(), -1);
+        assert_eq!(widths.width("name"), None);
     }
 
     fn shown_menu(grid: &Grid) -> Option<gtk::PopoverMenu> {
