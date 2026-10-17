@@ -72,8 +72,8 @@ fi
 if [ "${#failed[@]}" -gt 0 ]; then
     echo "" >&2
     echo "${#failed[@]} of $checked plugins will not load: ${failed[*]}" >&2
-    echo "This is the 'Bundle failed to load executable' a user would hit. A removed PluginKit" >&2
-    echo "symbol is the usual cause; see .claude/rules/plugin-system.md, ABI." >&2
+    echo "This is the 'Bundle failed to load executable' a user would hit. Each ✗ line above gives" >&2
+    echo "the cause: a missing executable, or a binary, library or framework dyld could not load." >&2
     exit 1
 fi
 
