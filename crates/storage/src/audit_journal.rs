@@ -531,7 +531,10 @@ fn track_operation_state(
 }
 
 fn reject_new_write_intent(event: &AuditEvent, verified: &VerifiedJournal) -> Result<(), StorageError> {
-    if event.phase != AuditRecordPhase::Intent || !event.operation_class.is_write() {
+    if event.phase != AuditRecordPhase::Intent
+        || !event.operation_class.is_write()
+        || event.operation_class == AuditOperationClass::TransactionRollback
+    {
         return Ok(());
     }
     let blocked_by_pending_write = verified.pending_intents.iter().any(|intent| {
@@ -881,6 +884,40 @@ mod tests {
             unresolved.record(next).await,
             Err(AuditError::UnresolvedWrite)
         ));
+    }
+
+    #[tokio::test]
+    async fn a_rollback_is_never_blocked_by_an_unresolved_write_but_a_commit_still_is() {
+        let dir = TempDir::new().unwrap();
+        let journal = AuditJournal::open_validated(dir.path().join("audit.jsonl")).unwrap();
+        let connection_id = Uuid::new_v4();
+        let unknown = write_event(connection_id, AuditRecordPhase::Intent, AuditTerminalStatus::Pending);
+        journal.record(unknown.clone()).await.unwrap();
+        journal
+            .record(write_event_for(&unknown, AuditTerminalStatus::Unknown))
+            .await
+            .unwrap();
+
+        let mut rollback = write_event(connection_id, AuditRecordPhase::Intent, AuditTerminalStatus::Pending);
+        rollback.operation_class = AuditOperationClass::TransactionRollback;
+        journal
+            .record(rollback.clone())
+            .await
+            .expect("ending a transaction on a blocked connection is allowed");
+        journal
+            .record(write_event_for(&rollback, AuditTerminalStatus::Succeeded))
+            .await
+            .unwrap();
+
+        let mut commit = rollback.clone();
+        commit.operation_id = Uuid::new_v4();
+        commit.operation_class = AuditOperationClass::TransactionCommit;
+        assert!(matches!(journal.record(commit).await, Err(AuditError::UnresolvedWrite)));
+        let next = write_event(connection_id, AuditRecordPhase::Intent, AuditTerminalStatus::Pending);
+        assert!(
+            matches!(journal.record(next).await, Err(AuditError::UnresolvedWrite)),
+            "the earlier outcome stays unresolved after the rollback"
+        );
     }
 
     fn write_event(connection_id: Uuid, phase: AuditRecordPhase, status: AuditTerminalStatus) -> AuditEvent {
