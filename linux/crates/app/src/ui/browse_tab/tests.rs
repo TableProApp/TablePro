@@ -3008,6 +3008,49 @@ fn filter_button_tooltip_counts_the_active_rules() {
         .expect("the tooltip still counted rules after they were cleared");
 }
 
+/// The pending bar's Discard drops the undo history with the edits, so
+/// it asks first, as F5 does.
+#[gtk4::test]
+fn discard_asks_before_it_drops_the_pending_changes() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    use libadwaita::prelude::{AdwDialogExt, AdwWindowExt, AlertDialogExt};
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let window = crate::test_support::OwnedWindow::presented(libadwaita::Window::new());
+    window.set_content(Some(harness.tab()));
+    harness.tab().send(EditInput::InsertRow);
+    let discard = harness.tab().imp().pending_bar.imp().discard_button.get();
+    let alert = || {
+        let mut shown = None;
+        wait_until(WAIT, || {
+            shown = window.visible_dialog().and_downcast::<libadwaita::AlertDialog>();
+            shown.is_some()
+        })
+        .expect("Discard asks first");
+        shown.expect("the alert")
+    };
+
+    discard.emit_clicked();
+    let first = alert();
+    assert_eq!(harness.tracker.pending_count(), 1, "the edit went before the answer");
+    assert_eq!(first.close_response(), "cancel");
+    first.emit_by_name::<()>("response", &[&"cancel"]);
+    first.force_close();
+    drain_main_context();
+    assert_eq!(harness.tracker.pending_count(), 1, "Cancel dropped the edit");
+
+    discard.emit_clicked();
+    let second = alert();
+    second.emit_by_name::<()>("response", &[&"discard"]);
+    second.force_close();
+
+    wait_until(WAIT, || harness.tracker.pending_count() == 0).expect("the confirmed discard");
+    assert_eq!(draft_rows(&harness.store()), 0);
+    window.set_content(None::<&gtk4::Widget>);
+}
+
 /// The page queries a tab sent, in order.
 fn page_queries(harness: &Harness) -> Vec<String> {
     harness

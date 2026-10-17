@@ -121,7 +121,7 @@ fn connect_controls(tab: &BrowseTab) {
     }
     for (request, send) in [
         (PendingChangesRequest::Save, sender(tab, || SaveInput::CommitSave)),
-        (PendingChangesRequest::Discard, sender(tab, || SaveInput::DiscardAll)),
+        (PendingChangesRequest::Discard, sender(tab, || SaveInput::ConfirmDiscard)),
         (PendingChangesRequest::StopSaving, sender(tab, || SaveInput::StopSaving)),
     ] {
         imp.pending_bar.connect_request(request, move |_| send());

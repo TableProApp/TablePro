@@ -4,7 +4,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
-use libadwaita::prelude::{ActionRowExt, AdwWindowExt, ComboRowExt, ExpanderRowExt, PreferencesRowExt};
+use libadwaita::prelude::{
+    ActionRowExt, AdwDialogExt, AdwWindowExt, AlertDialogExt, ComboRowExt, ExpanderRowExt, PreferencesRowExt,
+};
 use tablepro_core::column::{ColumnDefault, ColumnType};
 use tablepro_core::ddl::{
     ColumnAttributes, ColumnDefinition, ColumnKeyRoles, DraftColumn, IdentityStyle, InboundForeignKey,
@@ -1211,6 +1213,7 @@ fn add_column_changes_one_item() {
 #[gtk4::test]
 fn discard_restores_without_phantom_ops() {
     let harness = open_edit(postgres(), keyed_users());
+    let window = in_window(&harness);
     let tab = harness.tab();
     let imp = tab.imp();
     let dirty = Rc::new(RefCell::new(Vec::new()));
@@ -1222,7 +1225,7 @@ fn discard_restores_without_phantom_ops() {
     assert_eq!(imp.pending_label.label(), "3 pending changes");
 
     imp.discard_button.emit_clicked();
-    drain_main_context();
+    answer_discard(&window, "discard");
 
     assert_eq!(harness.column_names(), ["id", "score"]);
     assert_eq!(harness.comments(), [None, None]);
@@ -1235,6 +1238,33 @@ fn discard_restores_without_phantom_ops() {
 
     assert_eq!(harness.column_names(), ["id", "points"]);
     assert_eq!(imp.pending_label.label(), "1 pending change");
+}
+
+/// Discard drops the undo history with the changes, so it asks first,
+/// as F5 does on a browse tab.
+#[gtk4::test]
+fn a_discard_not_confirmed_keeps_every_change() {
+    let harness = open_edit(postgres(), keyed_users());
+    let window = in_window(&harness);
+    let imp = harness.tab().imp();
+    entry(harness.tab(), 1, "col-name").set_text("points");
+
+    imp.discard_button.emit_clicked();
+    answer_discard(&window, "cancel");
+
+    assert_eq!(harness.column_names(), ["id", "points"]);
+    assert_eq!(imp.pending_label.label(), "1 pending change");
+}
+
+/// Answer the alert Discard opens.
+fn answer_discard(window: &adw::Window, response: &str) {
+    let alert = shown_form(window)
+        .downcast::<adw::AlertDialog>()
+        .expect("Discard asks before it drops the changes");
+    assert_eq!(alert.close_response(), "cancel");
+    alert.emit_by_name::<()>("response", &[&response]);
+    alert.force_close();
+    drain_main_context();
 }
 
 #[gtk4::test]
