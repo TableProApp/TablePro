@@ -41,6 +41,9 @@ Depends:
  ${shlibs:Depends},
 Recommends:
  ca-certificates,
+ gnome-keyring | kwallet6 | keepassxc,
+Suggests:
+ krb5-user,
 Description: database client for GNOME
  TablePro connects to PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse.
  Browse tables, edit rows in place, run SQL with syntax highlighting, and
