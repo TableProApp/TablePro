@@ -17,6 +17,7 @@ const TMP_DIR_ENV: &str = "TABLEPRO_TEST_PDEATHSIG_DIR";
 const FAKE_SSH_THAT_NEVER_EXITS: &str = r#"#!/bin/sh
 dir='@DIR@'
 case " $* " in
+  *" -G "*) exit 0 ;;
   *" -O "*) exit 0 ;;
 esac
 echo "$$" > "$dir/master.pid"

@@ -1,6 +1,6 @@
 # Connection handling
 
-Reviewed against Linux code tip `e802d600c` on 2026-10-14. [ADR 0008](decisions/0008-connection-and-session-ownership.md) owns identity and trust, [ADR 0005](decisions/0005-server-side-cancellation.md) cancellation, and remaining B4 acceptance is on [Project #3](https://github.com/users/cozyGarage/projects/3) (Lane B4). The [September connection audit](archive/connections-history.md) retains older source claims and coverage tables; its gaps are not current status.
+Reviewed against SSH code tip `e329f9a` on 2026-10-17. [ADR 0008](decisions/0008-connection-and-session-ownership.md) owns identity and trust, [ADR 0005](decisions/0005-server-side-cancellation.md) cancellation, and remaining B4 acceptance is on [Project #3](https://github.com/users/cozyGarage/projects/3) (Lane B4). The [September connection audit](archive/connections-history.md) retains older source claims and coverage tables; its gaps are not current status.
 
 ## Shared assembly and ownership
 
@@ -28,7 +28,7 @@ The GUI defaults to `UnknownHostKey::Refuse` and installs a prompter. An unknown
 
 ## System OpenSSH
 
-A saved tunnel can select `client: open_ssh`. Its ControlMaster/forward lives in a private runtime directory; `StrictHostKeyChecking=ask` applies to the destination. GUI prompts explicitly and agentd declines unanswered prompts. Saved passwords/passphrases answer only a matching destination/key prompt. Jump routing comes from `~/.ssh/config`/`ProxyJump`; saved per-hop chains are refused for this backend. Built-in SSH supports saved chains and ssh-agent.
+A saved tunnel can select `client: open_ssh`. Its ControlMaster/forward lives in a private runtime directory; `StrictHostKeyChecking=ask` applies to the destination and every `ProxyJump` hop. GUI prompts explicitly and agentd declines unanswered prompts. Saved passwords/passphrases answer only a matching destination/key prompt. Jump routing comes from `~/.ssh/config`/`ProxyJump`; effective `ProxyCommand` routes are refused. Saved per-hop chains are refused for this backend. Built-in SSH supports saved chains and ssh-agent.
 
 Inside Flatpak, selecting system OpenSSH fails with an explicit message before resolving saved SSH credentials or dispatching the database driver. The client does not switch to built-in SSH; select that backend explicitly if it is wanted. Native system OpenSSH remains available outside Flatpak. The executable `tablepro-askpass` helper must be installed beside the app or on PATH. The Debian builder installs it with the app binaries, and package validation rejects a build without it. Flatpak package/runtime behavior remains a separate acceptance check.
 

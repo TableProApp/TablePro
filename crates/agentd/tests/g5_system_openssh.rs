@@ -55,7 +55,7 @@ fn saved_connection(fixture: &Fixture, id: Uuid) -> SavedConnection {
     }
 }
 
-fn pretrust_fixture_host(fixture: &Fixture, known_hosts: &std::path::Path) {
+fn pretrust_fixture_host(fixture: &Fixture, known_hosts: &std::path::Path, ssh_config: &std::path::Path) {
     let scan = Command::new("ssh-keyscan")
         .args(["-T", "5", "-p"])
         .arg(fixture.ssh_port.to_string())
@@ -83,7 +83,7 @@ fn pretrust_fixture_host(fixture: &Fixture, known_hosts: &std::path::Path) {
     );
     let direct = Command::new("ssh")
         .args(["-F"])
-        .arg(known_hosts.with_file_name("ssh_config"))
+        .arg(ssh_config)
         .args(["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-p"])
         .arg(fixture.ssh_port.to_string())
         .args(["-i"])
@@ -123,7 +123,10 @@ async fn agentd_refuses_without_learning_an_unknown_system_openssh_key_then_quer
 
     let journal_dir = tempfile::tempdir().expect("temporary agentd fixture directory");
     let known_hosts = journal_dir.path().join("known_hosts");
-    let ssh_config = journal_dir.path().join("ssh_config");
+    let home = journal_dir.path().join("home");
+    let ssh_dir = home.join(".ssh");
+    std::fs::create_dir_all(&ssh_dir).expect("create isolated ssh config directory");
+    let ssh_config = ssh_dir.join("config");
     std::fs::write(
         &ssh_config,
         format!(
@@ -145,9 +148,8 @@ async fn agentd_refuses_without_learning_an_unknown_system_openssh_key_then_quer
     std::fs::write(
         &wrapper,
         format!(
-            "#!/bin/sh\nif [ \"$1\" = \"-M\" ]; then\n  exec '{}' -F '{}' \"$@\"\nfi\nexec '{}' \"$@\"\n",
-            system_ssh.display(),
-            ssh_config.display(),
+            "#!/bin/sh\nexport HOME='{}'\nexec '{}' \"$@\"\n",
+            home.display(),
             system_ssh.display()
         ),
     )
@@ -244,7 +246,7 @@ async fn agentd_refuses_without_learning_an_unknown_system_openssh_key_then_quer
         AuditTransportOutcome::HostKeyChanged
     );
 
-    pretrust_fixture_host(&fixture, &known_hosts);
+    pretrust_fixture_host(&fixture, &known_hosts, &ssh_config);
     let trusted_key = std::fs::read(&known_hosts).expect("read the pretrusted fixture key");
     let connection = provider
         .connection(

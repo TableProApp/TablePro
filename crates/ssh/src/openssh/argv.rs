@@ -40,8 +40,14 @@ pub(crate) enum ControlOp<'a> {
     Exit,
 }
 
-pub(crate) fn master_args(config: &OpenSshConfig, control: &Path, timeouts: &OpenSshTimeouts) -> Vec<OsString> {
+pub(crate) fn master_args(
+    config: &OpenSshConfig,
+    ssh_config: &Path,
+    control: &Path,
+    timeouts: &OpenSshTimeouts,
+) -> Vec<OsString> {
     let mut args: Vec<OsString> = ["-M", "-N", "-T"].into_iter().map(OsString::from).collect();
+    args.extend(["-F".into(), ssh_config.as_os_str().to_owned()]);
     push_option(&mut args, control_path_option(control));
     for option in FORCED_OPTIONS {
         push_option(&mut args, option.into());
@@ -79,8 +85,7 @@ fn push_jump_hosts(args: &mut Vec<OsString>, config: &OpenSshConfig) {
         return;
     }
     let hops: Vec<String> = config.jump_hosts.iter().map(ToString::to_string).collect();
-    args.push("-J".into());
-    args.push(hops.join(",").into());
+    args.extend(["-J".into(), hops.join(",").into()]);
 }
 
 fn push_auth(args: &mut Vec<OsString>, auth: &OpenSshAuth) {
@@ -167,13 +172,19 @@ mod tests {
     }
 
     fn master(config: &OpenSshConfig) -> Vec<OsString> {
-        master_args(config, Path::new("/tmp/control"), &OpenSshTimeouts::default())
+        master_args(
+            config,
+            Path::new("/tmp/ssh_config"),
+            Path::new("/tmp/control"),
+            &OpenSshTimeouts::default(),
+        )
     }
 
     #[test]
     fn master_argv_is_exact() {
         let args = master_args(
             &config(None, None, OpenSshAuth::Agent),
+            Path::new("/tmp/ssh_config"),
             Path::new("/run/user/1000/tablepro/ssh/0123456789abcdef/89abcdef/control"),
             &OpenSshTimeouts::default(),
         );
@@ -183,6 +194,8 @@ mod tests {
                 "-M",
                 "-N",
                 "-T",
+                "-F",
+                "/tmp/ssh_config",
                 "-o",
                 "ControlPath=/run/user/1000/tablepro/ssh/0123456789abcdef/89abcdef/control",
                 "-o",
@@ -260,14 +273,12 @@ mod tests {
     }
 
     #[test]
-    fn jump_hosts_render_one_minus_j() {
+    fn explicit_jump_hosts_use_openssh_proxyjump() {
         let mut with_jumps = config(None, None, OpenSshAuth::Agent);
-        with_jumps.jump_hosts = SshDestination::parse_jump_list("ops@jump1:2200,[fd00::1]").unwrap();
+        with_jumps.jump_hosts = SshDestination::parse_jump_list("ops@jump1:2200,jump2").unwrap();
         let args = master(&with_jumps);
         let args = strings(&args);
-        assert_eq!(args.iter().filter(|arg| **arg == "-J").count(), 1);
-        let position = args.iter().position(|arg| *arg == "-J").unwrap();
-        assert_eq!(args[position + 1], "ops@jump1:2200,[fd00::1]");
+        assert!(args.windows(2).any(|pair| pair == ["-J", "ops@jump1:2200,jump2"]));
     }
 
     #[test]

@@ -82,7 +82,10 @@ async fn start() -> TestResult<Fixture> {
 
     let temp = tempfile::tempdir()?;
     let known_hosts = temp.path().join("known_hosts");
-    let config = temp.path().join("ssh_config");
+    let ssh_home = temp.path().join("home");
+    let ssh_dir = ssh_home.join(".ssh");
+    std::fs::create_dir_all(&ssh_dir)?;
+    let config = ssh_dir.join("config");
     std::fs::write(
         &config,
         format!(
@@ -93,7 +96,7 @@ async fn start() -> TestResult<Fixture> {
     let wrapper = temp.path().join("ssh");
     std::fs::write(
         &wrapper,
-        format!("#!/bin/sh\nexec ssh -F '{}' \"$@\"\n", config.display()),
+        format!("#!/bin/sh\nHOME='{}' exec ssh \"$@\"\n", ssh_home.display()),
     )?;
     std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755))?;
 
@@ -294,6 +297,74 @@ async fn openssh_dropping_last_arc_ends_master() {
 }
 
 #[tokio::test]
+async fn an_effective_proxy_command_is_refused_without_running_it() -> TestResult<()> {
+    let temp = tempfile::tempdir()?;
+    let ssh_home = temp.path().join("home");
+    let ssh_dir = ssh_home.join(".ssh");
+    std::fs::create_dir_all(&ssh_dir)?;
+    let proxy_marker = ssh_dir.join("proxy-command-ran");
+    let master_marker = ssh_dir.join("master-started");
+    std::fs::write(
+        ssh_dir.join("target-route"),
+        format!("proxycommand touch {}\n", proxy_marker.display()),
+    )?;
+    std::fs::write(ssh_dir.join("jump-route"), "proxycommand none\n")?;
+    let wrapper = temp.path().join("ssh");
+    std::fs::write(
+        &wrapper,
+        format!(
+            "#!/bin/sh\nHOME='{}'\nexport HOME\ncase \" $* \" in\n  *\" -G \"*)\n    case \" $* \" in\n      *\" -- target \"*) cat \"$HOME/.ssh/target-route\" ;;\n      *\" -- jump \"*) cat \"$HOME/.ssh/jump-route\" ;;\n      *) exit 2 ;;\n    esac\n    exit 0 ;;\nesac\ntouch \"$HOME/.ssh/master-started\"\nexit 1\n",
+            ssh_home.display()
+        ),
+    )?;
+    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755))?;
+    let base = temp.path().join("run");
+    std::fs::create_dir(&base)?;
+    let context = OpenSshContext {
+        runtime: OpenSshRuntime::acquire(&base)?,
+        ssh_program: wrapper,
+        askpass_program: PathBuf::from(env!("CARGO_BIN_EXE_tablepro-askpass")),
+        timeouts: OpenSshTimeouts::default(),
+    };
+    let config = OpenSshConfig {
+        destination: SshDestination::new("target", None, None)?,
+        jump_hosts: Vec::new(),
+        auth: OpenSshAuth::Agent,
+    };
+
+    assert!(matches!(
+        OpenSshSession::connect(
+            &config,
+            &context,
+            ScriptedPrompter::new(vec![PromptAnswer::Decline]),
+            CancellationToken::new(),
+        )
+        .await,
+        Err(OpenSshError::UnsupportedProxyCommand)
+    ));
+    assert!(!proxy_marker.exists());
+    assert!(!master_marker.exists());
+    std::fs::write(ssh_dir.join("target-route"), "proxycommand none\nproxyjump jump\n")?;
+    std::fs::write(
+        ssh_dir.join("jump-route"),
+        format!("proxycommand touch {}\n", proxy_marker.display()),
+    )?;
+    assert!(matches!(
+        OpenSshSession::connect(
+            &config,
+            &context,
+            ScriptedPrompter::new(vec![PromptAnswer::Decline]),
+            CancellationToken::new(),
+        )
+        .await,
+        Err(OpenSshError::UnsupportedProxyCommand)
+    ));
+    assert!(!proxy_marker.exists());
+    assert!(!master_marker.exists());
+    Ok(())
+}
+
+#[tokio::test]
 #[ignore = "requires docker"]
 async fn openssh_a_proxyjump_line_in_the_ssh_config_reaches_the_target() {
     let network = format!("tablepro-ssh-test-{}", uuid::Uuid::new_v4());
@@ -319,11 +390,14 @@ async fn openssh_a_proxyjump_line_in_the_ssh_config_reaches_the_target() {
 
     let temp = tempfile::tempdir().unwrap();
     let known_hosts = temp.path().join("known_hosts");
-    let config_path = temp.path().join("ssh_config");
+    let ssh_home = temp.path().join("home");
+    let ssh_dir = ssh_home.join(".ssh");
+    std::fs::create_dir_all(&ssh_dir).unwrap();
+    let config_path = ssh_dir.join("config");
     std::fs::write(
         &config_path,
         format!(
-            "Host *\n  UserKnownHostsFile {known_hosts}\n  GlobalKnownHostsFile /dev/null\n  IdentityAgent none\n  IdentitiesOnly yes\n  PubkeyAuthentication no\n\nHost target\n  Hostname {target_ip}\n  Port 2222\n  User deploy\n  ProxyJump ops@{jump_host}:{jump_port}\n",
+            "Host *\n  UserKnownHostsFile {known_hosts}\n  GlobalKnownHostsFile /dev/null\n  IdentityAgent none\n  IdentitiesOnly yes\n  PubkeyAuthentication no\n  StrictHostKeyChecking no\n\nHost target\n  Hostname {target_ip}\n  Port 2222\n  User deploy\n  ProxyJump ops@{jump_host}:{jump_port}\n",
             known_hosts = known_hosts.display(),
         ),
     )
@@ -331,7 +405,7 @@ async fn openssh_a_proxyjump_line_in_the_ssh_config_reaches_the_target() {
     let wrapper = temp.path().join("ssh");
     std::fs::write(
         &wrapper,
-        format!("#!/bin/sh\nexec ssh -F '{}' \"$@\"\n", config_path.display()),
+        format!("#!/bin/sh\nHOME='{}' exec ssh \"$@\"\n", ssh_home.display()),
     )
     .unwrap();
     std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -350,6 +424,46 @@ async fn openssh_a_proxyjump_line_in_the_ssh_config_reaches_the_target() {
         jump_hosts: Vec::new(),
         auth: password("s3cret"),
     };
+    let proxy_marker = temp.path().join("proxy-command-ran");
+    std::fs::write(
+        &config_path,
+        format!(
+            "Host *\n  UserKnownHostsFile {known_hosts}\n  GlobalKnownHostsFile /dev/null\n  IdentityAgent none\n  IdentitiesOnly yes\n  PubkeyAuthentication no\n  StrictHostKeyChecking no\n\nHost target\n  Hostname {target_ip}\n  Port 2222\n  User deploy\n  ProxyCommand touch {proxy_marker}\n",
+            known_hosts = known_hosts.display(),
+            proxy_marker = proxy_marker.display(),
+        ),
+    )
+    .unwrap();
+    assert!(matches!(
+        OpenSshSession::connect(&cfg, &context, ScriptedPrompter::new(vec![]), CancellationToken::new()).await,
+        Err(OpenSshError::UnsupportedProxyCommand)
+    ));
+    assert!(!proxy_marker.exists());
+
+    std::fs::write(
+        &config_path,
+        format!(
+            "Host *\n  UserKnownHostsFile {known_hosts}\n  GlobalKnownHostsFile /dev/null\n  IdentityAgent none\n  IdentitiesOnly yes\n  PubkeyAuthentication no\n  StrictHostKeyChecking no\n\nHost target\n  Hostname {target_ip}\n  Port 2222\n  User deploy\n  ProxyJump ops@{jump_host}:{jump_port}\n",
+            known_hosts = known_hosts.display(),
+        ),
+    )
+    .unwrap();
+    let rejecting = ScriptedPrompter::new(vec![PromptAnswer::Decline]);
+    let rejected = OpenSshSession::connect(&cfg, &context, rejecting.clone(), CancellationToken::new()).await;
+    assert!(matches!(
+        rejected,
+        Err(OpenSshError::HostKeyUnknown { declined: true, .. })
+    ));
+    assert_eq!(
+        rejecting
+            .asked()
+            .iter()
+            .filter(|prompt| matches!(prompt, AskpassPrompt::HostKeyConfirmation { .. }))
+            .count(),
+        1,
+    );
+    assert!(!known_hosts.exists());
+
     let prompter = ScriptedPrompter::new(vec![
         PromptAnswer::Accept,
         PromptAnswer::Secret(SecretString::from("s3cret")),
@@ -374,6 +488,11 @@ async fn openssh_a_proxyjump_line_in_the_ssh_config_reaches_the_target() {
             .any(|prompt| matches!(prompt, AskpassPrompt::Password { user_host } if user_host.starts_with("deploy@"))),
         "the final target must also be authenticated, proving the jump reached it: {asked:?}"
     );
+    let host_key_prompts = asked
+        .iter()
+        .filter(|prompt| matches!(prompt, AskpassPrompt::HostKeyConfirmation { .. }))
+        .count();
+    assert_eq!(host_key_prompts, 2, "both SSH hops must request trust: {asked:?}");
     session.shutdown().await;
     assert!(session.is_closed());
 }
@@ -434,7 +553,10 @@ async fn start_with_authorized_key(public_key: &str, agent_socket: Option<&Path>
     let temp = tempfile::tempdir()?;
     let known_hosts = temp.path().join("known_hosts");
     let identity_agent = agent_socket.map_or_else(|| "none".to_owned(), |socket| socket.display().to_string());
-    let config = temp.path().join("ssh_config");
+    let ssh_home = temp.path().join("home");
+    let ssh_dir = ssh_home.join(".ssh");
+    std::fs::create_dir_all(&ssh_dir)?;
+    let config = ssh_dir.join("config");
     std::fs::write(
         &config,
         format!(
@@ -447,7 +569,7 @@ async fn start_with_authorized_key(public_key: &str, agent_socket: Option<&Path>
     let wrapper = temp.path().join("ssh");
     std::fs::write(
         &wrapper,
-        format!("#!/bin/sh\nexec ssh -F '{}' \"$@\"\n", config.display()),
+        format!("#!/bin/sh\nHOME='{}' exec ssh \"$@\"\n", ssh_home.display()),
     )?;
     std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755))?;
 

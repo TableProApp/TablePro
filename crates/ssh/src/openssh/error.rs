@@ -26,6 +26,8 @@ pub enum OpenSshError {
     Spawn { program: PathBuf, detail: String },
     #[error("OpenSSH rejected its configuration: {detail}")]
     ConfigRejected { detail: String },
+    #[error("OpenSSH ProxyCommand routes are not supported")]
+    UnsupportedProxyCommand,
     #[error("the host key for {host} is not known")]
     HostKeyUnknown {
         host: String,

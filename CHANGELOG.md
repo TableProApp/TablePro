@@ -287,6 +287,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - A Redis `SELECT n` was treated as a read, so read-only connections and agent read access let it switch the shared connection to another database; it now needs the approval an unrecognised statement needs.
 - A `FOR UPDATE` or `FOR SHARE` read inside a WHERE or HAVING subquery, a join condition or a function argument is now treated as a locking read, so read-only connections and agent read access refuse it.
 - A host key listed as `@revoked` in known_hosts with a wildcard or negated host pattern, such as `@revoked * ssh-ed25519 …`, is now refused instead of being ignored.
+- Unknown host keys on configured SSH jump hosts now require explicit confirmation before connecting.
 - Statements that set a password, an encryption key or a connection secret, and text that does not end its strings or comments, are no longer saved in the query history.
 - An agent's write preview on MySQL no longer runs DDL or other statements that MySQL commits immediately; they are refused inside a transaction instead of being applied and reported as rolled back.
 - SQL Server `BEGIN TRAN`, `COMMIT TRAN` and `ROLLBACK TRAN` are now treated as transaction control, so a shared connection refuses them and a session tracks the transaction they open instead of auditing later writes as committed.

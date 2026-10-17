@@ -1,6 +1,6 @@
 # SSH transport
 
-> Reviewed against source and tests at `e802d600` on 2026-10-14, including the host-key refusal and default-path regressions from #783. The transport remains in development; see the active sprint for acceptance status.
+> Reviewed against source and tests at `e329f9a` on 2026-10-17, including the ProxyJump host-key policy fix in #970. The transport remains in development; see the active sprint for acceptance status.
 
 **Spec tier:** buildable **Serves:** `Local DBA` **Status:** in-development **Success metric:** A tunnel opens only after the host key is trusted or explicitly learned; TLS still verifies the saved database hostname, not loopback.
 
@@ -55,7 +55,7 @@ KnownHostsIo(String)
 | `UnknownHostKey { host, port, fingerprint, known_hosts }` | Key is absent and this connection does not add keys. |
 | `KnownHosts(String)` | The known_hosts file could not be read or updated. |
 
-OpenSSH backend forces `StrictHostKeyChecking=ask` (`crates/ssh/src/openssh/argv.rs`). Prompt kinds include `HostKeyConfirmation { host, algorithm, fingerprint }`.
+The OpenSSH backend forces `StrictHostKeyChecking=ask` in its private config and master argv. Prompt kinds include `HostKeyConfirmation { host, algorithm, fingerprint }`.
 
 ## Interface contracts
 
@@ -98,7 +98,7 @@ OpenSSH backend forces `StrictHostKeyChecking=ask` (`crates/ssh/src/openssh/argv
 5. Open the forward. Built-in russh timeouts in `crates/ssh/src/lib.rs`: `CONNECT_TIMEOUT` 10s, `AUTH_TIMEOUT` 20s, `KEEPALIVE_INTERVAL` 15s. Handshake 10s and keepalive 15s have tests; auth 20s is code-only. OpenSSH forces `ConnectTimeout=10` and `ServerAliveInterval=15`; handshake/auth deadlines live in `OpenSshTimeouts`.
 6. Hand transport a local dial target plus the original service hostname for TLS.
 
-OpenSSH: pass `StrictHostKeyChecking=ask` (`FORCED_OPTIONS` in `crates/ssh/src/openssh/argv.rs`) and classify host-key stderr. Do not set `accept-new` or `no`.
+OpenSSH: force `StrictHostKeyChecking=ask` for the destination and every `ProxyJump` hop. The private config places this setting before system and user config includes; `-F` lets OpenSSH pass the same config to its `ProxyJump` child. Classify host-key stderr. Do not set `accept-new` or `no`.
 
 ## State machine
 
@@ -120,7 +120,8 @@ OpenSSH: pass `StrictHostKeyChecking=ask` (`FORCED_OPTIONS` in `crates/ssh/src/o
 - `UnknownHostKey::Refuse` MUST NOT add a key.
 - System `ssh` writing `~/.ssh/known_hosts` MUST NOT be treated as trust for the built-in backend.
 - TLS through an SSH tunnel MUST verify the saved database hostname when verification is requested.
-- The OpenSSH backend MUST use `StrictHostKeyChecking=ask`.
+- The OpenSSH backend MUST use `StrictHostKeyChecking=ask` for the destination and every `ProxyJump` hop, regardless of later system or user config settings.
+- The OpenSSH backend MUST refuse an effective `ProxyCommand` for the destination or any hop; it supports configured `ProxyJump` routes without executing arbitrary configured commands.
 
 ## Invariants
 
@@ -168,8 +169,8 @@ Each line names the tip proof. When the proof is code only, that is marked.
 - **Learn new.** GIVEN `UnknownHostKey::Learn` AND no matching line WHEN verify_or_learn succeeds THEN the outcome is `LearnedNew` AND a new line exists. Proof: `verify_or_learn_creates_known_hosts_on_first_use`.
 - **Prompt decline.** GIVEN verify_or_prompt AND the prompter does not accept WHEN the key is unknown THEN the outcome is `Unknown` AND no line is added. Proof: `built_in_host_key_trust_is_persisted_only_after_acceptance`.
 - **TLS identity.** GIVEN SSH plus certificate verification WHEN transport assembles options THEN the TLS hostname is the saved database host, not the local forward. Proof: `socket_forwarding_keeps_the_service_hostname_for_tls`; `verify_full_through_ssh_uses_the_original_database_hostname`; `verify_full_over_a_tcp_tunnel_never_downgrades_to_the_local_dial_address`.
-- **OpenSSH ask.** GIVEN the OpenSSH backend WHEN argv is built THEN it contains `StrictHostKeyChecking=ask`. Proof: `master_argv_is_exact`.
+- **OpenSSH ProxyJump policy.** GIVEN the system OpenSSH backend and a `ProxyJump` route WHEN Bookie starts the master THEN it passes a private config with `StrictHostKeyChecking=ask` before the system and user config includes, and OpenSSH's child uses the same `-F` config. The Docker regression `openssh_a_proxyjump_line_in_the_ssh_config_reaches_the_target` runs with a user config that requests `StrictHostKeyChecking no`, confirms both hop keys still prompt, and confirms declining the first hop does not write `known_hosts`. `an_effective_proxy_command_is_refused_without_running_it` confirms effective commands on the target and a hop are refused before execution. `the_master_starts_with_forced_options_null_stdin_and_the_askpass_socket` also checks the config mode, ordering, and master argument. An unknown key on an installed real jump host remains in the [manual acceptance checklist](../../docs/manual-verification-0.2-features.md).
 
 ## Open questions
 
-No additional transport behavior questions were identified in this source review. Jump-chain editing and installed acceptance remain open under [#548](https://github.com/cozyGarage/BookiE/issues/548) and the active sprint.
+No additional transport behavior question was identified in this source review. Jump-chain editing and installed acceptance remain open under [#548](https://github.com/cozyGarage/BookiE/issues/548) and the active sprint.

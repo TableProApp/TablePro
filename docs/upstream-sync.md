@@ -153,7 +153,7 @@ Rewritten:
 
 Tests: unit tests per module, a sandbox-tier `tests/openssh_fake_ssh.rs` that drives a shell-script `ssh` through spawn, askpass, deadline, cancel, drop, kill-after-grace, forwards and the sweep, and the Docker-gated `tests/openssh_session.rs`, which adds a jump-host case proving the stored password never reaches the jump host's prompt.
 
-Open: `-J` hops run a separate `ssh` that receives none of our `-o` options, so the user's config still decides host-key checking for jump hosts.
+At this checkpoint, `-J` hops ran a separate `ssh` that received none of Bookie's `-o` options, leaving jump-host key checking to the user's config. This gap is tracked in [#970](https://github.com/cozyGarage/BookiE/issues/970); the implementation is under review in [PR #1081](https://github.com/cozyGarage/BookiE/pull/1081).
 
 ## 2026-09-19: re-survey after upstream rewrote its Linux branch
 

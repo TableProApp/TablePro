@@ -18,7 +18,7 @@ Refuse implicit transaction starters (`SET autocommit=0`, `SET IMPLICIT_TRANSACT
 
 ### Trust and route selection
 
-The GUI must ask before accepting a new built-in SSH host key; unattended agentd refuses unknown keys. A selected system OpenSSH route unavailable in Flatpak is refused with a clear message. Do not silently switch backends or weaken TLS/auth. Daemon cache reuse requires verified current connection/key material; a digest failure refuses reuse, and a post-connect failure drops the new handle. Audit tunnel setup and host-key refusal through the approved audit contract.
+The GUI must ask before accepting an unknown SSH host key on every hop, for built-in and system OpenSSH routes; unattended agentd refuses unknown keys. A selected system OpenSSH route unavailable in Flatpak is refused with a clear message. Do not silently switch backends or weaken TLS/auth. Daemon cache reuse requires verified current connection/key material; a digest failure refuses reuse, and a post-connect failure drops the new handle. Audit tunnel setup and host-key refusal through the approved audit contract.
 
 ### Uncertainty scope
 
