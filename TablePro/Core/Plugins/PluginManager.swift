@@ -122,14 +122,6 @@ final class PluginManager: ObservableObject {
         self.builtInPluginsURL = builtInPluginsURL
         self.userPluginsDir = userPluginsDir
         self.initialLoadClock = initialLoadClock
-        Self.clearLegacyNeedsRestartKey(in: userDefaults)
-    }
-
-    nonisolated private static func clearLegacyNeedsRestartKey(in defaults: UserDefaults) {
-        let legacyKey = "com.TablePro.needsRestart"
-        if defaults.object(forKey: legacyKey) != nil {
-            defaults.removeObject(forKey: legacyKey)
-        }
     }
 
     nonisolated static func defaultUserPluginsDir() -> URL {
@@ -152,13 +144,6 @@ final class PluginManager: ObservableObject {
         let url = metadataURL(for: pluginURL)
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(RegistryMetadata.self, from: data)
-    }
-
-    nonisolated static func bundleVersion(at pluginURL: URL) -> String? {
-        guard let bundle = Bundle(url: pluginURL),
-              let info = bundle.infoDictionary
-        else { return nil }
-        return info["CFBundleShortVersionString"] as? String
     }
 
     func saveRegistryMetadata(pluginId: String, pluginURL: URL) {
@@ -297,6 +282,7 @@ final class PluginManager: ObservableObject {
             source: source,
             name: displayName,
             version: version,
+            build: Self.bundleBuild(at: url),
             pluginDescription: pluginDescription,
             capabilities: capabilities,
             databaseTypeId: primaryTypeId,
@@ -518,6 +504,16 @@ final class PluginManager: ObservableObject {
         return dictionary["CFBundleShortVersionString"] as? String
     }
 
+    nonisolated static func bundleBuild(at url: URL) -> Int {
+        let infoPlistURL = url.appendingPathComponent("Contents/Info.plist")
+        guard let data = try? Data(contentsOf: infoPlistURL),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil),
+              let dictionary = plist as? [String: Any] else {
+            return 0
+        }
+        return (dictionary["CFBundleVersion"] as? String).flatMap { Int($0) } ?? 0
+    }
+
     private struct EagerLoadFailure {
         let url: URL
         let reason: String
@@ -592,6 +588,7 @@ final class PluginManager: ObservableObject {
             source: source,
             name: principalClass.pluginName,
             version: version,
+            build: Self.bundleBuild(at: url),
             pluginDescription: principalClass.pluginDescription,
             capabilities: principalClass.capabilities,
             databaseTypeId: driverType?.databaseTypeId,
@@ -660,11 +657,11 @@ final class PluginManager: ObservableObject {
         Self.logger.info("Discovered \(self.pendingPluginURLs.count) plugin(s), will load on first use")
     }
 
-    private struct PluginCandidate {
+    internal struct PluginCandidate {
         let url: URL
         let source: PluginSource
         let bundleId: String
-        let version: String
+        let build: Int
     }
 
     nonisolated private static func collectCandidates(
@@ -685,13 +682,17 @@ final class PluginManager: ObservableObject {
             guard let bundle = Bundle(url: itemURL),
                   let bundleId = bundle.bundleIdentifier
             else { continue }
-            let version = (bundle.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.0.0"
-            results.append(PluginCandidate(url: itemURL, source: source, bundleId: bundleId, version: version))
+            results.append(PluginCandidate(
+                url: itemURL,
+                source: source,
+                bundleId: bundleId,
+                build: bundleBuild(at: itemURL)
+            ))
         }
         return results
     }
 
-    nonisolated private static func selectWinners(
+    nonisolated internal static func selectWinners(
         candidates: [PluginCandidate]
     ) -> [String: PluginCandidate] {
         var winners: [String: PluginCandidate] = [:]
@@ -700,9 +701,8 @@ final class PluginManager: ObservableObject {
                 winners[candidate.bundleId] = candidate
                 continue
             }
-            let order = candidate.version.compare(existing.version, options: .numeric)
-            let candidateWins = order == .orderedDescending
-                || (order == .orderedSame && candidate.source == .builtIn)
+            let candidateWins = candidate.build > existing.build
+                || (candidate.build == existing.build && candidate.source == .builtIn)
             if candidateWins {
                 winners[candidate.bundleId] = candidate
             }
@@ -720,10 +720,9 @@ final class PluginManager: ObservableObject {
             do {
                 try fm.removeItem(at: candidate.url)
                 Self.removeRegistryMetadataFile(for: candidate.url)
-                let order = candidate.version.compare(winner.version, options: .numeric)
-                let reason = order == .orderedSame ? "equal version" : "older version"
+                let reason = candidate.build == winner.build ? "equal build" : "older build"
                 Self.logger.info(
-                    "Pruned user-installed '\(candidate.bundleId)' v\(candidate.version) (\(reason); \(winner.source == .builtIn ? "built-in" : "winning") v\(winner.version) takes precedence)"
+                    "Pruned user-installed '\(candidate.bundleId)' build \(candidate.build) (\(reason); \(winner.source == .builtIn ? "built-in" : "winning") build \(winner.build) takes precedence)"
                 )
             } catch {
                 Self.logger.warning(
