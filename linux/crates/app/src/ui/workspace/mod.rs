@@ -121,6 +121,9 @@ pub(crate) struct WorkspaceModel {
     all_schemas_listed: bool,
     toast_overlay: adw::ToastOverlay,
     reconnect_banner: adw::Banner,
+    /// Says the sidebar's list could not be read again, until a read
+    /// lands.
+    catalog_banner: adw::Banner,
     row_op_spinner: adw::Spinner,
     table_search: gtk::SearchEntry,
     /// Removes a changed host key from known_hosts. `None` without ssh.
@@ -358,6 +361,9 @@ pub(crate) enum WorkspaceInput {
     CatalogChanged(ObjectListSnapshot),
     /// A refresh of that list failed, and the list stays as it was.
     CatalogReadFailed(String),
+    /// Read the session's tables again: the sidebar's Refresh, or a run
+    /// in the editor that changed them.
+    RefreshCatalog,
     /// The default schema's list landed, as a reconnect commits it.
     DefaultListCommitted(ObjectListSnapshot),
     /// The schemas the sidebar's sections are made from, read for
@@ -545,6 +551,7 @@ impl Workspace {
             all_schemas_listed: false,
             toast_overlay: imp.toast_overlay.get(),
             reconnect_banner: imp.reconnect_banner.get(),
+            catalog_banner: imp.catalog_banner.get(),
             row_op_spinner: imp.row_op_spinner.get(),
             table_search: imp.table_search.get(),
             ssh: services.ssh(),
@@ -910,6 +917,7 @@ impl WorkspaceModel {
             }
             WorkspaceInput::CatalogChanged(snapshot) => self.on_catalog_changed(snapshot),
             WorkspaceInput::CatalogReadFailed(message) => self.on_catalog_read_failed(&message),
+            WorkspaceInput::RefreshCatalog => self.refresh_catalog(),
             WorkspaceInput::DefaultListCommitted(snapshot) => self.on_default_list_committed(snapshot),
             WorkspaceInput::SidebarRead { read, objects, schemas } => self.on_sidebar_read(read, &objects, schemas),
             WorkspaceInput::LinkChanged => self.on_link_changed(),
@@ -944,6 +952,7 @@ impl WorkspaceModel {
             WorkspaceInput::EditorTabRunStateChanged(id, running) => self.on_editor_tab_run_state_changed(id, running),
             WorkspaceInput::EditorTabRunFinished(id, outcome) => {
                 self.report_work(id, crate::workspace::WorkKind::Query, outcome);
+                self.on_editor_run_finished(id);
             }
             WorkspaceInput::EditorTabContentChanged(id) => self.on_editor_tab_content_changed(id),
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),

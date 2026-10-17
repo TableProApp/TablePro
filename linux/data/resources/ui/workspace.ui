@@ -50,6 +50,12 @@
                                 <property name="icon-name">system-search-symbolic</property>
                               </object>
                             </child>
+                            <child type="start">
+                              <object class="GtkButton" id="refresh_tables_button">
+                                <property name="icon-name">view-refresh-symbolic</property>
+                                <property name="action-name">win.refresh-tables</property>
+                              </object>
+                            </child>
                           </object>
                         </child>
                         <child type="top">
@@ -65,6 +71,15 @@
                                 </accessibility>
                               </object>
                             </property>
+                          </object>
+                        </child>
+                        <child type="top">
+                          <!-- The list stays as it was when a read fails, so
+                               the banner says it may be out of date. -->
+                          <object class="AdwBanner" id="catalog_banner">
+                            <property name="use-markup">false</property>
+                            <property name="button-label" translatable="yes">Retry</property>
+                            <property name="action-name">win.refresh-tables</property>
                           </object>
                         </child>
                         <property name="content">

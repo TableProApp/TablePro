@@ -200,6 +200,10 @@ impl Session {
         self.catalog.invalidate_table(table);
     }
 
+    pub fn invalidate_columns(&self) {
+        self.catalog.invalidate_columns();
+    }
+
     pub fn subscribe_objects(&self, scope: ObjectScope) -> watch::Receiver<ObjectListSnapshot> {
         self.catalog.subscribe(scope)
     }

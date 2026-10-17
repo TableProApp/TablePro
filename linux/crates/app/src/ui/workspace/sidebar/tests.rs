@@ -568,39 +568,102 @@ fn sidebar_lists_every_schema_after_the_connect() {
 }
 
 #[gtk4::test]
-fn catalog_error_keeps_list_and_toasts() {
+fn catalog_error_keeps_list_and_shows_why_until_a_read_lands() {
     let test = TestWindow::connected_with("SidebarCatalogError", |script| {
         script.list_objects.once(FakeReply::ok(vec![
             object("public", "orders"),
             object("public", "users"),
         ]));
-        script
-            .list_objects
-            .once(FakeReply::err(DriverError::Protocol("catalog gone".to_owned())));
+        for _ in 0..2 {
+            script
+                .list_objects
+                .once(FakeReply::err(DriverError::Protocol("catalog gone".to_owned())));
+        }
+        for _ in 0..3 {
+            script.list_objects.once(FakeReply::ok(vec![
+                object("public", "orders"),
+                object("public", "users"),
+                object("public", "carts"),
+            ]));
+        }
     });
     let workspace = test.workspace();
     wait_until(WAIT, || workspace.read(|model| model.sidebar.shown()) == Some(2)).expect("the tables listed");
-    let toasts_before = toast_count(&workspace);
+    let banner = workspace.imp().catalog_banner.get();
+    assert!(!banner.is_revealed(), "a banner before anything failed");
 
-    let input = workspace.input().expect("the workspace's input");
-    input.deliver(WorkspaceInput::SchemaChanged {
-        schema: Some("public".to_owned()),
-        table: None,
-    });
+    WidgetExt::activate_action(&test.window, "win.refresh-tables", None).expect("win.refresh-tables");
 
-    wait_until(WAIT, || toast_count(&workspace) > toasts_before).expect("a toast for the failed refresh");
+    wait_until(WAIT, || banner.is_revealed()).expect("a banner for the failed refresh");
+    assert!(
+        banner.title().starts_with("Could not refresh the table list: "),
+        "{}",
+        banner.title()
+    );
+    assert_eq!(banner.action_name().as_deref(), Some("win.refresh-tables"));
     assert_eq!(
         workspace.read(|model| model.sidebar.shown()),
         Some(2),
         "the failure emptied the list"
     );
+
+    WidgetExt::activate_action(&test.window, "win.refresh-tables", None).expect("the banner's Retry");
+
+    wait_until(WAIT, || workspace.read(|model| model.sidebar.shown()) == Some(3)).expect("the list read again");
+    assert!(!banner.is_revealed(), "the banner stayed after a read landed");
 }
 
-fn toast_count(workspace: &crate::ui::workspace::Workspace) -> usize {
-    descendants(&workspace.imp().toast_overlay.get())
-        .into_iter()
-        .filter(|widget| widget.css_name() == "toast")
-        .count()
+#[gtk4::test]
+fn the_refresh_button_reads_the_tables_again() {
+    let test = TestWindow::connected_with("SidebarRefresh", |script| {
+        script.list_objects.once(FakeReply::ok(vec![object("public", "users")]));
+        for _ in 0..3 {
+            script.list_objects.once(FakeReply::ok(vec![
+                object("public", "users"),
+                object("public", "orders"),
+            ]));
+        }
+    });
+    let workspace = test.workspace();
+    wait_until(WAIT, || workspace.read(|model| model.sidebar.shown()) == Some(1)).expect("the table listed");
+    let button = workspace.imp().refresh_tables_button.get();
+    assert_eq!(button.action_name().as_deref(), Some("win.refresh-tables"));
+    crate::test_support::assert_labelled(&button).expect("the refresh button is named");
+
+    button.emit_clicked();
+
+    wait_until(WAIT, || workspace.read(|model| model.sidebar.shown()) == Some(2)).expect("the new table listed");
+}
+
+#[gtk4::test]
+fn ddl_run_in_the_editor_reads_the_tables_again() {
+    use tablepro_core::EditorSession;
+    use tablepro_test_support::{FakeEditorSession, FakeRun, Replies};
+
+    let mut runs = Replies::default();
+    runs.always(FakeRun::completed(Vec::new()));
+    let editor_session: std::sync::Arc<dyn EditorSession> = std::sync::Arc::new(FakeEditorSession::new(runs));
+    let test = TestWindow::connected_with("SidebarEditorDdl", |script| {
+        script.open_editor_session.always(FakeReply::ok(editor_session));
+        script.list_objects.once(FakeReply::ok(vec![object("public", "users")]));
+        for _ in 0..3 {
+            script.list_objects.once(FakeReply::ok(vec![
+                object("public", "users"),
+                object("public", "orders"),
+            ]));
+        }
+    });
+    let workspace = test.workspace();
+    wait_until(WAIT, || workspace.read(|model| model.sidebar.shown()) == Some(1)).expect("the table listed");
+    workspace.with_model(|model| model.open_editor_tab(Some("CREATE TABLE orders (id int)".to_owned())));
+    let editor = crate::ui::session_window::tests::editors(&test.window)
+        .pop()
+        .expect("the editor tab");
+
+    editor.run();
+
+    wait_until(WAIT, || workspace.read(|model| model.sidebar.shown()) == Some(2))
+        .expect("the created table listed without a reconnect");
 }
 
 #[gtk4::test]
@@ -649,14 +712,14 @@ fn a_reconnect_names_tabs_by_its_schemas_when_the_list_fails() {
         .read(|model| model.context.active.get())
         .flatten()
         .expect("the session");
-    let toasts_before = toast_count(&workspace);
+    let banner = workspace.imp().catalog_banner.get();
 
     session.catalog().commit(
         vec![schema("public", true), schema("sales", false)],
         vec![object("public", "users")],
     );
 
-    wait_until(WAIT, || toast_count(&workspace) > toasts_before).expect("the list read to fail");
+    wait_until(WAIT, || banner.is_revealed()).expect("the list read to fail");
     wait_until(WAIT, || naming() == Some(TableNaming::SchemaQualified))
         .expect("the reconnect's schemas never named the tabs");
     assert_eq!(

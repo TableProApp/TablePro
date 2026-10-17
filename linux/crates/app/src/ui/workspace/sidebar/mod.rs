@@ -189,14 +189,41 @@ impl WorkspaceModel {
     /// first read.
     pub(super) fn on_catalog_changed(&mut self, snapshot: ObjectListSnapshot) {
         self.all_schemas_listed = true;
+        self.catalog_banner.set_revealed(false);
         self.read_sidebar(snapshot.objects);
     }
 
+    /// The list on screen stays, under a banner that says why it could
+    /// not be read again and stays until a read lands. The banner wraps
+    /// to three lines, so the whole reason is in its tooltip too.
     pub(super) fn on_catalog_read_failed(&self, message: &str) {
-        self.show_toast(&crate::i18n::gettext_f(
-            "Could not refresh the table list: {error}",
-            &[("error", message)],
-        ));
+        let title = crate::i18n::gettext_f("Could not refresh the table list: {error}", &[("error", message)]);
+        self.catalog_banner.set_title(&title);
+        self.catalog_banner.set_tooltip_text(Some(&title));
+        self.catalog_banner.set_revealed(true);
+    }
+
+    /// Read the session's tables again, and every table's columns on
+    /// their next ask: what changed the schema did not say which tables
+    /// it touched.
+    pub(super) fn refresh_catalog(&self) {
+        let Some(session) = self.context.active.get() else {
+            return;
+        };
+        session.invalidate_columns();
+        self.on_schema_changed(None, None);
+    }
+
+    /// A run that sent DDL, or a commit that may publish it, changes what
+    /// the sidebar and the completion list.
+    pub(super) fn on_editor_run_finished(&self, id: uuid::Uuid) {
+        let changed = matches!(
+            self.workspace_tabs.borrow().get(&id),
+            Some(super::WorkspaceTab::Editor(slot)) if slot.editor.last_run_changes_catalog()
+        );
+        if changed {
+            self.refresh_catalog();
+        }
     }
 
     /// A reconnect committed the default schema's list and its schemas,

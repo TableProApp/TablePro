@@ -187,6 +187,7 @@ crates/app/src/ui/credential_prompt/prompt_text.rs
 crates/app/src/ui/credential_prompt/prompter.rs
 crates/app/src/ui/delete_connection_dialog.rs
 crates/app/src/ui/editor/buffer_edit.rs
+crates/app/src/ui/editor/catalog_change.rs
 crates/app/src/ui/editor/completion/catalog_read.rs
 crates/app/src/ui/editor/completion/completion_scope.rs
 crates/app/src/ui/editor/completion/fuzzy.rs

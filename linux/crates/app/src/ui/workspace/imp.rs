@@ -34,9 +34,13 @@ pub struct Workspace {
     #[template_child]
     pub table_search_toggle: TemplateChild<gtk::ToggleButton>,
     #[template_child]
+    pub refresh_tables_button: TemplateChild<gtk::Button>,
+    #[template_child]
     pub table_search_bar: TemplateChild<gtk::SearchBar>,
     #[template_child]
     pub table_search: TemplateChild<gtk::SearchEntry>,
+    #[template_child]
+    pub catalog_banner: TemplateChild<adw::Banner>,
     #[template_child]
     pub sidebar_slot: TemplateChild<adw::Bin>,
     #[template_child]

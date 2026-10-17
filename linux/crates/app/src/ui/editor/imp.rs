@@ -51,6 +51,9 @@ pub struct SqlEditor {
     pub grid_sink: OnceCell<GridSink>,
     /// Whether the last run left a transaction open, as last reported.
     pub transaction_dirty: Cell<bool>,
+    /// Whether the run in flight, or the last one, can change what the
+    /// catalog lists.
+    pub changes_catalog: Cell<bool>,
     pub shut_down: Cell<bool>,
     /// Theme and font handlers on the app-wide style manager and
     /// settings, which would otherwise outlive the tab.

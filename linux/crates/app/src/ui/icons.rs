@@ -44,6 +44,7 @@ pub const VIEW_LIST: &str = "view-list-symbolic";
 pub const VIEW_MORE: &str = "view-more-symbolic";
 pub const VIEW_PAGED: &str = "view-paged-symbolic";
 pub const VIEW_PIN: &str = "view-pin-symbolic";
+pub const VIEW_REFRESH: &str = "view-refresh-symbolic";
 pub const VIEW_REVEAL: &str = "view-reveal-symbolic";
 pub const VIEW_SORT_ASCENDING: &str = "view-sort-ascending-symbolic";
 pub const WINDOW_CLOSE: &str = "window-close-symbolic";
@@ -98,6 +99,7 @@ pub const ALL: &[&str] = &[
     VIEW_MORE,
     VIEW_PAGED,
     VIEW_PIN,
+    VIEW_REFRESH,
     VIEW_REVEAL,
     VIEW_SORT_ASCENDING,
     WINDOW_CLOSE,

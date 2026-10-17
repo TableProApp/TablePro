@@ -3,6 +3,7 @@
 //! gets a line in the results list.
 
 mod buffer_edit;
+mod catalog_change;
 mod completion;
 mod editor_actions;
 mod editor_session_slot;
@@ -132,6 +133,12 @@ impl SqlEditor {
     /// Whether the tab's connection holds a transaction the user opened.
     pub fn has_open_transaction(&self) -> bool {
         self.imp().transaction_dirty.get()
+    }
+
+    /// Whether the last run sent a statement that can change what the
+    /// catalog lists, so the window reads it again once the run ends.
+    pub(crate) fn last_run_changes_catalog(&self) -> bool {
+        self.imp().changes_catalog.get()
     }
 
     /// Stop the running query. The results list says what ran before.
@@ -372,11 +379,17 @@ impl SqlEditor {
                 .line(),
         )
         .unwrap_or_default();
-        let (batches, policy, warnings) = plan_batches(&scoped, self.grammar(), base_line);
+        let grammar = self.grammar();
+        let (batches, policy, warnings) = plan_batches(&scoped, grammar, base_line);
         if batches.is_empty() {
             self.say(&crate::i18n::gettext("There is nothing to run."));
             return;
         }
+        imp.changes_catalog.set(
+            batches
+                .iter()
+                .any(|batch| catalog_change::changes_catalog(&batch.text, grammar)),
+        );
         let statements = batches.iter().map(|batch| UserSql::new(batch.text.as_str())).collect();
         let run = ScriptRun {
             batches,

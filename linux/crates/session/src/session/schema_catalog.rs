@@ -228,6 +228,13 @@ impl SchemaCatalog {
         }
     }
 
+    /// Something changed the schema without saying which tables: every
+    /// table's columns are read again on the next ask, and until then
+    /// the old ones stay.
+    pub fn invalidate_columns(&self) {
+        mark_all_stale(&mut self.lock().columns);
+    }
+
     /// The scope's object list now and after every change. Subscribing
     /// does not read anything; `objects` or `refresh_objects` does.
     pub fn subscribe(&self, scope: ObjectScope) -> watch::Receiver<ObjectListSnapshot> {
@@ -609,6 +616,30 @@ mod tests {
             ["id", "email"]
         );
         assert_eq!(CallCounters::get(&harness.connection.counters().fetch_columns), 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn invalidating_every_table_reads_each_again_on_its_next_ask() {
+        let mut script = ConnectionScript::default();
+        script
+            .fetch_columns
+            .when_sql_contains("users", FakeReply::ok(vec![column("id")]))
+            .when_sql_contains("orders", FakeReply::ok(vec![column("total")]));
+        let harness = harness(script);
+        let (users, orders) = (TableRef::unqualified("users"), TableRef::unqualified("orders"));
+        harness.catalog.columns(users.clone()).await.unwrap();
+        harness.catalog.columns(orders.clone()).await.unwrap();
+
+        harness.catalog.invalidate_columns();
+
+        assert_eq!(
+            names(&harness.catalog.cached_columns(&users).unwrap(), |c| &c.name),
+            ["id"],
+            "the invalidation emptied the list"
+        );
+        harness.catalog.columns(users).await.unwrap();
+        harness.catalog.columns(orders).await.unwrap();
+        assert_eq!(CallCounters::get(&harness.connection.counters().fetch_columns), 4);
     }
 
     #[tokio::test(start_paused = true)]

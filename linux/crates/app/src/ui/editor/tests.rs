@@ -125,6 +125,30 @@ fn selected_text_is_the_only_sql_sent() {
 }
 
 #[gtk4::test]
+fn only_a_run_that_sent_ddl_says_the_catalog_changed() {
+    let harness = editor_with(answering(), "SELECT 1;");
+    run_and_wait(&harness);
+    assert!(
+        !harness.editor.last_run_changes_catalog(),
+        "a SELECT changed the catalog"
+    );
+
+    harness
+        .editor
+        .buffer()
+        .set_text("SELECT 1;\nCREATE TABLE orders (id int);");
+    run_and_wait(&harness);
+    assert!(harness.editor.last_run_changes_catalog());
+
+    harness.editor.buffer().set_text("UPDATE orders SET id = 2;");
+    run_and_wait(&harness);
+    assert!(
+        !harness.editor.last_run_changes_catalog(),
+        "the last run's answer outlived it"
+    );
+}
+
+#[gtk4::test]
 fn run_at_cursor_selects_executed_statement() {
     let harness = editor_with(answering(), "SELECT 'tên';\nSELECT 2 FROM t;\nSELECT 3;");
     let buffer = harness.editor.buffer();

@@ -49,6 +49,11 @@ pub(super) fn describe_buttons(workspace: &Workspace) {
         None,
     );
     describe_icon_button(
+        &imp.refresh_tables_button.get(),
+        &crate::i18n::gettext("Refresh Tables"),
+        Some("win.refresh-tables"),
+    );
+    describe_icon_button(
         &imp.sidebar_toggle.get(),
         &crate::i18n::gettext("Show Sidebar"),
         Some("win.show-sidebar"),
