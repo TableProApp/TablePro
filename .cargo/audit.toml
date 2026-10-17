@@ -5,4 +5,8 @@
 ignore = [
     # No fixed release. rsa 0.10.0-rc.18 via russh, ssh-key, and sqlx-mysql.
     "RUSTSEC-2023-0071",
+    # zip extraction advisories: not reachable, see deny.toml and issue 1058.
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
 ]

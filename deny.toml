@@ -16,6 +16,14 @@ ignore = [
     # No fixed release. rsa 0.10.0-rc.18 via russh, ssh-key, and sqlx-mysql.
     # Local desktop use; remote timing against our RSA private-key path is limited.
     { id = "RUSTSEC-2023-0071", reason = "rsa Marvin Attack: no fixed upgrade; transitive via russh, ssh-key, and sqlx-mysql" },
+    # zip extraction advisories (fix needs zip >= 9.0.0). No fixed parent release:
+    # rust_xlsxwriter 0.99.1 (zip 8.6.0) only writes archives and has no extraction code;
+    # libduckdb-sys 1.10505.0 (zip 6.0.0) extracts only in its download-library build path,
+    # which the bundled feature does not use. Our own tests read XLSX with ZipArchive::new, never extract.
+    # Remove these when rust_xlsxwriter and duckdb move to zip >= 9.0.0. Tracked in issue 1058.
+    { id = "RUSTSEC-2026-0367", reason = "zip extract(): not called; parents write archives or extract only in an unused build path (issue 1058)" },
+    { id = "RUSTSEC-2026-0368", reason = "zip extract(): not called; parents write archives or extract only in an unused build path (issue 1058)" },
+    { id = "RUSTSEC-2026-0369", reason = "zip extract(): not called; parents write archives or extract only in an unused build path (issue 1058)" },
 ]
 
 [licenses]
