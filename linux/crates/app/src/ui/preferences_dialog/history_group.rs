@@ -187,7 +187,7 @@ impl HistoryGroup {
         let alert = adw::AlertDialog::new(
             Some(&crate::i18n::gettext("Clear All Query History?")),
             Some(&crate::i18n::gettext(
-                "This permanently deletes every saved query, including pinned ones.",
+                "This permanently deletes every history entry, including pinned ones. Saved queries are kept.",
             )),
         );
         alert.add_response("cancel", &crate::i18n::gettext("Cancel"));

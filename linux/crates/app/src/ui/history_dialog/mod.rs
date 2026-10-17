@@ -667,7 +667,7 @@ impl HistoryDialog {
         let alert = adw::AlertDialog::new(
             Some(&gettext("Clear All Query History?")),
             Some(&gettext(
-                "This permanently deletes every saved query, including pinned ones.",
+                "This permanently deletes every history entry, including pinned ones. Saved queries are kept.",
             )),
         );
         alert.add_response("cancel", &gettext("Cancel"));

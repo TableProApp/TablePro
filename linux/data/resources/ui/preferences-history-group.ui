@@ -27,7 +27,7 @@
     <child>
       <object class="AdwActionRow" id="clear_row">
         <property name="title" translatable="yes">Clear query history</property>
-        <property name="subtitle" translatable="yes">Removes every saved query, including pinned ones.</property>
+        <property name="subtitle" translatable="yes">Removes every history entry, including pinned ones. Saved queries are kept.</property>
         <child type="suffix">
           <!-- Flat, not destructive: GNOME colours the confirmation,
                not the trigger that opens it. The ellipsis says more

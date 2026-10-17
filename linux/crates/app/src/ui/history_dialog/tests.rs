@@ -699,6 +699,43 @@ fn deleting_a_row_already_gone_removes_it_without_undo() {
 }
 
 #[gtk4::test]
+fn clear_all_says_saved_queries_are_kept_and_keeps_them() {
+    use crate::workspace::{answer, visible_alert};
+    use tablepro_storage::saved_queries::NewSavedQuery;
+
+    let harness = Harness::new();
+    harness.record("SELECT 1");
+    let saved = harness.store.saved_queries();
+    block_on(
+        &harness.runtime,
+        saved.save(NewSavedQuery {
+            name: "daily".to_owned(),
+            query: "SELECT 1".to_owned(),
+            connection_id: Uuid::new_v4(),
+            connection_name: "local".to_owned(),
+        }),
+    )
+    .expect("a saved query");
+    let dialog = harness.presented_dialog();
+    wait_until(WAIT, || entries(&dialog).len() == 1).expect("the first page");
+
+    dialog.activate_action("history.clear-all", None).expect("the action");
+    wait_until(WAIT, || visible_alert(&harness.window).is_some()).expect("the confirmation");
+    let body = visible_alert(&harness.window)
+        .map(|alert| alert.body().to_string())
+        .unwrap_or_default();
+    assert_eq!(
+        body,
+        "This permanently deletes every history entry, including pinned ones. Saved queries are kept."
+    );
+    assert!(answer(&harness.window, "clear"));
+
+    wait_until(WAIT, || harness.stored_queries().is_empty()).expect("the history cleared");
+    let kept = block_on(&harness.runtime, saved.list(None)).expect("the saved queries");
+    assert_eq!(kept.len(), 1, "clearing the history took the saved queries too");
+}
+
+#[gtk4::test]
 fn undo_that_fails_says_so() {
     let harness = Harness::new();
     let gone = harness.record("SELECT gone");
