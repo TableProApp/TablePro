@@ -18,9 +18,11 @@ textview.sql-editor, textview.sql-editor text {
   background: color-mix(in srgb, var(--success-bg-color) 22%, transparent);
 }
 
+/* The full error colour: at 70% the text fell to about 3.5:1 on the
+   tint, under the 4.5:1 body text needs. */
 .tp-row-pending-delete {
   background: color-mix(in srgb, var(--error-bg-color) 16%, transparent);
-  color: color-mix(in srgb, var(--error-color) 70%, transparent);
+  color: var(--error-color);
   text-decoration: line-through;
 }
 
