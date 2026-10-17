@@ -93,18 +93,30 @@ struct SqliteConnection {
     session_options: Option<SqliteConnectOptions>,
 }
 
-// Catalog reads use the table-valued `pragma_*()` form. A bare PRAGMA
-// statement answers from the connection's cached schema and can miss a table
-// another pooled connection just created; a SELECT re-checks the schema when
-// it is prepared. `foreign_key_list.to` is NULL when a key references the
-// parent's primary key implicitly.
+// `foreign_key_list.to` is NULL when a key references the parent's primary key implicitly.
 impl SqliteConnection {
-    async fn primary_key_columns(&self, table: &str) -> Result<Vec<String>, DriverError> {
-        sqlx::query_scalar("SELECT name FROM pragma_table_info(?) WHERE pk > 0 ORDER BY pk")
-            .bind(table)
-            .fetch_all(&self.pool)
+    async fn primary_key_columns(
+        connection: &mut SqlxSqliteConnection,
+        table: &str,
+    ) -> Result<Vec<String>, DriverError> {
+        refresh_schema(connection, "main").await?;
+        let sql = format!("PRAGMA table_info({})", quote_ident(table));
+        let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .fetch_all(&mut *connection)
             .await
-            .map_err(map_sqlx_error)
+            .map_err(map_sqlx_error)?;
+        let mut columns = rows
+            .into_iter()
+            .filter_map(|row| {
+                let ordinal = row.try_get::<i64, _>(5).ok()?;
+                if ordinal == 0 {
+                    return None;
+                }
+                Some((ordinal, row.try_get::<String, _>(1).ok()?))
+            })
+            .collect::<Vec<_>>();
+        columns.sort_unstable_by_key(|(ordinal, _)| *ordinal);
+        Ok(columns.into_iter().map(|(_, name)| name).collect())
     }
 }
 
@@ -133,9 +145,11 @@ impl Connection for SqliteConnection {
         // to detect virtual / generated columns. Falls back to
         // table_info on older SQLite (< 3.37) — both have the same
         // first 6 columns: cid, name, type, notnull, dflt_value, pk.
-        let rows = sqlx::query("SELECT * FROM pragma_table_xinfo(?)")
-            .bind(table)
-            .fetch_all(&self.pool)
+        let mut connection = self.pool.acquire().await.map_err(map_sqlx_error)?;
+        refresh_schema(&mut connection, "main").await?;
+        let sql = format!("PRAGMA table_xinfo({})", quote_ident(table));
+        let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .fetch_all(&mut *connection)
             .await
             .map_err(map_sqlx_error)?;
 
@@ -153,7 +167,7 @@ impl Connection for SqliteConnection {
         let table_has_autoincrement =
             sqlx::query_scalar::<_, String>("SELECT name FROM sqlite_sequence WHERE name = ?")
                 .bind(table)
-                .fetch_optional(&self.pool)
+                .fetch_optional(&mut *connection)
                 .await
                 .ok()
                 .flatten()
@@ -320,9 +334,11 @@ impl Connection for SqliteConnection {
         // ordering. PK index doesn't always show up in index_list (a
         // bare INTEGER PRIMARY KEY uses the rowid alias, no real
         // index), so we synthesise one from table_info if missing.
-        let list = sqlx::query("SELECT * FROM pragma_index_list(?)")
-            .bind(table)
-            .fetch_all(&self.pool)
+        let mut connection = self.pool.acquire().await.map_err(map_sqlx_error)?;
+        refresh_schema(&mut connection, "main").await?;
+        let sql = format!("PRAGMA index_list({})", quote_ident(table));
+        let list = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .fetch_all(&mut *connection)
             .await
             .map_err(map_sqlx_error)?;
         let mut out: Vec<IndexInfo> = Vec::with_capacity(list.len());
@@ -335,9 +351,9 @@ impl Connection for SqliteConnection {
             if primary {
                 saw_primary = true;
             }
-            let info_rows = sqlx::query("SELECT * FROM pragma_index_info(?)")
-                .bind(&name)
-                .fetch_all(&self.pool)
+            let sql = format!("PRAGMA index_info({})", quote_ident(&name));
+            let info_rows = sqlx::query(sqlx::AssertSqlSafe(sql))
+                .fetch_all(&mut *connection)
                 .await
                 .map_err(map_sqlx_error)?;
             let columns: Vec<String> = info_rows
@@ -357,7 +373,7 @@ impl Connection for SqliteConnection {
             // Synthesise the implicit PK index from PRAGMA table_info
             // so the UI can render PK columns even when SQLite chose
             // the rowid-alias path.
-            let pk_cols = self.primary_key_columns(table).await?;
+            let pk_cols = Self::primary_key_columns(&mut connection, table).await?;
             if !pk_cols.is_empty() {
                 out.push(IndexInfo {
                     constraint: None,
@@ -378,9 +394,11 @@ impl Connection for SqliteConnection {
         // stored by SQLite, so we synthesise "fk_{table}_{id}" — stable
         // across re-runs of the same schema. Group by id and build
         // ForeignKeyInfo.
-        let rows = sqlx::query("SELECT * FROM pragma_foreign_key_list(?) ORDER BY id, seq")
-            .bind(table)
-            .fetch_all(&self.pool)
+        let mut connection = self.pool.acquire().await.map_err(map_sqlx_error)?;
+        refresh_schema(&mut connection, "main").await?;
+        let sql = format!("PRAGMA foreign_key_list({})", quote_ident(table));
+        let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .fetch_all(&mut *connection)
             .await
             .map_err(map_sqlx_error)?;
         let mut by_id: std::collections::BTreeMap<i64, ForeignKeyInfo> = std::collections::BTreeMap::new();
@@ -406,7 +424,7 @@ impl Connection for SqliteConnection {
         let mut keys: Vec<ForeignKeyInfo> = by_id.into_values().collect();
         for key in &mut keys {
             if key.ref_columns.iter().all(String::is_empty) {
-                key.ref_columns = self.primary_key_columns(&key.ref_table).await?;
+                key.ref_columns = Self::primary_key_columns(&mut connection, &key.ref_table).await?;
             }
         }
         Ok(keys)
@@ -658,10 +676,17 @@ fn table_factor_has_compound_output(table: &TableFactor) -> bool {
 }
 
 async fn attached_database_names(connection: &mut SqlxSqliteConnection) -> Option<Vec<String>> {
-    sqlx::query_scalar("SELECT name FROM pragma_database_list WHERE name <> 'main'")
+    refresh_schema(connection, "main").await.ok()?;
+    sqlx::query("PRAGMA database_list")
         .fetch_all(&mut *connection)
         .await
         .ok()
+        .map(|rows| {
+            rows.into_iter()
+                .filter_map(|row| row.try_get::<String, _>(1).ok())
+                .filter(|schema| schema != "main")
+                .collect()
+        })
 }
 
 async fn declared_table_columns(
@@ -669,16 +694,27 @@ async fn declared_table_columns(
     schema: &str,
     table: &str,
 ) -> HashMap<String, String> {
-    sqlx::query("SELECT name, type FROM pragma_table_xinfo(?, ?)")
-        .bind(table)
-        .bind(schema)
+    if refresh_schema(connection, schema).await.is_err() {
+        return HashMap::new();
+    }
+    let sql = format!("PRAGMA {}.table_xinfo({})", quote_ident(schema), quote_ident(table));
+    sqlx::query(sqlx::AssertSqlSafe(sql))
         .fetch_all(&mut *connection)
         .await
         .ok()
         .into_iter()
         .flatten()
-        .filter_map(|row| Some((row.try_get::<String, _>(0).ok()?, row.try_get::<String, _>(1).ok()?)))
+        .filter_map(|row| Some((row.try_get::<String, _>(1).ok()?, row.try_get::<String, _>(2).ok()?)))
         .collect()
+}
+
+async fn refresh_schema(connection: &mut SqlxSqliteConnection, schema: &str) -> Result<(), DriverError> {
+    let sql = format!("SELECT name FROM {}.sqlite_schema LIMIT 0", quote_ident(schema));
+    sqlx::query(sqlx::AssertSqlSafe(sql))
+        .fetch_all(&mut *connection)
+        .await
+        .map_err(map_sqlx_error)?;
+    Ok(())
 }
 
 fn extract_value(row: &SqliteRow, idx: usize) -> Value {
@@ -924,276 +960,4 @@ fn map_sqlx_error(err: sqlx::Error) -> DriverError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn structure_metadata_declarations_match_the_connection_impl() {
-        let d = SqliteDriver;
-        let source = include_str!("lib.rs");
-        assert!(d.supports_index_metadata());
-        assert!(d.supports_foreign_key_metadata());
-        assert!(source.contains(&["async fn ", "fetch_indexes("].concat()));
-        assert!(source.contains(&["async fn ", "fetch_foreign_keys("].concat()));
-    }
-    use tempfile::TempDir;
-
-    fn opts_for(path: &str) -> ConnectOptions {
-        ConnectOptions {
-            database: path.to_string(),
-            ..Default::default()
-        }
-    }
-
-    #[tokio::test]
-    async fn a_read_only_connection_cannot_write_even_when_sql_tries() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("ro.db");
-        let writer = SqliteDriver.connect(opts_for(path.to_str().unwrap())).await.unwrap();
-        writer
-            .execute("CREATE TABLE foo (id INTEGER PRIMARY KEY)")
-            .await
-            .unwrap();
-        writer.execute("INSERT INTO foo VALUES (1)").await.unwrap();
-        drop(writer);
-
-        let reader = SqliteDriver
-            .connect(ConnectOptions {
-                read_only: true,
-                ..opts_for(path.to_str().unwrap())
-            })
-            .await
-            .unwrap();
-        assert_eq!(reader.query("SELECT id FROM foo").await.unwrap().rows.len(), 1);
-        for sql in [
-            "INSERT INTO foo VALUES (2)",
-            "CREATE TABLE bar (id INTEGER)",
-            "DROP TABLE foo",
-            "PRAGMA query_only = OFF",
-        ] {
-            let outcome = reader.execute(sql).await;
-            let wrote = outcome.is_ok() && reader.query("SELECT id FROM foo").await.unwrap().rows.len() != 1;
-            assert!(!wrote, "{sql} must not change a read-only database");
-        }
-        assert_eq!(reader.query("SELECT id FROM foo").await.unwrap().rows.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn a_read_only_connection_does_not_create_a_missing_file() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("missing.db");
-        let outcome = SqliteDriver
-            .connect(ConnectOptions {
-                read_only: true,
-                ..opts_for(path.to_str().unwrap())
-            })
-            .await;
-        assert!(outcome.is_err());
-        assert!(!path.exists());
-    }
-
-    #[tokio::test]
-    async fn driver_metadata() {
-        let d = SqliteDriver;
-        assert_eq!(d.id(), "sqlite");
-        assert_eq!(d.display_name(), "SQLite");
-        assert_eq!(d.default_port(), 0);
-        assert_eq!(d.default_database(), "");
-        assert_eq!(d.default_username(), "");
-    }
-
-    #[tokio::test]
-    async fn an_expression_column_decodes_by_its_runtime_type() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("untyped.db");
-        let conn = SqliteDriver.connect(opts_for(path.to_str().unwrap())).await.unwrap();
-        conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, label TEXT)")
-            .await
-            .unwrap();
-        conn.execute("INSERT INTO t (label) VALUES ('a'), ('b')").await.unwrap();
-
-        let counted = conn.query("SELECT count(*) FROM t").await.unwrap();
-        assert_eq!(counted.rows, vec![vec![Value::Int(2)]]);
-
-        let mixed = conn
-            .query("SELECT 1, 2.5, 'text', NULL, group_concat(label), CAST('text blob' AS BLOB) FROM t")
-            .await
-            .unwrap();
-        assert_eq!(
-            mixed.rows,
-            vec![vec![
-                Value::Int(1),
-                Value::Float(2.5),
-                Value::Text("text".into()),
-                Value::Null,
-                Value::Text("a,b".into()),
-                Value::Bytes(b"text blob".to_vec()),
-            ]]
-        );
-        let blob_oracle = conn
-            .query("SELECT typeof(CAST('text blob' AS BLOB)), hex(CAST('text blob' AS BLOB))")
-            .await
-            .unwrap();
-        assert_eq!(
-            blob_oracle.rows,
-            vec![vec![
-                Value::Text("blob".into()),
-                Value::Text("7465787420626C6F62".into())
-            ]]
-        );
-    }
-
-    #[tokio::test]
-    async fn a_value_that_does_not_match_its_declared_column_type_keeps_its_text_instead_of_becoming_null() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("affinity.db");
-        let conn = SqliteDriver.connect(opts_for(path.to_str().unwrap())).await.unwrap();
-        conn.execute("CREATE TABLE t (v REAL)").await.unwrap();
-        // REAL/NUMERIC affinity only converts a string that looks
-        // numeric; this one doesn't, so SQLite keeps it stored as
-        // TEXT even though the column is declared REAL.
-        conn.execute("INSERT INTO t (v) VALUES ('not-a-number')").await.unwrap();
-        let result = conn.query("SELECT v FROM t").await.unwrap();
-        assert_eq!(result.rows, vec![vec![Value::Text("not-a-number".into())]]);
-    }
-
-    #[tokio::test]
-    async fn connect_create_and_list_tables() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("test.db");
-        let driver = SqliteDriver;
-        let conn = driver.connect(opts_for(path.to_str().unwrap())).await.unwrap();
-        conn.execute("CREATE TABLE foo (id INTEGER PRIMARY KEY, name TEXT)")
-            .await
-            .unwrap();
-        conn.execute("INSERT INTO foo (name) VALUES ('a'), ('b'), ('c')")
-            .await
-            .unwrap();
-        let tables = conn.list_tables().await.unwrap();
-        assert_eq!(tables.len(), 1);
-        assert_eq!(tables[0].name, "foo");
-        let cols = conn.fetch_columns(None, "foo").await.unwrap();
-        assert_eq!(cols.len(), 2);
-        assert_eq!(cols[0].name, "id");
-        assert!(cols[0].primary_key);
-        let result = conn.fetch_rows(None, "foo", 0, 100).await.unwrap();
-        assert_eq!(result.columns.len(), 2);
-        assert_eq!(result.rows.len(), 3);
-    }
-
-    #[tokio::test]
-    async fn fetch_rows_paginates() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("page.db");
-        let driver = SqliteDriver;
-        let conn = driver.connect(opts_for(path.to_str().unwrap())).await.unwrap();
-        conn.execute("CREATE TABLE n (i INTEGER)").await.unwrap();
-        for i in 1..=10 {
-            conn.execute(&format!("INSERT INTO n VALUES ({i})")).await.unwrap();
-        }
-        let page = conn.fetch_rows(None, "n", 5, 3).await.unwrap();
-        assert_eq!(page.rows.len(), 3);
-    }
-
-    #[test]
-    fn quote_ident_doubles_embedded_quotes() {
-        assert_eq!(quote_ident("users"), "\"users\"");
-        assert_eq!(quote_ident("My Table"), "\"My Table\"");
-        assert_eq!(
-            quote_ident("evil\"; DROP TABLE x; --"),
-            "\"evil\"\"; DROP TABLE x; --\""
-        );
-    }
-
-    #[tokio::test]
-    async fn fetch_rows_handles_table_with_embedded_quote() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("hostile.db");
-        let driver = SqliteDriver;
-        let conn = driver.connect(opts_for(path.to_str().unwrap())).await.unwrap();
-        conn.execute("CREATE TABLE \"weird\"\"name\" (i INTEGER)")
-            .await
-            .unwrap();
-        conn.execute("INSERT INTO \"weird\"\"name\" VALUES (1), (2)")
-            .await
-            .unwrap();
-        let result = conn.fetch_rows(None, "weird\"name", 0, 100).await.unwrap();
-        assert_eq!(result.rows.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn autoincrement_detected_via_sqlite_sequence() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("ai.db");
-        let driver = SqliteDriver;
-        let conn = driver.connect(opts_for(path.to_str().unwrap())).await.unwrap();
-        conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)")
-            .await
-            .unwrap();
-        // Insert at least one row so sqlite_sequence has an entry.
-        conn.execute("INSERT INTO t (name) VALUES ('a')").await.unwrap();
-        let cols = conn.fetch_columns(None, "t").await.unwrap();
-        assert!(cols[0].is_auto_increment, "AUTOINCREMENT id should be flagged");
-        assert!(!cols[1].is_auto_increment, "name column should not be flagged");
-    }
-
-    #[tokio::test]
-    async fn integer_primary_key_no_autoincrement_is_rowid_alias() {
-        // INTEGER PRIMARY KEY without AUTOINCREMENT is still a rowid
-        // alias and auto-fills on insert. Should be flagged.
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("rowid.db");
-        let driver = SqliteDriver;
-        let conn = driver.connect(opts_for(path.to_str().unwrap())).await.unwrap();
-        conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)")
-            .await
-            .unwrap();
-        let cols = conn.fetch_columns(None, "t").await.unwrap();
-        assert!(cols[0].is_auto_increment);
-    }
-
-    #[tokio::test]
-    async fn integer_primary_key_with_default_is_not_auto_increment() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("def.db");
-        let driver = SqliteDriver;
-        let conn = driver.connect(opts_for(path.to_str().unwrap())).await.unwrap();
-        conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY DEFAULT 0, name TEXT)")
-            .await
-            .unwrap();
-        let cols = conn.fetch_columns(None, "t").await.unwrap();
-        assert!(!cols[0].is_auto_increment);
-    }
-
-    #[tokio::test]
-    async fn composite_primary_key_no_auto_increment() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("composite.db");
-        let driver = SqliteDriver;
-        let conn = driver.connect(opts_for(path.to_str().unwrap())).await.unwrap();
-        conn.execute("CREATE TABLE t (a INTEGER, b TEXT, PRIMARY KEY(a, b))")
-            .await
-            .unwrap();
-        let cols = conn.fetch_columns(None, "t").await.unwrap();
-        // Both members are part of the PK but neither auto-increments.
-        assert!(!cols[0].is_auto_increment);
-        assert!(!cols[1].is_auto_increment);
-    }
-
-    #[tokio::test]
-    async fn column_named_autoincrement_substring_is_not_flagged() {
-        // Pre-fix bug: ddl_upper.contains("AUTOINCREMENT") would match
-        // a column named MYAUTOINCREMENT. Verify the canonical
-        // sqlite_sequence path doesn't fall for this.
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("substr.db");
-        let driver = SqliteDriver;
-        let conn = driver.connect(opts_for(path.to_str().unwrap())).await.unwrap();
-        conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, autoincrementflag INTEGER)")
-            .await
-            .unwrap();
-        let cols = conn.fetch_columns(None, "t").await.unwrap();
-        assert!(cols[0].is_auto_increment, "id is INTEGER PRIMARY KEY (rowid alias)");
-        assert!(!cols[1].is_auto_increment, "non-PK INTEGER must not be flagged");
-    }
-}
+mod tests;

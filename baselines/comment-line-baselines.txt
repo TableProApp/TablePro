@@ -139,7 +139,7 @@ crates/drivers/postgres/src/temporal.rs 1
 crates/drivers/redis/src/lib.rs 10
 crates/drivers/redis/src/tests.rs 2
 crates/drivers/sqlite/src/interrupt.rs 13
-crates/drivers/sqlite/src/lib.rs 73
+crates/drivers/sqlite/src/lib.rs 59
 crates/mcp/src/bridge.rs 15
 crates/mcp/src/lib.rs 7
 crates/mcp/src/server.rs 43

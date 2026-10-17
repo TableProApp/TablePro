@@ -731,6 +731,43 @@ async fn a_foreign_key_to_the_implicit_parent_key_names_the_primary_key_columns(
     assert_eq!(foreign_keys[0].ref_columns, vec!["b".to_string(), "a".to_string()]);
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn metadata_reads_survive_main_tables_named_like_pragma_functions() {
+    let directory = TempDir::new().expect("temp dir");
+    let connection = connect_file(&directory).await;
+    for sql in [
+        "CREATE TABLE parent (a INTEGER, b TEXT, PRIMARY KEY (b, a))",
+        "CREATE TABLE child (id INTEGER PRIMARY KEY, parent_a INTEGER, parent_b TEXT, FOREIGN KEY (parent_b, parent_a) REFERENCES parent(b, a))",
+        "CREATE INDEX child_parent_idx ON child(parent_a)",
+        "CREATE TABLE pragma_table_info (name TEXT)",
+        "CREATE TABLE pragma_table_xinfo (name TEXT)",
+        "CREATE TABLE pragma_index_list (name TEXT)",
+        "CREATE TABLE pragma_index_info (name TEXT)",
+        "CREATE TABLE pragma_foreign_key_list (name TEXT)",
+        "CREATE TABLE pragma_database_list (name TEXT)",
+    ] {
+        connection.execute(sql).await.expect("create fixture object");
+    }
+
+    let columns = connection.fetch_columns(None, "parent").await.expect("fetch columns");
+    assert_eq!(
+        columns.iter().map(|column| column.name.as_str()).collect::<Vec<_>>(),
+        ["a", "b"]
+    );
+    let indexes = connection.fetch_indexes(None, "child").await.expect("fetch indexes");
+    assert!(
+        indexes.iter().any(|index| index.name == "child_parent_idx"),
+        "{indexes:?}"
+    );
+    let foreign_keys = connection
+        .fetch_foreign_keys(None, "child")
+        .await
+        .expect("fetch foreign keys");
+    assert_eq!(foreign_keys.len(), 1, "{foreign_keys:?}");
+    assert_eq!(foreign_keys[0].columns, ["parent_b", "parent_a"]);
+    assert_eq!(foreign_keys[0].ref_columns, ["b", "a"]);
+}
+
 #[tokio::test]
 async fn sqlite_columns_report_no_comment() {
     let directory = TempDir::new().expect("temp dir");
