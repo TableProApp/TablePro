@@ -1,8 +1,3 @@
-//
-//  WelcomeViewModel+Rows.swift
-//  TablePro
-//
-
 import AppKit
 import TableProConnectionLibrary
 
@@ -38,8 +33,8 @@ extension WelcomeViewModel {
         let group = connection.groupId.flatMap { groupsById[$0] }
         let groupPath = group.map { groupGraph.pathNames(to: $0.id) } ?? []
         let typeId = connection.type.pluginTypeId
-        let isDriverRejected = services.pluginManager.rejectedPlugins.contains { rejected in
-            rejected.bundleId == typeId || rejected.registryId == typeId
+        let isDriverRejected = services.pluginManager.rejectedPlugins.contains {
+            $0.providedDatabaseTypeIds.contains(typeId)
         }
         return WelcomeRowPresentation.savedConnection(
             connection,

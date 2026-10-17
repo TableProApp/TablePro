@@ -79,6 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changes to a theme file made outside TablePro not shown until Settings > Appearance was opened.
 - Theme files with a JSON syntax error reported without the line and column.
 - Two themes with the same name impossible to tell apart in the theme pickers.
+- No warning on a connection in the Welcome window whose driver plugin failed to load or is out of date.
 
 ## [0.81.0] - 2026-10-16
 

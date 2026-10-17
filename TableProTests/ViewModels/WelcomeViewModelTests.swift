@@ -56,10 +56,11 @@ final class WelcomeViewModelTests {
 
     private func makeViewModel(
         importableAppDetector: @escaping @MainActor () -> Bool = { false },
-        isUITestSandbox: Bool = false
+        isUITestSandbox: Bool = false,
+        pluginManager: PluginManager = AppServices.live.pluginManager
     ) -> WelcomeViewModel {
         WelcomeViewModel(
-            services: makeServices(),
+            services: makeServices(pluginManager: pluginManager),
             importableAppDetector: importableAppDetector,
             groupExpansionStore: WelcomeGroupExpansionStore(defaults: defaults),
             recentConnections: recents,
@@ -72,7 +73,7 @@ final class WelcomeViewModelTests {
         try? FileManager.default.removeItem(at: connectionFileURL.deletingLastPathComponent())
     }
 
-    private func makeServices() -> AppServices {
+    private func makeServices(pluginManager: PluginManager) -> AppServices {
         let live = AppServices.live
         return AppServices(
             appEvents: live.appEvents,
@@ -80,7 +81,7 @@ final class WelcomeViewModelTests {
             appSettingsStorage: AppSettingsStorage(userDefaults: defaults),
             connectionStorage: connectionStorage,
             databaseManager: live.databaseManager,
-            pluginManager: live.pluginManager,
+            pluginManager: pluginManager,
             schemaService: live.schemaService,
             schemaRefreshService: live.schemaRefreshService,
             schemaProviderRegistry: live.schemaProviderRegistry,
@@ -774,6 +775,42 @@ final class WelcomeViewModelTests {
         #expect(viewModel.connections.map(\.id) == [connection.id], "A connection that could not be persisted as deleted must not disappear from the list")
         #expect(viewModel.connectionsToDelete.isEmpty)
         #expect(viewModel.libraryErrorMessage != nil, "A refused delete must say so")
+    }
+
+    // MARK: - Driver Plugins
+
+    @Test func testARejectedPluginFlagsEveryConnectionOfTheTypesItProvides() {
+        let pluginManager = PluginManager(
+            userDefaults: defaults,
+            builtInPluginsURL: nil,
+            userPluginsDir: connectionFileURL.deletingLastPathComponent().appendingPathComponent("Plugins")
+        )
+        pluginManager.rejectedPlugins = [RejectedPlugin(
+            url: URL(fileURLWithPath: "/tmp/CassandraDriver.tableplugin"),
+            bundleId: "com.TablePro.CassandraDriver",
+            registryId: "com.TablePro.CassandraDriver",
+            name: "Cassandra Driver",
+            reason: "Built for an older PluginKit",
+            isOutdated: true,
+            providedDatabaseTypeIds: ["Cassandra", "ScyllaDB"]
+        )]
+        let welcome = makeViewModel(pluginManager: pluginManager)
+        let cassandra = DatabaseConnection(name: "Ring", type: .cassandra, sortOrder: 0)
+        let scylla = DatabaseConnection(name: "Scylla", type: .scylladb, sortOrder: 1)
+        let mysql = DatabaseConnection(name: "Shop", type: .mysql, sortOrder: 2)
+        save([cassandra, scylla, mysql])
+
+        welcome.loadConnections()
+
+        func isDriverRejected(_ connection: DatabaseConnection) -> Bool? {
+            guard case .connection(let row) = welcome.rowModel(for: .connection(connection.id, section: .connections)) else {
+                return nil
+            }
+            return row.isDriverRejected
+        }
+        #expect(isDriverRejected(cassandra) == true)
+        #expect(isDriverRejected(scylla) == true)
+        #expect(isDriverRejected(mysql) == false)
     }
 
     // MARK: - Shared Connections
