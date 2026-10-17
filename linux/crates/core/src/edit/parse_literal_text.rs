@@ -95,9 +95,9 @@ fn strict(input: &str, column: &ColumnType, purpose: Purpose) -> Result<Value, E
         ColumnKind::Date => parse_date(trimmed),
         ColumnKind::Time { with_offset: true, .. } => parse_time_with_offset(trimmed),
         ColumnKind::Time {
-            range: TimeRange::Duration,
+            range: range @ (TimeRange::Duration | TimeRange::LongDuration),
             ..
-        } => parse_duration(trimmed),
+        } => parse_duration(trimmed, *range),
         ColumnKind::Time { .. } => parse_time(trimmed),
         ColumnKind::Timestamp {
             zone: TemporalZone::Offset,
@@ -250,13 +250,17 @@ fn parse_time(input: &str) -> Result<Value, EditParseError> {
     Err(EditParseError::InvalidTime)
 }
 
-/// MySQL TIME, which measures an amount of time and so runs past 24
-/// hours and below zero.
-fn parse_duration(input: &str) -> Result<Value, EditParseError> {
-    input.parse::<SqlTime>().map(Value::Time).map_err(|error| match error {
+/// MySQL TIME or ClickHouse Time, which measure an amount of time and so
+/// run past 24 hours and below zero, each to its own bound.
+fn parse_duration(input: &str, range: TimeRange) -> Result<Value, EditParseError> {
+    let time = input.parse::<SqlTime>().map_err(|error| match error {
         TimeRangeError::OutOfRange => EditParseError::TimeOutOfRange,
         TimeRangeError::InvalidComponent | TimeRangeError::InvalidSyntax => EditParseError::InvalidTime,
-    })
+    })?;
+    match range.holds(&time) {
+        true => Ok(Value::Time(time)),
+        false => Err(EditParseError::TimeOutOfRange),
+    }
 }
 
 fn parse_timestamp(input: &str) -> Result<Value, EditParseError> {
@@ -745,6 +749,9 @@ mod tests {
             Err(EditParseError::TimeOutOfRange)
         );
         assert_eq!(parse(duration, "noon"), Err(EditParseError::InvalidTime));
+        let long = time(false, TimeRange::LongDuration);
+        assert!(matches!(parse(long.clone(), "-999:59:59"), Ok(Value::Time(_))));
+        assert_eq!(parse(long, "1000:00:00"), Err(EditParseError::TimeOutOfRange));
         assert_eq!(
             parse(time(false, TimeRange::TimeOfDay), "25:00:00"),
             Err(EditParseError::InvalidTime)

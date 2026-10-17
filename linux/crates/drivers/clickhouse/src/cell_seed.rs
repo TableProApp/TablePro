@@ -406,6 +406,10 @@ mod tests {
             read(&CellPlan::Time, b"\"-100:00:01.5\""),
             Value::Time(SqlTime::new(true, 100, 0, 1, 500_000_000).expect("a time"))
         );
+        assert_eq!(
+            read(&CellPlan::Time, b"\"-999:59:59.999\""),
+            Value::Time(SqlTime::new(true, 999, 59, 59, 999_000_000).expect("the longest ClickHouse time"))
+        );
         assert!(matches!(read(&CellPlan::Date, b"\"not a date\""), Value::Other(_)));
     }
 

@@ -146,12 +146,12 @@ fn kind_of(node: &DataTypeNode) -> ColumnKind {
         DataTypeNode::Time => ColumnKind::Time {
             fractional_digits: Some(0),
             with_offset: false,
-            range: TimeRange::Duration,
+            range: TimeRange::LongDuration,
         },
         DataTypeNode::Time64(precision) => ColumnKind::Time {
             fractional_digits: Some(digits(precision)),
             with_offset: false,
-            range: TimeRange::Duration,
+            range: TimeRange::LongDuration,
         },
         DataTypeNode::IPv4 => ColumnKind::Network(NetworkFamily::Ipv4),
         DataTypeNode::IPv6 => ColumnKind::Network(NetworkFamily::Ipv6),
