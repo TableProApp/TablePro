@@ -159,9 +159,7 @@ impl PagerBar {
     /// total enables.
     pub(super) fn show_total(&self, pager: &BrowsePager, shown: Option<&PageState>, total: &RowTotal) {
         let imp = self.imp();
-        let label = shown
-            .map(|page| page_range_label(page.start_ordinal, page.row_count, total))
-            .unwrap_or_default();
+        let label = shown.map(|page| page_range_label(page, total)).unwrap_or_default();
         imp.paginator_label.set_label(&label);
         imp.last_button.set_sensitive(pager.last(total).is_some());
         let last_tooltip = match total.exact() {
@@ -248,6 +246,7 @@ mod tests {
             result_columns: Arc::from([]),
             row_count,
             start_ordinal,
+            filtered: false,
         }
     }
 

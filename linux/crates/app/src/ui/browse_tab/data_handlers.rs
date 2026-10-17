@@ -171,6 +171,7 @@ impl BrowseModel {
             result_columns,
             row_count,
             start_ordinal: offset,
+            filtered: !self.current_filter.is_empty(),
         });
         self.shown_view = Some(self.page_view());
         self.show_page(objects, fx);
