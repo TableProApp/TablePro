@@ -900,7 +900,7 @@ fn renaming_existing_column_enables_save_and_previews_rename() {
 
     assert_eq!(harness.column_names(), ["id", "points"]);
     assert!(imp.save_button.is_sensitive(), "a rename left Save off");
-    assert_eq!(imp.pending_label.label(), "1 pending change");
+    assert_eq!(imp.pending_label.label(), "1 unsaved change");
     assert_eq!(
         preview(harness.tab()),
         "ALTER TABLE \"users\" RENAME COLUMN \"score\" TO \"points\";"
@@ -1224,7 +1224,7 @@ fn discard_restores_without_phantom_ops() {
     entry(tab, 1, "col-name").set_text("points");
     entry(tab, 0, "col-comment").set_text("key");
     tab.send(ColumnsInput::AddColumn);
-    assert_eq!(imp.pending_label.label(), "3 pending changes");
+    assert_eq!(imp.pending_label.label(), "3 unsaved changes");
 
     imp.discard_button.emit_clicked();
     answer_discard(&window, "discard");
@@ -1239,7 +1239,7 @@ fn discard_restores_without_phantom_ops() {
     entry(tab, 1, "col-name").set_text("points");
 
     assert_eq!(harness.column_names(), ["id", "points"]);
-    assert_eq!(imp.pending_label.label(), "1 pending change");
+    assert_eq!(imp.pending_label.label(), "1 unsaved change");
 }
 
 /// Discard drops the undo history with the changes, so it asks first,
@@ -1255,7 +1255,7 @@ fn a_discard_not_confirmed_keeps_every_change() {
     answer_discard(&window, "cancel");
 
     assert_eq!(harness.column_names(), ["id", "points"]);
-    assert_eq!(imp.pending_label.label(), "1 pending change");
+    assert_eq!(imp.pending_label.label(), "1 unsaved change");
 }
 
 /// Answer the alert Discard opens.

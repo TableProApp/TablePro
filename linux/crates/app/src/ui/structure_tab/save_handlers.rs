@@ -204,8 +204,8 @@ impl StructureModel {
         self.widgets.discard_button.set_sensitive(has_pending);
         if has_pending {
             let label = crate::i18n::ngettext_f(
-                "{n} pending change",
-                "{n} pending changes",
+                "{n} unsaved change",
+                "{n} unsaved changes",
                 u32::try_from(pending_count).unwrap_or(u32::MAX),
                 &[("n", &pending_count.to_string())],
             );
