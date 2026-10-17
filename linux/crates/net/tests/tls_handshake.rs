@@ -315,6 +315,25 @@ fn client_identity_pem_requires_both_files() {
 }
 
 #[test]
+fn a_key_that_is_not_the_certificates_is_a_client_identity_error() {
+    let pki = pki("client").unwrap();
+    let certificate = pki.dir.path().join("client.pem");
+    let key = pki.dir.path().join("other.key");
+    std::fs::write(&certificate, pem_of(&pki.server_chain[0]).unwrap()).unwrap();
+    let other_key = KeyPair::generate().unwrap();
+    std::fs::write(&key, pem_label("PRIVATE KEY", &other_key.serialize_der()).unwrap()).unwrap();
+    let tls = TlsConfig {
+        client_identity: Some(ClientIdentity { certificate, key }),
+        ..TlsConfig::verify_full()
+    };
+
+    assert!(matches!(
+        build_client_config(&tls),
+        Err(TlsSetupError::ClientIdentity(_))
+    ));
+}
+
+#[test]
 fn check_pem_files_reports_problem_per_file() {
     let pki = pki("client").unwrap();
     let certificate = pki.dir.path().join("client.pem");

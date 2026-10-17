@@ -31,7 +31,9 @@ pub fn build_client_config(tls: &TlsConfig) -> Result<Option<Arc<ClientConfig>>,
     let config = match &tls.client_identity {
         Some(identity) => {
             let files = read_identity(identity)?;
-            builder.with_client_auth_cert(files.certificates, files.key)?
+            builder
+                .with_client_auth_cert(files.certificates, files.key)
+                .map_err(TlsSetupError::ClientIdentity)?
         }
         None => builder.with_no_client_auth(),
     };
