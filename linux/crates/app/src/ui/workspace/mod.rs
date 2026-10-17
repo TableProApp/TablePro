@@ -10,6 +10,7 @@ mod finished_work;
 mod health_banner;
 mod imp;
 mod import;
+mod import_ledger;
 mod row_ops;
 mod saves;
 mod session_watches;
@@ -149,6 +150,8 @@ pub(crate) struct WorkspaceModel {
     close_guards: Rc<CloseGuards>,
     /// The exports running from this workspace's grids.
     exports: Rc<ExportLedger>,
+    /// The CSV imports running into this workspace's tables.
+    imports: Rc<import_ledger::ImportLedger>,
     /// Whether the window was last told there is something to lose.
     reported_dirty: Cell<Option<bool>>,
     history_dialog: Option<HistoryDialog>,
@@ -501,6 +504,10 @@ impl Workspace {
         );
         let persistence = workspace_persistence::WorkspacePersistence::new(storage.workspaces().clone());
         let exports = workspace.export_ledger(&window, &tasks, &context, &input);
+        let imports = import_ledger::ImportLedger::new(
+            context.hold.clone(),
+            WindowInhibitor::new(ApplicationInhibit::new(&window)),
+        );
         let sidebar = sidebar::build(&workspace, &input, sidebar::SidebarAffordances::for_session(&session));
         let WorkspaceTabParts {
             tab_view,
@@ -560,6 +567,7 @@ impl Workspace {
             workspace_handle,
             close_guards,
             exports: exports.clone(),
+            imports: imports.clone(),
             reported_dirty: Cell::new(None),
             history_dialog: None,
             saved_queries_dialog: None,
@@ -573,6 +581,7 @@ impl Workspace {
         };
         imp.model.replace(Some(model));
         workspace.register_close_blocker(exports);
+        workspace.register_close_blocker(imports);
         workspace
     }
 
@@ -897,6 +906,7 @@ impl WorkspaceModel {
         // The close asked about them already; one started since has no
         // window left to finish in.
         self.exports.shut_down();
+        self.imports.shut_down();
         self.context.active.take();
     }
 

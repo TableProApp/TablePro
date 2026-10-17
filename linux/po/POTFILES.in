@@ -439,6 +439,7 @@ crates/app/src/ui/workspace/finished_work.rs
 crates/app/src/ui/workspace/health_banner.rs
 crates/app/src/ui/workspace/imp.rs
 crates/app/src/ui/workspace/import.rs
+crates/app/src/ui/workspace/import_ledger.rs
 crates/app/src/ui/workspace/mod.rs
 crates/app/src/ui/workspace/row_ops.rs
 crates/app/src/ui/workspace/saves.rs

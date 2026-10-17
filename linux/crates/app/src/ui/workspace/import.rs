@@ -150,6 +150,9 @@ impl WorkspaceModel {
             self.show_toast(&crate::i18n::gettext("Connect to a database first."));
             return;
         };
+        let Some(ticket) = self.imports.begin() else {
+            return;
+        };
         let history = Some(self.history.clone());
         let connection = self.context.active.metadata();
         let tasks = self.context.tasks.clone();
@@ -157,37 +160,41 @@ impl WorkspaceModel {
             session,
             dialect,
             import,
-            cancel: CancellationToken::new(),
+            cancel: ticket.cancel.clone(),
             tasks: tasks.clone(),
             history,
             connection,
         });
+        let imports = self.imports.clone();
         let input = self.input.clone();
-        let _delivery = crate::runtime::spawn_and_deliver(&tasks, work, move |finished| match finished {
-            Ok(Ok(rows)) => {
-                input.deliver(WorkspaceInput::RefreshPage);
-                input.deliver(WorkspaceInput::ShowToast(crate::i18n::ngettext_f(
-                    "Imported {n} row.",
-                    "Imported {n} rows.",
-                    u32::try_from(rows).unwrap_or(u32::MAX),
-                    &[("n", &rows.to_string())],
-                )));
+        let _delivery = crate::runtime::spawn_and_deliver(&tasks, work, move |finished| {
+            imports.settle(ticket.id);
+            match finished {
+                Ok(Ok(rows)) => {
+                    input.deliver(WorkspaceInput::RefreshPage);
+                    input.deliver(WorkspaceInput::ShowToast(crate::i18n::ngettext_f(
+                        "Imported {n} row.",
+                        "Imported {n} rows.",
+                        u32::try_from(rows).unwrap_or(u32::MAX),
+                        &[("n", &rows.to_string())],
+                    )));
+                }
+                Ok(Err(ImportEnd::Empty)) => input.deliver(WorkspaceInput::ShowToast(crate::i18n::gettext(
+                    "That file has no rows to import.",
+                ))),
+                Ok(Err(ImportEnd::Stopped)) => {
+                    input.deliver(WorkspaceInput::RefreshPage);
+                    input.deliver(WorkspaceInput::ShowToast(crate::i18n::gettext("Import stopped.")));
+                }
+                Ok(Err(ImportEnd::Failed(message))) => input.deliver(WorkspaceInput::ShowAlert {
+                    title: crate::i18n::gettext("Couldn't Import"),
+                    body: message,
+                }),
+                Err(failure) => input.deliver(WorkspaceInput::ShowAlert {
+                    title: crate::i18n::gettext("Couldn't Import"),
+                    body: crate::ui::error_text::task_failure_message(&failure),
+                }),
             }
-            Ok(Err(ImportEnd::Empty)) => input.deliver(WorkspaceInput::ShowToast(crate::i18n::gettext(
-                "That file has no rows to import.",
-            ))),
-            Ok(Err(ImportEnd::Stopped)) => {
-                input.deliver(WorkspaceInput::RefreshPage);
-                input.deliver(WorkspaceInput::ShowToast(crate::i18n::gettext("Import stopped.")));
-            }
-            Ok(Err(ImportEnd::Failed(message))) => input.deliver(WorkspaceInput::ShowAlert {
-                title: crate::i18n::gettext("Couldn't Import"),
-                body: message,
-            }),
-            Err(failure) => input.deliver(WorkspaceInput::ShowAlert {
-                title: crate::i18n::gettext("Couldn't Import"),
-                body: crate::ui::error_text::task_failure_message(&failure),
-            }),
         });
     }
 }
