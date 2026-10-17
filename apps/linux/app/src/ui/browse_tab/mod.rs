@@ -200,6 +200,10 @@ pub(crate) use value_parse::mysql_enum_set_labels;
 use value_parse::*;
 
 impl BrowseTab {
+    pub(super) fn save_in_flight(&self) -> bool {
+        self.save_in_flight.get()
+    }
+
     pub fn snapshot(&self) -> Option<QueryResult> {
         let mut result = self.current_result.as_deref()?.clone();
         if self.current_projection.is_some() {

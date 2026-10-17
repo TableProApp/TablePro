@@ -108,6 +108,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - PostgreSQL databases can be backed up to a file and restored from one with the installed client tools, through SSH tunnels and TLS; restores need approval and both are audited.
 
 ### Changed
+- Refreshing a table waits until its pending save finishes, so a failed save does not lose edits.
 - An unresolved write outcome blocks governed writes only on its saved connection; a journal failure or unresolved process-wide operation still blocks writes everywhere.
 - A write refused because another write is still in flight no longer disables later writes on that connection; unresolved outcomes remain fail-closed.
 - The MCP token dialog reports whether the one-time token was saved in the system keyring and explains what to do if it was not.

@@ -636,10 +636,23 @@ impl App {
         let Some(id) = self.selected_browse_tab_id() else {
             return;
         };
+        let save_in_flight = self
+            .workspace_tabs
+            .borrow()
+            .get(&id)
+            .and_then(|tab| tab.browse_controller())
+            .is_some_and(|controller| controller.model().save_in_flight());
         let dirty = crate::services::change_tracker::with_tab_ref(id, |tr| tr.has_pending()).unwrap_or(false);
-        if !dirty {
-            self.dispatch_to_tab(id, BrowseTabInput::Refresh);
-            return;
+        match refresh_decision(dirty, save_in_flight) {
+            RefreshDecision::Refresh => {
+                self.dispatch_to_tab(id, BrowseTabInput::Refresh);
+                return;
+            }
+            RefreshDecision::ConfirmDiscard => {}
+            RefreshDecision::SaveInFlight => {
+                self.show_toast(&crate::tr!("Saving changes. Refresh after the save finishes."));
+                return;
+            }
         }
         let dialog = adw::AlertDialog::new(
             Some(&crate::tr!("Discard pending changes?")),
@@ -663,6 +676,24 @@ impl App {
             }
         });
         dialog.present(Some(&self.window));
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum RefreshDecision {
+    Refresh,
+    ConfirmDiscard,
+    SaveInFlight,
+}
+
+fn refresh_decision(dirty: bool, save_in_flight: bool) -> RefreshDecision {
+    if save_in_flight {
+        return RefreshDecision::SaveInFlight;
+    }
+    if dirty {
+        RefreshDecision::ConfirmDiscard
+    } else {
+        RefreshDecision::Refresh
     }
 }
 
@@ -753,7 +784,10 @@ fn page_fetcher_factory(
 
 #[cfg(test)]
 mod tests {
-    use super::{browse_cell_value_query, columns_read_is_current, row_count_from_result, single_cell_value};
+    use super::{
+        RefreshDecision, browse_cell_value_query, columns_read_is_current, refresh_decision, row_count_from_result,
+        single_cell_value,
+    };
     use crate::services::read_scopes::{ReadScope, ReadScopes};
     use tablepro_core::{ColumnInfo, QueryResult, Value};
     use uuid::Uuid;
@@ -767,6 +801,22 @@ mod tests {
 
         assert!(!columns_read_is_current(&old));
         assert!(columns_read_is_current(&current));
+    }
+
+    #[test]
+    fn refresh_without_pending_edits_runs_immediately() {
+        assert_eq!(refresh_decision(false, false), RefreshDecision::Refresh);
+    }
+
+    #[test]
+    fn a_dirty_refresh_can_be_confirmed_after_the_save_finishes() {
+        assert_eq!(refresh_decision(true, false), RefreshDecision::ConfirmDiscard);
+    }
+
+    #[test]
+    fn refresh_is_blocked_while_a_save_is_in_flight() {
+        assert_eq!(refresh_decision(true, true), RefreshDecision::SaveInFlight);
+        assert_eq!(refresh_decision(false, true), RefreshDecision::SaveInFlight);
     }
 
     fn scalar_result(row: Option<Value>) -> QueryResult {
