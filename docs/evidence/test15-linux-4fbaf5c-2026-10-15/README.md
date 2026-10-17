@@ -1,8 +1,8 @@
 # TEST-15 current Linux recheck
 
-Source: `4fbaf5c92ee8efab1194a11c147ab35a6e70ac86` (`fork/linux`).
+Source commit: `4fbaf5c92ee8efab1194a11c147ab35a6e70ac86`.
 
-Environment: Rust and Cargo 1.98.1, Docker Engine 29.7.2. The six selectors ran serially with `CARGO_TARGET_DIR=/home/trung/Projects/tablepro/target`.
+Environment: Rust and Cargo 1.98.1, Docker Engine 29.7.2. The six selectors ran serially with the workspace build cache.
 
 | Engine | Selector | Result |
 | --- | --- | --- |
