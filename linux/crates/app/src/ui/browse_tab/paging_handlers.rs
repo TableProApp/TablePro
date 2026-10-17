@@ -4,7 +4,7 @@ use tablepro_core::FilterSet;
 use super::browse_pager::PageTarget;
 use super::columns_fetch::ColumnFreshness;
 use super::fetch::filter_failure;
-use super::{BrowseModel, BrowseRequestKind, BrowseTabOutput, Effects, PagingInput};
+use super::{BrowseModel, BrowseRequestKind, BrowseTabOutput, Effects, PagingInput, RowTotal};
 
 impl BrowseModel {
     pub(super) fn on_paging(&mut self, input: PagingInput, fx: &mut Effects) {
@@ -76,7 +76,9 @@ impl BrowseModel {
 
     fn count_rows(&mut self, fx: &mut Effects) {
         if let Some(problem) = self.filter_problem() {
-            fx.output(BrowseTabOutput::ShowToast(filter_failure(problem).message()));
+            let reason = filter_failure(problem).message();
+            let estimate = self.total.estimate();
+            self.set_total(RowTotal::Unavailable { estimate, reason }, fx);
             return;
         }
         if self.total.exact().is_none() && !self.sequencer.is_pending(BrowseRequestKind::Count) {

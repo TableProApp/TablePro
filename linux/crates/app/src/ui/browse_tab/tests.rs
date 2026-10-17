@@ -655,11 +655,23 @@ fn a_refresh_under_a_filter_that_no_longer_fits_keeps_the_rows() {
     let harness = Harness::open_filtered(script, [], not_null_name());
     wait_until(WAIT, || harness.shown() == text(&["kept"])).expect("the first page");
     let toasts = toasts(harness.tab());
+    let banner = {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+        harness.tab().imp().stale_banner.get()
+    };
 
     harness.tab().send(PagingInput::FilterApplied(not_null("nickname")));
     harness.tab().send(PagingInput::Refresh);
-    wait_until(WAIT, || toasts.borrow().len() == 2).expect("the filter that does not fit was not reported");
+    wait_until(WAIT, || banner.is_revealed()).expect("the filter that does not fit was not reported");
+    drain_main_context();
 
+    let reason = banner.tooltip_text().map(|text| text.to_string()).unwrap_or_default();
+    assert!(reason.starts_with("This filter cannot be applied"), "{reason}");
+    assert!(
+        toasts.borrow().is_empty(),
+        "a toast that fades said it: {:?}",
+        toasts.borrow()
+    );
     assert_eq!(harness.shown(), text(&["kept"]));
     assert_eq!(harness.visible_page().as_deref(), Some("grid"));
 }

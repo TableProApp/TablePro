@@ -8,9 +8,7 @@ use tablepro_core::{BuildFilterError, ColumnInfo, FilterSet};
 use tablepro_session::{OperationError, OperationKind};
 
 use super::columns_fetch::{ColumnFreshness, load_columns};
-use super::{
-    BrowseCommand, BrowseModel, BrowseRequestKind, BrowseTabOutput, ColumnsReply, DataInput, Effects, PageReply,
-};
+use super::{BrowseCommand, BrowseModel, BrowseRequestKind, ColumnsReply, DataInput, Effects, PageReply};
 use crate::runtime::{RequestTicket, Stamped};
 use crate::ui::export::TableExport;
 use crate::ui::tab_load::LoadFailure;
@@ -199,20 +197,14 @@ impl BrowseModel {
     }
 
     /// A filter the dialect cannot write is the user's to fix, and no
-    /// page is read under it. Rows already on screen stay with a toast,
-    /// and a page still on its way under the old filter is stopped;
-    /// without rows, the error page says why rather than a spinner that
-    /// nothing will replace.
+    /// page is read under it. A page still on its way under the old
+    /// filter is stopped. The failure stays on screen until a read
+    /// lands: on the banner over rows already shown, or on the error
+    /// page when there are none.
     fn on_filter_problem(&mut self, problem: BuildFilterError, fx: &mut Effects) {
-        let failure = filter_failure(problem);
-        if !self.load.has_content() {
-            self.on_load_failed(failure, fx);
-            return;
-        }
         self.sequencer.cancel(BrowseRequestKind::Page);
-        fx.output(BrowseTabOutput::ShowToast(failure.message()));
-        let presentation = self.load.abandon();
-        self.present(presentation, fx);
+        self.load.abandon();
+        self.on_load_failed(filter_failure(problem), fx);
     }
 }
 
