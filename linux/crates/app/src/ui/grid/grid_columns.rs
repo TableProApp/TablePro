@@ -65,14 +65,23 @@ impl GridColumns {
         });
     }
 
-    /// Measure every column against the rows `store` holds now.
-    pub(super) fn measure(&self, store: &gio::ListStore) {
-        let rows: Vec<RowObject> = (0..store.n_items())
+    /// Measure the rows a change to `store` brought in. A change that
+    /// replaced every row, a new page, measures from scratch; adding or
+    /// removing a draft, which has no cells, measures nothing.
+    pub(super) fn measure_change(&self, store: &gio::ListStore, position: u32, added: u32) {
+        let replaced_all = position == 0 && store.n_items() == added;
+        if !replaced_all && added == 0 {
+            return;
+        }
+        let rows: Vec<RowObject> = (position..position.saturating_add(added))
             .filter_map(|position| store.item(position).and_downcast())
             .collect();
         for column in self.columns.borrow().iter() {
             let drawing = &column.drawing;
-            drawing.figures.measure(&drawing.column_type, column.index, &rows);
+            match replaced_all {
+                true => drawing.figures.measure(&drawing.column_type, column.index, &rows),
+                false => drawing.figures.extend(&drawing.column_type, column.index, &rows),
+            }
         }
     }
 

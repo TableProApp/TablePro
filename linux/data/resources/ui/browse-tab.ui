@@ -2,7 +2,22 @@
 <interface>
   <requires lib="gtk" version="4.22"/>
   <requires lib="libadwaita" version="1.9"/>
-  <template class="TableProBrowseTab" parent="AdwBin">
+  <!-- The tab's own width decides its bottom bar, since the sidebar
+       takes part of the window: below the breakpoint, Export, Filter and
+       the page size move into the More menu. -->
+  <template class="TableProBrowseTab" parent="AdwBreakpointBin">
+    <property name="width-request">300</property>
+    <property name="height-request">160</property>
+    <child>
+      <object class="AdwBreakpoint" id="narrow_breakpoint">
+        <condition>max-width: 680sp</condition>
+        <setter object="export_button" property="visible">false</setter>
+        <setter object="filter_button" property="visible">false</setter>
+        <setter object="page_size_box" property="visible">false</setter>
+        <setter object="more_button" property="visible">true</setter>
+        <setter object="pager_bar" property="compact">true</setter>
+      </object>
+    </child>
     <property name="child">
       <object class="AdwToolbarView" id="toolbar">
         <!-- The tab sits right under the tab bar, so a raised top bar
@@ -105,11 +120,25 @@
             <child type="start">
               <object class="GtkLabel" id="selection_label">
                 <property name="visible">false</property>
+                <property name="ellipsize">end</property>
                 <property name="margin-start">12</property>
                 <property name="accessible-role">status</property>
                 <style>
                   <class name="accent"/>
                   <class name="caption-heading"/>
+                </style>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkMenuButton" id="more_button">
+                <property name="icon-name">view-more-symbolic</property>
+                <property name="visible">false</property>
+                <property name="tooltip-text" translatable="yes">More Actions</property>
+                <accessibility>
+                  <property name="label" translatable="yes">More Actions</property>
+                </accessibility>
+                <style>
+                  <class name="flat"/>
                 </style>
               </object>
             </child>
@@ -154,15 +183,20 @@
               </object>
             </child>
             <child type="end">
-              <object class="GtkDropDown" id="page_size_dropdown"/>
-            </child>
-            <child type="end">
-              <object class="GtkLabel">
-                <property name="label" translatable="yes">Rows:</property>
-                <property name="mnemonic-widget">page_size_dropdown</property>
-                <style>
-                  <class name="dimmed"/>
-                </style>
+              <object class="GtkBox" id="page_size_box">
+                <property name="spacing">6</property>
+                <child>
+                  <object class="GtkLabel">
+                    <property name="label" translatable="yes">Rows:</property>
+                    <property name="mnemonic-widget">page_size_dropdown</property>
+                    <style>
+                      <class name="dimmed"/>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkDropDown" id="page_size_dropdown"/>
+                </child>
               </object>
             </child>
           </object>

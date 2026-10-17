@@ -366,6 +366,7 @@ pub(super) fn table_tab(
             tablepro_core::LivenessPolicy::DESKTOP,
         )),
         settings: stores.settings.get().clone(),
+        first_load: crate::ui::tab_load::FirstLoad::Now,
     })
 }
 
@@ -654,11 +655,23 @@ fn a_refresh_under_a_filter_that_no_longer_fits_keeps_the_rows() {
     let harness = Harness::open_filtered(script, [], not_null_name());
     wait_until(WAIT, || harness.shown() == text(&["kept"])).expect("the first page");
     let toasts = toasts(harness.tab());
+    let banner = {
+        use gtk4::subclass::prelude::ObjectSubclassIsExt;
+        harness.tab().imp().stale_banner.get()
+    };
 
     harness.tab().send(PagingInput::FilterApplied(not_null("nickname")));
     harness.tab().send(PagingInput::Refresh);
-    wait_until(WAIT, || toasts.borrow().len() == 2).expect("the filter that does not fit was not reported");
+    wait_until(WAIT, || banner.is_revealed()).expect("the filter that does not fit was not reported");
+    drain_main_context();
 
+    let reason = banner.tooltip_text().map(|text| text.to_string()).unwrap_or_default();
+    assert!(reason.starts_with("This filter cannot be applied"), "{reason}");
+    assert!(
+        toasts.borrow().is_empty(),
+        "a toast that fades said it: {:?}",
+        toasts.borrow()
+    );
     assert_eq!(harness.shown(), text(&["kept"]));
     assert_eq!(harness.visible_page().as_deref(), Some("grid"));
 }
@@ -3031,4 +3044,118 @@ fn filter_button_tooltip_counts_the_active_rules() {
     harness.tab().send(PagingInput::FilterApplied(FilterSet::default()));
     wait_until(WAIT, || button.tooltip_text().as_deref() == Some("Filter Rows"))
         .expect("the tooltip still counted rules after they were cleared");
+}
+
+/// The pending bar's Discard drops the undo history with the edits, so
+/// it asks first, as F5 does.
+#[gtk4::test]
+fn discard_asks_before_it_drops_the_pending_changes() {
+    use gtk4::subclass::prelude::ObjectSubclassIsExt;
+    use libadwaita::prelude::{AdwDialogExt, AdwWindowExt, AlertDialogExt};
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada", "Grace"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 2).expect("the first page");
+    let window = crate::test_support::OwnedWindow::presented(libadwaita::Window::new());
+    window.set_content(Some(harness.tab()));
+    harness.tab().send(EditInput::InsertRow);
+    let discard = harness.tab().imp().pending_bar.imp().discard_button.get();
+    let alert = || {
+        let mut shown = None;
+        wait_until(WAIT, || {
+            shown = window.visible_dialog().and_downcast::<libadwaita::AlertDialog>();
+            shown.is_some()
+        })
+        .expect("Discard asks first");
+        shown.expect("the alert")
+    };
+
+    discard.emit_clicked();
+    let first = alert();
+    assert_eq!(harness.tracker.pending_count(), 1, "the edit went before the answer");
+    assert_eq!(first.close_response(), "cancel");
+    first.emit_by_name::<()>("response", &[&"cancel"]);
+    first.force_close();
+    drain_main_context();
+    assert_eq!(harness.tracker.pending_count(), 1, "Cancel dropped the edit");
+
+    discard.emit_clicked();
+    let second = alert();
+    second.emit_by_name::<()>("response", &[&"discard"]);
+    second.force_close();
+
+    wait_until(WAIT, || harness.tracker.pending_count() == 0).expect("the confirmed discard");
+    assert_eq!(draft_rows(&harness.store()), 0);
+    window.set_content(None::<&gtk4::Widget>);
+}
+
+/// The page queries a tab sent, in order.
+fn page_queries(harness: &Harness) -> Vec<String> {
+    harness
+        .connection
+        .observed_sql("query_bound")
+        .into_iter()
+        .flatten()
+        .collect()
+}
+
+/// A table with a key pages past the edge row of the page on screen,
+/// so a page deep into it costs what the first does. The row numbers
+/// still count from the first page.
+#[gtk4::test]
+fn a_keyed_table_pages_by_the_edge_rows_key_not_by_offset() {
+    let mut script = serving_table();
+    script.count_rows.always(FakeReply::ok(1_000));
+    script.query_bound.always(FakeReply::ok(full_page(0)));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    let read = |count: usize| {
+        wait_until(WAIT, || {
+            page_queries(&harness).len() == count && !harness.tab().is_loading()
+        })
+        .expect("the page read");
+    };
+
+    harness.tab().send(PagingInput::NextPage);
+    read(2);
+    harness.tab().send(PagingInput::NextPage);
+    read(3);
+    harness.tab().send(PagingInput::PrevPage);
+    read(4);
+
+    let queries = page_queries(&harness);
+    for query in &queries[1..] {
+        assert!(!query.contains("OFFSET"), "{query}");
+    }
+    assert!(queries[1].contains(" > ("), "{}", queries[1]);
+    assert!(
+        queries[3].contains(" < (") && queries[3].contains(" DESC"),
+        "Previous reads back from the page's first row: {}",
+        queries[3]
+    );
+    assert_eq!(harness.tab().current_offset(), 100);
+}
+
+/// A sort of the user's has ties a key cannot resume from, so it pages
+/// by offset.
+#[gtk4::test]
+fn a_sorted_table_pages_by_offset() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(full_page(0)));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    harness.tab().send(PagingInput::SortChanged {
+        col_idx: 1,
+        ascending: true,
+    });
+    wait_until(WAIT, || {
+        page_queries(&harness).len() == 2 && !harness.tab().is_loading()
+    })
+    .expect("the sorted page");
+
+    harness.tab().send(PagingInput::NextPage);
+    wait_until(WAIT, || page_queries(&harness).len() == 3).expect("the next page");
+
+    let next = page_queries(&harness).pop().unwrap_or_default();
+    assert!(next.ends_with("LIMIT 100 OFFSET 100"), "{next}");
 }

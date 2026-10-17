@@ -5,7 +5,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use tablepro_core::{
-    ConnectOptions, Connection, DriverError, ErrorCategory, ServerNameOverride, TlsConfig, TlsFailure, TlsMode,
+    ConfigError, ConnectOptions, Connection, DriverError, ErrorCategory, ServerNameOverride, TlsConfig, TlsFailure,
+    TlsMode,
 };
 
 use crate::conformance::support::{dial, expect, unexpected, within};
@@ -15,6 +16,7 @@ const ISSUING_CASE: &str = "verify_full_with_issuing_ca_connects";
 const UNRELATED_CASE: &str = "verify_full_with_unrelated_ca_reports_unknown_issuer";
 const NAME_CASE: &str = "verify_full_with_wrong_server_name_reports_name_mismatch";
 const REQUIRE_CASE: &str = "require_connects_without_ca";
+const REQUIRE_CA_CASE: &str = "require_with_ca_file_is_refused";
 const DISABLE_CASE: &str = "disable_against_tls_only_server_is_refused";
 const IDENTITY_CASE: &str = "client_identity_is_required_by_the_server";
 const FLAGS_CASE: &str = "tls_suite_flags_match_driver_capabilities";
@@ -111,6 +113,22 @@ pub async fn require_connects_without_ca<E: TlsConformanceEngine>(engine: E) -> 
         server_name: None,
     };
     connects::<E>(REQUIRE_CASE, engine.connect_options(tls)).await
+}
+
+/// Require checks no certificate, so a CA file with it is refused
+/// before anything is sent rather than taken and ignored.
+pub async fn require_with_ca_file_is_refused<E: TlsConformanceEngine>(engine: E) -> Result<(), ConformanceFailure> {
+    let tls = TlsConfig {
+        mode: TlsMode::Require,
+        ca_file: Some(engine.ca_file().to_owned()),
+        client_identity: None,
+        server_name: None,
+    };
+    let outcome = open::<E>(REQUIRE_CA_CASE, engine.connect_options(tls)).await?;
+    let refused = matches!(&outcome, Err(DriverError::Config(ConfigError::CaFileUnsupported)));
+    expect(REQUIRE_CA_CASE, refused, || {
+        format!("Require with a CA file gave {}", describe(&outcome))
+    })
 }
 
 /// TLS case 5.

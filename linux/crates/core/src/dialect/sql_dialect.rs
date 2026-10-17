@@ -5,7 +5,8 @@ use crate::sql_syntax::{ExpressionSyntaxError, HistoryRecording, SqlGrammar, Typ
 use crate::value::Value;
 
 use super::{
-    BindError, BindTarget, DialectCapabilities, KeysetDirection, LikeCase, LikeForm, LiteralError, Placeholder,
+    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, KeysetDirection, LikeCase, LikeForm, LiteralError,
+    Placeholder,
 };
 
 /// How one engine spells SQL.
@@ -146,6 +147,11 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
 
     fn delete_statement(&self, table_sql: &str, predicate_sql: &str) -> String {
         format!("DELETE FROM {table_sql} WHERE {predicate_sql}")
+    }
+
+    /// How much one multi-row INSERT may carry.
+    fn insert_batch_limits(&self) -> InsertBatchLimits {
+        InsertBatchLimits::DEFAULT
     }
 
     /// Insert a row of nothing but defaults, where the engine has a

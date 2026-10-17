@@ -51,10 +51,10 @@ pub(crate) fn build_column_view(
     store.splice(0, 0, &rows);
     let grid_columns = Rc::new(GridColumns::default());
     // A browse page splices its rows into this store, so the columns
-    // measure them again before the view binds any of them.
+    // measure them before the view binds any of them.
     store.connect_items_changed({
         let grid_columns = grid_columns.clone();
-        move |store, _, _, _| grid_columns.measure(store)
+        move |store, position, _, added| grid_columns.measure_change(store, position, added)
     });
     // Tab leaves the grid, and the arrow keys move between cells.
     let column_view = gtk::ColumnView::builder()

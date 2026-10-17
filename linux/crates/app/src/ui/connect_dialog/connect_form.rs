@@ -52,9 +52,9 @@ impl TlsFormState {
         }
     }
 
-    /// The settings a request carries. A row the driver does not show
-    /// is left out rather than cleared, so looking at another driver
-    /// and coming back keeps what was chosen.
+    /// The settings a request carries. A row the driver or the mode does
+    /// not show is left out rather than cleared, so looking at another
+    /// driver or mode and coming back keeps what was chosen.
     pub fn config(&self, caps: &TlsCapabilities, route: TransportClass) -> TlsConfig {
         if self.mode == TlsMode::Disable {
             return TlsConfig::disabled();
@@ -67,7 +67,10 @@ impl TlsFormState {
         });
         TlsConfig {
             mode: self.mode,
-            ca_file: self.ca_file.clone().filter(|_| caps.ca_file),
+            ca_file: self
+                .ca_file
+                .clone()
+                .filter(|_| caps.ca_file && self.mode == TlsMode::VerifyFull),
             client_identity,
             server_name: Some(self.server_name.trim().to_owned())
                 .filter(|name| !name.is_empty() && shows_server_name(caps, route)),
@@ -94,6 +97,14 @@ pub fn shows_server_name(caps: &TlsCapabilities, route: TransportClass) -> bool 
         ServerNameOverride::SshForwardOnly => route == TransportClass::SshForward,
         ServerNameOverride::Unsupported => false,
     }
+}
+
+/// Whether the dialog, opened on a connection to `driver` over `route`,
+/// shows the server name row. A driver without TLS shows none.
+pub fn driver_shows_server_name(driver: Option<&DriverCapabilities>, route: TransportClass) -> bool {
+    driver
+        .and_then(|caps| caps.tls.as_ref())
+        .is_some_and(|tls| shows_server_name(tls, route))
 }
 
 /// What the connect dialog holds, read from its rows in one go so a
@@ -385,10 +396,10 @@ impl ConnectForm {
         }
     }
 
-    /// The entry a connect from the New Connection dialog writes over
-    /// `existing`, the entry it describes again. An empty Name row there
-    /// means no name was typed, so a name the user gave the entry stays;
-    /// one that was only where it connects follows the form.
+    /// The entry a connect writes over `existing`, the entry the dialog
+    /// was reopened on. An empty Name row there means no name was typed,
+    /// so a name the user gave the entry stays; one that was only where
+    /// it connects follows the form.
     pub fn submitted_connection(
         &self,
         caps: &DriverCapabilities,
@@ -563,36 +574,6 @@ fn passphrase_left_unused(original: &SavedConnection, edited: &SavedSshAuth) -> 
     }
 }
 
-/// The saved entry the form describes again, so connecting twice to
-/// the same database updates one entry instead of adding a second.
-pub fn match_saved_connection(
-    saved: &[SavedConnection],
-    candidate: &SavedConnection,
-    file_based: bool,
-) -> Option<Uuid> {
-    saved
-        .iter()
-        .find(|entry| same_connection(entry, candidate, file_based))
-        .map(|entry| entry.id)
-}
-
-fn same_connection(entry: &SavedConnection, candidate: &SavedConnection, file_based: bool) -> bool {
-    if entry.driver_id != candidate.driver_id || entry.database != candidate.database {
-        return false;
-    }
-    // A file is reached by its path alone. Comparing the credentials
-    // there would strand every entry an older build wrote with the
-    // hidden Username row's leftover text.
-    if file_based {
-        return true;
-    }
-    entry.host == candidate.host
-        && entry.port == candidate.port
-        && entry.username == candidate.username
-        && entry.auth_mode == candidate.auth_mode
-        && entry.ssh == candidate.ssh
-}
-
 fn ssh_field(error: &SshInputError) -> FormField {
     match error {
         SshInputError::HostRequired | SshInputError::HostInvalid(_) => FormField::SshHost,
@@ -674,25 +655,6 @@ mod tests {
                 ..
             } => (endpoint, credentials, database.as_deref(), tls),
             RequestTarget::File(_) => panic!("expected a network target"),
-        }
-    }
-
-    fn saved(driver_id: &str, username: &str, auth_mode: AuthMode) -> SavedConnection {
-        SavedConnection {
-            id: Uuid::new_v4(),
-            name: "saved".into(),
-            driver_id: driver_id.into(),
-            host: "sql.corp.example".into(),
-            port: 1433,
-            database: "sales".into(),
-            username: username.into(),
-            tls: TlsConfig::disabled(),
-            read_only: false,
-            auth_mode,
-            ssh: None,
-            last_opened_at: None,
-            color: None,
-            group: None,
         }
     }
 
@@ -842,6 +804,15 @@ mod tests {
     }
 
     #[test]
+    fn the_server_name_row_shows_where_the_driver_can_check_another_name() {
+        assert!(!driver_shows_server_name(Some(mysql()), TransportClass::DirectTcp));
+        assert!(driver_shows_server_name(Some(mysql()), TransportClass::SshForward));
+        assert!(driver_shows_server_name(Some(postgres()), TransportClass::DirectTcp));
+        assert!(!driver_shows_server_name(Some(sqlite()), TransportClass::DirectTcp));
+        assert!(!driver_shows_server_name(None, TransportClass::SshForward));
+    }
+
+    #[test]
     fn hidden_fields_are_omitted_from_request() {
         let mut form = filled("mssql", mssql());
         form.auth = AuthMode::Kerberos;
@@ -931,53 +902,6 @@ mod tests {
         assert_eq!(entry.ssh.as_ref().map(|ssh| &ssh.auth), Some(&SavedSshAuth::Agent));
     }
 
-    #[test]
-    fn match_saved_connection_by_path_for_files() {
-        let mut legacy = saved("sqlite", "postgres", AuthMode::Password);
-        legacy.database = "/srv/app.db".into();
-        let form = ConnectForm {
-            file: Some(FileEndpoint::open_existing(PathBuf::from("/srv/app.db")).expect("absolute")),
-            ..ConnectForm::new("sqlite", sqlite())
-        };
-        let valid = form.validate(sqlite()).expect("valid");
-        let candidate = form.saved_connection(sqlite(), &valid, Uuid::new_v4(), None);
-
-        assert_eq!(
-            match_saved_connection(std::slice::from_ref(&legacy), &candidate, true),
-            Some(legacy.id)
-        );
-    }
-
-    #[test]
-    fn match_saved_connection_distinguishes_user_and_auth() {
-        let entry = saved("mssql", "sa", AuthMode::Password);
-        let entries = std::slice::from_ref(&entry);
-        let candidate = |username: &str, auth_mode: AuthMode| SavedConnection {
-            id: Uuid::new_v4(),
-            username: username.into(),
-            auth_mode,
-            ..entry.clone()
-        };
-
-        assert_eq!(
-            match_saved_connection(entries, &candidate("sa", AuthMode::Password), false),
-            Some(entry.id)
-        );
-        assert_eq!(
-            match_saved_connection(entries, &candidate("other", AuthMode::Password), false),
-            None
-        );
-        assert_eq!(
-            match_saved_connection(entries, &candidate("", AuthMode::Kerberos), false),
-            None
-        );
-        let finance = SavedConnection {
-            database: "finance".into(),
-            ..candidate("sa", AuthMode::Password)
-        };
-        assert_eq!(match_saved_connection(entries, &finance, false), None);
-    }
-
     fn saved_from(form: &ConnectForm, caps: &DriverCapabilities) -> SavedConnection {
         let valid = form.validate(caps).expect("valid");
         form.saved_connection(caps, &valid, Uuid::new_v4(), None)
@@ -1035,18 +959,13 @@ mod tests {
     }
 
     #[test]
-    fn a_connect_from_new_connection_keeps_the_name_of_a_renamed_match() {
+    fn a_reopened_entry_keeps_the_name_the_user_gave_it() {
         let form = filled("postgres", postgres());
         let valid = form.validate(postgres()).expect("valid");
         let renamed = SavedConnection {
             name: "Shop".to_owned(),
             ..saved_from(&form, postgres())
         };
-        let candidate = form.saved_connection(postgres(), &valid, Uuid::new_v4(), None);
-        assert_eq!(
-            match_saved_connection(std::slice::from_ref(&renamed), &candidate, false),
-            Some(renamed.id)
-        );
 
         let submitted = form.submitted_connection(postgres(), &valid, renamed.id, Some(&renamed));
         assert_eq!(submitted.name, "Shop", "the connect undid the rename");

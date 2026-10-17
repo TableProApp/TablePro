@@ -6,7 +6,9 @@ use super::save_gate::SaveGate;
 use super::sql_preview::no_pending_changes;
 use super::{
     ColumnsInput, SaveInput, StructureEffects, StructureMode, StructureModel, StructureTabInput, StructureTabOutput,
+    StructureTabSender,
 };
+use crate::ui::discard_alert::confirm_discard;
 use crate::ui::error_text::{build_error_text, save_blocker_text};
 
 impl StructureModel {
@@ -15,6 +17,15 @@ impl StructureModel {
             SaveInput::Save => self.save(fx),
             SaveInput::SaveStarted => self.show_saving(true),
             SaveInput::StopSaving => fx.output(StructureTabOutput::StopSaveRequested),
+            SaveInput::ConfirmDiscard => {
+                let pending = self.pending().change_count();
+                if pending > 0 {
+                    let sender = StructureTabSender { tab: self.this.clone() };
+                    confirm_discard(&self.widgets.inner_stack, pending, move || {
+                        sender.input(SaveInput::Discard);
+                    });
+                }
+            }
             SaveInput::Reload => {
                 // A table the save may have created has nothing to read
                 // yet, so a new one is only cleared.
@@ -193,8 +204,8 @@ impl StructureModel {
         self.widgets.discard_button.set_sensitive(has_pending);
         if has_pending {
             let label = crate::i18n::ngettext_f(
-                "{n} pending change",
-                "{n} pending changes",
+                "{n} unsaved change",
+                "{n} unsaved changes",
                 u32::try_from(pending_count).unwrap_or(u32::MAX),
                 &[("n", &pending_count.to_string())],
             );

@@ -109,6 +109,12 @@ macro_rules! tls_conformance_suite {
         $crate::__conformance_case! {
             true,
             $engine as TlsConformanceEngine,
+            require_with_ca_file_is_refused,
+            $crate::conformance::cases::tls::require_with_ca_file_is_refused::<$engine>
+        }
+        $crate::__conformance_case! {
+            true,
+            $engine as TlsConformanceEngine,
             disable_against_tls_only_server_is_refused,
             $crate::conformance::cases::tls::disable_against_tls_only_server_is_refused::<$engine>
         }

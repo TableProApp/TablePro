@@ -37,10 +37,14 @@ pub fn remedy(failure: TlsFailure) -> Option<TlsRemedy> {
     }
 }
 
-/// The remedy for a connect that failed on TLS.
-pub fn connect_remedy(error: &ConnectError) -> Option<TlsRemedy> {
+/// The remedy for a connect that failed on TLS. Setting a server name
+/// is offered only where the connect dialog shows that row: MySQL over
+/// a direct route checks the host it dials and no other name.
+pub fn connect_remedy(error: &ConnectError, server_name_shown: bool) -> Option<TlsRemedy> {
     match error {
-        ConnectError::Driver(DriverError::Tls { failure, .. }) => remedy(*failure),
+        ConnectError::Driver(DriverError::Tls { failure, .. }) => {
+            remedy(*failure).filter(|remedy| *remedy != TlsRemedy::SetServerName || server_name_shown)
+        }
         _ => None,
     }
 }
@@ -66,7 +70,25 @@ mod tests {
             detail: "certificate is for db.internal".to_owned(),
         });
 
-        assert_eq!(connect_remedy(&error), Some(TlsRemedy::SetServerName));
-        assert_eq!(connect_remedy(&ConnectError::Cancelled), None);
+        assert_eq!(connect_remedy(&error, true), Some(TlsRemedy::SetServerName));
+        assert_eq!(connect_remedy(&ConnectError::Cancelled, true), None);
+    }
+
+    #[test]
+    fn a_server_name_is_not_offered_where_the_dialog_hides_its_row() {
+        let mismatch = ConnectError::Driver(DriverError::Tls {
+            failure: TlsFailure::NameMismatch,
+            detail: "certificate is for db.internal".to_owned(),
+        });
+        let unknown_issuer = ConnectError::Driver(DriverError::Tls {
+            failure: TlsFailure::UnknownIssuer,
+            detail: "UnknownIssuer".to_owned(),
+        });
+
+        assert_eq!(connect_remedy(&mismatch, false), None);
+        assert_eq!(
+            connect_remedy(&unknown_issuer, false),
+            Some(TlsRemedy::ChooseCaCertificate)
+        );
     }
 }

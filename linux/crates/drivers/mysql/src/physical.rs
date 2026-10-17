@@ -19,7 +19,7 @@ use crate::workspace_session::{WORKSPACE_SQL_MODE_STATEMENT, WORKSPACE_TIME_ZONE
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SessionKind {
     /// The pool, a streamed read: TIMESTAMP in UTC, backslashes
-    /// pinned to be escapes.
+    /// pinned to be escapes, strict mode on.
     Workspace,
     /// An editor tab: the server's own zone and sql_mode, as the mysql
     /// client would have them.

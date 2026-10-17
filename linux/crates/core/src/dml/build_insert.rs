@@ -3,14 +3,18 @@ use crate::dialect::{BindTarget, SqlDialect};
 use crate::edit::CellInput;
 use crate::meta::TableRef;
 use crate::statement::{Statement, StatementBuilder};
+use crate::value::Value;
 
 use super::BuildSqlError;
 
-/// The INSERT for a draft row.
+/// The INSERT for one row.
 ///
-/// A cell the user left alone is left out of the statement, so the
-/// server applies its own default. A generated or auto-increment
-/// column is never written, because the server owns its value.
+/// A `Default` cell is left out of the statement, so the server applies
+/// its own default or next number. A generated column is never written,
+/// because the server computes it. Every other value is written, an
+/// auto-increment column's included: a value given for one is a key the
+/// caller means to keep, and the caller leaves out the identities an
+/// engine refuses a value for.
 pub fn build_insert(
     dialect: &dyn SqlDialect,
     table: &TableRef,
@@ -32,7 +36,7 @@ pub fn build_insert(
         let Some(value) = cell.value() else {
             continue;
         };
-        if column.is_generated || column.is_auto_increment {
+        if column.is_generated {
             continue;
         }
         markers.push(builder.bind(dialect, value.clone(), BindTarget::Column(column))?);
@@ -53,6 +57,48 @@ pub fn build_insert(
         "INSERT INTO {table_sql} ({}) VALUES ({})",
         names.join(", "),
         markers.join(", ")
+    ));
+    Ok(builder.finish())
+}
+
+/// One INSERT of several rows into the same columns, each row holding
+/// one value per column, in column order.
+///
+/// One statement takes one round trip for every row in it, and
+/// ClickHouse makes one part of it rather than one per row.
+pub fn build_multi_row_insert(
+    dialect: &dyn SqlDialect,
+    table: &TableRef,
+    columns: &[&ColumnInfo],
+    rows: Vec<Vec<Value>>,
+) -> Result<Statement, BuildSqlError> {
+    if columns.is_empty() || rows.is_empty() {
+        return Err(BuildSqlError::NoInsertValues);
+    }
+    let mut builder = StatementBuilder::new();
+    let mut tuples = Vec::with_capacity(rows.len());
+    for row in rows {
+        if row.len() != columns.len() {
+            return Err(BuildSqlError::LengthMismatch {
+                expected: columns.len(),
+                found: row.len(),
+            });
+        }
+        let mut markers = Vec::with_capacity(columns.len());
+        for (&column, value) in columns.iter().zip(row) {
+            markers.push(builder.bind(dialect, value, BindTarget::Column(column))?);
+        }
+        tuples.push(format!("({})", markers.join(", ")));
+    }
+    let names: Vec<String> = columns
+        .iter()
+        .map(|column| dialect.quote_identifier(&column.name))
+        .collect();
+    builder.push_sql(&format!(
+        "INSERT INTO {} ({}) VALUES {}",
+        dialect.qualify(table),
+        names.join(", "),
+        tuples.join(", ")
     ));
     Ok(builder.finish())
 }

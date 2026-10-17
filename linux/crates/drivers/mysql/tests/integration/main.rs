@@ -7,13 +7,16 @@
 )]
 
 mod conformance_engine;
+mod csv_import;
 mod ddl;
 mod decode;
 mod editor_session;
 mod flavour_suite;
+mod lenient_server;
 mod metadata;
 mod non_transactional;
 mod row_limit;
+mod server_time_zone;
 mod support;
 mod tls;
 mod write_batch;

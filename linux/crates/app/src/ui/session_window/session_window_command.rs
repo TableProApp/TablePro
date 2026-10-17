@@ -51,6 +51,9 @@ pub(crate) struct ConnectFailure {
     /// The database file the driver could not find, which the user can
     /// locate again for a saved connection.
     pub missing_file: Option<std::path::PathBuf>,
+    /// The page's title when the connect itself worked and what came
+    /// after it failed.
+    pub heading: Option<String>,
 }
 
 impl ConnectFailure {
@@ -60,6 +63,7 @@ impl ConnectFailure {
             remedy: None,
             reenter: None,
             missing_file: None,
+            heading: None,
         }
     }
 }

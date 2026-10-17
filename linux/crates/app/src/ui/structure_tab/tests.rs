@@ -4,7 +4,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
-use libadwaita::prelude::{ActionRowExt, AdwWindowExt, ComboRowExt, ExpanderRowExt, PreferencesRowExt};
+use libadwaita::prelude::{
+    ActionRowExt, AdwDialogExt, AdwWindowExt, AlertDialogExt, ComboRowExt, ExpanderRowExt, PreferencesRowExt,
+};
 use tablepro_core::column::{ColumnDefault, ColumnType};
 use tablepro_core::ddl::{
     ColumnAttributes, ColumnDefinition, ColumnKeyRoles, DraftColumn, IdentityStyle, InboundForeignKey,
@@ -46,6 +48,7 @@ impl Harness {
             mode,
             session: fake.session.clone(),
             tasks: runtime.tasks(),
+            first_load: crate::ui::tab_load::FirstLoad::Now,
         });
         Self {
             tab: Some(tab),
@@ -726,6 +729,7 @@ fn an_edit_previews_the_plan_and_saves_through_the_tracker() {
         mode: StructureMode::Edit,
         session: fake.session.clone(),
         tasks: runtime.tasks(),
+        first_load: crate::ui::tab_load::FirstLoad::Now,
     });
     wait_until(WAIT, || {
         tab.imp().inner_stack.visible_child_name().as_deref() == Some("editor")
@@ -909,11 +913,11 @@ fn renaming_existing_column_enables_save_and_previews_rename() {
 
     assert_eq!(harness.column_names(), ["id", "points"]);
     assert!(imp.save_button.is_sensitive(), "a rename left Save off");
-    assert_eq!(imp.pending_label.label(), "1 pending change");
+    assert_eq!(imp.pending_label.label(), "1 unsaved change");
     assert_eq!(
         crate::ui::a11y::announced_in(&imp.pending_label.get()),
         [(
-            "1 pending change".to_owned(),
+            "1 unsaved change".to_owned(),
             gtk4::AccessibleAnnouncementPriority::Medium
         )]
     );
@@ -1231,6 +1235,7 @@ fn add_column_changes_one_item() {
 #[gtk4::test]
 fn discard_restores_without_phantom_ops() {
     let harness = open_edit(postgres(), keyed_users());
+    let window = in_window(&harness);
     let tab = harness.tab();
     let imp = tab.imp();
     let dirty = Rc::new(RefCell::new(Vec::new()));
@@ -1239,10 +1244,10 @@ fn discard_restores_without_phantom_ops() {
     entry(tab, 1, "col-name").set_text("points");
     entry(tab, 0, "col-comment").set_text("key");
     tab.send(ColumnsInput::AddColumn);
-    assert_eq!(imp.pending_label.label(), "3 pending changes");
+    assert_eq!(imp.pending_label.label(), "3 unsaved changes");
 
     imp.discard_button.emit_clicked();
-    drain_main_context();
+    answer_discard(&window, "discard");
 
     assert_eq!(harness.column_names(), ["id", "score"]);
     assert_eq!(harness.comments(), [None, None]);
@@ -1254,7 +1259,34 @@ fn discard_restores_without_phantom_ops() {
     entry(tab, 1, "col-name").set_text("points");
 
     assert_eq!(harness.column_names(), ["id", "points"]);
-    assert_eq!(imp.pending_label.label(), "1 pending change");
+    assert_eq!(imp.pending_label.label(), "1 unsaved change");
+}
+
+/// Discard drops the undo history with the changes, so it asks first,
+/// as F5 does on a browse tab.
+#[gtk4::test]
+fn a_discard_not_confirmed_keeps_every_change() {
+    let harness = open_edit(postgres(), keyed_users());
+    let window = in_window(&harness);
+    let imp = harness.tab().imp();
+    entry(harness.tab(), 1, "col-name").set_text("points");
+
+    imp.discard_button.emit_clicked();
+    answer_discard(&window, "cancel");
+
+    assert_eq!(harness.column_names(), ["id", "points"]);
+    assert_eq!(imp.pending_label.label(), "1 unsaved change");
+}
+
+/// Answer the alert Discard opens.
+fn answer_discard(window: &adw::Window, response: &str) {
+    let alert = shown_form(window)
+        .downcast::<adw::AlertDialog>()
+        .expect("Discard asks before it drops the changes");
+    assert_eq!(alert.close_response(), "cancel");
+    alert.emit_by_name::<()>("response", &[&response]);
+    alert.force_close();
+    drain_main_context();
 }
 
 #[gtk4::test]
@@ -1439,6 +1471,7 @@ fn ctrl_s_saves_while_save_is_on() {
         mode: StructureMode::Edit,
         session: fake.session.clone(),
         tasks: runtime.tasks(),
+        first_load: crate::ui::tab_load::FirstLoad::Now,
     });
     wait_until(WAIT, || {
         tab.imp().inner_stack.visible_child_name().as_deref() == Some("editor")

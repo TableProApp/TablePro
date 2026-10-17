@@ -28,7 +28,10 @@ impl WorkspaceModel {
         if let Some(window) = self.window() {
             super::workspace_actions::set_enabled(&window, REVIEW_HOST_KEY, review.is_some());
         }
-        let Some(title) = health_banner_text(health, review.as_ref()) else {
+        let title = self
+            .rejection_text(health, review.as_ref())
+            .or_else(|| health_banner_text(health, review.as_ref()));
+        let Some(title) = title else {
             self.reconnect_banner.set_revealed(false);
             return;
         };
@@ -50,6 +53,20 @@ impl WorkspaceModel {
                 gtk4::AccessibleAnnouncementPriority::High,
             );
         }
+    }
+
+    /// What the server or the settings said when the session parked,
+    /// which says more than the cause's own sentence. A host key keeps
+    /// its own banner and review.
+    fn rejection_text(&self, health: &SessionHealth, review: Option<&HostKeyFailure>) -> Option<String> {
+        let SessionHealth::Failed { cause } = health else {
+            return None;
+        };
+        if review.is_some() || is_host_key(*cause) {
+            return None;
+        }
+        let rejection = self.context.active.get()?.last_rejection()?;
+        Some(crate::ui::error_text::connect_error_message(&rejection))
     }
 
     /// The host key the session is parked on, read from the error that
@@ -523,6 +540,18 @@ mod tests {
 
         wait_until(WAIT, || health(&test) == SessionHealth::Online).expect("the session back online");
         assert_eq!(test.connector.calls().len(), 3);
+    }
+
+    #[gtk4::test]
+    fn a_parked_session_says_what_the_server_said() {
+        let refused = FakeEstablish::Fail(ConnectError::Driver(DriverError::LoginRefused(Box::new(
+            tablepro_core::ServerDiagnostics::new(None, "no pg_hba.conf entry for host"),
+        ))));
+        let test = parked("RejectionText", vec![refused], None);
+
+        let banner = wait_for_button(&test, "Retry");
+
+        assert!(banner.title().contains("no pg_hba.conf entry"), "{}", banner.title());
     }
 
     #[gtk4::test]

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::super::csv::{csv_cell, csv_header, csv_writer_builder, neutralise_formula};
+use super::super::csv::{csv_cell, csv_header, csv_writer_builder};
 use super::super::csv_options::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
 use super::super::test_columns::{cols, typed};
 use super::super::tsv::tsv_writer_builder;
@@ -11,6 +11,7 @@ use super::super::{
 use super::*;
 use crate::column::{ColumnKind, IntegerKind, IntegerWidth};
 use crate::dialect::{SqlDialect, TestDialect};
+use crate::meta::TableRef;
 use crate::value::{JsonText, UndecodableReason, UndecodedValue};
 
 /// Every call's output taken away as soon as it is written, the way a
@@ -166,18 +167,13 @@ fn tsv_encoder_matches_render_tsv() {
         let mut writer = tsv_writer_builder().from_writer(Vec::new());
         if with_headers {
             writer
-                .write_record(
-                    columns
-                        .iter()
-                        .map(|column| neutralise_formula(&Value::Null, column.name.clone(), true)),
-                )
+                .write_record(columns.iter().map(|column| column.name.clone()))
                 .expect("the header");
         }
         for row in &rows {
             writer
                 .write_record(row.iter().enumerate().map(|(index, value)| {
-                    value_text(value, column_type(&columns, index))
-                        .map_or_else(|| "NULL".to_owned(), |text| neutralise_formula(value, text, false))
+                    value_text(value, column_type(&columns, index)).unwrap_or_else(|| "NULL".to_owned())
                 }))
                 .expect("the row");
         }
@@ -229,7 +225,7 @@ fn json_encoder_output_parses_and_matches_render_json() {
     // rows before the encoders.
     let expected: Vec<serde_json::Value> = rows
         .iter()
-        .map(|row| serde_json::from_str(&row_to_json(&columns, row)).expect("a JSON row"))
+        .map(|row| serde_json::from_str(&row_to_json(&columns, row).expect("a readable row")).expect("a JSON row"))
         .collect();
     assert_eq!(parsed, expected);
     assert_eq!(parsed.len(), 10_000);
@@ -288,11 +284,14 @@ fn document_encoders_match_their_renderers() {
     );
     assert_eq!(
         streamed(XmlEncoder::new(columns.clone()), &rows),
-        render_xml(&columns, &rows)
+        render_xml(&columns, &rows).expect("the document")
     );
     assert_eq!(
-        streamed(SqlInsertEncoder::new(dialect.clone(), "t", columns.clone()), &rows),
-        render_sql_insert(&*dialect, "t", &columns, &rows)
+        streamed(
+            SqlInsertEncoder::new(dialect.clone(), &TableRef::unqualified("t"), columns.clone(), &[]),
+            &rows
+        ),
+        render_sql_insert(&*dialect, &TableRef::unqualified("t"), &columns, &[], &rows)
     );
 }
 
@@ -307,11 +306,18 @@ fn document_encoders_write_whole_documents_for_no_rows() {
     );
     assert_eq!(
         streamed(XmlEncoder::new(columns.clone()), &[]),
-        render_xml(&columns, &[])
+        render_xml(&columns, &[]).expect("the document")
     );
-    assert_eq!(streamed(SqlInsertEncoder::new(dialect.clone(), "t", columns), &[]), "");
+    let table = TableRef::unqualified("t");
     assert_eq!(
-        streamed(SqlInsertEncoder::new(dialect, "t", Vec::new().into()), &[Vec::new()]),
+        streamed(SqlInsertEncoder::new(dialect.clone(), &table, columns, &[]), &[]),
+        ""
+    );
+    assert_eq!(
+        streamed(
+            SqlInsertEncoder::new(dialect, &table, Vec::new().into(), &[]),
+            &[Vec::new()]
+        ),
         "",
         "a result with no columns has no statement"
     );
@@ -333,8 +339,9 @@ fn encoder_reports_undecodable_cell() {
         Box::new(XmlEncoder::new(columns.clone())),
         Box::new(SqlInsertEncoder::new(
             Arc::new(TestDialect::default()),
-            "t",
+            &TableRef::unqualified("t"),
             columns.clone(),
+            &[],
         )),
     ];
     for mut encoder in encoders {

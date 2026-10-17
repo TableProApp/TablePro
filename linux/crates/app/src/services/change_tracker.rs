@@ -11,7 +11,7 @@ use tablepro_core::meta::RowIdentity;
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate};
 use tablepro_core::{ColumnInfo, Value};
 
-use super::cell_overlay::CellOverlay;
+use super::cell_overlay::{CellMarks, CellOverlay};
 use super::column_relayout::{ColumnRelayout, Misfit};
 use super::save_batch::{SaveBatch, SaveTarget};
 use super::touch::Touch;
@@ -505,6 +505,14 @@ impl TabChangeTracker {
     pub fn cell_overlay(&self, row_key: &RowKey, col: usize) -> CellOverlay {
         CellOverlay {
             pending: self.pending_input(row_key, col),
+            state: self.cell_state(row_key, col),
+            error_flash: self.is_error_row(row_key),
+        }
+    }
+
+    pub fn cell_marks(&self, row_key: &RowKey, col: usize) -> CellMarks {
+        CellMarks {
+            row_deleted: self.deletes.contains_key(row_key),
             state: self.cell_state(row_key, col),
             error_flash: self.is_error_row(row_key),
         }
@@ -1146,6 +1154,24 @@ mod tests {
         assert_ne!(k1, k2);
         assert_eq!(t.drafts().len(), 2);
         assert_eq!(t.pending_count(), 2);
+    }
+
+    #[test]
+    fn cell_marks_tint_a_cell_by_its_own_edit_and_its_rows_delete() {
+        let mut t = TabChangeTracker::default();
+        let (edited, deleted) = (rk(&[Value::Int(1)]), rk(&[Value::Int(2)]));
+        t.track_cell_edit(edited.clone(), 1, Value::Text("a".into()), Value::Text("b".into()));
+        delete(&mut t, deleted.clone(), vec![Value::Int(2), Value::Text("c".into())]);
+        let draft = RowKey::Draft(insert(&mut t, vec![Value::Null, Value::Null]));
+
+        let marks = |key: &RowKey, col| {
+            let marks = t.cell_marks(key, col);
+            (marks.row_deleted, marks.state)
+        };
+        assert_eq!(marks(&edited, 1), (false, CellState::Modified));
+        assert_eq!(marks(&edited, 0), (false, CellState::Clean));
+        assert_eq!(marks(&deleted, 0), (true, CellState::Clean));
+        assert_eq!(marks(&draft, 0), (false, CellState::InsertDraft));
     }
 
     #[test]

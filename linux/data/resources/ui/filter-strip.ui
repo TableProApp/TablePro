@@ -18,8 +18,13 @@
               <class name="inline-toolbar"/>
             </style>
             <child>
-              <object class="GtkBox">
-                <property name="spacing">6</property>
+              <!-- The buttons wrap under the Match line in a tab too
+                   narrow for both. -->
+              <object class="AdwWrapBox">
+                <property name="child-spacing">6</property>
+                <property name="line-spacing">6</property>
+                <property name="justify">spread</property>
+                <property name="justify-last-line">true</property>
                 <property name="margin-top">8</property>
                 <property name="margin-start">12</property>
                 <property name="margin-end">12</property>
@@ -65,33 +70,33 @@
                 </child>
                 <child>
                   <object class="GtkBox">
-                    <property name="hexpand">true</property>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkButton" id="clear_button">
-                    <property name="label" translatable="yes">Clear All</property>
-                    <property name="action-name">filter.clear</property>
-                    <style>
-                      <class name="flat"/>
-                    </style>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkButton" id="apply_button">
-                    <property name="label" translatable="yes">Apply</property>
-                    <property name="action-name">filter.apply</property>
-                    <style>
-                      <class name="suggested-action"/>
-                    </style>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkButton" id="close_button">
-                    <property name="action-name">filter.close</property>
-                    <style>
-                      <class name="flat"/>
-                    </style>
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="GtkButton" id="clear_button">
+                        <property name="label" translatable="yes">Clear All</property>
+                        <property name="action-name">filter.clear</property>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="apply_button">
+                        <property name="label" translatable="yes">Apply</property>
+                        <property name="action-name">filter.apply</property>
+                        <style>
+                          <class name="suggested-action"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="close_button">
+                        <property name="action-name">filter.close</property>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
                   </object>
                 </child>
               </object>

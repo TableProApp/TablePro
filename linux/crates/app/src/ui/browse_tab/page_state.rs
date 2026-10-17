@@ -11,4 +11,6 @@ pub(crate) struct PageState {
     pub row_count: usize,
     /// How many rows of the table come before the page.
     pub start_ordinal: u64,
+    /// The page was read under a filter.
+    pub filtered: bool,
 }

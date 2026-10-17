@@ -53,10 +53,7 @@ pub(crate) fn progress_text(rows: u64, expected: Option<ExpectedRows>) -> String
 /// file.
 pub(crate) fn failure_text(failure: &ExportFailure, file: Option<AbortOutcome>, name: &str) -> String {
     let reason = match failure {
-        ExportFailure::Stream(ExportStreamFailure::Encode(EncodeError::Undecodable { column })) => gettext_f(
-            "The column “{column}” holds a value TablePro couldn't read, so it can't be written to the file.",
-            &[("column", column)],
-        ),
+        ExportFailure::Stream(ExportStreamFailure::Encode(error)) => encode_text(error),
         ExportFailure::Stream(ExportStreamFailure::MultipleResultSets) => {
             gettext("This statement returned more than one result, so it can't be exported as one file.")
         }
@@ -108,8 +105,27 @@ fn rerun_text(error: &OperationError) -> String {
     }
 }
 
+/// Why a value could not go into the file, whichever format refused it.
+fn encode_text(error: &EncodeError) -> String {
+    match error {
+        EncodeError::Undecodable { column } => gettext_f(
+            "The column “{column}” holds a value TablePro couldn't read, so it can't be written to the file.",
+            &[("column", column)],
+        ),
+        EncodeError::NotXmlText { column } => gettext_f(
+            "The column “{column}” holds a control character XML can't carry. Export it as CSV or JSON instead.",
+            &[("column", column)],
+        ),
+    }
+}
+
 fn document_text(error: &RenderError) -> String {
     match error {
+        RenderError::Encode(error) => encode_text(error),
+        RenderError::TextTooLong { column, limit } => gettext_f(
+            "The column “{column}” holds a value longer than the {limit} characters an Excel cell holds. Export it as CSV instead.",
+            &[("column", column), ("limit", &format_thousands(*limit as u64))],
+        ),
         RenderError::TooManyRows { got, limit } => gettext_f(
             "An Excel sheet holds {limit} rows, and this result has {got}.",
             &[
@@ -271,6 +287,53 @@ mod tests {
         assert_eq!(
             text,
             "An Excel sheet holds 100 rows, and this result has more. Export it as CSV instead."
+        );
+    }
+
+    fn document(error: RenderError) -> String {
+        failure_text(
+            &ExportFailure::Stream(ExportStreamFailure::Document(error)),
+            None,
+            "rows.xlsx",
+        )
+    }
+
+    #[test]
+    fn a_sheet_names_the_column_it_could_not_write() {
+        let unreadable = document(RenderError::Encode(EncodeError::Undecodable {
+            column: "body".to_owned(),
+        }));
+        let long = document(RenderError::TextTooLong {
+            column: "body".to_owned(),
+            limit: 32_767,
+        });
+
+        assert_eq!(
+            unreadable,
+            "The column “body” holds a value TablePro couldn't read, so it can't be written to the file."
+        );
+        assert_eq!(
+            long,
+            format!(
+                "The column “body” holds a value longer than the {} characters an Excel cell holds. Export it as CSV instead.",
+                format_thousands(32_767)
+            )
+        );
+    }
+
+    #[test]
+    fn xml_names_the_column_with_a_control_character() {
+        let text = failure_text(
+            &ExportFailure::Stream(ExportStreamFailure::Encode(EncodeError::NotXmlText {
+                column: "note".to_owned(),
+            })),
+            None,
+            "rows.xml",
+        );
+
+        assert_eq!(
+            text,
+            "The column “note” holds a control character XML can't carry. Export it as CSV or JSON instead."
         );
     }
 }

@@ -1,10 +1,10 @@
 use gtk4::prelude::*;
 use tablepro_core::FilterSet;
-use tablepro_core::meta::PagePosition;
 
+use super::browse_pager::PageTarget;
 use super::columns_fetch::ColumnFreshness;
 use super::fetch::filter_failure;
-use super::{BrowseModel, BrowseRequestKind, BrowseTabOutput, Effects, PagingInput};
+use super::{BrowseModel, BrowseRequestKind, BrowseTabOutput, Effects, PagingInput, RowTotal};
 
 impl BrowseModel {
     pub(super) fn on_paging(&mut self, input: PagingInput, fx: &mut Effects) {
@@ -25,6 +25,7 @@ impl BrowseModel {
                     return;
                 }
                 self.pager.resize(size);
+                self.show_page_size(size);
                 self.fetch(BrowseRequestKind::Page, fx);
                 fx.output(BrowseTabOutput::StateChanged);
             }
@@ -53,7 +54,7 @@ impl BrowseModel {
                 .set_filters(conn_id, self.schema.as_deref(), &self.table, set.clone());
         }
         // Filtered counts shift, so back to page 1.
-        self.pager.go_to(0);
+        self.pager.restart();
         self.refresh_filter_chrome();
         self.filter_strip.set_filter(&set);
         self.stop_count(false);
@@ -69,7 +70,7 @@ impl BrowseModel {
             return;
         }
         self.current_sort = next;
-        self.pager.go_to(0);
+        self.pager.restart();
         self.capture_selection();
         self.fetch(BrowseRequestKind::Page, fx);
         fx.output(BrowseTabOutput::StateChanged);
@@ -77,7 +78,9 @@ impl BrowseModel {
 
     fn count_rows(&mut self, fx: &mut Effects) {
         if let Some(problem) = self.filter_problem() {
-            fx.output(BrowseTabOutput::ShowToast(filter_failure(problem).message()));
+            let reason = filter_failure(problem).message();
+            let estimate = self.total.estimate();
+            self.set_total(RowTotal::Unavailable { estimate, reason }, fx);
             return;
         }
         if self.total.exact().is_none() && !self.sequencer.is_pending(BrowseRequestKind::Count) {
@@ -86,13 +89,24 @@ impl BrowseModel {
     }
 
     /// Read the page a paginator move landed on, if it moved.
-    fn turn_page(&mut self, target: Option<(PagePosition, u64)>, fx: &mut Effects) {
-        let Some((_, start)) = target else {
+    fn turn_page(&mut self, target: Option<PageTarget>, fx: &mut Effects) {
+        let Some(target) = target else {
             return;
         };
-        self.pager.go_to(start);
+        self.pager.move_to(target);
         self.fetch(BrowseRequestKind::Page, fx);
         fx.output(BrowseTabOutput::StateChanged);
+    }
+
+    /// The dropdown and the More menu each pick a size, so each shows
+    /// the one the other picked.
+    fn show_page_size(&self, size: u64) {
+        if let Some(position) = self.widgets.page_sizes.iter().position(|n| *n == size) {
+            self.widgets
+                .page_size_dropdown
+                .set_selected(u32::try_from(position).unwrap_or_default());
+        }
+        self.actions.page_size.set_state(&size.to_variant());
     }
 
     pub(super) fn refresh_filter_chrome(&self) {

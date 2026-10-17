@@ -1,16 +1,14 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use tablepro_core::browse::{BrowseSqlError, PageLayout, PageRequest, SortKey, build_page};
+use tablepro_core::browse::{PageRequest, SortKey, read_page};
 use tablepro_core::meta::{RowIdentity, TableRef};
 use tablepro_core::statement::StatementBuilder;
-use tablepro_core::{BuildFilterError, ColumnInfo, FilterSet, QueryResult, RowLimit};
+use tablepro_core::{BuildFilterError, ColumnInfo, FilterSet};
 use tablepro_session::{OperationError, OperationKind};
 
 use super::columns_fetch::{ColumnFreshness, load_columns};
-use super::{
-    BrowseCommand, BrowseModel, BrowseRequestKind, BrowseTabOutput, ColumnsReply, DataInput, Effects, PageReply,
-};
+use super::{BrowseCommand, BrowseModel, BrowseRequestKind, ColumnsReply, DataInput, Effects, PageReply};
 use crate::runtime::{RequestTicket, Stamped};
 use crate::ui::export::TableExport;
 use crate::ui::tab_load::LoadFailure;
@@ -115,36 +113,25 @@ impl BrowseModel {
         let cancel = ticket.cancel.clone();
         let position = self.pager.position();
         let work = async move {
-            let reply_position = position.clone();
             session
                 .run_cancellable(OperationKind::Page, &cancel, move |lease, options| {
                     let plan = plan.clone();
                     let position = position.clone();
                     async move {
-                        let spec = build_page(
-                            &*lease.dialect(),
-                            &PageRequest {
-                                table: &plan.table,
-                                columns: &plan.columns,
-                                filter: &plan.filter,
-                                sort: &plan.sort,
-                                identity: &plan.identity,
-                                position: &position,
-                                limit: plan.limit,
-                            },
-                        )?;
-                        let limit = RowLimit::new(plan.limit).unwrap_or(RowLimit::EDITOR_DEFAULT);
-                        let result = lease.query_bound(&spec.statement, limit, options).await?;
-                        check_shape(&result, &spec.layout)?;
-                        Ok((result, spec.layout))
+                        let request = PageRequest {
+                            table: &plan.table,
+                            columns: &plan.columns,
+                            filter: &plan.filter,
+                            sort: &plan.sort,
+                            identity: &plan.identity,
+                            position: &position,
+                            limit: plan.limit,
+                        };
+                        read_page::<OperationError>(&*lease, &request, &options).await
                     }
                 })
                 .await
-                .map(|(result, layout)| PageReply {
-                    position: reply_position,
-                    result,
-                    layout,
-                })
+                .map(PageReply::from)
         };
         self.deliver(ticket, work, BrowseCommand::Page, OperationError::from);
     }
@@ -184,7 +171,7 @@ impl BrowseModel {
                 .map(|(column, ascending)| SortKey { column, ascending })
                 .into_iter()
                 .collect(),
-            limit: self.pager.page_size(),
+            limit: self.pager.limit(),
         })
     }
 
@@ -210,37 +197,18 @@ impl BrowseModel {
     }
 
     /// A filter the dialect cannot write is the user's to fix, and no
-    /// page is read under it. Rows already on screen stay with a toast,
-    /// and a page still on its way under the old filter is stopped;
-    /// without rows, the error page says why rather than a spinner that
-    /// nothing will replace.
+    /// page is read under it. A page still on its way under the old
+    /// filter is stopped. The failure stays on screen until a read
+    /// lands: on the banner over rows already shown, or on the error
+    /// page when there are none.
     fn on_filter_problem(&mut self, problem: BuildFilterError, fx: &mut Effects) {
-        let failure = filter_failure(problem);
-        if !self.load.has_content() {
-            self.on_load_failed(failure, fx);
-            return;
-        }
         self.sequencer.cancel(BrowseRequestKind::Page);
-        fx.output(BrowseTabOutput::ShowToast(failure.message()));
-        let presentation = self.load.abandon();
-        self.present(presentation, fx);
+        self.load.abandon();
+        self.on_load_failed(filter_failure(problem), fx);
     }
 }
 
 /// A filter the current server cannot write, as the tab reports it.
 pub(super) fn filter_failure(problem: BuildFilterError) -> LoadFailure {
     LoadFailure::Page(Arc::new(OperationError::Browse(problem.into())))
-}
-
-/// Every row has the columns the page asked for, visible then identity,
-/// so the split on the GTK thread takes each row apart at the same place.
-fn check_shape(result: &QueryResult, layout: &PageLayout) -> Result<(), BrowseSqlError> {
-    let expected = layout.width();
-    let found = std::iter::once(result.columns.len())
-        .chain(result.rows.iter().map(Vec::len))
-        .find(|width| *width != expected);
-    match found {
-        Some(found) => Err(BrowseSqlError::ShapeMismatch { expected, found }),
-        None => Ok(()),
-    }
 }

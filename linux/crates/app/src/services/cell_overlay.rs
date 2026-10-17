@@ -17,6 +17,16 @@ pub struct CellOverlay {
     pub error_flash: bool,
 }
 
+/// What tints a cell, without its pending value: every bind asks this
+/// of every cell, and copying a value or scanning every edit to tint
+/// one would grow with the edits held.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CellMarks {
+    pub row_deleted: bool,
+    pub state: CellState,
+    pub error_flash: bool,
+}
+
 #[cfg(test)]
 impl CellOverlay {
     /// The value the cell shows over `fetched`, a cell left to the

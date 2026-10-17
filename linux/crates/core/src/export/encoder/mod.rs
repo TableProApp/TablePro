@@ -56,7 +56,7 @@ fn readable_cells<'a>(
 }
 
 /// A column's name, or its position for a cell past the header.
-fn column_name(columns: &[ResultColumn], index: usize) -> String {
+pub(in crate::export) fn column_name(columns: &[ResultColumn], index: usize) -> String {
     columns
         .get(index)
         .map_or_else(|| (index + 1).to_string(), |column| column.name.clone())

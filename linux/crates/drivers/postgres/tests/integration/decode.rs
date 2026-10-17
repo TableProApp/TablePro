@@ -148,6 +148,50 @@ async fn f006_round_trip_matrix() {
     }
 }
 
+/// SQL export and Copy As INSERT write an array through the dialect's
+/// literal, which PostgreSQL has to read back as the same array.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn an_exported_array_inserts_back_as_it_was() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let shape = "(id int PRIMARY KEY, i int[], t text[], m int[][], b bytea[], e int[])";
+    setup(
+        connection.as_ref(),
+        &[
+            &format!("CREATE TABLE arrays {shape}"),
+            &format!("CREATE TABLE copied {shape}"),
+            r#"INSERT INTO arrays VALUES (1, '{1,2,NULL}', ARRAY['a,b', 'NULL', NULL, 'say "hi"', 'back\slash', 'it''s', ''],
+               '{{1,2},{3,4}}', ARRAY['\xab00'::bytea], '{}')"#,
+        ],
+    )
+    .await;
+    let select = |table: &str| format!("SELECT id, i, t, m, b, e FROM {table}");
+    let read = connection
+        .query_bound(
+            &crate::support::statement(&select("arrays")),
+            RowLimit::EDITOR_DEFAULT,
+            within(CALL),
+        )
+        .await
+        .expect("the read");
+
+    let insert =
+        tablepro_core::export::render_sql_insert(connection.dialect().as_ref(), "copied", &read.columns, &read.rows);
+    crate::support::apply(
+        connection.as_ref(),
+        tablepro_core::WriteKind::RowChanges,
+        &[insert.trim_end().trim_end_matches(';')],
+    )
+    .await
+    .expect("the exported INSERT runs");
+
+    assert_eq!(
+        crate::support::rows(connection.as_ref(), &select("copied")).await,
+        read.rows
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn an_empty_page_still_has_its_columns() {

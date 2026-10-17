@@ -124,6 +124,18 @@ fn column_line<'a>(create_statement: &'a str, column: &str) -> Option<&'a str> {
     })
 }
 
+/// The quoted DEFAULT on the column's line of SHOW CREATE TABLE, without
+/// its quotes. The server prints a TIMESTAMP default there as wall time
+/// in the session's zone, where MySQL's `COLUMN_DEFAULT` keeps the text
+/// of whichever session last altered the table, in that session's zone.
+pub(crate) fn quoted_default(create_statement: &str, column: &str) -> Option<String> {
+    const MARKER: &str = " DEFAULT '";
+    let line = column_line(create_statement, column)?;
+    let rest = line.get(line.find(MARKER)? + MARKER.len()..)?;
+    let end = rest.find('\'')?;
+    rest.get(..end).map(str::to_owned)
+}
+
 fn ends_with_check(line: &str, clause: &str) -> bool {
     line.strip_suffix(')')
         .and_then(|rest| rest.strip_suffix(clause))
@@ -169,6 +181,16 @@ mod tests {
             "KEY_COLUMN_USAGE",
             values.iter().map(|text| Value::Text((*text).to_owned())).collect(),
         )
+    }
+
+    #[test]
+    fn a_quoted_default_is_read_from_its_own_columns_line() {
+        let create = "CREATE TABLE `t` (\n  `id` int NOT NULL,\n  `at` timestamp NULL DEFAULT '1999-12-31 17:00:00' \
+                      COMMENT 'x',\n  `made` timestamp NULL DEFAULT CURRENT_TIMESTAMP,\n  PRIMARY KEY (`id`)\n)";
+
+        assert_eq!(quoted_default(create, "at").as_deref(), Some("1999-12-31 17:00:00"));
+        assert_eq!(quoted_default(create, "made"), None);
+        assert_eq!(quoted_default(create, "missing"), None);
     }
 
     #[test]

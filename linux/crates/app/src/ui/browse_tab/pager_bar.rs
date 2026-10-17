@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::sync::OnceLock;
 
 use glib::subclass::Signal;
@@ -41,7 +42,8 @@ impl PagerRequest {
 mod imp {
     use super::*;
 
-    #[derive(Default, gtk::CompositeTemplate)]
+    #[derive(Default, gtk::CompositeTemplate, glib::Properties)]
+    #[properties(wrapper_type = super::PagerBar)]
     #[template(resource = "/app/tablepro/TablePro/ui/pager-bar.ui")]
     pub struct PagerBar {
         #[template_child]
@@ -60,6 +62,28 @@ mod imp {
         pub count_spinner: TemplateChild<adw::Spinner>,
         #[template_child]
         pub count_label: TemplateChild<gtk::Label>,
+        /// Below the tab's breakpoint, Count Rows is in the tab's More
+        /// menu instead.
+        #[property(get, set = Self::set_compact)]
+        compact: Cell<bool>,
+        count_offered: Cell<bool>,
+    }
+
+    impl PagerBar {
+        fn set_compact(&self, compact: bool) {
+            self.compact.set(compact);
+            self.show_count_button();
+        }
+
+        pub(super) fn offer_count(&self, offered: bool) {
+            self.count_offered.set(offered);
+            self.show_count_button();
+        }
+
+        fn show_count_button(&self) {
+            self.count_button
+                .set_visible(self.count_offered.get() && !self.compact.get());
+        }
     }
 
     #[glib::object_subclass]
@@ -77,6 +101,7 @@ mod imp {
         }
     }
 
+    #[glib::derived_properties]
     impl ObjectImpl for PagerBar {
         fn constructed(&self) {
             self.parent_constructed();
@@ -143,7 +168,8 @@ impl PagerBar {
             changes
                 .iter()
                 .find(|(changed, _)| changed == button)
-                .map_or(button.is_sensitive() && button.is_visible(), |(_, on)| *on)
+                .map_or(button.is_sensitive(), |(_, on)| *on)
+                && button.is_visible()
         };
         let buttons = self.buttons();
         if let Some(from) = buttons
@@ -180,9 +206,7 @@ impl PagerBar {
     /// total enables.
     pub(super) fn show_total(&self, pager: &BrowsePager, shown: Option<&PageState>, total: &RowTotal) {
         let imp = self.imp();
-        let label = shown
-            .map(|page| page_range_label(page.start_ordinal, page.row_count, total))
-            .unwrap_or_default();
+        let label = shown.map(|page| page_range_label(page, total)).unwrap_or_default();
         crate::ui::a11y::show_status(&imp.paginator_label, &label);
         let last_tooltip = match total.exact() {
             Some(_) => gettext("Last Page"),
@@ -191,15 +215,15 @@ impl PagerBar {
         imp.last_button.set_tooltip_text(Some(&last_tooltip));
 
         let counting = matches!(total, RowTotal::Counting { .. });
-        let count_shown = shown.is_some() && total.exact().is_none();
-        if count_shown {
-            imp.count_button.set_visible(true);
+        let count_offered = shown.is_some() && total.exact().is_none();
+        if count_offered {
+            imp.offer_count(true);
         }
         self.turn(&[
             (imp.last_button.get(), pager.last(total).is_some()),
-            (imp.count_button.get(), count_shown && !counting),
+            (imp.count_button.get(), count_offered && !counting),
         ]);
-        imp.count_button.set_visible(count_shown);
+        imp.offer_count(count_offered);
         imp.count_spinner.set_visible(counting);
         let (label, reason) = match total {
             RowTotal::Counting { .. } => (gettext("Counting…"), None),
@@ -295,6 +319,7 @@ mod tests {
             result_columns: Arc::from([]),
             row_count,
             start_ordinal,
+            filtered: false,
         }
     }
 
@@ -475,6 +500,21 @@ mod tests {
             &button,
             AccessibleProperty::Description
         ));
+    }
+
+    #[gtk4::test]
+    fn a_compact_bar_leaves_count_rows_to_the_menu() {
+        let bar = bar();
+        let count = bar.imp().count_button.get();
+        bar.show_total(&BrowsePager::new(100, 0), Some(&page(0, 100)), &RowTotal::Unknown);
+
+        bar.set_compact(true);
+        assert!(!count.is_visible());
+        bar.show_total(&BrowsePager::new(100, 0), Some(&page(0, 100)), &RowTotal::Unknown);
+        assert!(!count.is_visible(), "a new total put Count Rows back on a compact bar");
+
+        bar.set_compact(false);
+        assert!(count.is_visible());
     }
 
     #[gtk4::test]

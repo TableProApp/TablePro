@@ -325,6 +325,11 @@ fn literal(value: &Value) -> Result<String, LiteralError> {
                 reason: format!("{:?}", undecodable.reason),
             });
         }
+        // The export's JSON array text is no array input PostgreSQL
+        // reads, and ARRAY[...] would type text elements as text[],
+        // which an int[] column refuses. A quoted array literal takes
+        // the column's own type.
+        Value::Array(elements) => quoted(&array_literal(elements)?),
         other => match value_to_text(other) {
             Some(text) => quoted(&text),
             None => {
@@ -334,6 +339,40 @@ fn literal(value: &Value) -> Result<String, LiteralError> {
             }
         },
     })
+}
+
+/// PostgreSQL's array input: `{...}` with each element in double
+/// quotes, so a comma, a brace, a space or the text `NULL` stays the
+/// element's own, and an unquoted NULL for a missing one. A nested array
+/// is a dimension.
+fn array_literal(elements: &[Value]) -> Result<String, LiteralError> {
+    let mut parts = Vec::with_capacity(elements.len());
+    for element in elements {
+        parts.push(match element {
+            Value::Null => "NULL".to_owned(),
+            Value::Array(inner) => array_literal(inner)?,
+            Value::Undecodable(undecodable) => {
+                return Err(LiteralError::Undecodable {
+                    reason: format!("{:?}", undecodable.reason),
+                });
+            }
+            // bytea's own input, where the export text would be 0x...
+            Value::Bytes(bytes) => array_element(&format!("\\x{}", tablepro_core::hex::encode_lower(bytes))),
+            other => match value_to_text(other) {
+                Some(text) => array_element(&text),
+                None => {
+                    return Err(LiteralError::Unrepresentable {
+                        found: other.variant_name(),
+                    });
+                }
+            },
+        });
+    }
+    Ok(format!("{{{}}}", parts.join(",")))
+}
+
+fn array_element(text: &str) -> String {
+    format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 /// A string literal that reads the same whatever
@@ -597,6 +636,35 @@ mod tests {
             Ok("decode('ab01', 'hex')".to_owned())
         );
         assert_eq!(literal(&Value::Date(Temporal::Infinity)), Ok("'infinity'".to_owned()));
+    }
+
+    #[test]
+    fn an_array_is_an_array_literal_postgres_reads() {
+        assert_eq!(
+            literal(&Value::Array(vec![Value::Int(1), Value::Int(2), Value::Null])),
+            Ok("'{\"1\",\"2\",NULL}'".to_owned())
+        );
+        assert_eq!(
+            literal(&Value::Array(vec![
+                Value::Text("a,b".to_owned()),
+                Value::Text("NULL".to_owned()),
+                Value::Text("say \"hi\"".to_owned()),
+                Value::Text("it's".to_owned()),
+            ])),
+            Ok("E'{\"a,b\",\"NULL\",\"say \\\\\"hi\\\\\"\",\"it''s\"}'".to_owned())
+        );
+        assert_eq!(
+            literal(&Value::Array(vec![
+                Value::Array(vec![Value::Int(1), Value::Int(2)]),
+                Value::Array(vec![Value::Int(3), Value::Int(4)]),
+            ])),
+            Ok("'{{\"1\",\"2\"},{\"3\",\"4\"}}'".to_owned())
+        );
+        assert_eq!(literal(&Value::Array(Vec::new())), Ok("'{}'".to_owned()));
+        assert_eq!(
+            literal(&Value::Array(vec![Value::Bytes(vec![0xab])])),
+            Ok("E'{\"\\\\\\\\xab\"}'".to_owned())
+        );
     }
 
     #[test]

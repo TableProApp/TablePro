@@ -17,6 +17,8 @@ pub enum BrowseSqlError {
     UnsupportedPosition { mode: PagingMode },
     #[error("the row to page from has a NULL key, which no row compares past")]
     NullAnchor,
+    #[error("the row to page from has no row address that can be read")]
+    UnreadableAnchor,
     #[error("the page returned {found} columns but the query asked for {expected}")]
     ShapeMismatch { expected: usize, found: usize },
     #[error(transparent)]

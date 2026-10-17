@@ -6,8 +6,8 @@ use tablepro_core::meta::RowIdentity;
 
 use super::row_state_icon::RowPendingState;
 use super::{ColumnWidthBinding, GridRowId, RowObject, RowSnapshot};
-use crate::services::cell_overlay::CellOverlay;
-use crate::services::change_tracker::{CellState, RowKey, RowState};
+use crate::services::cell_overlay::CellMarks;
+use crate::services::change_tracker::{CellState, RowKey};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 
 /// `tracker` and `column_widths` are `None` for a grid nothing tracks,
@@ -113,20 +113,20 @@ impl TabGridContext {
         let Some((tracker, key)) = self.tracked_key(row) else {
             return (Vec::new(), CellState::Clean);
         };
-        let overlay = tracker.cell_overlay(&key, col);
-        (pending_classes(tracker.row_state(&key), &overlay, col), overlay.state)
+        let marks = tracker.cell_marks(&key, col);
+        (pending_classes(&marks, col), marks.state)
     }
 }
 
-fn pending_classes(row_state: RowState, overlay: &CellOverlay, col: usize) -> Vec<&'static str> {
+fn pending_classes(marks: &CellMarks, col: usize) -> Vec<&'static str> {
     let mut classes = Vec::new();
-    match (row_state, overlay.state) {
-        (RowState::PendingDelete, _) => classes.push("tp-row-pending-delete"),
-        (RowState::InsertDraft, _) => classes.push("tp-row-pending-insert"),
-        (_, CellState::Modified) => classes.push("tp-cell-modified"),
-        _ => {}
+    match (marks.row_deleted, marks.state) {
+        (true, _) => classes.push("tp-row-pending-delete"),
+        (false, CellState::InsertDraft) => classes.push("tp-row-pending-insert"),
+        (false, CellState::Modified) => classes.push("tp-cell-modified"),
+        (false, CellState::Clean) => {}
     }
-    if col == 0 && overlay.error_flash {
+    if col == 0 && marks.error_flash {
         classes.push("tp-row-leftmost-error-flash");
     }
     classes

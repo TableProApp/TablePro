@@ -5,9 +5,10 @@ use relm4::adw::prelude::*;
 use relm4::prelude::*;
 use relm4::{adw, gtk};
 
-use tablepro_core::ColumnInfo;
 use tablepro_core::export::CsvDelimiter;
-use tablepro_core::import::{CsvImportOptions, CsvSheet, MAX_PREVIEW_ROWS, read_csv, suggest_mapping};
+use tablepro_core::import::{
+    CsvImportOptions, CsvSheet, ImportColumn, ImportError, MAX_PREVIEW_ROWS, read_csv, suggest_mapping,
+};
 
 use crate::runtime::DeliverInput;
 
@@ -28,8 +29,10 @@ pub struct ImportCsvDialog {
     schema: Option<String>,
     table: String,
     bytes: Vec<u8>,
-    columns: Vec<ColumnInfo>,
+    columns: Vec<ImportColumn>,
     sheet: CsvSheet,
+    /// Why the file could not be read under the options as they stand.
+    read_error: Option<String>,
     options: CsvImportOptions,
     /// One row per table column, in column order. The selected index is
     /// 0 for "Skip" and the field number plus one otherwise.
@@ -45,7 +48,7 @@ pub struct ImportCsvDialog {
 pub struct ImportCsvDialogInit {
     pub schema: Option<String>,
     pub table: String,
-    pub columns: Vec<ColumnInfo>,
+    pub columns: Vec<ImportColumn>,
     pub bytes: Vec<u8>,
 }
 
@@ -68,9 +71,9 @@ pub enum ImportCsvDialogInput {
 pub struct CsvImport {
     pub schema: Option<String>,
     pub table: String,
-    pub columns: Vec<ColumnInfo>,
+    pub columns: Vec<ImportColumn>,
     /// One entry per table column: the CSV field it takes, or `None`
-    /// for a column the user set to Skip.
+    /// for a column the user set to Skip or the server fills.
     pub mapping: Vec<Option<usize>>,
     pub options: CsvImportOptions,
     pub bytes: Vec<u8>,
@@ -79,7 +82,6 @@ pub struct CsvImport {
 #[derive(Debug)]
 pub enum ImportCsvDialogOutput {
     Import(Box<CsvImport>),
-    ShowToast(String),
 }
 
 impl Component for ImportCsvDialog {
@@ -150,8 +152,14 @@ impl Component for ImportCsvDialog {
             .build();
         page.add(&mapping_group);
 
-        let summary = gtk::Label::builder().xalign(0.0).wrap(true).build();
-        summary.add_css_class("dim-label");
+        // Problems with the file are told here, inside the dialog that
+        // covers the window a toast would go to, and long enough to read.
+        let summary = gtk::Label::builder()
+            .xalign(0.0)
+            .wrap(true)
+            .wrap_mode(gtk::pango::WrapMode::WordChar)
+            .selectable(true)
+            .build();
         let summary_group = adw::PreferencesGroup::new();
         summary_group.add(&summary);
         page.add(&summary_group);
@@ -173,6 +181,7 @@ impl Component for ImportCsvDialog {
             bytes: init.bytes,
             columns: init.columns,
             sheet: CsvSheet::default(),
+            read_error: None,
             options: CsvImportOptions::default(),
             mapping_rows: Rc::new(RefCell::new(Vec::new())),
             mapping_group,
@@ -193,13 +202,11 @@ impl Component for ImportCsvDialog {
             ImportCsvDialogInput::MappingChanged => {
                 self.options = self.read_options();
                 self.show_samples();
+                self.show_summary();
             }
             ImportCsvDialogInput::Import => {
                 let mapping = self.mapping();
-                if mapping.iter().all(Option::is_none) {
-                    let _ = sender.output(ImportCsvDialogOutput::ShowToast(crate::i18n::gettext(
-                        "Every column is set to Skip, so there is nothing to import.",
-                    )));
+                if self.blocker().is_some() {
                     return;
                 }
                 let _ = sender.output(ImportCsvDialogOutput::Import(Box::new(CsvImport {
@@ -241,12 +248,11 @@ impl ImportCsvDialog {
         match read_csv(&self.bytes, &self.options, Some(MAX_PREVIEW_ROWS)) {
             Ok(sheet) => {
                 self.sheet = sheet;
-                self.import_button.set_sensitive(true);
+                self.read_error = None;
             }
             Err(error) => {
                 self.sheet = CsvSheet::default();
-                self.import_button.set_sensitive(false);
-                let _ = sender.output(ImportCsvDialogOutput::ShowToast(error.to_string()));
+                self.read_error = Some(import_error_text(&error));
             }
         }
         self.rebuild_mapping(sender);
@@ -262,12 +268,16 @@ impl ImportCsvDialog {
             .chain(self.sheet.headers.iter().cloned())
             .collect();
         let choice_refs: Vec<&str> = choices.iter().map(String::as_str).collect();
+        // One list for every row: each row keeps its own selection, and
+        // a wide file is held once rather than once per column.
+        let choices = gtk::StringList::new(&choice_refs);
         let suggested = suggest_mapping(&self.sheet.headers, &self.columns);
 
         for (column, field) in self.columns.iter().zip(&suggested) {
             let row = adw::ComboRow::builder()
-                .title(glib::markup_escape_text(&column.name))
-                .model(&gtk::StringList::new(&choice_refs))
+                .title(glib::markup_escape_text(&column.info.name))
+                .model(&choices)
+                .sensitive(!column.server_filled)
                 .build();
             row.set_selected(field.map_or(0, |index| index as u32 + 1));
             let sender = sender.clone();
@@ -280,25 +290,50 @@ impl ImportCsvDialog {
 
     /// Show what the mapped field actually holds, under each column.
     fn show_samples(&self) {
-        for (row, field) in self.mapping_rows.borrow().iter().zip(self.mapping()) {
+        let rows = self.mapping_rows.borrow();
+        for ((row, field), column) in rows.iter().zip(self.mapping()).zip(&self.columns) {
             row.set_subtitle(&match field {
+                _ if column.server_filled => crate::i18n::gettext("The database fills this column"),
                 Some(index) => sample_text(&self.sheet, index, &self.options),
                 None => crate::i18n::gettext("Uses the column's own default"),
             });
         }
     }
 
+    /// What stands in the way of importing, if anything.
+    fn blocker(&self) -> Option<String> {
+        if let Some(error) = &self.read_error {
+            return Some(error.clone());
+        }
+        if self.sheet.rows.is_empty() {
+            return Some(crate::i18n::gettext("The file has no rows to import."));
+        }
+        if self.mapping().iter().all(Option::is_none) {
+            return Some(crate::i18n::gettext(
+                "Every column is set to Skip. Pick a field for at least one column to import.",
+            ));
+        }
+        None
+    }
+
     fn show_summary(&self) {
-        let text = match self.sheet.headers.is_empty() {
-            true => crate::i18n::gettext("The file could not be read."),
-            false if self.sheet.truncated => crate::i18n::gettext_f(
+        let blocker = self.blocker();
+        self.import_button.set_sensitive(blocker.is_none());
+        let text = match blocker {
+            Some(blocker) => {
+                self.summary.remove_css_class("dim-label");
+                self.summary.add_css_class("error");
+                self.summary.set_label(&blocker);
+                return;
+            }
+            None if self.sheet.truncated => crate::i18n::gettext_f(
                 "{fields} fields. Showing the first {rows} rows; the whole file is imported.",
                 &[
                     ("fields", &self.sheet.headers.len().to_string()),
                     ("rows", &self.sheet.rows.len().to_string()),
                 ],
             ),
-            false => crate::i18n::ngettext_f(
+            None => crate::i18n::ngettext_f(
                 "{fields} fields, {rows} row.",
                 "{fields} fields, {rows} rows.",
                 self.sheet.rows.len() as u32,
@@ -308,6 +343,8 @@ impl ImportCsvDialog {
                 ],
             ),
         };
+        self.summary.remove_css_class("error");
+        self.summary.add_css_class("dim-label");
         self.summary.set_label(&text);
     }
 
@@ -315,11 +352,31 @@ impl ImportCsvDialog {
         self.mapping_rows
             .borrow()
             .iter()
-            .map(|row| match row.selected() {
+            .zip(&self.columns)
+            .map(|(row, column)| match row.selected() {
+                _ if column.server_filled => None,
                 0 => None,
                 index => Some(index as usize - 1),
             })
             .collect()
+    }
+}
+
+/// What went wrong reading the file, in words the user can act on.
+pub(crate) fn import_error_text(error: &ImportError) -> String {
+    match error {
+        ImportError::NotUtf8 { offset } => crate::i18n::gettext_f(
+            "The file isn't UTF-8 text from byte {offset} on. Save it as UTF-8 and import it again.",
+            &[("offset", &offset.to_string())],
+        ),
+        ImportError::Malformed(detail) => {
+            crate::i18n::gettext_f("The file couldn't be read as CSV: {error}", &[("error", detail)])
+        }
+        ImportError::NoColumns => crate::i18n::gettext("The file has no columns."),
+        ImportError::TooManyFields { line, limit } => crate::i18n::gettext_f(
+            "Line {line} has more than {limit} fields, more than any table holds. Check the delimiter.",
+            &[("line", &line.to_string()), ("limit", &limit.to_string())],
+        ),
     }
 }
 
@@ -400,20 +457,24 @@ mod tests {
 #[cfg(test)]
 mod dialog_tests {
     use super::*;
+    use tablepro_core::ColumnInfo;
     use tablepro_core::column::{ColumnDefault, ColumnType};
 
     /// The dialog only reads a column's name: the type decides what a
     /// value parses into, which happens after the dialog is gone.
-    fn column(name: &str) -> ColumnInfo {
-        ColumnInfo {
-            name: name.to_owned(),
-            column_type: ColumnType::unknown(),
-            nullable: true,
-            primary_key: false,
-            is_auto_increment: false,
-            is_generated: false,
-            default: ColumnDefault::None,
-            comment: None,
+    fn column(name: &str) -> ImportColumn {
+        ImportColumn {
+            info: ColumnInfo {
+                name: name.to_owned(),
+                column_type: ColumnType::unknown(),
+                nullable: true,
+                primary_key: false,
+                is_auto_increment: false,
+                is_generated: false,
+                default: ColumnDefault::None,
+                comment: None,
+            },
+            server_filled: false,
         }
     }
 
@@ -470,16 +531,76 @@ mod dialog_tests {
     }
 
     #[gtk4::test]
-    fn a_file_that_is_not_csv_leaves_the_import_button_off() {
+    fn a_column_the_server_fills_cannot_take_a_field() {
+        let mut id = column("id");
+        id.server_filled = true;
+        let dialog = ImportCsvDialog::builder().launch(ImportCsvDialogInit {
+            schema: None,
+            table: "people".to_owned(),
+            columns: vec![id, column("name")],
+            bytes: b"id,name\n1,ada\n".to_vec(),
+        });
+        crate::test_support::drain_main_context();
+
+        let rows = dialog.model().mapping_rows.borrow().clone();
+
+        assert_eq!(dialog.model().mapping(), vec![None, Some(1)]);
+        assert!(
+            !rows[0].is_sensitive(),
+            "a field could be picked for a column the server fills"
+        );
+        assert_eq!(
+            rows[0].subtitle().unwrap_or_default().as_str(),
+            "The database fills this column"
+        );
+    }
+
+    #[gtk4::test]
+    fn a_file_that_is_not_csv_leaves_the_import_button_off_and_says_why_in_the_dialog() {
         let dialog = ImportCsvDialog::builder().launch(ImportCsvDialogInit {
             schema: None,
             table: "people".to_owned(),
             columns: vec![column("id")],
-            bytes: Vec::new(),
+            bytes: b"id\n\xff\n".to_vec(),
         });
 
         crate::test_support::drain_main_context();
 
         assert!(!dialog.model().import_button.is_sensitive());
+        assert_eq!(
+            dialog.model().summary.label().as_str(),
+            "The file isn't UTF-8 text from byte 3 on. Save it as UTF-8 and import it again."
+        );
+        assert!(dialog.model().summary.has_css_class("error"));
+    }
+
+    #[gtk4::test]
+    fn every_column_set_to_skip_turns_the_import_button_off() {
+        let dialog = launch("name,id\nada,1\n");
+        crate::test_support::drain_main_context();
+        assert!(dialog.model().import_button.is_sensitive());
+
+        for row in dialog.model().mapping_rows.borrow().iter() {
+            row.set_selected(0);
+        }
+        crate::test_support::drain_main_context();
+
+        assert!(!dialog.model().import_button.is_sensitive());
+        assert_eq!(
+            dialog.model().summary.label().as_str(),
+            "Every column is set to Skip. Pick a field for at least one column to import."
+        );
+    }
+
+    #[gtk4::test]
+    fn a_file_with_only_a_header_has_nothing_to_import() {
+        let dialog = launch("name,id\n");
+        crate::test_support::drain_main_context();
+
+        assert!(!dialog.model().import_button.is_sensitive());
+        assert_eq!(
+            dialog.model().summary.label().as_str(),
+            "The file has no rows to import."
+        );
     }
 }

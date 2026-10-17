@@ -7,6 +7,7 @@ use libadwaita::prelude::*;
 use sourceview5::prelude::*;
 use tablepro_core::Value;
 use tablepro_core::column::ResultColumn;
+use tablepro_core::export::EncodeError;
 use tablepro_session::runtime::Tasks;
 
 use super::RowSnapshot;
@@ -35,16 +36,16 @@ struct RowJson {
     shortened: bool,
 }
 
-fn render(request: RowJsonRequest) -> RowJson {
+fn render(request: RowJsonRequest) -> Result<RowJson, EncodeError> {
     let values = request.row.to_values();
-    let full = tablepro_core::export::row_to_json(&request.columns, &values);
+    let full = tablepro_core::export::row_to_json(&request.columns, &values)?;
     let mut shortened = false;
     let shown_values: Vec<Value> = values.into_iter().map(|value| shown(value, &mut shortened)).collect();
     let shown = match shortened {
-        true => tablepro_core::export::row_to_json(&request.columns, &shown_values),
+        true => tablepro_core::export::row_to_json(&request.columns, &shown_values)?,
         false => full.clone(),
     };
-    RowJson { full, shown, shortened }
+    Ok(RowJson { full, shown, shortened })
 }
 
 /// `value` as the dialog shows it, with anything long cut short and
@@ -118,16 +119,31 @@ pub(crate) async fn present_row_json(
     tasks: Tasks,
     request: RowJsonRequest,
 ) -> Option<adw::Dialog> {
-    let rendered = match tasks.spawn_blocking_task(move || render(request)).await {
-        Ok(rendered) => rendered,
+    let dialog = match tasks.spawn_blocking_task(move || render(request)).await {
+        Ok(Ok(rendered)) => row_json_dialog(rendered),
+        Ok(Err(refused)) => refused_alert(&refused).upcast(),
         Err(failure) => {
             tracing::warn!(%failure, "a row could not be rendered as JSON");
             return None;
         }
     };
-    let dialog = row_json_dialog(rendered);
     dialog.present(Some(&parent));
     Some(dialog)
+}
+
+/// Why the row has no JSON to show. Both refusals name the column the
+/// grid shows as unreadable.
+fn refused_alert(refused: &EncodeError) -> adw::AlertDialog {
+    let (EncodeError::Undecodable { column } | EncodeError::NotXmlText { column }) = refused;
+    let alert = adw::AlertDialog::new(
+        Some(&crate::i18n::gettext("Can't Show Row as JSON")),
+        Some(&crate::i18n::gettext_f(
+            "The column “{column}” holds a value TablePro couldn't read, so the row has no JSON to show.",
+            &[("column", column)],
+        )),
+    );
+    alert.add_response("close", &crate::i18n::gettext("_Close"));
+    alert
 }
 
 fn row_json_dialog(json: RowJson) -> adw::Dialog {
@@ -300,7 +316,7 @@ mod tests {
             ),
         };
 
-        let rendered = render(request);
+        let rendered = render(request).expect("a readable row");
 
         assert!(rendered.shortened);
         let longest = rendered.shown.lines().map(str::len).max().unwrap_or_default();
@@ -319,6 +335,42 @@ mod tests {
         assert_eq!(full["blob"].as_str().map(str::len), Some(2 + 2 * LONG));
         assert_eq!(full["shape"], serde_json::json!(shape));
         assert_eq!(full["tags"].as_array().map(Vec::len), Some(LONG));
+    }
+
+    #[gtk4::test]
+    fn an_unreadable_value_is_refused_by_name_rather_than_shown_as_null() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let window = OwnedWindow::presented(adw::Window::new());
+        let runtime = crate::test_support::test_runtime();
+        let unreadable = Value::Undecodable(Box::new(tablepro_core::value::UndecodedValue {
+            type_name: "text".to_owned(),
+            reason: tablepro_core::value::UndecodableReason::InvalidEncoding,
+        }));
+        let request = RowJsonRequest {
+            columns: vec![
+                ResultColumn::new("id", ColumnType::untyped_text("text")),
+                ResultColumn::new("body", ColumnType::untyped_text("text")),
+            ]
+            .into(),
+            row: RowSnapshot::new(vec![Value::Int(1), unreadable].into(), Vec::new()),
+        };
+
+        let dialog = finish_on_main(
+            Duration::from_secs(10),
+            present_row_json(window.clone().upcast(), runtime.tasks(), request),
+        )
+        .expect("the render to end")
+        .expect("a dialog");
+
+        let alert = dialog
+            .downcast::<adw::AlertDialog>()
+            .expect("an alert, not the JSON view");
+        assert_eq!(
+            alert.body().as_str(),
+            "The column “body” holds a value TablePro couldn't read, so the row has no JSON to show."
+        );
+        alert.force_close();
+        runtime.shutdown();
     }
 
     #[gtk4::test]
