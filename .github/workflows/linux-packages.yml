@@ -9,6 +9,8 @@ name: Linux packages
 # another fresh container with only its runtime dependencies and started.
 # release-linux.yml calls this workflow and uploads the source packages.
 # A run by hand can add arm64, which pushes and pull requests leave out.
+# Given a release tag, it packages that release's tarballs instead, with
+# the packaging from this checkout, for a PPA upload with a new revision.
 
 on:
   pull_request:
@@ -47,6 +49,14 @@ on:
         description: JSON list of runners; the .rpm is built once per runner architecture.
         type: string
         default: '["ubuntu-24.04"]'
+      release-tag:
+        description: A published linux-vX.Y.Z whose tarballs are packaged, with the .deb packaging from this checkout. No .rpm is built.
+        type: string
+        default: ""
+      revision:
+        description: The PPA upload number, the N in X.Y.Z-0ppaN.
+        type: string
+        default: "1"
 
 permissions:
   contents: read
@@ -69,7 +79,13 @@ jobs:
         with:
           persist-credentials: false
       - name: Make the source and vendor tarballs
+        if: inputs.release-tag == ''
         run: linux/build-aux/packaging/make-sources.sh --install-deps _packages/sources
+      - name: Download the released source and vendor tarballs
+        if: inputs.release-tag != ''
+        env:
+          TAG: ${{ inputs.release-tag }}
+        run: linux/build-aux/packaging/fetch-release-sources.sh --install-deps "$GITHUB_REPOSITORY" "$TAG" _packages/sources
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: linux-sources
@@ -98,11 +114,18 @@ jobs:
           path: _packages/sources
       - name: Build an unsigned source package for each series
         id: build
+        env:
+          RELEASE_TAG: ${{ inputs.release-tag }}
+          REVISION: ${{ inputs.revision || '1' }}
         run: |
           dist="$(find _packages/sources -name 'tablepro-*.tar.xz' ! -name '*-vendor.tar.xz')"
           vendor="$(find _packages/sources -name 'tablepro-*-vendor.tar.xz')"
+          set -- --revision "$REVISION"
+          if [ -n "$RELEASE_TAG" ]; then
+            set -- "$@" --debian linux/build-aux/debian
+          fi
           # shellcheck disable=SC2086 # one word per series
-          linux/build-aux/packaging/build-source.sh --install-deps "$dist" "$vendor" _packages/source $UBUNTU_SERIES
+          linux/build-aux/packaging/build-source.sh --install-deps "$@" "$dist" "$vendor" _packages/source $UBUNTU_SERIES
           series=""
           for name in $UBUNTU_SERIES; do
             series="$series${series:+, }\"$name\""
@@ -163,6 +186,7 @@ jobs:
   rpm:
     name: RPM package (${{ matrix.runner }})
     needs: sources
+    if: inputs.release-tag == ''
     strategy:
       fail-fast: false
       matrix:
