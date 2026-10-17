@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tablepro 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/TableProApp/TablePro/issues\n"
-"POT-Creation-Date: 2026-10-17 09:29+0000\n"
+"POT-Creation-Date: 2026-10-17 11:45+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -343,6 +343,11 @@ msgstr ""
 #, rust-format
 msgid ""
 "Couldn't copy: the column “{column}” holds a value TablePro couldn't read"
+msgstr ""
+
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
+#, rust-format
+msgid "Couldn't copy: the column “{column}” holds a control character"
 msgstr ""
 
 #: crates/app/src/ui/clipboard/clipboard_copy.rs
@@ -1845,13 +1850,6 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: crates/app/src/ui/export/export_failure_text.rs
-#, rust-format
-msgid ""
-"The column “{column}” holds a value TablePro couldn't read, so it can't be "
-"written to the file."
-msgstr ""
-
-#: crates/app/src/ui/export/export_failure_text.rs
 msgid ""
 "This statement returned more than one result, so it can't be exported as one "
 "file."
@@ -1903,6 +1901,27 @@ msgstr ""
 
 #: crates/app/src/ui/export/export_failure_text.rs
 #, rust-format
+msgid ""
+"The column “{column}” holds a value TablePro couldn't read, so it can't be "
+"written to the file."
+msgstr ""
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid ""
+"The column “{column}” holds a control character XML can't carry. Export it "
+"as CSV or JSON instead."
+msgstr ""
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid ""
+"The column “{column}” holds a value longer than the {limit} characters an "
+"Excel cell holds. Export it as CSV instead."
+msgstr ""
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
 msgid "An Excel sheet holds {limit} rows, and this result has {got}."
 msgstr ""
 
@@ -1928,6 +1947,7 @@ msgid "Couldn't Export"
 msgstr ""
 
 #: crates/app/src/ui/export/export_failure_text.rs
+#: crates/app/src/ui/grid/row_json_dialog.rs
 #: crates/app/src/ui/history_dialog/history_export.rs
 #: crates/app/src/workspace/close_guard.rs
 msgid "_Close"
@@ -2290,6 +2310,17 @@ msgid "… ({count} more item)"
 msgid_plural "… ({count} more items)"
 msgstr[0] ""
 msgstr[1] ""
+
+#: crates/app/src/ui/grid/row_json_dialog.rs
+msgid "Can't Show Row as JSON"
+msgstr ""
+
+#: crates/app/src/ui/grid/row_json_dialog.rs
+#, rust-format
+msgid ""
+"The column “{column}” holds a value TablePro couldn't read, so the row has "
+"no JSON to show."
+msgstr ""
 
 #: crates/app/src/ui/grid/row_json_dialog.rs
 msgid "Long values are shortened here. Copy includes them in full."
@@ -2660,11 +2691,11 @@ msgid ""
 msgstr ""
 
 #: crates/app/src/ui/import_dialog.rs
-msgid "Every column is set to Skip, so there is nothing to import."
+msgid "Skip"
 msgstr ""
 
 #: crates/app/src/ui/import_dialog.rs
-msgid "Skip"
+msgid "The database fills this column"
 msgstr ""
 
 #: crates/app/src/ui/import_dialog.rs
@@ -2672,7 +2703,12 @@ msgid "Uses the column's own default"
 msgstr ""
 
 #: crates/app/src/ui/import_dialog.rs
-msgid "The file could not be read."
+msgid "The file has no rows to import."
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid ""
+"Every column is set to Skip. Pick a field for at least one column to import."
 msgstr ""
 
 #: crates/app/src/ui/import_dialog.rs
@@ -2687,6 +2723,29 @@ msgid "{fields} fields, {rows} row."
 msgid_plural "{fields} fields, {rows} rows."
 msgstr[0] ""
 msgstr[1] ""
+
+#: crates/app/src/ui/import_dialog.rs
+#, rust-format
+msgid ""
+"The file isn't UTF-8 text from byte {offset} on. Save it as UTF-8 and import "
+"it again."
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+#, rust-format
+msgid "The file couldn't be read as CSV: {error}"
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "The file has no columns."
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+#, rust-format
+msgid ""
+"Line {line} has more than {limit} fields, more than any table holds. Check "
+"the delimiter."
+msgstr ""
 
 #: crates/app/src/ui/import_dialog.rs
 msgid "NULL"
@@ -3627,17 +3686,59 @@ msgid "The table's columns could not be read."
 msgstr ""
 
 #: crates/app/src/ui/workspace/import.rs
-msgid "Couldn't Import"
-msgstr ""
+#, rust-format
+msgid "Imported {n} row."
+msgid_plural "Imported {n} rows."
+msgstr[0] ""
+msgstr[1] ""
 
 #: crates/app/src/ui/workspace/import.rs
 msgid "That file has no rows to import."
 msgstr ""
 
 #: crates/app/src/ui/workspace/import.rs
+msgid "Import stopped."
+msgstr ""
+
+#: crates/app/src/ui/workspace/import.rs
+msgid "Couldn't Import"
+msgstr ""
+
+#: crates/app/src/ui/workspace/import.rs
 #, rust-format
-msgid "Imported {n} row."
-msgid_plural "Imported {n} rows."
+msgid ""
+"Line {line} could not be written: {error}. The import was rolled back, so no "
+"rows were added."
+msgstr ""
+
+#: crates/app/src/ui/workspace/import.rs
+#, rust-format
+msgid ""
+"Lines {first} to {last} could not be written: {error}. The import was rolled "
+"back, so no rows were added."
+msgstr ""
+
+#: crates/app/src/ui/workspace/import.rs
+#, rust-format
+msgid ""
+"Line {line} could not be written: {error}. The {written} row before it stays "
+"in the table, which has no transaction to undo it."
+msgid_plural ""
+"Line {line} could not be written: {error}. The {written} rows before it stay "
+"in the table, which has no transaction to undo them."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/workspace/import.rs
+#, rust-format
+msgid ""
+"Lines {first} to {last} could not be written: {error}. The table has no "
+"transaction to undo the import, so the {written} row before them stays, and "
+"some of these lines may have been written too."
+msgid_plural ""
+"Lines {first} to {last} could not be written: {error}. The table has no "
+"transaction to undo the import, so the {written} rows before them stay, and "
+"some of these lines may have been written too."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -3648,6 +3749,29 @@ msgstr ""
 #: crates/app/src/ui/workspace/import.rs
 #, rust-format
 msgid "Line {line}, column {column}: {reason} (the value was “{text}”)"
+msgstr ""
+
+#: crates/app/src/ui/workspace/import_ledger.rs
+msgid "Stop Imports?"
+msgstr ""
+
+#: crates/app/src/ui/workspace/import_ledger.rs
+#, rust-format
+msgid ""
+"{n} CSV import is still running. Stopping it rolls back the rows it wrote, "
+"unless the table has no transactions."
+msgid_plural ""
+"{n} CSV imports are still running. Stopping them rolls back the rows they "
+"wrote, unless the table has no transactions."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/workspace/import_ledger.rs
+msgid "_Keep Importing"
+msgstr ""
+
+#: crates/app/src/ui/workspace/import_ledger.rs
+msgid "_Stop Imports"
 msgstr ""
 
 #: crates/app/src/ui/workspace/saves.rs
@@ -4286,7 +4410,7 @@ msgid "Verify TLS, keep connections read-only, and reconnect on drop"
 msgstr ""
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
-msgid "Export results to CSV, TSV, JSON and SQL"
+msgid "Export results to CSV, JSON, SQL, Excel, Markdown, HTML and XML"
 msgstr ""
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
