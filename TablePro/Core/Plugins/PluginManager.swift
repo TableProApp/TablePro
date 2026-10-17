@@ -222,6 +222,7 @@ final class PluginManager: ObservableObject {
 
             self.refreshRegistryUpdateSet()
             self.subscribeToConnectionStatusChanges()
+            guard SoftwareUpdater.isUpdatingEnabled else { return }
             self.startNetworkReachabilityMonitor()
             self.scheduleReconciliation()
         }
