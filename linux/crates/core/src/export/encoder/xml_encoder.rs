@@ -25,7 +25,7 @@ impl RowEncoder for XmlEncoder {
     fn row(&mut self, out: &mut Vec<u8>, cells: &mut dyn Iterator<Item = &Value>) -> Result<(), EncodeError> {
         let cells = readable_cells(&self.columns, cells)?;
         let mut row = String::new();
-        xml_row(&mut row, &self.columns, cells);
+        xml_row(&mut row, &self.columns, cells)?;
         out.extend_from_slice(row.as_bytes());
         Ok(())
     }

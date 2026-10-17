@@ -53,10 +53,7 @@ pub(crate) fn progress_text(rows: u64, expected: Option<ExpectedRows>) -> String
 /// file.
 pub(crate) fn failure_text(failure: &ExportFailure, file: Option<AbortOutcome>, name: &str) -> String {
     let reason = match failure {
-        ExportFailure::Stream(ExportStreamFailure::Encode(EncodeError::Undecodable { column })) => gettext_f(
-            "The column “{column}” holds a value TablePro couldn't read, so it can't be written to the file.",
-            &[("column", column)],
-        ),
+        ExportFailure::Stream(ExportStreamFailure::Encode(error)) => encode_text(error),
         ExportFailure::Stream(ExportStreamFailure::MultipleResultSets) => {
             gettext("This statement returned more than one result, so it can't be exported as one file.")
         }
@@ -105,6 +102,20 @@ fn rerun_text(error: &OperationError) -> String {
             operation_error_message(error)
         ),
         _ => operation_error_message(error),
+    }
+}
+
+/// Why a value could not go into the file, whichever format refused it.
+fn encode_text(error: &EncodeError) -> String {
+    match error {
+        EncodeError::Undecodable { column } => gettext_f(
+            "The column “{column}” holds a value TablePro couldn't read, so it can't be written to the file.",
+            &[("column", column)],
+        ),
+        EncodeError::NotXmlText { column } => gettext_f(
+            "The column “{column}” holds a control character XML can't carry. Export it as CSV or JSON instead.",
+            &[("column", column)],
+        ),
     }
 }
 
@@ -271,6 +282,22 @@ mod tests {
         assert_eq!(
             text,
             "An Excel sheet holds 100 rows, and this result has more. Export it as CSV instead."
+        );
+    }
+
+    #[test]
+    fn xml_names_the_column_with_a_control_character() {
+        let text = failure_text(
+            &ExportFailure::Stream(ExportStreamFailure::Encode(EncodeError::NotXmlText {
+                column: "note".to_owned(),
+            })),
+            None,
+            "rows.xml",
+        );
+
+        assert_eq!(
+            text,
+            "The column “note” holds a control character XML can't carry. Export it as CSV or JSON instead."
         );
     }
 }

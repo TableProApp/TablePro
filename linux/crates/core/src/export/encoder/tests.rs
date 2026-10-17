@@ -288,7 +288,7 @@ fn document_encoders_match_their_renderers() {
     );
     assert_eq!(
         streamed(XmlEncoder::new(columns.clone()), &rows),
-        render_xml(&columns, &rows)
+        render_xml(&columns, &rows).expect("the document")
     );
     assert_eq!(
         streamed(SqlInsertEncoder::new(dialect.clone(), "t", columns.clone()), &rows),
@@ -307,7 +307,7 @@ fn document_encoders_write_whole_documents_for_no_rows() {
     );
     assert_eq!(
         streamed(XmlEncoder::new(columns.clone()), &[]),
-        render_xml(&columns, &[])
+        render_xml(&columns, &[]).expect("the document")
     );
     assert_eq!(streamed(SqlInsertEncoder::new(dialect.clone(), "t", columns), &[]), "");
     assert_eq!(
