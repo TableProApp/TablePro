@@ -96,7 +96,7 @@ Audit intent is written before driver execution when `intent_is_required` is tru
 | PolicyGuard authorize | n/a | `PolicyDenied` | Audit intent could not be persisted; execution skipped. |
 | `authorize_scopes` | n/a | scope error | Token lacks `ToolsWrite` (or `ToolsRead`) for the tool. |
 | `ensure_connection_allowed` | n/a | allowlist error | Empty allowlist, or connection UUID not listed. |
-| Token authenticate | n/a | auth error | Unknown hash or revoked (`a_subprocess_issue_cannot_resurrect_a_revoked_token`). Expiry is implemented in `TokenStore::authenticate`; no dedicated test. |
+| Token authenticate | n/a | auth error | Unknown hash or revoked (`a_subprocess_issue_cannot_resurrect_a_revoked_token`); expired tokens are refused (`an_expired_token_is_refused`). |
 
 ## Algorithms & rules
 
