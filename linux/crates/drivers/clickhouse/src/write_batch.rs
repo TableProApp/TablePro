@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use clickhouse::error::Error as ClickHouseError;
 use tablepro_core::meta::TableRef;
-use tablepro_core::statement::{RowGuard, Statement};
+use tablepro_core::statement::{GuardedStatement, RowGuard, Statement};
 use tablepro_core::{
     CommitToken, DriverError, ReadOnlyRefusal, SessionFate, StopRequest, WriteBatch, WriteLedger, WriteReport,
 };
@@ -49,11 +49,14 @@ pub(crate) struct WritePlan {
 /// Apply the batch statement by statement.
 ///
 /// Every probe runs first, so a row that moved stops the save before
-/// any mutation is sent. Each statement then carries a query id of its
-/// own, kept in the ledger's token, so a statement whose answer never
-/// arrived can be looked up in `system.query_log` afterwards. A
-/// statement in flight is never stopped: a KILL does not undo a
-/// mutation, it only hides what it did.
+/// any mutation is sent. A step's probe runs again right before its own
+/// statement once an earlier one has landed, since that statement can
+/// change what the probe counts: an INSERT of a key a later UPDATE also
+/// names would otherwise be changed by the UPDATE too. Each statement
+/// carries a query id of its own, kept in the ledger's token, so a
+/// statement whose answer never arrived can be looked up in
+/// `system.query_log` afterwards. A statement in flight is never
+/// stopped: a KILL does not undo a mutation, it only hides what it did.
 pub(crate) async fn perform(
     plan: &WritePlan,
     request: &StopRequest,
@@ -62,25 +65,16 @@ pub(crate) async fn perform(
     let ledger = &plan.ledger;
     let probes = CallClient::new(plan.probes.clone(), stop.clone(), request.clone());
     for (index, step) in plan.batch.steps.iter().enumerate() {
-        let Some((probe, expected)) = step.guard.probe() else {
-            continue;
-        };
-        if request.is_requested() {
-            return Err(ledger.interrupted(stop.interrupted(request), SessionFate::RolledBack));
-        }
-        match count(&probes, probe).await {
-            Ok(actual) if actual == expected => {}
-            Ok(actual) => return Err(ledger.guard_failed(index, expected, actual, SessionFate::RolledBack)),
-            Err(error) if request.is_requested() && acknowledges_stop(&error) => {
-                return Err(ledger.interrupted(acknowledged(stop.interrupted(request)), SessionFate::RolledBack));
-            }
-            Err(error) => return Err(ledger.failed(index, error, SessionFate::RolledBack)),
-        }
+        prove(&probes, ledger, request, stop, index, step).await?;
     }
     stop.clear();
     let query_ids: Vec<Uuid> = plan.batch.steps.iter().map(|_| Uuid::new_v4()).collect();
     let mut report = Vec::with_capacity(plan.batch.steps.len());
     for (index, (step, query_id)) in plan.batch.steps.iter().zip(&query_ids).enumerate() {
+        if index > 0 {
+            prove(&probes, ledger, request, stop, index, step).await?;
+            stop.clear();
+        }
         if request.is_requested() {
             return Err(ledger.interrupted(stop.interrupted(request), SessionFate::Discarded));
         }
@@ -105,6 +99,33 @@ pub(crate) async fn perform(
         }
     }
     Ok(WriteReport::new(report))
+}
+
+/// Count the rows step `index` would change, and refuse the step unless
+/// they are the ones it was written for. Nothing is in flight while a
+/// probe runs, so the ledger reports what the earlier steps applied.
+async fn prove(
+    probes: &CallClient,
+    ledger: &WriteLedger,
+    request: &StopRequest,
+    stop: &ClickHouseStop,
+    index: usize,
+    step: &GuardedStatement,
+) -> Result<(), DriverError> {
+    let Some((probe, expected)) = step.guard.probe() else {
+        return Ok(());
+    };
+    if request.is_requested() {
+        return Err(ledger.interrupted(stop.interrupted(request), SessionFate::RolledBack));
+    }
+    match count(probes, probe).await {
+        Ok(actual) if actual == expected => Ok(()),
+        Ok(actual) => Err(ledger.guard_failed(index, expected, actual, SessionFate::RolledBack)),
+        Err(error) if request.is_requested() && acknowledges_stop(&error) => {
+            Err(ledger.interrupted(acknowledged(stop.interrupted(request)), SessionFate::RolledBack))
+        }
+        Err(error) => Err(ledger.failed(index, error, SessionFate::RolledBack)),
+    }
 }
 
 /// A stop the server acknowledged reads as a timeout it enforced.

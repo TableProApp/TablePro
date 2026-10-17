@@ -3,6 +3,7 @@
 
 use std::time::Duration;
 
+use tablepro_core::edit::CellInput;
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate};
 use tablepro_core::{
     CommitResolution, CommitToken, Connection, DriverError, ReadOnlyRefusal, RowLimit, RunEnd, ServerCode,
@@ -13,7 +14,7 @@ use tokio::time::Instant;
 
 use crate::support::{
     CALL, DATABASE, admin, apply, batch_on, connect, connect_with, count, direct, flush_logs, options_over, password,
-    planned, quoted, run, scalar, session, setup, start, statement, table, text, unique, within,
+    planned, quoted, rows, run, scalar, session, setup, start, statement, table, text, unique, within,
 };
 
 /// A mutation that takes seconds on a small table, so it cannot finish
@@ -93,6 +94,61 @@ async fn duplicate_sorting_key_edit_sends_no_mutation_row_guard_failed() {
         count(connection.as_ref(), &mutations).await,
         before,
         "a mutation was sent"
+    );
+    connection.close().await.expect("a close");
+}
+
+/// The probe of a step runs after the steps before it landed, so an
+/// insert of a key a later update names makes the update match two rows
+/// and stops it, rather than the update changing the new row too.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn an_insert_then_an_update_of_the_same_key_stops_the_update() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let name = unique("same_key");
+    let qualified = quoted(&name);
+    setup(
+        connection.as_ref(),
+        &[
+            &format!("CREATE TABLE {qualified} (sensor_id Int32, v String) ENGINE = MergeTree ORDER BY sensor_id"),
+            &format!("INSERT INTO {qualified} VALUES (5, 'old')"),
+        ],
+    )
+    .await;
+
+    let changes = ChangeSet {
+        changes: vec![
+            RowChange::Insert {
+                cells: vec![
+                    CellInput::Value(Value::Int(5)),
+                    CellInput::Value(Value::Text("new".to_owned())),
+                ],
+            },
+            RowChange::Update(RowUpdate {
+                key: vec![Value::Int(5)],
+                assignments: vec![(1, Value::Text("edited".to_owned()))],
+            }),
+        ],
+    };
+    let batch = planned(connection.as_ref(), &table(&name), &changes).await;
+    let outcome = connection.write_batch(&batch, within(CALL)).await;
+
+    assert!(
+        matches!(
+            &outcome,
+            Err(DriverError::PartiallyApplied {
+                applied: 1,
+                statement_index: 1,
+                failed_outcome: StatementOutcome::Failed,
+                source,
+            }) if **source == DriverError::RowGuardFailed { statement_index: 1, expected: 1, actual: 2 }
+        ),
+        "{outcome:?}"
+    );
+    assert_eq!(
+        rows(connection.as_ref(), &format!("SELECT v FROM {qualified} ORDER BY v")).await,
+        [vec![Value::Text("new".to_owned())], vec![Value::Text("old".to_owned())]]
     );
     connection.close().await.expect("a close");
 }
