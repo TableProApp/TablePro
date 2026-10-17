@@ -184,6 +184,34 @@ fn a_script_fills_the_results_list_one_line_per_statement() {
     assert!(harness.editor.imp().run_button.is_sensitive());
 }
 
+/// Ctrl+Return leaves the focus in the editor, so the summary is said.
+#[gtk4::test]
+fn a_finished_run_says_how_it_went() {
+    let mut runs = Replies::default();
+    runs.when_sql_contains(
+        "boom",
+        FakeRun::failed(DriverError::server("relation \"boom\" does not exist")),
+    );
+    runs.always(FakeRun::completed(Vec::new()));
+    let harness = editor_with(runs, "SELECT 1");
+
+    run_and_wait(&harness);
+    harness.editor.buffer().set_text("SELECT * FROM boom");
+    run_and_wait(&harness);
+
+    let said: Vec<(bool, gtk4::AccessibleAnnouncementPriority)> = crate::ui::a11y::announced_in(&harness.editor)
+        .into_iter()
+        .map(|(message, priority)| (message.contains("failed"), priority))
+        .collect();
+    assert_eq!(
+        said,
+        [
+            (false, gtk4::AccessibleAnnouncementPriority::Medium),
+            (true, gtk4::AccessibleAnnouncementPriority::High),
+        ]
+    );
+}
+
 #[gtk4::test]
 fn a_long_script_that_fails_early_builds_one_result_page() {
     let mut runs = Replies::default();

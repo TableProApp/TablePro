@@ -114,6 +114,7 @@ crates/app/src/test_support/tests.rs
 crates/app/src/test_support/unlabelled_widget.rs
 crates/app/src/test_support/wait_timed_out.rs
 crates/app/src/test_support/widget_lookup.rs
+crates/app/src/ui/a11y/announce.rs
 crates/app/src/ui/a11y/icon_button.rs
 crates/app/src/ui/a11y/key_shortcuts.rs
 crates/app/src/ui/a11y/mod.rs
