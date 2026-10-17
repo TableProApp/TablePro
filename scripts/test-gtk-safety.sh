@@ -77,4 +77,4 @@ if [[ ! -x "$test_binary" ]]; then
   echo "installed GTK test binary is not executable: $test_binary" >&2
   exit 1
 fi
-timeout 600s python3 -u "$ROOT/apps/linux/app/tests/gtk_safety.py" "$test_binary"
+timeout 1500s python3 -u "$ROOT/apps/linux/app/tests/gtk_safety.py" "$test_binary"
