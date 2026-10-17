@@ -37,7 +37,7 @@ struct WelcomeActionsPanel: View {
                         .font(.title2.weight(.semibold))
 
                     if showsVersionInfo {
-                        Text(String(format: String(localized: "Version %@"), Bundle.main.appVersion))
+                        Text(String(format: String(localized: "Version %@"), Bundle.main.displayVersion))
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .accessibilityIdentifier("welcome-version-line")

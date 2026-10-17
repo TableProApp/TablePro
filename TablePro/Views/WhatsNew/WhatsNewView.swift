@@ -48,7 +48,7 @@ struct WhatsNewView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(content.title)
                     .font(.title3.weight(.semibold))
-                Text(String(format: String(localized: "Version %@"), Bundle.main.appVersion))
+                Text(String(format: String(localized: "Version %@"), Bundle.main.displayVersion))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }

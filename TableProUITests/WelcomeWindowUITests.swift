@@ -60,6 +60,11 @@ final class WelcomeWindowUITests: UITestCase {
         let updateCheck = welcome.descendants(matching: .any)
             .matching(identifier: "welcome-check-for-updates-link").firstMatch
         XCTAssertTrue(versionLine.waitToExist(timeout: 10), "The welcome window must show the version by default")
+        let versionText = (versionLine.value as? String).flatMap { $0.isEmpty ? nil : $0 } ?? versionLine.label
+        XCTAssertNotNil(
+            versionText.range(of: #"^Version \S+ \(\d+\)$"#, options: .regularExpression),
+            "The version line must end with the build number, it reads '\(versionText)'"
+        )
         XCTAssertTrue(updateCheck.exists, "The welcome window must offer the update check by default")
 
         app.typeShortcut(.settings)
