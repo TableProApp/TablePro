@@ -6,13 +6,44 @@ use tokio_util::sync::CancellationToken;
 
 use super::{StatementCursor, StatementTarget};
 
+#[derive(Clone)]
+pub(crate) struct StreamSession(StatementTarget);
+
+impl StreamSession {
+    pub(crate) fn of(target: &StatementTarget) -> Option<Self> {
+        matches!(target, StatementTarget::Session { .. }).then(|| Self(target.clone()))
+    }
+}
+
+impl std::fmt::Debug for StreamSession {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("StreamSession")
+    }
+}
+
+fn unavailable_reason(target: &StatementTarget) -> &'static str {
+    if matches!(target, StatementTarget::Session { .. }) {
+        "this result came from the tab's session, which now has a transaction open or has closed; end the \
+         transaction or run the query again, then export"
+    } else {
+        "query cursor streaming is unavailable"
+    }
+}
+
+fn export_target(connection: Arc<dyn Connection>, session: Option<&StreamSession>) -> StatementTarget {
+    match session {
+        Some(StreamSession(target)) => target.clone(),
+        None => StatementTarget::Pool(connection),
+    }
+}
+
 pub(crate) fn query_cursor_export_factory(
     connection: Arc<dyn Connection>,
     query: crate::ui::export_dialog::StreamExportQuery,
 ) -> crate::ui::export_dialog::PageFetcherFactory {
     let runner = export_page_runner();
     query_cursor_export_factory_for_target(
-        StatementTarget::Pool(connection),
+        export_target(connection, query.session.as_ref()),
         query.sql,
         query.params,
         query.timeout_secs,
@@ -101,7 +132,7 @@ fn export_page_fetcher(
                     .map_err(export_driver_error)?;
             }
             let Some(cursor) = state.as_ref() else {
-                return Err(ExportError::Source("query cursor streaming is unavailable".into()));
+                return Err(ExportError::Source(unavailable_reason(&query_target).into()));
             };
             let page = match cursor.fetch_page(&control).await {
                 Ok(page) => page,
@@ -163,5 +194,39 @@ fn export_driver_error(error: DriverError) -> ExportError {
     match error {
         DriverError::Cancelled => ExportError::Cancelled,
         error => ExportError::Source(crate::ui::error_text::driver_message(&error)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tablepro_core::DatabaseDriver;
+
+    fn pool() -> Arc<dyn Connection> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let options = tablepro_core::ConnectOptions {
+            database: ":memory:".into(),
+            ..Default::default()
+        };
+        Arc::from(runtime.block_on(drivers_sqlite::SqliteDriver.connect(options)).unwrap())
+    }
+
+    #[test]
+    fn a_result_streamed_in_a_session_exports_through_that_session() {
+        let id = uuid::Uuid::new_v4();
+        let session = StatementTarget::Session {
+            id,
+            shared: Arc::new(tokio::sync::Mutex::new(None)),
+        };
+        let stream_session = StreamSession::of(&session).expect("a session target is kept");
+
+        let target = export_target(pool(), Some(&stream_session));
+
+        assert!(matches!(target, StatementTarget::Session { id: kept, .. } if kept == id));
+        assert!(matches!(export_target(pool(), None), StatementTarget::Pool(_)));
+        assert!(StreamSession::of(&StatementTarget::Pool(pool())).is_none());
     }
 }

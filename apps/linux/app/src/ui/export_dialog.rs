@@ -60,6 +60,7 @@ pub(crate) struct StreamExportQuery {
     pub(crate) params: Vec<tablepro_core::Value>,
     pub(crate) timeout_secs: u32,
     pub(crate) suggested_name: String,
+    pub(crate) session: Option<crate::ui::editor::StreamSession>,
 }
 
 #[derive(Debug, Clone)]

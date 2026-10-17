@@ -44,7 +44,7 @@ use crate::ui::grid::GridMsg;
 pub use completion::{SchemaIndex, SchemaRequest, referenced_tables};
 pub(crate) use completion_identifiers::{catalog_reference, split_table_reference, table_key};
 pub use schema::{SQL_KEYWORDS, derive_tab_label};
-pub(crate) use session_mode::query_cursor_export_factory;
+pub(crate) use session_mode::{StreamSession, query_cursor_export_factory};
 pub use statement_cursor::grammar_for;
 
 use outcomes::{ScriptRunResult, StatementRun, StreamUpdate, clear_box, render_outcomes, run_statements_with_stream};
@@ -994,6 +994,7 @@ impl SqlEditor {
             .unwrap_or_default();
         let export_driver_id = driver_id.clone();
         let target = self.statement_target(conn);
+        let export_session = StreamSession::of(&target);
         let sender_clone = sender.clone();
         sender.command(move |_, shutdown| {
             shutdown
@@ -1014,6 +1015,7 @@ impl SqlEditor {
                         let export_origin = export_origin.clone();
                         let export_driver_id = export_driver_id.clone();
                         let export_suggested_name = export_suggested_name.clone();
+                        let export_session = export_session.clone();
                         Box::pin(async move {
                             match update {
                                 StreamUpdate::Started {
@@ -1035,6 +1037,7 @@ impl SqlEditor {
                                                 params,
                                                 timeout_secs,
                                                 suggested_name: export_suggested_name.clone(),
+                                                session: export_session.clone(),
                                             }
                                         }),
                                         accepted,

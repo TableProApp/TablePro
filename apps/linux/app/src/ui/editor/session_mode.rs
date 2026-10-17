@@ -15,9 +15,9 @@ use crate::services::database_service::ConnectionIdentity;
 use super::{SqlEditor, SqlEditorInput};
 
 mod export_pages;
-pub(crate) use export_pages::query_cursor_export_factory;
 #[cfg(test)]
 pub(crate) use export_pages::query_cursor_export_factory_for_target;
+pub(crate) use export_pages::{StreamSession, query_cursor_export_factory};
 
 pub(crate) type SharedSession = Arc<tokio::sync::Mutex<Option<Box<dyn Session>>>>;
 

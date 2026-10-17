@@ -12,6 +12,7 @@ use crate::{CONTROL_SETUP_TIMEOUT, backend_pid, controlled_execute, controlled_q
 struct ActiveCursor {
     id: QueryCursorId,
     columns: Vec<tablepro_core::ColumnInfo>,
+    failed: bool,
 }
 
 pub(crate) struct PgSession {
@@ -55,6 +56,9 @@ impl tablepro_core::Session for PgSession {
         params: &[Value],
         control: &OperationControl,
     ) -> Result<QueryResult, DriverError> {
+        if self.active_cursor.as_ref().is_some_and(|cursor| cursor.failed) {
+            self.active_cursor = None;
+        }
         if self.active_cursor.is_some() {
             return Err(DriverError::Unsupported(
                 "query while a forward-only cursor is active".into(),
@@ -92,7 +96,7 @@ impl tablepro_core::Session for PgSession {
         .await;
         self.connection = connection;
         if let Err(error) = result {
-            if !matches!(&error, DriverError::Query { sqlstate: Some(code), .. } if code == "25P01") {
+            if !matches!(error, DriverError::Query { .. }) {
                 self.retire_cursor_session();
             }
             return Err(error);
@@ -101,6 +105,7 @@ impl tablepro_core::Session for PgSession {
         self.active_cursor = Some(ActiveCursor {
             id,
             columns: Vec::new(),
+            failed: false,
         });
         Ok(id)
     }
@@ -119,6 +124,12 @@ impl tablepro_core::Session for PgSession {
         let result = self.run_cursor_query_controlled(&statement, control).await;
         let mut page = match result {
             Ok(page) => page,
+            Err(error @ DriverError::Query { .. }) if self.connection.is_some() => {
+                if let Some(cursor) = self.active_cursor.as_mut() {
+                    cursor.failed = true;
+                }
+                return Err(error);
+            }
             Err(error) => {
                 self.retire_cursor_session();
                 return Err(error);
@@ -156,10 +167,14 @@ impl tablepro_core::Session for PgSession {
         cursor_id: QueryCursorId,
         control: &OperationControl,
     ) -> Result<(), DriverError> {
-        if !self.active_cursor.as_ref().is_some_and(|cursor| cursor.id == cursor_id) {
+        let Some(cursor) = self.active_cursor.as_ref().filter(|cursor| cursor.id == cursor_id) else {
             return Err(DriverError::Unsupported(
                 "forward-only cursor is not active in this session".into(),
             ));
+        };
+        if cursor.failed {
+            self.active_cursor = None;
+            return Ok(());
         }
         check_pre_dispatch(control)?;
         let connection = self

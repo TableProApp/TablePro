@@ -964,6 +964,7 @@ fn exporting_after_partial_view_uses_the_guarded_query_and_its_bind_values() {
             params: vec![tablepro_core::Value::Int(0)],
             timeout_secs: 30,
             suggested_name: "items".into(),
+            session: None,
         },
         columns: page.columns.clone(),
     };
