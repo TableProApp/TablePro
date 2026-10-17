@@ -2,6 +2,12 @@
 
 The approved [BookiE convergence sprint](bookie-0.2-sprint.md) now includes shared Rust/Linux foundations as well as behavior review. Apple source trees remain excluded.
 
+## 2026-10-17 07:19 UTC: dbx MySQL routine completion
+
+Current GitHub refs checked: BookiE `linux` `bc0a0c3f2418483e93b288a46f5879eefd6e0815`, TablePro `linux` `6fd0d19326c2aa7404215972e9b0bb53948f9542`, TablePro `main` `2be4682f3faf924237225f7662174b8a26e36216`, dbx `main` `44905e021b94b32b6061f2c2c87e72d3f714f5cd`, DBeaver `devel` `61c9529849c9fa500c303d1a385897a4088d6656`, and Beekeeper Studio `master` `f7ff968f39699c22d4f9a4674f38a5ecfbfbe586`.
+
+dbx merged [#12532](https://github.com/t8y2/dbx/pull/12532), adding MySQL procedure parameter and local-variable completion. Its coverage is layered: parser-focused cases for parameter directions and nested routine syntax, actual editor completion-and-insertion tests, and a documented local MySQL execution check. The useful transfer is to test the scanner's exclusions and nested boundaries as well as proposal display and inserted SQL. This is a feature candidate for Bookie, not a confirmed defect: our exact, dialect-quoted identifier proposals in [#934](https://github.com/cozyGarage/BookiE/issues/934) cover a different completion source. First check whether routine metadata can be parsed safely from the current editor buffer and whether MySQL/MariaDB behavior warrants a separate UX issue; do not add routine names from another connection's catalog.
+
 ## 2026-10-17 06:25 UTC: source refresh and exact-page regression
 
 Current GitHub refs checked: BookiE `linux` `0b2f5cb86791994caedfcb38714e4ae67f598786`, TablePro `linux` `6fd0d19326c2aa7404215972e9b0bb53948f9542`, TablePro `main` `2be4682f3faf924237225f7662174b8a26e36216`, dbx `main` `99eca47cc33b7a3a71fd57460e61dba2d30f7504`, DBeaver `devel` `61c9529849c9fa500c303d1a385897a4088d6656`, and Beekeeper Studio `master` `f7ff968f39699c22d4f9a4674f38a5ecfbfbe586`. DBeaver and Beekeeper have not moved since the previous pin. BookiE's latest commit #1009 improves PostgreSQL streamed-query error positions; it does not close the larger streamed-resource question in #1032/#554.
