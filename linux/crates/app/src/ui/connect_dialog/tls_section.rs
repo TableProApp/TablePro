@@ -384,7 +384,9 @@ pub fn mode_label(mode: TlsMode) -> String {
 /// What each mode protects against, so the choice is an informed one.
 pub fn mode_description(mode: TlsMode) -> String {
     match mode {
-        TlsMode::Disable => crate::i18n::gettext("Not encrypted. Anyone on the network can read the traffic."),
+        TlsMode::Disable => crate::i18n::gettext(
+            "Not encrypted. Anyone on the network can read or change the traffic, password included.",
+        ),
         TlsMode::Require => crate::i18n::gettext("Encrypted. The server certificate is not checked."),
         TlsMode::VerifyFull => crate::i18n::gettext("Encrypted. The certificate must be valid for the server name."),
     }

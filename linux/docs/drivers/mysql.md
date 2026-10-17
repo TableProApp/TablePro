@@ -53,7 +53,7 @@ sqlx's own session statements (`PIPES_AS_CONCAT`, `NO_ENGINE_SUBSTITUTION`, its 
 - `VerifyFull` is sqlx's `VerifyIdentity`. It trusts the system's CA store and the connection's CA file, which sqlx takes only as PEM, so the driver hands it both as one bundle; sqlx adds the Mozilla roots compiled into it ([Trust](../../ARCHITECTURE.md#trust)). `Require` checks no certificate, so it loads neither.
 - The name checked is the host sqlx dials, so a server name override works only through an SSH forward, where the dial goes to a socket path (`ServerNameOverride::SshForwardOnly`).
 - A client certificate and key are sent when set, for `REQUIRE X509` logins.
-- With TLS off, `caching_sha2_password` sends the password encrypted with the server's RSA key, never in clear text, also over an SSH forward's socket.
+- With TLS off, the password is safe only from a passive observer. `caching_sha2_password` encrypts it with an RSA key the server sends in band, which nothing authenticates. sqlx 0.9 also takes the login plugin the first handshake names without checking it against `enable_cleartext_plugin`, which it checks only on an auth switch, so a man in the middle can ask for `mysql_clear_password` and receive the password in clear. The mysql client refuses both by default (`--enable-cleartext-plugin`, `--get-server-public-key`). sqlx has no option to refuse either, so the driver cannot: on a network you do not trust, use TLS.
 
 ## Stops and timeouts
 
