@@ -181,6 +181,17 @@ fn auth_message_has_no_secret() {
 }
 
 #[test]
+fn a_refused_login_is_not_called_a_wrong_password() {
+    let message = driver_message(&DriverError::LoginRefused(Box::new(ServerDiagnostics::new(
+        Some(ServerCode::SqlState("28000".to_owned())),
+        "no pg_hba.conf entry for host \"10.0.0.5\", user \"app\", database \"shop\", no encryption",
+    ))));
+
+    assert!(!message.contains("wrong"), "{message}");
+    assert!(message.contains("no pg_hba.conf entry"), "{message}");
+}
+
+#[test]
 fn busy_and_editor_busy_messages_differ() {
     assert_ne!(
         driver_message(&DriverError::Busy),
@@ -214,6 +225,20 @@ fn timeout_phase_login_vs_statement_differ() {
         timeout(TimeoutPhase::Connect),
         "a transport timeout reads like the driver's own"
     );
+}
+
+#[test]
+fn a_timeout_says_the_server_stopped_only_when_it_confirmed() {
+    let message = |server_cancelled| {
+        driver_message(&DriverError::Timeout {
+            phase: TimeoutPhase::Statement,
+            server_cancelled,
+        })
+    };
+
+    assert!(message(true).contains("the server stopped it"), "{}", message(true));
+    assert!(!message(false).contains("stopped it"), "{}", message(false));
+    assert!(message(false).contains("may still be running"), "{}", message(false));
 }
 
 #[test]
@@ -364,6 +389,15 @@ fn every_secret_error_has_its_own_message() {
     let messages: std::collections::HashSet<String> = errors.iter().map(secret_message).collect();
 
     assert_eq!(messages.len(), errors.len(), "two errors share a message");
+}
+
+#[test]
+fn the_portal_message_says_what_to_check() {
+    let message = secret_message(&SecretError::PortalUnavailable {
+        detail: "org.freedesktop.portal.Secret not found".to_owned(),
+    });
+
+    assert!(message.contains("xdg-desktop-portal"), "{message}");
 }
 
 #[test]

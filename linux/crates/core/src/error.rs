@@ -31,6 +31,12 @@ pub enum DriverError {
         diagnostics: Option<Box<ServerDiagnostics>>,
     },
 
+    /// The server turned the login away for a reason other than the
+    /// password: its host rules, a role that may not log in. Typing the
+    /// password again cannot change the answer.
+    #[error("the server refused the login: {0}")]
+    LoginRefused(Box<ServerDiagnostics>),
+
     #[error("integrated authentication failed: {0}")]
     IntegratedAuth(String),
 
@@ -138,7 +144,7 @@ impl DriverError {
     pub fn category(&self) -> ErrorCategory {
         match self {
             Self::Transport(error) => error.category(),
-            Self::Auth { .. } | Self::IntegratedAuth(_) => ErrorCategory::Authentication,
+            Self::Auth { .. } | Self::LoginRefused(_) | Self::IntegratedAuth(_) => ErrorCategory::Authentication,
             Self::Tls { .. } => ErrorCategory::Tls,
             Self::Server(_) => ErrorCategory::Server,
             Self::ReadOnly(_) => ErrorCategory::ReadOnly,
@@ -246,6 +252,17 @@ mod tests {
             "the server refused the credentials: password authentication failed (28P01)"
         );
         assert_eq!(error.category(), ErrorCategory::Authentication);
+    }
+
+    #[test]
+    fn a_refused_login_parks_like_a_wrong_password_but_is_not_one() {
+        let refused = DriverError::LoginRefused(Box::new(ServerDiagnostics::new(
+            Some(ServerCode::SqlState("28000".to_owned())),
+            "no pg_hba.conf entry for host",
+        )));
+
+        assert_eq!(refused.category(), ErrorCategory::Authentication);
+        assert_ne!(refused, DriverError::auth(None));
     }
 
     #[test]

@@ -75,6 +75,9 @@ impl ConnectFailedPage {
         let imp = page.imp();
         imp.header_bar.pack_end(&crate::ui::shell::primary_menu_button(app));
         imp.status_page.set_icon_name(Some(crate::ui::icons::NETWORK_ERROR));
+        if let Some(heading) = &view.heading {
+            imp.status_page.set_title(heading);
+        }
         // The description is markup, and the reason quotes server text,
         // file paths and host names.
         imp.status_page
@@ -167,19 +170,29 @@ impl ConnectFailedPage {
 mod tests {
     use super::*;
 
-    fn page(reenter: Option<SecretKind>) -> ConnectFailedPage {
+    fn page(heading: Option<&str>, reenter: Option<SecretKind>) -> ConnectFailedPage {
         adw::init().expect("libadwaita initialises under the test backend");
         crate::register_test_resources();
         let view = ConnectFailureView {
-            message: "refused".to_owned(),
+            message: "The saved connections could not be written: the disk is full".to_owned(),
             can_edit: true,
+            heading: heading.map(str::to_owned),
         };
         ConnectFailedPage::new(&view, "Edit Connection…", reenter, None)
     }
 
     #[gtk4::test]
+    fn a_save_that_failed_after_the_connect_is_not_called_a_failed_connect() {
+        assert_eq!(page(None, None).status_page().title(), "Could Not Connect");
+        assert_eq!(
+            page(Some("Could Not Save the Connection"), None).status_page().title(),
+            "Could Not Save the Connection"
+        );
+    }
+
+    #[gtk4::test]
     fn the_reenter_action_is_named_only_with_its_target() {
-        let hidden = page(None).imp().reenter_button.get();
+        let hidden = page(None, None).imp().reenter_button.get();
         assert!(!hidden.is_visible());
         assert_eq!(
             hidden.action_name(),
@@ -188,7 +201,7 @@ mod tests {
         );
 
         let kind = SecretKind::DatabasePassword;
-        let shown = page(Some(kind)).imp().reenter_button.get();
+        let shown = page(None, Some(kind)).imp().reenter_button.get();
         assert_eq!(shown.action_name().as_deref(), Some("win.retry-with-new-secret"));
         assert_eq!(shown.action_target_value(), Some(kind.attribute().to_variant()));
     }

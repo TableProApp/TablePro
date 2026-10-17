@@ -548,15 +548,18 @@ fn a_reopened_entry_keeps_its_id_after_the_host_changes() {
 }
 
 #[gtk4::test]
-fn a_connect_from_new_connection_keeps_a_renamed_entry_s_name() {
-    let saved = shop();
+fn a_connect_from_new_connection_never_writes_over_a_saved_entry() {
+    let saved = SavedConnection {
+        read_only: true,
+        ..shop()
+    };
     let harness = open(Options {
         saved: vec![saved.clone()],
         ..Options::default()
     });
     let _window = present(&harness.dialog);
     fill_network(&harness.dialog);
-    assert_eq!(harness.dialog.imp().name_row.text(), "");
+    harness.dialog.imp().name_row.set_text("Shop RW");
     let log = SignalLog::connect(&harness.dialog, "submitted", |values| {
         values[1].get::<ConnectSubmission>().expect("a submission")
     });
@@ -564,8 +567,10 @@ fn a_connect_from_new_connection_keeps_a_renamed_entry_s_name() {
     without_criticals(|| harness.dialog.imp().connect_button.emit_clicked());
 
     let submitted = log.take().remove(0).pending_save;
-    assert_eq!(submitted.connection.id, saved.id);
-    assert_eq!(submitted.connection.name, "Shop", "the connect undid the rename");
+    assert!(submitted.is_new, "the connect replaced the saved entry");
+    assert_ne!(submitted.connection.id, saved.id);
+    assert_eq!(submitted.connection.name, "Shop RW");
+    assert!(!submitted.connection.read_only);
 }
 
 #[gtk4::test]
@@ -637,6 +642,39 @@ fn the_tls_remedy_opens_the_certificate_rows() {
         .reveal_field(remedy_field(TlsRemedy::ChooseCaCertificate));
 
     assert!(section.imp().certificates_row.is_expanded());
+}
+
+#[gtk4::test]
+fn a_ca_file_is_offered_and_sent_only_with_verify_full() {
+    let harness = dialog();
+    fill_network(&harness.dialog);
+    let section = harness.dialog.imp().tls_section.get();
+    let ca = std::path::PathBuf::from("/etc/tls/ca.pem");
+    section.set_file_path(FormField::CaFile, Some(ca.clone()));
+    let index_of = |wanted: TlsMode| {
+        section
+            .imp()
+            .modes
+            .borrow()
+            .iter()
+            .position(|mode| *mode == wanted)
+            .expect("PostgreSQL offers the mode") as u32
+    };
+    let sent_ca = || {
+        let valid = harness.dialog.form().validate(caps_of("postgres")).expect("valid");
+        let RequestTarget::Network { tls, .. } = valid.target else {
+            panic!("expected a network target");
+        };
+        tls.ca_file
+    };
+
+    section.imp().encryption_row.set_selected(index_of(TlsMode::Require));
+    assert!(!section.imp().ca_row.is_visible(), "Require offered a CA file");
+    assert_eq!(sent_ca(), None, "Require sent a CA file it would not read");
+
+    section.imp().encryption_row.set_selected(index_of(TlsMode::VerifyFull));
+    assert!(section.imp().ca_row.is_visible());
+    assert_eq!(sent_ca(), Some(ca), "the CA file chosen before was lost");
 }
 
 #[gtk4::test]

@@ -9,6 +9,9 @@ pub(crate) struct ConnectFailureView {
     /// it carries.
     pub message: String,
     pub can_edit: bool,
+    /// Set when the failure was not the connect's, which the default
+    /// "Could Not Connect" would misname.
+    pub heading: Option<String>,
 }
 
 impl ConnectFailureView {
@@ -16,6 +19,7 @@ impl ConnectFailureView {
         Self {
             message: failure.message.clone(),
             can_edit: can_edit(source),
+            heading: failure.heading.clone(),
         }
     }
 }

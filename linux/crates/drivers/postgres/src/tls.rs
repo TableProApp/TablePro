@@ -95,7 +95,7 @@ impl TlsConnect<TransportIo> for PgTls {
 fn setup_error(error: TlsSetupError) -> DriverError {
     match error {
         TlsSetupError::Config(error) => DriverError::Config(error),
-        TlsSetupError::Rustls(error) => DriverError::Tls {
+        TlsSetupError::ClientIdentity(error) => DriverError::Tls {
             failure: TlsFailure::ClientIdentityInvalid,
             detail: error.to_string(),
         },
@@ -116,6 +116,34 @@ mod tests {
 
         assert!(matches!(setup.ssl_mode(), SslMode::Disable));
         assert!(!setup.requested());
+    }
+
+    #[test]
+    fn only_a_refused_client_certificate_is_a_client_identity_failure() {
+        let refused_identity = setup_error(TlsSetupError::ClientIdentity(rustls::Error::InconsistentKeys(
+            rustls::InconsistentKeys::KeyMismatch,
+        )));
+        let no_trust_store = setup_error(TlsSetupError::Rustls(rustls::Error::General(
+            "no system certificates".to_owned(),
+        )));
+
+        assert!(matches!(
+            refused_identity,
+            DriverError::Tls {
+                failure: TlsFailure::ClientIdentityInvalid,
+                ..
+            }
+        ));
+        assert!(
+            matches!(
+                no_trust_store,
+                DriverError::Tls {
+                    failure: TlsFailure::Other,
+                    ..
+                }
+            ),
+            "{no_trust_store:?}"
+        );
     }
 
     #[test]

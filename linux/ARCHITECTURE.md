@@ -212,7 +212,9 @@ A connection's `TlsConfig` holds the `TlsMode`, an optional CA file, an optional
 - `Require`: encrypted, and the certificate is not checked.
 - `VerifyFull`: the certificate must chain to a trusted root and carry the server name.
 
-The name checked is `NetworkTarget::tls_server_name()`: the override when one is set, otherwise the host the user typed, never the address of a local SSH forward. `TlsConfig::validate` refuses a mode, file or override the driver cannot use on that route, and the connect dialog reads the chosen files up front, so a file with no certificate is named before anything connects.
+A CA file goes only with `VerifyFull`, the one mode that checks the certificate. libpq and the mysql client verify against a CA file given with their require mode, so taking one with `Require` and ignoring it would leave a user who expects a check with none. `validate` refuses the pair, the connect dialog shows the CA row only for Verify full, and a saved or imported connection that holds the pair, from a build that allowed it, loads as `VerifyFull` with its CA file: a server the file does not vouch for then fails to connect instead of connecting unchecked.
+
+The name checked is `NetworkTarget::tls_server_name()`: the override when one is set, otherwise the host the user typed, never the address of a local SSH forward. `TlsConfig::validate` refuses a mode, file or override the driver cannot use on that route, and the connect dialog reads the chosen files up front, so a file with no certificate is named before anything connects. A CA, certificate or key file is read only when it is a regular file of at most 1 MiB, and drivers read it on the blocking pool, so a device or a pipe named in an imported connection can neither fill memory nor hold a connect.
 
 Each engine's TLS stack takes trust in its own form, so the driver builds it:
 
@@ -230,7 +232,7 @@ On Linux the system store is the distribution's CA bundle. Under Flatpak it is t
 
 #### Choosing a CA file under Flatpak
 
-- For a server whose certificate comes from a private CA, choose the CA's PEM file in the connection's TLS settings, whatever the host trusts.
+- For a server whose certificate comes from a private CA, set Encryption to Verify full and choose the CA's PEM file, whatever the host trusts.
 - The development manifest grants the home folder and the mount points of removable drives (`/media`, `/run/media` and `/mnt`), so a file under any of them is read at its real path.
 - A file chosen from anywhere else comes back from the file chooser portal as a path under `/run/user/<uid>/doc/`. It works for as long as the portal keeps the grant. If it goes, the connect fails naming the CA file, and choosing the file again fixes it. Keeping a copy of the CA in your home folder avoids this.
 - The file is read at every connect, so a replaced CA applies on the next connect.

@@ -1,7 +1,7 @@
 use adw::prelude::*;
 use libadwaita as adw;
 use secrecy::SecretString;
-use tablepro_core::credentials::{CredentialPrompt, PromptField, PromptReply};
+use tablepro_core::credentials::{CredentialPrompt, PromptField, PromptPurpose, PromptReply};
 
 use super::prompt_text::PromptText;
 
@@ -66,7 +66,13 @@ impl PromptForm {
         dialog.add_response(CANCEL, &crate::i18n::gettext("Cancel"));
         dialog.add_response(ACCEPT, &text.accept);
         dialog.set_response_appearance(ACCEPT, adw::ResponseAppearance::Suggested);
-        dialog.set_default_response(Some(ACCEPT));
+        // Trusting a host key is a decision to read the fingerprint for,
+        // so Enter must not make it.
+        let default = match prompt.purpose {
+            PromptPurpose::SshHostKeyConfirmation { .. } => CANCEL,
+            _ => ACCEPT,
+        };
+        dialog.set_default_response(Some(default));
         dialog.set_close_response(CANCEL);
 
         let rows: Vec<FieldRow> = prompt.fields.iter().map(FieldRow::build).collect();
@@ -156,6 +162,25 @@ mod tests {
 
         let without = PromptForm::build(&password_prompt(false));
         assert!(without.remember.is_none(), "remember was offered where it cannot work");
+    }
+
+    #[gtk4::test]
+    fn enter_never_trusts_a_host_key() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let prompt = CredentialPrompt {
+            purpose: PromptPurpose::SshHostKeyConfirmation {
+                host: "bastion.example.com".to_owned(),
+                algorithm: "ED25519".to_owned(),
+                fingerprint: "SHA256:abc".to_owned(),
+            },
+            target: "bastion.example.com".to_owned(),
+            fields: Vec::new(),
+            offer_remember: false,
+        };
+
+        let form = PromptForm::build(&prompt);
+
+        assert_eq!(form.dialog.default_response().as_deref(), Some(CANCEL));
     }
 
     #[gtk4::test]

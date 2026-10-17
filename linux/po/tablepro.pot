@@ -108,8 +108,30 @@ msgid "TablePro SSH key passphrase for {target}"
 msgstr ""
 
 #: crates/app/src/services/secret_save_report.rs
+msgid ""
+"No keyring is running, so the password was not saved. It will be asked for "
+"next time."
+msgstr ""
+
+#: crates/app/src/services/secret_save_report.rs
+msgid ""
+"The secret portal is unavailable, so the password was not saved. It will be "
+"asked for next time."
+msgstr ""
+
+#: crates/app/src/services/secret_save_report.rs
+msgid ""
+"The keyring stayed locked, so the password was not saved. It will be asked "
+"for next time."
+msgstr ""
+
+#: crates/app/src/services/secret_save_report.rs
 #, rust-format
-msgid "Password not saved in the keyring: {reason}"
+msgid "The keyring did not save the password: {reason}"
+msgstr ""
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "The keyring did not save the password."
 msgstr ""
 
 #: crates/app/src/ui/browse_tab/browse_actions.rs
@@ -541,7 +563,9 @@ msgid "Verify full"
 msgstr ""
 
 #: crates/app/src/ui/connect_dialog/tls_section.rs
-msgid "Not encrypted. Anyone on the network can read the traffic."
+msgid ""
+"Not encrypted. Anyone on the network can read or change the traffic, "
+"password included."
 msgstr ""
 
 #: crates/app/src/ui/connect_dialog/tls_section.rs
@@ -653,6 +677,10 @@ msgid "No password is saved for this connection."
 msgstr ""
 
 #: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "No passphrase is saved for this key."
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
 msgid "The keyring is locked, so the saved one could not be read."
 msgstr ""
 
@@ -662,6 +690,10 @@ msgstr ""
 
 #: crates/app/src/ui/credential_prompt/prompt_text.rs
 msgid "The server refused the one it was given."
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "The one given before did not unlock the key."
 msgstr ""
 
 #: crates/app/src/ui/delete_connection_dialog.rs
@@ -1206,7 +1238,7 @@ msgid "This database does not offer that TLS mode."
 msgstr ""
 
 #: crates/app/src/ui/error_text/driver.rs
-msgid "A CA certificate needs TLS turned on and a database that accepts one."
+msgid "A CA certificate needs Verify full and a database that accepts one."
 msgstr ""
 
 #: crates/app/src/ui/error_text/driver.rs
@@ -1267,6 +1299,11 @@ msgstr ""
 #: crates/app/src/ui/error_text/driver.rs
 #, rust-format
 msgid "Username or password is wrong. The server said: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "The server refused this login. The server said: {detail}"
 msgstr ""
 
 #: crates/app/src/ui/error_text/driver.rs
@@ -1359,6 +1396,11 @@ msgstr ""
 
 #: crates/app/src/ui/error_text/driver.rs
 msgid "The statement ran past its time limit, so the server stopped it."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"The statement ran past its time limit. The server may still be running it."
 msgstr ""
 
 #: crates/app/src/ui/error_text/driver.rs
@@ -1656,7 +1698,8 @@ msgstr ""
 #: crates/app/src/ui/error_text/secret.rs
 msgid ""
 "The secret portal is unavailable, so saved passwords cannot be read inside "
-"the sandbox."
+"the sandbox. Check that xdg-desktop-portal and a keyring are running, or "
+"enter the password by hand."
 msgstr ""
 
 #: crates/app/src/ui/error_text/secret.rs
@@ -2934,7 +2977,6 @@ msgid "Connecting"
 msgstr ""
 
 #: crates/app/src/ui/session_window/connections.rs
-#: crates/app/src/ui/session_window/mod.rs
 #, rust-format
 msgid "The connection could not be saved: {error}"
 msgstr ""
@@ -2982,10 +3024,6 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: crates/app/src/ui/session_window/connections.rs
-msgid "That file is not a TablePro connection export."
-msgstr ""
-
-#: crates/app/src/ui/session_window/connections.rs
 msgid "The connections could not be imported."
 msgstr ""
 
@@ -3019,6 +3057,14 @@ msgstr ""
 
 #: crates/app/src/ui/session_window/connections.rs
 msgid "The connections could not be written to that file."
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "That export comes from a newer version of TablePro."
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "That file is not a TablePro connection export."
 msgstr ""
 
 #: crates/app/src/ui/session_window/connections.rs
@@ -3084,6 +3130,10 @@ msgstr ""
 
 #: crates/app/src/ui/session_window/mod.rs
 msgid "This connection is already open in another window."
+msgstr ""
+
+#: crates/app/src/ui/session_window/mod.rs
+msgid "Could Not Save the Connection"
 msgstr ""
 
 #: crates/app/src/ui/session_window/mod.rs

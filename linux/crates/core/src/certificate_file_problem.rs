@@ -5,6 +5,12 @@ pub enum CertificateFileProblem {
     #[error("the file could not be read: {detail}")]
     Unreadable { detail: String },
 
+    #[error("it is not a regular file")]
+    NotRegularFile,
+
+    #[error("the file is larger than {} KiB", limit_bytes / 1024)]
+    TooLarge { limit_bytes: usize },
+
     #[error("the file contains no certificates")]
     NoCertificates,
 

@@ -72,7 +72,11 @@ pub(crate) fn map_db_error(db: &DbError) -> DriverError {
 
 pub(crate) fn map_diagnostics(diagnostics: ServerDiagnostics) -> DriverError {
     match diagnostics.sqlstate().unwrap_or_default() {
-        "28P01" | "28000" => DriverError::auth(Some(diagnostics)),
+        "28P01" => DriverError::auth(Some(diagnostics)),
+        // invalid_authorization_specification: pg_hba.conf turned the
+        // login away, or the role may not log in. The password was not
+        // what failed.
+        "28000" => DriverError::LoginRefused(Box::new(diagnostics)),
         "25006" => DriverError::ReadOnly(ReadOnlyRefusal::server(diagnostics)),
         "55P03" => DriverError::Timeout {
             phase: TimeoutPhase::LockWait,
@@ -112,6 +116,7 @@ pub(crate) fn sqlstate(error: &DriverError) -> Option<&str> {
     match error {
         DriverError::Server(diagnostics) => diagnostics.sqlstate(),
         DriverError::Auth { diagnostics } => diagnostics.as_deref().and_then(ServerDiagnostics::sqlstate),
+        DriverError::LoginRefused(diagnostics) => diagnostics.sqlstate(),
         DriverError::ReadOnly(ReadOnlyRefusal::ServerRejected(diagnostics)) => diagnostics.sqlstate(),
         DriverError::Timeout {
             phase: TimeoutPhase::Statement,
@@ -198,9 +203,11 @@ mod tests {
             ("28P01", "password authentication failed", |e| {
                 matches!(e, DriverError::Auth { .. })
             }),
-            ("28000", "no pg_hba.conf entry", |e| {
-                matches!(e, DriverError::Auth { .. })
-            }),
+            (
+                "28000",
+                "no pg_hba.conf entry",
+                |e| matches!(e, DriverError::LoginRefused(d) if d.sqlstate() == Some("28000")),
+            ),
             ("25006", "cannot execute INSERT in a read-only transaction", |e| {
                 matches!(e, DriverError::ReadOnly(ReadOnlyRefusal::ServerRejected(_)))
             }),
