@@ -3,14 +3,19 @@
 # the RPM spec package, that the spec collects translations exactly when
 # po/LINGUAS ships one, and that the Debian package builds with the Rust
 # the workspace names as its rust-version. The release workflow adds the
-# tag and its date, and then CHANGELOG.md must carry that version's notes.
+# tag and its date, and then CHANGELOG.md must carry that version's notes
+# and the spec must be the version's first package release.
+#
+# Once CHANGELOG.md has a heading for the version, the release commit has
+# set its dates, and the heading and the spec's %changelog entry must
+# carry the metainfo's release date.
 
 import argparse
 import re
 import sys
 import tomllib
 import xml.etree.ElementTree as ElementTree
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 METAINFO = Path("data/app.tablepro.TablePro.metainfo.xml.in.in")
@@ -26,6 +31,9 @@ RULES = Path("build-aux/debian/rules")
 RELEASE_VERSION = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$")
 SPEC_VERSION = re.compile(r"^Version:\s*(\S+)\s*$", re.MULTILINE)
 SPEC_CHANGELOG = re.compile(r"^%changelog\s*\n\*[^\n]*\s-\s(\S+)\s*$", re.MULTILINE)
+SPEC_RELEASE = re.compile(r"^Release:\s*(\S+)\s*$", re.MULTILINE)
+SPEC_ENTRY = re.compile(r"^\*\s+(\w{3}\s+\w{3}\s+\d{1,2}\s+\d{4})\s.*\s-\s(\S+)\s*$", re.MULTILINE)
+FIRST_PACKAGE_RELEASE = "1%{?dist}"
 FIND_LANG = re.compile(r"^%find_lang\b", re.MULTILINE)
 CONTROL_TOOLCHAIN = re.compile(r"\b(cargo|rustc)-(\d+\.\d+)\b")
 RULES_TOOLCHAIN = re.compile(r"/usr/lib/rust-(\d+\.\d+)/bin\b")
@@ -64,6 +72,58 @@ def release_notes(changelog, version):
     return "\n".join(notes).strip()
 
 
+def release_heading_date(changelog, version):
+    """The date on the version's heading: None without a heading, "" when it has no date."""
+    heading = re.compile(rf"^## \[{re.escape(version)}\](?: - (\d{{4}}-\d{{2}}-\d{{2}}))?\s*$")
+    for line in changelog.read_text(encoding="utf-8").splitlines():
+        match = heading.match(line)
+        if match:
+            return match.group(1) or ""
+    return None
+
+
+def spec_entry_date(spec, release):
+    """The date of the %changelog entry for release, None without one, "" when the date is bogus."""
+    _, _, log = spec.partition("\n%changelog")
+    for match in SPEC_ENTRY.finditer(log):
+        if match.group(2) != release:
+            continue
+        written = " ".join(match.group(1).split())
+        try:
+            parsed = datetime.strptime(written, "%a %b %d %Y").date()
+        except ValueError:
+            return ""
+        # rpmbuild warns about a weekday that does not match the date,
+        # and strptime ignores it.
+        if parsed.strftime("%a") != written.split()[0]:
+            return ""
+        return parsed.isoformat()
+    return None
+
+
+def release_date_problems(root, version, spec, released, spec_opens_with_version):
+    found = []
+    heading = release_heading_date(root / CHANGELOG, version)
+    if heading == "":
+        found.append(f"{CHANGELOG} has no YYYY-MM-DD date on ## [{version}]")
+    elif heading is not None and heading != released:
+        found.append(f"{CHANGELOG} dates {version} {heading}, the metainfo {released}")
+
+    # A spec whose %changelog does not open with the version is reported
+    # once, by the version check.
+    if not spec_opens_with_version:
+        return found
+    first = f"{package_version(version)}-1"
+    entry = spec_entry_date(spec, first)
+    if entry is None:
+        found.append(f"{SPEC} has no %changelog entry for {first}")
+    elif entry == "":
+        found.append(f"the %changelog entry for {first} in {SPEC} has no valid date")
+    elif entry != released:
+        found.append(f"the %changelog entry for {first} in {SPEC} is dated {entry}, the metainfo {released}")
+    return found
+
+
 def toolchain_problems(root):
     package = tomllib.loads((root / CARGO).read_text(encoding="utf-8")).get("workspace", {}).get("package", {})
     rust_version = package.get("rust-version")
@@ -94,6 +154,10 @@ def problems(root, version, tag=None, tag_date=None):
         if not release_notes(root / CHANGELOG, version):
             found.append(f"{CHANGELOG} has no notes under ## [{version}]")
 
+    packaged = package_version(version)
+    spec = (root / SPEC).read_text(encoding="utf-8")
+    changelog = SPEC_CHANGELOG.search(spec)
+    spec_opens_with_version = changelog is not None and changelog.group(1).startswith(f"{packaged}-")
     release = newest_release(root / METAINFO)
     if release is None:
         found.append(f"{METAINFO} has no <release>")
@@ -103,24 +167,35 @@ def problems(root, version, tag=None, tag_date=None):
                 f"the newest release in {METAINFO} is {release.get('version')}, not {version}"
             )
         released = release.get("date", "")
+        dated = True
         try:
             date.fromisoformat(released)
         except ValueError:
+            dated = False
             found.append(f"the newest release in {METAINFO} has no YYYY-MM-DD date")
         if tag_date is not None and released != tag_date:
             found.append(
                 f"the newest release in {METAINFO} is dated {released or 'nothing'}, "
                 f"the tagged commit {tag_date}"
             )
+        released_at_commit = tag is not None or release_heading_date(root / CHANGELOG, version) is not None
+        if dated and release.get("version") == version and released_at_commit:
+            found.extend(release_date_problems(root, version, spec, released, spec_opens_with_version))
 
-    packaged = package_version(version)
-    spec = (root / SPEC).read_text(encoding="utf-8")
     versions = SPEC_VERSION.findall(spec)
     if versions != [packaged]:
         found.append(f"{SPEC} packages version {', '.join(versions) or 'nothing'}, not {packaged}")
-    changelog = SPEC_CHANGELOG.search(spec)
-    if changelog is None or not changelog.group(1).startswith(f"{packaged}-"):
+    if not spec_opens_with_version:
         found.append(f"the first %changelog entry in {SPEC} is not for {packaged}")
+    # A packaging fix after the release raises Release on the branch; a
+    # new version starts again from 1.
+    if tag is not None:
+        releases = SPEC_RELEASE.findall(spec)
+        if releases != [FIRST_PACKAGE_RELEASE]:
+            found.append(
+                f"{SPEC} has Release {', '.join(releases) or 'nothing'}, not {FIRST_PACKAGE_RELEASE} "
+                f"for a new version"
+            )
 
     if bool(linguas(root / LINGUAS)) != bool(FIND_LANG.search(spec)):
         found.append(

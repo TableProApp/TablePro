@@ -20,11 +20,16 @@ METAINFO = """<?xml version="1.0" encoding="UTF-8"?>
 
 SPEC = """Name:           tablepro
 Version:        {version}
-Release:        1%{{?dist}}
+Release:        {release}
 {find_lang}
 %changelog
-* Wed Oct 14 2026 TablePro Authors <hello@tablepro.app> - {changelog}-1
+{later}* {spec_date} TablePro Authors <hello@tablepro.app> - {changelog}-1
 - First package
+"""
+
+PACKAGING_FIX = """* Mon Oct 19 2026 TablePro Authors <hello@tablepro.app> - 1.2.0-2
+- Recommend a keyring
+
 """
 
 
@@ -79,13 +84,26 @@ class ProblemsTests(unittest.TestCase):
         rust_version="1.97",
         toolchain="cargo-1.97,\n rustc-1.97,",
         rust_bin="/usr/lib/rust-1.97/bin",
+        release="1%{?dist}",
+        spec_date="Wed Oct 14 2026",
+        later="",
     ):
         workdir = tempfile.TemporaryDirectory()
         self.addCleanup(workdir.cleanup)
         root = Path(workdir.name)
         for path, content in (
             (check_packaging.METAINFO, METAINFO.format(releases=releases)),
-            (check_packaging.SPEC, SPEC.format(version=version, changelog=changelog, find_lang=find_lang)),
+            (
+                check_packaging.SPEC,
+                SPEC.format(
+                    version=version,
+                    changelog=changelog,
+                    find_lang=find_lang,
+                    release=release,
+                    spec_date=spec_date,
+                    later=later,
+                ),
+            ),
             (check_packaging.LINGUAS, linguas),
             (check_packaging.CHANGELOG, notes),
             (check_packaging.CARGO, CARGO.format(rust_version=rust_version)),
@@ -125,9 +143,13 @@ class ProblemsTests(unittest.TestCase):
         self.assertIn("no YYYY-MM-DD date", found[0])
 
     def test_a_release_dated_before_the_tag_fails(self):
-        releases = '<release version="1.2.0" date="2026-10-01"/>'
+        root = self.tree(
+            releases='<release version="1.2.0" date="2026-10-01"/>',
+            notes=NOTES.replace("## [1.2.0] - 2026-10-14", "## [1.2.0] - 2026-10-01"),
+            spec_date="Thu Oct 01 2026",
+        )
 
-        found = check_packaging.problems(self.tree(releases=releases), "1.2.0", "linux-v1.2.0", "2026-10-14")
+        found = check_packaging.problems(root, "1.2.0", "linux-v1.2.0", "2026-10-14")
 
         self.assertEqual(len(found), 1)
         self.assertIn("dated 2026-10-01", found[0])
@@ -219,7 +241,10 @@ class ProblemsTests(unittest.TestCase):
         self.assertEqual(found, ["Cargo.toml names no workspace rust-version"])
 
     def test_a_release_needs_its_changelog_notes(self):
-        for notes in (NOTES.replace("## [1.2.0] - 2026-10-14", "## [1.2.1]"), "## [1.2.0]\n\n## [1.1.0]\n- x\n"):
+        for notes in (
+            NOTES.replace("## [1.2.0] - 2026-10-14", "## [1.2.1]"),
+            "## [1.2.0] - 2026-10-14\n\n## [1.1.0]\n- x\n",
+        ):
             with self.subTest(notes=notes):
                 found = check_packaging.problems(self.tree(notes=notes), "1.2.0", "linux-v1.2.0", "2026-10-14")
 
@@ -228,6 +253,55 @@ class ProblemsTests(unittest.TestCase):
 
     def test_the_changelog_is_only_required_for_a_release(self):
         self.assertEqual(check_packaging.problems(self.tree(notes="# Changelog\n"), "1.2.0"), [])
+
+    def test_the_changelog_heading_carries_the_release_date(self):
+        cases = [
+            ("## [1.2.0] - 2026-10-13", "CHANGELOG.md dates 1.2.0 2026-10-13, the metainfo 2026-10-14"),
+            ("## [1.2.0]", "CHANGELOG.md has no YYYY-MM-DD date on ## [1.2.0]"),
+        ]
+        for heading, expected in cases:
+            with self.subTest(heading=heading):
+                root = self.tree(notes=NOTES.replace("## [1.2.0] - 2026-10-14", heading))
+
+                self.assertEqual(check_packaging.problems(root, "1.2.0"), [expected])
+
+    def test_the_spec_first_package_carries_the_release_date(self):
+        cases = [
+            ("Tue Oct 13 2026", "is dated 2026-10-13, the metainfo 2026-10-14"),
+            ("Thu Oct 14 2026", "has no valid date"),
+            ("Wed Oct 32 2026", "has no valid date"),
+        ]
+        for spec_date, expected in cases:
+            with self.subTest(spec_date=spec_date):
+                found = check_packaging.problems(self.tree(spec_date=spec_date), "1.2.0")
+
+                self.assertEqual(len(found), 1, found)
+                self.assertIn(expected, found[0])
+
+    def test_the_spec_needs_an_entry_for_the_first_package(self):
+        found = check_packaging.problems(self.tree(changelog="1.1.0", later=PACKAGING_FIX), "1.2.0")
+
+        self.assertEqual(found, ["build-aux/rpm/tablepro.spec has no %changelog entry for 1.2.0-1"])
+
+    def test_dates_wait_for_the_release_commit(self):
+        notes = "# Changelog\n\n## [Unreleased]\n\n- Something.\n"
+
+        found = check_packaging.problems(self.tree(notes=notes, spec_date="Tue Oct 13 2026"), "1.2.0")
+
+        self.assertEqual(found, [])
+
+    def test_a_packaging_fix_after_the_release_passes(self):
+        root = self.tree(release="2%{?dist}", later=PACKAGING_FIX)
+
+        self.assertEqual(check_packaging.problems(root, "1.2.0"), [])
+
+    def test_a_release_tag_needs_the_first_package_release(self):
+        root = self.tree(release="2%{?dist}", later=PACKAGING_FIX)
+
+        found = check_packaging.problems(root, "1.2.0", "linux-v1.2.0", "2026-10-14")
+
+        self.assertEqual(len(found), 1, found)
+        self.assertIn("has Release 2%{?dist}, not 1%{?dist}", found[0])
 
     def test_main_writes_the_release_notes(self):
         root = self.tree()
