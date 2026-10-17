@@ -35,15 +35,38 @@ done <"$BASELINES"
 # counts, which is what a file that is already test-only needs, because
 # its children inherit the gate and do not repeat the attribute.
 declared_module_files() {
-  local file="$1" gated_only="$2" dir target
-    dir="$(dirname "$file")"
-    while IFS= read -r target; do
-      if [[ -f "$dir/$target" ]]; then
-        printf '%s\n' "$(realpath -m "$dir/$target")"
-      elif [[ -f "$dir/${target%.rs}/mod.rs" ]]; then
-        printf '%s\n' "$(realpath -m "$dir/${target%.rs}/mod.rs")"
-      fi
-    done < <(awk -v gated_only="$gated_only" '
+  local file="$1" gated_only="$2" dir module_dir file_name target
+  dir="$(dirname "$file")"
+  file_name="$(basename "$file")"
+  case "$file" in
+    */src/bin/*.rs|*/examples/*.rs|*/benches/*.rs|*/tests/*.rs) module_dir="$dir" ;;
+    *)
+      case "$file_name" in
+        lib.rs|main.rs|mod.rs) module_dir="$dir" ;;
+        *) module_dir="$dir/${file_name%.rs}" ;;
+      esac
+      ;;
+  esac
+  while IFS= read -r target; do
+    case "$target" in
+      path:*)
+        target="${target#path:}"
+        if [[ -f "$dir/$target" ]]; then
+          printf '%s\n' "$(realpath -m "$dir/$target")"
+        elif [[ -f "$dir/${target%.rs}/mod.rs" ]]; then
+          printf '%s\n' "$(realpath -m "$dir/${target%.rs}/mod.rs")"
+        fi
+        ;;
+      module:*)
+        target="${target#module:}"
+        if [[ -f "$module_dir/$target.rs" ]]; then
+          printf '%s\n' "$(realpath -m "$module_dir/$target.rs")"
+        elif [[ -f "$module_dir/$target/mod.rs" ]]; then
+          printf '%s\n' "$(realpath -m "$module_dir/$target/mod.rs")"
+        fi
+        ;;
+    esac
+  done < <(awk -v gated_only="$gated_only" '
       BEGIN { if (!gated_only) pending = 1 }
       /^[ \t]*#\[cfg\(test\)\]/ { pending = 1; path = ""; next }
       pending && /^[ \t]*#\[path[ \t]*=/ {
@@ -52,11 +75,11 @@ declared_module_files() {
       }
       pending && /^[ \t]*(pub[ \t]+)?mod[ \t]+[A-Za-z0-9_]+[ \t]*;/ {
         if (path != "") {
-          print path
+          print "path:" path
         } else if (match($0, /mod[ \t]+[A-Za-z0-9_]+/)) {
           name = substr($0, RSTART, RLENGTH)
           sub(/^mod[ \t]+/, "", name)
-          print name ".rs"
+          print "module:" name
         }
         pending = gated_only ? 0 : 1
         path = ""
