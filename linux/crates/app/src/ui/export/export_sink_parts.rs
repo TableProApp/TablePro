@@ -47,7 +47,8 @@ mod tests {
             RowFormat::Html { title: "t".to_owned() },
             RowFormat::Xml,
             RowFormat::Sql(InsertTarget {
-                table: "t".to_owned(),
+                table: tablepro_core::meta::TableRef::unqualified("t"),
+                generated: Arc::from([]),
                 dialect: Arc::new(FakeDialect),
             }),
         ];

@@ -12,62 +12,84 @@ use crate::value::Value;
 /// middle of one long statement takes every row with it, while a
 /// failure among many takes one.
 ///
+/// The table is written with its schema, and the columns `generated`
+/// names are left out, as Copy As INSERT leaves them out: every engine
+/// refuses a value for a column it computes.
+///
 /// A value the engine has no literal for, such as a blob, is written as
 /// `NULL` behind a comment saying so. Writing a guess would put the
 /// wrong data in the table, and refusing the whole export would lose
 /// every other row over one cell.
 pub fn render_sql_insert(
     dialect: &dyn SqlDialect,
-    table: &str,
+    table: &TableRef,
     columns: &[ResultColumn],
+    generated: &[String],
     rows: &[Vec<Value>],
 ) -> String {
-    let Some(start) = insert_start(dialect, table, columns) else {
+    let Some(shape) = insert_shape(dialect, table, columns, generated) else {
         return String::new();
     };
     let mut out = String::with_capacity(rows.len() * columns.len() * 12);
     for row in rows {
-        insert_row(&mut out, dialect, &start, columns, row);
+        insert_row(&mut out, dialect, &shape, columns, row);
     }
     out
 }
 
-/// `INSERT INTO table (columns) VALUES `, which every row's statement
-/// starts with. `None` for a result with no columns, which has no
-/// statement to write.
-pub(super) fn insert_start(dialect: &dyn SqlDialect, table: &str, columns: &[ResultColumn]) -> Option<String> {
-    if columns.is_empty() {
-        return None;
-    }
+/// What every row's statement shares: `INSERT INTO table (columns)
+/// VALUES `, and which of the result's columns it writes.
+pub(super) struct InsertShape {
+    start: String,
+    written: Vec<bool>,
+}
+
+/// The shape of every row's statement, or `None` for a result with no
+/// column to write, which has no statement.
+pub(super) fn insert_shape(
+    dialect: &dyn SqlDialect,
+    table: &TableRef,
+    columns: &[ResultColumn],
+    generated: &[String],
+) -> Option<InsertShape> {
+    let written: Vec<bool> = columns.iter().map(|column| !generated.contains(&column.name)).collect();
     let names: Vec<String> = columns
         .iter()
-        .map(|column| dialect.quote_identifier(&column.name))
+        .zip(&written)
+        .filter(|(_, written)| **written)
+        .map(|(column, _)| dialect.quote_identifier(&column.name))
         .collect();
-    Some(format!(
-        "INSERT INTO {} ({}) VALUES ",
-        dialect.quote_identifier(table),
-        names.join(", ")
-    ))
+    if names.is_empty() {
+        return None;
+    }
+    Some(InsertShape {
+        start: format!("INSERT INTO {} ({}) VALUES ", dialect.qualify(table), names.join(", ")),
+        written,
+    })
 }
 
 pub(super) fn insert_row<'a>(
     out: &mut String,
     dialect: &dyn SqlDialect,
-    start: &str,
+    shape: &InsertShape,
     columns: &[ResultColumn],
     row: impl IntoIterator<Item = &'a Value>,
 ) {
     let mut cells = row.into_iter();
     let values: Vec<String> = columns
         .iter()
-        .map(|column| match cells.next() {
-            Some(value) => literal(dialect, value, column),
-            // A row shorter than its header: the cell is absent, which
-            // is as close to unknown as SQL has.
-            None => "NULL".to_owned(),
+        .zip(&shape.written)
+        .filter_map(|(column, written)| {
+            let literal = match cells.next() {
+                Some(value) => literal(dialect, value, column),
+                // A row shorter than its header: the cell is absent,
+                // which is as close to unknown as SQL has.
+                None => "NULL".to_owned(),
+            };
+            written.then_some(literal)
         })
         .collect();
-    out.push_str(start);
+    out.push_str(&shape.start);
     out.push('(');
     out.push_str(&values.join(", "));
     out.push_str(");\n");
@@ -130,7 +152,39 @@ mod tests {
     use crate::dialect::{LiteralError, TestDialect};
 
     fn render(table: &str, columns: &[ResultColumn], rows: &[Vec<Value>]) -> String {
-        render_sql_insert(&TestDialect::default(), table, columns, rows)
+        render_sql_insert(
+            &TestDialect::default(),
+            &TableRef::unqualified(table),
+            columns,
+            &[],
+            rows,
+        )
+    }
+
+    #[test]
+    fn the_table_is_written_with_its_schema() {
+        let sql = render_sql_insert(
+            &TestDialect::default(),
+            &TableRef::new(Some("sales".to_owned()), "orders"),
+            &cols(&["id"]),
+            &[],
+            &[vec![Value::Int(1)]],
+        );
+
+        assert_eq!(sql, "INSERT INTO \"sales\".\"orders\" (\"id\") VALUES (1);\n");
+    }
+
+    #[test]
+    fn a_generated_column_is_left_to_the_server() {
+        let sql = render_sql_insert(
+            &TestDialect::default(),
+            &TableRef::unqualified("orders"),
+            &cols(&["id", "total", "name"]),
+            &["total".to_owned()],
+            &[vec![Value::Int(1), Value::Int(9), Value::Text("a".into())]],
+        );
+
+        assert_eq!(sql, "INSERT INTO \"orders\" (\"id\", \"name\") VALUES (1, 'a');\n");
     }
 
     #[test]

@@ -11,6 +11,7 @@ use super::super::{
 use super::*;
 use crate::column::{ColumnKind, IntegerKind, IntegerWidth};
 use crate::dialect::{SqlDialect, TestDialect};
+use crate::meta::TableRef;
 use crate::value::{JsonText, UndecodableReason, UndecodedValue};
 
 /// Every call's output taken away as soon as it is written, the way a
@@ -286,8 +287,11 @@ fn document_encoders_match_their_renderers() {
         render_xml(&columns, &rows).expect("the document")
     );
     assert_eq!(
-        streamed(SqlInsertEncoder::new(dialect.clone(), "t", columns.clone()), &rows),
-        render_sql_insert(&*dialect, "t", &columns, &rows)
+        streamed(
+            SqlInsertEncoder::new(dialect.clone(), &TableRef::unqualified("t"), columns.clone(), &[]),
+            &rows
+        ),
+        render_sql_insert(&*dialect, &TableRef::unqualified("t"), &columns, &[], &rows)
     );
 }
 
@@ -304,9 +308,16 @@ fn document_encoders_write_whole_documents_for_no_rows() {
         streamed(XmlEncoder::new(columns.clone()), &[]),
         render_xml(&columns, &[]).expect("the document")
     );
-    assert_eq!(streamed(SqlInsertEncoder::new(dialect.clone(), "t", columns), &[]), "");
+    let table = TableRef::unqualified("t");
     assert_eq!(
-        streamed(SqlInsertEncoder::new(dialect, "t", Vec::new().into()), &[Vec::new()]),
+        streamed(SqlInsertEncoder::new(dialect.clone(), &table, columns, &[]), &[]),
+        ""
+    );
+    assert_eq!(
+        streamed(
+            SqlInsertEncoder::new(dialect, &table, Vec::new().into(), &[]),
+            &[Vec::new()]
+        ),
         "",
         "a result with no columns has no statement"
     );
@@ -328,8 +339,9 @@ fn encoder_reports_undecodable_cell() {
         Box::new(XmlEncoder::new(columns.clone())),
         Box::new(SqlInsertEncoder::new(
             Arc::new(TestDialect::default()),
-            "t",
+            &TableRef::unqualified("t"),
             columns.clone(),
+            &[],
         )),
     ];
     for mut encoder in encoders {
