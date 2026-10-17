@@ -14,6 +14,16 @@ pub(crate) fn announce(widget: &impl IsA<gtk::Widget>, message: &str, priority: 
     widget.announce(message, priority);
 }
 
+/// Show `text` on a status line, and say it when it changed: a screen
+/// reader does not read a label that changes away from the focus.
+pub(crate) fn show_status(label: &gtk::Label, text: &str) {
+    if label.label() == text {
+        return;
+    }
+    label.set_label(text);
+    announce(label, text, gtk::AccessibleAnnouncementPriority::Medium);
+}
+
 /// GTK's test backend keeps no announcement, so a test reads them here.
 #[cfg(test)]
 pub(crate) mod said {

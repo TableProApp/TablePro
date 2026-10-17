@@ -8,9 +8,9 @@ mod key_shortcuts;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use announce::announce;
 #[cfg(test)]
 pub(crate) use announce::said::announced_in;
+pub(crate) use announce::{announce, show_status};
 pub(crate) use focus::{holds_focus, pass_focus};
 pub(crate) use icon_button::{announce_key_shortcuts, describe_icon_button};
 pub(crate) use invalid::show_invalid;

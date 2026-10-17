@@ -128,7 +128,7 @@ impl PendingChangesBar {
                     &[("n", &count.to_string())],
                 )
             };
-            imp.pending_label.set_label(&label);
+            crate::ui::a11y::show_status(&imp.pending_label, &label);
         }
         imp.revealer.set_reveal_child(visible);
     }
@@ -147,6 +147,11 @@ impl PendingChangesBar {
                 crate::ui::a11y::pass_focus(button, &stop);
                 button.set_sensitive(false);
             }
+            crate::ui::a11y::announce(
+                &imp.saving_spinner.get(),
+                &crate::i18n::gettext("Saving…"),
+                gtk::AccessibleAnnouncementPriority::Medium,
+            );
         } else {
             save.set_sensitive(true);
             imp.discard_button.set_sensitive(true);
@@ -261,8 +266,28 @@ mod tests {
 
         bar.show_saving(true);
         assert_eq!(focus().as_ref(), Some(imp.stop_button.upcast_ref()));
+        assert!(
+            crate::ui::a11y::announced_in(&bar)
+                .iter()
+                .any(|(said, _)| said == "Saving…")
+        );
 
         bar.show_saving(false);
         assert_eq!(focus().as_ref(), Some(imp.save_button.upcast_ref()));
+    }
+
+    #[gtk4::test]
+    fn a_new_count_of_changes_is_said() {
+        let bar = bar();
+
+        bar.show_pending(1);
+        bar.show_pending(1);
+        bar.show_pending(2);
+
+        let said: Vec<String> = crate::ui::a11y::announced_in(&bar)
+            .into_iter()
+            .map(|(said, _)| said)
+            .collect();
+        assert_eq!(said, ["1 unsaved change", "2 unsaved changes"]);
     }
 }

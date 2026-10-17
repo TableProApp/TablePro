@@ -183,7 +183,7 @@ impl PagerBar {
         let label = shown
             .map(|page| page_range_label(page.start_ordinal, page.row_count, total))
             .unwrap_or_default();
-        imp.paginator_label.set_label(&label);
+        crate::ui::a11y::show_status(&imp.paginator_label, &label);
         let last_tooltip = match total.exact() {
             Some(_) => gettext("Last Page"),
             None => gettext("Count rows to go to the last page"),
@@ -490,5 +490,13 @@ mod tests {
         bar.show_total(&pager, Some(&page(0, 5)), &RowTotal::Exact(5));
 
         assert_eq!(bar.imp().paginator_label.label(), "Rows 1 – 5 of 5");
+        assert_eq!(
+            crate::ui::a11y::announced_in(&bar),
+            [(
+                "Rows 1 – 5 of 5".to_owned(),
+                gtk::AccessibleAnnouncementPriority::Medium
+            )],
+            "a page turn is said once"
+        );
     }
 }

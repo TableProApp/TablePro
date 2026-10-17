@@ -198,7 +198,7 @@ impl StructureModel {
                 u32::try_from(pending_count).unwrap_or(u32::MAX),
                 &[("n", &pending_count.to_string())],
             );
-            self.widgets.pending_label.set_label(&label);
+            crate::ui::a11y::show_status(&self.widgets.pending_label, &label);
             self.widgets.pending_label.set_visible(true);
         } else {
             self.widgets.pending_label.set_visible(false);

@@ -898,6 +898,13 @@ fn renaming_existing_column_enables_save_and_previews_rename() {
     assert!(imp.save_button.is_sensitive(), "a rename left Save off");
     assert_eq!(imp.pending_label.label(), "1 pending change");
     assert_eq!(
+        crate::ui::a11y::announced_in(&imp.pending_label.get()),
+        [(
+            "1 pending change".to_owned(),
+            gtk4::AccessibleAnnouncementPriority::Medium
+        )]
+    );
+    assert_eq!(
         preview(harness.tab()),
         "ALTER TABLE \"users\" RENAME COLUMN \"score\" TO \"points\";"
     );
