@@ -105,7 +105,7 @@ Drivers classify a handshake failure with `tablepro_net::tls::classify`, which w
 | `TlsFailure` | Cause | What the app offers |
 |---|---|---|
 | `UnknownIssuer` | The certificate's issuer is not in the trust set. | **Choose CA Certificate…**, which opens the connect dialog at the CA file row. |
-| `NameMismatch` | The certificate is for another name. | **Set TLS Server Name**, which opens the connect dialog at the server name row. |
+| `NameMismatch` | The certificate is for another name. | **Set TLS Server Name**, which opens the connect dialog at the server name row, where the route shows that row; MySQL over a direct route checks the host it dials and offers only **Edit Connection…**. |
 | `Expired`, `NotYetValid`, `Revoked` | The certificate itself is bad. | Nothing: the server's certificate has to be replaced. |
 | `ServerRefusedTls` | The server does not speak TLS on this port. | The message; turn TLS off or use the TLS port. |
 | `ServerRequiresTls` | TLS was off and the server insists on it. | The message; turn TLS on. |

@@ -99,6 +99,14 @@ pub fn shows_server_name(caps: &TlsCapabilities, route: TransportClass) -> bool 
     }
 }
 
+/// Whether the dialog, opened on a connection to `driver` over `route`,
+/// shows the server name row. A driver without TLS shows none.
+pub fn driver_shows_server_name(driver: Option<&DriverCapabilities>, route: TransportClass) -> bool {
+    driver
+        .and_then(|caps| caps.tls.as_ref())
+        .is_some_and(|tls| shows_server_name(tls, route))
+}
+
 /// What the connect dialog holds, read from its rows in one go so a
 /// connect works from a snapshot.
 #[derive(Debug, Clone)]
@@ -842,6 +850,15 @@ mod tests {
         assert_eq!(form.host, "db.example.com");
         assert_eq!(form.database, "sales");
         assert_eq!(form.username, "app");
+    }
+
+    #[test]
+    fn the_server_name_row_shows_where_the_driver_can_check_another_name() {
+        assert!(!driver_shows_server_name(Some(mysql()), TransportClass::DirectTcp));
+        assert!(driver_shows_server_name(Some(mysql()), TransportClass::SshForward));
+        assert!(driver_shows_server_name(Some(postgres()), TransportClass::DirectTcp));
+        assert!(!driver_shows_server_name(Some(sqlite()), TransportClass::DirectTcp));
+        assert!(!driver_shows_server_name(None, TransportClass::SshForward));
     }
 
     #[test]

@@ -36,7 +36,7 @@ use tablepro_storage::{CredentialDemand, SavedConnection};
 use uuid::Uuid;
 
 pub use self::connect_dialog_mode::ConnectDialogMode;
-pub use self::connect_form::ConnectForm;
+pub use self::connect_form::{ConnectForm, driver_shows_server_name};
 use self::connect_form::{ValidatedForm, match_saved_connection};
 pub use self::connect_submission::ConnectSubmission;
 pub use self::form_errors::FormErrors;
@@ -362,6 +362,11 @@ impl ConnectDialog {
             ssh: (!caps.is_file_based()).then(|| imp.ssh_section.form_state()).flatten(),
             file: imp.file_row.endpoint(),
         }
+    }
+
+    fn shows_server_name(&self) -> bool {
+        let entry = self.current_entry();
+        driver_shows_server_name(entry.as_ref().map(DriverEntry::capabilities), self.route())
     }
 
     fn route(&self) -> TransportClass {
@@ -767,7 +772,7 @@ impl ConnectDialog {
                 Ok(Err(ConnectError::Cancelled)) => {}
                 Ok(Err(error)) => dialog.show_toast(
                     &crate::ui::error_text::connect_error_message(&error),
-                    crate::ui::error_text::connect_remedy(&error),
+                    crate::ui::error_text::connect_remedy(&error, dialog.shows_server_name()),
                 ),
                 Err(failure) => dialog.show_toast(&crate::ui::error_text::task_failure_message(&failure), None),
             }
