@@ -240,12 +240,41 @@ mod tests {
     const WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
     /// An AdwDialog needs a real window to present into before its
-    /// toast overlay renders anything.
+    /// toast overlay renders anything. This one opens at a session
+    /// window's size (session-window.ui). A window left at its 360 px
+    /// floor gives its content 350 px under Xvfb, which has no
+    /// compositor, and libadwaita warns that the dialog's bottom sheet,
+    /// which needs 360, does not fit.
     fn present_on_a_window(dialog: &PreferencesDialog) -> crate::test_support::OwnedWindow<adw::Window> {
-        let window = crate::test_support::OwnedWindow::presented(adw::Window::new());
+        let window = crate::test_support::OwnedWindow::presented(
+            adw::Window::builder().default_width(1200).default_height(760).build(),
+        );
         dialog.present(Some(&*window));
         crate::test_support::wait_until(WAIT, || clear_button(dialog).is_mapped()).expect("the dialog never appeared");
         window
+    }
+
+    #[gtk4::test]
+    fn the_dialog_shows_without_a_warning() {
+        let settings = MemorySettings::new();
+        let runtime = test_runtime();
+        let storage = test_storage(&runtime.tasks());
+        let root = tempfile::tempdir().expect("tempdir");
+        let dialog = new_dialog(
+            &settings,
+            &storage,
+            test_history(&root, &runtime.tasks()),
+            &runtime.tasks(),
+        );
+
+        let previous = gtk4::glib::log_set_always_fatal(
+            gtk4::glib::LogLevels::LEVEL_WARNING | gtk4::glib::LogLevels::LEVEL_CRITICAL,
+        );
+        let window = present_on_a_window(&dialog);
+        crate::test_support::after_next_frame(&*window);
+        gtk4::glib::log_set_always_fatal(previous);
+
+        assert!(clear_button(&dialog).is_mapped());
     }
 
     /// What the dialog's toast says, read off the label the overlay
