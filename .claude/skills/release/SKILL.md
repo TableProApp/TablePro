@@ -2,12 +2,10 @@
 name: release
 description: >
   Ships a TablePro release end to end: bumps Configs/Version.xcconfig, finalizes CHANGELOG.md,
-  commits, tags, pushes, releases plugins, and then, when the release is big enough to be worth
-  announcing, writes the blog post, the newsletter and the X posts that point at it. Use whenever the
-  user says "release", "bump version", "ship version", "tag a release", "cut a release", gives a
-  version number ("/release 0.67.0", "/release plugin-oracle 1.0.0"), or asks for the announcement
-  that goes with one: "newsletter for 0.67", "blog post for the release", "announce 0.67", "write the
-  X thread".
+  commits, tags, pushes and releases plugins. Use whenever the user says "release", "bump version",
+  "ship version", "tag a release", "cut a release", or gives a version number ("/release 0.67.0",
+  "/release plugin-oracle 1.0.0"). Not for the blog post, newsletter or X posts: those are the
+  announce skill in TableProApp/web.
 ---
 
 # Release
@@ -21,26 +19,15 @@ description: >
 - Once a release run is past **Publish the release**, only **Re-run failed jobs**
   (`RELEASING.md`, When a release run fails).
 
-Run the stages in order, starting one only when the one before it is real: 1 decide the shape, 2
-release (always), 3 plugins (when they changed), 4 to 6 blog post, newsletter and X posts (big
-only). A normal release stops after stage 3; the changelog and docs changelog are its announcement.
-A big release's newsletter and X posts come from the finished post, so the three cannot disagree.
+Run the stages in order, starting one only when the one before it is real: 1 release (always), 2
+plugins (when they changed). Announcing it is the `announce` skill in TableProApp/web
+(`../tablepro-web`).
 
 House rules relied on, not repeated: `.claude/rules/changelog.md`, `.claude/rules/plugin-system.md`,
 the commit format in the top comment of `.github/pull_request_template.md`, and `RELEASING.md` for
 the pipeline.
 
-## Stage 1: Decide the shape
-
-The release is **big** when `### Added` has something a reader would change their behavior over (a
-new pane or mode, a new way to connect, a new database, a rebuilt surface they will not recognize),
-when something people rely on was removed or changed under them, or when a long-standing class of
-bugs users have asked about is gone. Otherwise it is **normal**: fixes, small changes, plugin work.
-The entry count per section is a sanity check, not the rule. Say which shape you picked and why
-before any work, and ask when it is borderline: an unwanted newsletter costs an hour, a skipped one
-costs a launch.
-
-## Stage 2: Release
+## Stage 1: Release
 
 ### Pre-flight
 
@@ -52,7 +39,7 @@ Check each. If one fails, stop and say what is wrong.
    release. `[Unreleased]` has entries; if not, say the release has no notes.
 3. `swiftlint lint --strict` is clean: the tag's checks do not cover SwiftLint. Fix findings
    through their own pull request.
-4. If `Plugins/TableProPluginKit/` changed since the last tag, do Stage 3, PluginKit, now, before
+4. If `Plugins/TableProPluginKit/` changed since the last tag, do Stage 2, PluginKit, now, before
    the tag.
 5. `scripts/export-cloudkit-schema.sh --check` passes; it needs the cktool management token on this
    Mac. A field in the snapshot but not in Production makes CloudKit reject every record carrying
@@ -233,7 +220,7 @@ Only when a build loses data, fails to launch or breaks connecting, and the fix 
 minutes away. Commands and effects: `RELEASING.md`, Withdrawing a release; the user runs its push.
 Users already on the build are reached by the corrective release with `criticalUpdate` set.
 
-## Stage 3: Plugins
+## Stage 2: Plugins
 
 After the app tag is pushed, list the registry plugins with commits since their last tag:
 
@@ -272,28 +259,3 @@ before publishing anything, and act on the diff as `.claude/rules/plugin-system.
 `scripts/release-all-plugins.sh` runs for a breaking bump only: each run uses a registry retention
 slot for every plugin. One driver fix reaches users who have not updated through
 `scripts/release-plugin-for-shipped-app.sh plugin-<slug>-v<version> v<appVersion>`.
-
-## Stages 4 to 6: Announce (big only)
-
-1. **Blog post**, by `references/blog-post.md`: one file in `resources/blog/` of the marketing site
-   repo (`../tablepro-web` by default; confirm the path). It goes live first, because the
-   newsletter and the X posts link to it. Once live, link it from the version's `<Update>` block in
-   the docs `changelog.mdx` with `[Read the announcement](https://tablepro.app/blog/<slug>)` on its
-   own line before the first `###`, pushed as `docs(changelog): link the <version> announcement`.
-2. **Newsletter**, by `references/newsletter.md`: 150 to 250 words that name the headline items and
-   link the post.
-3. **X posts**, by `references/newsletter.md`: four to six posts plus one standalone, written from
-   the finished post and newsletter.
-
-Lint each draft, then work `references/fact-checks.md` top to bottom. Its closing blocker list
-gates all three; report blockers apart from the drafts.
-
-```bash
-python3 .claude/skills/release/scripts/lint-draft.py --blog <web repo>/resources/blog/<slug>.md
-python3 .claude/skills/release/scripts/lint-draft.py <newsletter-or-x-draft.md>
-```
-
-Newsletter and X drafts go in the session scratchpad, named by version (`newsletter-v0.77.0.md`,
-`x-posts-v0.77.0.md`). Sending is out of scope. If the user asks to send the newsletter, warn them
-first: in the license backend `all` means verified subscribers only, a small fraction of the list,
-and `everyone` is the real list.

@@ -63,11 +63,6 @@ FRAMEWORK_PREFIX_PATTERN='^(NS|CK|CF|CG|CA|CT|UI|XC|OS)[A-Z]'
 TAB="$(printf '\t')"
 SCRIPT_PATH_REGEX='(\.claude/hooks|([A-Za-z0-9_.-]+/)*scripts)(/[A-Za-z0-9_-]+)*/[A-Za-z0-9_.-]+\.sh'
 
-# The release skill writes its blog post in the marketing site repo (../tablepro-web), a Laravel app.
-# A path under one of that app's top-level folders, which this tree does not have, names that repo,
-# and blog-post.md runs every command from there, so the names it uses are the site's own.
-SITE_REPO_ROOTS="app public resources routes tests"
-SITE_REPO_DOCS=".claude/skills/release/references/blog-post.md"
 # The docs site is its own repository, cloned beside this one. A path under it names that repo, so
 # it is checked against the clone when one is there and skipped when it is not.
 DOCS_REPO="../tablepro-docs"
@@ -195,15 +190,6 @@ resolve_path() {
     return 1
 }
 
-is_site_repo_path() {
-    local root="${1%%/*}"
-    [ ! -d "$root" ] && printf ' %s ' $SITE_REPO_ROOTS | grep -qF " $root "
-}
-
-is_site_repo_doc() {
-    printf ' %s ' $SITE_REPO_DOCS | grep -qF " $1 "
-}
-
 # ------------------------------------------------------------------ checks
 
 check_paths() {
@@ -250,8 +236,6 @@ check_paths() {
         [[ "$token" =~ ^$SCRIPT_PATH_REGEX$ ]] && continue
         if resolved="$(resolve_path "$token" "$dir")"; then
             pass "$token${resolved#*"$TAB"}" "$doc:$line"
-        elif is_site_repo_path "$token"; then
-            skip "$token (marketing site repo)" "$doc:$line"
         else
             report "$doc:$line" "path does not exist: $token"
         fi
@@ -277,8 +261,6 @@ check_symbols() {
             pass "$token (top-level path)" "$doc:$line"
         elif printf '%s\n' "$token" | grep -qE "$PLACEHOLDER_PATTERN"; then
             skip "$token (placeholder)" "$doc:$line"
-        elif is_site_repo_doc "$doc"; then
-            skip "$token (marketing site repo)" "$doc:$line"
         elif [ "$sdk_indexed" -eq 0 ] && printf '%s\n' "$token" | grep -qE "$FRAMEWORK_PREFIX_PATTERN"; then
             skip "$token (SDK name, no SDK to check against)" "$doc:$line"
         else
