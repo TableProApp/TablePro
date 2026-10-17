@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use chrono::{Datelike, Timelike};
 use rust_xlsxwriter::{Format, Workbook, Worksheet};
 
 use super::encoder::column_name;
@@ -54,8 +55,16 @@ pub struct XlsxSheetWriter {
     workbook: Workbook,
     columns: Arc<[ResultColumn]>,
     rows: usize,
+    formats: CellFormats,
+}
+
+/// How the date and time cells are shown.
+struct CellFormats {
     date: Format,
     timestamp: Format,
+    /// For a timestamp with a fraction of a second, which the plain
+    /// format would hide. A sheet shows at most milliseconds.
+    timestamp_fraction: Format,
 }
 
 impl XlsxSheetWriter {
@@ -81,8 +90,11 @@ impl XlsxSheetWriter {
             workbook,
             columns,
             rows: 0,
-            date: Format::new().set_num_format("yyyy-mm-dd"),
-            timestamp: Format::new().set_num_format("yyyy-mm-dd hh:mm:ss"),
+            formats: CellFormats {
+                date: Format::new().set_num_format("yyyy-mm-dd"),
+                timestamp: Format::new().set_num_format("yyyy-mm-dd hh:mm:ss"),
+                timestamp_fraction: Format::new().set_num_format("yyyy-mm-dd hh:mm:ss.000"),
+            },
         })
     }
 
@@ -106,8 +118,7 @@ impl XlsxSheetWriter {
             workbook,
             columns,
             rows: written,
-            date,
-            timestamp,
+            formats,
         } = self;
         let sheet = workbook.worksheet_from_index(0).map_err(xlsx_error)?;
         for row in rows {
@@ -117,7 +128,7 @@ impl XlsxSheetWriter {
                 if column_index >= MAX_COLUMNS {
                     break;
                 }
-                write_cell(sheet, sheet_row, column_index as u16, columns, value, date, timestamp)?;
+                write_cell(sheet, sheet_row, column_index as u16, columns, value, formats)?;
             }
             *written += 1;
         }
@@ -135,10 +146,9 @@ fn write_cell(
     column: u16,
     columns: &[ResultColumn],
     value: &Value,
-    date: &Format,
-    timestamp: &Format,
+    formats: &CellFormats,
 ) -> Result<(), RenderError> {
-    match value {
+    let written = match value {
         // A blank cell, not an empty string: Excel's COUNT and AVERAGE
         // read the two differently, and NULL is the absent one.
         Value::Null => Ok(()),
@@ -149,21 +159,45 @@ fn write_cell(
             }));
         }
         Value::Bool(flag) => sheet.write_boolean(row, column, *flag).map(drop),
-        Value::Date(Temporal::Finite(day)) => sheet.write_datetime_with_format(row, column, day, date).map(drop),
-        Value::Timestamp(Temporal::Finite(at)) => {
-            sheet.write_datetime_with_format(row, column, at, timestamp).map(drop)
+        Value::Date(Temporal::Finite(day)) if on_excel_calendar(*day) => sheet
+            .write_datetime_with_format(row, column, day, &formats.date)
+            .map(drop),
+        Value::Timestamp(Temporal::Finite(at)) if on_excel_calendar(at.date()) => {
+            let format = timestamp_format(columns, column, at.nanosecond(), formats);
+            sheet.write_datetime_with_format(row, column, at, format).map(drop)
         }
         // A sheet cell carries no zone, so an offset timestamp goes in
         // at UTC. The text formats keep the offset; this one cannot.
-        Value::TimestampTz(Temporal::Finite(at)) => sheet
-            .write_datetime_with_format(row, column, at.utc(), timestamp)
-            .map(drop),
+        Value::TimestampTz(Temporal::Finite(at)) if on_excel_calendar(at.utc().date()) => {
+            let at = at.utc();
+            let format = timestamp_format(columns, column, at.nanosecond(), formats);
+            sheet.write_datetime_with_format(row, column, at, format).map(drop)
+        }
         _ => match sheet_number(columns, column, value) {
             Some(number) => sheet.write_number(row, column, number).map(drop),
             None => return write_text(sheet, row, column, columns, value),
         },
+    };
+    written.map_err(xlsx_error)
+}
+
+/// Whether a sheet can hold the date as one: Excel's calendar runs from
+/// 1900 to 9999, and a date outside it would show as `####` or a wrong
+/// day, so it goes in as text instead.
+fn on_excel_calendar(day: chrono::NaiveDate) -> bool {
+    (1900..=9999).contains(&day.year())
+}
+
+/// The timestamp format that shows the fraction the column declares, or
+/// the one the value carries where the column declares none.
+fn timestamp_format<'a>(columns: &[ResultColumn], column: u16, nanos: u32, formats: &'a CellFormats) -> &'a Format {
+    let declared = columns
+        .get(usize::from(column))
+        .and_then(|column| column.column_type.kind.fractional_digits());
+    match declared.map_or(nanos != 0, |digits| digits > 0) {
+        true => &formats.timestamp_fraction,
+        false => &formats.timestamp,
     }
-    .map_err(xlsx_error)
 }
 
 /// The number a cell goes in as, or `None` for one that goes in as
@@ -243,7 +277,8 @@ fn real_number(number: f32) -> f64 {
 }
 
 /// A sheet name Excel accepts: at most 31 characters, none of
-/// `[]:*?/\`, not empty, and not wrapped in apostrophes.
+/// `[]:*?/\`, not empty, not wrapped in apostrophes, and not
+/// `History`, which English Excel keeps for itself.
 fn sheet_title(name: &str) -> String {
     let cleaned: String = name
         .chars()
@@ -254,9 +289,10 @@ fn sheet_title(name: &str) -> String {
         .take(31)
         .collect();
     let trimmed = cleaned.trim().trim_matches('\'');
-    match trimmed.is_empty() {
-        true => "Sheet1".to_owned(),
-        false => trimmed.to_owned(),
+    match trimmed {
+        "" => "Sheet1".to_owned(),
+        reserved if reserved.eq_ignore_ascii_case("history") => format!("{reserved}_"),
+        name => name.to_owned(),
     }
 }
 
@@ -375,12 +411,16 @@ mod tests {
     }
 
     fn sheet_xml(bytes: &[u8]) -> String {
+        part_xml(bytes, "xl/worksheets/sheet1.xml")
+    }
+
+    fn part_xml(bytes: &[u8], name: &str) -> String {
         use std::io::Read;
 
         let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).expect("a zip archive");
-        let mut sheet = archive.by_name("xl/worksheets/sheet1.xml").expect("the sheet");
+        let mut part = archive.by_name(name).expect("the part");
         let mut xml = String::new();
-        sheet.read_to_string(&mut xml).expect("the sheet's XML");
+        part.read_to_string(&mut xml).expect("the part's XML");
         xml
     }
 
@@ -489,6 +529,39 @@ mod tests {
             render_xlsx(&cols(&["body"]), &[vec![Value::Text("x".repeat(32_767))]], "Results").is_ok(),
             "a value at the limit was refused"
         );
+    }
+
+    #[test]
+    fn a_date_before_1900_is_written_as_text() {
+        let day = chrono::NaiveDate::from_ymd_opt(1899, 12, 31).expect("a date");
+        let rows = vec![vec![Value::Date(Temporal::Finite(day))]];
+
+        let xml = sheet_xml(&render_xlsx(&cols(&["born"]), &rows, "Results").expect("render"));
+
+        assert!(xml.contains("1899-12-31<"), "{xml}");
+    }
+
+    #[test]
+    fn a_timestamp_with_a_fraction_shows_it() {
+        let at = chrono::NaiveDate::from_ymd_opt(2024, 6, 15)
+            .expect("a date")
+            .and_hms_milli_opt(12, 0, 0, 250)
+            .expect("a time");
+        let rows = vec![vec![Value::Timestamp(Temporal::Finite(at))]];
+
+        let styles = part_xml(
+            &render_xlsx(&cols(&["at"]), &rows, "Results").expect("render"),
+            "xl/styles.xml",
+        );
+
+        assert!(styles.contains("hh:mm:ss.000"), "{styles}");
+    }
+
+    #[test]
+    fn the_name_excel_reserves_is_not_used_for_the_sheet() {
+        assert!(!sheet_title("History").eq_ignore_ascii_case("history"));
+        assert!(!sheet_title("history").eq_ignore_ascii_case("history"));
+        assert_eq!(sheet_title("History of orders"), "History of orders");
     }
 
     #[test]
