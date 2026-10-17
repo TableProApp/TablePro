@@ -1489,3 +1489,42 @@ async fn a_table_only_its_own_key_points_at_is_dropped() {
     assert_eq!(tables.rows, [vec![text("other")]]);
     connection.close().await.unwrap();
 }
+
+/// SQLite gives a NULL copied into the rowid the next number instead of
+/// refusing it, so a column holding one stays as it is.
+#[tokio::test]
+async fn an_integer_column_holding_nulls_is_not_made_the_rowid() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE kept (a INTEGER, b TEXT)",
+            "INSERT INTO kept VALUES (NULL, 'x'), (5, 'y')",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let outcome = save(connection.as_ref(), &kept(), |draft| {
+        let key = column(draft, "a");
+        key.primary_key = true;
+        key.nullable = false;
+    })
+    .await;
+
+    assert_eq!(
+        outcome,
+        Err(DriverError::RowGuardFailed {
+            statement_index: 0,
+            expected: 0,
+            actual: 1
+        })
+    );
+    let rows = query(connection.as_ref(), "SELECT a, b FROM kept ORDER BY b").await;
+    assert_eq!(
+        rows.rows,
+        [vec![Value::Null, text("x")], vec![Value::Int(5), text("y")]]
+    );
+    connection.close().await.unwrap();
+}
