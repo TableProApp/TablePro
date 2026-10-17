@@ -170,11 +170,11 @@
   <menu id="export_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">Export as SQL</attribute>
+        <attribute name="label" translatable="yes">Export as SQL…</attribute>
         <attribute name="action">history.export-sql</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Export as CSV</attribute>
+        <attribute name="label" translatable="yes">Export as CSV…</attribute>
         <attribute name="action">history.export-csv</attribute>
       </item>
     </section>
