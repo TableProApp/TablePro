@@ -191,6 +191,7 @@ impl BrowseTab {
             total: RowTotal::Unknown,
             load: ContentLoad::default(),
             tab_loading: false,
+            content_had_focus: false,
             current_column_view: None,
             view_columns: Vec::new(),
             row_index: GridRowIndex::default(),
@@ -505,6 +506,9 @@ pub(crate) struct BrowseModel {
     load: ContentLoad,
     /// What the tab bar was last told, so it hears only changes.
     tab_loading: bool,
+    /// The rows held the focus when the loading page, which has nothing
+    /// to focus, took their place.
+    content_had_focus: bool,
 
     current_column_view: Option<gtk::ColumnView>,
     /// The view's columns in the order of a row's cells, which a drag in

@@ -68,15 +68,31 @@ impl BrowseModel {
     /// error page, the banner over rows that could not be read again,
     /// and the tab bar's spinner.
     pub(super) fn present(&mut self, presentation: LoadPresentation, fx: &mut Effects) {
+        let content_had_focus =
+            std::mem::take(&mut self.content_had_focus) || crate::ui::a11y::holds_focus(&self.widgets.inner_stack);
         match &presentation.page {
-            ContentPage::Spinner => self.show_loading(),
+            ContentPage::Spinner => {
+                self.content_had_focus = content_had_focus;
+                self.show_loading();
+            }
             ContentPage::Content => self.widgets.inner_stack.set_visible_child_name("grid"),
             ContentPage::Error(failure) => {
+                let message = failure.message();
                 // The status page reads its description as markup.
                 self.widgets
                     .error_page
-                    .set_description(Some(&glib::markup_escape_text(&failure.message())));
+                    .set_description(Some(&glib::markup_escape_text(&message)));
+                // The page takes the place of the rows the focus was in, so
+                // the focus goes to Try Again and the reason is said.
                 self.widgets.inner_stack.set_visible_child_name("error");
+                if content_had_focus && let Some(retry) = self.widgets.error_page.child() {
+                    retry.grab_focus();
+                }
+                crate::ui::a11y::announce(
+                    &self.widgets.error_page,
+                    &format!("{}. {message}", self.widgets.error_page.title()),
+                    gtk::AccessibleAnnouncementPriority::High,
+                );
             }
         }
         self.widgets.stale_banner.show(presentation.stale.as_ref());

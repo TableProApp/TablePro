@@ -201,13 +201,33 @@ impl PagerBar {
         ]);
         imp.count_button.set_visible(count_shown);
         imp.count_spinner.set_visible(counting);
-        let (label, tooltip) = match total {
+        let (label, reason) = match total {
             RowTotal::Counting { .. } => (gettext("Counting…"), None),
             RowTotal::Unavailable { reason, .. } => (gettext("Try Again"), Some(reason.as_str())),
             RowTotal::Unknown | RowTotal::Estimated(_) | RowTotal::Exact(_) => (gettext("Count Rows"), None),
         };
         imp.count_label.set_label(&label);
-        imp.count_button.set_tooltip_text(tooltip);
+        self.show_count_failure(reason);
+    }
+
+    /// A count asked for and refused says why, on Try Again as well as
+    /// in its tooltip, which no key shows.
+    fn show_count_failure(&self, reason: Option<&str>) {
+        let button = self.imp().count_button.get();
+        let news = reason.is_some() && button.tooltip_text().as_deref() != reason;
+        button.set_tooltip_text(reason);
+        let widget = button.upcast_ref::<gtk::Widget>();
+        match reason {
+            Some(reason) => widget.update_property(&[gtk::accessible::Property::Description(reason)]),
+            None => widget.reset_property(gtk::AccessibleProperty::Description),
+        }
+        if let Some(reason) = reason.filter(|_| news) {
+            crate::ui::a11y::announce(
+                &button,
+                &crate::i18n::gettext_f("Couldn't count the rows. {reason}", &[("reason", reason)]),
+                gtk::AccessibleAnnouncementPriority::High,
+            );
+        }
     }
 
     /// The keys for Previous and Next turn a page only where the button
@@ -421,6 +441,40 @@ mod tests {
         bar.show_total(&pager, Some(&shown), &RowTotal::Exact(5_000));
         assert!(!imp.count_button.is_visible());
         assert_eq!(focus(&window).as_ref(), Some(imp.last_button.upcast_ref()));
+    }
+
+    #[gtk4::test]
+    fn a_failed_count_says_why_on_try_again() {
+        let bar = bar();
+        let pager = BrowsePager::new(100, 0);
+        let failed = RowTotal::Unavailable {
+            estimate: None,
+            reason: "Counting took longer than 45 seconds and was stopped.".to_owned(),
+        };
+
+        bar.show_total(&pager, Some(&page(0, 100)), &failed);
+
+        let button = bar.imp().count_button.get();
+        assert!(gtk::test_accessible_has_property(
+            &button,
+            AccessibleProperty::Description
+        ));
+        assert_eq!(
+            crate::ui::a11y::announced_in(&bar)
+                .last()
+                .map(|(said, priority)| (said.clone(), *priority)),
+            Some((
+                "Couldn't count the rows. Counting took longer than 45 seconds and was stopped.".to_owned(),
+                gtk::AccessibleAnnouncementPriority::High
+            ))
+        );
+
+        bar.show_total(&pager, Some(&page(0, 100)), &RowTotal::Exact(500));
+
+        assert!(!gtk::test_accessible_has_property(
+            &button,
+            AccessibleProperty::Description
+        ));
     }
 
     #[gtk4::test]
