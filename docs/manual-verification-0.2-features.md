@@ -285,6 +285,7 @@ Use a keyed table with a nullable text column and values above 8 KiB. Include CR
 - [ ] On a PostgreSQL connection with two schemas, the sidebar shows each schema with Tables and Views groups and a count. Click a group: its objects hide and the chevron points right; click again to restore. **2026-10-12 Hyprland dark:** groups and counts passed; collapsing not run.
 - [ ] Type in the sidebar search: groups holding a match open even if collapsed; clearing the search restores your collapsed groups. Quit and reopen the connection: the groups you collapsed are still collapsed.
 - [ ] New Table and Table from CSV on a Tables group still open their dialogs for that schema. Light and dark look right.
+- [ ] With a table tab open on a connection with many tables, collapse its group, type something that does not match it in the sidebar search, and scroll the list away. Press Ctrl+Shift+L: the search clears, the group opens, and the table's row is selected, in view and focused. From a SQL editor tab it says to open a table first. For a table in a hidden schema it says the schema is hidden.
 
 ## SQL code folding
 

@@ -16,6 +16,10 @@ pub(super) fn primary_menu_model() -> gio::Menu {
     let query_section = gio::Menu::new();
     query_section.append(Some(&crate::tr!("Open Quickly")), Some("win.open-quickly"));
     query_section.append(Some(&crate::tr!("Jump to Column…")), Some("win.jump-column"));
+    query_section.append(
+        Some(&crate::tr!("Reveal Table in Sidebar")),
+        Some("win.reveal-in-sidebar"),
+    );
     query_section.append(Some(&crate::tr!("Save Query as Favorite")), Some("win.save-favorite"));
     menu.append_section(None, &query_section);
     let history_section = gio::Menu::new();
@@ -69,6 +73,7 @@ pub(super) fn install_window_actions(
         input_action!("explain-query", AppMsg::ExplainActiveQuery),
         input_action!("refresh-page", AppMsg::RefreshPage),
         input_action!("jump-column", AppMsg::JumpToColumn),
+        input_action!("reveal-in-sidebar", AppMsg::RevealInSidebar),
         input_action!("recent-tab", AppMsg::SwitchToRecentTab),
         input_action!("recent-tab-end", AppMsg::EndRecentTabWalk),
         input_action!("export-csv", AppMsg::ExportCsv),
@@ -109,6 +114,7 @@ pub(super) const WINDOW_SHORTCUTS: &[(&str, &str)] = &[
     ("<Primary>h", "win.show-history"),
     ("<Primary>p", "win.open-quickly"),
     ("<Primary><Shift>j", "win.jump-column"),
+    ("<Primary><Shift>l", "win.reveal-in-sidebar"),
     ("<Primary>d", "win.save-favorite"),
     ("<Primary><Shift>d", "win.show-saved-queries"),
     ("<Primary>s", "win.save-changes"),
@@ -177,6 +183,7 @@ pub(super) fn build_shortcuts_dialog() -> gtk::ShortcutsWindow {
             ("<Primary>comma", crate::tr!("Open Preferences")),
             ("<Primary>h", crate::tr!("Open Query History")),
             ("<Primary>p", crate::tr!("Open Quickly: favorites and open tabs")),
+            ("<Primary><Shift>l", crate::tr!("Reveal the open table in the sidebar")),
             ("<Primary>d", crate::tr!("Save the editor query as a favorite")),
             ("<Primary><Shift>d", crate::tr!("Manage saved queries")),
             ("<Primary>question", crate::tr!("Show keyboard shortcuts")),

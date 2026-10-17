@@ -118,6 +118,7 @@ Press Ctrl+? for the full list. The most used:
 | Ctrl+F | Filter rows |
 | Ctrl+Alt+F | Find in loaded rows |
 | Ctrl+Shift+J | Jump to a column |
+| Ctrl+Shift+L | Reveal the open table in the sidebar |
 | Ctrl+P | Open Quickly |
 | Ctrl+H | Query history |
 | Ctrl+Tab | Most recently used tab |

@@ -4,7 +4,7 @@ use tablepro_core::TableInfo;
 
 use super::App;
 use super::init_sidebar::refresh_visible;
-use crate::services::sidebar_tree::{CollapseState, NodeKind, build_nodes};
+use crate::services::sidebar_tree::{CollapseState, NodeKind, Reveal, build_nodes, reveal_target};
 use crate::ui::sidebar_row::{GroupInit, SidebarObjectKind, SidebarRowInit, SidebarRowMsg};
 
 pub(super) fn reveal_sidebar(split_view: &adw::OverlaySplitView, generation: &std::rc::Rc<std::cell::Cell<u32>>) {
@@ -75,6 +75,61 @@ impl App {
         );
         self.sidebar_factory.widget().invalidate_filter();
         self.persist_workspace_state();
+    }
+
+    pub(super) fn on_reveal_in_sidebar(&mut self) {
+        let Some((schema, table)) = self.selected_browse_slot_table() else {
+            self.show_toast(&crate::tr!("Open a table to reveal it in the sidebar."));
+            return;
+        };
+        let plan = reveal_target(
+            &self.sidebar_nodes.borrow(),
+            &self.sidebar_collapsed.borrow(),
+            &self.table_search.text(),
+            &self.sidebar_hidden_schemas.borrow(),
+            schema.as_deref(),
+            &table,
+        );
+        match plan {
+            Reveal::Missing => self.show_toast(
+                &crate::tr!("{table} is not in the sidebar. Refresh the connection if it is new.")
+                    .replace("{table}", &table),
+            ),
+            Reveal::HiddenBySchemaFilter => self.show_toast(
+                &crate::tr!("The schema of {table} is hidden. Show it from the schema filter.")
+                    .replace("{table}", &table),
+            ),
+            Reveal::Show {
+                index,
+                uncollapse,
+                clear_search,
+            } => {
+                reveal_sidebar(&self.split_view, &self.sidebar_reveal);
+                if clear_search {
+                    self.table_search.set_text("");
+                }
+                for key in &uncollapse {
+                    self.toggle_sidebar_group(key);
+                }
+                refresh_visible(
+                    &self.sidebar_nodes,
+                    &self.sidebar_collapsed,
+                    &self.sidebar_visible,
+                    &self.table_search.text(),
+                    &self.sidebar_hidden_schemas,
+                );
+                self.sidebar_factory.widget().invalidate_filter();
+                self.focus_sidebar_row(index);
+            }
+        }
+    }
+
+    fn focus_sidebar_row(&self, index: usize) {
+        let listbox = self.sidebar_factory.widget();
+        if let Some(row) = listbox.row_at_index(index as i32) {
+            listbox.select_row(Some(&row));
+            row.grab_focus();
+        }
     }
 
     pub(super) fn restore_sidebar_state(&self) {

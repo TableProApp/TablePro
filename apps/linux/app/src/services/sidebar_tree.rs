@@ -183,6 +183,65 @@ pub fn visible_nodes_with_hidden_schemas(
     (0..nodes.len()).filter(|index| shown.contains(index)).collect()
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum Reveal {
+    Missing,
+    HiddenBySchemaFilter,
+    Show {
+        index: usize,
+        uncollapse: Vec<String>,
+        clear_search: bool,
+    },
+}
+
+pub fn reveal_target(
+    nodes: &[TreeNode],
+    collapsed: &CollapseState,
+    query: &str,
+    hidden_schemas: &HashSet<String>,
+    schema: Option<&str>,
+    name: &str,
+) -> Reveal {
+    let Some(index) = nodes.iter().position(|node| match &node.kind {
+        NodeKind::Table {
+            schema: node_schema,
+            name: node_name,
+        }
+        | NodeKind::View {
+            schema: node_schema,
+            name: node_name,
+        } => node_name == name && node_schema.as_deref() == schema,
+        _ => false,
+    }) else {
+        return Reveal::Missing;
+    };
+    let node = &nodes[index];
+    if !schema_is_visible(node, hidden_schemas) {
+        return Reveal::HiddenBySchemaFilter;
+    }
+    let query = query.trim().to_lowercase();
+    let matches_search = node
+        .qualified_name()
+        .is_some_and(|name| name.to_lowercase().contains(&query));
+    if !query.is_empty() && matches_search {
+        return Reveal::Show {
+            index,
+            uncollapse: Vec::new(),
+            clear_search: false,
+        };
+    }
+    let mut uncollapse: Vec<String> = ancestor_keys(node)
+        .into_iter()
+        .filter(|key| collapsed.is_collapsed(key))
+        .collect();
+    uncollapse.reverse();
+    Reveal::Show {
+        index,
+        uncollapse,
+        clear_search: !query.is_empty(),
+    }
+}
+
 fn schema_is_visible(node: &TreeNode, hidden_schemas: &HashSet<String>) -> bool {
     node.schema
         .as_ref()
@@ -356,5 +415,141 @@ mod tests {
         assert!(restored.is_collapsed("schema:b") && restored.is_collapsed("schema:a/views"));
         assert!(!restored.is_collapsed("schema:a"));
         assert_eq!(collapsed.keys(), ["schema:a/views", "schema:b"]);
+    }
+
+    fn two_schemas() -> Vec<TreeNode> {
+        build_nodes(
+            &[info(Some("public"), "users"), info(Some("audit"), "events")],
+            &[info(Some("public"), "recent")],
+        )
+    }
+
+    fn key_of(nodes: &[TreeNode], label: &str, depth: u8) -> String {
+        nodes
+            .iter()
+            .find(|node| node.label == label && node.depth == depth)
+            .map(|node| node.key.clone())
+            .expect("a node with that label and depth")
+    }
+
+    #[test]
+    fn a_table_in_an_open_tree_needs_nothing_expanded() {
+        let nodes = two_schemas();
+        let plan = reveal_target(
+            &nodes,
+            &CollapseState::default(),
+            "",
+            &HashSet::new(),
+            Some("public"),
+            "users",
+        );
+        let Reveal::Show {
+            index,
+            uncollapse,
+            clear_search,
+        } = plan
+        else {
+            panic!("{plan:?}");
+        };
+        assert_eq!(nodes[index].label, "users");
+        assert!(uncollapse.is_empty());
+        assert!(!clear_search);
+    }
+
+    #[test]
+    fn collapsed_ancestors_are_expanded_outermost_first() {
+        let nodes = two_schemas();
+        let schema = key_of(&nodes, "public", 0);
+        let group = "schema:public/tables".to_string();
+        assert!(
+            nodes.iter().any(|node| node.key == group),
+            "the key format the test relies on"
+        );
+        let collapsed = CollapseState::from_keys([schema.clone(), group.clone()]);
+
+        let plan = reveal_target(&nodes, &collapsed, "", &HashSet::new(), Some("public"), "users");
+
+        let Reveal::Show { uncollapse, .. } = plan else {
+            panic!("{plan:?}");
+        };
+        assert_eq!(uncollapse, [schema, group]);
+    }
+
+    #[test]
+    fn a_search_that_hides_the_table_is_cleared_and_one_that_shows_it_is_kept() {
+        let nodes = two_schemas();
+        let hides = reveal_target(
+            &nodes,
+            &CollapseState::default(),
+            "events",
+            &HashSet::new(),
+            Some("public"),
+            "users",
+        );
+        assert!(matches!(hides, Reveal::Show { clear_search: true, .. }), "{hides:?}");
+
+        let collapsed = CollapseState::from_keys([key_of(&nodes, "public", 0)]);
+        let shows = reveal_target(&nodes, &collapsed, "USER", &HashSet::new(), Some("public"), "users");
+        assert!(
+            matches!(&shows, Reveal::Show { clear_search: false, uncollapse, .. } if uncollapse.is_empty()),
+            "a matching search already lists the table whatever is collapsed: {shows:?}"
+        );
+    }
+
+    #[test]
+    fn a_table_in_a_hidden_schema_or_not_listed_is_reported_instead_of_revealed() {
+        let nodes = two_schemas();
+        let hidden = HashSet::from(["public".to_string()]);
+        assert_eq!(
+            reveal_target(&nodes, &CollapseState::default(), "", &hidden, Some("public"), "users"),
+            Reveal::HiddenBySchemaFilter
+        );
+        assert_eq!(
+            reveal_target(
+                &nodes,
+                &CollapseState::default(),
+                "",
+                &HashSet::new(),
+                Some("public"),
+                "missing"
+            ),
+            Reveal::Missing
+        );
+        assert_eq!(
+            reveal_target(
+                &nodes,
+                &CollapseState::default(),
+                "",
+                &HashSet::new(),
+                Some("other"),
+                "users"
+            ),
+            Reveal::Missing,
+            "the schema is part of the identity"
+        );
+    }
+
+    #[test]
+    fn a_view_and_an_unqualified_table_are_found_too() {
+        let nodes = two_schemas();
+        let view = reveal_target(
+            &nodes,
+            &CollapseState::default(),
+            "",
+            &HashSet::new(),
+            Some("public"),
+            "recent",
+        );
+        assert!(
+            matches!(view, Reveal::Show { index, .. } if nodes[index].label == "recent"),
+            "{view:?}"
+        );
+
+        let single = build_nodes(&[info(None, "orders")], &[]);
+        let plan = reveal_target(&single, &CollapseState::default(), "", &HashSet::new(), None, "orders");
+        assert!(
+            matches!(plan, Reveal::Show { index, .. } if single[index].label == "orders"),
+            "{plan:?}"
+        );
     }
 }
