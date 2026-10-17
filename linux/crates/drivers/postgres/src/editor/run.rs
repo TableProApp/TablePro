@@ -336,11 +336,7 @@ impl<'a> Run<'a> {
                         // A cursor stops one row past the limit, so how
                         // many rows there were in all is not known.
                         total_rows: (!(cursor && truncated)).then_some(set.total),
-                        truncation: if truncated {
-                            Truncation::ReadPastLimit
-                        } else {
-                            Truncation::Complete
-                        },
+                        truncation: truncation(truncated, cursor),
                     })
                     .await;
                     *set = ResultSet::default();
@@ -391,6 +387,18 @@ impl<'a> Run<'a> {
     }
 }
 
+/// Why a set ended where it did. A cursor that stopped at the limit
+/// stopped the statement with it: what the statement does per row, a
+/// function it calls in its select list included, never happened for the
+/// rows past the limit, and that is what the result has to say.
+fn truncation(truncated: bool, cursor: bool) -> Truncation {
+    match (truncated, cursor) {
+        (false, _) => Truncation::Complete,
+        (true, true) => Truncation::ServerStopped,
+        (true, false) => Truncation::ReadPastLimit,
+    }
+}
+
 /// How a run that was stopped ends. The server's 57014 is the
 /// acknowledgement; any other error was the statement's own.
 fn end_after_stop(interrupt: Interrupt, error: &DriverError) -> RunEnd {
@@ -413,6 +421,13 @@ mod tests {
     use tablepro_core::TimeoutPhase;
 
     use super::*;
+
+    #[test]
+    fn a_cursor_cut_at_the_limit_says_the_statement_stopped() {
+        assert_eq!(truncation(true, true), Truncation::ServerStopped);
+        assert_eq!(truncation(true, false), Truncation::ReadPastLimit);
+        assert_eq!(truncation(false, true), Truncation::Complete);
+    }
 
     #[test]
     fn a_stopped_run_ends_by_what_stopped_it() {
