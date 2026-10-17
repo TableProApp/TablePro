@@ -1,6 +1,6 @@
 use crate::query::Value;
 use crate::sql_dialect::placeholder_for;
-use crate::sql_lex::skip_span;
+use crate::sql_lex::skip_span_at;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NamedParameters {
@@ -109,7 +109,7 @@ pub fn extract_named_parameters(sql: &str, driver_id: &str) -> NamedParameters {
     while index < bytes.len() {
         let rest = &sql[index..];
 
-        if let Some(length) = skip_span(rest, driver_id).filter(|length| *length > 0) {
+        if let Some(length) = skip_span_at(sql, index, driver_id).filter(|length| *length > 0) {
             out.push_str(&sql[index..index + length]);
             index += length;
             continue;
@@ -412,6 +412,14 @@ mod tests {
 
 #[cfg(test)]
 mod boundary_tests {
+
+    #[test]
+    fn a_parameter_after_a_dollar_identifier_is_still_found() {
+        let parsed = extract_named_parameters("SELECT my$a$b FROM t WHERE id = :id", "postgres");
+        assert_eq!(parsed.names, ["id"]);
+        assert_eq!(parsed.sql, "SELECT my$a$b FROM t WHERE id = $1");
+    }
+
     use super::tests::extract_named_parameters;
     use super::*;
 

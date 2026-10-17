@@ -26,7 +26,7 @@ pub fn scan(sql: &str, driver_id: &str) -> Vec<CharacterWarning> {
     let mut index = 0;
     while index < sql.len() && warnings.len() < MAX_WARNINGS {
         let rest = &sql[index..];
-        if let Some(length) = crate::sql_lex::skip_span(rest, driver_id).filter(|length| *length > 0) {
+        if let Some(length) = crate::sql_lex::skip_span_at(sql, index, driver_id).filter(|length| *length > 0) {
             index += length;
             continue;
         }

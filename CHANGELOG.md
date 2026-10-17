@@ -127,6 +127,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 
 ### Fixed
 - Structure column expanders now point right when collapsed and down when open.
+- A PostgreSQL identifier containing dollar signs, such as `my$a$b`, no longer makes the editor read the rest of the script as one quoted statement.
 - The error location for a PostgreSQL SELECT shown page by page pointed past the end of the statement; it now marks the right place.
 - Renaming a MySQL table in a database other than the connection's moved it into the connection's database, and renaming a ClickHouse table failed.
 - In a Session editor tab, a PostgreSQL SELECT with a typo or an error partway through no longer ends the session and its temporary tables, and Export all rows of such a result reads through the same session.
