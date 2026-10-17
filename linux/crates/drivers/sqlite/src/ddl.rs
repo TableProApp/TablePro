@@ -11,19 +11,22 @@ mod rebuild_plan;
 mod source_element;
 mod source_read_error;
 
-use tablepro_core::ForeignKeyInfo;
-use tablepro_core::column::ColumnDefault;
+use tablepro_core::column::{ColumnDefault, ColumnType};
 use tablepro_core::ddl::ddl_sql::{column_list, default_sql, index_keys_sql, parenthesized};
 use tablepro_core::ddl::{
-    BuildDdlError, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlDialect, DdlPlan, DraftColumn,
-    GeneratedStorage, Permission, RefusalReason, SchemaObjectKind, TableChanges, TableDefinition, TableDraft,
+    BuildDdlError, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlDialect, DdlOperation, DdlPlan,
+    DdlPrecondition, DraftColumn, DropTableOptions, GeneratedStorage, Permission, RefusalReason, SchemaObjectKind,
+    TableChanges, TableDefinition, TableDraft,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{IndexInfo, TableRef};
+use tablepro_core::statement::{Statement, StatementBuilder};
+use tablepro_core::{ForeignKeyInfo, Value};
 
 use self::create_table_source::CreateTableSource;
 pub(crate) use self::create_table_source::{declared_descending_key, declared_foreign_key_names};
 use self::declared_shape::readable;
+use crate::catalog::MAIN_SCHEMA;
 use crate::dialect::SqliteDialect;
 
 /// A change ALTER TABLE cannot make rebuilds the table, so every change
@@ -175,6 +178,25 @@ impl DdlDialect for SqliteDialect {
         rebuild_plan::plan(self, original, &source, changes)
     }
 
+    /// With foreign keys on, SQLite empties a table with an implicit
+    /// DELETE before it drops it, which runs the ON DELETE actions of
+    /// every key pointing at it: a CASCADE deletes the child rows and a
+    /// SET NULL clears them. PostgreSQL, MySQL and SQL Server refuse to
+    /// drop a table another table's key points at, and the precondition
+    /// makes SQLite refuse too, counted in the drop's own transaction.
+    fn plan_drop_table(&self, table: &TableRef, options: DropTableOptions) -> Result<DdlPlan, BuildDdlError> {
+        if options.cascade {
+            return Err(BuildDdlError::Unsupported(DdlOperation::DropTableCascade));
+        }
+        let if_exists = if options.if_exists { "IF EXISTS " } else { "" };
+        let mut plan = DdlPlan::from_sql([format!("DROP TABLE {if_exists}{}", self.qualify(table))]);
+        plan.precondition = Some(DdlPrecondition {
+            probe: self.inbound_keys_probe(table)?,
+            rows: 0,
+        });
+        Ok(plan)
+    }
+
     /// The CREATE statement SQLite stored, then the stored statements of
     /// the table's own indexes and triggers. Indexes SQLite made for a
     /// constraint have no statement and come back with the table.
@@ -196,6 +218,29 @@ impl DdlDialect for SqliteDialect {
 }
 
 impl SqliteDialect {
+    /// A count of the foreign keys on other tables of the schema that
+    /// point at `table`. A key of the table on itself goes with it.
+    /// SQLite matches table names without regard to ASCII case.
+    fn inbound_keys_probe(&self, table: &TableRef) -> Result<Statement, BuildDdlError> {
+        let schema = table.schema.clone().filter(|schema| !schema.is_empty());
+        let catalogue = self.qualify(&TableRef::new(schema.clone(), "sqlite_schema"));
+        let literal = |text: &str| {
+            self.literal(&Value::Text(text.to_owned()), &ColumnType::unknown())
+                .map_err(|error| BuildDdlError::Literal {
+                    column: table.name.clone(),
+                    error,
+                })
+        };
+        let name = literal(&table.name)?;
+        let schema = literal(schema.as_deref().unwrap_or(MAIN_SCHEMA))?;
+        let mut builder = StatementBuilder::new();
+        builder.push_sql(&format!(
+            "SELECT count(*) FROM {catalogue} m, pragma_foreign_key_list(m.name, {schema}) f WHERE m.type = \
+             'table' AND f.\"table\" = {name} COLLATE NOCASE AND m.name <> {name} COLLATE NOCASE"
+        ));
+        Ok(builder.finish())
+    }
+
     /// One native ALTER TABLE per change, inside the write's
     /// transaction.
     fn native_plan(&self, original: &TableDefinition, changes: &TableChanges) -> Result<DdlPlan, BuildDdlError> {

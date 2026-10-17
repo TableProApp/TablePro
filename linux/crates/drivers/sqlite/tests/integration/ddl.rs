@@ -4,8 +4,8 @@
 
 use tablepro_core::column::ColumnDefault;
 use tablepro_core::ddl::{
-    BuildDdlError, DdlOperation, DraftColumn, DraftType, ReferentialAction, RefusalReason, SchemaObjectKind,
-    TableDefinition, TableDraft, diff_table,
+    BuildDdlError, DdlOperation, DraftColumn, DraftType, DropTableOptions, ReferentialAction, RefusalReason,
+    SchemaObjectKind, TableDefinition, TableDraft, diff_table,
 };
 use tablepro_core::meta::{IndexKey, TableRef};
 use tablepro_core::statement::GuardedStatement;
@@ -1404,6 +1404,127 @@ async fn a_descending_integer_key_keeps_its_rowids_through_a_rebuild() {
             vec![Value::Int(5), Value::Int(1), text("a")],
             vec![Value::Int(9), Value::Int(2), text("b")]
         ]
+    );
+    connection.close().await.unwrap();
+}
+
+/// Drop Table as the workspace plans and runs it.
+async fn drop_table(connection: &dyn Connection, table: &TableRef) -> Result<WriteReport, DriverError> {
+    let options = DropTableOptions {
+        if_exists: true,
+        cascade: false,
+    };
+    let plan = connection
+        .dialect()
+        .ddl()
+        .unwrap()
+        .plan_drop_table(table, options)
+        .unwrap();
+    connection
+        .write_batch(&plan.into_write_batch(table.clone()), call())
+        .await
+}
+
+/// SQLite's implicit DELETE before a drop would run these keys' ON
+/// DELETE actions, deleting the order and clearing the note's key.
+#[tokio::test]
+async fn a_table_another_tables_key_points_at_is_not_dropped() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE customers (id INTEGER PRIMARY KEY)",
+            "CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES Customers ON DELETE CASCADE)",
+            "CREATE TABLE notes (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customers ON DELETE SET NULL)",
+            "INSERT INTO customers VALUES (1)",
+            "INSERT INTO orders VALUES (10, 1)",
+            "INSERT INTO notes VALUES (20, 1)",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let outcome = drop_table(connection.as_ref(), &named("customers")).await;
+
+    assert_eq!(
+        outcome,
+        Err(DriverError::RowGuardFailed {
+            statement_index: 0,
+            expected: 0,
+            actual: 2
+        })
+    );
+    let left = query(
+        connection.as_ref(),
+        "SELECT (SELECT count(*) FROM customers), (SELECT customer_id FROM orders), (SELECT customer_id FROM notes)",
+    )
+    .await;
+    assert_eq!(left.rows, [vec![Value::Int(1), Value::Int(1), Value::Int(1)]]);
+    connection.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_table_only_its_own_key_points_at_is_dropped() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE tree (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES Tree ON DELETE CASCADE)",
+            "CREATE TABLE other (id INTEGER PRIMARY KEY, kept_id INTEGER REFERENCES kept)",
+            "INSERT INTO tree VALUES (1, NULL), (2, 1)",
+        ],
+    )
+    .await
+    .unwrap();
+
+    drop_table(connection.as_ref(), &named("tree")).await.unwrap();
+
+    let tables = query(
+        connection.as_ref(),
+        "SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name",
+    )
+    .await;
+    assert_eq!(tables.rows, [vec![text("other")]]);
+    connection.close().await.unwrap();
+}
+
+/// SQLite gives a NULL copied into the rowid the next number instead of
+/// refusing it, so a column holding one stays as it is.
+#[tokio::test]
+async fn an_integer_column_holding_nulls_is_not_made_the_rowid() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE kept (a INTEGER, b TEXT)",
+            "INSERT INTO kept VALUES (NULL, 'x'), (5, 'y')",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let outcome = save(connection.as_ref(), &kept(), |draft| {
+        let key = column(draft, "a");
+        key.primary_key = true;
+        key.nullable = false;
+    })
+    .await;
+
+    assert_eq!(
+        outcome,
+        Err(DriverError::RowGuardFailed {
+            statement_index: 0,
+            expected: 0,
+            actual: 1
+        })
+    );
+    let rows = query(connection.as_ref(), "SELECT a, b FROM kept ORDER BY b").await;
+    assert_eq!(
+        rows.rows,
+        [vec![Value::Null, text("x")], vec![Value::Int(5), text("y")]]
     );
     connection.close().await.unwrap();
 }

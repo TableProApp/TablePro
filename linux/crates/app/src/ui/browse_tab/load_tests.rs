@@ -42,6 +42,19 @@ fn keyed(ids: &[i64]) -> QueryResult {
 }
 
 #[gtk4::test]
+fn the_grid_is_named_after_its_table() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 1).expect("the first page");
+
+    assert!(gtk4::test_accessible_has_property(
+        &column_view(harness.tab()),
+        gtk4::AccessibleProperty::Label
+    ));
+}
+
+#[gtk4::test]
 fn refresh_keeps_grid_visible_and_sets_tab_loading() {
     let mut script = serving_table();
     script
@@ -87,6 +100,17 @@ fn failed_refresh_keeps_rows_and_reveals_stale_banner() {
     assert!(!harness.tab().is_loading());
     let tooltip = banner(&harness).tooltip_text().map(|text| text.to_string());
     assert_eq!(tooltip.as_deref(), Some("The connection was closed. Try reconnecting."));
+    // The reason shows only on hover, away from the rows the focus is in.
+    assert_eq!(
+        crate::ui::a11y::announced_in(&banner(&harness)),
+        [(
+            format!(
+                "{} The connection was closed. Try reconnecting.",
+                banner(&harness).title()
+            ),
+            gtk4::AccessibleAnnouncementPriority::High
+        )]
+    );
 }
 
 #[gtk4::test]
@@ -130,6 +154,14 @@ fn first_load_failure_shows_error_page_with_try_again() {
     assert!(description.contains("relation &lt;users&gt; is gone"), "{description}");
     assert!(!banner(&harness).is_revealed());
     assert!(imp.retry_button.has_css_class("pill") && imp.retry_button.has_css_class("suggested-action"));
+    assert!(
+        crate::ui::a11y::announced_in(&imp.error_page.get())
+            .iter()
+            .any(|(said, priority)| said.starts_with("Couldn't Load Rows. ")
+                && said.contains("relation <users> is gone")
+                && *priority == gtk4::AccessibleAnnouncementPriority::High),
+        "the error page took the grid's place unsaid"
+    );
 
     imp.retry_button.emit_clicked();
 
@@ -207,6 +239,31 @@ fn a_selection_is_not_put_back_after_a_failed_refresh() {
         [Some(key(2))],
         "the selection from before the failed refresh came back"
     );
+}
+
+/// The loading page has nothing to focus, and the error page that
+/// follows it hands the focus the rows had to Try Again.
+#[gtk4::test]
+fn a_failed_page_turn_hands_the_focus_to_try_again() {
+    let mut script = super::tests::paging(full_page(0), rows(&["unused"]));
+    script.query_bound = Default::default();
+    script
+        .query_bound
+        .once(FakeReply::ok(full_page(0)))
+        .always(FakeReply::err(DriverError::server("denied")));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    let shown = Shown::new(harness.tab());
+    let view = column_view(harness.tab());
+    view.grab_focus();
+    let focus = || gtk4::prelude::GtkWindowExt::focus(&shown.0);
+    wait_until(WAIT, || focus().is_some_and(|focus| focus.is_ancestor(&view))).expect("the grid takes the focus");
+
+    harness.tab().send(PagingInput::NextPage);
+
+    wait_until(WAIT, || harness.visible_page().as_deref() == Some("error")).expect("the error page");
+    let retry = harness.tab().imp().retry_button.get();
+    assert_eq!(focus().as_ref(), Some(retry.upcast_ref()));
 }
 
 fn error_text(harness: &Harness) -> String {

@@ -14,6 +14,8 @@ pub enum GridMsg {
     /// The sorter's state after the click, not a toggle hint: a click on
     /// another column fires both sort notifies, and a hint would flip twice.
     SortChanged(usize, bool),
+    /// Clear Sort: the rows go back to the order the server sends.
+    SortCleared,
     /// An edit of `column` in `row`, already parsed for the column.
     Edit {
         row: RowObject,

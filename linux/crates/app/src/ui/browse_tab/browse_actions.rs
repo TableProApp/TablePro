@@ -60,7 +60,8 @@ pub(super) fn install_browse_actions(tab: &BrowseTab, page_size: u64) -> BrowseA
         group.add_action(&action);
         action
     };
-    add("filter", || PagingInput::ToggleFilterStrip.into());
+    add("filter", || PagingInput::ShowFilterStrip.into());
+    add("toggle-filter", || PagingInput::ToggleFilterStrip.into());
     add("export", || ClipboardInput::Export(None).into());
     let page_size =
         gio::SimpleAction::new_stateful("page-size", Some(glib::VariantTy::UINT64), &page_size.to_variant());

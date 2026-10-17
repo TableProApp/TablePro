@@ -1435,6 +1435,7 @@ fn a_rebuild_names_what_it_drops_and_makes_again() {
                 recreated(SchemaObjectKind::Trigger, "customers_cleanup"),
             ],
             renumbers_rowids: false,
+            numbered_column: None,
         })
     );
     assert!(keyed.rebuild.is_some_and(|rebuild| rebuild.renumbers_rowids));

@@ -1,5 +1,22 @@
+use gtk4 as gtk;
+use gtk4::prelude::*;
+
+use super::GridCell;
 use super::row_state_icon::RowPendingState;
 use crate::services::change_tracker::CellState;
+
+/// An editor opened over a cell takes its column's name: Tab moves the
+/// edit across columns, and the header that names them is never focused.
+pub(super) fn name_editor(editor: &impl IsA<gtk::Widget>, cell: &GridCell) {
+    if let Some(name) = cell
+        .drawing()
+        .and_then(|drawing| drawing.catalog.as_ref().map(|column| column.name.clone()))
+    {
+        editor
+            .as_ref()
+            .update_property(&[gtk::accessible::Property::Label(&name)]);
+    }
+}
 
 /// What a screen reader adds to a cell's value. A new row's cells say
 /// nothing of their own: the row says it is new. A NULL is named, since

@@ -87,6 +87,13 @@ impl BrowseModel {
     }
 
     pub(super) fn refresh_pending_bar(&self, count: usize) {
+        // The footer slides away once nothing is left to save, and the
+        // grid holds what the user was working on.
+        if count == 0
+            && let Some(grid) = self.current_column_view.as_ref()
+        {
+            crate::ui::a11y::pass_focus(&self.widgets.pending_bar, grid);
+        }
         self.widgets.pending_bar.show_pending(count);
         self.refresh_banner_visibility();
     }

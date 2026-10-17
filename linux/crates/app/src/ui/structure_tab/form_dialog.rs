@@ -93,12 +93,18 @@ impl FormDialog {
     }
 
     /// Submit on only for a valid form, and `problem` under the fields.
+    /// A new problem is said: Enter does nothing until it is fixed, and
+    /// the caption sits below the field that has the focus.
     pub(super) fn show_state(&self, valid: bool, problem: Option<String>) {
         self.submit.set_sensitive(valid);
         match problem {
             Some(problem) => {
+                let news = !self.caption.is_visible() || self.caption.label() != problem;
                 self.caption.set_label(&problem);
                 self.caption.set_visible(true);
+                if news {
+                    crate::ui::a11y::announce(&self.caption, &problem, gtk::AccessibleAnnouncementPriority::Medium);
+                }
             }
             None => self.caption.set_visible(false),
         }
@@ -125,12 +131,14 @@ pub(super) fn give_state<T: 'static>(dialog: &adw::Dialog, state: Rc<T>) {
     let _owner = dialog.add_weak_ref_notify_local(move || drop(state));
 }
 
-/// The `error` style on a field the problem shown is about.
-pub(super) fn mark_invalid(widget: &impl IsA<gtk::Widget>, invalid: bool) {
-    match invalid {
-        true => widget.add_css_class("error"),
-        false => widget.remove_css_class("error"),
+/// The `error` style on a field the problem shown is about, and the
+/// problem on the field a screen reader is on.
+pub(super) fn mark_invalid(widget: &impl IsA<gtk::Widget>, problem: Option<&str>) {
+    match problem {
+        Some(_) => widget.add_css_class("error"),
+        None => widget.remove_css_class("error"),
     }
+    crate::ui::a11y::show_invalid(widget, problem);
 }
 
 /// A GtkPopoverMenu reads an underscore in a label as a mnemonic, so a

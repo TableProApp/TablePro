@@ -65,16 +65,13 @@ fn mark_invalid(row: &adw::EntryRow, error: Option<&str>) {
         Some(message) => {
             row.add_css_class("error");
             row.set_tooltip_text(Some(message));
-            row.upcast_ref::<gtk::Widget>()
-                .update_property(&[gtk::accessible::Property::Description(message)]);
         }
         None => {
             row.remove_css_class("error");
             row.set_tooltip_text(None);
-            row.upcast_ref::<gtk::Widget>()
-                .reset_property(gtk::AccessibleProperty::Description);
         }
     }
+    crate::ui::a11y::show_invalid(row, error);
 }
 
 /// Whether the engine's parser takes `text` as one type. The

@@ -56,6 +56,7 @@ use super::grid::{GridMsg, GridSink, present_row_json};
 use super::handler_guard::HandlerGuard;
 use crate::services::active_session::ActiveSession;
 use crate::services::history_service::HistoryService;
+use crate::workspace::WorkOutcome;
 
 glib::wrapper! {
     pub struct SqlEditor(ObjectSubclass<imp::SqlEditor>)
@@ -491,7 +492,12 @@ impl SqlEditor {
                 }
             },
         };
-        Some(result_widgets::entry_widget(entry, grid_sink, actions))
+        Some(result_widgets::entry_widget(
+            usize::try_from(index).ok()?,
+            entry,
+            grid_sink,
+            actions,
+        ))
     }
 
     fn finish_run(
@@ -513,7 +519,7 @@ impl SqlEditor {
             };
             (
                 log.summary(),
-                transaction_dirty::transaction_label(log.transaction()),
+                transaction_dirty::transaction_label(log.lost(), log.transaction()),
                 transaction_dirty::transaction_dirty(log.lost(), log.transaction(), log.has_run()),
                 log.first_to_show(),
                 run_history::history_entry(query, metadata, started_at, log),
@@ -521,6 +527,12 @@ impl SqlEditor {
             )
         };
         imp.results.set_summary(&summary);
+        // The focus stays in the editor, where the summary does not show.
+        let priority = match outcome {
+            WorkOutcome::Failed => gtk4::AccessibleAnnouncementPriority::High,
+            WorkOutcome::Succeeded | WorkOutcome::Cancelled => gtk4::AccessibleAnnouncementPriority::Medium,
+        };
+        crate::ui::a11y::announce(&*imp.results, &summary, priority);
         imp.results.set_transaction(label.as_deref());
         if let Some(first) = first.and_then(|first| u32::try_from(first).ok()) {
             imp.results.select(first);

@@ -10,8 +10,8 @@ use tablepro_core::meta::RowIdentity;
 use tablepro_core::{ColumnInfo, Value};
 
 use super::{
-    GridCell, GridContent, GridMsg, GridSink, GridSorting, RowObject, TabGridContext, begin_edit, build_column_view,
-    data_columns,
+    ColumnWidthBinding, GridCell, GridContent, GridMsg, GridSink, GridSorting, RowObject, TabGridContext, begin_edit,
+    build_column_view, data_columns,
 };
 use crate::services::change_tracker::RowKey;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
@@ -109,6 +109,19 @@ pub(super) struct Grid {
 impl Grid {
     /// `rows` keyed by their first cell, in a grid that edits them.
     pub(super) fn open(columns: Vec<ColumnInfo>, rows: Vec<Vec<Value>>) -> Self {
+        Self::open_in(columns, rows, None)
+    }
+
+    /// As `open`, with the column widths saved through `widths`.
+    pub(super) fn open_with_widths(
+        columns: Vec<ColumnInfo>,
+        rows: Vec<Vec<Value>>,
+        widths: ColumnWidthBinding,
+    ) -> Self {
+        Self::open_in(columns, rows, Some(widths))
+    }
+
+    fn open_in(columns: Vec<ColumnInfo>, rows: Vec<Vec<Value>>, widths: Option<ColumnWidthBinding>) -> Self {
         let tracker = TabTrackerHandle::default();
         let (sink, messages) = recorder();
         let (view, selection) = build_column_view(
@@ -116,7 +129,10 @@ impl Grid {
             &columns,
             sink,
             GridSorting::Server { initial: None },
-            tracked(&tracker),
+            TabGridContext {
+                column_widths: widths,
+                ..tracked(&tracker)
+            },
         );
         let store = selection
             .model()
@@ -233,13 +249,18 @@ pub(super) fn focus_in_grid(grid: &Grid) -> bool {
 }
 
 pub(super) fn two_text_rows() -> Grid {
-    Grid::open(
-        vec![named("id", "integer", true), named("name", "text", false)],
-        vec![
-            vec![Value::Int(1), Value::Text("A".into())],
-            vec![Value::Int(2), Value::Text("B".into())],
-        ],
-    )
+    Grid::open(two_text_columns(), two_text_values())
+}
+
+pub(super) fn two_text_columns() -> Vec<ColumnInfo> {
+    vec![named("id", "integer", true), named("name", "text", false)]
+}
+
+pub(super) fn two_text_values() -> Vec<Vec<Value>> {
+    vec![
+        vec![Value::Int(1), Value::Text("A".into())],
+        vec![Value::Int(2), Value::Text("B".into())],
+    ]
 }
 
 /// Open the cell's one-line editor and type `text` over its value.

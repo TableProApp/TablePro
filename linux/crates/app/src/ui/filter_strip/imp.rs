@@ -45,6 +45,9 @@ pub struct FilterStrip {
     pub(super) rules: OnceCell<gio::ListStore>,
     /// The columns a rule can name, blobs left out.
     pub(super) columns: RefCell<Rc<[ColumnInfo]>>,
+    /// Where the focus was when it came into the strip, and goes back to
+    /// when the strip closes.
+    pub(super) focus_before: glib::WeakRef<gtk::Widget>,
 }
 
 #[glib::object_subclass]
@@ -55,7 +58,7 @@ impl ObjectSubclass for FilterStrip {
 
     fn class_init(klass: &mut Self::Class) {
         klass.bind_template();
-        klass.install_action("filter.close", None, |strip, _, _| strip.set_revealed(false));
+        klass.install_action("filter.close", None, |strip, _, _| strip.close());
         klass.install_action("filter.apply", None, |strip, _, _| strip.apply());
         klass.install_action("filter.clear", None, |strip, _, _| strip.clear());
         klass.install_action("filter.add-rule", None, |strip, _, _| strip.add_rule());

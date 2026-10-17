@@ -17,8 +17,13 @@ pub struct PageActions<G, E> {
     pub export_all: E,
 }
 
-/// The widget a results list line shows.
-pub fn entry_widget<G, E>(entry: &RunLogEntry, grid_sink: &GridSink, actions: PageActions<G, E>) -> gtk4::Widget
+/// The widget the results list's `index`th line shows.
+pub fn entry_widget<G, E>(
+    index: usize,
+    entry: &RunLogEntry,
+    grid_sink: &GridSink,
+    actions: PageActions<G, E>,
+) -> gtk4::Widget
 where
     G: Fn(usize) + 'static,
     E: Fn(ExportSource) + 'static,
@@ -28,7 +33,9 @@ where
         export_all,
     } = actions;
     match &entry.kind {
-        EntryKind::ResultSet(result) => result_set_page(result, grid_sink.clone(), export_all),
+        EntryKind::ResultSet(result) => {
+            result_set_page(result, &result.summary.tab_label(index), grid_sink.clone(), export_all)
+        }
         EntryKind::Command { rows_affected } => {
             let title = match rows_affected {
                 Some(rows) => crate::i18n::ngettext_f(
@@ -123,6 +130,31 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn a_result_grid_is_named_as_its_line_in_the_list() {
+        let columns: std::sync::Arc<[tablepro_core::column::ResultColumn]> =
+            std::sync::Arc::from([tablepro_core::column::ResultColumn::new(
+                "a",
+                tablepro_core::column::ColumnType::untyped_text("text"),
+            )]);
+        let view = crate::ui::result_pane::ResultSetView::new(columns, tablepro_core::UserSql::new("SELECT a FROM t"));
+        let name = view.summary.tab_label(1);
+        let entry = RunLogEntry {
+            kind: EntryKind::ResultSet(view),
+            batch: Some(0),
+            preview: String::new(),
+        };
+
+        let widget = entry_widget(1, &entry, &sink(), actions(|_| {}));
+
+        let grid = crate::test_support::first_descendant_of_type::<gtk4::ColumnView>(&widget).expect("the grid");
+        assert_eq!(name, "Result 2 (0)");
+        assert!(gtk4::test_accessible_has_property(
+            &grid,
+            gtk4::AccessibleProperty::Label
+        ));
+    }
+
+    #[gtk4::test]
     fn markup_in_error_is_rendered_literally() {
         let entry = RunLogEntry {
             kind: EntryKind::Failed {
@@ -133,7 +165,7 @@ mod tests {
             preview: String::new(),
         };
 
-        let widget = entry_widget(&entry, &sink(), actions(|_| {}));
+        let widget = entry_widget(0, &entry, &sink(), actions(|_| {}));
 
         let page = widget.downcast::<adw::StatusPage>().expect("a status page");
         assert_eq!(
@@ -155,7 +187,7 @@ mod tests {
         let reached = std::rc::Rc::new(std::cell::Cell::new(None));
         let seen = reached.clone();
 
-        let widget = entry_widget(&entry, &sink(), actions(move |position| seen.set(Some(position))));
+        let widget = entry_widget(0, &entry, &sink(), actions(move |position| seen.set(Some(position))));
         let page = widget.downcast::<adw::StatusPage>().expect("a status page");
         let button = page.child().and_downcast::<gtk4::Button>().expect("Go to Error");
         button.emit_clicked();

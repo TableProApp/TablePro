@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tablepro 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/TableProApp/TablePro/issues\n"
-"POT-Creation-Date: 2026-10-17 11:45+0000\n"
+"POT-Creation-Date: 2026-10-17 15:24+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -272,6 +272,11 @@ msgid "Try Again"
 msgstr ""
 
 #: crates/app/src/ui/browse_tab/pager_bar.rs
+#, rust-format
+msgid "Couldn't count the rows. {reason}"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/pager_bar.rs
 msgid "First Page"
 msgstr ""
 
@@ -301,6 +306,12 @@ msgid "{n} unsaved change"
 msgid_plural "{n} unsaved changes"
 msgstr[0] ""
 msgstr[1] ""
+
+#: crates/app/src/ui/browse_tab/pending_changes_bar.rs
+#: data/resources/ui/pending-changes-bar.ui data/resources/ui/structure-tab.ui
+#: data/resources/ui/workspace.ui
+msgid "Saving…"
+msgstr ""
 
 #: crates/app/src/ui/browse_tab/row_deletion.rs
 msgid ""
@@ -969,6 +980,13 @@ msgstr ""
 
 #: crates/app/src/ui/editor/run_log.rs
 #, rust-format
+msgid ""
+"{error} This tab's connection was lost, so the server rolled back its open "
+"transaction."
+msgstr ""
+
+#: crates/app/src/ui/editor/run_log.rs
+#, rust-format
 msgid "{error} This tab's connection was lost; the next run opens a new one."
 msgstr ""
 
@@ -985,6 +1003,12 @@ msgid "{n} failed"
 msgid_plural "{n} failed"
 msgstr[0] ""
 msgstr[1] ""
+
+#: crates/app/src/ui/editor/script_runner.rs
+msgid ""
+"This tab's connection was lost, so the server rolled back its open "
+"transaction. Nothing was run; run again to open a new connection."
+msgstr ""
 
 #: crates/app/src/ui/editor/sql_file.rs
 msgid "Only regular files can be opened in the editor."
@@ -2220,6 +2244,10 @@ msgstr ""
 msgid "Remove Rule"
 msgstr ""
 
+#: crates/app/src/ui/filter_strip/rule_row.rs
+msgid "Filter Rule"
+msgstr ""
+
 #: crates/app/src/ui/filter_strip/rule_value_editor.rs
 msgid "Value"
 msgstr ""
@@ -2234,6 +2262,10 @@ msgstr ""
 
 #: crates/app/src/ui/filter_strip/rule_value_editor.rs
 msgid "a, b, c"
+msgstr ""
+
+#: crates/app/src/ui/filter_strip/rule_value_editor.rs
+msgid "Values"
 msgstr ""
 
 #: crates/app/src/ui/grid/calendar_editor.rs
@@ -2376,6 +2408,22 @@ msgstr ""
 
 #: crates/app/src/ui/grid/grid_menus.rs
 msgid "Show Row as JSON"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Sort Ascending"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Sort Descending"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Clear Sort"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Reset Column Width"
 msgstr ""
 
 #: crates/app/src/ui/grid/grid_menus.rs
@@ -3630,6 +3678,13 @@ msgstr ""
 
 #: crates/app/src/ui/structure_tab/review_dialog.rs
 #, rust-format
+msgid ""
+"“{column}” becomes the rowid, so the save stops if any row has no value in "
+"it."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
 msgid "index “{name}”"
 msgstr ""
 
@@ -3868,6 +3923,10 @@ msgstr ""
 msgid "_Stop Imports"
 msgstr ""
 
+#: crates/app/src/ui/workspace/mod.rs
+msgid "Unsaved changes"
+msgstr ""
+
 #: crates/app/src/ui/workspace/saves.rs
 msgid "Saved"
 msgstr ""
@@ -3991,6 +4050,17 @@ msgid "Tables on this database are created in the SQL editor."
 msgstr ""
 
 #: crates/app/src/ui/workspace/structure.rs
+msgid "Cannot Drop Table"
+msgstr ""
+
+#: crates/app/src/ui/workspace/structure.rs
+#, rust-format
+msgid ""
+"Foreign keys on other tables point at {table}: {keys}. Drop those foreign "
+"keys first."
+msgstr ""
+
+#: crates/app/src/ui/workspace/structure.rs
 #, rust-format
 msgid "Drop {table}?"
 msgstr ""
@@ -4006,16 +4076,19 @@ msgid "Drop"
 msgstr ""
 
 #: crates/app/src/ui/workspace/structure.rs
-msgid "Cannot Drop Table"
-msgstr ""
-
-#: crates/app/src/ui/workspace/structure.rs
 #: crates/app/src/workspace/save_rejection.rs
 msgid "No active connection."
 msgstr ""
 
 #: crates/app/src/ui/workspace/structure.rs
 msgid "Drop Failed"
+msgstr ""
+
+#: crates/app/src/ui/workspace/structure.rs
+#, rust-format
+msgid ""
+"A foreign key on another table points at {table}, so it was not dropped. "
+"Drop that foreign key first."
 msgstr ""
 
 #: crates/app/src/ui/workspace/structure.rs
@@ -4751,6 +4824,10 @@ msgid "Cancel the Running Query"
 msgstr ""
 
 #: data/resources/shortcuts-dialog.ui
+msgid "Move Between the Editor and the Results"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
 msgid "Format SQL"
 msgstr ""
 
@@ -4854,6 +4931,14 @@ msgstr ""
 msgid "Running exports"
 msgstr ""
 
+#: data/resources/ui/filter-rule-row.ui
+msgid "Column"
+msgstr ""
+
+#: data/resources/ui/filter-rule-row.ui
+msgid "Operator"
+msgstr ""
+
 #: data/resources/ui/filter-strip.ui
 msgid "Match"
 msgstr ""
@@ -4954,11 +5039,6 @@ msgstr ""
 
 #: data/resources/ui/history-row.ui
 msgid "Select Query"
-msgstr ""
-
-#: data/resources/ui/pending-changes-bar.ui data/resources/ui/structure-tab.ui
-#: data/resources/ui/workspace.ui
-msgid "Saving…"
 msgstr ""
 
 #: data/resources/ui/pending-changes-bar.ui

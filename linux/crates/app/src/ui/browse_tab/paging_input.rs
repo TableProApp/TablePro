@@ -8,7 +8,10 @@ pub(crate) enum PagingInput {
     Refresh,
     /// F5: the window asks first when the tab has unsaved changes.
     RequestRefresh,
+    /// The Filter button.
     ToggleFilterStrip,
+    /// Ctrl+F, which opens the strip or takes the focus into it.
+    ShowFilterStrip,
     /// The strip's rules, or an empty set for Clear All.
     FilterApplied(FilterSet),
     FirstPage,
@@ -19,6 +22,7 @@ pub(crate) enum PagingInput {
         col_idx: usize,
         ascending: bool,
     },
+    SortCleared,
     PageSizeChanged(u64),
     /// Count Rows, or Try Again after a count failed.
     CountRows,

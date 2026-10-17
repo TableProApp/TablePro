@@ -39,6 +39,15 @@ impl FindStatus {
         }
     }
 
+    /// What a screen reader hears once the search settles: the count, or
+    /// what is wrong with the pattern, which the label leaves out.
+    pub(crate) fn announcement(&self) -> Option<String> {
+        if let Some(error) = &self.regex_error {
+            return Some(error.clone());
+        }
+        Some(self.label()).filter(|label| !label.is_empty())
+    }
+
     /// Whether there is a match to replace, with its count known.
     pub(crate) fn has_matches(&self) -> bool {
         self.regex_error.is_none() && self.occurrences.is_some_and(|count| count > 0)
@@ -64,6 +73,29 @@ mod tests {
             FindStatus::from_counts(0, 0, Some("missing )".to_owned())).label(),
             "",
             "a bad pattern"
+        );
+    }
+
+    #[test]
+    fn the_announcement_is_the_count_or_the_pattern_error() {
+        assert_eq!(
+            FindStatus::from_counts(3, 2, None).announcement().as_deref(),
+            Some("2 of 3")
+        );
+        assert_eq!(
+            FindStatus::from_counts(0, 0, None).announcement().as_deref(),
+            Some("No results")
+        );
+        assert_eq!(
+            FindStatus::from_counts(-1, -1, None).announcement(),
+            None,
+            "while counting"
+        );
+        assert_eq!(
+            FindStatus::from_counts(0, 0, Some("missing )".to_owned()))
+                .announcement()
+                .as_deref(),
+            Some("missing )")
         );
     }
 

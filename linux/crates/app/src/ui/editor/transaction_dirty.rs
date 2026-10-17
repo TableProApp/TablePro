@@ -16,7 +16,11 @@ pub fn transaction_dirty(lost: bool, state: Option<TransactionState>, has_run: b
 }
 
 /// The line above the results that says a transaction is still open.
-pub fn transaction_label(state: Option<TransactionState>) -> Option<String> {
+/// A lost session has none, whatever its last run said before it went.
+pub fn transaction_label(lost: bool, state: Option<TransactionState>) -> Option<String> {
+    if lost {
+        return None;
+    }
     match state {
         Some(TransactionState::InTransaction) => Some(crate::i18n::gettext("Transaction open")),
         Some(TransactionState::Failed) => Some(crate::i18n::gettext("Transaction failed, roll back to continue")),
@@ -46,9 +50,16 @@ mod tests {
 
     #[test]
     fn only_an_open_or_failed_transaction_is_labelled() {
-        assert!(transaction_label(Some(TransactionState::InTransaction)).is_some());
-        assert!(transaction_label(Some(TransactionState::Failed)).is_some());
-        assert_eq!(transaction_label(Some(TransactionState::Idle)), None);
-        assert_eq!(transaction_label(Some(TransactionState::Unknown)), None);
+        assert!(transaction_label(false, Some(TransactionState::InTransaction)).is_some());
+        assert!(transaction_label(false, Some(TransactionState::Failed)).is_some());
+        assert_eq!(transaction_label(false, Some(TransactionState::Idle)), None);
+        assert_eq!(transaction_label(false, Some(TransactionState::Unknown)), None);
+    }
+
+    #[test]
+    fn a_lost_session_shows_no_open_transaction() {
+        for state in [TransactionState::InTransaction, TransactionState::Failed] {
+            assert_eq!(transaction_label(true, Some(state)), None, "{state:?}");
+        }
     }
 }

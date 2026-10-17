@@ -42,7 +42,11 @@ const COMMON_SETTINGS: [(&str, &str); 7] = [
     // UTF-8 is read back exactly instead of with replacement characters.
     ("output_format_json_validate_utf8", "0"),
     // A save waits for its mutation, so the grid refetches what the save
-    // wrote rather than what was there before.
+    // wrote rather than what was there before. Not 2, which waits for
+    // every replica: with one down, each save would wait out
+    // `replication_wait_for_inactive_replica_timeout`, two minutes by
+    // default, and then end with UNFINISHED although the live replicas
+    // applied it.
     ("mutations_sync", "1"),
     // A read whose connection the app dropped stops on the server even
     // when no KILL could be sent.
@@ -129,7 +133,7 @@ fn with_credentials(client: clickhouse::Client, target: &NetworkTarget) -> Resul
 fn setup_error(error: TlsSetupError) -> DriverError {
     match error {
         TlsSetupError::Config(error) => DriverError::Config(error),
-        TlsSetupError::Rustls(error) => DriverError::Tls {
+        TlsSetupError::ClientIdentity(error) => DriverError::Tls {
             failure: TlsFailure::ClientIdentityInvalid,
             detail: error.to_string(),
         },
@@ -137,5 +141,38 @@ fn setup_error(error: TlsSetupError) -> DriverError {
             failure: TlsFailure::Other,
             detail: other.to_string(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_refused_client_certificate_is_a_client_identity_failure() {
+        let refused_identity = setup_error(TlsSetupError::ClientIdentity(rustls::Error::InconsistentKeys(
+            rustls::InconsistentKeys::KeyMismatch,
+        )));
+        let no_trust_store = setup_error(TlsSetupError::Rustls(rustls::Error::General(
+            "no system certificates".to_owned(),
+        )));
+
+        assert!(matches!(
+            refused_identity,
+            DriverError::Tls {
+                failure: TlsFailure::ClientIdentityInvalid,
+                ..
+            }
+        ));
+        assert!(
+            matches!(
+                no_trust_store,
+                DriverError::Tls {
+                    failure: TlsFailure::Other,
+                    ..
+                }
+            ),
+            "{no_trust_store:?}"
+        );
     }
 }

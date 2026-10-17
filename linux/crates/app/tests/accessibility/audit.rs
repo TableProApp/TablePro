@@ -138,7 +138,10 @@ fn judge(widget: &gtk4::Widget) -> Option<Missing> {
 }
 
 fn judge_row(row: &adw::PreferencesRow) -> Option<Missing> {
-    if row.title().is_empty() {
+    // A row whose controls are its content names itself instead.
+    if row.title().is_empty()
+        && !gtk4::test_accessible_has_property(row.upcast_ref::<gtk4::Widget>(), AccessibleProperty::Label)
+    {
         return Some(Missing::RowTitle);
     }
     if !row.is::<adw::EntryRow>() {
@@ -160,7 +163,11 @@ fn named(widget: &gtk4::Widget) -> bool {
 /// of its own. A text view that never takes the focus is text on the
 /// page rather than a field.
 fn is_field(widget: &gtk4::Widget) -> bool {
-    widget.is::<gtk4::Entry>()
+    // A bare text field, such as a cell's editor; one inside an entry or
+    // a spin button is met as that control.
+    widget.is::<gtk4::Text>()
+        || widget.is::<gtk4::Calendar>()
+        || widget.is::<gtk4::Entry>()
         || widget.is::<gtk4::PasswordEntry>()
         || widget.is::<gtk4::SearchEntry>()
         || widget.is::<gtk4::SpinButton>()

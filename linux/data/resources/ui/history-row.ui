@@ -13,6 +13,7 @@
         <property name="visible">false</property>
         <accessibility>
           <property name="label" translatable="yes">Select Query</property>
+          <relation name="described-by">title_label</relation>
         </accessibility>
       </object>
     </child>
@@ -57,6 +58,9 @@
       <object class="GtkButton" id="pin_button">
         <property name="icon-name">view-pin-symbolic</property>
         <property name="valign">center</property>
+        <accessibility>
+          <relation name="described-by">title_label</relation>
+        </accessibility>
         <style>
           <class name="flat"/>
         </style>
@@ -69,6 +73,7 @@
         <property name="tooltip-text" translatable="yes">Delete</property>
         <accessibility>
           <property name="label" translatable="yes">Delete</property>
+          <relation name="described-by">title_label</relation>
         </accessibility>
         <style>
           <class name="flat"/>

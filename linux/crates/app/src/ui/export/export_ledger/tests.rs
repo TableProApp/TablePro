@@ -530,6 +530,15 @@ fn stop_button_cancels_job_and_removes_row() {
     assert!(button.is_visible());
     let row = button.job_list().row_at_index(0).expect("the job's row");
     let stop = first_descendant_of_type::<gtk::Button>(&row).expect("the stop button");
+    let progress = first_descendant_of_type::<gtk::ProgressBar>(&row).expect("the job's bar");
+    assert!(gtk::test_accessible_has_relation(
+        &stop,
+        gtk::AccessibleRelation::DescribedBy
+    ));
+    assert!(gtk::test_accessible_has_relation(
+        &progress,
+        gtk::AccessibleRelation::LabelledBy
+    ));
     stop.emit_clicked();
     let outcome = harness.finish(handle);
 

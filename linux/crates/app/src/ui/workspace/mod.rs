@@ -357,10 +357,17 @@ impl WorkspaceTab {
 }
 
 /// Give `page` its title and tooltip. libadwaita treats an empty tooltip
-/// as none, which clears the last one.
+/// as none, which clears the last one. The tooltip says what the unsaved
+/// icon shows, since a screen reader reads a tab's tooltip and not its
+/// icon.
 pub(crate) fn apply_tab_title(page: &adw::TabPage, title: &tab_title::TabTitle) {
     page.set_title(&title.label);
-    page.set_tooltip(title.tooltip.as_deref().unwrap_or_default());
+    let unsaved = page.icon().is_some().then(|| crate::i18n::gettext("Unsaved changes"));
+    let lines: Vec<&str> = [title.tooltip.as_deref(), unsaved.as_deref()]
+        .into_iter()
+        .flatten()
+        .collect();
+    page.set_tooltip(&lines.join("\n"));
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -506,6 +513,12 @@ pub(crate) enum WorkspaceInput {
     DropTablePrompt {
         schema: Option<String>,
         table: String,
+    },
+    /// The foreign keys on other tables that point at the table, read
+    /// before the prompt asks to drop it.
+    DropTableChecked {
+        table: tablepro_core::TableRef,
+        referencing: Vec<tablepro_core::ddl::InboundForeignKey>,
     },
     DropTableConfirmed {
         schema: Option<String>,
@@ -990,6 +1003,7 @@ impl WorkspaceModel {
             WorkspaceInput::ShowCreateTableForExisting { schema, table } => self.on_show_create_table(schema, table),
             WorkspaceInput::ShowCreateTableLoaded(sql) => self.open_editor_tab(Some(sql)),
             WorkspaceInput::DropTablePrompt { schema, table } => self.on_drop_table_prompt(schema, table),
+            WorkspaceInput::DropTableChecked { table, referencing } => self.on_drop_table_checked(table, &referencing),
             WorkspaceInput::DropTableConfirmed { schema, table } => self.on_drop_table_confirmed(schema, table),
             WorkspaceInput::DropTableSucceeded(table) => self.on_drop_table_succeeded(table),
             WorkspaceInput::SchemaChanged { schema, table } => self.on_schema_changed(schema, table),

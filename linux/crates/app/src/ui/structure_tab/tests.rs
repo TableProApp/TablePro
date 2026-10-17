@@ -881,6 +881,19 @@ fn preview(tab: &StructureTab) -> String {
     buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).to_string()
 }
 
+/// The preview is text a reader can move through, so it takes a name.
+#[gtk4::test]
+fn the_sql_preview_is_named() {
+    let mut script = postgres_script();
+    script.fetch_table_definition.always(FakeReply::ok(keyed_users()));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+
+    assert_eq!(
+        crate::test_support::assert_labelled(&harness.tab().imp().sql_view.get()),
+        Ok(())
+    );
+}
+
 #[gtk4::test]
 fn renaming_existing_column_enables_save_and_previews_rename() {
     let mut script = postgres_script();
@@ -901,6 +914,13 @@ fn renaming_existing_column_enables_save_and_previews_rename() {
     assert_eq!(harness.column_names(), ["id", "points"]);
     assert!(imp.save_button.is_sensitive(), "a rename left Save off");
     assert_eq!(imp.pending_label.label(), "1 unsaved change");
+    assert_eq!(
+        crate::ui::a11y::announced_in(&imp.pending_label.get()),
+        [(
+            "1 unsaved change".to_owned(),
+            gtk4::AccessibleAnnouncementPriority::Medium
+        )]
+    );
     assert_eq!(
         preview(harness.tab()),
         "ALTER TABLE \"users\" RENAME COLUMN \"score\" TO \"points\";"

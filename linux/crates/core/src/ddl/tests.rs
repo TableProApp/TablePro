@@ -812,6 +812,7 @@ fn a_dropped_foreign_key_and_a_rebuild_are_named() {
             name: "active_users".to_owned(),
         }],
         renumbers_rowids: false,
+        numbered_column: None,
     };
     plan.rebuild = Some(rebuild.clone());
 

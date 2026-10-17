@@ -109,6 +109,12 @@ fn rebuild_text(rebuild: &TableRebuild) -> String {
     if rebuild.renumbers_rowids {
         sentences.push(crate::i18n::gettext("The rows get new rowids."));
     }
+    if let Some(column) = &rebuild.numbered_column {
+        sentences.push(crate::i18n::gettext_f(
+            "“{column}” becomes the rowid, so the save stops if any row has no value in it.",
+            &[("column", column)],
+        ));
+    }
     sentences.join(" ")
 }
 
@@ -263,12 +269,28 @@ mod tests {
                 },
             ],
             renumbers_rowids: true,
+            numbered_column: None,
         });
 
         assert_eq!(
             text,
             "Rebuilds the table: copies its rows into a new table and drops the old one. Drops and creates again: \
              trigger “stamp”, view “big”. The rows get new rowids."
+        );
+    }
+
+    #[test]
+    fn a_rebuild_says_a_numbered_column_must_hold_values() {
+        let text = rebuild_text(&TableRebuild {
+            recreated: Vec::new(),
+            renumbers_rowids: true,
+            numbered_column: Some("code".to_owned()),
+        });
+
+        assert_eq!(
+            text,
+            "Rebuilds the table: copies its rows into a new table and drops the old one. The rows get new rowids. \
+             “code” becomes the rowid, so the save stops if any row has no value in it."
         );
     }
 }

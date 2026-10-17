@@ -66,6 +66,18 @@ impl ClickHouseColumnRow {
         }
     }
 
+    /// The column as the grid reads a page by: every column of the
+    /// sorting and partition keys counts as the key. The server refuses
+    /// an UPDATE of any of them, and the PRIMARY KEY is only a prefix of
+    /// the sorting key, so naming rows by it alone would offer edits the
+    /// server refuses and match more rows than the one shown.
+    pub(crate) fn row_info(&self) -> ColumnInfo {
+        ColumnInfo {
+            primary_key: self.in_sorting_key || self.in_partition_key,
+            ..self.info()
+        }
+    }
+
     pub(crate) fn attributes(&self) -> ColumnAttributes {
         let expression = || SqlExpression::from_catalog_text(self.default_expression.as_str());
         let generated = match self.default_kind.as_str() {
@@ -124,6 +136,31 @@ mod tests {
     use tablepro_core::column::{ColumnKind, TextLength};
 
     use super::*;
+
+    #[test]
+    fn a_page_keys_rows_by_the_sorting_and_partition_keys() {
+        let keyed = |primary: bool, sorting: bool, partition: bool| ClickHouseColumnRow {
+            in_primary_key: primary,
+            in_sorting_key: sorting,
+            in_partition_key: partition,
+            ..row("c", "Int32", "", "")
+        };
+
+        assert!(keyed(true, true, false).row_info().primary_key);
+        assert!(
+            keyed(false, true, false).row_info().primary_key,
+            "a sorting key column past the PRIMARY KEY"
+        );
+        assert!(
+            keyed(false, false, true).row_info().primary_key,
+            "a partition key column"
+        );
+        assert!(!keyed(false, false, false).row_info().primary_key);
+        assert!(
+            !keyed(false, true, false).info().primary_key,
+            "the definition's PRIMARY KEY changed"
+        );
+    }
 
     fn row(name: &str, type_text: &str, kind: &str, expression: &str) -> ClickHouseColumnRow {
         ClickHouseColumnRow {

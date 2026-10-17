@@ -68,6 +68,12 @@ mod imp {
             let remove = self.remove_button.get();
             remove.set_icon_name(crate::ui::icons::USER_TRASH);
             crate::ui::a11y::describe_icon_button(&remove, &crate::i18n::gettext("Remove Rule"), None);
+            // The row has no title, its controls being the rule, and
+            // libadwaita names a row by its title label alone.
+            let row = self.obj();
+            let row = row.upcast_ref::<gtk::Widget>();
+            row.reset_relation(gtk::AccessibleRelation::LabelledBy);
+            row.update_property(&[gtk::accessible::Property::Label(&crate::i18n::gettext("Filter Rule"))]);
         }
     }
 

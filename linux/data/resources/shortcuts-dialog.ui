@@ -294,6 +294,12 @@
           </object>
         </child>
         <child>
+          <object class="AdwShortcutsItem" id="paned-cycle-child-focus">
+            <property name="title" translatable="yes">Move Between the Editor and the Results</property>
+            <property name="accelerator">F6</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwShortcutsItem" id="editor-format">
             <property name="title" translatable="yes">Format SQL</property>
             <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;f</property>

@@ -37,6 +37,7 @@
                         <child>
                           <object class="GtkLabel">
                             <property name="label" translatable="yes">Match</property>
+                            <property name="mnemonic-widget">combinator_dropdown</property>
                             <style>
                               <class name="dimmed"/>
                             </style>
@@ -124,6 +125,7 @@
                         <child>
                           <object class="GtkLabel">
                             <property name="label">WHERE</property>
+                            <property name="mnemonic-widget">raw_entry</property>
                             <style>
                               <class name="monospace"/>
                               <class name="dimmed"/>

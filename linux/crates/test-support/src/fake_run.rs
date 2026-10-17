@@ -21,6 +21,9 @@ pub struct FakeRun {
     /// error; `Ok` is how the statements ended.
     pub end: Result<RunEnd, DriverError>,
     pub transaction_state: TransactionState,
+    /// The connection is given up as the run ends, as a driver does with
+    /// one whose stopped statement never acknowledged the stop.
+    pub loses_session: bool,
 }
 
 impl FakeRun {
@@ -30,6 +33,7 @@ impl FakeRun {
             wait: RunWait::None,
             end: Ok(RunEnd::Completed),
             transaction_state: TransactionState::Idle,
+            loses_session: false,
         }
     }
 
@@ -67,6 +71,13 @@ impl FakeRun {
     pub fn leaving(self, transaction_state: TransactionState) -> Self {
         Self {
             transaction_state,
+            ..self
+        }
+    }
+
+    pub fn losing_the_session(self) -> Self {
+        Self {
+            loses_session: true,
             ..self
         }
     }

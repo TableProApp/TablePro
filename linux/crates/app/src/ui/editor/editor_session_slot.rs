@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::Duration;
 
-use tablepro_core::{EditorSession, EditorSessionOptions, EditorSessionState};
+use tablepro_core::{EditorSession, EditorSessionOptions, EditorSessionState, TransactionState};
 use tablepro_session::{OperationError, Session};
 use tokio_util::sync::CancellationToken;
 
@@ -10,6 +10,12 @@ use tokio_util::sync::CancellationToken;
 /// The run opens it and the tab closes it, possibly while a run is
 /// still opening one, so the slot remembers it was closed and a session
 /// opened after that is handed back to be closed rather than kept.
+///
+/// A session whose connection went with a transaction open is never
+/// replaced on the same run: the next statement would commit on its
+/// own, outside the transaction the user thinks is still open. Unless
+/// the run that lost it already said so, that run is refused with the
+/// reason, and only the one after it opens a new session.
 #[derive(Default)]
 pub struct EditorSessionSlot {
     state: Mutex<SlotState>,
@@ -18,6 +24,9 @@ pub struct EditorSessionSlot {
 #[derive(Default)]
 struct SlotState {
     open: Option<OpenEditor>,
+    /// A session was lost with a transaction open, and no run has been
+    /// told yet.
+    rolled_back: bool,
     closed: bool,
 }
 
@@ -26,12 +35,19 @@ struct OpenEditor {
     /// to another database must not run on the old one.
     owner: Weak<Session>,
     editor: Arc<dyn EditorSession>,
+    /// Where the transaction stood after the last run that reported it.
+    transaction: Option<TransactionState>,
 }
 
 enum Lookup {
     Ready(Arc<dyn EditorSession>),
     /// None usable; `stale` is one to close before opening another.
     Missing {
+        stale: Option<Arc<dyn EditorSession>>,
+    },
+    /// The session went with a transaction open; `stale` is it, when it
+    /// is still to be closed.
+    RolledBack {
         stale: Option<Arc<dyn EditorSession>>,
     },
     Closed,
@@ -42,6 +58,9 @@ enum Lookup {
 pub enum AcquireError {
     /// The tab closed or the run was stopped while it opened.
     Cancelled,
+    /// The session's connection was lost with a transaction open, which
+    /// the server rolled back. Nothing was opened in its place.
+    TransactionRolledBack,
     Failed(String),
 }
 
@@ -63,6 +82,12 @@ impl EditorSessionSlot {
         let stale = match self.lookup(session) {
             Lookup::Ready(editor) => return Ok(editor),
             Lookup::Closed => return Err(AcquireError::Cancelled),
+            Lookup::RolledBack { stale } => {
+                if let Some(stale) = stale {
+                    close_quietly(stale, close_timeout).await;
+                }
+                return Err(AcquireError::TransactionRolledBack);
+            }
             Lookup::Missing { stale } => stale,
         };
         if let Some(stale) = stale {
@@ -90,7 +115,17 @@ impl EditorSessionSlot {
         if state.closed {
             return Lookup::Closed;
         }
+        if std::mem::take(&mut state.rolled_back) {
+            return Lookup::RolledBack {
+                stale: state.open.take().map(|open| open.editor),
+            };
+        }
         match state.open.take() {
+            Some(open) if open.editor.state() == EditorSessionState::Lost && open.held_transaction() => {
+                Lookup::RolledBack {
+                    stale: Some(open.editor),
+                }
+            }
             Some(open)
                 if open.owner.ptr_eq(&Arc::downgrade(owner)) && open.editor.state() != EditorSessionState::Lost =>
             {
@@ -104,6 +139,24 @@ impl EditorSessionSlot {
         }
     }
 
+    /// Where the transaction of `editor` stood after its last run.
+    pub fn transaction(&self, editor: &Arc<dyn EditorSession>) -> Option<TransactionState> {
+        let state = lock(&self.state);
+        state
+            .open
+            .as_ref()
+            .filter(|open| open.editor.id() == editor.id())
+            .and_then(|open| open.transaction)
+    }
+
+    /// Record where a run left the transaction of `editor`.
+    pub fn note_transaction(&self, editor: &Arc<dyn EditorSession>, transaction: Option<TransactionState>) {
+        let mut state = lock(&self.state);
+        if let Some(open) = state.open.as_mut().filter(|open| open.editor.id() == editor.id()) {
+            open.transaction = transaction;
+        }
+    }
+
     /// Keep a newly opened session, or hand it back when the tab closed
     /// while it was opening.
     fn adopt(&self, owner: &Arc<Session>, editor: Arc<dyn EditorSession>) -> Result<(), Arc<dyn EditorSession>> {
@@ -114,17 +167,21 @@ impl EditorSessionSlot {
         state.open = Some(OpenEditor {
             owner: Arc::downgrade(owner),
             editor,
+            transaction: None,
         });
         Ok(())
     }
 
-    /// Let go of a session whose connection is gone, so the next run
-    /// opens a new one. Returns whether this slot held it.
-    pub fn forget(&self, editor: &Arc<dyn EditorSession>) -> bool {
+    /// Let go of a session whose connection went during a run. The next
+    /// run opens a new session, or with `refuse_next`, when a transaction
+    /// went with the connection unannounced, is refused first. Returns
+    /// whether this slot held it.
+    pub fn forget(&self, editor: &Arc<dyn EditorSession>, refuse_next: bool) -> bool {
         let mut state = lock(&self.state);
         let held = state.open.as_ref().is_some_and(|open| open.editor.id() == editor.id());
         if held {
             state.open = None;
+            state.rolled_back |= refuse_next;
         }
         held
     }
@@ -146,6 +203,20 @@ impl std::fmt::Debug for EditorSessionSlot {
             .field("closed", &state.closed)
             .finish()
     }
+}
+
+impl OpenEditor {
+    fn held_transaction(&self) -> bool {
+        transaction_open(self.transaction)
+    }
+}
+
+/// A transaction the server rolls back when the connection goes.
+pub fn transaction_open(transaction: Option<TransactionState>) -> bool {
+    matches!(
+        transaction,
+        Some(TransactionState::InTransaction | TransactionState::Failed)
+    )
 }
 
 pub async fn close_quietly(editor: Arc<dyn EditorSession>, close_timeout: Duration) {

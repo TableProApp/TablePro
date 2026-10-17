@@ -275,6 +275,9 @@
                                             <property name="left-margin">6</property>
                                             <property name="right-margin">6</property>
                                             <property name="bottom-margin">6</property>
+                                            <accessibility>
+                                              <property name="label" translatable="yes">SQL Preview</property>
+                                            </accessibility>
                                           </object>
                                         </property>
                                       </object>

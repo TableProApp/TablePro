@@ -4,8 +4,11 @@ use chrono::{NaiveTime, Timelike};
 use thiserror::Error;
 
 const NANOS_PER_SECOND: u64 = 1_000_000_000;
-const MAX_HOURS: u32 = 838;
-const MAX_MAGNITUDE_NANOS: u128 = (838 * 3600 + 59 * 60 + 59) * NANOS_PER_SECOND as u128;
+/// The widest any engine keeps: ClickHouse Time64, to 999:59:59 and a
+/// fraction either side of zero. A column's own range is narrower where
+/// its `TimeRange` says so.
+const MAX_HOURS: u32 = 999;
+const MAX_MAGNITUDE_NANOS: u128 = (999 * 3600 + 59 * 60 + 60) * NANOS_PER_SECOND as u128 - 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SqlTime {
@@ -20,7 +23,7 @@ pub struct SqlTime {
 pub enum TimeRangeError {
     #[error("minutes and seconds must be below 60 and fractions below one second")]
     InvalidComponent,
-    #[error("the time is outside -838:59:59 to 838:59:59")]
+    #[error("the time is outside -999:59:59 to 999:59:59")]
     OutOfRange,
     #[error("the time is not in H:MM[:SS[.fraction]] form")]
     InvalidSyntax,
@@ -101,6 +104,13 @@ impl SqlTime {
         text
     }
 
+    /// Whether the time lies within `hours`:59:59 either side of zero,
+    /// with no fraction past either end.
+    pub fn within_hours(&self, hours: u32) -> bool {
+        let seconds = u128::from(hours) * 3600 + 59 * 60 + 59;
+        self.magnitude_nanos() <= seconds * u128::from(NANOS_PER_SECOND)
+    }
+
     fn magnitude_nanos(&self) -> u128 {
         let seconds = u128::from(self.hours) * 3600 + u128::from(self.minutes) * 60 + u128::from(self.seconds);
         seconds * u128::from(NANOS_PER_SECOND) + u128::from(self.nanos)
@@ -163,8 +173,14 @@ mod tests {
         let lowest: SqlTime = "-838:59:59".parse().unwrap();
         assert_eq!(lowest.total_micros(), Some(-3_020_399_000_000));
         assert_eq!(SqlTime::from_micros(-3_020_399_000_000), Ok(lowest));
-        assert_eq!("839:00:00".parse::<SqlTime>(), Err(TimeRangeError::OutOfRange));
-        assert_eq!("838:59:59.5".parse::<SqlTime>(), Err(TimeRangeError::OutOfRange));
+        assert!(lowest.within_hours(838));
+        assert!(!"839:00:00".parse::<SqlTime>().unwrap().within_hours(838));
+        assert!(!"838:59:59.5".parse::<SqlTime>().unwrap().within_hours(838));
+        assert_eq!(
+            "-999:59:59.999999999".parse::<SqlTime>().map(|time| time.format(None)),
+            Ok("-999:59:59.999999999".to_owned())
+        );
+        assert_eq!("1000:00:00".parse::<SqlTime>(), Err(TimeRangeError::OutOfRange));
         assert_eq!("12:60".parse::<SqlTime>(), Err(TimeRangeError::InvalidComponent));
         assert_eq!("12:5".parse::<SqlTime>(), Err(TimeRangeError::InvalidSyntax));
     }

@@ -288,7 +288,7 @@ fn build_column(init: ColumnInit<'_>) -> (gtk::ColumnViewColumn, Option<glib::Si
     // A number column is as wide as its widest number already.
     let default_min_width = default_min_width.filter(|_| !drawing.figures.numbers());
     let width_saver = size_column(&column, &info.name, &tab_ctx, default_min_width);
-    grid_columns.push(idx, &column, drawing);
+    grid_columns.push(idx, &column, drawing, default_min_width);
     (column, width_saver)
 }
 

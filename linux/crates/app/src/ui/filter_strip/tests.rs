@@ -4,7 +4,8 @@ use super::rule_operators::placeholder_column;
 use super::*;
 use crate::application::ShortcutOwner;
 use crate::test_support::{
-    SignalLog, descendants, drain_main_context, first_descendant_of_type, tooltips_with_keys, unlabelled_icon_buttons,
+    SignalLog, assert_labelled, descendants, drain_main_context, first_descendant_of_type, tooltips_with_keys,
+    unlabelled_icon_buttons,
 };
 
 fn rule(column: &str) -> FilterRule {
@@ -135,6 +136,33 @@ fn toggle_opens_onto_the_sql_field_and_closes_again() {
     assert!(!strip.imp().revealer.reveals_child());
 }
 
+/// Ctrl+F on an open strip takes the focus into it rather than closing
+/// it, and closing gives the focus back to where it came from.
+#[gtk4::test]
+fn ctrl_f_focuses_an_open_strip_and_close_gives_the_focus_back() {
+    let strip = strip_with(vec![rule("a")]);
+    let outside = gtk::Button::with_label("Rows");
+    let column = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    column.append(&strip);
+    column.append(&outside);
+    let window = crate::test_support::OwnedWindow::presented(gtk::Window::builder().child(&column).build());
+    let focus = || gtk::prelude::GtkWindowExt::focus(&*window);
+    assert!(outside.grab_focus());
+
+    strip.open();
+    assert!(strip.revealed());
+    assert!(crate::ui::a11y::holds_focus(&strip));
+    assert!(outside.grab_focus());
+    strip.open();
+    assert!(strip.revealed(), "Ctrl+F closed the open strip");
+    assert!(crate::ui::a11y::holds_focus(&strip));
+
+    strip.activate_action("filter.close", None).expect("filter.close");
+
+    assert!(!strip.revealed());
+    assert_eq!(focus().as_ref(), Some(outside.upcast_ref()));
+}
+
 #[gtk4::test]
 fn strip_freed_after_drop() {
     let strip = strip_with(vec![rule("a"), rule("b")]);
@@ -216,6 +244,42 @@ fn icon_buttons_are_labelled_without_accelerator_hints() {
     ));
     assert_eq!(unlabelled_icon_buttons(&strip), Vec::<String>::new());
     assert_eq!(tooltips_with_keys(&strip), Vec::<String>::new());
+}
+
+/// Placeholders go once text is typed, so each field, and the row that
+/// holds a rule, has a name of its own.
+#[gtk4::test]
+fn every_field_of_the_strip_is_named() {
+    let rule = |column: &str, op: FilterOp, value: Option<FilterValue>| FilterRule {
+        column: column.to_owned(),
+        op,
+        value,
+    };
+    let strip = new_strip(
+        vec![integer("amount"), placeholder_column("name")],
+        &FilterSet {
+            rules: vec![
+                rule("name", FilterOp::Eq, Some(FilterValue::Single("x".to_owned()))),
+                rule(
+                    "amount",
+                    FilterOp::Between,
+                    Some(FilterValue::Pair("1".to_owned(), "2".to_owned())),
+                ),
+                rule("name", FilterOp::In, Some(FilterValue::List(vec!["a".to_owned()]))),
+            ],
+            ..FilterSet::default()
+        },
+    );
+    strip.set_revealed(true);
+    let fields: Vec<gtk::Widget> = descendants(&strip)
+        .into_iter()
+        .filter(|widget| widget.is::<gtk::Entry>() || widget.is::<gtk::DropDown>() || widget.is::<FilterRuleRow>())
+        .collect();
+    assert_eq!(fields.len(), 1 + 1 + 3 * 3 + 1 + 2 + 1, "the strip's fields");
+
+    for field in fields {
+        assert_eq!(assert_labelled(&field), Ok(()), "{}", field.type_().name());
+    }
 }
 
 #[gtk4::test]

@@ -150,9 +150,56 @@ impl PagerBar {
     /// back goes from the pager, and Next waits for a page on screen.
     pub(super) fn show_position(&self, pager: &BrowsePager, rows_on_page: u64) {
         let imp = self.imp();
-        imp.first_button.set_sensitive(pager.first().is_some());
-        imp.prev_button.set_sensitive(pager.prev().is_some());
-        imp.next_button.set_sensitive(pager.next(rows_on_page).is_some());
+        self.turn(&[
+            (imp.first_button.get(), pager.first().is_some()),
+            (imp.prev_button.get(), pager.prev().is_some()),
+            (imp.next_button.get(), pager.next(rows_on_page).is_some()),
+        ]);
+    }
+
+    /// Turn each button on or off. The focus on a button turned off goes
+    /// to the nearest one left on, as Next at the last page hands it to
+    /// Previous; GTK would move it to the window's first control.
+    fn turn(&self, changes: &[(gtk::Button, bool)]) {
+        for (button, _) in changes.iter().filter(|(_, on)| *on) {
+            button.set_sensitive(true);
+        }
+        let usable = |button: &gtk::Button| {
+            changes
+                .iter()
+                .find(|(changed, _)| changed == button)
+                .map_or(button.is_sensitive(), |(_, on)| *on)
+                && button.is_visible()
+        };
+        let buttons = self.buttons();
+        if let Some(from) = buttons
+            .iter()
+            .position(|button| crate::ui::a11y::holds_focus(button) && !usable(button))
+        {
+            let nearest = (1..buttons.len())
+                .flat_map(|distance| [from.checked_sub(distance), Some(from + distance)])
+                .flatten()
+                .filter_map(|index| buttons.get(index))
+                .find(|button| usable(button));
+            if let Some(nearest) = nearest {
+                nearest.grab_focus();
+            }
+        }
+        for (button, _) in changes.iter().filter(|(_, on)| !*on) {
+            button.set_sensitive(false);
+        }
+    }
+
+    /// The bar's buttons in the order they sit.
+    fn buttons(&self) -> [gtk::Button; 5] {
+        let imp = self.imp();
+        [
+            imp.first_button.get(),
+            imp.prev_button.get(),
+            imp.next_button.get(),
+            imp.last_button.get(),
+            imp.count_button.get(),
+        ]
     }
 
     /// The rows on the page, Count Rows and Last, which only an exact
@@ -160,8 +207,7 @@ impl PagerBar {
     pub(super) fn show_total(&self, pager: &BrowsePager, shown: Option<&PageState>, total: &RowTotal) {
         let imp = self.imp();
         let label = shown.map(|page| page_range_label(page, total)).unwrap_or_default();
-        imp.paginator_label.set_label(&label);
-        imp.last_button.set_sensitive(pager.last(total).is_some());
+        crate::ui::a11y::show_status(&imp.paginator_label, &label);
         let last_tooltip = match total.exact() {
             Some(_) => gettext("Last Page"),
             None => gettext("Count rows to go to the last page"),
@@ -169,16 +215,43 @@ impl PagerBar {
         imp.last_button.set_tooltip_text(Some(&last_tooltip));
 
         let counting = matches!(total, RowTotal::Counting { .. });
-        imp.offer_count(shown.is_some() && total.exact().is_none());
-        imp.count_button.set_sensitive(!counting);
+        let count_offered = shown.is_some() && total.exact().is_none();
+        if count_offered {
+            imp.offer_count(true);
+        }
+        self.turn(&[
+            (imp.last_button.get(), pager.last(total).is_some()),
+            (imp.count_button.get(), count_offered && !counting),
+        ]);
+        imp.offer_count(count_offered);
         imp.count_spinner.set_visible(counting);
-        let (label, tooltip) = match total {
+        let (label, reason) = match total {
             RowTotal::Counting { .. } => (gettext("Counting…"), None),
             RowTotal::Unavailable { reason, .. } => (gettext("Try Again"), Some(reason.as_str())),
             RowTotal::Unknown | RowTotal::Estimated(_) | RowTotal::Exact(_) => (gettext("Count Rows"), None),
         };
         imp.count_label.set_label(&label);
-        imp.count_button.set_tooltip_text(tooltip);
+        self.show_count_failure(reason);
+    }
+
+    /// A count asked for and refused says why, on Try Again as well as
+    /// in its tooltip, which no key shows.
+    fn show_count_failure(&self, reason: Option<&str>) {
+        let button = self.imp().count_button.get();
+        let news = reason.is_some() && button.tooltip_text().as_deref() != reason;
+        button.set_tooltip_text(reason);
+        let widget = button.upcast_ref::<gtk::Widget>();
+        match reason {
+            Some(reason) => widget.update_property(&[gtk::accessible::Property::Description(reason)]),
+            None => widget.reset_property(gtk::AccessibleProperty::Description),
+        }
+        if let Some(reason) = reason.filter(|_| news) {
+            crate::ui::a11y::announce(
+                &button,
+                &crate::i18n::gettext_f("Couldn't count the rows. {reason}", &[("reason", reason)]),
+                gtk::AccessibleAnnouncementPriority::High,
+            );
+        }
     }
 
     /// The keys for Previous and Next turn a page only where the button
@@ -347,6 +420,88 @@ mod tests {
         assert_eq!(counts.count(), 1);
     }
 
+    /// The bar in a window, so its buttons can hold the focus.
+    fn shown_bar() -> (PagerBar, crate::test_support::OwnedWindow<gtk::Window>) {
+        let bar = bar();
+        let window = crate::test_support::OwnedWindow::presented(gtk::Window::builder().child(&bar).build());
+        (bar, window)
+    }
+
+    fn focus(window: &gtk::Window) -> Option<gtk::Widget> {
+        gtk::prelude::GtkWindowExt::focus(window)
+    }
+
+    #[gtk4::test]
+    fn next_at_the_last_page_hands_the_focus_to_previous() {
+        let (bar, window) = shown_bar();
+        let imp = bar.imp();
+        bar.show_position(&BrowsePager::new(100, 0), 100);
+        assert!(imp.next_button.grab_focus());
+
+        bar.show_position(&BrowsePager::new(100, 100), 40);
+
+        assert!(!imp.next_button.is_sensitive());
+        assert_eq!(focus(&window).as_ref(), Some(imp.prev_button.upcast_ref()));
+    }
+
+    #[gtk4::test]
+    fn a_count_keeps_the_focus_in_the_bar() {
+        let (bar, window) = shown_bar();
+        let imp = bar.imp();
+        let pager = BrowsePager::new(100, 0);
+        let shown = page(0, 100);
+        bar.show_position(&pager, 100);
+        bar.show_total(&pager, Some(&shown), &RowTotal::Estimated(5_000));
+        assert!(imp.count_button.grab_focus());
+
+        bar.show_total(&pager, Some(&shown), &RowTotal::Counting { estimate: Some(5_000) });
+        assert_eq!(focus(&window).as_ref(), Some(imp.next_button.upcast_ref()));
+
+        let refused = RowTotal::Unavailable {
+            estimate: Some(5_000),
+            reason: "refused".to_owned(),
+        };
+        bar.show_total(&pager, Some(&shown), &refused);
+        assert!(imp.count_button.grab_focus());
+        bar.show_total(&pager, Some(&shown), &RowTotal::Exact(5_000));
+        assert!(!imp.count_button.is_visible());
+        assert_eq!(focus(&window).as_ref(), Some(imp.last_button.upcast_ref()));
+    }
+
+    #[gtk4::test]
+    fn a_failed_count_says_why_on_try_again() {
+        let bar = bar();
+        let pager = BrowsePager::new(100, 0);
+        let failed = RowTotal::Unavailable {
+            estimate: None,
+            reason: "Counting took longer than 45 seconds and was stopped.".to_owned(),
+        };
+
+        bar.show_total(&pager, Some(&page(0, 100)), &failed);
+
+        let button = bar.imp().count_button.get();
+        assert!(gtk::test_accessible_has_property(
+            &button,
+            AccessibleProperty::Description
+        ));
+        assert_eq!(
+            crate::ui::a11y::announced_in(&bar)
+                .last()
+                .map(|(said, priority)| (said.clone(), *priority)),
+            Some((
+                "Couldn't count the rows. Counting took longer than 45 seconds and was stopped.".to_owned(),
+                gtk::AccessibleAnnouncementPriority::High
+            ))
+        );
+
+        bar.show_total(&pager, Some(&page(0, 100)), &RowTotal::Exact(500));
+
+        assert!(!gtk::test_accessible_has_property(
+            &button,
+            AccessibleProperty::Description
+        ));
+    }
+
     #[gtk4::test]
     fn a_compact_bar_leaves_count_rows_to_the_menu() {
         let bar = bar();
@@ -375,5 +530,13 @@ mod tests {
         bar.show_total(&pager, Some(&page(0, 5)), &RowTotal::Exact(5));
 
         assert_eq!(bar.imp().paginator_label.label(), "Rows 1 – 5 of 5");
+        assert_eq!(
+            crate::ui::a11y::announced_in(&bar),
+            [(
+                "Rows 1 – 5 of 5".to_owned(),
+                gtk::AccessibleAnnouncementPriority::Medium
+            )],
+            "a page turn is said once"
+        );
     }
 }

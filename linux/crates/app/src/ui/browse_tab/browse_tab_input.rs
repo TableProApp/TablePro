@@ -58,6 +58,7 @@ impl From<GridMsg> for BrowseTabInput {
     fn from(msg: GridMsg) -> Self {
         match msg {
             GridMsg::SortChanged(col_idx, ascending) => PagingInput::SortChanged { col_idx, ascending }.into(),
+            GridMsg::SortCleared => PagingInput::SortCleared.into(),
             GridMsg::Edit { row, column, edit } => EditInput::GridEdit { row, column, edit }.into(),
             GridMsg::Copy(request) => ClipboardInput::GridCopy(request).into(),
             GridMsg::ShowRowJson(request) => ClipboardInput::GridShowRowJson(request).into(),

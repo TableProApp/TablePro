@@ -57,6 +57,18 @@ impl ColumnWidthStore {
         });
     }
 
+    /// Drop the column's width, so it opens at its default again.
+    pub fn forget(&self, connection_id: Uuid, schema: Option<&str>, table: &str, column: &str) {
+        self.file.update(|document| {
+            document
+                .connections
+                .get_mut(&connection_id.to_string())
+                .and_then(|schemas| schemas.get_mut(schema_key(schema)))
+                .and_then(|tables| tables.get_mut(table))
+                .is_some_and(|columns| columns.remove(column).is_some())
+        });
+    }
+
     /// Drop everything for a connection the user deleted, so the file
     /// does not grow with entries nothing can reach.
     pub fn forget_connection(&self, connection_id: Uuid) {
@@ -110,6 +122,21 @@ mod tests {
         store.flush().await;
 
         assert_eq!(store.width(id, None, "users", "name"), Some(240));
+    }
+
+    #[tokio::test]
+    async fn forget_drops_one_column() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let store = store(&root);
+        let id = Uuid::new_v4();
+        store.record(id, Some("public"), "users", "name", 240);
+        store.record(id, Some("public"), "users", "email", 180);
+
+        store.forget(id, Some("public"), "users", "name");
+        store.forget(id, Some("public"), "orders", "name");
+
+        assert_eq!(store.width(id, Some("public"), "users", "name"), None);
+        assert_eq!(store.width(id, Some("public"), "users", "email"), Some(180));
     }
 
     #[tokio::test]
