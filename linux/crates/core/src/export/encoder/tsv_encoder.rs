@@ -4,14 +4,14 @@ use crate::column::ResultColumn;
 use crate::value::Value;
 
 use super::super::column_type;
-use super::super::csv::neutralise_formula;
 use super::super::tsv::tsv_writer_builder;
 use super::super::value_text::value_text;
 use super::{EncodeError, RecordWriter, RowEncoder, readable_cells};
 
-/// Tab-separated values, the form a spreadsheet pastes into cells. A
-/// paste reads a cell that starts like a formula as one, so free text
-/// gets the apostrophe a CSV export gives it.
+/// Tab-separated values, the form a spreadsheet pastes into cells. It
+/// is what the clipboard carries, so each value goes as the user sees
+/// it: a leading apostrophe on `-` or `@alice` would be pasted into
+/// every other place the text goes too.
 pub struct TsvEncoder {
     columns: Arc<[ResultColumn]>,
     with_headers: bool,
@@ -32,12 +32,8 @@ impl TsvEncoder {
 impl RowEncoder for TsvEncoder {
     fn begin(&mut self, out: &mut Vec<u8>) {
         if self.with_headers {
-            self.writer.write(
-                out,
-                self.columns
-                    .iter()
-                    .map(|column| neutralise_formula(&Value::Null, column.name.clone(), true)),
-            );
+            self.writer
+                .write(out, self.columns.iter().map(|column| column.name.as_str()));
         }
     }
 
@@ -45,12 +41,9 @@ impl RowEncoder for TsvEncoder {
         let cells = readable_cells(&self.columns, cells)?;
         self.writer.write(
             out,
-            cells.iter().enumerate().map(
-                |(index, value)| match value_text(value, column_type(&self.columns, index)) {
-                    Some(text) => neutralise_formula(value, text, false),
-                    None => "NULL".to_owned(),
-                },
-            ),
+            cells.iter().enumerate().map(|(index, value)| {
+                value_text(value, column_type(&self.columns, index)).unwrap_or_else(|| "NULL".to_owned())
+            }),
         );
         Ok(())
     }
