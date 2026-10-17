@@ -1,7 +1,7 @@
 use gtk4::prelude::*;
 use tablepro_core::FilterSet;
-use tablepro_core::meta::PagePosition;
 
+use super::browse_pager::PageTarget;
 use super::columns_fetch::ColumnFreshness;
 use super::fetch::filter_failure;
 use super::{BrowseModel, BrowseRequestKind, BrowseTabOutput, Effects, PagingInput};
@@ -51,7 +51,7 @@ impl BrowseModel {
                 .set_filters(conn_id, self.schema.as_deref(), &self.table, set.clone());
         }
         // Filtered counts shift, so back to page 1.
-        self.pager.go_to(0);
+        self.pager.restart();
         self.refresh_filter_chrome();
         self.filter_strip.set_filter(&set);
         self.stop_count(false);
@@ -67,7 +67,7 @@ impl BrowseModel {
             return;
         }
         self.current_sort = Some(next);
-        self.pager.go_to(0);
+        self.pager.restart();
         self.capture_selection();
         self.fetch(BrowseRequestKind::Page, fx);
         fx.output(BrowseTabOutput::StateChanged);
@@ -84,11 +84,11 @@ impl BrowseModel {
     }
 
     /// Read the page a paginator move landed on, if it moved.
-    fn turn_page(&mut self, target: Option<(PagePosition, u64)>, fx: &mut Effects) {
-        let Some((_, start)) = target else {
+    fn turn_page(&mut self, target: Option<PageTarget>, fx: &mut Effects) {
+        let Some(target) = target else {
             return;
         };
-        self.pager.go_to(start);
+        self.pager.move_to(target);
         self.fetch(BrowseRequestKind::Page, fx);
         fx.output(BrowseTabOutput::StateChanged);
     }

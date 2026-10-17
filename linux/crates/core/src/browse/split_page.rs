@@ -45,7 +45,7 @@ pub fn split_page(result: QueryResult, spec: &PageSpec) -> Result<BrowsePage, Br
 
 /// The key for one row, or `None` when it cannot be used to name the
 /// row again.
-fn key_of(row: &[Value], layout: &RowKeyLayout) -> Option<Vec<Value>> {
+pub(super) fn key_of(row: &[Value], layout: &RowKeyLayout) -> Option<Vec<Value>> {
     match layout {
         RowKeyLayout::ReadOnly => None,
         RowKeyLayout::Columns(positions) => positions

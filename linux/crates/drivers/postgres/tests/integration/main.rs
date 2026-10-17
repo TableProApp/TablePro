@@ -15,6 +15,7 @@ mod filter;
 mod flight;
 mod liveness;
 mod metadata;
+mod paging;
 mod pgbouncer;
 mod read_only;
 mod slow_route;

@@ -259,6 +259,10 @@ fn closing_tab_cancels_running_count() {
 #[gtk4::test]
 fn last_page_waits_for_an_exact_total() {
     let mut script = paging(full_page(0), rows_from(900, &["Linus"]));
+    // The last page is read back from the table's end, so the count
+    // agrees with the one row it holds.
+    script.count_rows = Default::default();
+    script.count_rows.always(FakeReply::ok(901));
     script.table_estimate = Default::default();
     script
         .table_estimate

@@ -3007,3 +3007,74 @@ fn filter_button_tooltip_counts_the_active_rules() {
     wait_until(WAIT, || button.tooltip_text().as_deref() == Some("Filter Rows"))
         .expect("the tooltip still counted rules after they were cleared");
 }
+
+/// The page queries a tab sent, in order.
+fn page_queries(harness: &Harness) -> Vec<String> {
+    harness
+        .connection
+        .observed_sql("query_bound")
+        .into_iter()
+        .flatten()
+        .collect()
+}
+
+/// A table with a key pages past the edge row of the page on screen,
+/// so a page deep into it costs what the first does. The row numbers
+/// still count from the first page.
+#[gtk4::test]
+fn a_keyed_table_pages_by_the_edge_rows_key_not_by_offset() {
+    let mut script = serving_table();
+    script.count_rows.always(FakeReply::ok(1_000));
+    script.query_bound.always(FakeReply::ok(full_page(0)));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    let read = |count: usize| {
+        wait_until(WAIT, || {
+            page_queries(&harness).len() == count && !harness.tab().is_loading()
+        })
+        .expect("the page read");
+    };
+
+    harness.tab().send(PagingInput::NextPage);
+    read(2);
+    harness.tab().send(PagingInput::NextPage);
+    read(3);
+    harness.tab().send(PagingInput::PrevPage);
+    read(4);
+
+    let queries = page_queries(&harness);
+    for query in &queries[1..] {
+        assert!(!query.contains("OFFSET"), "{query}");
+    }
+    assert!(queries[1].contains(" > ("), "{}", queries[1]);
+    assert!(
+        queries[3].contains(" < (") && queries[3].contains(" DESC"),
+        "Previous reads back from the page's first row: {}",
+        queries[3]
+    );
+    assert_eq!(harness.tab().current_offset(), 100);
+}
+
+/// A sort of the user's has ties a key cannot resume from, so it pages
+/// by offset.
+#[gtk4::test]
+fn a_sorted_table_pages_by_offset() {
+    let mut script = serving_table();
+    script.query_bound.always(FakeReply::ok(full_page(0)));
+    let harness = Harness::open(script, []);
+    wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
+    harness.tab().send(PagingInput::SortChanged {
+        col_idx: 1,
+        ascending: true,
+    });
+    wait_until(WAIT, || {
+        page_queries(&harness).len() == 2 && !harness.tab().is_loading()
+    })
+    .expect("the sorted page");
+
+    harness.tab().send(PagingInput::NextPage);
+    wait_until(WAIT, || page_queries(&harness).len() == 3).expect("the next page");
+
+    let next = page_queries(&harness).pop().unwrap_or_default();
+    assert!(next.ends_with("LIMIT 100 OFFSET 100"), "{next}");
+}

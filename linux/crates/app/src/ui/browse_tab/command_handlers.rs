@@ -19,6 +19,9 @@ impl BrowseModel {
                 self.failed.record(BrowseRequestKind::Columns, &value);
                 match value {
                     Ok(reply) => {
+                        if self.identity.as_ref() != Some(&reply.identity) {
+                            self.pager.rebase();
+                        }
                         self.identity = Some(reply.identity);
                         self.on_columns_loaded(reply.columns.to_vec(), fx);
                         for kind in std::mem::take(&mut self.after_columns) {
