@@ -42,7 +42,13 @@ SET SESSION innodb_lock_wait_timeout = 10
 - Lock waits get the workspace's 10 s, in whole seconds rounded up.
 - Numbers are sent as integers, never floats a server could read in another locale.
 
-A workspace session also pins two things the app's generated SQL depends on: `time_zone = '+00:00'`, so a `TIMESTAMP` reads as the instant it names, and `sql_mode` without `NO_BACKSLASH_ESCAPES`, because generated DDL writes literals such as `COMMENT '...'` that have no hex form. An editor session keeps the server's own zone and `sql_mode`, as the mysql client would.
+A workspace session also pins what the app's generated SQL depends on:
+
+- `time_zone = '+00:00'`, so a `TIMESTAMP` reads as the instant it names.
+- `sql_mode` without `NO_BACKSLASH_ESCAPES`, because generated DDL writes literals such as `COMMENT '...'` that have no hex form.
+- `sql_mode` with `STRICT_ALL_TABLES`. Without strict mode the server stores what it can and only warns: a too-long string is cut, an unknown `ENUM` label becomes `''`, a number out of range is clamped, and a column made `NOT NULL` turns its NULLs into `0` or `''`. Strict mode makes each of these an error, so a save, an import or a schema change stores what it was given or fails.
+
+An editor session keeps the server's own zone and `sql_mode`, as the mysql client would.
 
 sqlx's own session statements (`PIPES_AS_CONCAT`, `NO_ENGINE_SUBSTITUTION`, its `SET NAMES`) are turned off. Its time zone is off too, except on a workspace session, where sqlx's `time_zone` option sends the `+00:00` above. Its statement cache is 0 so no prepared statement outlives its call, and its statement logging is off.
 

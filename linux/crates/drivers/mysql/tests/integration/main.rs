@@ -11,6 +11,7 @@ mod ddl;
 mod decode;
 mod editor_session;
 mod flavour_suite;
+mod lenient_server;
 mod metadata;
 mod non_transactional;
 mod row_limit;
