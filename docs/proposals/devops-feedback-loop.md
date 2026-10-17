@@ -6,28 +6,25 @@ Status: proposal, 2026-10-12. Nothing here is accepted until the owner picks it 
 
 One month into the 0.2.0 work, most elapsed time goes into waiting on and rerunning gates, finding crashes by hand, and rediscovering the same classes of bug. The loop is open at three points: failures are not classified, crashes leave no usable trace, and a fixed bug does not always leave a test behind.
 
-## What the validation data showed (runs 200 to 304, 2026-10-12)
+## What validation reviews showed
 
-| Measure | Value |
-|---|---|
-| Runs | 102 (74 passed, 28 failed) |
-| Failure rate | 27 percent |
-| Passing run, median | 18.6 minutes (90th percentile 22) |
-| Failing run, median | 10.1 minutes |
-| Time spent on failed runs | about 259 of about 1,600 minutes |
-| Unit tier (`cargo test --lib --bins`) | about 27 seconds for 2,224 tests |
+The unit tier is a small part of the full feedback loop. Most delay comes from
+database fixture startup, installed GUI scenarios and serialized acceptance
+runs. Failures need to be separated into product defects, test-environment
+failures and GUI timing under contention. These are durable observations, not
+current performance measurements; use fresh, source-pinned evidence when
+changing timeouts, sharding or runner capacity.
 
-Failures fall into three kinds: real defects the gate was right to catch, infrastructure (image pull and fixture start timeouts, compiler crashes, a runner starting before it could reach Docker), and GUI timing under load (TEST-31). The unit tier is not the slow part; the Docker suites, the GUI scenarios and the queue are.
-
-A pilot of `cargo-nextest` (0.9.148) on the unit tier measured 28 to 30 seconds against 26 to 27 for `cargo test`, so it is not a speed-up. Its value here is different: one process per test, per-test retries and timeouts, and sharding across executors. That could replace `scripts/run-isolated-tests.py` and `scripts/isolated-tests.json`, which are also a frequent merge-conflict file.
+The unit and sandbox tiers now use pinned `cargo-nextest`. The pilot did not show a raw speed improvement; its value is process isolation and clear per-test outcomes. Driver, release, GTK and keyring tiers still use Cargo's test runner or the isolated-test runner while their fixture and registration models remain separate ([#892](https://github.com/cozyGarage/BookiE/issues/892)).
 
 ## Done since the proposal
 
-Updated 2026-10-14.
+Updated 2026-10-17.
 
 - Failure classifier: `scripts/classify-ci-failure.py` (#678). It tags a failed job `infra`, `gui-timing`, `gui`, `code` or `unknown`; a job log with no result line (a runner or Forgejo connection lost) is also `infra`.
-- Gate queue: `scripts/forgejo-train.sh` gates several branches as one combined check (#718), but does not replace required per-pull-request head gates ([validation playbook](../validation-playbook.md#hosted-checks)). `.gitattributes` merges `CHANGELOG.md` and the PostgreSQL `connection_paths.rs` registry by union. The gate script retries its API calls and push after a Forgejo outage interrupted two gates on 2026-10-13.
-- Still open from stage 1: `scripts/isolated-tests.json` cannot merge by union, and on 2026-10-13 two registrations merged into one list entry without a comma and broke Preflight for every pull request until it was repaired. That is the strongest case for moving registration into test attributes or nextest groups. Branch protection that requires a branch to be up to date would also have caught it.
+- Gate queue: `scripts/forgejo-train.sh` gates several branches as one combined check (#718), but does not replace required per-pull-request head gates ([validation playbook](../validation-playbook.md#hosted-checks)). `.gitattributes` merges `CHANGELOG.md` and the PostgreSQL `connection_paths.rs` registry by union. The gate script retries transient API and push failures.
+- Still open from stage 1: `scripts/isolated-tests.json` cannot merge by union, so concurrent test-registration changes can break the preflight harness. Moving registration into test attributes or nextest groups would remove that shared-file conflict. Branch protection that requires a branch to be up to date would also catch stale branches.
+- Nextest: the unit and sandbox tiers use the pinned runner with retries disabled; broader adoption remains open until the other tiers' fixtures and registrations support it.
 - Coverage is split by test tier. The unit report does not cover driver integration paths; the nightly workflow now measures Docker suites for PostgreSQL, MySQL, SQLite, MongoDB, Redis and ClickHouse against per-crate floors. Use those reports for driver coverage rather than inferring gaps from the unit report.
 
 ## The loop, stage by stage
@@ -50,7 +47,7 @@ Next, in order:
 
 1. **Classify failures automatically.** A small script reads the failed job log and tags it: `infra` (known signatures: `PullImage ... RequestTimeoutError`, `fixture did not become ready`, `Compiler killed by signal`, `StartupTimeout`), `gui-timing`, or `code`. Post the tag on the run. Cost: small.
 2. **Retry known infrastructure signatures once at the job level** in the workflow, so a human does not rerun. Cost: small.
-3. **Adopt `nextest` for process isolation and retries**, not for speed. Cost: medium.
+3. **Extend `nextest` beyond unit and sandbox tiers** once the remaining fixtures support process isolation. Keep retries disabled unless evidence justifies them. Cost: medium.
 4. **Property tests for the security-critical parsers** (`proptest`). A first set for SQL classification ran 400,000 cases without a violation and takes under a second at the default size.
 5. **Snapshot tests (`insta`)** for exports and the Explain tree.
 
@@ -111,7 +108,7 @@ The classifier and gate queue are shipped. Nothing else in this proposal is appr
 2. Prebaked fixture images and a lab registry to reduce repeated pulls and startup failures.
 3. A local crash note and `--diagnostics` command.
 4. Pull request template and issue fields that connect fixes to their regression tests.
-5. `nextest` isolation and retries, plus changelog fragments.
+5. Extend `nextest` beyond unit and sandbox tiers, move isolated-test registration out of the shared JSON file, and add changelog fragments.
 6. Release-candidate CI builds for Arch and Debian packages.
 
 ## What this does not change
