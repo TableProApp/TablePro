@@ -197,7 +197,7 @@ for Phase 1.
 
 Status on branch `ux/phase1-first-hour` (from `origin/linux` at `cffde8ff2`).
 Each packet has unit tests; the GTK widget test and the second-launch check
-ran on the Arch runner under Xvfb with a D-Bus session. None of this is
+ran under Xvfb with a D-Bus session. None of this is
 installed-Wayland acceptance.
 
 | ID | Packet | Gap | Status |
@@ -249,14 +249,9 @@ B3-hot files or core contracts and is scheduled with that owner.
 
 ## Test infrastructure and later work
 
-### Arch runner VM (done)
+### Historical test environment (done)
 
-A lab Arch Linux VM (10 vCPU, 28 GB RAM, 300 GB disk) has the GTK 4.22 /
-libadwaita 1.9 / GtkSourceView 5.20 stack that Debian 13 lacks, Rust 1.98 and
-stable, Docker, Xvfb, a D-Bus session and Weston. A full debug build takes about
-two minutes. The lab repository holds a provisioning script and a run script
-that pushes a checkout's HEAD and runs a command there with a shared target
-cache. One lab node was left alone: it crashed under sustained full-core load.
+At the time of this audit, native GTK checks had an installed desktop environment available, while cross-distro verification remained separate. Machine capacity and provisioning details are omitted. Current platform requirements and acceptance steps live in the [platform guide](../platforms.md) and [manual verification](../manual-verification-0.2-features.md).
 
 ### Open items
 
