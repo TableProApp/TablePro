@@ -113,6 +113,9 @@ flowchart TB
     app --> app_services
     app_services --> storage
     app_services --> core
+    app_services --> policy
+    app_services --> transport
+    app_services --> dump
     app --> transport
     agentd --> transport
     mcp --> policy
@@ -136,11 +139,11 @@ flowchart TB
 | `tablepro-agentd` | Headless MCP composition root. Cargo binary `tablepro-agentd`; installed as `bookie-agentd`. |
 | `tablepro-core` | Domain types, driver traits, values, filters, transactions, registry. No workspace dependency. |
 | `tablepro-policy` | Classify, rules, approval, masking, blast radius, audit types, `PolicyGuard`. Depends on `core` only. |
-| `tablepro-app-services` | GTK-free application state and service logic used by the desktop app. Depends on `core` and `storage`. |
+| `tablepro-app-services` | GTK-free application state and service logic used by the desktop app. Depends on `core`, `dump`, `policy`, `storage` and `transport`. |
 | `tablepro-storage` | Saved connections, Secret Service, query history, audit journal. |
 | `tablepro-ssh` | Built-in `russh` tunnels and optional system OpenSSH backend. |
 | `tablepro-transport` | Saved-connection → dial options, SSH chain, tunnel, TLS service identity. |
-| `tablepro-dump` | GTK-free vendor-tool supervision, private password files and PostgreSQL dump/restore requests. The GTK app exposes guarded backup and restore actions through `PolicyGuard::run_administrative`. Depends on `core`; [ADR 0019](docs/decisions/0019-database-tooling-without-sidecars.md) governs the feature. |
+| `tablepro-dump` | GTK-free vendor-tool supervision, private password files and PostgreSQL dump/restore requests. Application services run backup and restore through `PolicyGuard::run_administrative`. Depends on `core`; [ADR 0019](docs/decisions/0019-database-tooling-without-sidecars.md) governs the feature. |
 | `tablepro-mcp` | MCP auth, scopes, connection allowlists, rate limits, tools. Never exposes a raw driver connection. |
 | `tablepro-driver-*` | One static crate per engine. |
 | `tablepro-driver-tls-tests` / `tablepro-release-tests` | Test-only fixtures. |
@@ -218,7 +221,7 @@ tablepro-app ────────┬──► app-services, mcp, policy, sto
 tablepro-agentd ────┘
 
 tablepro-release-tests ──► mcp, policy, storage, transport, ssh, drivers, core
-tablepro-app-services ──► storage, core
+tablepro-app-services ──► dump, policy, storage, transport, core
 
 tablepro-mcp        ──► policy, storage, core
 tablepro-transport  ──► storage, ssh, policy, core
