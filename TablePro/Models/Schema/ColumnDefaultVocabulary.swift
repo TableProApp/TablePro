@@ -1,10 +1,3 @@
-//
-//  ColumnDefaultVocabulary.swift
-//  TablePro
-//
-//  The default values each engine offers for a column, spelled the way its DDL wants them.
-//
-
 import Foundation
 
 /// The menu the Default cell offers, per engine.
@@ -13,10 +6,9 @@ import Foundation
 /// Default field holds. Nothing rewrites it on the way to the server, so an entry that is wrong here is
 /// a statement the server rejects.
 ///
-/// Curated in the app and keyed by database type id, the shape `PluginMetadataRegistry.fallbackCategory`
-/// already uses. It cannot be keyed by plugin: MySQL and MariaDB share one and spell an expression
-/// default differently; PostgreSQL, Redshift, CockroachDB and PGlite share one, and only two of them
-/// have `gen_random_uuid()`.
+/// Curated in the app and keyed by database type id. It cannot be keyed by plugin: MySQL and MariaDB
+/// share one and spell an expression default differently; PostgreSQL, Redshift, CockroachDB and PGlite
+/// share one, and only two of them have `gen_random_uuid()`.
 ///
 /// What belongs here is the vocabulary, not the syntax. MySQL takes a `TEXT` or `JSON` default only in
 /// parentheses whatever the value is, so that parenthesising is the MySQL driver's job at the point it

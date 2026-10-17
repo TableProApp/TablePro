@@ -37,7 +37,7 @@ internal final class PluginInstallProgressPresenter {
         parent.beginSheet(panel)
     }
 
-    // The installer publishes 0 before the first byte, then maybe nothing until the end, so 0 stays indeterminate.
+    // 0 stays indeterminate; a download without a Content-Length reports nothing before the final 1.
     private func update(fraction: Double) {
         let clamped = min(max(fraction, 0), 1)
         guard clamped > 0 else { return }
