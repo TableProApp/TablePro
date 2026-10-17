@@ -28,6 +28,7 @@ use crate::services::structure_tracker_registry::StructureTrackerRegistry;
 use crate::ui::browse_tab::{BrowseTab, BrowseTabInit};
 use crate::ui::editor::{SqlEditor, SqlEditorInit};
 use crate::ui::structure_tab::{StructureMode, StructureTab, StructureTabInit};
+use crate::ui::tab_load::FirstLoad;
 use crate::workspace::DraftWriter;
 
 /// What a factory builds its tabs from: the workspace's session, stores
@@ -66,11 +67,20 @@ impl TabFactory {
     /// Build the tab and append its page, unselected. `None` when the
     /// spec needs a session and the workspace has none any more.
     pub(super) fn create(&self, spec: TabSpec) -> Option<adw::TabPage> {
+        self.build(spec, FirstLoad::Now)
+    }
+
+    /// A saved tab, which reads its table the first time it is shown.
+    pub(super) fn restore(&self, spec: TabSpec) -> Option<adw::TabPage> {
+        self.build(spec, FirstLoad::WhenShown)
+    }
+
+    fn build(&self, spec: TabSpec, first_load: FirstLoad) -> Option<adw::TabPage> {
         let id = Uuid::new_v4();
         let slot = match spec {
             TabSpec::Editor { initial_query, draft } => self.editor(id, initial_query, draft),
-            TabSpec::Table { table, page } => self.table(id, table, page)?,
-            TabSpec::Structure { target } => self.structure(id, target)?,
+            TabSpec::Table { table, page } => self.table(id, table, page, first_load)?,
+            TabSpec::Structure { target } => self.structure(id, target, first_load)?,
         };
         Some(self.insert(id, slot))
     }
@@ -132,7 +142,7 @@ impl TabFactory {
         })
     }
 
-    fn table(&self, id: Uuid, table: TableRef, page: TablePage) -> Option<WorkspaceTab> {
+    fn table(&self, id: Uuid, table: TableRef, page: TablePage, first_load: FirstLoad) -> Option<WorkspaceTab> {
         let parts = &self.parts;
         let session = parts.context.active.get()?;
         let TableRef { schema, name } = table;
@@ -151,6 +161,7 @@ impl TabFactory {
             tasks: parts.context.tasks.clone(),
             deadlines: parts.context.deadlines.clone(),
             settings: parts.settings.clone(),
+            first_load,
         });
         connect_browse(&browse, id, &parts.input);
         let tab_page = self.append(&browse, id);
@@ -165,7 +176,7 @@ impl TabFactory {
         }))
     }
 
-    fn structure(&self, id: Uuid, target: StructureTarget) -> Option<WorkspaceTab> {
+    fn structure(&self, id: Uuid, target: StructureTarget, first_load: FirstLoad) -> Option<WorkspaceTab> {
         let parts = &self.parts;
         let session = parts.context.active.get()?;
         let (schema, table, mode) = match target {
@@ -179,6 +190,7 @@ impl TabFactory {
             mode,
             session,
             tasks: parts.context.tasks.clone(),
+            first_load,
         });
         connect_structure(&structure, id, &parts.input);
         let page = self.append(&structure, id);

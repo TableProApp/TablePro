@@ -96,7 +96,7 @@ use super::filter_strip::FilterStrip;
 use super::grid::{
     ColumnWidthBinding, GridRowIndex, GridSink, RowJsonRequest, RowObject, TabGridContext, present_row_json,
 };
-use super::tab_load::ContentLoad;
+use super::tab_load::{ContentLoad, FirstLoad, start_first_load};
 use crate::runtime::{FailedRequests, RequestSequencer};
 use crate::services::change_tracker::{RowKey, pk_identity};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
@@ -133,6 +133,7 @@ pub struct BrowseTabInit {
     /// The session's deadlines, which a count that ran out names.
     pub deadlines: Arc<dyn DeadlinePolicy>,
     pub settings: Rc<AppSettings>,
+    pub first_load: FirstLoad,
 }
 
 impl BrowseTab {
@@ -221,7 +222,14 @@ impl BrowseTab {
                 glib::spawn_future_local(future);
             },
         )));
-        tab.send(DataInput::Start);
+        start_first_load(&tab, init.first_load, {
+            let tab = tab.downgrade();
+            move || {
+                if let Some(tab) = tab.upgrade() {
+                    tab.send(DataInput::Start);
+                }
+            }
+        });
         tab
     }
 

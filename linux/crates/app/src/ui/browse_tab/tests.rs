@@ -366,6 +366,7 @@ pub(super) fn table_tab(
             tablepro_core::LivenessPolicy::DESKTOP,
         )),
         settings: stores.settings.get().clone(),
+        first_load: crate::ui::tab_load::FirstLoad::Now,
     })
 }
 

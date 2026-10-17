@@ -112,7 +112,7 @@ pub(crate) use self::table_input::TableInput;
 use crate::runtime::{FailedRequests, RequestSequencer};
 use crate::services::pending_structure::PendingStructure;
 use crate::services::structure_tracker_handle::StructureTrackerHandle;
-use crate::ui::tab_load::ContentLoad;
+use crate::ui::tab_load::{ContentLoad, FirstLoad, start_first_load};
 
 glib::wrapper! {
     pub struct StructureTab(ObjectSubclass<imp::StructureTab>)
@@ -137,6 +137,7 @@ pub struct StructureTabInit {
     /// from it for the SQL preview.
     pub session: Arc<Session>,
     pub tasks: Tasks,
+    pub first_load: FirstLoad,
 }
 
 /// Holds the tab weakly, so a row's or a dialog's closure never keeps a
@@ -233,7 +234,14 @@ impl StructureTab {
                 glib::spawn_future_local(future);
             },
         )));
-        tab.send(LoadInput::Start);
+        start_first_load(&tab, init.first_load, {
+            let tab = tab.downgrade();
+            move || {
+                if let Some(tab) = tab.upgrade() {
+                    tab.send(LoadInput::Start);
+                }
+            }
+        });
         tab
     }
 

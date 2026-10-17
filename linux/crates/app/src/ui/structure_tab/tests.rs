@@ -48,6 +48,7 @@ impl Harness {
             mode,
             session: fake.session.clone(),
             tasks: runtime.tasks(),
+            first_load: crate::ui::tab_load::FirstLoad::Now,
         });
         Self {
             tab: Some(tab),
@@ -728,6 +729,7 @@ fn an_edit_previews_the_plan_and_saves_through_the_tracker() {
         mode: StructureMode::Edit,
         session: fake.session.clone(),
         tasks: runtime.tasks(),
+        first_load: crate::ui::tab_load::FirstLoad::Now,
     });
     wait_until(WAIT, || {
         tab.imp().inner_stack.visible_child_name().as_deref() == Some("editor")
@@ -1449,6 +1451,7 @@ fn ctrl_s_saves_while_save_is_on() {
         mode: StructureMode::Edit,
         session: fake.session.clone(),
         tasks: runtime.tasks(),
+        first_load: crate::ui::tab_load::FirstLoad::Now,
     });
     wait_until(WAIT, || {
         tab.imp().inner_stack.visible_child_name().as_deref() == Some("editor")
