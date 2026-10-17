@@ -87,5 +87,4 @@ The linked issue records each theme's scope or acceptance decision. Project #3 o
 | [#579](https://github.com/cozyGarage/BookiE/issues/579) | MySQL/MariaDB Unix socket endpoint (Omarchy-relevant); driver and installed-form coverage are in #680, but connection URLs still cannot express a socket endpoint; keep open for URL import, the merge-tier gate and native local-service connect/save/reopen/bundle acceptance |
 | [#580](https://github.com/cozyGarage/BookiE/issues/580) | Filter Schemas and PostgreSQL many-schema catalog performance |
 | [#609](https://github.com/cozyGarage/BookiE/issues/609) | Local filtering and sorting for loaded SQL and pinned results (UI-38) |
-| [#638](https://github.com/cozyGarage/BookiE/issues/638) | MySQL supports_local_socket accepts a socket_dir |
 | [#861](https://github.com/cozyGarage/BookiE/issues/861) | MCP token dialog reports best-effort keyring storage accurately (UI-43) |
