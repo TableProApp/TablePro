@@ -129,9 +129,22 @@ pub fn build_rename_table(
         let new_bare = sql_literal(new_name.trim());
         return Ok(format!("EXEC sp_rename '{}', '{}'", old_qualified, new_bare));
     }
-    Ok(format!(
-        "ALTER TABLE {} RENAME TO {}",
-        qualified_table(driver_id, schema, old_name),
-        quote_ident(driver_id, new_name)
-    ))
+    let old_qualified = qualified_table(driver_id, schema, old_name);
+    match driver_id {
+        "clickhouse" => Ok(format!(
+            "RENAME TABLE {} TO {}",
+            old_qualified,
+            qualified_table(driver_id, schema, new_name)
+        )),
+        "mysql" => Ok(format!(
+            "ALTER TABLE {} RENAME TO {}",
+            old_qualified,
+            qualified_table(driver_id, schema, new_name)
+        )),
+        _ => Ok(format!(
+            "ALTER TABLE {} RENAME TO {}",
+            old_qualified,
+            quote_ident(driver_id, new_name)
+        )),
+    }
 }

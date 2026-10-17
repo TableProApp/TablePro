@@ -260,6 +260,22 @@ fn rename_table_each_driver() {
 }
 
 #[test]
+fn a_renamed_table_stays_in_its_own_database() {
+    assert_eq!(
+        build_rename_table("mysql", Some("b"), "old", "new").unwrap(),
+        "ALTER TABLE `b`.`old` RENAME TO `b`.`new`"
+    );
+    assert_eq!(
+        build_rename_table("clickhouse", Some("db"), "old", "new").unwrap(),
+        "RENAME TABLE `db`.`old` TO `db`.`new`"
+    );
+    assert_eq!(
+        build_rename_table("clickhouse", None, "old", "new").unwrap(),
+        "RENAME TABLE `old` TO `new`"
+    );
+}
+
+#[test]
 fn rename_table_mssql() {
     assert_eq!(
         build_rename_table("mssql", None, "old", "new").unwrap(),
