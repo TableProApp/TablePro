@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tablepro 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/TableProApp/TablePro/issues\n"
-"POT-Creation-Date: 2026-10-17 11:45+0000\n"
+"POT-Creation-Date: 2026-10-17 15:24+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -272,6 +272,11 @@ msgid "Try Again"
 msgstr ""
 
 #: crates/app/src/ui/browse_tab/pager_bar.rs
+#, rust-format
+msgid "Couldn't count the rows. {reason}"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/pager_bar.rs
 msgid "First Page"
 msgstr ""
 
@@ -301,6 +306,12 @@ msgid "{n} unsaved change"
 msgid_plural "{n} unsaved changes"
 msgstr[0] ""
 msgstr[1] ""
+
+#: crates/app/src/ui/browse_tab/pending_changes_bar.rs
+#: data/resources/ui/pending-changes-bar.ui data/resources/ui/structure-tab.ui
+#: data/resources/ui/workspace.ui
+msgid "Saving…"
+msgstr ""
 
 #: crates/app/src/ui/browse_tab/row_deletion.rs
 msgid ""
@@ -2220,6 +2231,10 @@ msgstr ""
 msgid "Remove Rule"
 msgstr ""
 
+#: crates/app/src/ui/filter_strip/rule_row.rs
+msgid "Filter Rule"
+msgstr ""
+
 #: crates/app/src/ui/filter_strip/rule_value_editor.rs
 msgid "Value"
 msgstr ""
@@ -2234,6 +2249,10 @@ msgstr ""
 
 #: crates/app/src/ui/filter_strip/rule_value_editor.rs
 msgid "a, b, c"
+msgstr ""
+
+#: crates/app/src/ui/filter_strip/rule_value_editor.rs
+msgid "Values"
 msgstr ""
 
 #: crates/app/src/ui/grid/calendar_editor.rs
@@ -2376,6 +2395,22 @@ msgstr ""
 
 #: crates/app/src/ui/grid/grid_menus.rs
 msgid "Show Row as JSON"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Sort Ascending"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Sort Descending"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Clear Sort"
+msgstr ""
+
+#: crates/app/src/ui/grid/grid_menus.rs
+msgid "Reset Column Width"
 msgstr ""
 
 #: crates/app/src/ui/grid/grid_menus.rs
@@ -3868,6 +3903,10 @@ msgstr ""
 msgid "_Stop Imports"
 msgstr ""
 
+#: crates/app/src/ui/workspace/mod.rs
+msgid "Unsaved changes"
+msgstr ""
+
 #: crates/app/src/ui/workspace/saves.rs
 msgid "Saved"
 msgstr ""
@@ -4751,6 +4790,10 @@ msgid "Cancel the Running Query"
 msgstr ""
 
 #: data/resources/shortcuts-dialog.ui
+msgid "Move Between the Editor and the Results"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
 msgid "Format SQL"
 msgstr ""
 
@@ -4854,6 +4897,14 @@ msgstr ""
 msgid "Running exports"
 msgstr ""
 
+#: data/resources/ui/filter-rule-row.ui
+msgid "Column"
+msgstr ""
+
+#: data/resources/ui/filter-rule-row.ui
+msgid "Operator"
+msgstr ""
+
 #: data/resources/ui/filter-strip.ui
 msgid "Match"
 msgstr ""
@@ -4954,11 +5005,6 @@ msgstr ""
 
 #: data/resources/ui/history-row.ui
 msgid "Select Query"
-msgstr ""
-
-#: data/resources/ui/pending-changes-bar.ui data/resources/ui/structure-tab.ui
-#: data/resources/ui/workspace.ui
-msgid "Saving…"
 msgstr ""
 
 #: data/resources/ui/pending-changes-bar.ui
