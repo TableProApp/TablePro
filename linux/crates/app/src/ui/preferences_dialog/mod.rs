@@ -13,6 +13,7 @@ use libadwaita::prelude::*;
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::AppSettings;
 
+use crate::services::history_service::HistoryService;
 use crate::ui::file_reveal::FileRevealer;
 
 #[cfg(test)]
@@ -33,7 +34,7 @@ impl PreferencesDialog {
     pub(crate) fn new(
         settings: &Rc<AppSettings>,
         storage: &crate::storage::SharedStorage,
-        history: Option<tablepro_storage::QueryHistory>,
+        history: HistoryService,
         tasks: &Tasks,
         revealer: Rc<dyn FileRevealer>,
     ) -> Self {
@@ -52,6 +53,18 @@ impl PreferencesDialog {
     }
 }
 
+/// A query history of its own under `root`, opening in the background
+/// as the app's does.
+#[cfg(test)]
+fn test_history(root: &tempfile::TempDir, tasks: &Tasks) -> HistoryService {
+    let paths = tablepro_storage::StoragePaths::under(root.path(), "tablepro-test", "app.tablepro.TablePro.Devel");
+    let preferences = crate::services::history_preferences::HistoryPreferences {
+        retention_days: tokio::sync::watch::channel(30).1,
+        save: tokio::sync::watch::channel(true).1,
+    };
+    HistoryService::start(paths, preferences, tasks)
+}
+
 /// A storage under a temporary root, so the dialog's storage row and
 /// history actions stay away from the developer's own files.
 #[cfg(test)]
@@ -67,8 +80,6 @@ fn test_storage(tasks: &Tasks) -> crate::storage::SharedStorage {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_storage::StoragePaths;
-
     use super::*;
     use crate::test_support::{MemorySettings, assert_labelled, descendants, test_runtime, unlabelled_icon_buttons};
     use crate::ui::file_reveal::RecordingRevealer;
@@ -79,7 +90,7 @@ mod tests {
     fn new_dialog(
         settings: &MemorySettings,
         storage: &crate::storage::SharedStorage,
-        history: Option<tablepro_storage::QueryHistory>,
+        history: HistoryService,
         tasks: &Tasks,
     ) -> PreferencesDialog {
         crate::register_test_resources();
@@ -105,7 +116,13 @@ mod tests {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
-        let dialog = new_dialog(&settings, &storage, None, &runtime.tasks());
+        let root = tempfile::tempdir().expect("tempdir");
+        let dialog = new_dialog(
+            &settings,
+            &storage,
+            test_history(&root, &runtime.tasks()),
+            &runtime.tasks(),
+        );
         let [general, editor] = pages(&dialog);
 
         assert_eq!(general.title(), "General");
@@ -124,7 +141,13 @@ mod tests {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
-        let dialog = new_dialog(&settings, &storage, None, &runtime.tasks());
+        let root = tempfile::tempdir().expect("tempdir");
+        let dialog = new_dialog(
+            &settings,
+            &storage,
+            test_history(&root, &runtime.tasks()),
+            &runtime.tasks(),
+        );
 
         for page in pages(&dialog) {
             let rows: Vec<adw::PreferencesRow> = descendants(&page)
@@ -150,7 +173,13 @@ mod tests {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
-        let dialog = new_dialog(&settings, &storage, None, &runtime.tasks());
+        let root = tempfile::tempdir().expect("tempdir");
+        let dialog = new_dialog(
+            &settings,
+            &storage,
+            test_history(&root, &runtime.tasks()),
+            &runtime.tasks(),
+        );
         let history_group = dialog.imp().general_page.history_group().downgrade();
         let freed = dialog.downgrade();
 
@@ -170,13 +199,14 @@ mod tests {
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
         let root = tempfile::tempdir().expect("tempdir");
-        let paths = StoragePaths::under(root.path(), "tablepro-test", "app.tablepro.TablePro.Devel");
-        let history = open_history(&runtime, &paths);
+        let service = test_history(&root, &runtime.tasks());
+        let history = block_on(&runtime, service.ready_store()).expect("the history to open");
         record_one(&runtime, &history);
         assert_eq!(count(&runtime, &history), 1);
 
-        let dialog = new_dialog(&settings, &storage, Some(history.clone()), &runtime.tasks());
-        assert!(clear_button(&dialog).is_sensitive());
+        let dialog = new_dialog(&settings, &storage, service, &runtime.tasks());
+        crate::test_support::wait_until(WAIT, || clear_button(&dialog).is_sensitive())
+            .expect("Clear offered once the history opened");
         let window = present_on_a_window(&dialog);
         clear_button(&dialog).emit_clicked();
         confirm_the_alert(&window);
@@ -228,10 +258,6 @@ mod tests {
             .filter_map(|widget| widget.downcast::<gtk4::Label>().ok())
             .map(|label| label.label().to_string())
             .find(|text| text.contains("cleared") || text.contains("could not be cleared"))
-    }
-
-    fn open_history(runtime: &crate::runtime::AppRuntime, paths: &StoragePaths) -> tablepro_storage::QueryHistory {
-        block_on(runtime, tablepro_storage::QueryHistory::open(paths)).expect("open the history")
     }
 
     fn record_one(runtime: &crate::runtime::AppRuntime, history: &tablepro_storage::QueryHistory) {

@@ -47,7 +47,7 @@ impl HistoryService {
                 Ok(history) => history,
                 Err(error) => {
                     tracing::warn!(%error, "query history unavailable");
-                    sender.send_replace(HistoryAvailability::Failed(error.to_string()));
+                    sender.send_replace(HistoryAvailability::failed(&error));
                     return;
                 }
             };
@@ -129,9 +129,7 @@ impl HistoryService {
         async move {
             // A sender gone means the worker ended, which it does only
             // after it has said how the open went.
-            let _ = availability
-                .wait_for(|state| !matches!(state, HistoryAvailability::Starting))
-                .await;
+            let _ = availability.wait_for(HistoryAvailability::is_settled).await;
             store.lock().ok().and_then(|guard| guard.clone())
         }
     }

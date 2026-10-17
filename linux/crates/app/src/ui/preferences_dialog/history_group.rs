@@ -11,7 +11,10 @@ use libadwaita::prelude::*;
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::AppSettings;
 use tablepro_storage::settings::keys;
+use tokio::sync::watch;
 
+use crate::services::history_availability::HistoryAvailability;
+use crate::services::history_service::HistoryService;
 use crate::ui::file_reveal::{FileRevealer, reveal_failure_toast};
 
 mod imp {
@@ -22,6 +25,9 @@ mod imp {
     #[derive(Default, gtk4::CompositeTemplate)]
     #[template(resource = "/app/tablepro/TablePro/ui/preferences-history-group.ui")]
     pub struct HistoryGroup {
+        /// Follows whether the query database opened, for as long as
+        /// the group is shown.
+        pub availability: std::cell::RefCell<Option<glib::JoinHandle<()>>>,
         #[template_child]
         pub save_history_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
@@ -52,6 +58,12 @@ mod imp {
     }
 
     impl ObjectImpl for HistoryGroup {
+        fn dispose(&self) {
+            if let Some(watch) = self.availability.take() {
+                watch.abort();
+            }
+        }
+
         fn signals() -> &'static [Signal] {
             static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
             SIGNALS.get_or_init(|| {
@@ -87,7 +99,7 @@ impl HistoryGroup {
         &self,
         settings: &AppSettings,
         storage: &crate::storage::SharedStorage,
-        history: Option<tablepro_storage::QueryHistory>,
+        history: HistoryService,
         tasks: &Tasks,
         revealer: Rc<dyn FileRevealer>,
     ) {
@@ -110,16 +122,15 @@ impl HistoryGroup {
         // in the tooltip.
         imp.storage_row.set_tooltip_text(Some(&path));
 
-        // The database opens on a background task, so the button stays
-        // insensitive until it is there to clear.
-        imp.clear_button.set_sensitive(history.is_some());
         let group = self.downgrade();
         let tasks = tasks.clone();
+        let service = history.clone();
         imp.clear_button.connect_clicked(move |_| {
-            if let Some(group) = group.upgrade() {
-                group.confirm_clear(history.clone(), &tasks);
+            if let (Some(group), Some(store)) = (group.upgrade(), service.store()) {
+                group.confirm_clear(store, &tasks);
             }
         });
+        self.follow_availability(history.availability());
 
         let group = self.downgrade();
         imp.storage_button.connect_clicked(move |_| {
@@ -139,7 +150,40 @@ impl HistoryGroup {
         )
     }
 
-    fn confirm_clear(&self, history: Option<tablepro_storage::QueryHistory>, tasks: &Tasks) {
+    /// The database opens on a background task: Clear waits for it, and
+    /// a database that could not open says why where the group starts.
+    fn follow_availability(&self, mut availability: watch::Receiver<HistoryAvailability>) {
+        let group = self.downgrade();
+        let following = glib::spawn_future_local(async move {
+            loop {
+                let state = availability.borrow_and_update().clone();
+                let Some(group) = group.upgrade() else {
+                    return;
+                };
+                group.show_availability(&state);
+                drop(group);
+                if availability.changed().await.is_err() {
+                    return;
+                }
+            }
+        });
+        if let Some(previous) = self.imp().availability.replace(Some(following)) {
+            previous.abort();
+        }
+    }
+
+    fn show_availability(&self, state: &HistoryAvailability) {
+        self.imp().clear_button.set_sensitive(state.is_ready());
+        let reason = state.failure().map(|reason| {
+            crate::i18n::gettext_f(
+                "Query history and saved queries cannot be used. {reason}",
+                &[("reason", reason)],
+            )
+        });
+        self.set_description(reason.as_deref());
+    }
+
+    fn confirm_clear(&self, history: tablepro_storage::QueryHistory, tasks: &Tasks) {
         let alert = adw::AlertDialog::new(
             Some(&crate::i18n::gettext("Clear All Query History?")),
             Some(&crate::i18n::gettext(
@@ -159,9 +203,7 @@ impl HistoryGroup {
             if response != "clear" {
                 return;
             }
-            let Some(history) = history.clone() else {
-                return;
-            };
+            let history = history.clone();
             let clearing = tasks.spawn_task(async move { history.clear_all().await });
             let group = group.clone();
             // A destructive action that reports nothing leaves the
@@ -212,12 +254,19 @@ mod tests {
     fn bound_group(
         settings: &MemorySettings,
         storage: &crate::storage::SharedStorage,
+        root: &tempfile::TempDir,
         tasks: &Tasks,
         revealer: Rc<RecordingRevealer>,
     ) -> HistoryGroup {
         crate::register_test_resources();
         let group = HistoryGroup::default();
-        group.bind(settings.get(), storage, None, tasks, revealer);
+        group.bind(
+            settings.get(),
+            storage,
+            super::super::test_history(root, tasks),
+            tasks,
+            revealer,
+        );
         group
     }
 
@@ -226,9 +275,11 @@ mod tests {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
+        let root = tempfile::tempdir().expect("tempdir");
         let group = bound_group(
             &settings,
             &storage,
+            &root,
             &runtime.tasks(),
             Rc::new(RecordingRevealer::succeeding()),
         );
@@ -247,9 +298,11 @@ mod tests {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
+        let root = tempfile::tempdir().expect("tempdir");
         let group = bound_group(
             &settings,
             &storage,
+            &root,
             &runtime.tasks(),
             Rc::new(RecordingRevealer::succeeding()),
         );
@@ -264,7 +317,8 @@ mod tests {
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
         let revealer = Rc::new(RecordingRevealer::succeeding());
-        let group = bound_group(&settings, &storage, &runtime.tasks(), revealer.clone());
+        let root = tempfile::tempdir().expect("tempdir");
+        let group = bound_group(&settings, &storage, &root, &runtime.tasks(), revealer.clone());
 
         group.imp().storage_button.emit_clicked();
 
@@ -276,9 +330,11 @@ mod tests {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
+        let root = tempfile::tempdir().expect("tempdir");
         let group = bound_group(
             &settings,
             &storage,
+            &root,
             &runtime.tasks(),
             Rc::new(RecordingRevealer::failing()),
         );
@@ -301,9 +357,11 @@ mod tests {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
+        let root = tempfile::tempdir().expect("tempdir");
         let group = bound_group(
             &settings,
             &storage,
+            &root,
             &runtime.tasks(),
             Rc::new(RecordingRevealer::succeeding()),
         );
@@ -316,21 +374,31 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn clear_history_is_insensitive_until_the_database_opens() {
-        let settings = MemorySettings::new();
-        let runtime = test_runtime();
-        let storage = test_storage(&runtime.tasks());
-
-        let starting = bound_group(
-            &settings,
-            &storage,
-            &runtime.tasks(),
-            Rc::new(RecordingRevealer::succeeding()),
-        );
-
+    fn clear_follows_the_database_and_a_failure_says_why() {
+        crate::register_test_resources();
+        let group = HistoryGroup::default();
+        let (state, availability) = watch::channel(HistoryAvailability::Starting);
+        group.follow_availability(availability);
+        let clear = group.imp().clear_button.get();
+        drain_main_context();
         assert!(
-            !starting.imp().clear_button.is_sensitive(),
+            !clear.is_sensitive(),
             "Clear offered to clear a database that is not open"
+        );
+        assert!(group.description().unwrap_or_default().is_empty());
+
+        state.send_replace(HistoryAvailability::Ready);
+        drain_main_context();
+        assert!(clear.is_sensitive(), "Clear stayed off after the database opened");
+
+        state.send_replace(HistoryAvailability::Failed(
+            "The disk that holds history.db is full.".to_owned(),
+        ));
+        drain_main_context();
+        assert!(!clear.is_sensitive());
+        assert_eq!(
+            group.description().as_deref(),
+            Some("Query history and saved queries cannot be used. The disk that holds history.db is full.")
         );
     }
 }

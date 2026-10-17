@@ -61,7 +61,7 @@ fn present_preferences(app: &TableProApplication) {
     PreferencesDialog::new(
         &services.settings,
         &services.storage,
-        services.history().store(),
+        services.history(),
         &services.tasks,
         services.file_revealer.clone(),
     )

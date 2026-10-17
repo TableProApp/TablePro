@@ -69,7 +69,7 @@ impl GeneralPage {
         &self,
         settings: &Rc<AppSettings>,
         storage: &crate::storage::SharedStorage,
-        history: Option<tablepro_storage::QueryHistory>,
+        history: crate::services::history_service::HistoryService,
         tasks: &Tasks,
         revealer: Rc<dyn FileRevealer>,
     ) {
@@ -96,13 +96,18 @@ mod tests {
     use crate::test_support::{MemorySettings, test_runtime};
     use crate::ui::file_reveal::RecordingRevealer;
 
-    fn bound_page(settings: &MemorySettings, storage: &crate::storage::SharedStorage, tasks: &Tasks) -> GeneralPage {
+    fn bound_page(
+        settings: &MemorySettings,
+        storage: &crate::storage::SharedStorage,
+        root: &tempfile::TempDir,
+        tasks: &Tasks,
+    ) -> GeneralPage {
         crate::register_test_resources();
         let page = GeneralPage::default();
         page.bind(
             settings.get(),
             storage,
-            None,
+            super::super::test_history(root, tasks),
             tasks,
             Rc::new(RecordingRevealer::succeeding()),
         );
@@ -122,7 +127,8 @@ mod tests {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
-        let page = bound_page(&settings, &storage, &runtime.tasks());
+        let root = tempfile::tempdir().expect("tempdir");
+        let page = bound_page(&settings, &storage, &root, &runtime.tasks());
 
         let groups = groups(&page);
         let titles: Vec<String> = groups.iter().map(|group| group.title().to_string()).collect();
@@ -138,7 +144,8 @@ mod tests {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
-        let page = bound_page(&settings, &storage, &runtime.tasks());
+        let root = tempfile::tempdir().expect("tempdir");
+        let page = bound_page(&settings, &storage, &root, &runtime.tasks());
         let row = page.imp().restore_session_row.get();
         assert!(row.is_active(), "the row does not show the default");
 
@@ -154,7 +161,8 @@ mod tests {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
-        let page = bound_page(&settings, &storage, &runtime.tasks());
+        let root = tempfile::tempdir().expect("tempdir");
+        let page = bound_page(&settings, &storage, &root, &runtime.tasks());
         let imp = page.imp();
 
         imp.data_browser_group.imp().confirm_row.set_active(false);

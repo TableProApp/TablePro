@@ -25,7 +25,21 @@ impl WorkspaceModel {
         dialog.present(self.dialog_parent().as_ref());
     }
 
+    /// Say in an alert why the query database cannot be used. False
+    /// when it can.
+    fn alert_history_unavailable(&self, title: &str) -> bool {
+        let reason = self.history.availability().borrow().failure().map(str::to_owned);
+        let Some(reason) = reason else {
+            return false;
+        };
+        self.show_error_alert(title, &reason);
+        true
+    }
+
     pub(super) fn on_show_history(&mut self) {
+        if self.alert_history_unavailable(&crate::i18n::gettext("Query History Unavailable")) {
+            return;
+        }
         let dialog = HistoryDialog::new(HistoryDialogInit {
             history: self.history.clone(),
             connections: self.storage.connections().clone(),
@@ -45,6 +59,9 @@ impl WorkspaceModel {
     }
 
     pub(super) fn on_show_saved_queries(&mut self) {
+        if self.alert_history_unavailable(&crate::i18n::gettext("Saved Queries Unavailable")) {
+            return;
+        }
         let dialog = SavedQueriesDialog::builder()
             .launch(SavedQueriesDialogInit {
                 store: self.history.store().map(|history| history.saved_queries()),
@@ -72,6 +89,9 @@ impl WorkspaceModel {
     /// The text is read now rather than when the dialog closes, so what
     /// is saved is what the user was looking at when they asked.
     pub(super) fn on_save_active_query(&self) {
+        if self.alert_history_unavailable(&crate::i18n::gettext("Could Not Save Query")) {
+            return;
+        }
         let Some(query) = self.active_editor_query() else {
             self.show_toast(&crate::i18n::gettext("Open a SQL editor tab to save a query."));
             return;
@@ -111,10 +131,6 @@ impl WorkspaceModel {
     }
 
     pub(super) fn on_save_query_named(&self, name: String, query: String) {
-        let Some(store) = self.history.store().map(|history| history.saved_queries()) else {
-            self.show_toast(&crate::i18n::gettext("The query database is not open yet."));
-            return;
-        };
         let Some(metadata) = self.context.active.metadata() else {
             self.show_toast(&crate::i18n::gettext(
                 "Connect to a database first: a saved query is kept under its connection.",
@@ -128,9 +144,18 @@ impl WorkspaceModel {
             connection_name: metadata.name,
         };
         // The save lands even when the workspace is gone by then; only
-        // its toast is dropped.
+        // its toast is dropped. A database still opening is waited for.
         let input = self.input.clone();
+        let (ready, availability) = (self.history.ready_store(), self.history.availability());
         crate::runtime::spawn_held(&self.tasks, &*self.context.hold, async move {
+            let Some(store) = ready.await.map(|history| history.saved_queries()) else {
+                let reason = availability.borrow().failure().map(str::to_owned).unwrap_or_default();
+                input.deliver(WorkspaceInput::ShowAlert {
+                    title: crate::i18n::gettext("Could Not Save Query"),
+                    body: reason,
+                });
+                return;
+            };
             let message = match store.save(new_query).await {
                 Ok(outcome) if outcome.replaced => crate::i18n::gettext_f("Replaced “{name}”.", &[("name", &name)]),
                 Ok(_) => crate::i18n::gettext_f("Saved “{name}”.", &[("name", &name)]),
@@ -224,6 +249,75 @@ mod tests {
         glib::log_set_always_fatal(previous);
 
         disconnected.expect("the window back on the picker");
+    }
+
+    /// A history whose database cannot be read: a folder stands where
+    /// the file goes.
+    fn unreadable_history(
+        test: &TestWindow,
+        root: &tempfile::TempDir,
+    ) -> crate::services::history_service::HistoryService {
+        let paths = tablepro_storage::StoragePaths::under(root.path(), "tablepro-test", "app.tablepro.TablePro.Devel");
+        std::fs::create_dir_all(paths.history_database()).expect("a folder where the database goes");
+        let preferences = crate::services::history_preferences::HistoryPreferences {
+            retention_days: tokio::sync::watch::channel(30).1,
+            save: tokio::sync::watch::channel(true).1,
+        };
+        let history = crate::services::history_service::HistoryService::start(paths, preferences, &test.services.tasks);
+        let availability = history.availability();
+        wait_until(WAIT, || availability.borrow().is_settled()).expect("the open to end");
+        history
+    }
+
+    #[gtk4::test]
+    fn an_unreadable_history_says_why_where_it_is_opened() {
+        use gtk4::prelude::*;
+        use libadwaita::prelude::*;
+
+        use crate::workspace::{answer, visible_alert};
+
+        let test = TestWindow::connected("HistoryUnreadable");
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = unreadable_history(&test, &root);
+        test.workspace().with_model(|model| model.history = history);
+
+        for (action, heading) in [
+            ("win.show-history", "Query History Unavailable"),
+            ("win.show-saved-queries", "Saved Queries Unavailable"),
+        ] {
+            WidgetExt::activate_action(&test.window, action, None).expect(action);
+            wait_until(WAIT, || {
+                visible_alert(&test.window).is_some_and(|alert| alert.heading().as_deref() == Some(heading))
+            })
+            .unwrap_or_else(|_| panic!("{action} said nothing"));
+            let body = visible_alert(&test.window).map(|alert| alert.body().to_string());
+            assert_eq!(
+                body.as_deref(),
+                Some("The query history file could not be read. It may be damaged.")
+            );
+            assert!(answer(&test.window, "close"));
+            wait_until(WAIT, || visible_alert(&test.window).is_none()).expect("the alert to close");
+        }
+    }
+
+    #[gtk4::test]
+    fn saving_a_query_into_an_unreadable_history_says_why() {
+        use libadwaita::prelude::*;
+
+        use crate::workspace::visible_alert;
+
+        let test = TestWindow::connected("SaveQueryUnreadable");
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = unreadable_history(&test, &root);
+        test.workspace().with_model(|model| {
+            model.history = history;
+            model.on_save_query_named("Orders".to_owned(), "SELECT 1".to_owned());
+        });
+
+        wait_until(WAIT, || {
+            visible_alert(&test.window).is_some_and(|alert| alert.heading().as_deref() == Some("Could Not Save Query"))
+        })
+        .expect("the save said why it failed");
     }
 
     #[test]

@@ -157,7 +157,7 @@ impl AppServices {
 
     /// The database migrates and prunes on open, which is too slow to
     /// hold up the first window. The menu items that need it stay
-    /// disabled until the service reports Ready.
+    /// disabled until the service says how the open went.
     pub(crate) fn history(&self) -> HistoryService {
         self.history
             .get_or_init(|| {
