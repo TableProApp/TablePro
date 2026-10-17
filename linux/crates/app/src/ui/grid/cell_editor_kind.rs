@@ -10,6 +10,11 @@ use super::CellLock;
 /// one-line entry lays all of it out at once and shows almost none.
 pub const INLINE_EDIT_MAX_BYTES: usize = 4096;
 
+/// Past this many bytes a value does not open for editing at all: the
+/// multi-line editor lays out every line of it on the GTK thread, and a
+/// value of megabytes stalls the window.
+pub const EDIT_MAX_BYTES: usize = 1_000_000;
+
 /// The editor a cell opens with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CellEditorKind {

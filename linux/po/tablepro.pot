@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tablepro 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/TableProApp/TablePro/issues\n"
-"POT-Creation-Date: 2026-10-16 16:58+0000\n"
+"POT-Creation-Date: 2026-10-17 09:29+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -2169,6 +2169,11 @@ msgstr ""
 msgid "Values with a NUL character can't be edited here"
 msgstr ""
 
+#: crates/app/src/ui/grid/cell_edit.rs
+#, rust-format
+msgid "Values over {size} can't be edited here"
+msgstr ""
+
 #: crates/app/src/ui/grid/cell_tooltip.rs
 msgid "Use Show Row as JSON to see the full value"
 msgstr ""
@@ -2278,6 +2283,13 @@ msgstr ""
 #: crates/app/src/ui/picker/connection_menu.rs
 msgid "Duplicate"
 msgstr ""
+
+#: crates/app/src/ui/grid/row_json_dialog.rs
+#, rust-format
+msgid "… ({count} more item)"
+msgid_plural "… ({count} more items)"
+msgstr[0] ""
+msgstr[1] ""
 
 #: crates/app/src/ui/grid/row_json_dialog.rs
 msgid "Long values are shortened here. Copy includes them in full."
@@ -2790,6 +2802,22 @@ msgstr ""
 
 #: crates/app/src/ui/result_pane/result_summary.rs
 #, rust-format
+msgid "No rows kept; a run keeps at most {limit} rows across its results"
+msgstr ""
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
+msgid ""
+"Showing the first {shown} row; a run keeps at most {limit} rows across its "
+"results"
+msgid_plural ""
+"Showing the first {shown} rows; a run keeps at most {limit} rows across its "
+"results"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
 msgid "Showing {shown} of {total} row"
 msgid_plural "Showing {shown} of {total} rows"
 msgstr[0] ""
@@ -2968,6 +2996,14 @@ msgstr ""
 
 #: crates/app/src/ui/session_window/connections.rs
 msgid "JSON files"
+msgstr ""
+
+#: crates/app/src/ui/session_window/crash_notice.rs
+msgid "TablePro quit unexpectedly last time"
+msgstr ""
+
+#: crates/app/src/ui/session_window/crash_notice.rs
+msgid "Show Report"
 msgstr ""
 
 #: crates/app/src/ui/session_window/locate_file.rs

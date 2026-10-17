@@ -93,8 +93,8 @@ fn isolated_ssh() -> IsolatedSsh {
         0o755,
     )
     .expect("the ssh wrapper");
-    let runtime = dir.path().join("runtime");
-    std::fs::create_dir(&runtime).expect("the runtime directory");
+    // `app/<id>` is left for the runtime to create, as on a host install.
+    let runtime = dir.path().join("runtime").join("app").join("app.tablepro.TablePro");
     let services = SshServices {
         runtime: Arc::new(SshRuntimeCell::new(runtime)),
         ssh_program: wrapper,

@@ -16,6 +16,10 @@ use crate::ui::format::{format_thousands, plural_count};
 /// Longer text is cut in the dialog: the view lays out every character
 /// it holds, and a value of megabytes would stall it.
 const SHOWN_CHARS: usize = 10_000;
+/// Binary shows as hex, two characters a byte.
+const SHOWN_BYTES: usize = SHOWN_CHARS / 2;
+/// Each item of an array is a line of its own.
+const SHOWN_ITEMS: usize = 1_000;
 
 /// One row to show as JSON, under the grid's visible columns.
 #[derive(Debug)]
@@ -35,19 +39,7 @@ fn render(request: RowJsonRequest) -> RowJson {
     let values = request.row.to_values();
     let full = tablepro_core::export::row_to_json(&request.columns, &values);
     let mut shortened = false;
-    let shown_values: Vec<Value> = values
-        .into_iter()
-        .map(|value| match value {
-            Value::Text(text) => match shorten(&text) {
-                Some(cut) => {
-                    shortened = true;
-                    Value::Text(cut)
-                }
-                None => Value::Text(text),
-            },
-            other => other,
-        })
-        .collect();
+    let shown_values: Vec<Value> = values.into_iter().map(|value| shown(value, &mut shortened)).collect();
     let shown = match shortened {
         true => tablepro_core::export::row_to_json(&request.columns, &shown_values),
         false => full.clone(),
@@ -55,21 +47,69 @@ fn render(request: RowJsonRequest) -> RowJson {
     RowJson { full, shown, shortened }
 }
 
+/// `value` as the dialog shows it, with anything long cut short and
+/// saying how much is left out. A document cut short is no longer JSON,
+/// so it shows as text.
+fn shown(value: Value, shortened: &mut bool) -> Value {
+    let cut = match &value {
+        Value::Text(text) => shorten(text),
+        Value::Json(json) => shorten(json.as_str()),
+        Value::Other(other) => shorten(&other.text),
+        Value::Bits(bits) => shorten(&bits.to_string()),
+        Value::Decimal(decimal) => shorten(&decimal.to_string()),
+        Value::Bytes(bytes) => shorten_bytes(bytes),
+        _ => None,
+    };
+    if let Some(cut) = cut {
+        *shortened = true;
+        return Value::Text(cut);
+    }
+    let Value::Array(items) = value else {
+        return value;
+    };
+    let more = items.len().saturating_sub(SHOWN_ITEMS) as u64;
+    let mut kept: Vec<Value> = items
+        .into_iter()
+        .take(SHOWN_ITEMS)
+        .map(|item| shown(item, shortened))
+        .collect();
+    if more > 0 {
+        *shortened = true;
+        kept.push(Value::Text(crate::i18n::ngettext_f(
+            "… ({count} more item)",
+            "… ({count} more items)",
+            plural_count(more),
+            &[("count", &format_thousands(more))],
+        )));
+    }
+    Value::Array(kept)
+}
+
 /// `text` cut at a character boundary after `SHOWN_CHARS` characters,
 /// saying how much is left out, or `None` when it fits.
 fn shorten(text: &str) -> Option<String> {
     let (end, _) = text.char_indices().nth(SHOWN_CHARS)?;
-    let more = (text.len() - end) as u64;
+    Some(format!("{}{}", &text[..end], more_bytes((text.len() - end) as u64)))
+}
+
+/// The hex the grid writes for binary, cut after `SHOWN_BYTES` bytes.
+fn shorten_bytes(bytes: &[u8]) -> Option<String> {
+    let more = bytes.len().checked_sub(SHOWN_BYTES).filter(|more| *more > 0)?;
+    let head = bytes.get(..SHOWN_BYTES)?;
     Some(format!(
-        "{}{}",
-        &text[..end],
-        crate::i18n::ngettext_f(
-            "… ({count} more byte)",
-            "… ({count} more bytes)",
-            plural_count(more),
-            &[("count", &format_thousands(more))],
-        )
+        "0x{}{}",
+        tablepro_core::hex::encode_lower(head),
+        more_bytes(more as u64)
     ))
+}
+
+fn more_bytes(more: u64) -> String {
+    crate::i18n::ngettext_f(
+        "… ({count} more byte)",
+        "… ({count} more bytes)",
+        plural_count(more),
+        &[("count", &format_thousands(more))],
+    )
 }
 
 /// Render the row off the GTK thread, then show it over `parent`.
@@ -229,6 +269,56 @@ mod tests {
         assert_eq!(parsed["body"], serde_json::json!(long));
         dialog.close();
         runtime.shutdown();
+    }
+
+    #[test]
+    fn every_kind_of_long_value_is_cut_for_display_and_kept_for_copy() {
+        const LONG: usize = 50_000;
+        let column = |name: &str, kind: &str| ResultColumn::new(name, ColumnType::untyped_text(kind));
+        let document = format!("[{}]", vec!["1"; LONG].join(","));
+        let shape = "x".repeat(LONG);
+        let request = RowJsonRequest {
+            columns: vec![
+                column("doc", "jsonb"),
+                column("blob", "bytea"),
+                column("shape", "geometry"),
+                column("tags", "text[]"),
+            ]
+            .into(),
+            row: RowSnapshot::new(
+                vec![
+                    Value::Json(tablepro_core::value::JsonText::parse(document.clone()).expect("JSON")),
+                    Value::Bytes(vec![0xab; LONG]),
+                    Value::Other(Box::new(tablepro_core::value::OtherValue {
+                        type_name: "geometry".to_owned(),
+                        text: shape.clone(),
+                    })),
+                    Value::Array(vec![Value::Text("t".to_owned()); LONG]),
+                ]
+                .into(),
+                Vec::new(),
+            ),
+        };
+
+        let rendered = render(request);
+
+        assert!(rendered.shortened);
+        let longest = rendered.shown.lines().map(str::len).max().unwrap_or_default();
+        assert!(longest < SHOWN_CHARS + 100, "a line of {longest} bytes is laid out");
+        assert!(rendered.shown.len() < 100_000, "{} bytes shown", rendered.shown.len());
+        assert!(
+            rendered.shown.contains("… (45,000 more bytes)"),
+            "the binary does not say what is left"
+        );
+        assert!(
+            rendered.shown.contains("… (49,000 more items)"),
+            "the array does not say what is left"
+        );
+        let full: serde_json::Value = serde_json::from_str(&rendered.full).expect("the copy is JSON");
+        assert_eq!(full["doc"].as_array().map(Vec::len), Some(LONG));
+        assert_eq!(full["blob"].as_str().map(str::len), Some(2 + 2 * LONG));
+        assert_eq!(full["shape"], serde_json::json!(shape));
+        assert_eq!(full["tags"].as_array().map(Vec::len), Some(LONG));
     }
 
     #[gtk4::test]

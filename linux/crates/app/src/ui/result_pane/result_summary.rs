@@ -12,6 +12,9 @@ pub struct ResultSummary {
     /// What the server says the whole set held, when it says.
     pub total_rows: Option<u64>,
     pub truncation: Truncation,
+    /// The run's limit on the rows of all its results, when that limit
+    /// cut this one short.
+    pub run_limit: Option<u64>,
 }
 
 impl ResultSummary {
@@ -21,11 +24,12 @@ impl ResultSummary {
             retained,
             total_rows: None,
             truncation: Truncation::Complete,
+            run_limit: None,
         }
     }
 
     pub(crate) fn is_truncated(&self) -> bool {
-        self.truncation != Truncation::Complete
+        self.truncation != Truncation::Complete || self.run_limit.is_some()
     }
 
     /// What the banner over a cut-short result says. `None` for a
@@ -36,6 +40,21 @@ impl ResultSummary {
 
     fn limit_title_with(&self, format: impl Fn(u64) -> String) -> Option<String> {
         let shown = format(self.retained);
+        if let Some(limit) = self.run_limit {
+            let limit = format(limit);
+            return Some(match self.retained {
+                0 => gettext_f(
+                    "No rows kept; a run keeps at most {limit} rows across its results",
+                    &[("limit", &limit)],
+                ),
+                retained => ngettext_f(
+                    "Showing the first {shown} row; a run keeps at most {limit} rows across its results",
+                    "Showing the first {shown} rows; a run keeps at most {limit} rows across its results",
+                    plural_count(retained),
+                    &[("shown", &shown), ("limit", &limit)],
+                ),
+            });
+        }
         match (self.truncation, self.total_rows) {
             (Truncation::Complete, _) => None,
             (Truncation::ReadPastLimit, Some(total)) => Some(ngettext_f(
@@ -105,6 +124,7 @@ mod tests {
             retained,
             total_rows,
             truncation,
+            run_limit: None,
         }
     }
 
@@ -131,6 +151,25 @@ mod tests {
             read_past.limit_title_with(english).as_deref(),
             Some("Showing 10,000 of 1,234,567 rows")
         );
+    }
+
+    #[test]
+    fn limit_title_names_the_run_limit_when_it_cut_the_result() {
+        let cut = |retained| ResultSummary {
+            run_limit: Some(100_000),
+            ..summary(retained, None, Truncation::Complete)
+        };
+
+        assert_eq!(
+            cut(2_500).limit_title_with(english).as_deref(),
+            Some("Showing the first 2,500 rows; a run keeps at most 100,000 rows across its results")
+        );
+        assert_eq!(
+            cut(0).limit_title_with(english).as_deref(),
+            Some("No rows kept; a run keeps at most 100,000 rows across its results")
+        );
+        assert_eq!(cut(0).tab_label_with(4, english), "Result 5 (0+)");
+        assert_eq!(cut(0).history_row_count(), None);
     }
 
     #[test]

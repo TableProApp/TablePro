@@ -6,8 +6,8 @@ Email **hello@tablepro.app**. Do not open a public issue, discussion or pull req
 
 Include:
 
-- What is affected and its version: the Mac app, the iPhone and iPad app, a plugin, or tablepro.app.
-- The macOS or iOS version, and the database type when a driver is involved.
+- What is affected and its version: the Mac app, the iPhone and iPad app, the Linux app, a plugin, or tablepro.app.
+- The macOS or iOS version, or the Linux distribution and where the app came from, and the database type when a driver is involved.
 - Steps to reproduce, or a proof of concept.
 - What an attacker gains: the data or access exposed.
 
@@ -17,9 +17,10 @@ Write in English or Vietnamese.
 
 - The Mac app.
 - The iPhone and iPad app.
+- The Linux app, from the Launchpad PPA, the COPR project or a source build of a release.
 - The plugins, bundled with the app or installed from the [plugin registry](https://github.com/TableProApp/plugins).
 - The website, [tablepro.app](https://tablepro.app).
 
 ## Supported versions
 
-Only the latest release of each app and plugin gets security fixes. A fix ships in a new release and is listed under **Security** in [CHANGELOG.md](CHANGELOG.md). Older releases are not patched. Check that the problem is still in the latest release before you report it.
+Only the latest release of each app and plugin gets security fixes. A fix ships in a new release and is listed under **Security** in [CHANGELOG.md](CHANGELOG.md), or in `linux/CHANGELOG.md` for the Linux app. Older releases are not patched. Check that the problem is still in the latest release before you report it.

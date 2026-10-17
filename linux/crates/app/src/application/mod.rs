@@ -8,6 +8,7 @@ mod accelerators;
 mod app_actions;
 mod app_services;
 mod app_window_host;
+mod crash_notice;
 mod debug_info;
 mod imp;
 mod legal_section;
@@ -65,10 +66,13 @@ glib::wrapper! {
 
 impl TableProApplication {
     pub fn new(services: AppServices) -> Self {
+        // GApplication answers --version from this, before it registers
+        // on the bus, so the running instance never sees the call.
         let app: Self = glib::Object::builder()
             .property("application-id", config::APP_ID)
             .property("resource-base-path", config::RESOURCE_BASE_PATH)
             .property("flags", gio::ApplicationFlags::HANDLES_OPEN)
+            .property("version", config::VERSION)
             .build();
         services.bind_application(&app);
         // Only `new` sets it, and it has just built the object.
@@ -101,6 +105,7 @@ impl TableProApplication {
         let host: Rc<dyn WindowHost> = Rc::new(AppWindowHost::new(self));
         self.imp().windows.insert(window.id(), window.clone());
         window.start(SessionWindowInit { services, host, launch });
+        self.hand_over_crash_report(&window);
         window.present();
         Some(window.upcast())
     }
