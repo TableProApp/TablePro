@@ -128,7 +128,7 @@ The buttons are `TlsRemedy` in `crates/app/src/ui/error_text/tls_remedy.rs`: the
 
 ## Logging
 
-Logging goes through `tracing`. `crates/app/src/logging.rs` installs a `tracing_subscriber` fmt layer that writes to **stderr**, which the GNOME session journals for both Flatpak and system installs. Panics land in the same stream, so a panic and the lines around it stay in order. There is no journald writer and no panic hook.
+Logging goes through `tracing`. `crates/app/src/logging.rs` installs a `tracing_subscriber` fmt layer that writes to **stderr**, which the GNOME session journals for both Flatpak and system installs. Panics land in the same stream, so a panic and the lines around it stay in order. There is no journald writer.
 
 - The filter comes from `RUST_LOG`. Without it, a development build logs at `debug` and an installed one at `info`. A `RUST_LOG` that does not parse falls back to that default and logs a warning saying so.
 - `TABLEPRO_LOG_FORMAT=json` writes one JSON object per line; `text`, the default, writes plain lines.
@@ -144,6 +144,16 @@ Levels: `error!` for what the user must see or a broken contract, `warn!` for re
 Never log a password, a secret, a key or a bound value. sqlx's own statement logging is turned off in the MySQL and SQLite drivers, and a test in each crate (`tests/statement_logging.rs`) proves no statement text reaches the subscriber.
 
 The libraries under the drivers log what a database was sent or answered: tokio-postgres the text of every statement at `debug`, through `log`, which `tracing-subscriber` forwards; sqlx every statement, and a slow one as a warning; tiberius rows at `trace` and server messages as errors; the clickhouse crate exceptions that quote the query; deadpool the errors of the connections it recycles; sqlparser, also through `log`, the text of every statement, filter and default it parses, and the literals in it, at `debug`. So the subscriber drops every event whose target starts with `tokio_postgres`, `deadpool`, `tiberius`, `sqlx`, `clickhouse` or `sqlparser`, at every level. That filter sits beside the `RUST_LOG` one, so no directive turns them back on, however specific. A driver logs what it needs from their errors itself. A new driver's client library, or any other library that logs SQL text, joins `SILENCED_LIBRARIES` in `logging.rs`.
+
+## Crashes
+
+A panic on the GTK thread ends the process: GTK calls the app back through C, which a panic cannot unwind, so it aborts. A panic on a runtime thread is caught there (`session/src/runtime/catch_panic.rs`, and tokio's own `JoinError`) and ends one task, which the UI shows as a failure.
+
+- `crates/app/src/crash_report.rs` installs a panic hook in `run()`, right after logging. It runs the default hook first, so stderr and the journal keep the usual line.
+- For a panic on the GTK thread it then appends a report to `StoragePaths::crashes_dir()` (`$XDG_STATE_HOME/<dir>/crashes`): the version, application ID, profile, debug or release build, the time, the message and place, and a backtrace captured whatever `RUST_BACKTRACE` says. The file is 0600 in a 0700 directory, written through `tablepro_storage::fs::append_private_blocking`. One file per process, named `crash-<UTC time>-<pid>.txt`; the second panic Rust raises when the first cannot unwind goes in the same file.
+- At the next launch the primary instance looks for the newest report it has not announced, off the GTK thread, and records its name in `crashes/announced`. The first window shows a toast, "TablePro quit unexpectedly last time", whose Show Report button opens the folder with the report selected. The toast moves with the window from page to page until it is dismissed or times out. Only the 20 newest reports are kept.
+- Nothing leaves the machine: the user decides whether to attach the report to an issue.
+- Still open: pending grid and Structure edits live only in memory and are lost with the process. Editor text and the tab list are saved 500 ms after a change.
 
 ## `unwrap`, `expect` and `panic!`
 

@@ -116,6 +116,7 @@ nothing reaches outside it.
 | `history_database()` | `$XDG_STATE_HOME/<dir>/history.db` |
 | `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces`: one file per session, and `open-sessions.json` |
 | `drafts_dir()` | `$XDG_DATA_HOME/<dir>/drafts` |
+| `crashes_dir()` | `$XDG_STATE_HOME/<dir>/crashes`: crash reports ([error-handling.md](error-handling.md#crashes)) |
 
 `<dir>` is `tablepro` for an installed build and `tablepro-devel` for a
 development one, so `cargo run` never writes over an installed build's
@@ -134,6 +135,8 @@ Everything private goes through `tablepro_storage::fs`:
   a mix, and the new one survives a power cut. It tightens an existing
   file to 0600 first, because that call keeps an existing file's mode and
   only applies the mode argument when it creates the file.
+- `append_private_blocking` appends to a file it creates 0600 when absent,
+  for the crash report, which a second panic adds to.
 - `create_private_file_if_missing` pre-creates an empty 0600 file. SQLite
   creates its database, WAL and SHM with the umask mode, so pre-creating
   the database is what keeps all three off world-readable.

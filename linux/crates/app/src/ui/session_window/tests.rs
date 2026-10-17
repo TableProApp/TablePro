@@ -53,6 +53,8 @@ pub(crate) struct Script {
     pub unreadable_list: bool,
     /// The size the window opens at, as the settings remember it.
     pub window_size: Option<(i32, i32)>,
+    /// Stands in for the file manager.
+    pub revealer: Option<Rc<dyn crate::ui::file_reveal::FileRevealer>>,
 }
 
 /// A TablePro over fakes with one window open on the picker and `saved`
@@ -97,6 +99,7 @@ impl TestWindow {
             tunnel,
             unreadable_list,
             window_size,
+            revealer,
         } = script;
         if let Some(size) = window_size {
             remember_window_size(&settings, size);
@@ -133,7 +136,10 @@ impl TestWindow {
             storage,
             tasks: runtime.tasks(),
         };
-        let services = scripted_services(parts, hold.clone(), credentials, ssh);
+        let mut services = scripted_services(parts, hold.clone(), credentials, ssh);
+        if let Some(revealer) = revealer {
+            services.file_revealer = revealer;
+        }
         let (app, window) = open_picker_window(name, services);
         let services = app.services().expect("the application's services");
         let test = Self {
