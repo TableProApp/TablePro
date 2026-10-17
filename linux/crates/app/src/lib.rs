@@ -8,6 +8,7 @@ use tablepro_storage::{AppSettings, StoragePaths};
 
 pub mod application;
 pub mod config;
+pub mod crash_report;
 pub mod i18n;
 pub mod logging;
 mod persistence;
@@ -45,10 +46,12 @@ pub fn run() -> Result<glib::ExitCode, StartupError> {
         tracing::warn!(%error, "translations unavailable; falling back to the source strings");
     }
 
+    let paths = StoragePaths::from_glib(config::storage_dir_name(), config::APP_ID);
+    crash_report::install(paths.crashes_dir());
+
     let runtime = runtime::AppRuntime::build().map_err(StartupError::Runtime)?;
     gio::resources_register_include!("tablepro.gresource").map_err(StartupError::Resources)?;
     let settings = Rc::new(AppSettings::open(config::APP_ID)?);
-    let paths = StoragePaths::from_glib(config::storage_dir_name(), config::APP_ID);
     let drivers = build_registry();
     tracing::info!(drivers = drivers.len(), "starting tablepro");
 

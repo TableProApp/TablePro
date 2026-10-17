@@ -1,5 +1,5 @@
 use std::fs::{DirBuilder, OpenOptions, Permissions};
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 
@@ -87,6 +87,28 @@ pub fn create_private_file_if_missing(path: &Path) -> Result<(), StorageError> {
             source,
         }),
     }
+}
+
+/// Add bytes to the end of a file, creating it 0600 under a 0700
+/// directory when it is absent. Unlike `write_private_blocking` it never
+/// replaces what is there, so a second write in the same moment adds to
+/// the first.
+pub fn append_private_blocking(path: &Path, bytes: &[u8]) -> Result<(), StorageError> {
+    if let Some(parent) = path.parent() {
+        ensure_private_dir(parent)?;
+    }
+    let io_error = |source| StorageError::Io {
+        path: path.to_owned(),
+        source,
+    };
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .mode(PRIVATE_FILE)
+        .open(path)
+        .map_err(io_error)?;
+    file.write_all(bytes).map_err(io_error)?;
+    file.sync_all().map_err(io_error)
 }
 
 /// Rename a file out of the way, returning the name it now has.
@@ -351,6 +373,19 @@ mod tests {
             remove_moved_aside_blocking(&root.path().join("missing").join("a.json")).expect("no directory"),
             0
         );
+    }
+
+    #[test]
+    fn append_private_creates_0600_under_0700_and_adds_to_the_end() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let file = root.path().join("crashes").join("crash.txt");
+
+        append_private_blocking(&file, b"first\n").expect("append");
+        append_private_blocking(&file, b"second\n").expect("append");
+
+        assert_eq!(mode_of(&file), 0o600);
+        assert_eq!(mode_of(file.parent().expect("parent")), 0o700);
+        assert_eq!(std::fs::read(&file).expect("read"), b"first\nsecond\n");
     }
 
     #[test]

@@ -22,11 +22,12 @@
                       <!-- Shown when the server refused a secret the user
                            can type again, labelled with that secret. It
                            takes the suggested style from Retry, which
-                           would only send the refused secret again. -->
+                           would only send the refused secret again. Its
+                           action takes the secret's kind, so the code
+                           names it once it has set that target. -->
                       <object class="GtkButton" id="reenter_button">
                         <property name="visible">false</property>
                         <property name="label" translatable="yes">Enter Password…</property>
-                        <property name="action-name">win.retry-with-new-secret</property>
                         <style>
                           <class name="pill"/>
                           <class name="suggested-action"/>

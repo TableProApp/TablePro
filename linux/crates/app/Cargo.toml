@@ -28,6 +28,13 @@ name = "logging"
 path = "tests/logging.rs"
 harness = false
 
+# A panic hook is process-wide and the crash ends the process, so each
+# case runs in a child of the binary.
+[[test]]
+name = "crash_report"
+path = "tests/crash_report.rs"
+harness = false
+
 # These start the application, which GTK allows only on the process's
 # main thread, so they run without the test harness.
 [[test]]

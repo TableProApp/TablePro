@@ -3,7 +3,7 @@ use gtk4::prelude::*;
 use tablepro_core::edit::{CellInput, EditParseError, EditText, edit_text};
 
 use super::calendar_editor::CalendarEditor;
-use super::cell_editor_kind::CellEditorKind;
+use super::cell_editor_kind::{CellEditorKind, EDIT_MAX_BYTES};
 use super::edit_commit::empty_placeholder;
 use super::inline_editor::{InlineEditor, InlineOptions};
 use super::multiline_editor::MultilineEditor;
@@ -44,6 +44,12 @@ pub(crate) fn begin_edit(cell: &GridCell) {
             }
             return;
         }
+        EditText::Editable(editable) if editable.len() > EDIT_MAX_BYTES => {
+            if let Some(sink) = cell.sink() {
+                sink(GridMsg::ShowToast(too_large_to_edit()));
+            }
+            return;
+        }
         EditText::Editable(editable) => editable.clone(),
         EditText::ReadOnly(reason) => {
             if let Some(sink) = cell.sink() {
@@ -81,6 +87,11 @@ pub(crate) fn begin_edit(cell: &GridCell) {
     }
 }
 
+fn too_large_to_edit() -> String {
+    let size = gtk::glib::format_size(EDIT_MAX_BYTES as u64);
+    crate::i18n::gettext_f("Values over {size} can't be edited here", &[("size", size.as_str())])
+}
+
 pub(super) fn install_edit_triggers(cell: &GridCell) {
     // Editing takes a double-click, since a single click in a grid
     // selects the row. Capture phase, because the column view's row
@@ -103,4 +114,36 @@ pub(super) fn install_edit_triggers(cell: &GridCell) {
         begin_edit(&cell);
     });
     cell.add_controller(gesture);
+}
+
+#[cfg(test)]
+mod tests {
+    use tablepro_core::Value;
+
+    use super::*;
+    use crate::ui::grid::test_grid::{Grid, named};
+
+    #[gtk4::test]
+    fn a_value_too_large_to_lay_out_does_not_open_and_says_why() {
+        let large = "x".repeat(EDIT_MAX_BYTES + 1);
+        let grid = Grid::open(
+            vec![named("id", "integer", true), named("body", "text", false)],
+            vec![vec![Value::Int(1), Value::Text(large)]],
+        );
+        let cell = grid.cell_of(1, 1);
+
+        begin_edit(&cell);
+
+        assert!(!cell.is_editing(), "an editor opened on the whole value");
+        let toasts: Vec<String> = grid
+            .take_messages()
+            .into_iter()
+            .filter_map(|message| match message {
+                GridMsg::ShowToast(text) => Some(text),
+                _ => None,
+            })
+            .collect();
+        // GLib puts a no-break space between the number and the unit.
+        assert_eq!(toasts, ["Values over 1.0\u{a0}MB can't be edited here"]);
+    }
 }

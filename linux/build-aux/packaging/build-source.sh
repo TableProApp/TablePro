@@ -6,16 +6,19 @@
 #
 # --install-deps first installs, as root in a throwaway ubuntu:26.04, the
 # tools this needs. --revision counts uploads of one upstream version to
-# the PPA, 1 when not given.
-# Usage: build-source.sh [--install-deps] [--revision N] <dist tarball> <vendor tarball> <output dir> <series>...
+# the PPA, 1 when not given. --debian takes the packaging from that
+# directory instead of the tarball's build-aux/debian, for a packaging fix
+# to a released version.
+# Usage: build-source.sh [--install-deps] [--revision N] [--debian DIR] <dist tarball> <vendor tarball> <output dir> <series>...
 set -eu
 
 usage() {
-    echo "usage: build-source.sh [--install-deps] [--revision N] <dist tarball> <vendor tarball> <output dir> <series>..." >&2
+    echo "usage: build-source.sh [--install-deps] [--revision N] [--debian DIR] <dist tarball> <vendor tarball> <output dir> <series>..." >&2
     exit 2
 }
 
 revision=1
+debian=""
 while [ $# -gt 0 ]; do
     case "$1" in
     --install-deps)
@@ -29,10 +32,18 @@ while [ $# -gt 0 ]; do
         revision="$2"
         shift 2
         ;;
+    --debian)
+        [ $# -ge 2 ] || usage
+        debian="$(cd "$2" && pwd)"
+        shift 2
+        ;;
     *) break ;;
     esac
 done
 [ $# -ge 4 ] || usage
+case "$revision" in
+    "" | *[!0-9]* | 0*) usage ;;
+esac
 dist="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 vendor="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
 mkdir -p "$3"
@@ -56,8 +67,13 @@ src="$work/tablepro-$debian_upstream"
 mkdir "$src"
 tar -xf "$dist" -C "$src" --strip-components=1
 tar -xf "$vendor" -C "$src"
-cp -R "$src/build-aux/debian" "$src/debian"
+cp -R "${debian:-$src/build-aux/debian}" "$src/debian"
 maintainer="$(sed -n 's/^Maintainer: //p' "$src/debian/control")"
+if [ "$revision" = 1 ]; then
+    message="New upstream release. Notes: https://github.com/TableProApp/TablePro/blob/linux-v$upstream/linux/CHANGELOG.md"
+else
+    message="Packaging update of the linux-v$upstream release, upload $revision."
+fi
 
 for series in "$@"; do
     release="$(ubuntu-distro-info --series "$series" --release | cut -d ' ' -f 1)"
@@ -67,7 +83,7 @@ for series in "$@"; do
         DEBEMAIL="$maintainer" dch --create --package tablepro \
             --newversion "$debian_upstream-0ppa$revision~$release" \
             --distribution "$series" --force-distribution --urgency medium \
-            "New upstream release. Notes: https://github.com/TableProApp/TablePro/blob/linux-v$upstream/linux/CHANGELOG.md"
+            "$message"
         # -sa ships the orig tarballs with every upload; Launchpad accepts
         # the same files again for each series.
         dpkg-buildpackage -S -sa -d -nc -us -uc -I -i
