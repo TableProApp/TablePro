@@ -1,8 +1,3 @@
-//
-//  ExportDialog.swift
-//  TablePro
-//
-
 import AppKit
 import os
 import SwiftUI
@@ -247,7 +242,7 @@ struct ExportDialog: View {
 
     @MainActor
     private func installOfferedFormat(_ format: InstallableExportFormat) async {
-        guard await MissingExportFormatPrompt.ensureInstalled(format, window: hostWindow),
+        guard await PluginInstallPrompt.ensureInstalled(format, window: hostWindow),
               let plugin = pluginManager.exportPlugin(forFormat: format.formatId)
         else { return }
         if let settable = plugin as? any SettablePluginDiscoverable {

@@ -1,8 +1,3 @@
-//
-//  TabRouter.swift
-//  TablePro
-//
-
 import AppKit
 import Foundation
 import os
@@ -452,7 +447,7 @@ internal final class TabRouter {
             return
         }
 
-        guard await MissingDriverPluginPrompt.ensureInstalled(for: type, opening: url) else {
+        guard await PluginInstallPrompt.ensureInstalled(for: type, opening: url) else {
             throw TabRouterError.userCancelled
         }
 

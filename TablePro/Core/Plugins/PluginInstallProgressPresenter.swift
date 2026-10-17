@@ -1,21 +1,6 @@
-//
-//  PluginInstallProgressPresenter.swift
-//  TablePro
-//
-
 import AppKit
 
-/// The progress of a plugin download the user is waiting on, shown while it runs.
-///
-/// Every caller of `installMissingPlugin` used to discard the fraction it publishes, so pressing
-/// Install closed the alert and left the app looking hung for the length of a network download.
-/// The HIG asks for progress on anything past a couple of seconds, and a registry ZIP is reliably
-/// past it.
-///
-/// A panel rather than an `NSAlert`, for two reasons. `AlertHelper` runs an alert application-modal
-/// when no window qualifies, which is exactly the Finder-open case this exists for, and a modal run
-/// loop cannot be updated from the `await` that is driving it. And an alert with no button is not
-/// what `NSAlert` is for: this is a progress report, not a question.
+// A panel, not an NSAlert: with no window an alert runs app-modal, and the await driving it cannot update it.
 @MainActor
 internal final class PluginInstallProgressPresenter {
     private var panel: NSPanel?
@@ -23,12 +8,12 @@ internal final class PluginInstallProgressPresenter {
     private let indicator = NSProgressIndicator()
     private let label = NSTextField(labelWithString: "")
 
-    internal init() {}
+    private init() {}
 
     // Ended before the caller presents a failure, since a second sheet on the window would queue.
     internal static func run(
         title: String,
-        window: NSWindow? = nil,
+        window: NSWindow?,
         _ install: (_ progress: @escaping @MainActor @Sendable (Double) -> Void) async throws -> Void
     ) async throws {
         let presenter = PluginInstallProgressPresenter()
@@ -37,9 +22,7 @@ internal final class PluginInstallProgressPresenter {
         try await install { fraction in presenter.update(fraction: fraction) }
     }
 
-    /// Presented as a sheet on the window the user was working in, and as a free-standing panel
-    /// when there is none, which is how a Finder open before any window exists reaches the screen.
-    internal func begin(title: String, window: NSWindow? = nil) {
+    private func begin(title: String, window: NSWindow?) {
         guard panel == nil else { return }
         label.stringValue = title
         let panel = makePanel()
@@ -54,13 +37,8 @@ internal final class PluginInstallProgressPresenter {
         parent.beginSheet(panel)
     }
 
-    /// The first fraction that has actually moved is what turns the bar determinate. A zero is
-    /// published before the first byte arrives, and a server that sends no `Content-Length`
-    /// publishes nothing after it until the whole file is down, so adopting it would park a
-    /// determinate bar at 0% for the entire download: the wait this panel exists to explain.
-    /// Stopping the animation goes with the switch, or its timer runs on under a bar that is no
-    /// longer using it.
-    internal func update(fraction: Double) {
+    // The installer publishes 0 before the first byte, then maybe nothing until the end, so 0 stays indeterminate.
+    private func update(fraction: Double) {
         let clamped = min(max(fraction, 0), 1)
         guard clamped > 0 else { return }
         if indicator.isIndeterminate {
@@ -70,7 +48,7 @@ internal final class PluginInstallProgressPresenter {
         indicator.doubleValue = clamped * 100
     }
 
-    internal func end() {
+    private func end() {
         indicator.stopAnimation(nil)
         guard let panel else { return }
         self.panel = nil
@@ -89,8 +67,6 @@ internal final class PluginInstallProgressPresenter {
         label.font = .preferredFont(forTextStyle: .body)
         label.lineBreakMode = .byTruncatingMiddle
 
-        /// Starts indeterminate because the first byte has not arrived yet, and a bar sitting at
-        /// zero reads as stalled rather than as starting.
         indicator.translatesAutoresizingMaskIntoConstraints = false
         indicator.style = .bar
         indicator.isIndeterminate = true

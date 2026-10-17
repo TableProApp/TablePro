@@ -60,7 +60,7 @@ enum PluginError: LocalizedError {
         case .downloadFailed(let reason):
             return String(format: String(localized: "Plugin download failed: %@"), reason)
         case .pluginNotInstalled(let databaseType):
-            return String(format: String(localized: "The %@ plugin is not installed. You can download it from the plugin marketplace."), databaseType)
+            return String(format: String(localized: "The %@ plugin is not installed."), databaseType)
         case .pluginUpdateUnavailable(let reason):
             return reason
         case .incompatibleWithCurrentApp(let minimumRequired):

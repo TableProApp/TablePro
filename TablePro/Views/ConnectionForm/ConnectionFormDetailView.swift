@@ -1,8 +1,3 @@
-//
-//  ConnectionFormDetailView.swift
-//  TablePro
-//
-
 import SwiftUI
 
 /// The split view's detail column: the selected section over the bar that commits the window.
@@ -36,7 +31,7 @@ struct ConnectionFormDetailView: View {
                 coordinator.pluginDiagnostic = nil
             }
         }
-        .pluginInstallPrompt(connection: $coordinator.pluginInstallConnection) { _ in
+        .pluginInstallPrompt(for: $coordinator.pluginInstallConnection, type: \.type) { _ in
             coordinator.test()
         }
         .alert(

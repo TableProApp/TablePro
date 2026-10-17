@@ -1,8 +1,3 @@
-//
-//  PluginInstallStatusRow.swift
-//  TablePro
-//
-
 import SwiftUI
 
 struct PluginInstallStatusRow: View {
@@ -39,15 +34,7 @@ struct PluginInstallStatusRow: View {
         }
     }
 
-    /// An indeterminate spinner says nothing about a download that can take a while. The tracker
-    /// already publishes a fraction, so the bar shows it, and staging is called out explicitly so
-    /// a full bar never reads as ready.
-    ///
-    /// A fraction of zero is the exception, because it is not nought per cent done: the installer
-    /// publishes it before the transfer starts and publishes nothing again until the whole file is
-    /// down. Measured, `URLSession`'s async `download` delivers no byte callbacks to a per-task
-    /// delegate, so there is no finer answer to draw. A determinate bar parked at zero for the
-    /// length of the download is the exact impression this row exists to avoid.
+    // A zero fraction means not started; see PluginInstallProgressPresenter.update(fraction:).
     @ViewBuilder
     private var installProgress: some View {
         switch tracker.state(forDatabaseType: coordinator.network.type)?.phase {

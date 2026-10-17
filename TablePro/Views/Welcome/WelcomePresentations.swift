@@ -1,8 +1,3 @@
-//
-//  WelcomePresentations.swift
-//  TablePro
-//
-
 import SwiftUI
 import TableProImport
 import UniformTypeIdentifiers
@@ -31,10 +26,10 @@ internal struct WelcomePresentations: ViewModifier {
                 WelcomeSheetView { vm.presentsWelcomeSheet = false }
             }
             .modifier(WelcomeConnectionCreationOverlays(vm: vm))
-            .pluginInstallPromptForType(type: $vm.pendingInstallType) { type in
+            .pluginInstallPrompt(for: $vm.pendingInstallType, type: \.self) { type in
                 vm.completePendingInstall(for: type)
             }
-            .pluginInstallPrompt(connection: $vm.pluginInstallConnection) { connection in
+            .pluginInstallPrompt(for: $vm.pluginInstallConnection, type: \.type) { connection in
                 vm.connectAfterInstall(connection)
             }
             .sheet(item: $vm.pluginDiagnostic) { item in

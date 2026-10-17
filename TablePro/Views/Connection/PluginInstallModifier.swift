@@ -1,157 +1,51 @@
-//
-//  PluginInstallModifier.swift
-//  TablePro
-//
-
-import os
 import SwiftUI
 
-struct PluginInstallModifier: ViewModifier {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "PluginInstallModifier")
-
-    @Binding var connection: DatabaseConnection?
-    @State private var installFailed: String?
-    var onInstalled: (DatabaseConnection) -> Void
+struct PluginInstallModifier<Item>: ViewModifier {
+    @Binding var item: Item?
+    let databaseType: KeyPath<Item, DatabaseType>
+    let onInstalled: (Item) -> Void
 
     func body(content: Content) -> some View {
         content
             .alert(
                 String(localized: "Plugin Not Installed"),
                 isPresented: Binding(
-                    get: { connection != nil },
-                    set: { if !$0 { connection = nil } }
-                )
-            ) {
+                    get: { item != nil },
+                    set: { if !$0 { item = nil } }
+                ),
+                presenting: item
+            ) { pending in
                 Button(String(localized: "Install")) {
-                    if let conn = connection {
-                        connection = nil
-                        install(conn)
-                    }
+                    install(pending)
                 }
-                Button(String(localized: "Cancel"), role: .cancel) {
-                    connection = nil
-                }
-            } message: {
-                if let conn = connection {
-                    Text(String(format: String(localized: "The %@ plugin is not installed. Would you like to download it from the plugin marketplace?"), conn.type.displayName))
-                }
-            }
-            .alert(
-                String(localized: "Plugin Installation Failed"),
-                isPresented: Binding(
-                    get: { installFailed != nil },
-                    set: { if !$0 { installFailed = nil } }
-                )
-            ) {
-                Button("OK", role: .cancel) {
-                    installFailed = nil
-                }
-            } message: {
-                if let message = installFailed {
-                    Text(message)
-                }
+                Button(String(localized: "Cancel"), role: .cancel) {}
+            } message: { pending in
+                Text(String(
+                    format: String(localized: "The %@ plugin is not installed. Would you like to install it?"),
+                    pending[keyPath: databaseType].displayName
+                ))
             }
     }
 
-    private func install(_ conn: DatabaseConnection) {
+    private func install(_ pending: Item) {
+        let type = pending[keyPath: databaseType]
         Task {
-            let presenter = PluginInstallProgressPresenter()
-            presenter.begin(
-                title: String(format: String(localized: "Downloading the %@ plugin…"), conn.type.displayName)
-            )
-            do {
-                try await PluginManager.shared.installMissingPlugin(for: conn.type) { fraction in
-                    presenter.update(fraction: fraction)
-                }
-                presenter.end()
-                Self.logger.info("Installed plugin for \(conn.type.rawValue), retrying connection")
-                onInstalled(conn)
-            } catch {
-                presenter.end()
-                installFailed = error.localizedDescription
+            let isInstalled = await PluginInstallPrompt.run(pluginName: type.displayName, window: nil) { progress in
+                try await PluginManager.shared.installMissingPlugin(for: type, progress: progress)
+            }
+            if isInstalled {
+                onInstalled(pending)
             }
         }
     }
 }
 
 extension View {
-    func pluginInstallPrompt(
-        connection: Binding<DatabaseConnection?>,
-        onInstalled: @escaping (DatabaseConnection) -> Void
+    func pluginInstallPrompt<Item>(
+        for item: Binding<Item?>,
+        type databaseType: KeyPath<Item, DatabaseType>,
+        onInstalled: @escaping (Item) -> Void
     ) -> some View {
-        modifier(PluginInstallModifier(connection: connection, onInstalled: onInstalled))
-    }
-
-    func pluginInstallPromptForType(
-        type: Binding<DatabaseType?>,
-        onInstalled: @escaping (DatabaseType) -> Void
-    ) -> some View {
-        modifier(PluginInstallTypeModifier(type: type, onInstalled: onInstalled))
-    }
-}
-
-struct PluginInstallTypeModifier: ViewModifier {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "PluginInstallTypeModifier")
-
-    @Binding var type: DatabaseType?
-    @State private var installFailed: String?
-    var onInstalled: (DatabaseType) -> Void
-
-    func body(content: Content) -> some View {
-        content
-            .alert(
-                String(localized: "Plugin Not Installed"),
-                isPresented: Binding(
-                    get: { type != nil },
-                    set: { if !$0 { type = nil } }
-                )
-            ) {
-                Button(String(localized: "Install")) {
-                    if let t = type {
-                        type = nil
-                        install(t)
-                    }
-                }
-                Button(String(localized: "Cancel"), role: .cancel) {
-                    type = nil
-                }
-            } message: {
-                if let t = type {
-                    Text(String(format: String(localized: "The %@ plugin is not installed. Would you like to download it from the plugin marketplace?"), t.displayName))
-                }
-            }
-            .alert(
-                String(localized: "Plugin Installation Failed"),
-                isPresented: Binding(
-                    get: { installFailed != nil },
-                    set: { if !$0 { installFailed = nil } }
-                )
-            ) {
-                Button("OK", role: .cancel) {
-                    installFailed = nil
-                }
-            } message: {
-                if let message = installFailed {
-                    Text(message)
-                }
-            }
-    }
-
-    private func install(_ t: DatabaseType) {
-        Task {
-            let presenter = PluginInstallProgressPresenter()
-            presenter.begin(title: String(format: String(localized: "Downloading the %@ plugin…"), t.displayName))
-            do {
-                try await PluginManager.shared.installMissingPlugin(for: t) { fraction in
-                    presenter.update(fraction: fraction)
-                }
-                presenter.end()
-                Self.logger.info("Installed plugin for \(t.rawValue), opening connection form")
-                onInstalled(t)
-            } catch {
-                presenter.end()
-                installFailed = error.localizedDescription
-            }
-        }
+        modifier(PluginInstallModifier(item: item, databaseType: databaseType, onInstalled: onInstalled))
     }
 }

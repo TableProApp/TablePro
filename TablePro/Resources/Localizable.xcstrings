@@ -179775,6 +179775,9 @@
         }
       }
     },
+    "The %@ plugin is not installed." : {
+
+    },
     "The %@ plugin is not installed. TablePro offers to install it on connect." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -179788,6 +179791,7 @@
       }
     },
     "The %@ plugin is not installed. Would you like to download it from the plugin marketplace?" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -179827,7 +179831,11 @@
         }
       }
     },
+    "The %@ plugin is not installed. Would you like to install it?" : {
+
+    },
     "The %@ plugin is not installed. You can download it from the plugin marketplace." : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
