@@ -12,7 +12,7 @@ The only path a consumer may hold to a live database. Token scopes and connectio
 
 - Wrapping a driver `Connection` in `PolicyGuard` before the GUI, MCP or `bookie-agentd` issues a handle to a consumer.
 - Per-statement order: classify, evaluate rules, request approval when required, write required audit intent, execute, mask eligible consumer results, then write the terminal audit outcome.
-- Optional session query cursors for one read statement in a read-only snapshot. `PolicyGuard` authorizes once, masks each page, and records page and terminal outcomes under one operation. PostgreSQL is the only driver that supports cursors; the SQL editor is not wired to this path yet.
+- Optional session query cursors for one read statement in a read-only snapshot. `PolicyGuard` authorizes once, masks each page, and records page and terminal outcomes under one operation. PostgreSQL is the only driver that supports cursors; the SQL editor uses this path for supported single-statement PostgreSQL `SELECT`s.
 - MCP token scopes (`tools:read` / `tools:write` via `TokenPermissions`), per-token rate limits and connection allowlists.
 - Preview, transaction, retry and batch paths using the same rule, approval, intent and audit pipeline as direct execution. Session mode skips the shared-connection short-circuit.
 
