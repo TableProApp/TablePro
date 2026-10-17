@@ -111,7 +111,7 @@ pub(crate) const BULK_DELETE_CONFIRM_THRESHOLD: usize = 10;
 
 glib::wrapper! {
     pub struct BrowseTab(ObjectSubclass<imp::BrowseTab>)
-        @extends adw::Bin, gtk::Widget,
+        @extends adw::BreakpointBin, gtk::Widget,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
@@ -156,7 +156,7 @@ impl BrowseTab {
             },
         );
         let filter_strip = layout::filter_strip(&tab, &initial_filter);
-        let actions = browse_actions::install_browse_actions(&tab);
+        let actions = browse_actions::install_browse_actions(&tab, init.page_size);
         let link_generation = init.session.link_generation();
         let dialect = init.session.current_dialect();
         let link_changes = init.session.link_changes();

@@ -146,5 +146,9 @@ impl BrowseModel {
         self.widgets
             .pager_bar
             .show_total(&self.pager, self.shown_page(), &self.total);
+        let counting = matches!(self.total, RowTotal::Counting { .. });
+        self.actions
+            .count_rows
+            .set_enabled(self.shown_page().is_some() && self.total.exact().is_none() && !counting);
     }
 }

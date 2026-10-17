@@ -23,6 +23,7 @@ impl BrowseModel {
                     return;
                 }
                 self.pager.resize(size);
+                self.show_page_size(size);
                 self.fetch(BrowseRequestKind::Page, fx);
                 fx.output(BrowseTabOutput::StateChanged);
             }
@@ -91,6 +92,17 @@ impl BrowseModel {
         self.pager.move_to(target);
         self.fetch(BrowseRequestKind::Page, fx);
         fx.output(BrowseTabOutput::StateChanged);
+    }
+
+    /// The dropdown and the More menu each pick a size, so each shows
+    /// the one the other picked.
+    fn show_page_size(&self, size: u64) {
+        if let Some(position) = self.widgets.page_sizes.iter().position(|n| *n == size) {
+            self.widgets
+                .page_size_dropdown
+                .set_selected(u32::try_from(position).unwrap_or_default());
+        }
+        self.actions.page_size.set_state(&size.to_variant());
     }
 
     pub(super) fn refresh_filter_chrome(&self) {

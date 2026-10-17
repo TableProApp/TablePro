@@ -1,9 +1,9 @@
 use std::rc::Rc;
 
 use gtk4 as gtk;
-use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
+use gtk4::{gio, glib};
 use tablepro_core::FilterSet;
 
 use super::browse_tab_widgets::BrowseTabWidgets;
@@ -12,6 +12,7 @@ use super::pending_changes_bar::PendingChangesRequest;
 use super::{
     BrowseTab, BrowseTabInput, ClipboardInput, PAGE_SIZE_OPTIONS, PagingInput, SaveInput, loading_description,
 };
+use crate::i18n::gettext;
 use crate::ui::filter_strip::FilterStrip;
 use crate::ui::format::format_thousands;
 use crate::ui::grid::GridSink;
@@ -32,7 +33,8 @@ pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets 
     imp.inner_stack.set_visible_child_name("loading");
     imp.read_only_banner.set_revealed(init.read_only);
     let page_sizes = page_size_choices(&imp.page_size_dropdown, init.page_size);
-    connect_controls(tab, page_sizes);
+    imp.more_button.set_menu_model(Some(&more_menu(&page_sizes)));
+    connect_controls(tab, page_sizes.clone());
     BrowseTabWidgets {
         inner_stack: imp.inner_stack.get(),
         grid_holder: imp.grid_holder.get(),
@@ -48,7 +50,28 @@ pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets 
         delete_button: imp.delete_button.get(),
         pager_bar: imp.pager_bar.get(),
         pending_bar: imp.pending_bar.get(),
+        page_size_dropdown: imp.page_size_dropdown.get(),
+        page_sizes,
     }
+}
+
+/// What the bottom bar holds past the tab's breakpoint, where it has no
+/// room for it.
+fn more_menu(page_sizes: &[u64]) -> gio::Menu {
+    let actions = gio::Menu::new();
+    actions.append(Some(&gettext("Filter Rows")), Some("browse.filter"));
+    actions.append(Some(&gettext("Export Rows…")), Some("browse.export"));
+    actions.append(Some(&gettext("Count Rows")), Some("browse.count-rows"));
+    let sizes = gio::Menu::new();
+    for size in page_sizes {
+        let item = gio::MenuItem::new(Some(&format_thousands(*size)), None);
+        item.set_action_and_target_value(Some("browse.page-size"), Some(&size.to_variant()));
+        sizes.append_item(&item);
+    }
+    let menu = gio::Menu::new();
+    menu.append_section(None, &actions);
+    menu.append_section(Some(&gettext("Rows per Page")), &sizes);
+    menu
 }
 
 /// An inline editor that slides down above the grid. It lives in the
@@ -126,7 +149,10 @@ fn connect_controls(tab: &BrowseTab, page_sizes: Vec<u64>) {
     }
     for (request, send) in [
         (PendingChangesRequest::Save, sender(tab, || SaveInput::CommitSave)),
-        (PendingChangesRequest::Discard, sender(tab, || SaveInput::ConfirmDiscard)),
+        (
+            PendingChangesRequest::Discard,
+            sender(tab, || SaveInput::ConfirmDiscard),
+        ),
         (PendingChangesRequest::StopSaving, sender(tab, || SaveInput::StopSaving)),
     ] {
         imp.pending_bar.connect_request(request, move |_| send());
