@@ -14,7 +14,7 @@ Saved connection UUIDs can survive a reconnect; physical handles and dedicated s
 
 Use shared transport assembly and guarded handles in GUI/agentd/MCP. Keep the saved UUID, live connection identity, editor session UUID and selected namespace distinct. Completion/catalog/run callbacks must belong to the current owner. After loss/replacement, an unusable dedicated session refuses further SQL; it never falls back to a pool or replays an uncertain write. Teardown awaits settlement and close. Cancellation follows ADR 0005; panic containment follows ADR 0006.
 
-Refuse implicit transaction starters (`SET autocommit=0`, `SET IMPLICIT_TRANSACTIONS ON`, `XA START`) and unterminated transaction batches on shared connections. The existing dedicated-session contract remains distinct; this decision does not expand supported session syntax.
+Refuse implicit transaction starters (`SET autocommit=0`, `SET IMPLICIT_TRANSACTIONS ON`, `XA START`) and unterminated transaction batches on shared connections. Inside a dedicated MySQL interactive transaction, allow locking reads, user-variable assignments, savepoint operations and recognized `SHOW` forms because they do not commit implicitly. This does not make session effects transactional: `ROLLBACK` does not restore user-variable values or release named locks acquired by functions in assignment expressions. Keep refusing DDL, account statements, `LOCK TABLES`, raw transaction-control SQL and `SET autocommit`; unknown statement forms fail closed.
 
 ### Trust and route selection
 

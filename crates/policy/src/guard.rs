@@ -148,8 +148,11 @@ impl PolicyGuard {
         control: Option<&OperationControl>,
     ) -> Result<Authorization, DriverError> {
         let analysis = self.analyze_statement(sql);
-        if let Some(decision) = interactive_transaction_decision(&self.ctx.driver_id, &analysis.facts) {
+        if let Some(decision) = interactive_transaction_decision(&self.ctx.driver_id, sql, &analysis.facts) {
             return self.resolve_authorization(sql, analysis, decision, None, control).await;
+        }
+        if self.ctx.driver_id == "mysql" {
+            return self.authorize_with_bound(sql, analysis, None, control).await;
         }
         self.authorize_analysis(sql, analysis, None, control).await
     }

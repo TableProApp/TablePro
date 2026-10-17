@@ -728,11 +728,73 @@ async fn mysql_ddl_inside_a_rollback_able_transaction_is_denied_before_dispatch(
         assert_eq!(executes.load(Ordering::SeqCst), 0, "{statement} reached the driver");
         let events = audit.events.lock().expect("audit events");
         assert!(
-            events
-                .iter()
-                .any(|event| event.decision_rule == "ddl_commits_transaction"),
+            events.iter().any(|event| {
+                event.phase == AuditRecordPhase::Outcome && event.terminal_status == AuditTerminalStatus::Denied
+            }),
             "{statement}: the denial is audited"
         );
+    }
+}
+
+#[tokio::test]
+async fn mysql_non_committing_statements_run_inside_an_interactive_transaction() {
+    for statement in [
+        "SELECT * FROM items WHERE id = 1 FOR UPDATE",
+        "SET @value = 1",
+        "SET @autocommit = 1",
+        "SET @first = 1, @second = 2",
+        "SAVEPOINT saved_state",
+        "ROLLBACK TO SAVEPOINT saved_state",
+        "RELEASE SAVEPOINT saved_state",
+        "SHOW TABLES",
+        "SHOW WARNINGS",
+        "SHOW STATUS",
+        "SHOW VARIABLES",
+        "SHOW CREATE TABLE items",
+        "SHOW COLUMNS FROM items",
+        "SHOW CATALOGS",
+        "SHOW DATABASES",
+        "SHOW PROCESSLIST",
+        "SHOW SCHEMAS",
+        "SHOW CHARACTER SET",
+        "SHOW VIEWS",
+        "SHOW COLLATION",
+    ] {
+        let executes = Arc::new(AtomicUsize::new(0));
+        let guard = transaction_guard("mysql", executes.clone(), Arc::new(SequenceAuditSink::new(vec![])));
+
+        let mut transaction = guard.begin().await.expect("begin");
+        transaction.execute(statement).await.expect(statement);
+
+        assert_eq!(executes.load(Ordering::SeqCst), 1, "{statement} reached the driver");
+    }
+}
+
+#[tokio::test]
+async fn mysql_transaction_statements_that_change_transaction_ownership_are_denied() {
+    for statement in [
+        "BEGIN",
+        "COMMIT",
+        "ROLLBACK",
+        "LOCK TABLES items WRITE",
+        "CREATE USER 'other'@'localhost'",
+        "SET autocommit = 0",
+        "SET autocommit = 1",
+        "SET @@session.autocommit = 1",
+        "SET @value = 1; DROP TABLE items",
+        "SELECT * INTO OUTFILE '/tmp/bookie-out.csv' FROM items",
+    ] {
+        let executes = Arc::new(AtomicUsize::new(0));
+        let guard = transaction_guard("mysql", executes.clone(), Arc::new(SequenceAuditSink::new(vec![])));
+
+        let mut transaction = guard.begin().await.expect("begin");
+        let result = transaction.execute(statement).await;
+
+        assert!(
+            matches!(result, Err(DriverError::PolicyDenied(_))),
+            "{statement}: {result:?}"
+        );
+        assert_eq!(executes.load(Ordering::SeqCst), 0, "{statement} reached the driver");
     }
 }
 

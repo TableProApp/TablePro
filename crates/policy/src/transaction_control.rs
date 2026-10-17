@@ -1,4 +1,6 @@
-use sqlparser::ast::{Statement, TransactionAccessMode, TransactionIsolationLevel, TransactionMode};
+use sqlparser::ast::{
+    Query, Set, SetExpr, Statement, TransactionAccessMode, TransactionIsolationLevel, TransactionMode,
+};
 use sqlparser::parser::Parser;
 use sqlparser::tokenizer::{Token, Tokenizer};
 
@@ -74,6 +76,53 @@ pub fn transaction_control(sql: &str, driver_id: &str) -> Option<TransactionCont
         return tsql_transaction_control(sql);
     }
     parsed_transaction_control(sql, driver_id)
+}
+
+pub(crate) fn mysql_statement_is_transaction_safe(sql: &str) -> bool {
+    let dialect = dialect_for("mysql");
+    let Ok(statements) = Parser::parse_sql(dialect.as_ref(), sql.trim()) else {
+        return false;
+    };
+    let [statement] = statements.as_slice() else {
+        return false;
+    };
+    match statement {
+        Statement::Query(query) => mysql_locking_read(query),
+        Statement::Set(Set::SingleAssignment { variable, .. }) => mysql_user_variable(variable),
+        Statement::Set(Set::MultipleAssignments { assignments }) => {
+            !assignments.is_empty()
+                && assignments
+                    .iter()
+                    .all(|assignment| mysql_user_variable(&assignment.name))
+        }
+        Statement::Savepoint { .. }
+        | Statement::ReleaseSavepoint { .. }
+        | Statement::Rollback { savepoint: Some(_), .. }
+        | Statement::ShowVariable { .. }
+        | Statement::ShowStatus { .. }
+        | Statement::ShowVariables { .. }
+        | Statement::ShowCreate { .. }
+        | Statement::ShowColumns { .. }
+        | Statement::ShowCatalogs { .. }
+        | Statement::ShowDatabases { .. }
+        | Statement::ShowProcessList { .. }
+        | Statement::ShowSchemas { .. }
+        | Statement::ShowCharset(_)
+        | Statement::ShowObjects(_)
+        | Statement::ShowTables { .. }
+        | Statement::ShowViews { .. }
+        | Statement::ShowCollation { .. } => true,
+        _ => false,
+    }
+}
+
+fn mysql_user_variable(variable: &sqlparser::ast::ObjectName) -> bool {
+    let name = variable.to_string();
+    name.starts_with('@') && !name.starts_with("@@")
+}
+
+fn mysql_locking_read(query: &Query) -> bool {
+    !query.locks.is_empty() && matches!(query.body.as_ref(), SetExpr::Select(select) if select.into.is_none())
 }
 
 fn parsed_transaction_control(sql: &str, driver_id: &str) -> Option<TransactionControl> {

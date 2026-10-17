@@ -5,7 +5,8 @@ use crate::config::EnvPolicy;
 use crate::effects::Effects;
 use crate::principal::Principal;
 use crate::transaction_control::{
-    TransactionControl, has_implicit_transaction_starter, leaves_tsql_transaction_unclosed, transaction_control,
+    TransactionControl, has_implicit_transaction_starter, leaves_tsql_transaction_unclosed,
+    mysql_statement_is_transaction_safe, transaction_control,
 };
 pub use crate::verdict::Decision;
 
@@ -74,18 +75,21 @@ pub(crate) fn shared_connection_decision(sql: &str, driver_id: &str, facts: &Sta
     None
 }
 
-pub(crate) fn interactive_transaction_decision(driver_id: &str, facts: &StatementFacts) -> Option<Decision> {
+pub(crate) fn interactive_transaction_decision(driver_id: &str, sql: &str, facts: &StatementFacts) -> Option<Decision> {
     let plain_dml = matches!(
         facts.class,
         StatementClass::Select | StatementClass::Insert | StatementClass::Update | StatementClass::Delete
     );
-    if driver_id != "mysql" || (plain_dml && !facts.contains_ddl() && !facts.contains_unknown_write()) {
+    if driver_id != "mysql"
+        || (plain_dml && !facts.contains_ddl() && !facts.contains_unknown_write())
+        || mysql_statement_is_transaction_safe(sql)
+    {
         return None;
     }
     Some(Decision::Deny {
-        rule: "ddl_commits_transaction".into(),
-        message: "MySQL commits this statement immediately, so it cannot run inside a transaction that may be rolled \
-                  back. Run it on its own, outside the transaction"
+        rule: "mysql_statement_not_rollback_safe".into(),
+        message: "This MySQL statement may have effects that the interactive transaction cannot roll back. Run it \
+                  on its own, outside the transaction"
             .into(),
     })
 }
