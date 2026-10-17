@@ -111,12 +111,20 @@ flowchart TB
     app --> mcp
     agentd --> mcp
     app --> app_services
+    app --> core
+    app --> policy
+    app --> storage
+    app --> ssh
     app_services --> storage
     app_services --> core
     app_services --> policy
     app_services --> transport
     app_services --> dump
     app --> transport
+    agentd --> core
+    agentd --> policy
+    agentd --> storage
+    agentd --> ssh
     agentd --> transport
     mcp --> policy
     mcp --> storage
