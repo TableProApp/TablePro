@@ -231,10 +231,12 @@ impl WorkspaceModel {
     /// Sidebar "Show CREATE TABLE": the statements that recreate the
     /// table as it is defined now, from the dialect's
     /// `create_table_script`. The result lands in a fresh editor tab; no
-    /// Structure tab is touched.
+    /// Structure tab is touched. A failure can carry a long server
+    /// error, so it is an alert, which stays until it is read.
     pub(super) fn on_show_create_table(&self, schema: Option<String>, table: String) {
+        let title = crate::i18n::gettext("Could Not Show CREATE TABLE");
         let Some(session) = self.context.active.get() else {
-            self.show_toast(&crate::i18n::gettext("No active connection."));
+            self.show_error_alert(&title, &crate::i18n::gettext("No active connection."));
             return;
         };
         let work = read_definition(session, TableRef::new(schema, table.clone()));
@@ -257,7 +259,7 @@ impl WorkspaceModel {
                     &[("error", &error_text::operation_error_message(&error))],
                 ),
             };
-            input.deliver(WorkspaceInput::ShowToast(message));
+            input.deliver(WorkspaceInput::ShowAlert { title, body: message });
         });
     }
 
@@ -495,5 +497,35 @@ mod tests {
 
         assert_eq!(heading.as_deref(), Some("Drop sales.orders?"));
         assert!(answer(&test.window, "cancel"), "the prompt has no Cancel button");
+    }
+
+    /// A server's reason can be longer than a toast's one line.
+    #[gtk4::test]
+    fn a_create_table_that_cannot_be_read_says_why_in_an_alert() {
+        use tablepro_core::DriverError;
+        use tablepro_test_support::FakeReply;
+
+        use crate::test_support::wait_until;
+        use crate::ui::session_window::tests::{TestWindow, WAIT};
+        use crate::workspace::{answer, visible_alert};
+
+        let test = TestWindow::connected_with("ShowCreateFails", |script| {
+            script
+                .fetch_table_definition
+                .always(FakeReply::err(DriverError::server("permission denied for table users")));
+        });
+        test.workspace()
+            .with_model(|model| model.on_show_create_table(None, "users".to_owned()));
+
+        wait_until(WAIT, || {
+            visible_alert(&test.window)
+                .is_some_and(|alert| alert.heading().as_deref() == Some("Could Not Show CREATE TABLE"))
+        })
+        .expect("an alert for the failed read");
+        let body = visible_alert(&test.window)
+            .map(|alert| alert.body().to_string())
+            .unwrap_or_default();
+        assert!(body.contains("permission denied for table users"), "{body}");
+        assert!(answer(&test.window, "close"));
     }
 }
