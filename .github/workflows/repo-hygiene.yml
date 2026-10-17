@@ -54,6 +54,27 @@ jobs:
           bash scripts/ci/test_draft_release.sh
           bash scripts/ci/test_libs_release.sh
 
+      # 3.9 is the macOS /usr/bin/python3 that runs notes.py in the build. The other steps keep the
+      # runner's Python, which has PyYAML.
+      - name: Set up Python 3.9 for the release tooling
+        id: python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.9"
+          update-environment: false
+
+      - name: Install the release tooling
+        env:
+          PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          set -euo pipefail
+          "$PYTHON" -m venv "$RUNNER_TEMP/release-venv"
+          "$RUNNER_TEMP/release-venv/bin/pip" install --quiet --disable-pip-version-check --require-hashes \
+            -r scripts/release/requirements.txt
+
+      - name: Test the release tooling
+        run: '"$RUNNER_TEMP/release-venv/bin/python" -m unittest discover -s scripts/release -p "test_*.py"'
+
       # shellcheck cannot tell a library function from a command, so a missing source is exit 127
       # at release time (v0.67.1).
       - name: Check every script sources the libraries it calls into

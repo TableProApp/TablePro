@@ -1,0 +1,38 @@
+[tool.towncrier]
+filename = "CHANGELOG.md"
+directory = "changelog.d"
+start_string = "<!-- towncrier release notes start -->\n"
+title_format = "## [{version}](https://github.com/TableProApp/TablePro/releases/tag/v{version}) - {project_date}"
+issue_format = "[#{issue}](https://github.com/TableProApp/TablePro/pull/{issue})"
+underlines = ["", "", ""]
+ignore = [".gitkeep"]
+
+[[tool.towncrier.type]]
+directory = "added"
+name = "Added"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "changed"
+name = "Changed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "deprecated"
+name = "Deprecated"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "removed"
+name = "Removed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "fixed"
+name = "Fixed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "security"
+name = "Security"
+showcontent = true
