@@ -114,6 +114,10 @@ for path in sorted(p for d in ("crates", "apps", "tests") for p in (root / d).rg
             if name not in mapped:
                 raise RuntimeError(f"unmapped GTK test: {name}")
             tier, enable = "GTK", "scripts/test-gtk-widgets.sh"
+        elif relative.startswith("apps/linux/app/") and "app-server isolated" in reason.lower():
+            if name not in mapped:
+                raise RuntimeError(f"unmapped app-server test: {name}")
+            tier, enable = "App server", "scripts/run-test-layer.py app-server"
         elif "docker" in reason.lower() and relative.startswith("crates/ssh/"):
             targets = re.findall(r"--test\s+([\w-]+)", (root / "scripts/test-ssh.sh").read_text())
             if path.stem not in targets:

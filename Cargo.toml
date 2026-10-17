@@ -102,6 +102,7 @@ exclusions = [
     "scripts/tests/test_deb_package.py",
     "scripts/tests/test_panic_sites.py",
     "apps/linux/app/tests/**",
+    "**/pinned_tests.rs",
 ]
 
 [workspace.lints.clippy]

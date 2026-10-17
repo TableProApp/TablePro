@@ -53,6 +53,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::editor::pinned::tests::an_evicted_stream_page_stays_alive_while_pinned_and_releases_after_unpin"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::browse_tab::value_parse::mongodb_integer_width::value_contract_mongodb_int32_grid_edit_preserves_integer_width"
     ],
     [

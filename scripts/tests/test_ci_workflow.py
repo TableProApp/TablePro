@@ -99,6 +99,7 @@ class CiWorkflowTests(unittest.TestCase):
                 "value_contract_mssql_max_values_survive_connection_session_and_consumers",
                 "value_contract_mssql_server_owned_columns_use_native_defaults_across_consumers",
                 "value_contract_postgres_csv_import_preserves_explicit_identity_values",
+                "an_evicted_stream_page_stays_alive_while_pinned_and_releases_after_unpin",
             },
         )
         workflow = (ROOT / ".github/workflows/build-linux.yml").read_text()
@@ -377,6 +378,11 @@ class CiWorkflowTests(unittest.TestCase):
         exclusions = workspace["workspace"]["metadata"]["sonar"]["sonar.coverage.exclusions"]
         self.assertIn("scripts/tests/test_check_crate_boundaries.py", exclusions)
         self.assertIn("scripts/tests/test_gtk_runner.py", exclusions)
+
+    def test_sonar_excludes_app_pinning_test_support_from_coverage(self):
+        workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())
+        exclusions = workspace["workspace"]["metadata"]["sonar"]["sonar.coverage.exclusions"]
+        self.assertIn("**/pinned_tests.rs", exclusions)
 
 
     def test_arch_package_container_mounts_the_repository_root(self):
