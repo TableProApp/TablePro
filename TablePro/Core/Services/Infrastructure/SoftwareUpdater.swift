@@ -73,8 +73,6 @@ final class SoftwareUpdater: ObservableObject {
         Self.checkForUpdatesTitle(hasPendingUpdate: hasPendingUpdate)
     }
 
-    /// Split out so the wording can be pinned by a test without a live updater, which building the
-    /// singleton in a unit-test process would mean.
     static func checkForUpdatesTitle(hasPendingUpdate: Bool) -> String {
         hasPendingUpdate
             ? String(localized: "Update Available…")
