@@ -24,6 +24,8 @@ pub enum DocumentProblemKind {
     UnsupportedVersion { found: u32, expected: u32 },
     #[error("the file is version {found}, which is newer than this version of TablePro understands")]
     NewerVersion { found: u32, expected: u32 },
+    #[error("the file is version {found} and could not be brought up to version {expected}: {detail}")]
+    UpgradeFailed { found: u32, expected: u32, detail: String },
 }
 
 impl DocumentProblem {
