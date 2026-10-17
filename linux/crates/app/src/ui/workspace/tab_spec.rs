@@ -2,6 +2,7 @@ use tablepro_core::meta::TableRef;
 use tablepro_storage::DraftId;
 
 use super::structure_target::StructureTarget;
+use crate::workspace::EditorFileRecord;
 
 /// A tab to open. Every way a tab opens builds one of these: the sidebar,
 /// the overview's new-tab button, a restore and a reopen.
@@ -12,6 +13,8 @@ pub(crate) enum TabSpec {
         /// The draft a restored tab keeps writing to. `None` gives a new
         /// tab a new draft, written at once.
         draft: Option<DraftId>,
+        /// The `.sql` file a restored or reopened tab is saved to.
+        file: Option<EditorFileRecord>,
     },
     Table {
         table: TableRef,

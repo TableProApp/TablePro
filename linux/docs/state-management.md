@@ -116,6 +116,12 @@ Events cross to the GTK thread through a channel. `BatchCollector` turns one bat
 
 A finished run goes to `HistoryService::record` with the text that was run, `DELIMITER` and `GO` lines included, judged by the dialect of the session that ran it, not the window's current one ([storage.md](storage.md#what-goes-into-the-history)).
 
+### The tab's file
+
+Open SQL File (Ctrl+O) and Save As (Ctrl+Shift+S) bind the tab to a `.sql` file, through the file chooser portal; Save (Ctrl+S) writes to it, or asks for one. The tab is named after the file, and the buffer's own modified flag says whether its text differs from the file's, so Undo back to the saved text clears it. The tab's record keeps the file's URI and that flag (`EditorFileRecord`), and its draft keeps the text, so a restore brings back both.
+
+Closing the tab asks about unsaved file changes through the same Save Changes prompt as row and structure edits (`DirtyKind::UnsavedFile`), and its Save writes the file. Closing the window does not ask: the draft keeps the text for the next session.
+
 ### Open transactions
 
 Every `RunSummary` carries the session's `TransactionState`, and the last one a run reported decides whether closing the tab would lose work (`transaction_dirty`):

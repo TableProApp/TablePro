@@ -33,6 +33,8 @@ pub enum SaveRejection {
     /// A review of the same changes is open.
     InReview,
     NoConnection,
+    /// An editor tab's file could not be written; the sentence says why.
+    FileNotSaved(String),
 }
 
 impl SaveRejection {
@@ -63,6 +65,7 @@ impl SaveRejection {
             Self::ReviewDeclined => crate::i18n::gettext("The changes were not applied."),
             Self::InReview => crate::i18n::gettext("The review of these changes is still open."),
             Self::NoConnection => crate::i18n::gettext("No active connection."),
+            Self::FileNotSaved(message) => message.clone(),
         }
     }
 

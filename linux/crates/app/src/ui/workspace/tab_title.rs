@@ -34,6 +34,10 @@ pub(crate) fn resolve_tab_title(identity: &TabIdentity, naming: TableNaming) -> 
             label: numbered_query(*ordinal),
             tooltip: None,
         },
+        TabIdentity::Editor(EditorLabel::File { name, location }) => TabTitle {
+            label: name.clone(),
+            tooltip: Some(location.clone()),
+        },
         TabIdentity::Editor(EditorLabel::Query { prefix, truncated }) => {
             let label = derive_tab_label(prefix);
             let text = prefix.trim();
@@ -145,6 +149,20 @@ mod tests {
         let tooltip = title.tooltip.expect("a tooltip");
         assert!(tooltip.starts_with("SELECT * FROM orders"), "{tooltip}");
         assert!(tooltip.ends_with('…'), "{tooltip}");
+    }
+
+    #[test]
+    fn a_tab_saved_to_a_file_is_named_after_it() {
+        let title = resolve_tab_title(
+            &TabIdentity::Editor(EditorLabel::File {
+                name: "daily.sql".to_owned(),
+                location: "/home/ada/reports/daily.sql".to_owned(),
+            }),
+            TableNaming::Bare,
+        );
+
+        assert_eq!(title.label, "daily.sql");
+        assert_eq!(title.tooltip.as_deref(), Some("/home/ada/reports/daily.sql"));
     }
 
     #[test]

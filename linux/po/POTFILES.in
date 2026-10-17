@@ -199,6 +199,7 @@ crates/app/src/ui/editor/completion/sql_proposal.rs
 crates/app/src/ui/editor/completion/sql_proposal_imp.rs
 crates/app/src/ui/editor/completion/tests.rs
 crates/app/src/ui/editor/editor_actions.rs
+crates/app/src/ui/editor/editor_file.rs
 crates/app/src/ui/editor/editor_session_slot.rs
 crates/app/src/ui/editor/find_bar.rs
 crates/app/src/ui/editor/find_state.rs
@@ -485,6 +486,7 @@ crates/app/src/workspace/dialog_response.rs
 crates/app/src/workspace/dirty_kind.rs
 crates/app/src/workspace/dirty_tab.rs
 crates/app/src/workspace/draft_writer.rs
+crates/app/src/workspace/editor_file_record.rs
 crates/app/src/workspace/engine_profile.rs
 crates/app/src/workspace/inhibit_reason.rs
 crates/app/src/workspace/legacy_tab_file.rs

@@ -243,7 +243,7 @@ mod tests {
                     &key,
                     WorkspaceRecord {
                         active_tab: Some(0),
-                        tabs: vec![TabRecord::Editor { draft }],
+                        tabs: vec![TabRecord::Editor { draft, file: None }],
                     },
                 )
                 .expect("scheduled");

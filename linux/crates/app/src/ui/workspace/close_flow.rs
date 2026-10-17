@@ -147,11 +147,12 @@ impl WorkspaceModel {
     /// Mark each tab that closing would lose something in, and tell the
     /// window whether a logout would, so it holds the session back.
     pub(super) fn refresh_unsaved(&self) {
-        let unsaved: HashSet<Uuid> = self.workspace_handle.dirty_tabs().iter().map(|tab| tab.id).collect();
+        let dirty_tabs = self.workspace_handle.dirty_tabs();
+        let unsaved: HashSet<Uuid> = dirty_tabs.iter().map(|tab| tab.id).collect();
         for (id, tab) in self.workspace_tabs.borrow().iter() {
             apply_unsaved_icon(tab.page(), unsaved.contains(id));
         }
-        let dirty = !unsaved.is_empty();
+        let dirty = dirty_tabs.iter().any(|tab| tab.kind.lost_with_the_window());
         if self.reported_dirty.replace(Some(dirty)) == Some(dirty) {
             return;
         }
@@ -237,6 +238,7 @@ mod tests {
                 id,
                 title: "Query 1".to_owned(),
                 open_transaction: true,
+                unsaved_file: false,
             }]
         );
 

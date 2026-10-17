@@ -2,6 +2,7 @@ use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
+use libadwaita::prelude::*;
 use tablepro_core::column::{ColumnDefault, ColumnType};
 use tablepro_core::meta::{RowCountEstimate, RowIdentity, TableEstimate};
 use tablepro_core::{ColumnInfo, QueryResult, Value};
@@ -172,4 +173,82 @@ fn a_tab_closed_with_the_focus_in_it_is_freed_when_the_next_takes_none() {
         gtk::prelude::GtkWindowExt::focus(&test.window).is_some_and(|focus| focus.root().is_some()),
         "the focus was left nowhere"
     );
+}
+
+/// An editor tab saved to `path`, whose text has changed since.
+fn editor_on_file(test: &TestWindow, path: &std::path::Path) -> (Uuid, crate::ui::editor::SqlEditor) {
+    let workspace = test.workspace();
+    workspace.with_model(|model| {
+        model.open_tab(super::tab_spec::TabSpec::Editor {
+            initial_query: Some("SELECT 2;".to_owned()),
+            draft: None,
+            file: Some(crate::workspace::EditorFileRecord {
+                uri: gtk::gio::File::for_path(path).uri().to_string(),
+                modified: true,
+            }),
+        })
+    });
+    let id = workspace.selected_tab().expect("the editor in front");
+    let editor = workspace
+        .imp()
+        .tab_view
+        .selected_page()
+        .and_then(|page| page.child().downcast::<crate::ui::editor::SqlEditor>().ok())
+        .expect("an editor tab in front");
+    (id, editor)
+}
+
+fn tab_is_open(test: &TestWindow, id: Uuid) -> bool {
+    test.workspace()
+        .read(|model| model.workspace_tabs.borrow().contains_key(&id))
+        .unwrap_or(false)
+}
+
+#[gtk4::test]
+fn closing_a_tab_with_unsaved_file_changes_saves_them_when_asked() {
+    let test = TestWindow::connected("CloseUnsavedFileSave");
+    let path = test.dir().join("daily.sql");
+    crate::test_support::write_text_file(&path, "SELECT 1;");
+    let (id, _editor) = editor_on_file(&test, &path);
+
+    WidgetExt::activate_action(&test.window, "win.close-current", None).expect("win.close-current");
+
+    wait_until(WAIT, || {
+        visible_alert(&test.window).is_some_and(|alert| alert.heading().as_deref() == Some("Save Changes?"))
+    })
+    .expect("the close asks about the file");
+    assert!(answer(&test.window, "save"));
+    wait_until(WAIT, || !tab_is_open(&test, id)).expect("the tab closes once saved");
+    assert_eq!(crate::test_support::read_text_file(&path), "SELECT 2;");
+}
+
+#[gtk4::test]
+fn discarding_unsaved_file_changes_closes_the_tab_and_leaves_the_file() {
+    let test = TestWindow::connected("CloseUnsavedFileDiscard");
+    let path = test.dir().join("daily.sql");
+    crate::test_support::write_text_file(&path, "SELECT 1;");
+    let (id, _editor) = editor_on_file(&test, &path);
+
+    WidgetExt::activate_action(&test.window, "win.close-current", None).expect("win.close-current");
+
+    wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the close asks about the file");
+    assert!(answer(&test.window, "discard"));
+    wait_until(WAIT, || !tab_is_open(&test, id)).expect("the tab closes");
+    assert!(visible_alert(&test.window).is_none(), "the close asked again");
+    assert_eq!(crate::test_support::read_text_file(&path), "SELECT 1;");
+}
+
+/// The window keeps the text with the tab's draft and restores both.
+#[gtk4::test]
+fn closing_the_window_keeps_unsaved_file_changes_without_asking() {
+    let test = TestWindow::connected("CloseWindowUnsavedFile");
+    let path = test.dir().join("daily.sql");
+    crate::test_support::write_text_file(&path, "SELECT 1;");
+    let (_id, editor) = editor_on_file(&test, &path);
+    assert!(editor.has_unsaved_file_changes());
+    drop(editor);
+
+    test.window.close();
+
+    wait_until(WAIT, || test.app.windows().is_empty()).expect("the window closes");
 }

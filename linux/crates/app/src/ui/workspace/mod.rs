@@ -198,6 +198,7 @@ struct WorkspaceTabParts {
 pub enum ClosedTabDescriptor {
     Editor {
         query: String,
+        file: Option<crate::workspace::EditorFileRecord>,
     },
     Table {
         schema: Option<String>,
@@ -385,6 +386,9 @@ pub(crate) enum WorkspaceInput {
     EditorTabRunStateChanged(Uuid, bool),
     EditorTabRunFinished(Uuid, crate::workspace::WorkOutcome),
     EditorTabContentChanged(Uuid),
+    /// An editor tab was saved, opened a file, or its text came to
+    /// differ from its file's or match it again.
+    EditorTabFileChanged(Uuid),
     /// The session's saved tabs and their editor text, read off the GTK
     /// thread.
     WorkspaceLoaded(workspace_tabs::LoadedWorkspace),
@@ -955,6 +959,7 @@ impl WorkspaceModel {
                 self.on_editor_run_finished(id);
             }
             WorkspaceInput::EditorTabContentChanged(id) => self.on_editor_tab_content_changed(id),
+            WorkspaceInput::EditorTabFileChanged(id) => self.on_editor_tab_file_changed(id),
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
             WorkspaceInput::WorkspaceLayoutReset(outcome) => self.on_workspace_layout_reset(outcome),

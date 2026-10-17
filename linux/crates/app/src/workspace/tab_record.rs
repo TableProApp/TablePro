@@ -3,7 +3,7 @@ use std::ops::RangeInclusive;
 use serde::{Deserialize, Serialize};
 use tablepro_storage::DraftId;
 
-use super::SortRecord;
+use super::{EditorFileRecord, SortRecord};
 
 /// What the page size preference allows.
 const PAGE_SIZES: RangeInclusive<u64> = 100..=100_000;
@@ -27,6 +27,8 @@ pub enum TabRecord {
     /// costs the record one id.
     Editor {
         draft: DraftId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        file: Option<EditorFileRecord>,
     },
 }
 
@@ -59,7 +61,7 @@ impl TabRecord {
                 })
             }
             Self::Structure { schema, table } => (!table.is_empty()).then_some(Self::Structure { schema, table }),
-            Self::Editor { draft } => Some(Self::Editor { draft }),
+            Self::Editor { draft, file } => Some(Self::Editor { draft, file }),
         }
     }
 }

@@ -40,7 +40,16 @@ pub fn next_close_step(scope: CloseScope, saves_in_flight: usize, dirty: &[Dirty
     if !transactions.is_empty() {
         return CloseStep::ConfirmOpenTransactions(transactions);
     }
-    let unsaved = of_kind(|kind| matches!(kind, DirtyKind::Unsaved));
+    let tab_close = matches!(scope, CloseScope::Tab(_));
+    let unsaved: Vec<DirtyTab> = in_scope
+        .iter()
+        .filter(|tab| match tab.kind {
+            DirtyKind::Unsaved => true,
+            DirtyKind::UnsavedFile => tab_close,
+            _ => false,
+        })
+        .map(|tab| (*tab).clone())
+        .collect();
     if !unsaved.is_empty() {
         return CloseStep::AskSaveChanges(unsaved);
     }
@@ -98,6 +107,21 @@ mod tests {
         assert_eq!(
             next_close_step(CloseScope::Tab(Uuid::new_v4()), 0, &all),
             CloseStep::Approve
+        );
+    }
+
+    #[test]
+    fn an_unsaved_file_is_asked_about_only_when_its_tab_closes() {
+        let file = tab(DirtyKind::UnsavedFile);
+
+        assert_eq!(
+            next_close_step(CloseScope::Tab(file.id), 0, std::slice::from_ref(&file)),
+            CloseStep::AskSaveChanges(vec![file.clone()])
+        );
+        assert_eq!(
+            next_close_step(CloseScope::Window, 0, std::slice::from_ref(&file)),
+            CloseStep::Approve,
+            "the window keeps the text in its drafts, so it has nothing to ask"
         );
     }
 }

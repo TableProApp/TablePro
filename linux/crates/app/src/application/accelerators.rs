@@ -223,6 +223,27 @@ pub const ACCELERATORS: &[Accelerator] = &[
         &["<Primary>slash"],
         Listed(ShortcutSection::SqlEditor),
     ),
+    local(
+        SqlEditorTab,
+        BUBBLE,
+        "editor.open-file",
+        &["<Primary>o"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    local(
+        SqlEditorTab,
+        BUBBLE,
+        "editor.save",
+        &["<Primary>s"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    local(
+        SqlEditorTab,
+        BUBBLE,
+        "editor.save-as",
+        &["<Primary><Shift>s"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
     // GtkSearchEntry binds Ctrl+G and Ctrl+Shift+G itself, and the find
     // bar follows its next-match and previous-match signals.
     local(
@@ -253,7 +274,6 @@ pub const ACCELERATORS: &[Accelerator] = &[
         &["<Primary><Shift>g"],
         Listed(ShortcutSection::SqlEditor),
     ),
-    application("win.save-query", &["<Primary><Shift>s"], ShortcutSection::SqlEditor),
     local(
         StructureTab,
         BUBBLE,

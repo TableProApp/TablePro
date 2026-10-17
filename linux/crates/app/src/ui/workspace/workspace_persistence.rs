@@ -138,7 +138,10 @@ pub(super) fn workspace_record(
 
 fn tab_record(tab: &WorkspaceTab) -> Option<TabRecord> {
     match tab {
-        WorkspaceTab::Editor(slot) => Some(TabRecord::Editor { draft: slot.draft }),
+        WorkspaceTab::Editor(slot) => Some(TabRecord::Editor {
+            draft: slot.draft,
+            file: super::workspace_tabs::editor_file_record(&slot.editor),
+        }),
         WorkspaceTab::Structure(slot) => match slot.mode {
             // A draft for a table that does not exist yet has nothing to
             // reopen.
@@ -269,7 +272,7 @@ mod tests {
             .tabs
             .iter()
             .filter_map(|tab| match tab {
-                TabRecord::Editor { draft } => Some(*draft),
+                TabRecord::Editor { draft, .. } => Some(*draft),
                 _ => None,
             })
             .collect()
@@ -358,7 +361,10 @@ mod tests {
                     schema: Some("public".to_owned()),
                     table: "users".to_owned(),
                 },
-                TabRecord::Editor { draft: DraftId::new() },
+                TabRecord::Editor {
+                    draft: DraftId::new(),
+                    file: None,
+                },
             ],
         };
         let mut opened = Vec::new();

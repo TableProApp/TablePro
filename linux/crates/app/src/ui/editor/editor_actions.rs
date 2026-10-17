@@ -23,6 +23,8 @@ impl SqlEditor {
         };
         actions.add_action_entries([
             entry("open-file", SqlEditor::open_file),
+            entry("save", SqlEditor::save),
+            entry("save-as", SqlEditor::save_as),
             entry("run", SqlEditor::run),
             entry("run-statement", SqlEditor::run_at_cursor),
             entry("cancel", SqlEditor::stop),

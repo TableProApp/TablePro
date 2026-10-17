@@ -532,7 +532,10 @@ mod tests {
         let key = key();
         let editor = WorkspaceRecord {
             active_tab: Some(0),
-            tabs: vec![TabRecord::Editor { draft: DraftId::new() }],
+            tabs: vec![TabRecord::Editor {
+                draft: DraftId::new(),
+                file: None,
+            }],
         };
 
         fixture.store.schedule(&key, editor.clone()).expect("scheduled");
@@ -676,7 +679,12 @@ mod tests {
         let key = key();
         let many = WorkspaceRecord {
             active_tab: Some(39),
-            tabs: (0..40).map(|_| TabRecord::Editor { draft: DraftId::new() }).collect(),
+            tabs: (0..40)
+                .map(|_| TabRecord::Editor {
+                    draft: DraftId::new(),
+                    file: None,
+                })
+                .collect(),
         };
         fixture.store.schedule(&key, many.clone()).expect("scheduled");
 

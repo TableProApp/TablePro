@@ -4,6 +4,8 @@ use super::{SaveId, SaveRejection};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SaveStart {
     Started(SaveId),
+    /// Written at once, with nothing left running: an editor tab's file.
+    Saved,
     NothingToSave,
     Rejected(SaveRejection),
 }

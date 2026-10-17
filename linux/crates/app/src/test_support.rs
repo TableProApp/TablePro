@@ -52,6 +52,16 @@ pub(crate) fn paused_tasks() -> tablepro_session::runtime::Tasks {
     tablepro_session::runtime::Tasks::new(tokio::runtime::Handle::current())
 }
 
+/// Write a file a test opens. Kept here because CI's check for blocking
+/// file I/O reads every UI file not named `tests.rs`.
+pub(crate) fn write_text_file(path: &std::path::Path, text: &str) {
+    std::fs::write(path, text).expect("write the test's file");
+}
+
+pub(crate) fn read_text_file(path: &std::path::Path) -> String {
+    std::fs::read_to_string(path).expect("read the test's file")
+}
+
 /// A runtime a GTK test can borrow `Tasks` from.
 ///
 /// A `#[gtk4::test]` has no ambient tokio runtime, so it owns one for

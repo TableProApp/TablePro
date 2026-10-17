@@ -8,7 +8,20 @@
       <item>
         <attribute name="label" translatable="yes">Open SQL File…</attribute>
         <attribute name="action">editor.open-file</attribute>
+        <attribute name="accel">&lt;Primary&gt;o</attribute>
       </item>
+      <item>
+        <attribute name="label" translatable="yes">Save</attribute>
+        <attribute name="action">editor.save</attribute>
+        <attribute name="accel">&lt;Primary&gt;s</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Save As…</attribute>
+        <attribute name="action">editor.save-as</attribute>
+        <attribute name="accel">&lt;Primary&gt;&lt;Shift&gt;s</attribute>
+      </item>
+    </section>
+    <section>
       <item>
         <attribute name="label" translatable="yes">Save Query…</attribute>
         <attribute name="action">win.save-query</attribute>

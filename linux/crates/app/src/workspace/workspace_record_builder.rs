@@ -62,7 +62,13 @@ mod tests {
 
     #[test]
     fn selected_new_draft_gives_no_active_tab() {
-        let pages = [page(Some(TabRecord::Editor { draft: DraftId::new() })), page(None)];
+        let pages = [
+            page(Some(TabRecord::Editor {
+                draft: DraftId::new(),
+                file: None,
+            })),
+            page(None),
+        ];
 
         let record = workspace_record(&pages, Some(pages[1].id));
 

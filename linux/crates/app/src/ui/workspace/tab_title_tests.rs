@@ -137,7 +137,13 @@ fn restored_workspace_selects_saved_active_tab() {
             &test.key(),
             WorkspaceRecord {
                 active_tab: Some(1),
-                tabs: vec![TabRecord::Editor { draft: DraftId::new() }, orders],
+                tabs: vec![
+                    TabRecord::Editor {
+                        draft: DraftId::new(),
+                        file: None,
+                    },
+                    orders,
+                ],
             },
         )
         .expect("the record to queue");
@@ -161,6 +167,49 @@ fn restored_workspace_selects_saved_active_tab() {
         })
         .flatten();
     assert_eq!(selected, Some((StructureMode::Edit, "orders".to_owned())));
+}
+
+#[gtk4::test]
+fn a_restored_editor_tab_keeps_its_file_and_its_unsaved_changes() {
+    let test = TestWindow::picker("RestoreEditorFile");
+    let path = test.dir().join("daily.sql");
+    crate::test_support::write_text_file(&path, "SELECT 1;");
+    let store = test.services.storage.workspaces().clone();
+    store
+        .schedule(
+            &test.key(),
+            WorkspaceRecord {
+                active_tab: Some(0),
+                tabs: vec![TabRecord::Editor {
+                    draft: DraftId::new(),
+                    file: Some(crate::workspace::EditorFileRecord {
+                        uri: gio::File::for_path(&path).uri().to_string(),
+                        modified: true,
+                    }),
+                }],
+            },
+        )
+        .expect("the record to queue");
+    finish_on_main(WAIT, store.flush(&test.key()))
+        .expect("the flush to end")
+        .expect("the record written");
+
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("workspace");
+    let workspace = test.workspace();
+    wait_until(WAIT, || workspace.imp().tab_view.n_pages() == 1).expect("the editor tab restored");
+
+    let page = workspace.imp().tab_view.nth_page(0);
+    let editor = editors(&test.window).pop().expect("the editor");
+    assert_eq!(editor.file().and_then(|file| file.path()), Some(path.clone()));
+    assert!(
+        editor.has_unsaved_file_changes(),
+        "the restore forgot the text was not saved"
+    );
+    assert_eq!(page.title(), "daily.sql");
+    assert_eq!(page.tooltip().as_deref(), Some(path.to_string_lossy().as_ref()));
+    wait_until(WAIT, || modified(&page)).expect("the unsaved icon");
 }
 
 #[gtk4::test]

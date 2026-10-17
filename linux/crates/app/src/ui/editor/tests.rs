@@ -882,6 +882,85 @@ fn the_editor_menu_shows_the_tables_local_keys() {
     assert!(checked > 0, "no menu item has a local key, so the check reads nothing");
 }
 
+/// Load `path` into the whole buffer, as Open SQL File does.
+fn open_path(harness: &Harness, path: &std::path::Path) {
+    let (editor, file) = (harness.editor.clone(), gio::File::for_path(path));
+    crate::test_support::finish_on_main(WAIT, async move { editor.insert_file(file, true).await })
+        .expect("the file to load");
+}
+
+#[gtk4::test]
+fn ctrl_s_writes_the_opened_file_and_marks_the_text_saved() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    std::fs::write(&path, "SELECT 1;").expect("seed");
+    let harness = editor_with(answering(), "");
+    let changes = SignalLog::connect(&harness.editor, "file-changed", |_| ());
+    open_path(&harness, &path);
+    assert_eq!(harness.editor.file().and_then(|file| file.path()), Some(path.clone()));
+    assert!(
+        !harness.editor.has_unsaved_file_changes(),
+        "the text just read counts as changed"
+    );
+
+    let buffer = harness.editor.buffer();
+    buffer.insert(&mut buffer.end_iter(), "\nSELECT 2;");
+    assert!(harness.editor.has_unsaved_file_changes());
+
+    assert!(press_on_tab(&harness, "<Primary>s"), "Ctrl+S did nothing");
+    wait_until(WAIT, || !harness.editor.has_unsaved_file_changes()).expect("the save to land");
+
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("read back"),
+        "SELECT 1;\nSELECT 2;"
+    );
+    assert!(changes.count() >= 3, "the workspace was not told: {}", changes.count());
+}
+
+#[gtk4::test]
+fn undo_back_to_the_saved_text_is_saved_again() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    std::fs::write(&path, "SELECT 1;").expect("seed");
+    let harness = editor_with(answering(), "");
+    open_path(&harness, &path);
+    let buffer = harness.editor.buffer();
+
+    buffer.begin_user_action();
+    buffer.insert(&mut buffer.end_iter(), " -- note");
+    buffer.end_user_action();
+    assert!(harness.editor.has_unsaved_file_changes());
+    buffer.undo();
+
+    assert!(!harness.editor.has_unsaved_file_changes());
+}
+
+#[gtk4::test]
+fn a_file_that_cannot_be_written_keeps_the_text_changed_and_says_why() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let harness = editor_with(answering(), "SELECT 1;");
+    harness
+        .editor
+        .restore_file(gio::File::for_path(root.path().join("gone").join("daily.sql")), true);
+
+    let saving = harness.editor.save_to_file();
+    let failed = crate::test_support::finish_on_main(WAIT, saving).expect("the save to end");
+
+    let message = failed.expect_err("a folder that is not there cannot be written to");
+    assert!(message.starts_with("“daily.sql” could not be saved: "), "{message}");
+    assert!(harness.editor.has_unsaved_file_changes());
+}
+
+#[gtk4::test]
+fn a_tab_with_no_file_has_nothing_unsaved_to_ask_about() {
+    let harness = editor_with(answering(), "SELECT 1;");
+    let buffer = harness.editor.buffer();
+    buffer.insert(&mut buffer.end_iter(), "\nSELECT 2;");
+
+    assert!(harness.editor.file().is_none());
+    assert!(!harness.editor.has_unsaved_file_changes());
+}
+
 fn find_bar(harness: &Harness) -> find_bar::FindBar {
     harness.editor.imp().find_bar.get()
 }
@@ -1100,7 +1179,7 @@ fn escape_hides_bar_and_disables_highlight() {
 /// from the focus binds it first. The search entry binds Ctrl+G, which
 /// the bar follows through the entry's own signals.
 #[gtk4::test]
-fn find_keys_are_not_class_bindings_inside_the_tab() {
+fn tab_keys_are_not_class_bindings_inside_the_tab() {
     use crate::application::{ACCELERATORS, AcceleratorScope, ShortcutOwner};
     use crate::test_support::shortcut_keys::{class_keys_on_focus_paths, keystroke};
     let harness = editor_with(answering(), "SELECT 1");
@@ -1133,7 +1212,7 @@ fn find_keys_are_not_class_bindings_inside_the_tab() {
             checked += 1;
         }
     }
-    assert_eq!(checked, 4);
+    assert_eq!(checked, 7);
 }
 
 /// These press real keys on the X display every test shares; nextest runs

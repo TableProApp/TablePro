@@ -202,23 +202,26 @@ impl WorkspaceHandle {
         });
     }
 
-    /// Every tab closing would lose something in, in tab order.
+    /// Every tab closing would lose something in, in tab order. An
+    /// editor tab can have both an open transaction and an unsaved file,
+    /// and is listed once for each.
     pub fn dirty_tabs(&self) -> Vec<DirtyTab> {
         self.0
             .deps
             .directory
             .tabs()
             .into_iter()
-            .filter_map(|entry| {
-                let kind = match self.pending_state(entry.id) {
-                    PendingState::OutcomeUnknown(cause) => DirtyKind::OutcomeUnknown(cause),
-                    PendingState::Unsaved | PendingState::Saving => DirtyKind::Unsaved,
-                    PendingState::Clean if entry.open_transaction => DirtyKind::OpenTransaction,
-                    PendingState::Clean => return None,
+            .flat_map(|entry| {
+                let pending = match self.pending_state(entry.id) {
+                    PendingState::OutcomeUnknown(cause) => Some(DirtyKind::OutcomeUnknown(cause)),
+                    PendingState::Unsaved | PendingState::Saving => Some(DirtyKind::Unsaved),
+                    PendingState::Clean if entry.open_transaction => Some(DirtyKind::OpenTransaction),
+                    PendingState::Clean => None,
                 };
-                Some(DirtyTab {
+                let file = entry.unsaved_file.then_some(DirtyKind::UnsavedFile);
+                [pending, file].into_iter().flatten().map(move |kind| DirtyTab {
                     id: entry.id,
-                    title: entry.title,
+                    title: entry.title.clone(),
                     kind,
                 })
             })
@@ -240,7 +243,10 @@ impl WorkspaceHandle {
         let dirty: Vec<DirtyTab> = self
             .dirty_tabs()
             .into_iter()
-            .filter(|tab| !(tab.kind == DirtyKind::OpenTransaction && acknowledged.contains(&tab.id)))
+            .filter(|tab| {
+                let agreed_to_lose = matches!(tab.kind, DirtyKind::OpenTransaction | DirtyKind::UnsavedFile);
+                !(agreed_to_lose && acknowledged.contains(&tab.id))
+            })
             .collect();
         next_close_step(scope, self.0.ledger.in_flight_in(scope), &dirty)
     }
@@ -275,7 +281,13 @@ impl WorkspaceHandle {
                 Err(start) => start,
             };
         }
-        SaveStart::NothingToSave
+        match self.0.deps.directory.save_file(tab) {
+            Some(saving) => match saving.await {
+                Ok(()) => SaveStart::Saved,
+                Err(message) => SaveStart::Rejected(SaveRejection::FileNotSaved(message)),
+            },
+            None => SaveStart::NothingToSave,
+        }
     }
 
     /// The session to save through, refused before anything is taken

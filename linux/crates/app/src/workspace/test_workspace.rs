@@ -165,6 +165,7 @@ impl Workspace {
             id: tab,
             title: "t".to_owned(),
             open_transaction: false,
+            unsaved_file: false,
         });
         let settled = Rc::new(RefCell::new(Vec::new()));
         let events = Rc::new(RefCell::new(Vec::new()));
@@ -212,6 +213,7 @@ impl Workspace {
             id,
             title: "Query 1".to_owned(),
             open_transaction: true,
+            unsaved_file: false,
         });
         id
     }
@@ -225,6 +227,7 @@ impl Workspace {
             id,
             title: title.to_owned(),
             open_transaction: false,
+            unsaved_file: false,
         });
         tracker
     }

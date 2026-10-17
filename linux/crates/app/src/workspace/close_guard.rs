@@ -20,8 +20,9 @@ use super::{CloseDecision, CloseScope, CloseStep, DirtyTab, SaveRejection, SaveS
 pub(crate) struct CloseGuard;
 
 impl CloseGuard {
-    /// `acknowledged` holds the tabs whose open transactions the user
-    /// already agreed to lose, and gains the ones agreed to here.
+    /// `acknowledged` holds the tabs whose open transactions or file
+    /// changes the user already agreed to lose, and gains the ones
+    /// agreed to here.
     pub(crate) async fn run(
         parent: &gtk::Widget,
         handle: &WorkspaceHandle,
@@ -61,6 +62,9 @@ impl CloseGuard {
                     SaveChoice::Cancel => return CloseDecision::Cancelled,
                     SaveChoice::Proceed { save, discard } => {
                         handle.discard(&discard, false);
+                        // A file's text has no tracker to clear: it goes
+                        // with the tab, once the user agreed to that.
+                        acknowledged.extend(discard.iter().copied());
                         let (refused, declined) = start_saves(parent, handle, &save).await;
                         if !refused.is_empty() {
                             show_refused(parent, &tabs, &refused);
@@ -90,7 +94,7 @@ async fn start_saves(
             match start {
                 SaveStart::Rejected(SaveRejection::ReviewDeclined) => return (refused, true),
                 SaveStart::Rejected(rejection) => refused.push((*tab, rejection)),
-                SaveStart::Started(_) | SaveStart::NothingToSave => {}
+                SaveStart::Started(_) | SaveStart::Saved | SaveStart::NothingToSave => {}
             }
         }
     }

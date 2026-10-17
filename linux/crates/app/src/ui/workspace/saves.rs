@@ -30,7 +30,7 @@ impl WorkspaceModel {
                             body: rejection.message(),
                         });
                     }
-                    SaveStart::NothingToSave | SaveStart::Rejected(_) => {}
+                    SaveStart::Saved | SaveStart::NothingToSave | SaveStart::Rejected(_) => {}
                 }
             }
         });
