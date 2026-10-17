@@ -877,6 +877,19 @@ fn preview(tab: &StructureTab) -> String {
     buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).to_string()
 }
 
+/// The preview is text a reader can move through, so it takes a name.
+#[gtk4::test]
+fn the_sql_preview_is_named() {
+    let mut script = postgres_script();
+    script.fetch_table_definition.always(FakeReply::ok(keyed_users()));
+    let harness = Harness::open(StructureMode::Edit, script, []);
+
+    assert_eq!(
+        crate::test_support::assert_labelled(&harness.tab().imp().sql_view.get()),
+        Ok(())
+    );
+}
+
 #[gtk4::test]
 fn renaming_existing_column_enables_save_and_previews_rename() {
     let mut script = postgres_script();
