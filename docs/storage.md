@@ -66,7 +66,7 @@ The GUI and `tablepro-agentd` may hold the journal at the same time. Each live o
 
 Every append currently verifies the full journal, and `recent(limit)` reads the full file before trimming its result. Append cost therefore grows with journal size; the 1,000-append concurrency test takes about 25 seconds locally. There is no retention or compaction policy. Keep the full-chain integrity check until a checkpoint/rotation design can preserve crash recovery and tamper detection; do not prune audit history as a performance shortcut.
 
-The GTK application disables governed writes and MCP startup when the required audit journal cannot be opened or reports unresolved writes. `tablepro-agentd` also refuses startup when the journal is unavailable or reports unresolved writes.
+Journal integrity or availability failures fail closed. If the required journal cannot be opened or verified, the GUI disables governed writes and MCP startup, and `bookie-agentd` refuses to start. Unresolved write outcomes are scoped: a connection-scoped outcome blocks governed writes only for that saved connection; a global outcome blocks all governed writes. An unresolved outcome does not by itself prevent the GUI MCP server from starting when its other prerequisites are met, but its guarded writes follow the same scope. `bookie-agentd` refuses startup for a global unresolved write; a connection-scoped unresolved write does not prevent startup.
 
 ## Secrets
 
