@@ -1,39 +1,22 @@
+use std::cell::RefCell;
+use std::rc::{Rc, Weak};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use gtk4::gio;
 use gtk4::gio::prelude::*;
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use tablepro_app_services::window_state;
+pub use tablepro_app_services::window_state::WindowState;
 
 use super::config_io::{atomic_write_json, backup_file_if_exists, xdg_config_path};
 
 static FILE_LOCK: Mutex<()> = Mutex::new(());
 static SESSION_RESTORE_ATTEMPTED: AtomicBool = AtomicBool::new(false);
+static SAVE_GENERATION: AtomicU64 = AtomicU64::new(0);
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct WindowState {
-    pub width: i32,
-    pub height: i32,
-    pub maximized: bool,
-    #[serde(default)]
-    pub last_connection_id: Option<Uuid>,
+thread_local! {
+    static SHARED_STATE: RefCell<Weak<RefCell<WindowState>>> = const { RefCell::new(Weak::new()) };
 }
-
-impl Default for WindowState {
-    fn default() -> Self {
-        Self {
-            width: 1200,
-            height: 760,
-            maximized: false,
-            last_connection_id: None,
-        }
-    }
-}
-
-const MIN_WINDOW_WIDTH: i32 = 480;
-const MIN_WINDOW_HEIGHT: i32 = 320;
-const MAX_WINDOW_SIDE: i32 = 16384;
 
 #[derive(Debug, PartialEq, Eq)]
 enum GeometrySync {
@@ -47,12 +30,6 @@ struct SettingsGeometry {
     height: i32,
     maximized: bool,
     migrated: bool,
-}
-
-fn sane(mut state: WindowState) -> WindowState {
-    state.width = state.width.clamp(MIN_WINDOW_WIDTH, MAX_WINDOW_SIDE);
-    state.height = state.height.clamp(MIN_WINDOW_HEIGHT, MAX_WINDOW_SIDE);
-    state
 }
 
 fn reconcile(parsed: Option<WindowState>, settings: Option<SettingsGeometry>) -> (WindowState, GeometrySync) {
@@ -76,7 +53,7 @@ fn reconcile(parsed: Option<WindowState>, settings: Option<SettingsGeometry>) ->
         }
         Some(_) => GeometrySync::Nothing,
     };
-    (sane(state), sync)
+    (window_state::sane(state), sync)
 }
 
 fn load_locked() -> WindowState {
@@ -115,28 +92,6 @@ fn load_locked() -> WindowState {
     state
 }
 
-fn save_locked(state: &WindowState) {
-    let Some(path) = xdg_config_path("window.json") else {
-        return;
-    };
-    if let Some(settings) = super::preferences::settings()
-        && !settings.boolean("window-migrated")
-        && let Err(e) = backup_file_if_exists(&path, &path.with_extension("before-gsettings.json"))
-    {
-        tracing::warn!(error = %e, "window_state: backup failed");
-        return;
-    }
-    if let Err(e) = atomic_write_json(&path, state) {
-        tracing::warn!(path = %path.display(), error = %e, "window_state: write failed");
-        return;
-    }
-    if let Some(settings) = super::preferences::settings()
-        && let Err(e) = save_geometry_settings(&settings, state)
-    {
-        tracing::warn!(error = %e, "window_state: GSettings write failed");
-    }
-}
-
 fn save_geometry_settings(settings: &gio::Settings, state: &WindowState) -> Result<(), String> {
     settings.delay();
     let result = (|| {
@@ -159,34 +114,53 @@ pub fn load() -> WindowState {
     load_locked()
 }
 
-pub fn save_geometry(width: i32, height: i32, maximized: bool) {
-    let _guard = FILE_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let mut state = load_locked();
-    state.width = width;
-    state.height = height;
-    state.maximized = maximized;
-    save_locked(&state);
+pub fn shared() -> Rc<RefCell<WindowState>> {
+    SHARED_STATE.with(|shared| {
+        if let Some(state) = shared.borrow().upgrade() {
+            return state;
+        }
+        let state = Rc::new(RefCell::new(load()));
+        *shared.borrow_mut() = Rc::downgrade(&state);
+        state
+    })
 }
 
-pub fn set_last_connection_id(id: Option<Uuid>) {
+pub fn next_save_generation() -> u64 {
+    SAVE_GENERATION.fetch_add(1, Ordering::SeqCst).wrapping_add(1)
+}
+
+pub fn save(state: &WindowState, generation: u64) -> Result<(), String> {
     let _guard = FILE_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let mut state = load_locked();
-    state.last_connection_id = id;
-    save_locked(&state);
+    if generation != SAVE_GENERATION.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+    let path = xdg_config_path("window.json").ok_or_else(|| "configuration path is unavailable".to_owned())?;
+    if let Some(settings) = super::preferences::settings()
+        && !settings.boolean("window-migrated")
+    {
+        backup_file_if_exists(&path, &path.with_extension("before-gsettings.json"))
+            .map_err(|error| error.to_string())?;
+    }
+    atomic_write_json(&path, state).map_err(|error| error.to_string())?;
+    if let Some(settings) = super::preferences::settings() {
+        save_geometry_settings(&settings, state)?;
+    }
+    Ok(())
 }
 
 pub fn take_session_restore_turn() -> bool {
     !SESSION_RESTORE_ATTEMPTED.swap(true, Ordering::SeqCst)
 }
 
-pub fn connection_id_to_restore(last_connection_id: Option<Uuid>, available: &[Uuid]) -> Option<Uuid> {
-    let id = last_connection_id?;
-    available.contains(&id).then_some(id)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
+
+    #[test]
+    fn app_windows_share_one_loaded_state_snapshot() {
+        assert!(Rc::ptr_eq(&shared(), &shared()));
+    }
 
     #[test]
     fn a_missing_last_connection_id_deserializes_as_none() {
@@ -214,10 +188,13 @@ mod tests {
     #[test]
     fn restore_skips_an_unknown_or_absent_connection() {
         let id = Uuid::new_v4();
-        assert_eq!(connection_id_to_restore(None, &[id]), None);
-        assert_eq!(connection_id_to_restore(Some(id), &[]), None);
-        assert_eq!(connection_id_to_restore(Some(Uuid::new_v4()), &[id]), None);
-        assert_eq!(connection_id_to_restore(Some(id), &[id]), Some(id));
+        assert_eq!(window_state::connection_id_to_restore(None, &[id]), None);
+        assert_eq!(window_state::connection_id_to_restore(Some(id), &[]), None);
+        assert_eq!(
+            window_state::connection_id_to_restore(Some(Uuid::new_v4()), &[id]),
+            None
+        );
+        assert_eq!(window_state::connection_id_to_restore(Some(id), &[id]), Some(id));
     }
     fn state(width: i32, height: i32, maximized: bool) -> WindowState {
         WindowState {
@@ -273,16 +250,8 @@ mod tests {
             let (from_file, _) = reconcile(Some(state(width, height, false)), None);
             let (from_settings, _) = reconcile(None, settings(width, height, false, true));
             for loaded in [from_file, from_settings] {
-                assert!(
-                    (MIN_WINDOW_WIDTH..=MAX_WINDOW_SIDE).contains(&loaded.width),
-                    "{width}: {}",
-                    loaded.width
-                );
-                assert!(
-                    (MIN_WINDOW_HEIGHT..=MAX_WINDOW_SIDE).contains(&loaded.height),
-                    "{height}: {}",
-                    loaded.height
-                );
+                assert!((480..=16384).contains(&loaded.width), "{width}: {}", loaded.width);
+                assert!((320..=16384).contains(&loaded.height), "{height}: {}", loaded.height);
             }
         }
         let (ordinary, _) = reconcile(Some(state(1180, 740, false)), None);

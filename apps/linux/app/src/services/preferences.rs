@@ -492,7 +492,14 @@ mod tests {
                 std::fs::read(window_path.with_extension("before-gsettings.json")).unwrap(),
                 std::fs::read(&window_path).unwrap()
             );
-            super::super::window_state::save_geometry(902, 703, true);
+            let updated_state = super::super::window_state::WindowState {
+                width: 902,
+                height: 703,
+                maximized: true,
+                last_connection_id: Some(connection_id),
+            };
+            let generation = super::super::window_state::next_save_generation();
+            super::super::window_state::save(&updated_state, generation).unwrap();
             let updated = super::super::window_state::load();
             assert_eq!(updated.last_connection_id, Some(connection_id));
             assert_eq!(updated.width, 902);

@@ -111,6 +111,14 @@ pub enum AppMsg {
     Disconnect,
     ForceDisconnect,
     PrepareWindowClose,
+    PersistWindowStateForClose {
+        width: i32,
+        height: i32,
+        maximized: bool,
+    },
+    WindowStatePersisted(Result<(), String>),
+    WindowStatePersistedForClose(Result<(), String>),
+    ConnectionDeleted(Uuid),
     ConfirmSessionTeardown(SessionTeardownAction),
     CancelSessionTeardown(SessionTeardownAction),
     SessionTeardownCompleted {

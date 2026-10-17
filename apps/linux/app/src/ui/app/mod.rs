@@ -98,6 +98,9 @@ pub struct App {
     workspace: crate::services::workspace_state::WorkspaceStore,
     history: Option<tablepro_storage::query_history::HistoryStore>,
     database: Arc<crate::services::database_service::DatabaseService>,
+    window_state: std::rc::Rc<std::cell::RefCell<crate::services::window_state::WindowState>>,
+    window_close_state_saved: std::rc::Rc<std::cell::Cell<bool>>,
+    window_close_state_pending: std::rc::Rc<std::cell::Cell<bool>>,
     preferences: crate::services::preferences::PreferencesStore,
     mcp_bridge: Option<Arc<tablepro_mcp::McpBridge>>,
     window: adw::ApplicationWindow,
@@ -267,6 +270,43 @@ pub struct App {
 }
 
 impl App {
+    fn persist_window_state(&self, sender: ComponentSender<Self>, for_close: bool) {
+        let state = *self.window_state.borrow();
+        let generation = crate::services::window_state::next_save_generation();
+        let input_sender = sender.input_sender().clone();
+        sender.command(move |_, shutdown| {
+            shutdown
+                .register(async move {
+                    let result =
+                        tokio::task::spawn_blocking(move || crate::services::window_state::save(&state, generation))
+                            .await
+                            .map_err(|error| error.to_string())
+                            .and_then(|result| result);
+                    let message = if for_close {
+                        AppMsg::WindowStatePersistedForClose(result)
+                    } else {
+                        AppMsg::WindowStatePersisted(result)
+                    };
+                    let _ = input_sender.send(message);
+                })
+                .drop_on_shutdown()
+        });
+    }
+
+    fn set_last_connection_id(&mut self, id: Option<Uuid>, sender: ComponentSender<Self>) {
+        if self.window_state.borrow().last_connection_id == id {
+            return;
+        }
+        self.window_state.borrow_mut().last_connection_id = id;
+        self.persist_window_state(sender, false);
+    }
+
+    fn on_connection_deleted(&mut self, id: Uuid, sender: ComponentSender<Self>) {
+        if self.window_state.borrow().last_connection_id == Some(id) {
+            self.set_last_connection_id(None, sender);
+        }
+    }
+
     /// The active driver id, or "postgres" if no connection is active.
     ///
     /// Single fallback site (was duplicated at 7 call sites). The
@@ -525,6 +565,9 @@ impl SimpleComponent for App {
             workspace,
             history,
             database,
+            window_state: window_handles.window_state.clone(),
+            window_close_state_saved: window_handles.window_close_state_saved.clone(),
+            window_close_state_pending: window_handles.window_close_state_pending.clone(),
             preferences,
             mcp_bridge,
             window: root.clone(),
@@ -670,6 +713,32 @@ impl SimpleComponent for App {
             AppMsg::Disconnect => self.on_disconnect(sender),
             AppMsg::ForceDisconnect => self.request_disconnect(sender),
             AppMsg::PrepareWindowClose => self.prepare_window_close(sender),
+            AppMsg::PersistWindowStateForClose {
+                width,
+                height,
+                maximized,
+            } => {
+                let mut state = self.window_state.borrow_mut();
+                state.width = width;
+                state.height = height;
+                state.maximized = maximized;
+                drop(state);
+                self.persist_window_state(sender, true);
+            }
+            AppMsg::WindowStatePersisted(result) => {
+                if let Err(error) = result {
+                    tracing::warn!(error = %error, "window state write failed");
+                }
+            }
+            AppMsg::WindowStatePersistedForClose(result) => {
+                self.window_close_state_pending.set(false);
+                if let Err(error) = result {
+                    tracing::warn!(error = %error, "window state write failed before close");
+                }
+                self.window_close_state_saved.set(true);
+                self.window.close();
+            }
+            AppMsg::ConnectionDeleted(id) => self.on_connection_deleted(id, sender),
             AppMsg::ConfirmSessionTeardown(action) => self.prepare_editor_sessions(action, sender),
             AppMsg::CancelSessionTeardown(action) => match action {
                 SessionTeardownAction::WindowClose => self.session_teardown_pending.set(false),
