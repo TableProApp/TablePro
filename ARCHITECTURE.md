@@ -229,6 +229,7 @@ tablepro-app ────────┬──► app-services, mcp, policy, sto
 tablepro-agentd ────┘
 
 tablepro-release-tests ──► mcp, policy, storage, transport, ssh, drivers, core
+tablepro-driver-tls-tests ──► transport, ssh, drivers, core
 tablepro-app-services ──► dump, policy, storage, transport, core
 
 tablepro-mcp        ──► policy, storage, core
