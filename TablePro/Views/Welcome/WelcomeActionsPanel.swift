@@ -1,8 +1,3 @@
-//
-//  WelcomeActionsPanel.swift
-//  TablePro
-//
-
 import Combine
 import SwiftUI
 
@@ -25,8 +20,7 @@ struct WelcomeActionsPanel: View {
         .map(\.showWelcomeVersionInfo)
         .removeDuplicates()
 
-    /// Captured once, because the stored value is overwritten on the same appearance that reads
-    /// it. Without the capture the line would replace itself with nothing on the next redraw.
+    /// Captured once: the same appearance that reads the stored value overwrites it.
     @State private var lastSeenAppVersion = ""
 
     var body: some View {
@@ -129,8 +123,6 @@ struct WelcomeActionsPanel: View {
         defaults.set(current, forKey: key)
     }
 
-    /// Updates install on quit with no dialog, so the release notes stop passing in front of
-    /// anyone. This is the pull-shaped replacement, shown on the window the user chose to open.
     private var showsWhatsNew: Bool {
         !lastSeenAppVersion.isEmpty && lastSeenAppVersion != Bundle.main.appVersion
     }

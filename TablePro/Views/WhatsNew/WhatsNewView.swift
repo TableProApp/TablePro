@@ -1,15 +1,5 @@
-//
-//  WhatsNewView.swift
-//  TablePro
-//
-
 import SwiftUI
 
-/// What the running version brought, rendered from the bundled `WhatsNew.md`.
-///
-/// Markdown through `AttributedString(markdown:)` rather than a web view, per the native-only
-/// rule. The file is generated from the same CHANGELOG lead block the Sparkle feed carries, so
-/// the window and the update dialog cannot disagree about what a release contained.
 struct WhatsNewView: View {
     private let content: WhatsNewContent
     private let onViewFullChangelog: () -> Void
@@ -69,10 +59,6 @@ struct WhatsNewView: View {
     }
 }
 
-/// The bundled notes, parsed once.
-///
-/// A missing or unreadable file is not a failure worth showing: the window still opens, says so
-/// plainly and offers the changelog button, which is the route that always works.
 struct WhatsNewContent {
     let title: String
     let paragraphs: [AttributedString]

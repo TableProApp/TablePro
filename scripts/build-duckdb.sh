@@ -6,12 +6,9 @@ set -euo pipefail
 # Usage: ./scripts/build-duckdb.sh [arm64|x86_64|both]
 #
 # This compiles DuckDB from source with CMake so the extensions in
-# scripts/duckdb-macos-extensions.cmake link in statically. The previous version
-# compiled the single-file amalgamation with plain clang++, and the amalgamation
-# carries no extensions: `sum`, `avg`, `round`, `date_trunc`, `current_database`
-# and most of the rest live in core_functions, which DuckDB then downloaded from
-# extensions.duckdb.org on first use. On a Mac that could not reach the registry
-# every one of them failed and a DuckDB connection was unusable.
+# scripts/duckdb-macos-extensions.cmake link in statically. The amalgamation carries
+# none, so core_functions (`sum`, `avg`, `date_trunc` and most of the rest) would
+# download from extensions.duckdb.org on first use and fail offline.
 #
 # Runtime autoloading stays on, unlike the iOS build, so httpfs and quack still
 # download on demand for remote Quack connections.
@@ -144,11 +141,9 @@ build_arch() {
     fi
     echo "Verified $core_symbols core_functions symbol(s) in $(basename "$out_lib")"
 
-    # The plugin links this with -force_load, which pulls in every member rather than letting
-    # the linker pick a winner, so a duplicated symbol is a hard link failure. Merging one
-    # archive too many produced 1821 of them and `libtool -static` reported nothing at all,
-    # so the only honest check is to link the way the plugin links. Member names are not the
-    # test: brotli and DuckDB core both ship a `platform.cpp.o` and coexist fine.
+    # The plugin links this with -force_load, so a duplicated symbol is a hard link failure
+    # that `libtool -static` never reports: link the way the plugin links. Member names are
+    # not the test: brotli and DuckDB core both ship a `platform.cpp.o` and coexist fine.
     local link_dir
     link_dir=$(mktemp -d)
     cat > "$link_dir/link_probe.c" <<'PROBE'

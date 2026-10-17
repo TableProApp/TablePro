@@ -46,12 +46,7 @@ macho_min_version() {
     printf '%s' "$version"
 }
 
-# Fails if any given library was built for a NEWER macOS than the app supports.
-#
-# The direction matters and three copies had it backwards. A library built for an older macOS is
-# fine, it simply supports more systems; one built for a newer macOS cannot run on the app's floor.
-# `max(target, minos) == target` is the question. The inverted form passed exactly the libraries
-# that break.
+# Fails on a library built for a newer macOS than DEPLOY_TARGET; an older one runs fine.
 verify_deployment_target() {
     local lib name version failed=0
     echo ""
@@ -74,10 +69,6 @@ verify_deployment_target() {
     fi
 }
 
-# OPENSSL_VERSION and OPENSSL_SHA256 come from common.sh, sourced above. They were duplicated
-# here by the split, which is the thing this library exists to stop.
-
-# Downloads the OpenSSL tarball into BUILD_DIR once, verified against the pin above.
 fetch_openssl() {
     local tarball="$BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz"
     if [ ! -f "$tarball" ]; then
@@ -89,11 +80,7 @@ fetch_openssl() {
     verify_sha256 "$tarball" "$OPENSSL_SHA256"
 }
 
-# Builds static OpenSSL for one architecture into $BUILD_DIR/install-openssl-<arch>.
-#
-# Expects BUILD_DIR, NCPU and the tarball fetched by fetch_openssl. Configure runs through
-# run_quiet rather than being redirected to /dev/null: three copies discarded its output entirely,
-# so a configure failure produced a bare non-zero exit with nothing to read.
+# Expects BUILD_DIR, NCPU and the tarball fetched by fetch_openssl.
 build_openssl() {
     local arch="$1"
     local prefix="$BUILD_DIR/install-openssl-$arch"
@@ -126,29 +113,19 @@ build_openssl() {
     echo "✅ OpenSSL $arch: $(du -h "$prefix/lib/libssl.a" | cut -f1) (libssl) $(du -h "$prefix/lib/libcrypto.a" | cut -f1) (libcrypto)"
 }
 
-# Puts the named libraries in Libs/<name>.a at the requested architecture, which is what
-# project.yml links.
-#
-# Three sources, in order: a slice that is already correct, a per-architecture file, or a thinned
-# universal. This existed in five places that disagreed. build-release.sh carried four
-# near-identical functions, 159 lines between them, one of which cd'd into Libs and one of which
-# only ever thinned the universal; scripts/ci/prepare-libs.sh did a bare `cp` of the per-arch file
-# with no fallback at all, so the two took different sources for the same library.
-# The architectures in a Mach-O archive, space separated, or empty if it is not there.
 current_arch() {
     [ -f "$1" ] || return 0
     lipo -info "$1" 2> /dev/null | sed 's/.*: //' | tr -s ' ' | sed 's/ $//'
 }
 
+# Leaves Libs/<name>.a at the requested architecture, which is what project.yml links.
 prepare_arch_libs() {
     local target_arch="$1"
     shift
     local lib unresolved=0
 
     for lib in "$@"; do
-        # An exact match, not "contains". `lipo -info | grep -q arm64` also matches a universal,
-        # so the substring form left fat libraries in place and the release linked those instead
-        # of the slice it asked for.
+        # An exact match: a universal also contains the slice, and must not be linked as one.
         if [ "$(current_arch "$LIBS_DIR/${lib}.a")" = "$target_arch" ]; then
             continue
         fi
@@ -176,10 +153,6 @@ prepare_arch_libs() {
     fi
 }
 
-# Every library build wants one private scratch directory that goes away on exit. Five scripts
-# each declared their own BUILD_DIR, an identical three-line cleanup() and the same trap; one of
-# them had leaked its directory on every run until #2352.
-#
 # The trap body is single-quoted so it reads BUILD_DIR when it fires, not when it is installed.
 # It replaces any EXIT trap already in place, so a script that needs to remove more than this
 # directory installs its own instead (build-freetds.sh does, for its tarball cache).

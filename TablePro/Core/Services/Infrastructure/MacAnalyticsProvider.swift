@@ -1,8 +1,3 @@
-//
-//  MacAnalyticsProvider.swift
-//  TablePro
-//
-
 import Foundation
 import os
 import TableProAnalytics
@@ -107,11 +102,6 @@ final class MacAnalyticsProvider: AnalyticsEnvironmentProvider {
         Self.logger.info("Recorded \(label, privacy: .public) for first time")
     }
 
-    /// Read from Sparkle rather than from a stored setting, because Sparkle owns these and a
-    /// managed preference or its own permission prompt can set them without the app involved.
-    ///
-    /// This is the only measure of whether a default that was flipped for every existing install
-    /// was accepted. It carries nothing about a person, a host or a query.
     var updateInstallMode: String? {
         let updater = SoftwareUpdater.shared
         guard updater.automaticallyChecksForUpdates else { return "off" }

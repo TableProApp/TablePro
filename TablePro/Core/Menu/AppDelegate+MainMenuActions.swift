@@ -1,8 +1,3 @@
-//
-//  AppDelegate+MainMenuActions.swift
-//  TablePro
-//
-
 import AppKit
 
 /// Commands that belong to the app rather than to any one window. They sit on the
@@ -109,8 +104,6 @@ extension AppDelegate: NSMenuItemValidation {
         open(MainMenuLink.integrations)
     }
 
-    /// Opens the in-app notes rather than the browser. The window's own button reaches the full
-    /// changelog for anyone who wants every entry.
     @objc func openChangelog(_ sender: Any?) {
         WhatsNewWindowController.present()
     }
@@ -144,8 +137,7 @@ extension AppDelegate: NSMenuItemValidation {
         case #selector(switchToRecentTab(_:)), #selector(switchToLeastRecentTab(_:)):
             return (NSApp.keyWindow?.tabbedWindows?.count ?? 0) > 1
         case #selector(checkForUpdates(_:)):
-            /// Menu validation is the one moment AppKit gives an already-built item, and a
-            /// deferred update has no other way to reach this title.
+            // A deferred update reaches this title only through menu validation.
             menuItem.title = SoftwareUpdater.shared.checkForUpdatesTitle
             return SoftwareUpdater.shared.canCheckForUpdates
         case #selector(reopenClosedTab(_:)):

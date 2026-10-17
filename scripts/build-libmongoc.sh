@@ -7,16 +7,11 @@ set -eo pipefail
 #   libbson_arm64.a, libbson_x86_64.a, libbson_universal.a
 #   libmongoc_arm64.a, libmongoc_x86_64.a, libmongoc_universal.a
 #
-# TLS backend: OpenSSL (ENABLE_SSL=OPENSSL). The previous Secure Transport
-# build broke TLS handshakes against MongoDB Atlas on macOS 26 with
-# errSSLPeerInternalError (-9838). OpenSSL handshakes succeed and TablePro
-# already bundles OpenSSL 3 dylibs for Redis/MSSQL/MySQL.
+# TLS backend: OpenSSL (ENABLE_SSL=OPENSSL). Secure Transport fails the handshake against
+# MongoDB Atlas on macOS 26 with errSSLPeerInternalError (-9838).
 #
 # OpenSSL is rebuilt from source for each arch with the correct deployment
 # target instead of relying on Homebrew or system OpenSSL.
-#
-# All libraries are built with MACOSX_DEPLOYMENT_TARGET=14.0 to match
-# the app's minimum deployment target.
 #
 # Usage:
 #   ./scripts/build-libmongoc.sh [arm64|x86_64|both]

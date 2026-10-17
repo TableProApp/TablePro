@@ -1,8 +1,3 @@
-//
-//  RegistryModels.swift
-//  TablePro
-//
-
 import Foundation
 
 enum PluginArchitecture: String, Codable, Sendable {
@@ -78,10 +73,7 @@ struct RegistryPlugin: Codable, Sendable, Identifiable {
         if let decodedBinaries = try container.decodeIfPresent([RegistryBinary].self, forKey: .binaries) {
             binaries = decodedBinaries
         } else if let url = legacyDownloadURL, let hash = legacySha256 {
-            // v1 manifests carried a single downloadURL with no architecture.
-            // Historically those ZIPs shipped a universal binary, so we synthesize
-            // entries for both architectures. Code signature verification will
-            // reject mismatched arch at install time.
+            // A v1 entry has one universal ZIP and no architecture.
             binaries = [
                 RegistryBinary(
                     architecture: .arm64,
@@ -122,10 +114,6 @@ extension RegistryPlugin {
             return highestInRange.binary
         }
 
-        // Every published binary being above this app's PluginKit version is a stale app, not a
-        // missing architecture, and saying "architecture" sends the user looking at their CPU.
-        // It is the ordinary outcome of the registry's retention policy: once the two newest kit
-        // versions are both above what an app ships, that app can install nothing at all.
         let publishedKits = forThisArchitecture.compactMap(\.pluginKitVersion)
         if let oldest = publishedKits.min(), oldest > currentKitVersion {
             throw PluginError.appTooOldForPlugin(oldestPublishedKit: oldest, appKit: currentKitVersion)

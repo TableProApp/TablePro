@@ -1,18 +1,6 @@
-//
-//  WhatsNewWindowController.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
 
-/// Hosts the What's New notes in an ordinary `NSWindowController`, like every other window in the
-/// app. One instance for the app's lifetime, so reopening from the menu raises the same window
-/// rather than stacking copies.
-///
-/// Pull-only. Nothing opens this on launch or after an update installs: updates now apply on quit
-/// with no dialog, and a window that appeared after each one would be more than a hundred
-/// interruptions a year spent on exactly what background installs remove.
 @MainActor
 internal final class WhatsNewWindowController: NSWindowController {
     private static var shared: WhatsNewWindowController?

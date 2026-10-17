@@ -294,9 +294,8 @@ build_slice() {
     for src in "${LIBPQ_SRCS[@]}" "${COMMON_SRCS[@]}" "${PORT_SRCS[@]}"; do
         local obj_name
         obj_name=$(basename "${src%.c}.o")
-        # A source that is not there used to be skipped in silence, so a PostgreSQL bump that
-        # renamed or moved a file produced a libpq.a quietly missing that object. Only a
-        # compile failure was ever reported.
+        # A missing source fails the build: a PostgreSQL bump that moves a file must not drop
+        # its object from libpq.a.
         if [ ! -f "$src" ]; then
             MISSING_SRCS+=("$src")
             continue

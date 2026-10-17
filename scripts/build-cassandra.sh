@@ -6,10 +6,8 @@ set -euo pipefail
 #
 # Dependencies: cmake, libuv (built automatically), OpenSSL (from Libs/)
 #
-# Always rebuilds. It used to skip any artifact already present in Libs/, but download-libs.sh
-# vendors all eight of them, so the guards were satisfied on every machine and the script did
-# nothing: a CASSANDRA_VERSION bump produced no new binary. Publish the result with
-# scripts/publish-libs.sh, which is what makes it the version everyone else gets.
+# Always rebuilds: download-libs.sh fills Libs/, so a skip-if-present guard would never build.
+# Publish the result with scripts/publish-libs.sh.
 
 CASSANDRA_VERSION="2.17.1"
 CASSANDRA_SHA256="e6ab5f5c60a916dd6c0dd9a19a883a4a1ab3d6b4e95cab925a186fecff08344e"

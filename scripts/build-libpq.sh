@@ -11,10 +11,8 @@ set -eo pipefail
 #   libpgcommon_arm64.a, libpgcommon_x86_64.a, libpgcommon_universal.a
 #   libpgport_arm64.a, libpgport_x86_64.a, libpgport_universal.a
 #
-# All libraries are built with MACOSX_DEPLOYMENT_TARGET=14.0 to match
-# the app's minimum deployment target. This prevents the "Symbol not found"
-# crash (e.g. _strchrnul) that occurs when Homebrew libraries built for
-# the host OS are bundled into the app.
+# Built for the app's deployment target, not the host's: a Homebrew libpq crashes an older
+# macOS with "Symbol not found" (e.g. _strchrnul).
 #
 # Usage:
 #   ./scripts/build-libpq.sh [arm64|x86_64|both]
@@ -29,9 +27,6 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/macos.sh"
 PG_SHA256="c4605b73fea11963406699f949b966e5d173a7ee0ccaef8938dec0ca8a995fe7"
 
 ARCH="${1:-both}"
-# The PostgreSQL driver became a plugin, and its headers moved with it. This pointed at
-# TablePro/Core/Database/CLibPQ/include, which no longer exists, so every rebuild recreated a dead
-# directory and never updated the headers the plugin actually compiles against.
 HEADER_DIR="$REPO_ROOT/Plugins/PostgreSQLDriverPlugin/CLibPQ/include"
 make_build_dir
 
@@ -159,8 +154,7 @@ build_for_arch() {
     build_openssl "$arch"
     build_libpq "$arch"
     install_libs "$arch"
-    # Unconditional. Skipping when a header already exists meant a version bump shipped new
-    # binaries against the previous release's headers.
+    # Unconditional, so a version bump never ships new binaries with the old headers.
     install_headers "$arch"
 }
 

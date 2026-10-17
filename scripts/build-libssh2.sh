@@ -10,9 +10,6 @@ set -eo pipefail
 # OpenSSL is built from source to match the app's deployment target,
 # preventing "Symbol not found" crashes from Homebrew-built libraries.
 #
-# All libraries are built with MACOSX_DEPLOYMENT_TARGET=14.0 to match
-# the app's minimum deployment target.
-#
 # Usage:
 #   ./scripts/build-libssh2.sh [arm64|x86_64|both]
 #

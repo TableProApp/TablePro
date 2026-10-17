@@ -10,9 +10,6 @@ set -eo pipefail
 # OpenSSL is built from source to match the app's deployment target,
 # preventing "Symbol not found" crashes from Homebrew-built libraries.
 #
-# All libraries are built with MACOSX_DEPLOYMENT_TARGET=14.0 to match
-# the app's minimum deployment target.
-#
 # Usage:
 #   ./scripts/build-hiredis.sh [arm64|x86_64|both]
 #
@@ -28,9 +25,6 @@ HIREDIS_VERSION="1.2.0"
 HIREDIS_SHA256="82ad632d31ee05da13b537c124f819eb88e18851d9cb0c30ae0552084811588c"
 
 ARCH="${1:-both}"
-# The headers the Redis plugin compiles against. The old path under TablePro/Core/Database was
-# deleted when the driver moved into a plugin bundle, so this script was installing them where
-# nothing read them and leaving the real ones untouched.
 HEADER_DIR="$REPO_ROOT/Plugins/RedisDriverPlugin/CRedis/include/hiredis"
 make_build_dir
 

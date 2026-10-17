@@ -14,11 +14,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/common.sh"
 #   ./scripts/ios/build-mariadb-ios.sh
 
 MARIADB_VERSION="3.4.4"
-# MariaDB publishes a digest for this tarball independently of the tarball itself, at
-# https://archive.mariadb.org/connector-c-$MARIADB_VERSION/sha256sums.txt, which is why the source
-# moved here from the GitHub tag archive: GitHub publishes no digest, so pinning one would only
-# record whatever was served the first time anybody looked. Note the upstream tarball unpacks to a
-# "-src" directory, unlike the GitHub one.
+# From archive.mariadb.org, which publishes a digest at
+# https://archive.mariadb.org/connector-c-$MARIADB_VERSION/sha256sums.txt; the GitHub tag archive
+# has none. The tarball unpacks to a "-src" directory.
 MARIADB_SHA256="58876fad1c2d33979d78bbfa61d7a3476e8faa2cd0af0f7f8bfeb06deaa1034e"
 IOS_DEPLOY_TARGET="17.0"
 

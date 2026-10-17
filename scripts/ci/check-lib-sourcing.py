@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 """Fails when a script calls a scripts/lib function without sourcing the library that defines it.
 
-A missing `source` line is invisible to every tool the repo already runs. bash -n only parses,
-shellcheck cannot know whether a bare word is a function or a command on PATH, and the call site
-reads exactly like a working one. It surfaces at run time as exit 127, and for the one script that
-only runs during a release, that means it surfaces during a release: v0.67.1's DMG job died with
-"exit code 127" right after "DMG signed", because create-dmg.sh called notarize_and_staple and
-never sourced scripts/lib/notarize.sh.
-
 Usage: check-lib-sourcing.py [scripts-dir]
 """
 
@@ -16,8 +9,7 @@ import re
 import sys
 
 FUNCTION = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*\(\)\s*\{", re.M)
-# Any .sh named on a source line. Matched by basename so it works whether the script
-# writes lib/common.sh or, as macos.sh does from inside lib/, just common.sh.
+# Matched by basename: macos.sh, from inside lib/, sources plain common.sh.
 SOURCED = re.compile(r"^\s*(?:source|\.)\s+.*?([A-Za-z0-9_.-]+\.sh)", re.M)
 
 
@@ -33,8 +25,7 @@ def main():
         for name in FUNCTION.findall(lib.read_text(encoding="utf-8")):
             owner.setdefault(name, lib.name)
 
-    # Sourcing is transitive: macos.sh sources common.sh, so a script that sources macos.sh gets
-    # both. Resolving that is the difference between a useful check and five false reports.
+    # Sourcing is transitive: a script that sources macos.sh also gets common.sh.
     def sourced_libs(text):
         return {name for name in SOURCED.findall(text) if (lib_dir / name).is_file()}
 

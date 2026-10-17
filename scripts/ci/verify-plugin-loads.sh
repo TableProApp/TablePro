@@ -5,13 +5,9 @@ set -euo pipefail
 #
 # Usage: verify-plugin-loads.sh <directory-with-tableplugins> [more-directories...]
 #
-# "Bundle failed to load executable" is the failure this repo has shipped twice, both times because
-# a plugin's witness table hard-referenced a PluginKit symbol that had been removed. CI built and
-# signed the bundles and never once tried to load one, so the first thing to find out was a user's
-# install. dlopen is exactly the dyld path that fails in that case, and it takes milliseconds.
-#
-# This proves the binary and its dependencies resolve. It does not instantiate the principal class
-# or call into PluginKit; the app's own version gate does that at runtime.
+# dlopen resolves the binary and every library and framework it links, the dyld path behind
+# "Bundle failed to load executable". It does not instantiate the principal class. PluginKit ABI:
+# .claude/rules/plugin-system.md, ABI, checked with `verify.sh abi`.
 
 [ $# -gt 0 ] || { echo "Usage: $0 <directory-with-tableplugins>..." >&2; exit 2; }
 
@@ -77,7 +73,7 @@ if [ "${#failed[@]}" -gt 0 ]; then
     echo "" >&2
     echo "${#failed[@]} of $checked plugins will not load: ${failed[*]}" >&2
     echo "This is the 'Bundle failed to load executable' a user would hit. A removed PluginKit" >&2
-    echo "requirement is the usual cause; see the ABI rules in CLAUDE.md." >&2
+    echo "symbol is the usual cause; see .claude/rules/plugin-system.md, ABI." >&2
     exit 1
 fi
 

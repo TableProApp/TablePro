@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
 #
-# Fails when a build script writes the macOS deployment target down itself.
-#
-# The number belongs to project.yml and reaches the scripts through
-# scripts/lib/deployment-target.sh. It used to live in five places, and when #2874 moved the app to
-# macOS 13 none of them followed: every archive in Libs/ was built for macOS 14 and linked into a
-# 13.0 app, which the linker reported 121 times into a build that silenced linker warnings.
+# Fails when a build script writes the macOS deployment target down itself. The number belongs
+# to project.yml and reaches the scripts through scripts/lib/deployment-target.sh.
 #
 # Usage: check-deployment-target.sh
 

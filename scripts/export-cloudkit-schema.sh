@@ -1,20 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Refresh the checked-in snapshot of the Production CloudKit schema.
-#
-# CloudKit only creates record fields automatically in the Development
-# environment. TablePro pins both apps to Production, so a field added to a
-# record type in code never reaches the server on its own: saving a record
-# that carries an undeclared field makes CloudKit reject that record.
-#
-# ConnectionSyncField refuses to write any field that is not verified against
-# this snapshot, and ProductionSchemaParityTests fails if the two disagree.
-# After deploying a schema change in CloudKit Console, run this script and
-# commit the result, then mark the field verified in ConnectionSyncSchema.swift.
-#
-# The snapshot is only ever this script's output: a hand edit passes
-# ProductionSchemaParityTests while Production still rejects the field.
+# Refresh the checked-in snapshot of the Production CloudKit schema. When to run it:
+# .claude/rules/data-sync-storage.md.
 #
 # Requires a CloudKit management token:
 #   xcrun cktool save-token --type management
