@@ -1,8 +1,3 @@
-//
-//  TableLoadPerformanceRecord.swift
-//  TablePro
-//
-
 import Foundation
 
 internal enum TableLoadRowBucket: String, Sendable, CaseIterable {
@@ -86,7 +81,7 @@ internal enum TableLoadOpenTabBucket: String, Sendable, CaseIterable {
 internal struct TableLoadRuntimeStamp: Sendable, Equatable {
     internal static let current = TableLoadRuntimeStamp(
         appVersion: Bundle.main.appVersion,
-        appBuild: Bundle.main.buildNumber,
+        appBuild: String(Bundle.main.buildNumber),
         osVersion: TableLoadRuntimeStamp.systemVersion()
     )
 

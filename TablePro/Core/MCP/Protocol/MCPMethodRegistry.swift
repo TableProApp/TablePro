@@ -5,7 +5,7 @@ public enum MCPMethodRegistry {
     public static let serverInfo = MCPImplementation(
         name: "tablepro",
         title: "TablePro",
-        version: appVersion,
+        version: Bundle.main.appVersion,
         websiteUrl: "https://tablepro.app"
     )
 
@@ -59,8 +59,4 @@ public enum MCPMethodRegistry {
             LegacyLoggingSetLevelHandler()
         ]
     }
-
-    private static let appVersion: String = {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
-    }()
 }

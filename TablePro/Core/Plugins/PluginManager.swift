@@ -482,7 +482,7 @@ final class PluginManager: ObservableObject {
         }
 
         if let minAppVersion = infoPlist["TableProMinAppVersion"] as? String {
-            let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+            let appVersion = Bundle.main.appVersion
             if appVersion.compare(minAppVersion, options: .numeric) == .orderedAscending {
                 throw PluginError.appVersionTooOld(minimumRequired: minAppVersion, currentApp: appVersion)
             }

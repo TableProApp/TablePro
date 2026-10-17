@@ -139,7 +139,7 @@ extension PluginManager {
     @discardableResult
     func validateRegistryCompatibility(_ registryPlugin: RegistryPlugin) throws -> RegistryBinary {
         if let minAppVersion = registryPlugin.minAppVersion {
-            let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+            let appVersion = Bundle.main.appVersion
             if appVersion.compare(minAppVersion, options: .numeric) == .orderedAscending {
                 throw PluginError.incompatibleWithCurrentApp(minimumRequired: minAppVersion)
             }

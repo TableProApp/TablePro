@@ -1,8 +1,3 @@
-//
-//  ConnectionBundleExporter.swift
-//  TablePro
-//
-
 import Foundation
 import os
 import TableProImport
@@ -26,7 +21,7 @@ internal struct ConnectionBundleExporter {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionBundleExporter")
 
     nonisolated static var bundledAppVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        Bundle.main.appVersion
     }
 
     private let connections: ConnectionStorage
