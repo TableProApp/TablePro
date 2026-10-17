@@ -8,7 +8,7 @@ pub(super) fn secret_message(error: &tablepro_core::credentials::SecretError) ->
             "No keyring is running, so saved passwords cannot be read. Start a keyring, or enter the password by hand.",
         ),
         SecretError::PortalUnavailable { .. } => crate::i18n::gettext(
-            "The secret portal is unavailable, so saved passwords cannot be read inside the sandbox.",
+            "The secret portal is unavailable, so saved passwords cannot be read inside the sandbox. Check that xdg-desktop-portal and a keyring are running, or enter the password by hand.",
         ),
         SecretError::Locked => crate::i18n::gettext("The keyring is locked. Unlock it and try again."),
         SecretError::UnlockDismissed => {

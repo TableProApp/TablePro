@@ -378,6 +378,15 @@ fn every_secret_error_has_its_own_message() {
 }
 
 #[test]
+fn the_portal_message_says_what_to_check() {
+    let message = secret_message(&SecretError::PortalUnavailable {
+        detail: "org.freedesktop.portal.Secret not found".to_owned(),
+    });
+
+    assert!(message.contains("xdg-desktop-portal"), "{message}");
+}
+
+#[test]
 fn a_backend_error_keeps_its_detail() {
     let message = secret_message(&SecretError::Backend {
         detail: "org.freedesktop.Secret failed".to_owned(),
