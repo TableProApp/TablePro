@@ -1,8 +1,3 @@
-//
-//  PluginError.swift
-//  TablePro
-//
-
 import Foundation
 
 enum PluginError: LocalizedError {
@@ -18,11 +13,9 @@ enum PluginError: LocalizedError {
     case appTooOldForPlugin(oldestPublishedKit: Int, appKit: Int)
     case installFailed(String)
     case pluginConflict(existingName: String)
-    case appVersionTooOld(minimumRequired: String, currentApp: String)
     case downloadFailed(String)
     case pluginNotInstalled(String)
     case pluginUpdateUnavailable(reason: String)
-    case incompatibleWithCurrentApp(minimumRequired: String)
     case invalidDescriptor(pluginId: String, reason: String)
     case unknownDatabaseType(String)
     case pluginLoadFailed(pluginId: String?, pluginName: String, reason: String?)
@@ -55,16 +48,12 @@ enum PluginError: LocalizedError {
             return String(format: String(localized: "Plugin installation failed: %@"), reason)
         case .pluginConflict(let existingName):
             return String(format: String(localized: "A built-in plugin \"%@\" already provides this bundle ID"), existingName)
-        case .appVersionTooOld(let minimumRequired, let currentApp):
-            return String(format: String(localized: "Plugin requires app version %@ or later, but current version is %@"), minimumRequired, currentApp)
         case .downloadFailed(let reason):
             return String(format: String(localized: "Plugin download failed: %@"), reason)
         case .pluginNotInstalled(let databaseType):
             return String(format: String(localized: "The %@ plugin is not installed."), databaseType)
         case .pluginUpdateUnavailable(let reason):
             return reason
-        case .incompatibleWithCurrentApp(let minimumRequired):
-            return String(format: String(localized: "This plugin requires TablePro %@ or later"), minimumRequired)
         case .invalidDescriptor(let pluginId, let reason):
             return String(format: String(localized: "Plugin '%@' has an invalid descriptor: %@"), pluginId, reason)
         case .unknownDatabaseType(let databaseType):
@@ -105,8 +94,7 @@ enum PluginError: LocalizedError {
 
     var isPermanentReconciliationFailure: Bool {
         switch self {
-        case .noCompatibleBinary, .appTooOldForPlugin, .incompatibleVersion, .incompatibleWithCurrentApp,
-             .appVersionTooOld:
+        case .noCompatibleBinary, .appTooOldForPlugin, .incompatibleVersion:
             return true
         default:
             return false

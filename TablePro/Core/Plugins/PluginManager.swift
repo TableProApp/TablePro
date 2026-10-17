@@ -460,33 +460,30 @@ final class PluginManager: ObservableObject {
         let bundle: Bundle
     }
 
+    nonisolated internal static let compatibleKits = minimumCompatiblePluginKitVersion...currentPluginKitVersion
+
+    nonisolated internal static func isCompatibleKit(_ kit: Int) -> Bool {
+        compatibleKits.contains(kit)
+    }
+
     nonisolated internal static func validateBundleVersions(_ bundle: Bundle) throws {
-        let infoPlist = bundle.infoDictionary ?? [:]
-        guard let version = infoPlist["TableProPluginKitVersion"] as? Int else {
+        guard let version = bundle.infoDictionary?["TableProPluginKitVersion"] as? Int else {
             throw PluginError.pluginOutdated(
                 pluginVersion: 0,
                 requiredVersion: currentPluginKitVersion
             )
         }
+        guard !isCompatibleKit(version) else { return }
         if version > currentPluginKitVersion {
             throw PluginError.incompatibleVersion(
                 required: version,
                 current: currentPluginKitVersion
             )
         }
-        if version < minimumCompatiblePluginKitVersion {
-            throw PluginError.pluginOutdated(
-                pluginVersion: version,
-                requiredVersion: currentPluginKitVersion
-            )
-        }
-
-        if let minAppVersion = infoPlist["TableProMinAppVersion"] as? String {
-            let appVersion = Bundle.main.appVersion
-            if appVersion.compare(minAppVersion, options: .numeric) == .orderedAscending {
-                throw PluginError.appVersionTooOld(minimumRequired: minAppVersion, currentApp: appVersion)
-            }
-        }
+        throw PluginError.pluginOutdated(
+            pluginVersion: version,
+            requiredVersion: currentPluginKitVersion
+        )
     }
 
     nonisolated private static func validateAndLoadBundle(

@@ -173,6 +173,17 @@ struct PluginInstallerHelpersTests {
         try PluginManager.validateBundleVersions(bundle)
     }
 
+    @Test("isCompatibleKit accepts the floor through the current kit and nothing outside it")
+    func compatibleKitRange() {
+        let minimumKit = PluginManager.minimumCompatiblePluginKitVersion
+        let currentKit = PluginManager.currentPluginKitVersion
+
+        #expect(PluginManager.isCompatibleKit(minimumKit))
+        #expect(PluginManager.isCompatibleKit(currentKit))
+        #expect(!PluginManager.isCompatibleKit(minimumKit - 1))
+        #expect(!PluginManager.isCompatibleKit(currentKit + 1))
+    }
+
     private func download(_ name: String) async throws -> (data: Data, fractions: [Double]) {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [ChunkedDownloadProtocol.self]
