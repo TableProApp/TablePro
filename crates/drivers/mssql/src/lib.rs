@@ -236,11 +236,6 @@ impl MssqlConnection {
         }
     }
 
-    /// Every statement goes through here so an abandoned one cannot
-    /// strand the next caller. tiberius has no way to resynchronise a
-    /// client whose token stream was left half-read, and the client sits
-    /// behind a mutex, so a single abandoned statement would otherwise
-    /// block every later operation on this connection forever.
     async fn client(&self) -> Result<MappedMutexGuard<'_, MssqlClient>, DriverError> {
         if !self.usable.load(Ordering::Acquire) {
             return Err(DriverError::Disconnected);
@@ -252,12 +247,6 @@ impl MssqlConnection {
         }
     }
 
-    /// Runs `operation` under the caller's cancellation and deadline.
-    /// tiberius 0.12 exposes no way to send the TDS attention packet, so
-    /// an interruption cannot stop the statement on the server: the
-    /// outcome stays unknown and the connection is retired rather than
-    /// reused. `supports_server_cancellation` reports false for exactly
-    /// this reason.
     async fn run_abandonable<T, F>(&self, operation: F, control: &OperationControl) -> Result<T, DriverError>
     where
         F: std::future::Future<Output = Result<T, DriverError>>,

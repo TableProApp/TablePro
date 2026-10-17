@@ -380,7 +380,7 @@ async fn the_driver_does_not_claim_server_side_cancellation() {
     let connection = connect(opts).await;
     assert!(
         !connection.supports_server_cancellation(),
-        "tiberius cannot send the TDS attention packet, so a Stop must not be offered"
+        "server cancellation must remain disabled until acknowledgement is verified"
     );
 }
 
