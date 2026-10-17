@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
 	<key>TableProPluginKitVersion</key>
-	<integer>39</integer>
+	<integer>TABLEPRO_PLUGINKIT_VERSION</integer>
 </dict>
 </plist>

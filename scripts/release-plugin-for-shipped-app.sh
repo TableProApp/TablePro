@@ -66,10 +66,16 @@ if ! git -C "$REPO_ROOT" rev-parse --verify "$APP_TAG^{commit}" >/dev/null 2>&1;
   exit 1
 fi
 
-KIT=$(git -C "$REPO_ROOT" show "$APP_TAG:TablePro/Core/Plugins/PluginManager.swift" \
-  | sed -n 's/.*currentPluginKitVersion = \([0-9]*\).*/\1/p' | head -1)
+if git -C "$REPO_ROOT" cat-file -e "$APP_TAG:Configs/PluginKit.xcconfig" 2>/dev/null; then
+  KIT=$(git -C "$REPO_ROOT" show "$APP_TAG:Configs/PluginKit.xcconfig" \
+    | sed -n 's/^TABLEPRO_PLUGINKIT_VERSION *= *\([0-9][0-9]*\) *$/\1/p')
+else
+  # A tag cut before Configs/PluginKit.xcconfig existed declares the kit in Swift.
+  KIT=$(git -C "$REPO_ROOT" show "$APP_TAG:TablePro/Core/Plugins/PluginManager.swift" \
+    | sed -n 's/.*currentPluginKitVersion = \([0-9]*\).*/\1/p' | head -1)
+fi
 if [ -z "$KIT" ]; then
-  echo "error: could not read currentPluginKitVersion out of $APP_TAG" >&2
+  echo "error: could not read the PluginKit version out of $APP_TAG" >&2
   exit 1
 fi
 

@@ -1,0 +1,3 @@
+// When to raise each, and how the build stamps them: .claude/rules/plugin-system.md, ABI.
+TABLEPRO_PLUGINKIT_VERSION = 39
+TABLEPRO_PLUGINKIT_MINIMUM_VERSION = 19

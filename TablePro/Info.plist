@@ -20,6 +20,10 @@
 	<integer>86400</integer>
 	<key>SUAutomaticallyUpdate</key>
 	<true/>
+	<key>TableProPluginKitVersion</key>
+	<string>$(TABLEPRO_PLUGINKIT_VERSION)</string>
+	<key>TableProPluginKitMinimumVersion</key>
+	<string>$(TABLEPRO_PLUGINKIT_MINIMUM_VERSION)</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
