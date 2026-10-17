@@ -190,6 +190,61 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::browse_tab::save_in_flight_tests::draft_mutation_routes_are_ignored_during_a_save"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::save_in_flight_tests::keyless_tab_rejects_inline_edits_and_insert_actions"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::save_in_flight_tests::keyless_tab_refuses_to_stage_deletion_of_a_persisted_row"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::save_in_flight_tests::stale_row_edit_null_delete_and_paste_messages_do_not_mutate_the_rebound_row"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::save_in_flight_tests::generated_column_edit_and_null_messages_do_not_stage_mutations"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::save_in_flight_tests::undecodable_cell_edit_and_null_messages_do_not_stage_mutations"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::save_in_flight_tests::read_only_tab_rejects_mutations_from_toolbar_context_actions_and_bulk_selection"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::save_in_flight_tests::read_only_tab_can_delete_a_selected_draft_without_deleting_stored_rows"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::save_in_flight_tests::read_only_tab_refuses_a_mixed_draft_and_stored_row_delete_atomically"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::save_in_flight_tests::read_only_tab_can_undo_and_redo_pending_local_draft"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::save_in_flight_tests::read_only_tab_can_discard_a_pending_local_draft"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::browse_tab::tests::browse_page_fetch_waits_until_the_new_columns_are_applied"
     ],
     [

@@ -659,6 +659,12 @@ impl SimpleComponent for BrowseTab {
     }
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
+        if self.reject_read_only_mutation(&msg, &sender) {
+            return;
+        }
+        if self.reject_keyless_mutation(&msg, &sender) {
+            return;
+        }
         let Some(msg) = self.reject_while_saving(msg, &sender) else {
             return;
         };

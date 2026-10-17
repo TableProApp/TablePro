@@ -218,10 +218,10 @@ impl BrowseTab {
         // changed (rare in practice — would require schema migration
         // mid-session). Build the full column-view scaffolding.
         clear_box(&self.grid_holder);
-        let edit_sender = if self.read_only {
-            None
-        } else {
+        let edit_sender = if self.allows_keyed_row_mutations() {
             Some(self.grid_sender.clone())
+        } else {
+            None
         };
         let pk_col_indices: Vec<usize> = self
             .current_columns
@@ -243,6 +243,7 @@ impl BrowseTab {
             preview_redis_strings: self.driver_id == "redis",
             preview_result_values: false,
             local_result_sort: false,
+            row_mutations_allowed: self.allows_keyed_row_mutations(),
             local_result_view: None,
             sortable_result_columns: Default::default(),
             foreign_key_columns,

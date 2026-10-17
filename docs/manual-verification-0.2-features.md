@@ -312,4 +312,3 @@ Use a keyed table with a nullable text column and values above 8 KiB. Include CR
 - [ ] On a read-only connection, Back Up Database… works and Restore from Backup… is refused before a file is chosen. On a MySQL connection both explain that backups are PostgreSQL only.
 - [ ] Press Cancel during a large backup: the window closes, nothing is written next to the chosen file, and `audit.jsonl` shows a Cancelled administrative outcome after its intent.
 - [ ] Remove `pg_dump` from `/usr/bin` (or test on a host without it): the error names the missing tool and how to install it.
-

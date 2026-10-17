@@ -34,6 +34,7 @@ pub(super) struct GridMenus {
 
 pub(super) struct GridMenuOptions {
     pub(super) filterable: bool,
+    pub(super) row_mutations_allowed: bool,
     pub(super) foreign_key_columns: std::collections::HashSet<String>,
     pub(super) local_result_view: Option<LocalResultView>,
 }
@@ -49,11 +50,15 @@ pub(super) fn install_grid_context_menus(
     let context: Rc<RefCell<Option<CellContext>>> = Rc::new(RefCell::new(None));
     let columns = Rc::new(result_columns.to_vec());
     let local_result = options.local_result_view.is_some();
-    let editable_menu = build_menu(true, true, true, options.filterable, local_result);
+    let editable_menu = build_menu(
+        true,
+        options.row_mutations_allowed,
+        true,
+        options.filterable,
+        local_result,
+    );
     let readonly_menu = build_menu(false, false, true, options.filterable, local_result);
-    let empty_menu = gio::Menu::new();
-    empty_menu.append(Some(&crate::tr!("Insert row")), Some("cell.insert-row"));
-    empty_menu.append(Some(&crate::tr!("Jump to Column…")), Some("grid.jump-column"));
+    let empty_menu = empty_grid_menu(options.row_mutations_allowed);
 
     let group = gio::SimpleActionGroup::new();
     let edit_action = gio::SimpleAction::new("edit", None);
@@ -461,6 +466,15 @@ pub(super) fn install_grid_context_menus(
         reference_action,
         foreign_key_columns: Rc::new(options.foreign_key_columns),
     }
+}
+
+fn empty_grid_menu(row_mutations_allowed: bool) -> gio::Menu {
+    let menu = gio::Menu::new();
+    if row_mutations_allowed {
+        menu.append(Some(&crate::tr!("Insert row")), Some("cell.insert-row"));
+    }
+    menu.append(Some(&crate::tr!("Jump to Column…")), Some("grid.jump-column"));
+    menu
 }
 
 fn build_menu(
@@ -932,6 +946,30 @@ fn export_snapshot(view: &gtk::ColumnView, columns: &[ColumnInfo], truncated: bo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_empty_read_only_grid_menu_does_not_offer_insert_row() {
+        assert_eq!(empty_grid_menu(false).n_items(), 1);
+    }
+
+    #[test]
+    fn an_empty_writable_grid_menu_offers_insert_row() {
+        assert_eq!(empty_grid_menu(true).n_items(), 2);
+    }
+
+    #[test]
+    fn editable_grid_menu_hides_row_mutations_when_the_table_has_no_key() {
+        let menu = build_menu(true, false, true, true, false);
+        let actions = menu.item_link(3, gio::MENU_LINK_SECTION).expect("actions section");
+        assert_eq!(actions.n_items(), 4);
+    }
+
+    #[test]
+    fn editable_grid_menu_offers_row_mutations_when_the_table_has_a_key() {
+        let menu = build_menu(true, true, true, true, false);
+        let actions = menu.item_link(3, gio::MENU_LINK_SECTION).expect("actions section");
+        assert_eq!(actions.n_items(), 8);
+    }
 
     #[test]
     #[ignore = "requires an isolated GTK display"]

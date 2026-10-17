@@ -100,6 +100,7 @@ pub struct TabGridContext {
     pub preview_redis_strings: bool,
     pub preview_result_values: bool,
     pub local_result_sort: bool,
+    pub row_mutations_allowed: bool,
     pub local_result_view: Option<local_filter::LocalResultView>,
     pub sortable_result_columns: std::collections::HashSet<usize>,
     /// Names of columns that are part of a foreign key on this table.
@@ -197,6 +198,7 @@ pub fn build_column_view(
             driver_id,
             context_menu::GridMenuOptions {
                 filterable: tab_ctx.tab_id.is_some(),
+                row_mutations_allowed: tab_ctx.row_mutations_allowed,
                 foreign_key_columns: tab_ctx.foreign_key_columns.clone(),
                 local_result_view: tab_ctx.local_result_view.clone(),
             },

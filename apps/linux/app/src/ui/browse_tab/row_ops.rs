@@ -3,6 +3,24 @@ use relm4::ComponentSender;
 use super::*;
 
 impl BrowseTab {
+    pub(super) fn reject_keyless_mutation(&self, input: &BrowseTabInput, sender: &ComponentSender<Self>) -> bool {
+        if self.allows_keyed_row_mutations() || !requires_row_key(input) {
+            return false;
+        }
+        let _ = sender.output(BrowseTabOutput::ShowToast(crate::tr!(
+            "This table has no primary key. Inline editing is disabled."
+        )));
+        true
+    }
+
+    pub(super) fn reject_read_only_mutation(&self, input: &BrowseTabInput, sender: &ComponentSender<Self>) -> bool {
+        if self.allows_row_mutations() || !is_row_mutation_input(input) {
+            return false;
+        }
+        let _ = sender.output(BrowseTabOutput::ShowToast(crate::tr!("This connection is read-only.")));
+        true
+    }
+
     pub(super) fn handle_duplicate_row(&mut self, row_position: u32, sender: ComponentSender<Self>) {
         if self.current_columns.is_empty() {
             return;
@@ -162,6 +180,13 @@ impl BrowseTab {
             });
             return;
         }
+        if self.read_only && had_persisted_row {
+            let _ = sender.output(BrowseTabOutput::ShowSelectionAlert {
+                title: crate::tr!("Cannot delete"),
+                body: crate::tr!("This connection is read-only."),
+            });
+            return;
+        }
         // PK gate only fires when persisted rows are involved.
         // Pure-draft selections sail through to discard.
         if had_persisted_row && pk_indices.is_empty() {
@@ -177,16 +202,18 @@ impl BrowseTab {
         let count = snapshot.len() + draft_ids.len();
         let tab_id = self.tab_id;
         let selection_for_commit = selection.clone();
+        let store_for_commit = self.list_store();
         let commit_delete = move |snapshot: Vec<(crate::services::change_tracker::RowKey, Vec<Value>)>,
                                   draft_ids: Vec<u64>| {
             crate::services::change_tracker::with_tab(tab_id, |t| {
                 for (key, row) in snapshot {
                     t.track_delete(key, row);
                 }
-                for id in draft_ids {
-                    t.discard_draft(id);
+                for id in &draft_ids {
+                    t.discard_draft(*id);
                 }
             });
+            remove_draft_rows(store_for_commit.as_ref(), &draft_ids);
             // Clear the multi-row selection so the
             // "{n} selected" badge disappears and the Delete
             // button tooltip resets. Without this the bitset
@@ -552,7 +579,7 @@ impl BrowseTab {
         msg: BrowseTabInput,
         sender: &ComponentSender<Self>,
     ) -> Option<BrowseTabInput> {
-        let edits_tracker = matches!(
+        let changes_tracker = matches!(
             msg,
             BrowseTabInput::DuplicateRow { .. }
                 | BrowseTabInput::InsertRow
@@ -560,8 +587,13 @@ impl BrowseTab {
                 | BrowseTabInput::GridCellEdited { .. }
                 | BrowseTabInput::GridSetCellNull { .. }
                 | BrowseTabInput::GridDeleteRowAt { .. }
+                | BrowseTabInput::Undo
+                | BrowseTabInput::Redo
+                | BrowseTabInput::DiscardAll
+                | BrowseTabInput::Paste(_)
+                | BrowseTabInput::PasteText(_)
         );
-        if !(self.save_in_flight.get() && edits_tracker) {
+        if !(self.save_in_flight.get() && changes_tracker) {
             return Some(msg);
         }
         let _ = sender.output(BrowseTabOutput::ShowToast(crate::tr!(
@@ -769,6 +801,51 @@ impl BrowseTab {
             UndoOp::Delete { .. } => {}
         }
     }
+}
+
+fn is_row_mutation_input(input: &BrowseTabInput) -> bool {
+    matches!(
+        input,
+        BrowseTabInput::InsertRow
+            | BrowseTabInput::DuplicateRow { .. }
+            | BrowseTabInput::GridCellEdited { .. }
+            | BrowseTabInput::GridSetCellNull { .. }
+            | BrowseTabInput::GridDeleteRowAt { .. }
+            | BrowseTabInput::CommitSave
+            | BrowseTabInput::Paste(_)
+            | BrowseTabInput::PasteText(_)
+    )
+}
+
+fn remove_draft_rows(store: Option<&crate::ui::row_store::RowStore>, draft_ids: &[u64]) {
+    let Some(store) = store else {
+        return;
+    };
+    let draft_ids: std::collections::HashSet<u64> = draft_ids.iter().copied().collect();
+    for position in (0..store.n_items()).rev() {
+        let is_discarded_draft = store
+            .item(position)
+            .and_then(|item| item.downcast::<crate::ui::row_object::RowObject>().ok())
+            .and_then(|row| row.draft_id())
+            .is_some_and(|draft_id| draft_ids.contains(&draft_id));
+        if is_discarded_draft {
+            store.remove(position);
+        }
+    }
+}
+
+fn requires_row_key(input: &BrowseTabInput) -> bool {
+    matches!(
+        input,
+        BrowseTabInput::InsertRow
+            | BrowseTabInput::DuplicateRow { .. }
+            | BrowseTabInput::GridCellEdited { .. }
+            | BrowseTabInput::GridSetCellNull { .. }
+            | BrowseTabInput::GridDeleteRowAt { .. }
+            | BrowseTabInput::CommitSave
+            | BrowseTabInput::Paste(_)
+            | BrowseTabInput::PasteText(_)
+    )
 }
 
 /// Build the draft values for a duplicated row. Columns whose value is

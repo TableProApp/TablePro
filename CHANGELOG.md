@@ -126,6 +126,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Markdown table exports and copies quote text cells and escape table/inline markup, keeping text labels such as `NULL` distinct from SQL NULL.
 
 ### Fixed
+- Read-only connections refuse grid edits through alternate actions while still allowing local drafts to be discarded or undone and redone without changing stored data.
 - Structure column expanders now point right when collapsed and down when open.
 - On MySQL and MariaDB, `--` followed by a character other than a space, such as `SELECT 5--2`, no longer hides the rest of the line as a comment, so the following statements are found and checked separately.
 - A save or import whose connection was lost during a statement could be recorded as rolled back, and agents were told the rollback was confirmed; it is now recorded as an unknown outcome, and an import batch that partly applied is no longer recorded as rolled back.

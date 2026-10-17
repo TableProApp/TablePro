@@ -284,7 +284,7 @@ impl BrowseTab {
         }
     }
 
-    fn capture_paste_snapshot(&self) -> PasteSnapshot {
+    pub(super) fn capture_paste_snapshot(&self) -> PasteSnapshot {
         let row_keys = (0..self.row_count_loaded())
             .map(|position| self.paste_row_key_at(position))
             .collect();

@@ -311,7 +311,7 @@ impl BrowseTab {
     pub(super) fn refresh_crud_buttons(&self) {
         let has_columns = !self.current_columns.is_empty();
         let has_pk = self.has_primary_key();
-        if self.read_only {
+        if !self.allows_row_mutations() {
             // The Insert button lives in the per-table HeaderBar, not
             // in this tab's own widget tree — but the visibility flip
             // still drives the GtkWidget directly, so the header-bar
@@ -334,6 +334,14 @@ impl BrowseTab {
                 .set_tooltip_text(Some(&crate::tr!("Insert row (Ctrl+N)")));
         }
         self.refresh_banner_visibility();
+    }
+
+    pub(super) fn allows_row_mutations(&self) -> bool {
+        !self.read_only
+    }
+
+    pub(super) fn allows_keyed_row_mutations(&self) -> bool {
+        self.allows_row_mutations() && self.current_columns.iter().any(|column| column.primary_key)
     }
 
     /// Update the Filter button's count badge + tooltip based on the
