@@ -393,24 +393,28 @@ impl Inner {
                 ForeignKeyDraftError::UnpairedColumn(_) => loaded,
             })
             .collect();
+        let problem_of = |about: &dyn Fn(&ForeignKeyDraftError) -> bool| {
+            shown.iter().find(|error| about(error)).map(|error| error.message())
+        };
         mark_invalid(
             &self.name_row,
-            shown.iter().any(|error| {
+            problem_of(&|error| {
                 matches!(
                     error,
                     ForeignKeyDraftError::NameMissing | ForeignKeyDraftError::NameTaken
                 )
-            }),
+            })
+            .as_deref(),
         );
         mark_invalid(
             &self.table_row,
-            shown.iter().any(|error| matches!(error, ForeignKeyDraftError::NoTable)),
+            problem_of(&|error| matches!(error, ForeignKeyDraftError::NoTable)).as_deref(),
         );
         for (column, row) in self.pair_rows.borrow().iter() {
-            let unpaired = shown
-                .iter()
-                .any(|error| matches!(error, ForeignKeyDraftError::UnpairedColumn(unpaired) if unpaired == column));
-            mark_invalid(row, unpaired);
+            let unpaired = problem_of(
+                &|error| matches!(error, ForeignKeyDraftError::UnpairedColumn(unpaired) if unpaired == column),
+            );
+            mark_invalid(row, unpaired.as_deref());
         }
         let problem = self
             .load_error
@@ -713,6 +717,18 @@ mod tests {
         let pair = harness.pair_row("account_id");
         assert_eq!(pair.selected(), 0);
         assert!(pair.has_css_class("error"));
+        let field = pair.upcast_ref::<gtk::Widget>();
+        assert!(gtk::test_accessible_has_state(field, gtk::AccessibleState::Invalid));
+        assert!(gtk::test_accessible_has_property(
+            field,
+            gtk::AccessibleProperty::Description
+        ));
+        assert_eq!(
+            crate::ui::a11y::announced_in(&*harness.window)
+                .last()
+                .map(|(said, _)| said.as_str()),
+            Some("Choose the column “account_id” references.")
+        );
         assert!(!inner.form.submit.is_sensitive());
         assert_eq!(
             inner.form.caption().as_deref(),
@@ -722,6 +738,10 @@ mod tests {
         pair.set_selected(1);
 
         assert!(!pair.has_css_class("error"));
+        assert!(!gtk::test_accessible_has_state(
+            pair.upcast_ref::<gtk::Widget>(),
+            gtk::AccessibleState::Invalid
+        ));
         assert!(inner.form.submit.is_sensitive());
         assert_eq!(
             inner.draft.borrow().pairs,

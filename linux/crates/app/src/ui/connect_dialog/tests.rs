@@ -278,22 +278,27 @@ fn a_bad_host_is_marked_for_sight_and_for_screen_readers() {
     fill_network(&harness.dialog);
     let host = harness.dialog.imp().host_row.get();
 
+    // The focus is in the row's text field, which is what a reader reads.
+    let field = host.delegate().expect("the row's text field");
+
     host.set_text("db example.com");
 
     assert!(host.has_css_class("error"));
-    assert!(gtk4::test_accessible_has_state(
-        host.upcast_ref::<gtk4::Widget>(),
-        AccessibleState::Invalid
+    for widget in [host.upcast_ref::<gtk4::Widget>(), field.upcast_ref()] {
+        assert!(gtk4::test_accessible_has_state(widget, AccessibleState::Invalid));
+    }
+    assert!(gtk4::test_accessible_has_property(
+        &field,
+        gtk4::AccessibleProperty::Description
     ));
     assert!(host.tooltip_text().is_some());
 
     host.set_text("db.example.com");
 
     assert!(!host.has_css_class("error"));
-    assert!(!gtk4::test_accessible_has_state(
-        host.upcast_ref::<gtk4::Widget>(),
-        AccessibleState::Invalid
-    ));
+    for widget in [host.upcast_ref::<gtk4::Widget>(), field.upcast_ref()] {
+        assert!(!gtk4::test_accessible_has_state(widget, AccessibleState::Invalid));
+    }
 }
 
 #[gtk4::test]

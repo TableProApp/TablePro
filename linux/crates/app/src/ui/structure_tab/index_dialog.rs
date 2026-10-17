@@ -154,10 +154,10 @@ impl Inner {
             .copied()
             .find(|error| matches!(error, IndexDraftError::NameMissing | IndexDraftError::NameTaken))
             .filter(|_| self.name_edited.get());
-        mark_invalid(&self.name_row, name_error.is_some());
+        let problem = name_error.map(IndexDraftError::message);
+        mark_invalid(&self.name_row, problem.as_deref());
         // An empty key list says so in the group's description.
-        self.form
-            .show_state(errors.is_empty(), name_error.map(IndexDraftError::message));
+        self.form.show_state(errors.is_empty(), problem);
         self.show_keys();
     }
 
@@ -358,8 +358,16 @@ mod tests {
 
         assert!(name_row.has_css_class("error"));
         assert_eq!(dialog.inner.form.caption().as_deref(), Some("Index name is required."));
+        // The focus is in the row's text field, under which no caption shows.
+        let field = name_row.delegate().expect("the row's text field");
+        assert!(gtk::test_accessible_has_state(&field, gtk::AccessibleState::Invalid));
+        assert!(gtk::test_accessible_has_property(
+            &field,
+            gtk::AccessibleProperty::Description
+        ));
         name_row.set_text("by_email");
         assert!(!name_row.has_css_class("error"));
+        assert!(!gtk::test_accessible_has_state(&field, gtk::AccessibleState::Invalid));
     }
 
     #[gtk4::test]
