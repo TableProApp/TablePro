@@ -4,9 +4,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use tablepro_core::sql_syntax::SqlGrammar;
-use tablepro_core::sql_syntax::script::{
-    BatchErrorPolicy, LexicalSettings, ScriptDiagnostic, ScriptPlan, text_offsets,
-};
+use tablepro_core::sql_syntax::script::text_offsets::CharCounter;
+use tablepro_core::sql_syntax::script::{BatchErrorPolicy, LexicalSettings, ScriptDiagnostic, ScriptPlan};
 use tablepro_core::{
     EditorSession, EditorSessionState, ResultEvent, ResultSink, RowLimit, RunOptions, SinkFlow, UserSql,
 };
@@ -50,6 +49,7 @@ pub fn plan_batches(
     base_line: usize,
 ) -> (Vec<RunBatch>, BatchErrorPolicy, Vec<String>) {
     let plan = ScriptPlan::build(&scoped.text, grammar, LexicalSettings::default_for(grammar));
+    let mut chars = CharCounter::new(&scoped.text);
     let batches = plan
         .batches()
         .iter()
@@ -58,7 +58,7 @@ pub fn plan_batches(
             (!text.is_empty()).then(|| RunBatch {
                 text: text.to_owned(),
                 repeat: batch.repeat.get(),
-                error_base: scoped.base_char + text_offsets::byte_to_char(&scoped.text, batch.range.start),
+                error_base: scoped.base_char + chars.char_at(batch.range.start),
             })
         })
         .collect();
@@ -455,6 +455,26 @@ mod tests {
 
         assert_eq!(batches[1].text, "SELECT oops");
         assert_eq!(batches[1].error_base, 50 + 14);
+    }
+
+    #[test]
+    fn a_long_script_finds_every_start_in_one_pass() {
+        // Counting each start from the top of the text is about 10^11
+        // steps here, which no run finishes; one pass is about 10^6.
+        const STATEMENTS: usize = 100_000;
+        let statement = "SELECT 'é';\n";
+        let scoped = ScopedText {
+            text: statement.repeat(STATEMENTS),
+            base_char: 7,
+        };
+
+        let (batches, _, _) = plan_batches(&scoped, SqlGrammar::PostgreSql, 0);
+
+        assert_eq!(batches.len(), STATEMENTS);
+        let width = statement.chars().count();
+        for (index, batch) in batches.iter().enumerate() {
+            assert_eq!(batch.error_base, 7 + index * width, "batch {index}");
+        }
     }
 
     #[test]
