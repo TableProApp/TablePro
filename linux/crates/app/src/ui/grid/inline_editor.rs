@@ -4,6 +4,7 @@ use std::rc::Rc;
 use gtk4::prelude::*;
 use gtk4::{self as gtk, glib};
 
+use super::cell_accessibility::name_editor;
 use super::cell_focus::{edit_next, return_focus};
 use super::edit_commit::{commit_edit, send_commit};
 use super::edit_navigation::EditDirection;
@@ -40,6 +41,7 @@ impl InlineEditor {
         text.set_input_purpose(options.purpose);
         text.set_placeholder_text(options.placeholder.as_deref());
         text.set_text(initial);
+        name_editor(&text, cell);
         connect_commit(cell, &text);
         if let Some(display) = cell.content() {
             display.set_visible(false);

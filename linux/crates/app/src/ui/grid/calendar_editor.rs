@@ -5,6 +5,7 @@ use tablepro_core::edit::CellInput;
 use tablepro_core::value::Temporal;
 use tablepro_core::{ColumnInfo, Value};
 
+use super::cell_accessibility::name_editor;
 use super::edit_commit::{commit_edit, send_commit};
 use super::inline_editor::{InlineEditor, InlineOptions};
 use super::{EditSnapshot, GridCell};
@@ -36,6 +37,7 @@ impl CalendarEditor {
         };
         cell.cancel_edit();
         let calendar = gtk::Calendar::new();
+        name_editor(&calendar, cell);
         // Before the handler: set_date emits day-selected when the day
         // changes, and that is not a pick.
         if let CalendarStart::On(date) = &start {

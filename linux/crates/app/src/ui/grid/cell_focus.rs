@@ -144,7 +144,9 @@ mod tests {
     use tablepro_core::value::Temporal;
 
     use super::edit_row;
-    use crate::test_support::{FocusThief, after_next_frame, drain_main_context, first_descendant_of_type, wait_until};
+    use crate::test_support::{
+        FocusThief, after_next_frame, assert_labelled, drain_main_context, first_descendant_of_type, wait_until,
+    };
     use crate::ui::grid::test_grid::{Grid, WAIT, edited_rows, key, named, text};
     use crate::ui::grid::{GridCell, begin_edit};
 
@@ -436,6 +438,50 @@ mod tests {
             focus.is_some_and(|focus| focus == *grid.view.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&grid.view)),
             "the focus left the grid"
         );
+    }
+
+    /// Tab moves an edit across the columns, and no header is focused on
+    /// the way, so each editor names the column it edits.
+    #[gtk4::test]
+    fn every_cell_editor_is_named_by_its_column() {
+        let grid = Grid::open(
+            vec![
+                named("id", "integer", true),
+                named("note", "text", false),
+                named("day", "date", false),
+            ],
+            vec![
+                vec![Value::Int(1), Value::Text("one\ntwo".into()), day(15)],
+                vec![Value::Int(2), Value::Text("plain".into()), day(16)],
+            ],
+        );
+
+        let one_line = grid.cell_of(2, 1);
+        begin_edit(&one_line);
+        let field = one_line.inline_text().expect("the one-line editor");
+        assert_eq!(assert_labelled(&field), Ok(()));
+        one_line.cancel_edit();
+
+        let lines = grid.cell_of(1, 1);
+        begin_edit(&lines);
+        let view = first_descendant_of_type::<sourceview5::View>(&lines).expect("the multi-line editor");
+        assert_eq!(assert_labelled(&view), Ok(()));
+        let save = crate::test_support::descendants(&lines)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+            .find(|button| button.label().as_deref() == Some("Save"))
+            .expect("the Save button");
+        assert!(gtk::test_accessible_has_property(
+            &save,
+            gtk::AccessibleProperty::KeyShortcuts
+        ));
+        lines.cancel_edit();
+
+        let dated = grid.cell_of(1, 2);
+        begin_edit(&dated);
+        let calendar = first_descendant_of_type::<gtk::Calendar>(&dated).expect("the calendar");
+        assert_eq!(assert_labelled(&calendar), Ok(()));
+        dated.cancel_edit();
     }
 
     #[gtk4::test]

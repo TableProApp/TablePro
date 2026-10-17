@@ -2,6 +2,7 @@ use gtk4::prelude::*;
 use gtk4::{self as gtk, glib};
 use sourceview5::prelude::*;
 
+use super::cell_accessibility::name_editor;
 use super::edit_commit::{commit_edit, send_commit};
 use super::{EditSnapshot, GridCell};
 use crate::application::{ShortcutOwner, component_trigger, controller_name};
@@ -24,6 +25,7 @@ impl MultilineEditor {
         view.set_wrap_mode(gtk::WrapMode::WordChar);
         view.set_auto_indent(true);
         crate::ui::style_scheme_resolver::apply(&view, "Adwaita");
+        name_editor(&view, cell);
 
         let scrolled = gtk::ScrolledWindow::builder()
             .child(&view)
@@ -33,6 +35,7 @@ impl MultilineEditor {
             .build();
         let save = gtk::Button::with_label(&crate::i18n::gettext("Save"));
         save.add_css_class("suggested-action");
+        crate::ui::a11y::announce_key_shortcuts(&save, "cell-editor.save-text");
         let cancel = gtk::Button::with_label(&crate::i18n::gettext("Cancel"));
         let buttons = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
