@@ -75,6 +75,12 @@ impl FakeEditorSession {
         *lock(&self.transaction_state) = state;
     }
 
+    /// The connection goes while no run is on it, as when the server
+    /// ends a session left idle in a transaction.
+    pub fn lose(&self) {
+        *lock(&self.state) = EditorSessionState::Lost;
+    }
+
     fn begin(&self) -> Result<RunningGuard<'_>, DriverError> {
         let mut state = lock(&self.state);
         match *state {

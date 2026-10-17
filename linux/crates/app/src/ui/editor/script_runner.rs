@@ -8,13 +8,14 @@ use tablepro_core::sql_syntax::script::{
     BatchErrorPolicy, LexicalSettings, ScriptDiagnostic, ScriptPlan, text_offsets,
 };
 use tablepro_core::{
-    EditorSession, EditorSessionState, ResultEvent, ResultSink, RowLimit, RunOptions, SinkFlow, UserSql,
+    EditorSession, EditorSessionState, ResultEvent, ResultSink, RowLimit, RunOptions, SinkFlow, TransactionState,
+    UserSql,
 };
 use tablepro_session::{MonitorSignal, Session};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::editor_session_slot::{AcquireError, EditorSessionSlot, close_quietly};
+use super::editor_session_slot::{AcquireError, EditorSessionSlot, close_quietly, transaction_open};
 use super::run_log::{BatchCollector, BatchReport, EntryKind, RunEvent, Verdict, continues};
 use super::run_scope::ScopedText;
 
@@ -87,13 +88,16 @@ pub fn sql_preview(sql: &str) -> String {
     }
 }
 
-/// Send each batch in turn, reporting each one as it ends.
+/// Send each batch in turn, reporting each one as it ends. `transaction`
+/// is where the session's transaction stood before the run; the return
+/// is where it stands after, as far as a connection still there said.
 pub async fn run_batches(
     editor: &Arc<dyn EditorSession>,
     run: &ScriptRun,
     cancel: &CancellationToken,
     events: &mpsc::Sender<RunEvent>,
-) {
+    mut transaction: Option<TransactionState>,
+) -> Option<TransactionState> {
     'batches: for (index, batch) in run.batches.iter().enumerate() {
         for _ in 0..batch.repeat.max(1) {
             if cancel.is_cancelled() {
@@ -112,18 +116,25 @@ pub async fn run_batches(
             let elapsed_ms = started.elapsed().as_millis();
             let collected = std::mem::replace(&mut *lock(&collector), BatchCollector::new(sql));
             let state = editor.state();
-            let (entries, verdict, transaction) = collected.finish(outcome, state, batch.error_base);
+            let lost = state == EditorSessionState::Lost;
+            let (entries, verdict, reported) =
+                collected.finish(outcome, state, transaction_open(transaction), batch.error_base);
+            // A lost session's last word describes a connection that is
+            // gone, not the transaction the user had.
+            if !lost && reported.is_some() {
+                transaction = reported;
+            }
             let report = BatchReport {
                 batch: index,
                 entries,
                 verdict,
-                transaction,
-                lost: state == EditorSessionState::Lost,
+                transaction: reported,
+                lost,
                 elapsed_ms,
             };
             if events.send(RunEvent::Batch(report)).await.is_err() {
                 // The tab went away; nobody is left to show the rest.
-                return;
+                return transaction;
             }
             if !continues(verdict, run.policy) {
                 break 'batches;
@@ -131,6 +142,7 @@ pub async fn run_batches(
         }
     }
     let _ = events.send(RunEvent::Finished).await;
+    transaction
 }
 
 /// Run a script on the tab's editor session, opening one first when
@@ -153,31 +165,46 @@ pub async fn run_in_tab(
             let _ = events.send(RunEvent::Finished).await;
             return;
         }
+        Err(AcquireError::TransactionRolledBack) => {
+            let message = crate::i18n::gettext(
+                "This tab's connection was lost, so the server rolled back its open transaction. Nothing was run; run again to open a new connection.",
+            );
+            refuse(&events, message, true).await;
+            return;
+        }
         Err(AcquireError::Failed(message)) => {
-            let report = BatchReport {
-                batch: 0,
-                entries: vec![EntryKind::Failed {
-                    message,
-                    error_char: None,
-                }],
-                verdict: Verdict::Stopped,
-                transaction: None,
-                lost: false,
-                elapsed_ms: 0,
-            };
-            let _ = events.send(RunEvent::Batch(report)).await;
-            let _ = events.send(RunEvent::Finished).await;
+            refuse(&events, message, false).await;
             return;
         }
     };
-    run_batches(&editor, &run, &cancel, &events).await;
-    if editor.state() == EditorSessionState::Lost {
-        let generation = *session.link_changes().borrow();
-        session.signal(MonitorSignal::ProbeRequested { generation });
-        if slot.forget(&editor) {
-            close_quietly(editor, close_timeout).await;
-        }
+    let before = slot.transaction(&editor);
+    let after = run_batches(&editor, &run, &cancel, &events, before).await;
+    if editor.state() != EditorSessionState::Lost {
+        slot.note_transaction(&editor, after);
+        return;
     }
+    let generation = *session.link_changes().borrow();
+    session.signal(MonitorSignal::ProbeRequested { generation });
+    if slot.forget(&editor, after) {
+        close_quietly(editor, close_timeout).await;
+    }
+}
+
+/// End a run that sent nothing, with `message` as its one line.
+async fn refuse(events: &mpsc::Sender<RunEvent>, message: String, lost: bool) {
+    let report = BatchReport {
+        batch: 0,
+        entries: vec![EntryKind::Failed {
+            message,
+            error_char: None,
+        }],
+        verdict: Verdict::Stopped,
+        transaction: None,
+        lost,
+        elapsed_ms: 0,
+    };
+    let _ = events.send(RunEvent::Batch(report)).await;
+    let _ = events.send(RunEvent::Finished).await;
 }
 
 struct CollectingSink {
@@ -207,6 +234,7 @@ mod tests {
     use tablepro_core::{DriverError, LossPhase, RunEnd, TransactionState};
     use tablepro_test_support::{FakeEditorSession, FakeRun, Replies};
 
+    use super::super::editor_session_slot::tests::session_opening;
     use super::super::run_log::RunLog;
     use super::*;
 
@@ -263,7 +291,7 @@ mod tests {
             }
             log
         };
-        let (_, log) = tokio::join!(run_batches(&session, &run, cancel, &events), collect);
+        let (_, log) = tokio::join!(run_batches(&session, &run, cancel, &events, None), collect);
         log
     }
 
@@ -444,6 +472,119 @@ mod tests {
         assert!(log.lost());
     }
 
+    /// Run the script the way a tab does, through its slot, and fold
+    /// every event into a results list.
+    async fn run_in_slot(session: &Arc<Session>, slot: &Arc<EditorSessionSlot>, text: &str) -> RunLog {
+        let (run, statements, warnings) = script(text, SqlGrammar::PostgreSql);
+        let (events, mut received) = mpsc::channel(8);
+        let running = run_in_tab(
+            session.clone(),
+            slot.clone(),
+            run,
+            Duration::from_secs(10),
+            CancellationToken::new(),
+            events,
+        );
+        let collect = async move {
+            let mut log = RunLog::new(statements, warnings);
+            while let Some(event) = received.recv().await {
+                let finished = matches!(event, RunEvent::Finished);
+                log.apply(event);
+                if finished {
+                    break;
+                }
+            }
+            log
+        };
+        let ((), log) = tokio::join!(running, collect);
+        log
+    }
+
+    fn first_failure(log: &RunLog) -> String {
+        match &log.entries()[0].kind {
+            EntryKind::Failed { message, .. } => message.clone(),
+            other => panic!("expected a failure: {other:?}"),
+        }
+    }
+
+    fn opening(transaction: TransactionState) -> Arc<FakeEditorSession> {
+        let mut runs = Replies::default();
+        runs.always(FakeRun::completed(Vec::new()).leaving(transaction));
+        Arc::new(FakeEditorSession::new(runs))
+    }
+
+    #[tokio::test]
+    async fn a_session_lost_idle_in_a_transaction_refuses_the_next_run() {
+        let first = opening(TransactionState::InTransaction);
+        let second = Arc::new(FakeEditorSession::new(answering()));
+        let (session, _) = session_opening(vec![first.clone(), second.clone()]);
+        let slot = Arc::new(EditorSessionSlot::new());
+
+        run_in_slot(&session, &slot, "BEGIN").await;
+        first.lose();
+        let refused = run_in_slot(&session, &slot, "UPDATE a SET x = 0 WHERE id = 2").await;
+        let reopened = run_in_slot(&session, &slot, "UPDATE a SET x = 0 WHERE id = 2").await;
+
+        assert!(
+            first_failure(&refused).contains("rolled back"),
+            "{:?}",
+            refused.entries()
+        );
+        assert!(refused.lost());
+        assert_eq!(refused.transaction(), None);
+        assert_eq!(
+            first.texts(),
+            [UserSql::new("BEGIN")],
+            "the lost session ran the statement"
+        );
+        assert_eq!(first.close_count(), 1, "the lost session was left open");
+        assert!(matches!(reopened.entries()[0].kind, EntryKind::Command { .. }));
+        assert_eq!(second.texts(), [UserSql::new("UPDATE a SET x = 0 WHERE id = 2")]);
+    }
+
+    #[tokio::test]
+    async fn a_session_lost_mid_run_in_a_transaction_says_so_and_refuses_the_next_run() {
+        let mut runs = Replies::default();
+        runs.once(FakeRun::completed(Vec::new()).leaving(TransactionState::Failed));
+        runs.always(FakeRun::session_error(DriverError::ConnectionLost {
+            during: LossPhase::Statement,
+        }));
+        let first = Arc::new(FakeEditorSession::new(runs));
+        let second = Arc::new(FakeEditorSession::new(answering()));
+        let (session, _) = session_opening(vec![first.clone(), second.clone()]);
+        let slot = Arc::new(EditorSessionSlot::new());
+
+        run_in_slot(&session, &slot, "BEGIN").await;
+        let lost = run_in_slot(&session, &slot, "ROLLBACK").await;
+        let refused = run_in_slot(&session, &slot, "SELECT 1").await;
+        let reopened = run_in_slot(&session, &slot, "SELECT 1").await;
+
+        let message = first_failure(&lost);
+        assert!(
+            message.contains("rolled back") && !message.contains("next run"),
+            "{message}"
+        );
+        assert!(lost.lost());
+        assert!(first_failure(&refused).contains("rolled back"));
+        assert!(matches!(reopened.entries()[0].kind, EntryKind::Command { .. }));
+        assert_eq!(second.texts(), [UserSql::new("SELECT 1")]);
+    }
+
+    #[tokio::test]
+    async fn a_session_lost_with_no_transaction_reopens_on_the_next_run() {
+        let first = opening(TransactionState::Idle);
+        let second = Arc::new(FakeEditorSession::new(answering()));
+        let (session, _) = session_opening(vec![first.clone(), second.clone()]);
+        let slot = Arc::new(EditorSessionSlot::new());
+
+        run_in_slot(&session, &slot, "SELECT 1").await;
+        first.lose();
+        let reopened = run_in_slot(&session, &slot, "SELECT 2").await;
+
+        assert!(matches!(reopened.entries()[0].kind, EntryKind::Command { .. }));
+        assert_eq!(second.texts(), [UserSql::new("SELECT 2")]);
+    }
+
     #[test]
     fn batches_know_where_they_start_in_the_buffer() {
         let scoped = ScopedText {
@@ -468,6 +609,7 @@ mod tests {
                 transaction_state: TransactionState::Idle,
             }),
             EditorSessionState::Ready,
+            false,
             0,
         );
         assert_eq!(verdict, Verdict::Stopped);

@@ -494,7 +494,7 @@ impl SqlEditor {
             };
             (
                 log.summary(),
-                transaction_dirty::transaction_label(log.transaction()),
+                transaction_dirty::transaction_label(log.lost(), log.transaction()),
                 transaction_dirty::transaction_dirty(log.lost(), log.transaction(), log.has_run()),
                 log.first_to_show(),
                 run_history::history_entry(query, metadata, started_at, log),
