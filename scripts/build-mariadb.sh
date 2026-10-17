@@ -4,16 +4,13 @@ set -eo pipefail
 # Build static MariaDB Connector/C for macOS (arm64 + x86_64 + universal).
 #
 # Includes the mysql_clear_password client plugin (STATIC), required for AWS RDS
-# IAM authentication. The previous Libs/libmariadb*.a were built without it, so
-# IAM connections failed with "Plugin mysql_clear_password could not be loaded".
+# IAM authentication.
 #
 # Output (overwrites, since Libs/*.a are not in git):
 #   Libs/libmariadb_arm64.a  Libs/libmariadb_x86_64.a
 #   Libs/libmariadb_universal.a  Libs/libmariadb.a (= universal)
 #
 # Requires: cmake, OpenSSL 3 (defaults to Homebrew openssl@3; override OPENSSL_ROOT).
-# After running: regenerate Libs/checksums.sha256 and re-upload to the libs-v1
-# release (see CLAUDE.md "Updating Static Libraries").
 #
 # Usage: ./scripts/build-mariadb.sh
 
@@ -111,4 +108,3 @@ echo ""
 echo "Done. Libs/libmariadb*.a rebuilt with the cleartext plugin."
 echo "Next: rebuild the app and test MySQL IAM. When confirmed working, publish the libs:"
 echo "  scripts/publish-libs.sh libmariadb_arm64.a libmariadb_x86_64.a libmariadb_universal.a libmariadb.a"
-echo "  git add Libs/checksums.sha256 && git commit -m 'build: update static library checksums'"

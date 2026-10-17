@@ -22,15 +22,13 @@ IOS_LIBS_DIR="$LIBS_DIR/ios"
 FREETDS_VERSION="1.4.22"
 FREETDS_SHA256="6acb9086350425f5178e544bbe2d54a001097e8e20277a2b766ad0799a2e7d87"
 FREETDS_URL="https://www.freetds.org/files/stable/freetds-${FREETDS_VERSION}.tar.gz"
-# A private directory with a cleanup trap. This was a fixed /tmp path, which is world-writable and
-# therefore something another local user can own first, and it collided between two concurrent
-# runs. The four mktemp dirs below were also never removed, so a run leaked all five.
+# Not a fixed /tmp path: another local user could own it first, and two runs would collide.
 BUILD_DIR="$(mktemp -d)"
 TEMP_DIRS=("$BUILD_DIR")
 cleanup_freetds() { rm -rf "${TEMP_DIRS[@]}"; }
 trap cleanup_freetds EXIT
 
-# Keeps the downloaded tarballs across runs, which the fixed build root used to provide for free.
+# Outside BUILD_DIR so the downloaded tarballs survive across runs.
 CACHE_DIR="${TMPDIR:-/tmp}/tablepro-freetds-cache"
 mkdir -p "$CACHE_DIR"
 SOURCE_DIR="$BUILD_DIR/freetds-${FREETDS_VERSION}"
@@ -265,6 +263,5 @@ find "$XCFRAMEWORK_OUT" -mindepth 1 -maxdepth 1 ! -name Info.plist -exec basenam
 echo ""
 echo "NEXT STEPS:"
 echo "  1. Inspect: xcodebuild -checkFirstLaunchStatus; file ${XCFRAMEWORK_OUT}/*/libsybdb.a"
-echo "  2. Publish the iOS libs and refresh their integrity baseline:"
-echo "       scripts/publish-ios-libs.sh"
-echo "       git add Libs/ios/checksums.sha256 && git commit -m 'build: update iOS xcframework checksums'"
+echo "  2. Publish:"
+echo "       scripts/publish-libs.sh libsybdb_arm64.a libsybdb_x86_64.a libsybdb_universal.a libsybdb.a FreeTDS.xcframework"

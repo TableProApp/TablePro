@@ -51,6 +51,7 @@ jobs:
           python3 .github/scripts/test_update_registry.py
           bash scripts/ci/test_create_dmg_args.sh
           bash scripts/ci/test_draft_release.sh
+          bash scripts/ci/test_libs_release.sh
 
       # shellcheck cannot tell a library function from a command, so a missing source is exit 127
       # at release time (v0.67.1).

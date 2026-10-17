@@ -1,163 +1,191 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Publish updated static libraries to the libs-v1 GitHub Release.
+# Publishes Libs/*.a and Libs/ios/*.xcframework as the next immutable libs-<n> release, then
+# writes Libs/release and both checksum files for you to commit together.
 #
-# Guards against publishing from a stale checkout: every library you did
-# NOT name must still match the checksums committed at HEAD. Regenerating
-# checksums.sha256 from a stale Libs/ has silently reverted previously
-# published libraries before (#1401 reverted the OpenSSL libmongoc from
-# #1251 and the DuckDB 1.5.2 bump from #1106).
+# Usage: scripts/publish-libs.sh [--dry-run] <lib.a | Name.xcframework>...
 #
-# Usage:
-#   scripts/publish-libs.sh <lib.a> [<lib.a> ...]
-#
-# Example (after rebuilding libmongoc/libbson):
-#   scripts/publish-libs.sh libmongoc_arm64.a libmongoc_x86_64.a \
-#     libmongoc_universal.a libmongoc.a libbson_arm64.a libbson_x86_64.a \
-#     libbson_universal.a libbson.a
-#
-# Steps:
-#   1. Verify all unnamed libs against git HEAD checksums
-#   2. Regenerate Libs/checksums.sha256
-#   3. Create and upload tablepro-libs-v1.tar.gz (--clobber)
-#   4. Remind you to commit checksums.sha256
+# Name every library you rebuilt, added or removed. Every other one must match the checksums
+# committed at HEAD, so a stale Libs/ cannot revert a library someone else published.
 
 REPO="TableProApp/TablePro"
-LIBS_TAG="libs-v1"
-LIBS_ARCHIVE="tablepro-libs-v1.tar.gz"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-CHECKSUMS_FILE="Libs/checksums.sha256"
+MAC_DIR="Libs"
+IOS_DIR="Libs/ios"
+MAC_SUMS="$MAC_DIR/checksums.sha256"
+IOS_SUMS="$IOS_DIR/checksums.sha256"
+PIN="Libs/release"
 
-cd "$PROJECT_DIR"
+cd "$(dirname "$0")/.."
 
-if [ "$#" -eq 0 ]; then
-    echo "Usage: $0 <lib.a> [<lib.a> ...]"
-    echo "Name every library you rebuilt; all others are verified against HEAD."
-    exit 1
-fi
-
-declare -a UPDATED=()
-for arg in "$@"; do
-    UPDATED+=("$(basename "$arg")")
-done
-
-is_updated() {
-    local name=$1
-    for u in "${UPDATED[@]}"; do
-        [ "$u" = "$name" ] && return 0
-    done
-    return 1
+usage() {
+    echo "Usage: scripts/publish-libs.sh [--dry-run] <lib.a | Name.xcframework>..." >&2
+    echo "Name every library you rebuilt; every other one is verified against HEAD." >&2
+    exit 2
 }
 
-for name in "${UPDATED[@]}"; do
-    if [ ! -f "Libs/$name" ]; then
-        echo "❌ Updated library Libs/$name does not exist."
-        exit 1
-    fi
+fail() {
+    echo "error: $1" >&2
+    shift
+    for line in "$@"; do
+        echo "       $line" >&2
+    done
+    exit 1
+}
+
+DRY_RUN=0
+NAMED=()
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN=1 ;;
+        -*) usage ;;
+        *.a | *.xcframework) NAMED+=("$(basename "$arg")") ;;
+        *) usage ;;
+    esac
 done
+[ "${#NAMED[@]}" -gt 0 ] || usage
 
-committed_checksums=$(git show "HEAD:$CHECKSUMS_FILE")
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
 
-echo "🔍 Verifying unchanged libraries against HEAD checksums..."
+PINNED="$(git show "HEAD:$PIN")"
+git show "HEAD:$MAC_SUMS" > "$WORK/mac.old"
+git show "HEAD:$IOS_SUMS" > "$WORK/ios.old"
+
+MAC_MEMBERS=()
+for lib in "$MAC_DIR"/*.a; do
+    [ -e "$lib" ] || [ -L "$lib" ] || continue
+    # A worktree links each library to another checkout, and tar would archive the link.
+    if [ -L "$lib" ]; then
+        case "$(readlink "$lib")" in
+            */*) fail "$lib links outside $MAC_DIR." "Publish from a checkout that holds the files; scripts/download-libs.sh --force replaces the links." ;;
+        esac
+    fi
+    MAC_MEMBERS+=("$(basename "$lib")")
+done
+IOS_MEMBERS=()
+for framework in "$IOS_DIR"/*.xcframework; do
+    [ -e "$framework" ] || [ -L "$framework" ] || continue
+    IOS_MEMBERS+=("$(basename "$framework")")
+done
+[ "${#MAC_MEMBERS[@]}" -gt 0 ] || fail "no $MAC_DIR/*.a to publish."
+[ "${#IOS_MEMBERS[@]}" -gt 0 ] || fail "no $IOS_DIR/*.xcframework to publish."
+if [ -n "$(find "$IOS_DIR" -type l)" ]; then
+    fail "$IOS_DIR holds symlinks, which its checksums cannot cover." "Publish from a checkout that holds the files; scripts/download-libs.sh --force replaces the links."
+fi
+
+shasum -a 256 "$MAC_DIR"/*.a > "$WORK/mac.new"
+(cd "$IOS_DIR" && find ./*.xcframework -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256) > "$WORK/ios.new"
+
+# A unit is one .a or one .xcframework: the second path component of a checksum line.
+units_of() {
+    awk '{ split($2, part, "/"); print part[2] }' "$@" | LC_ALL=C sort -u
+}
+
+cat "$WORK/mac.old" "$WORK/ios.old" | LC_ALL=C sort > "$WORK/old"
+cat "$WORK/mac.new" "$WORK/ios.new" | LC_ALL=C sort > "$WORK/new"
+units_of "$WORK/old" > "$WORK/old.units"
+units_of "$WORK/new" > "$WORK/new.units"
+LC_ALL=C comm -3 "$WORK/old" "$WORK/new" | tr -d '\t' | units_of > "$WORK/changed"
+printf '%s\n' "${NAMED[@]}" | LC_ALL=C sort -u > "$WORK/named"
+LC_ALL=C sort -u "$WORK/old.units" "$WORK/new.units" | LC_ALL=C comm -13 - "$WORK/named" > "$WORK/unknown"
+LC_ALL=C comm -23 "$WORK/changed" "$WORK/named" > "$WORK/unnamed"
+
+if [ -s "$WORK/unknown" ]; then
+    fail "neither Libs/ nor HEAD has $(paste -sd ' ' "$WORK/unknown")."
+fi
+
 stale=()
-while read -r expected path; do
-    [ -n "$path" ] || continue
-    name=$(basename "$path")
-    is_updated "$name" && continue
-    if [ ! -f "$path" ]; then
-        stale+=("$path (missing locally)")
-        continue
+while IFS= read -r unit; do
+    if ! grep -qxF "$unit" "$WORK/new.units"; then
+        stale+=("$unit (missing locally)")
+    elif ! grep -qxF "$unit" "$WORK/old.units"; then
+        stale+=("$unit (not at HEAD)")
+    else
+        stale+=("$unit (differs from HEAD)")
     fi
-    actual=$(shasum -a 256 "$path" | awk '{print $1}')
-    if [ "$actual" != "$expected" ]; then
-        stale+=("$path")
-    fi
-done <<< "$committed_checksums"
-
+done < "$WORK/unnamed"
 if [ "${#stale[@]}" -gt 0 ]; then
-    echo "❌ These libraries differ from the checksums committed at HEAD,"
-    echo "   but were not named as updated:"
-    for s in "${stale[@]}"; do
-        echo "   - $s"
-    done
-    echo ""
-    echo "Your Libs/ checkout is stale or carries unintended changes."
-    echo "Run scripts/download-libs.sh --force, re-apply only the libraries"
-    echo "you rebuilt, then retry. If a listed library was rebuilt on"
-    echo "purpose, pass it as an argument."
-    exit 1
+    fail "these differ from the checksums committed at HEAD but were not named:" "${stale[@]}" \
+        "Run scripts/download-libs.sh --force, re-apply only what you rebuilt, then retry." \
+        "Name a library here if it changed on purpose."
 fi
 
-new_libs=()
-for lib in Libs/*.a; do
-    name=$(basename "$lib")
-    known=$(awk -v p="Libs/$name" '$2 == p {print $1}' <<< "$committed_checksums")
-    if [ -z "$known" ] && ! is_updated "$name"; then
-        new_libs+=("$lib")
+REBUILT="$(LC_ALL=C comm -12 "$WORK/changed" "$WORK/named")"
+identical="$(LC_ALL=C comm -23 "$WORK/named" "$WORK/changed" | paste -sd ' ' -)"
+[ -z "$identical" ] || echo "note: identical to HEAD: $identical"
+
+[ "$(gh api "repos/$REPO/immutable-releases" --jq .enabled)" = "true" ] \
+    || fail "immutable releases are off for $REPO." "Turn them on in the repository settings, then retry."
+
+gh api "repos/$REPO/releases?per_page=100" --paginate \
+    --jq '.[] | select(.tag_name | startswith("libs-")) | [.tag_name, .draft, .immutable] | @tsv' > "$WORK/releases"
+gh api "repos/$REPO/git/matching-refs/tags/libs-" --paginate --jq '.[].ref | ltrimstr("refs/tags/")' > "$WORK/tags"
+
+draft="$(awk -F'\t' '$2 == "true" { print $1 }' "$WORK/releases" | paste -sd ' ' -)"
+[ -z "$draft" ] || fail "a libs release is still a draft: $draft." \
+    "Delete each with: gh release delete <tag> --repo $REPO --yes"
+
+number_of() {
+    sed -n 's/^libs-v\{0,1\}\([0-9][0-9]*\)$/\1/p' | sort -n | tail -1
+}
+newest_release="$(awk -F'\t' '$2 == "false" { print $1 }' "$WORK/releases" | number_of)"
+[ "$(echo "$PINNED" | number_of)" = "$newest_release" ] \
+    || fail "HEAD pins $PINNED, but libs-$newest_release is newer." "Merge origin/main first, so this release builds on it."
+
+if [ -z "$REBUILT" ]; then
+    # Moving identical libraries is only worth a release number when it leaves a mutable release.
+    pinned_immutable="$(awk -F'\t' -v tag="$PINNED" '$1 == tag { print $3 }' "$WORK/releases")"
+    [ "$pinned_immutable" = "false" ] || fail "nothing to publish: every named library matches $PINNED."
+fi
+
+last="$( (cut -f1 "$WORK/releases"; cat "$WORK/tags") | number_of)"
+TAG="libs-$((${last:-0} + 1))"
+MAC_ARCHIVE="tablepro-libs-${TAG#libs-}.tar.gz"
+IOS_ARCHIVE="tablepro-libs-ios-${TAG#libs-}.tar.gz"
+
+# Only the files the checksums cover: macOS tar would add AppleDouble entries and xattrs.
+COPYFILE_DISABLE=1 tar --no-xattrs -czf "$WORK/$MAC_ARCHIVE" -C "$MAC_DIR" "${MAC_MEMBERS[@]}"
+COPYFILE_DISABLE=1 tar --no-xattrs -czf "$WORK/$IOS_ARCHIVE" -C "$IOS_DIR" "${IOS_MEMBERS[@]}"
+
+if [ -z "$REBUILT" ]; then
+    NOTES="The libraries of $PINNED, unchanged."
+else
+    NOTES="Rebuilt since $PINNED: $(echo "$REBUILT" | paste -sd ' ' -)."
+fi
+
+echo "$TAG: ${#MAC_MEMBERS[@]} macOS libraries, ${#IOS_MEMBERS[@]} iOS xcframeworks. $NOTES"
+for archive in "$MAC_ARCHIVE" "$IOS_ARCHIVE"; do
+    echo "  $archive $(du -h "$WORK/$archive" | cut -f1)"
+done
+
+if [ "$DRY_RUN" -eq 1 ]; then
+    echo "--dry-run: nothing created or written."
+    exit 0
+fi
+
+# Assets cannot be added once an immutable release is published, so it goes up as a draft first.
+gh release create "$TAG" --repo "$REPO" --draft --latest=false --title "$TAG" --notes "$NOTES" \
+    "$WORK/$MAC_ARCHIVE" "$WORK/$IOS_ARCHIVE"
+gh release edit "$TAG" --repo "$REPO" --draft=false --latest=false
+
+immutable=""
+for attempt in 1 2 3; do
+    immutable="$(gh api "repos/$REPO/releases/tags/$TAG" --jq .immutable || true)"
+    if [ "$immutable" = "true" ] || [ "$attempt" -eq 3 ]; then
+        break
     fi
+    sleep 3
 done
-if [ "${#new_libs[@]}" -gt 0 ]; then
-    echo "❌ These libraries are not in the committed checksums and were not"
-    echo "   named as updated:"
-    for n in "${new_libs[@]}"; do
-        echo "   - $n"
-    done
-    echo "Name them explicitly if they are meant to be published."
-    exit 1
-fi
+[ "$immutable" = "true" ] \
+    || fail "$TAG was published, but GitHub does not report it immutable, so nothing was written." \
+        "Check with: gh release view $TAG --repo $REPO --json isImmutable"
 
-unchanged=0
-for name in "${UPDATED[@]}"; do
-    expected=$(awk -v p="Libs/$name" '$2 == p {print $1}' <<< "$committed_checksums")
-    [ -n "$expected" ] || continue
-    actual=$(shasum -a 256 "Libs/$name" | awk '{print $1}')
-    if [ "$actual" = "$expected" ]; then
-        echo "   ℹ️  Libs/$name is identical to the version at HEAD"
-        unchanged=$((unchanged + 1))
-    fi
-done
-if [ "$unchanged" -eq "${#UPDATED[@]}" ]; then
-    echo "❌ Nothing to publish: every named library matches HEAD."
-    exit 1
-fi
+cp "$WORK/mac.new" "$MAC_SUMS"
+cp "$WORK/ios.new" "$IOS_SUMS"
+echo "$TAG" > "$PIN"
+echo "$TAG" > "$MAC_DIR/.downloaded"
+echo "$TAG" > "$IOS_DIR/.downloaded"
 
-echo "✅ All unchanged libraries match HEAD"
-
-# libs-v1 predates release immutability, so it stays mutable. Stop before the checksums move if not.
-immutable="$(gh api "repos/$REPO/releases/tags/$LIBS_TAG" --jq .immutable)"
-if [ "$immutable" != "false" ]; then
-    echo "error: $REPO@$LIBS_TAG is an immutable release, so --clobber cannot replace its archive." >&2
-    echo "       Publish to a new release tag and point scripts/download-libs.sh at it." >&2
-    exit 1
-fi
-
-echo "📝 Regenerating $CHECKSUMS_FILE..."
-shasum -a 256 Libs/*.a > "$CHECKSUMS_FILE"
-
-# An allowlist of exactly what the checksum guard above covers, not `-C Libs .`. The dot swept in
-# Libs/ios and Libs/dylibs, so every download of the macOS archive also carried about 78 MB of iOS
-# xcframeworks that nothing here verified, and the marker files with them.
-echo "📦 Creating $LIBS_ARCHIVE..."
-archive_members=()
-for lib in Libs/*.a; do
-    archive_members+=("$(basename "$lib")")
-done
-if [ "${#archive_members[@]}" -eq 0 ]; then
-    echo "❌ No Libs/*.a to publish."
-    exit 1
-fi
-
-# A private directory rather than a predictable /tmp name: this archive is uploaded publicly, and
-# /tmp is world-writable, so a fixed path is something another local user can replace first.
-staging="$(mktemp -d)"
-trap 'rm -rf "$staging"' EXIT
-tar czf "$staging/$LIBS_ARCHIVE" -C Libs "${archive_members[@]}" "$(basename "$CHECKSUMS_FILE")"
-
-echo "☁️  Uploading to $REPO@$LIBS_TAG..."
-gh release upload "$LIBS_TAG" "$staging/$LIBS_ARCHIVE" --clobber --repo "$REPO"
-
-echo ""
-echo "🎉 Published. Now commit the checksum update:"
-echo "   git add $CHECKSUMS_FILE && git commit -m \"build: update static library checksums\""
+echo "Published $TAG. Commit the pin and the checksums together:"
+echo "  git add $PIN $MAC_SUMS $IOS_SUMS && git commit -m 'build(libs): publish $TAG'"

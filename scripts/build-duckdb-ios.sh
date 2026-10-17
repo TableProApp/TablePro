@@ -197,9 +197,7 @@ xcodebuild -create-xcframework \
 echo
 echo "Done: $OUT_DIR/DuckDB.xcframework"
 echo
-echo "Next steps (these modify the libs-v1 release; run them yourself):"
-echo "  scripts/publish-ios-libs.sh"
-echo "  git add Libs/ios/checksums.sha256 && git commit -m 'build: update iOS xcframework checksums'"
+echo "Build TableProMobile in Xcode, then publish: scripts/publish-libs.sh DuckDB.xcframework"
 echo
-echo "Then build TableProMobile in Xcode. Cleaning up $WORK_DIR"
+echo "Cleaning up $WORK_DIR"
 rm -rf "$WORK_DIR"

@@ -135,7 +135,7 @@ Claude Code loads a rule when it reads or edits a file the rule covers. Under Co
 | `data-grid.md` | `TablePro/Views/Results`, `TablePro/Core/DataGrid`, `TableProTests/Views/Results` |
 | `data-sync-storage.md` | `TablePro/Core/**/*Storage*.swift`, `TablePro/Core/**/*Sync*.swift`, `TablePro/Core/Database`, `TablePro/Core/Plugins/PluginMetadataRegistry*.swift`, `TablePro/Core/Services/Query`, `Packages/TableProCore/Sources/TableProSyncTransport`, `CloudKit` |
 | `editor.md` | `Packages/TableProEditor`, `TablePro/Theme`, `TablePro/Views/Editor`, `TablePro/Views/RowInspector` |
-| `libs.md` | `Libs`, `scripts/download-libs.sh`, `scripts/publish-libs.sh`, `scripts/publish-ios-libs.sh` |
+| `libs.md` | `Libs`, `scripts/download-libs.sh`, `scripts/publish-libs.sh` |
 | `mongodb-driver.md` | `Plugins/MongoDBDriverPlugin`, `Plugins/MQLExportPlugin` |
 | `mysql-driver.md` | `Plugins/MySQLDriverPlugin`, `Packages/TableProCore/Sources/TableProMySQLCore`, `TableProMobile/**/*MySQL*`, `TableProMobile/**/*MariaDB*` |
 | `native-bridges.md` | `Native`, `Plugins/DamengDriverPlugin`, `Plugins/HanaDriverPlugin`, `scripts/build-dameng.sh`, `scripts/build-hana.sh` |
