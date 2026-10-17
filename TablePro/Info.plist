@@ -547,17 +547,6 @@
 				<key>NSExceptionRequiresForwardSecrecy</key>
 				<true/>
 			</dict>
-			<key>jsdelivr.net</key>
-			<dict>
-				<key>NSIncludesSubdomains</key>
-				<true/>
-				<key>NSExceptionAllowsInsecureHTTPLoads</key>
-				<false/>
-				<key>NSExceptionMinimumTLSVersion</key>
-				<string>TLSv1.2</string>
-				<key>NSExceptionRequiresForwardSecrecy</key>
-				<true/>
-			</dict>
 		</dict>
 	</dict>
 	<key>NSUserActivityTypes</key>

@@ -121,11 +121,10 @@
     at 2.17.1. The holder line is quoted from the per-file header of src/session.cpp; README.md at the
     tag states the same as "&copy; DataStax, Inc." under "## License". The archive statically includes
     vendored src/third_party/{curl, hdr_histogram, http-parser, minizip, mt19937_64, rapidjson, sparsehash},
-    each under its own licence. Those sub-licences are NOT enumerated here: UNVERIFIED. build-cassandra.sh:83
+    each under its own licence. Those sub-licences are NOT enumerated here: UNVERIFIED. build-cassandra.sh
     rewrites the upstream CMakeLists.txt in place with sed to accept AppleClang. That is a build-system
     edit made inside the script, not a file under scripts/patches/, so patched is false but the tree is
-    not byte-identical to upstream. The build uses Homebrew openssl@3 (build-cassandra.sh:99), not the
-    pinned OpenSSL.'
+    not byte-identical to upstream. The build uses Homebrew openssl@3, not the pinned OpenSSL.'
 - id: dracula-visual-studio-code
   name: Dracula Theme Official
   version: vendored at a08a206f2, 2026-09-14
@@ -153,7 +152,7 @@
   source: sh:DUCKDB_VERSION
   patched: false
   platforms: [macos, ios]
-  notes: 'Built from the v1.5.2 git tag with CMake (build-duckdb.sh:25), linking core_functions, json,
+  notes: 'Built from the v1.5.2 git tag with CMake, linking core_functions, json,
     parquet, icu and autocomplete statically (scripts/duckdb-macos-extensions.cmake). The build compiles
     the whole tree including third_party/, which holds 30 vendored projects (brotli, catch, concurrentqueue,
     fast_float, fastpforlib, fmt, fsst, httplib, hyperloglog, imdb, jaro_winkler, jemalloc, libpg_query,
@@ -184,13 +183,13 @@
     (LGPL-2.0), not 2.1. Every source file built into libsybdb.a grants "either version 2 of the License,
     or (at your option) any later version", so LGPL-2.0-or-later is the id. The repo also ships COPYING.txt
     (GPL-2.0) for parts of the tree; the build compiles only include, src/utils, src/replacements, src/tds
-    and src/dblib (build-freetds.sh:123-128), so no GPL-only component is linked. README.md at the tag
+    and src/dblib, so no GPL-only component is linked. README.md at the tag
     states "FreeTDS is licensed under the GNU LGPL license. See COPYING_LIB.txt". src/replacements carries
     separate BSD-3-Clause code, hence the Regents of the University of California lines (src/replacements/getopt.c,
     quoted with its original tab indentation). Per-contributor credits live in AUTHORS.md at the tag;
     the headers above are the ones on the files actually compiled. The build fetches the tarball from
-    https://www.freetds.org/files/stable/freetds-1.4.22.tar.gz (build-freetds.sh:24), SHA-256 pinned at
-    line 23; the GitHub tag v1.4.22 is the same release. The patch adds the TDS FEDAUTH login extension
+    https://www.freetds.org/files/stable/freetds-1.4.22.tar.gz, pinned by SHA-256; the GitHub tag
+    v1.4.22 is the same release. The patch adds the TDS FEDAUTH login extension
     (Microsoft Entra ID) that upstream has never implemented; it is TablePro-authored and applies to LGPL
     sources, so the modified library stays LGPL-2.0-or-later and the modification must be offered alongside.
     Static-linked LGPL: same relinking obligation as MariaDB Connector/C. One source tree serves the macOS
@@ -216,20 +215,20 @@
     ships.'
 - id: go
   name: Go (runtime and standard library)
-  version: 1.27.1
+  version: 1.27.2
   spdx: BSD-3-Clause
   copyrights:
   - Copyright 2009 The Go Authors
   homepageURL: https://go.dev
-  licenseTextURL: https://github.com/golang/go/blob/go1.27.1/LICENSE
+  licenseTextURL: https://github.com/golang/go/blob/go1.27.2/LICENSE
   textFile: texts/go.txt
   source: manual
   patched: false
-  notes: 'The toolchain line of Native/HanaBridge/go.mod pins go1.27.1. scripts/build-hana.sh builds
+  notes: 'The toolchain line of Native/HanaBridge/go.mod pins go1.27.2. scripts/build-hana.sh builds
     the bridge into tablepro-hana-helper, a CGO_ENABLED=0 executable the SAP HANA plugin carries in
     Contents/MacOS and runs as a separate process, so the Go runtime and every standard library package
     the helper reaches are linked into that executable. The standard
-    library vendors golang.org/x/crypto, x/net, x/sys and x/text (src/vendor/modules.txt at go1.27.1),
+    library vendors golang.org/x/crypto, x/net, x/sys and x/text (src/vendor/modules.txt at go1.27.2),
     all under this same BSD-3-Clause notice from The Go Authors. PATENTS beside LICENSE is an extra
     patent grant from Google and adds no notice duty. source is manual because the pin lives in go.mod,
     not in a build-*.sh variable, so scripts/ci/check-license-inventory.py does not check this version.
@@ -313,11 +312,8 @@
   notes: 'COPYING at the tag names only the first two holders plus "All rights reserved."; the remaining
     five lines are per-file headers on sources compiled into the two archives: ssl.c (Redis Labs, 2019),
     sds.c (Sanfilippo 2006-2015, Oran Agra, Redis Labs, Inc) and alloc.c (Michael Grunder). All are the
-    same BSD-3-Clause grant. Tarball is the GitHub source archive for v1.2.0 (build-hiredis.sh:70), SHA-256
-    pinned at line 39. The script writes only the _arch and _universal archives; the flat Libs/libhiredis.a
-    and Libs/libhiredis_ssl.a that project.yml force_loads are copied by hand before publishing, the same
-    as libssh2.a, libpq.a, libpgcommon.a, libpgport.a, libssl.a and libcrypto.a. scripts/ios/build-hiredis-ios.sh:13
-    pins the same 1.2.0.'
+    same BSD-3-Clause grant. Tarball is the GitHub source archive for v1.2.0, pinned by SHA-256.
+    scripts/ios/build-hiredis-ios.sh pins the same 1.2.0.'
 - id: libssh2
   name: libssh2
   version: 1.11.1
@@ -339,13 +335,10 @@
   patched: true
   platforms: [macos, ios]
   notes: Linked by the main app target (SSH tunnels), not by a plugin. The tarball is fetched from the
-    GitHub release for libssh2-1.11.1 and pinned by SHA-256 (build-libssh2.sh:38). The script writes only
-    libssh2_arm64.a, libssh2_x86_64.a and libssh2_universal.a. The flat Libs/libssh2.a that project.yml
-    force_loads is listed in Libs/checksums.sha256 but is not written by build-libssh2.sh nor by publish-libs.sh;
-    it is copied by hand before publishing. Both patches are TablePro-authored CVE backports carrying
+    GitHub release for libssh2-1.11.1 and pinned by SHA-256. Both patches are TablePro-authored CVE backports carrying
     their own prose headers; the 1.11.1 tree they modify stays BSD-3-Clause. The repo also ships a LICENSES/
     directory (BSD-2-Clause, BSD-3-Clause, FSFULLR, MIT, SAX-PD-2.0, curl) for REUSE compliance, covering
-    build and doc files rather than the library sources. scripts/ios/build-libssh2-ios.sh:9 pins the same
+    build and doc files rather than the library sources. scripts/ios/build-libssh2-ios.sh pins the same
     1.11.1 for the iOS app.
 - id: libuv
   name: libuv
@@ -360,8 +353,8 @@
   source: sh:LIBUV_VERSION
   patched: false
   notes: 'libuv is not pinned by a script of its own; it is a dependency of the Cassandra driver and is
-    pinned inside scripts/build-cassandra.sh. Tarball comes from dist.libuv.org (build-cassandra.sh:39),
-    SHA-256 pinned at line 12. Two licence files apply at v1.48.0. LICENSE is the MIT grant for libuv
+    pinned inside scripts/build-cassandra.sh. Tarball comes from dist.libuv.org, pinned by SHA-256. Two
+    licence files apply at v1.48.0. LICENSE is the MIT grant for libuv
     itself; LICENSE-extra is the same MIT grant carried over from the joyent/libuv history, which is why
     the Joyent / Node contributors line must also be reproduced. LICENSE-extra additionally names two
     externally maintained pieces that ship inside the archive: tree.h from FreeBSD, "copyright Niels Provos.
@@ -393,7 +386,7 @@
     with its original continuation indentation. The PHP attribution line is quoted from the README at
     the tag and is a required notice because the connector derives from PHP''s mysqlnd extension. Static-linked
     LGPL: shipping the app must keep the relinking route open (object files or the shipped .a plus the
-    licence text). The build uses Homebrew openssl@3 (build-mariadb.sh:22), not the pinned OpenSSL. scripts/ios/build-mariadb-ios.sh:13
+    licence text). The build uses Homebrew openssl@3, not the pinned OpenSSL. scripts/ios/build-mariadb-ios.sh
     pins the same 3.4.4.'
 - id: mongo-c-driver
   name: MongoDB C Driver (libmongoc / libbson)
@@ -412,8 +405,8 @@
     binary ships: uthash ("Copyright (c) 2003-2021, Troy D. Hanson"), common-b64.c (ISC, "Copyright: 1996,
     1998 Internet Software Consortium / 1995 International Business Machines, Inc." plus an IBM permission
     grant), mongoc.css_t, zlib, common-md5.c and utf8proc. The full text is saved in the extra text file.
-    Tarball is the GitHub release archive for 1.28.1 (build-libmongoc.sh:74), SHA-256 pinned at line 42.
-    The script writes the flat Libs/libmongoc.a and Libs/libbson.a itself (build-libmongoc.sh:219).'
+    Tarball is the GitHub release archive for 1.28.1, pinned by SHA-256. The script writes the flat
+    Libs/libmongoc.a and Libs/libbson.a itself.'
 - id: nord-visual-studio-code
   name: Nord Visual Studio Code
   version: vendored at 8ead09822, 2023-05-03
@@ -494,9 +487,9 @@
     at the tag is the bare Apache-2.0 text with no copyright block, so the two holder lines above are
     quoted from the Copyright section of README.md at the same tag (https://raw.githubusercontent.com/openssl/openssl/openssl-3.4.3/README.md,
     lines 196-203). Source files carry the per-file form "Copyright <years> The OpenSSL Project Authors.
-    All Rights Reserved." scripts/openssl-version.sh is sourced by build-libssh2.sh:37, build-hiredis.sh:38,
-    build-libmongoc.sh:43 and build-libpq.sh:39, each of which builds OpenSSL from source for its own
-    static link. Only build-libpq.sh installs the result into Libs/ (libpq.sh:196-197). scripts/create-openssl-dylibs.sh
+    All Rights Reserved." OPENSSL_VERSION in scripts/lib/common.sh is the pin for build-libssh2.sh,
+    build-hiredis.sh, build-libmongoc.sh and build-libpq.sh, each of which builds OpenSSL from source for
+    its own static link. Only build-libpq.sh installs the result into Libs/. scripts/create-openssl-dylibs.sh
     turns those static archives into the two shipped dylibs. build-mariadb.sh, build-cassandra.sh and
     build-freetds.sh use Homebrew's openssl@3 instead of the pin, so their OpenSSL version is whatever
     brew has installed (UNVERIFIED at build time; the shipped dylibs are the pinned 3.4.3).
@@ -541,11 +534,11 @@
   source: sh:PG_VERSION
   patched: false
   platforms: [macos, ios]
-  notes: Source tarball comes from ftp.postgresql.org (build-libpq.sh:71), SHA-256 pinned at build-libpq.sh:40;
+  notes: Source tarball comes from ftp.postgresql.org, pinned by SHA-256 in scripts/build-libpq.sh;
     the GitHub tag REL_17_4 is the same release and is used here only as a stable URL for the COPYRIGHT
     file. The COPYRIGHT text is the whole licence; SPDX calls it "PostgreSQL" (a BSD/MIT-style permissive
     licence), not BSD-2-Clause. The same build also emits Libs/libssl_*.a and Libs/libcrypto_*.a, which
-    are OpenSSL, not PostgreSQL. scripts/ios/build-libpq-ios.sh:10 pins the same 17.4.
+    are OpenSSL, not PostgreSQL. scripts/ios/build-libpq-ios.sh pins the same 17.4.
 - id: rearrange
   name: Rearrange
   version: 2.1.1

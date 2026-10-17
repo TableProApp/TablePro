@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://tablepro.app">Website</a> ·
   <a href="https://docs.tablepro.app">Docs</a> ·
-  <a href="https://github.com/TableProApp/TablePro/releases">Download</a> ·
+  <a href="https://github.com/TableProApp/TablePro/releases/latest">Download</a> ·
   <a href="https://discord.gg/hCNmUUbnD4">Discord</a>
 </p>
 
@@ -70,9 +70,6 @@ TablePro is the missing fourth: native, multi-database, and open source.
 
 ## Supported Databases
 
-- **Built-in**: MySQL, MariaDB, TiDB, OceanBase, Databend, PostgreSQL, Amazon Redshift, CockroachDB, PGlite, SQLite, ClickHouse, Redis
-- **Plugin**: Microsoft SQL Server, MongoDB, Oracle Database, Snowflake, BigQuery, Spanner, DynamoDB, DuckDB, Cassandra, ScyllaDB, Elasticsearch, Kafka, Trino, Teradata, SAP HANA, Dameng DM8, SurrealDB, Typesense, Weaviate, etcd, Cloudflare D1, Cloudflare R2 SQL, libSQL, Turso, Beancount
-
 Built-in drivers ship with the app. Plugin drivers install on demand from the [plugin registry](https://github.com/TableProApp/plugins). [tablepro.app/databases](https://tablepro.app/databases) has the current list and what each engine supports.
 
 ## What's inside
@@ -103,7 +100,7 @@ Plans and prices are on [tablepro.app/pricing](https://tablepro.app/pricing). Th
 brew install --cask tablepro
 ```
 
-Or download from [GitHub Releases](https://github.com/TableProApp/TablePro/releases).
+Or download from [GitHub Releases](https://github.com/TableProApp/TablePro/releases/latest).
 
 ## How to Build
 

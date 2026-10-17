@@ -85,7 +85,7 @@ Read this when a verdict, a test name or a red CI check needs explaining. The co
 - `package <Package> [regex]` runs `swift test --parallel` with an xunit file. SwiftPM writes the XCTest xunit file only for a parallel run. A package with a `Package.resolved` also gets `--force-resolved-versions`.
 - A `Package.resolved` written by one toolchain can fail `--force-resolved-versions` on another when a transitive dependency was renamed. Re-pinning only moves the failure; drop the dependency or remove the rename from the graph.
 - `ios <Suite>...` runs `TableProMobileTests` on the first available iPhone simulator with `-parallel-testing-enabled NO -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO ARCHS=arm64`. `ARCHS=arm64` is there because the prebuilt iOS libraries have arm64 simulator slices only.
-- `ios` generates the iOS project when the tree has none. It needs `TableProMobile/Secrets.xcconfig`, which `worktree.sh` links.
+- `ios` generates the iOS project when the tree has none.
 
 ## Lint
 
@@ -107,7 +107,7 @@ Read this when a verdict, a test name or a red CI check needs explaining. The co
 
 ## Worktrees
 
-- `.claude/skills/fix-issue/scripts/worktree.sh <branch> [base]` creates `.claude/worktrees/<branch with / turned into ->` from a fresh fetch of the base, `origin/main` by default. It links `Configs/Secrets.xcconfig`, `TableProMobile/Secrets.xcconfig`, `Libs/*.a`, `Libs/dylibs`, `Libs/ios/*.xcframework` and the native bridge outputs from the main checkout, and prints the path to pass as `--root`. Run `generate` before its first build.
+- `.claude/skills/fix-issue/scripts/worktree.sh <branch> [base]` creates `.claude/worktrees/<branch with / turned into ->` from a fresh fetch of the base, `origin/main` by default. It links `Configs/Secrets.xcconfig`, `Libs/*.a`, `Libs/dylibs`, `Libs/ios/*.xcframework` and the native bridge outputs from the main checkout, and prints the path to pass as `--root`. Run `generate` before its first build.
 - `worktree.sh --prune-merged [--dry-run]` removes each tree whose pull requests are all merged or closed, with its DerivedData folder. It removes one only when `git status` is clean and no process has its working directory inside; a kept tree says why. A Codex broker started in a tree is the usual process that keeps it.
 - `worktree.sh --remove <branch>` keeps the branch and refuses a tree with uncommitted or untracked changes.
 - Each tree builds into its own DerivedData. `build`, `plugins`, `test`, `uitest` and `ios` wait only for an `xcodebuild` of the same checkout, found by its project path or working directory, so `--no-wait` is safe in your own tree.

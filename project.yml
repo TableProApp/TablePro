@@ -485,7 +485,7 @@ targets:
         SKIP_INSTALL: YES
         LOCALIZATION_EXPORT_SUPPORTED: NO
         SWIFT_EMIT_LOC_STRINGS: YES
-        # The app and all 41 plugin bundles link this framework, and every one of those links
+        # The app and every plugin bundle link this framework, and every one of those links
         # waits for its link step without this. It is Swift-only, so the build system can emit a
         # TBD and unblock them.
         EAGER_LINKING: YES

@@ -33,7 +33,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 
 - Triggers: pull request, push to main, dispatch. A PR keeps only its newest run; each main commit has its own concurrency group and is never cancelled.
 - `Changes (macOS)` outputs `run` (detector `macos`) and `plugins` (detector `plugins`). The test job has a 120-minute limit and sets `NSUnbufferedIO=YES`.
-- Setup, in order: checkout, setup-xcode, setup-xcodegen, `scripts/download-libs.sh`, an empty `Configs/Secrets.xcconfig`, `generate-project.sh macos`, SPM restore, resolve, SPM save.
+- Setup, in order: checkout, setup-xcode, setup-xcodegen, `scripts/download-libs.sh`, `generate-project.sh macos`, SPM restore, resolve, SPM save.
 - One `build-for-testing` with no `-testPlan` builds both plans and writes one `.xctestrun` per plan, with signing, the index store and the compilation cache off.
 - `COMPILE_PLUGINS` is true on every push and dispatch, and on a PR when the `plugins` detector is not false. It adds Go, the Dameng and HANA bridge builds, `xcodebuild build -scheme AllPlugins`, then `scripts/ci/verify-plugin-loads.sh`.
 - `test-without-building -testPlan Unit`, then `-testPlan UI`. The UI plan runs after a Unit failure too, so one round trip reports both.

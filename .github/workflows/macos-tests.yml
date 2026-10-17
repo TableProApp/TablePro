@@ -61,10 +61,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: scripts/download-libs.sh
 
-      # Tests read no analytics key; the project only needs the variable to resolve.
-      - name: Create Secrets.xcconfig
-        run: echo "ANALYTICS_HMAC_SECRET = " > Configs/Secrets.xcconfig
-
       - name: Generate the Xcode project
         run: scripts/generate-project.sh macos
 

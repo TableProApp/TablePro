@@ -124,11 +124,7 @@ link() {
     ln -sfn "$1" "$2"
 }
 
-# The build reads Configs/Secrets.xcconfig. A stale empty Secrets.xcconfig at the repo root
-# used to be linked instead, so every fresh worktree failed with "Unable to open base
-# configuration reference file" until it was linked by hand.
 link "$MAIN_ROOT/Configs/Secrets.xcconfig" "$DIR/Configs/Secrets.xcconfig"
-link "$MAIN_ROOT/TableProMobile/Secrets.xcconfig" "$DIR/TableProMobile/Secrets.xcconfig"
 mkdir -p "$DIR/Libs"
 for archive in "$MAIN_ROOT"/Libs/*.a; do
     [ -e "$archive" ] && ln -sf "$archive" "$DIR/Libs/$(basename "$archive")"
