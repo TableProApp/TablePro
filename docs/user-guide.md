@@ -80,6 +80,10 @@ BookiE checks every statement before it runs:
 - Depending on the connection's environment and your policy, risky statements (for example a `DELETE` without `WHERE`, or schema changes in production) ask for your approval first. The time spent waiting for approval is not counted in the statement's elapsed time.
 - Every executed, refused or cancelled operation is written to an audit journal on your machine.
 
+## Back up and restore PostgreSQL
+
+From the app menu, choose **Back Up Database…** to save a custom-format `.dump` file, or **Restore from Backup…** to restore one. These actions are available for PostgreSQL connections and use the installed `pg_dump` and `pg_restore` tools. They work over the connection's configured SSH and TLS route. Restore requires a writable connection and approval; both operations are audited. Cancel stops the running tool.
+
 ## Snapshots
 
 Planned for a 0.2.x release, after 0.2.0: take a snapshot of a database before an experiment and restore it with one click, starting with PostgreSQL. See [ADR 0015](decisions/0015-database-snapshots.md) and ledger rows SNAP-1 to SNAP-4 in [known-issues.md](known-issues.md).

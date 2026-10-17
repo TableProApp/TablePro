@@ -62,7 +62,7 @@ What the application does not do, or does differently from what you might expect
 - No server messages (NOTICE, PRINT) and no timing breakdown; timing shows elapsed time only (UI-20, PERF-4 / [#550](https://github.com/cozyGarage/BookiE/issues/550)).
 - No foreign-key value picker or estimated row counts (UI-19 / [#549](https://github.com/cozyGarage/BookiE/issues/549)). Enum and set pickers and tab-separated row paste are implemented.
 - PostgreSQL schemas can be hidden from the sidebar per connection ([#580](https://github.com/cozyGarage/BookiE/issues/580)); this display filter does not reduce catalog query work. Many-schema performance and restricted-role metadata remain open under B6.
-- No database snapshots or restore (SNAP-1 accepted the feature for 0.2.x; build is SNAP-2 to SNAP-4 / [#547](https://github.com/cozyGarage/BookiE/issues/547)).
+- Database snapshots and one-click rollback remain unavailable (SNAP-1 accepted the feature for 0.2.x; implementation is SNAP-2 to SNAP-4 / [#547](https://github.com/cozyGarage/BookiE/issues/547)). PostgreSQL logical backup and restore are available through the installed `pg_dump` and `pg_restore` tools; see the [user guide](user-guide.md#back-up-and-restore-postgresql). They are not point-in-time snapshots.
 - Accessibility is not fully verified with Orca, keyboard-only navigation or high contrast (DOC-3). Concrete gaps are tracked in [#658](https://github.com/cozyGarage/BookiE/issues/658): some connection controls and text fields are missing names or actions in the accessibility tree, and grid menu items are not exposed consistently.
 
 ## Platforms and packaging
@@ -75,7 +75,7 @@ What the application does not do, or does differently from what you might expect
 ## Known bugs
 
 - **A tunnel drop during a PostgreSQL Session transaction can leave the editor unable to recover** ([#1016](https://github.com/cozyGarage/BookiE/issues/1016)). If the connection is lost while rollback is in flight, the outcome can be recorded as unknown and later writes, including the rollback needed to end the session, can be denied. This failure was intermittent in the reported GTK run; B4 is still deciding how to recover safely. Reconnect behavior must not reuse a new backend as the old session.
-- **Several UI details remain inconsistent** ([#660](https://github.com/cozyGarage/BookiE/issues/660)): text and bytea NULL values render differently, Structure tab chevrons look inverted, and the catalog kind selector can shift the search field.
+- **Catalog kind selection may shift the schema search field** ([#660](https://github.com/cozyGarage/BookiE/issues/660)). The issue remains open; the current isolated GTK widget test did not reproduce it.
 - **PostgreSQL `VOID` results are shown as undecodable** ([#660](https://github.com/cozyGarage/BookiE/issues/660)); they should render as empty values.
 - **Two installed launches were reported to abort inside BookiE** ([#666](https://github.com/cozyGarage/BookiE/issues/666)); the cause remains under investigation.
 - **Installed GTK suite is intermittent on Forgejo** (TEST-31 / [#556](https://github.com/cozyGarage/BookiE/issues/556)): the startup restore layout abort was fixed in [#821](https://github.com/cozyGarage/BookiE/pull/821). Intermittent failures remain under investigation; recent failures include an application shutdown with a bad exit status after the scenarios passed. The required consecutive full-run evidence has not been met.
