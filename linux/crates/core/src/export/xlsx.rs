@@ -12,6 +12,14 @@ use crate::value::{Temporal, Value};
 const MAX_ROWS: usize = 1_048_576;
 const MAX_COLUMNS: usize = 16_384;
 
+/// The characters one cell holds.
+const MAX_CELL_CHARS: usize = 32_767;
+
+/// The significant digits Excel keeps of a number. A number with more
+/// comes back changed even when an f64 holds it exactly:
+/// `4111111111111111` reads back as `4111111111111110`.
+const EXCEL_DIGITS: usize = 15;
+
 /// The rows a sheet holds under its header row.
 pub const XLSX_MAX_DATA_ROWS: usize = MAX_ROWS - 1;
 
@@ -152,7 +160,7 @@ fn write_cell(
             .map(drop),
         _ => match sheet_number(columns, column, value) {
             Some(number) => sheet.write_number(row, column, number).map(drop),
-            None => write_text(sheet, row, column, columns, value),
+            None => return write_text(sheet, row, column, columns, value),
         },
     }
     .map_err(xlsx_error)
@@ -175,24 +183,35 @@ fn sheet_number(columns: &[ResultColumn], column: u16, value: &Value) -> Option<
 }
 
 /// Everything else goes in as the same text the other exports write,
-/// so a cell reads the same whichever format the user picked.
+/// so a cell reads the same whichever format the user picked. A value
+/// longer than a cell holds is refused by name rather than cut.
 fn write_text(
     sheet: &mut Worksheet,
     row: u32,
     column: u16,
     columns: &[ResultColumn],
     value: &Value,
-) -> Result<(), rust_xlsxwriter::XlsxError> {
-    match cell_text(columns, column as usize, value) {
-        Some(text) => sheet.write_string(row, column, text).map(drop),
-        None => Ok(()),
+) -> Result<(), RenderError> {
+    let Some(text) = cell_text(columns, column as usize, value) else {
+        return Ok(());
+    };
+    if text.chars().count() > MAX_CELL_CHARS {
+        return Err(RenderError::TextTooLong {
+            column: column_name(columns, usize::from(column)),
+            limit: MAX_CELL_CHARS,
+        });
     }
+    sheet.write_string(row, column, text).map(drop).map_err(xlsx_error)
 }
 
-/// The value as an f64, when that f64 prints back as the same number.
-/// `None` when it does not, which is the case this exists to catch.
+/// The value as an f64, when that f64 prints back as the same number
+/// and Excel keeps all its digits. `None` when it does not, which is the
+/// case this exists to catch.
 fn exact_number(columns: &[ResultColumn], column: u16, value: &Value) -> Option<f64> {
     let text = cell_text(columns, column as usize, value)?;
+    if significant_digits(&text) > EXCEL_DIGITS {
+        return None;
+    }
     let parsed: f64 = text.parse().ok()?;
     // `{}` on an f64 prints the shortest form that round-trips, so
     // comparing against it is comparing the value, not the spelling.
@@ -201,6 +220,13 @@ fn exact_number(columns: &[ResultColumn], column: u16, value: &Value) -> Option<
         true => Some(parsed),
         false => None,
     }
+}
+
+/// The digits between the first and last nonzero ones: `-0.0120` has
+/// two, and `1000` has one.
+fn significant_digits(text: &str) -> usize {
+    let digits: String = text.chars().filter(char::is_ascii_digit).collect();
+    digits.trim_start_matches('0').trim_end_matches('0').len()
 }
 
 fn without_scale_padding(text: &str) -> &str {
@@ -322,8 +348,8 @@ mod tests {
 
         assert_eq!(sheet_number(&columns, 0, &Value::Int(42)), Some(42.0));
         assert_eq!(
-            sheet_number(&columns, 0, &Value::Int(-(1 << 53))),
-            Some(-9_007_199_254_740_992.0)
+            sheet_number(&columns, 0, &Value::Int(-999_999_999_999_999)),
+            Some(-999_999_999_999_999.0)
         );
         assert_eq!(sheet_number(&columns, 0, &Value::Int((1 << 53) + 1)), None);
         assert_eq!(sheet_number(&columns, 0, &Value::UInt(u64::MAX)), None);
@@ -409,6 +435,59 @@ mod tests {
         assert!(
             matches!(&refused, Err(RenderError::Encode(EncodeError::Undecodable { column })) if column == "body"),
             "{refused:?}"
+        );
+    }
+
+    #[test]
+    fn a_number_past_fifteen_digits_stays_text() {
+        let columns = cols(&["card"]);
+
+        assert_eq!(
+            sheet_number(&columns, 0, &Value::Int(4_111_111_111_111_111)),
+            None,
+            "Excel shows 4111111111111110"
+        );
+        assert_eq!(
+            sheet_number(
+                &columns,
+                0,
+                &Value::Decimal("12345678901234.56".parse().expect("decimal"))
+            ),
+            None
+        );
+        assert_eq!(
+            sheet_number(&columns, 0, &Value::Int(411_111_111_111_111)),
+            Some(411_111_111_111_111.0)
+        );
+        assert_eq!(
+            sheet_number(&columns, 0, &Value::Int(1_000_000_000_000_000_000)),
+            Some(1e18),
+            "trailing zeros are not digits Excel loses"
+        );
+        assert_eq!(
+            sheet_number(
+                &columns,
+                0,
+                &Value::Decimal("0.000000000000000123".parse().expect("decimal"))
+            ),
+            Some(1.23e-16),
+            "leading zeros are not digits Excel loses"
+        );
+    }
+
+    #[test]
+    fn a_value_longer_than_a_cell_holds_names_its_column() {
+        let rows = vec![vec![Value::Int(1), Value::Text("x".repeat(32_768))]];
+
+        let refused = render_xlsx(&cols(&["id", "body"]), &rows, "Results");
+
+        assert!(
+            matches!(&refused, Err(RenderError::TextTooLong { column, .. }) if column == "body"),
+            "{refused:?}"
+        );
+        assert!(
+            render_xlsx(&cols(&["body"]), &[vec![Value::Text("x".repeat(32_767))]], "Results").is_ok(),
+            "a value at the limit was refused"
         );
     }
 

@@ -122,6 +122,10 @@ fn encode_text(error: &EncodeError) -> String {
 fn document_text(error: &RenderError) -> String {
     match error {
         RenderError::Encode(error) => encode_text(error),
+        RenderError::TextTooLong { column, limit } => gettext_f(
+            "The column “{column}” holds a value longer than the {limit} characters an Excel cell holds. Export it as CSV instead.",
+            &[("column", column), ("limit", &format_thousands(*limit as u64))],
+        ),
         RenderError::TooManyRows { got, limit } => gettext_f(
             "An Excel sheet holds {limit} rows, and this result has {got}.",
             &[
@@ -295,14 +299,25 @@ mod tests {
     }
 
     #[test]
-    fn a_sheet_names_the_column_it_could_not_read() {
+    fn a_sheet_names_the_column_it_could_not_write() {
         let unreadable = document(RenderError::Encode(EncodeError::Undecodable {
             column: "body".to_owned(),
         }));
+        let long = document(RenderError::TextTooLong {
+            column: "body".to_owned(),
+            limit: 32_767,
+        });
 
         assert_eq!(
             unreadable,
             "The column “body” holds a value TablePro couldn't read, so it can't be written to the file."
+        );
+        assert_eq!(
+            long,
+            format!(
+                "The column “body” holds a value longer than the {} characters an Excel cell holds. Export it as CSV instead.",
+                format_thousands(32_767)
+            )
         );
     }
 
