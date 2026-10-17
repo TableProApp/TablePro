@@ -128,6 +128,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 ### Fixed
 - Read-only connections refuse grid edits through alternate actions while still allowing local drafts to be discarded or undone and redone without changing stored data.
 - Structure column expanders now point right when collapsed and down when open.
+- A database switch rejected during another connection change no longer alters the saved connection.
 - On MySQL and MariaDB, `--` followed by a character other than a space, such as `SELECT 5--2`, no longer hides the rest of the line as a comment, so the following statements are found and checked separately.
 - A save or import whose connection was lost during a statement could be recorded as rolled back, and agents were told the rollback was confirmed; it is now recorded as an unknown outcome, and an import batch that partly applied is no longer recorded as rolled back.
 - A PostgreSQL identifier containing dollar signs, such as `my$a$b`, no longer makes the editor read the rest of the script as one quoted statement.
