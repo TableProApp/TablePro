@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct PluginInstallModifier<Item>: ViewModifier {
+private struct PluginInstallModifier<Item>: ViewModifier {
     @Binding var item: Item?
     let databaseType: KeyPath<Item, DatabaseType>
     let onInstalled: (Item) -> Void
@@ -40,7 +40,7 @@ struct PluginInstallModifier<Item>: ViewModifier {
     }
 }
 
-extension View {
+internal extension View {
     func pluginInstallPrompt<Item>(
         for item: Binding<Item?>,
         type databaseType: KeyPath<Item, DatabaseType>,
