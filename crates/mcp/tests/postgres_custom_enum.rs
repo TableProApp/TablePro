@@ -148,19 +148,62 @@ async fn postgres_custom_enum_labels_and_sql_null_survive_mcp_query_tool() {
     .await
     .expect("dispatch PostgreSQL enum query through MCP");
 
+    assert_eq!(response["value_format"], "bookie-tagged-v1");
     assert_eq!(response["columns"], serde_json::json!(["id", "label", "native_type"]));
     assert_eq!(
         response["rows"],
         serde_json::json!([
-            [1, "NULL", "mcp_enum.state"],
-            [2, "", "mcp_enum.state"],
-            [3, "東京🙂", "mcp_enum.state"],
-            [4, null, "mcp_enum.state"],
-            [5, "\\N", "mcp_enum.state"],
-            [6, "\\NN", "mcp_enum.state"],
+            [{"$type":"int64","value":"1"}, {"$type":"text","value":"NULL"}, {"$type":"text","value":"mcp_enum.state"}],
+            [{"$type":"int64","value":"2"}, {"$type":"text","value":""}, {"$type":"text","value":"mcp_enum.state"}],
+            [{"$type":"int64","value":"3"}, {"$type":"text","value":"東京🙂"}, {"$type":"text","value":"mcp_enum.state"}],
+            [{"$type":"int64","value":"4"}, {"$type":"null"}, {"$type":"text","value":"mcp_enum.state"}],
+            [{"$type":"int64","value":"5"}, {"$type":"text","value":"\\N"}, {"$type":"text","value":"mcp_enum.state"}],
+            [{"$type":"int64","value":"6"}, {"$type":"text","value":"\\NN"}, {"$type":"text","value":"mcp_enum.state"}],
         ])
     );
     assert_eq!(response["truncated"], false);
+
+    let numeric_response = tablepro_mcp::dispatch(
+        &bridge,
+        &token,
+        "execute_query",
+        serde_json::json!({
+            "connection_id": connection_id.to_string(),
+            "sql": concat!(
+                "SELECT 9007199254740993::bigint AS wide, -9007199254740993::bigint AS negative_wide, ",
+                "123456789012345678.12345678::numeric AS exact_decimal, ",
+                "12345678901234567890.123456789012345::numeric AS high_precision_numeric, ",
+                "'{\"wide\":9007199254740993,\"fraction\":1.234567890123456789}'::jsonb AS nested, ",
+                r#"'{ "wide": 9007199254740993, "duplicate": 1, "duplicate": 2, "fraction": 1.2300e+20 }'::json AS raw_nested"#
+            ),
+        }),
+    )
+    .await
+    .expect("dispatch PostgreSQL numeric boundary query through MCP");
+    assert_eq!(numeric_response["value_format"], "bookie-tagged-v1");
+    assert_eq!(
+        numeric_response["rows"][0],
+        serde_json::json!([
+            {"$type":"int64", "value":"9007199254740993"},
+            {"$type":"int64", "value":"-9007199254740993"},
+            {"$type":"decimal", "value":"123456789012345678.12345678"},
+            {"$type":"text", "value":"12345678901234567890.123456789012345"},
+            {
+                "$type":"json",
+                "value": {
+                    "$type":"json_object",
+                    "value": {
+                        "wide":{"$type":"json_number","value":"9007199254740993"},
+                        "fraction":{"$type":"json_number","value":"1.234567890123456789"}
+                    }
+                }
+            },
+            {
+                "$type":"json_text",
+                "value":"{ \"wide\": 9007199254740993, \"duplicate\": 1, \"duplicate\": 2, \"fraction\": 1.2300e+20 }"
+            }
+        ])
+    );
 
     let json_export = tablepro_mcp::dispatch(
         &bridge,

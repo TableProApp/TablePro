@@ -8,6 +8,7 @@ RUN apt-get update \
         ca-certificates \
         curl \
         git \
+        nodejs \
         pkg-config \
         libgtk-4-dev \
         libadwaita-1-dev \

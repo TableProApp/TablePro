@@ -219,6 +219,14 @@ mod tests {
             tools.iter().all(|tool| tool["inputSchema"]["type"] == "object"),
             "{response}"
         );
+        assert!(
+            tools
+                .iter()
+                .find(|tool| tool["name"] == "browse_table")
+                .unwrap()["inputSchema"]["properties"]["offset"]["oneOf"]
+                .is_array(),
+            "{response}"
+        );
         let hint =
             |name: &str, key: &str| tools.iter().find(|tool| tool["name"] == name).unwrap()["annotations"][key].clone();
         assert_eq!(hint("list_tables", "readOnlyHint"), true, "{response}");

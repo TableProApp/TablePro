@@ -285,7 +285,11 @@ async fn a_read_scoped_agent_reads_table_metadata_a_count_and_a_page() {
         )
         .await
         .expect("a read-scoped token may count rows");
-    assert_eq!(count["row_count"], json!(expected));
+    assert_eq!(count["value_format"], json!("bookie-tagged-v1"));
+    assert_eq!(
+        count["row_count"],
+        json!({"$type": "uint64", "value": expected.to_string()})
+    );
     assert_eq!(count["exact"], json!(true));
 
     let page = harness
@@ -301,7 +305,7 @@ async fn a_read_scoped_agent_reads_table_metadata_a_count_and_a_page() {
         )
         .await
         .expect("a read-scoped token may browse a page");
-    assert_eq!(page["offset"], json!(1));
+    assert_eq!(page["offset"], json!({"$type": "uint64", "value": "1"}));
     assert_eq!(page["rows"].as_array().expect("rows").len(), 1);
 }
 

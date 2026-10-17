@@ -92,6 +92,14 @@ Planned for a 0.2.x release, after 0.2.0: take a snapshot of a database before a
 
 BookiE can let an AI assistant use your saved connections through the Model Context Protocol. Open **Preferences → MCP** to create a token, choose which connections it may use and which tools it may call. The token appears once; the dialog reports whether it was saved in the system keyring. If saving fails, copy it into your MCP client configuration before closing the dialog. Every agent statement goes through the same safety checks, and agent changes follow the approval rules of the connection's environment. `bookie-agentd` runs the same server without the window, for headless use.
 
+MCP data responses use the versioned `bookie-tagged-v1` format. Check `value_format` and decode each cell by `$type`; values are tagged even when they fit in a JSON number. A wide integer is returned like this:
+
+```json
+{"$type":"int64","value":"9007199254740993"}
+```
+
+Keep the digits as text or parse them with a lossless integer type. Parsed JSON uses nested tags, including `json_number` values whose digits stay strings. `json_text` contains the original JSON text; keep it as text when duplicate keys, whitespace or number spelling matter. Clients that expect primitive JSON cells must update their decoder. CSV exports keep their existing format.
+
 The tool list carries read-only and destructive hints for MCP clients. Only the table and metadata tools are marked read-only. Tools that run SQL are marked as able to change data, even when they preview first. The hints are advisory: they never grant a permission and the safety checks still decide every call.
 
 ## Keyboard shortcuts

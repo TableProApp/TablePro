@@ -153,16 +153,24 @@ async fn mongodb_extended_json_survives_the_mcp_query_tool_round_trip() {
     )
     .await
     .expect("dispatch MCP query");
+    assert_eq!(response["value_format"], "bookie-tagged-v1");
+    let json_cell = &response["rows"][0][1];
+    assert_eq!(json_cell["$type"], "json");
+    let root = &json_cell["value"];
+    assert_eq!(root["$type"], "json_object");
+    let fields = &root["value"];
+    assert_eq!(fields["amount"]["$type"], "json_object");
     assert_eq!(
-        response["rows"][0][1],
-        serde_json::json!({
-            "amount": {"$numberDecimal": "1234567890123456789.123456789012345"},
-            "when": {"$date": {"$numberLong": "1234567890123"}},
-            "binary": {"$binary": {"base64": "AP9B", "subType": "80"}},
-            "large_integer": {"$numberLong": "9007199254740993"},
-            "explicit_null": null,
-            "unicode": "数据库🙂 — café",
-        }),
-        "MCP must return the original nested Extended JSON markers"
+        fields["amount"]["value"]["$numberDecimal"],
+        serde_json::json!({"$type":"json_string", "value":"1234567890123456789.123456789012345"})
+    );
+    assert_eq!(
+        fields["large_integer"]["value"]["$numberLong"],
+        serde_json::json!({"$type":"json_string", "value":"9007199254740993"})
+    );
+    assert_eq!(fields["explicit_null"]["$type"], "json_null");
+    assert_eq!(
+        fields["unicode"],
+        serde_json::json!({"$type":"json_string", "value":"数据库🙂 — café"})
     );
 }

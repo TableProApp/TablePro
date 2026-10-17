@@ -190,12 +190,65 @@ async fn execute_query_preserves_additional_result_sets_in_order() {
     .expect("read returns all result sets");
 
     assert_eq!(output["columns"], serde_json::json!(["first_set"]));
-    assert_eq!(output["rows"], serde_json::json!([[1]]));
+    assert_eq!(output["value_format"], "bookie-tagged-v1");
+    assert_eq!(output["rows"], serde_json::json!([[{"$type": "int64", "value": "1"}]]));
     assert_eq!(
         output["additional_result_sets"],
-        serde_json::json!([{"columns": ["second_set"], "rows": [["later"]], "truncated": false}])
+        serde_json::json!([{"columns": ["second_set"], "rows": [[{"$type": "text", "value": "later"}]], "truncated": false}])
     );
     assert_eq!(output["truncated"], false);
+}
+
+#[tokio::test]
+async fn serialized_mcp_numeric_values_survive_javascript_json_parse() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = Arc::new(TokenStore::open(dir.path().join("tokens.json")).unwrap());
+    let connection_id = Uuid::nil();
+    let (_metadata, plaintext) = store
+        .issue("reader".into(), TokenPermissions::ReadOnly, vec![connection_id], None)
+        .unwrap();
+    let raw_json = r#"{ "wide": 9007199254740993, "duplicate": 1, "duplicate": 2 }"#;
+    let provider = Arc::new(RecordingProvider::with_result(QueryResult {
+        columns: vec![column("wide"), column("decimal"), column("nested"), column("raw")],
+        rows: vec![vec![
+            Value::Int(9_007_199_254_740_993),
+            Value::Decimal("123456789012345678.12345678".parse().unwrap()),
+            Value::Json(serde_json::from_str(r#"{"wide":9007199254740993,"fraction":1.234567890123456789}"#).unwrap()),
+            Value::JsonText(raw_json.into()),
+        ]],
+        truncated: false,
+    }));
+    let bridge = McpBridge::new(provider, store);
+    let token = bridge.authenticate(&plaintext).unwrap();
+    let output = tablepro_mcp::dispatch(
+        &bridge,
+        &token,
+        "execute_query",
+        serde_json::json!({"connection_id": connection_id.to_string(), "sql": "SELECT 1"}),
+    )
+    .await
+    .expect("dispatch returns the tagged result");
+    let javascript = concat!(
+        "const p=JSON.parse(process.argv[1]),r=p.rows[0];",
+        "if(p.value_format!==\"bookie-tagged-v1\"||",
+        "r[0].$type!==\"int64\"||r[0].value!==\"9007199254740993\"||",
+        "r[1].$type!==\"decimal\"||r[1].value!==\"123456789012345678.12345678\"||",
+        "r[2].$type!==\"json\"||r[2].value.value.wide.$type!==\"json_number\"||",
+        "r[2].value.value.wide.value!==\"9007199254740993\"||",
+        "r[2].value.value.fraction.value!==\"1.234567890123456789\"||",
+        "r[3].$type!==\"json_text\"||",
+        "r[3].value!==\"{ \\\"wide\\\": 9007199254740993, \\\"duplicate\\\": 1, \\\"duplicate\\\": 2 }\")process.exit(1);"
+    );
+    let result = std::process::Command::new("node")
+        .args(["-e", javascript, &output.to_string()])
+        .output()
+        .expect("Node.js is required for the JavaScript JSON.parse contract check");
+
+    assert!(
+        result.status.success(),
+        "JavaScript did not preserve the tagged MCP values: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
 }
 
 #[tokio::test]
@@ -237,10 +290,10 @@ async fn mcp_row_cap_is_shared_across_result_sets() {
     .await
     .expect("capped read returns its admitted rows");
 
-    assert_eq!(output["rows"], serde_json::json!([[1]]));
+    assert_eq!(output["rows"], serde_json::json!([[{"$type": "int64", "value": "1"}]]));
     assert_eq!(
         output["additional_result_sets"],
-        serde_json::json!([{"columns": ["second_set"], "rows": [[2]], "truncated": true}])
+        serde_json::json!([{"columns": ["second_set"], "rows": [[{"$type": "int64", "value": "2"}]], "truncated": true}])
     );
     assert_eq!(output["truncated"], true);
 }
@@ -313,7 +366,10 @@ async fn json_export_keeps_multiple_result_sets_and_csv_refuses_them() {
     let json = tablepro_mcp::dispatch(&bridge, &token, "export_data", args("json"))
         .await
         .expect("JSON represents every set");
-    assert_eq!(json["additional_result_sets"][0]["rows"], serde_json::json!([[2]]));
+    assert_eq!(
+        json["additional_result_sets"][0]["rows"],
+        serde_json::json!([[{"$type": "int64", "value": "2"}]])
+    );
 
     let csv_error = tablepro_mcp::dispatch(&bridge, &token, "export_data", args("csv"))
         .await
@@ -595,7 +651,8 @@ async fn count_rows_counts_a_quoted_target_with_read_scope_only() {
     .await
     .expect("a read-scoped token may count rows");
 
-    assert_eq!(out["row_count"], 1);
+    assert_eq!(out["value_format"], "bookie-tagged-v1");
+    assert_eq!(out["row_count"], serde_json::json!({"$type": "uint64", "value": "1"}));
     assert_eq!(out["exact"], true);
     assert_eq!(
         provider.executed_sql(),
@@ -633,8 +690,16 @@ async fn browse_table_pages_within_the_row_limit() {
     )
     .await
     .expect("a read-scoped token may browse a page");
-    assert_eq!(page["offset"], 10);
-    assert_eq!(page["rows"], serde_json::json!([[10], [11], [12]]));
+    assert_eq!(page["value_format"], "bookie-tagged-v1");
+    assert_eq!(page["offset"], serde_json::json!({"$type": "uint64", "value": "10"}));
+    assert_eq!(
+        page["rows"],
+        serde_json::json!([
+            [{"$type": "int64", "value": "10"}],
+            [{"$type": "int64", "value": "11"}],
+            [{"$type": "int64", "value": "12"}],
+        ])
+    );
     assert_eq!(page["truncated"], false);
 
     let capped = tablepro_mcp::dispatch(

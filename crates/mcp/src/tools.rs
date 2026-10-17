@@ -25,6 +25,8 @@ use crate::bridge::{McpBridge, TableSchema, WriteOutcome};
 use crate::errors::McpToolError;
 use crate::tokens::McpToken;
 
+const VALUE_FORMAT: &str = "bookie-tagged-v1";
+
 pub async fn dispatch(bridge: &McpBridge, token: &McpToken, name: &str, args: JsonValue) -> Result<JsonValue, String> {
     dispatch_structured(bridge, token, name, args)
         .await
@@ -100,6 +102,7 @@ pub(crate) async fn dispatch_structured(
             let result = bridge.execute_query(token, id, &sql).await?;
             let first = result.result_sets.first();
             Ok(json!({
+                "value_format": VALUE_FORMAT,
                 "columns": first.map(|set| set.columns.iter().map(|c| &c.name).collect::<Vec<_>>()).unwrap_or_default(),
                 "rows": first.into_iter().flat_map(|set| &set.rows).map(|r| {
                     r.iter().map(value_to_json).collect::<Vec<_>>()
@@ -126,14 +129,16 @@ pub(crate) async fn dispatch_structured(
                     rows_affected,
                     rolled_back,
                 } => json!({
+                    "value_format": VALUE_FORMAT,
                     "preview": true,
-                    "rows_affected": rows_affected,
+                    "rows_affected": u64_to_json(rows_affected),
                     "rolled_back": rolled_back,
                     "message": "Write previewed inside a transaction and rolled back. Re-call with preview=false after approval to commit.",
                 }),
                 WriteOutcome::Committed { rows_affected } => json!({
+                    "value_format": VALUE_FORMAT,
                     "preview": false,
-                    "rows_affected": rows_affected,
+                    "rows_affected": u64_to_json(rows_affected),
                     "committed": true,
                 }),
             })
@@ -147,6 +152,7 @@ pub(crate) async fn dispatch_structured(
                 .to_string();
             let result = bridge.explain_query(token, id, &sql).await?;
             Ok(json!({
+                "value_format": VALUE_FORMAT,
                 "plan_rows": result.rows.iter().map(|r| {
                     r.iter().map(value_to_json).collect::<Vec<_>>()
                 }).collect::<Vec<_>>(),
@@ -205,6 +211,7 @@ pub(crate) async fn dispatch_structured(
                     bridge.ensure_operation_active(&control)?;
                     Ok(json!({
                         "format": "json",
+                        "value_format": VALUE_FORMAT,
                         "columns": first_columns.iter().map(|c| &c.name).collect::<Vec<_>>(),
                         "rows": rows,
                         "additional_result_sets": result.result_sets.iter().skip(1).map(|set| json!({
@@ -229,7 +236,7 @@ pub(crate) async fn dispatch_structured(
             let table = required_str(&args, "table")?;
             let schema = optional_str(&args, "schema");
             let count = bridge.count_rows(token, id, schema, table).await?;
-            Ok(json!({"row_count": count, "exact": true}))
+            Ok(json!({"value_format": VALUE_FORMAT, "row_count": u64_to_json(count), "exact": true}))
         }
         "browse_table" => {
             let id = parse_uuid(&args, "connection_id")?;
@@ -239,7 +246,8 @@ pub(crate) async fn dispatch_structured(
             let limit = parse_u64(&args, "limit", bridge.max_rows)?;
             let result = bridge.browse_table(token, id, schema, table, offset, limit).await?;
             Ok(json!({
-                "offset": offset,
+                "value_format": VALUE_FORMAT,
+                "offset": u64_to_json(offset),
                 "columns": result.columns.iter().map(|c| &c.name).collect::<Vec<_>>(),
                 "rows": result.rows.iter().map(|r| {
                     r.iter().map(value_to_json).collect::<Vec<_>>()
@@ -297,7 +305,8 @@ fn parse_u64(args: &JsonValue, key: &str, default: u64) -> Result<u64, String> {
         None | Some(JsonValue::Null) => Ok(default),
         Some(value) => value
             .as_u64()
-            .ok_or_else(|| format!("{key} must be a non-negative integer")),
+            .or_else(|| value.as_str().and_then(|text| text.parse().ok()))
+            .ok_or_else(|| format!("{key} must be a non-negative integer or an unsigned decimal string")),
     }
 }
 
@@ -322,23 +331,52 @@ fn parse_uuid(args: &JsonValue, key: &str) -> Result<Uuid, String> {
 
 fn value_to_json(v: &tablepro_core::Value) -> JsonValue {
     match v {
-        tablepro_core::Value::Null => JsonValue::Null,
-        tablepro_core::Value::Bool(b) => json!(b),
-        tablepro_core::Value::Int(i) => json!(i),
-        tablepro_core::Value::Float(f) if !f.is_finite() => json!(f.to_string()),
-        tablepro_core::Value::Float(f) => json!(f),
-        tablepro_core::Value::Text(s) => json!(s),
-        tablepro_core::Value::Bytes(b) => json!(format!("\\x{}", hex::encode(b))),
-        tablepro_core::Value::Date(d) => json!(d.to_string()),
-        tablepro_core::Value::Time(t) => json!(t.to_string()),
-        tablepro_core::Value::DateTime(d) => json!(d.to_string()),
-        tablepro_core::Value::TimestampTz(d) => json!(d.to_rfc3339()),
-        tablepro_core::Value::Decimal(d) => json!(d.to_string()),
-        tablepro_core::Value::Uuid(u) => json!(u.to_string()),
-        tablepro_core::Value::Json(j) => j.clone(),
-        tablepro_core::Value::JsonText(raw) => json!(raw),
-        tablepro_core::Value::Undecodable(type_name) => json!({ "undecodable": type_name }),
+        tablepro_core::Value::Null => json!({"$type": "null"}),
+        tablepro_core::Value::Bool(value) => tagged_value("bool", json!(value)),
+        tablepro_core::Value::Int(value) => tagged_value("int64", json!(value.to_string())),
+        tablepro_core::Value::Float(value) => tagged_value("float64", json!(value.to_string())),
+        tablepro_core::Value::Text(value) => tagged_value("text", json!(value)),
+        tablepro_core::Value::Bytes(value) => tagged_value("bytes_hex", json!(hex::encode(value))),
+        tablepro_core::Value::Date(value) => tagged_value("date", json!(value.to_string())),
+        tablepro_core::Value::Time(value) => tagged_value("time", json!(value.to_string())),
+        tablepro_core::Value::DateTime(value) => tagged_value("datetime", json!(value.to_string())),
+        tablepro_core::Value::TimestampTz(value) => tagged_value("timestamp_tz", json!(value.to_rfc3339())),
+        tablepro_core::Value::Decimal(value) => tagged_value("decimal", json!(value.to_string())),
+        tablepro_core::Value::Uuid(value) => tagged_value("uuid", json!(value.to_string())),
+        tablepro_core::Value::Json(value) => tagged_value("json", json_value_to_tagged(value)),
+        tablepro_core::Value::JsonText(value) => tagged_value("json_text", json!(value)),
+        tablepro_core::Value::Undecodable(value) => tagged_value("undecodable", json!(value)),
     }
+}
+
+fn tagged_value(value_type: &str, value: JsonValue) -> JsonValue {
+    json!({"$type": value_type, "value": value})
+}
+
+fn json_value_to_tagged(value: &JsonValue) -> JsonValue {
+    match value {
+        JsonValue::Null => tagged_value("json_null", JsonValue::Null),
+        JsonValue::Bool(value) => tagged_value("json_bool", json!(value)),
+        JsonValue::Number(value) => tagged_value("json_number", json!(value.to_string())),
+        JsonValue::String(value) => tagged_value("json_string", json!(value)),
+        JsonValue::Array(values) => tagged_value(
+            "json_array",
+            json!(values.iter().map(json_value_to_tagged).collect::<Vec<_>>()),
+        ),
+        JsonValue::Object(values) => tagged_value(
+            "json_object",
+            json!(
+                values
+                    .iter()
+                    .map(|(key, value)| (key.clone(), json_value_to_tagged(value)))
+                    .collect::<serde_json::Map<_, _>>()
+            ),
+        ),
+    }
+}
+
+fn u64_to_json(value: u64) -> JsonValue {
+    tagged_value("uint64", json!(value.to_string()))
 }
 
 #[cfg(test)]
@@ -350,10 +388,56 @@ mod tests {
         for number in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             assert_eq!(
                 value_to_json(&tablepro_core::Value::Float(number)),
-                json!(number.to_string())
+                json!({"$type": "float64", "value": number.to_string()})
             );
         }
-        assert_eq!(value_to_json(&tablepro_core::Value::Null), JsonValue::Null);
+        assert_eq!(value_to_json(&tablepro_core::Value::Null), json!({"$type": "null"}));
+    }
+
+    #[test]
+    fn tagged_mcp_values_preserve_integer_kind_and_wide_digits() {
+        for value in [i64::MIN, -9_007_199_254_740_993, 9_007_199_254_740_993, i64::MAX] {
+            assert_eq!(
+                value_to_json(&tablepro_core::Value::Int(value)),
+                json!({"$type": "int64", "value": value.to_string()})
+            );
+        }
+    }
+
+    #[test]
+    fn tagged_nested_json_preserves_wide_integer_and_decimal_tokens() {
+        let value: JsonValue =
+            serde_json::from_str("[9007199254740993,-9007199254740993,{\"fraction\":1.234567890123456789}]").unwrap();
+
+        assert_eq!(
+            value_to_json(&tablepro_core::Value::Json(value)),
+            json!({
+                "$type": "json",
+                "value": {
+                    "$type": "json_array",
+                    "value": [
+                        {"$type": "json_number", "value": "9007199254740993"},
+                        {"$type": "json_number", "value": "-9007199254740993"},
+                        {
+                            "$type": "json_object",
+                            "value": {
+                                "fraction": {"$type": "json_number", "value": "1.234567890123456789"}
+                            }
+                        }
+                    ]
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn tagged_json_text_preserves_source_tokens_and_duplicate_keys() {
+        let source = r#"{ "wide": 9007199254740993, "duplicate": 1, "duplicate": 2, "fraction": 1.2300e+20 }"#;
+
+        assert_eq!(
+            value_to_json(&tablepro_core::Value::JsonText(source.into())),
+            json!({"$type": "json_text", "value": source})
+        );
     }
 
     #[test]
@@ -372,8 +456,13 @@ mod tests {
     fn pagination_arguments_refuse_a_negative_or_non_numeric_page() {
         assert_eq!(parse_u64(&json!({}), "offset", 0).unwrap(), 0);
         assert_eq!(parse_u64(&json!({"offset": 12}), "offset", 0).unwrap(), 12);
+        assert_eq!(
+            parse_u64(&json!({"offset": "18446744073709551615"}), "offset", 0).unwrap(),
+            u64::MAX
+        );
         assert!(parse_u64(&json!({"offset": -1}), "offset", 0).is_err());
-        assert!(parse_u64(&json!({"offset": "3"}), "offset", 0).is_err());
+        assert!(parse_u64(&json!({"offset": "18446744073709551616"}), "offset", 0).is_err());
+        assert!(parse_u64(&json!({"offset": "1.5"}), "offset", 0).is_err());
         assert!(parse_u64(&json!({"offset": 1.5}), "offset", 0).is_err());
     }
 
@@ -381,7 +470,7 @@ mod tests {
     fn an_undecodable_value_is_reported_to_mcp_clients_not_hidden_as_null() {
         let json = value_to_json(&tablepro_core::Value::Undecodable("NUMERIC".into()));
         assert_ne!(json, JsonValue::Null);
-        assert_eq!(json, json!({ "undecodable": "NUMERIC" }));
+        assert_eq!(json, json!({"$type": "undecodable", "value": "NUMERIC"}));
     }
 
     #[test]
@@ -391,6 +480,12 @@ mod tests {
             "payload": {"$binary": {"base64": "AP9B", "subType": "80"}},
             "when": {"$date": {"$numberLong": "9223372036854775807"}},
         });
-        assert_eq!(value_to_json(&tablepro_core::Value::Json(extended.clone())), extended);
+        assert_eq!(
+            value_to_json(&tablepro_core::Value::Json(extended.clone())),
+            json!({
+                "$type": "json",
+                "value": json_value_to_tagged(&extended)
+            })
+        );
     }
 }

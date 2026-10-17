@@ -307,15 +307,25 @@ pub(crate) fn tool_description(name: &str) -> &'static str {
             "List routines, triggers, sequences, extensions, roles, types or table privileges on a connection, optionally in one schema"
         }
         "describe_table" => "Describe columns of a table",
-        "execute_query" => "Run a read SQL query (writes require tools:write scope and policy approval)",
-        "execute_write" => "Run a write with optional transaction preview (preview=true by default)",
-        "explain_query" => "Run EXPLAIN on a SQL statement; plan rows are withheld from read-scoped agents",
+        "execute_query" => {
+            "Run a read SQL query (writes require tools:write scope and policy approval). Results use value_format=bookie-tagged-v1; each cell is tagged, integers and decimals use exact strings, parsed JSON is recursively tagged, and raw JSON text remains exact under json_text."
+        }
+        "execute_write" => {
+            "Run a write with optional transaction preview (preview=true by default). Results include value_format=bookie-tagged-v1; numeric counts are exact tagged strings."
+        }
+        "explain_query" => {
+            "Run EXPLAIN on a SQL statement; plan rows are withheld from read-scoped agents. Results include value_format=bookie-tagged-v1 and tagged cells."
+        }
         "export_data" => {
-            "Run a query and return CSV or JSON; CSV responses include the null_marker used for SQL NULL cells"
+            "Run a query and return CSV or JSON; CSV responses include the null_marker used for SQL NULL cells. JSON results use value_format=bookie-tagged-v1; tagged cells preserve value kinds and exact numeric digits, parsed JSON is recursively tagged, and raw JSON text remains exact under json_text"
         }
         "table_schema" => "Read the columns, primary key, indexes and foreign keys of a table",
-        "count_rows" => "Count the rows of a table exactly",
-        "browse_table" => "Read a page of table rows by offset and limit",
+        "count_rows" => {
+            "Count the rows of a table exactly; the result includes value_format=bookie-tagged-v1 and an exact tagged count string"
+        }
+        "browse_table" => {
+            "Read a page of table rows by offset and limit. Pass large offset or limit values as decimal strings. Results include value_format=bookie-tagged-v1; each cell is tagged and numeric digits remain exact strings"
+        }
         _ => "",
     }
 }
@@ -381,8 +391,8 @@ pub(crate) fn tool_schema(name: &str) -> JsonValue {
                 "connection_id": {"type": "string"},
                 "schema": {"type": "string"},
                 "table": {"type": "string"},
-                "offset": {"type": "integer", "minimum": 0},
-                "limit": {"type": "integer", "minimum": 1},
+                "offset": {"oneOf": [{"type": "integer", "minimum": 0}, {"type": "string", "pattern": "^[0-9]+$"}]},
+                "limit": {"oneOf": [{"type": "integer", "minimum": 1}, {"type": "string", "pattern": "^[0-9]+$"}]},
                 "token": {"type": "string"}
             },
             "required": ["connection_id", "table"]
@@ -568,6 +578,15 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(ORIGIN, HeaderValue::from_str(origin).unwrap());
         headers
+    }
+
+    #[test]
+    fn query_tool_descriptions_explain_raw_json_text_encoding() {
+        for name in ["execute_query", "export_data"] {
+            let description = tool_description(name);
+            assert!(description.contains("bookie-tagged-v1"));
+            assert!(description.contains("raw JSON text remains exact under json_text"));
+        }
     }
 
     struct NoProvider;
