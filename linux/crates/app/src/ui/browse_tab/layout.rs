@@ -10,8 +10,7 @@ use super::browse_tab_widgets::BrowseTabWidgets;
 use super::pager_bar::PagerRequest;
 use super::pending_changes_bar::PendingChangesRequest;
 use super::{
-    BrowseTab, BrowseTabInput, ClipboardInput, DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS, PagingInput, SaveInput,
-    loading_description,
+    BrowseTab, BrowseTabInput, ClipboardInput, PAGE_SIZE_OPTIONS, PagingInput, SaveInput, loading_description,
 };
 use crate::ui::filter_strip::FilterStrip;
 use crate::ui::format::format_thousands;
@@ -32,8 +31,8 @@ pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets 
         .set_description(Some(&loading_description(init.table_label)));
     imp.inner_stack.set_visible_child_name("loading");
     imp.read_only_banner.set_revealed(init.read_only);
-    page_size_choices(&imp.page_size_dropdown, init.page_size);
-    connect_controls(tab);
+    let page_sizes = page_size_choices(&imp.page_size_dropdown, init.page_size);
+    connect_controls(tab, page_sizes);
     BrowseTabWidgets {
         inner_stack: imp.inner_stack.get(),
         grid_holder: imp.grid_holder.get(),
@@ -82,20 +81,26 @@ pub(super) fn grid_sink(tab: &BrowseTab) -> GridSink {
     })
 }
 
-fn page_size_choices(dropdown: &gtk::DropDown, page_size: u64) {
-    let labels: Vec<String> = PAGE_SIZE_OPTIONS.iter().map(|n| format_thousands(*n)).collect();
+/// The usual sizes, and the tab's own when Preferences or a saved tab
+/// set another, so the dropdown always shows the size the tab reads.
+/// Gives back the size at each position.
+fn page_size_choices(dropdown: &gtk::DropDown, page_size: u64) -> Vec<u64> {
+    let sizes = page_sizes_with(page_size);
+    let labels: Vec<String> = sizes.iter().map(|n| format_thousands(*n)).collect();
     let strs: Vec<&str> = labels.iter().map(String::as_str).collect();
     dropdown.set_model(Some(&gtk::StringList::new(&strs)));
-    let initial_idx = PAGE_SIZE_OPTIONS
-        .iter()
-        .position(|n| *n == page_size)
-        .unwrap_or_else(|| {
-            PAGE_SIZE_OPTIONS
-                .iter()
-                .position(|n| *n == DEFAULT_PAGE_SIZE)
-                .unwrap_or(2)
-        });
-    dropdown.set_selected(u32::try_from(initial_idx).unwrap_or_default());
+    let selected = sizes.iter().position(|n| *n == page_size).unwrap_or_default();
+    dropdown.set_selected(u32::try_from(selected).unwrap_or_default());
+    sizes
+}
+
+fn page_sizes_with(page_size: u64) -> Vec<u64> {
+    let mut sizes = PAGE_SIZE_OPTIONS.to_vec();
+    if !sizes.contains(&page_size) {
+        sizes.push(page_size);
+        sizes.sort_unstable();
+    }
+    sizes
 }
 
 /// Holds the tab weakly, since the tab owns the control that holds this.
@@ -108,7 +113,7 @@ fn sender<I: Into<BrowseTabInput> + 'static>(tab: &BrowseTab, msg: fn() -> I) ->
     }
 }
 
-fn connect_controls(tab: &BrowseTab) {
+fn connect_controls(tab: &BrowseTab, page_sizes: Vec<u64>) {
     let imp = tab.imp();
     for (request, send) in [
         (PagerRequest::First, sender(tab, || PagingInput::FirstPage)),
@@ -133,7 +138,7 @@ fn connect_controls(tab: &BrowseTab) {
     let tab = tab.downgrade();
     imp.page_size_dropdown.connect_selected_notify(move |dropdown| {
         let index = usize::try_from(dropdown.selected()).unwrap_or(usize::MAX);
-        if let (Some(tab), Some(&size)) = (tab.upgrade(), PAGE_SIZE_OPTIONS.get(index)) {
+        if let (Some(tab), Some(&size)) = (tab.upgrade(), page_sizes.get(index)) {
             tab.send(PagingInput::PageSizeChanged(size));
         }
     });
@@ -170,4 +175,21 @@ fn collapse_top_bars_with(tab: &BrowseTab, filter: &FilterStrip) {
         banner.connect_revealed_notify(move |_| sync());
     }
     filter.connect_revealed_notify(move |_| sync());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[gtk4::test]
+    fn the_dropdown_shows_a_page_size_set_in_preferences() {
+        let dropdown = gtk::DropDown::default();
+
+        let sizes = page_size_choices(&dropdown, 2_500);
+
+        assert_eq!(sizes, [100, 500, 1_000, 2_500, 5_000, 10_000]);
+        assert_eq!(sizes.get(dropdown.selected() as usize), Some(&2_500));
+        assert_eq!(page_size_choices(&dropdown, 1_000), PAGE_SIZE_OPTIONS);
+        assert_eq!(sizes.len(), PAGE_SIZE_OPTIONS.len() + 1);
+    }
 }
