@@ -1,6 +1,6 @@
 # Roadmap
 
-**Status, 2026-10-15**: every capability in the tables below is in the tree. Nothing has shipped yet: no `linux-v*` tag has been cut. The [release criteria](#release-criteria) say what has to hold first, and the [backlog](#backlog) lists what is not built.
+**Status, 2026-10-17**: every capability in the tables below is in the tree. Nothing has shipped yet: no `linux-v*` tag has been cut. The [release criteria](#release-criteria) say what has to hold first, and the [backlog](#backlog) lists what is not built.
 
 The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) and connects to five engines, each a crate linked in at compile time ([ADR 0001](docs/decisions/0001-no-plugin-system.md)): [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md) and [SQLite](docs/drivers/sqlite.md).
 
@@ -10,16 +10,16 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 
 | Capability | Detail |
 |---|---|
-| Saved connections | Create, edit and rename, duplicate with the secrets carried to the copy, delete with or without the connection's history |
+| Saved connections | Create and edit (the name included), duplicate with the secrets carried to the copy, delete with or without the connection's history |
 | Groups and colour tags | From the connection row's menu; each group is a section of the connection list |
-| Import and export | A JSON file with no secrets in it, matched by id on the way back in |
+| Import and export | A JSON file with no secrets in it. On import, an entry with the same id and the same settings updates its name, colour and group; any other is added as a new connection |
 | Test before saving | Test connects once and reports, then disconnects |
 | Passwords | Kept in the Secret Service; a prompt asks when one is missing or refused, with Remember Password |
-| Read-only connections | SQLite and ClickHouse refuse writes at the engine, PostgreSQL and MySQL run in read-only transactions, and SQL Server relies on the login with the app refusing saves; the switch's subtitle says which |
-| SQLite files | Choose a file, create a new one, open one from Files, find a moved one with Locate, and choose read-only or read-write for one on a network filesystem |
+| Read-only connections | SQLite and ClickHouse refuse writes at the engine, PostgreSQL and MySQL run in read-only transactions, and SQL Server relies on the login, with the app's own reads in a rolled-back transaction and editor SQL unguarded. Every engine refuses saves, and the switch's subtitle says which |
+| SQLite files | Choose a file, create a new one, open one from Files, find a moved one with Locate, and choose read-only or read-write for one on a network or FUSE filesystem |
 | Kerberos for SQL Server | From the ticket cache, in the Flatpak through the KCM socket |
-| Health and reconnect | A banner while the connection is lost, reconnect with backoff, and reads replayed after it; writes are never replayed |
-| Cancel on the server | Stopping a query stops the statement on the server, on every engine |
+| Health and reconnect | A banner while the connection is lost, reconnect with a backoff from 5 to 60 seconds, and metadata, page and count reads replayed once after it; writes are never replayed |
+| Cancel on the server | Stopping a query stops the statement on the server (in process on SQLite); a ClickHouse mutation already running in a save is left to finish |
 
 ### SSH
 
@@ -28,7 +28,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | System OpenSSH client | One ControlMaster per connection ([ADR 0013](docs/decisions/0013-openssh-client-transport.md)); empty fields come from `~/.ssh/config` |
 | Jump hosts | A ProxyJump chain, passed to `ssh -J` |
 | Authentication | Agent, private key, password and keyboard-interactive; prompts go through the app's askpass helper |
-| Host keys | An unknown or changed key is shown with its SHA256 fingerprint before connecting; a changed key can be replaced, a revoked one is refused |
+| Host keys | An unknown or changed key is shown with its SHA256 fingerprint before connecting, even where ssh_config says accept-new or no. A changed key can be replaced in known_hosts, except under StrictHostKeyChecking yes, where the user fixes known_hosts outside the app and retries. A revoked key is refused |
 
 ### TLS
 
@@ -42,25 +42,25 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 
 | Capability | Detail |
 |---|---|
-| Data grid | A virtualized `GtkColumnView` with keyboard-focusable cells, pages of a chosen size, and a pager with an exact or estimated row count and Count Rows |
+| Data grid | A virtualized `GtkColumnView` with keyboard-focusable cells, pages of 100 to 10,000 rows, and a pager with an exact or estimated row count; a table of about 100,000 rows or fewer is counted on its own, a larger one offers Count Rows |
 | Filters | Per-column operators, a raw WHERE fragment checked as one expression, match any or all, kept per table |
-| Sorting | A header click sorts tables on the server and query results in the grid |
-| Cell editing | Editors by column kind: inline text, a multi-line editor, a calendar for dates, a toggle for booleans, JSON checked before saving; values are edited from their exact text, never from what the cell displays |
-| Rows | Insert, duplicate and delete; Set NULL and Empty, and DEFAULT on a new row; undo and redo; save or discard pending changes, and stop a save |
+| Sorting | A header click sorts tables on the server and query results in the grid, one column at a time |
+| Cell editing | Editors by column kind: inline text, a multi-line editor, a calendar for dates, a toggle for booleans, JSON checked before saving; values are edited from their exact text, never from what the cell displays. Table tabs only, on tables with a primary key; key, generated and auto-increment columns, and binary, spatial, array and composite values, are read-only |
+| Rows | Insert, duplicate and delete; Set NULL and Empty, and DEFAULT on a new row; undo and redo; save or discard pending changes, and stop a save. On ClickHouse a save is not atomic, and Stop takes effect between statements |
 | Bulk delete | Deleting 10 rows or more asks first, unless Confirm Before Deleting Rows is off in Preferences |
-| Copy | Copy, and Copy As rows, with headers, JSON, CSV, Markdown, IN clause or INSERT; Show Row as JSON |
+| Copy | Copy; Copy As rows, with headers, JSON, CSV with or without headers, Markdown or IN clause, and INSERT in an editable table tab; Copy Column Name; Show Row as JSON |
 | Column widths | Kept per table |
-| CSV import | Into an existing table, with a column mapping, in one write batch |
-| Sidebar | Tables, views, materialized views and foreign tables by schema, with search, Open in New Tab, Edit Structure, Show CREATE TABLE, Import CSV and Drop Table |
+| CSV import | Into an existing table, with a column mapping, in one write batch (one transaction where the engine has them), up to 64 MiB |
+| Sidebar | Tables (partitioned ones included), views, materialized views and foreign tables by schema, with search, Open in New Tab and Show CREATE TABLE; Edit Structure, Import CSV and Drop Table for tables |
 
 ### Structure
 
 | Capability | Detail |
 |---|---|
 | Table definition | Columns, indexes, foreign keys and column comments |
-| Changes | Create, rename and drop tables; add, drop and rename columns, and change their type, nullability, default, comment, primary key and auto-increment; add and drop indexes and foreign keys |
+| Changes | Create, rename and drop tables; add, drop and rename columns, and change their type, nullability, default, comment, primary key and auto-increment; add and drop indexes (column keys, unique, descending) and foreign keys. ClickHouse creates no tables, indexes or foreign keys and changes no primary key or auto-increment; SQL Server changes no auto-increment; SQLite keeps no column comments |
 | Review | The SQL is previewed, and a save that loses data or can stop halfway is reviewed before it runs |
-| SQLite rebuilds | Changes SQLite cannot ALTER rebuild the table and keep its rows and indexes |
+| SQLite rebuilds | Changes SQLite cannot ALTER rebuild the table in one transaction, keeping its rows, indexes, triggers, the views and triggers that name it and its AUTOINCREMENT counter, with foreign keys checked before commit. SQLite itself checks the views and triggers made again; a trigger that lists a dropped column or inserts by position is refused before Save |
 
 ### SQL editor
 
@@ -69,18 +69,18 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Editing | GtkSourceView with SQL highlighting, a scheme that follows the light or dark style, and toggle comment |
 | Completion | Tables, views, columns, schemas, functions and keywords, with aliases resolved |
 | Formatter | Format SQL, leaving a statement as typed when formatting would change its tokens |
-| Scripts | Split per dialect (`DELIMITER`, `GO`, routine and trigger bodies), one result per statement, Run Selection and run the statement at the cursor |
+| Scripts | Split per dialect (`DELIMITER`, `GO` and `GO n`, routine and trigger bodies) and sent a statement at a time, or a batch at a time on SQL Server; each result set, row count, notice or error is its own entry, and a failure stops the script except on SQL Server. Run Selection, and run the statement at the cursor |
 | Find and replace | Ctrl+F and Ctrl+H, with case, whole word and regular expressions |
 | Files | Open a .sql file into the editor, or drop one on it |
 | Results | Several result sets per run, a banner at the 10,000-row limit with Export All, and Go to Error |
-| Drafts | The editor's text is kept per connection |
+| Drafts | Each editor tab's text is kept, and a connection's tabs (table tabs with page and sort, structure and editor tabs) reopen when it opens |
 
 ### History and saved queries
 
 | Capability | Detail |
 |---|---|
 | Query history | A SQLite database with full-text search, filters by connection, time and status, pins, export as SQL or CSV, and a retention period |
-| What is recorded | Editor runs, and the SQL the app runs for grid saves, structure saves and imports; a run that sets a password is not recorded, and recording can be turned off |
+| What is recorded | Editor runs, and the SQL the app runs for grid saves, structure saves and successful imports; a run that can carry a password or connection secret, or whose text does not tokenize, is not recorded, and recording can be turned off |
 | Show in Files | For the history database, from the history dialog and Preferences |
 | Saved queries | Saved from the editor against a connection, listed by connection with the active one first, and opened in a new tab or the current one |
 
@@ -89,7 +89,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Capability | Detail |
 |---|---|
 | Formats | CSV with its options, JSON, Markdown, HTML, XML, Excel, and SQL INSERT from a table tab |
-| Scope | From a table tab, the current page or every row under its filter and sort. From the editor, the rows shown or every row, with the statement run again |
+| Scope | From a table tab, the current page with its pending edits, or every saved row under the filter and sort. From the editor, the rows shown, or every row by running the statement again on a separate read-only connection without the tab's USE or SET; a statement that writes is refused |
 | Running | Off the GTK thread with progress and Stop; closing or quitting asks about a running export |
 
 ### Windows and sessions
@@ -99,8 +99,8 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Window per session | A window holds one connection; another connection opens in a window of its own, and one already open brings its window forward ([ADR 0012](docs/decisions/0012-window-per-session.md)) |
 | One instance | A second launch presents the running app; New Window (Ctrl+Shift+N) opens a picker |
 | Tabs | `AdwTabView` with the tab overview and split header bars, adapting down to 360×294 |
-| Session restore | The windows open at quit open again at launch, behind a preference |
-| Closing safely | Unsaved edits, a save in flight or a running export ask before a window closes or the app quits; logout waits while edits are unsaved, a save runs or an export writes |
+| Session restore | The windows of saved connections and SQLite files open at quit open again at launch (Restore Session, on by default), also after New Window or a quit during the restore |
+| Closing safely | Unsaved edits, a save in flight or of unknown outcome, an open editor transaction, or a running export ask before a window closes or the app quits; logout waits while any of those holds, and suspend while a save runs or an export writes |
 | Notifications | Work that finishes in a tab you are not looking at sends a notification |
 | Preferences | Restore session, page size, the bulk delete confirmation, query history, editor font and scheme, query timeout |
 | Shortcuts and About | A shortcuts dialog, and About from the metainfo with third-party licenses and debug info |
@@ -109,12 +109,12 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 
 | Capability | Detail |
 |---|---|
-| Flatpak | The Devel manifest builds on GNOME 51 with every Meson suite in the sandbox, and is linted on every pull request |
+| Flatpak | The Devel manifest builds on GNOME 51 for x86_64 and aarch64 with every Meson suite in the sandbox, and is linted, on every pull request that touches `linux/` |
 | .deb and .rpm | Ubuntu 26.04 and 26.10 and Fedora 44, built offline in CI the way Launchpad and COPR build them, linted, then installed and started in fresh containers; a `linux-v*` tag uploads to the PPA and starts the COPR build ([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md)) |
 | Desktop integration | Desktop file with Open With for SQLite files, D-Bus activation, a man page, metainfo with screenshots, and SVG icons |
-| Translations | Every user-facing string goes through gettext; CI checks `POTFILES.in` and the template |
+| Translations | The app's own strings go through gettext, and CI regenerates the template with gettext 1.0 and fails when it or `POTFILES.in` is stale. Some error details from the core crates still reach the user in English (see Release criteria) |
 | Logs | stderr, which the session journals, with JSON lines on request |
-| Tests | Unit, GTK and accessibility suites, the conformance suites on every engine, and Docker suites for PostgreSQL with PgBouncer, MySQL with MariaDB, SQL Server, ClickHouse, SSH and the session ([testing.md](docs/testing.md)); every critical audit finding has named guards ([regression-tests.md](docs/regression-tests.md)) |
+| Tests | Unit, gtk (with an accessibility audit of every page and dialog), data and packaging suites; connection, DDL and TLS conformance on every engine; Docker jobs for PostgreSQL with PgBouncer, MySQL and MariaDB, SQL Server, ClickHouse, SSH, the session and the grid save ([testing.md](docs/testing.md)); every critical audit finding has named guards ([regression-tests.md](docs/regression-tests.md)) |
 
 ## Backlog
 
@@ -122,18 +122,18 @@ Not built yet, in no order.
 
 ### Connections
 
-- A statement timeout per connection. Today one preference covers editor runs. Other calls have fixed limits: 15 seconds for metadata, 60 for a page or a count, 120 for a row save, and none for a schema change or an export.
+- A statement timeout per connection. Today one preference covers editor runs. Other calls have fixed limits: 15 seconds for metadata, 60 for a page or a count, 120 for a row save or a CSV import, and none for a schema change or an export; the server also stops any table-tab statement at 60 seconds and a lock wait at 10.
 - Kerberos against a service outside the client's realm, which needs an SPN override in tiberius.
 
 ### Browse, edit and structure
 
 - Paste rows from the clipboard. Ctrl+V in the grid says it is not supported yet.
 - Set a cell to `NOW()` or `CURRENT_TIMESTAMP`, which needs SQL expressions as cell values.
-- Edit binary columns from and to a file. They are read-only today.
-- Time and timestamp pickers. Dates have a calendar; times are typed.
+- Edit binary columns from and to a file. They are read-only today, as are array, spatial, composite and variant columns.
+- Time and timestamp pickers. Dates have a calendar; times and timestamps are typed.
 - Save the column order per table.
-- Functions, procedures, sequences and triggers in the sidebar.
-- The CREATE INDEX statement for one index. Show CREATE TABLE lists them after the table on PostgreSQL, SQL Server and SQLite.
+- Functions, procedures, sequences and triggers in the sidebar. The drivers already list the first three.
+- The CREATE INDEX statement for one index. Show CREATE TABLE lists them after the table on PostgreSQL, SQL Server and SQLite (with the triggers on SQLite).
 - Jump from a foreign key to the table it references.
 - Reorder columns in the structure tab by dragging, with the ALTER previewed.
 - An ER diagram.
@@ -158,7 +158,7 @@ Not built yet, in no order.
 
 ### More engines
 
-Each one is a crate under `crates/drivers` ([adding-drivers.md](docs/adding-drivers.md)), on a client library that meets the [supply-chain policy](docs/decisions/0005-supply-chain-policy.md).
+Each one is a crate under `crates/drivers` ([adding-drivers.md](docs/adding-drivers.md)), on a client library that meets [adding-drivers.md, The client library](docs/adding-drivers.md#1-the-client-library): maintained on crates.io, TLS through aws-lc-rs, a stream or Unix socket transport for SSH, and a way to stop a statement.
 
 | Engine | Client | Condition |
 |---|---|---|
@@ -176,18 +176,20 @@ Not committed: server monitoring (sessions, locks, slow queries), maintenance co
 
 ## Release criteria
 
-From the [production-readiness audit](docs/production-audit.md#what-production-ready-means-here), for GNOME 50. A user on Ubuntu 26.04 or Fedora 44:
+From the [production-readiness audit](docs/production-audit.md#what-production-ready-means-here), for GNOME 50. A user on Ubuntu 26.04 or Fedora 44, with where each stands on 2026-10-17:
 
-1. Installs `tablepro` from the PPA or the COPR project, and gets updates from the system's updater.
-2. Connects to their everyday PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse or SQLite database.
-3. Browses tables of real-world data (dates, decimals, JSON, UUIDs, NULLs) and sees correct values.
-4. Runs typical queries against tables of a million rows or more without running out of memory or freezing.
-5. Edits data in place, and the changes commit correctly even when the connection or the app misbehaves.
-6. Trusts the app with credentials: TLS, SSH tunnels, no password in plain text.
-7. Recovers when the network drops or the database restarts.
-8. Works with a screen reader, the keyboard alone and larger text.
-9. Sees no message that cannot be translated, even while only English ships.
-10. Uses the app daily for a week without an unrecoverable failure.
+| # | The user | Holds today | Still needed |
+|---|---|---|---|
+| 1 | Installs `tablepro` from the PPA or the COPR project, and gets updates from the system's updater | CI builds both packages offline the way Launchpad and COPR do, and starts them in fresh containers | The release setup, the first tag, and an install then an upgrade from the PPA and COPR |
+| 2 | Connects to their everyday PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse or SQLite database | Docker suites against PostgreSQL 13, 17 and 18 with PgBouncer, MySQL 8.4, MariaDB 11.4, SQL Server 2022 and ClickHouse 25.8 | The supported versions stated, and older ones such as MySQL 8.0 and SQL Server 2019 tested or ruled out |
+| 3 | Browses tables of real-world data (dates, decimals, JSON, UUIDs, NULLs) and sees correct values | Per-engine decoding with the type fallback and unsupported-type conformance cases ([ADR 0014](docs/decisions/0014-lossless-values-and-dialects.md)) | A corpus test per engine with real values |
+| 4 | Runs typical queries against tables of a million rows or more without running out of memory or freezing | Keyset paging (OFFSET only under a user sort), the 10,000-row editor limit with Export All, and driver tests over 2,000,000 rows | A test on a 1,000,000-row table that pages to the end and exports, with time and memory bounds |
+| 5 | Edits data in place, and the changes commit correctly even when the connection or the app misbehaves | Write, row guard and commit resolution conformance on every engine, with the fault fakes and the grid save Docker test | A test that kills the app during a save |
+| 6 | Trusts the app with credentials: TLS, SSH tunnels, no password in plain text | Verify full by default, the TLS conformance suite, the Secret Service, and statement logging silenced | An outside security review |
+| 7 | Recovers when the network drops or the database restarts | Health monitoring, backoff and replay rules with their tests, and a stopped container in the liveness tests | A test that restarts the database and checks that reads replay and writes do not |
+| 8 | Works with a screen reader, the keyboard alone and larger text | The accessibility audit of every page and dialog, labelled cells and real-key tests | The manual pass in the backlog |
+| 9 | Sees no message that cannot be translated, even while only English ships | Every string the app writes is in the template | Core error details (CSV import, cell parsing, type and default syntax, secret storage, driver details) shown in English |
+| 10 | Uses the app daily for a week without an unrecoverable failure | Nothing yet | A dated week of daily use |
 
 ## Out of scope
 
