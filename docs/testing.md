@@ -224,7 +224,7 @@ Every nightly finding that is a product or test gap gets a regression test in th
 
 A manual dispatch runs the whole nightly, and the soak and package jobs wait for the mutation jobs. A fix to a nightly-only job is therefore proven by the next night. The contract tests cover its static part.
 
-Forgejo workflows on the host executors use no JavaScript actions, because those executors have no Node; `scripts/tests/test_ci_workflow.py` fails on any `uses:` line. The distro-floor jobs share one Ubuntu 24.04 package per commit: `scripts/distro-floor-package.sh <sha>` builds it once per host under a lock, caches it for a day and hands the root-owned build output back to the runner user. The runtime image carries the GTK 4 Python bindings because the paste scenario starts a clipboard helper with them. When a floor job fails, its output lists the failing scenario and assertion, not the end of the log.
+Workflow prerequisites and runner-specific behavior live in `.forgejo/workflows/` and the scripts they invoke. For a distro-floor failure, use the named scenario and assertion in the job output to distinguish setup, infrastructure and product failures.
 
 SQLite integration regressions also distinguish NULL from zero, false, empty text, and empty blobs in declared columns, and preserve binary values despite declared-type affinity mismatches. Export unit tests overlap writers deterministically and check that pre-existing temporary symlinks cannot redirect writes. Workspace tests preserve active-tab identity when unknown records are removed.
 
