@@ -112,7 +112,7 @@
         <child>
           <object class="AdwShortcutsItem" id="browse-refresh">
             <property name="title" translatable="yes">Read the Table Again</property>
-            <property name="accelerator">F5</property>
+            <property name="accelerator">F5 &lt;Primary&gt;r</property>
           </object>
         </child>
         <child>

@@ -106,7 +106,14 @@ pub const ACCELERATORS: &[Accelerator] = &[
     ),
     stock("tab-view.select-tenth", &["<Alt>0"], Unlisted),
     local(BrowseTab, BUBBLE, "browse.filter", &["<Primary>f"], Listed(BrowseTable)),
-    local(BrowseTab, BUBBLE, "browse.refresh", &["F5"], Listed(BrowseTable)),
+    // F5 as in GNOME Files, and Ctrl+R as the GNOME HIG names Reload.
+    local(
+        BrowseTab,
+        BUBBLE,
+        "browse.refresh",
+        &["F5", "<Primary>r"],
+        Listed(BrowseTable),
+    ),
     local(BrowseTab, BUBBLE, "browse.save", &["<Primary>s"], Listed(BrowseTable)),
     local(BrowseTab, BUBBLE, "browse.undo", &["<Primary>z"], Listed(BrowseTable)),
     local(
