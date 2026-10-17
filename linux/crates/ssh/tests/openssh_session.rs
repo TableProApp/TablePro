@@ -65,8 +65,11 @@ async fn start() -> TestResult<Fixture> {
         0o755,
     )?;
 
-    let runtime_dir = temp.path().join("runtime");
-    std::fs::create_dir(&runtime_dir)?;
+    // The layout a .deb or .rpm install gets: `XDG_RUNTIME_DIR` exists,
+    // the `app/<id>` levels under it do not.
+    let xdg_runtime = temp.path().join("runtime");
+    std::fs::create_dir(&xdg_runtime)?;
+    let runtime_dir = xdg_runtime.join("app").join("app.tablepro.TablePro");
     let services = SshServices {
         runtime: Arc::new(SshRuntimeCell::new(runtime_dir)),
         ssh_program: wrapper,

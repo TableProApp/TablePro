@@ -22,7 +22,9 @@ impl From<DocumentProblem> for WorkspaceLoadError {
     fn from(problem: DocumentProblem) -> Self {
         match problem.kind {
             DocumentProblemKind::Unreadable { detail } => Self::Io(detail),
-            DocumentProblemKind::Corrupt { detail, .. } => Self::Corrupt(detail),
+            DocumentProblemKind::Corrupt { detail, .. } | DocumentProblemKind::UpgradeFailed { detail, .. } => {
+                Self::Corrupt(detail)
+            }
             DocumentProblemKind::MissingVersion => Self::UnsupportedVersion {
                 found: None,
                 expected: WorkspaceRecord::VERSION,

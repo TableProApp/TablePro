@@ -116,13 +116,19 @@ development and CI. It does not keep a manifest for Flathub.
 - An upstream pre-release such as `0.2.0-rc.1` packages as `0.2.0~rc.1`,
   as Debian and Fedora version rules expect.
 - Each release commit bumps `meson.build`, the newest metainfo
-  `<release>`, the spec's `Version` and `%changelog`, and moves
-  `[Unreleased]` in `CHANGELOG.md` under the version. The
-  `release-metadata` Meson test keeps them in step. `build-source.sh`
-  writes `debian/changelog` per series at upload, as
-  `X.Y.Z-0ppaN~YY.MM`.
+  `<release>`, the spec's `Version` and `%changelog`, and the man page's
+  `.TH` line, and moves `[Unreleased]` in `CHANGELOG.md` under the
+  version. The `release-metadata` Meson test keeps them in step.
+  `build-source.sh` writes `debian/changelog` per series at upload, as
+  `X.Y.Z-0ppaN~YY.MM`. A packaging fix uploads a released version again
+  with a higher N, from the release's own tarballs, by a manual run of
+  `release-linux.yml` ([releasing.md](../releasing.md#a-packaging-fix)).
 - A new Ubuntu series joins `UBUNTU_SERIES` in `linux-packages.yml`, and
   a new Fedora release arrives through COPR's "follow Fedora branching".
+- The .deb is `Architecture: amd64 arm64`, and the COPR project builds
+  x86_64 and aarch64: the two architectures CI builds, tests and starts
+  the packages on. With `any`, Launchpad would also build every other
+  architecture the PPA has turned on and publish what no one tested.
 - The vendor tarball holds every crate in the lock file, Windows-only and
   test-only ones included, because `cargo vendor` cannot filter.
 - The release profile's fat LTO link ran out of 8 GB, so both packages

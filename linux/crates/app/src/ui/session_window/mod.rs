@@ -9,6 +9,7 @@ mod connect_failure_view;
 mod connect_flow;
 mod connecting_page;
 mod connections;
+mod crash_notice;
 mod imp;
 mod locate_file;
 mod notification_request;
@@ -446,6 +447,7 @@ impl SessionWindow {
         }
         let left = imp.page.replace(page);
         imp.page_toasts.replace(toasts);
+        self.show_crash_notice();
         // A Cancel or Retry left as the default would take Enter on a
         // page that no longer shows it.
         self.set_default_widget(None::<&gtk::Widget>);

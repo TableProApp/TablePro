@@ -116,6 +116,7 @@ nothing reaches outside it.
 | `history_database()` | `$XDG_STATE_HOME/<dir>/history.db` |
 | `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces`: one file per session, and `open-sessions.json` |
 | `drafts_dir()` | `$XDG_DATA_HOME/<dir>/drafts` |
+| `crashes_dir()` | `$XDG_STATE_HOME/<dir>/crashes`: crash reports ([error-handling.md](error-handling.md#crashes)) |
 
 `<dir>` is `tablepro` for an installed build and `tablepro-devel` for a
 development one, so `cargo run` never writes over an installed build's
@@ -134,6 +135,8 @@ Everything private goes through `tablepro_storage::fs`:
   a mix, and the new one survives a power cut. It tightens an existing
   file to 0600 first, because that call keeps an existing file's mode and
   only applies the mode argument when it creates the file.
+- `append_private_blocking` appends to a file it creates 0600 when absent,
+  for the crash report, which a second panic adds to.
 - `create_private_file_if_missing` pre-creates an empty 0600 file. SQLite
   creates its database, WAL and SHM with the umask mode, so pre-creating
   the database is what keeps all three off world-readable.
@@ -307,6 +310,9 @@ A keyring failure is a `SecretError` from `tablepro-core`, not a `StorageError`;
 
 ## Changing a format
 
-- A JSON document is a `VersionedDocument` with a `version` field. A new shape bumps its `VERSION`, and there are no upgraders: a file from another version is never migrated, and one from a newer build is never written over. The connection list and a workspace wait for the user's Reset, which moves the file aside; the smaller state files move an unusable file aside themselves.
+- A JSON document is a `VersionedDocument` with a `version` field. A new shape bumps its `VERSION` and appends a step to its `UPGRADES`, which turns a file of the version before into the new shape. `decode_document` runs an older file through every step it is behind, oldest first, so a user who skipped releases keeps their data. A step that shipped is never changed or dropped.
+- The upgrade happens in memory. The file stays as it was until the next save writes the current version.
+- A file older than the first step, one a step cannot read, or one from a newer build is never written over. The connection list and a workspace wait for the user's Reset, which moves the file aside; the smaller state files move an unusable file aside themselves.
+- Each released version of the connection list and the workspace file has a golden file that a test reads into the model it was written from: `crates/storage/tests/fixtures/connections-v1.json` and `crates/app/tests/fixtures/workspace-v1.json`. A committed fixture is never edited. A format change adds the new version's fixture and updates the expected models of the old ones, which now read through the upgrade.
 - The history database moves forward by sqlx migration: a new timestamped file under `crates/storage/migrations/` with its own fixture test, never an edit to an applied one.
 - Update this page, and add a fragment to the Linux changelog.

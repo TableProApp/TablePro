@@ -4610,6 +4610,7 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "futures",
+ "rustix",
  "secrecy",
  "tablepro-core",
  "tablepro-test-support",
