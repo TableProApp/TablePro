@@ -82,10 +82,13 @@ impl Component for SavedQueriesDialog {
         header.set_title_widget(Some(&adw::WindowTitle::new(&crate::i18n::gettext("Saved Queries"), "")));
         toolbar.add_top_bar(&header);
 
+        let search_label = crate::i18n::gettext("Search saved queries");
         let search = gtk::SearchEntry::builder()
-            .placeholder_text(crate::i18n::gettext("Search saved queries"))
+            .placeholder_text(&search_label)
             .hexpand(true)
             .build();
+        // A placeholder is gone once text is typed, so it names nothing.
+        search.update_property(&[gtk::accessible::Property::Label(&search_label)]);
         let search_bar = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
             .margin_start(12)
@@ -606,6 +609,18 @@ mod dialog_tests {
 
         crate::test_support::wait_until(RENDER_WAIT, || row_titles(&dialog.model()) == vec!["stale carts"])
             .expect("the search did not narrow the list");
+    }
+
+    /// No scenario opens the dialog, so its one field is checked here.
+    #[gtk4::test]
+    fn the_search_field_is_named() {
+        let (_root, store, local, _staging) = seeded();
+        let dialog = SavedQueriesDialog::builder().launch(SavedQueriesDialogInit {
+            store: Some(store),
+            active_connection: Some(local),
+        });
+
+        assert_eq!(crate::test_support::assert_labelled(&dialog.model().search), Ok(()));
     }
 
     #[gtk4::test]
