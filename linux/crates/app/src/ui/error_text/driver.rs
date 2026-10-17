@@ -119,6 +119,10 @@ fn authentication_message(error: &DriverError) -> String {
             "Username or password is wrong. The server said: {detail}",
             &[("detail", &diagnostics.message)],
         ),
+        DriverError::LoginRefused(diagnostics) => crate::i18n::gettext_f(
+            "The server refused this login. The server said: {detail}",
+            &[("detail", &diagnostics.message)],
+        ),
         DriverError::IntegratedAuth(detail) => crate::i18n::gettext_f(
             "Kerberos login failed: {detail}. Check that klist shows a valid ticket, run kinit if it does not, and make sure the server's SPN matches the host you typed.",
             &[("detail", detail)],

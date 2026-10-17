@@ -181,6 +181,17 @@ fn auth_message_has_no_secret() {
 }
 
 #[test]
+fn a_refused_login_is_not_called_a_wrong_password() {
+    let message = driver_message(&DriverError::LoginRefused(Box::new(ServerDiagnostics::new(
+        Some(ServerCode::SqlState("28000".to_owned())),
+        "no pg_hba.conf entry for host \"10.0.0.5\", user \"app\", database \"shop\", no encryption",
+    ))));
+
+    assert!(!message.contains("wrong"), "{message}");
+    assert!(message.contains("no pg_hba.conf entry"), "{message}");
+}
+
+#[test]
 fn busy_and_editor_busy_messages_differ() {
     assert_ne!(
         driver_message(&DriverError::Busy),

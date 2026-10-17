@@ -196,6 +196,14 @@ mod tests {
         });
 
         assert_eq!(refused_secret(&lost, &saved(AuthMode::Password, None)), None);
+        let pg_hba = ConnectError::Driver(DriverError::LoginRefused(Box::new(
+            tablepro_core::ServerDiagnostics::new(None, "no pg_hba.conf entry for host"),
+        )));
+        assert_eq!(
+            refused_secret(&pg_hba, &saved(AuthMode::Password, None)),
+            None,
+            "a login the server's rules refused offered a new password"
+        );
         assert_eq!(
             refused_secret(&ConnectError::Cancelled, &saved(AuthMode::Password, None)),
             None
