@@ -76,6 +76,12 @@ impl EngineRowId {
             Self::SqliteRowid => &[EngineRowIdPart::SqliteRowid],
         }
     }
+
+    /// Whether the id is a place in the heap rather than a key some
+    /// index keeps in order, so ordering by it sorts the whole table.
+    pub fn is_heap_address(self) -> bool {
+        matches!(self, Self::PostgresCtid | Self::PostgresTableoidCtid)
+    }
 }
 
 impl RowIdentity {
@@ -121,6 +127,16 @@ mod tests {
             "xid has no ordering operator"
         );
         assert!(EngineRowIdPart::PostgresCtid.orders_rows());
+    }
+
+    #[test]
+    fn only_a_postgres_row_address_is_a_place_in_the_heap() {
+        assert!(EngineRowId::PostgresCtid.is_heap_address());
+        assert!(EngineRowId::PostgresTableoidCtid.is_heap_address());
+        assert!(
+            !EngineRowId::SqliteRowid.is_heap_address(),
+            "a rowid is the table's own key"
+        );
     }
 
     #[test]

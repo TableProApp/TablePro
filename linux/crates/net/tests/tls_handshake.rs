@@ -15,7 +15,8 @@ use rustls::sign::CertifiedKey;
 use rustls::{RootCertStore, ServerConfig};
 use tablepro_core::{CertificateFileProblem, ClientIdentity, ConfigError, TlsConfig, TlsFailure, TlsMode};
 use tablepro_net::tls::{
-    TlsSetupError, build_client_config, check_pem_files, classify, client_identity_pem, mysql_ca_bundle_pem,
+    MAX_PEM_FILE_BYTES, TlsSetupError, build_client_config, check_pem_files, classify, client_identity_pem,
+    mysql_ca_bundle_pem,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -190,6 +191,51 @@ fn malformed_ca_file_is_invalid_certificate() {
     ));
 }
 
+fn ca_problem(path: &Path) -> Option<CertificateFileProblem> {
+    match check_pem_files(&verify_full(Some(path))) {
+        Err(ConfigError::CaFile { problem, .. }) => Some(problem),
+        _ => None,
+    }
+}
+
+#[test]
+fn a_device_is_refused_rather_than_read_to_its_end() {
+    assert_eq!(
+        ca_problem(Path::new("/dev/zero")),
+        Some(CertificateFileProblem::NotRegularFile)
+    );
+}
+
+#[test]
+fn a_fifo_is_refused_without_waiting_for_a_writer() {
+    let dir = tempfile::tempdir().unwrap();
+    let fifo = dir.path().join("ca.pem");
+    let made = std::process::Command::new("mkfifo").arg(&fifo).status().unwrap();
+    assert!(made.success(), "mkfifo failed");
+
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || sender.send(ca_problem(&fifo)));
+    let problem = receiver
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("reading the FIFO blocked");
+
+    assert_eq!(problem, Some(CertificateFileProblem::NotRegularFile));
+}
+
+#[test]
+fn a_file_over_the_limit_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let large = dir.path().join("bundle.pem");
+    std::fs::write(&large, vec![b'a'; MAX_PEM_FILE_BYTES + 1]).unwrap();
+
+    assert_eq!(
+        ca_problem(&large),
+        Some(CertificateFileProblem::TooLarge {
+            limit_bytes: MAX_PEM_FILE_BYTES
+        })
+    );
+}
+
 #[tokio::test]
 async fn require_accepts_self_signed() {
     let key = KeyPair::generate().unwrap();
@@ -266,6 +312,25 @@ fn client_identity_pem_requires_both_files() {
     let identity = client_identity_pem(&missing_key).unwrap().unwrap();
     assert!(!identity.certificate.is_empty());
     assert!(!identity.key.is_empty());
+}
+
+#[test]
+fn a_key_that_is_not_the_certificates_is_a_client_identity_error() {
+    let pki = pki("client").unwrap();
+    let certificate = pki.dir.path().join("client.pem");
+    let key = pki.dir.path().join("other.key");
+    std::fs::write(&certificate, pem_of(&pki.server_chain[0]).unwrap()).unwrap();
+    let other_key = KeyPair::generate().unwrap();
+    std::fs::write(&key, pem_label("PRIVATE KEY", &other_key.serialize_der()).unwrap()).unwrap();
+    let tls = TlsConfig {
+        client_identity: Some(ClientIdentity { certificate, key }),
+        ..TlsConfig::verify_full()
+    };
+
+    assert!(matches!(
+        build_client_config(&tls),
+        Err(TlsSetupError::ClientIdentity(_))
+    ));
 }
 
 #[test]

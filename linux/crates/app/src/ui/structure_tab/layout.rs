@@ -147,7 +147,7 @@ fn toolbar(tab: &StructureTab, mode: StructureMode, read_only: bool) {
         button.connect_clicked(move |_| sender.input(msg()));
     };
     on_click(&imp.save_button, || SaveInput::Save.into());
-    on_click(&imp.discard_button, || SaveInput::Discard.into());
+    on_click(&imp.discard_button, || SaveInput::ConfirmDiscard.into());
     on_click(&imp.drop_button, || TableInput::DropTableRequested.into());
     on_click(&imp.stop_button, || SaveInput::StopSaving.into());
 }

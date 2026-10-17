@@ -307,6 +307,7 @@ mod tests {
                 mode,
                 session: session.session.clone(),
                 tasks: fixture.runtime.tasks(),
+                first_load: crate::ui::tab_load::FirstLoad::Now,
             });
             let page = fixture.view.append(&structure);
             let id = Uuid::new_v4();

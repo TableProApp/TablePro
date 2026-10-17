@@ -51,7 +51,8 @@ A stop is PostgreSQL's cancel request (`CancelToken::cancel_query_raw`) over a n
 | 57014 that no cancel request of ours caused, once the call's statement bound has passed | `Timeout { phase: Statement, server_cancelled: true }` |
 | 55P03 | `Timeout { phase: LockWait }` |
 | 25006 | `ReadOnly(ServerRejected)` |
-| 28P01, 28000 | `Auth` |
+| 28P01 | `Auth` |
+| 28000, as when pg_hba.conf has no entry for the login | `LoginRefused` |
 | 53300 | `Busy` |
 | 57P01, 57P02, 57P03 | `ConnectionLost` |
 

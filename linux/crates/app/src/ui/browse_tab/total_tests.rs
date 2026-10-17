@@ -8,8 +8,7 @@ use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 
 use super::tests::{
-    Harness, LogLines, WAIT, estimate, full_page, not_null, not_null_name, paging, rows, rows_from, serving_table,
-    text, toasts,
+    Harness, LogLines, WAIT, estimate, full_page, not_null, not_null_name, paging, rows, rows_from, serving_table, text,
 };
 use super::{PagingInput, SaveInput};
 use crate::services::change_origins::ChangeOrigins;
@@ -259,6 +258,10 @@ fn closing_tab_cancels_running_count() {
 #[gtk4::test]
 fn last_page_waits_for_an_exact_total() {
     let mut script = paging(full_page(0), rows_from(900, &["Linus"]));
+    // The last page is read back from the table's end, so the count
+    // agrees with the one row it holds.
+    script.count_rows = Default::default();
+    script.count_rows.always(FakeReply::ok(901));
     script.table_estimate = Default::default();
     script
         .table_estimate
@@ -385,14 +388,17 @@ fn an_estimate_that_lands_during_a_count_keeps_it_counting() {
 fn count_rows_under_a_filter_that_no_longer_fits_says_why() {
     let harness = Harness::open(estimated(RowCountEstimate::Approximate(5_000_000)), []);
     wait_until(WAIT, || paginator(&harness).contains("of about")).expect("the estimate in the paginator");
-    let toasts = toasts(harness.tab());
+    let banner = harness.tab().imp().stale_banner.get();
     harness.tab().send(PagingInput::FilterApplied(not_null("nickname")));
-    wait_until(WAIT, || toasts.borrow().len() == 1).expect("the filter that does not fit");
+    wait_until(WAIT, || banner.is_revealed()).expect("the filter that does not fit");
 
     count_button(&harness).emit_clicked();
 
-    let shown = toasts.borrow().clone();
-    assert_eq!(shown.len(), 2, "Count Rows did nothing and said nothing");
-    assert_eq!(shown[1], shown[0]);
+    assert_eq!(
+        count_label(&harness),
+        "Try Again",
+        "Count Rows did nothing and said nothing"
+    );
+    assert_eq!(count_button(&harness).tooltip_text(), banner.tooltip_text());
     assert_eq!(count_calls(&harness), 0);
 }

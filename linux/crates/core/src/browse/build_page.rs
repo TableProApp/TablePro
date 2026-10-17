@@ -2,7 +2,7 @@ use crate::column::ColumnInfo;
 use crate::dialect::{BindTarget, KeysetDirection, SqlDialect};
 use crate::dml::{BuildSqlError, KeyComponent};
 use crate::filter::build_filter;
-use crate::meta::{EngineRowIdPart, PageCost, PagePosition, PageStability, RowIdentity};
+use crate::meta::{CtidWindow, EngineRowIdPart, PageCost, PagePosition, PageStability, RowIdentity};
 use crate::statement::StatementBuilder;
 use crate::value::Value;
 
@@ -120,6 +120,7 @@ fn keyset_walk(
     };
     let (anchor, keyset_direction) = match request.position {
         PagePosition::First => (None, KeysetDirection::After),
+        PagePosition::Last => (None, KeysetDirection::Before),
         PagePosition::Offset(offset) => {
             return Ok(Walk {
                 condition: None,
@@ -131,7 +132,7 @@ fn keyset_walk(
         }
         PagePosition::AfterKey(key) => (Some(key), KeysetDirection::After),
         PagePosition::BeforeKey(key) => (Some(key), KeysetDirection::Before),
-        PagePosition::CtidWindow { .. } => {
+        PagePosition::CtidWindow(_) => {
             return Err(BrowseSqlError::UnsupportedPosition {
                 mode: PagingMode::Keyset,
             });
@@ -184,8 +185,8 @@ fn bind_anchor(
     Ok(markers)
 }
 
-/// A range of heap blocks in ctid order. The bounds are bound as text
-/// the dialect casts back to a row address.
+/// A range of heap addresses in ctid order. The bounds are bound as
+/// text the dialect casts back to a row address.
 fn ctid_walk(
     builder: &mut StatementBuilder,
     dialect: &dyn SqlDialect,
@@ -194,19 +195,24 @@ fn ctid_walk(
     let ctid = dialect
         .engine_row_id_column(EngineRowIdPart::PostgresCtid)
         .ok_or(BuildSqlError::NoRowIdentity)?;
-    let order = vec![format!("{ctid} {}", direction(true))];
-    let (after, end_block) = match position {
-        PagePosition::First => (None, None),
+    let whole_table = |backward| CtidWindow {
+        after: None,
+        before: None,
+        backward,
+    };
+    let window = match position {
+        PagePosition::First => whole_table(false),
+        PagePosition::Last => whole_table(true),
         PagePosition::Offset(offset) => {
             return Ok(Walk {
                 condition: None,
-                order,
+                order: vec![format!("{ctid} {}", direction(true))],
                 offset: *offset,
                 stability: PageStability::Stable,
                 cost: PageCost::SortPerPage,
             });
         }
-        PagePosition::CtidWindow { after, end_block } => (*after, Some(*end_block)),
+        PagePosition::CtidWindow(window) => *window,
         PagePosition::AfterKey(_) | PagePosition::BeforeKey(_) => {
             return Err(BrowseSqlError::UnsupportedPosition {
                 mode: PagingMode::CtidWindow,
@@ -216,24 +222,26 @@ fn ctid_walk(
 
     let target = BindTarget::EngineRowId(EngineRowIdPart::PostgresCtid);
     let mut bounds = Vec::new();
-    if let Some((block, offset)) = after {
-        let marker = builder.bind(dialect, Value::Text(format!("({block},{offset})")), target)?;
-        bounds.push(format!("{ctid} > {marker}"));
+    for (bound, comparison) in [(window.after, ">"), (window.before, "<")] {
+        if let Some((block, offset)) = bound {
+            let marker = builder.bind(dialect, Value::Text(format!("({block},{offset})")), target)?;
+            bounds.push(format!("{ctid} {comparison} {marker}"));
+        }
     }
-    // A block number past what a tid can hold means the window runs to
-    // the end of the table.
-    if let Some(end_block) = end_block.and_then(|end| u32::try_from(end).ok()) {
-        let marker = builder.bind(dialect, Value::Text(format!("({end_block},0)")), target)?;
-        bounds.push(format!("{ctid} < {marker}"));
-    }
+    // Only the bound the read walks toward keeps the server to a range
+    // of blocks; without it the sort takes in the rest of the table.
+    let bounded = match window.backward {
+        true => window.after.is_some(),
+        false => window.before.is_some(),
+    };
     Ok(Walk {
         condition: (!bounds.is_empty()).then(|| bounds.join(" AND ")),
-        order,
+        order: vec![format!("{ctid} {}", direction(!window.backward))],
         offset: 0,
         stability: PageStability::Stable,
-        cost: match end_block {
-            Some(_) => PageCost::BlockWindow,
-            None => PageCost::SortPerPage,
+        cost: match bounded {
+            true => PageCost::BlockWindow,
+            false => PageCost::SortPerPage,
         },
     })
 }
@@ -242,7 +250,7 @@ fn offset_walk(position: &PagePosition, identity: &RowIdentity, order: Vec<Strin
     let offset = match position {
         PagePosition::First => 0,
         PagePosition::Offset(offset) => *offset,
-        PagePosition::AfterKey(_) | PagePosition::BeforeKey(_) | PagePosition::CtidWindow { .. } => {
+        PagePosition::Last | PagePosition::AfterKey(_) | PagePosition::BeforeKey(_) | PagePosition::CtidWindow(_) => {
             return Err(BrowseSqlError::UnsupportedPosition {
                 mode: PagingMode::Offset,
             });

@@ -132,10 +132,10 @@ impl BrowseModel {
     /// one moves a page left past the end back to the last page. Says
     /// whether it moved, for the caller to read that page.
     pub(super) fn clamp_to_total(&mut self, fx: &mut Effects) -> bool {
-        let Some((_, start)) = self.total.exact().and_then(|rows| self.pager.clamp(rows)) else {
+        let Some(target) = self.total.exact().and_then(|rows| self.pager.clamp(rows)) else {
             return false;
         };
-        self.pager.go_to(start);
+        self.pager.move_to(target);
         fx.output(BrowseTabOutput::StateChanged);
         true
     }
@@ -146,5 +146,9 @@ impl BrowseModel {
         self.widgets
             .pager_bar
             .show_total(&self.pager, self.shown_page(), &self.total);
+        let counting = matches!(self.total, RowTotal::Counting { .. });
+        self.actions
+            .count_rows
+            .set_enabled(self.shown_page().is_some() && self.total.exact().is_none() && !counting);
     }
 }

@@ -42,6 +42,7 @@
     <child>
       <object class="GtkLabel" id="paginator_label">
         <property name="accessible-role">status</property>
+        <property name="ellipsize">end</property>
         <style>
           <class name="dimmed"/>
         </style>

@@ -45,6 +45,8 @@ pub struct BrowseTab {
     #[template_child]
     pub selection_label: TemplateChild<gtk::Label>,
     #[template_child]
+    pub more_button: TemplateChild<gtk::MenuButton>,
+    #[template_child]
     pub export_button: TemplateChild<gtk::Button>,
     #[template_child]
     pub filter_button: TemplateChild<gtk::Button>,
@@ -66,7 +68,7 @@ pub struct BrowseTab {
 impl ObjectSubclass for BrowseTab {
     const NAME: &'static str = "TableProBrowseTab";
     type Type = super::BrowseTab;
-    type ParentType = adw::Bin;
+    type ParentType = adw::BreakpointBin;
 
     fn class_init(klass: &mut Self::Class) {
         PagerBar::ensure_type();
@@ -123,4 +125,4 @@ impl ObjectImpl for BrowseTab {
 }
 
 impl WidgetImpl for BrowseTab {}
-impl BinImpl for BrowseTab {}
+impl BreakpointBinImpl for BrowseTab {}

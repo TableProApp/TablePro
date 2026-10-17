@@ -6,6 +6,8 @@ pub(crate) enum SaveInput {
     /// The window started saving the tab's pending structure.
     SaveStarted,
     StopSaving,
+    /// Discard clicked: ask before the changes go.
+    ConfirmDiscard,
     Discard,
     /// Read the table again and drop the draft, for a save whose outcome
     /// nobody knows.

@@ -19,6 +19,7 @@ impl PromptText {
                 with_reason(
                     crate::i18n::gettext_f("Enter the database password for {target}.", &[("target", target)]),
                     reason,
+                    Asked::Password,
                 ),
                 crate::i18n::gettext("Connect"),
             ),
@@ -27,6 +28,7 @@ impl PromptText {
                 with_reason(
                     crate::i18n::gettext_f("Enter the SSH password for {target}.", &[("target", target)]),
                     reason,
+                    Asked::Password,
                 ),
                 crate::i18n::gettext("Connect"),
             ),
@@ -38,6 +40,7 @@ impl PromptText {
                         &[("path", &path.display().to_string())],
                     ),
                     reason,
+                    Asked::Passphrase,
                 ),
                 crate::i18n::gettext("Connect"),
             ),
@@ -83,18 +86,29 @@ impl PromptText {
     }
 }
 
+/// What a prompt asks for, which its reason has to name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Asked {
+    Password,
+    Passphrase,
+}
+
 /// Why the user is being asked, which tells them whether something is
 /// wrong with the keyring or with what they typed before.
-fn with_reason(request: String, reason: &PromptReason) -> String {
-    let because = match reason {
-        PromptReason::NotStored => crate::i18n::gettext("No password is saved for this connection."),
-        PromptReason::KeyringLocked => {
+fn with_reason(request: String, reason: &PromptReason, asked: Asked) -> String {
+    let because = match (reason, asked) {
+        (PromptReason::NotStored, Asked::Password) => crate::i18n::gettext("No password is saved for this connection."),
+        (PromptReason::NotStored, Asked::Passphrase) => crate::i18n::gettext("No passphrase is saved for this key."),
+        (PromptReason::KeyringLocked, _) => {
             crate::i18n::gettext("The keyring is locked, so the saved one could not be read.")
         }
-        PromptReason::KeyringUnavailable { .. } => {
+        (PromptReason::KeyringUnavailable { .. }, _) => {
             crate::i18n::gettext("No keyring is available, so it cannot be read or saved.")
         }
-        PromptReason::Rejected => crate::i18n::gettext("The server refused the one it was given."),
+        (PromptReason::Rejected, Asked::Password) => crate::i18n::gettext("The server refused the one it was given."),
+        (PromptReason::Rejected, Asked::Passphrase) => {
+            crate::i18n::gettext("The one given before did not unlock the key.")
+        }
     };
     format!("{because} {request}")
 }
@@ -158,6 +172,19 @@ mod tests {
 
         assert_eq!(text.heading, "Passphrase Required");
         assert!(text.body.contains("/home/u/.ssh/id_ed25519"), "{}", text.body);
+    }
+
+    #[test]
+    fn a_passphrase_prompt_never_speaks_of_a_password() {
+        for reason in [PromptReason::NotStored, PromptReason::Rejected] {
+            let text = PromptText::for_prompt(&prompt(PromptPurpose::SshPassphrase {
+                path: PathBuf::from("/home/u/.ssh/id_ed25519"),
+                reason,
+            }));
+
+            assert!(!text.body.contains("password"), "{}", text.body);
+            assert!(!text.body.contains("server"), "{}", text.body);
+        }
     }
 
     #[test]

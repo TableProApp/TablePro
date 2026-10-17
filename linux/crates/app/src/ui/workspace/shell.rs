@@ -119,7 +119,7 @@ fn follow_sidebar(split_view: &adw::OverlaySplitView, toggle: &gtk::ToggleButton
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use std::time::Duration;
 
     use libadwaita::prelude::*;
@@ -344,6 +344,108 @@ mod tests {
         test.window.send(SessionWindowInput::RetryConnect);
         test.wait_for_page("workspace");
         fits_the_floor(&content());
+    }
+
+    /// A server with one keyed table, whose every page is the same
+    /// thousand rows.
+    pub(in crate::ui::workspace) fn served_table() -> tablepro_test_support::ConnectionScript {
+        use tablepro_core::column::{ColumnDefault, ColumnType};
+        use tablepro_core::meta::{RowCountEstimate, RowIdentity, TableEstimate};
+        use tablepro_core::{ColumnInfo, QueryResult, Value};
+        use tablepro_test_support::FakeReply;
+        let column = |name: &str, primary_key: bool| ColumnInfo {
+            name: name.to_owned(),
+            column_type: ColumnType::untyped_text("text"),
+            nullable: !primary_key,
+            primary_key,
+            is_auto_increment: false,
+            is_generated: false,
+            default: ColumnDefault::None,
+            comment: None,
+        };
+        let columns = vec![column("id", true), column("name", false)];
+        let page = QueryResult::new(
+            columns.iter().map(ColumnInfo::result_column).collect::<Vec<_>>(),
+            (0..1_000)
+                .map(|id| vec![Value::Int(id), Value::Text(format!("customer {id}"))])
+                .collect(),
+        );
+        let mut script = tablepro_test_support::ConnectionScript::default();
+        script.fetch_columns.always(FakeReply::ok(columns));
+        script.row_identity.always(FakeReply::ok(RowIdentity::UniqueKey {
+            columns: vec!["id".to_owned()],
+        }));
+        // Too many rows to count unasked, so Count Rows stays on the bar.
+        script.table_estimate.always(FakeReply::ok(TableEstimate {
+            rows: RowCountEstimate::Approximate(48_213_000),
+            heap_blocks: None,
+        }));
+        script.query_bound.always(FakeReply::ok(page));
+        script
+    }
+
+    /// The floor measured on the tab's own content, with its widest
+    /// bars up: the pager's longest label, pending changes and the
+    /// filter strip.
+    #[gtk4::test]
+    fn an_open_table_tab_fits_the_window_floor() {
+        use crate::ui::browse_tab::{BrowseTab, EditInput, PagingInput};
+        let test = TestWindow::with_script(
+            "TableFloor",
+            Script {
+                connection: served_table(),
+                window_size: Some((360, 294)),
+                ..Script::default()
+            },
+        );
+        test.window
+            .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+        test.wait_for_page("workspace");
+        let workspace = test.workspace();
+        let page = workspace
+            .with_model(|model| {
+                model.open_tab(super::super::tab_spec::TabSpec::Table {
+                    table: tablepro_core::meta::TableRef::new(Some("public".to_owned()), "customers"),
+                    page: super::super::tab_spec::TablePage::first(1_000),
+                })
+            })
+            .flatten()
+            .expect("a table tab");
+        let tab = page.child().downcast::<BrowseTab>().expect("a browse tab");
+        let wait = Duration::from_secs(10);
+        wait_until(wait, || {
+            descendants(&tab).iter().any(|widget| widget.is::<gtk::ColumnView>())
+        })
+        .expect("the tab's rows");
+        tab.send(EditInput::InsertRow);
+        let content =
+            crate::test_support::first_descendant_of_type::<adw::ToolbarView>(&tab).expect("the tab's toolbar view");
+        let needs = || {
+            let (width, ..) = content.measure(gtk::Orientation::Horizontal, -1);
+            if width > tab.width() {
+                return (width, i32::MAX);
+            }
+            (width, content.measure(gtk::Orientation::Vertical, tab.width()).0)
+        };
+
+        let fits = wait_until(wait, || {
+            let (width, height) = needs();
+            tab.width() > 0 && width <= 360 && height <= tab.height()
+        });
+        assert!(
+            fits.is_ok(),
+            "an open table tab needs {:?} px, the tab has {}x{}",
+            needs(),
+            tab.width(),
+            tab.height()
+        );
+
+        // Measured as it opens: at the floor's height the strip and the
+        // grid cannot both have room, so the strip is checked for width.
+        tab.send(PagingInput::ToggleFilterStrip);
+        let (with_filter, ..) = content.measure(gtk::Orientation::Horizontal, -1);
+        tab.send(PagingInput::ToggleFilterStrip);
+        assert!(with_filter <= 360, "the filter strip needs {with_filter} px");
     }
 
     #[gtk4::test]
