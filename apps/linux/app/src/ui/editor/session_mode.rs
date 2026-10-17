@@ -669,6 +669,9 @@ async fn rollback_and_close(shared: &SharedSession) -> Result<(), DriverError> {
     let Some(mut session) = shared.lock().await.take() else {
         return Err(DriverError::Unsupported("the session was closed".into()));
     };
+    if !session.is_usable() {
+        return session.close().await;
+    }
     let control = OperationControl::with_timeout(std::time::Duration::from_secs(30));
     let rollback = session.query_params_controlled("ROLLBACK", &[], &control).await;
     let close = session.close().await;
@@ -727,6 +730,7 @@ mod tests {
         usable: Arc<AtomicBool>,
         queries: Arc<AtomicUsize>,
         fail_query: bool,
+        close_unknown: bool,
     }
 
     struct DelayedRollback {
@@ -845,7 +849,13 @@ mod tests {
         }
 
         async fn close(self: Box<Self>) -> Result<(), DriverError> {
-            Ok(())
+            if self.close_unknown {
+                Err(DriverError::OperationOutcomeUnknown {
+                    source: Box::new(DriverError::Disconnected),
+                })
+            } else {
+                Ok(())
+            }
         }
     }
 
@@ -943,6 +953,24 @@ mod tests {
         assert!(matches!(rollback_and_close(&shared).await, Err(DriverError::TimedOut)));
         assert!(shared.lock().await.is_none());
         assert_eq!(close_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn a_retired_transaction_session_closes_without_sending_rollback() {
+        let queries = Arc::new(AtomicUsize::new(0));
+        let shared: SharedSession = Arc::new(tokio::sync::Mutex::new(Some(Box::new(HealthSession {
+            usable: Arc::new(AtomicBool::new(false)),
+            queries: queries.clone(),
+            fail_query: false,
+            close_unknown: true,
+        }))));
+
+        assert!(matches!(
+            rollback_and_close(&shared).await,
+            Err(DriverError::OperationOutcomeUnknown { .. })
+        ));
+        assert_eq!(queries.load(Ordering::SeqCst), 0);
+        assert!(shared.lock().await.is_none());
     }
 
     #[test]
@@ -1049,6 +1077,7 @@ mod tests {
                 usable: Arc::new(AtomicBool::new(false)),
                 queries: queries.clone(),
                 fail_query: false,
+                close_unknown: false,
             })))),
         };
         let control = OperationControl::with_timeout(std::time::Duration::from_secs(1));
@@ -1071,6 +1100,7 @@ mod tests {
                 usable: Arc::new(AtomicBool::new(true)),
                 queries: queries.clone(),
                 fail_query: true,
+                close_unknown: false,
             })))),
         };
         let control = OperationControl::with_timeout(std::time::Duration::from_secs(1));

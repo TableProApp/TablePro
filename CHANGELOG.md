@@ -135,6 +135,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - A database switch rejected during another connection change no longer alters the saved connection.
 - On MySQL and MariaDB, `--` followed by a character other than a space, such as `SELECT 5--2`, no longer hides the rest of the line as a comment, so the following statements are found and checked separately.
 - A save or import whose connection was lost during a statement could be recorded as rolled back, and agents were told the rollback was confirmed; it is now recorded as an unknown outcome, and an import batch that partly applied is no longer recorded as rolled back.
+- Closing a retired database session after a tunnel loss no longer sends ROLLBACK through that unusable session; the transaction outcome remains unknown.
 - A PostgreSQL identifier containing dollar signs, such as `my$a$b`, no longer makes the editor read the rest of the script as one quoted statement.
 - The error location for a PostgreSQL SELECT shown page by page pointed past the end of the statement; it now marks the right place.
 - Renaming a MySQL table in a database other than the connection's moved it into the connection's database, and renaming a ClickHouse table failed.

@@ -74,7 +74,7 @@ What the application does not do, or does differently from what you might expect
 
 ## Known bugs
 
-- **A tunnel drop during a PostgreSQL Session transaction can leave the editor unable to recover** ([#1016](https://github.com/cozyGarage/BookiE/issues/1016)). If the connection is lost while rollback is in flight, the outcome can be recorded as unknown and later writes, including the rollback needed to end the session, can be denied. This failure was intermittent in the reported GTK run; B4 is still deciding how to recover safely. Reconnect behavior must not reuse a new backend as the old session.
+- **A tunnel drop during a PostgreSQL Session transaction leaves the original transaction outcome unknown** ([#1016](https://github.com/cozyGarage/BookiE/issues/1016)). The editor closes the unusable session without sending ROLLBACK through it. This does not prove that the transaction rolled back, so governed writes to the saved connection remain blocked. The PostgreSQL release regression in [#998](https://github.com/cozyGarage/BookiE/pull/998) checks reopening a session after reconnect; a new backend is never reused as the old session.
 - **Catalog kind selection may shift the schema search field** ([#660](https://github.com/cozyGarage/BookiE/issues/660)). The issue remains open; the current isolated GTK widget test did not reproduce it.
 - **PostgreSQL `VOID` results are shown as undecodable** ([#660](https://github.com/cozyGarage/BookiE/issues/660)); they should render as empty values.
 - **Two installed launches were reported to abort inside BookiE** ([#666](https://github.com/cozyGarage/BookiE/issues/666)); the cause remains under investigation.
