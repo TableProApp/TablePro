@@ -9,9 +9,19 @@ import TableProPluginKit
 @MainActor
 final class PluginManager: ObservableObject {
     static let shared = PluginManager(userDefaults: AppStorageEnvironment.shared.defaults)
-    nonisolated static let currentPluginKitVersion = 39
+    nonisolated static let currentPluginKitVersion = pluginKitVersion(infoKey: "TableProPluginKitVersion")
 
-    nonisolated static let minimumCompatiblePluginKitVersion = 19
+    nonisolated static let minimumCompatiblePluginKitVersion = pluginKitVersion(
+        infoKey: "TableProPluginKitMinimumVersion"
+    )
+
+    nonisolated private static func pluginKitVersion(infoKey: String) -> Int {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: infoKey) as? String,
+              let version = Int(value) else {
+            preconditionFailure("Info.plist has no integer \(infoKey); Configs/PluginKit.xcconfig sets it")
+        }
+        return version
+    }
 
     private let builtInPluginsURL: URL?
     internal let userPluginsDir: URL

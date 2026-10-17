@@ -11,7 +11,8 @@ import unittest
 from pathlib import Path
 
 SCRIPT = Path(__file__).with_name("check-pluginkit-bump-cadence.py")
-PLUGIN_MANAGER = Path("TablePro/Core/Plugins/PluginManager.swift")
+KIT_CONFIG = Path("Configs/PluginKit.xcconfig")
+LEGACY_PLUGIN_MANAGER = Path("TablePro/Core/Plugins/PluginManager.swift")
 
 GIT_ENV = {
     **os.environ,
@@ -24,7 +25,11 @@ GIT_ENV = {
 }
 
 
-def plugin_manager_source(kit: int) -> str:
+def kit_config_source(kit: int) -> str:
+    return f"TABLEPRO_PLUGINKIT_VERSION = {kit}\nTABLEPRO_PLUGINKIT_MINIMUM_VERSION = 19\n"
+
+
+def legacy_plugin_manager_source(kit: int) -> str:
     return (
         "final class PluginManager {\n"
         f"    nonisolated static let currentPluginKitVersion = {kit}\n"
@@ -46,14 +51,21 @@ class FixtureRepository:
             text=True,
         ).stdout
 
-    def write_kit(self, kit: int) -> None:
-        target = self.path / PLUGIN_MANAGER
+    def write(self, relative: Path, text: str) -> None:
+        target = self.path / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(plugin_manager_source(kit), encoding="utf-8")
+        target.write_text(text, encoding="utf-8")
 
-    def commit_kit(self, kit: int, tag: str | None = None) -> None:
-        self.write_kit(kit)
-        self.git("add", str(PLUGIN_MANAGER))
+    def write_kit(self, kit: int) -> None:
+        self.write(KIT_CONFIG, kit_config_source(kit))
+
+    def commit_kit(self, kit: int, tag: str | None = None, legacy: bool = False) -> None:
+        if legacy:
+            self.write(LEGACY_PLUGIN_MANAGER, legacy_plugin_manager_source(kit))
+            self.git("add", str(LEGACY_PLUGIN_MANAGER))
+        else:
+            self.write_kit(kit)
+            self.git("add", str(KIT_CONFIG))
         self.git("commit", "--quiet", "--allow-empty", "-m", f"kit {kit}")
         if tag:
             self.git("tag", tag)
@@ -126,8 +138,28 @@ class BumpCadenceTests(unittest.TestCase):
 
     def test_a_missing_declaration_fails(self) -> None:
         self.repo.commit_kit(30, tag="v0.74.0")
-        (self.repo.path / PLUGIN_MANAGER).write_text("final class PluginManager {}\n", encoding="utf-8")
-        self.assertFails(self.repo.run_check(), "currentPluginKitVersion")
+        self.repo.write(KIT_CONFIG, "TABLEPRO_PLUGINKIT_MINIMUM_VERSION = 19\n")
+        self.assertFails(self.repo.run_check(), str(KIT_CONFIG))
+
+    def test_a_release_before_the_xcconfig_is_read_from_swift(self) -> None:
+        self.repo.commit_kit(39, tag="v0.81.0", legacy=True)
+        self.repo.commit_kit(40)
+        self.assertPasses(self.repo.run_check())
+
+        self.repo.write_kit(41)
+        self.assertFails(self.repo.run_check(), "41", "v0.81.0", "39")
+
+    def test_the_xcconfig_wins_over_a_leftover_swift_literal(self) -> None:
+        self.repo.commit_kit(30, legacy=True)
+        self.repo.commit_kit(39, tag="v0.82.0")
+        self.repo.write_kit(40)
+        self.assertPasses(self.repo.run_check())
+
+    def test_a_release_with_no_kit_fails(self) -> None:
+        self.repo.git("commit", "--quiet", "--allow-empty", "-m", "empty")
+        self.repo.git("tag", "v0.74.0")
+        self.repo.write_kit(30)
+        self.assertFails(self.repo.run_check(), "v0.74.0", str(KIT_CONFIG))
 
     def test_a_shallow_clone_reads_the_release_from_its_remote(self) -> None:
         self.repo.commit_kit(25, tag="v0.73.0")

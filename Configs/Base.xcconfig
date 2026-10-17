@@ -2,6 +2,8 @@
 // Structure rule: project-wide and per-configuration settings live in Configs/*.xcconfig.
 // Per-target settings live in project.yml, where the target templates are.
 
+#include "PluginKit.xcconfig"
+
 ALWAYS_SEARCH_USER_PATHS = NO
 ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES
 CLANG_ANALYZER_NONNULL = YES
@@ -60,10 +62,9 @@ STRINGS_FILE_OUTPUT_ENCODING = binary
 SWIFT_VERSION = 6.0
 CODE_SIGN_STYLE = Automatic
 
-// Signing knobs. Only the two app targets read them, so plugin bundles and the helper
-// tool sign ad-hoc and a contributor without the official team can still build everything.
-// A contributor overrides these in Configs/Secrets.xcconfig without touching a tracked file,
-// and the release scripts pass their own values on the xcodebuild command line.
+// Signing knobs. The app targets and the plugin bundles sign with this team; the helper tool
+// signs ad hoc. A contributor overrides these in Configs/Secrets.xcconfig without touching a
+// tracked file, and the release scripts pass their own values on the xcodebuild command line.
 TABLEPRO_DEVELOPMENT_TEAM = D7HJ5TFYCU
 TABLEPRO_APP_BUNDLE_IDENTIFIER = com.TablePro
 

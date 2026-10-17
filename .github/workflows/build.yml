@@ -185,7 +185,7 @@ jobs:
             build/Release/TablePro-*.dmg
             build/Release/TablePro-*.tar.xz
 
-  # Reads two integers out of a Swift file and fetches a JSON manifest, so it wants nothing
+  # Reads two integers out of an xcconfig and fetches a JSON manifest, so it wants nothing
   # from macOS and does not need to spend a macOS runner minute (billed at ten times Linux).
   registry-readiness:
     name: Registry Readiness
@@ -199,9 +199,9 @@ jobs:
 
       - name: Verify registry has compatible plugin binaries
         run: |
-          MANAGER="TablePro/Core/Plugins/PluginManager.swift"
-          CURRENT=$(grep -E 'static let currentPluginKitVersion = ' "$MANAGER" | grep -oE '[0-9]+' | head -1)
-          FLOOR=$(grep -E 'static let minimumCompatiblePluginKitVersion = ' "$MANAGER" | grep -oE '[0-9]+' | head -1)
+          CONFIG="Configs/PluginKit.xcconfig"
+          CURRENT=$(sed -nE 's/^TABLEPRO_PLUGINKIT_VERSION[[:space:]]*=[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' "$CONFIG")
+          FLOOR=$(sed -nE 's/^TABLEPRO_PLUGINKIT_MINIMUM_VERSION[[:space:]]*=[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' "$CONFIG")
           echo "PluginKit floor=$FLOOR current=$CURRENT"
           python3 scripts/check-registry-readiness.py --floor "$FLOOR" --current "$CURRENT"
 

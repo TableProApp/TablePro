@@ -5,7 +5,7 @@
 	<key>TableProMinAppVersion</key>
 	<string>0.73.0</string>
 	<key>TableProPluginKitVersion</key>
-	<integer>39</integer>
+	<integer>TABLEPRO_PLUGINKIT_VERSION</integer>
 	<key>TableProProvidesDatabaseTypeIds</key>
 	<array>
 		<string>Weaviate</string>

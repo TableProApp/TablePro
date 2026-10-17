@@ -8,7 +8,7 @@ on:
       tags:
         description: >
           Comma-separated plugin tag:pluginKitVersion pairs.
-          pluginKitVersion defaults to currentPluginKitVersion from PluginManager.swift.
+          pluginKitVersion defaults to TABLEPRO_PLUGINKIT_VERSION from Configs/PluginKit.xcconfig.
           Examples: plugin-mongodb-v1.0.25, plugin-mongodb-v1.0.25:13
         required: true
         type: string
@@ -21,7 +21,7 @@ on:
         required: false
         type: string
 
-# Declared per job rather than here. resolve-tags reads two integers out of a Swift file and needs
+# Declared per job rather than here. resolve-tags reads an integer out of an xcconfig and needs
 # nothing, and a workflow-level grant hands it a write token it has no use for.
 permissions:
   contents: read
@@ -66,18 +66,17 @@ jobs:
       - name: Check the plugin manifest against the plugin classes
         run: python3 scripts/ci/check-plugin-manifest.py
 
-      - name: Read currentPluginKitVersion
+      - name: Read the PluginKit version
         id: pkv
         run: |
-          VERSION=$(grep -E 'static let currentPluginKitVersion\s*=\s*[0-9]+' \
-            TablePro/Core/Plugins/PluginManager.swift \
-            | grep -oE '[0-9]+$' | head -1)
+          VERSION=$(sed -nE 's/^TABLEPRO_PLUGINKIT_VERSION[[:space:]]*=[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' \
+            Configs/PluginKit.xcconfig)
           if [ -z "$VERSION" ]; then
-            echo "::error::Could not parse currentPluginKitVersion from PluginManager.swift"
+            echo "::error::Could not parse TABLEPRO_PLUGINKIT_VERSION from Configs/PluginKit.xcconfig"
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "currentPluginKitVersion=$VERSION"
+          echo "TABLEPRO_PLUGINKIT_VERSION=$VERSION"
 
       - name: Build matrix
         id: tags
