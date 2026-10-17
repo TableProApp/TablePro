@@ -34,13 +34,16 @@ Vcs-Browser: https://github.com/TableProApp/TablePro/tree/linux/linux/build-aux/
 Vcs-Git: https://github.com/TableProApp/TablePro.git -b linux [linux/build-aux]
 
 Package: tablepro
-Architecture: any
+Architecture: amd64 arm64
 Depends:
  openssh-client (>= 1:8.7),
  ${misc:Depends},
  ${shlibs:Depends},
 Recommends:
  ca-certificates,
+ gnome-keyring | kwallet6 | keepassxc,
+Suggests:
+ krb5-user,
 Description: database client for GNOME
  TablePro connects to PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse.
  Browse tables, edit rows in place, run SQL with syntax highlighting, and

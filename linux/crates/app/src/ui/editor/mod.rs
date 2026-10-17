@@ -46,7 +46,7 @@ use self::imp::RunningScript;
 use self::result_widgets::PageActions;
 use self::run_log::{EntryKind, RunEvent, RunLog};
 use self::run_scope::ScopedText;
-use self::script_runner::{ScriptRun, plan_batches, run_in_tab};
+use self::script_runner::{RUN_ROW_LIMIT, ScriptRun, plan_batches, run_in_tab};
 use super::clipboard::{CopyRequest, InClauseRows};
 use super::export::{ExportOffer, ExportOrigin, ExportQuery, ExportSource};
 use super::grid::{GridMsg, GridSink, present_row_json};
@@ -384,6 +384,7 @@ impl SqlEditor {
             policy,
             statement_timeout: deps.settings.query_timeout(),
             row_limit: RowLimit::EDITOR_DEFAULT,
+            run_row_limit: RUN_ROW_LIMIT,
         };
         let metadata = session.metadata().clone();
         // Read again at the end from the run's own session, never the

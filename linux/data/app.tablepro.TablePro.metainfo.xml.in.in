@@ -18,7 +18,7 @@
       <li>Run SQL scripts statement by statement and cancel a slow query</li>
       <li>Tunnel through an SSH jump host using your own OpenSSH client</li>
       <li>Verify TLS, keep connections read-only, and reconnect on drop</li>
-      <li>Export results to CSV, TSV, JSON and SQL</li>
+      <li>Export results to CSV, JSON, SQL, Excel, Markdown, HTML and XML</li>
     </ul>
   </description>
   <launchable type="desktop-id">@app-id@.desktop</launchable>

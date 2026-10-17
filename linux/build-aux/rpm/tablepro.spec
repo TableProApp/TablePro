@@ -85,6 +85,11 @@ Requires:       libGLESv2.so.2
 # SSH tunnels run through the system OpenSSH client, and every master
 # passes ForkAfterAuthentication, which OpenSSH 8.7 added.
 Requires:       openssh-clients >= 8.7
+# Saved passwords live in the Secret Service. Without a provider every
+# connect asks for the password and Remember is hidden.
+Recommends:     (gnome-keyring or kf6-kwallet or keepassxc)
+# kinit, for SQL Server sign-in with Kerberos.
+Suggests:       krb5-workstation
 
 %description
 TablePro connects to PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse.
@@ -136,7 +141,7 @@ export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 %files
 %license LICENSE data/licenses/THIRD-PARTY-NOTICE.md
 %license LICENSE.dependencies cargo-vendor.txt
-%doc README.md
+%doc CHANGELOG.md
 %{_bindir}/tablepro
 %{_libexecdir}/tablepro-askpass
 %{_datadir}/applications/app.tablepro.TablePro.desktop

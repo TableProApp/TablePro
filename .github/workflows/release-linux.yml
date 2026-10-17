@@ -8,7 +8,13 @@ name: Release Linux
 # A pre-release tag such as linux-v0.2.0-rc.1 publishes a GitHub
 # pre-release and skips the PPA and COPR.
 #
-# Environment linux-release, limited to linux-v* tags, holds two secrets.
+# Run by hand on a branch, it uploads a published release to the PPA again
+# as X.Y.Z-0ppaN, from that release's tarballs with the branch's .deb
+# packaging: a packaging fix that needs no new version. linux/docs/releasing.md
+# has the steps.
+#
+# Environment linux-release, limited to linux-v* tags and the branch a
+# packaging fix runs on, with a required reviewer, holds two secrets.
 # LINUX_PPA_SIGNING_KEY: the ASCII-armored OpenPGP secret key, with no
 # passphrase, that signs the uploads. Its public key is registered on a
 # Launchpad account that may upload to the PPA.
@@ -20,6 +26,16 @@ name: Release Linux
 on:
   push:
     tags: ["linux-v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The published release to upload again, such as linux-v0.1.0
+        required: true
+        type: string
+      revision:
+        description: The PPA upload number, 2 or more (X.Y.Z-0ppaN)
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -31,6 +47,7 @@ concurrency:
 jobs:
   verify:
     name: Tag, version and release notes
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     container:
@@ -74,6 +91,7 @@ jobs:
     uses: ./.github/workflows/linux-packages.yml
     with:
       deb-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
+      rpm-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
 
   github-release:
     name: GitHub release
@@ -108,10 +126,53 @@ jobs:
           gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \
             --title "TablePro for Linux $version" --notes-file notes.md "$@"
 
+  revision:
+    name: Release and revision to upload again
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: The tag is a published release, and the revision a new upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          REVISION: ${{ inputs.revision }}
+        run: |
+          version="${TAG#linux-v}"
+          case "$version" in
+            "$TAG" | "" | *[!0-9.]*)
+              echo "::error::$TAG is not the tag of a Linux release; a pre-release is not on the PPA"
+              exit 1
+              ;;
+          esac
+          case "$REVISION" in
+            "" | *[!0-9]* | 0* | 1)
+              echo "::error::Revision $REVISION is not 2 or more; 1 was the release's own upload"
+              exit 1
+              ;;
+          esac
+          prerelease="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)"
+          if [ "$prerelease" != false ]; then
+            echo "::error::$TAG is not a published release"
+            exit 1
+          fi
+
+  revision-packages:
+    name: Packages
+    needs: revision
+    uses: ./.github/workflows/linux-packages.yml
+    with:
+      deb-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
+      release-tag: ${{ inputs.tag }}
+      revision: ${{ inputs.revision }}
+
   ppa:
     name: Upload to the Launchpad PPA
-    needs: [verify, packages]
-    if: needs.verify.outputs.prerelease == 'false'
+    needs: [verify, packages, revision-packages]
+    if: >-
+      !cancelled() && (
+        (needs.packages.result == 'success' && needs.verify.outputs.prerelease == 'false') ||
+        needs.revision-packages.result == 'success')
     runs-on: ubuntu-24.04
     environment: linux-release
     timeout-minutes: 30
