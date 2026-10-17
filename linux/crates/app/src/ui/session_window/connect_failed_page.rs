@@ -83,8 +83,11 @@ impl ConnectFailedPage {
         imp.edit_button.set_visible(view.can_edit);
         if let Some(kind) = reenter {
             imp.reenter_button.set_label(&super::secret_retry::reenter_label(kind));
+            // The target goes first: an action that takes one, named on a
+            // button without it, warns that it cannot be activated.
             imp.reenter_button
                 .set_action_target_value(Some(&kind.attribute().to_variant()));
+            imp.reenter_button.set_action_name(Some("win.retry-with-new-secret"));
             imp.reenter_button.set_visible(true);
             imp.retry_button.remove_css_class("suggested-action");
         }
@@ -157,5 +160,36 @@ impl ConnectFailedPage {
     #[cfg(test)]
     pub fn announced(&self) -> Vec<(String, gtk::AccessibleAnnouncementPriority)> {
         self.imp().announced.borrow().clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn page(reenter: Option<SecretKind>) -> ConnectFailedPage {
+        adw::init().expect("libadwaita initialises under the test backend");
+        crate::register_test_resources();
+        let view = ConnectFailureView {
+            message: "refused".to_owned(),
+            can_edit: true,
+        };
+        ConnectFailedPage::new(&view, "Edit Connection…", reenter, None)
+    }
+
+    #[gtk4::test]
+    fn the_reenter_action_is_named_only_with_its_target() {
+        let hidden = page(None).imp().reenter_button.get();
+        assert!(!hidden.is_visible());
+        assert_eq!(
+            hidden.action_name(),
+            None,
+            "an action that takes a target was named on a button without one"
+        );
+
+        let kind = SecretKind::DatabasePassword;
+        let shown = page(Some(kind)).imp().reenter_button.get();
+        assert_eq!(shown.action_name().as_deref(), Some("win.retry-with-new-secret"));
+        assert_eq!(shown.action_target_value(), Some(kind.attribute().to_variant()));
     }
 }

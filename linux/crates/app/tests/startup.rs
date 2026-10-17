@@ -27,6 +27,9 @@ fn main() -> ExitCode {
     if help_lists_the_gapplication_options(&schemas, &sandbox).is_err() {
         return ExitCode::FAILURE;
     }
+    if version_prints_the_version(&schemas, &sandbox).is_err() {
+        return ExitCode::FAILURE;
+    }
     if a_missing_schema_is_reported(&sandbox).is_err() {
         return ExitCode::FAILURE;
     }
@@ -161,6 +164,34 @@ fn help_lists_the_gapplication_options(schemas: &Path, sandbox: &Sandbox<'_>) ->
     let stdout = String::from_utf8_lossy(&output.stdout);
     if !stdout.contains("--help-gapplication") {
         eprintln!("tablepro --help did not list the GApplication options:\n{stdout}");
+        return Err(());
+    }
+    Ok(())
+}
+
+/// `--version` prints the version and exits rather than opening a
+/// window.
+fn version_prints_the_version(schemas: &Path, sandbox: &Sandbox<'_>) -> Result<(), ()> {
+    let output = run(
+        tablepro(sandbox).arg("--version").env("GSETTINGS_SCHEMA_DIR", schemas),
+        "--version",
+    )?;
+
+    if !output.status.success() {
+        eprintln!(
+            "tablepro --version exited with {}:\n{}",
+            output.status,
+            combined(&output)
+        );
+        return Err(());
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !stdout.contains(tablepro_app::config::VERSION) {
+        eprintln!(
+            "tablepro --version did not print {}:\n{}",
+            tablepro_app::config::VERSION,
+            combined(&output)
+        );
         return Err(());
     }
     Ok(())

@@ -1,0 +1,175 @@
+{
+  "version": 1,
+  "connections": [
+    {
+      "id": "0b6a8f3e-4d1c-4c5e-9a57-1f2d3c4b5a61",
+      "name": "Local Postgres",
+      "driver_id": "postgres",
+      "host": "localhost",
+      "port": 5432,
+      "database": "app",
+      "username": "tablepro",
+      "tls": {
+        "mode": "disable",
+        "ca_file": null,
+        "client_identity": null,
+        "server_name": null
+      },
+      "read_only": false,
+      "auth_mode": "password"
+    },
+    {
+      "id": "6f1e2d3c-4b5a-4968-8776-655443322110",
+      "name": "Production orders",
+      "driver_id": "mysql",
+      "host": "db.internal.example",
+      "port": 3306,
+      "database": "orders",
+      "username": "reporting",
+      "tls": {
+        "mode": "verify_full",
+        "ca_file": "/home/me/certs/ca.pem",
+        "client_identity": {
+          "certificate": "/home/me/certs/client.pem",
+          "key": "/home/me/certs/client.key"
+        },
+        "server_name": "mysql.example.com"
+      },
+      "read_only": true,
+      "auth_mode": "password",
+      "ssh": {
+        "host": "bastion",
+        "port": 2222,
+        "username": "deploy",
+        "jump_hosts": [
+          "jump1.example.com",
+          "ops@jump2.example.com:2200"
+        ],
+        "auth": {
+          "kind": "private_key",
+          "path": "/home/me/.ssh/id_ed25519",
+          "has_passphrase": true
+        }
+      },
+      "last_opened_at": "2026-10-01T08:30:00Z",
+      "color": "red",
+      "group": "Production"
+    },
+    {
+      "id": "1a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d",
+      "name": "Warehouse",
+      "driver_id": "mssql",
+      "host": "sql.corp.example",
+      "port": 1433,
+      "database": "warehouse",
+      "username": "",
+      "tls": {
+        "mode": "require",
+        "ca_file": null,
+        "client_identity": null,
+        "server_name": null
+      },
+      "read_only": false,
+      "auth_mode": "kerberos",
+      "ssh": {
+        "host": "gateway.corp.example",
+        "auth": {
+          "kind": "agent"
+        }
+      },
+      "group": "Production"
+    },
+    {
+      "id": "9c8b7a6f-5e4d-4c3b-a2a1-0f9e8d7c6b5a",
+      "name": "Events",
+      "driver_id": "clickhouse",
+      "host": "clickhouse.example.com",
+      "port": 8443,
+      "database": "default",
+      "username": "analyst",
+      "tls": {
+        "mode": "verify_full",
+        "ca_file": null,
+        "client_identity": null,
+        "server_name": null
+      },
+      "read_only": false,
+      "auth_mode": "password",
+      "ssh": {
+        "host": "10.0.0.5",
+        "username": "admin",
+        "auth": {
+          "kind": "private_key"
+        }
+      },
+      "color": "teal"
+    },
+    {
+      "id": "3d4e5f60-7182-4934-a5b6-c7d8e9f0a1b2",
+      "name": "Staging",
+      "driver_id": "postgres",
+      "host": "staging.example.com",
+      "port": 5432,
+      "database": "app",
+      "username": "app",
+      "tls": {
+        "mode": "require",
+        "ca_file": null,
+        "client_identity": null,
+        "server_name": null
+      },
+      "read_only": false,
+      "auth_mode": "password",
+      "ssh": {
+        "host": "staging-bastion",
+        "auth": {
+          "kind": "keyboard_interactive"
+        }
+      },
+      "last_opened_at": "2026-09-30T17:05:42.123Z"
+    },
+    {
+      "id": "c0ffee00-1234-4abc-8def-0123456789ab",
+      "name": "app.sqlite3",
+      "driver_id": "sqlite",
+      "host": "",
+      "port": 0,
+      "database": "/home/me/projects/app/app.sqlite3",
+      "username": "",
+      "tls": {
+        "mode": "disable",
+        "ca_file": null,
+        "client_identity": null,
+        "server_name": null
+      },
+      "read_only": false,
+      "auth_mode": "password"
+    },
+    {
+      "id": "5a5b5c5d-6e6f-4071-8283-949596979899",
+      "name": "MariaDB legacy",
+      "driver_id": "mysql",
+      "host": "127.0.0.1",
+      "port": 3307,
+      "database": "",
+      "username": "root",
+      "tls": {
+        "mode": "require",
+        "ca_file": null,
+        "client_identity": null,
+        "server_name": null
+      },
+      "read_only": false,
+      "auth_mode": "password",
+      "ssh": {
+        "host": "legacy.example.com",
+        "port": 22,
+        "username": "root",
+        "auth": {
+          "kind": "password"
+        }
+      },
+      "color": "slate"
+    }
+  ]
+}

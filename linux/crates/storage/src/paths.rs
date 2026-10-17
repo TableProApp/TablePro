@@ -61,6 +61,10 @@ impl StoragePaths {
     pub fn drafts_dir(&self) -> PathBuf {
         self.data.join("drafts")
     }
+
+    pub fn crashes_dir(&self) -> PathBuf {
+        self.state.join("crashes")
+    }
 }
 
 #[cfg(test)]
