@@ -5,11 +5,10 @@ use gtk4::{gio, glib};
 use libadwaita::prelude::*;
 use relm4::{Component, ComponentController};
 
-use tablepro_core::dialect::SqlDialect;
 use tablepro_core::edit::CellInput;
+use tablepro_core::import::{ImportColumn, plan_import};
 use tablepro_core::meta::TableRef;
-use tablepro_core::statement::GuardedStatement;
-use tablepro_core::{ColumnInfo, ForeignKeyMode, WriteBatch, WriteKind, WriteReport};
+use tablepro_core::{WriteKind, WriteReport};
 use tablepro_session::{OperationError, OperationKind, Session};
 
 use crate::ui::file_read::{FileReadError, read_capped_file};
@@ -100,7 +99,7 @@ impl WorkspaceModel {
         &mut self,
         schema: Option<String>,
         table: String,
-        columns: Vec<tablepro_core::ColumnInfo>,
+        columns: Vec<ImportColumn>,
         bytes: Vec<u8>,
     ) {
         use crate::ui::import_dialog::{ImportCsvDialog, ImportCsvDialogInit, ImportCsvDialogOutput};
@@ -194,11 +193,16 @@ async fn read_csv_file(file: &gio::File) -> Result<Vec<u8>, String> {
         })
 }
 
-async fn read_columns(session: Arc<Session>, table: TableRef) -> Result<Vec<ColumnInfo>, OperationError> {
+/// The table's columns with what the engine lets an insert write, so
+/// the mapping never offers a column the server fills.
+async fn read_columns(session: Arc<Session>, table: TableRef) -> Result<Vec<ImportColumn>, OperationError> {
     session
         .run(OperationKind::Metadata, move |lease, options| {
             let table = table.clone();
-            async move { Ok(lease.fetch_columns(&table, options).await?) }
+            async move {
+                let definition = lease.fetch_table_definition(&table, options).await?;
+                Ok(definition.columns.iter().map(ImportColumn::from_definition).collect())
+            }
         })
         .await
 }
@@ -208,7 +212,7 @@ async fn read_columns(session: Arc<Session>, table: TableRef) -> Result<Vec<Colu
 async fn write_import(
     session: &Session,
     table: TableRef,
-    columns: Vec<ColumnInfo>,
+    columns: Vec<ImportColumn>,
     rows: Vec<Vec<CellInput>>,
 ) -> Result<(Vec<String>, WriteReport), OperationError> {
     let rows = Arc::new(rows);
@@ -218,7 +222,7 @@ async fn write_import(
             let columns = columns.clone();
             let rows = rows.clone();
             async move {
-                let batch = import_batch(&*lease.dialect(), &table, &columns, &rows)?;
+                let batch = plan_import(&*lease.dialect(), &table, &columns, &rows)?;
                 let sql: Vec<String> = batch.steps.iter().map(|step| step.statement.sql().to_owned()).collect();
                 tracing::info!(
                     rows = rows.len(),
@@ -230,26 +234,6 @@ async fn write_import(
             }
         })
         .await
-}
-
-/// One INSERT per row, as a single batch so the engine runs them in
-/// one transaction where it has one.
-fn import_batch(
-    dialect: &dyn SqlDialect,
-    table: &TableRef,
-    columns: &[ColumnInfo],
-    rows: &[Vec<CellInput>],
-) -> Result<WriteBatch, tablepro_core::dml::BuildSqlError> {
-    let steps = rows
-        .iter()
-        .map(|cells| tablepro_core::dml::build_insert(dialect, table, columns, cells).map(GuardedStatement::unguarded))
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(WriteBatch::new(
-        WriteKind::RowChanges,
-        table.clone(),
-        steps,
-        ForeignKeyMode::Enforced,
-    ))
 }
 
 /// Every row of the file as the cells to insert, or the first row that
@@ -294,7 +278,8 @@ fn import_rows(import: &CsvImport) -> Result<Vec<Vec<CellInput>>, String> {
 #[cfg(test)]
 mod tests {
     use tablepro_core::column::{ColumnDefault, ColumnKind, ColumnType, TextLength};
-    use tablepro_core::{LivenessPolicy, Value};
+    use tablepro_core::ddl::{ColumnAttributes, ColumnDefinition, IdentityStyle, TableDefinition};
+    use tablepro_core::{ColumnInfo, LivenessPolicy, Value};
     use tablepro_session::fakes::{FakeConnector, FakeCredentialSource};
     use tablepro_session::operation::DefaultDeadlines;
     use tablepro_session::{SessionDeps, SessionHealth};
@@ -302,7 +287,7 @@ mod tests {
 
     use super::*;
 
-    fn column(name: &str) -> ColumnInfo {
+    fn info(name: &str) -> ColumnInfo {
         let mut column_type = ColumnType::untyped_text("text");
         column_type.kind = ColumnKind::Text {
             length: TextLength::Unbounded,
@@ -317,6 +302,23 @@ mod tests {
             default: ColumnDefault::None,
             comment: None,
         }
+    }
+
+    fn column(name: &str) -> ImportColumn {
+        ImportColumn {
+            info: info(name),
+            server_filled: false,
+        }
+    }
+
+    fn definition(name: &str, identity: IdentityStyle) -> ColumnDefinition {
+        ColumnDefinition::new(
+            info(name),
+            ColumnAttributes {
+                identity,
+                ..ColumnAttributes::default()
+            },
+        )
     }
 
     fn session(script: ConnectionScript) -> (Arc<Session>, Arc<FakeConnection>) {
@@ -348,9 +350,18 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn csv_import_reads_columns_through_session() {
         let mut script = ConnectionScript::default();
-        script
-            .fetch_columns
-            .always(FakeReply::ok(vec![column("name"), column("city")]));
+        script.fetch_table_definition.always(FakeReply::ok(TableDefinition {
+            table: TableRef::unqualified("people"),
+            columns: vec![
+                definition("id", IdentityStyle::MssqlIdentity),
+                definition("name", IdentityStyle::None),
+            ],
+            primary_key: None,
+            indexes: Vec::new(),
+            foreign_keys: Vec::new(),
+            inbound_foreign_keys: Vec::new(),
+            source: None,
+        }));
         let (session, connection) = session(script);
 
         let columns = crate::test_support::paused_tasks()
@@ -359,8 +370,12 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(columns.len(), 2);
-        assert_eq!(CallCounters::get(&connection.counters().fetch_columns), 1);
+        assert_eq!(
+            columns.iter().map(|column| column.server_filled).collect::<Vec<_>>(),
+            vec![true, false],
+            "an identity that refuses a value was offered to the file"
+        );
+        assert_eq!(CallCounters::get(&connection.counters().fetch_table_definition), 1);
         assert_eq!(*session.health().borrow(), SessionHealth::Online);
     }
 
@@ -387,7 +402,7 @@ mod tests {
     #[test]
     fn a_bad_row_names_its_line_in_the_file() {
         let mut bad = import("name,city\nAda,London\n");
-        bad.columns[1].column_type.kind = ColumnKind::Integer(tablepro_core::column::IntegerKind {
+        bad.columns[1].info.column_type.kind = ColumnKind::Integer(tablepro_core::column::IntegerKind {
             width: tablepro_core::column::IntegerWidth::W32,
             signed: true,
         });

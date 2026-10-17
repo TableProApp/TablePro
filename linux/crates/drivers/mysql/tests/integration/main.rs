@@ -7,6 +7,7 @@
 )]
 
 mod conformance_engine;
+mod csv_import;
 mod ddl;
 mod decode;
 mod editor_session;

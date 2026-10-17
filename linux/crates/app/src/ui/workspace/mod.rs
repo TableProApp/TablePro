@@ -401,7 +401,7 @@ pub(crate) enum WorkspaceInput {
     ImportCsvReady {
         schema: Option<String>,
         table: String,
-        columns: Vec<tablepro_core::ColumnInfo>,
+        columns: Vec<tablepro_core::import::ImportColumn>,
         bytes: Vec<u8>,
     },
     ImportCsvRun(Box<super::import_dialog::CsvImport>),

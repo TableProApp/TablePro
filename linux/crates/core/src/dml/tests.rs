@@ -189,10 +189,9 @@ fn build_key_probe_stops_at_two_rows() {
 }
 
 #[test]
-fn build_insert_omits_default_cells_and_generated_columns() {
+fn build_insert_omits_generated_columns() {
     let dialect = TestDialect::exact();
     let mut columns = columns();
-    columns[0].is_auto_increment = true;
     columns[2].is_generated = true;
 
     let statement = build_insert(
@@ -209,10 +208,48 @@ fn build_insert_omits_default_cells_and_generated_columns() {
 
     assert_eq!(
         statement.sql(),
-        r#"INSERT INTO "public"."users" ("name") VALUES ($1)"#,
-        "a column the server owns was written"
+        r#"INSERT INTO "public"."users" ("id", "name") VALUES ($1, $2)"#,
+        "a generated column was written"
     );
-    assert_eq!(statement.params().len(), 1);
+    assert_eq!(statement.params().len(), 2);
+}
+
+#[test]
+fn build_insert_writes_the_value_given_for_an_auto_increment_column() {
+    let dialect = TestDialect::exact();
+    let mut columns = columns();
+    columns[0].is_auto_increment = true;
+
+    let given = build_insert(
+        &dialect,
+        &table(),
+        &columns,
+        &[
+            CellInput::Value(Value::Int(100)),
+            CellInput::Value(Value::Text("a".to_owned())),
+            CellInput::Default,
+        ],
+    )
+    .expect("the insert");
+    let left = build_insert(
+        &dialect,
+        &table(),
+        &columns,
+        &[
+            CellInput::Default,
+            CellInput::Value(Value::Text("a".to_owned())),
+            CellInput::Default,
+        ],
+    )
+    .expect("the insert");
+
+    assert_eq!(
+        given.sql(),
+        r#"INSERT INTO "public"."users" ("id", "name") VALUES ($1, $2)"#,
+        "the id the row was given was dropped"
+    );
+    assert_eq!(given.params()[0].value(), &Value::Int(100));
+    assert_eq!(left.sql(), r#"INSERT INTO "public"."users" ("name") VALUES ($1)"#);
 }
 
 #[test]

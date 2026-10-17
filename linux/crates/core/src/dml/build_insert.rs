@@ -6,11 +6,14 @@ use crate::statement::{Statement, StatementBuilder};
 
 use super::BuildSqlError;
 
-/// The INSERT for a draft row.
+/// The INSERT for one row.
 ///
-/// A cell the user left alone is left out of the statement, so the
-/// server applies its own default. A generated or auto-increment
-/// column is never written, because the server owns its value.
+/// A `Default` cell is left out of the statement, so the server applies
+/// its own default or next number. A generated column is never written,
+/// because the server computes it. Every other value is written, an
+/// auto-increment column's included: a value given for one is a key the
+/// caller means to keep, and the caller leaves out the identities an
+/// engine refuses a value for.
 pub fn build_insert(
     dialect: &dyn SqlDialect,
     table: &TableRef,
@@ -32,7 +35,7 @@ pub fn build_insert(
         let Some(value) = cell.value() else {
             continue;
         };
-        if column.is_generated || column.is_auto_increment {
+        if column.is_generated {
             continue;
         }
         markers.push(builder.bind(dialect, value.clone(), BindTarget::Column(column))?);

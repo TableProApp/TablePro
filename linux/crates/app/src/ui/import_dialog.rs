@@ -5,9 +5,8 @@ use relm4::adw::prelude::*;
 use relm4::prelude::*;
 use relm4::{adw, gtk};
 
-use tablepro_core::ColumnInfo;
 use tablepro_core::export::CsvDelimiter;
-use tablepro_core::import::{CsvImportOptions, CsvSheet, MAX_PREVIEW_ROWS, read_csv, suggest_mapping};
+use tablepro_core::import::{CsvImportOptions, CsvSheet, ImportColumn, MAX_PREVIEW_ROWS, read_csv, suggest_mapping};
 
 use crate::runtime::DeliverInput;
 
@@ -28,7 +27,7 @@ pub struct ImportCsvDialog {
     schema: Option<String>,
     table: String,
     bytes: Vec<u8>,
-    columns: Vec<ColumnInfo>,
+    columns: Vec<ImportColumn>,
     sheet: CsvSheet,
     options: CsvImportOptions,
     /// One row per table column, in column order. The selected index is
@@ -45,7 +44,7 @@ pub struct ImportCsvDialog {
 pub struct ImportCsvDialogInit {
     pub schema: Option<String>,
     pub table: String,
-    pub columns: Vec<ColumnInfo>,
+    pub columns: Vec<ImportColumn>,
     pub bytes: Vec<u8>,
 }
 
@@ -68,9 +67,9 @@ pub enum ImportCsvDialogInput {
 pub struct CsvImport {
     pub schema: Option<String>,
     pub table: String,
-    pub columns: Vec<ColumnInfo>,
+    pub columns: Vec<ImportColumn>,
     /// One entry per table column: the CSV field it takes, or `None`
-    /// for a column the user set to Skip.
+    /// for a column the user set to Skip or the server fills.
     pub mapping: Vec<Option<usize>>,
     pub options: CsvImportOptions,
     pub bytes: Vec<u8>,
@@ -266,8 +265,9 @@ impl ImportCsvDialog {
 
         for (column, field) in self.columns.iter().zip(&suggested) {
             let row = adw::ComboRow::builder()
-                .title(glib::markup_escape_text(&column.name))
+                .title(glib::markup_escape_text(&column.info.name))
                 .model(&gtk::StringList::new(&choice_refs))
+                .sensitive(!column.server_filled)
                 .build();
             row.set_selected(field.map_or(0, |index| index as u32 + 1));
             let sender = sender.clone();
@@ -280,8 +280,10 @@ impl ImportCsvDialog {
 
     /// Show what the mapped field actually holds, under each column.
     fn show_samples(&self) {
-        for (row, field) in self.mapping_rows.borrow().iter().zip(self.mapping()) {
+        let rows = self.mapping_rows.borrow();
+        for ((row, field), column) in rows.iter().zip(self.mapping()).zip(&self.columns) {
             row.set_subtitle(&match field {
+                _ if column.server_filled => crate::i18n::gettext("The database fills this column"),
                 Some(index) => sample_text(&self.sheet, index, &self.options),
                 None => crate::i18n::gettext("Uses the column's own default"),
             });
@@ -315,7 +317,9 @@ impl ImportCsvDialog {
         self.mapping_rows
             .borrow()
             .iter()
-            .map(|row| match row.selected() {
+            .zip(&self.columns)
+            .map(|(row, column)| match row.selected() {
+                _ if column.server_filled => None,
                 0 => None,
                 index => Some(index as usize - 1),
             })
@@ -400,20 +404,24 @@ mod tests {
 #[cfg(test)]
 mod dialog_tests {
     use super::*;
+    use tablepro_core::ColumnInfo;
     use tablepro_core::column::{ColumnDefault, ColumnType};
 
     /// The dialog only reads a column's name: the type decides what a
     /// value parses into, which happens after the dialog is gone.
-    fn column(name: &str) -> ColumnInfo {
-        ColumnInfo {
-            name: name.to_owned(),
-            column_type: ColumnType::unknown(),
-            nullable: true,
-            primary_key: false,
-            is_auto_increment: false,
-            is_generated: false,
-            default: ColumnDefault::None,
-            comment: None,
+    fn column(name: &str) -> ImportColumn {
+        ImportColumn {
+            info: ColumnInfo {
+                name: name.to_owned(),
+                column_type: ColumnType::unknown(),
+                nullable: true,
+                primary_key: false,
+                is_auto_increment: false,
+                is_generated: false,
+                default: ColumnDefault::None,
+                comment: None,
+            },
+            server_filled: false,
         }
     }
 
@@ -467,6 +475,31 @@ mod dialog_tests {
         // "Column 1" and "Column 2" match no table column, so every row
         // falls back to Skip and the header line reads as data.
         assert_eq!(dialog.model().mapping(), vec![None, None, None]);
+    }
+
+    #[gtk4::test]
+    fn a_column_the_server_fills_cannot_take_a_field() {
+        let mut id = column("id");
+        id.server_filled = true;
+        let dialog = ImportCsvDialog::builder().launch(ImportCsvDialogInit {
+            schema: None,
+            table: "people".to_owned(),
+            columns: vec![id, column("name")],
+            bytes: b"id,name\n1,ada\n".to_vec(),
+        });
+        crate::test_support::drain_main_context();
+
+        let rows = dialog.model().mapping_rows.borrow().clone();
+
+        assert_eq!(dialog.model().mapping(), vec![None, Some(1)]);
+        assert!(
+            !rows[0].is_sensitive(),
+            "a field could be picked for a column the server fills"
+        );
+        assert_eq!(
+            rows[0].subtitle().unwrap_or_default().as_str(),
+            "The database fills this column"
+        );
     }
 
     #[gtk4::test]
