@@ -1,5 +1,5 @@
 pub fn skip_span(rest: &str, driver_id: &str) -> Option<usize> {
-    if rest.starts_with("--") {
+    if rest.starts_with("--") && (driver_id != "mysql" || rest[2..].chars().next().is_none_or(char::is_whitespace)) {
         return Some(rest.find('\n').map_or(rest.len(), |offset| offset + 1));
     }
     if rest.starts_with("/*") {
@@ -328,6 +328,22 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(10));
         }
+    }
+
+    #[test]
+    fn a_mysql_double_dash_needs_whitespace_to_start_a_comment() {
+        assert_eq!(
+            split_statements("SELECT 5--2; SELECT 1", "mysql"),
+            ["SELECT 5--2", "SELECT 1"]
+        );
+        assert_eq!(skip_span("--2; SELECT 1", "mysql"), None);
+        assert_eq!(skip_span("-- note\nSELECT 1", "mysql"), Some(8));
+        assert_eq!(skip_span("--\tnote", "mysql"), Some(7));
+        assert_eq!(skip_span("--", "mysql"), Some(2));
+        assert_eq!(
+            split_statements("SELECT 5--2; SELECT 1", "postgres"),
+            ["SELECT 5--2; SELECT 1"]
+        );
     }
 
     #[test]
