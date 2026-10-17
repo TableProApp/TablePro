@@ -136,10 +136,10 @@ fn toggle_opens_onto_the_sql_field_and_closes_again() {
     assert!(!strip.imp().revealer.reveals_child());
 }
 
-/// Closing the strip gives the focus back to where it came from, before
-/// GTK moves it to the window's first control.
+/// Ctrl+F on an open strip takes the focus into it rather than closing
+/// it, and closing gives the focus back to where it came from.
 #[gtk4::test]
-fn close_gives_the_focus_back() {
+fn ctrl_f_focuses_an_open_strip_and_close_gives_the_focus_back() {
     let strip = strip_with(vec![rule("a")]);
     let outside = gtk::Button::with_label("Rows");
     let column = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -149,8 +149,12 @@ fn close_gives_the_focus_back() {
     let focus = || gtk::prelude::GtkWindowExt::focus(&*window);
     assert!(outside.grab_focus());
 
-    strip.toggle();
+    strip.open();
     assert!(strip.revealed());
+    assert!(crate::ui::a11y::holds_focus(&strip));
+    assert!(outside.grab_focus());
+    strip.open();
+    assert!(strip.revealed(), "Ctrl+F closed the open strip");
     assert!(crate::ui::a11y::holds_focus(&strip));
 
     strip.activate_action("filter.close", None).expect("filter.close");

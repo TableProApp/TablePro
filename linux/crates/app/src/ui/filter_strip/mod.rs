@@ -46,8 +46,7 @@ impl FilterStrip {
         strip
     }
 
-    /// Slide in, or out. Opening puts the cursor in the SQL field, the
-    /// strip's main input.
+    /// Slide in, or out, as the Filter button does.
     pub fn toggle(&self) {
         match self.revealed() {
             true => self.close(),
@@ -55,7 +54,13 @@ impl FilterStrip {
         }
     }
 
-    fn open(&self) {
+    /// Slide in with the cursor in the SQL field, the strip's main input,
+    /// or, already in, take the focus there, as Ctrl+F does in a search
+    /// bar that shows.
+    pub fn open(&self) {
+        if crate::ui::a11y::holds_focus(self) {
+            return;
+        }
         let focus = self.root().and_then(|root| root.focus());
         self.imp().focus_before.set(focus.as_ref());
         self.set_revealed(true);

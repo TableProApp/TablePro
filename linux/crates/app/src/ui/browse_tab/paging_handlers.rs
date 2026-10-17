@@ -12,6 +12,7 @@ impl BrowseModel {
             PagingInput::Refresh => self.reload(fx),
             PagingInput::RequestRefresh => fx.output(BrowseTabOutput::RefreshRequested),
             PagingInput::ToggleFilterStrip => self.filter_strip.toggle(),
+            PagingInput::ShowFilterStrip => self.filter_strip.open(),
             PagingInput::FilterApplied(set) => self.apply_filter(set, fx),
             PagingInput::FirstPage => self.turn_page(self.pager.first(), fx),
             PagingInput::PrevPage => self.turn_page(self.pager.prev(), fx),

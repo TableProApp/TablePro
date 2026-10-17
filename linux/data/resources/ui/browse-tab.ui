@@ -127,7 +127,7 @@
                    other use. -->
               <object class="GtkButton" id="filter_button">
                 <property name="tooltip-text" translatable="yes">Filter Rows</property>
-                <property name="action-name">browse.filter</property>
+                <property name="action-name">browse.toggle-filter</property>
                 <style>
                   <class name="flat"/>
                 </style>

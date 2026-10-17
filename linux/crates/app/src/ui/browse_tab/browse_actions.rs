@@ -56,7 +56,8 @@ pub(super) fn install_browse_actions(tab: &BrowseTab) -> BrowseActions {
         group.add_action(&action);
         action
     };
-    add("filter", || PagingInput::ToggleFilterStrip.into());
+    add("filter", || PagingInput::ShowFilterStrip.into());
+    add("toggle-filter", || PagingInput::ToggleFilterStrip.into());
     add("refresh", || PagingInput::RequestRefresh.into());
     add("paste-rows", || ClipboardInput::PasteNotSupported.into());
     let previous = add("previous-page", || PagingInput::PrevPage.into());
