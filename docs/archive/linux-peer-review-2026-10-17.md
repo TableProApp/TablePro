@@ -16,6 +16,20 @@ GitHub compare results show two BookiE commits after `834e5b63e`: a documentatio
 
 ## New findings
 
+### Duplicate result-column names must preserve column position during export
+
+Beekeeper Studio [#4818](https://github.com/beekeeper-studio/beekeeper-studio/issues/4818) reported that TSV/Excel, JSON and Markdown clipboard exports kept only the last value when a query returned duplicate labels such as `SELECT 1 num, 2 num, 3 num`. The issue records a fix commit on October 1. This is a projection-result case, not a table-schema case: SQL expressions can legally share labels even when stored table columns cannot.
+
+BookiE's CSV and TSV renderers walk each row by position, and JSON export creates distinct field names for repeated labels ([`json_field_names`](../../crates/core/src/export/json.rs)). The inspected implementation therefore does not show the same map-key overwrite path. Add one shared export regression matrix with duplicate labels for CSV, TSV, JSON and Markdown, asserting that every value survives in order. This is a regression-hardening candidate, not a confirmed BookiE bug; do not change output naming policy without a separate compatibility decision.
+
+Source: [Beekeeper Studio #4818](https://github.com/beekeeper-studio/beekeeper-studio/issues/4818), [BookiE JSON field naming](../../crates/core/src/export/json.rs), [BookiE CSV rendering](../../crates/core/src/export/csv.rs), [BookiE TSV rendering](../../crates/core/src/export/csv.rs).
+
+### Package installation failures need package-specific acceptance
+
+DBeaver [#42129](https://github.com/dbeaver/dbeaver/issues/42129) reported a Community `.deb` startup crash on Ubuntu 26.04.1 while the tarball worked; the reporter confirmed that 26.2.2 fixed it on Debian 13/KDE/Wayland. The public issue establishes the packaging-path difference and the follow-up fix, but does not identify a root cause in its comments. Treat this as a release-process lesson: test the exact installed artifact on the target desktop and keep package, distro, display-server and app-start evidence together. BookiE's installed GTK and distro-floor gates already provide that structure; this report does not establish a missing BookiE check.
+
+Source: [DBeaver #42129](https://github.com/dbeaver/dbeaver/issues/42129).
+
 ### Preserve useful connection diagnostics without leaking secrets
 
 dbx [#12502](https://github.com/t8y2/dbx/pull/12502), related to [#12282](https://github.com/t8y2/dbx/issues/12282), reproduces a PostgreSQL socket reset after Bind/Execute using a local TCP proxy. The driver error's display text omitted the underlying OS I/O cause, so the PR logs the source chain. The test compares the diagnostic before and after the reset while a direct connection remains successful.
