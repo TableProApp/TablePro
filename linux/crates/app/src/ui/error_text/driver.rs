@@ -176,8 +176,12 @@ fn server_code_text(code: &ServerCode) -> String {
 }
 
 fn timeout_message(error: &DriverError) -> String {
-    let phase = match error {
-        DriverError::Timeout { phase, .. } | DriverError::Transport(TransportError::Timeout { phase }) => *phase,
+    let (phase, server_cancelled) = match error {
+        DriverError::Timeout {
+            phase,
+            server_cancelled,
+        } => (*phase, *server_cancelled),
+        DriverError::Transport(TransportError::Timeout { phase }) => (*phase, false),
         other => return detail_sentence(crate::i18n::gettext("The server took too long to answer."), other),
     };
     match phase {
@@ -190,8 +194,11 @@ fn timeout_message(error: &DriverError) -> String {
         TimeoutPhase::LockWait => {
             crate::i18n::gettext("Another session holds a lock this needs. Try again when it has finished.")
         }
-        TimeoutPhase::Statement => {
+        TimeoutPhase::Statement if server_cancelled => {
             crate::i18n::gettext("The statement ran past its time limit, so the server stopped it.")
+        }
+        TimeoutPhase::Statement => {
+            crate::i18n::gettext("The statement ran past its time limit. The server may still be running it.")
         }
         TimeoutPhase::Probe => crate::i18n::gettext("The server did not answer a check in time."),
     }

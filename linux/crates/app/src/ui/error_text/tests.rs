@@ -228,6 +228,20 @@ fn timeout_phase_login_vs_statement_differ() {
 }
 
 #[test]
+fn a_timeout_says_the_server_stopped_only_when_it_confirmed() {
+    let message = |server_cancelled| {
+        driver_message(&DriverError::Timeout {
+            phase: TimeoutPhase::Statement,
+            server_cancelled,
+        })
+    };
+
+    assert!(message(true).contains("the server stopped it"), "{}", message(true));
+    assert!(!message(false).contains("stopped it"), "{}", message(false));
+    assert!(message(false).contains("may still be running"), "{}", message(false));
+}
+
+#[test]
 fn partially_applied_and_commit_unknown_never_claim_rollback() {
     let lost = Box::new(DriverError::ConnectionLost {
         during: LossPhase::Commit,
