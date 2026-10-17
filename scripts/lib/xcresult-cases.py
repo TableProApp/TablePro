@@ -4,8 +4,8 @@
 Usage:
   xcresult-cases.py tally [--filters <file>] <input>...
       verify.sh's notes, then "<executed> <failed> <filters that ran nothing> <runner failures>"
-  xcresult-cases.py errors <bundle.xcresult>
-      build errors as "<file>:<line>: <message>"
+  xcresult-cases.py errors [--limit <n>] <bundle.xcresult>
+      the first n build errors as "<file>:<line>: <message>"
   xcresult-cases.py summary <input>...
       the CI step summary; exits 1 when a bundle or a swift test run executed no test,
       which xcodebuild and swift test both call success
@@ -21,6 +21,7 @@ import sys
 import urllib.parse
 import xml.etree.ElementTree as ET
 from collections import Counter, namedtuple
+from itertools import islice
 from pathlib import Path
 
 Case = namedtuple("Case", "target suite name label result retried seconds message")
@@ -252,10 +253,15 @@ def main(arguments):
             filters, rest = read_filters(rest[1]), rest[2:]
         print("\n".join(tally([case for argument in rest for case in cases_of(argument)], filters)))
         return 0
-    if command == "errors" and len(rest) == 1:
-        for where, message in build_errors(xcresulttool(Path(rest[0]), "build-results")):
-            print(f"{Path(where).name}: {message}" if where else message)
-        return 0
+    if command == "errors":
+        limit = None
+        if rest[:1] == ["--limit"] and len(rest) > 1 and rest[1].isdigit():
+            limit, rest = int(rest[1]), rest[2:]
+        if len(rest) == 1:
+            errors = islice(build_errors(xcresulttool(Path(rest[0]), "build-results")), limit)
+            for where, message in errors:
+                print(f"{Path(where).name}: {message}" if where else message)
+            return 0
     if command == "summary":
         destination = os.environ.get("GITHUB_STEP_SUMMARY")
         if not destination:

@@ -223,7 +223,7 @@ apply_tally() {
 # Build errors with their file and line, which the result bundle keeps even when the log interleaves them.
 report_build_errors() {
     local errors
-    errors="$(python3 "$XCRESULT_CASES" errors "$1" | head -12)"
+    errors="$(python3 "$XCRESULT_CASES" errors --limit 12 "$1")"
     [ -n "$errors" ] || return 1
     note "errors:"
     note "$(sed 's/^/  /' <<< "$errors")"

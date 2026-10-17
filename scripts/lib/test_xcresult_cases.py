@@ -175,6 +175,34 @@ class BuildErrorTests(unittest.TestCase):
         self.assertEqual(list(parser.build_errors(None)), [])
 
 
+class ErrorsCommandTests(unittest.TestCase):
+    def setUp(self):
+        self.original = parser.xcresulttool
+        parser.xcresulttool = lambda bundle, *arguments: BROKEN_BUILD if arguments == ("build-results",) else None
+
+    def tearDown(self):
+        parser.xcresulttool = self.original
+
+    def errors(self, *arguments):
+        with redirect_stdout(io.StringIO()) as out:
+            code = parser.main(["errors", *arguments])
+        return code, out.getvalue().splitlines()
+
+    def test_prints_file_name_line_and_message(self):
+        self.assertEqual(self.errors("Build.xcresult"), (0, [
+            "Broken.swift:4: Cannot convert value of type 'String' to specified type 'Int'",
+            "Linker command failed with exit code 1",
+        ]))
+
+    def test_limit_stops_after_n_errors(self):
+        self.assertEqual(self.errors("--limit", "1", "Build.xcresult"),
+                         (0, ["Broken.swift:4: Cannot convert value of type 'String' to specified type 'Int'"]))
+
+    def test_a_bad_limit_is_a_usage_error(self):
+        with redirect_stderr(io.StringIO()):
+            self.assertEqual(self.errors("--limit", "x", "Build.xcresult")[0], 2)
+
+
 class XunitTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
