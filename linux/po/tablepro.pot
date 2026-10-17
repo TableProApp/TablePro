@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tablepro 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/TableProApp/TablePro/issues\n"
-"POT-Creation-Date: 2026-10-17 09:29+0000\n"
+"POT-Creation-Date: 2026-10-17 11:27+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -124,6 +124,7 @@ msgid "Delete Selected Rows"
 msgstr ""
 
 #: crates/app/src/ui/browse_tab/browse_actions.rs
+#: crates/app/src/ui/browse_tab/layout.rs
 msgid "Export Rows…"
 msgstr ""
 
@@ -171,7 +172,8 @@ msgstr[1] ""
 #: crates/app/src/ui/browse_tab/edit_handlers.rs
 #: crates/app/src/ui/credential_prompt/prompt_form.rs
 #: crates/app/src/ui/delete_connection_dialog.rs
-#: crates/app/src/ui/editor/mod.rs crates/app/src/ui/grid/multiline_editor.rs
+#: crates/app/src/ui/discard_alert.rs crates/app/src/ui/editor/mod.rs
+#: crates/app/src/ui/grid/multiline_editor.rs
 #: crates/app/src/ui/history_dialog/mod.rs crates/app/src/ui/host_key_review.rs
 #: crates/app/src/ui/picker/new_group_dialog.rs
 #: crates/app/src/ui/preferences_dialog/history_group.rs
@@ -198,9 +200,32 @@ msgid ""
 "them again."
 msgstr ""
 
+#: crates/app/src/ui/browse_tab/layout.rs
+#: crates/app/src/ui/browse_tab/paging_handlers.rs
+#: data/resources/shortcuts-dialog.ui data/resources/ui/browse-tab.ui
+msgid "Filter Rows"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/layout.rs
+#: crates/app/src/ui/browse_tab/pager_bar.rs data/resources/ui/pager-bar.ui
+msgid "Count Rows"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/layout.rs
+msgid "Rows per Page"
+msgstr ""
+
 #: crates/app/src/ui/browse_tab/mod.rs
 #, rust-format
 msgid "Fetching rows from {table}"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/page_label.rs
+msgid "No rows"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/page_label.rs
+msgid "No rows match the filter"
 msgstr ""
 
 #: crates/app/src/ui/browse_tab/page_label.rs
@@ -224,10 +249,6 @@ msgstr ""
 msgid "Try Again"
 msgstr ""
 
-#: crates/app/src/ui/browse_tab/pager_bar.rs data/resources/ui/pager-bar.ui
-msgid "Count Rows"
-msgstr ""
-
 #: crates/app/src/ui/browse_tab/pager_bar.rs
 msgid "First Page"
 msgstr ""
@@ -238,11 +259,6 @@ msgstr ""
 
 #: crates/app/src/ui/browse_tab/pager_bar.rs data/resources/shortcuts-dialog.ui
 msgid "Next Page"
-msgstr ""
-
-#: crates/app/src/ui/browse_tab/paging_handlers.rs
-#: data/resources/shortcuts-dialog.ui data/resources/ui/browse-tab.ui
-msgid "Filter Rows"
 msgstr ""
 
 #: crates/app/src/ui/browse_tab/paging_handlers.rs
@@ -257,6 +273,7 @@ msgid "1 unsaved change"
 msgstr ""
 
 #: crates/app/src/ui/browse_tab/pending_changes_bar.rs
+#: crates/app/src/ui/structure_tab/save_handlers.rs
 #, rust-format
 msgid "{n} unsaved change"
 msgid_plural "{n} unsaved changes"
@@ -689,6 +706,25 @@ msgstr ""
 
 #: crates/app/src/ui/delete_connection_dialog.rs
 msgid "Show Window"
+msgstr ""
+
+#: crates/app/src/ui/discard_alert.rs
+#, rust-format
+msgid ""
+"{n} unsaved change on this tab will be lost, and Undo cannot bring it back."
+msgid_plural ""
+"{n} unsaved changes on this tab will be lost, and Undo cannot bring them "
+"back."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/discard_alert.rs
+msgid "Discard Changes?"
+msgstr ""
+
+#: crates/app/src/ui/discard_alert.rs data/resources/ui/pending-changes-bar.ui
+#: data/resources/ui/structure-tab.ui
+msgid "Discard"
 msgstr ""
 
 #: crates/app/src/ui/editor/completion/sql_completion_provider_imp.rs
@@ -3511,13 +3547,6 @@ msgstr ""
 msgid "Wait for the save to finish, then make the change again."
 msgstr ""
 
-#: crates/app/src/ui/structure_tab/save_handlers.rs
-#, rust-format
-msgid "{n} pending change"
-msgid_plural "{n} pending changes"
-msgstr[0] ""
-msgstr[1] ""
-
 #: crates/app/src/ui/structure_tab/sql_preview.rs
 msgid "-- Connect to a database to see the SQL."
 msgstr ""
@@ -4286,7 +4315,7 @@ msgid "Verify TLS, keep connections read-only, and reconnect on drop"
 msgstr ""
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
-msgid "Export results to CSV, TSV, JSON and SQL"
+msgid "Export results to CSV, JSON, SQL, Excel, Markdown, HTML and XML"
 msgstr ""
 
 #: data/app.tablepro.TablePro.metainfo.xml.in.in
@@ -4572,6 +4601,10 @@ msgstr ""
 msgid "Couldn't Load Rows"
 msgstr ""
 
+#: data/resources/ui/browse-tab.ui data/resources/ui/history-dialog.ui
+msgid "More Actions"
+msgstr ""
+
 #: data/resources/ui/browse-tab.ui
 msgid "Filter"
 msgstr ""
@@ -4699,10 +4732,6 @@ msgid "Select Queries"
 msgstr ""
 
 #: data/resources/ui/history-dialog.ui
-msgid "More Actions"
-msgstr ""
-
-#: data/resources/ui/history-dialog.ui
 msgid "Search"
 msgstr ""
 
@@ -4745,10 +4774,6 @@ msgstr ""
 
 #: data/resources/ui/pending-changes-bar.ui
 msgid "Save Changes"
-msgstr ""
-
-#: data/resources/ui/pending-changes-bar.ui data/resources/ui/structure-tab.ui
-msgid "Discard"
 msgstr ""
 
 #: data/resources/ui/pending-changes-bar.ui
