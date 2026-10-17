@@ -121,6 +121,7 @@ fn encode_text(error: &EncodeError) -> String {
 
 fn document_text(error: &RenderError) -> String {
     match error {
+        RenderError::Encode(error) => encode_text(error),
         RenderError::TooManyRows { got, limit } => gettext_f(
             "An Excel sheet holds {limit} rows, and this result has {got}.",
             &[
@@ -282,6 +283,26 @@ mod tests {
         assert_eq!(
             text,
             "An Excel sheet holds 100 rows, and this result has more. Export it as CSV instead."
+        );
+    }
+
+    fn document(error: RenderError) -> String {
+        failure_text(
+            &ExportFailure::Stream(ExportStreamFailure::Document(error)),
+            None,
+            "rows.xlsx",
+        )
+    }
+
+    #[test]
+    fn a_sheet_names_the_column_it_could_not_read() {
+        let unreadable = document(RenderError::Encode(EncodeError::Undecodable {
+            column: "body".to_owned(),
+        }));
+
+        assert_eq!(
+            unreadable,
+            "The column “body” holds a value TablePro couldn't read, so it can't be written to the file."
         );
     }
 

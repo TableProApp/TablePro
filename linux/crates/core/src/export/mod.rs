@@ -57,6 +57,11 @@ pub enum RenderError {
 
     #[error("a sheet holds {limit} columns, and this result has {got}")]
     TooManyColumns { got: usize, limit: usize },
+
+    /// A value the file cannot carry, refused as every row encoder
+    /// refuses it.
+    #[error(transparent)]
+    Encode(#[from] EncodeError),
 }
 
 /// The text of one cell, at the precision its column declares.

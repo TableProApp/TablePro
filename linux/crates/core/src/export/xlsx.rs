@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use rust_xlsxwriter::{Format, Workbook, Worksheet};
 
-use super::{RenderError, cell_text};
+use super::encoder::column_name;
+use super::{EncodeError, RenderError, cell_text};
 use crate::column::ResultColumn;
 use crate::value::{Temporal, Value};
 
@@ -133,6 +134,12 @@ fn write_cell(
         // A blank cell, not an empty string: Excel's COUNT and AVERAGE
         // read the two differently, and NULL is the absent one.
         Value::Null => Ok(()),
+        // Left blank, it would read as a NULL the table does not hold.
+        Value::Undecodable(_) => {
+            return Err(RenderError::Encode(EncodeError::Undecodable {
+                column: column_name(columns, usize::from(column)),
+            }));
+        }
         Value::Bool(flag) => sheet.write_boolean(row, column, *flag).map(drop),
         Value::Date(Temporal::Finite(day)) => sheet.write_datetime_with_format(row, column, day, date).map(drop),
         Value::Timestamp(Temporal::Finite(at)) => {
@@ -384,6 +391,23 @@ mod tests {
 
         assert!(
             matches!(refused, Err(RenderError::TooManyRows { got, .. }) if got == XLSX_MAX_DATA_ROWS + 1),
+            "{refused:?}"
+        );
+    }
+
+    fn undecodable() -> Value {
+        Value::Undecodable(Box::new(crate::value::UndecodedValue {
+            type_name: "text".to_owned(),
+            reason: crate::value::UndecodableReason::InvalidEncoding,
+        }))
+    }
+
+    #[test]
+    fn an_unreadable_value_is_refused_rather_than_written_as_a_blank() {
+        let refused = render_xlsx(&cols(&["id", "body"]), &[vec![Value::Int(1), undecodable()]], "Results");
+
+        assert!(
+            matches!(&refused, Err(RenderError::Encode(EncodeError::Undecodable { column })) if column == "body"),
             "{refused:?}"
         );
     }
