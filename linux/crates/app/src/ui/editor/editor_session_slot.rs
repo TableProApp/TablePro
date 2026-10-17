@@ -13,9 +13,9 @@ use tokio_util::sync::CancellationToken;
 ///
 /// A session whose connection went with a transaction open is never
 /// replaced on the same run: the next statement would commit on its
-/// own, outside the transaction the user thinks is still open. That run
-/// is refused with the reason, and only the one after it opens a new
-/// session.
+/// own, outside the transaction the user thinks is still open. Unless
+/// the run that lost it already said so, that run is refused with the
+/// reason, and only the one after it opens a new session.
 #[derive(Default)]
 pub struct EditorSessionSlot {
     state: Mutex<SlotState>,
@@ -172,16 +172,16 @@ impl EditorSessionSlot {
         Ok(())
     }
 
-    /// Let go of a session whose connection went during a run that left
-    /// the transaction at `transaction`, as far as is known. The next run
-    /// opens a new session, or, when a transaction was open, is refused
-    /// first. Returns whether this slot held it.
-    pub fn forget(&self, editor: &Arc<dyn EditorSession>, transaction: Option<TransactionState>) -> bool {
+    /// Let go of a session whose connection went during a run. The next
+    /// run opens a new session, or with `refuse_next`, when a transaction
+    /// went with the connection unannounced, is refused first. Returns
+    /// whether this slot held it.
+    pub fn forget(&self, editor: &Arc<dyn EditorSession>, refuse_next: bool) -> bool {
         let mut state = lock(&self.state);
         let held = state.open.as_ref().is_some_and(|open| open.editor.id() == editor.id());
         if held {
             state.open = None;
-            state.rolled_back |= transaction_open(transaction);
+            state.rolled_back |= refuse_next;
         }
         held
     }
