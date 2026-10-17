@@ -36,10 +36,20 @@ impl WorkspaceModel {
             BannerButton::Retry => (crate::i18n::gettext("Retry"), "win.reconnect".to_owned()),
             BannerButton::ReviewKey => (crate::i18n::gettext("Review Key…"), format!("win.{REVIEW_HOST_KEY}")),
         };
+        let news = !self.reconnect_banner.is_revealed() || self.reconnect_banner.title() != title;
         self.reconnect_banner.set_title(&title);
         self.reconnect_banner.set_button_label(Some(&label));
         self.reconnect_banner.set_action_name(Some(&action));
         self.reconnect_banner.set_revealed(true);
+        // The focus stays in the grid or the editor, under a banner no
+        // screen reader reads by itself.
+        if news {
+            crate::ui::a11y::announce(
+                &self.reconnect_banner,
+                &title,
+                gtk4::AccessibleAnnouncementPriority::High,
+            );
+        }
     }
 
     /// The host key the session is parked on, read from the error that
@@ -437,6 +447,18 @@ mod tests {
             Some(format!("win.{REVIEW_HOST_KEY}").as_str())
         );
         assert!(review_enabled(&test));
+    }
+
+    #[gtk4::test]
+    fn the_banner_is_said_when_it_shows() {
+        let test = parked("BannerSaid", vec![asks("bastion", FINGERPRINT)], None);
+
+        let banner = wait_for_button(&test, "Review Key…");
+
+        assert_eq!(
+            crate::ui::a11y::announced_in(&banner).last(),
+            Some(&(banner.title().to_string(), gtk::AccessibleAnnouncementPriority::High))
+        );
     }
 
     #[gtk4::test]
