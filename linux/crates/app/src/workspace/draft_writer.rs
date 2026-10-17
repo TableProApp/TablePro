@@ -8,6 +8,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use tablepro_session::runtime::{LatestWinsWriter, Tasks};
 use tablepro_storage::{DraftId, DraftScope, DraftStore};
+use tokio::sync::watch;
 
 use super::PersistDebouncer;
 
@@ -27,6 +28,9 @@ pub struct DraftWriter {
     tasks: Tasks,
     slots: RefCell<HashMap<DraftId, Rc<Slot>>>,
     failures: Arc<Mutex<Vec<String>>>,
+    /// Whether the last write of a draft failed. A run of failures is
+    /// one change of it, so the user is told once.
+    failing: Arc<watch::Sender<bool>>,
 }
 
 struct Slot {
@@ -42,7 +46,13 @@ impl DraftWriter {
             tasks,
             slots: RefCell::new(HashMap::new()),
             failures: Arc::new(Mutex::new(Vec::new())),
+            failing: Arc::new(watch::channel(false).0),
         })
+    }
+
+    /// Whether drafts are failing to land, now and after every change.
+    pub fn failing(&self) -> watch::Receiver<bool> {
+        self.failing.subscribe()
     }
 
     /// Note that this tab's text changed. The first call for an id also
@@ -127,9 +137,11 @@ impl DraftWriter {
         }
         let store = self.store.clone();
         let scope_for_writes = scope.clone();
-        let failures = self.failures.clone();
+        let (failures, failing) = (self.failures.clone(), self.failing.clone());
         let writer = LatestWinsWriter::spawn(&self.tasks, move |text: &String| {
-            if let Err(error) = store.write_blocking(&scope_for_writes, id, text) {
+            let written = store.write_blocking(&scope_for_writes, id, text);
+            failing.send_if_modified(|failing| std::mem::replace(failing, written.is_err()) != written.is_err());
+            if let Err(error) = written {
                 record(&failures, &error);
             }
         });
@@ -253,6 +265,39 @@ mod tests {
 
         assert!(failures.is_empty(), "{failures:?}");
         assert_eq!(fixture.read(id).as_deref(), Some("SELECT 1"));
+    }
+
+    #[gtk4::test]
+    fn a_run_of_failed_writes_is_one_change_and_a_write_that_lands_ends_it() {
+        let runtime = test_runtime();
+        let root = tempfile::tempdir().expect("tempdir");
+        // A file where the drafts folder goes, so no draft can be written.
+        let blocked = root.path().join("drafts");
+        std::fs::write(&blocked, b"not a folder").expect("seed");
+        let writer = DraftWriter::new(DraftStore::new(blocked.clone()), runtime.tasks());
+        let scope = DraftScope::new("workspace_state").expect("a scope");
+        let mut failing = writer.failing();
+        assert!(!*failing.borrow_and_update());
+        let buffer = gtk4::TextBuffer::new(None);
+        let write = |text: &str| {
+            buffer.set_text(text);
+            writer.schedule(&scope, DraftId::new(), &buffer);
+            let flushing = writer.flush_all();
+            crate::test_support::finish_on_main(WAIT, flushing).expect("the flush to end")
+        };
+
+        assert!(!write("SELECT 1").is_empty(), "the write landed");
+        assert!(failing.has_changed().expect("the writer is there"));
+        assert!(*failing.borrow_and_update());
+        assert!(!write("SELECT 2").is_empty());
+        assert!(
+            !failing.has_changed().expect("the writer is there"),
+            "a second failure in the run changed it again"
+        );
+
+        std::fs::remove_file(&blocked).expect("unblock");
+        assert!(write("SELECT 3").is_empty(), "the write failed");
+        assert!(!*failing.borrow_and_update());
     }
 
     #[gtk4::test]

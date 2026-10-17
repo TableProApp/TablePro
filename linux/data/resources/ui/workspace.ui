@@ -140,6 +140,17 @@
                             <property name="action-name">win.reconnect</property>
                           </object>
                         </child>
+                        <child type="top">
+                          <!-- Until the unreadable file is moved aside, no tab
+                               of this session is saved, so it stays up. -->
+                          <object class="AdwBanner" id="layout_banner">
+                            <property name="use-markup">false</property>
+                            <property name="title" translatable="yes">Saved tabs could not be read, so the open tabs are not saved</property>
+                            <property name="button-label" translatable="yes">Reset</property>
+                            <property name="action-name">win.reset-workspace-layout</property>
+                            <property name="tooltip-text" translatable="yes">Moves the unreadable file aside, so the open tabs can be saved</property>
+                          </object>
+                        </child>
                         <property name="content">
                           <object class="GtkStack" id="tab_stack">
                             <property name="transition-type">crossfade</property>

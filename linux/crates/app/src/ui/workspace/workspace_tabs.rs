@@ -66,7 +66,7 @@ impl WorkspaceModel {
             }
             WorkspaceLoad::Empty => self.retain_drafts(&key, std::iter::empty()),
             // Which drafts the file names is unknown, so none is deleted.
-            WorkspaceLoad::Blocked(_) => self.show_unreadable_workspace_toast(),
+            WorkspaceLoad::Blocked(_) => self.layout_banner.set_revealed(true),
         }
         if unreadable > 0 {
             let count = u32::try_from(unreadable).unwrap_or(u32::MAX);
@@ -130,16 +130,6 @@ impl WorkspaceModel {
         self.open_tab(spec)
     }
 
-    fn show_unreadable_workspace_toast(&self) {
-        let toast = adw::Toast::builder()
-            .title(crate::i18n::gettext("Saved tabs could not be read"))
-            .use_markup(false)
-            .button_label(crate::i18n::gettext("Reset"))
-            .action_name("win.reset-workspace-layout")
-            .build();
-        self.toast_overlay.add_toast(toast);
-    }
-
     /// Move the unreadable saved tabs aside, so the open ones can be
     /// saved in their place.
     pub(super) fn on_reset_workspace_layout(&self) {
@@ -157,11 +147,18 @@ impl WorkspaceModel {
                 if let Some(moved) = moved {
                     tracing::info!(moved = %moved.display(), "moved the unreadable saved tabs aside");
                 }
+                self.layout_banner.set_revealed(false);
                 self.persist_workspace_state();
             }
+            // The banner stays, so Reset can be tried again.
             Err(error) => {
                 tracing::warn!(%error, "could not move the saved tabs aside");
-                self.show_toast(&crate::i18n::gettext("Saved tabs could not be reset"));
+                self.show_error_alert(
+                    &crate::i18n::gettext("Could Not Reset Saved Tabs"),
+                    &crate::i18n::gettext(
+                        "The unreadable file could not be moved aside, so the open tabs are still not saved.",
+                    ),
+                );
             }
         }
     }
@@ -717,6 +714,29 @@ mod tests {
         wait_until(WAIT, || freed_page.upgrade().is_none()).expect("the closed page to be freed");
 
         assert!(editor.upgrade().is_none(), "the closed page's editor is still alive");
+    }
+
+    #[gtk4::test]
+    fn unreadable_saved_tabs_are_announced_until_reset() {
+        let test = TestWindow::picker("UnreadableSavedTabs");
+        let dir = test.services.storage.paths().workspaces_dir();
+        std::fs::create_dir_all(&dir).expect("the workspaces folder");
+        std::fs::write(
+            dir.join(crate::workspace::WorkspaceFileName::for_key(&test.key()).file_name()),
+            b"{ not json",
+        )
+        .expect("an unreadable file");
+
+        test.window
+            .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+        test.wait_for_page("workspace");
+        let banner = test.workspace().imp().layout_banner.get();
+        wait_until(WAIT, || banner.is_revealed()).expect("the banner says the tabs are not saved");
+        assert_eq!(banner.action_name().as_deref(), Some("win.reset-workspace-layout"));
+
+        WidgetExt::activate_action(&test.window, "win.reset-workspace-layout", None).expect("Reset");
+
+        wait_until(WAIT, || !banner.is_revealed()).expect("the banner goes once the file is moved aside");
     }
 
     #[gtk4::test]

@@ -124,6 +124,9 @@ pub(crate) struct WorkspaceModel {
     /// Says the sidebar's list could not be read again, until a read
     /// lands.
     catalog_banner: adw::Banner,
+    /// Says the saved tabs could not be read, until Reset moves them
+    /// aside.
+    layout_banner: adw::Banner,
     row_op_spinner: adw::Spinner,
     table_search: gtk::SearchEntry,
     /// Removes a changed host key from known_hosts. `None` without ssh.
@@ -167,6 +170,8 @@ pub(crate) struct WorkspaceModel {
     /// kept: the close has already cleared them.
     closed_tabs_stack: Rc<RefCell<VecDeque<ClosedTabDescriptor>>>,
     _watches: SessionWatches,
+    /// Tells the user once when editor drafts start failing to land.
+    _draft_failures: tablepro_session::runtime::WatchForwarder,
 }
 
 /// The workspace's own slot: a tab reads it for the session, and it
@@ -178,6 +183,23 @@ fn session_slot(window_context: &SessionContext, session: &Arc<Session>) -> Rc<S
     });
     context.active.replace(session.clone());
     context
+}
+
+/// Tells the user once each time editor drafts start failing to land.
+fn draft_failure_watch(
+    drafts: &crate::workspace::DraftWriter,
+    input: &WorkspaceSender,
+) -> tablepro_session::runtime::WatchForwarder {
+    let failing = input.clone();
+    tablepro_session::runtime::WatchForwarder::new(
+        drafts.failing(),
+        move |failed: bool| {
+            if failed {
+                failing.deliver(WorkspaceInput::DraftsNotSaved);
+            }
+        },
+        sidebar::spawn_local,
+    )
 }
 
 struct WorkspaceTabParts {
@@ -392,9 +414,11 @@ pub(crate) enum WorkspaceInput {
     /// The session's saved tabs and their editor text, read off the GTK
     /// thread.
     WorkspaceLoaded(workspace_tabs::LoadedWorkspace),
-    /// The toast's Reset: move the unreadable saved tabs aside.
+    /// The banner's Reset: move the unreadable saved tabs aside.
     ResetWorkspaceLayout,
     WorkspaceLayoutReset(Result<Option<std::path::PathBuf>, crate::workspace::WorkspaceSaveError>),
+    /// An editor draft failed to land after the last one did.
+    DraftsNotSaved,
     ShowHistory,
     ShowSavedQueries,
     SaveActiveQuery,
@@ -527,6 +551,7 @@ impl Workspace {
         actions.push(shell::SHOW_SIDEBAR);
         let history_gate = workspace_actions::spawn_history_gate(&window, history.availability());
         let watches = SessionWatches::new(&session, &input);
+        let draft_failures = draft_failure_watch(&drafts, &input);
 
         let driver_id = session.metadata().driver_id.clone();
         let driver_name = context
@@ -556,6 +581,7 @@ impl Workspace {
             toast_overlay: imp.toast_overlay.get(),
             reconnect_banner: imp.reconnect_banner.get(),
             catalog_banner: imp.catalog_banner.get(),
+            layout_banner: imp.layout_banner.get(),
             row_op_spinner: imp.row_op_spinner.get(),
             table_search: imp.table_search.get(),
             ssh: services.ssh(),
@@ -581,6 +607,7 @@ impl Workspace {
             workspace: persistence,
             closed_tabs_stack: Rc::new(RefCell::new(VecDeque::with_capacity(CLOSED_TABS_CAPACITY))),
             _watches: watches,
+            _draft_failures: draft_failures,
         };
         imp.model.replace(Some(model));
         workspace.register_close_blocker(exports);
@@ -963,6 +990,9 @@ impl WorkspaceModel {
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
             WorkspaceInput::WorkspaceLayoutReset(outcome) => self.on_workspace_layout_reset(outcome),
+            WorkspaceInput::DraftsNotSaved => self.show_toast(&crate::i18n::gettext(
+                "Editor text could not be saved to disk, so it may not come back after TablePro restarts.",
+            )),
             WorkspaceInput::ShowHistory => self.on_show_history(),
             WorkspaceInput::ShowSavedQueries => self.on_show_saved_queries(),
             WorkspaceInput::ImportCsvRequested { schema, table } => self.on_import_csv_requested(schema, table),
