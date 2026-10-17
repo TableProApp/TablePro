@@ -40,6 +40,7 @@ fn statements() -> Vec<(String, Vec<Value>)> {
 fn innermost(error: &DriverError) -> &DriverError {
     match error {
         DriverError::Transaction { source, .. }
+        | DriverError::PartiallyApplied { source, .. }
         | DriverError::TransactionRollbackFailed { source, .. }
         | DriverError::OperationOutcomeUnknown { source } => innermost(source),
         other => other,
@@ -61,6 +62,10 @@ fn nested_rollback_failed() -> DriverError {
     }
 }
 
+fn nested_partially_applied() -> DriverError {
+    DriverError::non_atomic_batch_failure(2, leak())
+}
+
 fn nested_unknown() -> DriverError {
     DriverError::OperationOutcomeUnknown {
         source: Box::new(DriverError::Transaction {
@@ -72,7 +77,13 @@ fn nested_unknown() -> DriverError {
 
 #[tokio::test]
 async fn an_agent_never_sees_driver_text_however_deeply_the_error_is_nested() {
-    for failure in [leak, nested_transaction, nested_rollback_failed, nested_unknown] {
+    for failure in [
+        leak,
+        nested_transaction,
+        nested_rollback_failed,
+        nested_partially_applied,
+        nested_unknown,
+    ] {
         let error = guard_for(agent(), failure)
             .execute_in_transaction(&statements())
             .await

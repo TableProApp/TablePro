@@ -79,6 +79,13 @@ impl PolicyGuard {
                 statement_index,
                 source: Box::new(self.sanitize_agent_error(*source)),
             },
+            DriverError::PartiallyApplied {
+                statement_index,
+                source,
+            } => DriverError::PartiallyApplied {
+                statement_index,
+                source: Box::new(self.sanitize_agent_error(*source)),
+            },
             DriverError::TransactionRollbackFailed {
                 statement_index,
                 source,

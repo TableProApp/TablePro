@@ -366,7 +366,7 @@ impl PolicyGuard {
     }
 }
 
-fn bulk_terminal(
+pub(super) fn bulk_terminal(
     end: BulkInsertEnd<'_>,
     committed: u64,
 ) -> (AuditTerminalStatus, AuditTransactionOutcome, Option<AuditErrorCategory>) {
@@ -376,6 +376,11 @@ fn bulk_terminal(
             AuditTerminalStatus::Cancelled,
             partial_transaction_outcome(committed),
             Some(AuditErrorCategory::Cancelled),
+        ),
+        BulkInsertEnd::Failed(error @ DriverError::PartiallyApplied { .. }) => (
+            controlled_error_terminal_status(error),
+            AuditTransactionOutcome::Failed,
+            Some(error_category(error)),
         ),
         BulkInsertEnd::Failed(error) => (
             controlled_error_terminal_status(error),

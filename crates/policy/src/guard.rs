@@ -965,7 +965,9 @@ fn transaction_error_outcome(error: &DriverError) -> (AuditTerminalStatus, Audit
     match error {
         DriverError::Cancelled => (AuditTerminalStatus::Cancelled, AuditTransactionOutcome::Pending, false),
         DriverError::TimedOut => (AuditTerminalStatus::TimedOut, AuditTransactionOutcome::Pending, false),
-        DriverError::Transaction { .. } => (AuditTerminalStatus::Failed, AuditTransactionOutcome::RolledBack, false),
+        DriverError::Transaction { source, .. } if !is_ambiguous_post_dispatch(source) => {
+            (AuditTerminalStatus::Failed, AuditTransactionOutcome::RolledBack, false)
+        }
         DriverError::PartiallyApplied { source, .. } if !is_ambiguous_post_dispatch(source) => {
             (AuditTerminalStatus::Failed, AuditTransactionOutcome::Failed, false)
         }
@@ -982,7 +984,7 @@ fn interactive_transaction_error_outcome(error: &DriverError) -> (AuditTerminalS
     }
 }
 
-fn is_ambiguous_post_dispatch(error: &DriverError) -> bool {
+pub fn is_ambiguous_post_dispatch(error: &DriverError) -> bool {
     match error {
         DriverError::ConnectionRefused
         | DriverError::Disconnected
