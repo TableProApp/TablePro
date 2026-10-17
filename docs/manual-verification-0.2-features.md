@@ -92,6 +92,9 @@ Right-click a table in the sidebar, then Import CSV. Separately, use the second 
 - [ ] A connection saved with a 2-second query timeout stops `SELECT pg_sleep(5)` after about 2 seconds, while another connection still uses the Preferences timeout. **2026-10-12 Hyprland dark:** stopped after 2.007 s, passed; the wording was fixed by [#668](https://github.com/cozyGarage/BookiE/pull/668). The second connection and installed retest remain pending.
 - [ ] A connect timeout of 3 seconds to an unreachable host fails after about 3 seconds.
 
+- [ ] With a 2-second query timeout, run `SELECT pg_sleep(5)` on PostgreSQL (streamed) and `SELECT SLEEP(5)` on MySQL (materialized): after each, the toolbar shows **Run again with an 8s timeout**. Click it: the same query runs and completes. Running any other query removes the button, and the saved timeout is still 2 seconds.
+- [ ] Edit the editor text after a timeout, then click the button: the query that timed out runs, not the new text.
+
 ## Connection bundles
 
 - [ ] Export without a passphrase, then read the file: it contains hosts and usernames and **no** password, passphrase or token.

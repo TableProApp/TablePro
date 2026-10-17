@@ -107,7 +107,7 @@ pub(super) fn timeout_rows() -> (adw::ActionRow, gtk::SpinButton, adw::ActionRow
     let query = timeout_row(
         &crate::tr!("Query timeout (seconds)"),
         &crate::tr!("0 uses the timeout set in Preferences"),
-        86_400.0,
+        f64::from(crate::services::operation_control::MAX_QUERY_TIMEOUT_SECS),
     );
     (connect.0, connect.1, query.0, query.1)
 }

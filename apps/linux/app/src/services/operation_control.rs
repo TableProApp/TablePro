@@ -28,6 +28,20 @@ fn effective_timeout(own: Option<u32>, global: u32) -> u32 {
     own.unwrap_or(global)
 }
 
+pub const MAX_QUERY_TIMEOUT_SECS: u32 = 86_400;
+
+const LONGER_TIMEOUT_FACTOR: u32 = 4;
+
+pub fn longer_timeout_secs(current_secs: u32) -> Option<u32> {
+    if current_secs == 0 {
+        return None;
+    }
+    let longer = current_secs
+        .saturating_mul(LONGER_TIMEOUT_FACTOR)
+        .min(MAX_QUERY_TIMEOUT_SECS);
+    (longer > current_secs).then_some(longer)
+}
+
 pub fn deadline_for(timeout_secs: u32) -> Option<tokio::time::Instant> {
     (timeout_secs > 0).then(|| tokio::time::Instant::now() + Duration::from_secs(u64::from(timeout_secs)))
 }
@@ -52,6 +66,20 @@ mod tests {
     fn a_connection_timeout_overrides_the_global_preference() {
         assert_eq!(effective_timeout(Some(5), 60), 5);
         assert_eq!(effective_timeout(None, 60), 60);
+    }
+
+    #[test]
+    fn a_longer_timeout_is_four_times_the_one_exceeded_up_to_the_ceiling() {
+        assert_eq!(longer_timeout_secs(60), Some(240));
+        assert_eq!(longer_timeout_secs(1), Some(4));
+        assert_eq!(longer_timeout_secs(30_000), Some(MAX_QUERY_TIMEOUT_SECS));
+        assert_eq!(
+            longer_timeout_secs(u32::MAX),
+            None,
+            "past the ceiling there is nothing longer to offer"
+        );
+        assert_eq!(longer_timeout_secs(MAX_QUERY_TIMEOUT_SECS), None);
+        assert_eq!(longer_timeout_secs(0), None, "no timeout means nothing timed out");
     }
 
     #[tokio::test]

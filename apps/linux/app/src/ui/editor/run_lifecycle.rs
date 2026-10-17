@@ -55,6 +55,15 @@ impl SqlEditor {
         });
     }
 
+    pub(super) fn offer_longer_timeout(&mut self, exceeded_secs: u32, sql: String) {
+        let Some(secs) = self.timeout_retry.offer(exceeded_secs, sql) else {
+            return;
+        };
+        self.longer_timeout_button
+            .set_label(&crate::tr!("Run again with a {n}s timeout").replace("{n}", &secs.to_string()));
+        self.longer_timeout_button.set_visible(true);
+    }
+
     pub(super) fn set_running(
         &self,
         running: bool,

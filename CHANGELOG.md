@@ -6,6 +6,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 
 ### Added
 
+- When a query stops at the query timeout, the editor offers Run again with a longer timeout, which runs the same query once with four times the timeout and leaves the saved timeout unchanged.- Opening a new SQL editor while disconnected now shows the editor and removes completion suggestions cached from the previous connection.
 - A connection marked Production now shows a red Production badge and a tinted header bar, and its window title starts with [Production], so it stands out from other connections.
 - Opening a new SQL editor while disconnected now shows the editor and removes completion suggestions cached from the previous connection.
 - SQL completion inserts complete dialect-quoted table and column names, preserves aliases, and offers scoped metadata instead of arbitrary editor words.

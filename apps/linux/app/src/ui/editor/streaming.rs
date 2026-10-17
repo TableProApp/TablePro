@@ -119,6 +119,7 @@ impl SqlEditor {
             .duration_since(context.started_at)
             .map(|duration| duration.as_millis() as i64)
             .unwrap_or(0);
+        let timed_out = (context.timeout_secs, context.sql.clone());
         let stream = take_stream_for_generation(&mut self.streaming, generation);
         let terminal = stream
             .as_ref()
@@ -149,7 +150,10 @@ impl SqlEditor {
                 .status
                 .set_label(&crate::tr!("done in {ms} ms").replace("{ms}", &elapsed.max(0).to_string())),
             StreamTerminal::Cancelled => self.status.set_label(&crate::tr!("cancelled")),
-            StreamTerminal::TimedOut => self.status.set_label(&crate::tr!("timed out")),
+            StreamTerminal::TimedOut => {
+                self.status.set_label(&crate::tr!("timed out"));
+                self.offer_longer_timeout(timed_out.0, timed_out.1);
+            }
             StreamTerminal::Failed(message) => self.status.set_label(message),
             StreamTerminal::Loading => self.status.set_label(&crate::tr!("error")),
         }
