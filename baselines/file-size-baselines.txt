@@ -17,3 +17,4 @@ crates/drivers/postgres/tests/support/domain_contract_parts/array_functions.rs 1
 crates/drivers/postgres/tests/support/domain_contract_parts/basic_domains.rs 1330
 crates/drivers/postgres/tests/support/enum_contract_parts/scalar_consumers.rs 1210
 crates/policy/src/classify.rs 1036
+apps/linux/app/src/ui/app/mod.rs 1214

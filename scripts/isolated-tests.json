@@ -546,6 +546,11 @@
       "tablepro-app",
       "--lib",
       "ui::grid::close_edits::tests::an_active_preedit_is_refused_without_hiding_or_replacing_the_edit"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::app::environment_marker::tests::the_badge_and_header_tint_follow_the_connection_environment"
     ]
   ],
   "keyring": [

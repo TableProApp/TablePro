@@ -6,6 +6,7 @@ mod close_after_save_tests;
 mod connection;
 mod database_switcher;
 mod editor_files;
+mod environment_marker;
 mod favorites;
 mod grid_close;
 pub(crate) mod import;
@@ -110,6 +111,8 @@ pub struct App {
     split_view: adw::OverlaySplitView,
     sidebar_reveal: std::rc::Rc<std::cell::Cell<u32>>,
     window_title: adw::WindowTitle,
+    header_bar: adw::HeaderBar,
+    environment_badge: gtk::Label,
     sidebar_title: adw::WindowTitle,
     disconnect_action: gio::SimpleAction,
     sidebar_factory: FactoryVecDeque<SidebarRow>,
@@ -384,6 +387,16 @@ impl SimpleComponent for App {
                         set_popover = &gtk::Popover {},
                     },
 
+                    #[name = "environment_badge"]
+                    pack_end = &gtk::Label {
+                        set_visible: false,
+                        set_label: &crate::tr!("Production"),
+                        set_tooltip_text: Some(crate::tr!("This is a production connection. Changes can affect live data.").as_str()),
+                        set_margin_end: 6,
+                        add_css_class: "error",
+                        add_css_class: "caption-heading",
+                    },
+
                     #[name = "read_only_badge"]
                     pack_end = &gtk::Label {
                         set_visible: false,
@@ -578,6 +591,8 @@ impl SimpleComponent for App {
             split_view: widgets.split_view.clone(),
             sidebar_reveal: std::rc::Rc::default(),
             window_title: widgets.window_title.clone(),
+            header_bar: widgets.header_bar.clone(),
+            environment_badge: widgets.environment_badge.clone(),
             sidebar_title: widgets.sidebar_title.clone(),
             disconnect_action,
             sidebar_factory: sidebar.factory,

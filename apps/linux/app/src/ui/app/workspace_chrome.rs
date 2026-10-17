@@ -74,9 +74,9 @@ impl App {
         // title with "• " when any open document has unsaved changes,
         // so the dirty state is visible from the Activities overview /
         // Alt-Tab without needing the tab to be focused.
-        if self.window_has_pending() {
-            os_title = format!("• {os_title}");
-        }
+        let environment = metadata.as_ref().map(|metadata| metadata.environment);
+        os_title = super::environment_marker::os_window_title(os_title, environment, self.window_has_pending());
+        super::environment_marker::apply(&self.environment_badge, &self.header_bar, environment);
         self.window.set_title(Some(&os_title));
         self.window_title.set_subtitle(&subtitle);
 
