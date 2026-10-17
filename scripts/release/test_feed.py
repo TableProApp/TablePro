@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest import mock
 
 import feed
+import publish
 import registry
 import version
 
@@ -63,7 +64,7 @@ elif args[:2] == ["release", "download"]:
     for index, arg in enumerate(args):
         if arg == "--pattern":
             shutil.copy(releases / args[2] / args[index + 1], out / args[index + 1])
-else:
+elif args[:2] != ["release", "edit"]:
     sys.exit("fake gh cannot answer " + " ".join(args))
 '''
 
@@ -509,6 +510,24 @@ class FeedBranchTests(unittest.TestCase):
         self.replace_appcast(fake_signed(feed.remove_items(SEED, "0.80.0")[0]))
         with self.assertRaisesRegex(feed.FeedError, "no default-channel item"):
             feed.withdraw(self.root, "0.81.0", self.tools, KEY, log=lambda message: None)
+
+    def test_latest_after_a_withdraw_reads_the_pushed_branch(self):
+        self.publish("v0.82.0-beta.1")
+        self.publish("v0.82.0")
+        self.add("v0.82.0-beta.1")
+        self.add("v0.82.0")
+        before = git(self.origin, "rev-parse", "feeds")
+        feed.withdraw(self.root, "0.82.0", self.tools, KEY, log=lambda message: None)
+        git(self.root, "branch", "feeds", before)
+        git(self.root, "update-ref", feed.REMOTE_BRANCH, before)
+        self.assertEqual([each.short_version for each in feed.published_items(self.root)],
+                         ["0.82.0-beta.1", "0.81.0", "0.80.0"])
+
+        git(self.root, "update-ref", feed.REMOTE_BRANCH, before)
+        with mock.patch.object(publish, "ROOT", self.root), \
+                mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": REPOSITORY}), redirect_stderr(io.StringIO()):
+            self.assertEqual(publish.main(["latest"]), 0)
+        self.assertEqual(self.calls("gh")[-1], ["release", "edit", "v0.81.0", "--latest=true", "--repo", REPOSITORY])
 
     def test_check_reads_the_published_branch(self):
         self.assertTrue(any("sign_update failed" in problem for problem in feed.check(self.root, self.tools, KEY)))

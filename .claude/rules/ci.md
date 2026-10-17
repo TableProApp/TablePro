@@ -27,7 +27,8 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 - Every Xcode job in the test and release workflows runs on the `xcode-27` runner label, a GitHub preview image. actionlint learns the label from `.github/actionlint.yaml`. `build-plugin.yml` picks its runner from the ref it builds (`RELEASING.md`).
 - The Xcode version is written once, in `.github/actions/setup-xcode/action.yml`, which runs `xcode-select --switch` and prints `xcodebuild -version`. A workflow never selects Xcode another way.
 - XcodeGen comes from `.github/actions/setup-xcodegen`, pinned by version and SHA-256.
-- Sparkle's `generate_appcast` and `sign_update` come from `.github/actions/setup-sparkle`. It reads the version and revision from the app's `Package.resolved` (`project.yml` pins Sparkle with `exactVersion`) and checks the archive against the checksum in Sparkle's `Package.swift` at that revision.
+- `scripts/release/feed.py` runs Sparkle's `generate_appcast` and `sign_update` from `SPARKLE_BIN`, which `.github/actions/setup-sparkle` sets. The action reads the version and revision from the app's `Package.resolved` (`project.yml` pins Sparkle with `exactVersion`) and checks the archive against the checksum in Sparkle's `Package.swift` at that revision.
+- The tag release (`build.yml`) signs the feed with the copy `scripts/ci/sign-and-appcast.sh` downloads, pinned by its own `SPARKLE_VERSION` and `SPARKLE_SHA256`. No check compares them with `project.yml`: a Sparkle bump changes all three.
 - The compilation cache is off on CI (`COMPILATION_CACHE_ENABLE_CACHING=NO`); `Configs/Base.xcconfig` turns it on locally.
 
 ## macOS Tests (`macos-tests.yml`)
