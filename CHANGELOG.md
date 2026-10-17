@@ -270,6 +270,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - The SQLite table list now shows user tables whose names start with sqlite followed by another character, such as sqlite3_results.
 - The grid's Set to NULL action now refuses read-only cells and columns that do not accept NULL, with a message, instead of staging a change that would fail on save.
 - SQLite databases whose file names contain a question mark or a percent sign now open that exact file instead of a different one.
+- Driver panics during connection capability or session health checks no longer escape PolicyGuard; the affected connection is reported unusable for replacement.
 
 ### Security
 

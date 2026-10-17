@@ -41,6 +41,8 @@ Containment is not a repair. A caught panic means a dependency reached a state i
 
 The app and `agentd` install a panic hook that always withholds the payload. `TABLEPRO_DEBUG_PANICS=1` enables a backtrace without restoring Rust's payload-printing hook; `RUST_BACKTRACE=1` also requests one. Both modes retain the source location and stack frames while keeping the panic message out of logs and stderr. [#666](https://github.com/cozyGarage/BookiE/issues/666) records the installed-launch investigation steps. `PolicyGuard` separately catches driver panics and logs only the operation and payload byte count; returned errors withhold the payload. These hooks do not cover arbitrary panics in other processes or code that does not install the hook.
 
+The guard also contains panics from synchronous driver status checks. A panic while checking cancellation support reports that cancellation is unavailable; a panic while checking session health retires that guarded session permanently, even if the driver later reports it healthy. When a fault sink is installed, both checks report the connection as unusable.
+
 `catch_unwind` requires the unwinding panic strategy. Setting `panic = "abort"` in a release profile would silently disable this entire boundary, so that setting must not be introduced without replacing this mechanism.
 
 The sink remains opt-in through `PolicyGuard::with_fault_sink` rather than a required `GuardContext` field. That keeps construction additive, at the cost of allowing a guard to convert panics without reporting the unusable connection. The GUI wakes a monitor immediately; agentd retires its cached session for replacement on the next acquisition. The MCP bridge owns no cached connection lifecycle.

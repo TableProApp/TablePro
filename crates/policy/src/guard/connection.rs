@@ -8,7 +8,10 @@ impl Connection for PolicyGuard {
     /// connections, so failing to forward this would report every engine
     /// as unable to cancel.
     fn supports_server_cancellation(&self) -> bool {
-        self.inner.supports_server_cancellation()
+        self.caught_sync("SERVER CANCELLATION CAPABILITY", || {
+            self.inner.supports_server_cancellation()
+        })
+        .unwrap_or(false)
     }
 
     async fn list_databases(&self) -> Result<Vec<String>, DriverError> {

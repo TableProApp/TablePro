@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use tablepro_core::{QueryCursorId, QueryCursorPage, QueryResultBatch, Session};
 
 use super::*;
@@ -13,7 +15,7 @@ pub(crate) struct PolicySession {
     inner: Box<dyn Session>,
     batch: Option<OpenBatch>,
     cursor: Option<ActiveCursor>,
-    retired: bool,
+    retired: Cell<bool>,
     extra: ExtraSets,
 }
 
@@ -120,7 +122,7 @@ impl PolicyGuard {
             inner,
             batch: None,
             cursor: None,
-            retired: false,
+            retired: Cell::new(false),
             extra: ExtraSets::default(),
         })
     }
@@ -325,7 +327,16 @@ impl Session for PolicySession {
     }
 
     fn is_usable(&self) -> bool {
-        !self.retired && self.inner.is_usable()
+        if self.retired.get() {
+            return false;
+        }
+        match self.guard.caught_sync("SESSION STATUS", || self.inner.is_usable()) {
+            Some(usable) => usable,
+            None => {
+                self.retired.set(true);
+                false
+            }
+        }
     }
 
     fn transaction_open(&self) -> bool {
@@ -439,12 +450,12 @@ impl PolicySession {
                 .map_or_else(controlled_error_terminal_status, |_| status);
             let audit_result = audit_cursor_result(&self.guard, &cursor.audit, start, &result, None, status).await;
             if let Err(error) = audit_result {
-                self.retired = true;
+                self.retired.set(true);
                 return Err(error);
             }
         }
         if result.is_err() {
-            self.retired = true;
+            self.retired.set(true);
         }
         result
     }
@@ -459,7 +470,9 @@ impl PolicySession {
             )
             .await;
         self.cursor = None;
-        self.retired |= result.is_err() || !self.inner.is_usable();
+        if result.is_err() || !self.is_usable() {
+            self.retired.set(true);
+        }
     }
 
     fn note_cursor_error(&mut self, error: &DriverError) {
@@ -467,7 +480,7 @@ impl PolicySession {
             error,
             DriverError::Disconnected | DriverError::OperationOutcomeUnknown { .. }
         ) {
-            self.retired = true;
+            self.retired.set(true);
         }
         let Some(batch) = self.batch.as_mut() else {
             return;
@@ -590,7 +603,7 @@ impl PolicySession {
 
     fn note_disconnect(&mut self, result: &Result<QueryResult, DriverError>) {
         if matches!(result, Err(DriverError::Disconnected)) {
-            self.retired = true;
+            self.retired.set(true);
         }
     }
 
@@ -789,7 +802,7 @@ impl PolicySession {
             .caught_write(operation.sql, self.inner.query_params_controlled(sql, &[], control))
             .await;
         if matches!(result, Err(DriverError::Disconnected)) {
-            self.retired = true;
+            self.retired.set(true);
         }
         let (mut terminal_status, mut transaction_outcome, error_category, mut ambiguous) =
             finish_outcome(kind, batch.aborted, &result);

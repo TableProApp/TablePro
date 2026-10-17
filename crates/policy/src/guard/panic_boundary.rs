@@ -8,6 +8,19 @@ use tablepro_core::DriverError;
 use super::PolicyGuard;
 
 impl PolicyGuard {
+    pub(crate) fn caught_sync<T, F>(&self, operation: &'static str, execute: F) -> Option<T>
+    where
+        F: FnOnce() -> T,
+    {
+        match std::panic::catch_unwind(AssertUnwindSafe(execute)) {
+            Ok(result) => Some(result),
+            Err(payload) => {
+                self.report(operation, &payload);
+                None
+            }
+        }
+    }
+
     pub(crate) async fn caught_read<T, F>(&self, operation: &'static str, execute: F) -> Result<T, DriverError>
     where
         F: Future<Output = Result<T, DriverError>>,
