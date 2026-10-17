@@ -514,8 +514,10 @@ impl PolicyGuard {
                 None,
             )
             .await;
-        if matches!(result, Err(AuditError::UnresolvedWrite)) {
-            self.ctx.audit_state.disable_governed_writes();
+        if matches!(&result, Err(AuditError::UnresolvedWrite | AuditError::WriteInFlight)) {
+            if matches!(&result, Err(AuditError::UnresolvedWrite)) {
+                self.ctx.audit_state.disable_governed_writes();
+            }
             if self
                 .record_outcome(
                     operation,
@@ -644,10 +646,18 @@ impl PolicyGuard {
         let Err(error) = result else {
             return Ok(());
         };
-        if matches!(error, AuditError::UnresolvedWrite) {
-            return Err(DriverError::PolicyDenied(format!(
-                "operation denied because an unresolved write outcome blocks this connection: {error}"
-            )));
+        match &error {
+            AuditError::UnresolvedWrite => {
+                return Err(DriverError::PolicyDenied(format!(
+                    "operation denied because an unresolved write outcome blocks this connection: {error}"
+                )));
+            }
+            AuditError::WriteInFlight => {
+                return Err(DriverError::PolicyDenied(format!(
+                    "operation denied because another write is still in flight for this connection: {error}"
+                )));
+            }
+            _ => {}
         }
         if self.intent_is_required() {
             return Err(DriverError::PolicyDenied(format!(

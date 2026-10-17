@@ -109,6 +109,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 
 ### Changed
 - An unresolved write outcome blocks governed writes only on its saved connection; a journal failure or unresolved process-wide operation still blocks writes everywhere.
+- A write refused because another write is still in flight no longer disables later writes on that connection; unresolved outcomes remain fail-closed.
 - The MCP token dialog reports whether the one-time token was saved in the system keyring and explains what to do if it was not.
 - The Keyboard Shortcuts window splits table browsing into shorter groups, describes mouse selection gestures separately and combines repeated context-sensitive save, undo and cancel actions.
 - About, Arch package, Flatpak, and translation metadata link to the BookiE repository.

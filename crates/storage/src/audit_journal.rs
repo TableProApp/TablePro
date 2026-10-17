@@ -541,10 +541,13 @@ fn reject_new_write_intent(event: &AuditEvent, verified: &VerifiedJournal) -> Re
         .unresolved_operation_connections
         .values()
         .any(|connection_id| write_scope_blocks(event.connection_id, *connection_id));
-    if !blocked_by_pending_write && !blocked_by_unresolved_write {
-        return Ok(());
+    if blocked_by_unresolved_write {
+        return Err(StorageError::UnresolvedWrite);
     }
-    Err(StorageError::UnresolvedWrite)
+    if blocked_by_pending_write {
+        return Err(StorageError::WriteInFlight);
+    }
+    Ok(())
 }
 
 fn write_scope_blocks(request_connection_id: Uuid, blocking_connection_id: Uuid) -> bool {
@@ -770,6 +773,7 @@ impl AuditSink for AuditJournal {
             || event.administrative_action.is_some();
         self.append_record(event, durable).await.map_err(|error| match error {
             StorageError::UnresolvedWrite => AuditError::UnresolvedWrite,
+            StorageError::WriteInFlight => AuditError::WriteInFlight,
             error => AuditError::Persistence(error.to_string()),
         })
     }
@@ -827,6 +831,72 @@ mod tests {
             .unwrap();
         assert_eq!(journal.verify_chain().await.unwrap(), 2);
         assert_eq!(journal.recent(10).await.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_pending_write_is_distinct_from_an_unknown_outcome() {
+        let dir = TempDir::new().unwrap();
+        let journal = AuditJournal::open_validated(dir.path().join("audit.jsonl")).unwrap();
+        let connection_id = Uuid::new_v4();
+        let first = write_event(connection_id, AuditRecordPhase::Intent, AuditTerminalStatus::Pending);
+        journal.record(first.clone()).await.unwrap();
+        journal
+            .record(write_event(
+                Uuid::new_v4(),
+                AuditRecordPhase::Intent,
+                AuditTerminalStatus::Pending,
+            ))
+            .await
+            .unwrap();
+
+        let competing = write_event(connection_id, AuditRecordPhase::Intent, AuditTerminalStatus::Pending);
+        assert!(matches!(
+            journal.record(competing).await,
+            Err(AuditError::WriteInFlight)
+        ));
+
+        journal
+            .record(write_event_for(&first, AuditTerminalStatus::Succeeded))
+            .await
+            .unwrap();
+        journal
+            .record(write_event(
+                connection_id,
+                AuditRecordPhase::Intent,
+                AuditTerminalStatus::Pending,
+            ))
+            .await
+            .unwrap();
+
+        let unresolved_dir = TempDir::new().unwrap();
+        let unresolved = AuditJournal::open_validated(unresolved_dir.path().join("audit.jsonl")).unwrap();
+        let unknown = write_event(connection_id, AuditRecordPhase::Intent, AuditTerminalStatus::Pending);
+        unresolved.record(unknown.clone()).await.unwrap();
+        unresolved
+            .record(write_event_for(&unknown, AuditTerminalStatus::Unknown))
+            .await
+            .unwrap();
+        let next = write_event(connection_id, AuditRecordPhase::Intent, AuditTerminalStatus::Pending);
+        assert!(matches!(
+            unresolved.record(next).await,
+            Err(AuditError::UnresolvedWrite)
+        ));
+    }
+
+    fn write_event(connection_id: Uuid, phase: AuditRecordPhase, status: AuditTerminalStatus) -> AuditEvent {
+        let mut event = sample_event(Principal::human_gui());
+        event.connection_id = connection_id;
+        event.operation_class = AuditOperationClass::Mutation;
+        event.phase = phase;
+        event.terminal_status = status;
+        event
+    }
+
+    fn write_event_for(intent: &AuditEvent, status: AuditTerminalStatus) -> AuditEvent {
+        let mut event = intent.clone();
+        event.phase = AuditRecordPhase::Outcome;
+        event.terminal_status = status;
+        event
     }
 
     #[test]

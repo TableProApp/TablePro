@@ -19,6 +19,8 @@ pub enum AuditError {
     Persistence(String),
     #[error("an unresolved write outcome blocks this connection")]
     UnresolvedWrite,
+    #[error("another write is still in flight for this connection")]
+    WriteInFlight,
     #[error("audit journal is corrupt: {0}")]
     Corrupt(String),
 }

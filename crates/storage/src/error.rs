@@ -14,6 +14,9 @@ pub enum StorageError {
     #[error("an unresolved write outcome blocks this connection")]
     UnresolvedWrite,
 
+    #[error("another write is still in flight for this connection")]
+    WriteInFlight,
+
     #[error("database error: {0}")]
     Database(#[from] sqlx::Error),
 
