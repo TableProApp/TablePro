@@ -22,6 +22,7 @@ use crate::flavour::MySqlFlavour;
 use crate::mysql_call::Tainter;
 use crate::mysql_timestamp_mode::MySqlTimestampMode;
 use crate::mysql_wire_format::MySqlWireFormat;
+use crate::server_zone::{READ_ZONE_STATEMENT, SERVER_ZONE_STATEMENT, repeated_hour, repeated_instant};
 use crate::session_statements::statement_timeout;
 use crate::workspace_call::{count, prepared};
 
@@ -52,7 +53,28 @@ pub(crate) struct WriteContext<'a> {
     pub stop: &'a MySqlStop,
 }
 
+/// Run the batch in the server's own time zone and put the read zone
+/// back after, as `server_zone` explains.
 pub(crate) async fn perform(context: &mut WriteContext<'_>, plan: &WritePlan) -> Result<WriteReport, DriverError> {
+    if let Err(error) = run(context, SERVER_ZONE_STATEMENT).await {
+        return Err(plan.ledger.failed(0, error, SessionFate::RolledBack));
+    }
+    let outcome = in_server_zone(context, plan).await;
+    if !context.tainter.is_tainted()
+        && let Err(error) = run(context, READ_ZONE_STATEMENT).await
+    {
+        tracing::warn!(%error, "the read time zone could not be put back; closing the connection");
+        context.tainter.taint();
+    }
+    outcome
+}
+
+async fn in_server_zone(context: &mut WriteContext<'_>, plan: &WritePlan) -> Result<WriteReport, DriverError> {
+    match repeated_instant(context.connection, context.flavour, &plan.batch.steps).await {
+        Ok(None) => {}
+        Ok(Some(index)) => return Err(plan.ledger.failed(index, repeated_hour(), SessionFate::RolledBack)),
+        Err(error) => return Err(plan.ledger.failed(0, error, SessionFate::RolledBack)),
+    }
     match (plan.batch.kind, plan.atomicity) {
         (WriteKind::RowChanges, WriteAtomicity::Transactional) => transactional(context, plan).await,
         (WriteKind::RowChanges, WriteAtomicity::StatementByStatement) => stepwise(context, plan).await,

@@ -357,6 +357,11 @@ impl ConnectionStore {
     /// way. Anything else under a taken id is added under a new id and
     /// starts with no secrets, so a crafted file cannot point a saved
     /// connection's password at another host.
+    ///
+    /// An imported entry never takes a name another entry holds, and an
+    /// added one never takes the file's last-opened time, so a file
+    /// cannot pass one host off as another saved connection or sort it
+    /// above one.
     pub fn import_blocking(&self, path: &Path, bytes: &[u8]) -> Result<ImportReport, StorageError> {
         let incoming = crate::document::decode_document::<ConnectionsDocument>(path, bytes)
             .map_err(StorageError::DocumentUnavailable)?
@@ -365,26 +370,22 @@ impl ConnectionStore {
         let mut list = self.ensure_loaded(&mut state)?.to_vec();
         let mut report = ImportReport::default();
         for mut connection in incoming {
-            match list.iter_mut().find(|saved| saved.id == connection.id) {
-                Some(existing) if existing.connects_like(&connection) => {
-                    existing.name = connection.name;
+            match list.iter().position(|saved| saved.id == connection.id) {
+                Some(index) if list[index].connects_like(&connection) => {
+                    let name = unclaimed_name(&list, &connection.name, Some(connection.id));
+                    let existing = &mut list[index];
+                    existing.name = name;
                     existing.color = connection.color;
                     existing.group = connection.group;
                     report.updated += 1;
                 }
                 Some(_) => {
                     connection.id = Uuid::new_v4();
-                    // Two rows of one name, one of them pointing somewhere
-                    // else, would leave the user guessing which is theirs.
-                    let taken: Vec<&str> = list.iter().map(|saved| saved.name.as_str()).collect();
-                    if taken.contains(&connection.name.as_str()) {
-                        connection.name = suffixed_name(&connection.name, "imported", &taken);
-                    }
-                    list.push(connection);
+                    add_imported(&mut list, connection);
                     report.added += 1;
                 }
                 None => {
-                    list.push(connection);
+                    add_imported(&mut list, connection);
                     report.added += 1;
                 }
             }
@@ -496,6 +497,29 @@ fn read_document(path: &Path) -> Result<Vec<SavedConnection>, DocumentProblem> {
         return Ok(Vec::new());
     }
     crate::document::decode_document::<ConnectionsDocument>(path, &bytes).map(|document| document.connections)
+}
+
+/// Add an entry the import brought. Two rows of one name, one of them
+/// pointing somewhere else, would leave the user guessing which is
+/// theirs, and a file's last-opened time is no open on this machine.
+fn add_imported(list: &mut Vec<SavedConnection>, mut connection: SavedConnection) {
+    connection.name = unclaimed_name(list, &connection.name, None);
+    connection.last_opened_at = None;
+    list.push(connection);
+}
+
+/// `name`, or a suffixed one when an entry other than `owner` holds it.
+fn unclaimed_name(list: &[SavedConnection], name: &str, owner: Option<Uuid>) -> String {
+    let taken: Vec<&str> = list
+        .iter()
+        .filter(|saved| Some(saved.id) != owner)
+        .map(|saved| saved.name.as_str())
+        .collect();
+    if taken.contains(&name) {
+        suffixed_name(name, "imported", &taken)
+    } else {
+        name.to_owned()
+    }
 }
 
 /// `name (suffix)`, then `name (suffix 2)` and on, until one is free.
@@ -1075,10 +1099,12 @@ mod tests {
             assert_eq!(*kept, mine, "{variant}: the import changed the saved entry");
             let imported = list.iter().find(|saved| saved.id != mine.id).expect("the import");
             assert_eq!(imported.name, "production (imported)", "{variant}");
+            assert_eq!(imported.last_opened_at, None, "{variant}");
             assert_eq!(
                 SavedConnection {
                     id: crafted.id,
                     name: crafted.name.clone(),
+                    last_opened_at: crafted.last_opened_at,
                     ..imported.clone()
                 },
                 crafted,
@@ -1113,6 +1139,33 @@ mod tests {
             .collect();
         names.sort();
         assert_eq!(names, ["production", "staging"]);
+    }
+
+    #[test]
+    fn an_imported_entry_cannot_pass_for_a_saved_one() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mine = saved("Production");
+        store.upsert_blocking(mine.clone()).expect("upsert");
+        let lookalike = SavedConnection {
+            host: "db.attacker.example".to_owned(),
+            last_opened_at: "2099-01-01T00:00:00Z".parse().ok(),
+            ..saved("Production")
+        };
+        let bytes = crate::document::encode_document(&ConnectionsDocument {
+            connections: vec![lookalike.clone(), lookalike.clone()],
+        })
+        .expect("encode");
+
+        let report = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
+
+        assert_eq!(report, ImportReport { added: 1, updated: 1 });
+        let list = store.load_blocking().expect("load");
+        let kept = list.iter().find(|saved| saved.id == mine.id).expect("the saved entry");
+        assert_eq!(*kept, mine);
+        let added = list.iter().find(|saved| saved.id == lookalike.id).expect("the import");
+        assert_eq!(added.name, "Production (imported)");
+        assert_eq!(added.last_opened_at, None, "the file's last-opened time came along");
     }
 
     #[test]

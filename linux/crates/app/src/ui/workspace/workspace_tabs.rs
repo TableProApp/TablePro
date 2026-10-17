@@ -127,7 +127,9 @@ impl WorkspaceModel {
                 file,
             },
         };
-        self.open_tab(spec)
+        // Selecting each tab as it opens would show, and so load, every
+        // one of them; `reopen` selects the one that was active.
+        self.factory.restore(spec)
     }
 
     /// Move the unreadable saved tabs aside, so the open ones can be
@@ -762,5 +764,55 @@ mod tests {
             pages.iter().all(|editor| editor.upgrade().is_none()),
             "an editor outlived its teardown"
         );
+    }
+
+    /// A restored session reads only the tab in front; each other tab
+    /// reads its table the first time it is shown, so they do not all
+    /// wait on the pool at once.
+    #[gtk4::test]
+    fn restored_tabs_read_their_tables_when_first_shown() {
+        let test = TestWindow::with_script(
+            "RestoreReadsWhenShown",
+            crate::ui::session_window::tests::Script {
+                connection: super::super::shell::tests::served_table(),
+                ..Default::default()
+            },
+        );
+        let store = test.services.storage.workspaces().clone();
+        let table = |name: &str| TabRecord::Table {
+            schema: None,
+            table: name.to_owned(),
+            offset: 0,
+            page_size: 100,
+            sort: None,
+        };
+        store
+            .schedule(
+                &test.key(),
+                WorkspaceRecord {
+                    active_tab: Some(1),
+                    tabs: vec![table("users"), table("orders"), table("items")],
+                },
+            )
+            .expect("the record to queue");
+        crate::test_support::finish_on_main(WAIT, store.flush(&test.key()))
+            .expect("the flush to end")
+            .expect("the record written");
+
+        test.window
+            .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+        test.wait_for_page("workspace");
+        let workspace = test.workspace();
+        let view = workspace.imp().tab_view.get();
+        wait_until(WAIT, || view.n_pages() == 3).expect("the saved tabs");
+        let column_reads = || tablepro_test_support::CallCounters::get(&test.connection().counters().fetch_columns);
+        let _ = wait_until(WAIT, || column_reads() > 0);
+        // Long enough for a tab not shown to have read its table too.
+        let _ = wait_until(std::time::Duration::from_millis(500), || false);
+        assert_eq!(column_reads(), 1, "only the tab in front reads its table");
+
+        view.set_selected_page(&view.nth_page(2));
+
+        wait_until(WAIT, || column_reads() == 2).expect("the tab read its table once shown");
     }
 }

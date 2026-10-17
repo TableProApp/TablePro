@@ -44,12 +44,29 @@ pub(crate) fn storage_class_order(a: &Value, b: &Value) -> Ordering {
 /// The text a collating sorter orders `value` by. `None` for a value
 /// that is not text, which some other sorter has already placed.
 pub(crate) fn sort_text(value: &Value) -> Option<&str> {
-    match value {
-        Value::Text(text) => Some(text),
-        Value::Json(json) => Some(json.as_str()),
-        Value::Other(other) => Some(&other.text),
-        _ => None,
+    let text = match value {
+        Value::Text(text) => text,
+        Value::Json(json) => json.as_str(),
+        Value::Other(other) => &other.text,
+        _ => return None,
+    };
+    Some(sort_head(text))
+}
+
+/// A collation key is built from the whole text it is given, so a sort
+/// of large documents would build keys as large as they are. The head
+/// decides any order a person reads.
+const SORT_TEXT_MAX_CHARS: usize = 4_096;
+
+/// A text of no more bytes than the cap has no more chars either, so it
+/// is not walked.
+fn sort_head(text: &str) -> &str {
+    if text.len() <= SORT_TEXT_MAX_CHARS {
+        return text;
     }
+    text.char_indices()
+        .nth(SORT_TEXT_MAX_CHARS)
+        .map_or(text, |(index, _)| &text[..index])
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -465,6 +482,17 @@ mod tests {
             Ordering::Equal,
             "text is the collating sorter's to order"
         );
+    }
+
+    #[test]
+    fn a_long_text_sorts_by_its_head() {
+        let long = format!("{}tail", "é".repeat(SORT_TEXT_MAX_CHARS));
+
+        assert_eq!(
+            sort_text(&Value::Text(long)),
+            Some("é".repeat(SORT_TEXT_MAX_CHARS).as_str())
+        );
+        assert_eq!(sort_text(&Value::Text("short".to_owned())), Some("short"));
     }
 
     #[test]

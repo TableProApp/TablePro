@@ -36,8 +36,8 @@ use tablepro_storage::{CredentialDemand, SavedConnection};
 use uuid::Uuid;
 
 pub use self::connect_dialog_mode::ConnectDialogMode;
-pub use self::connect_form::ConnectForm;
-use self::connect_form::{ValidatedForm, match_saved_connection};
+use self::connect_form::ValidatedForm;
+pub use self::connect_form::{ConnectForm, driver_shows_server_name};
 pub use self::connect_submission::ConnectSubmission;
 pub use self::form_errors::FormErrors;
 pub use self::form_field::FormField;
@@ -364,6 +364,11 @@ impl ConnectDialog {
         }
     }
 
+    fn shows_server_name(&self) -> bool {
+        let entry = self.current_entry();
+        driver_shows_server_name(entry.as_ref().map(DriverEntry::capabilities), self.route())
+    }
+
     fn route(&self) -> TransportClass {
         if self.imp().ssh_section.is_enabled() {
             TransportClass::SshForward
@@ -580,16 +585,14 @@ impl ConnectDialog {
             .services()
             .map(|services| services.saved_connections.clone())
             .unwrap_or_else(|| Arc::from(Vec::new()));
-        let candidate = form.saved_connection(caps, &valid, Uuid::new_v4(), None);
+        // Only the entry the dialog was reopened on is written over. One
+        // that merely reaches the same database may differ in its name
+        // or its read-only switch, and New Connection must not undo them.
         let reopened = self.imp().prefill_id.get();
         let existing = saved_connections
             .iter()
-            .find(|saved| Some(saved.id) == reopened && saved.driver_id == entry.id)
-            .or_else(|| {
-                match_saved_connection(&saved_connections, &candidate, caps.is_file_based())
-                    .and_then(|id| saved_connections.iter().find(|saved| saved.id == id))
-            });
-        let id = existing.map_or(candidate.id, |saved| saved.id);
+            .find(|saved| Some(saved.id) == reopened && saved.driver_id == entry.id);
+        let id = existing.map_or_else(Uuid::new_v4, |saved| saved.id);
         let connection = form.submitted_connection(caps, &valid, id, existing);
         let request = connect_request(&entry, &form, &valid, &connection);
         let pending_save = PendingSave {
@@ -767,7 +770,7 @@ impl ConnectDialog {
                 Ok(Err(ConnectError::Cancelled)) => {}
                 Ok(Err(error)) => dialog.show_toast(
                     &crate::ui::error_text::connect_error_message(&error),
-                    crate::ui::error_text::connect_remedy(&error),
+                    crate::ui::error_text::connect_remedy(&error, dialog.shows_server_name()),
                 ),
                 Err(failure) => dialog.show_toast(&crate::ui::error_text::task_failure_message(&failure), None),
             }

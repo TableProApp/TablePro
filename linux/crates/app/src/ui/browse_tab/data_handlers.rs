@@ -141,8 +141,14 @@ impl BrowseModel {
     /// are dropped, so nothing past the visible columns reaches a copy
     /// or an export. The tab's drafts stay on top.
     pub(super) fn on_rows_loaded(&mut self, offset: u64, reply: PageReply, fx: &mut Effects) {
-        self.pager.go_to(offset);
-        let PageReply { result, layout, .. } = reply;
+        let PageReply {
+            position,
+            result,
+            layout,
+            edges,
+            seeks,
+        } = reply;
+        self.pager.land(offset, position, edges, seeks);
         let QueryResult { columns, rows, .. } = result;
         // The tracker saves a row by its primary key, so that is what
         // names it here too.
@@ -165,6 +171,7 @@ impl BrowseModel {
             result_columns,
             row_count,
             start_ordinal: offset,
+            filtered: !self.current_filter.is_empty(),
         });
         self.shown_view = Some(self.page_view());
         self.show_page(objects, fx);

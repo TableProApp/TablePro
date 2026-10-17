@@ -46,7 +46,9 @@ impl DatabaseDriver for PgDriver {
         if let Some(tls) = tls {
             target.tls.validate(tls, target.transport.kind().class())?;
         }
-        let endpoint = Arc::new(PgEndpoint::new(target, options.liveness)?);
+        let (setup_target, liveness) = (target.clone(), options.liveness);
+        let endpoint =
+            Arc::new(tablepro_net::tls::set_up_off_runtime(move || PgEndpoint::new(&setup_target, liveness)).await?);
         let tracker = TaskTracker::new();
         let pool = build_pool(endpoint.clone(), tracker.clone())?;
         // The first pool member is opened here, so a connect fails with

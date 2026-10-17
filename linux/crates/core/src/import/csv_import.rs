@@ -4,10 +4,18 @@ use crate::column::ColumnInfo;
 use crate::edit::{CellInput, parse_literal_text};
 use crate::export::CsvDelimiter;
 
+use super::ImportColumn;
+
 /// How many rows the mapping dialog shows. Enough to tell whether the
 /// delimiter and the header switch are right, few enough that a
 /// gigabyte file still opens the dialog at once.
 pub const MAX_PREVIEW_ROWS: usize = 50;
+
+/// The most fields one record may have. No engine takes a table this
+/// wide (MySQL stops at 4,096 columns), and every row of the preview is
+/// padded to the widest, so a line of nothing but commas must not decide
+/// how much is allocated.
+pub const MAX_FIELDS: usize = 4_096;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ImportError {
@@ -19,6 +27,9 @@ pub enum ImportError {
 
     #[error("the file has no columns in it")]
     NoColumns,
+
+    #[error("line {line} has more than {limit} fields")]
+    TooManyFields { line: u64, limit: usize },
 }
 
 /// What a row could not be turned into, named well enough for the user
@@ -86,12 +97,13 @@ pub fn read_csv(bytes: &[u8], options: &CsvImportOptions, limit: Option<usize>) 
         .from_reader(bytes);
 
     let headers: Vec<String> = match options.has_header {
-        true => reader
-            .headers()
-            .map_err(|error| ImportError::Malformed(error.to_string()))?
-            .iter()
-            .map(str::to_owned)
-            .collect(),
+        true => {
+            let header = reader
+                .headers()
+                .map_err(|error| ImportError::Malformed(error.to_string()))?;
+            within_width(header)?;
+            header.iter().map(str::to_owned).collect()
+        }
         false => Vec::new(),
     };
 
@@ -105,6 +117,7 @@ pub fn read_csv(bytes: &[u8], options: &CsvImportOptions, limit: Option<usize>) 
             truncated = true;
             break;
         }
+        within_width(&record)?;
         rows.push(record.iter().map(str::to_owned).collect());
     }
 
@@ -129,17 +142,31 @@ pub fn read_csv(bytes: &[u8], options: &CsvImportOptions, limit: Option<usize>) 
     })
 }
 
+/// Refuse a record wider than `MAX_FIELDS` before its fields are copied.
+fn within_width(record: &csv::StringRecord) -> Result<(), ImportError> {
+    match record.len() > MAX_FIELDS {
+        true => Err(ImportError::TooManyFields {
+            line: record.position().map_or(1, csv::Position::line),
+            limit: MAX_FIELDS,
+        }),
+        false => Ok(()),
+    }
+}
+
 /// A starting mapping: each table column takes the CSV field whose
 /// header matches its name, ignoring case and surrounding space.
 ///
 /// Columns the file has no match for are left unmapped, which the
 /// dialog shows as "Skip" and the insert turns into the column's own
-/// default.
-pub fn suggest_mapping(headers: &[String], columns: &[ColumnInfo]) -> Vec<Option<usize>> {
+/// default. A column the server fills is never mapped.
+pub fn suggest_mapping(headers: &[String], columns: &[ImportColumn]) -> Vec<Option<usize>> {
     columns
         .iter()
         .map(|column| {
-            let wanted = column.name.trim().to_lowercase();
+            if column.server_filled {
+                return None;
+            }
+            let wanted = column.info.name.trim().to_lowercase();
             headers.iter().position(|header| header.trim().to_lowercase() == wanted)
         })
         .collect()
@@ -150,11 +177,12 @@ pub fn suggest_mapping(headers: &[String], columns: &[ColumnInfo]) -> Vec<Option
 /// A column with no mapped field, or one whose field is past the end of
 /// a short row, is left to its default rather than written as NULL: the
 /// file said nothing about it, which is not the same as saying it is
-/// empty.
+/// empty. A column the server fills is left to it whatever the mapping
+/// says.
 pub fn row_to_cells(
     row: &[String],
     mapping: &[Option<usize>],
-    columns: &[ColumnInfo],
+    columns: &[ImportColumn],
     options: &CsvImportOptions,
     line: usize,
 ) -> Result<Vec<CellInput>, CsvRowError> {
@@ -162,12 +190,12 @@ pub fn row_to_cells(
         .iter()
         .zip(mapping)
         .map(|(column, field)| {
-            let Some(text) = field.and_then(|index| row.get(index)) else {
+            let Some(text) = field.filter(|_| !column.server_filled).and_then(|index| row.get(index)) else {
                 return Ok(CellInput::Default);
             };
-            cell_for(text, column, options).map_err(|reason| CsvRowError {
+            cell_for(text, &column.info, options).map_err(|reason| CsvRowError {
                 line,
-                column: column.name.clone(),
+                column: column.info.name.clone(),
                 text: text.clone(),
                 reason,
             })
@@ -177,15 +205,16 @@ pub fn row_to_cells(
 
 fn cell_for(text: &str, column: &ColumnInfo, options: &CsvImportOptions) -> Result<CellInput, String> {
     if text == options.null_marker {
+        // An empty string is a value in its own right for a text
+        // column, and the marker being empty is the common case. The
+        // file holds it, so it wins over the column's default.
+        if options.null_marker.is_empty() && column.column_type.kind.accepts_empty_string() {
+            return Ok(CellInput::Value(crate::value::Value::Text(String::new())));
+        }
         // A NOT NULL column with a default is better served by its
         // default than by an insert the server will refuse.
         if !column.nullable && !column.default.is_none() {
             return Ok(CellInput::Default);
-        }
-        // An empty string is a value in its own right for a text
-        // column, and the marker being empty is the common case.
-        if options.null_marker.is_empty() && column.column_type.kind.accepts_empty_string() {
-            return Ok(CellInput::Value(crate::value::Value::Text(String::new())));
         }
         return Ok(CellInput::Value(crate::value::Value::Null));
     }
@@ -215,7 +244,14 @@ mod tests {
         CsvImportOptions::default()
     }
 
-    fn column(name: &str, kind: ColumnKind, sql: &str) -> ColumnInfo {
+    fn column(name: &str, kind: ColumnKind, sql: &str) -> ImportColumn {
+        ImportColumn {
+            info: column_info(name, kind, sql),
+            server_filled: false,
+        }
+    }
+
+    fn column_info(name: &str, kind: ColumnKind, sql: &str) -> ColumnInfo {
         ColumnInfo {
             name: name.to_owned(),
             column_type: ColumnType {
@@ -234,7 +270,7 @@ mod tests {
         }
     }
 
-    fn text_column(name: &str) -> ColumnInfo {
+    fn text_column(name: &str) -> ImportColumn {
         column(
             name,
             ColumnKind::Text {
@@ -244,7 +280,7 @@ mod tests {
         )
     }
 
-    fn int_column(name: &str) -> ColumnInfo {
+    fn int_column(name: &str) -> ImportColumn {
         column(
             name,
             ColumnKind::Integer(IntegerKind {
@@ -337,6 +373,31 @@ mod tests {
     }
 
     #[test]
+    fn a_record_wider_than_any_table_is_refused_before_it_is_padded() {
+        let mut file = String::from("a,b\n1,2\n");
+        file.push_str(&",".repeat(MAX_FIELDS));
+        file.push('\n');
+        let header = format!("{}\n1\n", ",".repeat(MAX_FIELDS));
+
+        assert_eq!(
+            read_csv(file.as_bytes(), &options(), Some(MAX_PREVIEW_ROWS)),
+            Err(ImportError::TooManyFields {
+                line: 3,
+                limit: MAX_FIELDS
+            })
+        );
+        assert_eq!(
+            read_csv(header.as_bytes(), &options(), None),
+            Err(ImportError::TooManyFields {
+                line: 1,
+                limit: MAX_FIELDS
+            })
+        );
+        let widest = format!("{}\n", ",".repeat(MAX_FIELDS - 1));
+        assert!(read_csv(widest.as_bytes(), &options(), None).is_ok());
+    }
+
+    #[test]
     fn an_empty_file_has_no_columns() {
         assert_eq!(read_csv(b"", &options(), None), Err(ImportError::NoColumns));
     }
@@ -407,12 +468,59 @@ mod tests {
     #[test]
     fn a_not_null_column_with_a_default_takes_the_default_rather_than_a_refused_insert() {
         let mut columns = vec![int_column("id")];
-        columns[0].nullable = false;
-        columns[0].default = ColumnDefault::Expression(SqlExpression::from_catalog_text("0"));
+        columns[0].info.nullable = false;
+        columns[0].info.default = ColumnDefault::Expression(SqlExpression::from_catalog_text("0"));
 
         let cells = row_to_cells(&[String::new()], &[Some(0)], &columns, &options(), 2).expect("cells");
 
         assert_eq!(cells[0], CellInput::Default);
+    }
+
+    #[test]
+    fn an_empty_field_for_a_not_null_text_column_with_a_default_stays_empty() {
+        let mut columns = vec![text_column("status")];
+        columns[0].info.nullable = false;
+        columns[0].info.default = ColumnDefault::Literal(Value::Text("active".to_owned()));
+
+        let cells = row_to_cells(&[String::new()], &[Some(0)], &columns, &options(), 2).expect("cells");
+
+        assert_eq!(cells[0], CellInput::Value(Value::Text(String::new())));
+    }
+
+    #[test]
+    fn a_column_the_server_fills_is_never_mapped_or_written() {
+        let mut columns = vec![int_column("id"), text_column("name")];
+        columns[0].server_filled = true;
+        let headers = vec!["id".to_owned(), "name".to_owned()];
+
+        let mapping = suggest_mapping(&headers, &columns);
+        let cells = row_to_cells(
+            &["7".to_owned(), "ada".to_owned()],
+            &[Some(0), Some(1)],
+            &columns,
+            &options(),
+            2,
+        )
+        .expect("cells");
+
+        assert_eq!(mapping, vec![None, Some(1)]);
+        assert_eq!(
+            cells[0],
+            CellInput::Default,
+            "a value went to a column the server fills"
+        );
+        assert_eq!(cells[1], CellInput::Value(Value::Text("ada".to_owned())));
+    }
+
+    #[test]
+    fn an_auto_increment_column_takes_the_files_value() {
+        let mut columns = vec![int_column("id")];
+        columns[0].info.is_auto_increment = true;
+
+        let mapping = suggest_mapping(&["id".to_owned()], &columns);
+        let cells = row_to_cells(&["100".to_owned()], &mapping, &columns, &options(), 2).expect("cells");
+
+        assert_eq!(cells[0], CellInput::Value(Value::Int(100)));
     }
 
     #[test]

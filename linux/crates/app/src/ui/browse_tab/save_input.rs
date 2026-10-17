@@ -9,6 +9,8 @@ pub(crate) enum SaveInput {
     /// The window started saving the tab's changes.
     SaveStarted,
     StopSaving,
+    /// Discard clicked: ask before the changes go.
+    ConfirmDiscard,
     DiscardAll,
     DiscardAndRefresh,
     /// The save landed, adding and removing these rows. Edits made

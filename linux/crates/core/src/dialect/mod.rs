@@ -4,6 +4,7 @@
 mod bind_error;
 mod bind_target;
 mod dialect_capabilities;
+mod insert_batch_limits;
 mod keyset_direction;
 mod like_form;
 mod literal_error;
@@ -15,6 +16,7 @@ mod test_dialect;
 pub use bind_error::BindError;
 pub use bind_target::BindTarget;
 pub use dialect_capabilities::DialectCapabilities;
+pub use insert_batch_limits::InsertBatchLimits;
 pub use keyset_direction::KeysetDirection;
 pub use like_form::{LikeCase, LikeForm};
 pub use literal_error::LiteralError;

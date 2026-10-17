@@ -40,8 +40,8 @@ fn bind_one<'q>(query: MySqlQuery<'q>, param: &BoundParam) -> Result<MySqlQuery<
         },
         (_, Value::Date(Temporal::Finite(date))) => query.bind(*date),
         (_, Value::Timestamp(Temporal::Finite(stamp))) => query.bind(*stamp),
-        // The workspace session reads and writes TIMESTAMP in UTC, so the
-        // instant goes as its UTC wall time.
+        // The instant goes as its UTC wall time, and the dialect's
+        // placeholder converts it to the session's zone.
         (_, Value::TimestampTz(Temporal::Finite(stamp))) => query.bind(stamp.utc()),
         (_, Value::Date(_) | Value::Timestamp(_) | Value::TimestampTz(_)) => return Err(unrepresentable(value)),
         (_, Value::Decimal(decimal)) if !decimal.is_finite() => return Err(unrepresentable(value)),

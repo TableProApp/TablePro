@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tablepro 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/TableProApp/TablePro/issues\n"
-"POT-Creation-Date: 2026-10-17 11:52+0000\n"
+"POT-Creation-Date: 2026-10-17 11:45+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -92,36 +92,6 @@ msgstr ""
 msgid "{name} (Copy {n})"
 msgstr ""
 
-#: crates/app/src/services/history_availability.rs
-msgid ""
-"The query history was written by a newer version of TablePro. Update "
-"TablePro to read it."
-msgstr ""
-
-#: crates/app/src/services/history_availability.rs
-msgid "The query history could not be updated for this version of TablePro."
-msgstr ""
-
-#: crates/app/src/services/history_availability.rs
-#, rust-format
-msgid "TablePro is not allowed to write {path}."
-msgstr ""
-
-#: crates/app/src/services/history_availability.rs
-#, rust-format
-msgid "The disk that holds {path} is full."
-msgstr ""
-
-#: crates/app/src/services/history_availability.rs
-#, rust-format
-msgid "{path} could not be created."
-msgstr ""
-
-#: crates/app/src/services/history_availability.rs
-#: crates/app/src/ui/saved_queries_dialog.rs
-msgid "The query history file could not be read. It may be damaged."
-msgstr ""
-
 #: crates/app/src/services/secret_labels.rs
 #, rust-format
 msgid "TablePro database password for {target}"
@@ -138,8 +108,30 @@ msgid "TablePro SSH key passphrase for {target}"
 msgstr ""
 
 #: crates/app/src/services/secret_save_report.rs
+msgid ""
+"No keyring is running, so the password was not saved. It will be asked for "
+"next time."
+msgstr ""
+
+#: crates/app/src/services/secret_save_report.rs
+msgid ""
+"The secret portal is unavailable, so the password was not saved. It will be "
+"asked for next time."
+msgstr ""
+
+#: crates/app/src/services/secret_save_report.rs
+msgid ""
+"The keyring stayed locked, so the password was not saved. It will be asked "
+"for next time."
+msgstr ""
+
+#: crates/app/src/services/secret_save_report.rs
 #, rust-format
-msgid "Password not saved in the keyring: {reason}"
+msgid "The keyring did not save the password: {reason}"
+msgstr ""
+
+#: crates/app/src/services/secret_save_report.rs
+msgid "The keyring did not save the password."
 msgstr ""
 
 #: crates/app/src/ui/browse_tab/browse_actions.rs
@@ -154,6 +146,7 @@ msgid "Delete Selected Rows"
 msgstr ""
 
 #: crates/app/src/ui/browse_tab/browse_actions.rs
+#: crates/app/src/ui/browse_tab/layout.rs
 msgid "Export Rows…"
 msgstr ""
 
@@ -201,7 +194,8 @@ msgstr[1] ""
 #: crates/app/src/ui/browse_tab/edit_handlers.rs
 #: crates/app/src/ui/credential_prompt/prompt_form.rs
 #: crates/app/src/ui/delete_connection_dialog.rs
-#: crates/app/src/ui/editor/mod.rs crates/app/src/ui/grid/multiline_editor.rs
+#: crates/app/src/ui/discard_alert.rs crates/app/src/ui/editor/mod.rs
+#: crates/app/src/ui/grid/multiline_editor.rs
 #: crates/app/src/ui/history_dialog/mod.rs crates/app/src/ui/host_key_review.rs
 #: crates/app/src/ui/picker/new_group_dialog.rs
 #: crates/app/src/ui/preferences_dialog/history_group.rs
@@ -228,9 +222,32 @@ msgid ""
 "them again."
 msgstr ""
 
+#: crates/app/src/ui/browse_tab/layout.rs
+#: crates/app/src/ui/browse_tab/paging_handlers.rs
+#: data/resources/shortcuts-dialog.ui data/resources/ui/browse-tab.ui
+msgid "Filter Rows"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/layout.rs
+#: crates/app/src/ui/browse_tab/pager_bar.rs data/resources/ui/pager-bar.ui
+msgid "Count Rows"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/layout.rs
+msgid "Rows per Page"
+msgstr ""
+
 #: crates/app/src/ui/browse_tab/mod.rs
 #, rust-format
 msgid "Fetching rows from {table}"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/page_label.rs
+msgid "No rows"
+msgstr ""
+
+#: crates/app/src/ui/browse_tab/page_label.rs
+msgid "No rows match the filter"
 msgstr ""
 
 #: crates/app/src/ui/browse_tab/page_label.rs
@@ -249,14 +266,9 @@ msgstr ""
 msgid "Counting…"
 msgstr ""
 
-#: crates/app/src/ui/browse_tab/pager_bar.rs
-#: crates/app/src/ui/saved_queries_dialog.rs data/resources/ui/browse-tab.ui
+#: crates/app/src/ui/browse_tab/pager_bar.rs data/resources/ui/browse-tab.ui
 #: data/resources/ui/structure-tab.ui
 msgid "Try Again"
-msgstr ""
-
-#: crates/app/src/ui/browse_tab/pager_bar.rs data/resources/ui/pager-bar.ui
-msgid "Count Rows"
 msgstr ""
 
 #: crates/app/src/ui/browse_tab/pager_bar.rs
@@ -272,11 +284,6 @@ msgid "Next Page"
 msgstr ""
 
 #: crates/app/src/ui/browse_tab/paging_handlers.rs
-#: data/resources/shortcuts-dialog.ui data/resources/ui/browse-tab.ui
-msgid "Filter Rows"
-msgstr ""
-
-#: crates/app/src/ui/browse_tab/paging_handlers.rs
 #, rust-format
 msgid "{n} Filter Rule Active"
 msgid_plural "{n} Filter Rules Active"
@@ -288,6 +295,7 @@ msgid "1 unsaved change"
 msgstr ""
 
 #: crates/app/src/ui/browse_tab/pending_changes_bar.rs
+#: crates/app/src/ui/structure_tab/save_handlers.rs
 #, rust-format
 msgid "{n} unsaved change"
 msgid_plural "{n} unsaved changes"
@@ -377,6 +385,11 @@ msgid ""
 msgstr ""
 
 #: crates/app/src/ui/clipboard/clipboard_copy.rs
+#, rust-format
+msgid "Couldn't copy: the column “{column}” holds a control character"
+msgstr ""
+
+#: crates/app/src/ui/clipboard/clipboard_copy.rs
 msgid "This row has a value that can't be written as SQL"
 msgstr ""
 
@@ -411,8 +424,7 @@ msgstr ""
 #: crates/app/src/ui/connect_dialog/mod.rs
 #: crates/app/src/ui/grid/multiline_editor.rs
 #: crates/app/src/ui/workspace/status_pages.rs
-#: data/resources/ui/pending-changes-bar.ui data/resources/ui/sql-editor.ui
-#: data/resources/ui/structure-tab.ui
+#: data/resources/ui/pending-changes-bar.ui data/resources/ui/structure-tab.ui
 msgid "Save"
 msgstr ""
 
@@ -556,7 +568,9 @@ msgid "Verify full"
 msgstr ""
 
 #: crates/app/src/ui/connect_dialog/tls_section.rs
-msgid "Not encrypted. Anyone on the network can read the traffic."
+msgid ""
+"Not encrypted. Anyone on the network can read or change the traffic, "
+"password included."
 msgstr ""
 
 #: crates/app/src/ui/connect_dialog/tls_section.rs
@@ -668,6 +682,10 @@ msgid "No password is saved for this connection."
 msgstr ""
 
 #: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "No passphrase is saved for this key."
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
 msgid "The keyring is locked, so the saved one could not be read."
 msgstr ""
 
@@ -677,6 +695,10 @@ msgstr ""
 
 #: crates/app/src/ui/credential_prompt/prompt_text.rs
 msgid "The server refused the one it was given."
+msgstr ""
+
+#: crates/app/src/ui/credential_prompt/prompt_text.rs
+msgid "The one given before did not unlock the key."
 msgstr ""
 
 #: crates/app/src/ui/delete_connection_dialog.rs
@@ -723,42 +745,28 @@ msgstr ""
 msgid "Show Window"
 msgstr ""
 
+#: crates/app/src/ui/discard_alert.rs
+#, rust-format
+msgid ""
+"{n} unsaved change on this tab will be lost, and Undo cannot bring it back."
+msgid_plural ""
+"{n} unsaved changes on this tab will be lost, and Undo cannot bring them "
+"back."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/discard_alert.rs
+msgid "Discard Changes?"
+msgstr ""
+
+#: crates/app/src/ui/discard_alert.rs data/resources/ui/pending-changes-bar.ui
+#: data/resources/ui/structure-tab.ui
+msgid "Discard"
+msgstr ""
+
 #: crates/app/src/ui/editor/completion/sql_completion_provider_imp.rs
 msgctxt "completion group"
 msgid "Database"
-msgstr ""
-
-#: crates/app/src/ui/editor/editor_file.rs
-msgid "Save SQL File"
-msgstr ""
-
-#: crates/app/src/ui/editor/editor_file.rs
-msgid "This tab is already being saved."
-msgstr ""
-
-#: crates/app/src/ui/editor/editor_file.rs
-#, rust-format
-msgid "“{name}” could not be saved: {error}"
-msgstr ""
-
-#: crates/app/src/ui/editor/editor_file.rs
-msgid "Could Not Save File"
-msgstr ""
-
-#: crates/app/src/ui/editor/editor_file.rs
-#: crates/app/src/ui/export/export_failure_text.rs
-#: crates/app/src/ui/history_dialog/history_export.rs
-#: crates/app/src/workspace/close_guard.rs
-msgid "_Close"
-msgstr ""
-
-#: crates/app/src/ui/editor/editor_file.rs
-#: crates/app/src/ui/history_dialog/history_export.rs
-msgid "SQL files"
-msgstr ""
-
-#: crates/app/src/ui/editor/editor_file.rs
-msgid "query"
 msgstr ""
 
 #: crates/app/src/ui/editor/editor_session_slot.rs
@@ -835,6 +843,11 @@ msgstr ""
 
 #: crates/app/src/ui/editor/mod.rs data/resources/ui/find-bar.ui
 msgid "Replace"
+msgstr ""
+
+#: crates/app/src/ui/editor/mod.rs
+#: crates/app/src/ui/history_dialog/history_export.rs
+msgid "SQL files"
 msgstr ""
 
 #: crates/app/src/ui/editor/mod.rs
@@ -1230,7 +1243,7 @@ msgid "This database does not offer that TLS mode."
 msgstr ""
 
 #: crates/app/src/ui/error_text/driver.rs
-msgid "A CA certificate needs TLS turned on and a database that accepts one."
+msgid "A CA certificate needs Verify full and a database that accepts one."
 msgstr ""
 
 #: crates/app/src/ui/error_text/driver.rs
@@ -1291,6 +1304,11 @@ msgstr ""
 #: crates/app/src/ui/error_text/driver.rs
 #, rust-format
 msgid "Username or password is wrong. The server said: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+#, rust-format
+msgid "The server refused this login. The server said: {detail}"
 msgstr ""
 
 #: crates/app/src/ui/error_text/driver.rs
@@ -1383,6 +1401,11 @@ msgstr ""
 
 #: crates/app/src/ui/error_text/driver.rs
 msgid "The statement ran past its time limit, so the server stopped it."
+msgstr ""
+
+#: crates/app/src/ui/error_text/driver.rs
+msgid ""
+"The statement ran past its time limit. The server may still be running it."
 msgstr ""
 
 #: crates/app/src/ui/error_text/driver.rs
@@ -1680,7 +1703,8 @@ msgstr ""
 #: crates/app/src/ui/error_text/secret.rs
 msgid ""
 "The secret portal is unavailable, so saved passwords cannot be read inside "
-"the sandbox."
+"the sandbox. Check that xdg-desktop-portal and a keyring are running, or "
+"enter the password by hand."
 msgstr ""
 
 #: crates/app/src/ui/error_text/secret.rs
@@ -1905,13 +1929,6 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: crates/app/src/ui/export/export_failure_text.rs
-#, rust-format
-msgid ""
-"The column “{column}” holds a value TablePro couldn't read, so it can't be "
-"written to the file."
-msgstr ""
-
-#: crates/app/src/ui/export/export_failure_text.rs
 msgid ""
 "This statement returned more than one result, so it can't be exported as one "
 "file."
@@ -1963,6 +1980,27 @@ msgstr ""
 
 #: crates/app/src/ui/export/export_failure_text.rs
 #, rust-format
+msgid ""
+"The column “{column}” holds a value TablePro couldn't read, so it can't be "
+"written to the file."
+msgstr ""
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid ""
+"The column “{column}” holds a control character XML can't carry. Export it "
+"as CSV or JSON instead."
+msgstr ""
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
+msgid ""
+"The column “{column}” holds a value longer than the {limit} characters an "
+"Excel cell holds. Export it as CSV instead."
+msgstr ""
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#, rust-format
 msgid "An Excel sheet holds {limit} rows, and this result has {got}."
 msgstr ""
 
@@ -1985,6 +2023,13 @@ msgstr ""
 #: crates/app/src/ui/export/export_failure_text.rs
 #: crates/app/src/ui/history_dialog/history_export.rs
 msgid "Couldn't Export"
+msgstr ""
+
+#: crates/app/src/ui/export/export_failure_text.rs
+#: crates/app/src/ui/grid/row_json_dialog.rs
+#: crates/app/src/ui/history_dialog/history_export.rs
+#: crates/app/src/workspace/close_guard.rs
+msgid "_Close"
 msgstr ""
 
 #: crates/app/src/ui/export/export_ledger.rs
@@ -2346,6 +2391,17 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: crates/app/src/ui/grid/row_json_dialog.rs
+msgid "Can't Show Row as JSON"
+msgstr ""
+
+#: crates/app/src/ui/grid/row_json_dialog.rs
+#, rust-format
+msgid ""
+"The column “{column}” holds a value TablePro couldn't read, so the row has "
+"no JSON to show."
+msgstr ""
+
+#: crates/app/src/ui/grid/row_json_dialog.rs
 msgid "Long values are shortened here. Copy includes them in full."
 msgstr ""
 
@@ -2502,9 +2558,7 @@ msgstr ""
 
 #: crates/app/src/ui/history_dialog/mod.rs
 #: crates/app/src/ui/preferences_dialog/history_group.rs
-msgid ""
-"This permanently deletes every history entry, including pinned ones. Saved "
-"queries are kept."
+msgid "This permanently deletes every saved query, including pinned ones."
 msgstr ""
 
 #: crates/app/src/ui/history_dialog/mod.rs
@@ -2716,11 +2770,11 @@ msgid ""
 msgstr ""
 
 #: crates/app/src/ui/import_dialog.rs
-msgid "Every column is set to Skip, so there is nothing to import."
+msgid "Skip"
 msgstr ""
 
 #: crates/app/src/ui/import_dialog.rs
-msgid "Skip"
+msgid "The database fills this column"
 msgstr ""
 
 #: crates/app/src/ui/import_dialog.rs
@@ -2728,7 +2782,12 @@ msgid "Uses the column's own default"
 msgstr ""
 
 #: crates/app/src/ui/import_dialog.rs
-msgid "The file could not be read."
+msgid "The file has no rows to import."
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid ""
+"Every column is set to Skip. Pick a field for at least one column to import."
 msgstr ""
 
 #: crates/app/src/ui/import_dialog.rs
@@ -2743,6 +2802,29 @@ msgid "{fields} fields, {rows} row."
 msgid_plural "{fields} fields, {rows} rows."
 msgstr[0] ""
 msgstr[1] ""
+
+#: crates/app/src/ui/import_dialog.rs
+#, rust-format
+msgid ""
+"The file isn't UTF-8 text from byte {offset} on. Save it as UTF-8 and import "
+"it again."
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+#, rust-format
+msgid "The file couldn't be read as CSV: {error}"
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "The file has no columns."
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+#, rust-format
+msgid ""
+"Line {line} has more than {limit} fields, more than any table holds. Check "
+"the delimiter."
+msgstr ""
 
 #: crates/app/src/ui/import_dialog.rs
 msgid "NULL"
@@ -2847,11 +2929,6 @@ msgstr[1] ""
 
 #: crates/app/src/ui/preferences_dialog/history_group.rs
 #, rust-format
-msgid "Query history and saved queries cannot be used. {reason}"
-msgstr ""
-
-#: crates/app/src/ui/preferences_dialog/history_group.rs
-#, rust-format
 msgid "{count} query cleared"
 msgid_plural "{count} queries cleared"
 msgstr[0] ""
@@ -2893,6 +2970,14 @@ msgstr[1] ""
 
 #: crates/app/src/ui/result_pane/result_summary.rs
 #, rust-format
+msgid "Stopped after the first {shown} row: the statement did not run past it"
+msgid_plural ""
+"Stopped after the first {shown} rows: the statement did not run past them"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/result_pane/result_summary.rs
+#, rust-format
 msgid "{rows}+"
 msgstr ""
 
@@ -2918,7 +3003,7 @@ msgid "Save a query from the editor and it will be listed here."
 msgstr ""
 
 #: crates/app/src/ui/saved_queries_dialog.rs
-msgid "Could Not Read Saved Queries"
+msgid "That name is already used by another saved query."
 msgstr ""
 
 #: crates/app/src/ui/saved_queries_dialog.rs
@@ -2949,22 +3034,6 @@ msgstr ""
 msgid "The saved query is removed. The SQL itself is not run or changed."
 msgstr ""
 
-#: crates/app/src/ui/saved_queries_dialog.rs
-msgid "That name is already used by another saved query."
-msgstr ""
-
-#: crates/app/src/ui/saved_queries_dialog.rs
-msgid "That name is too long."
-msgstr ""
-
-#: crates/app/src/ui/saved_queries_dialog.rs
-msgid "That saved query was deleted elsewhere."
-msgstr ""
-
-#: crates/app/src/ui/saved_queries_dialog.rs
-msgid "The saved query could not be renamed."
-msgstr ""
-
 #: crates/app/src/ui/session_window/connecting_page.rs
 #, rust-format
 msgid "Connecting to {name}"
@@ -2975,7 +3044,6 @@ msgid "Connecting"
 msgstr ""
 
 #: crates/app/src/ui/session_window/connections.rs
-#: crates/app/src/ui/session_window/mod.rs
 #, rust-format
 msgid "The connection could not be saved: {error}"
 msgstr ""
@@ -3023,10 +3091,6 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: crates/app/src/ui/session_window/connections.rs
-msgid "That file is not a TablePro connection export."
-msgstr ""
-
-#: crates/app/src/ui/session_window/connections.rs
 msgid "The connections could not be imported."
 msgstr ""
 
@@ -3041,7 +3105,7 @@ msgid ""
 msgstr ""
 
 #: crates/app/src/ui/session_window/connections.rs
-#: data/resources/ui/workspace.ui
+#: crates/app/src/ui/workspace/workspace_tabs.rs
 msgid "Reset"
 msgstr ""
 
@@ -3060,6 +3124,14 @@ msgstr ""
 
 #: crates/app/src/ui/session_window/connections.rs
 msgid "The connections could not be written to that file."
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "That export comes from a newer version of TablePro."
+msgstr ""
+
+#: crates/app/src/ui/session_window/connections.rs
+msgid "That file is not a TablePro connection export."
 msgstr ""
 
 #: crates/app/src/ui/session_window/connections.rs
@@ -3125,6 +3197,10 @@ msgstr ""
 
 #: crates/app/src/ui/session_window/mod.rs
 msgid "This connection is already open in another window."
+msgstr ""
+
+#: crates/app/src/ui/session_window/mod.rs
+msgid "Could Not Save the Connection"
 msgstr ""
 
 #: crates/app/src/ui/session_window/mod.rs
@@ -3523,6 +3599,13 @@ msgstr ""
 
 #: crates/app/src/ui/structure_tab/review_dialog.rs
 #, rust-format
+msgid ""
+"Makes column “{column}” NOT NULL. A NULL already in it is converted or "
+"refused."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
 msgid "Drops index “{index}”."
 msgstr ""
 
@@ -3587,13 +3670,6 @@ msgstr ""
 #: crates/app/src/ui/structure_tab/save_handlers.rs
 msgid "Wait for the save to finish, then make the change again."
 msgstr ""
-
-#: crates/app/src/ui/structure_tab/save_handlers.rs
-#, rust-format
-msgid "{n} pending change"
-msgid_plural "{n} pending changes"
-msgstr[0] ""
-msgstr[1] ""
 
 #: crates/app/src/ui/structure_tab/sql_preview.rs
 msgid "-- Connect to a database to see the SQL."
@@ -3704,17 +3780,59 @@ msgid "The table's columns could not be read."
 msgstr ""
 
 #: crates/app/src/ui/workspace/import.rs
-msgid "Couldn't Import"
-msgstr ""
+#, rust-format
+msgid "Imported {n} row."
+msgid_plural "Imported {n} rows."
+msgstr[0] ""
+msgstr[1] ""
 
 #: crates/app/src/ui/workspace/import.rs
 msgid "That file has no rows to import."
 msgstr ""
 
 #: crates/app/src/ui/workspace/import.rs
+msgid "Import stopped."
+msgstr ""
+
+#: crates/app/src/ui/workspace/import.rs
+msgid "Couldn't Import"
+msgstr ""
+
+#: crates/app/src/ui/workspace/import.rs
 #, rust-format
-msgid "Imported {n} row."
-msgid_plural "Imported {n} rows."
+msgid ""
+"Line {line} could not be written: {error}. The import was rolled back, so no "
+"rows were added."
+msgstr ""
+
+#: crates/app/src/ui/workspace/import.rs
+#, rust-format
+msgid ""
+"Lines {first} to {last} could not be written: {error}. The import was rolled "
+"back, so no rows were added."
+msgstr ""
+
+#: crates/app/src/ui/workspace/import.rs
+#, rust-format
+msgid ""
+"Line {line} could not be written: {error}. The {written} row before it stays "
+"in the table, which has no transaction to undo it."
+msgid_plural ""
+"Line {line} could not be written: {error}. The {written} rows before it stay "
+"in the table, which has no transaction to undo them."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/workspace/import.rs
+#, rust-format
+msgid ""
+"Lines {first} to {last} could not be written: {error}. The table has no "
+"transaction to undo the import, so the {written} row before them stays, and "
+"some of these lines may have been written too."
+msgid_plural ""
+"Lines {first} to {last} could not be written: {error}. The table has no "
+"transaction to undo the import, so the {written} rows before them stay, and "
+"some of these lines may have been written too."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -3727,10 +3845,27 @@ msgstr ""
 msgid "Line {line}, column {column}: {reason} (the value was “{text}”)"
 msgstr ""
 
-#: crates/app/src/ui/workspace/mod.rs
+#: crates/app/src/ui/workspace/import_ledger.rs
+msgid "Stop Imports?"
+msgstr ""
+
+#: crates/app/src/ui/workspace/import_ledger.rs
+#, rust-format
 msgid ""
-"Editor text could not be saved to disk, so it may not come back after "
-"TablePro restarts."
+"{n} CSV import is still running. Stopping it rolls back the rows it wrote, "
+"unless the table has no transactions."
+msgid_plural ""
+"{n} CSV imports are still running. Stopping them rolls back the rows they "
+"wrote, unless the table has no transactions."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/workspace/import_ledger.rs
+msgid "_Keep Importing"
+msgstr ""
+
+#: crates/app/src/ui/workspace/import_ledger.rs
+msgid "_Stop Imports"
 msgstr ""
 
 #: crates/app/src/ui/workspace/saves.rs
@@ -3739,10 +3874,6 @@ msgstr ""
 
 #: crates/app/src/ui/workspace/shell.rs
 msgid "Search Tables"
-msgstr ""
-
-#: crates/app/src/ui/workspace/shell.rs
-msgid "Refresh Tables"
 msgstr ""
 
 #: crates/app/src/ui/workspace/shell.rs
@@ -3821,18 +3952,6 @@ msgid "No Tables"
 msgstr ""
 
 #: crates/app/src/ui/workspace/status_pages.rs
-msgid "Query History Unavailable"
-msgstr ""
-
-#: crates/app/src/ui/workspace/status_pages.rs
-msgid "Saved Queries Unavailable"
-msgstr ""
-
-#: crates/app/src/ui/workspace/status_pages.rs
-msgid "Could Not Save Query"
-msgstr ""
-
-#: crates/app/src/ui/workspace/status_pages.rs
 msgid "Open a SQL editor tab to save a query."
 msgstr ""
 
@@ -3842,6 +3961,10 @@ msgstr ""
 
 #: crates/app/src/ui/workspace/status_pages.rs
 msgid "Save Query"
+msgstr ""
+
+#: crates/app/src/ui/workspace/status_pages.rs
+msgid "The query database is not open yet."
 msgstr ""
 
 #: crates/app/src/ui/workspace/status_pages.rs
@@ -3893,10 +4016,6 @@ msgstr ""
 
 #: crates/app/src/ui/workspace/structure.rs
 msgid "Drop Failed"
-msgstr ""
-
-#: crates/app/src/ui/workspace/structure.rs
-msgid "Could Not Show CREATE TABLE"
 msgstr ""
 
 #: crates/app/src/ui/workspace/structure.rs
@@ -3956,13 +4075,11 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: crates/app/src/ui/workspace/workspace_tabs.rs
-msgid "Could Not Reset Saved Tabs"
+msgid "Saved tabs could not be read"
 msgstr ""
 
 #: crates/app/src/ui/workspace/workspace_tabs.rs
-msgid ""
-"The unreadable file could not be moved aside, so the open tabs are still not "
-"saved."
+msgid "Saved tabs could not be reset"
 msgstr ""
 
 #: crates/app/src/ui/workspace/workspace_tabs.rs
@@ -4641,20 +4758,12 @@ msgstr ""
 msgid "Toggle Line Comment"
 msgstr ""
 
-#: data/resources/shortcuts-dialog.ui
-msgid "Open a SQL File"
-msgstr ""
-
-#: data/resources/shortcuts-dialog.ui
-msgid "Save to the SQL File"
-msgstr ""
-
-#: data/resources/shortcuts-dialog.ui
-msgid "Save to Another SQL File"
-msgstr ""
-
 #: data/resources/shortcuts-dialog.ui data/resources/ui/find-bar.ui
 msgid "Find"
+msgstr ""
+
+#: data/resources/shortcuts-dialog.ui
+msgid "Save the Query Under a Name"
 msgstr ""
 
 #: data/resources/shortcuts-dialog.ui
@@ -4679,6 +4788,10 @@ msgstr ""
 
 #: data/resources/ui/browse-tab.ui
 msgid "Couldn't Load Rows"
+msgstr ""
+
+#: data/resources/ui/browse-tab.ui data/resources/ui/history-dialog.ui
+msgid "More Actions"
 msgstr ""
 
 #: data/resources/ui/browse-tab.ui
@@ -4808,10 +4921,6 @@ msgid "Select Queries"
 msgstr ""
 
 #: data/resources/ui/history-dialog.ui
-msgid "More Actions"
-msgstr ""
-
-#: data/resources/ui/history-dialog.ui
 msgid "Search"
 msgstr ""
 
@@ -4836,11 +4945,11 @@ msgid "Clear All History…"
 msgstr ""
 
 #: data/resources/ui/history-dialog.ui
-msgid "Export as SQL…"
+msgid "Export as SQL"
 msgstr ""
 
 #: data/resources/ui/history-dialog.ui
-msgid "Export as CSV…"
+msgid "Export as CSV"
 msgstr ""
 
 #: data/resources/ui/history-row.ui
@@ -4854,10 +4963,6 @@ msgstr ""
 
 #: data/resources/ui/pending-changes-bar.ui
 msgid "Save Changes"
-msgstr ""
-
-#: data/resources/ui/pending-changes-bar.ui data/resources/ui/structure-tab.ui
-msgid "Discard"
 msgstr ""
 
 #: data/resources/ui/pending-changes-bar.ui
@@ -4951,8 +5056,7 @@ msgid "Clear query history"
 msgstr ""
 
 #: data/resources/ui/preferences-history-group.ui
-msgid ""
-"Removes every history entry, including pinned ones. Saved queries are kept."
+msgid "Removes every saved query, including pinned ones."
 msgstr ""
 
 #: data/resources/ui/preferences-history-group.ui
@@ -4981,10 +5085,6 @@ msgstr ""
 
 #: data/resources/ui/sql-editor.ui
 msgid "Open SQL File…"
-msgstr ""
-
-#: data/resources/ui/sql-editor.ui
-msgid "Save As…"
 msgstr ""
 
 #: data/resources/ui/sql-editor.ui
@@ -5161,14 +5261,6 @@ msgstr ""
 
 #: data/resources/ui/workspace.ui
 msgid "Filter tables"
-msgstr ""
-
-#: data/resources/ui/workspace.ui
-msgid "Saved tabs could not be read, so the open tabs are not saved"
-msgstr ""
-
-#: data/resources/ui/workspace.ui
-msgid "Moves the unreadable file aside, so the open tabs can be saved"
 msgstr ""
 
 #: data/resources/ui/workspace.ui

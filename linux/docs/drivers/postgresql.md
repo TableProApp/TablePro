@@ -51,7 +51,8 @@ A stop is PostgreSQL's cancel request (`CancelToken::cancel_query_raw`) over a n
 | 57014 that no cancel request of ours caused, once the call's statement bound has passed | `Timeout { phase: Statement, server_cancelled: true }` |
 | 55P03 | `Timeout { phase: LockWait }` |
 | 25006 | `ReadOnly(ServerRejected)` |
-| 28P01, 28000 | `Auth` |
+| 28P01 | `Auth` |
+| 28000, as when pg_hba.conf has no entry for the login | `LoginRefused` |
 | 53300 | `Busy` |
 | 57P01, 57P02, 57P03 | `ConnectionLost` |
 
@@ -116,7 +117,7 @@ CLOSE tablepro_cursor
 COMMIT                               -- or RELEASE SAVEPOINT tablepro_cursor_savepoint
 ```
 
-- One row past the limit tells a full result from a cut one. A cut result has `total_rows: None`.
+- One row past the limit tells a full result from a cut one. A cut result has `total_rows: None` and `Truncation::ServerStopped`: the statement never ran past the rows fetched, so a function it calls per row, such as `SELECT archive_order(id) FROM orders`, ran for those rows only, and the driver's `COMMIT` keeps what they did. The result says so rather than read the rest: `MOVE FORWARD ALL` would run the whole statement for every plain `SELECT` too, which is what the limit is there to avoid.
 - Each step goes as its own message, so a trailing `--` comment in the statement cannot swallow the `FETCH`.
 - A `DECLARE` the server refuses because the statement cannot be a cursor (a data-modifying `WITH`: 0A000; `SELECT INTO`: 42601) is rolled back to the savepoint or out of the driver's transaction, and the statement runs again as a plain statement. Inside the user's transaction any other failure aborts their transaction, as it would without the limit.
 - Error positions are corrected for the `DECLARE` prefix, so they count from the start of the user's statement.

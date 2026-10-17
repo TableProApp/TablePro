@@ -4,17 +4,32 @@ use crate::value::Value;
 #[derive(Debug, Clone, PartialEq)]
 pub enum PagePosition {
     First,
+    /// The table's last rows, read backward from its end. The SQL
+    /// reverses the order and the reader puts the rows back.
+    Last,
     Offset(u64),
-    /// Keyset paging forward from the last row of the page before.
+    /// Forward from the last row of the page before, by its key.
     AfterKey(Vec<Value>),
-    /// Keyset paging backward. The SQL reverses the order and the
-    /// fetcher reverses the rows back.
+    /// Backward from the first row of the page after, by its key. The
+    /// SQL reverses the order and the reader puts the rows back.
     BeforeKey(Vec<Value>),
-    /// A block of the PostgreSQL heap, for a table with no key.
-    CtidWindow {
-        after: Option<(u32, u16)>,
-        end_block: u64,
-    },
+    /// One range of PostgreSQL heap addresses, for a table with no key.
+    /// A page is read through as many of these as it takes to fill it.
+    CtidWindow(CtidWindow),
+}
+
+/// A PostgreSQL heap address: block, then line pointer. Line pointers
+/// start at 1, so `(block, 0)` sorts before every row in that block.
+pub type HeapAddress = (u32, u16);
+
+/// The rows between two heap addresses. A bound left out runs to that
+/// end of the table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CtidWindow {
+    pub after: Option<HeapAddress>,
+    pub before: Option<HeapAddress>,
+    /// Read from `before` down, for a page that ends there.
+    pub backward: bool,
 }
 
 /// Whether the same page read twice shows the same rows.

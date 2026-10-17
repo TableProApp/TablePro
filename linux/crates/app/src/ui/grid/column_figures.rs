@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 use gtk4::prelude::*;
 use gtk4::{self as gtk, pango};
@@ -14,25 +14,83 @@ const TEXT_NAT_CHARS: u32 = 14;
 /// How a column of either grid lays out its text. A column of numbers
 /// lines them up on the last digit in tabular figures and asks for the
 /// width of its longest number, so the column view never cuts one.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ColumnFigures {
     numbers: Cell<bool>,
     /// The longest number the column has held, in characters.
     chars: Cell<u32>,
+    /// An untyped column has held a value, and every one was a number.
+    held_value: Cell<bool>,
+    all_numbers: Cell<bool>,
+    /// The last width asked of `digits_width`, which every numeric cell
+    /// of the column asks again as it is bound.
+    digits: RefCell<Option<DigitsWidth>>,
+}
+
+impl Default for ColumnFigures {
+    fn default() -> Self {
+        Self {
+            numbers: Cell::new(false),
+            chars: Cell::new(0),
+            held_value: Cell::new(false),
+            all_numbers: Cell::new(true),
+            digits: RefCell::new(None),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct DigitsWidth {
+    chars: u32,
+    font: Option<pango::FontDescription>,
+    dpi: i32,
+    width: i32,
 }
 
 impl ColumnFigures {
     /// Decide from the column's type, or from `rows` when the driver
     /// could not type it.
     pub fn measure(&self, column_type: &ColumnType, index: usize, rows: &[RowObject]) {
-        let values = || {
-            rows.iter()
-                .filter_map(|row| row.cell(index))
-                .filter(|value| !value.is_null())
-        };
-        let numbers = holds_numbers(&column_type.kind, values());
-        self.numbers.set(numbers);
-        self.chars.set(if numbers { widest(column_type, values()) } else { 0 });
+        self.numbers.set(false);
+        self.chars.set(0);
+        self.held_value.set(false);
+        self.all_numbers.set(true);
+        self.extend(column_type, index, rows);
+    }
+
+    /// Take in rows added to those already measured. A draft has no
+    /// cells, so it changes nothing.
+    pub fn extend(&self, column_type: &ColumnType, index: usize, rows: &[RowObject]) {
+        let values = rows
+            .iter()
+            .filter_map(|row| row.cell(index))
+            .filter(|value| !value.is_null());
+        if column_type.kind.is_numeric() {
+            self.numbers.set(true);
+            self.chars.set(self.chars.get().max(widest(column_type, values)));
+            return;
+        }
+        // PostgreSQL editor results carry no type (ADR 0016), so such a
+        // column aligns by what it holds, as a spreadsheet does.
+        if !matches!(column_type.kind, ColumnKind::Other | ColumnKind::Variant) {
+            return;
+        }
+        let mut scratch = String::new();
+        for value in values {
+            if !self.all_numbers.get() {
+                break;
+            }
+            self.held_value.set(true);
+            match is_number(value) {
+                true => self.chars.set(
+                    self.chars
+                        .get()
+                        .max(char_count(display_text(value, column_type, &mut scratch).text)),
+                ),
+                false => self.all_numbers.set(false),
+            }
+        }
+        self.numbers.set(self.held_value.get() && self.all_numbers.get());
     }
 
     pub fn numbers(&self) -> bool {
@@ -59,21 +117,31 @@ impl ColumnFigures {
         display.add_css_class("numeric");
         // GtkInscription sizes by an average character, which a run of
         // digits outgrows, so the cell asks for the digits' own width.
-        display.set_width_request(digits_width(display, self.chars.get()));
+        display.set_width_request(self.digits_width(display, self.chars.get()));
     }
-}
 
-fn holds_numbers<'a>(kind: &ColumnKind, values: impl Iterator<Item = &'a Value>) -> bool {
-    if kind.is_numeric() {
-        return true;
+    /// The width of `chars` digits, laid out once per width, font and
+    /// text scale rather than once per cell.
+    fn digits_width(&self, display: &gtk::Inscription, chars: u32) -> i32 {
+        let font = display.pango_context().font_description();
+        let dpi = display.settings().gtk_xft_dpi();
+        let mut cached = self.digits.borrow_mut();
+        if let Some(digits) = cached.as_ref()
+            && digits.chars == chars
+            && digits.dpi == dpi
+            && digits.font == font
+        {
+            return digits.width;
+        }
+        let width = digits_width(display, chars);
+        *cached = Some(DigitsWidth {
+            chars,
+            font,
+            dpi,
+            width,
+        });
+        width
     }
-    // PostgreSQL editor results carry no type (ADR 0016), so such a
-    // column aligns by what it holds, as a spreadsheet does.
-    if !matches!(kind, ColumnKind::Other | ColumnKind::Variant) {
-        return false;
-    }
-    let mut values = values.peekable();
-    values.peek().is_some() && values.all(is_number)
 }
 
 fn is_number(value: &Value) -> bool {
@@ -178,6 +246,31 @@ mod tests {
         ] {
             assert!(!measured(&untyped, &not_numbers).numbers(), "{not_numbers:?}");
         }
+    }
+
+    #[test]
+    fn rows_added_later_widen_the_column_and_a_draft_changes_nothing() {
+        let integer = col("integer", false).column_type;
+        let figures = measured(&integer, &[Value::Int(12)]);
+
+        figures.extend(&integer, 0, &[RowObject::draft(1)]);
+        assert_eq!(figures.chars.get(), 2);
+        figures.extend(&integer, 0, &rows(&[Value::Int(-1_234)]));
+        assert_eq!(figures.chars.get(), 5, "the widest row so far");
+        figures.measure(&integer, 0, &rows(&[Value::Int(7)]));
+        assert_eq!(figures.chars.get(), 1, "a new page measures from scratch");
+    }
+
+    #[test]
+    fn an_untyped_column_stops_being_numbers_at_the_first_word_added() {
+        let untyped = ColumnType::untyped_text("text");
+        let figures = measured(&untyped, &[text("6")]);
+        assert!(figures.numbers());
+
+        figures.extend(&untyped, 0, &rows(&[Value::Null, text("Coffee")]));
+        assert!(!figures.numbers());
+        figures.extend(&untyped, 0, &rows(&[text("7")]));
+        assert!(!figures.numbers(), "one word in the column is enough");
     }
 
     /// A browse page in a window too narrow for every column to get the
@@ -299,5 +392,27 @@ mod tests {
                 .any(|display| display.width() >= tabular_width(display, "100000000001"))
         });
         assert!(wide.is_ok(), "the column waits for its widest row to scroll into view");
+    }
+
+    #[gtk4::test]
+    fn adding_a_draft_keeps_the_width_the_page_measured() {
+        let columns = shop_columns(0);
+        let mut first: Vec<Vec<Value>> = (1..=20).map(|id| shop_row(id, "1.5", columns.len())).collect();
+        if let Some(last) = first.last_mut() {
+            last[0] = Value::Int(100_000_000_001);
+        }
+        let grid = crowded(&columns, &first);
+        wait_until(WAIT, || !drawn(&grid.view, &[0]).is_empty()).expect("the page is drawn");
+
+        grid.store.insert(0, &RowObject::draft(1));
+
+        let wide = wait_until(WAIT, || {
+            let ids = drawn(&grid.view, &[0]);
+            !ids.is_empty()
+                && ids
+                    .iter()
+                    .all(|display| display.width() >= tabular_width(display, "100000000001"))
+        });
+        assert!(wide.is_ok(), "the draft narrowed the column its rows had widened");
     }
 }

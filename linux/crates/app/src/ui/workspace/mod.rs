@@ -10,6 +10,7 @@ mod finished_work;
 mod health_banner;
 mod imp;
 mod import;
+mod import_ledger;
 mod row_ops;
 mod saves;
 mod session_watches;
@@ -155,6 +156,8 @@ pub(crate) struct WorkspaceModel {
     close_guards: Rc<CloseGuards>,
     /// The exports running from this workspace's grids.
     exports: Rc<ExportLedger>,
+    /// The CSV imports running into this workspace's tables.
+    imports: Rc<import_ledger::ImportLedger>,
     /// Whether the window was last told there is something to lose.
     reported_dirty: Cell<Option<bool>>,
     history_dialog: Option<HistoryDialog>,
@@ -183,6 +186,18 @@ fn session_slot(window_context: &SessionContext, session: &Arc<Session>) -> Rc<S
     });
     context.active.replace(session.clone());
     context
+}
+
+fn window_inhibitor(window: &adw::ApplicationWindow) -> WindowInhibitor {
+    WindowInhibitor::new(ApplicationInhibit::new(window))
+}
+
+/// The driver's name, or its id when this build has no such driver.
+fn driver_display_name(context: &SessionContext, driver_id: &str) -> String {
+    context
+        .drivers
+        .get(driver_id)
+        .map_or_else(|| driver_id.to_owned(), |driver| driver.display_name().to_owned())
 }
 
 /// Tells the user once each time editor drafts start failing to land.
@@ -435,7 +450,7 @@ pub(crate) enum WorkspaceInput {
     ImportCsvReady {
         schema: Option<String>,
         table: String,
-        columns: Vec<tablepro_core::ColumnInfo>,
+        columns: Vec<tablepro_core::import::ImportColumn>,
         bytes: Vec<u8>,
     },
     ImportCsvRun(Box<super::import_dialog::CsvImport>),
@@ -533,6 +548,7 @@ impl Workspace {
         );
         let persistence = workspace_persistence::WorkspacePersistence::new(storage.workspaces().clone());
         let exports = workspace.export_ledger(&window, &services, &context, &input);
+        let imports = import_ledger::ImportLedger::new(context.hold.clone(), window_inhibitor(&window));
         let sidebar = sidebar::build(&workspace, &input, sidebar::SidebarAffordances::for_session(&session));
         let WorkspaceTabParts {
             tab_view,
@@ -552,10 +568,7 @@ impl Workspace {
         let draft_failures = draft_failure_watch(&drafts, &input);
 
         let driver_id = session.metadata().driver_id.clone();
-        let driver_name = context
-            .drivers
-            .get(&driver_id)
-            .map_or_else(|| driver_id.clone(), |driver| driver.display_name().to_owned());
+        let driver_name = driver_display_name(&context, &driver_id);
         let model = WorkspaceModel {
             context,
             key,
@@ -595,6 +608,7 @@ impl Workspace {
             workspace_handle,
             close_guards,
             exports: exports.clone(),
+            imports: imports.clone(),
             reported_dirty: Cell::new(None),
             history_dialog: None,
             saved_queries_dialog: None,
@@ -609,6 +623,7 @@ impl Workspace {
         };
         imp.model.replace(Some(model));
         workspace.register_close_blocker(exports);
+        workspace.register_close_blocker(imports);
         workspace
     }
 
@@ -636,7 +651,7 @@ impl Workspace {
             tasks: services.tasks.clone(),
             hold: context.hold.clone(),
             reporter: ExportReporter::new(window, &imp.toast_overlay.get(), services.file_revealer.clone()),
-            inhibitor: WindowInhibitor::new(ApplicationInhibit::new(window)),
+            inhibitor: window_inhibitor(window),
         });
         imp.export_operations_button.bind(&exports.jobs());
         let ended = input.clone();
@@ -933,6 +948,7 @@ impl WorkspaceModel {
         // The close asked about them already; one started since has no
         // window left to finish in.
         self.exports.shut_down();
+        self.imports.shut_down();
         self.context.active.take();
     }
 

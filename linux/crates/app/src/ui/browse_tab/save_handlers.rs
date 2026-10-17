@@ -5,6 +5,7 @@ use gtk4::prelude::*;
 use super::{BrowseModel, BrowseRequestKind, BrowseTabOutput, Effects, SaveInput};
 use crate::services::change_origins::ChangeOrigins;
 use crate::services::change_tracker::{RowKey, StatementSource};
+use crate::ui::discard_alert::confirm_discard;
 
 impl BrowseModel {
     pub(super) fn on_save(&mut self, input: SaveInput, fx: &mut Effects) {
@@ -12,6 +13,7 @@ impl BrowseModel {
             SaveInput::CommitSave => fx.output(BrowseTabOutput::SaveRequested),
             SaveInput::SaveStarted => self.show_saving(true),
             SaveInput::StopSaving => fx.output(BrowseTabOutput::StopSaveRequested),
+            SaveInput::ConfirmDiscard => self.confirm_discard(),
             SaveInput::DiscardAll => {
                 let delta = self.tracker.discard();
                 self.apply_tracker_delta(&delta, fx);
@@ -44,6 +46,19 @@ impl BrowseModel {
                 }
             }
         }
+    }
+
+    fn confirm_discard(&self) {
+        let pending = self.tracker.pending_count();
+        if pending == 0 {
+            return;
+        }
+        let tab = self.this.clone();
+        confirm_discard(&self.widgets.inner_stack, pending, move || {
+            if let Some(tab) = tab.upgrade() {
+                tab.send(SaveInput::DiscardAll);
+            }
+        });
     }
 
     fn save_committed(&mut self, origins: &ChangeOrigins, fx: &mut Effects) {

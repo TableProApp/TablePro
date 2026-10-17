@@ -103,15 +103,22 @@ fn number_token<S: Serializer>(serializer: S, digits: &str) -> Result<S::Ok, S::
 }
 
 /// One row as a document a person reads, which is the only place a
-/// single row is rendered on its own.
-pub fn row_to_json(columns: &[ResultColumn], row: &[Value]) -> String {
+/// single row is rendered on its own. A value the driver could not read
+/// is refused, as every export refuses it, rather than shown as a
+/// `null` the row does not hold.
+pub fn row_to_json(columns: &[ResultColumn], row: &[Value]) -> Result<String, EncodeError> {
+    if let Some(index) = row.iter().position(|value| matches!(value, Value::Undecodable(_))) {
+        return Err(EncodeError::Undecodable {
+            column: super::encoder::column_name(columns, index),
+        });
+    }
     let names = json_field_names(columns);
     let value = JsonRow {
         names: &names,
         columns,
         row,
     };
-    serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_owned())
+    Ok(serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_owned()))
 }
 
 pub fn render_json(columns: &[ResultColumn], rows: &[Vec<Value>]) -> Result<String, EncodeError> {
@@ -126,7 +133,27 @@ mod tests {
     use super::*;
 
     fn parsed(columns: &[ResultColumn], row: &[Value]) -> serde_json::Value {
-        serde_json::from_str(&row_to_json(columns, row)).expect("the row is JSON")
+        serde_json::from_str(&row_to_json(columns, row).expect("a readable row")).expect("the row is JSON")
+    }
+
+    #[test]
+    fn an_unreadable_value_is_refused_rather_than_shown_as_null() {
+        let row = vec![
+            Value::Int(1),
+            Value::Undecodable(Box::new(crate::value::UndecodedValue {
+                type_name: "text".to_owned(),
+                reason: crate::value::UndecodableReason::InvalidEncoding,
+            })),
+        ];
+
+        let refused = row_to_json(&cols(&["id", "body"]), &row);
+
+        assert_eq!(
+            refused,
+            Err(EncodeError::Undecodable {
+                column: "body".to_owned()
+            })
+        );
     }
 
     #[test]
@@ -172,7 +199,7 @@ mod tests {
             Value::Decimal("12345678901234567890.12345678901234567890".parse().expect("a decimal")),
         ];
 
-        let text = row_to_json(&columns, &row);
+        let text = row_to_json(&columns, &row).expect("a readable row");
 
         assert!(text.contains("18446744073709551615"), "{text}");
         assert!(
@@ -197,7 +224,7 @@ mod tests {
         )];
         let row = vec![Value::Decimal("1".parse().expect("a decimal"))];
 
-        let text = row_to_json(&columns, &row);
+        let text = row_to_json(&columns, &row).expect("a readable row");
 
         assert!(text.contains("1.0000000000"), "{text}");
     }
@@ -210,7 +237,7 @@ mod tests {
             crate::value::JsonText::parse(document.to_owned()).expect("valid json"),
         )];
 
-        let text = row_to_json(&columns, &row);
+        let text = row_to_json(&columns, &row).expect("a readable row");
 
         assert!(
             text.contains(&format!("\"payload\": {document}")),
@@ -241,7 +268,7 @@ mod tests {
         let columns = cols(&["r"]);
         let row = vec![Value::Float32(0.1)];
 
-        let text = row_to_json(&columns, &row);
+        let text = row_to_json(&columns, &row).expect("a readable row");
 
         assert!(
             text.contains("\"r\": 0.1\n"),
@@ -266,7 +293,7 @@ mod tests {
             Value::Null,
         ])];
 
-        let text = row_to_json(&columns, &row);
+        let text = row_to_json(&columns, &row).expect("a readable row");
 
         assert!(text.contains("1.50,"), "the item lost its column's scale: {text}");
         assert_eq!(parsed(&columns, &row)["amounts"], serde_json::json!([1.5, null]));

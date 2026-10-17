@@ -21,8 +21,9 @@ pub struct ServerNotice {
 pub enum Truncation {
     /// Every row the statement produced is here.
     Complete,
-    /// The server stopped sending, because the query had a LIMIT of its
-    /// own or the run was stopped.
+    /// The statement itself was stopped at the row limit, so it never
+    /// ran for the rows past it: a function it calls per row ran for the
+    /// rows kept and no others.
     ServerStopped,
     /// The run hit its row limit and there were more rows behind it.
     ReadPastLimit,

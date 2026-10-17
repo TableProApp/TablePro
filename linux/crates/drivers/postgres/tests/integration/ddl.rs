@@ -44,6 +44,80 @@ async fn change(connection: &dyn Connection, table: &TableRef, edit: impl Fn(&mu
     read_table(connection, table).await
 }
 
+/// The plan for one column's new type, run as the structure tab saves.
+async fn retype(
+    connection: &dyn Connection,
+    column: &str,
+    declaration: &str,
+) -> Result<(), tablepro_core::DriverError> {
+    let before = read(connection).await;
+    let mut draft = TableDraft::from_definition(&before);
+    for draft_column in &mut draft.columns {
+        if draft_column.name == column {
+            draft_column.column_type = DraftType::Typed(declaration.to_owned());
+        }
+    }
+    let plan = connection
+        .dialect()
+        .ddl()
+        .expect("PostgreSQL plans its DDL")
+        .plan_alter_table(&before, &diff_table(&before, &draft))
+        .expect("the change plans");
+    connection
+        .write_batch(&plan.into_write_batch(kept()), within(CALL))
+        .await
+        .map(|_| ())
+}
+
+/// An explicit cast to `varchar(10)`, `char(5)` or `bit(4)` cuts the
+/// value to fit, so a narrowing has to fail on a value that does not,
+/// as an INSERT of it would.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn narrowing_refuses_a_value_that_does_not_fit() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE kept (id int PRIMARY KEY, label varchar(255), code char(10), flags bit(8), \
+             tags varchar(20)[], n int)",
+            "INSERT INTO kept VALUES (1, repeat('x', 20), 'abcdefghij', B'10101010', ARRAY['abcdefghijkl'], 12345)",
+        ],
+    )
+    .await;
+
+    for (column, narrower) in [
+        ("label", "varchar(10)"),
+        ("code", "char(5)"),
+        ("flags", "bit(4)"),
+        ("tags", "varchar(5)[]"),
+    ] {
+        let outcome = retype(connection.as_ref(), column, narrower).await;
+        assert!(outcome.is_err(), "{column} to {narrower} cut the value: {outcome:?}");
+    }
+    assert_eq!(
+        value(
+            connection.as_ref(),
+            "SELECT length(label) || '|' || code || '|' || flags::text || '|' || tags[1] FROM kept"
+        )
+        .await,
+        "20|abcdefghij|10101010|abcdefghijkl"
+    );
+
+    retype(connection.as_ref(), "label", "varchar(30)")
+        .await
+        .expect("a value that fits");
+    retype(connection.as_ref(), "n", "bit(16)")
+        .await
+        .expect("an integer still converts to a bit string");
+    assert_eq!(
+        value(connection.as_ref(), "SELECT length(label) || '|' || n::text FROM kept").await,
+        "20|0011000000111001"
+    );
+    connection.close().await.expect("a close");
+}
+
 fn type_of(definition: &TableDefinition, column: &str) -> String {
     definition
         .column(column)

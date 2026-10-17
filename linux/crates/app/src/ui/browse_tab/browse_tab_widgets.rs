@@ -22,4 +22,7 @@ pub(super) struct BrowseTabWidgets {
     pub(super) delete_button: gtk::Button,
     pub(super) pager_bar: PagerBar,
     pub(super) pending_bar: PendingChangesBar,
+    pub(super) page_size_dropdown: gtk::DropDown,
+    /// The size at each place in the dropdown and the More menu.
+    pub(super) page_sizes: Vec<u64>,
 }

@@ -63,9 +63,17 @@ impl ResultSummary {
                 plural_count(total),
                 &[("shown", &shown), ("total", &format(total))],
             )),
-            (Truncation::ReadPastLimit | Truncation::ServerStopped, _) => Some(ngettext_f(
+            (Truncation::ReadPastLimit, None) => Some(ngettext_f(
                 "Showing the first {shown} row",
                 "Showing the first {shown} rows",
+                plural_count(self.retained),
+                &[("shown", &shown)],
+            )),
+            // A SELECT that calls a function per row did that for these
+            // rows only, which "showing" alone would hide.
+            (Truncation::ServerStopped, _) => Some(ngettext_f(
+                "Stopped after the first {shown} row: the statement did not run past it",
+                "Stopped after the first {shown} rows: the statement did not run past them",
                 plural_count(self.retained),
                 &[("shown", &shown)],
             )),
@@ -127,7 +135,7 @@ mod tests {
 
         assert_eq!(
             stopped.limit_title_with(english).as_deref(),
-            Some("Showing the first 1,000 rows")
+            Some("Stopped after the first 1,000 rows: the statement did not run past them")
         );
         assert_eq!(
             read_past.limit_title_with(english).as_deref(),
