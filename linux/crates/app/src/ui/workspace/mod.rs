@@ -316,10 +316,17 @@ impl WorkspaceTab {
 }
 
 /// Give `page` its title and tooltip. libadwaita treats an empty tooltip
-/// as none, which clears the last one.
+/// as none, which clears the last one. The tooltip says what the unsaved
+/// icon shows, since a screen reader reads a tab's tooltip and not its
+/// icon.
 pub(crate) fn apply_tab_title(page: &adw::TabPage, title: &tab_title::TabTitle) {
     page.set_title(&title.label);
-    page.set_tooltip(title.tooltip.as_deref().unwrap_or_default());
+    let unsaved = page.icon().is_some().then(|| crate::i18n::gettext("Unsaved changes"));
+    let lines: Vec<&str> = [title.tooltip.as_deref(), unsaved.as_deref()]
+        .into_iter()
+        .flatten()
+        .collect();
+    page.set_tooltip(&lines.join("\n"));
 }
 
 #[derive(Debug, Clone, Copy)]

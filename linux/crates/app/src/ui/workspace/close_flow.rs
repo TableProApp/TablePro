@@ -148,8 +148,19 @@ impl WorkspaceModel {
     /// window whether a logout would, so it holds the session back.
     pub(super) fn refresh_unsaved(&self) {
         let unsaved: HashSet<Uuid> = self.workspace_handle.dirty_tabs().iter().map(|tab| tab.id).collect();
+        let marked: Vec<Uuid> = self
+            .workspace_tabs
+            .borrow()
+            .iter()
+            .filter(|(id, tab)| tab.page().icon().is_some() != unsaved.contains(id))
+            .map(|(id, _)| *id)
+            .collect();
         for (id, tab) in self.workspace_tabs.borrow().iter() {
             apply_unsaved_icon(tab.page(), unsaved.contains(id));
+        }
+        // The tooltip carries the mark to a screen reader.
+        for id in marked {
+            self.retitle_tab(id);
         }
         let dirty = !unsaved.is_empty();
         if self.reported_dirty.replace(Some(dirty)) == Some(dirty) {

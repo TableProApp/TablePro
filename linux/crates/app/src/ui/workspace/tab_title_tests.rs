@@ -80,9 +80,13 @@ fn unsaved_icon_follows_structure_tracker() {
     edit_structure(&workspace, id, a_column_added());
     wait_until(WAIT, || modified(&page)).expect("the unsaved icon");
     assert_eq!(page.title(), "New Table", "the title changed with the edit");
+    // A screen reader reads the tab's tooltip, never its icon.
+    let tooltip = || page.tooltip().map(|tooltip| tooltip.to_string()).unwrap_or_default();
+    assert!(tooltip().ends_with("Unsaved changes"), "{}", tooltip());
 
     edit_structure(&workspace, id, None);
     wait_until(WAIT, || page.icon().is_none()).expect("the icon to go");
+    assert!(!tooltip().contains("Unsaved changes"), "{}", tooltip());
 }
 
 #[gtk4::test]
