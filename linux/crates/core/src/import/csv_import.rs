@@ -11,6 +11,12 @@ use super::ImportColumn;
 /// gigabyte file still opens the dialog at once.
 pub const MAX_PREVIEW_ROWS: usize = 50;
 
+/// The most fields one record may have. No engine takes a table this
+/// wide (MySQL stops at 4,096 columns), and every row of the preview is
+/// padded to the widest, so a line of nothing but commas must not decide
+/// how much is allocated.
+pub const MAX_FIELDS: usize = 4_096;
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ImportError {
     #[error("the file is not valid UTF-8 at byte {offset}")]
@@ -21,6 +27,9 @@ pub enum ImportError {
 
     #[error("the file has no columns in it")]
     NoColumns,
+
+    #[error("line {line} has more than {limit} fields")]
+    TooManyFields { line: u64, limit: usize },
 }
 
 /// What a row could not be turned into, named well enough for the user
@@ -88,12 +97,13 @@ pub fn read_csv(bytes: &[u8], options: &CsvImportOptions, limit: Option<usize>) 
         .from_reader(bytes);
 
     let headers: Vec<String> = match options.has_header {
-        true => reader
-            .headers()
-            .map_err(|error| ImportError::Malformed(error.to_string()))?
-            .iter()
-            .map(str::to_owned)
-            .collect(),
+        true => {
+            let header = reader
+                .headers()
+                .map_err(|error| ImportError::Malformed(error.to_string()))?;
+            within_width(header)?;
+            header.iter().map(str::to_owned).collect()
+        }
         false => Vec::new(),
     };
 
@@ -107,6 +117,7 @@ pub fn read_csv(bytes: &[u8], options: &CsvImportOptions, limit: Option<usize>) 
             truncated = true;
             break;
         }
+        within_width(&record)?;
         rows.push(record.iter().map(str::to_owned).collect());
     }
 
@@ -129,6 +140,17 @@ pub fn read_csv(bytes: &[u8], options: &CsvImportOptions, limit: Option<usize>) 
         rows,
         truncated,
     })
+}
+
+/// Refuse a record wider than `MAX_FIELDS` before its fields are copied.
+fn within_width(record: &csv::StringRecord) -> Result<(), ImportError> {
+    match record.len() > MAX_FIELDS {
+        true => Err(ImportError::TooManyFields {
+            line: record.position().map_or(1, csv::Position::line),
+            limit: MAX_FIELDS,
+        }),
+        false => Ok(()),
+    }
 }
 
 /// A starting mapping: each table column takes the CSV field whose
@@ -348,6 +370,31 @@ mod tests {
         let error = read_csv(b"a,b\n1,\xff\n", &options(), None).expect_err("not utf-8");
 
         assert_eq!(error, ImportError::NotUtf8 { offset: 6 });
+    }
+
+    #[test]
+    fn a_record_wider_than_any_table_is_refused_before_it_is_padded() {
+        let mut file = String::from("a,b\n1,2\n");
+        file.push_str(&",".repeat(MAX_FIELDS));
+        file.push('\n');
+        let header = format!("{}\n1\n", ",".repeat(MAX_FIELDS));
+
+        assert_eq!(
+            read_csv(file.as_bytes(), &options(), Some(MAX_PREVIEW_ROWS)),
+            Err(ImportError::TooManyFields {
+                line: 3,
+                limit: MAX_FIELDS
+            })
+        );
+        assert_eq!(
+            read_csv(header.as_bytes(), &options(), None),
+            Err(ImportError::TooManyFields {
+                line: 1,
+                limit: MAX_FIELDS
+            })
+        );
+        let widest = format!("{}\n", ",".repeat(MAX_FIELDS - 1));
+        assert!(read_csv(widest.as_bytes(), &options(), None).is_ok());
     }
 
     #[test]

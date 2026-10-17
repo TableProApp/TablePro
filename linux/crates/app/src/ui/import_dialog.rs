@@ -261,12 +261,15 @@ impl ImportCsvDialog {
             .chain(self.sheet.headers.iter().cloned())
             .collect();
         let choice_refs: Vec<&str> = choices.iter().map(String::as_str).collect();
+        // One list for every row: each row keeps its own selection, and
+        // a wide file is held once rather than once per column.
+        let choices = gtk::StringList::new(&choice_refs);
         let suggested = suggest_mapping(&self.sheet.headers, &self.columns);
 
         for (column, field) in self.columns.iter().zip(&suggested) {
             let row = adw::ComboRow::builder()
                 .title(glib::markup_escape_text(&column.info.name))
-                .model(&gtk::StringList::new(&choice_refs))
+                .model(&choices)
                 .sensitive(!column.server_filled)
                 .build();
             row.set_selected(field.map_or(0, |index| index as u32 + 1));
