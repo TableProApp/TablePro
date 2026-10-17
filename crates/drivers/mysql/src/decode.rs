@@ -38,7 +38,11 @@ fn decode_by_type(row: &MySqlRow, idx: usize, type_name: &str) -> Option<Value> 
         // its exact digits as text instead of the row's real number
         // silently disappearing.
         "DECIMAL" | "NUMERIC" => decode_decimal_exact(row, idx),
-        "BOOLEAN" => row.try_get::<bool, _>(idx).map(Value::Bool).ok(),
+        "BOOLEAN" => row
+            .try_get::<i64, _>(idx)
+            .or_else(|_| row.try_get::<u8, _>(idx).map(i64::from))
+            .map(tiny_flag)
+            .ok(),
         "DATE" => row
             .try_get::<chrono::NaiveDate, _>(idx)
             .map(Value::Date)
@@ -103,4 +107,26 @@ fn decode_decimal_exact(row: &MySqlRow, idx: usize) -> Option<Value> {
                 .unwrap_or_else(|_| Value::Text(text.to_owned()))
         })
         .ok()
+}
+
+fn tiny_flag(stored: i64) -> Value {
+    match stored {
+        0 => Value::Bool(false),
+        1 => Value::Bool(true),
+        other => Value::Int(other),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_zero_and_one_read_as_a_flag() {
+        assert_eq!(tiny_flag(0), Value::Bool(false));
+        assert_eq!(tiny_flag(1), Value::Bool(true));
+        assert_eq!(tiny_flag(2), Value::Int(2));
+        assert_eq!(tiny_flag(-1), Value::Int(-1));
+        assert_eq!(tiny_flag(255), Value::Int(255));
+    }
 }
