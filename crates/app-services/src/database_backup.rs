@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
-use tablepro_core::{ConnectOptions, DriverError, OperationControl};
+use tablepro_core::{ConnectOptions, DatabaseDriver, DriverError, OperationControl};
 use tablepro_dump::{ClientTool, DumpError, DumpFormat, PgDumpRequest, PgRestoreRequest, pg_dump, pg_restore};
 use tablepro_policy::{AdministrativeOperation, PolicyGuard};
 use tablepro_storage::SavedConnection;
@@ -32,6 +34,7 @@ impl BackupJob {
 
 pub struct SavedBackupContext<'a> {
     pub guard: &'a PolicyGuard,
+    pub driver: &'a dyn DatabaseDriver,
     pub saved: &'a SavedConnection,
     pub environment: &'a SshEnvironment,
     pub server_version: Option<&'a str>,
@@ -40,6 +43,7 @@ pub struct SavedBackupContext<'a> {
 
 pub struct BackupContext<'a> {
     pub guard: &'a PolicyGuard,
+    pub driver: &'a dyn DatabaseDriver,
     pub tool: &'a ClientTool,
     pub options: ConnectOptions,
     pub ssh: Option<SshRoute>,
@@ -59,6 +63,7 @@ pub async fn run_saved_backup_job(
     let ssh = saved_ssh_route(context.saved).await.map_err(transport_error)?;
     let context = BackupContext {
         guard: context.guard,
+        driver: context.driver,
         tool: &tool,
         options,
         ssh,
@@ -75,11 +80,19 @@ pub async fn run_backup_job(
     control: &OperationControl,
 ) -> Result<(), DriverError> {
     let token = control.cancellation_token().clone();
+    let dispatched = Arc::new(AtomicBool::new(false));
+    let restore_dispatched = dispatched.clone();
     let operation = job.operation();
     let work = async {
-        let (endpoint, _tunnel) = open_tool_endpoint(context.options, context.ssh, context.environment, token.clone())
-            .await
-            .map_err(transport_error)?;
+        let (endpoint, _tunnel) = open_tool_endpoint(
+            context.driver,
+            context.options,
+            context.ssh,
+            context.environment,
+            token.clone(),
+        )
+        .await
+        .map_err(transport_error)?;
         let outcome = match &job {
             BackupJob::Backup { output } => {
                 let request = PgDumpRequest {
@@ -96,12 +109,22 @@ pub async fn run_backup_job(
                     input,
                     server_major: context.server_major,
                 };
-                pg_restore(context.tool, request, context.runtime_dir, token.clone()).await
+                pg_restore(
+                    context.tool,
+                    request,
+                    context.runtime_dir,
+                    token.clone(),
+                    restore_dispatched.as_ref(),
+                )
+                .await
             }
         };
         outcome.map_err(dump_error)
     };
-    context.guard.run_administrative(operation, control, work).await
+    context
+        .guard
+        .run_administrative_with_dispatch(operation, control, dispatched, work)
+        .await
 }
 
 fn postgres_server_major(driver_id: &str, server_version: Option<&str>) -> Result<u32, DriverError> {

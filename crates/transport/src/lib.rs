@@ -520,6 +520,9 @@ mod tests {
     use super::*;
     use tablepro_policy::{AuditEvent, AuditTerminalStatus, AuditTransportClient};
 
+    #[path = "../tool_endpoint_tests.rs"]
+    mod tool_endpoint_tests;
+
     #[derive(Default)]
     struct RecordingAudit(std::sync::Mutex<Vec<AuditEvent>>);
 
@@ -675,10 +678,15 @@ mod tests {
             ..Default::default()
         };
         opts.forwarded_socket_dir = Some("/run/stale".into());
-        let (endpoint, tunnel) =
-            open_tool_endpoint(opts, None, &environment, tokio_util::sync::CancellationToken::new())
-                .await
-                .expect("endpoint");
+        let (endpoint, tunnel) = open_tool_endpoint(
+            &HangingDriver,
+            opts,
+            None,
+            &environment,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .expect("endpoint");
         assert!(tunnel.is_none());
         assert_eq!((endpoint.host.as_str(), endpoint.port), ("db.example", 5432));
         assert!(endpoint.forwarded_socket_dir.is_none());
@@ -692,6 +700,7 @@ mod tests {
         let cancellation = tokio_util::sync::CancellationToken::new();
         cancellation.cancel();
         let result = open_tool_endpoint(
+            &HangingDriver,
             ConnectOptions::default(),
             Some(SshRoute::Builtin(Vec::new())),
             &environment,
@@ -700,6 +709,7 @@ mod tests {
         .await;
         assert!(matches!(result, Err(TransportError::Cancelled)));
         let failed = open_tool_endpoint(
+            &HangingDriver,
             ConnectOptions::default(),
             Some(SshRoute::Builtin(Vec::new())),
             &environment,
@@ -717,6 +727,7 @@ mod tests {
         let state = Arc::new(AuditState::new());
         let environment = audit_environment(Arc::new(FailingAudit), state.clone());
         let result = open_tool_endpoint(
+            &HangingDriver,
             ConnectOptions::default(),
             Some(SshRoute::Builtin(Vec::new())),
             &environment,

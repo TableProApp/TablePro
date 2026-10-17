@@ -231,6 +231,206 @@ async fn a_cancelled_operation_records_a_cancelled_outcome() {
 }
 
 #[tokio::test]
+async fn a_cancelled_restore_after_dispatch_is_unknown_and_disables_governed_writes() {
+    let audit = Arc::new(SequenceAuditSink::new(vec![]));
+    let state = Arc::new(AuditState::new());
+    let guard = guard(
+        Principal::human_gui(),
+        false,
+        Arc::new(AutoApproveSink),
+        audit.clone(),
+        state.clone(),
+    );
+    let control = control();
+    let token = control.cancellation_token().clone();
+    let dispatched = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let mark_dispatched = dispatched.clone();
+
+    let error = guard
+        .run_administrative_with_dispatch(AdministrativeOperation::Restore, &control, dispatched, async move {
+            mark_dispatched.store(true, std::sync::atomic::Ordering::Release);
+            token.cancel();
+            std::future::pending::<Result<(), DriverError>>().await
+        })
+        .await
+        .expect_err("restore outcome is unknown");
+
+    assert!(matches!(error, DriverError::OperationOutcomeUnknown { .. }));
+    assert!(state.governed_writes_disabled());
+    assert_eq!(
+        statuses(&audit),
+        [
+            (AuditRecordPhase::Intent, AuditTerminalStatus::Pending),
+            (AuditRecordPhase::Outcome, AuditTerminalStatus::Unknown),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn cancelling_a_restore_before_dispatch_keeps_the_session_available() {
+    let audit = Arc::new(SequenceAuditSink::new(vec![]));
+    let state = Arc::new(AuditState::new());
+    let guard = guard(
+        Principal::human_gui(),
+        false,
+        Arc::new(AutoApproveSink),
+        audit.clone(),
+        state.clone(),
+    );
+    let control = control();
+    let token = control.cancellation_token().clone();
+    let dispatched = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+    let error = guard
+        .run_administrative_with_dispatch(AdministrativeOperation::Restore, &control, dispatched, async move {
+            token.cancel();
+            std::future::pending::<Result<(), DriverError>>().await
+        })
+        .await
+        .expect_err("cancelled before dispatch");
+
+    assert!(matches!(error, DriverError::Cancelled));
+    assert!(!state.governed_writes_disabled());
+    assert_eq!(
+        statuses(&audit),
+        [
+            (AuditRecordPhase::Intent, AuditTerminalStatus::Pending),
+            (AuditRecordPhase::Outcome, AuditTerminalStatus::Cancelled),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_timed_out_restore_after_dispatch_is_unknown_and_disables_governed_writes() {
+    let audit = Arc::new(SequenceAuditSink::new(vec![]));
+    let state = Arc::new(AuditState::new());
+    let guard = guard(
+        Principal::human_gui(),
+        false,
+        Arc::new(AutoApproveSink),
+        audit.clone(),
+        state.clone(),
+    );
+    let control = OperationControl::new(
+        CancellationToken::new(),
+        Some(tokio::time::Instant::now() + std::time::Duration::from_secs(1)),
+    );
+    let dispatched = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let mark_dispatched = dispatched.clone();
+
+    let error = guard
+        .run_administrative_with_dispatch(AdministrativeOperation::Restore, &control, dispatched, async move {
+            mark_dispatched.store(true, std::sync::atomic::Ordering::Release);
+            std::future::pending::<Result<(), DriverError>>().await
+        })
+        .await
+        .expect_err("restore outcome is unknown");
+
+    assert!(matches!(error, DriverError::OperationOutcomeUnknown { .. }));
+    assert!(state.governed_writes_disabled());
+    assert_eq!(
+        statuses(&audit),
+        [
+            (AuditRecordPhase::Intent, AuditTerminalStatus::Pending),
+            (AuditRecordPhase::Outcome, AuditTerminalStatus::Unknown),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_failed_restore_after_dispatch_is_unknown_and_disables_governed_writes() {
+    let audit = Arc::new(SequenceAuditSink::new(vec![]));
+    let state = Arc::new(AuditState::new());
+    let guard = guard(
+        Principal::human_gui(),
+        false,
+        Arc::new(AutoApproveSink),
+        audit.clone(),
+        state.clone(),
+    );
+    let dispatched = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let mark_dispatched = dispatched.clone();
+
+    let error = guard
+        .run_administrative_with_dispatch(AdministrativeOperation::Restore, &control(), dispatched, async move {
+            mark_dispatched.store(true, std::sync::atomic::Ordering::Release);
+            Err::<(), _>(DriverError::Internal("pg_restore exited unsuccessfully".into()))
+        })
+        .await
+        .expect_err("restore outcome is unknown");
+
+    assert!(matches!(error, DriverError::OperationOutcomeUnknown { .. }));
+    assert!(state.governed_writes_disabled());
+    assert_eq!(
+        statuses(&audit),
+        [
+            (AuditRecordPhase::Intent, AuditTerminalStatus::Pending),
+            (AuditRecordPhase::Outcome, AuditTerminalStatus::Unknown),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_completed_restore_disarms_the_pending_write_guard() {
+    let state = Arc::new(AuditState::new());
+    let guard = guard(
+        Principal::human_gui(),
+        false,
+        Arc::new(AutoApproveSink),
+        Arc::new(SequenceAuditSink::new(vec![])),
+        state.clone(),
+    );
+    let dispatched = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let mark_dispatched = dispatched.clone();
+
+    guard
+        .run_administrative_with_dispatch(AdministrativeOperation::Restore, &control(), dispatched, async move {
+            mark_dispatched.store(true, std::sync::atomic::Ordering::Release);
+            Ok(())
+        })
+        .await
+        .expect("restore");
+
+    assert!(!state.governed_writes_disabled());
+}
+
+#[tokio::test]
+async fn dropping_a_started_restore_disables_governed_writes() {
+    let audit = Arc::new(SequenceAuditSink::new(vec![]));
+    let state = Arc::new(AuditState::new());
+    let guard = guard(
+        Principal::human_gui(),
+        false,
+        Arc::new(AutoApproveSink),
+        audit,
+        state.clone(),
+    );
+    let dispatched = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let mark_dispatched = dispatched.clone();
+    let observe_dispatch = dispatched.clone();
+    let control = control();
+    let task = tokio::spawn(async move {
+        guard
+            .run_administrative_with_dispatch(AdministrativeOperation::Restore, &control, dispatched, async move {
+                mark_dispatched.store(true, std::sync::atomic::Ordering::Release);
+                std::future::pending::<Result<(), DriverError>>().await
+            })
+            .await
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        while !observe_dispatch.load(std::sync::atomic::Ordering::Acquire) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("restore dispatch");
+    task.abort();
+    let _ = task.await;
+
+    assert!(state.governed_writes_disabled());
+}
+
+#[tokio::test]
 async fn a_lost_outcome_fails_the_operation_and_disables_governed_writes() {
     let audit_state = Arc::new(AuditState::new());
     let audit = Arc::new(SequenceAuditSink::new(vec![AuditRecordPhase::Outcome]));

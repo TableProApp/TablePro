@@ -1,4 +1,6 @@
 use std::future::Future;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::*;
 
@@ -38,6 +40,33 @@ impl PolicyGuard {
     where
         F: Future<Output = Result<T, DriverError>>,
     {
+        self.run_administrative_inner(operation, control, None, work).await
+    }
+
+    pub async fn run_administrative_with_dispatch<T, F>(
+        &self,
+        operation: AdministrativeOperation,
+        control: &OperationControl,
+        dispatched: Arc<AtomicBool>,
+        work: F,
+    ) -> Result<T, DriverError>
+    where
+        F: Future<Output = Result<T, DriverError>>,
+    {
+        self.run_administrative_inner(operation, control, Some(dispatched), work)
+            .await
+    }
+
+    async fn run_administrative_inner<T, F>(
+        &self,
+        operation: AdministrativeOperation,
+        control: &OperationControl,
+        dispatched: Option<Arc<AtomicBool>>,
+        work: F,
+    ) -> Result<T, DriverError>
+    where
+        F: Future<Output = Result<T, DriverError>>,
+    {
         check_pre_dispatch(control)?;
         let decision = self.administrative_decision(operation);
         let authorization = self
@@ -49,6 +78,25 @@ impl PolicyGuard {
                 Some(control),
             )
             .await?;
+        self.run_authorized_administrative(operation, control, dispatched, authorization, work)
+            .await
+    }
+
+    async fn run_authorized_administrative<T, F>(
+        &self,
+        operation: AdministrativeOperation,
+        control: &OperationControl,
+        dispatched: Option<Arc<AtomicBool>>,
+        authorization: Authorization,
+        work: F,
+    ) -> Result<T, DriverError>
+    where
+        F: Future<Output = Result<T, DriverError>>,
+    {
+        let mut pending_restore = match (operation.replaces_data(), dispatched.clone()) {
+            (true, Some(dispatched)) => Some(self.ctx.audit_state.pending_write_after_dispatch(dispatched)),
+            _ => None,
+        };
         let audit = AuditOperation {
             operation_id: Uuid::new_v4(),
             batch_id: None,
@@ -74,6 +122,7 @@ impl PolicyGuard {
             },
             result = work => result,
         };
+        let result = self.resolve_restore_outcome(operation, dispatched.as_ref(), result);
         let outcome = AuditOutcome {
             terminal_status: result
                 .as_ref()
@@ -85,7 +134,33 @@ impl PolicyGuard {
         };
         let recorded = self.record_outcome(&audit, outcome).await;
         self.handle_write_outcome_failure(recorded)?;
+        if let Some(pending) = &mut pending_restore {
+            pending.disarm();
+        }
         result
+    }
+
+    fn resolve_restore_outcome<T>(
+        &self,
+        operation: AdministrativeOperation,
+        dispatched: Option<&Arc<AtomicBool>>,
+        result: Result<T, DriverError>,
+    ) -> Result<T, DriverError> {
+        match result {
+            Err(error)
+                if operation.replaces_data()
+                    && dispatched.as_ref().is_some_and(|state| state.load(Ordering::Acquire)) =>
+            {
+                self.ctx.audit_state.disable_governed_writes();
+                Err(match error {
+                    DriverError::OperationOutcomeUnknown { .. } => error,
+                    error => DriverError::OperationOutcomeUnknown {
+                        source: Box::new(error),
+                    },
+                })
+            }
+            result => result,
+        }
     }
 
     fn administrative_decision(&self, operation: AdministrativeOperation) -> Decision {

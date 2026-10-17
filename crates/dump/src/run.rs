@@ -1,4 +1,5 @@
 use std::process::{ExitStatus, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::io::AsyncReadExt;
 use tokio::process::{ChildStderr, Command};
@@ -13,13 +14,20 @@ pub(crate) struct Finished {
     pub(crate) stderr: String,
 }
 
-pub(crate) async fn run_supervised(mut command: Command, cancel: CancellationToken) -> Result<Finished, DumpError> {
+pub(crate) async fn run_supervised(
+    mut command: Command,
+    cancel: CancellationToken,
+    dispatched: Option<&AtomicBool>,
+) -> Result<Finished, DumpError> {
     command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     let mut child = command.spawn()?;
+    if let Some(dispatched) = dispatched {
+        dispatched.store(true, Ordering::Release);
+    }
     let stderr = child.stderr.take().map(|pipe| tokio::spawn(read_tail(pipe)));
     let status = tokio::select! {
         biased;

@@ -83,6 +83,7 @@ async fn run(
     let runtime = tempfile::tempdir().unwrap();
     let context = BackupContext {
         guard,
+        driver: &PgDriver,
         tool,
         options: options.clone(),
         ssh: None,

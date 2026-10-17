@@ -63,6 +63,7 @@ This page is an index of ledger IDs to issues. Do not track evidence, owners or 
 | AUD-9 | [#600](https://github.com/cozyGarage/BookiE/issues/600) | B4 |
 | AUD-12 | [#947](https://github.com/cozyGarage/BookiE/issues/947) | B4 |
 | AUD-13 | [#1041](https://github.com/cozyGarage/BookiE/issues/1041) | B4 |
+| AUD-14 | [#1043](https://github.com/cozyGarage/BookiE/issues/1043) | B4 |
 | B4-23 | [#850](https://github.com/cozyGarage/BookiE/issues/850) | B4 |
 | SNAP-2 | [#547](https://github.com/cozyGarage/BookiE/issues/547) | UX |
 | SNAP-3 | [#547](https://github.com/cozyGarage/BookiE/issues/547) | UX |

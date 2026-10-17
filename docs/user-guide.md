@@ -82,7 +82,7 @@ BookiE checks every statement before it runs:
 
 ## Back up and restore PostgreSQL
 
-From the app menu, choose **Back Up Database…** to save a custom-format `.dump` file, or **Restore from Backup…** to restore one. These actions are available for PostgreSQL connections and use the installed `pg_dump` and `pg_restore` tools. They work over the connection's configured SSH and TLS route. Restore requires a writable connection and approval; both operations are audited. Cancel stops the running tool.
+From the app menu, choose **Back Up Database…** to save a custom-format `.dump` file, or **Restore from Backup…** to restore one. These actions are available for PostgreSQL connections and use the installed `pg_dump` and `pg_restore` tools. They work over the connection's configured SSH and TLS route. Restore requires a writable connection and approval; both operations are audited. Cancel stops the running tool. Cancelling a backup removes its partial file. If a restore is cancelled or fails after `pg_restore` starts, the result is unknown. BookiE records that outcome and keeps governed writes blocked on that connection, including after reconnect; other connections remain available. There is not yet an in-app action to reconcile it. Check the database state before deciding how to proceed.
 
 ## Snapshots
 

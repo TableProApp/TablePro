@@ -1,6 +1,7 @@
 use std::ffi::OsString;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 
 use secrecy::ExposeSecret;
 use tablepro_core::{AuthMode, ConnectOptions, TlsMode};
@@ -45,11 +46,9 @@ pub async fn pg_dump(
         return Err(DumpError::PathNotAbsolute);
     }
     let partial = partial_path(request.output);
+    let _cleanup = RemoveOnDrop(partial.clone());
     let args = dump_args(request.format, &partial);
-    if let Err(error) = run_pg_tool(tool, request.options, args, runtime_dir, cancel).await {
-        let _ = tokio::fs::remove_file(&partial).await;
-        return Err(error);
-    }
+    run_pg_tool(tool, request.options, args, runtime_dir, cancel, None).await?;
     tokio::fs::rename(&partial, request.output).await?;
     Ok(())
 }
@@ -59,6 +58,7 @@ pub async fn pg_restore(
     request: PgRestoreRequest<'_>,
     runtime_dir: &Path,
     cancel: CancellationToken,
+    dispatched: &AtomicBool,
 ) -> Result<(), DumpError> {
     tool.require_at_most(request.server_major)?;
     if !request.input.is_absolute() {
@@ -68,7 +68,7 @@ pub async fn pg_restore(
         return Err(DumpError::Io(std::io::Error::from(std::io::ErrorKind::NotFound)));
     }
     let args = restore_args(request.input);
-    run_pg_tool(tool, request.options, args, runtime_dir, cancel).await
+    run_pg_tool(tool, request.options, args, runtime_dir, cancel, Some(dispatched)).await
 }
 
 async fn run_pg_tool(
@@ -77,8 +77,9 @@ async fn run_pg_tool(
     args: Vec<OsString>,
     runtime_dir: &Path,
     cancel: CancellationToken,
+    dispatched: Option<&AtomicBool>,
 ) -> Result<(), DumpError> {
-    let mut env = libpq_env(options)?;
+    let mut env = libpq_env(options, tool.major)?;
     let passfile = if options.password.expose_secret().is_empty() {
         None
     } else {
@@ -89,7 +90,7 @@ async fn run_pg_tool(
     }
     let mut command = Command::new(&tool.path);
     command.env_clear().envs(env).args(args);
-    let finished = run_supervised(command, cancel).await?;
+    let finished = run_supervised(command, cancel, dispatched).await?;
     if finished.status.success() {
         return Ok(());
     }
@@ -131,7 +132,18 @@ fn partial_path(output: &Path) -> PathBuf {
     output.with_file_name(name)
 }
 
-pub(crate) fn libpq_env(options: &ConnectOptions) -> Result<Vec<(&'static str, OsString)>, DumpError> {
+struct RemoveOnDrop(PathBuf);
+
+impl Drop for RemoveOnDrop {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+pub(crate) fn libpq_env(
+    options: &ConnectOptions,
+    client_major: u32,
+) -> Result<Vec<(&'static str, OsString)>, DumpError> {
     if options.auth_mode == AuthMode::Kerberos {
         return Err(DumpError::Unsupported(
             "Kerberos sign-in is not supported for backups yet",
@@ -154,7 +166,7 @@ pub(crate) fn libpq_env(options: &ConnectOptions) -> Result<Vec<(&'static str, O
         ("PGAPPNAME", APPLICATION_NAME.into()),
     ];
     env.extend(endpoint_env(options));
-    env.extend(tls_env(options));
+    env.extend(tls_env(options, client_major)?);
     if let Some(seconds) = options.connect_timeout_secs {
         env.push(("PGCONNECT_TIMEOUT", seconds.to_string().into()));
     }
@@ -186,7 +198,7 @@ fn unbracketed(host: &str) -> &str {
         .unwrap_or(host)
 }
 
-fn tls_env(options: &ConnectOptions) -> Vec<(&'static str, OsString)> {
+fn tls_env(options: &ConnectOptions, client_major: u32) -> Result<Vec<(&'static str, OsString)>, DumpError> {
     let tls = &options.tls;
     let mode = match tls.mode {
         TlsMode::Disabled => "disable",
@@ -197,6 +209,11 @@ fn tls_env(options: &ConnectOptions) -> Vec<(&'static str, OsString)> {
     };
     let mut env = vec![("PGSSLMODE", OsString::from(mode))];
     if tls.mode.verifies_cert() {
+        if tls.root_cert.is_none() && client_major < 16 {
+            return Err(DumpError::Unsupported(
+                "system certificate roots require PostgreSQL client tools version 16 or newer",
+            ));
+        }
         let root = tls
             .root_cert
             .clone()
@@ -209,7 +226,7 @@ fn tls_env(options: &ConnectOptions) -> Vec<(&'static str, OsString)> {
     if let Some(key) = &tls.client_key {
         env.push(("PGSSLKEY", key.clone().into()));
     }
-    env
+    Ok(env)
 }
 
 fn scrub(stderr: &str, options: &ConnectOptions) -> String {

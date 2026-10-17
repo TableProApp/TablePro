@@ -103,6 +103,13 @@ impl App {
             );
             return;
         };
+        let Some(driver) = self.registry.get(&saved.driver_id) else {
+            self.show_error_alert(
+                &crate::tr!("Can't start"),
+                &crate::tr!("The connection or the private runtime directory is not available."),
+            );
+            return;
+        };
         let environment = self
             .database
             .ssh_environment_for_connection(&saved, Principal::human_gui());
@@ -123,6 +130,7 @@ impl App {
                 .register(async move {
                     let context = SavedBackupContext {
                         guard: &guard,
+                        driver: driver.as_ref(),
                         saved: &saved,
                         environment: &environment,
                         server_version: server_version.as_deref(),

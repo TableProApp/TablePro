@@ -116,9 +116,15 @@ async fn pg_restore_brings_back_the_dumped_rows() {
         input: &archive,
         server_major: SERVER_MAJOR,
     };
-    pg_restore(&tool, request, dir.path(), CancellationToken::new())
-        .await
-        .expect("restore");
+    pg_restore(
+        &tool,
+        request,
+        dir.path(),
+        CancellationToken::new(),
+        &std::sync::atomic::AtomicBool::new(false),
+    )
+    .await
+    .expect("restore");
 
     let rows = psql(
         &container,

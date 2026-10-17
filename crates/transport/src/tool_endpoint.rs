@@ -1,4 +1,4 @@
-use tablepro_core::ConnectOptions;
+use tablepro_core::{ConnectOptions, DatabaseDriver};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -6,11 +6,14 @@ use crate::{
 };
 
 pub async fn open_tool_endpoint(
+    driver: &dyn DatabaseDriver,
     mut opts: ConnectOptions,
     ssh: Option<SshRoute>,
     environment: &SshEnvironment,
     cancellation: CancellationToken,
 ) -> Result<(ConnectOptions, Option<Tunnel>), TransportError> {
+    crate::validate_client_tls_auth(driver, &opts)?;
+    crate::validate_local_socket(&opts, driver, ssh.is_some())?;
     opts.forwarded_socket_dir = None;
     let Some(route) = ssh else {
         return Ok((opts, None));

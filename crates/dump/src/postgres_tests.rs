@@ -57,12 +57,22 @@ fn a_tunnelled_connection_dials_the_tunnel_and_verifies_the_service_name() {
     options.host = "127.0.0.1".into();
     options.port = 40123;
     options.service_endpoint = Some(("db.example".into(), 5432));
-    let env = libpq_env(&options).unwrap();
+    let env = libpq_env(&options, 18).unwrap();
     assert_eq!(env_value(&env, "PGHOST").as_deref(), Some("db.example"));
     assert_eq!(env_value(&env, "PGHOSTADDR").as_deref(), Some("127.0.0.1"));
     assert_eq!(env_value(&env, "PGPORT").as_deref(), Some("40123"));
     assert_eq!(env_value(&env, "PGSSLMODE").as_deref(), Some("verify-full"));
     assert_eq!(env_value(&env, "PGSSLROOTCERT").as_deref(), Some("system"));
+}
+
+#[test]
+fn system_certificate_roots_require_libpq_sixteen_but_custom_roots_do_not() {
+    let options = options();
+    assert!(matches!(libpq_env(&options, 15), Err(DumpError::Unsupported(_))));
+    assert!(libpq_env(&options, 16).is_ok());
+    let mut custom_root = options;
+    custom_root.tls.root_cert = Some("/etc/ssl/custom-ca.pem".into());
+    assert!(libpq_env(&custom_root, 15).is_ok());
 }
 
 #[test]
@@ -74,7 +84,7 @@ fn connections_the_client_tools_cannot_honour_are_refused() {
     let mut kerberos = options();
     kerberos.auth_mode = AuthMode::Kerberos;
     for options in [forwarded, pinned, kerberos] {
-        assert!(matches!(libpq_env(&options), Err(DumpError::Unsupported(_))));
+        assert!(matches!(libpq_env(&options, 18), Err(DumpError::Unsupported(_))));
     }
 }
 
@@ -158,6 +168,44 @@ async fn cancelling_stops_the_tool() {
 }
 
 #[tokio::test]
+async fn dropping_a_cancelled_dump_future_removes_its_partial_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let tool = fake_tool(dir.path(), r#"touch "${3#--file=}"; exec sleep 30"#);
+    let options = options();
+    let output = dir.path().join("appdb.dump");
+    let runtime_dir = dir.path().to_path_buf();
+    let task = tokio::spawn(async move {
+        pg_dump(
+            &tool,
+            request(&options, &output),
+            &runtime_dir,
+            CancellationToken::new(),
+        )
+        .await
+    });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if std::fs::read_dir(dir.path())
+                .unwrap()
+                .any(|entry| entry.unwrap().file_name().to_string_lossy().contains(".partial-"))
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    task.abort();
+    let _ = task.await;
+    assert!(
+        !std::fs::read_dir(dir.path())
+            .unwrap()
+            .any(|entry| { entry.unwrap().file_name().to_string_lossy().contains(".partial-") })
+    );
+}
+
+#[tokio::test]
 async fn a_client_older_than_the_server_does_not_run() {
     let dir = tempfile::tempdir().unwrap();
     let tool = fake_tool(dir.path(), "touch \"${3#--file=}\"");
@@ -187,9 +235,15 @@ async fn a_restore_runs_in_one_transaction_and_stops_at_the_first_error() {
         server_major: 18,
     };
 
-    pg_restore(&tool, request, dir.path(), CancellationToken::new())
-        .await
-        .unwrap();
+    pg_restore(
+        &tool,
+        request,
+        dir.path(),
+        CancellationToken::new(),
+        &std::sync::atomic::AtomicBool::new(false),
+    )
+    .await
+    .unwrap();
 
     let args = std::fs::read_to_string(&log).unwrap();
     assert_eq!(
@@ -199,6 +253,37 @@ async fn a_restore_runs_in_one_transaction_and_stops_at_the_first_error() {
             input.display()
         )
     );
+}
+
+#[tokio::test]
+async fn cancelling_a_started_restore_marks_its_outcome_as_dispatched() {
+    let dir = tempfile::tempdir().unwrap();
+    let tool = fake_tool(dir.path(), "exec sleep 30");
+    let options = options();
+    let input = dir.path().join("appdb.dump");
+    std::fs::write(&input, "archive").unwrap();
+    let request = PgRestoreRequest {
+        options: &options,
+        input: &input,
+        server_major: 18,
+    };
+    let cancel = CancellationToken::new();
+    let trigger = cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        trigger.cancel();
+    });
+    let dispatched = std::sync::atomic::AtomicBool::new(false);
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(5),
+        pg_restore(&tool, request, dir.path(), cancel, &dispatched),
+    )
+    .await
+    .unwrap();
+
+    assert!(matches!(outcome, Err(DumpError::Cancelled)), "{outcome:?}");
+    assert!(dispatched.load(std::sync::atomic::Ordering::Acquire));
 }
 
 #[tokio::test]
@@ -214,7 +299,14 @@ async fn a_restore_client_newer_than_the_server_does_not_run() {
         input: &input,
         server_major: 16,
     };
-    let outcome = pg_restore(&tool, request, dir.path(), CancellationToken::new()).await;
+    let outcome = pg_restore(
+        &tool,
+        request,
+        dir.path(),
+        CancellationToken::new(),
+        &std::sync::atomic::AtomicBool::new(false),
+    )
+    .await;
     assert!(matches!(outcome, Err(DumpError::ToolTooNew { .. })), "{outcome:?}");
     assert!(!marker.exists());
 }

@@ -132,6 +132,7 @@ Source version **0.1.6-dev** (`apps/linux/app/Cargo.toml`). This section is the 
 - Markdown table exports and copies quote text cells and escape table/inline markup, keeping text labels such as `NULL` distinct from SQL NULL.
 
 ### Fixed
+- Cancelling a PostgreSQL backup removes its partial file; a started restore that is cancelled or fails leaves governed writes on that connection blocked after reconnect while its outcome remains unknown.
 - Read-only connections refuse grid edits through alternate actions while still allowing local drafts to be discarded or undone and redone without changing stored data.
 - Structure column expanders now point right when collapsed and down when open.
 - A database switch rejected during another connection change no longer alters the saved connection.
