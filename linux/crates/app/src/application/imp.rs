@@ -33,6 +33,8 @@ pub struct TableProApplication {
     /// Files handed over while the record is read, opened after the
     /// windows it restores.
     pub(super) pending_files: RefCell<Vec<gio::File>>,
+    /// A crash report found before any window opened.
+    pub(super) crash_report: RefCell<Option<std::path::PathBuf>>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -82,6 +84,7 @@ impl ApplicationImpl for TableProApplication {
         install_application_accelerators(&*app);
         if let Some(services) = self.services.get() {
             services.start();
+            app.look_for_crash_report();
             self.session_signals
                 .replace(Some(SessionSignals::start(&services.sessions)));
         }

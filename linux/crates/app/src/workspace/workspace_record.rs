@@ -96,6 +96,59 @@ mod tests {
         assert!(!text.contains("SELECT"), "an editor record carries text: {text}");
     }
 
+    /// A version 1 workspace file, the format 0.1.0 ships. Never edit the
+    /// fixture: a format change adds an upgrade step and updates the
+    /// model here.
+    #[test]
+    fn a_version_1_workspace_reads_as_it_was_written() {
+        let bytes = include_bytes!("../../tests/fixtures/workspace-v1.json");
+        let draft = uuid::Uuid::parse_str("7d0c5b1e-9a3f-4e2d-8b6c-1f0e9d8c7b6a").expect("a uuid");
+
+        let decoded: WorkspaceRecord = decode_document(Path::new("/tmp/w.json"), bytes).expect("decode");
+
+        assert_eq!(
+            decoded,
+            WorkspaceRecord {
+                active_tab: Some(2),
+                tabs: vec![
+                    TabRecord::Table {
+                        schema: Some("public".to_owned()),
+                        table: "orders".to_owned(),
+                        offset: 5_000,
+                        page_size: 5_000,
+                        sort: Some(SortRecord {
+                            column: 2,
+                            ascending: false,
+                        }),
+                    },
+                    TabRecord::Table {
+                        schema: None,
+                        table: "events".to_owned(),
+                        offset: 0,
+                        page_size: 1_000,
+                        sort: None,
+                    },
+                    TabRecord::Editor {
+                        draft: DraftId::from_uuid(draft),
+                    },
+                    TabRecord::Structure {
+                        schema: Some("sales".to_owned()),
+                        table: "customers".to_owned(),
+                    },
+                    TabRecord::Structure {
+                        schema: None,
+                        table: "users".to_owned(),
+                    },
+                ],
+            }
+        );
+        assert_eq!(
+            decoded.clone().clamped(),
+            decoded,
+            "the fixture holds only tabs a window can open"
+        );
+    }
+
     #[test]
     fn clamped_keeps_every_tab_however_many() {
         let record = WorkspaceRecord {

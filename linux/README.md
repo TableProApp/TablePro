@@ -6,6 +6,32 @@ Native Linux database client, the Linux sibling of the macOS TablePro app. The t
 
 It connects to five engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse and SQLite. Each connection session gets a window of its own. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
 
+## Install
+
+These commands work from the first release, 0.1.0, on amd64 and arm64.
+
+Ubuntu 26.04 and 26.10, from the Launchpad PPA:
+
+```bash
+sudo add-apt-repository ppa:tablepro/tablepro
+sudo apt install tablepro
+```
+
+Fedora 44 and later, from COPR:
+
+```bash
+sudo dnf copr enable @tablepro/tablepro
+sudo dnf install tablepro
+```
+
+apt and dnf, and Software Updater and GNOME Software with them, install the updates. Other distributions build from source ([Quickstart](#quickstart)) until Flathub has the app.
+
+[docs/troubleshooting.md](docs/troubleshooting.md) covers saved passwords, SSH, Kerberos, logs, crash reports and bug reports.
+
+## Privacy
+
+TablePro makes no network requests of its own: no telemetry, no update check and no crash upload. It connects to the database servers and SSH hosts you set up, and nothing else. Crash reports stay on your disk until you attach one to a bug report. Updates come from apt or dnf.
+
 ## Stack
 
 | Layer | Pick |
@@ -157,7 +183,8 @@ later. Both build offline from those tarballs, Launchpad with the Ubuntu
 Rust team's `rustc-1.97` and COPR with Fedora's Rust, and apt, dnf and
 the software centres update the installed packages
 ([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md)).
-The packaging is `build-aux/debian` and `build-aux/rpm/tablepro.spec`.
+The packaging is `build-aux/debian` and `build-aux/rpm/tablepro.spec`, and
+[docs/releasing.md](docs/releasing.md) has the release steps.
 
 To build both from the committed tree the way CI does, each step in a
 fresh container, with Docker or Podman:
@@ -232,6 +259,8 @@ says where the realm, the KDC and the tickets come from there.
 | Persistence: secrets, settings, files | [docs/storage.md](docs/storage.md) |
 | Error handling conventions | [docs/error-handling.md](docs/error-handling.md) |
 | Testing conventions, suites and CI jobs | [docs/testing.md](docs/testing.md) |
+| Saved passwords, SSH, Kerberos, logs and crash reports, for users | [docs/troubleshooting.md](docs/troubleshooting.md) |
+| Release setup, releases and packaging fixes | [docs/releasing.md](docs/releasing.md) |
 | Every guide, driver page and dated audit | [docs/README.md](docs/README.md) |
 | Architecture decision records | [docs/decisions/](docs/decisions/) |
 

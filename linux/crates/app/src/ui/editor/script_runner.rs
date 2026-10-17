@@ -4,9 +4,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use tablepro_core::sql_syntax::SqlGrammar;
-use tablepro_core::sql_syntax::script::{
-    BatchErrorPolicy, LexicalSettings, ScriptDiagnostic, ScriptPlan, text_offsets,
-};
+use tablepro_core::sql_syntax::script::text_offsets::CharCounter;
+use tablepro_core::sql_syntax::script::{BatchErrorPolicy, LexicalSettings, ScriptDiagnostic, ScriptPlan};
 use tablepro_core::{
     EditorSession, EditorSessionState, ResultEvent, ResultSink, RowLimit, RunOptions, SinkFlow, TransactionState,
     UserSql,
@@ -16,7 +15,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use super::editor_session_slot::{AcquireError, EditorSessionSlot, close_quietly, transaction_open};
-use super::run_log::{BatchCollector, BatchReport, EntryKind, RunEvent, Verdict, continues};
+use super::run_log::{BatchCollector, BatchReport, EntryKind, RowRoom, RunEvent, Verdict, continues};
 use super::run_scope::ScopedText;
 
 /// One unit the server is sent: a statement on most engines, a whole
@@ -30,6 +29,11 @@ pub struct RunBatch {
     pub error_base: usize,
 }
 
+/// Rows one run keeps across all its results. `row_limit` bounds each
+/// result, and a script of many SELECTs would otherwise hold all of them
+/// until the next run.
+pub const RUN_ROW_LIMIT: u64 = 100_000;
+
 /// What one press of Run sends, and how.
 #[derive(Debug, Clone)]
 pub struct ScriptRun {
@@ -37,6 +41,21 @@ pub struct ScriptRun {
     pub policy: BatchErrorPolicy,
     pub statement_timeout: Option<Duration>,
     pub row_limit: RowLimit,
+    pub run_row_limit: u64,
+}
+
+/// What a statement may keep once the run has kept `kept` rows, and the
+/// row limit it goes out with. With no room left it still runs, for
+/// what it changes, and reads one row, which is dropped.
+fn room_after(run: &ScriptRun, kept: u64) -> (RowRoom, RowLimit) {
+    let left = run.run_row_limit.saturating_sub(kept);
+    let own = run.row_limit.get();
+    let room = RowRoom {
+        run_limit: run.run_row_limit,
+        left,
+        limits_statement: left < own,
+    };
+    (room, RowLimit::new(left.clamp(1, own)).unwrap_or(run.row_limit))
 }
 
 /// The batches of the scoped text and what the plan warns about.
@@ -51,6 +70,7 @@ pub fn plan_batches(
     base_line: usize,
 ) -> (Vec<RunBatch>, BatchErrorPolicy, Vec<String>) {
     let plan = ScriptPlan::build(&scoped.text, grammar, LexicalSettings::default_for(grammar));
+    let mut chars = CharCounter::new(&scoped.text);
     let batches = plan
         .batches()
         .iter()
@@ -59,7 +79,7 @@ pub fn plan_batches(
             (!text.is_empty()).then(|| RunBatch {
                 text: text.to_owned(),
                 repeat: batch.repeat.get(),
-                error_base: scoped.base_char + text_offsets::byte_to_char(&scoped.text, batch.range.start),
+                error_base: scoped.base_char + chars.char_at(batch.range.start),
             })
         })
         .collect();
@@ -112,16 +132,18 @@ pub async fn run_batches(
         transaction,
         rollback_told: false,
     };
+    let mut kept: u64 = 0;
     'batches: for (index, batch) in run.batches.iter().enumerate() {
         for _ in 0..batch.repeat.max(1) {
             if cancel.is_cancelled() {
                 break 'batches;
             }
             let sql = UserSql::new(batch.text.as_str());
-            let collector = Arc::new(Mutex::new(BatchCollector::new(sql.clone())));
+            let (room, row_limit) = room_after(run, kept);
+            let collector = Arc::new(Mutex::new(BatchCollector::new(sql.clone()).within(room)));
             let options = RunOptions::new(cancel.child_token())
                 .with_deadline(run.statement_timeout)
-                .with_row_limit(run.row_limit);
+                .with_row_limit(row_limit);
             let sink = Box::new(CollectingSink {
                 collector: collector.clone(),
             });
@@ -140,6 +162,13 @@ pub async fn run_batches(
             }
             after.rollback_told |=
                 lost && in_transaction && entries.iter().any(|entry| matches!(entry, EntryKind::Failed { .. }));
+            kept += entries
+                .iter()
+                .map(|entry| match entry {
+                    EntryKind::ResultSet(result) => result.row_count() as u64,
+                    _ => 0,
+                })
+                .sum::<u64>();
             let report = BatchReport {
                 batch: index,
                 entries,
@@ -271,6 +300,7 @@ mod tests {
                 policy,
                 statement_timeout: None,
                 row_limit: RowLimit::EDITOR_DEFAULT,
+                run_row_limit: RUN_ROW_LIMIT,
             },
             statements,
             warnings,
@@ -295,6 +325,16 @@ mod tests {
         cancel: &CancellationToken,
     ) -> RunLog {
         let (run, statements, warnings) = script(text, grammar);
+        play(editor, &run, statements, warnings, cancel).await
+    }
+
+    async fn play(
+        editor: &Arc<FakeEditorSession>,
+        run: &ScriptRun,
+        statements: Vec<UserSql>,
+        warnings: Vec<String>,
+        cancel: &CancellationToken,
+    ) -> RunLog {
         let (events, mut received) = mpsc::channel(8);
         let session: Arc<dyn EditorSession> = editor.clone();
         let collect = async move {
@@ -308,7 +348,7 @@ mod tests {
             }
             log
         };
-        let (_, log) = tokio::join!(run_batches(&session, &run, cancel, &events, None), collect);
+        let (_, log) = tokio::join!(run_batches(&session, run, cancel, &events, None), collect);
         log
     }
 
@@ -635,6 +675,60 @@ mod tests {
         assert_eq!(second.texts(), [UserSql::new("SELECT 2")]);
     }
 
+    fn sixty_rows() -> FakeRun {
+        let columns: Arc<[tablepro_core::column::ResultColumn]> = vec![tablepro_core::column::ResultColumn::new(
+            "n",
+            tablepro_core::column::ColumnType::untyped_text("int4"),
+        )]
+        .into();
+        FakeRun::completed(vec![
+            ResultEvent::ResultSetStarted { columns },
+            ResultEvent::Rows((0..60).map(|n| vec![tablepro_core::Value::Int(n)]).collect()),
+            ResultEvent::ResultSetFinished {
+                retained: 60,
+                total_rows: None,
+                truncation: tablepro_core::Truncation::Complete,
+            },
+        ])
+    }
+
+    #[tokio::test]
+    async fn a_run_keeps_rows_up_to_its_limit_across_all_results() {
+        let mut runs = Replies::default();
+        runs.always(sixty_rows());
+        let editor = Arc::new(FakeEditorSession::new(runs));
+        let (mut run, statements, warnings) = script("SELECT 1; SELECT 2; SELECT 3", SqlGrammar::PostgreSql);
+        run.run_row_limit = 100;
+
+        let log = play(&editor, &run, statements, warnings, &CancellationToken::new()).await;
+
+        assert_eq!(texts(&editor).len(), 3, "a statement past the limit was not sent");
+        let kept: Vec<(usize, Option<u64>)> = log
+            .entries()
+            .iter()
+            .filter_map(|entry| match &entry.kind {
+                EntryKind::ResultSet(result) => Some((result.row_count(), result.summary.run_limit)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(kept, [(60, None), (40, Some(100)), (0, Some(100))]);
+    }
+
+    #[test]
+    fn a_statement_reads_only_the_rows_its_run_has_room_for() {
+        let (mut run, _, _) = script("SELECT 1", SqlGrammar::PostgreSql);
+        run.run_row_limit = 100_000;
+        let limit = |kept| {
+            let (room, limit) = room_after(&run, kept);
+            (room.left, room.limits_statement, limit.get())
+        };
+
+        assert_eq!(limit(0), (100_000, false, 10_000));
+        assert_eq!(limit(95_000), (5_000, true, 5_000));
+        assert_eq!(limit(100_000), (0, true, 1));
+        assert_eq!(limit(250_000), (0, true, 1));
+    }
+
     #[test]
     fn batches_know_where_they_start_in_the_buffer() {
         let scoped = ScopedText {
@@ -646,6 +740,26 @@ mod tests {
 
         assert_eq!(batches[1].text, "SELECT oops");
         assert_eq!(batches[1].error_base, 50 + 14);
+    }
+
+    #[test]
+    fn a_long_script_finds_every_start_in_one_pass() {
+        // Counting each start from the top of the text is about 10^11
+        // steps here, which no run finishes; one pass is about 10^6.
+        const STATEMENTS: usize = 100_000;
+        let statement = "SELECT 'é';\n";
+        let scoped = ScopedText {
+            text: statement.repeat(STATEMENTS),
+            base_char: 7,
+        };
+
+        let (batches, _, _) = plan_batches(&scoped, SqlGrammar::PostgreSql, 0);
+
+        assert_eq!(batches.len(), STATEMENTS);
+        let width = statement.chars().count();
+        for (index, batch) in batches.iter().enumerate() {
+            assert_eq!(batch.error_base, 7 + index * width, "batch {index}");
+        }
     }
 
     #[test]

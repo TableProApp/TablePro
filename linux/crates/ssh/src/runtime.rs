@@ -4,6 +4,8 @@ use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use rustix::fs::{CWD, Mode, OFlags, fstat, mkdirat, openat};
+use rustix::io::Errno;
 use tablepro_core::SshFailure;
 use uuid::Uuid;
 
@@ -17,6 +19,7 @@ pub struct SshRuntime {
 
 impl SshRuntime {
     pub fn acquire(runtime_dir: &Path) -> Result<Arc<SshRuntime>, SshFailure> {
+        create_missing_levels(runtime_dir)?;
         let root = runtime_dir.join("ssh");
         let root_metadata = private_dir(&root)?;
         let (instance_id, instance_dir) = create_unique_dir(&root, 8)?;
@@ -63,6 +66,67 @@ impl SshRuntime {
     pub(crate) fn create_master_dir(&self) -> Result<PathBuf, SshFailure> {
         create_unique_dir(&self.instance_dir, 4).map(|(_, dir)| dir)
     }
+}
+
+/// Only Flatpak creates `$XDG_RUNTIME_DIR/app/<id>`, and with the
+/// variable unset GLib names a directory under the cache instead, so a
+/// host install makes the missing levels itself. Each one is made and
+/// then opened through its parent's descriptor without following a
+/// symlink, and must belong to this user, so a link or a directory
+/// planted in the path cannot move the control sockets.
+fn create_missing_levels(runtime_dir: &Path) -> Result<(), SshFailure> {
+    let missing: Vec<&Path> = runtime_dir
+        .ancestors()
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .take_while(|dir| is_missing(dir))
+        .collect();
+    let Some(top) = missing.last() else {
+        return Ok(());
+    };
+    let base = top
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let mut parent = openat(
+        CWD,
+        base,
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+    .map_err(|errno| unsafe_dir(base, &errno.into()))?;
+    let owner = rustix::process::geteuid().as_raw();
+    for dir in missing.into_iter().rev() {
+        let Some(name) = dir.file_name() else {
+            return Err(SshFailure::RuntimeDirUnsafe {
+                path: dir.to_owned(),
+                detail: "the path does not end in a directory name".to_owned(),
+            });
+        };
+        match mkdirat(&parent, name, Mode::RWXU) {
+            Ok(()) | Err(Errno::EXIST) => {}
+            Err(errno) => return Err(unsafe_dir(dir, &errno.into())),
+        }
+        let child = openat(
+            &parent,
+            name,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(|errno| unsafe_dir(dir, &errno.into()))?;
+        let stat = fstat(&child).map_err(|errno| unsafe_dir(dir, &errno.into()))?;
+        if stat.st_uid != owner {
+            return Err(SshFailure::RuntimeDirUnsafe {
+                path: dir.to_owned(),
+                detail: "the directory belongs to another user".to_owned(),
+            });
+        }
+        parent = child;
+    }
+    Ok(())
+}
+
+fn is_missing(path: &Path) -> bool {
+    matches!(std::fs::symlink_metadata(path), Err(error) if error.kind() == io::ErrorKind::NotFound)
 }
 
 fn private_dir(path: &Path) -> Result<std::fs::Metadata, SshFailure> {
@@ -148,6 +212,37 @@ mod tests {
         let first = SshRuntime::acquire(temp.path()).unwrap();
         let second = SshRuntime::acquire(temp.path()).unwrap();
         assert_ne!(first.instance_dir(), second.instance_dir());
+    }
+
+    #[test]
+    fn acquire_creates_the_app_levels_a_host_install_lacks() {
+        let temp = tempfile::tempdir().unwrap();
+        let xdg_runtime = temp.path().join("runtime");
+        std::fs::create_dir(&xdg_runtime).unwrap();
+        std::fs::set_permissions(&xdg_runtime, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let runtime_dir = xdg_runtime.join("app").join("app.tablepro.TablePro");
+
+        let runtime = SshRuntime::acquire(&runtime_dir).unwrap();
+
+        assert_eq!(runtime.root(), runtime_dir.join("ssh"));
+        assert_eq!(mode(&xdg_runtime.join("app")), 0o700);
+        assert_eq!(mode(&runtime_dir), 0o700);
+        assert!(runtime.create_master_dir().is_ok());
+    }
+
+    #[test]
+    fn acquire_creates_every_level_of_the_cache_fallback() {
+        // With XDG_RUNTIME_DIR unset GLib answers the cache directory,
+        // which a new account may not have yet either.
+        let home = tempfile::tempdir().unwrap();
+        let runtime_dir = home.path().join(".cache").join("app").join("app.tablepro.TablePro");
+
+        let runtime = SshRuntime::acquire(&runtime_dir).unwrap();
+
+        for level in [home.path().join(".cache"), home.path().join(".cache/app"), runtime_dir] {
+            assert_eq!(mode(&level), 0o700, "{}", level.display());
+        }
+        assert_eq!(mode(runtime.root()), 0o700);
     }
 
     #[test]
