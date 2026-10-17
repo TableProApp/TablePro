@@ -79,7 +79,7 @@ impl tablepro_core::Session for PgSession {
             ));
         }
         check_pre_dispatch(control)?;
-        let statement = format!("DECLARE bookie_cursor NO SCROLL CURSOR FOR {sql}");
+        let statement = format!("{CURSOR_PREFIX}{sql}");
         let connection = self
             .connection
             .take()
@@ -99,7 +99,7 @@ impl tablepro_core::Session for PgSession {
             if !matches!(error, DriverError::Query { .. }) {
                 self.retire_cursor_session();
             }
-            return Err(error);
+            return Err(position_in_cursor_query(error));
         }
         let id = QueryCursorId::new();
         self.active_cursor = Some(ActiveCursor {
@@ -271,5 +271,62 @@ impl PgSession {
     fn retire_cursor_session(&mut self) {
         self.connection = None;
         self.active_cursor = None;
+    }
+}
+
+const CURSOR_PREFIX: &str = "DECLARE bookie_cursor NO SCROLL CURSOR FOR ";
+
+fn position_in_cursor_query(error: DriverError) -> DriverError {
+    let DriverError::Query {
+        message,
+        sqlstate,
+        position,
+    } = error
+    else {
+        return error;
+    };
+    let prefix = CURSOR_PREFIX.chars().count();
+    DriverError::Query {
+        message,
+        sqlstate,
+        position: position
+            .and_then(|position| position.checked_sub(prefix))
+            .filter(|position| *position > 0),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tablepro_core::DriverError;
+
+    use super::{CURSOR_PREFIX, position_in_cursor_query};
+
+    fn query_error(position: Option<usize>) -> DriverError {
+        DriverError::Query {
+            message: "column \"nope\" does not exist".into(),
+            sqlstate: Some("42703".into()),
+            position,
+        }
+    }
+
+    #[test]
+    fn an_error_position_points_into_the_users_statement() {
+        let prefix = CURSOR_PREFIX.chars().count();
+        let shifted = position_in_cursor_query(query_error(Some(prefix + 8)));
+        assert!(
+            matches!(shifted, DriverError::Query { position: Some(8), .. }),
+            "{shifted:?}"
+        );
+    }
+
+    #[test]
+    fn a_position_inside_the_cursor_prefix_is_dropped() {
+        let dropped = position_in_cursor_query(query_error(Some(3)));
+        assert!(
+            matches!(dropped, DriverError::Query { position: None, .. }),
+            "{dropped:?}"
+        );
+        let other = position_in_cursor_query(DriverError::Disconnected);
+        assert!(matches!(other, DriverError::Disconnected));
     }
 }
