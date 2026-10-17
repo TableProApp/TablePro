@@ -75,6 +75,12 @@ impl FakeEditorSession {
         *lock(&self.transaction_state) = state;
     }
 
+    /// The connection goes while no run is on it, as when the server
+    /// ends a session left idle in a transaction.
+    pub fn lose(&self) {
+        *lock(&self.state) = EditorSessionState::Lost;
+    }
+
     fn begin(&self) -> Result<RunningGuard<'_>, DriverError> {
         let mut state = lock(&self.state);
         match *state {
@@ -157,7 +163,11 @@ impl EditorSession for FakeEditorSession {
                 "FakeEditorSession has no scripted run".to_owned(),
             ));
         };
+        let loses_session = run.loses_session;
         let end = self.play(run, &options, sink.as_mut()).await;
+        if loses_session {
+            *lock(&self.state) = EditorSessionState::Lost;
+        }
         match &end {
             Ok(RunEnd::Cancelled | RunEnd::TimedOut { .. }) => {
                 self.stopped_runs.fetch_add(1, Ordering::SeqCst);

@@ -270,6 +270,7 @@ impl Rebuild<'_> {
                 })
                 .collect(),
             renumbers_rowids: self.rowids_renumbered(),
+            numbered_column: self.numbered_column().map(|(_, final_name)| final_name),
         });
         Ok(plan)
     }
@@ -278,6 +279,7 @@ impl Rebuild<'_> {
     /// from and the one there now: the table's CREATE TABLE, its own
     /// indexes and triggers, the views and triggers elsewhere the rebuild
     /// makes again, and the key columns of other tables that point at it.
+    /// Added to it, the NULLs of a column the rebuild makes the rowid.
     /// A view or trigger that came since and names the table makes the
     /// rename refuse on its own.
     ///
@@ -348,13 +350,33 @@ impl Rebuild<'_> {
             })
             .collect();
 
-        let mut builder = StatementBuilder::new();
-        builder.push_sql(&format!(
+        let mut sql = format!(
             "SELECT {} + {}",
             differences(&objects_now, &objects),
             differences(&children_now, &children)
-        ));
+        );
+        if let Some((column, _)) = self.numbered_column() {
+            sql.push_str(&format!(
+                " + (SELECT count(*) FROM {} WHERE {} IS NULL)",
+                self.dialect.qualify(table),
+                self.dialect.quote_identifier(column.name())
+            ));
+        }
+        let mut builder = StatementBuilder::new();
+        builder.push_sql(&sql);
         builder.finish()
+    }
+
+    /// A kept column that may hold NULL and becomes the rowid, with its
+    /// final name. SQLite gives a NULL copied into the rowid a new
+    /// number rather than refusing it, so the precondition counts them.
+    fn numbered_column(&self) -> Option<(&ColumnDefinition, String)> {
+        let alias = self.rowid_alias_after()?;
+        let column = self.kept(&alias).filter(|column| column.info.nullable)?;
+        let numbered_before = self
+            .rowid_alias_before()
+            .is_some_and(|before| before.eq_ignore_ascii_case(column.name()));
+        (!numbered_before).then_some((column, alias))
     }
 
     /// The rebuilt table under both its names, and every table whose

@@ -470,6 +470,12 @@ pub(crate) enum WorkspaceInput {
         schema: Option<String>,
         table: String,
     },
+    /// The foreign keys on other tables that point at the table, read
+    /// before the prompt asks to drop it.
+    DropTableChecked {
+        table: tablepro_core::TableRef,
+        referencing: Vec<tablepro_core::ddl::InboundForeignKey>,
+    },
     DropTableConfirmed {
         schema: Option<String>,
         table: String,
@@ -954,6 +960,7 @@ impl WorkspaceModel {
             WorkspaceInput::ShowCreateTableForExisting { schema, table } => self.on_show_create_table(schema, table),
             WorkspaceInput::ShowCreateTableLoaded(sql) => self.open_editor_tab(Some(sql)),
             WorkspaceInput::DropTablePrompt { schema, table } => self.on_drop_table_prompt(schema, table),
+            WorkspaceInput::DropTableChecked { table, referencing } => self.on_drop_table_checked(table, &referencing),
             WorkspaceInput::DropTableConfirmed { schema, table } => self.on_drop_table_confirmed(schema, table),
             WorkspaceInput::DropTableSucceeded(table) => self.on_drop_table_succeeded(table),
             WorkspaceInput::SchemaChanged { schema, table } => self.on_schema_changed(schema, table),

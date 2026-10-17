@@ -8,12 +8,12 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use uuid::Uuid;
 
-use tablepro_core::ddl::{BuildDdlError, DdlOperation, DropTableOptions, TableDefinition};
+use tablepro_core::ddl::{BuildDdlError, DdlOperation, DropTableOptions, InboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{ObjectScope, TableRef};
+use tablepro_core::{DriverError, WriteKind};
 use tablepro_session::runtime::TaskFailure;
 use tablepro_session::{OperationError, OperationKind, Session};
-use tokio_util::sync::CancellationToken;
 
 use crate::runtime::DeliverInput;
 use crate::ui::error_text;
@@ -65,14 +65,50 @@ impl WorkspaceModel {
         });
     }
 
-    /// Right-click → "Drop Table…", or in-tab destructive button.
+    /// Right-click → "Drop Table…", or in-tab destructive button. The
+    /// table's definition is read first, so a table other tables point
+    /// at is refused before the user is asked.
     pub(super) fn on_drop_table_prompt(&mut self, schema: Option<String>, table: String) {
-        // The sidebar lists every schema, so two tables can share a name.
-        let named = match &schema {
-            Some(schema) => format!("{schema}.{table}"),
-            None => table.clone(),
+        let table = TableRef::new(schema, table);
+        let Some(session) = self.context.active.get() else {
+            self.present_drop_prompt(&table);
+            return;
         };
-        let title = crate::i18n::gettext_f("Drop {table}?", &[("table", &named)]);
+        let work = read_definition(session, table.clone());
+        let input = self.input.clone();
+        crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |result| {
+            // A definition that cannot be read leaves the refusal to the
+            // server, or to the precondition SQLite's plan carries.
+            let referencing = match settled(result) {
+                Ok((definition, _)) => referencing_keys(&definition),
+                Err(error) => {
+                    tracing::debug!(%error, "the table's foreign keys could not be read before a drop");
+                    Vec::new()
+                }
+            };
+            input.deliver(WorkspaceInput::DropTableChecked { table, referencing });
+        });
+    }
+
+    pub(super) fn on_drop_table_checked(&mut self, table: TableRef, referencing: &[InboundForeignKey]) {
+        if referencing.is_empty() {
+            self.present_drop_prompt(&table);
+            return;
+        }
+        self.show_error_alert(
+            &crate::i18n::gettext("Cannot Drop Table"),
+            &crate::i18n::gettext_f(
+                "Foreign keys on other tables point at {table}: {keys}. Drop those foreign keys first.",
+                &[
+                    ("table", &display_name(&table)),
+                    ("keys", &key_list(&table, referencing)),
+                ],
+            ),
+        );
+    }
+
+    fn present_drop_prompt(&self, table: &TableRef) {
+        let title = crate::i18n::gettext_f("Drop {table}?", &[("table", &display_name(table))]);
         let body = crate::i18n::gettext(
             "All rows and the table definition will be removed. This can't be undone from inside TablePro.",
         );
@@ -83,13 +119,12 @@ impl WorkspaceModel {
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");
         let input = self.input.clone();
-        let schema_for_resp = schema.clone();
-        let table_for_resp = table.clone();
+        let table = table.clone();
         dialog.connect_response(None, move |_, response| {
             if response == "drop" {
                 input.deliver(WorkspaceInput::DropTableConfirmed {
-                    schema: schema_for_resp.clone(),
-                    table: table_for_resp.clone(),
+                    schema: table.schema.clone(),
+                    table: table.name.clone(),
                 });
             }
         });
@@ -101,6 +136,9 @@ impl WorkspaceModel {
     /// returns Ok. Tabs stay open if DROP fails (FK violation,
     /// privileges) so the user doesn't lose their state on a failed
     /// destructive action.
+    ///
+    /// The drop runs as a save of its own: a window close waits for it
+    /// or stops it, and a quit keeps the process until it answers.
     pub(super) fn on_drop_table_confirmed(&mut self, schema: Option<String>, table: String) {
         let Some(session) = self.context.active.get() else {
             self.show_error_alert(
@@ -109,20 +147,24 @@ impl WorkspaceModel {
             );
             return;
         };
+        let handle = self.workspace_handle.clone();
+        let Some(ticket) = handle
+            .ledger()
+            .begin(&*self.context.hold, Uuid::new_v4(), WriteKind::SchemaChanges)
+        else {
+            return;
+        };
         let dropped = TableRef::new(schema, table);
         let options = DropTableOptions {
             if_exists: true,
             cascade: false,
         };
         let table = dropped.clone();
+        let cancel = ticket.cancel.clone();
         let work = async move {
-            run_schema_plan(
-                session,
-                table,
-                DdlOperation::DropTable,
-                &CancellationToken::new(),
-                move |ddl, table| ddl.plan_drop_table(table, options),
-            )
+            run_schema_plan(session, table, DdlOperation::DropTable, &cancel, move |ddl, table| {
+                ddl.plan_drop_table(table, options)
+            })
             .await
         };
         // The answer goes through the workspace's input, so one that
@@ -131,11 +173,24 @@ impl WorkspaceModel {
         crate::runtime::spawn_and_deliver(&self.context.tasks, work, move |result| {
             match settled(result).and_then(|(_, written)| written) {
                 Ok(_) => input.deliver(WorkspaceInput::DropTableSucceeded(dropped)),
+                // The only guard a drop plan carries is SQLite's count of
+                // the keys pointing at the table, which one added since
+                // the prompt read them fails.
+                Err(OperationError::Driver(DriverError::RowGuardFailed { .. })) => {
+                    input.deliver(WorkspaceInput::ShowAlert {
+                        title: crate::i18n::gettext("Drop Failed"),
+                        body: crate::i18n::gettext_f(
+                            "A foreign key on another table points at {table}, so it was not dropped. Drop that foreign key first.",
+                            &[("table", &display_name(&dropped))],
+                        ),
+                    })
+                }
                 Err(error) => input.deliver(WorkspaceInput::ShowAlert {
                     title: crate::i18n::gettext("Drop Failed"),
                     body: error_text::operation_error_message(&error),
                 }),
             }
+            handle.ledger().settle(ticket.id);
         });
     }
 
@@ -331,6 +386,40 @@ async fn read_definition(
         .await
 }
 
+/// The sidebar lists every schema, so two tables can share a name.
+fn display_name(table: &TableRef) -> String {
+    match &table.schema {
+        Some(schema) => format!("{schema}.{}", table.name),
+        None => table.name.clone(),
+    }
+}
+
+/// The keys of other tables that point at the table. A table's key on
+/// itself goes with it, so it does not stop a drop.
+fn referencing_keys(definition: &TableDefinition) -> Vec<InboundForeignKey> {
+    definition
+        .inbound_foreign_keys
+        .iter()
+        .filter(|key| key.table != definition.table)
+        .cloned()
+        .collect()
+}
+
+/// Each key as its table and columns, the table qualified only where it
+/// sits in another schema than the dropped one.
+fn key_list(dropped: &TableRef, keys: &[InboundForeignKey]) -> String {
+    keys.iter()
+        .map(|key| {
+            let table = match key.table.schema == dropped.schema {
+                true => key.table.name.clone(),
+                false => display_name(&key.table),
+            };
+            format!("{table} ({})", key.columns.join(", "))
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// The CREATE statements for a table as it is defined now, joined so
 /// the editor shows each on its own. `None` for a table with no
 /// columns, which has nothing to create.
@@ -495,5 +584,81 @@ mod tests {
 
         assert_eq!(heading.as_deref(), Some("Drop sales.orders?"));
         assert!(answer(&test.window, "cancel"), "the prompt has no Cancel button");
+    }
+
+    #[gtk4::test]
+    fn a_table_other_tables_point_at_is_refused_before_the_prompt() {
+        use crate::test_support::wait_until;
+        use crate::ui::session_window::tests::{TestWindow, WAIT};
+        use crate::workspace::{answer, visible_alert};
+        use tablepro_core::ddl::InboundForeignKey;
+        use tablepro_test_support::FakeReply;
+
+        let mut users = definition(vec![text_column("id")]);
+        let key = |name: &str, table: TableRef, column: &str| InboundForeignKey {
+            name: name.to_owned(),
+            table,
+            columns: vec![column.to_owned()],
+            referenced_columns: vec!["id".to_owned()],
+        };
+        users.inbound_foreign_keys = vec![
+            key(
+                "orders_user",
+                TableRef::new(Some("public".to_owned()), "orders"),
+                "user_id",
+            ),
+            key("audit_user", TableRef::new(Some("audit".to_owned()), "log"), "actor_id"),
+            key("users_parent", users.table.clone(), "parent_id"),
+        ];
+        let test = TestWindow::connected_with("DropRefusedForInboundKeys", |script| {
+            script.fetch_table_definition.always(FakeReply::ok(users.clone()));
+        });
+
+        test.workspace()
+            .with_model(|model| model.on_drop_table_prompt(Some("public".to_owned()), "users".to_owned()));
+        wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("an alert");
+
+        let alert = visible_alert(&test.window).expect("the alert");
+        assert_eq!(alert.heading().as_deref(), Some("Cannot Drop Table"));
+        let body = alert.body();
+        assert!(body.contains("orders (user_id), audit.log (actor_id)"), "{body}");
+        assert!(
+            !body.contains("parent_id"),
+            "a key of the table on itself was named: {body}"
+        );
+        assert!(!alert.has_response("drop"), "the refusal offered the drop");
+        assert!(answer(&test.window, "close"), "the refusal has no Close button");
+    }
+
+    #[gtk4::test]
+    fn a_drop_runs_as_a_save_that_holds_the_process() {
+        use std::sync::Arc;
+
+        use crate::test_support::wait_until;
+        use crate::ui::session_window::tests::{TestWindow, WAIT};
+        use tablepro_core::WriteReport;
+        use tablepro_test_support::FakeReply;
+        use tokio_util::sync::CancellationToken;
+
+        let release = CancellationToken::new();
+        let script_release = release.clone();
+        let test = TestWindow::connected_with("DropHeld", |script| {
+            script.dialect = Arc::new(postgres_dialect());
+            script.write_batch.once(FakeReply::UntilReleased {
+                release: script_release,
+                outcome: Ok(WriteReport::new(vec![None])),
+            });
+        });
+        wait_until(WAIT, || test.hold.live() == 0).expect("nothing else to hold the process");
+        let handle = test.workspace().handle().expect("the workspace handle");
+
+        test.workspace()
+            .with_model(|model| model.on_drop_table_confirmed(Some("public".to_owned()), "users".to_owned()));
+
+        assert_eq!(handle.ledger().in_flight(), 1, "a close would not wait for the drop");
+        assert_eq!(test.hold.live(), 1, "the drop started without holding the process");
+        release.cancel();
+        wait_until(WAIT, || handle.ledger().in_flight() == 0).expect("the drop to settle");
+        assert_eq!(test.hold.live(), 0, "the settled drop still held the process");
     }
 }

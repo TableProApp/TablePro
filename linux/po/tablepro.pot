@@ -980,6 +980,13 @@ msgstr ""
 
 #: crates/app/src/ui/editor/run_log.rs
 #, rust-format
+msgid ""
+"{error} This tab's connection was lost, so the server rolled back its open "
+"transaction."
+msgstr ""
+
+#: crates/app/src/ui/editor/run_log.rs
+#, rust-format
 msgid "{error} This tab's connection was lost; the next run opens a new one."
 msgstr ""
 
@@ -996,6 +1003,12 @@ msgid "{n} failed"
 msgid_plural "{n} failed"
 msgstr[0] ""
 msgstr[1] ""
+
+#: crates/app/src/ui/editor/script_runner.rs
+msgid ""
+"This tab's connection was lost, so the server rolled back its open "
+"transaction. Nothing was run; run again to open a new connection."
+msgstr ""
 
 #: crates/app/src/ui/editor/sql_file.rs
 msgid "Only regular files can be opened in the editor."
@@ -3665,6 +3678,13 @@ msgstr ""
 
 #: crates/app/src/ui/structure_tab/review_dialog.rs
 #, rust-format
+msgid ""
+"“{column}” becomes the rowid, so the save stops if any row has no value in "
+"it."
+msgstr ""
+
+#: crates/app/src/ui/structure_tab/review_dialog.rs
+#, rust-format
 msgid "index “{name}”"
 msgstr ""
 
@@ -4030,6 +4050,17 @@ msgid "Tables on this database are created in the SQL editor."
 msgstr ""
 
 #: crates/app/src/ui/workspace/structure.rs
+msgid "Cannot Drop Table"
+msgstr ""
+
+#: crates/app/src/ui/workspace/structure.rs
+#, rust-format
+msgid ""
+"Foreign keys on other tables point at {table}: {keys}. Drop those foreign "
+"keys first."
+msgstr ""
+
+#: crates/app/src/ui/workspace/structure.rs
 #, rust-format
 msgid "Drop {table}?"
 msgstr ""
@@ -4045,16 +4076,19 @@ msgid "Drop"
 msgstr ""
 
 #: crates/app/src/ui/workspace/structure.rs
-msgid "Cannot Drop Table"
-msgstr ""
-
-#: crates/app/src/ui/workspace/structure.rs
 #: crates/app/src/workspace/save_rejection.rs
 msgid "No active connection."
 msgstr ""
 
 #: crates/app/src/ui/workspace/structure.rs
 msgid "Drop Failed"
+msgstr ""
+
+#: crates/app/src/ui/workspace/structure.rs
+#, rust-format
+msgid ""
+"A foreign key on another table points at {table}, so it was not dropped. "
+"Drop that foreign key first."
 msgstr ""
 
 #: crates/app/src/ui/workspace/structure.rs

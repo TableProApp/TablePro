@@ -10,6 +10,10 @@ pub struct TableRebuild {
     /// The copied rows get new rowids, so anything outside the schema
     /// that kept one no longer finds its row.
     pub renumbers_rowids: bool,
+    /// A column that becomes the rowid, by its final name. SQLite gives a
+    /// NULL copied into it a new number, so the plan stops instead when
+    /// the column holds one.
+    pub numbered_column: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

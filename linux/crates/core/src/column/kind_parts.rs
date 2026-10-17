@@ -1,3 +1,5 @@
+use crate::value::SqlTime;
+
 /// How a boolean column stores its value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoolStorage {
@@ -29,6 +31,21 @@ pub enum TimeRange {
     TimeOfDay,
     /// MySQL TIME, which runs from -838:59:59 to 838:59:59.
     Duration,
+    /// ClickHouse Time and Time64, which run to 999:59:59 either side of
+    /// zero.
+    LongDuration,
+}
+
+impl TimeRange {
+    /// Whether a column of this range can hold `time`.
+    pub fn holds(self, time: &SqlTime) -> bool {
+        match self {
+            Self::TimeOfDay => time.to_time_of_day().is_some(),
+            Self::Duration => time.within_hours(838),
+            // A `SqlTime` reaches no further than ClickHouse's Time64.
+            Self::LongDuration => true,
+        }
+    }
 }
 
 /// How a timestamp column relates to a time zone.

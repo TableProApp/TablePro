@@ -206,15 +206,21 @@ impl BatchCollector {
         }
     }
 
-    /// Close the run with how it ended. `error_base` is where the batch
-    /// starts in the buffer, so a server's error position becomes a
-    /// buffer position.
+    /// Close the run with how it ended. `in_transaction` says a
+    /// transaction was open when the batch was sent. `error_base` is
+    /// where the batch starts in the buffer, so a server's error position
+    /// becomes a buffer position.
     pub fn finish(
         mut self,
         outcome: Result<RunSummary, DriverError>,
         state: EditorSessionState,
+        in_transaction: bool,
         error_base: usize,
     ) -> (Vec<EntryKind>, Verdict, Option<TransactionState>) {
+        let lost = SessionLoss {
+            lost: state == EditorSessionState::Lost,
+            in_transaction,
+        };
         let (verdict, transaction) = match outcome {
             Ok(summary) => {
                 let verdict = match summary.end {
@@ -227,7 +233,7 @@ impl BatchCollector {
                         Verdict::Completed
                     }
                     RunEnd::Failed(error) => {
-                        self.entries.push(failed(&error, state, error_base));
+                        self.entries.push(failed(&error, lost, error_base));
                         Verdict::Failed
                     }
                     RunEnd::Cancelled => {
@@ -246,7 +252,7 @@ impl BatchCollector {
                 (Verdict::Stopped, None)
             }
             Err(error) => {
-                self.entries.push(failed(&error, state, error_base));
+                self.entries.push(failed(&error, lost, error_base));
                 (Verdict::Stopped, None)
             }
         };
@@ -267,11 +273,25 @@ impl BatchCollector {
     }
 }
 
-fn failed(error: &DriverError, state: EditorSessionState, error_base: usize) -> EntryKind {
+/// Whether the session's connection went with this batch, and whether
+/// a transaction was open on it.
+#[derive(Debug, Clone, Copy)]
+struct SessionLoss {
+    lost: bool,
+    in_transaction: bool,
+}
+
+fn failed(error: &DriverError, lost: SessionLoss, error_base: usize) -> EntryKind {
     let mut message = crate::ui::error_text::driver_message(error);
-    if state == EditorSessionState::Lost {
-        // An editor session is never reopened behind the user's back:
-        // its open transaction and temporary tables went with it.
+    // An editor session is never reopened behind the user's back: its
+    // open transaction and temporary tables went with it. With a
+    // transaction open, the next run is refused rather than reopening.
+    if lost.lost && lost.in_transaction {
+        message = crate::i18n::gettext_f(
+            "{error} This tab's connection was lost, so the server rolled back its open transaction.",
+            &[("error", &message)],
+        );
+    } else if lost.lost {
         message = crate::i18n::gettext_f(
             "{error} This tab's connection was lost; the next run opens a new one.",
             &[("error", &message)],
@@ -499,7 +519,7 @@ mod tests {
         for event in events {
             collector.record(event);
         }
-        let (entries, verdict, _) = collector.finish(summary(end), EditorSessionState::Ready, 0);
+        let (entries, verdict, _) = collector.finish(summary(end), EditorSessionState::Ready, false, 0);
         (entries, verdict)
     }
 
@@ -580,7 +600,7 @@ mod tests {
         ] {
             collector.record(event);
         }
-        let (entries, _, _) = collector.finish(summary(RunEnd::Completed), EditorSessionState::Ready, 0);
+        let (entries, _, _) = collector.finish(summary(RunEnd::Completed), EditorSessionState::Ready, false, 0);
 
         let EntryKind::ResultSet(result) = &entries[0] else {
             panic!("expected rows: {entries:?}");
@@ -713,6 +733,7 @@ mod tests {
         let (entries, verdict, _) = collector.finish(
             summary(RunEnd::Failed(DriverError::reported(diagnostics))),
             EditorSessionState::Ready,
+            false,
             100,
         );
 
