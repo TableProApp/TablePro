@@ -18,20 +18,23 @@ pub fn build_client_config(tls: &TlsConfig) -> Result<Option<Arc<ClientConfig>>,
                 Some(path) => read_certificates(path)?,
                 None => Vec::new(),
             };
-            Arc::new(rustls_platform_verifier::Verifier::new_with_extra_roots(
-                extra_roots,
-                Arc::clone(&provider),
-            )?)
+            Arc::new(
+                rustls_platform_verifier::Verifier::new_with_extra_roots(extra_roots, Arc::clone(&provider))
+                    .map_err(TlsSetupError::Setup)?,
+            )
         }
     };
     let builder = ClientConfig::builder_with_provider(provider)
-        .with_protocol_versions(rustls::DEFAULT_VERSIONS)?
+        .with_protocol_versions(rustls::DEFAULT_VERSIONS)
+        .map_err(TlsSetupError::Setup)?
         .dangerous()
         .with_custom_certificate_verifier(verifier);
     let config = match &tls.client_identity {
         Some(identity) => {
             let (certificates, key) = read_identity(identity)?;
-            builder.with_client_auth_cert(certificates, key)?
+            builder
+                .with_client_auth_cert(certificates, key)
+                .map_err(TlsSetupError::Rustls)?
         }
         None => builder.with_no_client_auth(),
     };
