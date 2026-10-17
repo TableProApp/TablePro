@@ -122,6 +122,18 @@ pub fn value_to_display_text(value: &Value) -> String {
     value_to_text(value, truncate_for_display)
 }
 
+pub(crate) fn value_to_search_text(value: &Value) -> Cow<'_, str> {
+    match value {
+        Value::Text(text) | Value::JsonText(text) => Cow::Borrowed(text),
+        Value::Bytes(bytes) => match std::str::from_utf8(bytes) {
+            Ok(text) if !text.contains('\0') => Cow::Borrowed(text),
+            _ => Cow::Owned(format!("<{} bytes>", bytes.len())),
+        },
+        Value::Json(json) => Cow::Owned(json.to_string()),
+        other => Cow::Owned(value_to_text(other, str::to_owned)),
+    }
+}
+
 pub(crate) fn preview_to_display_text(preview: &crate::ui::row_object::CellPreview) -> String {
     let total = crate::tr!("{n} bytes total").replace("{n}", &preview.byte_count.to_string());
     match &preview.value {

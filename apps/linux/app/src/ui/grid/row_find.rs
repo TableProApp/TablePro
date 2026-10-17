@@ -4,7 +4,7 @@ use gtk4 as gtk;
 use libadwaita::{self as adw, prelude::*};
 use tablepro_core::Value;
 
-use super::display::value_to_display_text;
+use super::display::{value_to_display_text, value_to_search_text};
 use crate::ui::row_object::RowObject;
 
 const MAX_MATCHES: usize = 200;
@@ -16,15 +16,60 @@ pub(super) struct RowMatch {
     pub text: String,
 }
 
-pub(super) fn first_matching_cell(cells: &[Option<Value>], needle: &str) -> Option<(usize, String)> {
+struct CaseInsensitivePattern {
+    characters: Vec<char>,
+    prefix: Vec<usize>,
+}
+
+impl CaseInsensitivePattern {
+    fn new(needle: &str) -> Self {
+        let characters: Vec<char> = needle.chars().collect();
+        let prefix = prefix_lengths(&characters);
+        Self { characters, prefix }
+    }
+
+    fn matches(&self, text: &str) -> bool {
+        let mut matched = 0;
+        for character in text.chars().flat_map(char::to_lowercase) {
+            while matched > 0 && character != self.characters[matched] {
+                matched = self.prefix[matched - 1];
+            }
+            if character == self.characters[matched] {
+                matched += 1;
+            }
+            if matched == self.characters.len() {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+fn first_matching_cell(cells: &[Option<Value>], needle: &CaseInsensitivePattern) -> Option<(usize, String)> {
     cells
         .iter()
         .enumerate()
         .filter_map(|(column, value)| value.as_ref().map(|value| (column, value)))
         .find_map(|(column, value)| {
-            let text = value_to_display_text(value);
-            text.to_lowercase().contains(needle).then_some((column, text))
+            needle
+                .matches(&value_to_search_text(value))
+                .then(|| (column, value_to_display_text(value)))
         })
+}
+
+fn prefix_lengths(pattern: &[char]) -> Vec<usize> {
+    let mut prefix = vec![0; pattern.len()];
+    let mut matched = 0;
+    for index in 1..pattern.len() {
+        while matched > 0 && pattern[index] != pattern[matched] {
+            matched = prefix[matched - 1];
+        }
+        if pattern[index] == pattern[matched] {
+            matched += 1;
+        }
+        prefix[index] = matched;
+    }
+    prefix
 }
 
 pub(super) fn matching_rows(
@@ -37,6 +82,7 @@ pub(super) fn matching_rows(
     if needle.is_empty() {
         return Vec::new();
     }
+    let needle = CaseInsensitivePattern::new(&needle);
     let mut found = Vec::new();
     for position in 0..count {
         let Some(cells) = row_at(position) else {
@@ -290,6 +336,11 @@ mod tests {
     }
 
     #[test]
+    fn case_insensitive_search_keeps_unicode_lowercase_expansions() {
+        assert!(CaseInsensitivePattern::new("i\u{307}").matches("before İ after"));
+    }
+
+    #[test]
     fn an_empty_query_matches_nothing() {
         assert!(find("", 10).is_empty());
         assert!(find("   ", 10).is_empty());
@@ -302,8 +353,36 @@ mod tests {
     }
 
     #[test]
+    fn null_binary_and_undecodable_values_keep_their_search_labels() {
+        let cells = vec![
+            Some(Value::Null),
+            Some(Value::Bytes(vec![0xFF, 0xFE])),
+            Some(Value::Undecodable("NUMERIC".into())),
+        ];
+        assert_eq!(
+            first_matching_cell(&cells, &CaseInsensitivePattern::new("null"))
+                .unwrap()
+                .0,
+            0
+        );
+        assert_eq!(
+            first_matching_cell(&cells, &CaseInsensitivePattern::new("2 bytes"))
+                .unwrap()
+                .0,
+            1
+        );
+        assert_eq!(
+            first_matching_cell(&cells, &CaseInsensitivePattern::new("numeric"))
+                .unwrap()
+                .0,
+            2
+        );
+    }
+
+    #[test]
     fn a_long_cell_remains_searchable_beyond_its_visible_preview() {
-        let text = format!("{}needle", "x".repeat(9000));
+        let text = format!("{}needle", "😀".repeat(10_001));
+        assert!(!crate::ui::grid::display::value_to_display_text(&Value::Text(text.clone())).contains("needle"));
         let result = std::sync::Arc::new(tablepro_core::QueryResult {
             columns: Vec::new(),
             rows: vec![vec![Value::Int(1), Value::Text(text)]],
