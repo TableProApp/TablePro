@@ -640,6 +640,39 @@ fn the_tls_remedy_opens_the_certificate_rows() {
 }
 
 #[gtk4::test]
+fn a_ca_file_is_offered_and_sent_only_with_verify_full() {
+    let harness = dialog();
+    fill_network(&harness.dialog);
+    let section = harness.dialog.imp().tls_section.get();
+    let ca = std::path::PathBuf::from("/etc/tls/ca.pem");
+    section.set_file_path(FormField::CaFile, Some(ca.clone()));
+    let index_of = |wanted: TlsMode| {
+        section
+            .imp()
+            .modes
+            .borrow()
+            .iter()
+            .position(|mode| *mode == wanted)
+            .expect("PostgreSQL offers the mode") as u32
+    };
+    let sent_ca = || {
+        let valid = harness.dialog.form().validate(caps_of("postgres")).expect("valid");
+        let RequestTarget::Network { tls, .. } = valid.target else {
+            panic!("expected a network target");
+        };
+        tls.ca_file
+    };
+
+    section.imp().encryption_row.set_selected(index_of(TlsMode::Require));
+    assert!(!section.imp().ca_row.is_visible(), "Require offered a CA file");
+    assert_eq!(sent_ca(), None, "Require sent a CA file it would not read");
+
+    section.imp().encryption_row.set_selected(index_of(TlsMode::VerifyFull));
+    assert!(section.imp().ca_row.is_visible());
+    assert_eq!(sent_ca(), Some(ca), "the CA file chosen before was lost");
+}
+
+#[gtk4::test]
 fn agent_is_default_with_ssh_auth_sock() {
     let with_agent = open(Options {
         environment: SshEnvironment {

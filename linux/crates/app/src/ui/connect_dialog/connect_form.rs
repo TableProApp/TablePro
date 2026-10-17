@@ -52,9 +52,9 @@ impl TlsFormState {
         }
     }
 
-    /// The settings a request carries. A row the driver does not show
-    /// is left out rather than cleared, so looking at another driver
-    /// and coming back keeps what was chosen.
+    /// The settings a request carries. A row the driver or the mode does
+    /// not show is left out rather than cleared, so looking at another
+    /// driver or mode and coming back keeps what was chosen.
     pub fn config(&self, caps: &TlsCapabilities, route: TransportClass) -> TlsConfig {
         if self.mode == TlsMode::Disable {
             return TlsConfig::disabled();
@@ -67,7 +67,10 @@ impl TlsFormState {
         });
         TlsConfig {
             mode: self.mode,
-            ca_file: self.ca_file.clone().filter(|_| caps.ca_file),
+            ca_file: self
+                .ca_file
+                .clone()
+                .filter(|_| caps.ca_file && self.mode == TlsMode::VerifyFull),
             client_identity,
             server_name: Some(self.server_name.trim().to_owned())
                 .filter(|name| !name.is_empty() && shows_server_name(caps, route)),

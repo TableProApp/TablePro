@@ -63,7 +63,7 @@ pub fn config_message(error: &ConfigError) -> String {
         ConfigError::RelativePath => crate::i18n::gettext("Use a full path, starting with /."),
         ConfigError::UnsupportedTlsMode => crate::i18n::gettext("This database does not offer that TLS mode."),
         ConfigError::CaFileUnsupported => {
-            crate::i18n::gettext("A CA certificate needs TLS turned on and a database that accepts one.")
+            crate::i18n::gettext("A CA certificate needs Verify full and a database that accepts one.")
         }
         ConfigError::ClientIdentityUnsupported => {
             crate::i18n::gettext("A client certificate needs TLS turned on and a database that accepts one.")

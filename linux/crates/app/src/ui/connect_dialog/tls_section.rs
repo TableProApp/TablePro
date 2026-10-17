@@ -343,7 +343,8 @@ impl TlsSection {
         let mode = self.mode();
         imp.encryption_row.set_subtitle(&mode_description(mode));
         imp.certificates_row.set_visible(mode != TlsMode::Disable);
-        imp.ca_row.set_visible(caps.ca_file);
+        // Only Verify full checks the certificate, so only it reads a CA.
+        imp.ca_row.set_visible(caps.ca_file && mode == TlsMode::VerifyFull);
         imp.certificate_row.set_visible(caps.client_identity);
         imp.key_row.set_visible(caps.client_identity);
         let route = imp.route.get().unwrap_or(TransportClass::DirectTcp);

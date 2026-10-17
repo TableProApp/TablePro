@@ -21,7 +21,7 @@ pub enum ConfigError {
     #[error("this TLS mode is not supported")]
     UnsupportedTlsMode,
 
-    #[error("a CA file needs TLS turned on and a driver that accepts one")]
+    #[error("a CA file needs Verify full and a driver that accepts one")]
     CaFileUnsupported,
 
     #[error("a client certificate needs TLS turned on and a driver that accepts one")]
