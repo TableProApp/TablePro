@@ -3,6 +3,10 @@ use tablepro_core::{ColumnInfo, ForeignKeyInfo, QueryResult, Value};
 
 #[derive(Debug)]
 pub enum BrowseTabInput {
+    EditsFlushed {
+        revision: u64,
+        reply: tokio::sync::oneshot::Sender<Result<(), String>>,
+    },
     RowsLoaded {
         request: BrowsePageRequest,
         result: QueryResult,

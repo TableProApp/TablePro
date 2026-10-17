@@ -166,6 +166,7 @@ pub struct BrowseTab {
     discard_button: gtk::Button,
     pending_label: gtk::Label,
     grid_sender: relm4::Sender<GridMsg>,
+    rejected_edit_revision: std::cell::Cell<u64>,
     /// Set to true on init / refresh; flipped off after first RowsLoaded so
     /// PageSizeChanged emits don't fire while the combo is being driven by
     /// programmatic state restores.
@@ -629,6 +630,7 @@ impl SimpleComponent for BrowseTab {
             discard_button: pending.discard_button,
             pending_label: pending.pending_label,
             grid_sender,
+            rejected_edit_revision: Default::default(),
             suppress_combo_emit,
         };
         model.refresh_crud_buttons();
@@ -673,6 +675,14 @@ impl SimpleComponent for BrowseTab {
             return;
         };
         match msg {
+            BrowseTabInput::EditsFlushed { revision, reply } => {
+                let result = if self.rejected_edit_revision.get() == revision {
+                    Ok(())
+                } else {
+                    Err(crate::tr!("Finish or cancel the current cell edit and try again."))
+                };
+                let _ = reply.send(result);
+            }
             BrowseTabInput::RowsLoaded {
                 request,
                 result,
@@ -909,10 +919,16 @@ impl SimpleComponent for BrowseTab {
                 new_value,
                 value,
                 row_key,
-            } => match value {
-                Some(value) => self.handle_grid_cell_value_edited(row_position, col_index, value, row_key, sender),
-                None => self.handle_grid_cell_edited(row_position, col_index, new_value, row_key, sender),
-            },
+            } => {
+                let accepted = match value {
+                    Some(value) => self.handle_grid_cell_value_edited(row_position, col_index, value, row_key, sender),
+                    None => self.handle_grid_cell_edited(row_position, col_index, new_value, row_key, sender),
+                };
+                if !accepted {
+                    self.rejected_edit_revision
+                        .set(self.rejected_edit_revision.get().wrapping_add(1));
+                }
+            }
             BrowseTabInput::GridSetCellNull {
                 row_position,
                 col_index,

@@ -14,6 +14,7 @@ use super::{App, AppMsg};
 /// drains" flag, and the in-flight transaction counter the close
 /// guard polls.
 pub(super) struct WindowLifecycleHandles {
+    pub(super) grid_edits_ready: Rc<Cell<bool>>,
     pub(super) close_after_save: Rc<RefCell<HashMap<Uuid, u32>>>,
     pub(super) close_window_after_save: Rc<Cell<bool>>,
     pub(super) in_flight_saves: Rc<Cell<usize>>,
@@ -51,6 +52,7 @@ pub(super) fn install_window_lifecycle(
     let in_flight_saves: Rc<Cell<usize>> = Rc::new(Cell::new(0));
     let session_teardown_ready = Rc::new(Cell::new(false));
     let session_teardown_pending = Rc::new(Cell::new(false));
+    let grid_edits_ready = Rc::new(Cell::new(false));
     let window_close_state_saved = Rc::new(Cell::new(false));
     let window_close_state_pending = Rc::new(Cell::new(false));
     let handles = WindowLifecycleHandles {
@@ -59,6 +61,7 @@ pub(super) fn install_window_lifecycle(
         in_flight_saves: in_flight_saves.clone(),
         session_teardown_ready: session_teardown_ready.clone(),
         session_teardown_pending: session_teardown_pending.clone(),
+        grid_edits_ready: grid_edits_ready.clone(),
         window_state: restored.clone(),
         window_close_state_saved: window_close_state_saved.clone(),
         window_close_state_pending: window_close_state_pending.clone(),
@@ -100,6 +103,10 @@ pub(super) fn install_window_lifecycle(
                     glib::ControlFlow::Continue
                 }
             });
+            return glib::Propagation::Stop;
+        }
+        if !grid_edits_ready.replace(false) {
+            let _ = close_request_input_sender.send(AppMsg::FlushWindowEdits);
             return glib::Propagation::Stop;
         }
         // Already-confirmed close path (set by the dialog handler

@@ -3,6 +3,7 @@ use crate::ui::grid::GridMsg;
 
 pub(super) fn to_input(msg: GridMsg) -> BrowseTabInput {
     match msg {
+        GridMsg::EditsFlushed { revision, reply } => BrowseTabInput::EditsFlushed { revision, reply },
         GridMsg::SortChanged(col_idx, ascending) => BrowseTabInput::SortChanged { col_idx, ascending },
         GridMsg::CellEdited {
             row_position,

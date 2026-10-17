@@ -41,3 +41,9 @@ impl BrowseTab {
         &self.driver_id
     }
 }
+
+impl super::BrowseTab {
+    pub(crate) fn edit_flush_snapshot(&self) -> (relm4::Sender<crate::ui::grid::GridMsg>, u64) {
+        (self.grid_sender.clone(), self.rejected_edit_revision.get())
+    }
+}

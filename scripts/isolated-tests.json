@@ -305,6 +305,16 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::app::grid_close::tests::a_pending_grid_flush_matches_only_its_original_tab_page"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::app::workspace_tabs::bulk_close::tests::bulk_close_actions_dispatch_the_selected_page_id"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::grid::context_menu::tests::view_value_resolves_pending_text_null_and_draft_values_from_the_cell"
     ],
     [
@@ -516,6 +526,26 @@
       "tablepro-app",
       "--lib",
       "ui::editor::completion_provider::tests::retired_proposals_do_not_edit_the_buffer"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::save_in_flight_tests::a_close_flush_waits_until_queued_edits_enter_the_tracker"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::save_in_flight_tests::a_close_flush_reports_a_refused_queued_edit_without_staging_it"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::close_edits::tests::finishing_an_inline_edit_keeps_its_field_parented_and_commits_once"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::close_edits::tests::an_active_preedit_is_refused_without_hiding_or_replacing_the_edit"
     ]
   ],
   "keyring": [

@@ -166,6 +166,14 @@ Build and install with the helper (`cargo build -p tablepro-ssh --bin tablepro-a
 - [ ] An unknown write outcome blocks only its owning connection; another connection stays usable. Restart/reconnect recovery follows the durable audit rules.
 - [ ] `SET autocommit=0`, `SET IMPLICIT_TRANSACTIONS ON`, `XA START` and an unterminated transaction batch are refused on applicable shared connections.
 
+## Active table cell close and preview paths
+
+- [ ] Type into a table cell without pressing Enter, then close it with the tab button and Ctrl+W. Cancel keeps the editor and draft, Save stores the typed value, and Discard leaves the database unchanged.
+- [ ] Repeat the pending cell edit through Close Other Tabs, Close Tabs to the Right, window close, quit and Disconnect. Each prompt or teardown decision must wait until the edit is staged; cancel preserves the connection and draft. GTK automation covers the tab button, Ctrl+W, save/discard, inactive-tab close, preview replacement, quit and Disconnect. Verify both tab context-menu actions by hand; see the [active-edit close run evidence](evidence/active-edit-close-cbccd589-2026-10-16/README.md).
+- [ ] Type into a preview table cell and open another table. The edited preview becomes a kept tab and retains the pending value. Repeat with a kept tab and with the edited tab inactive.
+- [ ] Attempt closure while a cell editor has an active IME preedit or value popover. Closure is refused without discarding or replacing the in-progress input.
+- [ ] Close a tab while its save is in flight, then deliver a late save completion after opening a replacement tab. The completion must not close or change the replacement.
+
 ## ENUM and SET pickers (PostgreSQL, MySQL and MariaDB)
 
 - [ ] Double-click an ENUM cell: a list of the declared members opens with the current one highlighted; choosing another shows a pending change and Save writes that member. **2026-10-12 Hyprland dark:** passed on PostgreSQL; the keyboard highlight starts on the first member, [#660](https://github.com/cozyGarage/BookiE/issues/660).

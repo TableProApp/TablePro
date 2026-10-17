@@ -5,6 +5,21 @@ use uuid::Uuid;
 use super::types::read_workspace_tab_id;
 use super::{App, AppMsg, SessionTeardownAction, WorkspaceTab};
 
+fn close_other_page_indexes(page_ids: &[Option<Uuid>], keep_id: Uuid) -> Vec<usize> {
+    page_ids
+        .iter()
+        .enumerate()
+        .filter_map(|(index, id)| (*id != Some(keep_id)).then_some(index))
+        .collect()
+}
+
+fn close_page_indexes_to_right(page_ids: &[Option<Uuid>], anchor_id: Uuid) -> Vec<usize> {
+    let Some(anchor) = page_ids.iter().position(|id| *id == Some(anchor_id)) else {
+        return Vec::new();
+    };
+    ((anchor + 1)..page_ids.len()).collect()
+}
+
 impl App {
     pub(super) fn confirm_session_teardown(
         &self,
@@ -87,17 +102,17 @@ impl App {
             return;
         };
         let pages = tab_view.pages();
-        let mut targets = Vec::with_capacity(pages.n_items() as usize);
+        let mut page_ids = Vec::with_capacity(pages.n_items() as usize);
+        let mut tab_pages = Vec::with_capacity(pages.n_items() as usize);
         for index in 0..pages.n_items() {
-            let Some(page) = pages.item(index).and_downcast::<adw::TabPage>() else {
-                continue;
-            };
-            if read_workspace_tab_id(&page) != Some(keep_id) {
-                targets.push(page);
-            }
+            let page = pages.item(index).and_downcast::<adw::TabPage>();
+            page_ids.push(page.as_ref().and_then(read_workspace_tab_id));
+            tab_pages.push(page);
         }
-        for page in targets {
-            tab_view.close_page(&page);
+        for index in close_other_page_indexes(&page_ids, keep_id) {
+            if let Some(page) = tab_pages.get(index).and_then(Option::as_ref) {
+                tab_view.close_page(page);
+            }
         }
     }
 
@@ -106,22 +121,17 @@ impl App {
             return;
         };
         let pages = tab_view.pages();
-        let Some(anchor_index) = (0..pages.n_items()).find(|&index| {
-            pages
-                .item(index)
-                .and_downcast::<adw::TabPage>()
-                .is_some_and(|page| read_workspace_tab_id(&page) == Some(anchor_id))
-        }) else {
-            return;
-        };
-        let mut targets = Vec::new();
-        for index in (anchor_index + 1)..pages.n_items() {
-            if let Some(page) = pages.item(index).and_downcast::<adw::TabPage>() {
-                targets.push(page);
-            }
+        let mut page_ids = Vec::with_capacity(pages.n_items() as usize);
+        let mut tab_pages = Vec::with_capacity(pages.n_items() as usize);
+        for index in 0..pages.n_items() {
+            let page = pages.item(index).and_downcast::<adw::TabPage>();
+            page_ids.push(page.as_ref().and_then(read_workspace_tab_id));
+            tab_pages.push(page);
         }
-        for page in targets {
-            tab_view.close_page(&page);
+        for index in close_page_indexes_to_right(&page_ids, anchor_id) {
+            if let Some(page) = tab_pages.get(index).and_then(Option::as_ref) {
+                tab_view.close_page(page);
+            }
         }
     }
 
@@ -155,5 +165,37 @@ impl App {
         });
         dialog.present(Some(&self.window));
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn close_other_targets_leave_the_selected_page_open() {
+        let left = Uuid::new_v4();
+        let keep = Uuid::new_v4();
+        let right = Uuid::new_v4();
+        let page_ids = [Some(left), Some(keep), Some(right)];
+
+        assert_eq!(close_other_page_indexes(&page_ids, keep), vec![0, 2]);
+    }
+
+    #[test]
+    fn close_right_targets_only_pages_after_the_anchor_in_current_order() {
+        let left = Uuid::new_v4();
+        let anchor = Uuid::new_v4();
+        let right = Uuid::new_v4();
+        let page_ids = [Some(left), Some(anchor), None, Some(right)];
+
+        assert_eq!(close_page_indexes_to_right(&page_ids, anchor), vec![2, 3]);
+    }
+
+    #[test]
+    fn a_missing_close_right_anchor_does_not_target_any_page() {
+        let page_ids = [Some(Uuid::new_v4()), Some(Uuid::new_v4())];
+
+        assert!(close_page_indexes_to_right(&page_ids, Uuid::new_v4()).is_empty());
     }
 }

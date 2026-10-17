@@ -259,14 +259,14 @@ impl BrowseTab {
         new_value: String,
         row_key: Vec<Value>,
         sender: ComponentSender<Self>,
-    ) {
+    ) -> bool {
         // A refresh, a sort or a page change replaces the store's rows,
         // so the position the editor opened on can now hold a different
         // row. Committing then writes the new value to a row the user
         // never opened. Compare the primary key captured when editing
         // started with the one at that position now.
         if self.reject_stale_row_edit(row_position, &row_key, &sender) {
-            return;
+            return false;
         }
         // Defense in depth: synthetic/queued widget events must obey the same
         // runtime-value gate as rendering, even after a row has been rebound.
@@ -277,7 +277,7 @@ impl BrowseTab {
             .is_some_and(|(column, row)| crate::ui::grid::cell_allows_inline_edit(column, &row.cell_value(col_index)));
         if !allowed {
             self.refresh_row(row_position);
-            return;
+            return false;
         }
         // Cell edits route through the per-tab change tracker
         // so the user can review / Save / Discard a batch.
@@ -303,7 +303,7 @@ impl BrowseTab {
             Err(message) => {
                 let _ = sender.output(BrowseTabOutput::ShowToast(message));
                 self.refresh_row(row_position);
-                return;
+                return false;
             }
         };
         if let Some(row_obj) = &row_obj
@@ -317,16 +317,17 @@ impl BrowseTab {
                 t.track_draft_cell_edit(draft_id, col_index, new.clone());
             });
             row_obj.set_cell(col_index, new);
-            return;
+            return true;
         }
         let Some((key, row)) = self.row_key_at(row_position) else {
             self.report_unreadable_row_key(row_position, &sender);
-            return;
+            return false;
         };
         let original = row[col_index].clone();
         crate::services::change_tracker::with_tab(self.tab_id, |t| {
             t.track_cell_edit(key, col_index, original, new);
         });
+        true
     }
 
     pub(super) fn handle_grid_cell_value_edited(
@@ -336,9 +337,9 @@ impl BrowseTab {
         value: Value,
         row_key: Vec<Value>,
         sender: ComponentSender<Self>,
-    ) {
+    ) -> bool {
         if self.reject_stale_row_edit(row_position, &row_key, &sender) {
-            return;
+            return false;
         }
         let row_obj = self.row_object_at(row_position);
         let allowed = self
@@ -353,7 +354,7 @@ impl BrowseTab {
             });
         if !allowed {
             self.refresh_row(row_position);
-            return;
+            return false;
         }
         if let Some(row) = &row_obj
             && let Some(draft_id) = row.draft_id()
@@ -362,19 +363,20 @@ impl BrowseTab {
                 tracker.track_draft_cell_edit(draft_id, col_index, value.clone());
             });
             row.set_cell(col_index, value);
-            return;
+            return true;
         }
         let Some((key, row)) = self.row_key_at(row_position) else {
             self.report_unreadable_row_key(row_position, &sender);
-            return;
+            return false;
         };
         let Some(original) = row.get(col_index).cloned() else {
             self.refresh_row(row_position);
-            return;
+            return false;
         };
         crate::services::change_tracker::with_tab(self.tab_id, |tracker| {
             tracker.track_cell_edit(key, col_index, original, value);
         });
+        true
     }
 
     /// Tell the user why an edit on a row the tracker cannot key was
@@ -596,6 +598,8 @@ impl BrowseTab {
         if !(self.save_in_flight.get() && changes_tracker) {
             return Some(msg);
         }
+        self.rejected_edit_revision
+            .set(self.rejected_edit_revision.get().wrapping_add(1));
         let _ = sender.output(BrowseTabOutput::ShowToast(crate::tr!(
             "Saving changes. Edit again when the save finishes."
         )));

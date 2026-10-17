@@ -111,6 +111,12 @@ pub enum AppMsg {
     Disconnect,
     ForceDisconnect,
     PrepareWindowClose,
+    FlushWindowEdits,
+    GridEditsPrepared {
+        intent: super::grid_close::GridCloseIntent,
+        ticket: u64,
+        result: Result<(), String>,
+    },
     PersistWindowStateForClose {
         width: i32,
         height: i32,

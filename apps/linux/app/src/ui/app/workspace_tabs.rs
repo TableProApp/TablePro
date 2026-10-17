@@ -13,6 +13,8 @@ use crate::ui::editor::{SqlEditor, SqlEditorInit, SqlEditorInput, SqlEditorOutpu
 
 use super::types::{CLOSED_TABS_CAPACITY, read_workspace_tab_id, write_workspace_tab_id};
 use super::{App, AppMsg, ClosedTabDescriptor, EditorTabSlot, WorkspaceTab};
+mod bulk_close;
+use bulk_close::{add_bulk_close_actions, bulk_close_menu_model};
 
 impl App {
     /// Builds the unified AdwTabOverview tree once per connection.
@@ -118,37 +120,13 @@ impl App {
         });
         let action_group = gio::SimpleActionGroup::new();
         action_group.add_action(&keep_tab_action);
-        let close_others_action = gio::SimpleAction::new("close-others", None);
-        let menu_target_others = menu_target.clone();
-        let sender_close_others = sender.clone();
-        close_others_action.connect_activate(move |_, _| {
-            let target = menu_target_others.borrow().clone();
-            if let Some(page) = target
-                && let Some(id) = read_workspace_tab_id(&page)
-            {
-                sender_close_others.input(AppMsg::CloseOtherWorkspaceTabs(id));
-            }
+        let sender_for_bulk_close = sender.clone();
+        add_bulk_close_actions(&action_group, menu_target, move |message| {
+            sender_for_bulk_close.input(message);
         });
-        action_group.add_action(&close_others_action);
-        let close_right_action = gio::SimpleAction::new("close-right", None);
-        let menu_target_right = menu_target;
-        let sender_close_right = sender.clone();
-        close_right_action.connect_activate(move |_, _| {
-            let target = menu_target_right.borrow().clone();
-            if let Some(page) = target
-                && let Some(id) = read_workspace_tab_id(&page)
-            {
-                sender_close_right.input(AppMsg::CloseWorkspaceTabsToRight(id));
-            }
-        });
-        action_group.add_action(&close_right_action);
         tab_view.insert_action_group("tab", Some(&action_group));
 
-        let bulk_menu = gio::Menu::new();
-        bulk_menu.append(Some(&crate::tr!("Keep Tab")), Some("tab.keep"));
-        bulk_menu.append_section(None, &gio::Menu::new());
-        bulk_menu.append(Some(&crate::tr!("Close Other Tabs")), Some("tab.close-others"));
-        bulk_menu.append(Some(&crate::tr!("Close Tabs to the Right")), Some("tab.close-right"));
+        let bulk_menu = bulk_close_menu_model();
         tab_view.set_menu_model(Some(&bulk_menu));
 
         // Both selection-change AND any pages-list change (insert /

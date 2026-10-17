@@ -1,4 +1,6 @@
 mod choice_editor;
+mod close_edits;
+pub(crate) use close_edits::finish_active_edits;
 mod column;
 mod column_jump;
 mod column_order;
@@ -39,6 +41,10 @@ pub(crate) fn enter_cell_edit_mode(label: &crate::ui::cell_editor::CellEditor) {
 #[derive(Debug)]
 pub enum GridMsg {
     SortChanged(usize, bool),
+    EditsFlushed {
+        revision: u64,
+        reply: tokio::sync::oneshot::Sender<Result<(), String>>,
+    },
     CellEdited {
         row_position: u32,
         col_index: usize,

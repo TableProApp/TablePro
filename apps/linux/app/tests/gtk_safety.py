@@ -19,6 +19,7 @@ import gtk_workbook
 import gtk_parameters
 import gtk_xml
 import gtk_ux
+import gtk_active_edit
 import gtk_input
 import gtk_runner
 import gtk_shard
@@ -2366,6 +2367,7 @@ def main():
     scenarios.extend(gtk_parameters.scenarios(sys.modules[__name__]))
     scenarios.extend(gtk_xml.scenarios(sys.modules[__name__]))
     scenarios.extend(gtk_ux.scenarios(sys.modules[__name__]))
+    scenarios.extend(gtk_active_edit.scenarios(sys.modules[__name__]))
     selected = os.environ.get("TABLEPRO_GTK_SCENARIO")
     if selected:
         names = set(selected.split(","))

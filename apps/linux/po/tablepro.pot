@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: BookiE 0.1.6-dev\n"
 "Report-Msgid-Bugs-To: https://github.com/cozyGarage/BookiE/issues\n"
-"POT-Creation-Date: 2026-10-17 18:54+0200\n"
+"POT-Creation-Date: 2026-10-17 19:59+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -131,7 +131,7 @@ msgid "Command"
 msgstr ""
 
 #: apps/linux/app/src/services/sidebar_tree.rs:102
-#: apps/linux/app/src/ui/app/mod.rs:390
+#: apps/linux/app/src/ui/app/mod.rs:434
 #: apps/linux/app/src/ui/app/workspace_chrome.rs:92
 msgid "Tables"
 msgstr ""
@@ -343,15 +343,15 @@ msgstr ""
 #: apps/linux/app/src/ui/app/connection.rs:348
 #: apps/linux/app/src/ui/app/editor_files.rs:105
 #: apps/linux/app/src/ui/app/favorites.rs:53
-#: apps/linux/app/src/ui/app/init_window.rs:113
+#: apps/linux/app/src/ui/app/init_window.rs:131
 #: apps/linux/app/src/ui/app/organization.rs:98
 #: apps/linux/app/src/ui/app/organization.rs:149
 #: apps/linux/app/src/ui/app/referenced_row.rs:18
 #: apps/linux/app/src/ui/app/status_pages.rs:47
 #: apps/linux/app/src/ui/app/structure.rs:84
-#: apps/linux/app/src/ui/app/workspace_close.rs:28
-#: apps/linux/app/src/ui/app/workspace_close.rs:146
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:666
+#: apps/linux/app/src/ui/app/workspace_close.rs:43
+#: apps/linux/app/src/ui/app/workspace_close.rs:156
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:644
 #: apps/linux/app/src/ui/browse_tab/row_ops.rs:235
 #: apps/linux/app/src/ui/connect_dialog/mod.rs:924
 #: apps/linux/app/src/ui/connection_bundle/export.rs:70
@@ -527,7 +527,7 @@ msgid "Connection failed"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/connection.rs:482
-#: apps/linux/app/src/ui/app/init_window.rs:216
+#: apps/linux/app/src/ui/app/init_window.rs:246
 #: apps/linux/app/src/ui/app/status_pages.rs:78
 #: apps/linux/app/src/ui/explain_dialog.rs:27
 #: apps/linux/app/src/ui/explain_dialog.rs:55
@@ -643,8 +643,8 @@ msgid ""
 msgstr ""
 
 #: apps/linux/app/src/ui/app/database_switcher.rs:113
-#: apps/linux/app/src/ui/browse_tab/mod.rs:306
-#: apps/linux/app/src/ui/browse_tab/mod.rs:793
+#: apps/linux/app/src/ui/browse_tab/mod.rs:307
+#: apps/linux/app/src/ui/browse_tab/mod.rs:805
 #: apps/linux/app/src/ui/catalog_dialog.rs:133
 msgid "Loading…"
 msgstr ""
@@ -667,7 +667,7 @@ msgid "A reopened tab is no longer linked to its file: {reason}"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/editor_files.rs:76
-#: apps/linux/app/src/ui/app/mod.rs:754
+#: apps/linux/app/src/ui/app/mod.rs:838
 msgid "Saved"
 msgstr ""
 
@@ -712,9 +712,9 @@ msgid "Name"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/favorites.rs:54
-#: apps/linux/app/src/ui/app/init_window.rs:115
+#: apps/linux/app/src/ui/app/init_window.rs:133
 #: apps/linux/app/src/ui/app/organization.rs:99
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:668
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:646
 #: apps/linux/app/src/ui/browse_tab/chrome.rs:250
 #: apps/linux/app/src/ui/grid/editing.rs:445
 #: apps/linux/app/src/ui/structure_tab/mod.rs:718
@@ -727,6 +727,23 @@ msgstr ""
 
 #: apps/linux/app/src/ui/app/favorites.rs:189
 msgid "Saved connection"
+msgstr ""
+
+#: apps/linux/app/src/ui/app/grid_close.rs:71
+msgid "The table closed before its edit was finished."
+msgstr ""
+
+#: apps/linux/app/src/ui/app/grid_close.rs:77
+msgid "Finishing the cell edit timed out. Try again."
+msgstr ""
+
+#: apps/linux/app/src/ui/app/grid_close.rs:141
+#: apps/linux/app/src/ui/browse_tab/mod.rs:682
+msgid "Finish or cancel the current cell edit and try again."
+msgstr ""
+
+#: apps/linux/app/src/ui/app/grid_close.rs:207
+msgid "Could not finish the cell edit"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/import.rs:60
@@ -823,36 +840,36 @@ msgid ""
 "Nothing matches the current search, or this connection has no tables yet."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/init_window.rs:71
+#: apps/linux/app/src/ui/app/init_window.rs:85
 msgid "Saving in progress"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/init_window.rs:73
+#: apps/linux/app/src/ui/app/init_window.rs:87
 msgid "Waiting for pending saves to finish before closing the window."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/init_window.rs:109
+#: apps/linux/app/src/ui/app/init_window.rs:127
 msgid "Save changes before closing?"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/init_window.rs:111
+#: apps/linux/app/src/ui/app/init_window.rs:129
 msgid ""
 "One or more tabs have unsaved changes. They will be permanently lost if you "
 "discard them."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/init_window.rs:114
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:667
+#: apps/linux/app/src/ui/app/init_window.rs:132
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:645
 #: apps/linux/app/src/ui/browse_tab/chrome.rs:243
 #: apps/linux/app/src/ui/structure_tab/mod.rs:714
 msgid "Discard"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/init_window.rs:211
+#: apps/linux/app/src/ui/app/init_window.rs:241
 msgid "Could not save workspace"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/init_window.rs:213
+#: apps/linux/app/src/ui/app/init_window.rs:243
 msgid ""
 "The window will remain open so you can retry without losing your workspace."
 msgstr ""
@@ -870,55 +887,55 @@ msgstr ""
 msgid "Pick a table from the sidebar, or use the button below (Ctrl+T)."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:318
+#: apps/linux/app/src/ui/app/mod.rs:362
 msgid "New connection"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:325
+#: apps/linux/app/src/ui/app/mod.rs:369
 msgid "Open saved connection"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:335
+#: apps/linux/app/src/ui/app/mod.rs:379
 msgid "Switch database"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:346
+#: apps/linux/app/src/ui/app/mod.rs:390
 msgid "Read-only"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:356
+#: apps/linux/app/src/ui/app/mod.rs:400
 msgid "Saving…"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:362
+#: apps/linux/app/src/ui/app/mod.rs:406
 msgid "Main menu"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:396 apps/linux/app/src/ui/app/mod.rs:476
+#: apps/linux/app/src/ui/app/mod.rs:440 apps/linux/app/src/ui/app/mod.rs:520
 msgid "Search tables"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:402
+#: apps/linux/app/src/ui/app/mod.rs:446
 msgid "Filter schemas"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:423
+#: apps/linux/app/src/ui/app/mod.rs:467
 msgid "Filter tables…"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:446
+#: apps/linux/app/src/ui/app/mod.rs:490
 msgid "Retry"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:914
+#: apps/linux/app/src/ui/app/mod.rs:998
 msgid "Saved as favorite"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:930 apps/linux/app/src/ui/app/mod.rs:937
+#: apps/linux/app/src/ui/app/mod.rs:1014 apps/linux/app/src/ui/app/mod.rs:1021
 msgid "Connect to a database first to run SQL."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:1009
+#: apps/linux/app/src/ui/app/mod.rs:1093
 msgid "Open a result grid to jump to a column."
 msgstr ""
 
@@ -1043,8 +1060,8 @@ msgid "This column belongs to more than one foreign key."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/row_ops.rs:142
-#: apps/linux/app/src/ui/browse_tab/mod.rs:932
-#: apps/linux/app/src/ui/browse_tab/row_ops.rs:507
+#: apps/linux/app/src/ui/browse_tab/mod.rs:962
+#: apps/linux/app/src/ui/browse_tab/row_ops.rs:509
 msgid ""
 "Some row values were not fetched. Show hidden columns and reload before "
 "copying or exporting."
@@ -1468,87 +1485,87 @@ msgid "Catalog refresh failed"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/structure.rs:827
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:347
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:325
 msgid "New Table"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_close.rs:50
+#: apps/linux/app/src/ui/app/workspace_close.rs:65
 msgid "Close with open session transactions?"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_close.rs:51
+#: apps/linux/app/src/ui/app/workspace_close.rs:66
 msgid "Open transactions will be rolled back before the window closes."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_close.rs:52
-#: apps/linux/app/src/ui/app/workspace_close.rs:147
+#: apps/linux/app/src/ui/app/workspace_close.rs:67
+#: apps/linux/app/src/ui/app/workspace_close.rs:157
 msgid "Roll Back and Close"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_close.rs:143
+#: apps/linux/app/src/ui/app/workspace_close.rs:153
 msgid "Close with an open transaction?"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_close.rs:144
+#: apps/linux/app/src/ui/app/workspace_close.rs:154
 msgid "The transaction is rolled back when the tab closes."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:47
-msgid "View open tabs"
-msgstr ""
-
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:65
-msgid "New query (Ctrl+E)"
-msgstr ""
-
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:148
+#: apps/linux/app/src/ui/app/workspace_tabs/bulk_close.rs:35
 msgid "Keep Tab"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:150
+#: apps/linux/app/src/ui/app/workspace_tabs/bulk_close.rs:37
 msgid "Close Other Tabs"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:151
+#: apps/linux/app/src/ui/app/workspace_tabs/bulk_close.rs:38
 msgid "Close Tabs to the Right"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:217
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:429
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:581
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:49
+msgid "View open tabs"
+msgstr ""
+
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:67
+msgid "New query (Ctrl+E)"
+msgstr ""
+
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:195
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:407
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:559
 msgid "Row as JSON"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:453
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:431
 msgid "Preview tab. Use the tab menu to keep it open."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:661
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:639
 #, rust-format
 msgid "Save changes to “{name}”?"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:664
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:642
 msgid "Unsaved changes will be permanently lost if you discard them."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:950
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:928
 #: apps/linux/app/src/ui/editor/outcomes.rs:913
 #: apps/linux/app/src/ui/editor/schema.rs:27
 #: apps/linux/app/src/ui/history_dialog.rs:1041
 msgid "Empty query"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:1022
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:1000
 msgid "Structure"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:1026
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:1004
 #, rust-format
 msgid "Query {n}"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/workspace_tabs.rs:1088
+#: apps/linux/app/src/ui/app/workspace_tabs.rs:1066
 msgid "No recently closed tab"
 msgstr ""
 
@@ -1648,21 +1665,21 @@ msgstr ""
 msgid "{n} filter rule(s) active — click to edit"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/chrome.rs:426
+#: apps/linux/app/src/ui/browse_tab/chrome.rs:439
 msgid "No rows on this page"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/chrome.rs:438
+#: apps/linux/app/src/ui/browse_tab/chrome.rs:451
 #, rust-format
 msgid "Rows {start} – {end} of {total}"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/chrome.rs:442
+#: apps/linux/app/src/ui/browse_tab/chrome.rs:455
 #, rust-format
 msgid "Rows {start} – {end}"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/chrome.rs:478
+#: apps/linux/app/src/ui/browse_tab/chrome.rs:491
 msgid "Couldn't load rows"
 msgstr ""
 
@@ -1670,17 +1687,17 @@ msgstr ""
 msgid "The database returned rows that do not match the table columns."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/mod.rs:307
-#: apps/linux/app/src/ui/browse_tab/mod.rs:794
+#: apps/linux/app/src/ui/browse_tab/mod.rs:308
+#: apps/linux/app/src/ui/browse_tab/mod.rs:806
 #, rust-format
 msgid "Fetching rows from {table}"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/mod.rs:339
+#: apps/linux/app/src/ui/browse_tab/mod.rs:340
 msgid "Read-only connection. Editing disabled."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/mod.rs:344
+#: apps/linux/app/src/ui/browse_tab/mod.rs:345
 msgid ""
 "This table has no primary key. Row order is not stable; use the SQL editor "
 "to modify rows."
@@ -1722,7 +1739,7 @@ msgid "{column} on row {row}: {message}. Nothing was pasted."
 msgstr ""
 
 #: apps/linux/app/src/ui/browse_tab/paste.rs:274
-#: apps/linux/app/src/ui/browse_tab/row_ops.rs:424
+#: apps/linux/app/src/ui/browse_tab/row_ops.rs:426
 msgid "That row moved while you were editing. The change was not applied."
 msgstr ""
 
@@ -1783,33 +1800,33 @@ msgid ""
 "Save."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/row_ops.rs:397
+#: apps/linux/app/src/ui/browse_tab/row_ops.rs:399
 msgid ""
 "This row's key could not be read from the database, so the row cannot be "
 "changed."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/row_ops.rs:447
+#: apps/linux/app/src/ui/browse_tab/row_ops.rs:449
 msgid ""
 "This cell can't be set to NULL because it is read-only or does not accept "
 "NULL."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/row_ops.rs:522
+#: apps/linux/app/src/ui/browse_tab/row_ops.rs:524
 msgid "Click a cell first, then paste to fill cells from that one"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/row_ops.rs:600
+#: apps/linux/app/src/ui/browse_tab/row_ops.rs:604
 msgid "Saving changes. Edit again when the save finishes."
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/row_ops.rs:639
+#: apps/linux/app/src/ui/browse_tab/row_ops.rs:643
 #: apps/linux/app/src/ui/structure_tab/mod.rs:997
 #: apps/linux/app/src/ui/structure_tab/mod.rs:1003
 msgid "Cannot save"
 msgstr ""
 
-#: apps/linux/app/src/ui/browse_tab/row_ops.rs:697
+#: apps/linux/app/src/ui/browse_tab/row_ops.rs:701
 #: apps/linux/app/src/ui/structure_tab/mod.rs:1076
 msgid "Save failed"
 msgstr ""
@@ -2846,7 +2863,7 @@ msgstr ""
 msgid "Session committed"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/session_mode.rs:694
+#: apps/linux/app/src/ui/editor/session_mode.rs:697
 msgid "This engine does not offer dedicated sessions yet"
 msgstr ""
 

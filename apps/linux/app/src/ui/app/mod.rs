@@ -1,10 +1,13 @@
 mod backup;
 mod browse;
 mod bundle;
+#[cfg(test)]
+mod close_after_save_tests;
 mod connection;
 mod database_switcher;
 mod editor_files;
 mod favorites;
+mod grid_close;
 pub(crate) mod import;
 mod init_css;
 mod init_sidebar;
@@ -216,6 +219,7 @@ pub struct App {
     /// removes the entry entirely (abort all close intents for that
     /// tab so the user can fix the error and retry). See
     /// `dec_close_after_save` for the decrement helper.
+    grid_close: grid_close::GridCloseState,
     close_after_save: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, u32>>>,
     /// Set when the user picked "Save" on the *window*-close dialog.
     /// While true, the last `SaveCompletedForTab` that empties
@@ -640,6 +644,7 @@ impl SimpleComponent for App {
             prepared_connection: None,
             switch_saves_pending: std::collections::HashMap::new(),
             switch_cancel_audit_was_disabled: None,
+            grid_close: grid_close::GridCloseState::new(window_handles.grid_edits_ready),
             close_after_save: window_handles.close_after_save,
             close_window_after_save: window_handles.close_window_after_save,
             in_flight_saves: window_handles.in_flight_saves,
@@ -703,7 +708,17 @@ impl SimpleComponent for App {
     }
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
+        if self.defer_for_grid_edits(&msg, &sender) {
+            return;
+        }
         match msg {
+            AppMsg::FlushWindowEdits => {
+                self.grid_close.window_ready.set(true);
+                self.window.close();
+            }
+            AppMsg::GridEditsPrepared { intent, ticket, result } => {
+                self.grid_edits_prepared(intent, ticket, result, sender)
+            }
             AppMsg::OpenConnect => self.on_open_connect(sender),
             AppMsg::ConnectionPrepared(prepared) => self.on_connection_prepared(prepared, sender),
             AppMsg::ConnectionPrepareFailed(message, saved) => {

@@ -845,6 +845,71 @@ fn edits_and_a_second_save_are_ignored_until_the_save_in_flight_finishes() {
     controller.detach_runtime();
 }
 
+fn queue_edit_and_flush(
+    controller: &relm4::Controller<BrowseTab>,
+    col_index: usize,
+) -> tokio::sync::oneshot::Receiver<Result<(), String>> {
+    let (queue, revision) = controller.model().edit_flush_snapshot();
+    queue
+        .send(crate::ui::grid::GridMsg::CellEdited {
+            row_position: 0,
+            col_index,
+            new_value: "changed".into(),
+            row_key: vec![Value::Int(1)],
+        })
+        .unwrap();
+    let (reply, receiver) = tokio::sync::oneshot::channel();
+    queue
+        .send(crate::ui::grid::GridMsg::EditsFlushed { revision, reply })
+        .unwrap();
+    receiver
+}
+
+fn wait_for_flush(mut reply: tokio::sync::oneshot::Receiver<Result<(), String>>) -> Result<(), String> {
+    let context = relm4::gtk::glib::MainContext::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        match reply.try_recv() {
+            Ok(result) => return result,
+            Err(tokio::sync::oneshot::error::TryRecvError::Closed) => panic!("the flush reply was dropped"),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {}
+        }
+        assert!(std::time::Instant::now() < deadline, "the flush did not finish");
+        context.iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
+#[test]
+#[ignore = "requires isolated GTK display"]
+fn a_close_flush_waits_until_queued_edits_enter_the_tracker() {
+    relm4::gtk::init().unwrap();
+    let tab_id = Uuid::new_v4();
+    let (mut controller, observed) = launch(tab_id);
+    load_two_rows(&controller, &observed);
+    let mut reply = queue_edit_and_flush(&controller, 1);
+    assert!(matches!(
+        reply.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+    ));
+    assert!(wait_for_flush(reply).is_ok());
+    assert_eq!(pending(tab_id), 1);
+    controller.detach_runtime();
+}
+
+#[test]
+#[ignore = "requires isolated GTK display"]
+fn a_close_flush_reports_a_refused_queued_edit_without_staging_it() {
+    relm4::gtk::init().unwrap();
+    let tab_id = Uuid::new_v4();
+    let (mut controller, observed) = launch(tab_id);
+    load_two_rows(&controller, &observed);
+    let reply = queue_edit_and_flush(&controller, 0);
+    assert!(wait_for_flush(reply).is_err());
+    assert_eq!(pending(tab_id), 0);
+    controller.detach_runtime();
+}
+
 #[test]
 #[ignore = "requires isolated GTK display"]
 fn draft_mutation_routes_are_ignored_during_a_save() {
