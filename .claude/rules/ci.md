@@ -53,7 +53,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 - Push to main or `release/**`, and dispatch; never a PR. Each commit has its own concurrency group and is never cancelled. Not a required check.
 - `Changes (Release)` outputs `run` (detector `release`). `Release Build` runs on `xcode-27` with a 150-minute limit.
 - Setup as macOS Tests up to the SPM restore, which it never saves; then Go, `build-dameng.sh both`, `build-hana.sh both` and create-dmg.
-- `scripts/release/build.sh app --unsigned` archives the `TablePro` scheme; `build.sh plugins --unsigned` builds `RegistryPlugins` and copies the publish set (the `.github/plugin-registry.json` entries not bundled) to `build/release/plugins`. Both build universal and run `lipo -verify_arch arm64 x86_64` and `verify-plugin-loads.sh`.
+- `scripts/release/build.sh app --unsigned` archives the `TablePro` scheme; `build.sh plugins --unsigned` builds `RegistryPlugins` and copies the publish set (the `.github/plugin-registry.json` entries not bundled) to `build/release/plugins`. Both build universal. They run `lipo -verify_arch` once per arch (arm64, x86_64), since Xcode 27's `lipo` takes one arch per call, then `verify-plugin-loads.sh`.
 - `scripts/release/package.sh app 0.0.0-dev --unsigned` writes the release assets: the DMG, the `.tar.xz` (extracted and compared with the app) and the dSYMs zip; `package.sh plugins` writes one zip per plugin and the plugin dSYMs zip.
 - The plugins build runs after an app failure too. The xcodebuild logs in `build/release/logs` upload only on failure.
 
@@ -119,7 +119,8 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 ## Caches and runner budget
 
 - Swift package checkouts live in `~/.spm-cache`, keyed `spm-<os>-<hash of the app's Package.resolved>` with prefix restore. macOS Tests saves it only on a push and only on a miss: a cache saved on a PR ref is visible to that PR alone.
-- `build.yml` and `release-build.yml` restore that cache and never save it; a save in tag scope is unreadable from other tags.
+- `build.yml` restores that cache and never saves it, since a save in tag scope is unreadable from other tags.
+- `release-build.yml` restores it and leaves the save to macOS Tests.
 - There is no other cache: no libs or DerivedData cache, and none in the iOS, plugin or Ubuntu workflows.
 - CI fits the GitHub Free and Pro plans: no paid larger runner, no self-hosted Mac. At most 5 macOS jobs run at once, and main runs queue behind PR runs for those slots.
 
