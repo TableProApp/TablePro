@@ -19,12 +19,14 @@ pub(super) fn value_editor(rule: &FilterRuleObject, column: &ColumnInfo, shape: 
 }
 
 fn single_editor(rule: &FilterRuleObject, column: &ColumnInfo) -> gtk::Entry {
+    let label = crate::i18n::gettext("Value");
     let entry = gtk::Entry::builder()
-        .placeholder_text(crate::i18n::gettext("Value"))
+        .placeholder_text(&label)
         .valign(gtk::Align::Center)
         .hexpand(true)
         .input_purpose(input_purpose_for(column))
         .build();
+    name(&entry, &label);
     if let Some(FilterValue::Single(text)) = rule.rule().value {
         entry.set_text(&text);
     }
@@ -37,11 +39,13 @@ fn single_editor(rule: &FilterRuleObject, column: &ColumnInfo) -> gtk::Entry {
 
 fn pair_editor(rule: &FilterRuleObject, column: &ColumnInfo) -> gtk::Box {
     let bound = |placeholder: &str| {
-        gtk::Entry::builder()
+        let entry = gtk::Entry::builder()
             .placeholder_text(placeholder)
             .valign(gtk::Align::Center)
             .input_purpose(input_purpose_for(column))
-            .build()
+            .build();
+        name(&entry, placeholder);
+        entry
     };
     let low = bound(&crate::i18n::gettext("From"));
     let high = bound(&crate::i18n::gettext("To"));
@@ -87,6 +91,7 @@ fn list_editor(rule: &FilterRuleObject) -> gtk::Entry {
         .valign(gtk::Align::Center)
         .hexpand(true)
         .build();
+    name(&entry, &crate::i18n::gettext("Values"));
     if let Some(FilterValue::List(items)) = rule.rule().value {
         entry.set_text(&items.join(", "));
     }
@@ -95,6 +100,11 @@ fn list_editor(rule: &FilterRuleObject) -> gtk::Entry {
         rule.update(|rule| rule.value = Some(FilterValue::List(list_items(&entry.text()))));
     });
     entry
+}
+
+/// A placeholder is gone once the field holds text, so it names nothing.
+fn name(entry: &gtk::Entry, label: &str) {
+    entry.update_property(&[gtk::accessible::Property::Label(label)]);
 }
 
 /// The comma-separated items of a list value, with blanks dropped.

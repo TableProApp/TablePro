@@ -138,7 +138,10 @@ fn judge(widget: &gtk4::Widget) -> Option<Missing> {
 }
 
 fn judge_row(row: &adw::PreferencesRow) -> Option<Missing> {
-    if row.title().is_empty() {
+    // A row whose controls are its content names itself instead.
+    if row.title().is_empty()
+        && !gtk4::test_accessible_has_property(row.upcast_ref::<gtk4::Widget>(), AccessibleProperty::Label)
+    {
         return Some(Missing::RowTitle);
     }
     if !row.is::<adw::EntryRow>() {

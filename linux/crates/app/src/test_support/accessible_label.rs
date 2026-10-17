@@ -22,7 +22,8 @@ pub(crate) fn assert_labelled(widget: &impl IsA<gtk4::Widget>) -> Result<(), Unl
         };
     };
 
-    if row.title().is_empty() {
+    // A row whose controls are its content names itself instead.
+    if row.title().is_empty() && !gtk4::test_accessible_has_property(widget, AccessibleProperty::Label) {
         return Err(UnlabelledWidget::EmptyRowTitle { type_name });
     }
     if widget.is::<adw::EntryRow>() {

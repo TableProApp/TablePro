@@ -4,7 +4,8 @@ use super::rule_operators::placeholder_column;
 use super::*;
 use crate::application::ShortcutOwner;
 use crate::test_support::{
-    SignalLog, descendants, drain_main_context, first_descendant_of_type, tooltips_with_keys, unlabelled_icon_buttons,
+    SignalLog, assert_labelled, descendants, drain_main_context, first_descendant_of_type, tooltips_with_keys,
+    unlabelled_icon_buttons,
 };
 
 fn rule(column: &str) -> FilterRule {
@@ -216,6 +217,42 @@ fn icon_buttons_are_labelled_without_accelerator_hints() {
     ));
     assert_eq!(unlabelled_icon_buttons(&strip), Vec::<String>::new());
     assert_eq!(tooltips_with_keys(&strip), Vec::<String>::new());
+}
+
+/// Placeholders go once text is typed, so each field, and the row that
+/// holds a rule, has a name of its own.
+#[gtk4::test]
+fn every_field_of_the_strip_is_named() {
+    let rule = |column: &str, op: FilterOp, value: Option<FilterValue>| FilterRule {
+        column: column.to_owned(),
+        op,
+        value,
+    };
+    let strip = new_strip(
+        vec![integer("amount"), placeholder_column("name")],
+        &FilterSet {
+            rules: vec![
+                rule("name", FilterOp::Eq, Some(FilterValue::Single("x".to_owned()))),
+                rule(
+                    "amount",
+                    FilterOp::Between,
+                    Some(FilterValue::Pair("1".to_owned(), "2".to_owned())),
+                ),
+                rule("name", FilterOp::In, Some(FilterValue::List(vec!["a".to_owned()]))),
+            ],
+            ..FilterSet::default()
+        },
+    );
+    strip.set_revealed(true);
+    let fields: Vec<gtk::Widget> = descendants(&strip)
+        .into_iter()
+        .filter(|widget| widget.is::<gtk::Entry>() || widget.is::<gtk::DropDown>() || widget.is::<FilterRuleRow>())
+        .collect();
+    assert_eq!(fields.len(), 1 + 1 + 3 * 3 + 1 + 2 + 1, "the strip's fields");
+
+    for field in fields {
+        assert_eq!(assert_labelled(&field), Ok(()), "{}", field.type_().name());
+    }
 }
 
 #[gtk4::test]
