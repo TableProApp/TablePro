@@ -21,7 +21,7 @@ Three rules follow.
 
 **Only the engine's own abort error is a terminal outcome.** `Cancelled` and `TimedOut` are returned when the statement fails with the error the engine raises for a statement it aborted: SQLSTATE `57014` on PostgreSQL, `70100` (`ER_QUERY_INTERRUPTED`) on MySQL. Any other error, and any statement that does not settle within the grace period, stays `OperationOutcomeUnknown`. A cancellation request that is dispatched but unconfirmed is not proof.
 
-This is deliberately strict. A statement that completes normally during the interruption returns its result, because it did commit.
+This is deliberately strict. If the operation wins the initial race, its result is returned. Once cancellation or timeout wins, a later normal result is still `OperationOutcomeUnknown`; it does not prove whether a write committed.
 
 **SQLite interrupts in process.** It has no second session to kill from, so the driver keeps the raw `sqlite3` handle for the life of the operation and calls `sqlite3_interrupt`, which SQLite documents as safe from another thread. sqlx's progress handler was rejected as the mechanism: it only fires between virtual-machine instructions, so it cannot stop a statement waiting on a database lock, which is one of the cases a Stop has to cover. The unsafe call is isolated in one module holding one pointer and one function.
 
