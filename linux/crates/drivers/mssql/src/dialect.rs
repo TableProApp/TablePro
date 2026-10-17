@@ -4,8 +4,8 @@ use tablepro_core::column::{
 };
 use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, KeysetDirection, LikeCase, LikeForm, LiteralError, Placeholder,
-    SqlDialect,
+    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, KeysetDirection, LikeCase, LikeForm, LiteralError,
+    Placeholder, SqlDialect,
 };
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
@@ -243,6 +243,16 @@ impl SqlDialect for MssqlDialect {
     /// rows.
     fn count_all(&self) -> &'static str {
         "COUNT_BIG(*)"
+    }
+
+    /// A remote procedure call takes at most 2,100 parameters, and a
+    /// VALUES list at most 1,000 rows.
+    fn insert_batch_limits(&self) -> InsertBatchLimits {
+        InsertBatchLimits {
+            rows: 1_000,
+            params: 2_000,
+            ..InsertBatchLimits::DEFAULT
+        }
     }
 
     /// The lock hints hold the probed key until commit, so the row cannot

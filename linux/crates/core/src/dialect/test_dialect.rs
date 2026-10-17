@@ -9,7 +9,10 @@ use crate::sql_syntax::{
 use crate::statement::{BoundParam, ParamType};
 use crate::value::Value;
 
-use super::{BindError, BindTarget, DialectCapabilities, KeysetDirection, LiteralError, Placeholder, SqlDialect};
+use super::{
+    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, KeysetDirection, LiteralError, Placeholder,
+    SqlDialect,
+};
 
 /// The one ANSI dialect the core builders' own tests share.
 ///
@@ -25,6 +28,7 @@ pub struct TestDialect {
     default_row: bool,
     count_all: &'static str,
     grammar: SqlGrammar,
+    insert_limits: InsertBatchLimits,
     binds: Mutex<Vec<RecordedBind>>,
 }
 
@@ -62,6 +66,7 @@ impl Default for TestDialect {
             default_row: true,
             count_all: "COUNT(*)",
             grammar: SqlGrammar::PostgreSql,
+            insert_limits: InsertBatchLimits::DEFAULT,
             binds: Mutex::new(Vec::new()),
         }
     }
@@ -100,6 +105,10 @@ impl TestDialect {
 
     pub fn parsing_as(self, grammar: SqlGrammar) -> Self {
         Self { grammar, ..self }
+    }
+
+    pub fn with_insert_limits(self, insert_limits: InsertBatchLimits) -> Self {
+        Self { insert_limits, ..self }
     }
 
     pub fn targets(&self) -> Vec<RecordedTarget> {
@@ -237,6 +246,10 @@ impl SqlDialect for TestDialect {
 
     fn count_all(&self) -> &'static str {
         self.count_all
+    }
+
+    fn insert_batch_limits(&self) -> InsertBatchLimits {
+        self.insert_limits
     }
 
     fn insert_default_row(&self, table_sql: &str) -> Option<String> {

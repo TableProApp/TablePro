@@ -116,7 +116,7 @@ async fn a_file_lands_in_the_table_with_its_values_typed() {
     .await
     .expect("the import");
 
-    assert_eq!(affected, vec![Some(1), Some(1)]);
+    assert_eq!(affected, vec![Some(2)], "both rows go in one statement");
     let rows = query(
         connection.as_ref(),
         "SELECT id, name, score, note FROM people ORDER BY id",
@@ -206,6 +206,37 @@ async fn an_empty_field_is_kept_as_an_empty_string_over_the_default() {
         .await
         .expect("the rows");
     assert_eq!(rows.rows[0][0], Value::Text(String::new()));
+    connection.close().await.expect("the close");
+}
+
+#[tokio::test]
+async fn a_large_file_lands_in_a_few_multi_row_statements() {
+    let (_directory, connection) = open().await.expect("a database file");
+    create(
+        connection.as_ref(),
+        "CREATE TABLE readings (id INTEGER PRIMARY KEY, label TEXT NOT NULL)",
+    )
+    .await
+    .expect("the table");
+    let mut csv = String::from("id,label\n");
+    for id in 1..=2_500 {
+        csv.push_str(&format!("{id},reading {id}\n"));
+    }
+
+    let affected = import(
+        connection.as_ref(),
+        "readings",
+        csv.as_bytes(),
+        &CsvImportOptions::default(),
+    )
+    .await
+    .expect("the import");
+
+    assert_eq!(affected, vec![Some(1_000), Some(1_000), Some(500)]);
+    let rows = query(connection.as_ref(), "SELECT count(*), max(id) FROM readings")
+        .await
+        .expect("the count");
+    assert_eq!(rows.rows[0], vec![Value::Int(2_500), Value::Int(2_500)]);
     connection.close().await.expect("the close");
 }
 

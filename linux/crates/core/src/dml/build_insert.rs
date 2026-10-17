@@ -3,6 +3,7 @@ use crate::dialect::{BindTarget, SqlDialect};
 use crate::edit::CellInput;
 use crate::meta::TableRef;
 use crate::statement::{Statement, StatementBuilder};
+use crate::value::Value;
 
 use super::BuildSqlError;
 
@@ -56,6 +57,48 @@ pub fn build_insert(
         "INSERT INTO {table_sql} ({}) VALUES ({})",
         names.join(", "),
         markers.join(", ")
+    ));
+    Ok(builder.finish())
+}
+
+/// One INSERT of several rows into the same columns, each row holding
+/// one value per column, in column order.
+///
+/// One statement takes one round trip for every row in it, and
+/// ClickHouse makes one part of it rather than one per row.
+pub fn build_multi_row_insert(
+    dialect: &dyn SqlDialect,
+    table: &TableRef,
+    columns: &[&ColumnInfo],
+    rows: Vec<Vec<Value>>,
+) -> Result<Statement, BuildSqlError> {
+    if columns.is_empty() || rows.is_empty() {
+        return Err(BuildSqlError::NoInsertValues);
+    }
+    let mut builder = StatementBuilder::new();
+    let mut tuples = Vec::with_capacity(rows.len());
+    for row in rows {
+        if row.len() != columns.len() {
+            return Err(BuildSqlError::LengthMismatch {
+                expected: columns.len(),
+                found: row.len(),
+            });
+        }
+        let mut markers = Vec::with_capacity(columns.len());
+        for (&column, value) in columns.iter().zip(row) {
+            markers.push(builder.bind(dialect, value, BindTarget::Column(column))?);
+        }
+        tuples.push(format!("({})", markers.join(", ")));
+    }
+    let names: Vec<String> = columns
+        .iter()
+        .map(|column| dialect.quote_identifier(&column.name))
+        .collect();
+    builder.push_sql(&format!(
+        "INSERT INTO {} ({}) VALUES {}",
+        dialect.qualify(table),
+        names.join(", "),
+        tuples.join(", ")
     ));
     Ok(builder.finish())
 }

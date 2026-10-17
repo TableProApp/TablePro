@@ -9,4 +9,4 @@ pub use csv_import::{
     CsvImportOptions, CsvRowError, CsvSheet, ImportError, MAX_PREVIEW_ROWS, read_csv, row_to_cells, suggest_mapping,
 };
 pub use import_column::ImportColumn;
-pub use import_plan::plan_import;
+pub use import_plan::{ImportPlan, plan_import};

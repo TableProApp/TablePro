@@ -41,9 +41,9 @@ pub async fn import_csv(
         .map(|(index, row)| row_to_cells(row, &mapping, &columns, options, first_line + index))
         .collect::<Result<Vec<_>, _>>()
         .map_err(CsvImportFailure::Row)?;
-    let batch = plan_import(connection.dialect().as_ref(), table, &columns, &rows).map_err(CsvImportFailure::Build)?;
+    let plan = plan_import(connection.dialect().as_ref(), table, &columns, rows).map_err(CsvImportFailure::Build)?;
     connection
-        .write_batch(&batch, call)
+        .write_batch(&plan.batch, call)
         .await
         .map_err(CsvImportFailure::Driver)
 }

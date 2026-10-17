@@ -7,6 +7,7 @@
 )]
 
 mod conformance_engine;
+mod csv_import;
 mod ddl;
 mod keys_and_decimals;
 mod metadata;
