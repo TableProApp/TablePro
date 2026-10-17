@@ -3,7 +3,7 @@
 Approved 2026-09-16. Delivery branch: `linux`; source version 0.1.6-dev (0.1.5 is released); target 0.2.0. Implementation is authorized; no 0.2 release is approved.
 
 
-## 0.2.0 readiness (reviewed 2026-10-14)
+## 0.2.0 readiness (reviewed 2026-10-18 against `6e4edf5d0`)
 
 The maintainer's current delivery target is the Arch/Hyprland development release in [0.2.0 scope](0.2.0-scope.md). That page owns the blocker list. Broader engine matrices, Debian/GNOME desktop acceptance and Flatpak continue after 0.2.0 in the [backlog](backlog.md). Historical acceptance gaps below stay open without becoming additional release blockers.
 
@@ -54,6 +54,22 @@ Plans and case evidence apply these decisions; they do not define another conver
 | B7 qualification | Open | Frozen SHA, affected automated gates, installed Arch/Hyprland checks and retry-free soak; publication separate |
 
 This table summarizes source/evidence ownership, not a fresh runtime pass. Consult each exact case/SHA; do not promote a whole type or engine from one test.
+
+The current `linux` tip includes the merged B4 changes for backup/restore cancellation (#1078), MySQL session statements (#1079), SSH jump-host key checks (#1081), unresolved-write rollback (#1106) and recovered rollback scope tests (#1109). These changes do not close the installed-package or frozen-candidate acceptance still listed in the scope and ledger.
+
+### Crate readiness for the next round
+
+This is a preparation list, not new 0.2.0 scope. The current workspace already has eight database-driver crates and established libraries for the supported engines. This first-pass source review found no concrete reason to add a dependency or another engine crate before the product gaps below are selected.
+
+| Area | Current crate surface | Next review |
+| --- | --- | --- |
+| Headless application logic | `crates/app-services` alongside GTK-facing services in `apps/linux/app` | Continue the staged boundary work in APP-MOD under [ADR 0018](decisions/0018-headless-app-services-crate.md); identify which remaining logic is reusable and testable without GTK before moving it |
+| SQL and command safety | `sqlparser` is used by `crates/policy` and several drivers; `crates/core` also owns script and dialect helpers | Reconcile the dialect lexer profiles in PEER-2 and the fail-closed Redis command table in PEER-3. Decide whether existing crate boundaries suffice before considering a parser or policy dependency |
+| Driver clients | Eight static crates under `crates/drivers/`; SQLx backs PostgreSQL, MySQL/MariaDB and SQLite, with separate clients for the other engines | Review maintenance, Rust version support, license/advisory status, local patches, native build cost and contract gaps for each client. [Adding drivers](adding-drivers.md) records current maturity and libraries |
+| Test infrastructure | Driver tests use testcontainers and per-crate integration targets | Measure fixture and executor cost against the CI feedback work in [#573](https://github.com/cozyGarage/BookiE/issues/573); prioritize missing independent oracles and scenarios over another test framework |
+| Engine breadth | Redis Sentinel/Cluster are deferred; Oracle is outside the current eight-engine stabilization scope | Confirm a user and release requirement before proposing a driver crate or changing maturity; preserve the current scope until then |
+
+For each promoted item, record the failing user case, owning crate and boundary, existing dependency behavior, test tier, and license/MSRV/advisory/build-cost findings. Use `cargo metadata --no-deps` for workspace boundaries, `cargo tree -e features` for selected dependency paths, and `cargo deny check` for license and advisory review. Keep candidates in the [backlog](backlog.md) until an owner and acceptance criterion are selected; do not add a dependency solely to create a cleaner abstraction.
 
 Detailed case outcomes and exact proofs are maintained by [Project #3](https://github.com/users/cozyGarage/projects/3) (Lane B3), the [value evidence index](value-contracts.md), and linked manifests. Historical test runs are consulted from the evidence/history records; they are not repeated in the active sprint.
 
