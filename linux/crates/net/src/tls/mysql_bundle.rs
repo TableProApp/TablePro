@@ -1,6 +1,6 @@
 use pem_rfc7468::LineEnding;
 use rustls::RootCertStore;
-use tablepro_core::{CertificateFileProblem, ConfigError, TlsConfig};
+use tablepro_core::TlsConfig;
 
 use crate::tls::TlsSetupError;
 use crate::tls::pem_check::{read_certificates, read_identity};
@@ -50,17 +50,9 @@ pub fn client_identity_pem(tls: &TlsConfig) -> Result<Option<ClientIdentityPem>,
     let Some(identity) = &tls.client_identity else {
         return Ok(None);
     };
-    read_identity(identity)?;
-    let read = |path: &std::path::Path| {
-        std::fs::read(path).map_err(|error| ConfigError::ClientIdentityFile {
-            path: path.to_owned(),
-            problem: CertificateFileProblem::Unreadable {
-                detail: error.to_string(),
-            },
-        })
-    };
+    let files = read_identity(identity)?;
     Ok(Some(ClientIdentityPem {
-        certificate: read(&identity.certificate)?,
-        key: read(&identity.key)?,
+        certificate: files.certificate_pem,
+        key: files.key_pem,
     }))
 }

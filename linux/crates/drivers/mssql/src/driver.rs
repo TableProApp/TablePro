@@ -48,11 +48,11 @@ impl DatabaseDriver for MssqlDriver {
         if !CAPABILITIES.supports(target.credentials.mode()) {
             return Err(DriverError::Config(ConfigError::AuthModeUnsupported));
         }
-        let endpoint = Arc::new(MssqlEndpoint::new(
-            target,
-            options.liveness,
-            &options.workspace_settings,
-        )?);
+        let (setup_target, liveness, settings) = (target.clone(), options.liveness, options.workspace_settings);
+        let endpoint = Arc::new(
+            tablepro_net::tls::set_up_off_runtime(move || MssqlEndpoint::new(&setup_target, liveness, &settings))
+                .await?,
+        );
         let pool = build_pool(endpoint.clone())?;
         // The first pool member is opened here, so a connect fails with
         // the reason the server gave and a cancel abandons the login.

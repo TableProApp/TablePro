@@ -87,13 +87,7 @@ impl BrowseModel {
         ) else {
             return;
         };
-        snapshot.restore(
-            &mut self.row_index,
-            &store,
-            &selection,
-            &column_view,
-            &self.view_columns,
-        );
+        snapshot.restore(&store, &selection, &column_view, &self.view_columns);
     }
 }
 

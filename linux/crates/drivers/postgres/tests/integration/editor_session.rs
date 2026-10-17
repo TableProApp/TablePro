@@ -131,7 +131,7 @@ async fn select_inside_begin_uses_savepoint_cursor_row_limit() {
         events.finished().as_slice(),
         [ResultEvent::ResultSetFinished {
             retained: 100,
-            truncation: Truncation::ReadPastLimit,
+            truncation: Truncation::ServerStopped,
             ..
         }]
     ));
@@ -139,6 +139,51 @@ async fn select_inside_begin_uses_savepoint_cursor_row_limit() {
     let (committed, _) = run(session.as_ref(), "COMMIT").await;
     assert_eq!(committed.end, RunEnd::Completed);
     assert_eq!(committed.transaction_state, TransactionState::Idle);
+}
+
+/// The cursor stops the statement at the limit, so a function it calls
+/// per row ran for the rows fetched and no others, and the driver's
+/// COMMIT keeps that. The result has to say the statement stopped, not
+/// only that the grid shows part of it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn select_with_side_effects_says_it_stopped_at_the_limit() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE orders AS SELECT generate_series(1, 5000) AS id",
+            "CREATE TABLE archived (id int)",
+            "CREATE FUNCTION archive_order(order_id int) RETURNS int LANGUAGE sql VOLATILE AS \
+             'INSERT INTO archived VALUES (order_id) RETURNING order_id'",
+        ],
+    )
+    .await;
+    let session = session(connection.as_ref()).await;
+
+    let (summary, events) = run_with(session.as_ref(), "SELECT archive_order(id) FROM orders", limited(100)).await;
+
+    assert_eq!(summary.end, RunEnd::Completed);
+    assert!(
+        matches!(
+            events.finished().as_slice(),
+            [ResultEvent::ResultSetFinished {
+                retained: 100,
+                total_rows: None,
+                truncation: Truncation::ServerStopped,
+            }]
+        ),
+        "{:?}",
+        events.finished()
+    );
+    let Value::Int(archived) = scalar(connection.as_ref(), "SELECT count(*) FROM archived").await else {
+        panic!("a count");
+    };
+    assert!(
+        (100..5000).contains(&archived),
+        "the statement ran for {archived} rows, not only up to the limit"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

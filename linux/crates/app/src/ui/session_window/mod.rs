@@ -44,13 +44,13 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::AdwApplicationWindowExt;
 
-use tablepro_core::DriverError;
+use tablepro_core::{DatabaseDriver, DriverError, TransportClass};
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::registry::FileIdentity;
 use tablepro_session::runtime::ProcessHold;
 use tablepro_session::{
-    ClaimError, ConnectError, ConnectIntent, ConnectSource, MonitorSignal, PendingSession, Session, SessionClaim,
-    SessionKey,
+    ClaimError, ConnectError, ConnectIntent, ConnectSource, MonitorSignal, PendingSession, RequestTarget, Session,
+    SessionClaim, SessionKey,
 };
 use tablepro_storage::{CredentialDemand, SavedConnection};
 
@@ -1005,6 +1005,13 @@ fn connect_saved(
     opened.read_only |= read_only;
     let drivers = context.drivers.clone();
     let credentials = context.credentials_for(Some(&saved));
+    let server_name_shown = crate::ui::connect_dialog::driver_shows_server_name(
+        drivers
+            .get(&saved.driver_id)
+            .as_deref()
+            .map(DatabaseDriver::capabilities),
+        route(saved.ssh.is_some()),
+    );
     async move {
         let connected = connect_flow::connect_saved(
             &opened,
@@ -1027,7 +1034,7 @@ fn connect_saved(
                     .collect(),
                 session_only: login.session_only,
             }),
-            Err(error) => Err(match attempt_error(&error) {
+            Err(error) => Err(match attempt_error(&error, server_name_shown) {
                 AttemptError::Failed(failure) => AttemptError::Failed(ConnectFailure {
                     reenter: secret_retry::refused_secret(&error, &saved),
                     ..failure
@@ -1052,12 +1059,19 @@ fn connect_intent(
     let interaction = context.attended();
     let mut request = intent.request.clone();
     request.workspace_settings.read_only |= read_only;
+    let server_name_shown = match &request.target {
+        RequestTarget::Network { ssh, .. } => crate::ui::connect_dialog::driver_shows_server_name(
+            Some(request.driver.capabilities()),
+            route(ssh.is_some()),
+        ),
+        RequestTarget::File(_) => false,
+    };
     let Some(pending_save) = intent.pending_save.clone() else {
         return async move {
             connect_flow::connect_request(&*connector, request, interaction, cancel)
                 .await
                 .map(unsaved)
-                .map_err(|error| attempt_error(&error))
+                .map_err(|error| attempt_error(&error, server_name_shown))
         }
         .boxed();
     };
@@ -1091,13 +1105,13 @@ fn connect_intent(
                 session_only: report.secret_failures.iter().map(|(kind, _)| *kind).collect(),
                 saved: Some(report.saved),
             }),
-            Err(connect_flow::SubmitError::Connect(error)) => Err(attempt_error(&error)),
-            Err(connect_flow::SubmitError::Save(error)) => {
-                Err(AttemptError::Failed(ConnectFailure::new(crate::i18n::gettext_f(
-                    "The connection could not be saved: {error}",
-                    &[("error", &error.to_string())],
-                ))))
-            }
+            Err(connect_flow::SubmitError::Connect(error)) => Err(attempt_error(&error, server_name_shown)),
+            Err(connect_flow::SubmitError::Save(error)) => Err(AttemptError::Failed(ConnectFailure {
+                heading: Some(crate::i18n::gettext("Could Not Save the Connection")),
+                ..ConnectFailure::new(crate::ui::error_text::saved_connection_error_message(
+                    &crate::services::saved_connection_error::SavedConnectionError::Storage(error),
+                ))
+            })),
         }
     }
     .boxed()
@@ -1113,11 +1127,11 @@ fn connect_file(
     let interaction = context.attended();
     let request = resolve_file_identity::file_request(identity, &context.drivers, read_only);
     async move {
-        let request = request.map_err(|error| attempt_error(&error))?;
+        let request = request.map_err(|error| attempt_error(&error, false))?;
         connect_flow::connect_request(&*connector, request, interaction, cancel)
             .await
             .map(unsaved)
-            .map_err(|error| attempt_error(&error))
+            .map_err(|error| attempt_error(&error, false))
     }
     .boxed()
 }
@@ -1131,17 +1145,28 @@ fn unsaved(pending: PendingSession) -> Connected {
     }
 }
 
-fn attempt_error(error: &ConnectError) -> AttemptError {
+fn route(tunnelled: bool) -> TransportClass {
+    if tunnelled {
+        TransportClass::SshForward
+    } else {
+        TransportClass::DirectTcp
+    }
+}
+
+/// `server_name_shown` says whether the connect dialog shows the server
+/// name row for this connection, so a remedy never opens a hidden row.
+fn attempt_error(error: &ConnectError, server_name_shown: bool) -> AttemptError {
     match error {
         ConnectError::Cancelled => AttemptError::Cancelled,
         error => AttemptError::Failed(ConnectFailure {
             message: crate::ui::error_text::connect_error_message(error),
-            remedy: crate::ui::error_text::connect_remedy(error),
+            remedy: crate::ui::error_text::connect_remedy(error, server_name_shown),
             reenter: None,
             missing_file: match error {
                 ConnectError::Driver(DriverError::FileNotFound { path }) => Some(path.clone()),
                 _ => None,
             },
+            heading: None,
         }),
     }
 }

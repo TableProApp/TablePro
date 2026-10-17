@@ -4,8 +4,8 @@ use tablepro_core::column::{
 };
 use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, KeysetDirection, LikeCase, LikeForm, LiteralError, Placeholder,
-    SqlDialect,
+    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, KeysetDirection, LikeCase, LikeForm, LiteralError,
+    Placeholder, SqlDialect,
 };
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
@@ -187,6 +187,18 @@ impl SqlDialect for ClickHouseDialect {
     /// ClickHouse has no spelling for a row of nothing but defaults.
     fn insert_default_row(&self, _table_sql: &str) -> Option<String> {
         None
+    }
+
+    /// Every INSERT makes a part, so a statement carries as many rows as
+    /// its parameters allow. They travel in the request URL, which the
+    /// HTTP client caps at 64 KiB, and escaping can take a value to six
+    /// times its length there.
+    fn insert_batch_limits(&self) -> InsertBatchLimits {
+        InsertBatchLimits {
+            rows: 10_000,
+            params: 1_000,
+            value_bytes: 8 << 10,
+        }
     }
 
     /// No FINAL, so unmerged duplicates of a sorting key count.

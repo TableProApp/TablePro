@@ -5,21 +5,22 @@
 use futures_util::TryStreamExt;
 use sqlx::mysql::MySqlConnection;
 use sqlx::{AssertSqlSafe, Executor as _, Row as _};
-use tablepro_core::column::{ColumnInfo, SqlExpression};
+use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnKind, SqlExpression, TemporalZone};
 use tablepro_core::ddl::{
-    InboundForeignKey, PrimaryKeyConstraint, ReferentialAction, TableDefinition, TableSource, UnmodeledAttribute,
+    ColumnDefinition, InboundForeignKey, PrimaryKeyConstraint, ReferentialAction, TableDefinition, TableSource,
+    UnmodeledAttribute,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{
     IndexInfo, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, SchemaInfo, TableEstimate,
     TableRef,
 };
-use tablepro_core::{DriverError, ForeignKeyInfo};
+use tablepro_core::{DriverError, ForeignKeyInfo, Value};
 
 use crate::catalog::{
     COLUMN_ENGINE_ATTRIBUTES_SQL, CatalogCells, ColumnCheck, INBOUND_FOREIGN_KEYS_SQL, ListedSrid,
     MARIADB_COLUMN_CHECKS_SQL, MARIADB_GEOMETRY_SRIDS_SQL, MySqlColumnRow, column_checks, column_definition,
-    column_info, columns_sql, geometry_srids, inbound_foreign_keys, place_column_checks,
+    column_info, columns_sql, geometry_srids, inbound_foreign_keys, place_column_checks, quoted_default,
 };
 use crate::decode::decode_row;
 use crate::dialect::MySqlDialect;
@@ -356,7 +357,7 @@ pub(crate) async fn fetch_table_definition(
         }
         MySqlFlavour::MySql => Vec::new(),
     };
-    let columns = rows
+    let mut columns: Vec<ColumnDefinition> = rows
         .iter()
         .enumerate()
         .map(|(index, row)| {
@@ -379,6 +380,11 @@ pub(crate) async fn fetch_table_definition(
             definition
         })
         .collect();
+    for definition in &mut columns {
+        if let Some(default) = timestamp_default(connection, flavour, &create_statement, definition).await? {
+            definition.info.default = default;
+        }
+    }
     let indexes = fetch_indexes(connection, dialect, table).await?;
     let primary_key = indexes
         .iter()
@@ -409,6 +415,61 @@ pub(crate) async fn fetch_table_definition(
             dependents: Vec::new(),
         }),
     })
+}
+
+/// A TIMESTAMP's constant default as wall time in the server's zone,
+/// which is where a schema change runs (`server_zone`), so restating it
+/// keeps the instant. This session reads in UTC, so SHOW CREATE TABLE
+/// prints it in UTC. A zero default names no instant and stays as is.
+async fn timestamp_default(
+    connection: &mut MySqlConnection,
+    flavour: MySqlFlavour,
+    create_statement: &str,
+    definition: &ColumnDefinition,
+) -> Result<Option<ColumnDefault>, DriverError> {
+    let info = &definition.info;
+    let is_instant = matches!(
+        info.column_type.kind,
+        ColumnKind::Timestamp {
+            zone: TemporalZone::Offset,
+            ..
+        }
+    );
+    if !is_instant || info.default.is_none() {
+        return Ok(None);
+    }
+    let Some(utc) = quoted_default(create_statement, &info.name) else {
+        return Ok(None);
+    };
+    if utc.starts_with("0000-00-00") {
+        return Ok(Some(ColumnDefault::Literal(Value::Text(utc))));
+    }
+    let digits = utc.split_once('.').map_or(0, |(_, fraction)| fraction.len());
+    let row = sqlx::query("SELECT CAST(CONVERT_TZ(?, '+00:00', @@GLOBAL.time_zone) AS CHAR)")
+        .persistent(false)
+        .bind(utc)
+        .fetch_one(&mut *connection)
+        .await
+        .map_err(|error| map_error(&error, flavour))?;
+    let wall: Option<&[u8]> = row.try_get_unchecked(0).map_err(|error| DriverError::Decode {
+        column: info.name.clone(),
+        detail: error.to_string(),
+    })?;
+    Ok(wall.map(|wall| {
+        let wall = String::from_utf8_lossy(wall);
+        ColumnDefault::Literal(Value::Text(with_fraction_digits(&wall, digits)))
+    }))
+}
+
+/// CONVERT_TZ answers with six fractional digits whatever it was given,
+/// and the default reads back as the server printed it only with the
+/// digits the column declares.
+fn with_fraction_digits(text: &str, digits: usize) -> String {
+    let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
+    match fraction.get(..digits).filter(|kept| !kept.is_empty()) {
+        Some(kept) => format!("{whole}.{kept}"),
+        None => whole.to_owned(),
+    }
 }
 
 /// Engine attributes on columns, from MySQL 8.0.21 on. An older server
@@ -478,6 +539,19 @@ mod tests {
     use tablepro_core::column::{ColumnDefault, ColumnType};
 
     use super::*;
+
+    #[test]
+    fn a_converted_default_keeps_the_digits_the_column_declares() {
+        assert_eq!(
+            with_fraction_digits("2000-01-01 07:00:00.000000", 0),
+            "2000-01-01 07:00:00"
+        );
+        assert_eq!(
+            with_fraction_digits("2000-01-01 07:00:00.250000", 3),
+            "2000-01-01 07:00:00.250"
+        );
+        assert_eq!(with_fraction_digits("2000-01-01 07:00:00", 0), "2000-01-01 07:00:00");
+    }
 
     fn column(name: &str, nullable: bool) -> ColumnInfo {
         ColumnInfo {

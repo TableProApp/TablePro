@@ -4,8 +4,10 @@ use tablepro_core::Value;
 use tablepro_core::column::ColumnType;
 
 /// A million-character value would hang the main thread in Pango
-/// layout. The model keeps the whole value; only the cell is cut.
-pub(super) const DISPLAY_MAX_CHARS: usize = 10_000;
+/// layout, and the cell shapes all it is given though a line of it
+/// shows. The model keeps the whole value; only the cell is cut, past
+/// what its tooltip quotes.
+pub(super) const DISPLAY_MAX_CHARS: usize = 1_000;
 
 /// What a cell shows for a value. `text` borrows the value where it
 /// can, so a text cell draws with no copy of its own.
@@ -326,7 +328,7 @@ mod tests {
     fn a_huge_text_value_draws_bounded() {
         let display = shown(&Value::Text("x".repeat(1_000_000)));
 
-        assert!(display.len() < 11_000, "{}", display.len());
-        assert!(display.ends_with("… (990000 more bytes)"));
+        assert!(display.len() < 1_100, "{}", display.len());
+        assert!(display.ends_with("… (999000 more bytes)"));
     }
 }

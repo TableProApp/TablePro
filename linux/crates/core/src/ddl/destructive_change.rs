@@ -16,6 +16,11 @@ pub enum DestructiveChange {
         from: String,
         to: String,
     },
+    /// A NULL already in the column has to go: the server refuses the
+    /// change, or on some engines puts a default value in its place.
+    SetNotNull {
+        column: String,
+    },
     DropIndex {
         index: String,
     },

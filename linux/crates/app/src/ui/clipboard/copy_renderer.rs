@@ -115,23 +115,28 @@ fn render_rows(
         CopyKind::Rows => encode(TsvEncoder::new(columns, false), rows, ClipboardFormat::Tsv),
         CopyKind::RowsWithHeaders => encode(TsvEncoder::new(columns, true), rows, ClipboardFormat::Tsv),
         CopyKind::Csv => encode(
-            CsvEncoder::new(
-                columns,
-                CsvOptions {
-                    header_row: false,
-                    ..CsvOptions::default()
-                },
-            ),
+            CsvEncoder::new(columns, clipboard_csv(false)),
             rows,
             ClipboardFormat::Csv,
         ),
         CopyKind::CsvWithHeaders => encode(
-            CsvEncoder::new(columns, CsvOptions::default()),
+            CsvEncoder::new(columns, clipboard_csv(true)),
             rows,
             ClipboardFormat::Csv,
         ),
         CopyKind::Json => encode(JsonArrayEncoder::new(columns), rows, ClipboardFormat::Json),
         CopyKind::Markdown => encode(MarkdownEncoder::new(columns), rows, ClipboardFormat::Markdown),
+    }
+}
+
+/// CSV as the clipboard carries it. Copied text goes as the user sees
+/// it: the apostrophe an export puts before `-` or `@alice` would be
+/// pasted into every other place the text goes too.
+fn clipboard_csv(header_row: bool) -> CsvOptions {
+    CsvOptions {
+        header_row,
+        sanitize_formulas: false,
+        ..CsvOptions::default()
     }
 }
 

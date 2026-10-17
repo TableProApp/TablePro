@@ -3,7 +3,9 @@ use crate::column::{
 };
 use crate::dialect::{RecordedTarget, TestDialect, TestMarkers};
 use crate::filter::{Combinator, FilterOp, FilterRule, FilterSet, FilterValue};
-use crate::meta::{EngineRowId, EngineRowIdPart, PageCost, PagePosition, PageStability, RowIdentity, TableRef};
+use crate::meta::{
+    CtidWindow, EngineRowId, EngineRowIdPart, PageCost, PagePosition, PageStability, RowIdentity, TableRef,
+};
 use crate::query_result::QueryResult;
 use crate::value::Value;
 
@@ -212,10 +214,11 @@ fn a_sort_on_the_key_itself_is_not_repeated_as_its_tiebreak() {
 #[test]
 fn build_page_ctid_window_bounds() {
     let dialect = TestDialect::exact();
-    let page = Page::of(RowIdentity::EngineRowId(EngineRowId::PostgresCtid)).at(PagePosition::CtidWindow {
+    let page = Page::of(RowIdentity::EngineRowId(EngineRowId::PostgresCtid)).at(PagePosition::CtidWindow(CtidWindow {
         after: Some((3, 7)),
-        end_block: 10,
-    });
+        before: Some((10, 0)),
+        backward: false,
+    }));
 
     let spec = built(&page, &dialect);
 
@@ -245,10 +248,11 @@ fn build_page_ctid_window_bounds() {
 
 #[test]
 fn the_first_ctid_window_has_only_its_upper_bound() {
-    let page = Page::of(RowIdentity::EngineRowId(EngineRowId::PostgresCtid)).at(PagePosition::CtidWindow {
+    let page = Page::of(RowIdentity::EngineRowId(EngineRowId::PostgresCtid)).at(PagePosition::CtidWindow(CtidWindow {
         after: None,
-        end_block: 4,
-    });
+        before: Some((4, 0)),
+        backward: false,
+    }));
 
     let spec = built(&page, &TestDialect::exact());
 
@@ -258,6 +262,49 @@ fn the_first_ctid_window_has_only_its_upper_bound() {
         spec.statement.sql()
     );
     assert_eq!(spec.statement.params().len(), 1);
+}
+
+#[test]
+fn a_backward_ctid_window_reads_down_from_its_upper_bound() {
+    let page = Page::of(RowIdentity::EngineRowId(EngineRowId::PostgresCtid)).at(PagePosition::CtidWindow(CtidWindow {
+        after: Some((31, 0)),
+        before: Some((40, 2)),
+        backward: true,
+    }));
+
+    let spec = built(&page, &TestDialect::exact());
+
+    assert!(
+        spec.statement
+            .sql()
+            .ends_with("WHERE ctid > $1 AND ctid < $2 ORDER BY ctid DESC LIMIT 50"),
+        "{}",
+        spec.statement.sql()
+    );
+    assert_eq!(spec.cost, PageCost::BlockWindow);
+}
+
+#[test]
+fn a_ctid_window_open_on_the_side_it_reads_toward_sorts_the_rest_of_the_table() {
+    let open_end =
+        Page::of(RowIdentity::EngineRowId(EngineRowId::PostgresCtid)).at(PagePosition::CtidWindow(CtidWindow {
+            after: Some((75, 0)),
+            before: None,
+            backward: false,
+        }));
+
+    assert_eq!(built(&open_end, &TestDialect::exact()).cost, PageCost::SortPerPage);
+}
+
+#[test]
+fn the_last_keyset_page_reads_the_key_backward_from_the_end() {
+    let spec = built(&Page::of(by_id()).at(PagePosition::Last), &TestDialect::exact());
+
+    assert_eq!(
+        spec.statement.sql(),
+        r#"SELECT "id", "name" FROM "public"."users" ORDER BY "users"."id" DESC LIMIT 50"#
+    );
+    assert_eq!(spec.cost, PageCost::KeySeek);
 }
 
 #[test]
@@ -384,6 +431,19 @@ fn a_position_the_mode_cannot_read_is_an_error() {
             mode: PagingMode::Offset
         })
     );
+    let sorted_last = Page::of(by_id())
+        .sorted(vec![SortKey {
+            column: 1,
+            ascending: true,
+        }])
+        .at(PagePosition::Last);
+    assert_eq!(
+        sorted_last.build(&TestDialect::exact()),
+        Err(BrowseSqlError::UnsupportedPosition {
+            mode: PagingMode::Offset
+        }),
+        "a user sort with ties has no exact reverse"
+    );
 }
 
 #[test]
@@ -460,6 +520,42 @@ fn build_export_projects_only_visible_columns() {
     assert_eq!(
         sql,
         r#"SELECT "id", "name" FROM "public"."users" WHERE "id" > $1 OR "name" IS NULL ORDER BY "users"."name" ASC, tableoid ASC, ctid ASC"#
+    );
+}
+
+fn export_sql(identity: RowIdentity, sort: &[SortKey]) -> String {
+    let columns = columns();
+    let statement = build_export(
+        &TestDialect::exact(),
+        &ExportRequest {
+            table: &table(),
+            columns: &columns,
+            filter: &FilterSet::default(),
+            sort,
+            identity: &identity,
+        },
+    )
+    .expect("the export");
+    statement.sql().to_owned()
+}
+
+#[test]
+fn an_unsorted_export_of_a_heap_is_not_sorted_by_row_address() {
+    for id in [EngineRowId::PostgresCtid, EngineRowId::PostgresTableoidCtid] {
+        assert_eq!(
+            export_sql(RowIdentity::EngineRowId(id), &[]),
+            r#"SELECT "id", "name" FROM "public"."users""#,
+            "{id:?}"
+        );
+    }
+    assert_eq!(
+        export_sql(RowIdentity::EngineRowId(EngineRowId::SqliteRowid), &[]),
+        r#"SELECT "id", "name" FROM "public"."users" ORDER BY rowid ASC"#,
+        "a rowid is the table's own key, so its order costs nothing"
+    );
+    assert_eq!(
+        export_sql(by_id(), &[]),
+        r#"SELECT "id", "name" FROM "public"."users" ORDER BY "users"."id" ASC"#
     );
 }
 

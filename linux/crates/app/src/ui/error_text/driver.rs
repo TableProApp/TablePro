@@ -63,7 +63,7 @@ pub fn config_message(error: &ConfigError) -> String {
         ConfigError::RelativePath => crate::i18n::gettext("Use a full path, starting with /."),
         ConfigError::UnsupportedTlsMode => crate::i18n::gettext("This database does not offer that TLS mode."),
         ConfigError::CaFileUnsupported => {
-            crate::i18n::gettext("A CA certificate needs TLS turned on and a database that accepts one.")
+            crate::i18n::gettext("A CA certificate needs Verify full and a database that accepts one.")
         }
         ConfigError::ClientIdentityUnsupported => {
             crate::i18n::gettext("A client certificate needs TLS turned on and a database that accepts one.")
@@ -119,6 +119,10 @@ fn authentication_message(error: &DriverError) -> String {
             "Username or password is wrong. The server said: {detail}",
             &[("detail", &diagnostics.message)],
         ),
+        DriverError::LoginRefused(diagnostics) => crate::i18n::gettext_f(
+            "The server refused this login. The server said: {detail}",
+            &[("detail", &diagnostics.message)],
+        ),
         DriverError::IntegratedAuth(detail) => crate::i18n::gettext_f(
             "Kerberos login failed: {detail}. Check that klist shows a valid ticket, run kinit if it does not, and make sure the server's SPN matches the host you typed.",
             &[("detail", detail)],
@@ -172,8 +176,12 @@ fn server_code_text(code: &ServerCode) -> String {
 }
 
 fn timeout_message(error: &DriverError) -> String {
-    let phase = match error {
-        DriverError::Timeout { phase, .. } | DriverError::Transport(TransportError::Timeout { phase }) => *phase,
+    let (phase, server_cancelled) = match error {
+        DriverError::Timeout {
+            phase,
+            server_cancelled,
+        } => (*phase, *server_cancelled),
+        DriverError::Transport(TransportError::Timeout { phase }) => (*phase, false),
         other => return detail_sentence(crate::i18n::gettext("The server took too long to answer."), other),
     };
     match phase {
@@ -186,8 +194,11 @@ fn timeout_message(error: &DriverError) -> String {
         TimeoutPhase::LockWait => {
             crate::i18n::gettext("Another session holds a lock this needs. Try again when it has finished.")
         }
-        TimeoutPhase::Statement => {
+        TimeoutPhase::Statement if server_cancelled => {
             crate::i18n::gettext("The statement ran past its time limit, so the server stopped it.")
+        }
+        TimeoutPhase::Statement => {
+            crate::i18n::gettext("The statement ran past its time limit. The server may still be running it.")
         }
         TimeoutPhase::Probe => crate::i18n::gettext("The server did not answer a check in time."),
     }

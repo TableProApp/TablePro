@@ -1,7 +1,7 @@
 use gtk4 as gtk;
-use gtk4::gio;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
+use gtk4::{gio, glib};
 
 use super::{
     BrowseModel, BrowseTab, BrowseTabInput, ClipboardInput, EditInput, PagingInput, SaveInput, SelectionInput,
@@ -24,6 +24,10 @@ pub(super) struct BrowseActions {
     pub(super) delete_rows: gio::SimpleAction,
     pub(super) copy_rows: gio::SimpleAction,
     pub(super) clear_selection: gio::SimpleAction,
+    /// The More menu's Count Rows, on where the pager offers it.
+    pub(super) count_rows: gio::SimpleAction,
+    /// The More menu's page sizes, its state the size the tab reads.
+    pub(super) page_size: gio::SimpleAction,
 }
 
 impl BrowseActions {
@@ -43,7 +47,7 @@ impl BrowseActions {
 /// The tab's `browse` group, the tab's own keys for it and the keys its
 /// buttons announce. The grid's keys go on each column view the tab
 /// builds, through `install_grid_shortcuts`.
-pub(super) fn install_browse_actions(tab: &BrowseTab) -> BrowseActions {
+pub(super) fn install_browse_actions(tab: &BrowseTab, page_size: u64) -> BrowseActions {
     let group = gio::SimpleActionGroup::new();
     let add = |name: &str, input: fn() -> BrowseTabInput| {
         let action = gio::SimpleAction::new(name, None);
@@ -57,6 +61,16 @@ pub(super) fn install_browse_actions(tab: &BrowseTab) -> BrowseActions {
         action
     };
     add("filter", || PagingInput::ToggleFilterStrip.into());
+    add("export", || ClipboardInput::Export(None).into());
+    let page_size =
+        gio::SimpleAction::new_stateful("page-size", Some(glib::VariantTy::UINT64), &page_size.to_variant());
+    let weak = tab.downgrade();
+    page_size.connect_change_state(move |_, size| {
+        if let (Some(tab), Some(size)) = (weak.upgrade(), size.and_then(u64::from_variant)) {
+            tab.send(PagingInput::PageSizeChanged(size));
+        }
+    });
+    group.add_action(&page_size);
     add("refresh", || PagingInput::RequestRefresh.into());
     add("paste-rows", || ClipboardInput::PasteNotSupported.into());
     let previous = add("previous-page", || PagingInput::PrevPage.into());
@@ -80,6 +94,8 @@ pub(super) fn install_browse_actions(tab: &BrowseTab) -> BrowseActions {
         delete_rows,
         copy_rows: add("copy-rows", || ClipboardInput::CopySelectedRowsAsTsv.into()),
         clear_selection: add("clear-selection", || SelectionInput::ClearSelection.into()),
+        count_rows: add("count-rows", || PagingInput::CountRows.into()),
+        page_size,
     };
     for action in [
         &actions.save,
@@ -89,6 +105,7 @@ pub(super) fn install_browse_actions(tab: &BrowseTab) -> BrowseActions {
         &actions.delete_rows,
         &actions.copy_rows,
         &actions.clear_selection,
+        &actions.count_rows,
     ] {
         action.set_enabled(false);
     }

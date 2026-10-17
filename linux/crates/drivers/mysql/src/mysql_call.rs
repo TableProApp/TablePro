@@ -109,4 +109,8 @@ impl Tainter {
     pub(crate) fn taint(&self) {
         self.0.store(true, Ordering::SeqCst);
     }
+
+    pub(crate) fn is_tainted(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
 }

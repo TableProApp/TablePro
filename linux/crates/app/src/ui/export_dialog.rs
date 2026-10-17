@@ -8,6 +8,7 @@ use relm4::{adw, gtk};
 
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote, XLSX_MAX_DATA_ROWS};
+use tablepro_core::meta::TableRef;
 use tablepro_session::Session;
 use uuid::Uuid;
 
@@ -24,7 +25,9 @@ use crate::ui::format::format_thousands;
 /// several tables or none, so SQL is not offered for one.
 #[derive(Debug, Clone)]
 pub struct SqlTarget {
-    pub table: String,
+    pub table: TableRef,
+    /// The columns the server computes, which the statements leave out.
+    pub generated: Arc<[String]>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -347,6 +350,7 @@ pub(crate) fn present(init: ExportDialogInit<'_>) {
     } = offer;
     let target = target.zip(dialect).map(|(target, dialect)| InsertTarget {
         table: target.table,
+        generated: target.generated,
         dialect,
     });
     let formats = Format::offered(target.as_ref());

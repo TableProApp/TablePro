@@ -145,6 +145,31 @@ async fn server_without_ssl_reports_server_refused_tls() {
     );
 }
 
+/// pg_hba.conf turns a plaintext login away with SQLSTATE 28000, a rule
+/// of the server's that no other password gets past.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_pg_hba_refusal_is_a_refused_login_not_a_wrong_password() {
+    let fixture = start_with_pki(PkiAlgorithm::RsaSha256).await;
+    let liveness = test_liveness();
+    let options = options_over(
+        direct(fixture.host(), fixture.port(), &liveness),
+        password(&fixture.password_credentials()),
+        fixture.database(),
+        TlsConfig::disabled(),
+        WorkspaceSettings::workspace(false),
+        liveness,
+    );
+
+    let outcome = PgDriver.connect(options, CancellationToken::new()).await;
+
+    assert!(
+        matches!(&outcome, Err(DriverError::LoginRefused(diagnostics)) if diagnostics.sqlstate() == Some("28000")),
+        "got {:?}",
+        outcome.err()
+    );
+}
+
 /// TLS that checks nothing about the certificate, so the cases below
 /// test channel binding alone.
 fn unverified() -> TlsConfig {

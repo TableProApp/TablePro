@@ -22,6 +22,7 @@ Errors are typed enums, built with `thiserror` wherever they cross a crate bound
 |---|---|
 | `Transport(TransportError)` | The route failed: name resolution, refused, unreachable, a connect or SSH timeout, or an `SshFailure`. |
 | `Auth { diagnostics }` | The server refused the credentials, with its own explanation when it gave one. |
+| `LoginRefused(ServerDiagnostics)` | The server turned the login away for a reason other than the password, such as PostgreSQL's pg_hba.conf rules. The app offers no new password for it. |
 | `IntegratedAuth(String)` | A Kerberos login failed before the server saw it. |
 | `Tls { failure, detail }` | The handshake failed; `TlsFailure` says why. |
 | `Server(ServerDiagnostics)` | The server refused the statement. |
@@ -54,7 +55,7 @@ Rules:
 | `Configuration` | `Config`, `Unsupported`; SSH setup failures | Names the setting to change. The session stops retrying until the user changes something. |
 | `Network` | `Transport` (resolution, refused, unreachable); an SSH forward that was rejected or could not open, or an SSH master that exited | Names the host and port. A session retries on a backoff. |
 | `Tls` | `Tls` | One sentence per `TlsFailure`, with a remedy button where one exists. The session stops retrying. |
-| `Authentication` | `Auth`, `IntegratedAuth`; SSH auth and host-key failures, and a cancelled SSH prompt | Says the login or the host key was refused, with the server's reason. Never echoes what was typed. The session stops retrying. |
+| `Authentication` | `Auth`, `LoginRefused`, `IntegratedAuth`; SSH auth and host-key failures, and a cancelled SSH prompt | Says the login or the host key was refused, with the server's reason. Never echoes what was typed. The session stops retrying. |
 | `ReadOnly` | `ReadOnly` | Says who refused: this connection's setting, or the server. |
 | `Server` | `Server` | The server's own words, code, detail and hint. |
 | `Interrupted` | `Cancelled` | "Stopped." |
@@ -104,7 +105,7 @@ Drivers classify a handshake failure with `tablepro_net::tls::classify`, which w
 | `TlsFailure` | Cause | What the app offers |
 |---|---|---|
 | `UnknownIssuer` | The certificate's issuer is not in the trust set. | **Choose CA Certificate…**, which opens the connect dialog at the CA file row. |
-| `NameMismatch` | The certificate is for another name. | **Set TLS Server Name**, which opens the connect dialog at the server name row. |
+| `NameMismatch` | The certificate is for another name. | **Set TLS Server Name**, which opens the connect dialog at the server name row, where the route shows that row; MySQL over a direct route checks the host it dials and offers only **Edit Connection…**. |
 | `Expired`, `NotYetValid`, `Revoked` | The certificate itself is bad. | Nothing: the server's certificate has to be replaced. |
 | `ServerRefusedTls` | The server does not speak TLS on this port. | The message; turn TLS off or use the TLS port. |
 | `ServerRequiresTls` | TLS was off and the server insists on it. | The message; turn TLS on. |

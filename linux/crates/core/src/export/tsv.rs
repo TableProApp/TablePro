@@ -51,19 +51,20 @@ mod tests {
         assert_eq!(render_tsv(&columns, &rows, false).unwrap(), "\"say \"\"hi\"\"\"\n");
     }
 
-    /// A spreadsheet runs a pasted cell that starts like a formula.
     #[test]
-    fn tsv_neutralises_a_formula_in_free_text() {
-        let columns = cols(&["=sum", "b", "c"]);
+    fn tsv_keeps_text_that_starts_like_a_formula_as_it_is() {
+        let columns = cols(&["=sum", "b", "c", "d", "e"]);
         let rows = vec![vec![
-            Value::Text("=cmd|' /C calc'!A0".into()),
+            Value::Text("-".into()),
+            Value::Text("+1 555 0100".into()),
+            Value::Text("@alice".into()),
+            Value::Text("=1+1".into()),
             Value::Int(-5),
-            Value::Text("-5".into()),
         ]];
 
         assert_eq!(
             render_tsv(&columns, &rows, true).unwrap(),
-            "'=sum\tb\tc\n'=cmd|' /C calc'!A0\t-5\t-5\n"
+            "=sum\tb\tc\td\te\n-\t+1 555 0100\t@alice\t=1+1\t-5\n"
         );
     }
 

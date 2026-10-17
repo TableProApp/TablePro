@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 
 use crate::column::{BoolStorage, ColumnKind, ColumnType, FloatWidth, IntegerKind, TemporalZone, TimeRange};
 use crate::value::{
@@ -72,6 +72,14 @@ fn keeps_text_on_failure(kind: &ColumnKind) -> bool {
 }
 
 fn strict(input: &str, column: &ColumnType, purpose: Purpose) -> Result<Value, EditParseError> {
+    let value = strict_value(input, column, purpose)?;
+    if purpose == Purpose::Store {
+        check_declared_fraction(&value, column.kind.fractional_digits())?;
+    }
+    Ok(value)
+}
+
+fn strict_value(input: &str, column: &ColumnType, purpose: Purpose) -> Result<Value, EditParseError> {
     let trimmed = input.trim();
     match &column.kind {
         ColumnKind::Bool(BoolStorage::Native) => parse_bool(trimmed).map(Value::Bool),
@@ -201,6 +209,28 @@ fn check_declared_digits(
     }
 }
 
+/// Refuse a fraction of a second finer than the column keeps. The
+/// server rounds it, and `23:59:59.5` in a `timestamp(0)` becomes the
+/// next day.
+fn check_declared_fraction(value: &Value, digits: Option<u8>) -> Result<(), EditParseError> {
+    let Some(digits) = digits.filter(|digits| *digits < 9) else {
+        return Ok(());
+    };
+    let nanos = match value {
+        Value::Time(time) => time.total_nanos().rem_euclid(1_000_000_000),
+        Value::TimeTz(time) => time.time.total_nanos().rem_euclid(1_000_000_000),
+        Value::Timestamp(Temporal::Finite(stamp)) => i128::from(stamp.nanosecond()),
+        Value::TimestampTz(Temporal::Finite(stamp)) => i128::from(stamp.utc().nanosecond()),
+        _ => return Ok(()),
+    };
+    match nanos % 10_i128.pow(9 - u32::from(digits)) {
+        0 => Ok(()),
+        _ => Err(EditParseError::ScaleExceeded {
+            scale: u32::from(digits),
+        }),
+    }
+}
+
 fn parse_float(input: &str, width: FloatWidth) -> Result<Value, EditParseError> {
     if let Some(value) = non_finite(input) {
         return Ok(match width {
@@ -247,8 +277,15 @@ fn parse_time(input: &str) -> Result<Value, EditParseError> {
     if let Ok(time) = NaiveTime::parse_from_str(input, "%H:%M") {
         return Ok(Value::Time(SqlTime::from_time_of_day(time)));
     }
-    Err(EditParseError::InvalidTime)
+    // PostgreSQL's time runs to 24:00:00 inclusive, which no NaiveTime
+    // holds.
+    match input.parse::<SqlTime>() {
+        Ok(time) if time.total_nanos() == END_OF_DAY_NANOS => Ok(Value::Time(time)),
+        _ => Err(EditParseError::InvalidTime),
+    }
 }
+
+const END_OF_DAY_NANOS: i128 = 86_400 * 1_000_000_000;
 
 /// MySQL TIME or ClickHouse Time, which measure an amount of time and so
 /// run past 24 hours and below zero, each to its own bound.
@@ -754,6 +791,53 @@ mod tests {
         assert_eq!(parse(long, "1000:00:00"), Err(EditParseError::TimeOutOfRange));
         assert_eq!(
             parse(time(false, TimeRange::TimeOfDay), "25:00:00"),
+            Err(EditParseError::InvalidTime)
+        );
+    }
+
+    #[test]
+    fn a_fraction_finer_than_the_column_keeps_is_refused() {
+        let declared = |digits| ColumnKind::Timestamp {
+            fractional_digits: Some(digits),
+            zone: TemporalZone::Naive,
+        };
+
+        assert_eq!(
+            parse(declared(0), "2024-12-31 23:59:59.5"),
+            Err(EditParseError::ScaleExceeded { scale: 0 }),
+            "the server would have rounded into the next day"
+        );
+        assert!(parse(declared(3), "2024-12-31 23:59:59.120").is_ok());
+        assert_eq!(
+            parse(declared(3), "2024-12-31 23:59:59.1234"),
+            Err(EditParseError::ScaleExceeded { scale: 3 })
+        );
+        assert_eq!(
+            parse(
+                ColumnKind::Time {
+                    fractional_digits: Some(0),
+                    with_offset: false,
+                    range: TimeRange::Duration,
+                },
+                "-01:00:00.5"
+            ),
+            Err(EditParseError::ScaleExceeded { scale: 0 })
+        );
+        assert!(
+            parse_filter_text("2024-12-31 23:59:59.5", &column(declared(0), false)).is_ok(),
+            "a comparison was held to the column's precision"
+        );
+        assert!(parse(stamp(TemporalZone::Naive), "2024-12-31 23:59:59.123456789").is_ok());
+    }
+
+    #[test]
+    fn the_end_of_the_day_is_a_time_of_day() {
+        let Ok(Value::Time(end)) = parse(time(false, TimeRange::TimeOfDay), "24:00:00") else {
+            panic!("24:00:00 did not parse");
+        };
+        assert_eq!(end.format(None), "24:00:00");
+        assert_eq!(
+            parse(time(false, TimeRange::TimeOfDay), "24:00:01"),
             Err(EditParseError::InvalidTime)
         );
     }

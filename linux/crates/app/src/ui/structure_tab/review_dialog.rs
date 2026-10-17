@@ -84,6 +84,10 @@ fn destructive_text(change: &DestructiveChange) -> String {
             "Changes column “{column}” from {from} to {to}. A value the new type can't hold is converted or refused.",
             &[("column", column), ("from", from), ("to", to)],
         ),
+        DestructiveChange::SetNotNull { column } => crate::i18n::gettext_f(
+            "Makes column “{column}” NOT NULL. A NULL already in it is converted or refused.",
+            &[("column", column)],
+        ),
         DestructiveChange::DropIndex { index } => crate::i18n::gettext_f("Drops index “{index}”.", &[("index", index)]),
         DestructiveChange::DropForeignKey { key } => {
             crate::i18n::gettext_f("Drops foreign key “{key}”.", &[("key", key)])
@@ -239,6 +243,16 @@ mod tests {
             adw::ResponseAppearance::Suggested
         );
         assert_eq!(atomic.body(), "");
+    }
+
+    #[test]
+    fn a_new_not_null_says_what_happens_to_nulls() {
+        assert_eq!(
+            destructive_text(&DestructiveChange::SetNotNull {
+                column: "email".to_owned()
+            }),
+            "Makes column “email” NOT NULL. A NULL already in it is converted or refused."
+        );
     }
 
     #[test]

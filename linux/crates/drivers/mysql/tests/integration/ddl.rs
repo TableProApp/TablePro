@@ -58,6 +58,56 @@ fn assert_kept(before: &TableDefinition, after: &TableDefinition, flavour: Mysql
     }
 }
 
+/// A schema change runs in the server's zone, so a TIMESTAMP's constant
+/// default is restated as wall time there and keeps its instant. MySQL
+/// used to restate it unquoted, which is a syntax error.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn timestamp_constant_default_keeps_its_instant_off_utc() {
+    for flavour in FLAVOURS {
+        let fixture = start_with(
+            MysqlOptions::new(flavour)
+                .allowing_plaintext()
+                .with_server_argument("--default-time-zone=+07:00"),
+        )
+        .await;
+        let connection = connect(&fixture, false).await;
+        setup(
+            connection.as_ref(),
+            &["CREATE TABLE kept (id int PRIMARY KEY, at timestamp NULL DEFAULT '2000-01-01 00:00:00')"],
+        )
+        .await;
+
+        let (before, _) = change(connection.as_ref(), |column| {
+            if column.name == "at" {
+                column.comment = Some("restated".to_owned());
+            }
+        })
+        .await;
+        apply(
+            connection.as_ref(),
+            WriteKind::RowChanges,
+            &["INSERT INTO kept (id) VALUES (1)"],
+        )
+        .await
+        .expect("a row that takes the default");
+
+        assert_eq!(
+            before.column("at").map(|column| column.info.default.clone()),
+            Some(ColumnDefault::Literal(tablepro_core::Value::Text(
+                "2000-01-01 00:00:00".to_owned()
+            ))),
+            "{flavour:?}"
+        );
+        assert_eq!(
+            text(&scalar(connection.as_ref(), "SELECT UNIX_TIMESTAMP(at) FROM kept").await),
+            "946659600",
+            "{flavour:?}: the default moved to another instant"
+        );
+        connection.close().await.expect("a close");
+    }
+}
+
 fn collation(definition: &TableDefinition, column: &str) -> Option<CollationName> {
     definition
         .column(column)

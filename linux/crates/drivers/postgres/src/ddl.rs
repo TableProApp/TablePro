@@ -1,4 +1,4 @@
-use tablepro_core::column::{ColumnKind, ColumnType, IntegerKind, IntegerWidth, NetworkFamily};
+use tablepro_core::column::{ColumnKind, ColumnType, IntegerKind, IntegerWidth, NetworkFamily, TextLength};
 use tablepro_core::ddl::ddl_sql::{column_list, create_index_sql, default_sql, foreign_key_sql};
 use tablepro_core::ddl::{
     BuildDdlError, CollationName, ColumnAlteration, ColumnAttributes, ColumnCapabilities, ColumnCompression,
@@ -205,6 +205,37 @@ impl DdlDialect for PgDialect {
     }
 }
 
+/// The type the USING clause casts to when the new type has a length.
+///
+/// An explicit cast to a length cuts what does not fit:
+/// `'abcdefghijkl'::varchar(10)` is `abcdefghij`, and the same goes for
+/// `char(n)` and `bit(n)`. So the cast stops at the type without one,
+/// and the server's own assignment to the column, which ALTER applies to
+/// the USING result, refuses a value that is too long, as an INSERT
+/// would. A bit string takes the cast to `varbit` only from another bit
+/// string: an integer has a cast to `bit(n)` and none to `varbit`.
+fn unlimited_cast(original: &ColumnKind, target: &ColumnKind) -> Option<String> {
+    match (original, target) {
+        (
+            _,
+            ColumnKind::Text {
+                length: TextLength::Fixed(_),
+            },
+        ) => Some("bpchar".to_owned()),
+        (
+            _,
+            ColumnKind::Text {
+                length: TextLength::Varying(_),
+            },
+        ) => Some("varchar".to_owned()),
+        (ColumnKind::BitString { .. }, ColumnKind::BitString { .. }) => Some("varbit".to_owned()),
+        (ColumnKind::Array { element: original }, ColumnKind::Array { element: target }) => {
+            unlimited_cast(original, target).map(|element| format!("{element}[]"))
+        }
+        _ => None,
+    }
+}
+
 impl PgDialect {
     /// The ALTER TABLE actions that change one column, and the sequence
     /// restart an identity it gains needs after them.
@@ -231,9 +262,11 @@ impl PgDialect {
                 .filter(|_| collatable(&resolved.column_type.kind))
                 .map(|collation| format!(" COLLATE {}", self.collation(collation)))
                 .unwrap_or_default();
+            let using = unlimited_cast(&alteration.original.info.column_type.kind, &resolved.column_type.kind)
+                .unwrap_or_else(|| resolved.sql.clone());
             actions.push(format!(
-                "ALTER COLUMN {name} TYPE {}{collation} USING {name}::{}",
-                resolved.sql, resolved.sql
+                "ALTER COLUMN {name} TYPE {}{collation} USING {name}::{using}",
+                resolved.sql
             ));
             actions.extend(restated_storage(&name, &alteration.original.attributes, &resolved));
         }
@@ -767,12 +800,26 @@ mod tests {
             sql(plan),
             [
                 "ALTER TABLE \"app\".\"users\" ALTER COLUMN \"email\" TYPE varchar(320) COLLATE \
-                 \"pg_catalog\".\"C\" USING \"email\"::varchar(320), ALTER COLUMN \"code\" TYPE integer USING \
+                 \"pg_catalog\".\"C\" USING \"email\"::varchar, ALTER COLUMN \"code\" TYPE integer USING \
                  \"code\"::integer"
             ]
         );
         assert!(collatable(&dialect().parse_type("text[]").expect("a type").kind));
         assert!(!collatable(&dialect().parse_type("uuid").expect("a type").kind));
+    }
+
+    #[test]
+    fn a_length_cast_stops_at_the_type_without_one() {
+        let kind = |declaration: &str| dialect().parse_type(declaration).expect("a type").kind;
+        let using = |from: &str, to: &str| unlimited_cast(&kind(from), &kind(to));
+
+        assert_eq!(using("varchar(255)", "varchar(10)").as_deref(), Some("varchar"));
+        assert_eq!(using("text", "character(5)").as_deref(), Some("bpchar"));
+        assert_eq!(using("bit(8)", "bit(4)").as_deref(), Some("varbit"));
+        assert_eq!(using("varchar(20)[]", "varchar(5)[]").as_deref(), Some("varchar[]"));
+        assert_eq!(using("integer", "bit(4)"), None, "an integer has no cast to varbit");
+        assert_eq!(using("text", "integer"), None);
+        assert_eq!(using("numeric(10,2)", "numeric(5,2)"), None);
     }
 
     #[test]
@@ -793,7 +840,7 @@ mod tests {
             sql(plan),
             [
                 "ALTER TABLE \"app\".\"users\" ALTER COLUMN \"email\" TYPE varchar(320) USING \
-                 \"email\"::varchar(320), ALTER COLUMN \"email\" SET STORAGE EXTERNAL, ALTER COLUMN \"email\" SET \
+                 \"email\"::varchar, ALTER COLUMN \"email\" SET STORAGE EXTERNAL, ALTER COLUMN \"email\" SET \
                  COMPRESSION lz4, ALTER COLUMN \"status\" TYPE bigint USING \"status\"::bigint"
             ]
         );

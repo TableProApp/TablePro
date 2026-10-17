@@ -751,8 +751,37 @@ fn unchanged_catalog_type_is_not_type_change() {
         email.nullable = false;
     });
 
-    assert!(catalog.destructive.is_empty(), "{:?}", catalog.destructive);
-    assert!(retyped.destructive.is_empty(), "{:?}", retyped.destructive);
+    let not_null = [DestructiveChange::SetNotNull {
+        column: "email".to_owned(),
+    }];
+    assert_eq!(catalog.destructive, not_null);
+    assert_eq!(retyped.destructive, not_null);
+}
+
+/// MySQL without strict mode and ClickHouse turn the NULLs in a column
+/// made NOT NULL into 0 or an empty string, so the change is reviewed.
+#[test]
+fn set_not_null_is_destructive_and_drop_not_null_is_not() {
+    let tightened = review(&["ALTER TABLE users ALTER COLUMN legacy SET NOT NULL"], |draft| {
+        draft_column(draft, "legacy").nullable = false;
+    });
+    assert_eq!(
+        tightened.destructive,
+        [DestructiveChange::SetNotNull {
+            column: "legacy".to_owned()
+        }]
+    );
+    assert!(tightened.requires_confirmation(crate::WriteAtomicity::Transactional));
+
+    let mut original = users();
+    if let Some(legacy) = original.columns.iter_mut().find(|column| column.name() == "legacy") {
+        legacy.info.nullable = false;
+    }
+    let mut draft = TableDraft::from_definition(&original);
+    draft_column(&mut draft, "legacy").nullable = true;
+    let plan = DdlPlan::from_sql(["ALTER TABLE users ALTER COLUMN legacy DROP NOT NULL".to_owned()]);
+    let loosened = ChangeReview::review(&diff_table(&original, &draft), &plan);
+    assert!(loosened.destructive.is_empty(), "{:?}", loosened.destructive);
 }
 
 #[test]

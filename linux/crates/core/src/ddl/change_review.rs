@@ -8,7 +8,7 @@ pub struct ChangeReview {
     /// The edits the user made, counted as the action bar counts them.
     pub operations: usize,
     pub statements: Vec<String>,
-    /// The rebuild first, then the drops and type changes.
+    /// The rebuild first, then the drops, type changes and new NOT NULLs.
     pub destructive: Vec<DestructiveChange>,
 }
 
@@ -46,6 +46,15 @@ impl ChangeReview {
                         from,
                         to: alteration.draft.column_type.text().to_owned(),
                     }
+                }),
+        );
+        destructive.extend(
+            changes
+                .altered_columns
+                .iter()
+                .filter(|alteration| alteration.changed.nullability && !alteration.draft.nullable)
+                .map(|alteration| DestructiveChange::SetNotNull {
+                    column: alteration.original.name().to_owned(),
                 }),
         );
         destructive.extend(

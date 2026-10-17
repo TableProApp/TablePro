@@ -118,6 +118,7 @@ mod tests {
             mode: StructureMode::New,
             session: fake.session.clone(),
             tasks: runtime.tasks(),
+            first_load: crate::ui::tab_load::FirstLoad::Now,
         });
         tab.send(ColumnsInput::AddColumn);
         drain_main_context();

@@ -515,7 +515,10 @@ fn truncated_result_reveals_banner_and_complete_result_hides_it() {
     let complete = shown_banner(&harness);
 
     assert!(capped.is_revealed(), "the capped result has no banner");
-    assert_eq!(capped.title(), "Showing the first 3 rows");
+    assert_eq!(
+        capped.title(),
+        "Stopped after the first 3 rows: the statement did not run past them"
+    );
     assert_eq!(capped.button_label().as_deref(), Some("Export All…"));
     assert!(!complete.is_revealed(), "a complete result shows a banner");
 }

@@ -19,5 +19,5 @@ fn an_empty_trust_store_is_not_a_client_certificate_problem() {
 
     let outcome = build_client_config(&TlsConfig::verify_full());
 
-    assert!(matches!(outcome, Err(TlsSetupError::Setup(_))), "{outcome:?}");
+    assert!(matches!(outcome, Err(TlsSetupError::Rustls(_))), "{outcome:?}");
 }

@@ -22,3 +22,32 @@ pub enum IdentityStyle {
     /// SQL Server `IDENTITY(seed, increment)`.
     MssqlIdentity,
 }
+
+impl IdentityStyle {
+    /// Whether a plain INSERT may give the column a value of its own.
+    /// GENERATED ALWAYS needs `OVERRIDING SYSTEM VALUE` and SQL Server
+    /// IDENTITY needs `IDENTITY_INSERT`, so both refuse one.
+    pub fn accepts_explicit_value(self) -> bool {
+        !matches!(self, Self::GeneratedAlways | Self::MssqlIdentity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_identities_that_need_an_override_refuse_a_value() {
+        assert!(!IdentityStyle::GeneratedAlways.accepts_explicit_value());
+        assert!(!IdentityStyle::MssqlIdentity.accepts_explicit_value());
+        for style in [
+            IdentityStyle::None,
+            IdentityStyle::GeneratedByDefault,
+            IdentityStyle::SequenceDefault,
+            IdentityStyle::AutoIncrementKeyword,
+            IdentityStyle::SqliteRowidAlias,
+        ] {
+            assert!(style.accepts_explicit_value(), "{style:?}");
+        }
+    }
+}

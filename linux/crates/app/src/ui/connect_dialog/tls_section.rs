@@ -343,7 +343,8 @@ impl TlsSection {
         let mode = self.mode();
         imp.encryption_row.set_subtitle(&mode_description(mode));
         imp.certificates_row.set_visible(mode != TlsMode::Disable);
-        imp.ca_row.set_visible(caps.ca_file);
+        // Only Verify full checks the certificate, so only it reads a CA.
+        imp.ca_row.set_visible(caps.ca_file && mode == TlsMode::VerifyFull);
         imp.certificate_row.set_visible(caps.client_identity);
         imp.key_row.set_visible(caps.client_identity);
         let route = imp.route.get().unwrap_or(TransportClass::DirectTcp);
@@ -383,7 +384,9 @@ pub fn mode_label(mode: TlsMode) -> String {
 /// What each mode protects against, so the choice is an informed one.
 pub fn mode_description(mode: TlsMode) -> String {
     match mode {
-        TlsMode::Disable => crate::i18n::gettext("Not encrypted. Anyone on the network can read the traffic."),
+        TlsMode::Disable => crate::i18n::gettext(
+            "Not encrypted. Anyone on the network can read or change the traffic, password included.",
+        ),
         TlsMode::Require => crate::i18n::gettext("Encrypted. The server certificate is not checked."),
         TlsMode::VerifyFull => crate::i18n::gettext("Encrypted. The certificate must be valid for the server name."),
     }

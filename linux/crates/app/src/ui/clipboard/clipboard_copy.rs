@@ -170,6 +170,10 @@ fn copy_error_text(error: &CopyError) -> String {
             "Couldn't copy: the column “{column}” holds a value TablePro couldn't read",
             &[("column", column)],
         ),
+        CopyError::Encode(EncodeError::NotXmlText { column }) => gettext_f(
+            "Couldn't copy: the column “{column}” holds a control character",
+            &[("column", column)],
+        ),
         CopyError::Insert(RenderInsertError::Literal(_)) => {
             gettext("This row has a value that can't be written as SQL")
         }

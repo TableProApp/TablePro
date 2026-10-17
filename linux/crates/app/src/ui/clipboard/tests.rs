@@ -91,10 +91,17 @@ fn copy_renderer_csv_matches_render_csv() {
             CopyKind::Csv,
             CsvOptions {
                 header_row: false,
+                sanitize_formulas: false,
                 ..CsvOptions::default()
             },
         ),
-        (CopyKind::CsvWithHeaders, CsvOptions::default()),
+        (
+            CopyKind::CsvWithHeaders,
+            CsvOptions {
+                sanitize_formulas: false,
+                ..CsvOptions::default()
+            },
+        ),
     ];
     for (kind, options) in cases {
         let payload = render(rows_request(&rows, kind)).expect("the copy");
@@ -104,6 +111,17 @@ fn copy_renderer_csv_matches_render_csv() {
         assert_eq!(payload.format, ClipboardFormat::Csv);
         assert_eq!(payload.rows, 2);
     }
+}
+
+#[test]
+fn a_copy_keeps_text_that_starts_like_a_formula_as_it_is() {
+    let rows = vec![vec![Value::Text("-".into()), Value::Text("@alice".into())]];
+
+    let tsv = render(rows_request(&rows, CopyKind::Rows)).expect("the copy");
+    let csv = render(rows_request(&rows, CopyKind::Csv)).expect("the copy");
+
+    assert_eq!(tsv.text, "-\t@alice\n");
+    assert_eq!(csv.text, "-,@alice\n");
 }
 
 #[test]
@@ -196,7 +214,7 @@ fn a_slower_earlier_copy_gives_way_to_a_later_one() {
     finish_on_main(WAIT, fast)
         .expect("the later copy to end")
         .expect("the later copy");
-    assert_eq!(local_text(&clipboard).as_deref(), Some("-5\t'=cmd\n"));
+    assert_eq!(local_text(&clipboard).as_deref(), Some("-5\t=cmd\n"));
     let landed = clipboard.content();
     finish_on_main(WAIT, slow)
         .expect("the earlier copy to end")
@@ -295,7 +313,7 @@ fn copy_as_csv_offers_text_csv_and_plain_text() {
     assert!(formats.contains_type(String::static_type()), "{}", formats.to_str());
     assert_eq!(
         local_text(&clipboard).as_deref(),
-        Some("\"id\",\"name\"\n\"-5\",\"'=cmd\"\n\"7\",\"Ada, \"\"the first\"\"\"\n")
+        Some("id,name\n-5,=cmd\n7,\"Ada, \"\"the first\"\"\"\n")
     );
     assert_eq!(toasts, ["Copied 2 rows"]);
 }
@@ -312,7 +330,7 @@ fn copy_rows_offers_tab_separated_values() {
     );
     assert_eq!(
         local_text(&clipboard).as_deref(),
-        Some("-5\t'=cmd\n7\t\"Ada, \"\"the first\"\"\"\n")
+        Some("-5\t=cmd\n7\t\"Ada, \"\"the first\"\"\"\n")
     );
     assert_eq!(toasts, ["Copied 2 rows"]);
 }

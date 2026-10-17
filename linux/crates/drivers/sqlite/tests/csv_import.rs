@@ -9,7 +9,7 @@ use drivers_sqlite::SqliteDriver;
 use sqlx::Connection as _;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
 use tablepro_core::dml::build_insert;
-use tablepro_core::import::{CsvImportOptions, read_csv, row_to_cells, suggest_mapping};
+use tablepro_core::import::{CsvImportOptions, ImportColumn, read_csv, row_to_cells};
 use tablepro_core::meta::TableRef;
 use tablepro_core::statement::{GuardedStatement, StatementBuilder};
 use tablepro_core::{
@@ -17,6 +17,7 @@ use tablepro_core::{
     ForeignKeyMode, LivenessPolicy, QueryResult, RowLimit, Value, WorkspaceSettings, WriteBatch, WriteKind,
     WriteReport,
 };
+use tablepro_test_support::import_csv;
 use tempfile::TempDir;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -90,23 +91,9 @@ async fn import(
     csv: &[u8],
     options: &CsvImportOptions,
 ) -> Result<Vec<Option<u64>>, String> {
-    let table_ref = TableRef::unqualified(table);
-    let columns = connection
-        .fetch_columns(&table_ref, call())
+    let report = import_csv(connection, &TableRef::unqualified(table), csv, options, call())
         .await
-        .map_err(|error| error.to_string())?;
-    let sheet = read_csv(csv, options, None).map_err(|error| error.to_string())?;
-    let mapping = suggest_mapping(&sheet.headers, &columns);
-    let dialect = connection.dialect();
-
-    let mut steps = Vec::new();
-    for (index, row) in sheet.rows.iter().enumerate() {
-        let cells = row_to_cells(row, &mapping, &columns, options, index + 2).map_err(|error| error.reason)?;
-        let statement =
-            build_insert(dialect.as_ref(), &table_ref, &columns, &cells).map_err(|error| error.to_string())?;
-        steps.push(GuardedStatement::unguarded(statement));
-    }
-    let report = save(connection, WriteKind::RowChanges, table, steps).await?;
+        .map_err(|failure| format!("{failure:?}"))?;
     Ok(report.rows_affected)
 }
 
@@ -129,7 +116,7 @@ async fn a_file_lands_in_the_table_with_its_values_typed() {
     .await
     .expect("the import");
 
-    assert_eq!(affected, vec![Some(1), Some(1)]);
+    assert_eq!(affected, vec![Some(2)], "both rows go in one statement");
     let rows = query(
         connection.as_ref(),
         "SELECT id, name, score, note FROM people ORDER BY id",
@@ -167,6 +154,89 @@ async fn a_column_the_file_does_not_name_keeps_its_default() {
         .await
         .expect("the rows");
     assert_eq!(rows.rows[0][0], Value::Text("new".into()));
+    connection.close().await.expect("the close");
+}
+
+#[tokio::test]
+async fn an_id_from_the_file_is_kept_for_a_rowid_alias() {
+    let (_directory, connection) = open().await.expect("a database file");
+    create(
+        connection.as_ref(),
+        "CREATE TABLE people (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)",
+    )
+    .await
+    .expect("the table");
+
+    import(
+        connection.as_ref(),
+        "people",
+        b"id,name\n100,ada\n",
+        &CsvImportOptions::default(),
+    )
+    .await
+    .expect("the import");
+
+    let rows = query(connection.as_ref(), "SELECT id, name FROM people")
+        .await
+        .expect("the rows");
+    assert_eq!(rows.rows[0][0], Value::Int(100), "the file's id was replaced");
+    connection.close().await.expect("the close");
+}
+
+#[tokio::test]
+async fn an_empty_field_is_kept_as_an_empty_string_over_the_default() {
+    let (_directory, connection) = open().await.expect("a database file");
+    create(
+        connection.as_ref(),
+        "CREATE TABLE accounts (id INTEGER PRIMARY KEY, status TEXT NOT NULL DEFAULT 'active')",
+    )
+    .await
+    .expect("the table");
+
+    import(
+        connection.as_ref(),
+        "accounts",
+        b"id,status\n1,\n",
+        &CsvImportOptions::default(),
+    )
+    .await
+    .expect("the import");
+
+    let rows = query(connection.as_ref(), "SELECT status FROM accounts")
+        .await
+        .expect("the rows");
+    assert_eq!(rows.rows[0][0], Value::Text(String::new()));
+    connection.close().await.expect("the close");
+}
+
+#[tokio::test]
+async fn a_large_file_lands_in_a_few_multi_row_statements() {
+    let (_directory, connection) = open().await.expect("a database file");
+    create(
+        connection.as_ref(),
+        "CREATE TABLE readings (id INTEGER PRIMARY KEY, label TEXT NOT NULL)",
+    )
+    .await
+    .expect("the table");
+    let mut csv = String::from("id,label\n");
+    for id in 1..=2_500 {
+        csv.push_str(&format!("{id},reading {id}\n"));
+    }
+
+    let affected = import(
+        connection.as_ref(),
+        "readings",
+        csv.as_bytes(),
+        &CsvImportOptions::default(),
+    )
+    .await
+    .expect("the import");
+
+    assert_eq!(affected, vec![Some(1_000), Some(1_000), Some(500)]);
+    let rows = query(connection.as_ref(), "SELECT count(*), max(id) FROM readings")
+        .await
+        .expect("the count");
+    assert_eq!(rows.rows[0], vec![Value::Int(2_500), Value::Int(2_500)]);
     connection.close().await.expect("the close");
 }
 
@@ -243,11 +313,16 @@ async fn a_semicolon_file_without_a_header_imports_by_position() {
     assert_eq!(sheet.headers, vec!["Column 1", "Column 2"]);
 
     let table = TableRef::unqualified("pairs");
-    let columns = connection.fetch_columns(&table, call()).await.expect("the columns");
+    let definition = connection
+        .fetch_table_definition(&table, call())
+        .await
+        .expect("the table");
+    let columns: Vec<ImportColumn> = definition.columns.iter().map(ImportColumn::from_definition).collect();
+    let infos: Vec<_> = columns.iter().map(|column| column.info.clone()).collect();
     let mapping = vec![Some(0), Some(1)];
     let cells = row_to_cells(&sheet.rows[0], &mapping, &columns, &options, 1).expect("the cells");
     let dialect = connection.dialect();
-    let statement = build_insert(dialect.as_ref(), &table, &columns, &cells).expect("the insert");
+    let statement = build_insert(dialect.as_ref(), &table, &infos, &cells).expect("the insert");
     save(
         connection.as_ref(),
         WriteKind::RowChanges,

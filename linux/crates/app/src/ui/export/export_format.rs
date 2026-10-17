@@ -7,6 +7,7 @@ use tablepro_core::export::{
     self, CsvEncoder, CsvOptions, HtmlEncoder, JsonArrayEncoder, MarkdownEncoder, RenderError, RowEncoder,
     SqlInsertEncoder, XlsxSheetWriter, XmlEncoder,
 };
+use tablepro_core::meta::TableRef;
 
 /// What an export writes.
 #[derive(Debug, Clone)]
@@ -38,7 +39,12 @@ impl RowFormat {
             Self::Markdown => Box::new(MarkdownEncoder::new(columns)),
             Self::Html { title } => Box::new(HtmlEncoder::new(columns, title.clone())),
             Self::Xml => Box::new(XmlEncoder::new(columns)),
-            Self::Sql(target) => Box::new(SqlInsertEncoder::new(target.dialect.clone(), &target.table, columns)),
+            Self::Sql(target) => Box::new(SqlInsertEncoder::new(
+                target.dialect.clone(),
+                &target.table,
+                columns,
+                &target.generated,
+            )),
         }
     }
 }
@@ -88,6 +94,8 @@ impl DocumentWriter {
 /// from. SQL is offered only with both.
 #[derive(Debug, Clone)]
 pub(crate) struct InsertTarget {
-    pub table: String,
+    pub table: TableRef,
+    /// The columns the server computes, which the statements leave out.
+    pub generated: Arc<[String]>,
     pub dialect: Arc<dyn SqlDialect>,
 }

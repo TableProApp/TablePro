@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{ClientIdentity, ConfigError, ServerNameOverride, TlsCapabilities, TlsMode, TransportClass};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "StoredTlsConfig")]
 pub struct TlsConfig {
     pub mode: TlsMode,
     #[serde(default)]
@@ -40,7 +41,10 @@ impl TlsConfig {
         }
         let encrypted = self.mode != TlsMode::Disable;
         if let Some(ca_file) = &self.ca_file {
-            if !(caps.ca_file && encrypted) {
+            // Require checks no certificate, so a CA file there would be
+            // taken and never read, where libpq and the mysql client
+            // verify against it.
+            if !(caps.ca_file && self.mode == TlsMode::VerifyFull) {
                 return Err(ConfigError::CaFileUnsupported);
             }
             require_absolute(ca_file)?;
@@ -55,6 +59,37 @@ impl TlsConfig {
             validate_server_name(server_name, caps.server_name_override, route)?;
         }
         Ok(())
+    }
+}
+
+/// A `TlsConfig` as a saved or imported connection holds it.
+#[derive(Deserialize)]
+struct StoredTlsConfig {
+    mode: TlsMode,
+    #[serde(default)]
+    ca_file: Option<PathBuf>,
+    #[serde(default)]
+    client_identity: Option<ClientIdentity>,
+    #[serde(default)]
+    server_name: Option<String>,
+}
+
+impl From<StoredTlsConfig> for TlsConfig {
+    /// Earlier builds saved a CA file with Require and then ignored it.
+    /// The file says the server was meant to be checked, so it now is:
+    /// a server the file does not vouch for fails to connect rather than
+    /// connecting unchecked.
+    fn from(stored: StoredTlsConfig) -> Self {
+        let mode = match (stored.mode, &stored.ca_file) {
+            (TlsMode::Require, Some(_)) => TlsMode::VerifyFull,
+            (mode, _) => mode,
+        };
+        Self {
+            mode,
+            ca_file: stored.ca_file,
+            client_identity: stored.client_identity,
+            server_name: stored.server_name,
+        }
     }
 }
 
@@ -290,13 +325,38 @@ mod tests {
                 Err(ConfigError::RelativePath),
             ),
             (
-                "absolute ca file",
+                "ca file with require, which checks no certificate",
                 with_ca_file(TlsMode::Require, "/etc/tls/ca.pem"),
+                MSSQL,
+                TransportClass::SshForward,
+                Err(ConfigError::CaFileUnsupported),
+            ),
+            (
+                "absolute ca file",
+                with_ca_file(TlsMode::VerifyFull, "/etc/tls/ca.pem"),
                 MSSQL,
                 TransportClass::SshForward,
                 Ok(()),
             ),
         ]);
+    }
+
+    #[test]
+    fn a_stored_ca_file_with_require_is_read_as_verify_full() {
+        let stored: TlsConfig =
+            serde_json::from_str(r#"{"mode":"require","ca_file":"/etc/tls/ca.pem","server_name":"db.internal"}"#)
+                .unwrap();
+
+        assert_eq!(
+            stored,
+            TlsConfig {
+                server_name: Some("db.internal".to_owned()),
+                ..with_ca_file(TlsMode::VerifyFull, "/etc/tls/ca.pem")
+            }
+        );
+        assert_eq!(stored.validate(&POSTGRES, TransportClass::DirectTcp), Ok(()));
+        let without_ca: TlsConfig = serde_json::from_str(r#"{"mode":"require"}"#).unwrap();
+        assert_eq!(without_ca.mode, TlsMode::Require);
     }
 
     #[test]

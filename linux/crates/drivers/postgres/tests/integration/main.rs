@@ -8,6 +8,7 @@
 
 mod cancellation;
 mod conformance_engine;
+mod csv_import;
 mod ddl;
 mod decode;
 mod editor_session;
@@ -15,6 +16,7 @@ mod filter;
 mod flight;
 mod liveness;
 mod metadata;
+mod paging;
 mod pgbouncer;
 mod read_only;
 mod slow_route;

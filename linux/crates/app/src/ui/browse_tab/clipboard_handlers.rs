@@ -36,7 +36,13 @@ impl BrowseModel {
     /// write them back as `INSERT` statements.
     fn sql_target(&self) -> crate::ui::export_dialog::SqlTarget {
         crate::ui::export_dialog::SqlTarget {
-            table: self.table.clone(),
+            table: self.table_ref(),
+            generated: self
+                .current_columns
+                .iter()
+                .filter(|column| column.is_generated)
+                .map(|column| column.name.clone())
+                .collect(),
         }
     }
 
