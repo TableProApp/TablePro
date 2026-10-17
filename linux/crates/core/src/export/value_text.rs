@@ -1,4 +1,4 @@
-use chrono::Timelike;
+use chrono::{Datelike, Timelike};
 
 use crate::column::{ColumnKind, ColumnType};
 use crate::value::{SqlDecimal, Value};
@@ -24,19 +24,21 @@ pub(super) fn kind_text(value: &Value, kind: &ColumnKind) -> Option<String> {
             offset_text(time.offset)
         )),
         Value::Timestamp(stamp) => temporal_text(stamp, |stamp| {
+            let (date, era) = calendar_date(stamp.date());
             format!(
-                "{}{}",
-                stamp.format("%Y-%m-%d %H:%M:%S"),
+                "{date} {}{}{era}",
+                stamp.format("%H:%M:%S"),
                 fraction_text(stamp.nanosecond(), kind.fractional_digits())
             )
         }),
         Value::TimestampTz(stamp) => temporal_text(stamp, |stamp| {
             let stamp = stamp.to_datetime();
+            let (date, era) = calendar_date(stamp.date_naive());
             format!(
-                "{}{}{}",
-                stamp.format("%Y-%m-%d %H:%M:%S"),
+                "{date} {}{}{}{era}",
+                stamp.format("%H:%M:%S"),
                 fraction_text(stamp.nanosecond(), kind.fractional_digits()),
-                stamp.format("%:z")
+                offset_text(*stamp.offset())
             )
         }),
         Value::Decimal(decimal) => Some(decimal_text(decimal, kind.decimal_scale())),
@@ -128,15 +130,27 @@ pub fn value_to_text(v: &Value) -> Option<String> {
         Value::Bytes(b) => Some(format!("0x{}", crate::hex::encode_lower(b))),
         Value::Uuid(u) => Some(u.to_string()),
         Value::Json(j) => Some(j.as_str().to_owned()),
-        Value::Date(d) => temporal_text(d, |date| date.format("%Y-%m-%d").to_string()),
+        Value::Date(d) => temporal_text(d, |date| {
+            let (date, era) = calendar_date(*date);
+            format!("{date}{era}")
+        }),
         // The fraction is kept as it came, never rounded to seconds.
         Value::Time(t) => Some(t.format(None)),
         Value::TimeTz(t) => Some(format!("{}{}", t.time.format(None), offset_text(t.offset))),
-        Value::Timestamp(t) => temporal_text(t, |stamp| stamp.format("%Y-%m-%d %H:%M:%S%.f").to_string()),
+        Value::Timestamp(t) => temporal_text(t, |stamp| {
+            let (date, era) = calendar_date(stamp.date());
+            format!("{date} {}{era}", stamp.format("%H:%M:%S%.f"))
+        }),
         // The original offset, not UTC: the row said what zone it was
         // written in and the export says the same.
         Value::TimestampTz(t) => temporal_text(t, |stamp| {
-            stamp.to_datetime().format("%Y-%m-%d %H:%M:%S%.f%:z").to_string()
+            let stamp = stamp.to_datetime();
+            let (date, era) = calendar_date(stamp.date_naive());
+            format!(
+                "{date} {}{}{era}",
+                stamp.format("%H:%M:%S%.f"),
+                offset_text(*stamp.offset())
+            )
         }),
         Value::Interval(i) => Some(i.to_string()),
         Value::Bits(b) => Some(b.to_string()),
@@ -166,11 +180,28 @@ fn temporal_text<T>(value: &crate::value::Temporal<T>, finite: impl Fn(&T) -> St
     }
 }
 
+/// An offset as PostgreSQL prints it, with the seconds a local mean
+/// time offset such as `+00:19:32` carries.
 fn offset_text(offset: chrono::FixedOffset) -> String {
     let total = offset.local_minus_utc();
     let sign = if total < 0 { '-' } else { '+' };
-    let minutes = total.abs() / 60;
-    format!("{sign}{:02}:{:02}", minutes / 60, minutes % 60)
+    let seconds = total.abs();
+    let (hours, minutes, seconds) = (seconds / 3600, seconds / 60 % 60, seconds % 60);
+    match seconds {
+        0 => format!("{sign}{hours:02}:{minutes:02}"),
+        _ => format!("{sign}{hours:02}:{minutes:02}:{seconds:02}"),
+    }
+}
+
+/// The date as PostgreSQL prints it, and the era that goes at the very
+/// end of the value. ISO year 0 is 1 BC, so it is written as such, and
+/// a year past 9999 keeps its digits with no sign.
+fn calendar_date(date: chrono::NaiveDate) -> (String, &'static str) {
+    let (year, era) = match date.year() {
+        year if year <= 0 => (1 - year, " BC"),
+        year => (year, ""),
+    };
+    (format!("{year:04}-{:02}-{:02}", date.month(), date.day()), era)
 }
 
 /// An array as JSON array text, which is the one spelling every engine
@@ -301,6 +332,68 @@ mod tests {
             value_to_text(&Value::Decimal("1.0000000000".parse().expect("a decimal"))),
             Some("1.0000000000".to_owned())
         );
+    }
+
+    #[test]
+    fn a_date_before_year_one_is_written_as_postgresql_writes_it() {
+        assert_eq!(value_to_text(&date(0, 1, 1)).as_deref(), Some("0001-01-01 BC"));
+        assert_eq!(value_to_text(&date(-43, 3, 15)).as_deref(), Some("0044-03-15 BC"));
+        assert_eq!(value_to_text(&date(1, 1, 1)).as_deref(), Some("0001-01-01"));
+        assert_eq!(value_to_text(&date(10_000, 1, 1)).as_deref(), Some("10000-01-01"));
+
+        let column = typed("timestamp(0)", stamp(Some(0), TemporalZone::Naive));
+        let stamp = Value::Timestamp(Temporal::Finite(
+            NaiveDate::from_ymd_opt(0, 1, 1)
+                .expect("a date")
+                .and_hms_opt(10, 0, 0)
+                .expect("a time"),
+        ));
+        assert_eq!(value_text(&stamp, &column).as_deref(), Some("0001-01-01 10:00:00 BC"));
+        assert_eq!(value_to_text(&stamp).as_deref(), Some("0001-01-01 10:00:00 BC"));
+    }
+
+    #[test]
+    fn an_offset_with_seconds_keeps_them() {
+        let offset = chrono::FixedOffset::east_opt(5 * 3600 + 30 * 60 + 15).expect("an offset");
+        let time = crate::value::TimeWithOffset {
+            time: SqlTime::new(false, 12, 0, 0, 0).expect("a time"),
+            offset,
+        };
+        let stamp = Value::TimestampTz(Temporal::Finite(crate::value::OffsetTimestamp::from_datetime(
+            NaiveDate::from_ymd_opt(1890, 1, 1)
+                .expect("a date")
+                .and_hms_opt(12, 0, 0)
+                .expect("a time")
+                .and_local_timezone(offset)
+                .single()
+                .expect("one instant"),
+        )));
+
+        assert_eq!(
+            value_to_text(&Value::TimeTz(time)).as_deref(),
+            Some("12:00:00+05:30:15")
+        );
+        assert_eq!(
+            value_text(&Value::TimeTz(time), &typed("timetz", time_tz())).as_deref(),
+            Some("12:00:00+05:30:15")
+        );
+        assert_eq!(value_to_text(&stamp).as_deref(), Some("1890-01-01 12:00:00+05:30:15"));
+        assert_eq!(
+            value_text(&stamp, &typed("timestamptz", stamp_kind_offset())).as_deref(),
+            Some("1890-01-01 12:00:00+05:30:15")
+        );
+    }
+
+    fn time_tz() -> ColumnKind {
+        ColumnKind::Time {
+            fractional_digits: None,
+            with_offset: true,
+            range: TimeRange::TimeOfDay,
+        }
+    }
+
+    fn stamp_kind_offset() -> ColumnKind {
+        stamp(None, TemporalZone::Offset)
     }
 
     #[test]
