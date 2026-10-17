@@ -46,6 +46,10 @@ impl SqlEditor {
         self.add_controller(local_shortcut_controller(ShortcutOwner::SqlEditorTab));
         crate::ui::a11y::announce_key_shortcuts(&imp.run_button.get(), "editor.run");
         crate::ui::a11y::announce_key_shortcuts(&imp.stop_button.get(), "editor.cancel");
+        crate::ui::a11y::announce_key_shortcuts(
+            imp.source_view.upcast_ref::<gtk4::Widget>(),
+            "paned.cycle-child-focus",
+        );
     }
 }
 

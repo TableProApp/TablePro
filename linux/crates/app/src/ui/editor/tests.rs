@@ -424,6 +424,22 @@ fn the_icon_buttons_have_accessible_names() {
     );
 }
 
+/// Tab indents and Ctrl+Tab switches tabs, so the editor names F6, the
+/// key its pane binds to move on to the results.
+#[gtk4::test]
+fn the_editor_names_its_way_out() {
+    use crate::test_support::shortcut_keys::{class_binding_keys, keystroke};
+    let harness = editor_with(answering(), "SELECT 1");
+    let view = harness.editor.imp().source_view.get();
+    let paned = view.ancestor(gtk4::Paned::static_type()).expect("the editor's pane");
+
+    assert!(class_binding_keys(&paned).contains(&keystroke("F6")));
+    assert!(gtk4::test_accessible_has_property(
+        view.upcast_ref::<gtk4::Widget>(),
+        gtk4::AccessibleProperty::KeyShortcuts
+    ));
+}
+
 #[gtk4::test]
 fn a_run_is_recorded_unless_it_carries_a_credential() {
     let root = tempfile::tempdir().expect("tempdir");

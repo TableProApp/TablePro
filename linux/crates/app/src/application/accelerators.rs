@@ -209,6 +209,9 @@ pub const ACCELERATORS: &[Accelerator] = &[
         &["Escape"],
         Listed(ShortcutSection::SqlEditor),
     ),
+    // GtkPaned's own binding, a signal rather than an action. Tab indents
+    // in the editor and Ctrl+Tab switches tabs, so this is its way out.
+    stock("paned.cycle-child-focus", &["F6"], Listed(ShortcutSection::SqlEditor)),
     local(
         SqlEditor,
         CAPTURE,
