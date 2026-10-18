@@ -139,19 +139,9 @@ build_plugins() {
     local products="$DERIVED/Build/Products/Release" targets="$WORK/targets" kit="$WORK/kit" target plugin extra=()
     rm -rf "$OUT/plugins" "$OUT/plugins-dSYMs"
     [ "$SIGNED" = false ] || extra=(OTHER_CODE_SIGN_FLAGS=--timestamp)
+    python3 scripts/release/registry.py targets > "$targets"
 
     xcodebuild_project build-plugins build -scheme RegistryPlugins ${extra[@]+"${extra[@]}"}
-
-    # The publish set: the registry entries the app does not bundle.
-    python3 - .github/plugin-registry.json > "$targets" << 'PYTHON'
-import json
-import sys
-
-with open(sys.argv[1], encoding="utf-8") as handle:
-    plugins = json.load(handle)["plugins"]
-print("\n".join(sorted(entry["target"] for entry in plugins.values() if not entry.get("bundled"))))
-PYTHON
-    [ -s "$targets" ] || die ".github/plugin-registry.json publishes no plugin"
 
     mkdir -p "$OUT/plugins" "$OUT/plugins-dSYMs"
     while IFS= read -r target; do

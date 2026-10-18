@@ -3,6 +3,7 @@ set -euo pipefail
 
 # Usage: package.sh app|plugins <version> [--unsigned]
 # Turns what scripts/release/build.sh wrote to build/release into the release assets in dist/.
+# BUILD is the build number build.sh got; unset, it is 1, the CURRENT_PROJECT_VERSION project.yml sets.
 
 usage() {
     echo "Usage: package.sh app|plugins <version> [--unsigned]" >&2
@@ -34,6 +35,8 @@ for arg in "$@"; do
 done
 case "$KIND" in app | plugins) ;; *) usage ;; esac
 case "$VERSION" in '' | *[!0-9A-Za-z.-]*) usage ;; esac
+BUILD="${BUILD:-1}"
+case "$BUILD" in '' | *[!0-9]*) echo "package.sh: BUILD must be an integer, got '$BUILD'" >&2; exit 2 ;; esac
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
@@ -80,7 +83,7 @@ package_app() {
 }
 
 package_plugins() {
-    local plugin target symbols="$DIST/TablePro-$VERSION-Plugins-dSYMs.zip" count=0
+    local plugin target symbols="$DIST/TablePro-$VERSION-Plugins-dSYMs.zip" count=0 kit
     [ -d "$OUT/plugins" ] || die "no $OUT/plugins; run scripts/release/build.sh plugins first"
     [ -d "$OUT/plugins-dSYMs" ] || die "no $OUT/plugins-dSYMs; run scripts/release/build.sh plugins first"
     mkdir -p "$DIST"
@@ -93,6 +96,13 @@ package_plugins() {
         count=$((count + 1))
     done
     [ "$count" -gt 0 ] || die "no plugins in $OUT/plugins"
+
+    # The feed job describes these zips again after download; this fails the build that made them instead.
+    kit="$(sed -nE 's/^TABLEPRO_PLUGINKIT_VERSION[[:space:]]*=[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' \
+        Configs/PluginKit.xcconfig)"
+    [ -n "$kit" ] || die "Configs/PluginKit.xcconfig sets no TABLEPRO_PLUGINKIT_VERSION"
+    python3 scripts/release/registry.py describe --zips "$DIST" --version "$VERSION" --build "$BUILD" \
+        --kit "$kit" --metadata .github/plugin-registry.json --out "$WORK/entries.json"
 
     ditto -c -k --keepParent "$OUT/plugins-dSYMs" "$symbols"
     echo "Packaged $count plugins as $DIST/<Target>-$VERSION.zip"

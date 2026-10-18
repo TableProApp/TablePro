@@ -119,6 +119,21 @@ class DetectChangedPathsTests(unittest.TestCase):
         self.assertEqual(self.verdict_after("macos", ".github/workflows/release-build.yml"), "false")
         self.assertEqual(self.verdict_after("macos", "scripts/release/build.sh"), "false")
 
+    def test_macos_runs_on_the_notes_script_its_build_phase_reads(self):
+        self.assertEqual(self.verdict_after("macos", "scripts/release/notes.py"), "true")
+        self.assertEqual(self.verdict_after("macos", "scripts/release/feed.py"), "false")
+
+    def test_changelog_files_run_no_suite(self):
+        for suite in ["macos", "plugins", "oracle", "hana", "release"]:
+            for path in ["CHANGELOG.md", "changelog.d/3500.added.md", "towncrier.toml", "appcast.xml"]:
+                with self.subTest(suite=suite, path=path):
+                    self.assertEqual(self.verdict_after(suite, path), "false")
+
+    def test_a_change_beside_the_changelog_still_runs(self):
+        self.git("checkout", "-q", "-B", "case", self.seed)
+        self.commit(["CHANGELOG.md", "TablePro/App.swift"])
+        self.assertEqual(self.detect("macos", self.seed), (0, "true"))
+
     def test_new_branch_at_main_skips(self):
         self.git("update-ref", "refs/remotes/origin/main", self.seed)
         self.assertEqual(self.detect("release", ZERO), (0, "false"))

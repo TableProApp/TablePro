@@ -24,7 +24,7 @@ case "$SUITE" in
             'TablePro\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/Package\.resolved$'
             'scripts/(generate-project|download-libs|create-openssl-dylibs|build-dameng|build-hana)\.sh$'
             'scripts/lib/' 'scripts/ci/(detect-changed-paths|summarize-xcresult|verify-plugin-loads)\.sh$'
-            '\.github/actions/setup-xcode(gen)?/' '\.github/workflows/macos-tests\.yml$') ;;
+            'scripts/release/notes\.py$' '\.github/actions/setup-xcode(gen)?/' '\.github/workflows/macos-tests\.yml$') ;;
     plugins)
         # Registry plugins link the TableProCore and TableProOracle products.
         PATTERNS=('Plugins/' 'Packages/TableProCore/' 'Packages/TableProOracle/' 'Native/' 'Libs/'
@@ -75,26 +75,17 @@ if [ -z "$BASE" ]; then
     exit 0
 fi
 
-# A release commit changes only these, so it reuses the verdict of the code it ships.
-RELEASE_ONLY='CHANGELOG\.md|appcast\.xml|TablePro/Resources/WhatsNew\.md|\.github/release-flags\.json'
-
-# Version.xcconfig is the TablePro target's config file, so it counts as release-only only while
-# its diff touches nothing but the two version lines.
-VERSION_DIFF="$(git diff -U0 "$BASE" HEAD -- Configs/Version.xcconfig)"
-OTHER_EDITS="$(awk '/^@@/ { hunk = 1; next }
-    hunk && /^[+-]/ && !/^[+-](MARKETING_VERSION|CURRENT_PROJECT_VERSION) = [0-9.]+$/' <<< "$VERSION_DIFF")"
-[ -n "$OTHER_EDITS" ] || RELEASE_ONLY+='|Configs/Version\.xcconfig'
-
-IGNORED="^($RELEASE_ONLY)\$"
-[ -z "$SKIP" ] || IGNORED+="|^($SKIP)"
-
 # Raw NUL-separated paths: core.quotePath would quote a non-ASCII path and defeat the ^ anchor.
 # Files rather than $(...), which drops NUL bytes and would hide grep's exit status.
 CHANGED="$(mktemp)"
 RELEVANT="$(mktemp)"
 trap 'rm -f "$CHANGED" "$RELEVANT"' EXIT
 git -c core.quotePath=false diff --no-renames --name-only -z "$BASE" HEAD > "$CHANGED"
-LC_ALL=C grep -zvE "$IGNORED" "$CHANGED" > "$RELEVANT" || [ $? -eq 1 ]
+if [ -n "$SKIP" ]; then
+    LC_ALL=C grep -zvE "^($SKIP)" "$CHANGED" > "$RELEVANT" || [ $? -eq 1 ]
+else
+    cp "$CHANGED" "$RELEVANT"
+fi
 
 JOINED="$(IFS='|'; echo "${PATTERNS[*]}")"
 status=0

@@ -1,4 +1,0 @@
-{
-  "$comment": "Per-release flags read by .github/workflows/build.yml. criticalUpdate: when to set it is the Critical update flag section of .claude/skills/release/SKILL.md; what it does is the Staged rollout and critical updates section of RELEASING.md.",
-  "criticalUpdate": true
-}

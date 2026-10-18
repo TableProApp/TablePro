@@ -1,5 +1,5 @@
 name: Apple signing
-description: Imports the Developer ID certificate, stores notary credentials, and installs the provisioning profile.
+description: Imports the Developer ID certificate, stores the notary credentials as the TablePro profile, and installs the provisioning profile.
 
 inputs:
   certificate-p12:
@@ -8,19 +8,19 @@ inputs:
   certificate-password:
     description: Password for that .p12.
     required: true
-  apple-id:
-    description: Apple ID the notary submissions are made under.
-    required: true
-  team-id:
-    description: Apple Developer team identifier.
-    required: true
-  notary-password:
-    description: App-specific password for notarytool.
-    required: true
   provisioning-profile:
     description: Base64 of the provisioning profile. Omit to skip installing one.
     required: false
     default: ""
+  asc-key-id:
+    description: Key ID of the App Store Connect API key notarytool authenticates with.
+    required: true
+  asc-issuer-id:
+    description: Issuer ID of that key.
+    required: true
+  asc-key-p8:
+    description: Contents of that key's .p8 file.
+    required: true
 
 runs:
   using: composite
@@ -45,18 +45,31 @@ runs:
         security set-key-partition-list -S apple-tool:,apple: -k "" "$KEYCHAIN_PATH"
         security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
 
-    - name: Configure notarization
+        certificate="$RUNNER_TEMP/certificate.pem"
+        security find-certificate -c "Developer ID Application" -p "$KEYCHAIN_PATH" > "$certificate"
+        expiry="$(openssl x509 -noout -enddate -in "$certificate" | sed 's/^notAfter=//')"
+        if ! openssl x509 -noout -checkend $((60 * 24 * 3600)) -in "$certificate" > /dev/null; then
+          echo "::warning::The Developer ID Application certificate expires on $expiry"
+        fi
+        rm -f "$certificate"
+        echo "Developer ID Application certificate valid until $expiry"
+
+    - name: Store the notary credentials
       shell: bash
       env:
-        APPLE_ID: ${{ inputs.apple-id }}
-        APPLE_TEAM_ID: ${{ inputs.team-id }}
-        NOTARY_PASSWORD: ${{ inputs.notary-password }}
+        ASC_KEY_ID: ${{ inputs.asc-key-id }}
+        ASC_ISSUER_ID: ${{ inputs.asc-issuer-id }}
+        ASC_KEY_P8: ${{ inputs.asc-key-p8 }}
+      # notarytool copies the key into the keychain item, so the file can go at once.
       run: |
         set -euo pipefail
-        xcrun notarytool store-credentials "TablePro" \
-          --apple-id "$APPLE_ID" \
-          --team-id "$APPLE_TEAM_ID" \
-          --password "$NOTARY_PASSWORD"
+        key="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+        (umask 077 && printf '%s\n' "$ASC_KEY_P8" > "$key")
+        status=0
+        xcrun notarytool store-credentials "TablePro" --key "$key" --key-id "$ASC_KEY_ID" \
+          --issuer "$ASC_ISSUER_ID" || status=$?
+        rm -f "$key"
+        exit "$status"
 
     - name: Install provisioning profile
       if: inputs.provisioning-profile != ''
@@ -66,5 +79,17 @@ runs:
       run: |
         set -euo pipefail
         profiles="$HOME/Library/MobileDevice/Provisioning Profiles"
+        decoded="$RUNNER_TEMP/profile.plist"
         mkdir -p "$profiles"
-        echo "$PROVISIONING_PROFILE" | base64 --decode > "$profiles/tablepro.provisionprofile"
+        echo "$PROVISIONING_PROFILE" | base64 --decode > "$RUNNER_TEMP/tablepro.provisionprofile"
+        security cms -D -i "$RUNNER_TEMP/tablepro.provisionprofile" > "$decoded"
+        name="$(plutil -extract Name raw -o - "$decoded")"
+        uuid="$(plutil -extract UUID raw -o - "$decoded")"
+        expiry="$(plutil -extract ExpirationDate raw -o - "$decoded")"
+        mv "$RUNNER_TEMP/tablepro.provisionprofile" "$profiles/$uuid.provisionprofile"
+        rm -f "$decoded"
+        # Both are ISO 8601 in UTC, so they compare as strings.
+        if [[ "$expiry" < "$(date -u -v+60d +%Y-%m-%dT%H:%M:%SZ)" ]]; then
+          echo "::warning::The provisioning profile '$name' expires on $expiry"
+        fi
+        echo "Installed the provisioning profile '$name' ($uuid), valid until $expiry"
