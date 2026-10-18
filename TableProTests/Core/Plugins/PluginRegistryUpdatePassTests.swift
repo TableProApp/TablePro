@@ -130,19 +130,13 @@ struct PluginRegistryUpdatePassTests {
     }
 
     private func makeFixture(
-        installer: any RegistryPluginInstalling = PluginInstaller.shared,
-        stagedUpdateVerifier: @escaping (Bundle) throws -> Void = { try PluginCodeSignatureVerifier.verify(bundle: $0) }
+        installer: any RegistryPluginInstalling = PluginInstaller.shared
     ) throws -> Fixture {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("PluginRegistryUpdatePassTests-\(UUID().uuidString)", isDirectory: true)
         let pluginsDir = root.appendingPathComponent("Plugins", isDirectory: true)
         try FileManager.default.createDirectory(at: pluginsDir, withIntermediateDirectories: true)
-        let manager = PluginManager(
-            builtInPluginsURL: nil,
-            userPluginsDir: pluginsDir,
-            registryInstaller: installer,
-            stagedUpdateVerifier: stagedUpdateVerifier
-        )
+        let manager = PluginManager(builtInPluginsURL: nil, userPluginsDir: pluginsDir, registryInstaller: installer)
         return Fixture(manager: manager, pluginsDir: pluginsDir, root: root)
     }
 
@@ -381,12 +375,13 @@ struct PluginRegistryUpdatePassTests {
         #expect(targets == [RegistryUpdateTarget(pluginId: "com.example.outdated", build: 0, rejectedURL: outdated.url)])
     }
 
-    @Test("A target uninstalled, removed or staged while the pass waits is skipped")
+    @Test("A target uninstalled, removed, staged or replaced by a file while the pass waits is skipped")
     func targetsAreRevalidatedBeforeApplying() throws {
         let fixture = try makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let manager = fixture.manager
         let entry = makeEntry(id: "com.example.driver", in: fixture.pluginsDir, build: 10)
+        manager.saveRegistryMetadata(pluginId: entry.id, pluginURL: entry.url)
         let rejected = makeRejected(bundleId: "com.example.outdated")
         manager.plugins = [entry]
         manager.rejectedPlugins = [rejected]
@@ -397,8 +392,15 @@ struct PluginRegistryUpdatePassTests {
 
         manager.stagedPluginIds = [entry.id]
         #expect(!manager.isRegistryUpdateTarget(loadedTarget))
-
         manager.stagedPluginIds = []
+
+        manager.plugins = [makeEntry(id: entry.id, in: fixture.pluginsDir, build: 30)]
+        #expect(!manager.isRegistryUpdateTarget(loadedTarget))
+
+        manager.plugins = [entry]
+        manager.removeRegistryMetadata(for: entry.url)
+        #expect(!manager.isRegistryUpdateTarget(loadedTarget))
+
         manager.plugins = []
         manager.removeFromRejected(url: rejected.url)
         #expect(!manager.isRegistryUpdateTarget(loadedTarget))
@@ -595,7 +597,7 @@ struct PluginRegistryUpdatePassTests {
 
     @Test("Launch applies a staged bundle before discovery and removes the staging copy")
     func launchAppliesStagedBundle() async throws {
-        let fixture = try makeFixture(stagedUpdateVerifier: { _ in })
+        let fixture = try makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let bundleId = "com.example.updatepass.\(UUID().uuidString)"
         let provides: [String: Any] = ["TableProProvidesDatabaseTypeIds": ["UpdatePassDB-\(UUID().uuidString)"]]
@@ -621,7 +623,7 @@ struct PluginRegistryUpdatePassTests {
         try writeBundle(at: installedURL, bundleId: "com.example.driver", build: 1)
         try stageUpdate(of: "com.example.other", stagedAs: "com.example.driver", build: 2, in: fixture)
 
-        PluginManager.applyStagedUpdates(in: fixture.pluginsDir, verifySignature: { _ in })
+        PluginManager.applyStagedUpdates(in: fixture.pluginsDir)
 
         #expect(PluginManager.bundleBuild(at: installedURL) == 1)
         let stagedDir = PluginInstaller.stagedUpdateDirectory(for: "com.example.driver", in: fixture.pluginsDir)
@@ -641,26 +643,9 @@ struct PluginRegistryUpdatePassTests {
             in: fixture
         )
 
-        PluginManager.applyStagedUpdates(in: fixture.pluginsDir, verifySignature: { _ in })
+        PluginManager.applyStagedUpdates(in: fixture.pluginsDir)
 
         #expect(PluginManager.bundleBuild(at: installedURL) == 1)
-    }
-
-    @Test("A staged bundle that fails its signature check is dropped and the installed copy stays")
-    func unsignedStagedBundleKeepsInstalledCopy() throws {
-        let fixture = try makeFixture()
-        defer { try? FileManager.default.removeItem(at: fixture.root) }
-        let installedURL = fixture.pluginsDir.appendingPathComponent("Driver.tableplugin", isDirectory: true)
-        try writeBundle(at: installedURL, bundleId: "com.example.driver", build: 1)
-        try stageUpdate(of: "com.example.driver", build: 2, in: fixture)
-
-        PluginManager.applyStagedUpdates(in: fixture.pluginsDir) { _ in
-            throw PluginError.signatureInvalid(detail: "altered after staging")
-        }
-
-        #expect(PluginManager.bundleBuild(at: installedURL) == 1)
-        let stagedDir = PluginInstaller.stagedUpdateDirectory(for: "com.example.driver", in: fixture.pluginsDir)
-        #expect(!FileManager.default.fileExists(atPath: stagedDir.path))
     }
 
     @Test("Uninstalling a plugin drops its staged update")
