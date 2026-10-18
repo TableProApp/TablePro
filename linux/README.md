@@ -261,7 +261,7 @@ says where the realm, the KDC and the tickets come from there.
 | Testing conventions, suites and CI jobs | [docs/testing.md](docs/testing.md) |
 | Saved passwords, SSH, Kerberos, logs and crash reports, for users | [docs/troubleshooting.md](docs/troubleshooting.md) |
 | Release setup, releases and packaging fixes | [docs/releasing.md](docs/releasing.md) |
-| Every guide, driver page and dated audit | [docs/README.md](docs/README.md) |
+| Every guide and driver page | [docs/README.md](docs/README.md) |
 | Architecture decision records | [docs/decisions/](docs/decisions/) |
 
 ## License

@@ -1,6 +1,6 @@
 # Regression tests
 
-The 2026-09-13 audit rated seven findings critical. Each one has tests that fail if it comes back, and every such test carries the finding in its name: a guard for F-001 starts with `f001_`. The audit itself is not in the tree; the [remediation plan](plan-2026-09-14-audit-remediation.md#finding-to-task-index) lists the tasks that fixed each finding.
+The 2026-09-13 audit rated seven findings critical. Each one has tests that fail if it comes back, and every such test carries the finding in its name: a guard for F-001 starts with `f001_`. The audit itself is not in the tree; the table below is the record of each finding.
 
 ```bash
 finding=f002_

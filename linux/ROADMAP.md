@@ -174,7 +174,7 @@ Not committed: server monitoring (sessions, locks, slow queries), maintenance co
 
 ## Release criteria
 
-From the [production-readiness audit](docs/production-audit.md#what-production-ready-means-here), for GNOME 50. A user on Ubuntu 26.04 or Fedora 44, with where each stands on 2026-10-18:
+What has to hold before the first release, for a user on GNOME 50 with Ubuntu 26.04 or Fedora 44, and where each stands on 2026-10-18:
 
 | # | The user | Holds today | Still needed |
 |---|---|---|---|

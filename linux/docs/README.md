@@ -29,13 +29,3 @@ The reference for working on the Linux app. Start with [ARCHITECTURE.md](../ARCH
 ## Decisions
 
 The architecture decision records, with a summary of each, are indexed in [decisions/README.md](decisions/README.md).
-
-## Dated audits and plans
-
-Snapshots, kept as they were written. The code has moved on since each date.
-
-| Date | Document |
-|---|---|
-| 2026-04-26 | [production-audit.md](production-audit.md): the production-readiness audit the roadmap's release criteria come from |
-| 2026-09-14 | [plan-2026-09-14-audit-remediation.md](plan-2026-09-14-audit-remediation.md): the plan that fixed the 2026-09-13 audit's findings, with its [details](plan-2026-09-14-audit-remediation-details.md) |
-| 2026-09-14 | [dependency-review-2026-09-14.md](dependency-review-2026-09-14.md): the dependency review whose amendments override that plan |

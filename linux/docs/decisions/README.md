@@ -61,7 +61,7 @@ ADRs are short on purpose. If yours is more than a page, you are probably arguin
 | [0017](0017-distribution-channels.md) | Distribution channels | Superseded by 0018 | Flathub, a .deb for Ubuntu 26.04 on GitHub Releases built with rustup, and an .rpm for Fedora 44 on COPR, all from `meson install` and one vendor tarball; no AppImage. |
 | [0018](0018-ppa-copr-and-flathub-later.md) | A PPA and COPR first, Flathub later | Accepted | A Launchpad PPA built with `rustc-1.97` and a COPR project built on each release are the primary channels; Flathub follows as a submission a maintainer writes; Rust 1.97 is the MSRV. |
 
-0011 is not used. The 2026-09-14 remediation plan reserved it for the DDL decision, which was recorded as 0010, and docs cite ADRs by number, so the later ones keep theirs.
+0011 is not used. It was reserved for the DDL decision, which was recorded as 0010, and docs cite ADRs by number, so the later ones keep theirs.
 
 ## Adding an ADR
 
