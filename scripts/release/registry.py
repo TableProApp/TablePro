@@ -8,19 +8,22 @@ import re
 import sys
 import zipfile
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set
+from typing import Callable, Dict, List, Optional
 
 import version
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 METADATA = ROOT / ".github/plugin-registry.json"
-PROJECT = ROOT / "project.yml"
+PLUGINKIT_CONFIG = "Configs/PluginKit.xcconfig"
 SCHEMA_VERSION = 3
 CHANNELS = ("stable", "beta")
 RELEASES_PER_KEY = 2
 PROVIDES = ("TableProProvidesDatabaseTypeIds", "TableProProvidesExportFormatIds", "TableProProvidesImportFormatIds")
+LISTED = (
+    ("TableProProvidesDatabaseTypeIds", "databaseTypeIds"),
+    ("TableProProvidesExportFormatIds", "exportFormatIds"),
+)
 SYSTEM_VERSION = re.compile(r"[0-9]+(\.[0-9]+){0,2}")
-SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 class RegistryError(Exception):
@@ -32,29 +35,29 @@ def load_metadata(path: Path) -> dict:
         metadata = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
         raise RegistryError(f"{path}: {error}") from error
-    shape = "{retainFromPluginKit, plugins: {<Target>: {name, iconName}}}"
+    shape = "{retainFromPluginKit, plugins: {<Target>: {name}}}"
     plugins = metadata.get("plugins") if isinstance(metadata, dict) else None
     if not isinstance(plugins, dict) or not _is_int(metadata.get("retainFromPluginKit")):
         raise RegistryError(f"{path} is not in the {shape} shape")
     for target, entry in plugins.items():
-        if not isinstance(entry, dict) or not all(isinstance(entry.get(key), str) for key in ("name", "iconName")):
-            raise RegistryError(f"{path}: {target} needs a name and an iconName, as in {shape}")
+        if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
+            raise RegistryError(f"{path}: {target} needs a name, as in {shape}")
     return metadata
 
 
-def bundled_targets(project: str) -> Set[str]:
-    block = re.search(r"^aggregateTargets:\n(?:^(?: .*)?\n)*?^  BundledPlugins:\n^    targets:\n((?:^      - .*\n)+)",
-                      project, re.MULTILINE)
-    if block is None:
-        raise RegistryError("project.yml has no BundledPlugins aggregate with a targets list")
-    return {line.strip()[2:].strip() for line in block.group(1).splitlines()}
+def pluginkit_version(root: Path) -> int:
+    try:
+        text = (root / PLUGINKIT_CONFIG).read_text(encoding="utf-8")
+    except OSError as error:
+        raise RegistryError(f"{PLUGINKIT_CONFIG}: {error}") from error
+    found = re.search(r"^TABLEPRO_PLUGINKIT_VERSION\s*=\s*([0-9]+)\s*$", text, re.MULTILINE)
+    if found is None:
+        raise RegistryError(f"{PLUGINKIT_CONFIG} sets no TABLEPRO_PLUGINKIT_VERSION")
+    return int(found.group(1))
 
 
-def publish_set(metadata: dict, bundled: Set[str]) -> List[str]:
+def publish_set(metadata: dict) -> List[str]:
     targets = sorted(metadata["plugins"])
-    inside = [target for target in targets if target in bundled]
-    if inside:
-        raise RegistryError(f"the app bundles {', '.join(inside)}, so the registry must not publish them")
     if not targets:
         raise RegistryError("the registry metadata publishes no plugin")
     return targets
@@ -99,9 +102,12 @@ def describe_one(archive: Path, target: str, entry: dict, release: str, build: i
     system = info.get("LSMinimumSystemVersion")
     if not isinstance(system, str) or not SYSTEM_VERSION.fullmatch(system):
         problems.append(f"LSMinimumSystemVersion is {system!r}")
-    type_ids = info.get(PROVIDES[0], [])
-    if not isinstance(type_ids, list) or not all(isinstance(type_id, str) for type_id in type_ids):
-        problems.append(f"{PROVIDES[0]} is not a list of strings")
+    listed = {}
+    for key, field in LISTED:
+        ids = info.get(key, [])
+        if not isinstance(ids, list) or not all(isinstance(each, str) for each in ids):
+            problems.append(f"{key} is not a list of strings")
+        listed[field] = ids
     # The app finds the plugin that serves a database type or a file format through these keys.
     if not any(info.get(key) for key in PROVIDES):
         problems.append(f"it declares none of {', '.join(PROVIDES)}")
@@ -110,8 +116,7 @@ def describe_one(archive: Path, target: str, entry: dict, release: str, build: i
     return {
         "id": identifier,
         "name": entry["name"],
-        "iconName": entry["iconName"],
-        "databaseTypeIds": type_ids,
+        **listed,
         "version": release,
         "build": build,
         "pluginKit": kit,
@@ -121,9 +126,9 @@ def describe_one(archive: Path, target: str, entry: dict, release: str, build: i
     }
 
 
-def describe(zips: Path, release: str, build: int, kit: int, metadata: dict, bundled: Set[str]) -> List[dict]:
+def describe(zips: Path, release: str, build: int, kit: int, metadata: dict) -> List[dict]:
     entries = []
-    for target in publish_set(metadata, bundled):
+    for target in publish_set(metadata):
         archive = zips / f"{target}-{release}.zip"
         if not archive.is_file():
             raise RegistryError(f"{archive} does not exist")
@@ -199,28 +204,8 @@ def _release(entry: dict, channel: str, url_base: str) -> dict:
     }
 
 
-def _check_entry(entry: dict, channel: str) -> None:
-    missing = [key for key in ("id", "name", "iconName", "databaseTypeIds", "version", "build", "pluginKit",
-                               "minimumSystemVersion", "file", "sha256") if key not in entry]
-    if missing:
-        raise RegistryError(f"an entry has no {', '.join(missing)}")
-    if not SHA256.fullmatch(str(entry["sha256"])):
-        raise RegistryError(f"{entry['id']}: sha256 {entry['sha256']!r} is not 64 lowercase hex digits")
-    parsed = version.parse_version(entry["version"])
-    if parsed.build != entry["build"]:
-        raise RegistryError(f"{entry['id']}: build {entry['build']} is not {parsed.build}, the build of {parsed}")
-    if parsed.channel != channel:
-        raise RegistryError(f"{entry['id']}: {parsed} belongs to the {parsed.channel} channel, not {channel}")
-
-
 def add(path: Path, entries: List[dict], channel: str, url_base: str, retain_from: int,
         log: Callable[[str], None] = print) -> bool:
-    if channel not in CHANNELS:
-        raise RegistryError(f"channel {channel!r} is not one of {', '.join(CHANNELS)}")
-    if not url_base.startswith("https://"):
-        raise RegistryError(f"the URL base {url_base!r} is not https")
-    for entry in entries:
-        _check_entry(entry, channel)
     loaded = load_manifest(path)
     before = json.dumps(loaded, sort_keys=True) if loaded is not None else None
     manifest = loaded if loaded is not None else empty_manifest(retain_from)
@@ -248,7 +233,7 @@ def add(path: Path, entries: List[dict], channel: str, url_base: str, retain_fro
         if not any(kept is release for kept in plugin["releases"]):
             log(f"{entry['id']} {release['version']}: pruned on arrival by retention, not added")
         elif plugin["releases"][0] is release:
-            plugin.update({key: entry[key] for key in ("name", "iconName", "databaseTypeIds")})
+            plugin.update({key: entry[key] for key in ("name", "databaseTypeIds", "exportFormatIds")})
 
     manifest = {
         "schemaVersion": SCHEMA_VERSION,
@@ -262,7 +247,7 @@ def add(path: Path, entries: List[dict], channel: str, url_base: str, retain_fro
 
 
 def _ordered(plugin: dict) -> dict:
-    keys = ("id", "name", "iconName", "databaseTypeIds")
+    keys = ("id", "name", "databaseTypeIds", "exportFormatIds")
     return {**{key: plugin[key] for key in keys if key in plugin}, "releases": plugin["releases"]}
 
 
@@ -290,43 +275,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     command = commands.add_parser("targets", help="print the targets the registry publishes")
     command.add_argument("--metadata", type=Path, default=METADATA)
-    command.add_argument("--project", type=Path, default=PROJECT)
-    command = commands.add_parser("describe", help="read the built plugin zips into manifest entries")
+    command = commands.add_parser("describe", help="check the built plugin zips as the manifest will read them")
     command.add_argument("--zips", type=Path, required=True)
     command.add_argument("--version", required=True)
     command.add_argument("--build", type=int, required=True)
-    command.add_argument("--kit", type=int, required=True)
-    command.add_argument("--metadata", type=Path, required=True)
-    command.add_argument("--project", type=Path, default=PROJECT)
-    command.add_argument("--out", type=Path, required=True)
-    command = commands.add_parser("add", help="add described releases to the manifest")
-    command.add_argument("--manifest", type=Path, required=True)
-    command.add_argument("--entries", type=Path, required=True)
-    command.add_argument("--channel", choices=CHANNELS, required=True)
-    command.add_argument("--url-base", required=True)
-    command.add_argument("--retain-from", type=int, required=True)
-    command = commands.add_parser("withdraw", help="remove one version's releases from the manifest")
-    command.add_argument("--manifest", type=Path, required=True)
-    command.add_argument("--version", required=True)
+    command.add_argument("--kit", type=int, help=f"default: TABLEPRO_PLUGINKIT_VERSION in {PLUGINKIT_CONFIG}")
+    command.add_argument("--metadata", type=Path, default=METADATA)
     args = parser.parse_args(argv)
 
     try:
         if args.command == "targets":
-            bundled = bundled_targets(args.project.read_text(encoding="utf-8"))
-            print("\n".join(publish_set(load_metadata(args.metadata), bundled)))
-        elif args.command == "describe":
-            bundled = bundled_targets(args.project.read_text(encoding="utf-8"))
-            entries = describe(args.zips, args.version, args.build, args.kit, load_metadata(args.metadata), bundled)
-            args.out.write_text(json.dumps(entries, indent=2) + "\n", encoding="utf-8")
-            print(f"described {len(entries)} plugins in {args.out}")
-        elif args.command == "add":
-            entries = json.loads(args.entries.read_text(encoding="utf-8"))
-            if not isinstance(entries, list):
-                raise RegistryError(f"{args.entries} is not a list of entries")
-            changed = add(args.manifest, entries, args.channel, args.url_base, args.retain_from)
-            print(f"{args.manifest} {'updated' if changed else 'unchanged'}")
-        elif args.command == "withdraw":
-            withdraw(args.manifest, args.version)
+            print("\n".join(publish_set(load_metadata(args.metadata))))
+        else:
+            kit = args.kit if args.kit is not None else pluginkit_version(ROOT)
+            entries = describe(args.zips, args.version, args.build, kit, load_metadata(args.metadata))
+            print(f"described {len(entries)} plugins")
     except (RegistryError, ValueError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

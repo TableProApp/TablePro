@@ -9,7 +9,7 @@ This runbook covers the macOS app, its registry plugins and the static libraries
 - Sparkle never downgrades: with the toggle off, a beta install keeps its beta until a stable passes it. So a beta never writes storage the previous stable cannot read (`.claude/rules/data-sync-storage.md`).
 - A stable rolls out in phases of 21600 s. A beta is not phased, and on GitHub it is a prerelease. Latest goes only to the highest stable, so a patch on an older line publishes with `--latest=false`.
 - Critical means a security fix or data loss, nothing else. It is ` [CRITICAL]` on the version's `CHANGELOG.md` heading, never on a beta. Every later stable item carries the highest critical build forward (`sparkle:criticalUpdate sparkle:version`).
-- CI writes the orphan `feeds` branch, which holds `appcast.xml` and the v3 plugin manifest (`https://updates.tablepro.app/plugins/v3.json`), and `pages.yml` deploys it to `updates.tablepro.app`. The appcast is EdDSA-signed, and the app requires that (`SURequireSignedFeed`, `SUVerifyUpdateBeforeExtraction`).
+- CI writes the orphan `gh-pages` branch, which holds `appcast.xml` and the v3 plugin manifest (`https://updates.tablepro.app/plugins/v3.json`), and `pages.yml` deploys it to `updates.tablepro.app`. The appcast is EdDSA-signed, and the app requires that (`SURequireSignedFeed`, `SUVerifyUpdateBeforeExtraction`).
 - The legacy `appcast.xml` on `main` is the `SUFeedURL` of apps up to 0.81 (`https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml`), and `plugins.json` in TableProApp/plugins is their registry. No tag writes either. The tablepro.app download button and the Homebrew cask `tablepro` read the same appcast. v0.82.0 is the one bridge. Once it publishes, TableProApp/web moves to the new feed. Then a PR copies the v0.82.0 feed item verbatim into the legacy `appcast.xml`, a PR in TableProApp/plugins points `plugins.json` at its plugin zips, and a Homebrew/homebrew-cask PR moves `tablepro` to `TablePro-#{version}.dmg`, with livecheck on the new feed's items that have no channel. Both files then freeze.
 
 ## Versions
@@ -82,18 +82,18 @@ python3 scripts/release/notes.py docs X.Y.Z --ref vX.Y.Z --mdx ../tablepro-docs/
 
 A `v*` tag runs `release.yml` and nothing else. A run is never cancelled, and every job reads the version, build and channel from `verify`.
 
-- `verify`: `version.py check` refuses a tag that breaks the grammar or the bounds; that `origin/release/<X.Y>` does not contain; whose previous tag on the line is not its ancestor; a stable X.Y.0 with no published beta, or a beta after its X.Y.0; a `CHANGELOG.md` missing the stable's heading, or a published stable of this or the previous line below it. Then it needs macOS Tests, iOS and Package Tests and Release Build green on the tag commit or the nearest first-parent commit that ran them, waiting on a pending run. Last, it writes the notes.
+- `verify`: `version.py check` refuses a tag that breaks the grammar or the bounds; that `origin/release/<X.Y>` does not contain; whose previous tag on the line is not its ancestor; a stable X.Y.0 with no published beta, or a beta after its X.Y.0; a `CHANGELOG.md` missing the stable's heading, or a published stable of this or the previous line below it; a stable whose tag still holds fragments in `changelog.d/`. Then it needs macOS Tests, iOS and Package Tests and Release Build green on the tag commit or the nearest first-parent commit that ran them, waiting on a pending run. Last, it writes the notes.
 - `app` (`signing`): a GA Xcode for a stable (`setup-xcode` `require-release`), the CloudKit Production schema check, `build.sh app` (archive, export with `scripts/release/ExportOptions.plist`, universal, signature and plugin load checks), `notarize.sh` on the app, `package.sh app`, `notarize.sh` on the DMG.
 - `plugins` (`signing`): the Dameng and HANA bridges, `build.sh plugins` (each target `registry.py targets` prints, universal, signed with Developer ID, the hardened runtime and a timestamp), one notary submission for all, `package.sh plugins` (the zips, described as the manifest will read them).
-- `github-release`: `publish.py draft` puts every asset on a draft and checks each digest, `attest-build-provenance` attests them, `publish.py release` publishes.
-- `feed` (`release`): `feed.py add` downloads the archive and the zips from the release, checks their digests, runs `generate_appcast` and `registry.py add`, runs `feed.py check`, and pushes `feeds`, retrying from a fresh fetch up to 3 times.
-- `pages` deploys `feeds`. `notify`, stable only and allowed to fail, posts the lead to Telegram.
+- `github-release`: `actions/attest` attests `dist/*`; `gh release create` drafts, uploads and publishes; `gh release verify` and `verify-asset` check the published release.
+- `feed` (`release`): `feed.py add` checks the published appcast's signature, downloads the archive and the zips from the release, checks each with `gh release verify-asset`, runs `generate_appcast` and `registry.add`, checks the new item, and the job pushes `gh-pages`. The feed and withdraw jobs share the concurrency group `gh-pages` with `queue: max`.
+- `pages` deploys `gh-pages`. `notify`, stable only and allowed to fail, posts the lead to Telegram.
 - Assets: `TablePro-<v>.dmg`, `TablePro-<v>.tar.xz` (the Sparkle archive), `TablePro-<v>-dSYMs.zip`, `TablePro-<v>-Plugins-dSYMs.zip` and one `<Target>-<v>.zip` per registry plugin.
 
 ## When a run fails
 
 - Tags never move. Before `github-release` publishes, an infrastructure failure is a re-run of the failed jobs; a code failure is fixed on `main`, picked to the line, and ships as the next number.
-- After it publishes: **Re-run failed jobs**. Every later step skips what is done: a published release, or a feed item or manifest release with the same build and sha256.
+- After it publishes: **Re-run failed jobs**. Every later step skips what is done: a published release, a feed item with the same version and build, or a manifest release with the same build and sha256.
 - A stable that never published: the next release PR runs `git revert <its release commit>` before `notes.py assemble`, and the leftover draft goes (`gh release delete vX.Y.Z`).
 - No GA Xcode on the runner image fails a stable in `app`. The fix is a PR pointing `.github/actions/setup-xcode` at a GA Xcode on an image that has one. Betas still ship.
 
@@ -111,19 +111,20 @@ gh workflow run withdraw.yml --ref v<newest tag> -f version=X.Y.Z
 | Environment | Refs | Secrets |
 |---|---|---|
 | `signing` | tags `v*` | `CERTIFICATES_P12`, `CERTIFICATES_PASSWORD`, `PROVISIONING_PROFILE`, `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`, `ANALYTICS_HMAC_SECRET`, `CLOUDKIT_MANAGEMENT_TOKEN` |
-| `release` | tags `v*` | `SPARKLE_PRIVATE_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_TOPIC_ID` |
+| `release` | tags `v*` | `SPARKLE_PRIVATE_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 | `github-pages` | tags `v*` | none |
 
 - No repo-level secret or deploy key is left, and no environment has required reviewers: admin-only, immutable tags are the gate. Rulesets: `.claude/rules/ci.md`, Rulesets.
 - Notarization uses the App Store Connect API key, which `.github/actions/apple-signing` stores as the `TablePro` notarytool profile. The action warns when the certificate or the provisioning profile expires within 60 days.
 - An offline backup of the Sparkle EdDSA key exists and the maintainer holds it. The key never rotates without a signed transition, since every app from 0.82 verifies the feed with it.
-- `feeds` takes pushes from `github-actions[bot]` with `GITHUB_TOKEN` and has no required checks; the signed feed proves its content. It was seeded once with the legacy `appcast.xml` and an empty v3 manifest.
+- `gh-pages` takes pushes from `github-actions[bot]` with `GITHUB_TOKEN` and has no required checks. `feed.py add` and `withdraw` refuse an `appcast.xml` whose signature does not verify, so a hand edit is re-signed with `sign_update` before it is pushed.
+- `updates.tablepro.app` enforces HTTPS (Settings > Pages).
 
 ## Plugins
 
 - One tag builds the app and every registry plugin, and the plugin zips are assets of the app's release. Each plugin's version and build are the app's. There are no plugin tags.
-- `.github/plugin-registry.json` holds `retainFromPluginKit` and the publish set, keyed by target, with each plugin's `name` and `iconName`. Bundled plugins are not in it.
-- The v3 manifest lists each plugin's releases: version, build, channel, PluginKit version, `minimumSystemVersion`, URL and sha256. The bundle id and `databaseTypeIds` come from the built bundle.
+- `.github/plugin-registry.json` holds `retainFromPluginKit` and the publish set, keyed by target, with each plugin's `name`. Bundled plugins are not in it.
+- The v3 manifest lists each plugin's releases: version, build, channel, PluginKit version, `minimumSystemVersion`, URL and sha256. The bundle id, `databaseTypeIds` and `exportFormatIds` come from the built bundle.
 - Selection: a release in the running build's channel (a `-beta.N` or local build takes beta and stable, any other stable only), with its PluginKit version in the app's range and its `minimumSystemVersion` at or below the running macOS. The highest build wins. Installed registry plugins update after the app does.
 - Retention per channel, kit and `minimumSystemVersion`: the two highest builds stay; a beta goes once a stable with the same key has a higher build; a kit below `retainFromPluginKit` goes. A release pruned on arrival is a logged no-op.
 - `retainFromPluginKit` is the kit of the oldest app version still on at least 1% of the machines seen in the last 30 days (license dashboard, App Versions). Check it before each stable and raise it with a normal PR. The manifest keeps the higher of its own value and the tag's, so an older line never lowers it.

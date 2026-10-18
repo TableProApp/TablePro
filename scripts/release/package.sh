@@ -83,7 +83,7 @@ package_app() {
 }
 
 package_plugins() {
-    local plugin target symbols="$DIST/TablePro-$VERSION-Plugins-dSYMs.zip" count=0 kit
+    local plugin target symbols="$DIST/TablePro-$VERSION-Plugins-dSYMs.zip" count=0
     [ -d "$OUT/plugins" ] || die "no $OUT/plugins; run scripts/release/build.sh plugins first"
     [ -d "$OUT/plugins-dSYMs" ] || die "no $OUT/plugins-dSYMs; run scripts/release/build.sh plugins first"
     mkdir -p "$DIST"
@@ -98,11 +98,7 @@ package_plugins() {
     [ "$count" -gt 0 ] || die "no plugins in $OUT/plugins"
 
     # The feed job describes these zips again after download; this fails the build that made them instead.
-    kit="$(sed -nE 's/^TABLEPRO_PLUGINKIT_VERSION[[:space:]]*=[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' \
-        Configs/PluginKit.xcconfig)"
-    [ -n "$kit" ] || die "Configs/PluginKit.xcconfig sets no TABLEPRO_PLUGINKIT_VERSION"
-    python3 scripts/release/registry.py describe --zips "$DIST" --version "$VERSION" --build "$BUILD" \
-        --kit "$kit" --metadata .github/plugin-registry.json --out "$WORK/entries.json"
+    python3 scripts/release/registry.py describe --zips "$DIST" --version "$VERSION" --build "$BUILD"
 
     ditto -c -k --keepParent "$OUT/plugins-dSYMs" "$symbols"
     echo "Packaged $count plugins as $DIST/<Target>-$VERSION.zip"

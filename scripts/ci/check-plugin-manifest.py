@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Fails when .github/plugin-registry.json, the plugin classes and the project.yml plugin aggregates disagree."""
+"""Fails when .github/plugin-registry.json and the project.yml plugin aggregates disagree."""
 
 import pathlib
-import re
 import sys
+
+import yaml
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "release"))
@@ -12,18 +13,6 @@ import registry  # noqa: E402
 
 MANIFEST = REPO_ROOT / ".github" / "plugin-registry.json"
 PROJECT = REPO_ROOT / "project.yml"
-PLUGINS_DIR = REPO_ROOT / "Plugins"
-
-ICON = re.compile(r"^\s*(?:public |internal |private )?static (?:let|var) iconName(?:\s*:\s*String)?\s*=\s*\"([^\"]+)\"", re.M)
-
-TOP_LEVEL_KEY = re.compile(r"^([A-Za-z_][\w-]*):")
-ENTRY = re.compile(r"^  ([A-Za-z_][\w-]*):\s*$")
-INLINE_LIST = re.compile(r"^    (templates|targets):\s*\[(.*)\]\s*$")
-BLOCK_LIST = re.compile(r"^    (templates|targets|dependencies):\s*$")
-ITEM = re.compile(r"^      - (.*?)\s*$")
-ITEM_FIELD = re.compile(r"^        (.*?)\s*$")
-DEPENDENCY_TARGET = re.compile(r"^target:\s*(\S+)")
-COPY_TO_PLUGINS = re.compile(r"\bcopy:\s*\{?\s*destination:\s*plugins\b")
 
 BUNDLED = "BundledPlugins"
 REGISTRY = "RegistryPlugins"
@@ -32,52 +21,13 @@ DRIVER_TEMPLATE = "DriverPlugin"
 APP_TARGET = "TablePro"
 
 
-def parse_project(text):
-    sections = {"targets": {}, "aggregateTargets": {}}
-    section = entry = field = None
-    for raw in text.splitlines():
-        line = re.sub(r"\s+#.*$", "", raw)
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        if match := TOP_LEVEL_KEY.match(line):
-            section, entry, field = match.group(1), None, None
-            continue
-        if section not in sections:
-            continue
-        if match := ENTRY.match(line):
-            entry = sections[section].setdefault(match.group(1), {"templates": [], "targets": [], "dependencies": []})
-            field = None
-        elif entry is None:
-            continue
-        elif match := INLINE_LIST.match(line):
-            entry[match.group(1)] += [name.strip() for name in match.group(2).split(",") if name.strip()]
-            field = None
-        elif match := BLOCK_LIST.match(line):
-            field = match.group(1)
-        elif field and (match := ITEM.match(line)):
-            entry[field].append([match.group(1)] if field == "dependencies" else match.group(1))
-        elif field == "dependencies" and entry["dependencies"] and (match := ITEM_FIELD.match(line)):
-            entry["dependencies"][-1].append(match.group(1))
-        elif not line.startswith("      "):
-            field = None
-    return sections
-
-
 def embedded_plugins(app):
-    found = set()
-    for item in app["dependencies"]:
-        target = DEPENDENCY_TARGET.match(item[0])
-        if target and COPY_TO_PLUGINS.search(" ".join(item[1:])):
-            found.add(target.group(1))
-    return found
-
-
-def publish_set(plugins):
-    return set(plugins)
+    return {dependency["target"] for dependency in app.get("dependencies") or []
+            if "target" in dependency and (dependency.get("copy") or {}).get("destination") == "plugins"}
 
 
 def aggregate_problems(project, plugins):
-    targets, aggregates = project["targets"], project["aggregateTargets"]
+    targets, aggregates = project.get("targets") or {}, project.get("aggregateTargets") or {}
     problems = []
     for name in (BUNDLED, REGISTRY, ALL):
         if name not in aggregates:
@@ -90,19 +40,19 @@ def aggregate_problems(project, plugins):
 
     registry = set(aggregates[REGISTRY]["targets"])
     bundled = set(aggregates[BUNDLED]["targets"])
-    published = publish_set(plugins)
+    published = set(plugins)
     for name in sorted(published - registry):
         problems.append(f"{MANIFEST.name} publishes {name} but {REGISTRY} does not build it")
     for name in sorted(registry - published):
         problems.append(f"{REGISTRY} builds {name} but {MANIFEST.name} does not publish it")
 
-    embedded = embedded_plugins(targets.get(APP_TARGET, {"dependencies": []}))
+    embedded = embedded_plugins(targets.get(APP_TARGET) or {})
     for name in sorted(embedded - bundled):
         problems.append(f"the {APP_TARGET} target embeds {name} but {BUNDLED} does not list it")
     for name in sorted(bundled - embedded):
         problems.append(f"{BUNDLED} lists {name} but the {APP_TARGET} target does not embed it")
 
-    drivers = {name for name, entry in targets.items() if DRIVER_TEMPLATE in entry["templates"]}
+    drivers = {name for name, entry in targets.items() if DRIVER_TEMPLATE in (entry.get("templates") or [])}
     for name in sorted(drivers):
         count = (name in bundled) + (name in registry)
         if count != 1:
@@ -112,55 +62,20 @@ def aggregate_problems(project, plugins):
     return problems
 
 
-def plugin_directory(target):
-    def normalise(name):
-        return name.lower().replace("driverplugin", "").replace("driver", "").replace("plugin", "")
-
-    wanted = normalise(target)
-    for path in sorted(PLUGINS_DIR.iterdir()):
-        if path.is_dir() and normalise(path.name) == wanted:
-            return path
-    return None
-
-
-def declared_icon(directory):
-    for source in sorted(directory.rglob("*.swift")):
-        found = ICON.search(source.read_text(encoding="utf-8"))
-        if found:
-            return found.group(1)
-    return None
-
-
-def declaration_problems(plugins):
-    problems = []
-    for target, entry in sorted(plugins.items()):
-        directory = plugin_directory(target)
-        if directory is None:
-            problems.append(f"{target}: no plugin directory matches it")
-            continue
-        icon = declared_icon(directory)
-        if icon is None:
-            problems.append(f"{target}: could not read iconName from {directory.name}")
-        elif icon != entry["iconName"]:
-            problems.append(f"{target}: {MANIFEST.name} says iconName {entry['iconName']!r} "
-                            f"but the plugin declares {icon!r}")
-    return problems
-
-
 def main():
     try:
         plugins = registry.load_metadata(MANIFEST)["plugins"]
     except registry.RegistryError as error:
         sys.exit(f"::error::{error}")
-    project = parse_project(PROJECT.read_text(encoding="utf-8"))
+    project = yaml.safe_load(PROJECT.read_text(encoding="utf-8"))
 
-    problems = declaration_problems(plugins) + aggregate_problems(project, plugins)
+    problems = aggregate_problems(project, plugins)
     if problems:
         for problem in problems:
             print(f"::error::{problem}", file=sys.stderr)
-        sys.exit(f"\n{len(problems)} problem(s) between {MANIFEST.name}, the plugin classes and {PROJECT.name}")
+        sys.exit(f"\n{len(problems)} problem(s) between {MANIFEST.name} and {PROJECT.name}")
 
-    print(f"{len(plugins)} plugins agree with {MANIFEST.name}, and {PROJECT.name}'s plugin aggregates agree with both")
+    print(f"{len(plugins)} plugins in {MANIFEST.name} agree with {PROJECT.name}'s plugin aggregates")
 
 
 if __name__ == "__main__":

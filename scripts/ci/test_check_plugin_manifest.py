@@ -2,9 +2,10 @@
 """Fixture tests for check-plugin-manifest.py."""
 
 import importlib.util
-import tempfile
 import unittest
 from pathlib import Path
+
+import yaml
 
 SPEC = importlib.util.spec_from_file_location("check_plugin_manifest", Path(__file__).with_name("check-plugin-manifest.py"))
 check = importlib.util.module_from_spec(SPEC)
@@ -69,11 +70,11 @@ schemes:
         App: all
 """
 
-PLUGINS = {"OracleDriver": {"name": "Oracle Driver", "iconName": "oracle-icon"}}
+PLUGINS = {"OracleDriver": {"name": "Oracle Driver"}}
 
 
 def problems(project=PROJECT, plugins=None):
-    return check.aggregate_problems(check.parse_project(project), PLUGINS if plugins is None else plugins)
+    return check.aggregate_problems(yaml.safe_load(project), PLUGINS if plugins is None else plugins)
 
 
 def edited(old, new):
@@ -81,30 +82,10 @@ def edited(old, new):
     return PROJECT.replace(old, new, 1)
 
 
-class ParseProjectTests(unittest.TestCase):
-    def test_reads_inline_and_block_templates(self):
-        targets = check.parse_project(PROJECT)["targets"]
-        self.assertEqual(targets["MySQLDriver"]["templates"], ["DriverPlugin", "MySQLLinkage"])
-        self.assertEqual(targets["RedisDriver"]["templates"], ["DriverPlugin"])
-        self.assertEqual(targets["OracleDriver"]["templates"], ["DriverPlugin"])
-
-    def test_embedded_plugins_take_both_copy_forms(self):
-        app = check.parse_project(PROJECT)["targets"]["TablePro"]
+class EmbeddedPluginsTests(unittest.TestCase):
+    def test_takes_both_copy_forms_and_only_the_plugins_destination(self):
+        app = yaml.safe_load(PROJECT)["targets"]["TablePro"]
         self.assertEqual(check.embedded_plugins(app), {"MySQLDriver", "RedisDriver"})
-
-    def test_reads_aggregate_targets(self):
-        aggregates = check.parse_project(PROJECT)["aggregateTargets"]
-        self.assertEqual(aggregates["BundledPlugins"]["targets"], ["MySQLDriver", "RedisDriver"])
-        self.assertEqual(aggregates["RegistryPlugins"]["targets"], ["OracleDriver"])
-        self.assertEqual(aggregates["AllPlugins"]["targets"], ["BundledPlugins", "RegistryPlugins"])
-
-    def test_ignores_template_dependencies(self):
-        self.assertNotIn("DriverPlugin", check.parse_project(PROJECT)["targets"])
-
-
-class PublishSetTests(unittest.TestCase):
-    def test_every_target_in_the_metadata_is_published(self):
-        self.assertEqual(check.publish_set(PLUGINS), {"OracleDriver"})
 
 
 class AggregateProblemsTests(unittest.TestCase):
@@ -123,7 +104,7 @@ class AggregateProblemsTests(unittest.TestCase):
         )
 
     def test_bundled_plugin_in_the_metadata(self):
-        plugins = {**PLUGINS, "RedisDriver": {"name": "Redis Driver", "iconName": "redis-icon"}}
+        plugins = {**PLUGINS, "RedisDriver": {"name": "Redis Driver"}}
         self.assertEqual(
             problems(plugins=plugins),
             ["plugin-registry.json publishes RedisDriver but RegistryPlugins does not build it"],
@@ -155,32 +136,6 @@ class AggregateProblemsTests(unittest.TestCase):
     def test_missing_aggregate(self):
         project = edited("  RegistryPlugins:\n    targets: [OracleDriver]\n    scheme: {}\n", "")
         self.assertEqual(problems(project), ["project.yml has no RegistryPlugins aggregate target"])
-
-
-class DeclarationProblemsTests(unittest.TestCase):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        source = Path(self.temp.name) / "OracleDriverPlugin" / "OraclePlugin.swift"
-        source.parent.mkdir()
-        source.write_text('final class OraclePlugin {\n    static let iconName = "oracle-icon"\n}\n')
-        self.saved = check.PLUGINS_DIR
-        check.PLUGINS_DIR = Path(self.temp.name)
-        self.addCleanup(setattr, check, "PLUGINS_DIR", self.saved)
-
-    def test_matching_icon_passes(self):
-        self.assertEqual(check.declaration_problems(PLUGINS), [])
-
-    def test_icon_that_differs_from_the_plugin(self):
-        plugins = {"OracleDriver": {"name": "Oracle Driver", "iconName": "cylinder"}}
-        self.assertEqual(
-            check.declaration_problems(plugins),
-            ["OracleDriver: plugin-registry.json says iconName 'cylinder' but the plugin declares 'oracle-icon'"],
-        )
-
-    def test_target_with_no_plugin_directory(self):
-        plugins = {"TeradataDriver": {"name": "Teradata Driver", "iconName": "teradata-icon"}}
-        self.assertEqual(check.declaration_problems(plugins), ["TeradataDriver: no plugin directory matches it"])
 
 
 if __name__ == "__main__":

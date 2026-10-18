@@ -108,10 +108,15 @@ class FixtureRepository:
         return subprocess.run(["git", "-C", str(self.path), *args], env=GIT_ENV, check=True,
                               capture_output=True, text=True).stdout.strip()
 
-    def commit(self, message: str, changelog: str = None) -> str:
+    def commit(self, message: str, changelog: str = None, fragment: str = None) -> str:
         if changelog is not None:
             (self.path / "CHANGELOG.md").write_text(changelog, encoding="utf-8")
             self.git("add", "CHANGELOG.md")
+        if fragment is not None:
+            path = self.path / "changelog.d" / fragment
+            path.parent.mkdir(exist_ok=True)
+            path.write_text("A fix.\n", encoding="utf-8")
+            self.git("add", str(path))
         self.git("commit", "--quiet", "--allow-empty", "-m", message)
         return self.git("rev-parse", "HEAD")
 
@@ -291,6 +296,26 @@ class CheckTests(unittest.TestCase):
         self.repo.git("tag", "v0.82.1", self.cut)
         errors = self.check("v0.82.1", FakeGitHub(releases=[("v0.81.0", False)]))
         self.assertEqual(errors, ["CHANGELOG.md at v0.82.1 has no ## [0.82.1]"])
+
+    def test_a_stable_refuses_fragments_left_at_its_tag(self):
+        changelog = MAIN_CHANGELOG.replace("## [0.81.0]", "## [0.81.1] - 2026-10-25\n\n## [0.81.0]")
+        self.repo.commit("chore: keep the fragment folder", fragment=".gitkeep")
+        self.repo.commit("chore(release): v0.81.1", changelog)
+        pick = self.repo.commit("fix: a pick after the release PR was cut", fragment="3610.fixed.md")
+        self.repo.line("0.81", pick)
+        self.repo.git("tag", "v0.81.1", pick)
+        runs, jobs = green_on(pick)
+        github = FakeGitHub(releases=[("v0.81.0", False)], runs=runs, jobs=jobs)
+        self.assertEqual(self.check("v0.81.1", github),
+                         ["v0.81.1 still has 3610.fixed.md in changelog.d/; assemble again on the line head"])
+
+    def test_a_beta_ships_with_its_fragments(self):
+        tagged = self.repo.commit("fix: a fix", fragment="3610.fixed.md")
+        self.repo.line("0.82", tagged)
+        self.repo.git("tag", "v0.82.0-beta.1", tagged)
+        runs, jobs = green_on(tagged)
+        github = FakeGitHub(releases=[("v0.81.0", False)], runs=runs, jobs=jobs)
+        self.assertEqual(self.check("v0.82.0-beta.1", github), [])
 
     def test_a_beta_refuses_a_line_whose_stable_is_assembled(self):
         assembled = self.repo.commit("chore(release): v0.82.0", MAIN_CHANGELOG.replace(

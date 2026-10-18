@@ -6,42 +6,25 @@ import plistlib
 import tempfile
 import unittest
 import zipfile
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import redirect_stdout
 from pathlib import Path
 
 import registry
 import version
 
 URL_BASE = "https://github.com/TableProApp/TablePro/releases/download/v0.82.0/"
-PROJECT = """\
-targets:
-  OracleDriver:
-    templates: [DriverPlugin]
-
-aggregateTargets:
-  BundledPlugins:
-    targets:
-      - MySQLDriver
-      - SQLiteDriver
-
-  RegistryPlugins:
-    targets:
-      - OracleDriver
-      - ParquetExport
-    scheme: {}
-"""
 METADATA = {
     "retainFromPluginKit": 39,
     "plugins": {
-        "OracleDriver": {"name": "Oracle Driver", "iconName": "oracle-icon"},
-        "ParquetExport": {"name": "Parquet Export", "iconName": "parquet-icon"},
+        "OracleDriver": {"name": "Oracle Driver"},
+        "ParquetExport": {"name": "Parquet Export"},
     },
 }
 
 
 def entry(text="0.82.0", kit=39, system="13.0", sha="a", plugin="com.TablePro.OracleDriver", name="Oracle Driver"):
     return {
-        "id": plugin, "name": name, "iconName": "oracle-icon", "databaseTypeIds": ["Oracle"],
+        "id": plugin, "name": name, "databaseTypeIds": ["Oracle"], "exportFormatIds": [],
         "version": text, "build": version.parse_version(text).build, "pluginKit": kit,
         "minimumSystemVersion": system, "file": f"OracleDriver-{text}.zip", "sha256": sha * 64,
     }
@@ -82,8 +65,8 @@ class AddTests(ManifestCase):
             "schemaVersion": 3,
             "retainFromPluginKit": 39,
             "plugins": [{
-                "id": "com.TablePro.OracleDriver", "name": "Oracle Driver", "iconName": "oracle-icon",
-                "databaseTypeIds": ["Oracle"],
+                "id": "com.TablePro.OracleDriver", "name": "Oracle Driver", "databaseTypeIds": ["Oracle"],
+                "exportFormatIds": [],
                 "releases": [{
                     "version": "0.82.0", "build": 820099, "channel": "stable", "pluginKit": 39,
                     "minimumSystemVersion": "13.0", "url": URL_BASE + "OracleDriver-0.82.0.zip", "sha256": "a" * 64,
@@ -173,16 +156,6 @@ class AddTests(ManifestCase):
         with self.assertRaisesRegex(registry.RegistryError, "schemaVersion 4"):
             self.add([entry()])
 
-    def test_a_build_that_is_not_the_versions_build_is_refused(self):
-        wrong = entry()
-        wrong["build"] = 140
-        with self.assertRaisesRegex(registry.RegistryError, "build 140 is not 820099"):
-            self.add([wrong])
-
-    def test_a_version_on_the_wrong_channel_is_refused(self):
-        with self.assertRaisesRegex(registry.RegistryError, "belongs to the beta channel"):
-            self.add([entry("0.82.0-beta.1")], channel="stable")
-
 
 class WithdrawTests(ManifestCase):
     def test_a_withdraw_brings_the_previous_build_back_into_selection(self):
@@ -205,28 +178,13 @@ class WithdrawTests(ManifestCase):
 
 
 class TargetsTests(unittest.TestCase):
-    def test_reads_the_bundled_aggregate(self):
-        self.assertEqual(registry.bundled_targets(PROJECT), {"MySQLDriver", "SQLiteDriver"})
-
-    def test_reads_the_bundled_aggregate_of_this_repository(self):
-        bundled = registry.bundled_targets(registry.PROJECT.read_text(encoding="utf-8"))
-        self.assertIn("MySQLDriver", bundled)
-        self.assertNotIn("OracleDriver", bundled)
-
     def test_prints_the_publish_set(self):
         with tempfile.TemporaryDirectory() as directory:
-            metadata, project = Path(directory) / "registry.json", Path(directory) / "project.yml"
+            metadata = Path(directory) / "registry.json"
             metadata.write_text(json.dumps(METADATA))
-            project.write_text(PROJECT)
             with redirect_stdout(io.StringIO()) as output:
-                self.assertEqual(registry.main(["targets", "--metadata", str(metadata), "--project", str(project)]), 0)
+                self.assertEqual(registry.main(["targets", "--metadata", str(metadata)]), 0)
         self.assertEqual(output.getvalue(), "OracleDriver\nParquetExport\n")
-
-    def test_refuses_a_bundled_target(self):
-        metadata = {"retainFromPluginKit": 39, "plugins": {**METADATA["plugins"],
-                                                           "MySQLDriver": {"name": "MySQL", "iconName": "mysql"}}}
-        with self.assertRaisesRegex(registry.RegistryError, "the app bundles MySQLDriver"):
-            registry.publish_set(metadata, registry.bundled_targets(PROJECT))
 
     def test_refuses_metadata_in_another_shape(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -234,6 +192,17 @@ class TargetsTests(unittest.TestCase):
             path.write_text(json.dumps({"plugins": {"oracle": {"target": "OracleDriver"}}}))
             with self.assertRaisesRegex(registry.RegistryError, "shape"):
                 registry.load_metadata(path)
+
+    def test_reads_the_pluginkit_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / registry.PLUGINKIT_CONFIG
+            config.parent.mkdir()
+            config.write_text("TABLEPRO_PLUGINKIT_VERSION = 39\nTABLEPRO_PLUGINKIT_MINIMUM_VERSION = 19\n")
+            self.assertEqual(registry.pluginkit_version(root), 39)
+            config.write_text("TABLEPRO_PLUGINKIT_MINIMUM_VERSION = 19\n")
+            with self.assertRaisesRegex(registry.RegistryError, "sets no TABLEPRO_PLUGINKIT_VERSION"):
+                registry.pluginkit_version(root)
 
 
 class DescribeTests(unittest.TestCase):
@@ -257,8 +226,7 @@ class DescribeTests(unittest.TestCase):
         return path
 
     def describe(self, metadata=None):
-        return registry.describe(self.zips, "0.82.0", 820099, 39, metadata or METADATA,
-                                 registry.bundled_targets(PROJECT))
+        return registry.describe(self.zips, "0.82.0", 820099, 39, metadata or METADATA)
 
     def test_reads_each_zip(self):
         self.plugin("OracleDriver")
@@ -266,13 +234,13 @@ class DescribeTests(unittest.TestCase):
                     TableProProvidesDatabaseTypeIds=None, TableProProvidesExportFormatIds=["parquet"])
         oracle, parquet = self.describe()
         self.assertEqual(oracle["id"], "com.TablePro.OracleDriver")
-        self.assertEqual(oracle["databaseTypeIds"], ["Oracle"])
         self.assertEqual((oracle["version"], oracle["build"], oracle["pluginKit"], oracle["minimumSystemVersion"]),
                          ("0.82.0", 820099, 39, "13.0"))
         self.assertEqual(oracle["file"], "OracleDriver-0.82.0.zip")
         self.assertRegex(oracle["sha256"], "^[0-9a-f]{64}$")
-        self.assertEqual((parquet["id"], parquet["databaseTypeIds"], parquet["name"]),
-                         ("com.TablePro.ParquetExportPlugin", [], "Parquet Export"))
+        self.assertEqual((oracle["databaseTypeIds"], oracle["exportFormatIds"]), (["Oracle"], []))
+        self.assertEqual((parquet["id"], parquet["name"]), ("com.TablePro.ParquetExportPlugin", "Parquet Export"))
+        self.assertEqual((parquet["databaseTypeIds"], parquet["exportFormatIds"]), ([], ["parquet"]))
 
     def test_rejects_a_wrong_version_build_or_kit(self):
         cases = [
@@ -286,6 +254,14 @@ class DescribeTests(unittest.TestCase):
             with self.subTest(overrides=overrides):
                 self.plugin("OracleDriver", **overrides)
                 with self.assertRaisesRegex(registry.RegistryError, message):
+                    self.describe()
+
+    def test_rejects_ids_that_are_not_a_list_of_strings(self):
+        self.plugin("OracleDriver")
+        for key in ("TableProProvidesDatabaseTypeIds", "TableProProvidesExportFormatIds"):
+            with self.subTest(key=key):
+                self.plugin("ParquetExport", **{key: "parquet"})
+                with self.assertRaisesRegex(registry.RegistryError, f"{key} is not a list of strings"):
                     self.describe()
 
     def test_rejects_a_plugin_that_provides_nothing(self):
@@ -305,22 +281,16 @@ class DescribeTests(unittest.TestCase):
         with self.assertRaisesRegex(registry.RegistryError, "share the bundle id"):
             self.describe()
 
-    def test_the_cli_writes_entries_that_add_reads(self):
-        self.plugin("OracleDriver")
-        self.plugin("ParquetExport", TableProProvidesExportFormatIds=["parquet"])
-        metadata, project = self.zips / "registry.json", self.zips / "project.yml"
+    def test_the_cli_reads_the_kit_from_this_repository(self):
+        kit = registry.pluginkit_version(registry.ROOT)
+        self.plugin("OracleDriver", TableProPluginKitVersion=kit)
+        self.plugin("ParquetExport", TableProPluginKitVersion=kit, TableProProvidesExportFormatIds=["parquet"])
+        metadata = self.zips / "registry.json"
         metadata.write_text(json.dumps(METADATA))
-        project.write_text(PROJECT)
-        entries, manifest = self.zips / "entries.json", self.zips / "v3.json"
-        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-            self.assertEqual(registry.main([
-                "describe", "--zips", str(self.zips), "--version", "0.82.0", "--build", "820099", "--kit", "39",
-                "--metadata", str(metadata), "--project", str(project), "--out", str(entries)]), 0)
-            self.assertEqual(registry.main([
-                "add", "--manifest", str(manifest), "--entries", str(entries), "--channel", "stable",
-                "--url-base", URL_BASE, "--retain-from", "39"]), 0)
-            self.assertEqual(registry.main(["withdraw", "--manifest", str(manifest), "--version", "0.82.0"]), 0)
-        self.assertEqual(json.loads(manifest.read_text())["plugins"], [])
+        with redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(registry.main(["describe", "--zips", str(self.zips), "--version", "0.82.0",
+                                            "--build", "820099", "--metadata", str(metadata)]), 0)
+        self.assertEqual(output.getvalue(), "described 2 plugins\n")
 
 
 if __name__ == "__main__":

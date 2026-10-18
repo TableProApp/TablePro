@@ -19,7 +19,7 @@ runs:
           echo "XcodeGen $XCODEGEN_VERSION already installed"
           exit 0
         fi
-        curl -sSLo "$RUNNER_TEMP/xcodegen.zip" \
+        curl -fsSLo "$RUNNER_TEMP/xcodegen.zip" \
           "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
         echo "${XCODEGEN_SHA256}  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
         unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP/xcodegen-dist"

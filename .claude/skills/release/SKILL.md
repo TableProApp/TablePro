@@ -26,7 +26,7 @@ Before any decision, gather:
 - the tags, newest first: `git -c versionsort.suffix=-beta tag -l 'v*' --sort=-v:refname | head`;
 - the live lines: `git ls-remote --heads origin 'release/*'`;
 - open regressions: `gh issue list --label regression --state open`;
-- open Dependabot alerts: `gh api repos/TableProApp/TablePro/dependabot/alerts -q '.[] | select(.state == "open") | .security_advisory.summary'`;
+- open Dependabot alerts: `gh api --paginate 'repos/TableProApp/TablePro/dependabot/alerts?state=open&per_page=100' -q '.[].security_advisory.summary'`;
 - main's push runs: `gh run list --branch main --event push --limit 10`, with macOS Tests, iOS and Package Tests and Release Build green on the commit you would cut;
 - whether `main` has the last stable's `## [X.Y.Z]` heading. If not, the forward-port is missing and the next tag will refuse to build: do that first (section 9).
 
@@ -70,7 +70,7 @@ Run: `RELEASING.md`, Notes, then Cutting a stable or patch.
 
 - Follow the run with `gh run list --workflow release.yml --limit 3` and `gh run watch <id>`.
 - Sort a failure into infrastructure (runner, network, notary service, an expired certificate) or code (a build, test or check the tag's commit fails). Infrastructure is a re-run; code is a fix on `main`, a pick, and the next number.
-- Confirm the result from the source, not the cached site: `gh api -H 'Accept: application/vnd.github.raw' 'repos/TableProApp/TablePro/contents/appcast.xml?ref=feeds' | grep -c '<item>'`, and `gh release view v<version> --json assets -q '.assets | length'`.
+- Confirm the result from the source, not the cached site: `gh api -H 'Accept: application/vnd.github.raw' 'repos/TableProApp/TablePro/contents/appcast.xml?ref=gh-pages' | grep -c '<sparkle:shortVersionString><version></sparkle:shortVersionString>'` prints 1, and `gh release view v<version> --json assets -q '.assets | length'`.
 
 Run: `RELEASING.md`, What a tag runs, and When a run fails.
 

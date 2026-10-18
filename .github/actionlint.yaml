@@ -2,3 +2,8 @@ self-hosted-runner:
   # GitHub's Xcode 27 preview image, newer than the label list in actionlint 1.7.12.
   labels:
     - xcode-27
+paths:
+  .github/workflows/*.yml:
+    ignore:
+      # actionlint 1.7.12 does not know concurrency.queue yet (rhysd/actionlint#657).
+      - 'unexpected key "queue" for "concurrency" section'

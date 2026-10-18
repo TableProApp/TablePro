@@ -2,108 +2,82 @@
   "retainFromPluginKit": 39,
   "plugins": {
     "BeancountDriver": {
-      "name": "Beancount Driver",
-      "iconName": "beancount-icon"
+      "name": "Beancount Driver"
     },
     "BigQueryDriverPlugin": {
-      "name": "BigQuery Driver",
-      "iconName": "bigquery-icon"
+      "name": "BigQuery Driver"
     },
     "BigtableDriverPlugin": {
-      "name": "Bigtable Driver",
-      "iconName": "bigtable-icon"
+      "name": "Bigtable Driver"
     },
     "CassandraDriver": {
-      "name": "Cassandra Driver",
-      "iconName": "cassandra-icon"
+      "name": "Cassandra Driver"
     },
     "CloudflareD1DriverPlugin": {
-      "name": "Cloudflare D1 Driver",
-      "iconName": "cloudflare-d1-icon"
+      "name": "Cloudflare D1 Driver"
     },
     "CloudflareR2SQLDriverPlugin": {
-      "name": "Cloudflare R2 SQL Driver",
-      "iconName": "cloudflare-r2-sql-icon"
+      "name": "Cloudflare R2 SQL Driver"
     },
     "DamengDriver": {
-      "name": "Dameng Driver",
-      "iconName": "cylinder"
+      "name": "Dameng Driver"
     },
     "DuckDBDriver": {
-      "name": "DuckDB Driver",
-      "iconName": "duckdb-icon"
+      "name": "DuckDB Driver"
     },
     "DynamoDBDriverPlugin": {
-      "name": "DynamoDB Driver",
-      "iconName": "dynamodb-icon"
+      "name": "DynamoDB Driver"
     },
     "ElasticsearchDriverPlugin": {
-      "name": "Elasticsearch Driver",
-      "iconName": "elasticsearch-icon"
+      "name": "Elasticsearch Driver"
     },
     "EtcdDriverPlugin": {
-      "name": "etcd Driver",
-      "iconName": "etcd-icon"
+      "name": "etcd Driver"
     },
     "FirebaseDriverPlugin": {
-      "name": "Firebase Driver",
-      "iconName": "firebase-icon"
+      "name": "Firebase Driver"
     },
     "HanaDriver": {
-      "name": "SAP HANA Driver",
-      "iconName": "cylinder"
+      "name": "SAP HANA Driver"
     },
     "KafkaDriverPlugin": {
-      "name": "Kafka Driver",
-      "iconName": "kafka-icon"
+      "name": "Kafka Driver"
     },
     "LibSQLDriverPlugin": {
-      "name": "libSQL / Turso Driver",
-      "iconName": "libsql-icon"
+      "name": "libSQL / Turso Driver"
     },
     "MSSQLDriver": {
-      "name": "MSSQL Driver",
-      "iconName": "mssql-icon"
+      "name": "MSSQL Driver"
     },
     "MongoDBDriver": {
-      "name": "MongoDB Driver",
-      "iconName": "mongodb-icon"
+      "name": "MongoDB Driver"
     },
     "OracleDriver": {
-      "name": "Oracle Driver",
-      "iconName": "oracle-icon"
+      "name": "Oracle Driver"
     },
     "ParquetExport": {
-      "name": "Parquet Export",
-      "iconName": "square.grid.3x3"
+      "name": "Parquet Export"
     },
     "SnowflakeDriverPlugin": {
-      "name": "Snowflake Driver",
-      "iconName": "snowflake-icon"
+      "name": "Snowflake Driver"
     },
     "SpannerDriverPlugin": {
-      "name": "Spanner Driver",
-      "iconName": "spanner-icon"
+      "name": "Spanner Driver"
     },
     "SurrealDBDriverPlugin": {
-      "name": "SurrealDB Driver",
-      "iconName": "surrealdb-icon"
+      "name": "SurrealDB Driver"
     },
     "TeradataDriver": {
-      "name": "Teradata Driver",
-      "iconName": "teradata-icon"
+      "name": "Teradata Driver"
     },
     "TrinoDriverPlugin": {
-      "name": "Trino Driver",
-      "iconName": "trino-icon"
+      "name": "Trino Driver"
     },
     "TypesenseDriverPlugin": {
-      "name": "Typesense Driver",
-      "iconName": "typesense-icon"
+      "name": "Typesense Driver"
     },
     "WeaviateDriverPlugin": {
-      "name": "Weaviate Driver",
-      "iconName": "weaviate-icon"
+      "name": "Weaviate Driver"
     }
   }
 }

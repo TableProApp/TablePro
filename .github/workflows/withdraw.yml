@@ -21,6 +21,9 @@ jobs:
     runs-on: macos-latest
     environment: release
     timeout-minutes: 20
+    concurrency:
+      group: gh-pages
+      queue: max
     permissions:
       contents: write
     env:
@@ -28,16 +31,35 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: gh-pages
+          path: build/gh-pages
 
       - uses: ./.github/actions/setup-sparkle
 
       - name: Remove the version from the feed and the plugin manifest
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        run: python3 scripts/release/feed.py withdraw "$VERSION"
+        run: python3 scripts/release/feed.py withdraw "$VERSION" --site build/gh-pages
+
+      - name: Push gh-pages
+        working-directory: build/gh-pages
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml plugins/v3.json
+          git diff --cached --quiet || { git commit -m "withdraw: v$VERSION" && git push origin HEAD:gh-pages; }
 
       - name: Mark the highest stable as Latest
-        run: python3 scripts/release/publish.py latest
+        run: |
+          set -euo pipefail
+          latest="$(python3 scripts/release/feed.py latest --site build/gh-pages)"
+          gh release edit "v$latest" --latest
 
   pages:
     name: Pages

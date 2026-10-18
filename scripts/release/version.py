@@ -25,6 +25,7 @@ REQUIRED_RUNS = (
     ("release-build.yml", "Release Build", "release"),
 )
 DETECTOR = "scripts/ci/detect-changed-paths.sh"
+FRAGMENTS = "changelog.d/"
 WALK_DEPTH = 50
 POLL_SECONDS = 60
 PENDING_STATUSES = {"queued", "in_progress", "waiting", "requested", "pending"}
@@ -126,6 +127,9 @@ class Git:
     def show(self, ref: str, path: str) -> Optional[str]:
         result = self._git("show", f"{ref}:{path}", check=False)
         return result.stdout if result.returncode == 0 else None
+
+    def list_tree(self, ref: str, path: str) -> List[str]:
+        return self._git("ls-tree", "--name-only", ref, "--", path).stdout.splitlines()
 
     def first_parents(self, ref: str, limit: int) -> List[str]:
         return self._git("rev-list", "--first-parent", f"--max-count={limit}", f"{ref}^{{commit}}").stdout.split()
@@ -238,6 +242,15 @@ def changelog_errors(changelog: Optional[str], version: Version, stables: List[V
     return errors
 
 
+def fragment_errors(paths: List[str], version: Version) -> List[str]:
+    if version.is_beta:
+        return []
+    fragments = [Path(path).name for path in paths if Path(path).name != ".gitkeep"]
+    if not fragments:
+        return []
+    return [f"{version.tag} still has {', '.join(fragments)} in {FRAGMENTS}; assemble again on the line head"]
+
+
 def is_green(github: GitHub, workflow: str, job: str, sha: str,
              sleep: Callable[[float], None], log: Callable[[str], None]) -> bool:
     while True:
@@ -296,6 +309,7 @@ def check(tag: str, git: Git, github: GitHub, changed: Optional[Callable[[str, s
     errors = branch_errors(git, version)
     errors += beta_errors(git, version, releases)
     errors += changelog_errors(git.show(tag, "CHANGELOG.md"), version, published_stables(releases))
+    errors += fragment_errors(git.list_tree(tag, FRAGMENTS), version)
     if errors:
         return errors
     return ci_errors(git, github, version, changed or detector(git.root), sleep, log)

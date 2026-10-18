@@ -83,7 +83,7 @@ jobs:
       - name: Check every script sources the libraries it calls into
         run: python3 scripts/ci/check-lib-sourcing.py
 
-      - name: Check the plugin manifest against the plugin classes
+      - name: Check plugin-registry.json against the project.yml plugin aggregates
         run: python3 scripts/ci/check-plugin-manifest.py
 
       # The app registers a plugin from these keys without loading it, and loads one without them at launch.

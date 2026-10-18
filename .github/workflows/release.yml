@@ -1,17 +1,11 @@
 name: Release
 
 # A v* tag builds, signs and notarizes the app and every registry plugin, publishes the GitHub
-# release, then adds it to the feeds branch and deploys that to updates.tablepro.app.
+# release, then adds it to the gh-pages branch and deploys that to updates.tablepro.app.
 
 on:
   push:
     tags: ['v*']
-
-# Never cancelled: the build jobs hold notary submissions, and every step after them is idempotent,
-# so a re-run of the same tag finishes what the first run left.
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -249,6 +243,8 @@ jobs:
       attestations: write
     env:
       TAG: ${{ needs.verify.outputs.tag }}
+      BUILD: ${{ needs.verify.outputs.build }}
+      CHANNEL: ${{ needs.verify.outputs.channel }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -268,19 +264,43 @@ jobs:
           name: notes
           path: notes
 
-      # A published release is immutable, so every asset goes on the draft and is checked there first.
-      - name: Draft the release
-        id: draft
-        run: python3 scripts/release/publish.py draft "$TAG" --notes notes/body.md dist/* >> "$GITHUB_OUTPUT"
+      - name: Check for a published release
+        id: release
+        run: |
+          if gh api "repos/{owner}/{repo}/releases/tags/$TAG" --silent 2> /dev/null; then
+            echo published=true >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Attest the assets
-        if: steps.draft.outputs.state == 'draft'
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: steps.release.outputs.published != 'true'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: dist/*
 
+      # gh release create drafts, attaches every asset, then publishes: the order an immutable release needs.
       - name: Publish the release
-        run: python3 scripts/release/publish.py release "$TAG"
+        if: steps.release.outputs.published != 'true'
+        run: |
+          set -euo pipefail
+          # A draft a killed attempt left would shadow the release in gh's lookups by tag.
+          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft 2> /dev/null)" = true ]; then
+            gh release delete "$TAG" --yes
+          fi
+          flags=(--prerelease --latest=false)
+          if [ "$CHANNEL" = stable ]; then
+            latest="$(gh release view --json tagName --jq .tagName)"
+            latest_build="$(python3 scripts/release/version.py parse "$latest" 2> /dev/null | sed -n 's/^build=//p' || true)"
+            flags=(--latest="$([ "$BUILD" -gt "${latest_build:-0}" ] && echo true || echo false)")
+          fi
+          gh release create "$TAG" --verify-tag --title "$TAG" --notes-file notes/body.md "${flags[@]}" dist/*
+
+      - name: Verify the release
+        run: |
+          set -euo pipefail
+          gh release verify "$TAG"
+          for asset in dist/*; do
+            gh release verify-asset "$TAG" "$asset"
+          done
 
   feed:
     name: Feed
@@ -288,15 +308,24 @@ jobs:
     runs-on: macos-latest
     environment: release
     timeout-minutes: 20
+    concurrency:
+      group: gh-pages
+      queue: max
     permissions:
       contents: write
+      attestations: read
     env:
       TAG: ${{ needs.verify.outputs.tag }}
-      BUILD: ${{ needs.verify.outputs.build }}
-      CHANNEL: ${{ needs.verify.outputs.channel }}
       CRITICAL: ${{ needs.verify.outputs.critical }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: gh-pages
+          path: build/gh-pages
 
       - uses: ./.github/actions/setup-sparkle
 
@@ -313,8 +342,17 @@ jobs:
           set -euo pipefail
           flags=()
           [ "$CRITICAL" != true ] || flags+=(--critical)
-          python3 scripts/release/feed.py add "$TAG" --build "$BUILD" --channel "$CHANNEL" \
-            --notes notes/feed.md ${flags[@]+"${flags[@]}"}
+          python3 scripts/release/feed.py add "$TAG" --site build/gh-pages --notes notes/feed.md \
+            ${flags[@]+"${flags[@]}"}
+
+      - name: Push gh-pages
+        working-directory: build/gh-pages
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml plugins/v3.json
+          git diff --cached --quiet || { git commit -m "release: $TAG" && git push origin HEAD:gh-pages; }
 
   pages:
     name: Pages
@@ -349,7 +387,6 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
         run: |
           set -euo pipefail
           {
@@ -360,8 +397,5 @@ jobs:
             fi
             printf '\n%s/%s/releases/tag/%s\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$TAG"
           } > msg.txt
-          topic=()
-          [ -z "$TELEGRAM_TOPIC_ID" ] || topic=(--data-urlencode "message_thread_id=$TELEGRAM_TOPIC_ID")
           curl -fsS --retry 3 -o /dev/null --data-urlencode "chat_id=$TELEGRAM_CHAT_ID" \
-            --data-urlencode text@msg.txt ${topic[@]+"${topic[@]}"} \
-            "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage"
+            --data-urlencode text@msg.txt "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage"

@@ -22,9 +22,9 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 | 23959123 "release tags are created by admins" | tags `v*`, `libs-*`, `plugin-*` | creation | admins |
 | 25308049 "release branches are created by admins" | `release/*` | creation | admins |
 | 23957966 "main and release branches require green gates" | default branch, `release/*` | the five required checks, `do_not_enforce_on_create` | none |
-| 25129799 "branches keep their history" | default branch, `release/*`, `feeds` | deletion, non-fast-forward | none |
+| 25129799 "branches keep their history" | default branch, `release/*`, `gh-pages` | deletion, non-fast-forward | none |
 
-- `feeds` takes no required checks: CI pushes it with `GITHUB_TOKEN`, and the signed feed proves its content.
+- `gh-pages` takes no required checks (`RELEASING.md`, Keys and environments).
 - There are no gate jobs. A test job runs on `!cancelled() && needs.changes.outputs.run != 'false'`. A job its `if:` skips reports success, and a failed changes job runs the suite rather than skipping it.
 - `Changes (macOS)`, `Changes (iOS)` and `Changes (Release)` are not required checks.
 - A PR need not be up to date with main to merge (`strict_required_status_checks_policy: false`).
