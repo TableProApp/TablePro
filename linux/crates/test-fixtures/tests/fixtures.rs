@@ -10,7 +10,7 @@ use std::process::Stdio;
 use tablepro_test_fixtures::{
     ClickHouseFixture, ExecOutput, FixtureCredentials, HbaMode, HostKeyRevocation, MssqlFixture, MysqlFixture,
     MysqlFlavour, MysqlOptions, OpenSshFixture, PgBouncerFixture, PkiFile, PoolMode, PostgresFixture, PostgresVersion,
-    ScriptedAskpass, SshAuthVariant, SshKeyPair, TestNetwork, TestPki,
+    ScriptedAskpass, ServerVersion, SshAuthVariant, SshKeyPair, TestNetwork, TestPki,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -480,7 +480,7 @@ async fn through_ssh(
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn postgres_fixture_runs_the_requested_major() -> TestResult {
-    for version in [PostgresVersion::V13, PostgresVersion::V18] {
+    for &version in PostgresVersion::ALL {
         let fixture = PostgresFixture::start_version(version, HbaMode::Password).await?;
         let output = fixture
             .exec(&[

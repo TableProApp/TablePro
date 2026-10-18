@@ -432,7 +432,7 @@ jobs:
             manifest linux/build-aux/flatpak/app.tablepro.TablePro.Devel.json
 
   integration:
-    name: Docker tests (${{ matrix.package }})
+    name: Docker tests (${{ matrix.package }}${{ matrix.release != 'default' && format(', {0}', matrix.release) || '' }})
     needs: [changes, fast]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && needs.fast.result == 'success' }}
     runs-on: ubuntu-24.04
@@ -447,11 +447,41 @@ jobs:
           - tablepro-driver-clickhouse
           - tablepro-ssh
           - tablepro-test-fixtures
+        # Each fixture starts its engine's default release. An entry with
+        # another release runs the driver's whole suite again on the
+        # versions it names (docs/testing.md, Server releases).
+        release: [default]
         include:
           - package: tablepro-ssh
             apt: openssh-client
           - package: tablepro-test-fixtures
             apt: openssh-client
+          - package: tablepro-driver-postgres
+            release: postgres-14
+            postgres: "14"
+          - package: tablepro-driver-postgres
+            release: postgres-18
+            postgres: "18"
+          - package: tablepro-driver-mysql
+            release: mysql-8.0-mariadb-10.11
+            mysql: "8.0"
+            mariadb: "10.11"
+          - package: tablepro-driver-mysql
+            release: mysql-9.7-mariadb-12.3
+            mysql: "9.7"
+            mariadb: "12.3"
+          - package: tablepro-driver-mssql
+            release: mssql-2017
+            mssql: "2017"
+          - package: tablepro-driver-mssql
+            release: mssql-2019
+            mssql: "2019"
+          - package: tablepro-driver-mssql
+            release: mssql-2025
+            mssql: "2025"
+          - package: tablepro-driver-clickhouse
+            release: clickhouse-26.3
+            clickhouse: "26.3"
     defaults:
       run:
         working-directory: linux
@@ -481,12 +511,17 @@ jobs:
       - name: Docker tests
         env:
           PACKAGE: ${{ matrix.package }}
+          TABLEPRO_TEST_POSTGRES: ${{ matrix.postgres }}
+          TABLEPRO_TEST_MYSQL: ${{ matrix.mysql }}
+          TABLEPRO_TEST_MARIADB: ${{ matrix.mariadb }}
+          TABLEPRO_TEST_MSSQL: ${{ matrix.mssql }}
+          TABLEPRO_TEST_CLICKHOUSE: ${{ matrix.clickhouse }}
         run: cargo nextest run --locked --profile ci -p "$PACKAGE" --run-ignored only
       - name: Upload JUnit report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: junit-${{ matrix.package }}
+          name: junit-${{ matrix.package }}${{ matrix.release != 'default' && format('-{0}', matrix.release) || '' }}
           path: linux/target/nextest/ci/junit.xml
 
   integration-session:

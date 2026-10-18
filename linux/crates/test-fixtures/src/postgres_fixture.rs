@@ -5,7 +5,7 @@ use testcontainers_modules::postgres::Postgres;
 use crate::container_file::with_files;
 use crate::{
     ContainerFile, ExecOutput, FixtureCredentials, FixtureError, HbaMode, PkiAlgorithm, PkiFile, PostgresVersion,
-    TestNetwork, TestPki,
+    ServerVersion, TestNetwork, TestPki,
 };
 
 const DATABASE: &str = "tablepro";
@@ -32,11 +32,17 @@ impl PostgresFixture {
     pub const NETWORK_ROLE: &'static str = "postgres";
 
     pub async fn start(hba: HbaMode) -> Result<Self, FixtureError> {
-        Self::launch(hba, PostgresVersion::default(), None, PkiAlgorithm::default()).await
+        Self::launch(hba, PostgresVersion::selected()?, None, PkiAlgorithm::default()).await
     }
 
     pub async fn start_in(hba: HbaMode, network: &TestNetwork) -> Result<Self, FixtureError> {
-        Self::launch(hba, PostgresVersion::default(), Some(network), PkiAlgorithm::default()).await
+        Self::launch(
+            hba,
+            PostgresVersion::selected()?,
+            Some(network),
+            PkiAlgorithm::default(),
+        )
+        .await
     }
 
     pub async fn start_version(version: PostgresVersion, hba: HbaMode) -> Result<Self, FixtureError> {
@@ -47,7 +53,7 @@ impl PostgresFixture {
     /// binding cases: the server hashes its certificate by the
     /// algorithm that signed it.
     pub async fn start_with_pki(hba: HbaMode, algorithm: PkiAlgorithm) -> Result<Self, FixtureError> {
-        Self::launch(hba, PostgresVersion::default(), None, algorithm).await
+        Self::launch(hba, PostgresVersion::selected()?, None, algorithm).await
     }
 
     async fn launch(

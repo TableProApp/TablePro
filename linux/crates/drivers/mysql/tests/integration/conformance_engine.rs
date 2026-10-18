@@ -1,4 +1,5 @@
-//! The connection conformance suite against MySQL 8.4 and MariaDB 11.4.
+//! The connection conformance suite against MySQL and MariaDB, on the
+//! releases `TABLEPRO_TEST_MYSQL` and `TABLEPRO_TEST_MARIADB` pick.
 
 use std::marker::PhantomData;
 use std::sync::Arc;

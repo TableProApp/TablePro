@@ -26,7 +26,12 @@ async fn serverproperty_product_version_no_panic() {
 
     let version = scalar(connection.as_ref(), "SELECT SERVERPROPERTY('ProductVersion')").await;
 
-    assert!(connection.server_info().major >= 16, "{:?}", connection.server_info());
+    assert_eq!(
+        connection.server_info().major,
+        fixture.version().major(),
+        "{:?}",
+        connection.server_info()
+    );
     assert!(text(&version).starts_with(&connection.server_info().major.to_string()));
 }
 

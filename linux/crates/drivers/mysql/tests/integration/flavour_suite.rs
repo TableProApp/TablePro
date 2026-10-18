@@ -1,5 +1,5 @@
-//! What the driver promises on both MySQL 8.4 and MariaDB 11.4: the
-//! session it sets up, how it stops statements, and how saves fail.
+//! What the driver promises on both MySQL and MariaDB: the session it
+//! sets up, how it stops statements, and how saves fail.
 
 use std::time::Duration;
 
@@ -23,11 +23,7 @@ async fn server_info_product_flavour() {
 
         let info = connection.server_info();
         assert_eq!(info.product, product);
-        let expected = match flavour {
-            MysqlFlavour::Mysql => (8, 4),
-            MysqlFlavour::Mariadb => (11, 4),
-        };
-        assert_eq!((info.major, info.minor), expected, "{}", info.version);
+        assert_eq!((info.major, info.minor), fixture.server_version(), "{}", info.version);
         connection.close().await.expect("a close");
     }
 }

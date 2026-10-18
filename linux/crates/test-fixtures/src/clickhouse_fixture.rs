@@ -10,7 +10,10 @@ use tokio::net::TcpStream;
 use tokio::time::Instant;
 
 use crate::container_file::with_files;
-use crate::{ContainerFile, ExecOutput, FixtureCredentials, FixtureError, FixtureImage, PkiFile, TestNetwork, TestPki};
+use crate::{
+    ClickHouseVersion, ContainerFile, ExecOutput, FixtureCredentials, FixtureError, PkiFile, ServerVersion,
+    TestNetwork, TestPki,
+};
 
 const HTTP_PORT: u16 = ClickHouseFixture::HTTP_PORT;
 const HTTPS_PORT: u16 = ClickHouseFixture::HTTPS_PORT;
@@ -32,6 +35,7 @@ pub struct ClickHouseFixture {
     http_port: u16,
     https_port: u16,
     network_alias: Option<String>,
+    version: ClickHouseVersion,
 }
 
 impl ClickHouseFixture {
@@ -57,7 +61,9 @@ impl ClickHouseFixture {
     ) -> Result<Self, FixtureError> {
         let pki = TestPki::generate()?;
         let password = FixtureCredentials::generate_password();
-        let mut request: ContainerRequest<GenericImage> = FixtureImage::CLICKHOUSE
+        let version = ClickHouseVersion::selected()?;
+        let mut request: ContainerRequest<GenericImage> = version
+            .image()
             .generic()
             .with_exposed_port(HTTP_PORT.tcp())
             .with_exposed_port(HTTPS_PORT.tcp())
@@ -84,6 +90,7 @@ impl ClickHouseFixture {
             http_port,
             https_port,
             network_alias,
+            version,
         };
         fixture.create_database(ready_timeout).await?;
         Ok(fixture)
@@ -157,6 +164,10 @@ impl ClickHouseFixture {
 
     pub fn network_alias(&self) -> Option<&str> {
         self.network_alias.as_deref()
+    }
+
+    pub fn version(&self) -> ClickHouseVersion {
+        self.version
     }
 
     pub fn pki(&self) -> &TestPki {

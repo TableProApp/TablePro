@@ -144,7 +144,13 @@ async fn https_verify_full_ok() {
         .probe(within(CALL))
         .await
         .expect("the server answers over TLS");
-    assert!(connection.server_info().version.starts_with("25."));
+    let (major, minor) = fixture.version().reported();
+    assert_eq!(
+        (connection.server_info().major, connection.server_info().minor),
+        (major, minor),
+        "{}",
+        connection.server_info().version
+    );
     connection.close().await.expect("a close");
 }
 
