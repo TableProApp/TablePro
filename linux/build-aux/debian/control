@@ -30,8 +30,8 @@ Build-Depends:
 Standards-Version: 4.7.3
 Rules-Requires-Root: no
 Homepage: https://tablepro.app
-Vcs-Browser: https://github.com/TableProApp/TablePro/tree/linux/linux/build-aux/debian
-Vcs-Git: https://github.com/TableProApp/TablePro.git -b linux [linux/build-aux]
+Vcs-Browser: https://github.com/TableProApp/TablePro/tree/main/linux/build-aux/debian
+Vcs-Git: https://github.com/TableProApp/TablePro.git -b main [linux/build-aux]
 
 Package: tablepro
 Architecture: amd64 arm64
