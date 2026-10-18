@@ -1,0 +1,17 @@
+# group image
+# Container images the Docker-backed tests pull at run time. scripts/prepull-test-images.sh
+# pulls one group with retries before the tests start, so a dropped download is retried here
+# and not inside a test.
+postgres postgres:16-alpine
+postgres postgres:17-alpine
+postgres edoburu/pgbouncer:v1.24.1-p1
+mysql mysql:8.4
+mysql mariadb:11
+mssql mcr.microsoft.com/mssql/server:2022-latest
+clickhouse clickhouse/clickhouse-server:24.8
+redis redis:7.4-alpine
+mongodb mongo:7
+driver-tls clickhouse/clickhouse-server:24.8-alpine
+driver-tls mongo:7
+driver-tls mysql:8.4
+driver-tls redis:7-alpine
