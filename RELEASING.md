@@ -17,15 +17,27 @@ This runbook covers the macOS app, its registry plugins and the static libraries
 - A tag is `vX.Y.Z` or `vX.Y.0-beta.N`, N from 1 to 98. There is no `-rc`.
 - `MARKETING_VERSION` is the tag without the `v`. The build, `CURRENT_PROJECT_VERSION`, is `((MAJOR*1000+MINOR)*100+PATCH)*100+R`, where R is N for a beta and 99 for a stable: `v0.82.0-beta.1` is 820001, `v0.82.0` is 820099, `v0.82.1` is 820199. MINOR stays at most 999 and PATCH at most 99.
 - A local build is `0.0.0-dev`, build 1 (`project.yml`, `settings.base`). `scripts/release/version.py parse <tag>` prints a tag's version, build, channel and line. Every "is newer" check, in the app and in the plugin manifest, compares the build (`CFBundleVersion`).
-- Every X.Y.0 ships at least one published `vX.Y.0-beta.N` first; patches go straight to stable. Promote the newest beta when it has no open `regression` issue.
+- Every X.Y.0 ships at least one published `vX.Y.0-beta.N` first; patches go straight to stable. When each ships: Schedule.
 - One universal build, arm64 and x86_64. It becomes arm64-only once the deployment target reaches macOS 27.
 
 ## Branches
 
 - An admin cuts `release/<X.Y>` from a green `main` commit at beta.1. Only admins create `release/*` branches.
 - Every fix lands on `main` first, then reaches the line through a cherry-pick PR from `backport/<PR>-<X.Y>`: one fix per PR, titled with the original subject and its ` (#N)`, which is the provenance. A release PR comes from `prep/v<X.Y.Z>`. No PR head branch lives under `release/*`.
-- A line takes patches until `X.(Y+1).0` ships, then only security or data-loss fixes. At most two lines are live.
+- A line closes when `X.(Y+1).0` ships. A later security or data-loss fix for its users ships as a critical patch on the current stable line. At most two lines are live.
 - After a stable or patch publishes, a PR with the same title cherry-picks its release commit to `main`, and to a newer open line when one exists. The next tag refuses to build until it has.
+
+## Schedule
+
+Tags go out between 13:00 and 15:00 ICT (UTC+7).
+
+- Monday, the train: promote the open line's newest beta to `vX.Y.0` when the gate passes, forward-port it, then cut `release/X.(Y+1)` from the newest green `main` commit and tag its beta.1. The forward-port merges first: `version.py` refuses beta.1 of X.(Y+1) until `main` has `## [X.Y.0]`.
+- The gate: the line is 7 days old; its newest beta is at least 72 h old and nothing outside `CHANGELOG.md` and `changelog.d/` landed on the line after it; no open issue is labeled `regression`; the storage check passes (`.claude/skills/release/SKILL.md`, section 4).
+- When the gate fails, nothing is promoted or cut. Fix on `main`, pick it, and ship beta.N+1. Promote it on the first Tuesday to Thursday when it is 48 h old with no open `regression` issue, and cut the next beta.1 the same day. That line's train is the first Monday it is 7 days old.
+- Tuesday to Thursday: a beta.N when the line has picks, at most one a day. A patch `X.Y.Z` goes straight to stable, only for a regression from the previous stable, a crash, a plugin that fails to load, a security fix or data loss.
+- Friday to Sunday: no tags, except a critical release or the fix for a build that fails to launch, update or connect.
+- No train on 2026-12-21, 2026-12-28 or in the Tet week (2027-02-08). Betas and patches still ship on their days.
+- An issue against a `-beta.N` build is triaged within one working day and labeled `regression` when it worked in the previous stable.
 
 ## Notes
 
@@ -84,7 +96,7 @@ python3 scripts/release/notes.py docs X.Y.Z --ref vX.Y.Z --mdx ../tablepro-docs/
 
 A `v*` tag runs `release.yml` and nothing else. A run is never cancelled, and every job reads the version, build and channel from `verify`.
 
-- `verify`: `version.py check` refuses a tag that breaks the grammar or the bounds; that `origin/release/<X.Y>` does not contain; whose previous tag on the line is not its ancestor; a stable X.Y.0 with no published beta, or a beta after its X.Y.0; a `CHANGELOG.md` missing the stable's heading, or a published stable of this or the previous line below it; a stable whose tag still holds fragments in `changelog.d/`. Then it needs macOS Tests, iOS and Package Tests and Release Build green on the tag commit or the nearest first-parent commit that ran them, with no change to the files they read after it, waiting on a pending run. Last, it writes the notes.
+- `verify`: `version.py check` refuses a tag that breaks the grammar or the bounds; that `origin/release/<X.Y>` does not contain; whose previous tag on the line is not its ancestor; a stable X.Y.0 with no published beta, or a beta after its X.Y.0; a stable whose tree differs from its line's newest published beta outside `CHANGELOG.md` and `changelog.d/`, until a stable tag on the line has matched that beta; a `CHANGELOG.md` missing the stable's heading, or a published stable of this or the previous line below it; a stable whose tag still holds fragments in `changelog.d/`. Then it needs macOS Tests, iOS and Package Tests and Release Build green on the tag commit or the nearest first-parent commit that ran them, with no change to the files they read after it, waiting on a pending run. Last, it writes the notes.
 - `app` (`signing`): a GA Xcode for a stable (`setup-xcode` `require-release`), the CloudKit Production schema check, `build.sh app` (archive, export with `scripts/release/ExportOptions.plist`, universal and plugin load checks), `notarize.sh` on the app, `package.sh app`, `notarize.sh` on the DMG.
 - `plugins` (`signing`): the Dameng and HANA bridges, `build.sh plugins` (each target `registry.py targets` prints, universal, signed with Developer ID, the hardened runtime and a timestamp), one notary submission for all, `package.sh plugins` (the zips, described as the manifest will read them).
 - `github-release`: `actions/attest` attests `dist/*`; `gh release create` drafts, uploads and publishes; `gh release verify` and `verify-asset` check the published release.
@@ -116,7 +128,7 @@ gh workflow run withdraw.yml --ref v<newest tag> -f version=X.Y.Z
 | `release` | tags `v*` | `SPARKLE_PRIVATE_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 | `github-pages` | tags `v*` | none |
 
-- No repo-level secret or deploy key is left, and no environment has required reviewers: admin-only, immutable tags are the gate. Rulesets: `.claude/rules/ci.md`, Rulesets.
+- No repo-level secret or deploy key is left, and no environment above has required reviewers: admin-only, immutable tags are the gate. `linux-release` also deploys from `main`, so it takes a reviewer (`linux/docs/releasing.md`). Rulesets: `.claude/rules/ci.md`, Rulesets.
 - Notarization uses the App Store Connect API key, which `.github/actions/apple-signing` stores as the `TablePro` notarytool profile. The action warns when the certificate expires within 60 days.
 - An offline backup of the Sparkle EdDSA key exists and the maintainer holds it. The key never rotates without a signed transition, since every app from 0.82 verifies the feed with it.
 - `gh-pages` takes pushes from `github-actions[bot]` with `GITHUB_TOKEN` and has no required checks. `feed.py add` and `withdraw` refuse an `appcast.xml` whose signature does not verify, so a hand edit is re-signed with `sign_update` before it is pushed.
@@ -131,7 +143,7 @@ gh workflow run withdraw.yml --ref v<newest tag> -f version=X.Y.Z
 - Retention per channel, kit and `minimumSystemVersion`: the two highest builds stay; a beta goes once a stable with the same key has a higher build; a kit below `retainFromPluginKit` goes. A release pruned on arrival is a logged no-op.
 - `retainFromPluginKit` is the kit of the oldest app version still on at least 1% of the machines seen in the last 30 days (license dashboard, App Versions). Check it before each stable and raise it with a normal PR. The manifest keeps the higher of its own value and the tag's, so an older line never lowers it.
 - Accepted risks: the manifest is trusted through HTTPS, the plugin's Team ID check and the sha256, so a rollback or freeze of the manifest goes undetected.
-- PluginKit ABI rules: `.claude/rules/plugin-system.md`, ABI.
+- PluginKit ABI rules and when the kit version moves: `.claude/rules/plugin-system.md`, ABI.
 
 ## Static libraries
 

@@ -146,7 +146,7 @@ Not built yet, in no order.
 
 ### Release and project
 
-- Before the first tag, the release setup [ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md#consequences) lists: the PPA, the COPR project, and the `linux-release` environment with what `release-linux.yml` names in its header.
+- Before the first tag, the release setup [ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md#consequences) lists: the PPA, the COPR project, and the secrets and variable `release-linux.yml` names in its header.
 - Write the Flathub manifest and the exception request by hand, and submit them.
 - An AUR PKGBUILD, kept by the community.
 - The first translations in `po/LINGUAS`.
