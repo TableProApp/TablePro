@@ -25,6 +25,7 @@ final class PluginManager: ObservableObject {
     private let builtInPluginsURL: URL?
     internal let userPluginsDir: URL
     internal let registryInstaller: any RegistryPluginInstalling
+    private let stagedUpdateVerifier: (Bundle) throws -> Void
 
     @Published internal(set) var plugins: [PluginEntry] = []
 
@@ -132,11 +133,13 @@ final class PluginManager: ObservableObject {
         builtInPluginsURL: URL? = Bundle.main.builtInPlugInsURL,
         userPluginsDir: URL = PluginManager.defaultUserPluginsDir(),
         registryInstaller: any RegistryPluginInstalling = PluginInstaller.shared,
+        stagedUpdateVerifier: @escaping (Bundle) throws -> Void = { try PluginCodeSignatureVerifier.verify(bundle: $0) },
         initialLoadClock: any Clock<Duration> = ContinuousClock()
     ) {
         self.builtInPluginsURL = builtInPluginsURL
         self.userPluginsDir = userPluginsDir
         self.registryInstaller = registryInstaller
+        self.stagedUpdateVerifier = stagedUpdateVerifier
         self.initialLoadClock = initialLoadClock
     }
 
@@ -188,7 +191,7 @@ final class PluginManager: ObservableObject {
 
     func loadPlugins() {
         hasStartedInitialLoad = true
-        Self.applyStagedUpdates(in: userPluginsDir)
+        Self.applyStagedUpdates(in: userPluginsDir, verifySignature: stagedUpdateVerifier)
         cleanStaleStagingArtifacts()
         discoverAllPlugins()
 

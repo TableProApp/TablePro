@@ -41,6 +41,8 @@ extension PluginManager {
     func scheduleRegistryUpdatePass(after delay: Duration = .zero) {
         guard SoftwareUpdater.isUpdatingEnabled else { return }
         registryUpdateTask?.cancel()
+        // A connection the initial load releases runs before this task starts, and must wait for its repairs.
+        isRepairingRejectedPlugins = delay == .zero
         registryUpdateTask = Task { [weak self] in
             if delay > .zero {
                 try? await Task.sleep(for: delay)
@@ -231,8 +233,8 @@ extension PluginManager {
         String(localized: "Updating this plugin didn't finish. TablePro will try again the next time it launches.")
     }
 
-    // Only plist checks here: the signature was checked when staged and is checked again before any code loads.
-    nonisolated static func applyStagedUpdates(in userPluginsDir: URL) {
+    // A staged copy that went bad since it was staged must not replace the working one.
+    nonisolated static func applyStagedUpdates(in userPluginsDir: URL, verifySignature: (Bundle) throws -> Void) {
         let fm = FileManager.default
         guard let stagedDirs = try? fm.contentsOfDirectory(
             at: PluginInstaller.stagedUpdatesRoot(for: userPluginsDir),
@@ -249,6 +251,7 @@ extension PluginManager {
                     throw PluginError.invalidBundle("The staged bundle is not \(stagedDir.lastPathComponent)")
                 }
                 try validateBundleVersions(bundle)
+                try verifySignature(bundle)
                 let destURL = userPluginsDir.appendingPathComponent(bundleURL.lastPathComponent, isDirectory: true)
                 _ = try PluginInstaller.atomicReplace(stagedBundleURL: bundleURL, destURL: destURL)
                 logger.info("Applied the staged update of '\(stagedDir.lastPathComponent)'")
