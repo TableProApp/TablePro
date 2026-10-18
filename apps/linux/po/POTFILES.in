@@ -10,6 +10,7 @@ apps/linux/app/src/ui/app/bundle.rs
 apps/linux/app/src/ui/app/connection.rs
 apps/linux/app/src/ui/app/database_switcher.rs
 apps/linux/app/src/ui/app/editor_files.rs
+apps/linux/app/src/ui/app/environment_marker.rs
 apps/linux/app/src/ui/app/favorites.rs
 apps/linux/app/src/ui/app/grid_close.rs
 apps/linux/app/src/ui/app/import.rs

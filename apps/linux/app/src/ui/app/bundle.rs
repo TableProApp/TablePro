@@ -453,6 +453,7 @@ where
             .iter()
             .find(|entry| entry.connection_id == item.source_id)
             .cloned();
+        let _save_turn = crate::services::connection_save_turn::take().await;
         if let Err(failure) = apply(item, carried, replace_saved_passwords).await {
             return (imported, Some(failure));
         }
@@ -585,6 +586,31 @@ mod tests {
 
         assert_eq!(imported, (1, Some(ItemApplyFailure::CredentialStore)));
         assert_eq!(*attempted.lock().unwrap(), ["first", "failed"]);
+    }
+
+    #[tokio::test]
+    async fn an_import_holds_the_save_turn_while_each_connection_is_applied() {
+        let held_during_apply = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let outcome = apply_items(vec![item("a"), item("b")], Vec::new(), false, {
+            let held = held_during_apply.clone();
+            move |_, _, _| {
+                let held = held.clone();
+                async move {
+                    held.lock()
+                        .unwrap()
+                        .push(crate::services::connection_save_turn::is_held());
+                    Ok(())
+                }
+            }
+        })
+        .await;
+
+        assert_eq!(outcome, (2, None));
+        assert_eq!(*held_during_apply.lock().unwrap(), [true, true]);
+        assert!(
+            !crate::services::connection_save_turn::is_held(),
+            "the turn is released afterwards"
+        );
     }
 
     #[test]

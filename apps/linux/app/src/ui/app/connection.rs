@@ -862,6 +862,7 @@ fn execute_delete_connection(
     sender.command(move |_, shutdown| {
         shutdown
             .register(async move {
+                let _save_turn = crate::services::connection_save_turn::take().await;
                 let result = tablepro_storage::delete_connection(id).await;
                 if let Err(error) = result {
                     tracing::warn!(error = %error, "deleting the connection file entry failed");

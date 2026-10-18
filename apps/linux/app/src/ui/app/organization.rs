@@ -181,27 +181,31 @@ impl App {
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
-                    let connection = parsed.connection;
-                    let connection_id = connection.id;
-                    let label = connection.name.clone();
-                    if let Err(error) = tablepro_storage::save_connections(std::slice::from_ref(&connection)).await {
-                        tracing::warn!(error = %error, "saving the imported connection failed");
-                        sender_clone.input(AppMsg::ImportConnectionUrlFailed);
-                        return;
-                    }
-                    if let Some(password) = parsed.password
-                        && let Err(error) =
-                            tablepro_storage::store_password(connection_id, secret(&password), &label).await
-                    {
-                        tracing::warn!(error = %error, "storing the imported password failed");
-                        if let Err(rollback_error) = tablepro_storage::delete_connection(connection_id).await {
-                            tracing::warn!(error = %rollback_error, "rolling back imported connection failed");
+                    crate::services::connection_save_turn::run(async move {
+                        let connection = parsed.connection;
+                        let connection_id = connection.id;
+                        let label = connection.name.clone();
+                        if let Err(error) = tablepro_storage::save_connections(std::slice::from_ref(&connection)).await
+                        {
+                            tracing::warn!(error = %error, "saving the imported connection failed");
+                            sender_clone.input(AppMsg::ImportConnectionUrlFailed);
+                            return;
                         }
-                        sender_clone.input(AppMsg::ImportConnectionUrlFailed);
-                        return;
-                    }
-                    sender_clone.input(AppMsg::ImportConnectionUrlSucceeded(label));
-                    sender_clone.input(AppMsg::ReloadConnections);
+                        if let Some(password) = parsed.password
+                            && let Err(error) =
+                                tablepro_storage::store_password(connection_id, secret(&password), &label).await
+                        {
+                            tracing::warn!(error = %error, "storing the imported password failed");
+                            if let Err(rollback_error) = tablepro_storage::delete_connection(connection_id).await {
+                                tracing::warn!(error = %rollback_error, "rolling back imported connection failed");
+                            }
+                            sender_clone.input(AppMsg::ImportConnectionUrlFailed);
+                            return;
+                        }
+                        sender_clone.input(AppMsg::ImportConnectionUrlSucceeded(label));
+                        sender_clone.input(AppMsg::ReloadConnections);
+                    })
+                    .await;
                 })
                 .drop_on_shutdown()
         });
