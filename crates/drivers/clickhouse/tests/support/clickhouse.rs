@@ -32,7 +32,23 @@ pub async fn start_clickhouse() -> (ContainerAsync<GenericImage>, ConnectOptions
         tls: TlsConfig::disabled(),
         ..Default::default()
     };
+    wait_until_queryable(&opts).await;
     (container, opts)
+}
+
+async fn wait_until_queryable(opts: &ConnectOptions) {
+    let mut last_error = String::new();
+    for _ in 0..120 {
+        match ClickhouseDriver.connect(opts.clone()).await {
+            Ok(connection) => match connection.execute("SELECT 1").await {
+                Ok(_) => return,
+                Err(error) => last_error = format!("{error:?}"),
+            },
+            Err(error) => last_error = format!("{error:?}"),
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+    panic!("clickhouse accepted /ping but never answered SELECT 1 within 60s: {last_error}");
 }
 
 pub async fn connect(opts: ConnectOptions) -> Box<dyn tablepro_core::Connection> {
