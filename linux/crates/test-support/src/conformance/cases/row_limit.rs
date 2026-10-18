@@ -35,9 +35,10 @@ pub async fn row_limit_keeps_transaction_and_later_statements<E: EditorTransacti
     expect(CASE, u64::try_from(kept).ok() == Some(KEPT_ROWS), || {
         format!("the limited read kept {kept} rows, not {KEPT_ROWS}")
     })?;
-    expect(CASE, truncations == [Truncation::ReadPastLimit], || {
-        format!("the limited read finished with {truncations:?}")
-    })?;
+    // A cursor that stops the statement at the limit (PostgreSQL) says
+    // ServerStopped; an engine that reads on says ReadPastLimit.
+    let cut = matches!(truncations[..], [Truncation::ReadPastLimit | Truncation::ServerStopped]);
+    expect(CASE, cut, || format!("the limited read finished with {truncations:?}"))?;
     for sql in [insert_sql(dialect.as_ref(), &table, 2, "second"), engine.commit_sql()] {
         run_completed(CASE, session.as_ref(), &sql, run_options()).await?;
     }
