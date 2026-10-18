@@ -25,7 +25,8 @@ apps/linux/app/src/ui/app/init_css.rs 5
 apps/linux/app/src/ui/app/init_sidebar.rs 19
 apps/linux/app/src/ui/app/init_window.rs 36
 apps/linux/app/src/ui/app/init_workspace.rs 17
-apps/linux/app/src/ui/app/mod.rs 158
+apps/linux/app/src/ui/app/mod.rs 152
+apps/linux/app/src/ui/app/app_helpers.rs 6
 apps/linux/app/src/ui/app/msg.rs 3
 apps/linux/app/src/ui/app/organization.rs 13
 apps/linux/app/src/ui/app/row_ops.rs 51
