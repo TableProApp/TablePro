@@ -13,6 +13,10 @@
     "defaultTestExecutionTimeAllowance" : 60,
     "environmentVariableEntries" : [
       {
+        "key" : "DEVELOPER_DIR",
+        "value" : "$(DEVELOPER_DIR)"
+      },
+      {
         "key" : "TABLEPRO_UI_TEST_SANDBOX",
         "value" : "$(TARGET_TEMP_DIR)\/UnitTestStorage"
       }

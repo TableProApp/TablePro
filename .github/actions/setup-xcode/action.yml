@@ -3,39 +3,51 @@ description: Selects the one Xcode every TablePro build and test job uses.
 
 inputs:
   require-release:
-    description: true fails the job unless the selected Xcode is a GA release, as a stable build requires.
+    description: true fails the job unless the selected Xcode is Apple's released build, as a stable build requires.
     required: false
     default: "false"
 
-# The only place the version is written. runs-on names the image (xcode-27); this picks the build
-# inside it, the one developers install locally. The image has no Xcode 26.
+# The only place the version is written. The bundle name differs by machine
+# (Xcode_27.1_Release_Candidate.app on xcode-27, Xcode.app on a Mac), so it is found by its version.
 runs:
   using: composite
   steps:
     - shell: bash
       env:
-        XCODE: /Applications/Xcode_27.1.app
+        XCODE_VERSION: "27.1"
+        # Apple's released 27.1 (developer.apple.com/news/releases). The 27.1 beta, 27A9269, also says GM.
+        XCODE_RELEASE_BUILD: 27A9275
         REQUIRE_RELEASE: ${{ inputs.require-release }}
       run: |
         set -euo pipefail
-        sudo xcode-select --switch "$XCODE"
-        xcodebuild -version
-        [ "$REQUIRE_RELEASE" = true ] || exit 0
+        matches=()
+        installed=""
+        for app in /Applications/Xcode*.app; do
+          if [ -L "$app" ] || [ ! -d "$app" ]; then
+            continue
+          fi
+          version="$(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/version.plist" 2> /dev/null || true)"
+          installed="$installed $app ($version)"
+          if [ "$version" = "$XCODE_VERSION" ]; then
+            matches+=("$app")
+          fi
+        done
+        if [ "${#matches[@]}" -ne 1 ]; then
+          echo "::error::Expected one Xcode $XCODE_VERSION in /Applications, found ${#matches[@]}:${installed:- no Xcode}"
+          exit 1
+        fi
 
-        # The image links Xcode_<version>.app to whichever build it carries, a beta or RC included.
-        app="$(cd "$XCODE" && pwd -P)"
-        case "$(basename "$app")" in
-          *_beta* | *_Release_Candidate*)
-            echo "::error::$XCODE is $app, not a GA Xcode; a stable release builds only on a GA Xcode"
-            exit 1
-            ;;
-        esac
-        license="$app/Contents/Resources/LicenseInfo.plist"
-        type="$(plutil -extract licenseType raw -o - "$license" 2> /dev/null || true)"
-        case "$(tr '[:upper:]' '[:lower:]' <<< "$type")" in
-          *beta*)
-            echo "::error::$app has the license type '$type', not a GA Xcode; a stable release builds only on a GA Xcode"
-            exit 1
-            ;;
-        esac
-        echo "$app is a GA Xcode"
+        app="${matches[0]}"
+        export DEVELOPER_DIR="$app/Contents/Developer"
+        echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
+        xcodebuild -version
+
+        build="$(plutil -extract ProductBuildVersion raw -o - "$app/Contents/version.plist")"
+        license="$(plutil -extract licenseType raw -o - "$app/Contents/Resources/LicenseInfo.plist" 2> /dev/null || true)"
+        echo "$app: build $build, licenseType ${license:-missing}"
+        [ "$REQUIRE_RELEASE" = true ] || exit 0
+        if [ "$build" != "$XCODE_RELEASE_BUILD" ] || [ "$license" != GM ]; then
+          echo "::error::$app is $build with licenseType '$license', not Apple's released Xcode $XCODE_VERSION ($XCODE_RELEASE_BUILD, GM); a stable release builds only on it"
+          exit 1
+        fi
+        echo "$app is Apple's released Xcode $XCODE_VERSION"
