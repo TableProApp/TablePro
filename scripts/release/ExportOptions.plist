@@ -4,6 +4,8 @@
 <dict>
 	<key>method</key>
 	<string>developer-id</string>
+	<key>teamID</key>
+	<string>D7HJ5TFYCU</string>
 	<key>iCloudContainerEnvironment</key>
 	<string>Production</string>
 	<key>provisioningProfiles</key>

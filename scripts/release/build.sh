@@ -42,10 +42,9 @@ SETTINGS=(COMPILATION_CACHE_ENABLE_CACHING=NO)
 [ -z "${VERSION:-}" ] || SETTINGS+=("MARKETING_VERSION=$VERSION")
 [ -z "${BUILD:-}" ] || SETTINGS+=("CURRENT_PROJECT_VERSION=$BUILD")
 if [ "$SIGNED" = true ]; then
-    # xcodebuild expands $(TABLEPRO_DEVELOPMENT_TEAM) itself, from Configs/Base.xcconfig.
-    # shellcheck disable=SC2016
-    SETTINGS+=(CODE_SIGN_STYLE=Manual "CODE_SIGN_IDENTITY=Developer ID Application"
-        'DEVELOPMENT_TEAM=$(TABLEPRO_DEVELOPMENT_TEAM)')
+    # A literal team: a package target never sees Configs/Base.xcconfig's TABLEPRO_DEVELOPMENT_TEAM.
+    TEAM="$(/usr/libexec/PlistBuddy -c 'Print :teamID' "$EXPORT_OPTIONS")"
+    SETTINGS+=(CODE_SIGN_STYLE=Manual "CODE_SIGN_IDENTITY=Developer ID Application" "DEVELOPMENT_TEAM=$TEAM")
 else
     SETTINGS+=(CODE_SIGNING_ALLOWED=NO)
 fi
