@@ -36,7 +36,7 @@ mod tests {
     #[test]
     fn an_engine_comes_from_its_driver_and_an_unknown_one_asks() {
         let mut drivers = DriverRegistry::new();
-        drivers.register(Arc::new(drivers_mysql::MysqlDriver));
+        drivers.register(Arc::new(tablepro_driver_mysql::MysqlDriver));
 
         assert_eq!(
             EngineProfile::of(&drivers, "mysql"),

@@ -57,8 +57,8 @@ mod tests {
             flatpak: true,
         };
         let mut drivers = DriverRegistry::new();
-        drivers.register(Arc::new(drivers_sqlite::SqliteDriver));
-        drivers.register(Arc::new(drivers_postgres::PgDriver));
+        drivers.register(Arc::new(tablepro_driver_sqlite::SqliteDriver));
+        drivers.register(Arc::new(tablepro_driver_postgres::PgDriver));
 
         let expected = format!(
             "TablePro {version}\n\

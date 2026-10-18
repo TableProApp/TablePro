@@ -262,7 +262,7 @@ fn entire_table_export_streams_every_row() {
 fn entire_table_export_has_no_identity_columns() {
     let harness = Harness::new();
     let path = harness.path("users.csv");
-    let dialect: Arc<dyn SqlDialect> = Arc::new(drivers_postgres::PgDialect::new(&ServerInfo::new(
+    let dialect: Arc<dyn SqlDialect> = Arc::new(tablepro_driver_postgres::PgDialect::new(&ServerInfo::new(
         "PostgreSQL",
         "16.4",
         16,

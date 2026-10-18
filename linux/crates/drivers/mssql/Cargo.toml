@@ -3,19 +3,15 @@ name = "tablepro-driver-mssql"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish = false
-
-[lib]
-name = "drivers_mssql"
-path = "src/lib.rs"
+publish.workspace = true
 
 [features]
 default = []
 kerberos = ["tiberius/integrated-auth-gssapi"]
 
 [dependencies]
-tablepro-core = { path = "../../core" }
-tablepro-net = { path = "../../net" }
+tablepro-core.workspace = true
+tablepro-net.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 deadpool.workspace = true
@@ -28,14 +24,9 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-tablepro-test-fixtures = { path = "../../test-fixtures" }
-tablepro-test-support = { path = "../../test-support" }
-async-trait.workspace = true
-chrono.workspace = true
-secrecy.workspace = true
+tablepro-test-fixtures.workspace = true
+tablepro-test-support.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "test-util"] }
-tokio-util = { workspace = true, features = ["rt"] }
-uuid.workspace = true
 
 [lints]
 workspace = true

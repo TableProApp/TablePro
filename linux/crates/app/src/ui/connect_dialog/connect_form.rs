@@ -620,19 +620,19 @@ mod tests {
     }
 
     fn postgres() -> &'static DriverCapabilities {
-        caps(&drivers_postgres::PgDriver)
+        caps(&tablepro_driver_postgres::PgDriver)
     }
 
     fn mysql() -> &'static DriverCapabilities {
-        caps(&drivers_mysql::MysqlDriver)
+        caps(&tablepro_driver_mysql::MysqlDriver)
     }
 
     fn mssql() -> &'static DriverCapabilities {
-        caps(&drivers_mssql::MssqlDriver)
+        caps(&tablepro_driver_mssql::MssqlDriver)
     }
 
     fn sqlite() -> &'static DriverCapabilities {
-        caps(&drivers_sqlite::SqliteDriver)
+        caps(&tablepro_driver_sqlite::SqliteDriver)
     }
 
     fn filled(driver_id: &str, caps: &DriverCapabilities) -> ConnectForm {

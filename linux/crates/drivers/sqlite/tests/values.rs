@@ -4,7 +4,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use drivers_sqlite::SqliteDriver;
 use sqlx::Connection as _;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
 use tablepro_core::column::{BoolStorage, ColumnKind, TemporalZone};
@@ -14,6 +13,7 @@ use tablepro_core::{
     CallOptions, ConnectEnvironment, ConnectOptions, ConnectTarget, Connection, DatabaseDriver, FileEndpoint,
     ForeignKeyMode, LivenessPolicy, QueryResult, RowLimit, Value, WorkspaceSettings, WriteBatch, WriteKind,
 };
+use tablepro_driver_sqlite::SqliteDriver;
 use tempfile::TempDir;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;

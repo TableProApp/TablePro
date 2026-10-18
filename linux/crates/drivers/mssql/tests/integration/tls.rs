@@ -8,10 +8,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use drivers_mssql::MssqlDriver;
 use tablepro_core::{
     ConnectOptions, DatabaseDriver, DriverError, ErrorCategory, TlsConfig, TlsFailure, TlsMode, WorkspaceSettings,
 };
+use tablepro_driver_mssql::MssqlDriver;
 use tablepro_test_fixtures::{MssqlFixture, PkiFile, TestPki};
 use tablepro_test_support::conformance::{ConformanceFailure, TlsConformanceEngine, test_liveness};
 

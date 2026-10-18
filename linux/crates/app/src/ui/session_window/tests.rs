@@ -977,13 +977,9 @@ fn a_file_window_that_could_not_show_the_owner_stays_open_from_then_on() {
 #[gtk4::test]
 fn f002_late_show_create_reply_after_disconnect_is_dropped() {
     let test = TestWindow::connected_with("LateShowCreate", |script| {
-        script.dialect = Arc::new(drivers_postgres::PgDialect::new(&tablepro_core::ServerInfo::new(
-            "PostgreSQL",
-            "18.0",
-            18,
-            0,
-            0,
-        )));
+        script.dialect = Arc::new(tablepro_driver_postgres::PgDialect::new(
+            &tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0),
+        ));
         script.fetch_table_definition.always(FakeReply::Late {
             after: Duration::from_millis(300),
             outcome: Ok(users_table()),

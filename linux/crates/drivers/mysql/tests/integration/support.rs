@@ -6,7 +6,6 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use drivers_mysql::MysqlDriver;
 use secrecy::SecretString;
 use tablepro_core::statement::{GuardedStatement, Statement, StatementBuilder};
 use tablepro_core::{
@@ -15,6 +14,7 @@ use tablepro_core::{
     ResultEvent, ResultSink, RunEnd, RunOptions, RunSummary, SinkFlow, TableRef, TlsConfig, Transport, Truncation,
     UserSql, Value, WorkspaceSettings, WriteBatch, WriteKind, WriteReport,
 };
+use tablepro_driver_mysql::MysqlDriver;
 use tablepro_net::DirectTcpTransport;
 use tablepro_test_fixtures::{FixtureCredentials, MysqlFixture, MysqlFlavour, MysqlOptions};
 use tablepro_test_support::conformance::test_liveness;

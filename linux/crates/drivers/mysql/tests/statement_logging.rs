@@ -9,13 +9,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use drivers_mysql::MysqlDriver;
 use secrecy::SecretString;
 use tablepro_core::statement::StatementBuilder;
 use tablepro_core::{
     CallOptions, ConnectEnvironment, ConnectOptions, ConnectTarget, Credentials, DatabaseDriver, NetworkEndpoint,
     NetworkTarget, RowLimit, TlsConfig, UserSql, WorkspaceSettings,
 };
+use tablepro_driver_mysql::MysqlDriver;
 use tablepro_net::DirectTcpTransport;
 use tablepro_test_fixtures::{MysqlFixture, MysqlFlavour, MysqlOptions};
 use tablepro_test_support::conformance::test_liveness;

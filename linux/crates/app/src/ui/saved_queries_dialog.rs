@@ -725,7 +725,7 @@ mod dialog_tests {
             .build()
             .expect("runtime")
             .block_on(async {
-                let connection = drivers_sqlite::SqliteDriver
+                let connection = tablepro_driver_sqlite::SqliteDriver
                     .connect(options, CancellationToken::new())
                     .await
                     .expect("connect");

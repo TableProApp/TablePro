@@ -36,7 +36,7 @@ mod tests {
     use super::*;
 
     fn users() -> TableDefinition {
-        let postgres = drivers_postgres::PgDialect::new(&ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
+        let postgres = tablepro_driver_postgres::PgDialect::new(&ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
         let id = ColumnInfo {
             name: "id".to_owned(),
             column_type: postgres.parse_type("integer").expect("a PostgreSQL type"),

@@ -126,7 +126,7 @@ fn column_object(tab: &StructureTab, position: u32) -> DraftColumnObject {
 }
 
 fn postgres() -> Arc<dyn SqlDialect> {
-    Arc::new(drivers_postgres::PgDialect::new(&ServerInfo::new(
+    Arc::new(tablepro_driver_postgres::PgDialect::new(&ServerInfo::new(
         "PostgreSQL",
         "18.0",
         18,
@@ -598,13 +598,9 @@ fn integer_column(name: &str, primary_key: bool) -> ColumnDefinition {
 
 #[gtk4::test]
 fn clickhouse_key_column_rename_is_insensitive_with_reason() {
-    let clickhouse: Arc<dyn SqlDialect> = Arc::new(drivers_clickhouse::ClickHouseDialect::new(&ServerInfo::new(
-        "ClickHouse",
-        "25.8",
-        25,
-        8,
-        0,
-    )));
+    let clickhouse: Arc<dyn SqlDialect> = Arc::new(tablepro_driver_clickhouse::ClickHouseDialect::new(
+        &ServerInfo::new("ClickHouse", "25.8", 25, 8, 0),
+    ));
     let mut key = definition("id");
     key.columns[0].info.column_type = clickhouse.parse_type("UInt64").expect("a ClickHouse type");
     key.columns[0].attributes.key_roles = ColumnKeyRoles {
@@ -678,8 +674,8 @@ fn referenced_primary_key_switch_is_insensitive_with_foreign_key_names() {
 
 #[gtk4::test]
 fn a_computed_column_takes_no_comment_where_the_comment_restates_it() {
-    let mysql: Arc<dyn SqlDialect> = Arc::new(drivers_mysql::MySqlDialect::new(
-        drivers_mysql::MySqlFlavour::MySql,
+    let mysql: Arc<dyn SqlDialect> = Arc::new(tablepro_driver_mysql::MySqlDialect::new(
+        tablepro_driver_mysql::MySqlFlavour::MySql,
         &ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
     ));
     let mut table = definition("total");
@@ -1031,8 +1027,8 @@ fn a_postgres_identity_keeps_numbering_outside_the_key() {
 
 #[gtk4::test]
 fn a_mysql_column_stops_numbering_as_it_leaves_the_key() {
-    let mysql: Arc<dyn SqlDialect> = Arc::new(drivers_mysql::MySqlDialect::new(
-        drivers_mysql::MySqlFlavour::MySql,
+    let mysql: Arc<dyn SqlDialect> = Arc::new(tablepro_driver_mysql::MySqlDialect::new(
+        tablepro_driver_mysql::MySqlFlavour::MySql,
         &ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
     ));
     let mut table = keyed_users();
@@ -1106,9 +1102,9 @@ fn add_buttons(container: &gtk::Box) -> Vec<String> {
 
 /// A SQLite `users (body)` table stored as `create_statement`.
 fn sqlite_users(create_statement: &str) -> Vec<String> {
-    let sqlite: Arc<dyn SqlDialect> = Arc::new(drivers_sqlite::SqliteDialect::new(drivers_sqlite::SqliteVersion::new(
-        3, 45, 0,
-    )));
+    let sqlite: Arc<dyn SqlDialect> = Arc::new(tablepro_driver_sqlite::SqliteDialect::new(
+        tablepro_driver_sqlite::SqliteVersion::new(3, 45, 0),
+    ));
     let mut table = definition("body");
     table.source = Some(TableSource {
         create_statement: create_statement.to_owned(),

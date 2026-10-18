@@ -753,9 +753,9 @@ mod tests {
     fn a_sqlite_key_picks_its_table_from_its_own_schema() {
         use tablepro_core::dialect::SqlDialect;
 
-        let sqlite = drivers_sqlite::SqliteDialect::new(drivers_sqlite::SqliteVersion::new(3, 45, 0));
+        let sqlite = tablepro_driver_sqlite::SqliteDialect::new(tablepro_driver_sqlite::SqliteVersion::new(3, 45, 0));
         let postgres =
-            drivers_postgres::PgDialect::new(&tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
+            tablepro_driver_postgres::PgDialect::new(&tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
         let sqlite = sqlite.ddl().expect("SQLite plans DDL");
         let postgres = postgres.ddl().expect("PostgreSQL plans DDL");
 

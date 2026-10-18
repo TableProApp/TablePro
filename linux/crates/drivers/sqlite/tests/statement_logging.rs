@@ -10,7 +10,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use drivers_sqlite::SqliteDriver;
 use sqlx::Connection as _;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
 use tablepro_core::statement::StatementBuilder;
@@ -18,6 +17,7 @@ use tablepro_core::{
     CallOptions, ConnectEnvironment, ConnectOptions, ConnectTarget, DatabaseDriver, FileEndpoint, LivenessPolicy,
     RowLimit, WorkspaceSettings,
 };
+use tablepro_driver_sqlite::SqliteDriver;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tracing::Subscriber;

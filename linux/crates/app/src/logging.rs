@@ -205,7 +205,7 @@ mod tests {
             log::info!(target: "tokio_postgres::connection", "NOTICE: {SECRET}");
             log::debug!(target: "sqlparser::parser", "Parsing sql '{SECRET}'...");
             log::debug!(target: "sqlparser::dialect", "get_next_precedence_full() {SECRET}");
-            log::debug!(target: "drivers_postgres::pool", "a pooled connection ended");
+            log::debug!(target: "tablepro_driver_postgres::pool", "a pooled connection ended");
         });
 
         assert!(!text.contains("hunter2"), "{text}");

@@ -39,7 +39,7 @@ Open an issue before starting an engine that is not listed, and say which librar
 
 ## 2. The crate
 
-`crates/drivers/<engine>/`, package `tablepro-driver-<engine>`, library `drivers_<engine>`:
+`crates/drivers/<engine>/`, package `tablepro-driver-<engine>`, library `tablepro_driver_<engine>`:
 
 ```toml
 [package]
@@ -47,15 +47,11 @@ name = "tablepro-driver-<engine>"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish = false
-
-[lib]
-name = "drivers_<engine>"
-path = "src/lib.rs"
+publish.workspace = true
 
 [dependencies]
-tablepro-core = { path = "../../core" }
-tablepro-net = { path = "../../net" }
+tablepro-core.workspace = true
+tablepro-net.workspace = true
 async-trait.workspace = true
 secrecy.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
@@ -63,15 +59,15 @@ tokio-util = { workspace = true, features = ["rt"] }
 tracing.workspace = true
 
 [dev-dependencies]
-tablepro-test-fixtures = { path = "../../test-fixtures" }
-tablepro-test-support = { path = "../../test-support" }
+tablepro-test-fixtures.workspace = true
+tablepro-test-support.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 
 [lints]
 workspace = true
 ```
 
-A driver depends on `tablepro-core`, and on `tablepro-net` when it speaks TLS or dials TCP. `secrecy` reads the password of a password login. It never depends on GTK, on `tablepro-session`, on `tablepro-ssh` or on another driver. Add the crate to `members` in `linux/Cargo.toml`.
+A driver depends on `tablepro-core`, and on `tablepro-net` when it speaks TLS or dials TCP. `secrecy` reads the password of a password login. It never depends on GTK, on `tablepro-session`, on `tablepro-ssh` or on another driver. Add the crate to `members` and to `[workspace.dependencies]` in `linux/Cargo.toml`.
 
 ## 3. `DatabaseDriver` and capabilities
 
@@ -342,11 +338,11 @@ Add the crate to `crates/app/Cargo.toml` and register it in `build_registry` in 
 ```rust
 fn build_registry() -> DriverRegistry {
     let mut r = DriverRegistry::new();
-    r.register(Arc::new(drivers_clickhouse::ClickhouseDriver));
-    r.register(Arc::new(drivers_mssql::MssqlDriver));
-    r.register(Arc::new(drivers_mysql::MysqlDriver));
-    r.register(Arc::new(drivers_postgres::PgDriver));
-    r.register(Arc::new(drivers_sqlite::SqliteDriver));
+    r.register(Arc::new(tablepro_driver_clickhouse::ClickhouseDriver));
+    r.register(Arc::new(tablepro_driver_mssql::MssqlDriver));
+    r.register(Arc::new(tablepro_driver_mysql::MysqlDriver));
+    r.register(Arc::new(tablepro_driver_postgres::PgDriver));
+    r.register(Arc::new(tablepro_driver_sqlite::SqliteDriver));
     r
 }
 ```

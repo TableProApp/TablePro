@@ -3,22 +3,14 @@ name = "tablepro-ssh"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish = false
-
-[lib]
-name = "tablepro_ssh"
-path = "src/lib.rs"
-
-[[bin]]
-name = "tablepro-askpass"
-path = "src/bin/tablepro-askpass.rs"
+publish.workspace = true
 
 [dependencies]
-tablepro-core = { path = "../core" }
+tablepro-core.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 # mkdirat and openat with O_NOFOLLOW, and the effective uid, none of which std has.
-rustix = { version = "1.1", default-features = false, features = ["std", "fs", "process"] }
+rustix = { workspace = true, features = ["fs", "process"] }
 secrecy.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "process", "net", "time", "sync", "fs"] }
@@ -28,7 +20,7 @@ uuid.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
-tablepro-test-support = { path = "../test-support" }
+tablepro-test-support.workspace = true
 tempfile.workspace = true
 testcontainers.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "test-util"] }

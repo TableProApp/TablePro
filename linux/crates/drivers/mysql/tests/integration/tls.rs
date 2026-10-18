@@ -6,11 +6,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use drivers_mysql::MysqlDriver;
 use tablepro_core::{
     ClientIdentity, ConnectOptions, DatabaseDriver, DriverError, ErrorCategory, NetworkEndpoint, TlsConfig, TlsFailure,
     TlsMode, Transport, TransportError, TransportKind, TransportRoute, TransportStream, WorkspaceSettings,
 };
+use tablepro_driver_mysql::MysqlDriver;
 use tablepro_test_fixtures::{MysqlFixture, MysqlFlavour, MysqlOptions, PkiFile, TestPki};
 use tablepro_test_support::FaultTransport;
 use tablepro_test_support::conformance::{

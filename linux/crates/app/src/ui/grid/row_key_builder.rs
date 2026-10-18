@@ -103,7 +103,8 @@ mod tests {
 
     /// The layout the page builder gives `identity` over `columns`.
     fn layout(identity: &RowIdentity, columns: &[ColumnInfo]) -> PageLayout {
-        let dialect = drivers_postgres::PgDialect::new(&tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
+        let dialect =
+            tablepro_driver_postgres::PgDialect::new(&tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
         build_page(
             &dialect,
             &PageRequest {

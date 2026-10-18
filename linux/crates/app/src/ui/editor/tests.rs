@@ -496,7 +496,9 @@ fn a_run_is_judged_by_the_engine_it_ran_on() {
     assert!(harness.editor.is_running(), "the run did not start");
     // SQLite has no logins, so its rules let CREATE USER into the history.
     let sqlite = ConnectionScript {
-        dialect: Arc::new(drivers_sqlite::SqliteDialect::new(drivers_sqlite::SQLITE_MIN_VERSION)),
+        dialect: Arc::new(tablepro_driver_sqlite::SqliteDialect::new(
+            tablepro_driver_sqlite::SQLITE_MIN_VERSION,
+        )),
         ..ConnectionScript::default()
     };
     let moved_to = Arc::new(FakeEditorSession::new(answering()));

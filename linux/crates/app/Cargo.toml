@@ -3,64 +3,50 @@ name = "tablepro"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish = false
+publish.workspace = true
 
 [lib]
 name = "tablepro_app"
-path = "src/lib.rs"
-
-[[bin]]
-name = "tablepro"
-path = "src/main.rs"
 
 [[test]]
 name = "startup"
-path = "tests/startup.rs"
 harness = false
 
 [[test]]
 name = "i18n_catalog"
-path = "tests/i18n_catalog.rs"
 harness = false
 
 [[test]]
 name = "logging"
-path = "tests/logging.rs"
 harness = false
 
 # A panic hook is process-wide and the crash ends the process, so each
 # case runs in a child of the binary.
 [[test]]
 name = "crash_report"
-path = "tests/crash_report.rs"
 harness = false
 
 # These start the application, which GTK allows only on the process's
 # main thread, so they run without the test harness.
 [[test]]
 name = "application_uniqueness"
-path = "tests/application_uniqueness.rs"
 harness = false
 
 [[test]]
 name = "application_lifecycle"
-path = "tests/application_lifecycle.rs"
 harness = false
 
 # D-Bus starts the binary, which opens its windows on GTK's main thread.
 [[test]]
 name = "open_files"
-path = "tests/open_files.rs"
 harness = false
 
 [[test]]
 name = "application_session_restore"
-path = "tests/application_session_restore.rs"
 harness = false
 
 [[test]]
 name = "accessibility"
-path = "tests/accessibility/main.rs"
 harness = false
 
 [features]
@@ -68,22 +54,22 @@ default = ["kerberos"]
 kerberos = ["tablepro-driver-mssql/kerberos"]
 
 [dependencies]
-tablepro-core = { path = "../core" }
-tablepro-driver-clickhouse = { path = "../drivers/clickhouse" }
-tablepro-driver-mssql = { path = "../drivers/mssql" }
-tablepro-driver-mysql = { path = "../drivers/mysql" }
-tablepro-driver-postgres = { path = "../drivers/postgres" }
-tablepro-driver-sqlite = { path = "../drivers/sqlite" }
+tablepro-core.workspace = true
+tablepro-driver-clickhouse.workspace = true
+tablepro-driver-mssql.workspace = true
+tablepro-driver-mysql.workspace = true
+tablepro-driver-postgres.workspace = true
+tablepro-driver-sqlite.workspace = true
+tablepro-net.workspace = true
+tablepro-session.workspace = true
+tablepro-ssh.workspace = true
+tablepro-storage.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tablepro-net = { path = "../net" }
-tablepro-ssh = { path = "../ssh" }
-tablepro-session = { path = "../session" }
-tablepro-storage = { path = "../storage" }
 gio.workspace = true
 gio-unix.workspace = true
 gtk4.workspace = true
@@ -92,7 +78,7 @@ sourceview5.workspace = true
 glib.workspace = true
 relm4.workspace = true
 # CLOCK_BOOTTIME, which std does not expose, tells a suspend apart.
-rustix = { version = "1.1", default-features = false, features = ["std", "time"] }
+rustix = { workspace = true, features = ["time"] }
 secrecy.workspace = true
 tokio.workspace = true
 tokio-util = { workspace = true, features = ["rt"] }
@@ -107,9 +93,9 @@ sqlformat = "0.5"
 
 [dev-dependencies]
 proptest.workspace = true
-tablepro-session = { path = "../session", features = ["fakes"] }
-tablepro-test-fixtures = { path = "../test-fixtures" }
-tablepro-test-support = { path = "../test-support" }
+tablepro-session = { workspace = true, features = ["fakes"] }
+tablepro-test-fixtures.workspace = true
+tablepro-test-support.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 # tokio-postgres logs through `log`, so the logging tests drive that

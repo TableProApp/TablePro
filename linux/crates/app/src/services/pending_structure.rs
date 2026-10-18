@@ -136,9 +136,9 @@ mod tests {
     #[test]
     fn pending_structure_plans_with_supplied_dialect() {
         let pending = created();
-        let postgres = drivers_postgres::PgDialect::new(&ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
-        let mysql = drivers_mysql::MySqlDialect::new(
-            drivers_mysql::MySqlFlavour::MySql,
+        let postgres = tablepro_driver_postgres::PgDialect::new(&ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
+        let mysql = tablepro_driver_mysql::MySqlDialect::new(
+            tablepro_driver_mysql::MySqlFlavour::MySql,
             &ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
         );
 
@@ -160,7 +160,7 @@ mod tests {
     }
 
     fn orders() -> TableDefinition {
-        let dialect = drivers_postgres::PgDialect::new(&ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
+        let dialect = tablepro_driver_postgres::PgDialect::new(&ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
         let column = |name: &str, primary_key: bool| {
             ColumnDefinition::new(
                 ColumnInfo {
@@ -201,7 +201,7 @@ mod tests {
 
     #[test]
     fn a_save_waits_for_a_valid_draft_and_every_typed_default() {
-        let postgres = drivers_postgres::PgDialect::new(&ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
+        let postgres = tablepro_driver_postgres::PgDialect::new(&ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
         let mut typed_default = edited(|draft| draft.columns[1].nullable = false);
         typed_default.unparsed_defaults = vec!["total".to_owned()];
         let unnamed = edited(|draft| draft.columns[1].name = String::new());
@@ -292,15 +292,15 @@ mod tests {
         vec![
             engine(
                 "PostgreSQL",
-                Box::new(drivers_postgres::PgDialect::new(&server("PostgreSQL", 18))),
+                Box::new(tablepro_driver_postgres::PgDialect::new(&server("PostgreSQL", 18))),
                 "integer",
                 "text",
                 Some("t_pkey"),
             ),
             engine(
                 "MySQL",
-                Box::new(drivers_mysql::MySqlDialect::new(
-                    drivers_mysql::MySqlFlavour::MySql,
+                Box::new(tablepro_driver_mysql::MySqlDialect::new(
+                    tablepro_driver_mysql::MySqlFlavour::MySql,
                     &ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
                 )),
                 "int",
@@ -309,8 +309,8 @@ mod tests {
             ),
             engine(
                 "MariaDB",
-                Box::new(drivers_mysql::MySqlDialect::new(
-                    drivers_mysql::MySqlFlavour::MariaDb,
+                Box::new(tablepro_driver_mysql::MySqlDialect::new(
+                    tablepro_driver_mysql::MySqlFlavour::MariaDb,
                     &ServerInfo::new("MariaDB", "11.4.5", 11, 4, 5),
                 )),
                 "int",
@@ -319,23 +319,26 @@ mod tests {
             ),
             engine(
                 "SQL Server",
-                Box::new(drivers_mssql::MssqlDialect::new(16)),
+                Box::new(tablepro_driver_mssql::MssqlDialect::new(16)),
                 "int",
                 "nvarchar(40)",
                 Some("PK_t"),
             ),
             engine(
                 "SQLite",
-                Box::new(drivers_sqlite::SqliteDialect::new(drivers_sqlite::SqliteVersion::new(
-                    3, 46, 0,
-                ))),
+                Box::new(tablepro_driver_sqlite::SqliteDialect::new(
+                    tablepro_driver_sqlite::SqliteVersion::new(3, 46, 0),
+                )),
                 "INTEGER",
                 "TEXT",
                 None,
             ),
             engine(
                 "ClickHouse",
-                Box::new(drivers_clickhouse::ClickHouseDialect::new(&server("ClickHouse", 25))),
+                Box::new(tablepro_driver_clickhouse::ClickHouseDialect::new(&server(
+                    "ClickHouse",
+                    25,
+                ))),
                 "Int32",
                 "String",
                 None,

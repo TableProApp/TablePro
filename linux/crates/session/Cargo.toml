@@ -3,11 +3,7 @@ name = "tablepro-session"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish = false
-
-[lib]
-name = "tablepro_session"
-path = "src/lib.rs"
+publish.workspace = true
 
 [features]
 # FakeConnector and FakeCredentialSource for the tests of crates that
@@ -15,11 +11,11 @@ path = "src/lib.rs"
 fakes = ["dep:tablepro-test-support"]
 
 [dependencies]
-tablepro-core = { path = "../core" }
-tablepro-net = { path = "../net" }
-tablepro-ssh = { path = "../ssh" }
-tablepro-storage = { path = "../storage" }
-tablepro-test-support = { path = "../test-support", optional = true }
+tablepro-core.workspace = true
+tablepro-net.workspace = true
+tablepro-ssh.workspace = true
+tablepro-storage.workspace = true
+tablepro-test-support = { workspace = true, optional = true }
 futures.workspace = true
 secrecy.workspace = true
 thiserror.workspace = true
@@ -29,9 +25,9 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-tablepro-driver-postgres = { path = "../drivers/postgres" }
-tablepro-test-fixtures = { path = "../test-fixtures" }
-tablepro-test-support = { path = "../test-support" }
+tablepro-driver-postgres.workspace = true
+tablepro-test-fixtures.workspace = true
+tablepro-test-support.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util", "sync"] }
 

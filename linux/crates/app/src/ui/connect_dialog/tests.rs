@@ -47,11 +47,11 @@ impl Default for Options {
 
 fn registry() -> Arc<DriverRegistry> {
     let mut registry = DriverRegistry::new();
-    registry.register(Arc::new(drivers_clickhouse::ClickhouseDriver));
-    registry.register(Arc::new(drivers_mssql::MssqlDriver));
-    registry.register(Arc::new(drivers_mysql::MysqlDriver));
-    registry.register(Arc::new(drivers_postgres::PgDriver));
-    registry.register(Arc::new(drivers_sqlite::SqliteDriver));
+    registry.register(Arc::new(tablepro_driver_clickhouse::ClickhouseDriver));
+    registry.register(Arc::new(tablepro_driver_mssql::MssqlDriver));
+    registry.register(Arc::new(tablepro_driver_mysql::MysqlDriver));
+    registry.register(Arc::new(tablepro_driver_postgres::PgDriver));
+    registry.register(Arc::new(tablepro_driver_sqlite::SqliteDriver));
     Arc::new(registry)
 }
 

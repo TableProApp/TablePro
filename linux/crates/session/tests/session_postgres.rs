@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use drivers_postgres::{PgDriver, WORKSPACE_POOL_MAX_SIZE};
 use secrecy::SecretString;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::statement::{Statement, StatementBuilder};
@@ -17,6 +16,7 @@ use tablepro_core::{
     CallOptions, ConnectEnvironment, ConnectOptions, ConnectTarget, Connection, Credentials, DatabaseDriver,
     DriverError, LivenessPolicy, NetworkEndpoint, NetworkTarget, RowLimit, TlsConfig, Value, WorkspaceSettings,
 };
+use tablepro_driver_postgres::{PgDriver, WORKSPACE_POOL_MAX_SIZE};
 use tablepro_net::DirectTcpTransport;
 use tablepro_session::runtime::Tasks;
 use tablepro_session::{

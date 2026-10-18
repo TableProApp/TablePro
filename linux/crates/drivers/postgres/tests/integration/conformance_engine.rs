@@ -4,10 +4,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use drivers_postgres::{PgDriver, WORKSPACE_POOL_MAX_SIZE};
 use tablepro_core::{
     ConnectOptions, DatabaseDriver, LivenessPolicy, NetworkEndpoint, TableRef, TlsConfig, WorkspaceSettings,
 };
+use tablepro_driver_postgres::{PgDriver, WORKSPACE_POOL_MAX_SIZE};
 use tablepro_test_fixtures::{HbaMode, PostgresFixture};
 use tablepro_test_support::FaultTransport;
 use tablepro_test_support::conformance::{

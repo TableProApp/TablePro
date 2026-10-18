@@ -59,9 +59,9 @@ pub(crate) fn integer(name: &str, primary_key: bool) -> ColumnInfo {
 }
 
 pub(crate) fn sqlite() -> Arc<dyn tablepro_core::dialect::SqlDialect> {
-    Arc::new(drivers_sqlite::SqliteDialect::new(drivers_sqlite::SqliteVersion::new(
-        3, 45, 0,
-    )))
+    Arc::new(tablepro_driver_sqlite::SqliteDialect::new(
+        tablepro_driver_sqlite::SqliteVersion::new(3, 45, 0),
+    ))
 }
 
 /// `t (id INTEGER, n INTEGER)` as SQLite reads it, edited by `edit`.

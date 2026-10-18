@@ -16,13 +16,13 @@ use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use drivers_mysql::MysqlDriver;
 use secrecy::SecretString;
 use tablepro_core::{
     ConnectEnvironment, ConnectOptions, ConnectTarget, Credentials, DatabaseDriver, DriverError, NetworkEndpoint,
     NetworkTarget, TlsConfig, TlsFailure, TlsMode, Transport, TransportError, TransportKind, TransportRoute,
     TransportStream, WorkspaceSettings,
 };
+use tablepro_driver_mysql::MysqlDriver;
 use tablepro_test_fixtures::{MysqlFixture, MysqlFlavour, PkiFile, TestPki};
 use tablepro_test_support::FaultTransport;
 use tablepro_test_support::conformance::test_liveness;

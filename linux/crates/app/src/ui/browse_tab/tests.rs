@@ -952,8 +952,8 @@ fn f004_copy_row_as_insert_uses_row_below_draft() {
 #[gtk4::test]
 fn copy_as_in_clause_writes_the_servers_literals() {
     let mut script = serving_table();
-    script.dialect = Arc::new(drivers_mysql::MySqlDialect::new(
-        drivers_mysql::MySqlFlavour::MySql,
+    script.dialect = Arc::new(tablepro_driver_mysql::MySqlDialect::new(
+        tablepro_driver_mysql::MySqlFlavour::MySql,
         &tablepro_core::ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
     ));
     let injected = "\\') OR 1=1 -- ";
@@ -1015,7 +1015,7 @@ pub(super) fn rows_from(first: i64, names: &[&str]) -> QueryResult {
 fn partitioned_table() -> ConnectionScript {
     let server = tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0);
     let mut script = ConnectionScript {
-        dialect: Arc::new(drivers_postgres::PgDialect::new(&server)),
+        dialect: Arc::new(tablepro_driver_postgres::PgDialect::new(&server)),
         ..ConnectionScript::default()
     };
     script

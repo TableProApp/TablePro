@@ -1,12 +1,12 @@
 //! The catalogue as browse and the structure tab read it.
 
-use drivers_mssql::MssqlDialect;
 use tablepro_core::column::{ColumnDefault, ColumnKind, ReadForm, TextLength};
 use tablepro_core::ddl::{DdlDialect, IdentityStyle, TableDraft, diff_table};
 use tablepro_core::dialect::{BindTarget, LikeForm};
 use tablepro_core::meta::{ObjectKind, ObjectScope, RowIdentity, TableRef};
 use tablepro_core::statement::StatementBuilder;
 use tablepro_core::{RowLimit, Value};
+use tablepro_driver_mssql::MssqlDialect;
 
 use crate::support::{CALL, columns, connect, dbo, rows, scalar, setup, start, statement, within};
 

@@ -6,7 +6,6 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use drivers_sqlite::SqliteDriver;
 use sqlx::Connection as _;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
 use tablepro_core::meta::TableRef;
@@ -16,6 +15,7 @@ use tablepro_core::{
     EditorSession, FileEndpoint, ForeignKeyMode, QueryResult, ResultEvent, ResultSink, RowLimit, RunOptions,
     RunSummary, SinkFlow, UserSql, WorkspaceSettings, WriteBatch, WriteKind, WriteReport,
 };
+use tablepro_driver_sqlite::SqliteDriver;
 use tablepro_test_support::conformance::test_liveness;
 use tempfile::TempDir;
 use tokio::time::Instant;

@@ -42,8 +42,9 @@ mod tests {
 
     #[test]
     fn affordances_from_ddl_capabilities() {
-        let postgres = drivers_postgres::PgDialect::new(&ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
-        let clickhouse = drivers_clickhouse::ClickHouseDialect::new(&ServerInfo::new("ClickHouse", "25.8", 25, 8, 0));
+        let postgres = tablepro_driver_postgres::PgDialect::new(&ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
+        let clickhouse =
+            tablepro_driver_clickhouse::ClickHouseDialect::new(&ServerInfo::new("ClickHouse", "25.8", 25, 8, 0));
 
         let none = SidebarAffordances::of(false, Some(&FakeDialect));
         let creates = SidebarAffordances::of(false, Some(&postgres));
@@ -62,7 +63,7 @@ mod tests {
 
     #[test]
     fn affordances_hide_drop_when_read_only() {
-        let postgres = drivers_postgres::PgDialect::new(&ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
+        let postgres = tablepro_driver_postgres::PgDialect::new(&ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0));
 
         let read_only = SidebarAffordances::of(true, Some(&postgres));
 

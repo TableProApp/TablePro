@@ -3,11 +3,7 @@ name = "tablepro-core"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish = false
-
-[lib]
-name = "tablepro_core"
-path = "src/lib.rs"
+publish.workspace = true
 
 [dependencies]
 async-trait.workspace = true

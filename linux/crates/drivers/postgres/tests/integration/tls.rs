@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use drivers_postgres::PgDriver;
 use secrecy::SecretString;
 use tablepro_core::{
     ClientIdentity, ConnectOptions, Credentials, DatabaseDriver, DriverError, ErrorCategory, TlsConfig, TlsFailure,
     TlsMode, WorkspaceSettings,
 };
+use tablepro_driver_postgres::PgDriver;
 use tablepro_net::tls::build_client_config;
 use tablepro_test_fixtures::{HbaMode, PkiAlgorithm, PkiFile, PostgresFixture, TestPki};
 use tablepro_test_support::conformance::{

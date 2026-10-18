@@ -161,7 +161,7 @@ async fn writes_and_ddl_use_the_servers_zone() {
             instant(2025, 1, 1, 5, 0),
             "{flavour:?}: a TIMESTAMP reads as its instant"
         );
-        for _ in 0..drivers_mysql::WORKSPACE_POOL_MAX_SIZE {
+        for _ in 0..tablepro_driver_mysql::WORKSPACE_POOL_MAX_SIZE {
             assert_eq!(
                 text(&scalar(connection.as_ref(), "SELECT @@session.time_zone").await),
                 "+00:00",

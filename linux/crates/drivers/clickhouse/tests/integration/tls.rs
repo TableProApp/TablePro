@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use drivers_clickhouse::ClickhouseDriver;
 use secrecy::SecretString;
 use tablepro_core::{
     ClientIdentity, ConnectOptions, Credentials, DatabaseDriver, DriverError, ErrorCategory, TlsConfig, TlsFailure,
     TlsMode, WorkspaceSettings,
 };
+use tablepro_driver_clickhouse::ClickhouseDriver;
 use tablepro_test_fixtures::{ClickHouseFixture, PkiFile, TestPki};
 use tablepro_test_support::conformance::{
     ClientIdentityEngine, ConformanceFailure, TlsConformanceEngine, test_liveness,

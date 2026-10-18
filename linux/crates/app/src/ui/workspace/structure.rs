@@ -500,8 +500,8 @@ mod tests {
         }
     }
 
-    fn postgres_dialect() -> drivers_postgres::PgDialect {
-        drivers_postgres::PgDialect::new(&tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0))
+    fn postgres_dialect() -> tablepro_driver_postgres::PgDialect {
+        tablepro_driver_postgres::PgDialect::new(&tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0))
     }
 
     #[test]
@@ -518,8 +518,8 @@ mod tests {
 
     #[test]
     fn create_table_sql_is_the_servers_own_text_where_it_keeps_one() {
-        let dialect = drivers_mysql::MySqlDialect::new(
-            drivers_mysql::MySqlFlavour::MySql,
+        let dialect = tablepro_driver_mysql::MySqlDialect::new(
+            tablepro_driver_mysql::MySqlFlavour::MySql,
             &tablepro_core::ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
         );
         let mut table = definition(vec![text_column("id")]);

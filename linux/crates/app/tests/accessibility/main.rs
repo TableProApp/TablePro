@@ -305,8 +305,8 @@ fn open_cell_editor(window: &adw::ApplicationWindow) -> Result<(), String> {
 fn connect_dialog() -> Result<Vec<Finding>, String> {
     let mut drivers = DriverRegistry::new();
     let engines: [Arc<dyn DatabaseDriver>; 2] = [
-        Arc::new(drivers_postgres::PgDriver),
-        Arc::new(drivers_sqlite::SqliteDriver),
+        Arc::new(tablepro_driver_postgres::PgDriver),
+        Arc::new(tablepro_driver_sqlite::SqliteDriver),
     ];
     for engine in engines {
         drivers.register(engine);
@@ -388,7 +388,7 @@ fn fake_driver() -> DriverRegistry {
 /// definition, in an engine whose structure can be edited.
 fn one_table() -> ConnectionScript {
     let mut script = ConnectionScript {
-        dialect: Arc::new(drivers_postgres::PgDialect::new(&ServerInfo::new(
+        dialect: Arc::new(tablepro_driver_postgres::PgDialect::new(&ServerInfo::new(
             "PostgreSQL",
             "18.0",
             18,

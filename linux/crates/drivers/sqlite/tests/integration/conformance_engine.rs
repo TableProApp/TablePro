@@ -5,13 +5,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use drivers_sqlite::SqliteDriver;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
 use sqlx::{Connection as _, Executor as _};
 use tablepro_core::{
     ConnectEnvironment, ConnectOptions, ConnectTarget, DatabaseDriver, FileEndpoint, LivenessPolicy, TableRef,
     WorkspaceSettings,
 };
+use tablepro_driver_sqlite::SqliteDriver;
 use tablepro_test_support::conformance::{
     ConformanceDdlEngine, ConformanceEngine, ConformanceFailure, EditorTransactionEngine, PooledConformanceEngine,
 };
@@ -100,7 +100,7 @@ impl ConformanceEngine for SqliteEngine {
 }
 
 impl PooledConformanceEngine for SqliteEngine {
-    const WORKSPACE_POOL_MAX_SIZE: usize = drivers_sqlite::WORKSPACE_POOL_MAX_SIZE;
+    const WORKSPACE_POOL_MAX_SIZE: usize = tablepro_driver_sqlite::WORKSPACE_POOL_MAX_SIZE;
 }
 
 impl EditorTransactionEngine for SqliteEngine {

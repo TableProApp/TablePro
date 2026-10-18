@@ -42,7 +42,7 @@ mod tests {
     use crate::ui::structure_tab::{ColumnsInput, StructureMode, StructureModel, StructureTab, StructureTabInit};
 
     fn postgres() -> Arc<dyn SqlDialect> {
-        Arc::new(drivers_postgres::PgDialect::new(&ServerInfo::new(
+        Arc::new(tablepro_driver_postgres::PgDialect::new(&ServerInfo::new(
             "PostgreSQL",
             "18.0",
             18,

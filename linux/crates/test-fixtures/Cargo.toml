@@ -3,15 +3,11 @@ name = "tablepro-test-fixtures"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish = false
-
-[lib]
-name = "tablepro_test_fixtures"
-path = "src/lib.rs"
+publish.workspace = true
 
 [dependencies]
 rcgen.workspace = true
-tablepro-test-support = { path = "../test-support" }
+tablepro-test-support.workspace = true
 tempfile.workspace = true
 testcontainers.workspace = true
 testcontainers-modules = { workspace = true, features = ["postgres", "mssql_server"] }
@@ -22,7 +18,6 @@ uuid.workspace = true
 [dev-dependencies]
 rustls.workspace = true
 tiberius.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tokio-rustls.workspace = true
 tokio-util = { workspace = true, features = ["compat"] }
 

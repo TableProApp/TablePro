@@ -3,14 +3,10 @@ name = "tablepro-net"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish = false
-
-[lib]
-name = "tablepro_net"
-path = "src/lib.rs"
+publish.workspace = true
 
 [dependencies]
-tablepro-core = { path = "../core" }
+tablepro-core.workspace = true
 async-trait.workspace = true
 pem-rfc7468.workspace = true
 rustls = { workspace = true, features = ["logging"] }

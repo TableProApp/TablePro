@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use drivers_clickhouse::ClickhouseDriver;
 use secrecy::SecretString;
 use tablepro_core::save::{ChangeSet, plan_save};
 use tablepro_core::statement::{GuardedStatement, Statement, StatementBuilder};
@@ -15,6 +14,7 @@ use tablepro_core::{
     ResultEvent, ResultSink, RowLimit, RunEnd, RunOptions, RunSummary, SinkFlow, TableRef, TlsConfig, Transport,
     UserSql, Value, WorkspaceSettings, WriteBatch, WriteKind, WriteReport,
 };
+use tablepro_driver_clickhouse::ClickhouseDriver;
 use tablepro_net::DirectTcpTransport;
 use tablepro_test_fixtures::{ClickHouseFixture, FixtureCredentials};
 use tablepro_test_support::conformance::test_liveness;

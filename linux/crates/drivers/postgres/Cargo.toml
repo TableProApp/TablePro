@@ -3,15 +3,11 @@ name = "tablepro-driver-postgres"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish = false
-
-[lib]
-name = "drivers_postgres"
-path = "src/lib.rs"
+publish.workspace = true
 
 [dependencies]
-tablepro-core = { path = "../../core" }
-tablepro-net = { path = "../../net" }
+tablepro-core.workspace = true
+tablepro-net.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
 chrono.workspace = true
@@ -29,16 +25,10 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-tablepro-test-fixtures = { path = "../../test-fixtures" }
-tablepro-test-support = { path = "../../test-support" }
-async-trait.workspace = true
-chrono.workspace = true
-futures-util.workspace = true
+tablepro-test-fixtures.workspace = true
+tablepro-test-support.workspace = true
 rustls.workspace = true
-secrecy.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "test-util"] }
-tokio-util = { workspace = true, features = ["rt"] }
-uuid.workspace = true
 
 [lints]
 workspace = true

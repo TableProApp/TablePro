@@ -9,7 +9,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use drivers_postgres::PgDriver;
 use secrecy::SecretString;
 use tablepro_app::change_tracker::{RowKey, pk_identity};
 use tablepro_app::tab_tracker_handle::TabTrackerHandle;
@@ -23,6 +22,7 @@ use tablepro_core::{
     ForeignKeyMode, NetworkEndpoint, NetworkTarget, RowLimit, TlsConfig, Value, WorkspaceSettings, WriteBatch,
     WriteKind,
 };
+use tablepro_driver_postgres::PgDriver;
 use tablepro_net::DirectTcpTransport;
 use tablepro_test_fixtures::{HbaMode, PostgresFixture};
 use tablepro_test_support::conformance::test_liveness;

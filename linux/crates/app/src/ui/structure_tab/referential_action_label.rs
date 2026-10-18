@@ -36,7 +36,7 @@ mod tests {
 
     #[test]
     fn each_choice_decodes_to_the_action_it_is_labelled_with() {
-        let mssql = drivers_mssql::MssqlDialect::new(16);
+        let mssql = tablepro_driver_mssql::MssqlDialect::new(16);
         let actions = mssql.referential_actions();
 
         let labels = action_labels(actions);

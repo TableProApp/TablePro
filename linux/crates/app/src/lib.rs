@@ -68,11 +68,11 @@ pub fn run() -> Result<glib::ExitCode, StartupError> {
 
 fn build_registry() -> DriverRegistry {
     let mut r = DriverRegistry::new();
-    r.register(Arc::new(drivers_clickhouse::ClickhouseDriver));
-    r.register(Arc::new(drivers_mssql::MssqlDriver));
-    r.register(Arc::new(drivers_mysql::MysqlDriver));
-    r.register(Arc::new(drivers_postgres::PgDriver));
-    r.register(Arc::new(drivers_sqlite::SqliteDriver));
+    r.register(Arc::new(tablepro_driver_clickhouse::ClickhouseDriver));
+    r.register(Arc::new(tablepro_driver_mssql::MssqlDriver));
+    r.register(Arc::new(tablepro_driver_mysql::MysqlDriver));
+    r.register(Arc::new(tablepro_driver_postgres::PgDriver));
+    r.register(Arc::new(tablepro_driver_sqlite::SqliteDriver));
     r
 }
 

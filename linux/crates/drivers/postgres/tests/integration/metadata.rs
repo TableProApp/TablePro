@@ -506,7 +506,7 @@ async fn alter_add_column_then_query_bound_on_all_four_pooled_connections() {
         &["CREATE TABLE t (id int)", "INSERT INTO t VALUES (1)"],
     )
     .await;
-    let warm = (0..drivers_postgres::WORKSPACE_POOL_MAX_SIZE).map(|_| {
+    let warm = (0..tablepro_driver_postgres::WORKSPACE_POOL_MAX_SIZE).map(|_| {
         let connection = connection.clone();
         async move {
             connection
@@ -527,7 +527,7 @@ async fn alter_add_column_then_query_bound_on_all_four_pooled_connections() {
     )
     .await;
 
-    let reads = (0..drivers_postgres::WORKSPACE_POOL_MAX_SIZE).map(|_| {
+    let reads = (0..tablepro_driver_postgres::WORKSPACE_POOL_MAX_SIZE).map(|_| {
         let connection = connection.clone();
         async move {
             connection

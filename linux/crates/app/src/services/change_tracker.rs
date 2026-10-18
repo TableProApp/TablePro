@@ -1226,8 +1226,8 @@ mod tests {
         assert!(!t.can_undo());
     }
 
-    fn postgres() -> drivers_postgres::PgDialect {
-        drivers_postgres::PgDialect::new(&tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0))
+    fn postgres() -> tablepro_driver_postgres::PgDialect {
+        tablepro_driver_postgres::PgDialect::new(&tablepro_core::ServerInfo::new("PostgreSQL", "18.0", 18, 0, 0))
     }
 
     fn plan(tracker: &TabChangeTracker, columns: &[ColumnInfo]) -> (TrackedChanges, tablepro_core::save::SavePlan) {

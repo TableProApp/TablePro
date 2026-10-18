@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use drivers_postgres::PgDriver;
 use secrecy::SecretString;
 use tablepro_core::statement::{GuardedStatement, Statement, StatementBuilder};
 use tablepro_core::{
@@ -14,6 +13,7 @@ use tablepro_core::{
     ResultSink, RunEnd, RunOptions, RunSummary, SinkFlow, TableRef, TlsConfig, Transport, UserSql, Value,
     WorkspaceSettings, WriteBatch, WriteKind, WriteReport,
 };
+use tablepro_driver_postgres::PgDriver;
 use tablepro_net::DirectTcpTransport;
 use tablepro_test_fixtures::{FixtureCredentials, PostgresFixture};
 use tablepro_test_support::conformance::test_liveness;

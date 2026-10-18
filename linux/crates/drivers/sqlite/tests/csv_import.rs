@@ -5,7 +5,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use drivers_sqlite::SqliteDriver;
 use sqlx::Connection as _;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
 use tablepro_core::dml::build_insert;
@@ -17,6 +16,7 @@ use tablepro_core::{
     ForeignKeyMode, LivenessPolicy, QueryResult, RowLimit, Value, WorkspaceSettings, WriteBatch, WriteKind,
     WriteReport,
 };
+use tablepro_driver_sqlite::SqliteDriver;
 use tablepro_test_support::import_csv;
 use tempfile::TempDir;
 use tokio::time::Instant;

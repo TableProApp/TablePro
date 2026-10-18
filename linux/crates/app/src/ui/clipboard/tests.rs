@@ -155,8 +155,8 @@ fn copy_insert_uses_visible_columns_only() {
 /// in one would close the string and run the rest as SQL.
 #[test]
 fn an_in_clause_copy_is_written_in_the_engines_literals() {
-    let dialect = Arc::new(drivers_mysql::MySqlDialect::new(
-        drivers_mysql::MySqlFlavour::MySql,
+    let dialect = Arc::new(tablepro_driver_mysql::MySqlDialect::new(
+        tablepro_driver_mysql::MySqlFlavour::MySql,
         &tablepro_core::ServerInfo::new("MySQL", "8.4.3", 8, 4, 3),
     ));
     let injected = "\\') OR 1=1 -- ";

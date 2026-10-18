@@ -24,7 +24,7 @@ mod tests {
 
     #[test]
     fn verify_full_is_default() {
-        let form = ConnectForm::new("postgres", drivers_postgres::PgDriver.capabilities());
+        let form = ConnectForm::new("postgres", tablepro_driver_postgres::PgDriver.capabilities());
 
         assert_eq!(form.tls.mode, TlsMode::VerifyFull);
     }

@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use drivers_mssql::MssqlDriver;
 use secrecy::SecretString;
 use tablepro_core::column::ColumnInfo;
 use tablepro_core::dialect::{BindTarget, SqlDialect};
@@ -19,6 +18,7 @@ use tablepro_core::{
     ResultEvent, ResultSink, RowLimit, RunEnd, RunOptions, RunSummary, SinkFlow, TableRef, TlsConfig, TlsMode,
     Transport, UserSql, Value, WorkspaceSettings, WriteBatch, WriteKind, WriteReport,
 };
+use tablepro_driver_mssql::MssqlDriver;
 use tablepro_net::DirectTcpTransport;
 use tablepro_test_fixtures::{FixtureCredentials, MssqlFixture};
 use tablepro_test_support::conformance::test_liveness;
