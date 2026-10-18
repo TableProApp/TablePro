@@ -71,6 +71,7 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 - [AUD-10 DuckDB read-only file access](archive/duckdb-read-only-aud10-2026-10-10.md)
 - [App layer audit](archive/app-layer-external-audit-2026-10-06.md): GUI gaps and the TablePro and dbx comparison
 - [Grid memory and fetch action plan](archive/grid-memory-and-fetch-action-plan-2026-10-07.md)
+- [Settings and icon review, October 14](archive/ui-refresh-upstream-review-2026-10-14.md)
 - [Upstream main](archive/upstream-main-review-2026-10-03.md) ([inventory](archive/upstream-main-review-2026-10-03-inventory.md)) and [older releases](archive/upstream-older-releases-review-2026-10-03.md) ([inventory](archive/upstream-older-releases-2026-10-03-inventory.md))
 - [External audit and post-0.2 plan](archive/external-audit-2026-10-06.md) and its [client review](archive/external-audit-client-review-2026-10-06.md)
 

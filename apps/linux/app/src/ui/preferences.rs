@@ -41,10 +41,20 @@ pub fn present(
         .icon_name("preferences-system-symbolic")
         .build();
 
+    let appearance = adw::PreferencesPage::builder()
+        .title(crate::tr!("Appearance"))
+        .icon_name("preferences-desktop-appearance-symbolic")
+        .build();
+
+    let appearance_group = adw::PreferencesGroup::builder()
+        .title(crate::tr!("Appearance"))
+        .description(crate::tr!("Choose how BookiE looks on this desktop."))
+        .build();
+
     let browse_group = adw::PreferencesGroup::builder()
         .title(crate::tr!("Data browser"))
         .description(crate::tr!(
-            "Tunes the row paginator and destructive-action confirmation."
+            "Choose how table data is displayed and how destructive actions are confirmed."
         ))
         .build();
 
@@ -118,12 +128,14 @@ pub fn present(
         }
     });
 
-    browse_group.add(&scheme_row);
     browse_group.add(&null_row);
     browse_group.add(&page_size_row);
     browse_group.add(&confirm_row);
     browse_group.add(&preview_tab_row);
     general.add(&browse_group);
+
+    appearance_group.add(&scheme_row);
+    appearance.add(&appearance_group);
 
     let history_group = adw::PreferencesGroup::builder()
         .title(crate::tr!("Query history"))
@@ -228,7 +240,10 @@ pub fn present(
         .icon_name("text-editor-symbolic")
         .build();
 
-    let editor_group = adw::PreferencesGroup::builder().title(crate::tr!("SQL editor")).build();
+    let editor_group = adw::PreferencesGroup::builder()
+        .title(crate::tr!("SQL editor"))
+        .description(crate::tr!("Set the editor font, key bindings and query timeout."))
+        .build();
 
     let font_size_row = adw::SpinRow::with_range(8.0, 32.0, 1.0);
     font_size_row.set_title(&crate::tr!("Editor font size"));
@@ -262,6 +277,7 @@ pub fn present(
     editor.add(&editor_group);
 
     window.add(&general);
+    window.add(&appearance);
     window.add(&editor);
     window.add(&super::mcp_preferences::build_page(database, mcp_bridge));
 
