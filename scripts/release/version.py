@@ -130,6 +130,10 @@ class Git:
     def list_tree(self, ref: str, path: str) -> List[str]:
         return self._git("ls-tree", "--name-only", ref, "--", path).stdout.splitlines()
 
+    def changed_paths(self, base: str, head: str) -> List[str]:
+        output = self._git("diff-tree", "-r", "--name-only", "-z", base, head).stdout
+        return [path for path in output.split("\0") if path]
+
     def first_parents(self, ref: str) -> List[str]:
         return self._git("rev-list", "--first-parent", f"{ref}^{{commit}}").stdout.split()
 
@@ -182,6 +186,11 @@ def published_stables(releases: List[Tuple[str, bool]]) -> List[Version]:
     return [version for version in versions if version is not None and not version.is_beta]
 
 
+def published_betas(releases: List[Tuple[str, bool]], line: str) -> List[Version]:
+    versions = [try_parse_tag(tag) for tag, draft in releases if not draft]
+    return [version for version in versions if version is not None and version.is_beta and version.line == line]
+
+
 def previous_on_line(git: Git, version: Version) -> Optional[Version]:
     earlier = [
         candidate for candidate in (try_parse_tag(tag) for tag in git.tags(f"v{version.line}.*"))
@@ -210,13 +219,22 @@ def beta_errors(git: Git, version: Version, releases: List[Tuple[str, bool]]) ->
         if git.exists(f"refs/tags/{stable_zero.tag}"):
             return [f"{stable_zero.tag} is already tagged, so no beta of it can follow"]
         return []
-    if version.patch != 0:
+    if version.patch != 0 or published_betas(releases, version.line):
         return []
-    for tag, draft in releases:
-        candidate = try_parse_tag(tag)
-        if not draft and candidate is not None and candidate.is_beta and candidate.line == version.line:
-            return []
     return [f"{version.tag} needs a published {version.tag}-beta.N release first"]
+
+
+def stable_tree_errors(git: Git, version: Version, releases: List[Tuple[str, bool]]) -> List[str]:
+    betas = published_betas(releases, version.line)
+    if version.is_beta or version.patch != 0 or not betas:
+        return []
+    newest = max(betas, key=lambda beta: beta.build)
+    untested = [path for path in git.changed_paths(newest.tag, version.tag)
+                if path != "CHANGELOG.md" and not path.startswith(FRAGMENTS)]
+    if not untested:
+        return []
+    return [f"{version.tag} differs from {newest.tag}, the newest published beta, in {', '.join(untested)}: "
+            "ship that in a beta first"]
 
 
 def changelog_errors(changelog: Optional[str], version: Version, stables: List[Version]) -> List[str]:
@@ -319,6 +337,7 @@ def check(tag: str, git: Git, github: GitHub, changed: Optional[Callable[[str, s
     releases = github.releases()
     errors = branch_errors(git, version)
     errors += beta_errors(git, version, releases)
+    errors += stable_tree_errors(git, version, releases)
     errors += changelog_errors(git.show(tag, "CHANGELOG.md"), version, published_stables(releases))
     errors += fragment_errors(git.list_tree(tag, FRAGMENTS), version)
     if errors:
