@@ -17,15 +17,27 @@ This runbook covers the macOS app, its registry plugins and the static libraries
 - A tag is `vX.Y.Z` or `vX.Y.0-beta.N`, N from 1 to 98. There is no `-rc`.
 - `MARKETING_VERSION` is the tag without the `v`. The build, `CURRENT_PROJECT_VERSION`, is `((MAJOR*1000+MINOR)*100+PATCH)*100+R`, where R is N for a beta and 99 for a stable: `v0.82.0-beta.1` is 820001, `v0.82.0` is 820099, `v0.82.1` is 820199. MINOR stays at most 999 and PATCH at most 99.
 - A local build is `0.0.0-dev`, build 1 (`project.yml`, `settings.base`). `scripts/release/version.py parse <tag>` prints a tag's version, build, channel and line. Every "is newer" check, in the app and in the plugin manifest, compares the build (`CFBundleVersion`).
-- Every X.Y.0 ships at least one published `vX.Y.0-beta.N` first; patches go straight to stable. Promote the newest beta when it has no open `regression` issue.
+- Every X.Y.0 ships at least one published `vX.Y.0-beta.N` first; patches go straight to stable. When each ships: Schedule.
 - One universal build, arm64 and x86_64. It becomes arm64-only once the deployment target reaches macOS 27.
 
 ## Branches
 
 - An admin cuts `release/<X.Y>` from a green `main` commit at beta.1. Only admins create `release/*` branches.
 - Every fix lands on `main` first, then reaches the line through a cherry-pick PR from `backport/<PR>-<X.Y>`: one fix per PR, titled with the original subject and its ` (#N)`, which is the provenance. A release PR comes from `prep/v<X.Y.Z>`. No PR head branch lives under `release/*`.
-- A line takes patches until `X.(Y+1).0` ships, then only security or data-loss fixes. At most two lines are live.
+- A line closes when `X.(Y+1).0` ships. A later security or data-loss fix for its users ships as a critical patch on the current stable line. At most two lines are live.
 - After a stable or patch publishes, a PR with the same title cherry-picks its release commit to `main`, and to a newer open line when one exists. The next tag refuses to build until it has.
+
+## Schedule
+
+Tags go out between 13:00 and 15:00 ICT (UTC+7).
+
+- Monday, the train: promote the open line's newest beta to `vX.Y.0` when the gate passes, forward-port it, then cut `release/X.(Y+1)` from the newest green `main` commit and tag its beta.1. The forward-port merges first: `version.py` refuses beta.1 of X.(Y+1) until `main` has `## [X.Y.0]`.
+- The gate: the line is 7 days old; its newest beta is at least 72 h old and nothing but changelog fragments landed on the line after it; no open issue is labeled `regression`; the storage check passes (`.claude/skills/release/SKILL.md`, section 4).
+- When the gate fails, nothing is promoted or cut. Fix on `main`, pick it, and ship beta.N+1. Promote it on the first Tuesday to Thursday when it is 48 h old with no open `regression` issue, and cut the next beta.1 the same day. That line's train is the first Monday it is 7 days old.
+- Tuesday to Thursday: a beta.N when the line has picks, at most one a day. A patch `X.Y.Z` goes straight to stable, only for a regression from the previous stable, a crash, a plugin that fails to load, a security fix or data loss.
+- Friday to Sunday: no tags, except a critical release or the fix for a build that fails to launch, update or connect.
+- No train on 2026-12-21, 2026-12-28 or in the Tet week (2027-02-08). Betas and patches still ship on their days.
+- An issue against a `-beta.N` build is triaged within one working day and labeled `regression` when it worked in the previous stable.
 
 ## Notes
 
@@ -131,6 +143,7 @@ gh workflow run withdraw.yml --ref v<newest tag> -f version=X.Y.Z
 - Retention per channel, kit and `minimumSystemVersion`: the two highest builds stay; a beta goes once a stable with the same key has a higher build; a kit below `retainFromPluginKit` goes. A release pruned on arrival is a logged no-op.
 - `retainFromPluginKit` is the kit of the oldest app version still on at least 1% of the machines seen in the last 30 days (license dashboard, App Versions). Check it before each stable and raise it with a normal PR. The manifest keeps the higher of its own value and the tag's, so an older line never lowers it.
 - Accepted risks: the manifest is trusted through HTTPS, the plugin's Team ID check and the sha256, so a rollback or freeze of the manifest goes undetected.
+- A `TABLEPRO_PLUGINKIT_VERSION` bump enters a line only at beta.1, never through a pick or a patch.
 - PluginKit ABI rules: `.claude/rules/plugin-system.md`, ABI.
 
 ## Static libraries

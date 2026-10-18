@@ -26,16 +26,21 @@ Before any decision, gather:
 - the tags, newest first: `git -c versionsort.suffix=-beta tag -l 'v*' --sort=-v:refname | head`;
 - the live lines: `git ls-remote --heads origin 'release/*'`;
 - open regressions: `gh issue list --label regression --state open`;
+- the newest beta's age, `gh release view v<X.Y>.0-beta.<N> --json publishedAt -q .publishedAt`, and the code on the line after it, `git log --oneline v<X.Y>.0-beta.<N>..origin/release/<X.Y> -- . ':!changelog.d'`;
 - open Dependabot alerts: `gh api --paginate 'repos/TableProApp/TablePro/dependabot/alerts?state=open&per_page=100' -q '.[].security_advisory.summary'`;
 - main's push runs: `gh run list --branch main --event push --limit 10`, with macOS Tests, iOS and Package Tests and Release Build green on the commit you would cut;
 - whether `main` has the last stable's `## [X.Y.Z]` heading. If not, the forward-port is missing and the next tag will refuse to build: do that first (section 9).
 
 ## 3. Decide what ships
 
-- **beta.1 of X.Y**: `main` has features since the last X.Y.0.
-- **beta.N**: the line has picks since its last beta.
-- **Promote to X.Y.0**: the newest beta has no open `regression` issue.
-- **Patch X.Y.Z**: the line has fixes only since its last stable.
+The days, the gate and the patch bar live in `RELEASING.md`, Schedule.
+
+- **Promote to X.Y.0**: Monday, when the gate passes: the line's age, the newest beta's age and nothing but fragments after it (section 2), no open `regression` issue, and the storage check (section 4).
+- **beta.1 of X.(Y+1)**: the same Monday, after X.Y.0's forward-port merges (section 9). The tag refuses to build until `main` has `## [X.Y.0]`.
+- **beta.N**: Tuesday to Thursday, when the line has picks since its last beta.
+- **Patch X.Y.Z**: Tuesday to Thursday, when the stable line has a fix past the patch bar.
+- **Gate fails**: nothing is promoted or cut; the Schedule says when the next beta, the promotion and the next beta.1 go.
+- **Friday to Sunday**: nothing, except what the Schedule allows.
 - **X.0.0**: ask the maintainer.
 
 Say which and why in one line, then wait for the maintainer to agree. Run: `RELEASING.md`, Cutting a beta, or Cutting a stable or patch.
@@ -51,7 +56,7 @@ What counts as critical: `RELEASING.md`, Channels. Name the fix and the reason, 
 ## 6. Backport candidates
 
 - Candidates: merged `main` PRs labeled `backport release/<X.Y>`, plus `fix` PRs for a bug the line has.
-- Never a `feat`, and after `X.(Y+1).0` ships, only security or data-loss fixes.
+- Never a `feat` or a PluginKit bump (`RELEASING.md`, Plugins). On the stable line, only a fix past the patch bar (`RELEASING.md`, Schedule). A closed line takes no picks (`RELEASING.md`, Branches).
 - Already picked: `gh pr list --base release/<X.Y> --state merged --limit 200`. A pick's title keeps the original subject and its ` (#N)`.
 - One fix per pick PR, from `backport/<PR>-<X.Y>`. A conflict that needs more than a mechanical resolution goes back to the maintainer.
 
