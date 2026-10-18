@@ -66,7 +66,7 @@ jobs:
       - name: Make sure the simulator exists
         run: |
           if ! xcrun simctl list devices available | grep -F "iPhone 18 Pro (" > /dev/null; then
-            sudo xcodebuild -downloadPlatform iOS
+            xcodebuild -downloadPlatform iOS
           fi
 
       # One simulator, not clones: on a 3-core runner a second booted simulator killed runs with

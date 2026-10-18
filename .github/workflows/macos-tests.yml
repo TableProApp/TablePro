@@ -48,9 +48,13 @@ jobs:
     timeout-minutes: 120
     env:
       NSUnbufferedIO: "YES"
-      COMPILE_PLUGINS: ${{ github.event_name != 'pull_request' || needs.changes.outputs.plugins != 'false' }}
+      COMPILE_PLUGINS: ${{ needs.changes.outputs.plugins != 'false' }}
     steps:
+      # The PluginKit ABI step builds the newest v* tag, so it needs the tags and their history.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: blob:none
 
       - uses: ./.github/actions/setup-xcode
 
@@ -85,7 +89,7 @@ jobs:
             | xcbeautify --renderer github-actions
 
       # The TablePro scheme builds only the bundled plugins. AllPlugins also compiles the
-      # registry-only drivers, so every push runs it.
+      # registry-only drivers.
       - name: Set up Go for the SAP HANA helper
         if: ${{ !cancelled() && env.COMPILE_PLUGINS == 'true' }}
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -112,6 +116,17 @@ jobs:
             CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO COMPILATION_CACHE_ENABLE_CACHING=NO \
             | xcbeautify --renderer github-actions
           scripts/ci/verify-plugin-loads.sh DerivedData/Build/Products/Debug
+
+      - name: Check the PluginKit ABI
+        if: ${{ !cancelled() && env.COMPILE_PLUGINS == 'true' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [[ "$BASE_REF" == release/* ]]; then
+            scripts/check-pluginkit-abi.sh --frozen
+          else
+            scripts/check-pluginkit-abi.sh
+          fi
 
       - name: Run the Unit test plan
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
