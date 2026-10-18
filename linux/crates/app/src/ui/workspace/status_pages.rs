@@ -287,6 +287,15 @@ mod tests {
             ("win.show-history", "Query History Unavailable"),
             ("win.show-saved-queries", "Saved Queries Unavailable"),
         ] {
+            // The action follows the window's own history, which may still
+            // be opening.
+            let name = action.trim_start_matches("win.");
+            wait_until(WAIT, || {
+                test.window
+                    .lookup_action(name)
+                    .is_some_and(|action| action.is_enabled())
+            })
+            .unwrap_or_else(|_| panic!("{action} stayed off"));
             WidgetExt::activate_action(&test.window, action, None).expect(action);
             wait_until(WAIT, || {
                 visible_alert(&test.window).is_some_and(|alert| alert.heading().as_deref() == Some(heading))

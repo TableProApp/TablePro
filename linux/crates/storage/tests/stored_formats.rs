@@ -226,6 +226,14 @@ fn a_version_1_connection_list_imports_as_it_was_written() -> TestResult {
     let report = store.import_blocking(Path::new("/tmp/connections-v1.json"), CONNECTIONS_V1)?;
 
     assert_eq!(report.total(), connections_v1_model()?.len());
-    assert_eq!(store.load_blocking()?.as_ref(), connections_v1_model()?.as_slice());
+    // An import never takes the file's last-opened times.
+    let imported: Vec<SavedConnection> = connections_v1_model()?
+        .into_iter()
+        .map(|connection| SavedConnection {
+            last_opened_at: None,
+            ..connection
+        })
+        .collect();
+    assert_eq!(store.load_blocking()?.as_ref(), imported.as_slice());
     Ok(())
 }

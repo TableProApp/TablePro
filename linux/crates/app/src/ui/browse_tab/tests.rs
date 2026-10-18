@@ -3141,6 +3141,8 @@ fn a_keyed_table_pages_by_the_edge_rows_key_not_by_offset() {
 #[gtk4::test]
 fn a_sorted_table_pages_by_offset() {
     let mut script = serving_table();
+    // A count below the second page would move it back to the first.
+    script.count_rows.always(FakeReply::ok(1_000));
     script.query_bound.always(FakeReply::ok(full_page(0)));
     let harness = Harness::open(script, []);
     wait_until(WAIT, || harness.shown().len() == 100).expect("the first page");
