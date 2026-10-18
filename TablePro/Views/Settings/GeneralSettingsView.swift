@@ -13,7 +13,7 @@ struct GeneralSettingsView: View {
 
     private static let standardTimeouts = [10, 20, 30, 40, 50, 60, 90, 120, 180, 300, 600]
 
-    /// Sparkle owns these, so `GeneralSettings` holds no copy for settings sync to overwrite.
+    // The updater owns these, so `GeneralSettings` holds no copy for settings sync to overwrite.
     private var automaticallyChecksForUpdates: Binding<Bool> {
         Binding(
             get: { updater.automaticallyChecksForUpdates },
@@ -25,6 +25,13 @@ struct GeneralSettingsView: View {
         Binding(
             get: { updater.automaticallyDownloadsUpdates },
             set: { updater.setAutomaticallyDownloadsUpdates($0) }
+        )
+    }
+
+    private var receivesBetaUpdates: Binding<Bool> {
+        Binding(
+            get: { updater.receivesBetaUpdates },
+            set: { updater.setReceivesBetaUpdates($0) }
         )
     }
 
@@ -153,6 +160,9 @@ struct GeneralSettingsView: View {
                     .accessibilityIdentifier("automatic-update-install-toggle")
                     .help(String(localized: "A new version downloads in the background and installs the next time you quit TablePro."))
 
+                Toggle("Get beta updates", isOn: receivesBetaUpdates)
+                    .accessibilityIdentifier("beta-updates-toggle")
+
                 LabeledContent {
                     Button(updater.checkForUpdatesTitle) {
                         updater.checkForUpdates()
@@ -175,6 +185,8 @@ struct GeneralSettingsView: View {
                 .accessibilityIdentifier("whats-new-link")
             } header: {
                 Text("Software Update")
+            } footer: {
+                Text("Betas get new features first. Turning this off keeps the beta you have until a newer release ships.")
             }
 
             Section {

@@ -1,8 +1,3 @@
-//
-//  PreferenceKeys.swift
-//  TablePro
-//
-
 import Foundation
 
 enum PreferenceKeys {
@@ -25,6 +20,8 @@ enum PreferenceKeys {
     static let connectionListFavoritesOrder = DefaultsKey<[String]>("com.TablePro.connectionList.favoritesOrder")
     static let connectionListShowsRecent = DefaultsKey<Bool>("com.TablePro.connectionList.showsRecent")
     static let recentConnections = DefaultsKey<Data>("com.TablePro.connectionList.recentConnections")
+    /// Device-local, and in the standard domain so a configuration profile can pin it.
+    static let receivesBetaUpdates = DefaultsKey<Bool>("com.TablePro.updates.receivesBetaUpdates")
 
     static let registeredKeyNames: [String] = [
         connectionListSortMode.name,
@@ -43,6 +40,7 @@ enum PreferenceKeys {
         queryPlanBarMetric.name,
         lastBackupDirectory.name,
         lastSeenAppVersion.name,
+        receivesBetaUpdates.name,
     ]
 
     static let columnDisplayFormatsPrefix = "com.TablePro.columns.displayFormat."
