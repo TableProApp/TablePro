@@ -1,6 +1,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 private final class ManifestStubProtocol: URLProtocol, @unchecked Sendable {
@@ -66,6 +67,13 @@ private func writeBundle(
 private actor FixtureRegistryInstaller: RegistryPluginInstalling {
     private(set) var installedIds: [String] = []
     private(set) var stagedIds: [String] = []
+    private let installGate: AsyncGate?
+    private let stageGate: AsyncGate?
+
+    init(installGate: AsyncGate? = nil, stageGate: AsyncGate? = nil) {
+        self.installGate = installGate
+        self.stageGate = stageGate
+    }
 
     func install(
         _ registryPlugin: RegistryPlugin,
@@ -74,6 +82,7 @@ private actor FixtureRegistryInstaller: RegistryPluginInstalling {
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> URL {
         installedIds.append(registryPlugin.id)
+        await installGate?.wait()
         let download = try downloadedBundle(registryPlugin, release: release, beside: userPluginsDir, named: "Driver.tableplugin")
         let destURL = userPluginsDir.appendingPathComponent("Driver.tableplugin", isDirectory: true)
         return try PluginInstaller.atomicReplace(stagedBundleURL: download, destURL: destURL)
@@ -88,6 +97,7 @@ private actor FixtureRegistryInstaller: RegistryPluginInstalling {
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> URL {
         stagedIds.append(registryPlugin.id)
+        await stageGate?.wait()
         let download = try downloadedBundle(registryPlugin, release: release, beside: userPluginsDir, named: bundleName)
         return try PluginInstaller.stage(
             bundleAt: download,
@@ -235,17 +245,22 @@ struct PluginRegistryUpdatePassTests {
         )
     }
 
-    private func makeRegistryClient(servingBuild build: Int) throws -> (client: RegistryClient, manifestURL: URL) {
+    private func makeRegistryClient(
+        servingBuild build: Int,
+        pluginIds: [String] = ["com.example.driver"]
+    ) throws -> (client: RegistryClient, manifestURL: URL) {
         let manifestURL = try #require(URL(string: "https://registry.invalid/\(UUID().uuidString)/plugins/v3.json"))
-        ManifestStubProtocol.serve(Data("""
-        {"schemaVersion": 3, "retainFromPluginKit": 39, "plugins": [{
-            "id": "com.example.driver", "name": "Driver",
-            "releases": [{
+        let plugins = pluginIds.map { id in
+            """
+            {"id": "\(id)", "name": "Driver", "releases": [{
                 "version": "1.0", "build": \(build), "channel": "stable",
                 "pluginKit": \(PluginManager.currentPluginKitVersion),
                 "minimumSystemVersion": "13.0", "url": "https://x", "sha256": "deadbeef"
-            }]
-        }]}
+            }]}
+            """
+        }
+        ManifestStubProtocol.serve(Data("""
+        {"schemaVersion": 3, "retainFromPluginKit": 39, "plugins": [\(plugins.joined(separator: ","))]}
         """.utf8), at: manifestURL)
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ManifestStubProtocol.self]
@@ -487,6 +502,32 @@ struct PluginRegistryUpdatePassTests {
         // The fixture is unsigned, so the load fails and the entry stays.
         #expect(result == .retry)
         #expect(manager.rejectedPlugins.map { $0.url } == [rejectedURL])
+    }
+
+    @Test("A connection waits for the pass's rejected repairs, not for its staging downloads")
+    func repairPhaseEndsBeforeStaging() async throws {
+        let installGate = AsyncGate()
+        let stageGate = AsyncGate()
+        let installer = FixtureRegistryInstaller(installGate: installGate, stageGate: stageGate)
+        let fixture = try makeFixture(installer: installer)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let manager = fixture.manager
+        let loaded = makeEntry(id: "com.example.loaded", in: fixture.pluginsDir, build: 10)
+        manager.saveRegistryMetadata(pluginId: loaded.id, pluginURL: loaded.url)
+        manager.plugins = [loaded]
+        manager.rejectedPlugins = [makeRejected(bundleId: "com.example.driver")]
+        let (client, _) = try makeRegistryClient(servingBuild: 20, pluginIds: ["com.example.driver", loaded.id])
+
+        let pass = Task { await manager.runRegistryUpdatePass(registryClient: client, appBuild: 20) }
+        await installGate.arrived(1)
+        #expect(manager.isRepairingRejectedPlugins)
+        await installGate.open()
+        await stageGate.arrived(1)
+        #expect(!manager.isRepairingRejectedPlugins)
+        await stageGate.open()
+        _ = await pass.value
+
+        #expect(manager.stagedPluginIds == [loaded.id])
     }
 
     @Test("A file staged over a loaded registry plugin drops its sidecar, so the pass leaves it alone")

@@ -109,9 +109,20 @@ final class PluginManager: ObservableObject {
     private var activatedBundleIds: Set<String> = []
 
     internal var registryUpdateTask: Task<Void, Never>?
-    internal var isRegistryUpdatePassRunning = false
     internal var registryUpdateAttempts = 0
     internal var installsInFlight: Set<String> = []
+
+    // Set from a pass's start until its rejected plugins are done, so a connection never waits on a staging download.
+    internal var isRepairingRejectedPlugins = false {
+        didSet {
+            guard !isRepairingRejectedPlugins else { return }
+            let waiters = rejectedRepairWaiters
+            rejectedRepairWaiters.removeAll()
+            waiters.forEach { $0.resume() }
+        }
+    }
+
+    internal var rejectedRepairWaiters: [CheckedContinuation<Void, Never>] = []
 
     internal var pendingSignatureChecks: [URL] = []
 

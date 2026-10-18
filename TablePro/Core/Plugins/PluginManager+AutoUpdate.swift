@@ -51,9 +51,7 @@ extension PluginManager {
     }
 
     private func performScheduledRegistryUpdatePass() async {
-        isRegistryUpdatePassRunning = true
         let result = await runRegistryUpdatePass()
-        isRegistryUpdatePassRunning = false
         guard !Task.isCancelled else { return }
 
         if result == .retry {
@@ -74,7 +72,14 @@ extension PluginManager {
         registryClient: RegistryClient = .shared,
         appBuild: Int = Bundle.main.buildNumber
     ) async -> RegistryUpdatePassResult {
-        await applyRegistryUpdates(to: registryUpdateTargets(appBuild: appBuild), registryClient: registryClient)
+        isRepairingRejectedPlugins = true
+        defer { isRepairingRejectedPlugins = false }
+        return await applyRegistryUpdates(to: registryUpdateTargets(appBuild: appBuild), registryClient: registryClient)
+    }
+
+    func waitForRejectedPluginRepairs() async {
+        guard isRepairingRejectedPlugins else { return }
+        await withCheckedContinuation { rejectedRepairWaiters.append($0) }
     }
 
     private func applyRegistryUpdates(
@@ -100,6 +105,9 @@ extension PluginManager {
         for update in pending {
             guard !Task.isCancelled else { return .finished }
             guard isRegistryUpdateTarget(update.target) else { continue }
+            if update.target.rejectedURL == nil {
+                isRepairingRejectedPlugins = false
+            }
             do {
                 try await applyRegistryUpdate(update)
             } catch {
@@ -333,9 +341,7 @@ extension PluginManager {
 
     func ensurePluginReady(forTypeId typeId: String) async {
         guard SoftwareUpdater.isUpdatingEnabled, hasOutdatedRejectedPlugin(forTypeId: typeId) else { return }
-        if isRegistryUpdatePassRunning, let running = registryUpdateTask {
-            await running.value
-        }
+        await waitForRejectedPluginRepairs()
         let targets = registryUpdateTargets(forTypeId: typeId, appBuild: Bundle.main.buildNumber)
         guard !targets.isEmpty else { return }
         _ = await applyRegistryUpdates(to: targets, registryClient: .shared)

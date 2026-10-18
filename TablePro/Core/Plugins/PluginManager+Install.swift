@@ -15,12 +15,7 @@ extension PluginManager {
         if plugins.contains(where: { $0.id == registryPlugin.id }) {
             throw PluginError.pluginConflict(existingName: registryPlugin.name)
         }
-        guard !installsInFlight.contains(registryPlugin.id) else {
-            throw PluginError.installFailed(
-                String(localized: "Another install is already in progress for this plugin")
-            )
-        }
-        installsInFlight.insert(registryPlugin.id)
+        try reserveInstall(of: registryPlugin.id)
         defer { installsInFlight.remove(registryPlugin.id) }
 
         let release = try release ?? Self.newestRelease(of: registryPlugin)
@@ -68,12 +63,7 @@ extension PluginManager {
         guard existing.source == .userInstalled else {
             throw PluginError.pluginConflict(existingName: existing.name)
         }
-        guard !installsInFlight.contains(existing.id) else {
-            throw PluginError.installFailed(
-                String(localized: "Another install is already in progress for this plugin")
-            )
-        }
-        installsInFlight.insert(existing.id)
+        try reserveInstall(of: existing.id)
         defer { installsInFlight.remove(existing.id) }
 
         let release = try release ?? Self.newestRelease(of: registryPlugin)
@@ -92,6 +82,16 @@ extension PluginManager {
         }
         stagedPluginIds.insert(existing.id)
         PluginInstallTracker.shared.completeInstall(pluginId: existing.id)
+    }
+
+    // One install per plugin at a time: a file and a registry download would overwrite each other's copy.
+    private func reserveInstall(of pluginId: String) throws {
+        guard !installsInFlight.contains(pluginId) else {
+            throw PluginError.installFailed(
+                String(localized: "Another install is already in progress for this plugin")
+            )
+        }
+        installsInFlight.insert(pluginId)
     }
 
     func installPlugin(from url: URL) async throws -> PluginEntry {
@@ -134,6 +134,8 @@ extension PluginManager {
         try PluginCodeSignatureVerifier.verify(bundle: sourceBundle)
         try Self.validateBundleVersions(sourceBundle)
         let bundleId = sourceBundle.bundleIdentifier ?? url.lastPathComponent
+        try reserveInstall(of: bundleId)
+        defer { installsInFlight.remove(bundleId) }
 
         if let existing = plugins.first(where: { $0.id == bundleId }) {
             guard url.standardizedFileURL != existing.url.standardizedFileURL else { return existing }
@@ -171,6 +173,9 @@ extension PluginManager {
         PluginInstaller.stripQuarantine(at: bundleURL)
 
         let bundleId = bundle.bundleIdentifier ?? bundleURL.lastPathComponent
+        try reserveInstall(of: bundleId)
+        defer { installsInFlight.remove(bundleId) }
+
         if let existing = plugins.first(where: { $0.id == bundleId }) {
             return try stageForNextLaunch(bundleAt: bundleURL, replacing: existing)
         }
