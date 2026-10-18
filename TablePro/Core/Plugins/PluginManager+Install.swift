@@ -25,7 +25,7 @@ extension PluginManager {
 
         let release = try release ?? Self.newestRelease(of: registryPlugin)
 
-        let finalURL = try await PluginInstaller.shared.install(
+        let finalURL = try await registryInstaller.install(
             registryPlugin,
             release: release,
             into: userPluginsDir,
@@ -78,7 +78,7 @@ extension PluginManager {
 
         let release = try release ?? Self.newestRelease(of: registryPlugin)
 
-        _ = try await PluginInstaller.shared.stage(
+        _ = try await registryInstaller.stage(
             registryPlugin,
             release: release,
             pluginId: existing.id,
@@ -126,6 +126,7 @@ extension PluginManager {
 
     // MARK: - Local bundle / zip install
 
+    // A file install drops the registry sidecar, so the update pass never replaces the file's bundle.
     private func installLooseBundle(from url: URL) async throws -> PluginEntry {
         guard let sourceBundle = Bundle(url: url) else {
             throw PluginError.invalidBundle("Cannot create bundle from \(url.lastPathComponent)")
@@ -149,6 +150,7 @@ extension PluginManager {
             loadURL = destURL
         }
         PluginInstaller.stripQuarantine(at: loadURL)
+        removeRegistryMetadata(for: loadURL)
         return try await loadPluginAsync(at: loadURL, source: .userInstalled)
     }
 
@@ -176,16 +178,18 @@ extension PluginManager {
         try FileManager.default.createDirectory(at: userPluginsDir, withIntermediateDirectories: true)
         let destURL = userPluginsDir.appendingPathComponent(bundleURL.lastPathComponent)
         let finalURL = try PluginInstaller.atomicReplace(stagedBundleURL: bundleURL, destURL: destURL)
+        removeRegistryMetadata(for: finalURL)
         return try await loadPluginAsync(at: finalURL, source: .userInstalled)
     }
 
-    private func stageForNextLaunch(bundleAt bundleURL: URL, replacing existing: PluginEntry) throws -> PluginEntry {
+    func stageForNextLaunch(bundleAt bundleURL: URL, replacing existing: PluginEntry) throws -> PluginEntry {
         try PluginInstaller.stage(
             bundleAt: bundleURL,
             pluginId: existing.id,
             bundleName: existing.url.lastPathComponent,
             userPluginsDir: userPluginsDir
         )
+        removeRegistryMetadata(for: existing.url)
         stagedPluginIds.insert(existing.id)
         return existing
     }

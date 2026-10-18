@@ -51,10 +51,6 @@ final class PluginInstallTracker: ObservableObject {
         ) else { return nil }
         return activeInstalls[plugin.id]
     }
-
-    func state(for pluginId: String) -> InstallProgress? {
-        activeInstalls[pluginId]
-    }
 }
 
 struct InstallProgress: Equatable {

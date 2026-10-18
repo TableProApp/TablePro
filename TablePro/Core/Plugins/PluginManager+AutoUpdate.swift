@@ -336,16 +336,20 @@ extension PluginManager {
         if isRegistryUpdatePassRunning, let running = registryUpdateTask {
             await running.value
         }
+        let targets = registryUpdateTargets(forTypeId: typeId, appBuild: Bundle.main.buildNumber)
+        guard !targets.isEmpty else { return }
+        _ = await applyRegistryUpdates(to: targets, registryClient: .shared)
+        AppEvents.shared.pluginsRejected.send(rejectedPlugins)
+    }
+
+    func registryUpdateTargets(forTypeId typeId: String, appBuild: Int) -> [RegistryUpdateTarget] {
         let rejectedURLs = Set(
             rejectedPlugins
                 .filter { $0.isOutdated && $0.providedDatabaseTypeIds.contains(typeId) }
                 .map(\.url)
         )
-        let targets = registryUpdateTargets(appBuild: Bundle.main.buildNumber).filter { target in
+        return registryUpdateTargets(appBuild: appBuild).filter { target in
             target.rejectedURL.map { rejectedURLs.contains($0) } ?? false
         }
-        guard !targets.isEmpty else { return }
-        _ = await applyRegistryUpdates(to: targets, registryClient: .shared)
-        AppEvents.shared.pluginsRejected.send(rejectedPlugins)
     }
 }

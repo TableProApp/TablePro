@@ -40,6 +40,76 @@ private final class ManifestStubProtocol: URLProtocol, @unchecked Sendable {
     }
 }
 
+@discardableResult
+private func writeBundle(
+    at url: URL,
+    bundleId: String,
+    build: Int,
+    kit: Int = PluginManager.currentPluginKitVersion,
+    extraInfo: [String: Any] = [:]
+) throws -> URL {
+    let contents = url.appendingPathComponent("Contents", isDirectory: true)
+    try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+    var info: [String: Any] = [
+        "CFBundleIdentifier": bundleId,
+        "CFBundleShortVersionString": "1.0",
+        "CFBundleVersion": String(build),
+        "TableProPluginKitVersion": kit
+    ]
+    info.merge(extraInfo) { _, new in new }
+    let data = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+    try data.write(to: contents.appendingPathComponent("Info.plist"))
+    return url
+}
+
+// Writes an unsigned bundle where the signed download would land, then places it with the installer's helpers.
+private actor FixtureRegistryInstaller: RegistryPluginInstalling {
+    private(set) var installedIds: [String] = []
+    private(set) var stagedIds: [String] = []
+
+    func install(
+        _ registryPlugin: RegistryPlugin,
+        release: RegistryRelease,
+        into userPluginsDir: URL,
+        progress: @escaping @Sendable (Double) async -> Void
+    ) async throws -> URL {
+        installedIds.append(registryPlugin.id)
+        let download = try downloadedBundle(registryPlugin, release: release, beside: userPluginsDir, named: "Driver.tableplugin")
+        let destURL = userPluginsDir.appendingPathComponent("Driver.tableplugin", isDirectory: true)
+        return try PluginInstaller.atomicReplace(stagedBundleURL: download, destURL: destURL)
+    }
+
+    func stage(
+        _ registryPlugin: RegistryPlugin,
+        release: RegistryRelease,
+        pluginId: String,
+        bundleName: String,
+        into userPluginsDir: URL,
+        progress: @escaping @Sendable (Double) async -> Void
+    ) async throws -> URL {
+        stagedIds.append(registryPlugin.id)
+        let download = try downloadedBundle(registryPlugin, release: release, beside: userPluginsDir, named: bundleName)
+        return try PluginInstaller.stage(
+            bundleAt: download,
+            pluginId: pluginId,
+            bundleName: bundleName,
+            userPluginsDir: userPluginsDir
+        )
+    }
+
+    private func downloadedBundle(
+        _ registryPlugin: RegistryPlugin,
+        release: RegistryRelease,
+        beside userPluginsDir: URL,
+        named bundleName: String
+    ) throws -> URL {
+        let url = userPluginsDir.deletingLastPathComponent()
+            .appendingPathComponent("Download-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent(bundleName, isDirectory: true)
+        return try writeBundle(at: url, bundleId: registryPlugin.id, build: release.build)
+    }
+}
+
 @Suite("Plugin registry update pass", .serialized)
 @MainActor
 struct PluginRegistryUpdatePassTests {
@@ -49,12 +119,14 @@ struct PluginRegistryUpdatePassTests {
         let root: URL
     }
 
-    private func makeFixture() throws -> Fixture {
+    private func makeFixture(
+        installer: any RegistryPluginInstalling = PluginInstaller.shared
+    ) throws -> Fixture {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("PluginRegistryUpdatePassTests-\(UUID().uuidString)", isDirectory: true)
         let pluginsDir = root.appendingPathComponent("Plugins", isDirectory: true)
         try FileManager.default.createDirectory(at: pluginsDir, withIntermediateDirectories: true)
-        let manager = PluginManager(builtInPluginsURL: nil, userPluginsDir: pluginsDir)
+        let manager = PluginManager(builtInPluginsURL: nil, userPluginsDir: pluginsDir, registryInstaller: installer)
         return Fixture(manager: manager, pluginsDir: pluginsDir, root: root)
     }
 
@@ -163,26 +235,22 @@ struct PluginRegistryUpdatePassTests {
         )
     }
 
-    @discardableResult
-    private func writeBundle(
-        at url: URL,
-        bundleId: String,
-        build: Int,
-        kit: Int = PluginManager.currentPluginKitVersion,
-        extraInfo: [String: Any] = [:]
-    ) throws -> URL {
-        let contents = url.appendingPathComponent("Contents", isDirectory: true)
-        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
-        var info: [String: Any] = [
-            "CFBundleIdentifier": bundleId,
-            "CFBundleShortVersionString": "1.0",
-            "CFBundleVersion": String(build),
-            "TableProPluginKitVersion": kit
-        ]
-        info.merge(extraInfo) { _, new in new }
-        let data = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
-        try data.write(to: contents.appendingPathComponent("Info.plist"))
-        return url
+    private func makeRegistryClient(servingBuild build: Int) throws -> (client: RegistryClient, manifestURL: URL) {
+        let manifestURL = try #require(URL(string: "https://registry.invalid/\(UUID().uuidString)/plugins/v3.json"))
+        ManifestStubProtocol.serve(Data("""
+        {"schemaVersion": 3, "retainFromPluginKit": 39, "plugins": [{
+            "id": "com.example.driver", "name": "Driver",
+            "releases": [{
+                "version": "1.0", "build": \(build), "channel": "stable",
+                "pluginKit": \(PluginManager.currentPluginKitVersion),
+                "minimumSystemVersion": "13.0", "url": "https://x", "sha256": "deadbeef"
+            }]
+        }]}
+        """.utf8), at: manifestURL)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ManifestStubProtocol.self]
+        let client = RegistryClient(manifestURL: manifestURL, session: URLSession(configuration: configuration))
+        return (client, manifestURL)
     }
 
     // MARK: - Pending updates
@@ -338,21 +406,7 @@ struct PluginRegistryUpdatePassTests {
         let entry = makeEntry(id: "com.example.driver", in: fixture.pluginsDir, build: 10)
         manager.saveRegistryMetadata(pluginId: entry.id, pluginURL: entry.url)
         manager.plugins = [entry]
-
-        let manifestURL = try #require(URL(string: "https://registry.invalid/\(UUID().uuidString)/plugins/v3.json"))
-        ManifestStubProtocol.serve(Data("""
-        {"schemaVersion": 3, "retainFromPluginKit": 39, "plugins": [{
-            "id": "com.example.driver", "name": "Driver",
-            "releases": [{
-                "version": "1.0", "build": 10, "channel": "stable",
-                "pluginKit": \(PluginManager.currentPluginKitVersion),
-                "minimumSystemVersion": "13.0", "url": "https://x", "sha256": "deadbeef"
-            }]
-        }]}
-        """.utf8), at: manifestURL)
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [ManifestStubProtocol.self]
-        let client = RegistryClient(manifestURL: manifestURL, session: URLSession(configuration: configuration))
+        let (client, manifestURL) = try makeRegistryClient(servingBuild: 10)
 
         let result = await manager.runRegistryUpdatePass(registryClient: client, appBuild: 20)
 
@@ -368,8 +422,8 @@ struct PluginRegistryUpdatePassTests {
         #expect(delays == [.seconds(30), .seconds(300), .seconds(600), .seconds(600), nil])
     }
 
-    @Test("A plugin that is not loaded installs now; a loaded one stages for the next launch")
-    func unloadedInstallsLoadedStages() throws {
+    @Test("registryUpdateMode installs a plugin that is not loaded and stages a loaded one")
+    func updateModeRouting() throws {
         let fixture = try makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let manager = fixture.manager
@@ -379,6 +433,99 @@ struct PluginRegistryUpdatePassTests {
         #expect(manager.registryUpdateMode(forPluginId: "com.example.loaded") == .stageForNextLaunch)
         #expect(manager.registryUpdateMode(forPluginId: "com.example.rejected") == .installNow)
         #expect(manager.registryUpdateMode(forPluginId: "com.example.absent") == .installNow)
+    }
+
+    @Test("The pass stages a loaded plugin's newer build for the next launch and keeps its sidecar")
+    func passStagesLoadedPlugin() async throws {
+        let installer = FixtureRegistryInstaller()
+        let fixture = try makeFixture(installer: installer)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let manager = fixture.manager
+        let entry = makeEntry(id: "com.example.driver", in: fixture.pluginsDir, build: 10)
+        manager.saveRegistryMetadata(pluginId: entry.id, pluginURL: entry.url)
+        manager.plugins = [entry]
+        let (client, _) = try makeRegistryClient(servingBuild: 20)
+
+        let result = await manager.runRegistryUpdatePass(registryClient: client, appBuild: 20)
+
+        #expect(result == .finished)
+        #expect(manager.stagedPluginIds == [entry.id])
+        let stagedBundle = PluginInstaller.stagedUpdateDirectory(for: entry.id, in: fixture.pluginsDir)
+            .appendingPathComponent(entry.url.lastPathComponent, isDirectory: true)
+        #expect(PluginManager.bundleBuild(at: stagedBundle) == 20)
+        #expect(PluginManager.readRegistryMetadata(for: entry.url)?.pluginId == entry.id)
+        let installedIds = await installer.installedIds
+        #expect(installedIds.isEmpty)
+    }
+
+    @Test("The pass installs a rejected plugin at once, and a build that fails to load keeps it rejected")
+    func passInstallsRejectedPluginNow() async throws {
+        let installer = FixtureRegistryInstaller()
+        let fixture = try makeFixture(installer: installer)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let manager = fixture.manager
+        let rejectedURL = fixture.pluginsDir.appendingPathComponent("Driver.tableplugin", isDirectory: true)
+        manager.rejectedPlugins = [RejectedPlugin(
+            url: rejectedURL,
+            bundleId: "com.example.driver",
+            registryId: nil,
+            name: "Driver",
+            reason: "Built for an older PluginKit",
+            isOutdated: true,
+            providedDatabaseTypeIds: []
+        )]
+        let (client, _) = try makeRegistryClient(servingBuild: 20)
+
+        let result = await manager.runRegistryUpdatePass(registryClient: client, appBuild: 20)
+
+        let installedIds = await installer.installedIds
+        let stagedIds = await installer.stagedIds
+        #expect(installedIds == ["com.example.driver"])
+        #expect(stagedIds.isEmpty)
+        #expect(manager.stagedPluginIds.isEmpty)
+        #expect(PluginManager.bundleBuild(at: rejectedURL) == 20)
+        // The fixture is unsigned, so the load fails and the entry stays.
+        #expect(result == .retry)
+        #expect(manager.rejectedPlugins.map { $0.url } == [rejectedURL])
+    }
+
+    @Test("A file staged over a loaded registry plugin drops its sidecar, so the pass leaves it alone")
+    func fileStagedOverRegistryPluginDropsSidecar() throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let manager = fixture.manager
+        let entry = makeEntry(id: "com.example.driver", in: fixture.pluginsDir, build: 10)
+        manager.saveRegistryMetadata(pluginId: entry.id, pluginURL: entry.url)
+        manager.plugins = [entry]
+        let file = try writeBundle(
+            at: fixture.root.appendingPathComponent("Downloads/Driver.tableplugin", isDirectory: true),
+            bundleId: entry.id,
+            build: 11
+        )
+
+        _ = try manager.stageForNextLaunch(bundleAt: file, replacing: entry)
+
+        #expect(manager.stagedPluginIds == [entry.id])
+        #expect(PluginManager.readRegistryMetadata(for: entry.url) == nil)
+        manager.stagedPluginIds = []
+        #expect(manager.registryUpdateTargets(appBuild: 20).isEmpty)
+    }
+
+    @Test("Connecting repairs only the outdated plugins that provide its database type")
+    func connectTargetsOnlyThatType() throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let manager = fixture.manager
+        let loaded = makeEntry(id: "com.example.loaded", in: fixture.pluginsDir, build: 10)
+        manager.saveRegistryMetadata(pluginId: loaded.id, pluginURL: loaded.url)
+        manager.plugins = [loaded]
+        let wanted = makeRejected(bundleId: "com.example.wanted", providedDatabaseTypeIds: ["WantedDB"])
+        let other = makeRejected(bundleId: "com.example.other", providedDatabaseTypeIds: ["OtherDB"])
+        manager.rejectedPlugins = [wanted, other]
+
+        let targets = manager.registryUpdateTargets(forTypeId: "WantedDB", appBuild: 20)
+
+        #expect(targets == [RegistryUpdateTarget(pluginId: "com.example.wanted", build: 0, rejectedURL: wanted.url)])
     }
 
     @Test("A rejected plugin replaced in place passes the kit check at once")

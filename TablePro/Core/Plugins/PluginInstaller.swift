@@ -2,7 +2,25 @@ import Foundation
 import os
 import TableProUtilities
 
-actor PluginInstaller {
+protocol RegistryPluginInstalling: Sendable {
+    func install(
+        _ registryPlugin: RegistryPlugin,
+        release: RegistryRelease,
+        into userPluginsDir: URL,
+        progress: @escaping @Sendable (Double) async -> Void
+    ) async throws -> URL
+
+    func stage(
+        _ registryPlugin: RegistryPlugin,
+        release: RegistryRelease,
+        pluginId: String,
+        bundleName: String,
+        into userPluginsDir: URL,
+        progress: @escaping @Sendable (Double) async -> Void
+    ) async throws -> URL
+}
+
+actor PluginInstaller: RegistryPluginInstalling {
     static let shared = PluginInstaller()
 
     static let logger = Logger(subsystem: "com.TablePro", category: "PluginInstaller")

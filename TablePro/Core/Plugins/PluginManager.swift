@@ -24,6 +24,7 @@ final class PluginManager: ObservableObject {
 
     private let builtInPluginsURL: URL?
     internal let userPluginsDir: URL
+    internal let registryInstaller: any RegistryPluginInstalling
 
     @Published internal(set) var plugins: [PluginEntry] = []
 
@@ -119,10 +120,12 @@ final class PluginManager: ObservableObject {
     init(
         builtInPluginsURL: URL? = Bundle.main.builtInPlugInsURL,
         userPluginsDir: URL = PluginManager.defaultUserPluginsDir(),
+        registryInstaller: any RegistryPluginInstalling = PluginInstaller.shared,
         initialLoadClock: any Clock<Duration> = ContinuousClock()
     ) {
         self.builtInPluginsURL = builtInPluginsURL
         self.userPluginsDir = userPluginsDir
+        self.registryInstaller = registryInstaller
         self.initialLoadClock = initialLoadClock
     }
 
