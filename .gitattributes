@@ -43,21 +43,7 @@
 *.yaml text eol=lf
 *.plist text eol=lf
 
-# Vendored C headers (database driver bridges, SQLite, tree-sitter grammars)
+# Vendored C headers (database driver bridges, tree-sitter grammars)
 Plugins/*/C*/include/** linguist-vendored
-Packages/TableProCore/Sources/CSQLite/include/sqlite3*.h linguist-vendored
 TablePro/Core/SSH/CLibSSH2/** linguist-vendored
 Packages/TableProGrammars/Sources/TreeSitterGrammars/** linguist-vendored
-
-# Third-party license texts, copied verbatim
-Native/DamengBridge/LICENSES/** linguist-vendored
-Packages/TableProEditor/LICENSE-*.md linguist-vendored
-TablePro/Resources/ThirdPartyLicenses/texts/** linguist-vendored
-# Joins the SQLite copyright page and the source blessing with a sentence of its own.
-TablePro/Resources/ThirdPartyLicenses/texts/sqlite.txt -linguist-vendored
-
-# Generated Linux files (Cargo, xgettext, cargo-about, license_metadata.py)
-linux/Cargo.lock linguist-generated
-linux/po/tablepro.pot linguist-generated
-linux/data/licenses/** linguist-generated
-linux/build-aux/debian/copyright linguist-generated

@@ -100,7 +100,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
   - `shellcheck --severity=warning` on every `*.sh` under `scripts` and `.claude/skills`;
   - the tooling tests: `scripts/ci/test_*.py`, `scripts/lib/test_*.py`, `scripts/test_localization.py` and `scripts/ci/test_libs_release.sh`;
   - `scripts/release/test_*.py` on Python 3.9 from `actions/setup-python`, in a venv that installs `scripts/release/requirements.txt` with `pip --require-hashes`;
-  - in the same venv, `check-changelog.py` and `towncrier build --draft --version 0.0.0` for the root and `--dir linux`, which fails on a fragment name it cannot parse;
+  - in the same venv, `check-changelog.py` and `towncrier build --draft --version 0.0.0`, which fails on a fragment name it cannot parse;
   - `check-lib-sourcing.py`, `check-plugin-manifest.py`, `check-plugin-provides.py`, `check-deployment-target.sh`, `check-ios-shared-isolation.py`;
   - `localization.py plugins` and `plugins --target ios`;
   - `check-string-catalogs.py`, `check-license-inventory.py`, `check-entitlements.py`, `check-test-plans.py`;
@@ -119,7 +119,6 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 - `ios` watches `TableProMobile/`, `Libs/`, `Plugins/TableProPluginKit/` (the package target is a symlink to it), and every `../` path it reads out of `TableProMobile/project.yml`.
 - `oracle` watches `Packages/TableProOracle/`; `hana` watches `Native/HanaBridge/`. Each suite also watches its own workflow.
 - `release` watches what the Release build reads: the app, plugin, package, native, config and libs folders, `project.yml`, the app's `Package.resolved`, `.github/plugin-registry.json`, the release scripts it runs (`build.sh`, `package.sh`, `registry.py`, `version.py`, `notes.py`), the build and CI scripts it runs and the setup actions. It skips `Plugins/*Tests/` and `Packages/*/Tests/`.
-- `linux` watches `linux/`, the docs and banned-words scripts the Linux fast job runs, the detector itself and the three Linux workflows.
 - A path a suite newly reads joins that suite's pattern in the same change, or the suite skips on it.
 - `CHANGELOG.md` and `changelog.d/` are on no suite's pattern: the What's New phase writes nothing at `0.0.0-dev`, and Repo Hygiene renders every fragment and section instead.
 
@@ -127,16 +126,16 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 
 - A pull request: both changes jobs; macOS Tests and iOS and Package Tests unless their detector says false (Oracle only when its detector is not false); SwiftLint; Repo Hygiene; PR title. `AllPlugins` only when the `plugins` detector is not false.
 - A push to main or `release/**`: the same minus PR title, plus Release Build; never cancelled, `AllPlugins` always, the SPM cache saved on a miss. Every code push runs both plans in full; a docs-only or changelog-only push skips the suites through the detector.
-- A `v*` tag runs only `release.yml`, and a `linux-v*` tag only `release-linux.yml`, which calls `linux-packages.yml`. The test workflows never run on a tag.
+- A `v*` tag runs only `release.yml`. The test workflows never run on a tag.
 - `workflow_dispatch` exists on every workflow except `pr-title.yml` and `release.yml`.
-- `build-linux.yml` builds and tests the Linux app (`linux/docs/testing.md`, CI). Its `Changes (Linux)` job skips the rest when nothing under `linux/` or the scripts and workflows it reads changed, and its `Linux` job gates on all of them.
+- `build-linux.yml` is on `main` only for its Monday schedule, which GitHub runs from the default branch. Until the Linux app's directory lands on `main`, every build job skips and `weekly-dispatch` starts the workflow on the branch the `LINUX_BRANCH` variable names (the linux branch when unset), whose testing guide describes the jobs.
 
 ## Caches and runner budget
 
 - Swift package checkouts live in `~/.spm-cache`, keyed `spm-<os>-<hash of the app's Package.resolved>` with prefix restore. macOS Tests saves it only on a push and only on a miss: a cache saved on a PR ref is visible to that PR alone.
 - `release.yml` restores that cache and never saves it, since a save in tag scope is unreadable from other refs.
 - `release-build.yml` restores it and leaves the save to macOS Tests.
-- There is no other Apple cache: no libs or DerivedData cache, and none in the iOS or plugin workflows. The Linux jobs cache Cargo builds through `Swatinem/rust-cache` and the Flatpak build.
+- There is no other cache: no libs or DerivedData cache, and none in the iOS, plugin or Ubuntu workflows.
 - CI fits the GitHub Free and Pro plans: no paid larger runner, no self-hosted Mac. At most 5 macOS jobs run at once, and main runs queue behind PR runs for those slots.
 
 ## Writing workflow and lint code

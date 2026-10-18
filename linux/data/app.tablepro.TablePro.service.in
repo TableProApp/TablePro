@@ -1,3 +1,0 @@
-[D-BUS Service]
-Name=@app-id@
-Exec=@bindir@/tablepro --gapplication-service

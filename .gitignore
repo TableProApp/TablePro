@@ -147,7 +147,6 @@ Derived/
 
 # towncrier venv for scripts/release/notes.py (RELEASING.md, Notes)
 /.venv/
-__pycache__/
 
 # Static libraries (downloaded from GitHub Releases via scripts/download-libs.sh)
 Libs/*.a

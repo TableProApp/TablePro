@@ -18,8 +18,6 @@ LINK = "https://github.com/TableProApp/TablePro/releases/tag"
 HEADER = "# Changelog\n\nUnreleased changes are files in `changelog.d/`.\n\n<!-- towncrier release notes start -->\n\n"
 NEW = f"## [0.82.0]({LINK}/v0.82.0) - 2026-10-25\n\nOne lead line.\n\n### Added\n\n- A thing. ([#1](x))\n\n"
 OLD = "## [0.81.0] - 2026-10-16\n\n### Fixed\n\n- A bug.\n\n## [0.80.0] - 2026-10-11\n\n### Added\n\n- Another.\n"
-LINUX = check.PROJECTS[1]
-LINUX_NEW = f"## [0.1.0]({LINK}/linux-v0.1.0) - 2026-10-25\n\nOne lead line.\n\n### Added\n\n- A thing. ([#1](x))\n"
 GIT_ENV = {
     "GIT_CONFIG_GLOBAL": os.devnull,
     "GIT_CONFIG_NOSYSTEM": "1",
@@ -75,12 +73,6 @@ class FragmentTests(unittest.TestCase):
     def test_a_directory_inside_is_refused(self):
         (self.directory / "added").mkdir()
         self.assertEqual(check.fragment_problems(self.directory), ["changelog.d/added is not a file"])
-
-    def test_a_problem_names_the_project_directory(self):
-        (self.directory / "1.added.md").write_text("- A thing.\n", encoding="utf-8")
-        problems = check.fragment_problems(self.directory, "linux/changelog.d")
-        self.assertEqual(len(problems), 1)
-        self.assertTrue(problems[0].startswith("linux/changelog.d/1.added.md starts with"))
 
 
 class ChangelogTests(unittest.TestCase):
@@ -172,28 +164,6 @@ class ChangelogTests(unittest.TestCase):
         self.assertEqual(check.changelog_problems(HEADER + OLD.replace("### Fixed", lead + "\n\n### Fixed")), [])
 
 
-class ProjectChangelogTests(unittest.TestCase):
-    def test_a_project_heading_links_its_own_tag(self):
-        self.assertEqual(check.changelog_problems(HEADER + LINUX_NEW, LINUX), [])
-        self.assertEqual(check.changelog_problems(HEADER, LINUX), [])
-
-    def test_a_heading_linking_the_other_projects_tag_is_refused(self):
-        problems = check.changelog_problems(HEADER + LINUX_NEW.replace("linux-v0.1.0", "v0.1.0"), LINUX)
-        self.assertEqual(len(problems), 1)
-        self.assertTrue(problems[0].startswith("linux/CHANGELOG.md:7: `## [0.1.0]"))
-        self.assertEqual(len(check.changelog_problems(HEADER + LINUX_NEW)), 1)
-
-    def test_a_project_keeps_the_lead_block_rules(self):
-        patch = LINUX_NEW.replace("0.1.0", "0.1.1")
-        problems = check.changelog_problems(HEADER + patch, LINUX)
-        self.assertEqual(problems, ["linux/CHANGELOG.md:7: 0.1.1 has a lead block; only an X.Y.0 takes one"])
-
-    def test_a_pre_release_takes_no_section(self):
-        problems = check.changelog_problems(HEADER + LINUX_NEW.replace("0.1.0", "0.1.0-rc.1"), LINUX)
-        self.assertEqual(len(problems), 1)
-        self.assertIn("is not `## [X.Y.Z]", problems[0])
-
-
 class RepositoryTests(unittest.TestCase):
     def setUp(self):
         self.scratch = tempfile.TemporaryDirectory()
@@ -202,9 +172,6 @@ class RepositoryTests(unittest.TestCase):
         (self.root / "CHANGELOG.md").write_text(HEADER + NEW + OLD, encoding="utf-8")
         (self.root / "changelog.d").mkdir()
         (self.root / "changelog.d" / "3446.added.md").write_text("A thing.\n", encoding="utf-8")
-        (self.root / "linux" / "changelog.d").mkdir(parents=True)
-        (self.root / "linux" / "CHANGELOG.md").write_text(HEADER + LINUX_NEW, encoding="utf-8")
-        (self.root / "linux" / "changelog.d" / "3464.added.md").write_text("A thing.\n", encoding="utf-8")
 
     def run_main(self, *argv):
         captured = io.StringIO()
@@ -213,21 +180,7 @@ class RepositoryTests(unittest.TestCase):
         return status, captured.getvalue()
 
     def test_a_good_tree_passes(self):
-        self.assertEqual(self.run_main(),
-                         (0, "OK: changelog.d/ and CHANGELOG.md, linux/changelog.d/ and linux/CHANGELOG.md\n"))
-
-    def test_every_project_is_checked(self):
-        (self.root / "linux" / "changelog.d" / "3464.added.md").write_text("- A thing.\n", encoding="utf-8")
-        (self.root / "linux" / "CHANGELOG.md").write_text(HEADER + "## [Unreleased]\n", encoding="utf-8")
-        status, out = self.run_main()
-        self.assertEqual(status, 1)
-        self.assertEqual(out.count("::error title=Changelog::linux/"), 2)
-
-    def test_a_project_without_its_changelog_fails(self):
-        (self.root / "linux" / "CHANGELOG.md").unlink()
-        status, out = self.run_main()
-        self.assertEqual(status, 1)
-        self.assertIn("linux/CHANGELOG.md", out)
+        self.assertEqual(self.run_main(), (0, "OK: changelog.d/ and CHANGELOG.md\n"))
 
     def test_problems_from_both_files_are_annotations(self):
         (self.root / "changelog.d" / "3446.added.md").write_text("- A thing.\n", encoding="utf-8")
@@ -305,79 +258,6 @@ class PullRequestTests(unittest.TestCase):
     def test_retyping_another_pull_requests_fragment_keeps_its_number(self):
         files = [changed("changelog.d/3446.fixed.md", "removed"), changed("changelog.d/3446.changed.md")]
         self.assertEqual(self.problems(files), [])
-
-
-class ProjectPullRequestTests(unittest.TestCase):
-    VERSION_FILES = ["linux/meson.build", "linux/data/app.tablepro.TablePro.metainfo.xml.in.in",
-                     "linux/build-aux/rpm/tablepro.spec", "linux/data/tablepro.1"]
-
-    def problems(self, files, title="fix(linux): keep the caret", base="main", number=3600):
-        return check.pull_request_problems(number, title, base, files)
-
-    def test_a_fragment_named_for_the_pull_request_passes(self):
-        files = [changed("linux/changelog.d/3600.fixed.md"), changed("linux/crates/app/src/x.rs", "modified")]
-        self.assertEqual(self.problems(files), [])
-
-    def test_a_fragment_named_for_another_pull_request_prints_the_expected_name(self):
-        problems = self.problems([changed("linux/changelog.d/3599.fixed.1.md")])
-        self.assertEqual(problems, ["linux/changelog.d/3599.fixed.1.md is not named for this pull request. "
-                                    "Name it linux/changelog.d/3600.fixed.1.md"])
-
-    def test_a_pick_into_a_maintenance_branch_keeps_the_original_name(self):
-        self.assertEqual(self.problems([changed("linux/changelog.d/3446.fixed.md")], base="linux-0.1"), [])
-
-    def test_a_fragment_of_each_project_is_named_for_the_pull_request(self):
-        problems = self.problems([changed("changelog.d/3599.fixed.md"), changed("linux/changelog.d/3599.added.md")])
-        self.assertEqual(len(problems), 2)
-        self.assertIn("Name it changelog.d/3600.fixed.md", problems[0])
-        self.assertIn("Name it linux/changelog.d/3600.added.md", problems[1])
-
-    def test_editing_the_project_changelog_outside_a_release_names_its_title_and_fragment(self):
-        problems = self.problems([changed("linux/CHANGELOG.md", "modified")])
-        self.assertEqual(problems, ["only a `chore(release): linux-vX.Y.Z` pull request edits linux/CHANGELOG.md. "
-                                    "Put the entry in linux/changelog.d/3600.<type>.md (.claude/rules/changelog.md)"])
-
-    def test_a_release_pull_request_sets_the_version_and_edits_the_changelog(self):
-        files = [changed("linux/CHANGELOG.md", "modified"), changed("linux/changelog.d/3464.added.md", "removed"),
-                 *(changed(name, "modified") for name in self.VERSION_FILES)]
-        self.assertEqual(self.problems(files, "chore(release): linux-v0.1.0"), [])
-        self.assertEqual(self.problems(files, "chore(release): linux-v0.1.1 (#3601)", "linux-0.1"), [])
-
-    def test_a_release_pull_request_changes_nothing_else(self):
-        files = [changed("linux/CHANGELOG.md", "modified"), changed("linux/crates/app/src/x.rs", "modified")]
-        problems = self.problems(files, "chore(release): linux-v0.1.0")
-        self.assertEqual(problems, ["a release pull request changes only linux/CHANGELOG.md, linux/changelog.d/, "
-                                    + ", ".join(self.VERSION_FILES[:-1]) + " and linux/data/tablepro.1; "
-                                    "this one also changes linux/crates/app/src/x.rs"])
-
-    def test_a_pre_release_pull_request_cannot_edit_the_changelog(self):
-        files = [changed("linux/CHANGELOG.md", "modified"), *(changed(name, "modified") for name in self.VERSION_FILES)]
-        self.assertEqual(len(self.problems(files, "chore(release): linux-v0.2.0-rc.1")), 1)
-        self.assertEqual(self.problems(files[1:], "chore(release): linux-v0.2.0-rc.1"), [])
-
-    def test_the_pull_request_adding_a_project_brings_its_changelog_and_fragments(self):
-        files = [changed("linux/towncrier.toml"), changed("linux/CHANGELOG.md", "modified"),
-                 changed("linux/changelog.d/3464.added.md"), changed("linux/changelog.d/3413.added.md")]
-        self.assertEqual(self.problems(files), [])
-        self.assertEqual(len(self.problems(files[1:])), 3)
-        self.assertEqual(len(self.problems([changed("linux/towncrier.toml", "modified"), *files[1:]])), 3)
-
-    def test_adding_one_project_leaves_the_other_checked(self):
-        files = [changed("linux/towncrier.toml"), changed("CHANGELOG.md", "modified")]
-        self.assertEqual(len(self.problems(files)), 1)
-        self.assertIn("edits CHANGELOG.md", self.problems(files)[0])
-
-    def test_a_release_of_one_project_cannot_edit_the_other(self):
-        root = self.problems([changed("CHANGELOG.md", "modified"), changed("linux/CHANGELOG.md", "modified")],
-                             "chore(release): v0.82.0", "release/0.82")
-        self.assertEqual(len(root), 2)
-        self.assertIn("also changes linux/CHANGELOG.md", root[0])
-        self.assertIn("edits linux/CHANGELOG.md", root[1])
-        linux = self.problems([changed("CHANGELOG.md", "modified"), changed("linux/CHANGELOG.md", "modified")],
-                              "chore(release): linux-v0.1.0")
-        self.assertEqual(len(linux), 2)
-        self.assertIn("edits CHANGELOG.md", linux[0])
-        self.assertIn("also changes CHANGELOG.md", linux[1])
 
 
 class MergeCommitTests(unittest.TestCase):

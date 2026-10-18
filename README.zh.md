@@ -65,7 +65,7 @@ TablePro 补上缺失的第四类:原生、多数据库、开源。
 |------|------|
 | macOS 13+ | 稳定版 |
 | iOS / iPadOS 18+ | 稳定版 |
-| Linux (GNOME 50+) | 正在 [`linux/`](linux/README.md) 中开发，尚未发布 |
+| Linux | 原型阶段，暂无可安装版本 |
 | Windows | 无 |
 
 ## 支持的数据库
