@@ -87,7 +87,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
   - `shellcheck --severity=warning` on every `*.sh` under `scripts` and `.claude/skills`;
   - the tooling tests: `scripts/ci/test_*.py`, `scripts/lib/test_*.py`, `scripts/test_localization.py`, `.github/scripts/test_update_registry.py` and two shell tests;
   - `scripts/release/test_*.py` on Python 3.9 from `actions/setup-python`, in a venv that installs `scripts/release/requirements.txt` with `pip --require-hashes`;
-  - `check-lib-sourcing.py`, `check-plugin-manifest.py`, `check-deployment-target.sh`, `check-ios-shared-isolation.py`;
+  - `check-lib-sourcing.py`, `check-plugin-manifest.py`, `check-plugin-provides.py`, `check-deployment-target.sh`, `check-ios-shared-isolation.py`;
   - `localization.py plugins` and `plugins --target ios`;
   - `check-string-catalogs.py`, `check-license-inventory.py`, `check-entitlements.py`, `check-test-plans.py`;
   - `check-pluginkit-bump-cadence.py`;
