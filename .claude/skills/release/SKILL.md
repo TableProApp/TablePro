@@ -17,7 +17,7 @@ description: >
 
 - Never push a tag, never create or delete a `release/*` branch, never push to `main` or `release/*`. The maintainer runs every block you hand over, in their own terminal, and tells you when it landed.
 - A tag never moves. A fix after a tag is the next number.
-- Release PRs and backport PRs go through the five required checks like any other PR.
+- Release PRs and backport PRs go through the required checks like any other PR.
 
 ## 2. Read the state
 

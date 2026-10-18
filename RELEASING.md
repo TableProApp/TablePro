@@ -116,7 +116,7 @@ gh workflow run withdraw.yml --ref v<newest tag> -f version=X.Y.Z
 | `release` | tags `v*` | `SPARKLE_PRIVATE_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 | `github-pages` | tags `v*` | none |
 
-- No repo-level secret or deploy key is left, and no environment has required reviewers: admin-only, immutable tags are the gate. Rulesets: `.claude/rules/ci.md`, Rulesets.
+- No repo-level secret or deploy key is left, and no environment above has required reviewers: admin-only, immutable tags are the gate. `linux-release` also deploys from `main`, so it takes a reviewer (`linux/docs/releasing.md`). Rulesets: `.claude/rules/ci.md`, Rulesets.
 - Notarization uses the App Store Connect API key, which `.github/actions/apple-signing` stores as the `TablePro` notarytool profile. The action warns when the certificate expires within 60 days.
 - An offline backup of the Sparkle EdDSA key exists and the maintainer holds it. The key never rotates without a signed transition, since every app from 0.82 verifies the feed with it.
 - `gh-pages` takes pushes from `github-actions[bot]` with `GITHUB_TOKEN` and has no required checks. `feed.py add` and `withdraw` refuse an `appcast.xml` whose signature does not verify, so a hand edit is re-signed with `sign_update` before it is pushed.
