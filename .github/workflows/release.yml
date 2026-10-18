@@ -86,7 +86,8 @@ jobs:
     needs: verify
     runs-on: xcode-27
     environment: signing
-    timeout-minutes: 120
+    # The unsigned archive alone has taken up to 123 minutes in Release Build; signing and two notarizations come on top.
+    timeout-minutes: 180
     permissions:
       contents: read
     env:
