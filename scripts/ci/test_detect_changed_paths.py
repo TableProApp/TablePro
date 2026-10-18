@@ -88,10 +88,14 @@ class DetectChangedPathsTests(unittest.TestCase):
             ".github/plugin-registry.json",
             "scripts/release/build.sh",
             "scripts/release/package.sh",
+            "scripts/release/registry.py",
+            "scripts/release/notes.py",
+            "scripts/release/version.py",
             "scripts/build-hana.sh",
             "scripts/lib/common.sh",
             "scripts/ci/verify-plugin-loads.sh",
             ".github/actions/setup-xcode/action.yml",
+            ".github/actions/prepare-build/action.yml",
             ".github/workflows/release-build.yml",
         ]:
             with self.subTest(path=path):
@@ -109,6 +113,11 @@ class DetectChangedPathsTests(unittest.TestCase):
             "README.md",
             "scripts/ci/summarize-xcresult.sh",
             ".github/workflows/macos-tests.yml",
+            "scripts/release/feed.py",
+            "scripts/release/notarize.sh",
+            "scripts/release/ExportOptions.plist",
+            "scripts/release/test_feed.py",
+            "scripts/release/requirements.txt",
         ]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("release", path), "false")
@@ -118,6 +127,9 @@ class DetectChangedPathsTests(unittest.TestCase):
         self.assertEqual(self.verdict_after("macos", "Plugins/MySQLDriverTests/MySQLTests.swift"), "true")
         self.assertEqual(self.verdict_after("macos", ".github/workflows/release-build.yml"), "false")
         self.assertEqual(self.verdict_after("macos", "scripts/release/build.sh"), "false")
+
+    def test_macos_runs_on_the_build_setup_action(self):
+        self.assertEqual(self.verdict_after("macos", ".github/actions/prepare-build/action.yml"), "true")
 
     def test_macos_runs_on_the_notes_script_its_build_phase_reads(self):
         self.assertEqual(self.verdict_after("macos", "scripts/release/notes.py"), "true")

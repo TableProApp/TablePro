@@ -24,7 +24,8 @@ case "$SUITE" in
             'TablePro\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/Package\.resolved$'
             'scripts/(generate-project|download-libs|create-openssl-dylibs|build-dameng|build-hana)\.sh$'
             'scripts/lib/' 'scripts/ci/(detect-changed-paths|summarize-xcresult|verify-plugin-loads)\.sh$'
-            'scripts/release/notes\.py$' '\.github/actions/setup-xcode(gen)?/' '\.github/workflows/macos-tests\.yml$') ;;
+            'scripts/release/notes\.py$' '\.github/actions/(setup-xcode(gen)?|prepare-build)/'
+            '\.github/workflows/macos-tests\.yml$') ;;
     plugins)
         # Registry plugins link the TableProCore and TableProOracle products.
         PATTERNS=('Plugins/' 'Packages/TableProCore/' 'Packages/TableProOracle/' 'Native/' 'Libs/'
@@ -57,8 +58,9 @@ case "$SUITE" in
             'TablePro\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/Package\.resolved$'
             '\.github/plugin-registry\.json$'
             'scripts/(generate-project|download-libs|create-openssl-dylibs|build-dameng|build-hana)\.sh$'
-            'scripts/lib/' 'scripts/release/' 'scripts/ci/(detect-changed-paths|verify-plugin-loads)\.sh$'
-            '\.github/actions/setup-xcode(gen)?/' '\.github/workflows/release-build\.yml$')
+            'scripts/lib/' 'scripts/release/(build|package)\.sh$' 'scripts/release/(notes|registry|version)\.py$'
+            'scripts/ci/(detect-changed-paths|verify-plugin-loads)\.sh$'
+            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/release-build\.yml$')
         SKIP='Plugins/[^/]+Tests/|Packages/[^/]+/Tests/' ;;
     *)
         echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana or release, got '$SUITE'" >&2

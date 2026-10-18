@@ -82,7 +82,7 @@ python3 scripts/release/notes.py docs X.Y.Z --ref vX.Y.Z --mdx ../tablepro-docs/
 A `v*` tag runs `release.yml` and nothing else. A run is never cancelled, and every job reads the version, build and channel from `verify`.
 
 - `verify`: `version.py check` refuses a tag that breaks the grammar or the bounds; that `origin/release/<X.Y>` does not contain; whose previous tag on the line is not its ancestor; a stable X.Y.0 with no published beta, or a beta after its X.Y.0; a `CHANGELOG.md` missing the stable's heading, or a published stable of this or the previous line below it. Then it needs macOS Tests, iOS and Package Tests and Release Build green on the tag commit or the nearest first-parent commit that ran them, waiting on a pending run. Last, it writes the notes.
-- `app` (`signing`): a GA Xcode for a stable (`setup-xcode` `require-release`), the CloudKit Production schema check, `build.sh app` (archive, export with `scripts/release/ExportOptions.plist`, universal, signature and plugin load checks), `notarize.sh` on the app, `package.sh app`, `notarize.sh` on the DMG.
+- `app` (`signing`): a GA Xcode for a stable (`setup-xcode` `require-release`), the CloudKit Production schema check, `build.sh app` (archive, export with `scripts/release/ExportOptions.plist`, universal and plugin load checks), `notarize.sh` on the app, `package.sh app`, `notarize.sh` on the DMG.
 - `plugins` (`signing`): the Dameng and HANA bridges, `build.sh plugins` (each target `registry.py targets` prints, universal, signed with Developer ID, the hardened runtime and a timestamp), one notary submission for all, `package.sh plugins` (the zips, described as the manifest will read them).
 - `github-release`: `publish.py draft` puts every asset on a draft and checks each digest, `attest-build-provenance` attests them, `publish.py release` publishes.
 - `feed` (`release`): `feed.py add` downloads the archive and the zips from the release, checks their digests, runs `generate_appcast` and `registry.py add`, runs `feed.py check`, and pushes `feeds`, retrying from a fresh fetch up to 3 times.
@@ -114,7 +114,7 @@ gh workflow run withdraw.yml --ref v<newest tag> -f version=X.Y.Z
 | `github-pages` | tags `v*` | none |
 
 - No repo-level secret or deploy key is left, and no environment has required reviewers: admin-only, immutable tags are the gate. Rulesets: `.claude/rules/ci.md`, Rulesets.
-- Notarization uses the App Store Connect API key, which `.github/actions/apple-signing` stores as the `TablePro` notarytool profile. The action warns when the certificate or the provisioning profile expires within 60 days.
+- Notarization uses the App Store Connect API key, which `.github/actions/apple-signing` stores as the `TablePro` notarytool profile. The action warns when the certificate expires within 60 days.
 - An offline backup of the Sparkle EdDSA key exists and the maintainer holds it. The key never rotates without a signed transition, since every app from 0.82 verifies the feed with it.
 - `feeds` takes pushes from `github-actions[bot]` with `GITHUB_TOKEN` and has no required checks; the signed feed proves its content. It was seeded once with the legacy `appcast.xml` and an empty v3 manifest.
 
@@ -141,10 +141,11 @@ git add Libs/release Libs/checksums.sha256 Libs/ios/checksums.sha256 && git comm
 ## Reproducing a Release build
 
 ```bash
-scripts/download-libs.sh && scripts/generate-project.sh macos && brew install create-dmg
-scripts/release/build.sh app --unsigned && scripts/release/package.sh app 0.0.0-dev --unsigned
+export VERSION=0.0.0-dev BUILD=9999999
+scripts/download-libs.sh && scripts/generate-project.sh macos
+scripts/release/build.sh app --unsigned && scripts/release/package.sh app --unsigned
 scripts/build-dameng.sh both && scripts/build-hana.sh both
-scripts/release/build.sh plugins --unsigned && scripts/release/package.sh plugins 0.0.0-dev --unsigned
+scripts/release/build.sh plugins --unsigned && scripts/release/package.sh plugins --unsigned
 ```
 
-- `build.sh` writes `build/release/` (xcodebuild logs in `build/release/logs/`), `package.sh` writes `dist/`. Release Build (`release-build.yml`) runs the same on every push to `main` and `release/**`. Signed: drop `--unsigned`, set `VERSION` and `BUILD`, and have the Developer ID identity and the provisioning profile `ExportOptions.plist` names. `notarize.sh <path>...` needs the profile `xcrun notarytool store-credentials TablePro --key <p8> --key-id <id> --issuer <issuer>` creates.
+- `build.sh` writes `build/release/` (xcodebuild logs in `build/release/logs/`), `package.sh` writes `dist/`. CI builds the same in Release Build (`.claude/rules/ci.md`, Release Build). Signed: drop `--unsigned`, export the tag's `VERSION` and `BUILD`, and have the Developer ID identity and the provisioning profile `ExportOptions.plist` names. `notarize.sh <path>...` needs the profile `xcrun notarytool store-credentials TablePro --key <p8> --key-id <id> --issuer <issuer>` creates.

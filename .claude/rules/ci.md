@@ -42,7 +42,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 
 - Triggers: pull request, push to main or `release/**`, dispatch. A PR keeps only its newest run; each pushed commit has its own concurrency group and is never cancelled.
 - `Changes (macOS)` outputs `run` (detector `macos`) and `plugins` (detector `plugins`). The test job has a 120-minute limit and sets `NSUnbufferedIO=YES`.
-- Setup, in order: checkout, setup-xcode, setup-xcodegen, `scripts/download-libs.sh`, `generate-project.sh macos`, SPM restore, resolve, SPM save.
+- Setup, in order: checkout, setup-xcode, prepare-build (setup-xcodegen, `scripts/download-libs.sh`, `generate-project.sh macos`, SPM restore), resolve, SPM save.
 - One `build-for-testing` with no `-testPlan` builds both plans and writes one `.xctestrun` per plan, with signing, the index store and the compilation cache off.
 - `COMPILE_PLUGINS` is true on every push and dispatch, and on a PR when the `plugins` detector is not false. It adds Go, the Dameng and HANA bridge builds, `xcodebuild build -scheme AllPlugins`, then `scripts/ci/verify-plugin-loads.sh`.
 - `test-without-building -testPlan Unit`, then `-testPlan UI`. The UI plan runs after a Unit failure too, so one round trip reports both.
@@ -59,11 +59,11 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 
 ## Release Build (`release-build.yml`)
 
-- Push to main or `release/**`, and dispatch; never a PR. Each commit has its own concurrency group and is never cancelled. Not a required check.
-- `Changes (Release)` outputs `run` (detector `release`). `Release Build` runs on `xcode-27` with a 150-minute limit.
-- Setup as macOS Tests up to the SPM restore, which it never saves; then Go, `build-dameng.sh both`, `build-hana.sh both` and create-dmg.
+- Push to main or `release/**`, and dispatch; never a PR. Never cancelled. Not a required check.
+- `Changes (Release)` outputs `run` (detector `release`). `Release Build` runs on `xcode-27` with a 150-minute limit, with VERSION 0.0.0-dev and BUILD 9999999, so build.sh passes the version settings a tag passes.
+- Setup as macOS Tests up to the SPM restore, which it never saves; then Go, `build-dameng.sh both` and `build-hana.sh both`.
 - `scripts/release/build.sh app --unsigned` archives the `TablePro` scheme; `build.sh plugins --unsigned` builds `RegistryPlugins` and copies the publish set, the targets `scripts/release/registry.py targets` reads from `.github/plugin-registry.json`, to `build/release/plugins`. Both build universal. They run `lipo -verify_arch` once per arch (arm64, x86_64), since Xcode 27's `lipo` takes one arch per call, then `verify-plugin-loads.sh`.
-- `scripts/release/package.sh app 0.0.0-dev --unsigned` writes the release assets: the DMG, the `.tar.xz` (extracted and compared with the app) and the dSYMs zip; `package.sh plugins` writes one zip per plugin and the plugin dSYMs zip.
+- `scripts/release/package.sh app --unsigned` writes the release assets: the DMG, the `.tar.xz` (extracted and compared with the app) and the dSYMs zip; `package.sh plugins` writes one zip per plugin and the plugin dSYMs zip.
 - The plugins build runs after an app failure too. The xcodebuild logs in `build/release/logs` upload only on failure.
 
 ## Release, Withdraw and Pages
@@ -114,11 +114,11 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 
 - `detect-changed-paths.sh [--base <sha>] macos|plugins|ios|oracle|hana|release` prints `true` or `false`. An unknown suite or flag exits 2.
 - A PR passes its base SHA, a push `github.event.before`. No base prints true. The all-zero SHA of a new ref diffs against `git merge-base HEAD origin/main`, so a branch cut from main skips what main already ran; with no merge base it prints true.
-- `macos` watches the app, test, plugin, package, native, config and libs folders, `TestPlans/`, `project.yml`, the app's `Package.resolved`, the build scripts and CI scripts it runs, both setup actions and its workflow. `Packages/` covers TableProMacCore.
+- `macos` watches the app, test, plugin, package, native, config and libs folders, `TestPlans/`, `project.yml`, the app's `Package.resolved`, the build scripts and CI scripts it runs, the setup actions and its workflow. `Packages/` covers TableProMacCore.
 - `plugins` watches `Plugins/`, `Packages/TableProCore/`, `Packages/TableProOracle/`, `Native/`, `Libs/`, `Configs/`, `project.yml`, the bridge scripts and `verify-plugin-loads.sh`.
 - `ios` watches `TableProMobile/`, `Libs/`, `Plugins/TableProPluginKit/` (the package target is a symlink to it), and every `../` path it reads out of `TableProMobile/project.yml`.
 - `oracle` watches `Packages/TableProOracle/`; `hana` watches `Native/HanaBridge/`. Each suite also watches its own workflow.
-- `release` watches what the Release build reads: the app, plugin, package, native, config and libs folders, `project.yml`, the app's `Package.resolved`, `.github/plugin-registry.json`, `scripts/release/`, the build and CI scripts it runs and both setup actions. It skips `Plugins/*Tests/` and `Packages/*/Tests/`.
+- `release` watches what the Release build reads: the app, plugin, package, native, config and libs folders, `project.yml`, the app's `Package.resolved`, `.github/plugin-registry.json`, the release scripts it runs (`build.sh`, `package.sh`, `registry.py`, `version.py`, `notes.py`), the build and CI scripts it runs and the setup actions. It skips `Plugins/*Tests/` and `Packages/*/Tests/`.
 - A path a suite newly reads joins that suite's pattern in the same change, or the suite skips on it.
 - `CHANGELOG.md` and `changelog.d/` are on no suite's pattern: the What's New phase writes nothing at `0.0.0-dev`, and Repo Hygiene renders every fragment and section instead.
 

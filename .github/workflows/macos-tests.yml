@@ -54,24 +54,8 @@ jobs:
 
       - uses: ./.github/actions/setup-xcode
 
-      - uses: ./.github/actions/setup-xcodegen
-
-      - name: Download static libraries
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: scripts/download-libs.sh
-
-      - name: Generate the Xcode project
-        run: scripts/generate-project.sh macos
-
-      # Saved on a push only: a cache saved on a pull request ref is visible to that PR alone.
-      - name: Restore Swift package checkouts
-        id: spm
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.spm-cache
-          key: spm-${{ runner.os }}-${{ hashFiles('TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
+      - uses: ./.github/actions/prepare-build
+        id: prepare
 
       - name: Resolve Swift packages
         run: |
@@ -79,12 +63,13 @@ jobs:
             -project TablePro.xcodeproj -scheme TablePro \
             -clonedSourcePackagesDirPath ~/.spm-cache -skipPackagePluginValidation
 
+      # Saved on a push only: a cache saved on a pull request ref is visible to that PR alone.
       - name: Save Swift package checkouts
-        if: github.event_name == 'push' && steps.spm.outputs.cache-hit != 'true'
+        if: github.event_name == 'push' && steps.prepare.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.spm-cache
-          key: ${{ steps.spm.outputs.cache-primary-key }}
+          key: ${{ steps.prepare.outputs.cache-primary-key }}
 
       # One build covers both test plans: build-for-testing writes an .xctestrun per plan.
       - name: Build for testing

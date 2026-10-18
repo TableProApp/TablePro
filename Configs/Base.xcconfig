@@ -62,9 +62,7 @@ STRINGS_FILE_OUTPUT_ENCODING = binary
 SWIFT_VERSION = 6.0
 CODE_SIGN_STYLE = Automatic
 
-// Signing knobs. The app targets and the plugin bundles sign with this team; the helper tool
-// signs ad hoc. A contributor overrides these in Configs/Secrets.xcconfig without touching a
-// tracked file, and the release scripts pass their own values on the xcodebuild command line.
+// A contributor overrides these in Configs/Secrets.xcconfig.
 TABLEPRO_DEVELOPMENT_TEAM = D7HJ5TFYCU
 TABLEPRO_APP_BUNDLE_IDENTIFIER = com.TablePro
 

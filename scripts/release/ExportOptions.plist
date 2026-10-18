@@ -4,10 +4,6 @@
 <dict>
 	<key>method</key>
 	<string>developer-id</string>
-	<key>signingStyle</key>
-	<string>manual</string>
-	<key>signingCertificate</key>
-	<string>Developer ID Application</string>
 	<key>iCloudContainerEnvironment</key>
 	<string>Production</string>
 	<key>provisioningProfiles</key>

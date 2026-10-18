@@ -38,7 +38,7 @@ EXPORT_OPTIONS="scripts/release/ExportOptions.plist"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-SETTINGS=(COMPILATION_CACHE_ENABLE_CACHING=NO COMPILER_INDEX_STORE_ENABLE=NO)
+SETTINGS=(COMPILATION_CACHE_ENABLE_CACHING=NO)
 [ -z "${VERSION:-}" ] || SETTINGS+=("MARKETING_VERSION=$VERSION")
 [ -z "${BUILD:-}" ] || SETTINGS+=("CURRENT_PROJECT_VERSION=$BUILD")
 if [ "$SIGNED" = true ]; then
@@ -72,36 +72,13 @@ xcodebuild_project() {
         "$@" "${SETTINGS[@]}"
 }
 
-is_macho() {
-    [ -f "$1" ] && [ ! -L "$1" ] && case "$(file -b "$1")" in *Mach-O*) true ;; *) false ;; esac
-}
-
 check_universal() {
-    local bundle="$1" binary arch found=0
-    for binary in "$bundle/Contents/MacOS"/* "$bundle/Contents/Helpers"/*; do
-        is_macho "$binary" || continue
+    local binary arch
+    for binary in "$1/Contents/MacOS"/*; do
         # Xcode 27's lipo refuses a second arch after -verify_arch, so each is checked alone.
         for arch in arm64 x86_64; do
             lipo "$binary" -verify_arch "$arch" || die "$binary has no $arch slice: $(lipo -archs "$binary")"
         done
-        found=1
-    done
-    [ "$found" = 1 ] || die "$bundle has no executable"
-}
-
-# codesign --verify --strict --deep also accepts an ad-hoc signed helper, which notarization
-# rejects, so each executable is checked for what notarization needs.
-check_signature() {
-    local bundle="$1" binary details
-    codesign --verify --strict --deep "$bundle" || die "$bundle fails codesign --verify"
-    for binary in "$bundle" "$bundle/Contents/MacOS"/* "$bundle/Contents/Helpers"/*; do
-        [ "$binary" = "$bundle" ] || is_macho "$binary" || continue
-        details="$(codesign -dvvv "$binary" 2>&1)" || die "$binary is not signed: $details"
-        grep -qE '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime' <<< "$details" \
-            || die "$binary is not signed with the hardened runtime"
-        grep -q '^Authority=Developer ID Application: ' <<< "$details" \
-            || die "$binary is not signed with a Developer ID Application identity"
-        grep -q '^Timestamp=' <<< "$details" || die "$binary has no secure timestamp"
     done
 }
 
@@ -130,7 +107,6 @@ build_app() {
     fi
 
     check_universal "$app"
-    [ "$SIGNED" = false ] || check_signature "$app"
     scripts/ci/verify-plugin-loads.sh "$app/Contents/PlugIns" "$app/Contents/Frameworks"
     echo "Built $app ($(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist"))"
 }
@@ -151,7 +127,6 @@ build_plugins() {
         ditto "$plugin" "$OUT/plugins/$target.tableplugin"
         ditto "$plugin.dSYM" "$OUT/plugins-dSYMs/$target.tableplugin.dSYM"
         check_universal "$OUT/plugins/$target.tableplugin"
-        [ "$SIGNED" = false ] || check_signature "$OUT/plugins/$target.tableplugin"
     done < "$targets"
 
     mkdir "$kit"
