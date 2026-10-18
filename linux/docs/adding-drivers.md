@@ -67,7 +67,7 @@ tokio = { workspace = true, features = ["test-util"] }
 workspace = true
 ```
 
-A driver depends on `tablepro-core`, and on `tablepro-net` when it speaks TLS or dials TCP. `secrecy` reads the password of a password login. It never depends on GTK, on `tablepro-session`, on `tablepro-ssh` or on another driver. Add the crate to `members` and to `[workspace.dependencies]` in `linux/Cargo.toml`. A member lists only the features its workspace entry does not already turn on.
+A driver depends on `tablepro-core`, and on `tablepro-net` when it speaks TLS or dials TCP. `secrecy` reads the password of a password login. It never depends on GTK, on `tablepro-session`, on `tablepro-ssh` or on another driver. Add the crate to `members` and to `[workspace.dependencies]` in `linux/Cargo.toml`. A member lists only the features its workspace entry does not already name.
 
 ## 3. `DatabaseDriver` and capabilities
 
