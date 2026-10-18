@@ -1,0 +1,51 @@
+name: Setup Sparkle
+description: Installs Sparkle's generate_appcast and sign_update at the version the app resolves, and exports SPARKLE_BIN.
+
+runs:
+  using: composite
+  steps:
+    - name: Install the Sparkle tools
+      shell: bash
+      # These tools hold the EdDSA key that signs every update, so they come from the archive SwiftPM
+      # verifies for the framework: Sparkle's Package.swift at the pinned revision names its checksum.
+      env:
+        RESOLVED: TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+      run: |
+        set -euo pipefail
+        pin="$RUNNER_TEMP/sparkle-pin.txt"
+        python3 - "$RESOLVED" > "$pin" << 'PYTHON'
+        import json
+        import sys
+
+        pins = [pin for pin in json.load(open(sys.argv[1]))["pins"] if pin["identity"] == "sparkle"]
+        if len(pins) != 1:
+            sys.exit(f"{sys.argv[1]} pins Sparkle {len(pins)} times")
+        print(pins[0]["state"]["version"], pins[0]["state"]["revision"])
+        PYTHON
+        read -r version revision < "$pin"
+        case "$version" in *[!0-9.]* | '') echo "::error::Sparkle pin '$version' is not a version"; exit 1 ;; esac
+        case "$revision" in *[!0-9a-f]* | '') echo "::error::Sparkle pin '$revision' is not a commit"; exit 1 ;; esac
+
+        manifest="$(curl -fsSL --retry 3 "https://raw.githubusercontent.com/sparkle-project/Sparkle/$revision/Package.swift")"
+        checksum="$(sed -n 's/^let checksum = "\([0-9a-f]\{64\}\)"$/\1/p' <<< "$manifest")"
+        tag="$(sed -n 's/^let tag = "\(.*\)"$/\1/p' <<< "$manifest")"
+        if [ -z "$checksum" ] || [ "$tag" != "$version" ]; then
+          echo "::error::Sparkle's Package.swift at $revision names tag '$tag' and checksum '$checksum', not $version"
+          exit 1
+        fi
+
+        archive="$RUNNER_TEMP/sparkle-$version.zip"
+        dir="$RUNNER_TEMP/sparkle-$version"
+        curl -fsSL --retry 3 -o "$archive" \
+          "https://github.com/sparkle-project/Sparkle/releases/download/$version/Sparkle-for-Swift-Package-Manager.zip"
+        echo "$checksum  $archive" | shasum -a 256 -c -
+        rm -rf "$dir"
+        unzip -q "$archive" -d "$dir"
+        for tool in generate_appcast sign_update; do
+          if [ ! -x "$dir/bin/$tool" ]; then
+            echo "::error::the Sparkle $version archive has no bin/$tool"
+            exit 1
+          fi
+        done
+        echo "SPARKLE_BIN=$dir/bin" >> "$GITHUB_ENV"
+        echo "Sparkle $version tools in $dir/bin"
