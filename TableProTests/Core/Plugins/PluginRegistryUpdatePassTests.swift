@@ -141,13 +141,19 @@ struct PluginRegistryUpdatePassTests {
     }
 
     private func makeFixture(
-        installer: any RegistryPluginInstalling = PluginInstaller.shared
+        installer: any RegistryPluginInstalling = PluginInstaller.shared,
+        isUpdatingEnabled: Bool = false
     ) throws -> Fixture {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("PluginRegistryUpdatePassTests-\(UUID().uuidString)", isDirectory: true)
         let pluginsDir = root.appendingPathComponent("Plugins", isDirectory: true)
         try FileManager.default.createDirectory(at: pluginsDir, withIntermediateDirectories: true)
-        let manager = PluginManager(builtInPluginsURL: nil, userPluginsDir: pluginsDir, registryInstaller: installer)
+        let manager = PluginManager(
+            builtInPluginsURL: nil,
+            userPluginsDir: pluginsDir,
+            registryInstaller: installer,
+            isUpdatingEnabled: isUpdatingEnabled
+        )
         return Fixture(manager: manager, pluginsDir: pluginsDir, root: root)
     }
 
@@ -461,27 +467,83 @@ struct PluginRegistryUpdatePassTests {
         #expect(pass.urlCache === interactive.urlCache)
     }
 
-    @Test("While the pass waits for the manifest, a connection neither waits for the pass nor joins its fetch")
-    func connectionSkipsThePassWaitingForTheNetwork() async throws {
-        let fixture = try makeFixture()
+    @Test("While the pass waits for the manifest, connecting repairs the plugin with a manifest request of its own")
+    func connectionRepairsWhileThePassWaitsForTheNetwork() async throws {
+        let installer = FixtureRegistryInstaller()
+        let fixture = try makeFixture(installer: installer, isUpdatingEnabled: true)
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let manager = fixture.manager
-        manager.rejectedPlugins = [makeRejected(bundleId: "com.example.driver")]
+        manager.rejectedPlugins = [
+            makeRejected(bundleId: "com.example.driver", providedDatabaseTypeIds: [DatabaseType.mssql.pluginTypeId])
+        ]
         let (client, manifestURL) = try makeRegistryClient(servingBuild: 20)
         ManifestStubProtocol.leaveUnanswered(next: 1, at: manifestURL)
 
         let pass = Task { await manager.runRegistryUpdatePass(registryClient: client, appBuild: 20) }
         try await waitUntil { ManifestStubProtocol.requestCount(for: manifestURL) == 1 }
 
-        #expect(!manager.isRepairingRejectedPlugins)
-        await manager.waitForRejectedPluginRepairs()
-        await client.fetch(policy: .mustBeCurrent)
-        #expect(client.isManifestCurrent)
-        #expect(ManifestStubProtocol.requestCount(for: manifestURL) == 2)
+        try await manager.prepareForConnecting(to: .mssql, registryClient: client)
 
+        #expect(ManifestStubProtocol.requestCount(for: manifestURL) == 2)
+        let installedIds = await installer.installedIds
+        #expect(installedIds == ["com.example.driver"])
         pass.cancel()
         let result = await pass.value
         #expect(result == .retry)
+    }
+
+    @Test("A pass whose manifest arrives during a connection's repair waits for it, then skips the plugin it repaired")
+    func passWaitsForAConnectionsRepair() async throws {
+        let installGate = AsyncGate()
+        let installer = FixtureRegistryInstaller(installGate: installGate)
+        let fixture = try makeFixture(installer: installer, isUpdatingEnabled: true)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let manager = fixture.manager
+        let typeId = DatabaseType.mssql.pluginTypeId
+        let rejected = makeRejected(bundleId: "com.example.driver", providedDatabaseTypeIds: [typeId])
+        manager.rejectedPlugins = [rejected]
+        let (client, _) = try makeRegistryClient(servingBuild: 20)
+
+        let connection = Task { await manager.ensurePluginReady(forTypeId: typeId, registryClient: client) }
+        await installGate.arrived(1)
+        let pass = Task { await manager.runRegistryUpdatePass(registryClient: client, appBuild: 20) }
+        try await waitUntil { manager.rejectedRepairWaiters.count == 1 }
+        // Stands in for the load, which the unsigned fixture cannot pass.
+        manager.removeFromRejected(url: rejected.url)
+        await installGate.open()
+        await connection.value
+
+        let result = await pass.value
+        #expect(result == .finished)
+        let installedIds = await installer.installedIds
+        #expect(installedIds == ["com.example.driver"])
+    }
+
+    @Test("A connection that arrives during the pass's repair waits for it, then skips the plugin it repaired")
+    func connectionWaitsForThePassRepair() async throws {
+        let installGate = AsyncGate()
+        let installer = FixtureRegistryInstaller(installGate: installGate)
+        let fixture = try makeFixture(installer: installer, isUpdatingEnabled: true)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let manager = fixture.manager
+        let typeId = DatabaseType.mssql.pluginTypeId
+        let rejected = makeRejected(bundleId: "com.example.driver", providedDatabaseTypeIds: [typeId])
+        manager.rejectedPlugins = [rejected]
+        let (client, manifestURL) = try makeRegistryClient(servingBuild: 20)
+
+        let pass = Task { await manager.runRegistryUpdatePass(registryClient: client, appBuild: 20) }
+        await installGate.arrived(1)
+        let connection = Task { await manager.ensurePluginReady(forTypeId: typeId, registryClient: client) }
+        try await waitUntil { manager.rejectedRepairWaiters.count == 1 }
+        // Stands in for the load, which the unsigned fixture cannot pass.
+        manager.removeFromRejected(url: rejected.url)
+        await installGate.open()
+        await connection.value
+
+        #expect(ManifestStubProtocol.requestCount(for: manifestURL) == 1)
+        let installedIds = await installer.installedIds
+        #expect(installedIds == ["com.example.driver"])
+        _ = await pass.value
     }
 
     @Test("Retries wait 30 s, 300 s, then 600 s, and stop after the fifth attempt")

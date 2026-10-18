@@ -25,6 +25,7 @@ final class PluginManager: ObservableObject {
     private let builtInPluginsURL: URL?
     internal let userPluginsDir: URL
     internal let registryInstaller: any RegistryPluginInstalling
+    internal let isUpdatingEnabled: Bool
 
     @Published internal(set) var plugins: [PluginEntry] = []
 
@@ -112,7 +113,7 @@ final class PluginManager: ObservableObject {
     internal var registryUpdateAttempts = 0
     internal var installsInFlight: Set<String> = []
 
-    // Set while a pass installs rejected plugins, so a connection waits for those but not for the network or a staging download.
+    // Held while the pass or a connection installs rejected plugins, never during a manifest fetch or a staging download.
     internal var isRepairingRejectedPlugins = false {
         didSet {
             guard !isRepairingRejectedPlugins else { return }
@@ -132,12 +133,14 @@ final class PluginManager: ObservableObject {
         builtInPluginsURL: URL? = Bundle.main.builtInPlugInsURL,
         userPluginsDir: URL = PluginManager.defaultUserPluginsDir(),
         registryInstaller: any RegistryPluginInstalling = PluginInstaller.shared,
-        initialLoadClock: any Clock<Duration> = ContinuousClock()
+        initialLoadClock: any Clock<Duration> = ContinuousClock(),
+        isUpdatingEnabled: Bool = SoftwareUpdater.isUpdatingEnabled
     ) {
         self.builtInPluginsURL = builtInPluginsURL
         self.userPluginsDir = userPluginsDir
         self.registryInstaller = registryInstaller
         self.initialLoadClock = initialLoadClock
+        self.isUpdatingEnabled = isUpdatingEnabled
     }
 
     nonisolated static func defaultUserPluginsDir() -> URL {
