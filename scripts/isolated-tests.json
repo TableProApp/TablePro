@@ -370,6 +370,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::grid::column::tests::recycled_cell_clears_pending_visual_state_and_resets_accessible_description"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::grid::column::tests::mysql_spatial_grid_bytes_bind_as_read_only_labels_without_edits"
     ],
     [

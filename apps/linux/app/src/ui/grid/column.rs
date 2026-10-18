@@ -207,6 +207,7 @@ pub(super) fn build_column(
             for cls in &pending_classes {
                 label.add_css_class(cls);
             }
+            apply_pending_description(label.upcast_ref(), &pending_classes);
             label.set_strikethrough(is_pending_delete);
             POSITION_SLOT.set(&label, item.position());
             ROW_KEY_SLOT.set(&label, pk_values.clone());
@@ -236,6 +237,7 @@ pub(super) fn build_column(
             for cls in &pending_classes {
                 checkbox.add_css_class(cls);
             }
+            apply_pending_description(checkbox.upcast_ref(), &pending_classes);
             checkbox.set_opacity(if is_pending_delete { 0.5 } else { 1.0 });
             POSITION_SLOT.set(&checkbox, item.position());
             ROW_KEY_SLOT.set(&checkbox, pk_values.clone());
@@ -251,6 +253,7 @@ pub(super) fn build_column(
             for cls in &pending_classes {
                 label.add_css_class(cls);
             }
+            apply_pending_description(label.upcast_ref(), &pending_classes);
             set_label_strikethrough(&label, is_pending_delete);
             POSITION_SLOT.set(&label, item.position());
         }
@@ -269,15 +272,24 @@ pub(super) fn build_column(
             if let Some(popover) = POPOVER_SLOT.take(&label) {
                 popover.popdown();
             }
+            clear_pending_classes(label.upcast_ref());
+            label.reset_property(gtk4::AccessibleProperty::Description);
+            label.set_strikethrough(false);
             POSITION_SLOT.take(&label);
             ROW_KEY_SLOT.take(&label);
             SNAPSHOT_SLOT.take(&label);
             IS_NULL_SLOT.take(&label);
         } else if let Ok(checkbox) = child.clone().downcast::<gtk4::CheckButton>() {
             checkbox.set_sensitive(false);
+            clear_pending_classes(checkbox.upcast_ref());
+            checkbox.reset_property(gtk4::AccessibleProperty::Description);
+            checkbox.set_opacity(1.0);
             POSITION_SLOT.take(&checkbox);
             ROW_KEY_SLOT.take(&checkbox);
         } else if let Ok(label) = child.downcast::<gtk4::Label>() {
+            clear_pending_classes(label.upcast_ref());
+            label.reset_property(gtk4::AccessibleProperty::Description);
+            set_label_strikethrough(&label, false);
             POSITION_SLOT.take(&label);
         }
     });
@@ -342,6 +354,26 @@ fn value_for_bind(
 fn clear_pending_classes(widget: &gtk4::Widget) {
     for cls in PENDING_CSS_CLASSES {
         widget.remove_css_class(cls);
+    }
+}
+
+fn pending_description(classes: &[&str]) -> Option<String> {
+    if classes.contains(&"tp-row-pending-delete") {
+        return Some(crate::tr!("Pending deletion").to_string());
+    }
+    if classes.contains(&"tp-row-pending-insert") {
+        return Some(crate::tr!("New row").to_string());
+    }
+    classes
+        .contains(&"tp-cell-modified")
+        .then(|| crate::tr!("Modified").to_string())
+}
+
+fn apply_pending_description(widget: &gtk4::Widget, classes: &[&str]) {
+    if let Some(description) = pending_description(classes) {
+        widget.update_property(&[gtk4::accessible::Property::Description(&description)]);
+    } else {
+        widget.reset_property(gtk4::AccessibleProperty::Description);
     }
 }
 
@@ -456,6 +488,38 @@ mod tests {
         let mut info = col("", false);
         info.name = "name".into();
         assert_eq!(column_header_title(&info, false), "name");
+    }
+
+    #[test]
+    fn pending_cell_description_names_each_edit_state() {
+        assert_eq!(
+            pending_description(&["tp-cell-modified"]),
+            Some(crate::tr!("Modified").to_string())
+        );
+        assert_eq!(
+            pending_description(&["tp-row-pending-insert"]),
+            Some(crate::tr!("New row").to_string())
+        );
+        assert_eq!(
+            pending_description(&["tp-row-pending-delete"]),
+            Some(crate::tr!("Pending deletion").to_string())
+        );
+        assert_eq!(pending_description(&[]), None);
+    }
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn recycled_cell_clears_pending_visual_state_and_resets_accessible_description() {
+        gtk4::init().unwrap();
+        let label = gtk4::Label::new(None);
+        label.add_css_class("tp-cell-modified");
+        apply_pending_description(label.upcast_ref(), &["tp-cell-modified"]);
+        assert_eq!(pending_description(&[]), None);
+
+        clear_pending_classes(label.upcast_ref());
+        apply_pending_description(label.upcast_ref(), &[]);
+
+        assert!(!label.has_css_class("tp-cell-modified"));
     }
 
     #[test]
