@@ -29,7 +29,7 @@ on:
   # After a merge every change runs, so a failure only one distribution's
   # build shows turns up then and not at tag time.
   push:
-    branches: [linux]
+    branches: [main]
     paths:
       - "linux/**"
       - ".github/workflows/linux-packages.yml"

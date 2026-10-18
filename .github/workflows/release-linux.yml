@@ -21,7 +21,7 @@ name: Release Linux
 # LINUX_COPR_WEBHOOK: the custom webhook URL from the COPR project's
 # Integrations page, ending in the package name: .../<uuid>/tablepro/.
 # Variable LINUX_PPA: the PPA, as owner/name.
-# Variable LINUX_BRANCH: the branch a release tag must be on, linux when unset.
+# Variable LINUX_BRANCH: the branch a release tag must be on, main when unset.
 
 on:
   push:
@@ -68,7 +68,7 @@ jobs:
         working-directory: linux
         env:
           TAG: ${{ github.ref_name }}
-          LINUX_BRANCH: ${{ vars.LINUX_BRANCH || 'linux' }}
+          LINUX_BRANCH: ${{ vars.LINUX_BRANCH || 'main' }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           if ! git merge-base --is-ancestor HEAD "origin/$LINUX_BRANCH"; then
