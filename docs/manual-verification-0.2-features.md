@@ -305,6 +305,14 @@ Use a keyed table with a nullable text column and values above 8 KiB. Include CR
 - [ ] New Table and Table from CSV on a Tables group still open their dialogs for that schema. Light and dark look right.
 - [ ] With a table tab open on a connection with many tables, collapse its group, type something that does not match it in the sidebar search, and scroll the list away. Press Ctrl+Shift+L: the search clears, the group opens, and the table's row is selected, in view and focused. From a SQL editor tab it says to open a table first. For a table in a hidden schema it says the schema is hidden.
 
+## Preferences, About and application icons
+
+- [ ] Open Preferences and confirm the page navigation separates General, Appearance, Editor and MCP.
+- [ ] Change Appearance between System, Light and Dark; confirm the active application style changes and the choice survives a restart.
+- [ ] Confirm the Data browser, Query history and SQL editor controls retain their current values and live-save behavior.
+- [ ] Open About and confirm the BookiE contributor link and upstream TablePro author link are distinct, and the copyright attribution remains visible.
+- [ ] Check the BookiE launcher icon at small and large sizes in the application menu and task switcher; confirm the same artwork is used by the installed package.
+
 ## SQL code folding
 
 - [ ] Place the cursor inside a multiline CASE block and press Ctrl+Shift+[. The block body folds and its opening and closing lines remain visible.

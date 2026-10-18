@@ -5,6 +5,11 @@ use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, HistoryDialogO
 
 use super::{App, AppMsg, shortcuts};
 
+const ABOUT_DEVELOPERS: &[&str] = &[
+    "BookiE contributors https://github.com/cozyGarage/BookiE",
+    "TablePro Authors (upstream project) https://github.com/TableProApp/TablePro",
+];
+
 impl App {
     pub(super) fn show_welcome_page(&self, _sender: ComponentSender<Self>) {
         // Welcome lives outside the ViewStack — it's the disconnected mode.
@@ -128,13 +133,10 @@ impl App {
             .copyright(crate::tr!("© 2025–2026 TablePro Authors"))
             .license_type(gtk::License::Agpl30)
             .comments(crate::tr!(
-                "A native Linux database client built with GTK4 + libadwaita."
+                "A native Linux database client built with GTK4 + libadwaita. Based on the open-source TablePro project."
             ))
             .build();
-        dialog.set_developers(&[
-            "BookiE contributors https://github.com/cozyGarage/BookiE",
-            "TablePro Authors https://github.com/TableProApp/TablePro",
-        ]);
+        dialog.set_developers(ABOUT_DEVELOPERS);
         dialog.set_translator_credits(&crate::tr!("translator-credits"));
         dialog.present(Some(&self.window));
     }
@@ -158,5 +160,18 @@ impl App {
             &self.database,
             &self.preferences,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ABOUT_DEVELOPERS;
+
+    #[test]
+    fn about_credits_distinguish_bookie_contributors_from_the_upstream_authors() {
+        assert!(ABOUT_DEVELOPERS[0].starts_with("BookiE contributors "));
+        assert!(ABOUT_DEVELOPERS[0].contains("github.com/cozyGarage/BookiE"));
+        assert!(ABOUT_DEVELOPERS[1].starts_with("TablePro Authors (upstream project) "));
+        assert!(ABOUT_DEVELOPERS[1].contains("github.com/TableProApp/TablePro"));
     }
 }

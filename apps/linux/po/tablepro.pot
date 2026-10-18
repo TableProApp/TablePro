@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: BookiE 0.1.6-dev\n"
 "Report-Msgid-Bugs-To: https://github.com/cozyGarage/BookiE/issues\n"
-"POT-Creation-Date: 2026-10-18 18:42+0200\n"
+"POT-Creation-Date: 2026-10-18 22:08+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -50,7 +50,7 @@ msgid "New window"
 msgstr ""
 
 #: apps/linux/app/src/services/quick_switcher.rs:55
-#: apps/linux/app/src/ui/preferences.rs:129
+#: apps/linux/app/src/ui/preferences.rs:141
 msgid "Query history"
 msgstr ""
 
@@ -349,7 +349,7 @@ msgstr ""
 #: apps/linux/app/src/ui/app/organization.rs:98
 #: apps/linux/app/src/ui/app/organization.rs:149
 #: apps/linux/app/src/ui/app/referenced_row.rs:18
-#: apps/linux/app/src/ui/app/status_pages.rs:47
+#: apps/linux/app/src/ui/app/status_pages.rs:52
 #: apps/linux/app/src/ui/app/structure.rs:84
 #: apps/linux/app/src/ui/app/workspace_close.rs:43
 #: apps/linux/app/src/ui/app/workspace_close.rs:156
@@ -369,7 +369,7 @@ msgstr ""
 #: apps/linux/app/src/ui/history_dialog.rs:515
 #: apps/linux/app/src/ui/history_dialog.rs:553
 #: apps/linux/app/src/ui/parameters_dialog.rs:30
-#: apps/linux/app/src/ui/preferences.rs:167
+#: apps/linux/app/src/ui/preferences.rs:179
 #: apps/linux/app/src/ui/progress_dialog.rs:13
 #: apps/linux/app/src/ui/saved_queries_dialog.rs:100
 #: apps/linux/app/src/ui/saved_queries_dialog.rs:121
@@ -530,7 +530,7 @@ msgstr ""
 
 #: apps/linux/app/src/ui/app/connection.rs:482
 #: apps/linux/app/src/ui/app/init_window.rs:246
-#: apps/linux/app/src/ui/app/status_pages.rs:78
+#: apps/linux/app/src/ui/app/status_pages.rs:83
 #: apps/linux/app/src/ui/explain_dialog.rs:27
 #: apps/linux/app/src/ui/explain_dialog.rs:55
 #: apps/linux/app/src/ui/export_dialog.rs:274
@@ -807,32 +807,32 @@ msgid ""
 "{error}"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:497
+#: apps/linux/app/src/ui/app/import.rs:507
 msgid "The import was cancelled."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:546
+#: apps/linux/app/src/ui/app/import.rs:556
 msgid "The table has no columns to import into."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:563
+#: apps/linux/app/src/ui/app/import.rs:573
 msgid "The table could not be built from the file."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:582
+#: apps/linux/app/src/ui/app/import.rs:592
 msgid "The file could not be opened."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:585
+#: apps/linux/app/src/ui/app/import.rs:595
 #, rust-format
 msgid "The file is larger than the {limit} MB import limit."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:588
+#: apps/linux/app/src/ui/app/import.rs:598
 msgid "The file could not be read."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:611
+#: apps/linux/app/src/ui/app/import.rs:621
 #, rust-format
 msgid "Line {line}, column {column}: {reason}"
 msgstr ""
@@ -1296,7 +1296,7 @@ msgstr ""
 
 #: apps/linux/app/src/ui/app/shortcuts.rs:229
 #: apps/linux/app/src/ui/history_dialog.rs:166
-#: apps/linux/app/src/ui/preferences.rs:231
+#: apps/linux/app/src/ui/preferences.rs:244
 msgid "SQL editor"
 msgstr ""
 
@@ -1427,32 +1427,34 @@ msgstr ""
 msgid "Show {schema}"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/status_pages.rs:90
+#: apps/linux/app/src/ui/app/status_pages.rs:95
 msgid "Query history is unavailable"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/status_pages.rs:121
+#: apps/linux/app/src/ui/app/status_pages.rs:126
 msgid "BookiE"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/status_pages.rs:123
+#: apps/linux/app/src/ui/app/status_pages.rs:128
 msgid "BookiE contributors"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/status_pages.rs:128
+#: apps/linux/app/src/ui/app/status_pages.rs:133
 msgid "© 2025–2026 TablePro Authors"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/status_pages.rs:131
-msgid "A native Linux database client built with GTK4 + libadwaita."
+#: apps/linux/app/src/ui/app/status_pages.rs:136
+msgid ""
+"A native Linux database client built with GTK4 + libadwaita. Based on the "
+"open-source TablePro project."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/status_pages.rs:138
+#: apps/linux/app/src/ui/app/status_pages.rs:140
 msgid "translator-credits"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/status_pages.rs:144
-#: apps/linux/app/src/ui/app/status_pages.rs:149
+#: apps/linux/app/src/ui/app/status_pages.rs:146
+#: apps/linux/app/src/ui/app/status_pages.rs:151
 msgid "Open an SQL editor tab to explain a query."
 msgstr ""
 
@@ -2116,7 +2118,7 @@ msgid "0 uses the default of 30 seconds"
 msgstr ""
 
 #: apps/linux/app/src/ui/connect_dialog/controls.rs:108
-#: apps/linux/app/src/ui/preferences.rs:255
+#: apps/linux/app/src/ui/preferences.rs:270
 msgid "Query timeout (seconds)"
 msgstr ""
 
@@ -3533,12 +3535,12 @@ msgstr ""
 
 #: apps/linux/app/src/ui/grid/display.rs:28
 #: apps/linux/app/src/ui/grid/display.rs:36
-#: apps/linux/app/src/ui/preferences.rs:107
+#: apps/linux/app/src/ui/preferences.rs:117
 msgid "(null)"
 msgstr ""
 
 #: apps/linux/app/src/ui/grid/display.rs:34
-#: apps/linux/app/src/ui/preferences.rs:105
+#: apps/linux/app/src/ui/preferences.rs:115
 msgid "NULL"
 msgstr ""
 
@@ -3766,17 +3768,17 @@ msgid ""
 msgstr ""
 
 #: apps/linux/app/src/ui/history_dialog.rs:548
-#: apps/linux/app/src/ui/preferences.rs:162
+#: apps/linux/app/src/ui/preferences.rs:174
 msgid "Clear all query history?"
 msgstr ""
 
 #: apps/linux/app/src/ui/history_dialog.rs:550
-#: apps/linux/app/src/ui/preferences.rs:164
+#: apps/linux/app/src/ui/preferences.rs:176
 msgid "This permanently deletes every saved query, including pinned ones."
 msgstr ""
 
 #: apps/linux/app/src/ui/history_dialog.rs:554
-#: apps/linux/app/src/ui/preferences.rs:168
+#: apps/linux/app/src/ui/preferences.rs:180
 msgid "Clear"
 msgstr ""
 
@@ -4043,124 +4045,135 @@ msgid "How the value is sent to the database"
 msgstr ""
 
 #: apps/linux/app/src/ui/preferences.rs:45
-msgid "Data browser"
+#: apps/linux/app/src/ui/preferences.rs:50
+#: apps/linux/app/src/ui/preferences.rs:90
+msgid "Appearance"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:47
-msgid "Tunes the row paginator and destructive-action confirmation."
-msgstr ""
-
-#: apps/linux/app/src/ui/preferences.rs:54
-msgid "Default page size"
+#: apps/linux/app/src/ui/preferences.rs:51
+msgid "Choose how BookiE looks on this desktop."
 msgstr ""
 
 #: apps/linux/app/src/ui/preferences.rs:55
+msgid "Data browser"
+msgstr ""
+
+#: apps/linux/app/src/ui/preferences.rs:57
+msgid ""
+"Choose how table data is displayed and how destructive actions are confirmed."
+msgstr ""
+
+#: apps/linux/app/src/ui/preferences.rs:64
+msgid "Default page size"
+msgstr ""
+
+#: apps/linux/app/src/ui/preferences.rs:65
 msgid "Rows fetched per request when browsing a table"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:66
+#: apps/linux/app/src/ui/preferences.rs:76
 msgid "Confirm before deleting rows"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:67
+#: apps/linux/app/src/ui/preferences.rs:77
 msgid "Show a confirmation dialog before each destructive action"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:72
+#: apps/linux/app/src/ui/preferences.rs:82
 msgid "Reuse one tab when opening tables"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:74
+#: apps/linux/app/src/ui/preferences.rs:84
 msgid ""
 "Opening a table replaces the temporary preview tab. Turn off to give every "
 "table its own tab."
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:80
-msgid "Appearance"
-msgstr ""
-
-#: apps/linux/app/src/ui/preferences.rs:81
+#: apps/linux/app/src/ui/preferences.rs:91
 msgid "Follow the system, or always use the light or dark style"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:83
+#: apps/linux/app/src/ui/preferences.rs:93
 msgid "System"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:84
+#: apps/linux/app/src/ui/preferences.rs:94
 msgid "Light"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:85
+#: apps/linux/app/src/ui/preferences.rs:95
 msgid "Dark"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:100
+#: apps/linux/app/src/ui/preferences.rs:110
 msgid "NULL display"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:102
+#: apps/linux/app/src/ui/preferences.rs:112
 msgid "How a NULL cell is shown. Applies to cells drawn after the change."
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:106
+#: apps/linux/app/src/ui/preferences.rs:116
 msgid "∅ (empty set)"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:130
+#: apps/linux/app/src/ui/preferences.rs:142
 msgid "Persistent record of every SQL query you run."
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:134
+#: apps/linux/app/src/ui/preferences.rs:146
 msgid "Retention (days)"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:135
+#: apps/linux/app/src/ui/preferences.rs:147
 msgid "0 keeps history forever; pinned entries are never pruned."
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:149
+#: apps/linux/app/src/ui/preferences.rs:161
 msgid "Clear…"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:154
+#: apps/linux/app/src/ui/preferences.rs:166
 msgid "Clear query history"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:155
+#: apps/linux/app/src/ui/preferences.rs:167
 msgid "Removes every saved query, including pinned ones."
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:191
+#: apps/linux/app/src/ui/preferences.rs:203
 msgid "Show in Files"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:200
+#: apps/linux/app/src/ui/preferences.rs:212
 msgid "Storage location"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:227
+#: apps/linux/app/src/ui/preferences.rs:239
 msgid "Editor"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:234
+#: apps/linux/app/src/ui/preferences.rs:245
+msgid "Set the editor font, key bindings and query timeout."
+msgstr ""
+
+#: apps/linux/app/src/ui/preferences.rs:249
 msgid "Editor font size"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:239
+#: apps/linux/app/src/ui/preferences.rs:254
 msgid "Editor font family"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:245
+#: apps/linux/app/src/ui/preferences.rs:260
 msgid "Vim keys in the SQL editor"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:246
+#: apps/linux/app/src/ui/preferences.rs:261
 msgid "Applies to editors opened after the change."
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:257
+#: apps/linux/app/src/ui/preferences.rs:272
 msgid "Cancel long-running queries automatically. Set to 0 to disable."
 msgstr ""
 

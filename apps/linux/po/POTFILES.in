@@ -71,6 +71,7 @@ apps/linux/app/src/ui/export_dialog.rs
 apps/linux/app/src/ui/filter_presets.rs
 apps/linux/app/src/ui/filter_strip.rs
 apps/linux/app/src/ui/grid/choice_editor.rs
+apps/linux/app/src/ui/grid/column.rs
 apps/linux/app/src/ui/grid/column_jump.rs
 apps/linux/app/src/ui/grid/column_visibility.rs
 apps/linux/app/src/ui/grid/context_menu.rs
