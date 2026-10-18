@@ -21,7 +21,7 @@ struct WelcomeActionsPanel: View {
         .removeDuplicates()
 
     /// Captured once: the same appearance that reads the stored value overwrites it.
-    @State private var lastSeenAppVersion = ""
+    @State private var showsWhatsNew: Bool?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,7 +54,7 @@ struct WelcomeActionsPanel: View {
                         .accessibilityIdentifier("welcome-check-for-updates-link")
                     }
 
-                    if showsWhatsNew {
+                    if showsWhatsNew == true {
                         Button(String(format: String(localized: "What's New in %@"), Bundle.main.appVersion)) {
                             NSApp.sendAction(#selector(AppDelegate.openChangelog(_:)), to: nil, from: nil)
                         }
@@ -115,16 +115,8 @@ struct WelcomeActionsPanel: View {
     }
 
     private func recordAppVersion() {
-        let defaults = AppStorageEnvironment.shared.defaults
-        let key = PreferenceKeys.lastSeenAppVersion.name
-        let current = Bundle.main.appVersion
-        guard lastSeenAppVersion.isEmpty else { return }
-        lastSeenAppVersion = defaults.string(forKey: key) ?? current
-        defaults.set(current, forKey: key)
-    }
-
-    private var showsWhatsNew: Bool {
-        !lastSeenAppVersion.isEmpty && lastSeenAppVersion != Bundle.main.appVersion
+        guard showsWhatsNew == nil else { return }
+        showsWhatsNew = WhatsNewNotice(bundle: .main, defaults: AppStorageEnvironment.shared.defaults).recordLaunch()
     }
 
     /// The badge follows entitlement and the support link follows whether anything has been paid,
