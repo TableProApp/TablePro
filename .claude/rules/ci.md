@@ -48,7 +48,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 - `Changes (macOS)` outputs `run` (detector `macos`) and `plugins` (detector `plugins`). The test job has a 120-minute limit and sets `NSUnbufferedIO=YES`.
 - Setup, in order: checkout, setup-xcode, prepare-build (setup-xcodegen, `scripts/download-libs.sh`, `generate-project.sh macos`, SPM restore), resolve, SPM save.
 - One `build-for-testing` with no `-testPlan` builds both plans and writes one `.xctestrun` per plan, with signing, the index store and the compilation cache off.
-- `COMPILE_PLUGINS` is true on every push and dispatch, and on a PR when the `plugins` detector is not false. It adds Go, the Dameng and HANA bridge builds, `xcodebuild build -scheme AllPlugins`, then `scripts/ci/verify-plugin-loads.sh`.
+- `COMPILE_PLUGINS` is true when the `plugins` detector is not false, on a PR and a push alike; a dispatch has no base, so it always compiles. It adds Go, the Dameng and HANA bridge builds, `xcodebuild build -scheme AllPlugins`, then `scripts/ci/verify-plugin-loads.sh`.
 - `test-without-building -testPlan Unit`, then `-testPlan UI`. The UI plan runs after a Unit failure too, so one round trip reports both.
 - No shards, and no parallel, iteration or retry flags: the plans decide.
 - `scripts/ci/summarize-xcresult.sh` always runs. Evidence uploads only on failure (`.claude/skills/fix-issue/references/verification-apple.md`, Reading CI).
@@ -122,7 +122,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 - `detect-changed-paths.sh [--base <sha>] macos|plugins|ios|oracle|hana|release` prints `true` or `false`. An unknown suite or flag exits 2.
 - A PR passes its base SHA, a push `github.event.before`. No base prints true. The all-zero SHA of a new ref diffs against `git merge-base HEAD origin/main`, so a branch cut from main skips what main already ran; with no merge base it prints true.
 - `macos` watches the app, test, plugin, package, native, config and libs folders, `TestPlans/`, `project.yml`, the app's `Package.resolved`, the build scripts and CI scripts it runs, the setup actions and its workflow. `Packages/` covers TableProMacCore.
-- `plugins` watches `Plugins/`, `Packages/TableProCore/`, `Packages/TableProOracle/`, `Native/`, `Libs/`, `Configs/`, `project.yml`, the bridge scripts and `verify-plugin-loads.sh`.
+- `plugins` watches `Plugins/`, `Packages/TableProCore/`, `Packages/TableProOracle/`, `Native/`, `Libs/`, `Configs/`, `project.yml`, the app's `Package.resolved`, the project, libs and bridge scripts, `verify-plugin-loads.sh` and the setup actions.
 - `ios` watches `TableProMobile/`, `Libs/`, `Plugins/TableProPluginKit/` (the package target is a symlink to it), and every `../` path it reads out of `TableProMobile/project.yml`.
 - `oracle` watches `Packages/TableProOracle/`; `hana` watches `Native/HanaBridge/`. Each suite also watches its own workflow.
 - `release` watches what the Release build reads: the app, plugin, package, native, config and libs folders, `project.yml`, the app's `Package.resolved`, `.github/plugin-registry.json`, the release scripts it runs (`build.sh`, `package.sh`, `registry.py`, `version.py`, `notes.py`), the build and CI scripts it runs and the setup actions. It skips `Plugins/*Tests/` and `Packages/*/Tests/`.
@@ -133,7 +133,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 ## What runs where
 
 - A pull request: both changes jobs; macOS Tests and iOS and Package Tests unless their detector says false (Oracle only when its detector is not false); SwiftLint; Repo Hygiene; PR title. `AllPlugins` only when the `plugins` detector is not false.
-- A push to main or `release/**`: the same minus PR title; never cancelled, `AllPlugins` always, the SPM cache saved on a miss. Every code push runs both plans in full; a docs-only or changelog-only push skips the suites through the detector. A `release/**` push also runs Release Build; main gets it nightly.
+- A push to main or `release/**`: the same minus PR title; never cancelled, the SPM cache saved on a miss. Every code push runs both plans in full; a docs-only or changelog-only push skips the suites through the detector. A `release/**` push also runs Release Build; main gets it nightly.
 - A `v*` tag runs only `release.yml`, and a `linux-v*` tag only `release-linux.yml`, which calls `linux-packages.yml`. The test workflows never run on a tag.
 - `workflow_dispatch` exists on every workflow except `pr-title.yml` and `release.yml`.
 - `build-linux.yml` builds and tests the Linux app (`linux/docs/testing.md`, CI). Its `Changes (Linux)` job skips the rest when nothing under `linux/` or the scripts and workflows it reads changed, and its `Linux` job gates on all of them.

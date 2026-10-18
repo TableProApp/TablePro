@@ -48,7 +48,7 @@ jobs:
     timeout-minutes: 120
     env:
       NSUnbufferedIO: "YES"
-      COMPILE_PLUGINS: ${{ github.event_name != 'pull_request' || needs.changes.outputs.plugins != 'false' }}
+      COMPILE_PLUGINS: ${{ needs.changes.outputs.plugins != 'false' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -85,7 +85,7 @@ jobs:
             | xcbeautify --renderer github-actions
 
       # The TablePro scheme builds only the bundled plugins. AllPlugins also compiles the
-      # registry-only drivers, so every push runs it.
+      # registry-only drivers.
       - name: Set up Go for the SAP HANA helper
         if: ${{ !cancelled() && env.COMPILE_PLUGINS == 'true' }}
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
