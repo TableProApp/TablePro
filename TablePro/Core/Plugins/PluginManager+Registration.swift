@@ -758,16 +758,16 @@ extension PluginManager {
         progress: @escaping @MainActor @Sendable (Double) -> Void,
         lookup: (RegistryManifest?) -> RegistryPlugin?
     ) async throws -> PluginEntry {
-        await registryClient.ensureManifest(.ifStale)
+        await registryClient.fetch(policy: .ifStale)
         var registryPlugin = lookup(registryClient.manifest)
 
         if registryPlugin == nil {
-            await registryClient.ensureManifest(.mustBeCurrent)
+            await registryClient.fetch(policy: .mustBeCurrent)
             registryPlugin = lookup(registryClient.manifest)
         }
 
         guard let registryPlugin else {
-            guard registryClient.fetchState == .loaded else {
+            guard registryClient.isManifestCurrent else {
                 throw PluginError.registryUnreachable
             }
             throw PluginError.notFound
@@ -779,7 +779,6 @@ extension PluginManager {
         do {
             let entry = try await installFromRegistry(
                 registryPlugin,
-                registryClient: registryClient,
                 progress: { fraction in
                     tracker.updateProgress(pluginId: registryPlugin.id, fraction: fraction)
                     progress(fraction)

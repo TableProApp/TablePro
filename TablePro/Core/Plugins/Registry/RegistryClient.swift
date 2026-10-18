@@ -1,238 +1,111 @@
-//
-//  RegistryClient.swift
-//  TablePro
-//
-
 import Combine
 import Foundation
 import os
 
 @MainActor
-final class RegistryClient: ObservableObject {
-    static let shared = RegistryClient()
+internal final class RegistryClient: ObservableObject {
+    internal static let shared = RegistryClient()
 
-    @Published private(set) var manifest: RegistryManifest?
-    @Published private(set) var fetchState: RegistryFetchState = .idle
-    @Published private(set) var lastFetchDate: Date?
-
-    let session: URLSession
-    static let supportedSchemaVersion = 2
-    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "RegistryClient")
-    private static let manifestFreshnessWindow: TimeInterval = 300
-
-    private static let defaultRegistryURL = URL(string:
-        "https://raw.githubusercontent.com/TableProApp/plugins/main/plugins.json")!
-
-    static let customRegistryURLKey = "com.TablePro.customRegistryURL"
-    private static let lastFetchKey = "com.TablePro.registryLastFetch"
-    private static let legacyManifestCacheKey = "registryManifestCache"
-    private static let legacyETagKeys = ["registryETag", "com.TablePro.registryETag"]
-    private static let legacyLastFetchKey = "registryLastFetch"
-    private static let legacyLastRegistryURLKey = "com.TablePro.lastRegistryURL"
-
-    private let defaults: UserDefaults
-    private let manifestCacheURL: URL
-
-    private var inFlightFetch: Task<Void, Never>?
-    private var lastFetchedURL: URL?
-
-    var isUsingCustomRegistry: Bool {
-        registryURL != Self.defaultRegistryURL
-    }
-
-    private var registryURL: URL {
-        if let raw = defaults.string(forKey: Self.customRegistryURLKey),
-           let custom = URL(string: raw) {
-            return custom
+    nonisolated internal static let defaultManifestURL: URL = {
+        guard let url = URL(string: "https://updates.tablepro.app/plugins/v3.json") else {
+            preconditionFailure("The plugin manifest URL does not parse")
         }
-        return Self.defaultRegistryURL
+        return url
+    }()
+
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "RegistryClient")
+
+    @Published internal private(set) var manifest: RegistryManifest?
+    internal private(set) var isManifestCurrent = false
+
+    internal let session: URLSession
+    internal let manifestURL: URL
+
+    private var inFlight: InFlightFetch?
+
+    private struct InFlightFetch {
+        let policy: RegistryFetchPolicy
+        let task: Task<Void, Never>
     }
 
-    nonisolated private static let manifestCacheFileName = "registry-manifest.json"
-
-    init(
-        userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
-        session: URLSession = RegistryClient.makeDefaultSession(),
-        manifestCacheURL: URL = RegistryClient.defaultManifestCacheURL()
+    internal init(
+        manifestURL: URL = RegistryClient.defaultManifestURL,
+        session: URLSession = RegistryClient.makeDefaultSession()
     ) {
-        self.defaults = userDefaults
+        self.manifestURL = manifestURL
         self.session = session
-        self.manifestCacheURL = manifestCacheURL
-        Self.migrateLegacyKeys(in: userDefaults)
-        migrateManifestCacheLocationIfNeeded()
-        loadCachedManifest()
+        manifest = Self.cachedManifest(for: manifestURL, in: session.configuration.urlCache)
     }
 
-    nonisolated static func makeDefaultSession() -> URLSession {
+    nonisolated internal static func makeDefaultSession() -> URLSession {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 15
         config.timeoutIntervalForResource = 30
         config.waitsForConnectivity = true
+        // URLCache stores nothing larger than a twentieth of its capacity.
         config.urlCache = URLCache(
-            memoryCapacity: 1_000_000,
-            diskCapacity: 5_000_000,
+            memoryCapacity: 2_000_000,
+            diskCapacity: 20_000_000,
             directory: AppStorageEnvironment.shared.applicationSupportRoot
                 .appendingPathComponent("TablePro/Registry/URLCache", isDirectory: true)
         )
         return URLSession(configuration: config)
     }
 
-    nonisolated static func defaultManifestCacheURL() -> URL {
-        AppStorageEnvironment.shared.applicationSupportRoot
-            .appendingPathComponent("TablePro/Registry", isDirectory: true)
-            .appendingPathComponent(manifestCacheFileName)
-    }
-
-    private static func migrateLegacyKeys(in defaults: UserDefaults) {
-        let obsoleteKeys = legacyETagKeys + [legacyLastFetchKey, legacyManifestCacheKey, legacyLastRegistryURLKey]
-        for key in obsoleteKeys where defaults.object(forKey: key) != nil {
-            defaults.removeObject(forKey: key)
-        }
-    }
-
-    private func migrateManifestCacheLocationIfNeeded() {
-        guard manifestCacheURL == Self.defaultManifestCacheURL() else { return }
-        let fm = FileManager.default
-        guard let cachesDir = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
-        let bundleId = Bundle.main.bundleIdentifier ?? "com.TablePro"
-        let legacyURL = cachesDir.appendingPathComponent(bundleId, isDirectory: true)
-            .appendingPathComponent(Self.manifestCacheFileName)
-        guard fm.fileExists(atPath: legacyURL.path) else { return }
-        if !fm.fileExists(atPath: manifestCacheURL.path) {
-            do {
-                try fm.createDirectory(
-                    at: manifestCacheURL.deletingLastPathComponent(),
-                    withIntermediateDirectories: true
-                )
-                try fm.copyItem(at: legacyURL, to: manifestCacheURL)
-            } catch {
-                Self.logger.warning("Failed to migrate registry manifest cache: \(error.localizedDescription)")
-                return
-            }
-        }
-        try? fm.removeItem(at: legacyURL)
-    }
-
-    private func loadCachedManifest() {
-        guard let data = try? Data(contentsOf: manifestCacheURL),
-              let cached = try? JSONDecoder().decode(RegistryManifest.self, from: data)
-        else { return }
-        manifest = cached
-        lastFetchDate = defaults.object(forKey: Self.lastFetchKey) as? Date
-    }
-
-    private func writeCachedManifest(_ data: Data) {
-        let dir = manifestCacheURL.deletingLastPathComponent()
+    nonisolated private static func cachedManifest(for url: URL, in cache: URLCache?) -> RegistryManifest? {
+        guard let cached = cache?.cachedResponse(for: URLRequest(url: url)) else { return nil }
         do {
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            try data.write(to: manifestCacheURL, options: .atomic)
+            return try JSONDecoder().decode(RegistryManifest.self, from: cached.data)
         } catch {
-            Self.logger.warning("Failed to write registry cache: \(error.localizedDescription)")
+            logger.warning("Ignoring the cached plugin manifest: \(error.publicLogShape, privacy: .public)")
+            return nil
         }
     }
 
-    // MARK: - Fetching
-
-    func ensureManifest(_ intent: RegistryFetchIntent) async {
-        if let inFlightFetch {
-            await inFlightFetch.value
-            return
+    internal func fetch(policy: RegistryFetchPolicy) async {
+        while let current = inFlight {
+            await current.task.value
+            if policy == .ifStale || current.policy == .mustBeCurrent { return }
         }
-        if intent == .ifStale, !needsRefresh { return }
-        let task = Task { await fetchManifest() }
-        inFlightFetch = task
+        let task = Task { await self.load(policy) }
+        inFlight = InFlightFetch(policy: policy, task: task)
         await task.value
-        inFlightFetch = nil
     }
 
-    private var needsRefresh: Bool {
-        guard lastFetchedURL == registryURL, let lastFetchDate else { return true }
-        return Date().timeIntervalSince(lastFetchDate) > Self.manifestFreshnessWindow
-    }
-
-    func fetchManifest(forceRefresh: Bool = false) async {
-        fetchState = .loading
-
-        let request = makeManifestRequest(forceRefresh: forceRefresh)
-        if isUsingCustomRegistry {
-            Self.logger.warning("Using custom plugin registry URL: \(self.registryURL.absoluteString)")
+    internal func makeRequest(policy: RegistryFetchPolicy) -> URLRequest {
+        var request = URLRequest(url: manifestURL)
+        switch policy {
+        case .ifStale:
+            request.cachePolicy = .useProtocolCachePolicy
+        case .mustBeCurrent:
+            request.cachePolicy = .reloadRevalidatingCacheData
         }
-
-        do {
-            let (data, response) = try await session.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw URLError(.badServerResponse)
-            }
-
-            switch httpResponse.statusCode {
-            case 200...299:
-                let decoded = try JSONDecoder().decode(RegistryManifest.self, from: data)
-
-                if decoded.schemaVersion > Self.supportedSchemaVersion {
-                    Self.logger.error(
-                        "Registry schemaVersion \(decoded.schemaVersion) is newer than supported \(Self.supportedSchemaVersion); falling back to cached manifest"
-                    )
-                    fallbackToCacheOrFail(
-                        message: String(localized: "Plugin registry requires a newer app version")
-                    )
-                    return
-                }
-
-                manifest = decoded
-
-                writeCachedManifest(data)
-                lastFetchDate = Date()
-                lastFetchedURL = request.url
-                defaults.set(lastFetchDate, forKey: Self.lastFetchKey)
-
-                fetchState = .loaded
-                Self.logger.info("Fetched registry manifest with \(decoded.plugins.count) plugin(s)")
-
-            default:
-                let message = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
-                Self.logger.error("Registry fetch failed: HTTP \(httpResponse.statusCode) \(message)")
-                fallbackToCacheOrFail(message: "Server returned HTTP \(httpResponse.statusCode)")
-            }
-        } catch is DecodingError {
-            Self.logger.error("Failed to decode registry manifest")
-            fallbackToCacheOrFail(message: String(localized: "Failed to parse plugin registry"))
-        } catch {
-            Self.logger.error("Registry fetch failed: \(error.localizedDescription)")
-            fallbackToCacheOrFail(message: error.localizedDescription)
-        }
-    }
-
-    func makeManifestRequest(forceRefresh: Bool) -> URLRequest {
-        var request = URLRequest(url: registryURL)
-        request.cachePolicy = forceRefresh ? .reloadIgnoringLocalCacheData : .reloadRevalidatingCacheData
         return request
     }
 
-    func refreshedPlugin(matching plugin: RegistryPlugin) async -> RegistryPlugin {
-        await fetchManifest(forceRefresh: true)
-        return manifest?.plugins.first { $0.id == plugin.id } ?? plugin
-    }
-
-    private func fallbackToCacheOrFail(message: String) {
-        if manifest != nil {
-            fetchState = .loadedFromCache(message)
-            Self.logger.warning("Using cached registry manifest after fetch failure")
-        } else {
-            fetchState = .failed(message)
+    private func load(_ policy: RegistryFetchPolicy) async {
+        defer { inFlight = nil }
+        do {
+            let (data, response) = try await session.data(for: makeRequest(policy: policy))
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200...299).contains(status) else {
+                Self.logger.error("Plugin manifest fetch returned HTTP \(status)")
+                isManifestCurrent = false
+                return
+            }
+            let decoded = try JSONDecoder().decode(RegistryManifest.self, from: data)
+            manifest = decoded
+            isManifestCurrent = true
+            Self.logger.info("Fetched the plugin manifest with \(decoded.plugins.count) plugin(s)")
+        } catch {
+            isManifestCurrent = false
+            Self.logger.error("Plugin manifest fetch failed: \(error.publicLogShape, privacy: .public)")
         }
     }
 }
 
-enum RegistryFetchIntent: Equatable, Sendable {
+internal enum RegistryFetchPolicy: Sendable {
+    /// Lets the HTTP cache answer while the response is fresh.
     case ifStale
     case mustBeCurrent
-}
-
-enum RegistryFetchState: Equatable, Sendable {
-    case idle
-    case loading
-    case loaded
-    case loadedFromCache(String)
-    case failed(String)
 }

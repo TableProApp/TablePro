@@ -4,7 +4,6 @@ import os
 extension PluginManager {
     func installFromRegistry(
         _ registryPlugin: RegistryPlugin,
-        registryClient: RegistryClient = .shared,
         progress: @escaping @MainActor @Sendable (Double) -> Void
     ) async throws -> PluginEntry {
         if plugins.contains(where: { $0.id == registryPlugin.id }) {
@@ -18,12 +17,11 @@ extension PluginManager {
         installsInFlight.insert(registryPlugin.id)
         defer { installsInFlight.remove(registryPlugin.id) }
 
-        let registryPlugin = await registryClient.refreshedPlugin(matching: registryPlugin)
-        let binary = try validateRegistryCompatibility(registryPlugin)
+        let release = try Self.newestRelease(of: registryPlugin)
 
         let finalURL = try await PluginInstaller.shared.install(
             registryPlugin,
-            binary: binary,
+            release: release,
             into: userPluginsDir,
             progress: { fraction in await progress(fraction) }
         )
@@ -36,7 +34,6 @@ extension PluginManager {
 
     func updateFromRegistry(
         _ registryPlugin: RegistryPlugin,
-        refreshManifest: Bool = true,
         progress: @escaping @MainActor @Sendable (Double) -> Void
     ) async throws -> PluginUpdateOutcome {
         if let existing = plugins.first(where: { $0.id == registryPlugin.id }),
@@ -52,14 +49,11 @@ extension PluginManager {
         installsInFlight.insert(registryPlugin.id)
         defer { installsInFlight.remove(registryPlugin.id) }
 
-        let registryPlugin = refreshManifest
-            ? await RegistryClient.shared.refreshedPlugin(matching: registryPlugin)
-            : registryPlugin
-        let binary = try validateRegistryCompatibility(registryPlugin)
+        let release = try Self.newestRelease(of: registryPlugin)
 
         let result = try await PluginInstaller.shared.update(
             registryPlugin,
-            binary: binary,
+            release: release,
             into: userPluginsDir,
             hasLiveConnections: pluginHasLiveConnections(registryPlugin),
             progress: { fraction in await progress(fraction) }
@@ -83,7 +77,7 @@ extension PluginManager {
             )
             PluginInstallTracker.shared.markStaged(
                 pluginId: registryPlugin.id,
-                newVersion: registryPlugin.version
+                newVersion: release.version
             )
             return .staged(pluginId: registryPlugin.id)
         }
@@ -136,9 +130,15 @@ extension PluginManager {
         PluginInstallTracker.shared.clearInstall(pluginId: pluginId)
     }
 
-    @discardableResult
-    func validateRegistryCompatibility(_ registryPlugin: RegistryPlugin) throws -> RegistryBinary {
-        try registryPlugin.resolvedBinary(for: .current, kits: Self.compatibleKits)
+    nonisolated static func newestRelease(
+        of registryPlugin: RegistryPlugin,
+        kits: ClosedRange<Int> = compatibleKits
+    ) throws -> RegistryRelease {
+        try registryPlugin.newestRelease(
+            channel: registryChannel,
+            kits: kits,
+            systemVersion: ProcessInfo.processInfo.operatingSystemVersion
+        )
     }
 
     func pluginHasLiveConnections(_ registryPlugin: RegistryPlugin) -> Bool {

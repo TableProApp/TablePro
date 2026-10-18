@@ -1,8 +1,3 @@
-//
-//  ExportFormatCatalogTests.swift
-//  TableProTests
-//
-
 import Foundation
 import TableProPluginKit
 import Testing
@@ -116,5 +111,39 @@ struct ExportFormatCatalogTests {
             ExportFormatCatalog.sorted([StubZebra(), StubParquet(), StubSQL(), StubCSV()]))
         #expect(forwards == backwards)
         #expect(forwards == ["csv", "sql", "parquet", "zebra"])
+    }
+
+    private func manifest(_ plugins: [RegistryPlugin]) -> RegistryManifest {
+        RegistryManifest(schemaVersion: RegistryManifest.supportedSchemaVersion, plugins: plugins)
+    }
+
+    private func registryPlugin(id: String, name: String, exportFormatIds: [String]?) -> RegistryPlugin {
+        RegistryPlugin(
+            id: id,
+            name: name,
+            iconName: nil,
+            databaseTypeIds: [],
+            exportFormatIds: exportFormatIds,
+            releases: []
+        )
+    }
+
+    @Test("The manifest's export-format ids are what the catalog offers to install")
+    @MainActor
+    func installableComesFromTheManifest() {
+        let listed = manifest([
+            registryPlugin(id: "com.TablePro.OracleDriver", name: "Oracle Driver", exportFormatIds: nil),
+            registryPlugin(id: "com.TablePro.ParquetExportPlugin", name: "Parquet Export", exportFormatIds: ["parquet"])
+        ])
+
+        #expect(ExportFormatCatalog.installable(in: listed) == [
+            InstallableExportFormat(
+                formatId: "parquet",
+                displayName: "Parquet Export",
+                registryPluginId: "com.TablePro.ParquetExportPlugin"
+            )
+        ])
+        #expect(ExportFormatCatalog.notInstalled(installedFormatIds: ["parquet"], manifest: listed).isEmpty)
+        #expect(ExportFormatCatalog.notInstalled(installedFormatIds: [], manifest: nil).isEmpty)
     }
 }

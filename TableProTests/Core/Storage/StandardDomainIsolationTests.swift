@@ -1,8 +1,3 @@
-//
-//  StandardDomainIsolationTests.swift
-//  TableProTests
-//
-
 import AppKit
 import Foundation
 @testable import TableProUtilities
@@ -44,20 +39,6 @@ struct StandardDomainIsolationTests {
 
         let reader = RecentTablesStore(defaults: appDefaults)
         #expect(reader.entries(connectionId: connectionId).map(\.name) == ["users"])
-    }
-
-    @Test("The registry client built with its defaults migrates the app's store")
-    func registryClientFollowsTheStorageEnvironment() {
-        let legacyKey = "registryETag"
-        appDefaults.set("stale", forKey: legacyKey)
-        defer { appDefaults.removeObject(forKey: legacyKey) }
-        let cacheURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("app-store-defaults-\(UUID().uuidString)", isDirectory: true)
-            .appendingPathComponent("registry-manifest.json")
-
-        _ = RegistryClient(manifestCacheURL: cacheURL)
-
-        #expect(appDefaults.object(forKey: legacyKey) == nil)
     }
 
     @Test("The privilege scope outline saves its columns only under an autosave name")

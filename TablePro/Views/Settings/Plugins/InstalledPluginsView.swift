@@ -1,7 +1,3 @@
-//
-//  InstalledPluginsView.swift
-//  TablePro
-
 import AppKit
 import SwiftUI
 import TableProPluginKit
@@ -48,7 +44,7 @@ struct InstalledPluginsView: View {
             }
         }
         .task {
-            await registryClient.ensureManifest(.ifStale)
+            await registryClient.fetch(policy: .ifStale)
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             guard let provider = providers.first,
@@ -376,8 +372,8 @@ struct InstalledPluginsView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
 
-                    if let registryPlugin = pluginManager.registryUpdate(for: selected.id) {
-                        updateActionView(for: selected, registryPlugin: registryPlugin)
+                    if let update = pluginManager.registryUpdate(for: selected.id) {
+                        updateActionView(for: selected, registryPlugin: update.plugin, version: update.release.version)
                     }
 
                     if !selected.pluginDescription.isEmpty {
@@ -464,7 +460,7 @@ struct InstalledPluginsView: View {
     // MARK: - Update
 
     @ViewBuilder
-    private func updateActionView(for plugin: PluginEntry, registryPlugin: RegistryPlugin) -> some View {
+    private func updateActionView(for plugin: PluginEntry, registryPlugin: RegistryPlugin, version: String) -> some View {
         if let progress = installTracker.state(for: plugin.id) {
             switch progress.phase {
             case .downloading(let fraction):
@@ -509,7 +505,7 @@ struct InstalledPluginsView: View {
                 }
             case .completed:
                 Label(
-                    String(format: String(localized: "Updated to v%@"), registryPlugin.version),
+                    String(format: String(localized: "Updated to v%@"), version),
                     systemImage: "checkmark.circle.fill"
                 )
                 .foregroundStyle(.green)
@@ -521,7 +517,7 @@ struct InstalledPluginsView: View {
             }
         } else {
             HStack(spacing: 8) {
-                Text(String(format: String(localized: "v%@ available"), registryPlugin.version))
+                Text(String(format: String(localized: "v%@ available"), version))
                     .font(.callout)
                     .foregroundStyle(.blue)
                 Button(String(localized: "Update")) { updatePlugin(registryPlugin) }

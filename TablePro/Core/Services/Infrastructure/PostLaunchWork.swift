@@ -35,7 +35,7 @@ internal enum PostLaunchWork {
 
         guard !AppStorageEnvironment.shared.isIsolated else { return }
 
-        Task { await RegistryClient.shared.ensureManifest(.ifStale) }
+        Task { await RegistryClient.shared.fetch(policy: .ifStale) }
 
         /// The retired per-tab split name left one permanent defaults record per query tab ever
         /// opened, and AppKit offers no way to forget one. Here rather than in the delegate because
