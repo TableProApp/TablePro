@@ -1,6 +1,6 @@
 # Roadmap
 
-**Status, 2026-10-17**: every capability in the tables below is in the tree. Nothing has shipped yet: no `linux-v*` tag has been cut. The [release criteria](#release-criteria) say what has to hold first, and the [backlog](#backlog) lists what is not built.
+**Status, 2026-10-18**: every capability in the tables below is in the tree. Nothing has shipped yet: no `linux-v*` tag has been cut. The [release criteria](#release-criteria) say what has to hold first, and the [backlog](#backlog) lists what is not built.
 
 The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) and connects to five engines, each a crate linked in at compile time ([ADR 0001](docs/decisions/0001-no-plugin-system.md)): [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md) and [SQLite](docs/drivers/sqlite.md).
 
@@ -51,7 +51,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Copy | Copy; Copy As rows, with headers, JSON, CSV with or without headers, Markdown or IN clause, and INSERT in an editable table tab; Copy Column Name; Show Row as JSON |
 | Column widths | Kept per table |
 | CSV import | Into an existing table, with a column mapping, in one write batch (one transaction where the engine has them), up to 64 MiB |
-| Sidebar | Tables (partitioned ones included), views, materialized views and foreign tables by schema, with search, Open in New Tab and Show CREATE TABLE; Edit Structure, Import CSV and Drop Table for tables |
+| Sidebar | Tables (partitioned ones included), views, materialized views and foreign tables by schema, with search and Refresh, read again after the editor runs DDL, Open in New Tab and Show CREATE TABLE; Edit Structure, Import CSV and Drop Table for tables |
 
 ### Structure
 
@@ -71,8 +71,8 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Formatter | Format SQL, leaving a statement as typed when formatting would change its tokens |
 | Scripts | Split per dialect (`DELIMITER`, `GO` and `GO n`, routine and trigger bodies) and sent a statement at a time, or a batch at a time on SQL Server; each result set, row count, notice or error is its own entry, and a failure stops the script except on SQL Server. Run Selection, and run the statement at the cursor |
 | Find and replace | Ctrl+F and Ctrl+H, with case, whole word and regular expressions |
-| Files | Open a .sql file into the editor, or drop one on it |
-| Results | Several result sets per run, a banner at the 10,000-row limit with Export All, and Go to Error |
+| Files | Open a .sql file into the editor (Ctrl+O) or drop one on it, and save to it (Ctrl+S, or Save As with Ctrl+Shift+S) |
+| Results | Several result sets per run, a limit of 10,000 rows per result and 100,000 per run with a banner and Export All, and Go to Error |
 | Drafts | Each editor tab's text is kept, and a connection's tabs (table tabs with page and sort, structure and editor tabs) reopen when it opens |
 
 ### History and saved queries
@@ -113,7 +113,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | .deb and .rpm | Ubuntu 26.04 and 26.10 and Fedora 44, built offline in CI the way Launchpad and COPR build them, linted, then installed and started in fresh containers; a `linux-v*` tag uploads to the PPA and starts the COPR build ([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md)) |
 | Desktop integration | Desktop file with Open With for SQLite files, D-Bus activation, a man page, metainfo with screenshots, and SVG icons |
 | Translations | The app's own strings go through gettext, and CI regenerates the template with gettext 1.0 and fails when it or `POTFILES.in` is stale. Some error details from the core crates still reach the user in English (see Release criteria) |
-| Logs | stderr, which the session journals, with JSON lines on request |
+| Logs | stderr, which the session journals, with JSON lines on request. A panic also writes a crash report under `$XDG_STATE_HOME`, offered with Show Report on the next launch |
 | Tests | Unit, gtk (with an accessibility audit of the picker, the connect pages, the workspace, the connect dialog and every preferences page), data and packaging suites; connection, DDL and TLS conformance on every engine; Docker jobs for PostgreSQL with PgBouncer, MySQL and MariaDB, SQL Server, ClickHouse, SSH, the session and the grid save ([testing.md](docs/testing.md)); every critical audit finding has named guards ([regression-tests.md](docs/regression-tests.md)) |
 
 ## Backlog
@@ -148,12 +148,10 @@ Not built yet, in no order.
 
 - Before the first tag, the release setup [ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md#consequences) lists: the PPA, the COPR project, and the `linux-release` environment with what `release-linux.yml` names in its header.
 - Write the Flathub manifest and the exception request by hand, and submit them.
-- Put the PPA and COPR install commands in the README once both exist.
 - An AUR PKGBUILD, kept by the community.
 - The first translations in `po/LINGUAS`.
 - A manual pass with Orca, the keyboard alone, High Contrast, 1.5x text scaling and a right-to-left locale.
 - Install and use it on Ubuntu 26.04 and Fedora 44 by hand, and under KDE Plasma with the Adwaita style.
-- A crash report a user can send. A panic goes to the journal today, and About offers the debug info and the issue tracker.
 - A Linux user guide on docs.tablepro.app, a page on the marketing site, and a support channel.
 
 ### More engines
@@ -176,18 +174,18 @@ Not committed: server monitoring (sessions, locks, slow queries), maintenance co
 
 ## Release criteria
 
-From the [production-readiness audit](docs/production-audit.md#what-production-ready-means-here), for GNOME 50. A user on Ubuntu 26.04 or Fedora 44, with where each stands on 2026-10-17:
+From the [production-readiness audit](docs/production-audit.md#what-production-ready-means-here), for GNOME 50. A user on Ubuntu 26.04 or Fedora 44, with where each stands on 2026-10-18:
 
 | # | The user | Holds today | Still needed |
 |---|---|---|---|
 | 1 | Installs `tablepro` from the PPA or the COPR project, and gets updates from the system's updater | CI builds both packages offline the way Launchpad and COPR do, and starts them in fresh containers | The release setup, the first tag, and an install then an upgrade from the PPA and COPR |
 | 2 | Connects to their everyday PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse or SQLite database | Docker suites against PostgreSQL 13, 17 and 18 with PgBouncer, MySQL 8.4, MariaDB 11.4, SQL Server 2022 and ClickHouse 25.8 | The supported versions stated, and older ones such as MySQL 8.0 and SQL Server 2019 tested or ruled out |
 | 3 | Browses tables of real-world data (dates, decimals, JSON, UUIDs, NULLs) and sees correct values | Per-engine decoding with the type fallback and unsupported-type conformance cases ([ADR 0014](docs/decisions/0014-lossless-values-and-dialects.md)) | A corpus test per engine with real values |
-| 4 | Runs typical queries against tables of a million rows or more without running out of memory or freezing | The 10,000-row editor limit with Export All, and driver tests over 2,000,000 rows. Pages use OFFSET: the page builder has keyset and ctid-window walks, but the pager only asks for an offset | The pager seeking by the edge row's key, and a test on a 1,000,000-row table that pages to the end and exports, with time and memory bounds |
+| 4 | Runs typical queries against tables of a million rows or more without running out of memory or freezing | The 10,000-row editor limit with Export All, and driver tests over 2,000,000 rows. Pages seek past the edge row's key, or walk PostgreSQL heap block windows for a table with no key; OFFSET only under a user sort, a restored deep offset or a partitioned keyless table. Docker tests page 60k and 25k-row tables both ways and check the plan | A test on a 1,000,000-row table that pages to the end and exports, with time and memory bounds |
 | 5 | Edits data in place, and the changes commit correctly even when the connection or the app misbehaves | Write, row guard and commit resolution conformance on every engine, with the fault fakes and the grid save Docker test | A test that kills the app during a save |
 | 6 | Trusts the app with credentials: TLS, SSH tunnels, no password in plain text | Verify full by default, the TLS conformance suite, the Secret Service, and statement logging silenced | An outside security review |
 | 7 | Recovers when the network drops or the database restarts | Health monitoring, backoff and replay rules with their tests, and a stopped container in the liveness tests | A test that restarts the database and checks that reads replay and writes do not |
-| 8 | Works with a screen reader, the keyboard alone and larger text | Label audits of the picker, the connect pages, the workspace, the connect dialog and preferences, labelled cells and real-key tests | Sorting and resizing columns from the keyboard, named filter fields and cell editors, focus kept when a control hides, announced query results and errors, and the manual pass in the backlog |
+| 8 | Works with a screen reader, the keyboard alone and larger text | Label audits of the picker, the connect pages, the workspace, the connect dialog and preferences, labelled cells and real-key tests. Sorting from the cell menu, named filter fields and cell editors, focus handed on when a control hides, and announced query results and errors | Resizing columns from the keyboard, and the manual pass in the backlog |
 | 9 | Sees no message that cannot be translated, even while only English ships | Every string the app writes is in the template | Core error details (CSV import, cell parsing, type and default syntax, secret storage, driver details) shown in English |
 | 10 | Uses the app daily for a week without an unrecoverable failure | Nothing yet | A dated week of daily use |
 
