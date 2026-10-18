@@ -1,182 +1,150 @@
 # Releasing
 
-`scripts/build-release.sh` is the whole release build: it signs every nested binary (plugins,
-helpers, frameworks) and the app bundle last, so signing again by hand undoes its work.
+This runbook covers the macOS app, its registry plugins and the static libraries; the iOS app ships by hand. The `release` skill (`.claude/skills/release/SKILL.md`) decides what ships and points at the sections here. Every command below is the maintainer's to run.
 
-Everything here needs the maintainer's credentials; a contributor wants `CONTRIBUTING.md`, Building.
-The `release` skill in `.claude/skills/release` runs a release on top of this file and owns the
-procedure and its decisions.
+## Channels
 
-## Release builds
+- Stable and beta share one appcast, `https://updates.tablepro.app/appcast.xml`. A beta item carries `<sparkle:channel>beta</sparkle:channel>`.
+- The app takes betas only while Settings > General > Get beta updates is on (`allowedChannels(for:)`). The key, `com.TablePro.updates.receivesBetaUpdates`, can be pinned by a configuration profile ([Managed updates](https://docs.tablepro.app/security/managed-updates)).
+- Sparkle never downgrades: with the toggle off, a beta install keeps its beta until a stable passes it. So a beta never writes storage the previous stable cannot read (`.claude/rules/data-sync-storage.md`).
+- A stable rolls out in phases of 21600 s. A beta is not phased, and on GitHub it is a prerelease. Latest goes only to the highest stable, so a patch on an older line publishes with `--latest=false`.
+- Critical means a security fix or data loss, nothing else. It is ` [CRITICAL]` on the version's `CHANGELOG.md` heading, never on a beta. Every later stable item carries the highest critical build forward (`sparkle:criticalUpdate sparkle:version`).
+- CI writes the orphan `feeds` branch, which holds `appcast.xml` and the v3 plugin manifest (`https://updates.tablepro.app/plugins/v3.json`), and `pages.yml` deploys it to `updates.tablepro.app`. The appcast is EdDSA-signed, and the app requires that (`SURequireSignedFeed`, `SUVerifyUpdateBeforeExtraction`).
+- The legacy `appcast.xml` on `main` and `plugins.json` in TableProApp/plugins serve apps up to 0.81, and no tag writes them. v0.82.0 is the one bridge: once it publishes, a PR copies its feed item verbatim into the legacy `appcast.xml` and a PR in TableProApp/plugins points `plugins.json` at its plugin zips. Both files then freeze.
 
-```bash
-scripts/build-release.sh arm64     # or x86_64, or both (the default with no argument)
-```
+## Versions
 
-Output lands in `build/Release/TablePro-arm64.app` and `build/Release/TablePro-x86_64.app`.
+- A tag is `vX.Y.Z` or `vX.Y.0-beta.N`, N from 1 to 98. There is no `-rc`.
+- `MARKETING_VERSION` is the tag without the `v`. The build, `CURRENT_PROJECT_VERSION`, is `((MAJOR*1000+MINOR)*100+PATCH)*100+R`, where R is N for a beta and 99 for a stable: `v0.82.0-beta.1` is 820001, `v0.82.0` is 820099, `v0.82.1` is 820199. MINOR stays at most 999 and PATCH at most 99.
+- A local build is `0.0.0-dev`, build 1 (`project.yml`, `settings.base`). `scripts/release/version.py parse <tag>` prints a tag's version, build, channel and line. Every "is newer" check, in the app and in the plugin manifest, compares the build (`CFBundleVersion`).
+- Every X.Y.0 ships at least one published `vX.Y.0-beta.N` first; patches go straight to stable. Promote the newest beta when it has no open `regression` issue.
+- One universal build, arm64 and x86_64. It becomes arm64-only once the deployment target reaches macOS 27.
 
-The script extracts the matching slice from the universal static libraries, copies every non-system
-dynamic library the binaries reference into `Contents/Frameworks` and rewrites their install names,
-strips the binaries, then signs with hardened runtime and `TablePro/TablePro.entitlements`.
+## Branches
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `SIGN_IDENTITY` | the maintainer's Developer ID Application | codesign identity for every binary |
-| `NOTARIZE` | `false` | `true` notarizes and staples after the build |
-| `NOTARY_PROFILE` | `TablePro` | `notarytool` keychain profile holding the credentials |
+- An admin cuts `release/<X.Y>` from a green `main` commit at beta.1. Only admins create `release/*` branches.
+- Every fix lands on `main` first, then reaches the line through a cherry-pick PR from `backport/<PR>-<X.Y>`: one fix per PR, titled with the original subject and its ` (#N)`, which is the provenance. A release PR comes from `prep/v<X.Y.Z>`. No PR head branch lives under `release/*`.
+- A line takes patches until `X.(Y+1).0` ships, then only security or data-loss fixes. At most two lines are live.
+- After a stable or patch publishes, a PR with the same title cherry-picks its release commit to `main`, and to a newer open line when one exists. The next tag refuses to build until it has.
 
-Create the notary profile once with `xcrun notarytool store-credentials "TablePro"` plus
-`--apple-id`, `--team-id` and `--password`. `scripts/lib/notarize.sh` zips, submits, waits and
-staples. It reads both the exit status and the reported status, because `notarytool` has exited 0
-on a rejected submission.
+## Notes
 
-## Packaging a DMG
+- Fragments in `changelog.d/` (`.claude/rules/changelog.md`) become a `CHANGELOG.md` section. The tooling needs towncrier: `python3 -m venv .venv && .venv/bin/pip install --require-hashes -r scripts/release/requirements.txt`.
+- `python3 scripts/release/notes.py assemble X.Y.Z [--lead FILE] [--critical] [--date YYYY-MM-DD]` runs on `prep/v<X.Y.Z>`. It refuses a beta, a branch with commits beyond `origin/release/<X.Y>` other than a revert, an empty `changelog.d/`, and a version `CHANGELOG.md` already has. It credits each fragment ` by @login` when its PR's author is not an OWNER or MEMBER (read with `gh`), runs `towncrier build`, which deletes the fragments, adds the lead and the critical marker, and stages `CHANGELOG.md`.
+- The lead: X.Y.0 only, at most 6 plain lines, naming what a reader would change their behavior over. The Sparkle notes, What's New and the Telegram post show only the lead.
+- A beta gets no section. Its GitHub release body and feed notes are a towncrier draft of the fragments at the tag.
 
-`scripts/create-dmg.sh <version> <arm64|x86_64> [source app]` packages one architecture. The source
-app defaults to the one `build-release.sh` wrote for that architecture. An empty version reads
-`MARKETING_VERSION` from `Configs/Version.xcconfig`, the only place the app version is declared.
+## Cutting a beta
 
-```bash
-scripts/create-dmg.sh 0.80.0 arm64    # writes build/Release/TablePro-0.80.0-arm64.dmg
-```
-
-It prefers `create-dmg` (`brew install create-dmg`) and falls back to `hdiutil`. `NOTARIZE=true`
-notarizes the DMG too.
-
-## Static libraries
-
-The `.a` files under `Libs/` and the xcframeworks under `Libs/ios/` live on the immutable
-`libs-<n>` GitHub release that `Libs/release` names, not in git. `scripts/download-libs.sh` fetches
-it and verifies every file against the checksums at `HEAD` on every run. Publish a rebuilt library
-through the script, then commit what it writes:
+beta.1 cuts the line at the newest `main` commit whose push runs are all green; beta.N tags the line's head once the picks are on it.
 
 ```bash
-scripts/publish-libs.sh libmongoc_arm64.a libmongoc_x86_64.a libmongoc_universal.a libmongoc.a
-git add Libs/release Libs/checksums.sha256 Libs/ios/checksums.sha256
-git commit -m "build(libs): publish libs-<n>"
+git fetch origin
+git push origin <sha>:refs/heads/release/X.Y  # beta.1 only
+git tag -s vX.Y.0-beta.N -m vX.Y.0-beta.N origin/release/X.Y
+git push origin vX.Y.0-beta.N
 ```
 
-- Name every library you rebuilt, added or removed. The script verifies every other one against the
-  checksums at `HEAD`, creates the next `libs-<n>` and rewrites `Libs/release` and both checksum files.
-- `--dry-run` prints what it would publish.
-- A published `libs-<n>` never changes; a fix is the next `<n>`.
+## Cutting a stable or patch
 
-## The release pipeline
+```bash
+git fetch origin
+git switch -c prep/vX.Y.Z origin/release/X.Y
+python3 scripts/release/notes.py assemble X.Y.Z --lead lead.txt  # --lead on X.Y.0 only, --critical when it is
+git commit -m "chore(release): vX.Y.Z"
+git push -u origin prep/vX.Y.Z
+gh pr create --base release/X.Y --title "chore(release): vX.Y.Z" --body "Release notes for vX.Y.Z."
+```
 
-`.github/workflows/build.yml` runs on a `v*` tag push or a manual dispatch, and a run is never
-cancelled (concurrency group `build-tablepro-<ref>`). Every job except the two builds needs a `v*`
-ref, so a dispatch from a branch only builds. The tag runs no test suite.
+The PR changes only `CHANGELOG.md` and `changelog.d/`. Squash-merge it, then tag its merge commit:
 
-- `Tested on main` (Ubuntu) fails when the tagged commit is not an ancestor of `origin/main`.
-- For `macOS Tests` and `iOS and Package Tests` separately, it walks up to 50 first-parent commits
-  back from the tag. On each it takes the newest push run of that workflow and waits for it if it is
-  still going. A commit with no run, or whose job was skipped, is passed over; any conclusion other
-  than success fails the release.
-- A passing run counts only when `scripts/ci/detect-changed-paths.sh --base <that commit> <suite>`
-  prints `false`, so nothing the suite reads changed between that commit and the tag. The step
-  summary names the covering run for each suite.
-- The two suites may be covered by different commits. Requiring one commit for both would fail
-  whenever only one suite ran later.
-- `Build arm64` and `Build x86_64` run on `xcode-27` with no fail-fast; x86_64 cross-compiles on an
-  arm64 runner. Each runs `scripts/build-release.sh` with notarization, then makes the DMG and the
-  tar.xz update archive.
-- `Registry Readiness` (Ubuntu) runs `scripts/check-registry-readiness.py` with `--floor` and
-  `--current` set to the two kit versions in `TablePro/Core/Plugins/PluginManager.swift`. It fails
-  when a registry driver has no binary in that range, so the app never ships ahead of its plugins.
-- `Create GitHub Release` needs all three and runs under the `release` environment. It fails when
-  the tag disagrees with `MARKETING_VERSION` (`tag v... does not match MARKETING_VERSION ...`).
-- It also fails when `CURRENT_PROJECT_VERSION` is not above the newest published release's. Sparkle
-  compares that number as `<sparkle:version>`, so a flat one ships a release no install is offered.
-- It signs both update archives with the Sparkle key and takes the notes from `CHANGELOG.md`.
-- It checks that the appcast deploy key works before publishing anything. Then it puts both DMGs
-  and both update archives on a draft release, publishes the draft in one step, and only then
-  commits `appcast.xml`, whose download URLs 404 until the release is public.
-- The appcast is merged with the tag's own copy of `scripts/ci/merge-appcast.py` and pushed with
-  `APPCAST_DEPLOY_KEY`, up to 3 attempts, each re-merging onto the current `origin/main`.
-- `generate_appcast` sees only the new release. The merge script splices its items in and moves
-  published items byte for byte, because Sparkle rewrites an existing item's download URL and drops
-  its notes when a staged archive matches it.
-- A tag containing `-alpha`, `-beta` or `-rc` publishes as a prerelease.
+```bash
+git fetch origin
+git tag -s vX.Y.Z -m vX.Y.Z "$(gh pr view <PR> --json mergeCommit -q .mergeCommit.oid)"
+git push origin vX.Y.Z
+```
 
-## Keys and rulesets
+After the run publishes, forward-port the release commit, then write the docs changelog:
 
-- `main` takes no direct push. Its ruleset requires the checks `AGENTS.md` lists under CI, and
-  deploy keys bypass it, so the appcast push and the release commit push need no check run.
-- The appcast push uses `APPCAST_DEPLOY_KEY`, a write deploy key held by the `release` environment,
-  which only `v*` tags can use.
-- The release commit and a withdrawal push with the release key, `~/.ssh/tablepro_release`, a second
-  write deploy key. The release skill's pre-flight step 7 creates it the first time a release needs
-  it.
-- The release key has a passphrase and is never added to ssh-agent: agents run on the maintainer's
-  Mac and the key skips every check, so only the maintainer runs a push with it.
-- The push command is in `.claude/skills/release/SKILL.md`, Commit, tag, push.
-- The `v*` tag ruleset lets only admins create, move or delete a release tag.
+```bash
+git fetch origin
+git switch -c forward/vX.Y.Z origin/main
+git cherry-pick <release commit>
+git push -u origin forward/vX.Y.Z
+gh pr create --base main --title "chore(release): vX.Y.Z" --body "Forward-port of #<PR>."
+python3 scripts/release/notes.py docs X.Y.Z --ref vX.Y.Z --mdx ../tablepro-docs/changelog.mdx
+```
 
-## When a release run fails
+- A cherry-pick conflict on a fragment reworded on `main`: delete the fragment; on `CHANGELOG.md`: keep both sections, in version order. The docs PR is `docs(changelog): vX.Y.Z` in TableProApp/docs, opened with the maintainer's own `gh` (a PR opened with `GITHUB_TOKEN` starts no workflows) and merged once the release is published.
 
-- A published release is immutable: GitHub refuses to add, replace or delete an asset, or to move
-  the tag.
-- Before **Publish the release**, only a draft exists. Fix forward on `main` through a pull request,
-  then move the tag to the commit it lands as. The next run reuses the draft.
+## What a tag runs
 
-  ```bash
-  git fetch origin main
-  git tag -f -a v<version> -m "v<version>" origin/main
-  git push origin v<version> --force
-  ```
+A `v*` tag runs `release.yml` and nothing else. A run is never cancelled, and every job reads the version, build and channel from `verify`.
 
-- After it (a failed `appcast.xml` push, say), use **Re-run failed jobs**: the release job finds the
-  same files already published and carries on. **Re-run all jobs** rebuilds, and the release job
-  refuses the new files.
-- A published build that is wrong ships as a new version.
+- `verify`: `version.py check` refuses a tag that breaks the grammar or the bounds; that `origin/release/<X.Y>` does not contain; whose previous tag on the line is not its ancestor; a stable X.Y.0 with no published beta, or a beta after its X.Y.0; a `CHANGELOG.md` missing the stable's heading, or a published stable of this or the previous line below it. Then it needs macOS Tests, iOS and Package Tests and Release Build green on the tag commit or the nearest first-parent commit that ran them, waiting on a pending run. Last, it writes the notes.
+- `app` (`signing`): a GA Xcode for a stable (`setup-xcode` `require-release`), the CloudKit Production schema check, `build.sh app` (archive, export with `scripts/release/ExportOptions.plist`, universal, signature and plugin load checks), `notarize.sh` on the app, `package.sh app`, `notarize.sh` on the DMG.
+- `plugins` (`signing`): the Dameng and HANA bridges, `build.sh plugins` (each target `registry.py targets` prints, universal, signed with Developer ID, the hardened runtime and a timestamp), one notary submission for all, `package.sh plugins` (the zips, described as the manifest will read them).
+- `github-release`: `publish.py draft` puts every asset on a draft and checks each digest, `attest-build-provenance` attests them, `publish.py release` publishes.
+- `feed` (`release`): `feed.py add` downloads the archive and the zips from the release, checks their digests, runs `generate_appcast` and `registry.py add`, runs `feed.py check`, and pushes `feeds`, retrying from a fresh fetch up to 3 times.
+- `pages` deploys `feeds`. `notify`, stable only and allowed to fail, posts the lead to Telegram.
+- Assets: `TablePro-<v>.dmg`, `TablePro-<v>.tar.xz` (the Sparkle archive), `TablePro-<v>-dSYMs.zip`, `TablePro-<v>-Plugins-dSYMs.zip` and one `<Target>-<v>.zip` per registry plugin.
 
-## Staged rollout and critical updates
+## When a run fails
 
-- An ordinary release carries
-  `<sparkle:phasedRolloutInterval>21600</sparkle:phasedRolloutInterval>`. Sparkle splits installs
-  into seven cohorts by a per-install random id, so the last cohort is offered the build 36 hours
-  after the first. **Check for Updates…** is never phased.
-- `"criticalUpdate": true` in `.github/release-flags.json` passes `--critical-update-version ""` to
-  `generate_appcast` instead. That writes `<sparkle:criticalUpdate/>` with no version, critical for
-  every host: Sparkle skips phasing, hides Skip and Remind Me Later, retitles the alert, and shows
-  it even under automatic downloads.
-- The release job fails when the flag is `true` and the file has not changed since the previous
-  tag, which is what a leftover flag looks like.
-- When to set it: `.claude/skills/release/SKILL.md`, Critical update flag.
+- Tags never move. Before `github-release` publishes, an infrastructure failure is a re-run of the failed jobs; a code failure is fixed on `main`, picked to the line, and ships as the next number.
+- After it publishes: **Re-run failed jobs**. Every later step skips what is done: a published release, or a feed item or manifest release with the same build and sha256.
+- A stable that never published: the next release PR runs `git revert <its release commit>` before `notes.py assemble`, and the leftover draft goes (`gh release delete vX.Y.Z`).
+- No GA Xcode on the runner image fails a stable in `app`. The fix is a PR pointing `.github/actions/setup-xcode` at a GA Xcode on an image that has one. Betas still ship.
 
 ## Withdrawing a release
 
-Removing the version's items from `appcast.xml` is the only way to un-ship a Sparkle release.
-
 ```bash
-python3 scripts/ci/pull-release.py <version> --dry-run     # reports what it would remove
-GIT_SSH_COMMAND='ssh -i ~/.ssh/tablepro_release -o IdentitiesOnly=yes' \
-    python3 scripts/ci/pull-release.py <version>           # edits, commits and pushes to main
+gh workflow run withdraw.yml --ref v<newest tag> -f version=X.Y.Z
 ```
 
-- The second command pushes with the release key, so the maintainer runs it (Keys and rulesets).
-- It refuses to push from any branch but `main`, or when local `main` is not `origin/main`, since
-  the key would carry any other commit past every check. It also refuses to empty the feed.
-- The GitHub release stays up, so a direct download link still resolves. Users already on the bad
-  build are reached by shipping the fix.
+- It removes the version's feed items and plugin releases, re-signs the feed, marks the highest stable left as Latest, and redeploys. It refuses to leave the feed with no stable item. The `--ref` is a tag because the `release` environment allows only `v*` tags.
+- The GitHub release stays. The fix ships as the next number, critical when the bad build loses data.
+
+## Keys and environments
+
+| Environment | Refs | Secrets |
+|---|---|---|
+| `signing` | tags `v*` | `CERTIFICATES_P12`, `CERTIFICATES_PASSWORD`, `PROVISIONING_PROFILE`, `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`, `ANALYTICS_HMAC_SECRET`, `CLOUDKIT_MANAGEMENT_TOKEN` |
+| `release` | tags `v*` | `SPARKLE_PRIVATE_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_TOPIC_ID` |
+| `github-pages` | tags `v*` | none |
+
+- No repo-level secret or deploy key is left, and no environment has required reviewers: admin-only, immutable tags are the gate. Rulesets: `.claude/rules/ci.md`, Rulesets.
+- Notarization uses the App Store Connect API key, which `.github/actions/apple-signing` stores as the `TablePro` notarytool profile. The action warns when the certificate or the provisioning profile expires within 60 days.
+- An offline backup of the Sparkle EdDSA key exists and the maintainer holds it. The key never rotates without a signed transition, since every app from 0.82 verifies the feed with it.
+- `feeds` takes pushes from `github-actions[bot]` with `GITHUB_TOKEN` and has no required checks; the signed feed proves its content. It was seeded once with the legacy `appcast.xml` and an empty v3 manifest.
 
 ## Plugins
 
-- `.github/workflows/build-plugin.yml` runs on a `plugin-*-v*` tag, or on a dispatch with `tags`
-  (`tag[:pluginKitVersion],...`) and an optional `baseRef`. Runs are grouped per ref and per matrix
-  tag and never cancelled.
-- `Resolve Plugin Tags` (Ubuntu) picks the runner: `macos-26` when the ref being built pins Xcode 26
-  in its own `.github/actions/setup-xcode`, else `xcode-27`.
-- It runs `.github/scripts/test_update_registry.py` and `scripts/ci/check-plugin-manifest.py`, and
-  validates each tag against `^plugin-[a-z0-9-]+-v[0-9]+\.[0-9]+\.[0-9]+$` and each kit version as
-  an integer. A tag given without a kit version takes `currentPluginKitVersion`.
-- The build job checks out `baseRef` when one is given. It builds the Dameng bridge for
-  `plugin-dameng-*`, a universal HANA helper plus `govulncheck` for `plugin-hana-*`, then runs
-  `scripts/build-plugin.sh "$TARGET" both "$VERSION"` with notarization.
-- Before publishing: `scripts/ci/verify-plugin-loads.sh` dlopens the arm64 bundle beside its
-  PluginKit framework; both zips must be stapled and accepted by Gatekeeper; the built
-  `TableProPluginKitVersion` must equal the release label.
-- It publishes the release from a draft, then records the binary in the TableProApp/plugins registry
-  with `.github/scripts/update-registry.py`. The registry decides which binary a user gets:
-  [Plugin Registry](https://docs.tablepro.app/development/plugin-registry) covers the manifest, the
-  tag names and the bulk re-release after a PluginKit ABI change.
+- One tag builds the app and every registry plugin, and the plugin zips are assets of the app's release. Each plugin's version and build are the app's. There are no plugin tags.
+- `.github/plugin-registry.json` holds `retainFromPluginKit` and the publish set, keyed by target, with each plugin's `name` and `iconName`. Bundled plugins are not in it.
+- The v3 manifest lists each plugin's releases: version, build, channel, PluginKit version, `minimumSystemVersion`, URL and sha256. The bundle id and `databaseTypeIds` come from the built bundle.
+- Selection: a release in the running build's channel (a `-beta.N` or local build takes beta and stable, any other stable only), with its PluginKit version in the app's range and its `minimumSystemVersion` at or below the running macOS. The highest build wins. Installed registry plugins update after the app does.
+- Retention per channel, kit and `minimumSystemVersion`: the two highest builds stay; a beta goes once a stable with the same key has a higher build; a kit below `retainFromPluginKit` goes. A release pruned on arrival is a logged no-op.
+- `retainFromPluginKit` is the kit of the oldest app version still on at least 1% of the machines seen in the last 30 days (license dashboard, App Versions). Check it before each stable and raise it with a normal PR. The manifest keeps the higher of its own value and the tag's, so an older line never lowers it.
+- Accepted risks: the manifest is trusted through HTTPS, the plugin's Team ID check and the sha256, so a rollback or freeze of the manifest goes undetected.
+- PluginKit ABI rules: `.claude/rules/plugin-system.md`, ABI.
+
+## Static libraries
+
+The `.a` files under `Libs/` and the xcframeworks under `Libs/ios/` live on the immutable `libs-<n>` GitHub release that `Libs/release` names, not in git; `scripts/download-libs.sh` fetches it and verifies every file against the checksums at `HEAD`. `scripts/publish-libs.sh` takes every library you rebuilt, added or removed, verifies the others against `HEAD`, creates the next `libs-<n>` and rewrites `Libs/release` and both checksum files (`--dry-run` only prints). A published `libs-<n>` never changes: a fix is the next `<n>`.
+
+```bash
+scripts/publish-libs.sh libmongoc_arm64.a libmongoc_x86_64.a libmongoc_universal.a libmongoc.a
+git add Libs/release Libs/checksums.sha256 Libs/ios/checksums.sha256 && git commit -m "build(libs): publish libs-<n>"
+```
+
+## Reproducing a Release build
+
+```bash
+scripts/download-libs.sh && scripts/generate-project.sh macos && brew install create-dmg
+scripts/release/build.sh app --unsigned && scripts/release/package.sh app 0.0.0-dev --unsigned
+scripts/build-dameng.sh both && scripts/build-hana.sh both
+scripts/release/build.sh plugins --unsigned && scripts/release/package.sh plugins 0.0.0-dev --unsigned
+```
+
+- `build.sh` writes `build/release/` (xcodebuild logs in `build/release/logs/`), `package.sh` writes `dist/`. Release Build (`release-build.yml`) runs the same on every push to `main` and `release/**`. Signed: drop `--unsigned`, set `VERSION` and `BUILD`, and have the Developer ID identity and the provisioning profile `ExportOptions.plist` names. `notarize.sh <path>...` needs the profile `xcrun notarytool store-credentials TablePro --key <p8> --key-id <id> --issuer <issuer>` creates.

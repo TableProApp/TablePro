@@ -56,7 +56,7 @@ For each one, read the cited code and its surroundings, and check that nothing u
 Attack `plan.md`. Report weaknesses, not a summary; a sound part gets one line. Cover three lenses:
 
 1. **Patterns**: where the design fights an existing pattern, helper or convention in the repo (cite it), or breaks an invariant in the guide or its area rules.
-2. **Scope**: callers that break, state or persistence that goes stale, and inputs the plan skips (empty, null, duplicate names, sentinel values, very large results, cancellation). Also a CHANGELOG or docs claim that says more than the change does.
+2. **Scope**: callers that break, state or persistence that goes stale, and inputs the plan skips (empty, null, duplicate names, sentinel values, very large results, cancellation). Also a changelog fragment or docs claim that says more than the change does.
 3. **Decision**: whether refactor-or-patch is right, whether a better documented API exists (name it), and whether the rejected alternative was rejected for a real reason.
 
 Each objection gets a severity (`blocking`, `material` or `minor`), evidence (`file:line`, an API ground-truth line or measured output, since reasoning alone is not evidence), and the smallest change to the plan that answers it. Read the files you cite: a confident wrong objection costs more than a missed one.

@@ -6,16 +6,8 @@ set -euo pipefail
 # Builds TableProPluginKit at the current tree AND at a base ref with the SAME toolchain, then
 # diffs their public Swift interfaces. Comparing two builds from one compiler means Swift version
 # drift between a dev machine and CI cannot produce a false diff, so there is no committed baseline
-# to keep in sync. A reported diff is a real ABI change to act on:
-#
-#   Additive (a new requirement WITH a default implementation, a new field on a non-@frozen struct,
-#   a new case on a non-@frozen enum): bump currentPluginKitVersion in PluginManager.swift and
-#   TableProPluginKitVersion in every plugin Info.plist, leave minimumCompatiblePluginKitVersion
-#   alone, and re-publish nothing. Already-built plugins keep loading; the bump is what makes an
-#   older app refuse a plugin REBUILT against this API instead of failing its load.
-#   Breaking (changed/removed/renamed signature, a new case on a @frozen enum, a changed frozen
-#   layout): the same bumps, plus raise minimumCompatiblePluginKitVersion, then run
-#   scripts/release-all-plugins.sh <newVersion>.
+# to keep in sync. A reported diff is a real ABI change; the rules printed at the end say what to
+# raise in Configs/PluginKit.xcconfig.
 #
 # Both sides are generated from their project.yml first, so this regenerates
 # TablePro.xcodeproj in the working tree as well as in the base checkout.
@@ -93,20 +85,16 @@ if diff -u "$work/base.txt" "$work/head.txt"; then
     exit 0
 fi
 
-# This is run by hand, per CLAUDE.md, not by a workflow. It used to have a branch that passed when
-# ABI_ACKNOWLEDGED_ADDITIVE=1, set by a CI job that no longer exists, alongside instructions to add
-# an `abi-additive` label and re-run. Nothing can set the variable and nothing reads the label, so
-# both were telling the reader to do something that has no effect.
 cat <<'EOF'
 
 TableProPluginKit public ABI changed vs base (diff above). Decide additive vs breaking:
   Additive: a new requirement with a default, a reordering, or a field on a non-frozen transfer
-            struct. Bump currentPluginKitVersion and every plugin Info.plist
-            TableProPluginKitVersion; leave minimumCompatiblePluginKitVersion alone and re-publish
-            nothing. Shipped plugins keep loading; the bump makes an older app refuse a plugin
-            rebuilt against this API rather than failing its load.
+            struct. Raise TABLEPRO_PLUGINKIT_VERSION in Configs/PluginKit.xcconfig. Shipped plugins
+            keep loading; the bump makes an older app refuse a plugin rebuilt against this API
+            rather than failing its load.
   Breaking: a changed or removed requirement, a requirement without a default, a case on a @frozen
-            enum, or a frozen type's layout. The same bumps, plus raise
-            minimumCompatiblePluginKitVersion, then run scripts/release-all-plugins.sh <version>.
+            enum, or a frozen type's layout. Raise TABLEPRO_PLUGINKIT_VERSION and
+            TABLEPRO_PLUGINKIT_MINIMUM_VERSION.
+  Registry plugins ship with the next app release, built against the new kit.
 EOF
 exit 1

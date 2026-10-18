@@ -1,12 +1,41 @@
 name: Select Xcode
 description: Selects the one Xcode every TablePro build and test job uses.
 
+inputs:
+  require-release:
+    description: true fails the job unless the selected Xcode is a GA release, as a stable build requires.
+    required: false
+    default: "false"
+
 # The only place the version is written. runs-on names the image (xcode-27); this picks the build
 # inside it, the one developers install locally. The image has no Xcode 26.
 runs:
   using: composite
   steps:
     - shell: bash
+      env:
+        XCODE: /Applications/Xcode_27.1.app
+        REQUIRE_RELEASE: ${{ inputs.require-release }}
       run: |
-        sudo xcode-select --switch /Applications/Xcode_27.1.app
+        set -euo pipefail
+        sudo xcode-select --switch "$XCODE"
         xcodebuild -version
+        [ "$REQUIRE_RELEASE" = true ] || exit 0
+
+        # The image links Xcode_<version>.app to whichever build it carries, a beta or RC included.
+        app="$(cd "$XCODE" && pwd -P)"
+        case "$(basename "$app")" in
+          *_beta* | *_Release_Candidate*)
+            echo "::error::$XCODE is $app, not a GA Xcode; a stable release builds only on a GA Xcode"
+            exit 1
+            ;;
+        esac
+        license="$app/Contents/Resources/LicenseInfo.plist"
+        type="$(plutil -extract licenseType raw -o - "$license" 2> /dev/null || true)"
+        case "$(tr '[:upper:]' '[:lower:]' <<< "$type")" in
+          *beta*)
+            echo "::error::$app has the license type '$type', not a GA Xcode; a stable release builds only on a GA Xcode"
+            exit 1
+            ;;
+        esac
+        echo "$app is a GA Xcode"

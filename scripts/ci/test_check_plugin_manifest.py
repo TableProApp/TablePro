@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Fixture tests for the project.yml aggregate checks in check-plugin-manifest.py."""
+"""Fixture tests for check-plugin-manifest.py."""
 
 import importlib.util
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -68,10 +69,7 @@ schemes:
         App: all
 """
 
-PLUGINS = {
-    "oracle": {"target": "OracleDriver", "bundled": False},
-    "redis": {"target": "RedisDriver", "bundled": True},
-}
+PLUGINS = {"OracleDriver": {"name": "Oracle Driver", "iconName": "oracle-icon"}}
 
 
 def problems(project=PROJECT, plugins=None):
@@ -105,7 +103,7 @@ class ParseProjectTests(unittest.TestCase):
 
 
 class PublishSetTests(unittest.TestCase):
-    def test_bundled_entries_are_not_published(self):
+    def test_every_target_in_the_metadata_is_published(self):
         self.assertEqual(check.publish_set(PLUGINS), {"OracleDriver"})
 
 
@@ -119,10 +117,16 @@ class AggregateProblemsTests(unittest.TestCase):
         self.assertIn("OracleDriver is in 0 of BundledPlugins and RegistryPlugins, expected exactly one", found)
 
     def test_registry_aggregate_target_that_is_not_published(self):
-        plugins = {"redis": PLUGINS["redis"]}
+        self.assertEqual(
+            problems(plugins={}),
+            ["RegistryPlugins builds OracleDriver but plugin-registry.json does not publish it"],
+        )
+
+    def test_bundled_plugin_in_the_metadata(self):
+        plugins = {**PLUGINS, "RedisDriver": {"name": "Redis Driver", "iconName": "redis-icon"}}
         self.assertEqual(
             problems(plugins=plugins),
-            ["RegistryPlugins builds OracleDriver but plugin-registry.json does not publish it"],
+            ["plugin-registry.json publishes RedisDriver but RegistryPlugins does not build it"],
         )
 
     def test_embedded_plugin_missing_from_bundled_aggregate(self):
@@ -151,6 +155,32 @@ class AggregateProblemsTests(unittest.TestCase):
     def test_missing_aggregate(self):
         project = edited("  RegistryPlugins:\n    targets: [OracleDriver]\n    scheme: {}\n", "")
         self.assertEqual(problems(project), ["project.yml has no RegistryPlugins aggregate target"])
+
+
+class DeclarationProblemsTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        source = Path(self.temp.name) / "OracleDriverPlugin" / "OraclePlugin.swift"
+        source.parent.mkdir()
+        source.write_text('final class OraclePlugin {\n    static let iconName = "oracle-icon"\n}\n')
+        self.saved = check.PLUGINS_DIR
+        check.PLUGINS_DIR = Path(self.temp.name)
+        self.addCleanup(setattr, check, "PLUGINS_DIR", self.saved)
+
+    def test_matching_icon_passes(self):
+        self.assertEqual(check.declaration_problems(PLUGINS), [])
+
+    def test_icon_that_differs_from_the_plugin(self):
+        plugins = {"OracleDriver": {"name": "Oracle Driver", "iconName": "cylinder"}}
+        self.assertEqual(
+            check.declaration_problems(plugins),
+            ["OracleDriver: plugin-registry.json says iconName 'cylinder' but the plugin declares 'oracle-icon'"],
+        )
+
+    def test_target_with_no_plugin_directory(self):
+        plugins = {"TeradataDriver": {"name": "Teradata Driver", "iconName": "teradata-icon"}}
+        self.assertEqual(check.declaration_problems(plugins), ["TeradataDriver: no plugin directory matches it"])
 
 
 if __name__ == "__main__":

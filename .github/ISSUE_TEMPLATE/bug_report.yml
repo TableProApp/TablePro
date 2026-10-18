@@ -54,9 +54,9 @@ body:
     attributes:
       label: TablePro version
       description: >-
-        About TablePro shows it. On macOS, updates install in the background, so this is often not the newest.
-        On Linux, `tablepro --version` prints it too.
-      placeholder: "0.74.0"
+        About TablePro shows it, with the build number in parentheses and any -beta.N. On macOS, updates install
+        in the background, so this is often not the newest. On Linux, `tablepro --version` prints it too.
+      placeholder: "0.82.0 (820099)"
     validations:
       required: true
 

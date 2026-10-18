@@ -22,9 +22,7 @@ TARGET="${1:-ElasticsearchDriverPlugin}"
 BUNDLE="${TARGET}.tableplugin"
 DEST_DIR="${HOME}/Library/Application Support/TablePro/Plugins"
 
-# The newest build, not whichever one the filesystem happened to list first. This repo carries
-# several worktrees and each gets its own DerivedData, so `head -n 1` routinely installed a stale
-# bundle from somebody else's checkout and the mismatch only showed up as a load failure later.
+# Each worktree has its own DerivedData, so take the newest build.
 CANDIDATES="$(find "${HOME}/Library/Developer/Xcode/DerivedData/TablePro-"*/Build/Products/Debug \
   -maxdepth 1 -name "${BUNDLE}" -print0 2>/dev/null | xargs -0 stat -f '%m %N' 2>/dev/null | sort -rn)"
 SRC="$(printf '%s' "${CANDIDATES}" | head -n 1 | cut -d' ' -f2-)"

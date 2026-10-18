@@ -100,11 +100,8 @@ def write_plist(path, info, macros):
 
 
 def problems_in(directory, write=False):
-    try:
-        expected = provided_ids(directory)
-        info, macros = read_plist(directory / "Info.plist")
-    except Unreadable as error:
-        return [f"{directory.name}: {error}"]
+    expected = provided_ids(directory)
+    info, macros = read_plist(directory / "Info.plist")
 
     problems = []
     for key in KEYS:
@@ -137,18 +134,27 @@ def main(argv=None):
     if not directories:
         sys.exit(f"no Info.plist under {args.plugins}/*/")
 
-    problems = [problem for directory in directories for problem in problems_in(directory, args.write)]
-    if args.write:
-        for problem in problems:
-            print(f"stamped {problem}")
-        return 0
-    if problems:
-        for problem in problems:
-            print(f"::error::{problem}", file=sys.stderr)
-        print(f"\n{len(problems)} problem(s). Run scripts/ci/check-plugin-provides.py --write", file=sys.stderr)
-        return 1
+    unreadable, mismatches = [], []
+    for directory in directories:
+        try:
+            problems = problems_in(directory, args.write)
+        except Unreadable as error:
+            unreadable.append(f"{directory.name}: {error}")
+            continue
+        if problems and args.write:
+            print(f"stamped {directory.name}/Info.plist")
+        else:
+            mismatches += problems
 
-    print(f"{len(directories)} plugin Info.plists declare the ids their classes provide")
+    errors = unreadable + mismatches
+    if errors:
+        for error in errors:
+            print(f"::error::{error}", file=sys.stderr)
+        hint = " Run scripts/ci/check-plugin-provides.py --write" if mismatches else ""
+        print(f"\n{len(errors)} problem(s).{hint}", file=sys.stderr)
+        return 1
+    if not args.write:
+        print(f"{len(directories)} plugin Info.plists declare the ids their classes provide")
     return 0
 
 

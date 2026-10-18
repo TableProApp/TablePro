@@ -31,7 +31,7 @@ Every capability is core, a module or a plugin. The first rule that fits decides
 ## Repository map
 
 - `TablePro/`: the app (`Core/`, `Views/`, `Models/`, `ViewModels/`, `Extensions/`, `Theme/`).
-- `Plugins/`: drivers and import/export formats as `.tableplugin` bundles, plus `TableProPluginKit`. Bundled plugins are the app's `copy: { destination: plugins }` targets in `project.yml`; the rest ship through TableProApp/plugins, and the app never offers a registry install or update over a bundled one.
+- `Plugins/`: drivers and import/export formats as `.tableplugin` bundles, plus `TableProPluginKit`. Bundled plugins are the app's `copy: { destination: plugins }` targets in `project.yml`; the rest ship as assets of each app release, and the app never offers a registry install or update over a bundled one.
 - `Packages/`: `TableProCore` (both apps), `TableProMacCore` (macOS-only modules; never in the iOS project), `TableProOracle`, `TableProEditor`, `TableProGrammars`. `TableProCore`'s PluginKit source is a symlink: edit `Plugins/TableProPluginKit/` only. Each manifest sets its own Swift language mode, so never pass `SWIFT_VERSION=` to `xcodebuild`.
 - Tests: `TableProTests/`, `TableProUITests/`, `Plugins/*Tests/`, `Packages/*/Tests/`, `TableProMobile/TableProMobileTests/`; plans in `TestPlans/`. Which holds what: `.claude/rules/tests.md`.
 - `Native/`: first-party Rust and Go bridges (`.claude/rules/native-bridges.md`).
@@ -101,7 +101,7 @@ scripts/generate-project.sh [both|macos|ios]  # needs the libs; rerun after edit
 ## Every change
 
 1. **Tests.** Every testable change has a test in the target owning the code. Read `.claude/rules/tests.md` before creating a test file: a path rule loads only once a matching file is open. A UI flow only for a new or changed end-to-end flow (`.claude/rules/ui-tests.md`).
-2. **CHANGELOG.md.** A user-visible change gets one fragment under `[Unreleased]`; format: `.claude/rules/changelog.md`.
+2. **Changelog.** A user-visible change adds `changelog.d/<PR>.<type>.md`; only a release PR edits `CHANGELOG.md`. Format: `.claude/rules/changelog.md`.
 3. **Localization.** `String(localized:)` outside SwiftUI literals, never interpolated: `String(format: String(localized: "Preview %@"), name)`. Technical terms stay unlocalized. A plugin or package string lives in the host app's catalog: add it with `python3 scripts/localization.py plugins --add`, plus `--target ios` for a package the iOS app links. Never hand-edit a `.xcstrings`.
 4. **Docs.** A new shortcut, UI or settings change, or driver change gets a paired draft PR in TableProApp/docs naming this one; it merges after this one. `verify.sh docs` runs its checks here first.
 5. **Lint** each changed Swift file with `verify.sh lint`. Run `verify.sh agent-docs` when `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`, `RELEASING.md`, `.github/pull_request_template.md` or anything under `.claude/` changed.
@@ -118,7 +118,7 @@ scripts/generate-project.sh [both|macos|ios]  # needs the libs; rerun after edit
 
 ## CI
 
-- A PR merges on five green checks: macOS Tests, iOS and Package Tests, SwiftLint, Repo Hygiene and PR title. Only release deploy keys bypass them (`RELEASING.md`, Keys and rulesets).
+- A PR into `main` or `release/*` merges on five green checks: macOS Tests, iOS and Package Tests, SwiftLint, Repo Hygiene and PR title. Nothing bypasses them.
 - Read why a CI check failed before any re-run.
 - Workflows: `.claude/rules/ci.md`. Red checks: `.claude/skills/fix-issue/references/verification-apple.md`, Reading CI.
 
@@ -129,8 +129,8 @@ Claude Code loads a rule when it reads or edits a file the rule covers. Under Co
 | Rule | Read before editing |
 | --- | --- |
 | `ai-mcp-security.md` | `TablePro/Core/AI`, `TablePro/Core/MCP`, `Packages/TableProMacCore/Sources/TableProMCP` |
-| `changelog.md` | `CHANGELOG.md` |
-| `ci.md` | `.github/workflows`, `.github/actions`, `.github/scripts`, `.github/actionlint.yaml`, `.github/*baseline*`, `scripts/ci`, `.swiftlint.yml`, `**/.swiftlint.yml` |
+| `changelog.md` | `CHANGELOG.md`, `changelog.d`, `towncrier.toml` |
+| `ci.md` | `.github/workflows`, `.github/actions`, `.github/actionlint.yaml`, `.github/*baseline*`, `scripts/ci`, `scripts/release`, `.swiftlint.yml`, `**/.swiftlint.yml` |
 | `connection-window.md` | `TablePro/Core/Services/Infrastructure`, `TablePro/Models/Connection`, `TablePro/Core/Database/DatabaseManager*.swift`, `Packages/TableProCore/Sources/TableProDatabase`, `TablePro/Views/Main` |
 | `data-grid.md` | `TablePro/Views/Results`, `TablePro/Core/DataGrid`, `TableProTests/Views/Results` |
 | `data-sync-storage.md` | `TablePro/Core/**/*Storage*.swift`, `TablePro/Core/**/*Sync*.swift`, `TablePro/Core/Database`, `TablePro/Core/Plugins/PluginMetadataRegistry*.swift`, `TablePro/Core/Services/Query`, `Packages/TableProCore/Sources/TableProSyncTransport`, `CloudKit` |
@@ -139,7 +139,7 @@ Claude Code loads a rule when it reads or edits a file the rule covers. Under Co
 | `mongodb-driver.md` | `Plugins/MongoDBDriverPlugin`, `Plugins/MQLExportPlugin` |
 | `mysql-driver.md` | `Plugins/MySQLDriverPlugin`, `Packages/TableProCore/Sources/TableProMySQLCore`, `TableProMobile/**/*MySQL*`, `TableProMobile/**/*MariaDB*` |
 | `native-bridges.md` | `Native`, `Plugins/DamengDriverPlugin`, `Plugins/HanaDriverPlugin`, `scripts/build-dameng.sh`, `scripts/build-hana.sh` |
-| `plugin-system.md` | `Plugins`, `Packages/TableProCore/Sources/TableProPluginKit`, `Packages/TableProCore/Sources/TableProMySQLCore`, `Packages/TableProCore/Sources/TableProPostgreSQLCore`, `Packages/TableProCore/Sources/TableProRedisCore`, `Packages/*/Package.swift`, `project.yml`, `TableProMobile/project.yml`, `.github/workflows/build-plugin.yml`, `.github/plugin-registry.json`, `scripts/*plugin*` |
+| `plugin-system.md` | `Plugins`, `Packages/TableProCore/Sources/TableProPluginKit`, `Packages/TableProCore/Sources/TableProMySQLCore`, `Packages/TableProCore/Sources/TableProPostgreSQLCore`, `Packages/TableProCore/Sources/TableProRedisCore`, `Packages/*/Package.swift`, `project.yml`, `TableProMobile/project.yml`, `Configs/PluginKit.xcconfig`, `.github/plugin-registry.json`, `scripts/*plugin*` |
 | `redis-driver.md` | `Plugins/RedisDriverPlugin`, `Packages/TableProCore/Sources/TableProRedisCore` |
 | `split-views.md` | `TablePro/**/*Split*.swift`, `TablePro/Core/Services/Infrastructure/WorkspacePane*.swift` |
 | `tests.md` | `TableProTests`, `TableProUITests`, `Plugins/*Tests`, `Packages/*/Tests`, `TableProMobile/TableProMobileTests`, `TestPlans`, `scripts/ci/check-test-plans.py`, `scripts/clean-test-residue.sh` |
