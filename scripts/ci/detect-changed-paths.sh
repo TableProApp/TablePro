@@ -31,8 +31,9 @@ case "$SUITE" in
         PATTERNS=('Plugins/' 'Packages/TableProCore/' 'Packages/TableProOracle/' 'Native/' 'Libs/'
             'Configs/' 'project\.yml$'
             'TablePro\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/Package\.resolved$'
-            'scripts/(build-dameng|build-hana)\.sh$' 'scripts/lib/' 'scripts/ci/verify-plugin-loads\.sh$'
-            '\.github/actions/setup-xcode/' '\.github/workflows/macos-tests\.yml$') ;;
+            'scripts/(generate-project|download-libs|create-openssl-dylibs|build-dameng|build-hana)\.sh$'
+            'scripts/lib/' 'scripts/ci/verify-plugin-loads\.sh$'
+            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/macos-tests\.yml$') ;;
     ios)
         # The package's TableProPluginKit target is a symlink, so git reports its changes here.
         PATTERNS=('TableProMobile/' 'Libs/' 'Plugins/TableProPluginKit/'
