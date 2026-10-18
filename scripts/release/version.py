@@ -26,7 +26,6 @@ REQUIRED_RUNS = (
 )
 DETECTOR = "scripts/ci/detect-changed-paths.sh"
 FRAGMENTS = "changelog.d/"
-WALK_DEPTH = 50
 POLL_SECONDS = 60
 PENDING_STATUSES = {"queued", "in_progress", "waiting", "requested", "pending"}
 
@@ -131,8 +130,8 @@ class Git:
     def list_tree(self, ref: str, path: str) -> List[str]:
         return self._git("ls-tree", "--name-only", ref, "--", path).stdout.splitlines()
 
-    def first_parents(self, ref: str, limit: int) -> List[str]:
-        return self._git("rev-list", "--first-parent", f"--max-count={limit}", f"{ref}^{{commit}}").stdout.split()
+    def first_parents(self, ref: str) -> List[str]:
+        return self._git("rev-list", "--first-parent", f"{ref}^{{commit}}").stdout.split()
 
 
 class GitHub:
@@ -278,23 +277,35 @@ def ci_errors(git: Git, github: GitHub, version: Version, changed: Callable[[str
     tag_commit = git.commit(version.tag)
     if git.commit("HEAD") != tag_commit:
         return [f"check out {version.tag} first: the coverage check diffs against HEAD"]
-    shas = git.first_parents(version.tag, WALK_DEPTH)
+    shas = git.first_parents(version.tag)
     errors = []
     for workflow, job, suite in REQUIRED_RUNS:
         try:
-            green = next((sha for sha in shas if is_green(github, workflow, job, sha, sleep, log)), None)
+            error = coverage_error(github, workflow, job, suite, shas, version.tag, changed, sleep, log)
         except CheckFailure as failure:
-            errors.append(str(failure))
-            continue
-        if green is None:
-            errors.append(f"no {job} run that was not skipped among the {len(shas)} first-parent commits "
-                          f"of {version.tag}")
-        # A commit with no run of its own would otherwise borrow a verdict that never covered it.
-        elif green != tag_commit and changed(green, suite):
-            errors.append(f"{job} passed on {green}, but files it reads changed before {version.tag}")
-        else:
-            log(f"{job}: green on {green}")
+            error = str(failure)
+        if error is not None:
+            errors.append(error)
     return errors
+
+
+def coverage_error(github: GitHub, workflow: str, job: str, suite: str, shas: List[str], tag: str,
+                   changed: Callable[[str, str], bool], sleep: Callable[[float], None],
+                   log: Callable[[str], None]) -> Optional[str]:
+    # The walk ends at the newest commit that changed the files the job reads: a run on any
+    # commit before it never covered that change, however many skipped commits follow it.
+    newer = None
+    for sha in shas:
+        is_tag = newer is None
+        if is_green(github, workflow, job, sha, sleep, log):
+            if not is_tag and changed(sha, suite):
+                return f"{job} passed on {sha}, but files it reads changed before {tag}"
+            log(f"{job}: green on {sha}")
+            return None
+        if not is_tag and changed(sha, suite):
+            return f"no {job} run that was not skipped on {newer}, which changed files it reads, or after it"
+        newer = sha
+    return f"no {job} run that was not skipped among the {len(shas)} first-parent commits of {tag}"
 
 
 def check(tag: str, git: Git, github: GitHub, changed: Optional[Callable[[str, str], bool]] = None,

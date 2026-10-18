@@ -134,6 +134,7 @@ class CheckTests(unittest.TestCase):
         self.logged = []
         self.diffs = []
         self.changed_suites = set()
+        self.changed_bases = set()
         self.base = self.repo.commit("0.81.0", MAIN_CHANGELOG)
         self.repo.git("tag", "v0.81.0")
         self.cut = self.repo.commit("feat: something")
@@ -141,7 +142,7 @@ class CheckTests(unittest.TestCase):
 
     def changed(self, base, suite):
         self.diffs.append((base, suite))
-        return suite in self.changed_suites
+        return suite in self.changed_suites or (base, suite) in self.changed_bases
 
     def check(self, tag, github):
         if self.git.exists(f"refs/tags/{tag}"):
@@ -228,6 +229,31 @@ class CheckTests(unittest.TestCase):
             jobs[("branch-" + workflow, job)] = ["skipped"]
         github = FakeGitHub(releases=[("v0.81.0", False)], runs=runs, jobs=jobs)
         self.assertEqual(self.check("v0.82.0-beta.1", github), [])
+
+    def test_skipped_commits_past_fifty_still_borrow_the_last_green_run(self):
+        tail = self.cut
+        for index in range(60):
+            tail = self.repo.commit(f"feat(linux): change {index}")
+        self.repo.line("0.82", tail)
+        self.repo.git("tag", "v0.82.0-beta.1", tail)
+        runs, jobs = green_on(self.cut)
+        github = FakeGitHub(releases=[("v0.81.0", False)], runs=runs, jobs=jobs)
+        self.assertEqual(self.check("v0.82.0-beta.1", github), [])
+        self.assertIn(f"macOS Tests: green on {self.cut}", self.logged)
+
+    def test_the_walk_stops_at_the_newest_change_to_the_files_a_job_reads(self):
+        between = self.repo.commit("feat: before the change")
+        touch = self.repo.commit("feat: changes the app")
+        tail = self.repo.commit("docs: after the change")
+        self.repo.line("0.82", tail)
+        self.repo.git("tag", "v0.82.0-beta.1", tail)
+        self.changed_bases = {(between, "macos")}
+        runs, jobs = green_on(self.cut)
+        github = FakeGitHub(releases=[("v0.81.0", False)], runs=runs, jobs=jobs)
+        self.assertEqual(self.check("v0.82.0-beta.1", github),
+                         [f"no macOS Tests run that was not skipped on {touch}, which changed files it reads, "
+                          f"or after it"])
+        self.assertNotIn(("macos-tests.yml", self.cut), github.run_queries)
 
     def test_no_run_in_the_walk_refuses_the_tag(self):
         self.repo.git("tag", "v0.82.0-beta.1", self.cut)
