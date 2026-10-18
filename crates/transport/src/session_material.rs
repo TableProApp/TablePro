@@ -335,6 +335,24 @@ mod tests {
             .expect("a file exactly at the limit must be accepted");
     }
 
+    #[test]
+    fn a_file_exactly_at_the_limit_is_read_whole() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("ca.pem");
+        let mut content = vec![b'x'; MAX_MATERIAL_FILE_BYTES as usize];
+        content[0] = b'f';
+        let last = content.len() - 1;
+        content[last] = b'l';
+        std::fs::write(&path, &content).unwrap();
+        let read = read_material_file(&path).expect("a file at the limit is readable");
+        assert_eq!(
+            read.len(),
+            content.len(),
+            "the last byte at the limit must not be dropped"
+        );
+        assert_eq!(read, content);
+    }
+
     #[tokio::test]
     async fn hop_zero_password_auth_is_not_refused_by_the_jump_guard() {
         let mut saved = sqlite_saved();
