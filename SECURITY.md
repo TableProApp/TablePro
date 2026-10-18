@@ -26,4 +26,4 @@ Write in English or Vietnamese.
 - The Mac app: the newest release line, plus security fixes on the line before it ([RELEASING.md](RELEASING.md#branches)). Plugins ship with the app and follow it.
 - The iPhone and iPad app, the Linux app and the website: the latest release only.
 
-A fix ships in a new release and is listed under **Security** in [CHANGELOG.md](CHANGELOG.md), or in `linux/CHANGELOG.md` for the Linux app. Check that the problem is still in the latest release before you report it.
+A fix ships in a new release and is listed under **Security** in [CHANGELOG.md](CHANGELOG.md), or in `linux/CHANGELOG.md` for the Linux app. Check that the problem is still in a supported version before you report it.
