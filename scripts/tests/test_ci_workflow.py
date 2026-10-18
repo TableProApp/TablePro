@@ -412,7 +412,7 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("flock", builder)
         self.assertIn('test -e "/probe/', builder)
         self.assertIn('.floor-package', builder)
-        self.assertLess(builder.index('test -e "/probe/'), builder.index("flock 9"))
+        self.assertLess(builder.index("flock 9"), builder.index("docker build -q"))
         self.assertIn("chown", builder)
         floor_script = (ROOT / "scripts/test-distro-floor.sh").read_text()
         self.assertIn('apt-get install -y -qq "/package/$DISTRO_FLOOR_DEB_NAME"', floor_script)
@@ -424,6 +424,12 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("python3-pyatspi", runtime_image)
         self.assertIn("gir1.2-gtk-4.0", runtime_image)
         self.assertNotIn("rustup", runtime_image)
+
+    def test_distro_package_builder_uses_a_distinct_image_tag(self):
+        builder = (ROOT / "scripts/distro-floor-package.sh").read_text()
+        self.assertIn("image=bookie-floor-package-ubuntu-24.04", builder)
+        self.assertIn('docker build -q -t "$image"', builder)
+        self.assertIn('"$image" bash -ceu', builder)
 
 
 if __name__ == "__main__":
