@@ -4,11 +4,11 @@ import Foundation
 import Testing
 
 struct WorkspaceRailMetricsTests {
-    @Test("Rail width follows the system sidebar icon size")
+    @Test("Rail minimum width follows the system sidebar icon size")
     func widthFollowsRowSizeStyle() {
-        #expect(WorkspaceRailMetrics.layout(for: .small).width == WorkspaceRailMetrics.small.width)
-        #expect(WorkspaceRailMetrics.layout(for: .medium).width == WorkspaceRailMetrics.medium.width)
-        #expect(WorkspaceRailMetrics.layout(for: .large).width == WorkspaceRailMetrics.large.width)
+        #expect(WorkspaceRailMetrics.layout(for: .small).minimumWidth == WorkspaceRailMetrics.small.minimumWidth)
+        #expect(WorkspaceRailMetrics.layout(for: .medium).minimumWidth == WorkspaceRailMetrics.medium.minimumWidth)
+        #expect(WorkspaceRailMetrics.layout(for: .large).minimumWidth == WorkspaceRailMetrics.large.minimumWidth)
     }
 
     @Test("An unresolved row size falls back to the medium layout")
@@ -17,12 +17,19 @@ struct WorkspaceRailMetricsTests {
         #expect(WorkspaceRailMetrics.layout(for: .custom) == WorkspaceRailMetrics.medium)
     }
 
-    @Test("Every layout leaves room for a label and stays narrow")
+    @Test("Every minimum leaves room for a label and stays narrow")
     func widthsLeaveRoomForALabel() {
         for layout in [WorkspaceRailMetrics.small, WorkspaceRailMetrics.medium, WorkspaceRailMetrics.large] {
             // The source-list style spends 32pt of the row on insets.
-            #expect(layout.width - 32 >= 48)
-            #expect(layout.width <= 120)
+            #expect(layout.minimumWidth - 32 >= 48)
+            #expect(layout.minimumWidth <= 120)
+        }
+    }
+
+    @Test("The maximum width is wider than every minimum")
+    func maximumHoldsEveryMinimum() {
+        for layout in [WorkspaceRailMetrics.small, WorkspaceRailMetrics.medium, WorkspaceRailMetrics.large] {
+            #expect(WorkspaceRailMetrics.maximumWidth > layout.minimumWidth)
         }
     }
 
@@ -38,7 +45,7 @@ struct WorkspaceRailMetricsTests {
     func rowClearsTheDefaultControlSize() {
         for layout in [WorkspaceRailMetrics.small, WorkspaceRailMetrics.medium, WorkspaceRailMetrics.large] {
             #expect(WorkspaceRailCellView.rowHeight(for: layout) >= 28)
-            #expect(layout.width >= 28)
+            #expect(layout.minimumWidth >= 28)
         }
     }
 
@@ -52,10 +59,10 @@ struct WorkspaceRailMetricsTests {
     }
 
     @MainActor
-    @Test("Larger sidebar icon sizes produce larger rails")
+    @Test("Larger sidebar icon sizes produce larger minimum rails")
     func layoutsScaleMonotonically() {
-        #expect(WorkspaceRailMetrics.small.width < WorkspaceRailMetrics.medium.width)
-        #expect(WorkspaceRailMetrics.medium.width < WorkspaceRailMetrics.large.width)
+        #expect(WorkspaceRailMetrics.small.minimumWidth < WorkspaceRailMetrics.medium.minimumWidth)
+        #expect(WorkspaceRailMetrics.medium.minimumWidth < WorkspaceRailMetrics.large.minimumWidth)
         #expect(WorkspaceRailMetrics.small.iconSize < WorkspaceRailMetrics.large.iconSize)
         #expect(
             WorkspaceRailCellView.rowHeight(for: WorkspaceRailMetrics.small)

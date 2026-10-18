@@ -53,7 +53,7 @@ struct WorkspaceRailCellRenderingTests {
         layout: WorkspaceRailMetrics.Layout = WorkspaceRailMetrics.medium
     ) -> WorkspaceRailCellView {
         let view = WorkspaceRailCellView(frame: NSRect(
-            x: 0, y: 0, width: layout.width, height: WorkspaceRailCellView.rowHeight(for: layout)
+            x: 0, y: 0, width: layout.minimumWidth, height: WorkspaceRailCellView.rowHeight(for: layout)
         ))
         view.appearance = NSAppearance(named: .aqua)
         view.configure(entry: entry(name: name, container: container, color: color, status: status), layout: layout)
@@ -274,6 +274,25 @@ struct WorkspaceRailCellRenderingTests {
         }
     }
 
+    /// What #3522 asked for: a name the narrowest strip cuts short reads in full once the strip is
+    /// dragged wide, still on two lines at their full height.
+    @Test("A strip dragged wide shows a long name in full")
+    func wideStripShowsTheWholeName() throws {
+        let tile = entry(name: "vladimir-production.ru", container: "vladimir_group")
+        for layout in Self.layouts {
+            let narrow = try #require(HostedRail(entries: [tile], layout: layout).cell(atRow: 0).renderedLabel)
+            let wide = try #require(
+                HostedRail(entries: [tile], layout: layout, width: WorkspaceRailMetrics.maximumWidth)
+                    .cell(atRow: 0).renderedLabel
+            )
+            let needed = try #require(wide.cell).cellSize.width
+
+            #expect(needed > narrow.frame.width, "the name already fits the \(layout) minimum")
+            #expect(needed <= wide.frame.width, "the name is cut short at the maximum width in \(layout)")
+            #expect(wide.frame.height >= wide.intrinsicContentSize.height - 0.5, "label squeezed in \(layout)")
+        }
+    }
+
     /// The selection fill covers the whole row, so the cell's own edges are the fill's, and the
     /// padding inside them is all that separates one tile from the next. Centring an odd number of
     /// points snaps to whole pixels on a 1x display, so the two sides may differ by one pixel there.
@@ -422,11 +441,16 @@ private final class HostedRail: NSObject, NSTableViewDataSource, NSTableViewDele
     private let layout: WorkspaceRailMetrics.Layout
     private let rowHeight: CGFloat
 
-    init(entries: [WorkspaceRailEntry], layout: WorkspaceRailMetrics.Layout, selectedRow: Int? = nil) {
+    init(
+        entries: [WorkspaceRailEntry],
+        layout: WorkspaceRailMetrics.Layout,
+        selectedRow: Int? = nil,
+        width: CGFloat? = nil
+    ) {
         self.entries = entries
         self.layout = layout
         rowHeight = WorkspaceRailCellView.rowHeight(for: layout)
-        let frame = NSRect(x: 0, y: 0, width: layout.width, height: 600)
+        let frame = NSRect(x: 0, y: 0, width: width ?? layout.minimumWidth, height: 600)
         window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .aqua)

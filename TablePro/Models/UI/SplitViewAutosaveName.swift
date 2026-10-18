@@ -9,6 +9,9 @@ internal enum SplitViewAutosaveName {
     /// Never version this: `NSSplitView` clamps a restored frame to the current minimums, and a new key discards every saved width.
     internal static let base = "com.TablePro.mainSplit"
 
+    /// One width for the connections strip in every window, as the main split keeps one sidebar width.
+    internal static let workspaceRail = "com.TablePro.workspaceRail"
+
     internal static let historyDrawerPrefix = "HistoryDrawer-"
 
     /// Per connection, not per tab: the query tab branch has no `.id(tab.id)`, so its split view keeps the name it was born with.

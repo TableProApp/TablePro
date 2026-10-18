@@ -316,7 +316,10 @@ internal final class MainSplitViewController: NSSplitViewController {
         navigationSidebar = NavigationSidebarViewController()
         navigationSidebar.railController.host = self
         navigationSidebar.railController.onLayoutChange = { [weak self] _ in
-            self?.navigationSidebar.applyRailWidth(animated: false)
+            self?.navigationSidebar.applyRailLayout()
+            self?.recomputeWindowMinSize()
+        }
+        navigationSidebar.onRailWidthChange = { [weak self] in
             self?.recomputeWindowMinSize()
         }
         navigationSidebar.objectBrowser.onScopeSelection = { [weak self] tab in
@@ -324,8 +327,8 @@ internal final class MainSplitViewController: NSSplitViewController {
         }
         sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: navigationSidebar)
         sidebarSplitItem.canCollapse = true
-        sidebarSplitItem.minimumThickness = Self.sidebarMinThickness
-        sidebarSplitItem.maximumThickness = Self.sidebarMaxThickness
+        sidebarSplitItem.minimumThickness = Self.resolveSidebarMinimumThickness(railAllowance: 0)
+        sidebarSplitItem.maximumThickness = Self.resolveSidebarMaximumThickness(railAllowance: 0)
         addSplitViewItem(sidebarSplitItem)
 
         detailPaneHost = WorkspacePaneHost()
@@ -1217,9 +1220,9 @@ internal final class MainSplitViewController: NSSplitViewController {
         applyChromeStandingOnRail()
     }
 
-    /// The sidebar item's minimum is a required constraint, so it lands on the very next layout
-    /// pass. Applying it outside the rail's own animation snapped the pane its full width wide in
-    /// one frame while the rail slid in behind it, so the object browser lurched and settled back.
+    /// The sidebar item's range is a required constraint, so it lands on the very next layout pass.
+    /// The strip applies it at the point in its own animation where it no longer moves anything:
+    /// before a collapse, and once a reveal has finished widening the sidebar itself.
     private func setWorkspaceRailVisible(_ visible: Bool) {
         guard let navigationSidebar, navigationSidebar.isRailVisible != visible else { return }
         navigationSidebar.setRailVisible(visible, animated: view.window != nil) { [weak self] in
@@ -1375,7 +1378,7 @@ internal final class MainSplitViewController: NSSplitViewController {
 
     static let baseWindowMinWidth: CGFloat = 720
     static let baseWindowMinHeight: CGFloat = 480
-    static let sidebarMinThickness: CGFloat = 280
+    static let sidebarMinThickness = NavigationSidebarViewController.objectBrowserMinimumThickness
     static let defaultDetailMinThickness: CGFloat = 400
     static let inspectorMinThickness: CGFloat = 270
     private static let sidebarMaxThickness: CGFloat = 600
@@ -1408,6 +1411,11 @@ internal final class MainSplitViewController: NSSplitViewController {
     /// squeeze the object browser below the width it is designed for.
     static func resolveSidebarMinimumThickness(railAllowance: CGFloat) -> CGFloat {
         sidebarMinThickness + railAllowance
+    }
+
+    /// The maximum is the object browser's too, so a strip dragged wide does not cap the browser.
+    static func resolveSidebarMaximumThickness(railAllowance: CGFloat) -> CGFloat {
+        sidebarMaxThickness + railAllowance
     }
 
     static func resolveWindowMinWidth(
@@ -1449,17 +1457,21 @@ internal final class MainSplitViewController: NSSplitViewController {
         )
     }
 
-    private func applySidebarMinimumThickness() {
+    private func applySidebarThicknessRange() {
         guard let sidebarSplitItem else { return }
-        let resolved = Self.resolveSidebarMinimumThickness(
-            railAllowance: navigationSidebar?.railAllowance ?? 0
-        )
-        guard sidebarSplitItem.minimumThickness != resolved else { return }
-        sidebarSplitItem.minimumThickness = resolved
+        let railAllowance = navigationSidebar?.railAllowance ?? 0
+        let minimum = Self.resolveSidebarMinimumThickness(railAllowance: railAllowance)
+        let maximum = Self.resolveSidebarMaximumThickness(railAllowance: railAllowance)
+        if sidebarSplitItem.minimumThickness != minimum {
+            sidebarSplitItem.minimumThickness = minimum
+        }
+        if sidebarSplitItem.maximumThickness != maximum {
+            sidebarSplitItem.maximumThickness = maximum
+        }
     }
 
     func recomputeWindowMinSize() {
-        applySidebarMinimumThickness()
+        applySidebarThicknessRange()
         guard let window = view.window else { return }
         let sidebarVisible = !(sidebarSplitItem?.isCollapsed ?? true)
         let inspectorVisible = !(inspectorSplitItem?.isCollapsed ?? true)

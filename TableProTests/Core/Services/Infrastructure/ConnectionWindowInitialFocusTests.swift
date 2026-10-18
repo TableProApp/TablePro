@@ -18,7 +18,7 @@ struct ConnectionWindowInitialFocusTests {
         let host = SidebarHost()
         defer { host.tearDown() }
 
-        #expect(host.rail.isHidden)
+        #expect(host.rail.isHiddenOrHasHiddenAncestor)
         #expect(host.rail.firstKeyViewDescendant == nil)
     }
 
@@ -29,7 +29,7 @@ struct ConnectionWindowInitialFocusTests {
 
         host.sidebar.setRailVisible(true, animated: false)
 
-        #expect(!host.rail.isHidden)
+        #expect(!host.rail.isHiddenOrHasHiddenAncestor)
         #expect(host.rail.firstKeyViewDescendant != nil)
     }
 
@@ -41,7 +41,7 @@ struct ConnectionWindowInitialFocusTests {
         host.sidebar.setRailVisible(true, animated: false)
         host.sidebar.setRailVisible(false, animated: false)
 
-        #expect(host.rail.isHidden)
+        #expect(host.rail.isHiddenOrHasHiddenAncestor)
         #expect(host.rail.firstKeyViewDescendant == nil)
     }
 

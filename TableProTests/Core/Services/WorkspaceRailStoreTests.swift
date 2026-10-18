@@ -466,7 +466,7 @@ struct WorkspaceRailCellTextTests {
         let cell = WorkspaceRailCellView(frame: NSRect(
             x: 0,
             y: 0,
-            width: WorkspaceRailMetrics.medium.width,
+            width: WorkspaceRailMetrics.medium.minimumWidth,
             height: WorkspaceRailCellView.rowHeight(for: WorkspaceRailMetrics.medium)
         ))
         cell.configure(
@@ -684,7 +684,7 @@ struct WorkspaceRailCellTextTests {
         let cell = WorkspaceRailCellView(frame: NSRect(
             x: 0,
             y: 0,
-            width: WorkspaceRailMetrics.medium.width,
+            width: WorkspaceRailMetrics.medium.minimumWidth,
             height: WorkspaceRailCellView.rowHeight(for: WorkspaceRailMetrics.medium)
         ))
         let rack = try #require(NSImage(systemSymbolName: Self.customIcon, accessibilityDescription: nil))

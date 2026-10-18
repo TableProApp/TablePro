@@ -108,7 +108,7 @@ struct MainSplitViewControllerDetailWidthTests {
         #expect(width == 1_112)
     }
 
-    @Test("The workspace rail widens the window minimum by its own fixed width")
+    @Test("The workspace rail widens the window minimum by its own width")
     func railWidensWindowMinimum() {
         let withoutRail = MainSplitViewController.resolveWindowMinWidth(
             detailMinimum: MainSplitViewController.defaultDetailMinThickness,
@@ -122,11 +122,23 @@ struct MainSplitViewControllerDetailWidthTests {
             sidebarVisible: true,
             inspectorVisible: true,
             sidebarMinimum: MainSplitViewController.resolveSidebarMinimumThickness(
-                railAllowance: WorkspaceRailMetrics.medium.width + 1
+                railAllowance: WorkspaceRailMetrics.medium.minimumWidth + 1
             ),
             dividerThickness: 1
         )
-        #expect(withRail == withoutRail + WorkspaceRailMetrics.medium.width + 1)
+        #expect(withRail == withoutRail + WorkspaceRailMetrics.medium.minimumWidth + 1)
+    }
+
+    @Test(
+        "The object browser keeps the same width range whatever the strip's width",
+        arguments: [0, WorkspaceRailMetrics.medium.minimumWidth + 1, WorkspaceRailMetrics.maximumWidth + 1]
+    )
+    func objectBrowserRangeIgnoresTheRail(railAllowance: CGFloat) {
+        let minimum = MainSplitViewController.resolveSidebarMinimumThickness(railAllowance: railAllowance)
+        let maximum = MainSplitViewController.resolveSidebarMaximumThickness(railAllowance: railAllowance)
+        #expect(minimum - railAllowance == MainSplitViewController.sidebarMinThickness)
+        #expect(maximum - railAllowance == MainSplitViewController.resolveSidebarMaximumThickness(railAllowance: 0))
+        #expect(maximum > minimum)
     }
 
     @Test("A collapsed sidebar takes the rail with it, so it reserves no width")
@@ -136,7 +148,7 @@ struct MainSplitViewControllerDetailWidthTests {
             sidebarVisible: false,
             inspectorVisible: false,
             sidebarMinimum: MainSplitViewController.resolveSidebarMinimumThickness(
-                railAllowance: WorkspaceRailMetrics.medium.width + 1
+                railAllowance: WorkspaceRailMetrics.medium.minimumWidth + 1
             ),
             dividerThickness: 1
         )

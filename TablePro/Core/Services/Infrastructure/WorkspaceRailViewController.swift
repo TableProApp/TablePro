@@ -32,6 +32,15 @@ internal protocol WorkspaceRailHost: AnyObject {
 internal final class WorkspaceRailTableView: NSTableView {
     internal var onMiddleClick: ((Int) -> Void)?
 
+    /// Set by the window's rule the moment the strip is told to hide. AppKit hides a collapsing split
+    /// item only once its animation ends, and until then the list kept its full frame, so a window
+    /// first shown during that animation picked it as its first key view.
+    internal var isStripShown = true
+
+    override internal var canBecomeKeyView: Bool {
+        isStripShown && super.canBecomeKeyView
+    }
+
     override internal init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("workspace"))
@@ -86,6 +95,7 @@ internal final class WorkspaceRailViewController: NSViewController {
 
     internal var onLayoutChange: ((WorkspaceRailMetrics.Layout) -> Void)?
     internal var onEntryCountChange: ((Int) -> Void)?
+    internal var onWidthChange: (() -> Void)?
     internal weak var host: (any WorkspaceRailHost)?
 
     private let scrollView = NSScrollView()
@@ -102,6 +112,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         didSet { rowHeight = WorkspaceRailCellView.rowHeight(for: layout) }
     }
     private lazy var rowHeight = WorkspaceRailCellView.rowHeight(for: layout)
+    private var reportedWidth: CGFloat = 0
     private var changeCancellable: AnyCancellable?
     private let activationObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
     private let scrollObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
@@ -136,6 +147,11 @@ internal final class WorkspaceRailViewController: NSViewController {
 
     internal var currentLayout: WorkspaceRailMetrics.Layout {
         layout
+    }
+
+    internal var isStripShown: Bool {
+        get { tableView.isStripShown }
+        set { tableView.isStripShown = newValue }
     }
 
     override func loadView() {
@@ -306,11 +322,16 @@ internal final class WorkspaceRailViewController: NSViewController {
         }
     }
 
+    /// Reported from here rather than from the split view's resize callback, which runs before the
+    /// strip inside the item has taken its new width.
     override func viewDidLayout() {
         super.viewDidLayout()
         tableView.sizeLastColumnToFit()
         applyBottomInset()
         revealSelectedRowIfNeeded()
+        guard view.frame.width != reportedWidth else { return }
+        reportedWidth = view.frame.width
+        onWidthChange?()
     }
 
     // MARK: - Data

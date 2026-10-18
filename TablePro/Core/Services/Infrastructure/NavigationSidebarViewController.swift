@@ -13,20 +13,38 @@ import SwiftUI
 /// privilege had to change hands whenever the rail appeared, which no amount of re-applying
 /// made reliable. Composing them inside one sidebar item leaves AppKit with the single
 /// sidebar it expects, and showing or hiding the rail becomes an ordinary layout change.
+///
+/// Inside that item the two share a split view of their own, so the line between them is a divider
+/// the user drags to widen the strip, and AppKit keeps the width while the strip is hidden.
 @MainActor
 internal final class NavigationSidebarViewController: NSViewController {
+    /// The object browser's floor. A strip dragged wider than the browser can give up widens the sidebar.
+    internal static let objectBrowserMinimumThickness: CGFloat = 280
+
     internal let railController: WorkspaceRailViewController
     internal let objectBrowser: SidebarContainerViewController
 
-    private let separator = NSBox()
-    private var railWidthConstraint: NSLayoutConstraint!
-    private var separatorWidthConstraint: NSLayoutConstraint!
+    /// The strip's own width moved: a drag, a restored width, or a sidebar icon size.
+    internal var onRailWidthChange: (() -> Void)?
+
+    private let splitController = NSSplitViewController()
+    private let railItem: NSSplitViewItem
+    private let browserItem: NSSplitViewItem
 
     internal private(set) var isRailVisible = false
 
+    /// While the strip slides in, its width is not yet the sidebar's to make room for: the strip
+    /// widens the sidebar itself, a frame at a time.
+    private var isRevealingRail = false
+    private var revealGeneration = 0
+
     internal init() {
-        self.railController = WorkspaceRailViewController()
-        self.objectBrowser = SidebarContainerViewController()
+        let railController = WorkspaceRailViewController()
+        let objectBrowser = SidebarContainerViewController()
+        self.railController = railController
+        self.objectBrowser = objectBrowser
+        self.railItem = NSSplitViewItem(viewController: railController)
+        self.browserItem = NSSplitViewItem(viewController: objectBrowser)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -38,105 +56,126 @@ internal final class NavigationSidebarViewController: NSViewController {
     override func loadView() {
         view = NSView()
 
-        addChild(railController)
-        addChild(objectBrowser)
-
-        let rail = railController.view
-        let browser = objectBrowser.view
-        separator.boxType = .separator
-
-        for child in [rail, separator, browser] {
-            child.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(child)
+        _ = railController.view
+        railController.isStripShown = false
+        railController.refreshLayoutIfNeeded()
+        railController.onWidthChange = { [weak self] in
+            guard let self, !self.isRevealingRail else { return }
+            self.onRailWidthChange?()
         }
+        railItem.minimumThickness = railController.currentLayout.minimumWidth
+        railItem.maximumThickness = WorkspaceRailMetrics.maximumWidth
+        railItem.holdingPriority = .splitPaneHolding
+        /// Shown and hidden only by the window's rule. A divider dragged shut would leave no handle to
+        /// bring the strip back by, since AppKit hides a divider whose outer pane is collapsed.
+        railItem.canCollapse = false
+        browserItem.minimumThickness = Self.objectBrowserMinimumThickness
+        browserItem.holdingPriority = .defaultLow
 
-        railWidthConstraint = rail.widthAnchor.constraint(equalToConstant: 0)
-        separatorWidthConstraint = separator.widthAnchor.constraint(equalToConstant: 0)
+        let splitView = splitController.splitView
+        splitView.isVertical = true
+        splitView.dividerStyle = .thin
+        splitController.addSplitViewItem(railItem)
+        splitController.addSplitViewItem(browserItem)
+        /// AppKit applies the saved record as the split view loads, so the name goes on first.
+        splitView.autosaveName = SplitViewAutosaveName.current(SplitViewAutosaveName.workspaceRail)
 
+        addChild(splitController)
+        let split = splitController.view
+        split.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(split)
         NSLayoutConstraint.activate([
-            rail.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            rail.topAnchor.constraint(equalTo: view.topAnchor),
-            rail.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            railWidthConstraint,
-
-            separator.leadingAnchor.constraint(equalTo: rail.trailingAnchor),
-            separator.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            separator.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            separatorWidthConstraint,
-
-            browser.leadingAnchor.constraint(equalTo: separator.trailingAnchor),
-            browser.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            browser.topAnchor.constraint(equalTo: view.topAnchor),
-            browser.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            split.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            split.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            /// The divider would otherwise run up through the titlebar beside the window buttons.
+            split.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            split.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
 
-        separator.isHidden = true
-        rail.isHidden = true
+        /// Only once the split view has loaded. Collapsing before that discards the saved width and
+        /// keeps the strip out of the window altogether, where it cannot find its window's selection.
+        railItem.isCollapsed = true
     }
 
-    /// The width the sidebar needs on top of the object browser's own minimum. Read from the
-    /// constraints rather than recomputed, because `isHidden` on a plain view leaves its
-    /// constraints active: a separator hidden but still 1pt wide would inset the object browser
-    /// from the window edge on every single-workspace window.
+    /// The width the sidebar needs on top of the object browser's own minimum. Read from the strip's
+    /// own frame, which AppKit leaves at the strip's width while its item collapses and expands, so
+    /// no animated value is ever read: reading those left the sidebar minimum behind after a show.
     internal var railAllowance: CGFloat {
-        railWidthConstraint.constant + separatorWidthConstraint.constant
+        guard isRailVisible, !isRevealingRail else { return 0 }
+        return railWidth + splitController.splitView.dividerThickness
+    }
+
+    /// Clamped as AppKit clamps it, because a strip never shown since launch still has no frame, and
+    /// a width saved at a smaller sidebar icon size lays out at the larger size's minimum.
+    private var railWidth: CGFloat {
+        min(max(railController.view.frame.width, railItem.minimumThickness), railItem.maximumThickness)
+    }
+
+    /// The sidebar icon size sets the strip's minimum. AppKit widens a narrower strip to it and gives
+    /// the earlier width back when the minimum drops again.
+    internal func applyRailLayout() {
+        railItem.minimumThickness = railController.currentLayout.minimumWidth
     }
 
     /// A collapsed strip is hidden, not only zero points wide. AppKit counts a zero-width view as
     /// visible, so the strip's list stayed a key view: it was what the window focused when first
     /// shown, Tab could land on it, and its own Close then took the whole connection on a Command W
-    /// meant for a tab. Hiding it takes it out of the key view loop, the responder chain and the
-    /// accessibility tree.
+    /// meant for a tab. A collapsed split item hides its wrapper, which takes the strip out of the
+    /// key view loop, the responder chain and the accessibility tree, and the list stops offering
+    /// itself as a key view as soon as the strip is told to go.
     ///
-    /// It is shown before it grows and hidden once it has shrunk, so the animation stays visible.
-    /// The keyboard moves on as the collapse starts, because a list that is about to vanish must
-    /// not keep answering keys for the whole of the animation.
-    internal func setRailVisible(_ visible: Bool, animated: Bool, alongside: (() -> Void)? = nil) {
+    /// The keyboard moves on as the collapse starts, because AppKit hides the wrapper only once the
+    /// animation ends, and a list that is about to vanish must not keep answering keys until then.
+    internal func setRailVisible(_ visible: Bool, animated: Bool, alongside: (@MainActor () -> Void)? = nil) {
         guard isRailVisible != visible else { return }
         isRailVisible = visible
-        separator.isHidden = !visible
-        if visible {
-            railController.view.isHidden = false
-        } else {
+        railController.isStripShown = visible
+        finishReveal()
+        if !visible {
             handKeyboardOnFromRail()
         }
-        applyRailWidth(animated: animated, alongside: alongside)
-    }
-
-    /// One animation recipe, not two. Mixing `animator()` with `allowsImplicitAnimation` leaves
-    /// which one drives the geometry up to AppKit, so the declared duration is not reliably the
-    /// one that runs.
-    internal func applyRailWidth(animated: Bool, alongside: (() -> Void)? = nil) {
-        let width = isRailVisible ? railController.currentLayout.width : 0
-        let separatorWidth: CGFloat = isRailVisible ? 1 : 0
-        guard railWidthConstraint.constant != width else {
-            alongside?()
-            hideRailIfCollapsed()
-            return
-        }
         guard animated, view.window != nil else {
-            railWidthConstraint.constant = width
-            separatorWidthConstraint.constant = separatorWidth
             alongside?()
-            hideRailIfCollapsed()
+            railItem.isCollapsed = !visible
             return
         }
+        guard visible else {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = Self.animationDuration
+                alongside?()
+                railItem.animator().isCollapsed = true
+            }
+            return
+        }
+        revealRail(then: alongside)
+    }
+
+    /// The strip holds its own width as a minimum while it slides in, so where the sidebar is too
+    /// narrow for it the strip widens the sidebar a frame at a time. Raising the sidebar's range
+    /// first is a required constraint that lands on the next layout pass: the sidebar snapped its
+    /// full width wide in one frame while the strip slid in behind it.
+    private func revealRail(then alongside: (@MainActor () -> Void)?) {
+        railItem.minimumThickness = railWidth
+        isRevealingRail = true
+        revealGeneration += 1
+        let generation = revealGeneration
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.15
-            railWidthConstraint.animator().constant = width
-            separatorWidthConstraint.animator().constant = separatorWidth
-            alongside?()
+            context.duration = Self.animationDuration
+            railItem.animator().isCollapsed = false
         } completionHandler: { [weak self] in
-            self?.hideRailIfCollapsed()
+            guard let self, self.revealGeneration == generation, self.isRevealingRail else { return }
+            self.finishReveal()
+            alongside?()
         }
     }
 
-    /// Asked again when a collapse finishes, because the strip can have been shown again while it
-    /// was still shrinking.
-    private func hideRailIfCollapsed() {
-        guard !isRailVisible else { return }
-        railController.view.isHidden = true
+    private func finishReveal() {
+        guard isRevealingRail else { return }
+        isRevealingRail = false
+        applyRailLayout()
     }
+
+    private static let animationDuration: TimeInterval = 0.15
 
     /// Moves the keyboard to the next key view, which is what AppKit does itself when a focused
     /// view is hidden, only at the start of the collapse rather than the end. Leaving it with the
