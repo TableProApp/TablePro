@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Themes move to the Trash instead of being deleted. Undo reverts a trash, rename, duplicate or import.
 - Editor tab strip over a themed window on macOS 26 and later drawn in a system fill instead of the theme color.
 - Plugin download progress shown as the bytes arrive instead of jumping to full at the end.
+- Welcome window and What's New show the build number after the version.
 
 ### Fixed
 

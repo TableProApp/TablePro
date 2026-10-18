@@ -6,7 +6,7 @@ on:
     branches: [main, 'release/**']
   workflow_dispatch:
 
-# A pull request keeps only its newest run. Each main commit gets a group of its own, so no main
+# A pull request keeps only its newest run. Each pushed commit gets a group of its own, so no push
 # run is cancelled or replaced by the next merge; runs wait for a free runner instead.
 concurrency:
   group: macos-tests-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
@@ -64,7 +64,7 @@ jobs:
       - name: Generate the Xcode project
         run: scripts/generate-project.sh macos
 
-      # Saved from main only: a cache saved on a pull request ref is visible to that PR alone.
+      # Saved on a push only: a cache saved on a pull request ref is visible to that PR alone.
       - name: Restore Swift package checkouts
         id: spm
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -99,8 +99,8 @@ jobs:
             CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO COMPILATION_CACHE_ENABLE_CACHING=NO \
             | xcbeautify --renderer github-actions
 
-      # The TablePro scheme builds only the bundled plugins. AllPlugins is the one compile of the
-      # registry-only drivers before a plugin tag, so main always runs it.
+      # The TablePro scheme builds only the bundled plugins. AllPlugins also compiles the
+      # registry-only drivers, so every push runs it.
       - name: Set up Go for the SAP HANA helper
         if: ${{ !cancelled() && env.COMPILE_PLUGINS == 'true' }}
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0

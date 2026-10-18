@@ -138,17 +138,7 @@ extension PluginManager {
 
     @discardableResult
     func validateRegistryCompatibility(_ registryPlugin: RegistryPlugin) throws -> RegistryBinary {
-        if let minAppVersion = registryPlugin.minAppVersion {
-            let appVersion = Bundle.main.appVersion
-            if appVersion.compare(minAppVersion, options: .numeric) == .orderedAscending {
-                throw PluginError.incompatibleWithCurrentApp(minimumRequired: minAppVersion)
-            }
-        }
-        return try registryPlugin.resolvedBinary(
-            for: .current,
-            currentKitVersion: Self.currentPluginKitVersion,
-            minimumKitVersion: Self.minimumCompatiblePluginKitVersion
-        )
+        try registryPlugin.resolvedBinary(for: .current, kits: Self.compatibleKits)
     }
 
     func pluginHasLiveConnections(_ registryPlugin: RegistryPlugin) -> Bool {

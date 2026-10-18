@@ -1,8 +1,3 @@
-//
-//  SoftwareUpdater.swift
-//  TablePro
-//
-
 import Combine
 import Foundation
 import os
@@ -21,6 +16,13 @@ import Sparkle
 @MainActor
 final class SoftwareUpdater: ObservableObject {
     static let shared = SoftwareUpdater()
+
+    // A Debug build shares the installed app's defaults and plugin folder, and Sparkle would replace it with a release.
+    #if DEBUG
+    nonisolated static let isUpdatingEnabled = false
+    #else
+    nonisolated static let isUpdatingEnabled = true
+    #endif
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SoftwareUpdater")
 
@@ -53,15 +55,9 @@ final class SoftwareUpdater: ObservableObject {
         refreshFromUpdater()
     }
 
-    /// Started from `AppDelegate.runPostLaunchActivationIfNeeded()`, beside every other deferred
-    /// service, rather than by whichever view reads `shared` first.
-    ///
-    /// Left implicit, the update cycle began as a side effect of building a view. The only
-    /// launch-adjacent reader was the usage heartbeat, which returns before it builds a payload
-    /// when analytics are off, and a person who also reopens their last session builds no welcome
-    /// window either: Sparkle then never started, and no scheduled check ever ran.
+    // Started by AppDelegate at launch: a restored session with analytics off builds nothing that reads `shared`.
     func start() {
-        guard !hasStarted else { return }
+        guard Self.isUpdatingEnabled, !hasStarted else { return }
         hasStarted = true
         controller.startUpdater()
         refreshFromUpdater()
@@ -77,8 +73,6 @@ final class SoftwareUpdater: ObservableObject {
         Self.checkForUpdatesTitle(hasPendingUpdate: hasPendingUpdate)
     }
 
-    /// Split out so the wording can be pinned by a test without a live updater, which building the
-    /// singleton in a unit-test process would mean.
     static func checkForUpdatesTitle(hasPendingUpdate: Bool) -> String {
         hasPendingUpdate
             ? String(localized: "Update Available…")
