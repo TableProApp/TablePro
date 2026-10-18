@@ -13,11 +13,11 @@ use tablepro_core::{DriverError, EditorSession, Value, WriteKind, WriteReport};
 use tablepro_test_support::{FakeEditorSession, FakeReply, FakeRun, Replies};
 use uuid::Uuid;
 
-use super::SessionWindowInput;
-use super::application_notification_sink::ApplicationNotificationSink;
-use super::notification_request::NotificationRequest;
-use super::tests::{TestWindow, WAIT, editors};
-use super::work_notifier::tests::{Notice, RecordingNotificationSink};
+use super::super::SessionWindowInput;
+use super::super::application_notification_sink::ApplicationNotificationSink;
+use super::super::notification_request::NotificationRequest;
+use super::super::work_notifier::tests::{Notice, RecordingNotificationSink};
+use super::{TestWindow, WAIT, editors};
 use crate::runtime::DeliverInput;
 use crate::services::change_origins::ChangeOrigins;
 use crate::services::change_tracker::RowKey;

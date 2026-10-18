@@ -30,8 +30,6 @@ mod edit_input;
 mod fetch;
 mod imp;
 mod layout;
-#[cfg(test)]
-mod load_tests;
 mod page_label;
 mod page_reply;
 mod page_state;
@@ -49,8 +47,6 @@ mod selection_input;
 mod selection_snapshot;
 #[cfg(test)]
 mod tests;
-#[cfg(test)]
-mod total_tests;
 
 use std::cell::Cell;
 use std::collections::{BTreeSet, VecDeque};

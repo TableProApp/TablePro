@@ -262,7 +262,7 @@ The gtk suite sets `GTK_A11Y=test`, so results never depend on an AT-SPI bus. Wi
 
 Two harnesses build the app's real objects over fakes:
 
-- `TestWindow` (`crates/app/src/ui/session_window/tests.rs`) starts a `TableProApplication` with one window on the picker, a saved connection in its list and a `FakeConnector`. `TestWindow::connected` opens that connection and waits for its workspace. Each test registers an application id of its own, so it never meets another test, or a TablePro the developer has open, on the session bus. `test.hold` is the application's `CountingHold`.
+- `TestWindow` (`crates/app/src/ui/session_window/tests/mod.rs`) starts a `TableProApplication` with one window on the picker, a saved connection in its list and a `FakeConnector`. `TestWindow::connected` opens that connection and waits for its workspace. Each test registers an application id of its own, so it never meets another test, or a TablePro the developer has open, on the session bus. `test.hold` is the application's `CountingHold`.
 - `workspace::test_workspace::Workspace` builds a `WorkspaceHandle` with one tab over a scripted connection, for the save and close prompt tests.
 
 Both turn GTK animations off, so a dialog or a page change finishes before the next line runs.

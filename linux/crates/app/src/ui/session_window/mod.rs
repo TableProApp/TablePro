@@ -14,11 +14,7 @@ mod imp;
 mod locate_file;
 mod notification_request;
 mod notification_sink;
-#[cfg(test)]
-mod notification_tests;
 mod notifications;
-#[cfg(test)]
-mod open_file_tests;
 mod picker_page;
 mod resolve_file_identity;
 mod secret_retry;

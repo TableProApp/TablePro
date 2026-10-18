@@ -7,10 +7,10 @@ use tablepro_core::{DriverError, TimeoutPhase};
 use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 
-use super::tests::{
+use super::super::{PagingInput, SaveInput};
+use super::{
     Harness, LogLines, WAIT, estimate, full_page, not_null, not_null_name, paging, rows, rows_from, serving_table, text,
 };
-use super::{PagingInput, SaveInput};
 use crate::services::change_origins::ChangeOrigins;
 use crate::test_support::{drain_main_context, wait_until};
 

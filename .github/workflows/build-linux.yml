@@ -140,7 +140,7 @@ jobs:
         run: |
           # The $0 in the awk program is awk's record, not a shell variable.
           # shellcheck disable=SC2016
-          found=$(find crates/app/src/ui -name '*.rs' ! -name tests.rs -print0 \
+          found=$(find crates/app/src/ui -name '*.rs' ! -name tests.rs ! -path '*/tests/*' -print0 \
             | xargs -0 awk '/^mod tests \{/ { nextfile } /std::fs::/ || /\.(exists|try_exists|is_dir|is_file|is_symlink|canonicalize|read_dir|read_link|symlink_metadata)\(/ || (/_blocking\(/ && !/spawn_blocking_task\(/) { print FILENAME ":" FNR ": " $0 }')
           if [ -n "$found" ]; then
             echo "$found"

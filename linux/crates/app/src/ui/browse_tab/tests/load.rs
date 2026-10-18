@@ -8,11 +8,11 @@ use libadwaita as adw;
 use tablepro_core::{ColumnInfo, DriverError, LossPhase, QueryResult, Value};
 use tablepro_test_support::{CallCounters, FakeReply};
 
-use super::tests::{
+use super::super::{ClipboardInput, PagingInput};
+use super::{
     Harness, Shown, WAIT, column, column_view, delete_action, full_page, header_titles, key, not_null_name, rows,
     serving_table, text, toasts,
 };
-use super::{ClipboardInput, PagingInput};
 use crate::test_support::{after_next_frame, drain_main_context, wait_until};
 use crate::ui::grid::GridCell;
 
@@ -245,7 +245,7 @@ fn a_selection_is_not_put_back_after_a_failed_refresh() {
 /// follows it hands the focus the rows had to Try Again.
 #[gtk4::test]
 fn a_failed_page_turn_hands_the_focus_to_try_again() {
-    let mut script = super::tests::paging(full_page(0), rows(&["unused"]));
+    let mut script = super::paging(full_page(0), rows(&["unused"]));
     script.query_bound = Default::default();
     script
         .query_bound
@@ -531,7 +531,7 @@ fn a_failed_column_read_leaves_no_read_for_a_later_one_to_start() {
     );
 }
 
-fn copy_rows_action(tab: &super::BrowseTab) -> gtk4::gio::SimpleAction {
+fn copy_rows_action(tab: &super::super::BrowseTab) -> gtk4::gio::SimpleAction {
     use gtk4::subclass::prelude::ObjectSubclassIsExt;
     tab.imp()
         .model
@@ -554,8 +554,8 @@ fn the_loading_page_names_a_table_with_an_ampersand() {
         outcome: Ok(rows(&["late"])),
     });
     let fake = crate::test_support::FakeSession::start(script, [], runtime.tasks());
-    let stores = super::tests::TabStores::new();
-    let tab = super::tests::table_tab(
+    let stores = super::TabStores::new();
+    let tab = super::table_tab(
         &fake.session,
         &runtime,
         &stores,

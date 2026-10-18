@@ -3,8 +3,8 @@
 
 use gtk4::prelude::*;
 
-use super::tests::{TestWindow, WAIT};
-use super::*;
+use super::super::*;
+use super::{TestWindow, WAIT};
 use crate::test_support::wait_until;
 
 /// An empty file, which SQLite reads as an empty database.

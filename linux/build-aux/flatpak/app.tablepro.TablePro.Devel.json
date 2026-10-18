@@ -55,6 +55,8 @@
                     "skip": [
                         ".flatpak-builder",
                         "_build",
+                        "_flatpak",
+                        "_packages",
                         "flatpak_app",
                         "repo",
                         "target",

@@ -49,6 +49,6 @@ Run the app from the tree with `meson devenv -C _build ./crates/app/tablepro` in
 
 ## Ship
 
-- A user-visible change gets one fragment under `[Unreleased]` in `linux/CHANGELOG.md`, never in the root `CHANGELOG.md`, which is the macOS release notes.
+- A user-visible change gets one fragment in `linux/changelog.d/` (`.claude/rules/changelog.md`), never in the root `changelog.d/`, which is the macOS release notes.
 - Commit scope `linux`, or `linux-<area>` for one area of the app.
 - A probe worth keeping becomes a test in the crate it measures; the Linux workspace keeps no separate probe directory.

@@ -1,3 +1,6 @@
+mod notification;
+mod open_file;
+
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;

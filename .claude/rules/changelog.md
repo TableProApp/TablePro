@@ -2,7 +2,7 @@
 paths:
   - "**/CHANGELOG.md"
   - "**/changelog.d/**/*"
-  - "towncrier.toml"
+  - "**/towncrier.toml"
 ---
 
 # Changelog

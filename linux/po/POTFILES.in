@@ -144,7 +144,6 @@ crates/app/src/ui/browse_tab/edit_input.rs
 crates/app/src/ui/browse_tab/fetch.rs
 crates/app/src/ui/browse_tab/imp.rs
 crates/app/src/ui/browse_tab/layout.rs
-crates/app/src/ui/browse_tab/load_tests.rs
 crates/app/src/ui/browse_tab/mod.rs
 crates/app/src/ui/browse_tab/page_label.rs
 crates/app/src/ui/browse_tab/page_reply.rs
@@ -161,8 +160,9 @@ crates/app/src/ui/browse_tab/save_input.rs
 crates/app/src/ui/browse_tab/selection_handlers.rs
 crates/app/src/ui/browse_tab/selection_input.rs
 crates/app/src/ui/browse_tab/selection_snapshot.rs
-crates/app/src/ui/browse_tab/tests.rs
-crates/app/src/ui/browse_tab/total_tests.rs
+crates/app/src/ui/browse_tab/tests/load.rs
+crates/app/src/ui/browse_tab/tests/mod.rs
+crates/app/src/ui/browse_tab/tests/total.rs
 crates/app/src/ui/clipboard/clipboard_copy.rs
 crates/app/src/ui/clipboard/clipboard_format.rs
 crates/app/src/ui/clipboard/clipboard_payload.rs
@@ -372,9 +372,7 @@ crates/app/src/ui/session_window/locate_file.rs
 crates/app/src/ui/session_window/mod.rs
 crates/app/src/ui/session_window/notification_request.rs
 crates/app/src/ui/session_window/notification_sink.rs
-crates/app/src/ui/session_window/notification_tests.rs
 crates/app/src/ui/session_window/notifications.rs
-crates/app/src/ui/session_window/open_file_tests.rs
 crates/app/src/ui/session_window/picker_page.rs
 crates/app/src/ui/session_window/resolve_file_identity.rs
 crates/app/src/ui/session_window/secret_retry.rs
@@ -384,7 +382,9 @@ crates/app/src/ui/session_window/session_teardown.rs
 crates/app/src/ui/session_window/session_window_command.rs
 crates/app/src/ui/session_window/session_window_input.rs
 crates/app/src/ui/session_window/sqlite_location_dialog.rs
-crates/app/src/ui/session_window/tests.rs
+crates/app/src/ui/session_window/tests/mod.rs
+crates/app/src/ui/session_window/tests/notification.rs
+crates/app/src/ui/session_window/tests/open_file.rs
 crates/app/src/ui/session_window/window_actions.rs
 crates/app/src/ui/session_window/work_notifier.rs
 crates/app/src/ui/shell/mod.rs
