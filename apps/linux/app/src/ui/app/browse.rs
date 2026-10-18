@@ -680,13 +680,13 @@ impl App {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum RefreshDecision {
+pub(super) enum RefreshDecision {
     Refresh,
     ConfirmDiscard,
     SaveInFlight,
 }
 
-fn refresh_decision(dirty: bool, save_in_flight: bool) -> RefreshDecision {
+pub(super) fn refresh_decision(dirty: bool, save_in_flight: bool) -> RefreshDecision {
     if save_in_flight {
         return RefreshDecision::SaveInFlight;
     }

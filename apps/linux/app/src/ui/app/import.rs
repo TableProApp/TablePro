@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use relm4::ComponentSender;
 use relm4::adw::prelude::*;
 use relm4::gtk;
 use relm4::gtk::gio;
+use relm4::{ComponentController, ComponentSender};
 use tablepro_core::import::{
     CsvFormat, DEFAULT_IMPORT_BATCH_ROWS, ImportTarget, InsertPlan, MAX_FILE_BYTES, PlanError, build_insert_plan,
     detect_format, read_csv,
@@ -13,12 +13,15 @@ use tablepro_core::sql_ddl::build_create_table;
 use tablepro_core::{ColumnInfo, Connection, DriverError, OperationControl};
 use tablepro_policy::{BulkBatch, BulkInsertEnd, BulkInsertRequest, PolicyGuard};
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 use crate::services::csv_import_mappings::CsvMappingScope;
 use crate::ui::error_text;
 use crate::ui::import_dialog::{ImportChoice, ImportMode, ImportRequest};
 
-use super::{App, AppMsg};
+use super::browse::{RefreshDecision, refresh_decision};
+use super::types::WorkspaceTab;
+use super::{App, AppMsg, BrowseTabInput};
 
 /// Everything the file dialog collected, handed back to the GTK thread.
 #[derive(Debug)]
@@ -38,6 +41,7 @@ pub struct CsvImportPreparation {
 /// How an import ended, as the GTK thread hears it.
 #[derive(Debug)]
 pub struct CsvImportReport {
+    pub schema: Option<String>,
     pub table: String,
     pub committed: u64,
     pub total: u64,
@@ -287,11 +291,11 @@ impl App {
         }
     }
 
-    pub(super) fn on_csv_import_finished(&mut self, report: CsvImportReport, sender: ComponentSender<Self>) {
+    pub(super) fn on_csv_import_finished(&mut self, report: CsvImportReport, _sender: ComponentSender<Self>) {
         if let Some(progress) = self.csv_import_progress.take() {
             progress.close();
         }
-        sender.input(AppMsg::RefreshPage);
+        self.refresh_import_targets(report.schema.as_deref(), &report.table);
         let Some(error) = report.error else {
             self.show_toast(
                 &crate::tr!("Imported {done} rows into {table}")
@@ -308,6 +312,71 @@ impl App {
                 .replace("{table}", &report.table)
                 .replace("{error}", &error),
         );
+    }
+}
+
+impl App {
+    fn refresh_import_targets(&self, schema: Option<&str>, table: &str) {
+        let targets: Vec<Uuid> = self
+            .workspace_tabs
+            .borrow()
+            .iter()
+            .filter_map(|(id, tab)| match tab {
+                WorkspaceTab::Table(slot)
+                    if import_targets_table(slot.schema.as_deref(), &slot.table, schema, table) =>
+                {
+                    Some(*id)
+                }
+                _ => None,
+            })
+            .collect();
+        for id in targets {
+            let save_in_flight = self
+                .workspace_tabs
+                .borrow()
+                .get(&id)
+                .and_then(|tab| tab.browse_controller())
+                .is_some_and(|controller| controller.model().save_in_flight());
+            let dirty = crate::services::change_tracker::with_tab_ref(id, |tr| tr.has_pending()).unwrap_or(false);
+            if refresh_decision(dirty, save_in_flight) == RefreshDecision::Refresh {
+                self.dispatch_to_tab(id, BrowseTabInput::Refresh);
+            }
+        }
+    }
+}
+
+fn import_targets_table(tab_schema: Option<&str>, tab_table: &str, schema: Option<&str>, table: &str) -> bool {
+    tab_schema == schema && tab_table == table
+}
+
+#[cfg(test)]
+mod refresh_tests {
+    use super::*;
+    use crate::ui::app::browse::{RefreshDecision, refresh_decision};
+
+    #[test]
+    fn only_the_imported_schema_and_table_are_refreshed() {
+        assert!(import_targets_table(Some("public"), "people", Some("public"), "people"));
+        assert!(!import_targets_table(
+            Some("public"),
+            "orders",
+            Some("public"),
+            "people"
+        ));
+        assert!(!import_targets_table(
+            Some("archive"),
+            "people",
+            Some("public"),
+            "people"
+        ));
+        assert!(!import_targets_table(None, "people", Some("public"), "people"));
+    }
+
+    #[test]
+    fn a_dirty_matching_tab_is_not_refreshed_by_an_import() {
+        assert_eq!(refresh_decision(false, false), RefreshDecision::Refresh);
+        assert_ne!(refresh_decision(true, false), RefreshDecision::Refresh);
+        assert_ne!(refresh_decision(false, true), RefreshDecision::Refresh);
     }
 }
 
@@ -328,6 +397,7 @@ impl ImportRun {
         let total = self.plan.row_count();
         if let Err(message) = self.create_table().await {
             return CsvImportReport {
+                schema: self.schema.clone(),
                 table: self.table,
                 committed: 0,
                 total,
@@ -344,6 +414,7 @@ impl ImportRun {
             Ok(scope) => scope,
             Err(error) => {
                 return CsvImportReport {
+                    schema: self.schema.clone(),
                     table: self.table,
                     committed: 0,
                     total,
@@ -363,6 +434,7 @@ impl ImportRun {
             .await
             .unwrap_or_else(|_| scope.committed_rows());
         CsvImportReport {
+            schema: self.schema.clone(),
             table: self.table,
             committed,
             total,
