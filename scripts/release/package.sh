@@ -47,7 +47,7 @@ package_app() {
     mkdir "$WORK/dmg"
     ditto "$app" "$WORK/dmg/TablePro.app"
     ln -s /Applications "$WORK/dmg/Applications"
-    hdiutil create -volname "TablePro $VERSION" -srcfolder "$WORK/dmg" -ov -format ULFO "$dmg"
+    diskutil image create from "$WORK/dmg" "$dmg" --volumeName "TablePro $VERSION"
     [ "$SIGNED" = false ] || codesign --sign "Developer ID Application" --timestamp "$dmg"
 
     # tar keeps the framework symlinks codesign seals; a signed bundle needs no extended attributes.
