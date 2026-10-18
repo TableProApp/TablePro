@@ -39,6 +39,8 @@ pub struct Preferences {
     pub editor_vim_mode: bool,
     #[serde(default)]
     pub null_display: NullDisplayPref,
+    #[serde(default = "default_open_tables_in_preview_tab")]
+    pub open_tables_in_preview_tab: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -133,6 +135,10 @@ fn default_csv_include_header() -> bool {
     true
 }
 
+fn default_open_tables_in_preview_tab() -> bool {
+    true
+}
+
 impl Default for Preferences {
     fn default() -> Self {
         Self {
@@ -146,6 +152,7 @@ impl Default for Preferences {
             editor_font_family: String::new(),
             editor_vim_mode: false,
             null_display: NullDisplayPref::default(),
+            open_tables_in_preview_tab: default_open_tables_in_preview_tab(),
         }
     }
 }
@@ -306,6 +313,7 @@ fn read_settings(settings: &gio::Settings) -> Preferences {
         editor_font_family: settings.string("editor-font-family").to_string(),
         editor_vim_mode: settings.boolean("editor-vim-mode"),
         null_display: NullDisplayPref::from_key(settings.string("null-display").as_str()),
+        open_tables_in_preview_tab: settings.boolean("open-tables-in-preview-tab"),
     }
 }
 
@@ -322,6 +330,7 @@ fn write_settings(settings: &gio::Settings, prefs: &Preferences) -> Result<(), S
         settings.set_string("editor-font-family", &prefs.editor_font_family),
         settings.set_boolean("editor-vim-mode", prefs.editor_vim_mode),
         settings.set_string("null-display", prefs.null_display.key()),
+        settings.set_boolean("open-tables-in-preview-tab", prefs.open_tables_in_preview_tab),
     ];
     if let Some(error) = writes.into_iter().find_map(Result::err) {
         settings.revert();
@@ -774,6 +783,23 @@ mod tests {
         });
         assert!(!before.editor_vim_mode);
         assert!(after.editor_vim_mode);
+    }
+
+    #[test]
+    fn opening_a_table_reuses_the_preview_tab_by_default_and_the_choice_survives_a_gsettings_round_trip() {
+        let (before, after) = after_a_round_trip("/com/tablepro/linux/preview-tab/", |prefs| {
+            prefs.open_tables_in_preview_tab = false;
+        });
+        assert!(before.open_tables_in_preview_tab);
+        assert!(!after.open_tables_in_preview_tab);
+    }
+
+    #[test]
+    fn a_preferences_file_from_before_the_setting_keeps_the_preview_tab_on() {
+        let prefs: Preferences =
+            serde_json::from_str(r#"{"default_page_size":1000,"confirm_destructive":true,"editor_font_size":12}"#)
+                .unwrap();
+        assert!(prefs.open_tables_in_preview_tab);
     }
 
     #[test]

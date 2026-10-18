@@ -1,6 +1,7 @@
 from pathlib import Path
 import importlib.util
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -440,6 +441,38 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("image=bookie-floor-package-ubuntu-24.04", builder)
         self.assertIn('docker build -q -t "$image"', builder)
         self.assertIn('"$image" bash -ceu', builder)
+
+    def test_packaged_distro_smoke_does_not_mount_a_stale_build_target(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            binaries = directory / "bin"
+            binaries.mkdir()
+            docker_log = directory / "docker-args"
+            docker = binaries / "docker"
+            docker.write_text(
+                "#!/bin/sh\nprintf '%s\\0' \"$@\" >> \"$DOCKER_ARG_LOG\"\nprintf '\\n' >> \"$DOCKER_ARG_LOG\"\n"
+            )
+            docker.chmod(0o755)
+            package = directory / "bookie.deb"
+            package.write_bytes(b"package")
+            environment = os.environ.copy()
+            environment["PATH"] = f"{binaries}{os.pathsep}{environment['PATH']}"
+            environment["DOCKER_ARG_LOG"] = str(docker_log)
+            environment["DISTRO_FLOOR_PACKAGE"] = str(package)
+
+            result = subprocess.run(
+                ["bash", str(ROOT / "scripts/test-distro-floor.sh"), "ubuntu:24.04"],
+                cwd=ROOT,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            calls = docker_log.read_bytes().splitlines()
+            self.assertTrue(calls)
+            self.assertFalse(any(b":/target" in call for call in calls))
 
 
 if __name__ == "__main__":

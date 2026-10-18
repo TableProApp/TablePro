@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: BookiE 0.1.6-dev\n"
 "Report-Msgid-Bugs-To: https://github.com/cozyGarage/BookiE/issues\n"
-"POT-Creation-Date: 2026-10-18 00:55+0200\n"
+"POT-Creation-Date: 2026-10-18 18:42+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -50,7 +50,7 @@ msgid "New window"
 msgstr ""
 
 #: apps/linux/app/src/services/quick_switcher.rs:55
-#: apps/linux/app/src/ui/preferences.rs:120
+#: apps/linux/app/src/ui/preferences.rs:129
 msgid "Query history"
 msgstr ""
 
@@ -131,7 +131,7 @@ msgid "Command"
 msgstr ""
 
 #: apps/linux/app/src/services/sidebar_tree.rs:102
-#: apps/linux/app/src/ui/app/mod.rs:447
+#: apps/linux/app/src/ui/app/mod.rs:393
 #: apps/linux/app/src/ui/app/workspace_chrome.rs:92
 msgid "Tables"
 msgstr ""
@@ -171,7 +171,7 @@ msgid "Connection closed."
 msgstr ""
 
 #: apps/linux/app/src/ui/activity_dialog.rs:111
-#: apps/linux/app/src/ui/editor/mod.rs:999
+#: apps/linux/app/src/ui/editor/mod.rs:1000
 msgid "Running…"
 msgstr ""
 
@@ -231,8 +231,8 @@ msgstr ""
 
 #: apps/linux/app/src/ui/app/backup.rs:67
 #: apps/linux/app/src/ui/app/browse.rs:60
-#: apps/linux/app/src/ui/app/import.rs:104
-#: apps/linux/app/src/ui/app/import.rs:244
+#: apps/linux/app/src/ui/app/import.rs:108
+#: apps/linux/app/src/ui/app/import.rs:248
 #: apps/linux/app/src/ui/app/structure.rs:142
 #: apps/linux/app/src/ui/app/structure.rs:271
 #: apps/linux/app/src/ui/app/structure.rs:317
@@ -247,7 +247,7 @@ msgid "Backups are available for PostgreSQL connections."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/backup.rs:73
-#: apps/linux/app/src/ui/app/import.rs:107
+#: apps/linux/app/src/ui/app/import.rs:111
 msgid "This connection is open read-only."
 msgstr ""
 
@@ -360,7 +360,7 @@ msgstr ""
 #: apps/linux/app/src/ui/connection_bundle/import.rs:26
 #: apps/linux/app/src/ui/connection_bundle/import.rs:105
 #: apps/linux/app/src/ui/connection_row.rs:204
-#: apps/linux/app/src/ui/editor/mod.rs:374
+#: apps/linux/app/src/ui/editor/mod.rs:375
 #: apps/linux/app/src/ui/editor/session_mode.rs:260
 #: apps/linux/app/src/ui/export_dialog/file.rs:121
 #: apps/linux/app/src/ui/grid/editing.rs:448
@@ -369,7 +369,7 @@ msgstr ""
 #: apps/linux/app/src/ui/history_dialog.rs:515
 #: apps/linux/app/src/ui/history_dialog.rs:553
 #: apps/linux/app/src/ui/parameters_dialog.rs:30
-#: apps/linux/app/src/ui/preferences.rs:158
+#: apps/linux/app/src/ui/preferences.rs:167
 #: apps/linux/app/src/ui/progress_dialog.rs:13
 #: apps/linux/app/src/ui/saved_queries_dialog.rs:100
 #: apps/linux/app/src/ui/saved_queries_dialog.rs:121
@@ -669,7 +669,7 @@ msgid "A reopened tab is no longer linked to its file: {reason}"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/editor_files.rs:76
-#: apps/linux/app/src/ui/app/mod.rs:853
+#: apps/linux/app/src/ui/app/mod.rs:799
 msgid "Saved"
 msgstr ""
 
@@ -752,87 +752,87 @@ msgstr ""
 msgid "Could not finish the cell edit"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:60
+#: apps/linux/app/src/ui/app/import.rs:64
 msgid "Can't create a table"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:62
+#: apps/linux/app/src/ui/app/import.rs:66
 msgid ""
 "This connection type cannot create a table from a file. Import into an "
 "existing table instead."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:72
-#: apps/linux/app/src/ui/app/import.rs:166
-#: apps/linux/app/src/ui/app/import.rs:220
-#: apps/linux/app/src/ui/app/import.rs:229
-#: apps/linux/app/src/ui/app/import.rs:236
-#: apps/linux/app/src/ui/app/import.rs:244
+#: apps/linux/app/src/ui/app/import.rs:76
+#: apps/linux/app/src/ui/app/import.rs:170
+#: apps/linux/app/src/ui/app/import.rs:224
+#: apps/linux/app/src/ui/app/import.rs:233
+#: apps/linux/app/src/ui/app/import.rs:240
+#: apps/linux/app/src/ui/app/import.rs:248
 msgid "Can't import"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:76
+#: apps/linux/app/src/ui/app/import.rs:80
 #: apps/linux/app/src/ui/history_dialog.rs:982
 msgid "CSV files"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:83
+#: apps/linux/app/src/ui/app/import.rs:87
 #: apps/linux/app/src/ui/import_dialog.rs:701
 msgid "Import CSV"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:111
+#: apps/linux/app/src/ui/app/import.rs:115
 msgid "The policy rules could not be loaded, so writes are not permitted."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:119
+#: apps/linux/app/src/ui/app/import.rs:123
 msgid ""
 "A previous operation's audit record could not be written, so writes are not "
 "permitted."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:297
+#: apps/linux/app/src/ui/app/import.rs:301
 #, rust-format
 msgid "Imported {done} rows into {table}"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:304
+#: apps/linux/app/src/ui/app/import.rs:308
 msgid "Import stopped"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:305
+#: apps/linux/app/src/ui/app/import.rs:309
 #, rust-format
 msgid ""
 "{done} of {total} rows were written to {table} before the import stopped. "
 "{error}"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:425
+#: apps/linux/app/src/ui/app/import.rs:497
 msgid "The import was cancelled."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:474
+#: apps/linux/app/src/ui/app/import.rs:546
 msgid "The table has no columns to import into."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:491
+#: apps/linux/app/src/ui/app/import.rs:563
 msgid "The table could not be built from the file."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:510
+#: apps/linux/app/src/ui/app/import.rs:582
 msgid "The file could not be opened."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:513
+#: apps/linux/app/src/ui/app/import.rs:585
 #, rust-format
 msgid "The file is larger than the {limit} MB import limit."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:516
+#: apps/linux/app/src/ui/app/import.rs:588
 msgid "The file could not be read."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/import.rs:539
+#: apps/linux/app/src/ui/app/import.rs:611
 #, rust-format
 msgid "Line {line}, column {column}: {reason}"
 msgstr ""
@@ -893,63 +893,63 @@ msgstr ""
 msgid "Pick a table from the sidebar, or use the button below (Ctrl+T)."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:365
+#: apps/linux/app/src/ui/app/mod.rs:311
 msgid "New connection"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:372
+#: apps/linux/app/src/ui/app/mod.rs:318
 msgid "Open saved connection"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:382
+#: apps/linux/app/src/ui/app/mod.rs:328
 msgid "Switch database"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:393
+#: apps/linux/app/src/ui/app/mod.rs:339
 msgid "Production"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:394
+#: apps/linux/app/src/ui/app/mod.rs:340
 msgid "This is a production connection. Changes can affect live data."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:403
+#: apps/linux/app/src/ui/app/mod.rs:349
 msgid "Read-only"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:413
+#: apps/linux/app/src/ui/app/mod.rs:359
 msgid "Saving…"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:419
+#: apps/linux/app/src/ui/app/mod.rs:365
 msgid "Main menu"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:453 apps/linux/app/src/ui/app/mod.rs:533
+#: apps/linux/app/src/ui/app/mod.rs:399 apps/linux/app/src/ui/app/mod.rs:479
 msgid "Search tables"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:459
+#: apps/linux/app/src/ui/app/mod.rs:405
 msgid "Filter schemas"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:480
+#: apps/linux/app/src/ui/app/mod.rs:426
 msgid "Filter tables…"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:503
+#: apps/linux/app/src/ui/app/mod.rs:449
 msgid "Retry"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:1014
+#: apps/linux/app/src/ui/app/mod.rs:960
 msgid "Saved as favorite"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:1030 apps/linux/app/src/ui/app/mod.rs:1037
+#: apps/linux/app/src/ui/app/mod.rs:976 apps/linux/app/src/ui/app/mod.rs:983
 msgid "Connect to a database first to run SQL."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/mod.rs:1109
+#: apps/linux/app/src/ui/app/mod.rs:1055
 msgid "Open a result grid to jump to a column."
 msgstr ""
 
@@ -1003,65 +1003,65 @@ msgid ""
 "user@host:5432/database."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/organization.rs:211
+#: apps/linux/app/src/ui/app/organization.rs:215
 #, rust-format
 msgid "Imported “{name}”."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/organization.rs:215
+#: apps/linux/app/src/ui/app/organization.rs:219
 msgid "The imported connection could not be saved."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/organization.rs:248
+#: apps/linux/app/src/ui/app/organization.rs:252
 msgid "Colour"
 msgstr ""
 
-#: apps/linux/app/src/ui/app/organization.rs:322
+#: apps/linux/app/src/ui/app/organization.rs:326
 msgid "This connection could not be updated."
 msgstr ""
 
-#: apps/linux/app/src/ui/app/organization.rs:339
-#: apps/linux/app/src/ui/app/organization.rs:438
-msgid "No colour"
-msgstr ""
-
-#: apps/linux/app/src/ui/app/organization.rs:346
-#: apps/linux/app/src/ui/app/organization.rs:439
-msgid "Blue"
-msgstr ""
-
-#: apps/linux/app/src/ui/app/organization.rs:347
-#: apps/linux/app/src/ui/app/organization.rs:440
-msgid "Teal"
-msgstr ""
-
-#: apps/linux/app/src/ui/app/organization.rs:348
-#: apps/linux/app/src/ui/app/organization.rs:441
-msgid "Green"
-msgstr ""
-
-#: apps/linux/app/src/ui/app/organization.rs:349
+#: apps/linux/app/src/ui/app/organization.rs:343
 #: apps/linux/app/src/ui/app/organization.rs:442
-msgid "Yellow"
+msgid "No colour"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/organization.rs:350
 #: apps/linux/app/src/ui/app/organization.rs:443
-msgid "Orange"
+msgid "Blue"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/organization.rs:351
 #: apps/linux/app/src/ui/app/organization.rs:444
-msgid "Red"
+msgid "Teal"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/organization.rs:352
 #: apps/linux/app/src/ui/app/organization.rs:445
-msgid "Purple"
+msgid "Green"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/organization.rs:353
 #: apps/linux/app/src/ui/app/organization.rs:446
+msgid "Yellow"
+msgstr ""
+
+#: apps/linux/app/src/ui/app/organization.rs:354
+#: apps/linux/app/src/ui/app/organization.rs:447
+msgid "Orange"
+msgstr ""
+
+#: apps/linux/app/src/ui/app/organization.rs:355
+#: apps/linux/app/src/ui/app/organization.rs:448
+msgid "Red"
+msgstr ""
+
+#: apps/linux/app/src/ui/app/organization.rs:356
+#: apps/linux/app/src/ui/app/organization.rs:449
+msgid "Purple"
+msgstr ""
+
+#: apps/linux/app/src/ui/app/organization.rs:357
+#: apps/linux/app/src/ui/app/organization.rs:450
 msgid "Brown"
 msgstr ""
 
@@ -1296,7 +1296,7 @@ msgstr ""
 
 #: apps/linux/app/src/ui/app/shortcuts.rs:229
 #: apps/linux/app/src/ui/history_dialog.rs:166
-#: apps/linux/app/src/ui/preferences.rs:222
+#: apps/linux/app/src/ui/preferences.rs:231
 msgid "SQL editor"
 msgstr ""
 
@@ -2116,7 +2116,7 @@ msgid "0 uses the default of 30 seconds"
 msgstr ""
 
 #: apps/linux/app/src/ui/connect_dialog/controls.rs:108
-#: apps/linux/app/src/ui/preferences.rs:246
+#: apps/linux/app/src/ui/preferences.rs:255
 msgid "Query timeout (seconds)"
 msgstr ""
 
@@ -2525,138 +2525,138 @@ msgstr ""
 msgid "The query ran for {seconds} seconds."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:313
+#: apps/linux/app/src/ui/editor/mod.rs:314
 msgid "Fold block"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:314
+#: apps/linux/app/src/ui/editor/mod.rs:315
 msgid "Fold the SQL block at the cursor"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:321
+#: apps/linux/app/src/ui/editor/mod.rs:322
 msgid "Unfold all"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:322
+#: apps/linux/app/src/ui/editor/mod.rs:323
 msgid "Show all folded SQL blocks"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:337
+#: apps/linux/app/src/ui/editor/mod.rs:338
 msgid "SQL warnings"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:338
+#: apps/linux/app/src/ui/editor/mod.rs:339
 msgid "Character suggestions; SQL is not changed"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:358
+#: apps/linux/app/src/ui/editor/mod.rs:359
 msgid "Runs the same query again. The saved query timeout does not change."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:365
+#: apps/linux/app/src/ui/editor/mod.rs:366
 #: apps/linux/app/src/ui/editor/pinned.rs:69
 msgid "Pin results"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:366
+#: apps/linux/app/src/ui/editor/mod.rs:367
 msgid "Keep these results above the results of the next run"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:375
+#: apps/linux/app/src/ui/editor/mod.rs:376
 msgid "Cancel running query (Esc)"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:383
+#: apps/linux/app/src/ui/editor/mod.rs:384
 #: apps/linux/app/src/ui/editor/session_mode.rs:279
 msgid "Session"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:384
+#: apps/linux/app/src/ui/editor/mod.rs:385
 msgid ""
 "Run this tab on its own connection, so settings, temporary tables and "
 "transactions carry over between runs"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:393
+#: apps/linux/app/src/ui/editor/mod.rs:394
 msgid "Explain"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:394
+#: apps/linux/app/src/ui/editor/mod.rs:395
 msgid "Explain query plan"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:401
+#: apps/linux/app/src/ui/editor/mod.rs:402
 msgid "Run"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:402
+#: apps/linux/app/src/ui/editor/mod.rs:403
 msgid "Run query (Ctrl+Return)"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:409
+#: apps/linux/app/src/ui/editor/mod.rs:410
 msgid "Split"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:410
+#: apps/linux/app/src/ui/editor/mod.rs:411
 msgid "Show or hide a second SQL editor pane"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:702
+#: apps/linux/app/src/ui/editor/mod.rs:703
 msgid "empty query"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:784
+#: apps/linux/app/src/ui/editor/mod.rs:785
 msgid "No statement at cursor"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:873
-#: apps/linux/app/src/ui/editor/streaming.rs:152
+#: apps/linux/app/src/ui/editor/mod.rs:874
+#: apps/linux/app/src/ui/editor/streaming.rs:154
 #: apps/linux/app/src/ui/history_dialog.rs:1054
 msgid "cancelled"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:875
+#: apps/linux/app/src/ui/editor/mod.rs:876
 #: apps/linux/app/src/ui/editor/outcomes.rs:630
 msgid "Query cancelled"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:876
+#: apps/linux/app/src/ui/editor/mod.rs:877
 msgid "The running query was stopped."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:892
+#: apps/linux/app/src/ui/editor/mod.rs:893
 #, rust-format
 msgid "Query exceeded the {n}s query timeout."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:899
-#: apps/linux/app/src/ui/editor/streaming.rs:154
+#: apps/linux/app/src/ui/editor/mod.rs:900
+#: apps/linux/app/src/ui/editor/streaming.rs:156
 msgid "timed out"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:902
+#: apps/linux/app/src/ui/editor/mod.rs:903
 #: apps/linux/app/src/ui/editor/outcomes.rs:70
 #: apps/linux/app/src/ui/editor/outcomes.rs:639
-#: apps/linux/app/src/ui/editor/streaming.rs:137
+#: apps/linux/app/src/ui/editor/streaming.rs:139
 msgid "Query timed out"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:951
+#: apps/linux/app/src/ui/editor/mod.rs:952
 msgid "Formatting is unavailable for this connection"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:975
+#: apps/linux/app/src/ui/editor/mod.rs:976
 msgid "Waiting for session to finish"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:982
-#: apps/linux/app/src/ui/editor/mod.rs:987
+#: apps/linux/app/src/ui/editor/mod.rs:983
+#: apps/linux/app/src/ui/editor/mod.rs:988
 #: apps/linux/app/src/ui/editor/session_mode.rs:338
 msgid "no active connection"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/mod.rs:1150
-#: apps/linux/app/src/ui/editor/mod.rs:1163
+#: apps/linux/app/src/ui/editor/mod.rs:1151
+#: apps/linux/app/src/ui/editor/mod.rs:1164
 msgid "query-results"
 msgstr ""
 
@@ -2705,7 +2705,7 @@ msgid "error in {ms} ms"
 msgstr ""
 
 #: apps/linux/app/src/ui/editor/outcomes.rs:498
-#: apps/linux/app/src/ui/editor/streaming.rs:151
+#: apps/linux/app/src/ui/editor/streaming.rs:153
 #, rust-format
 msgid "done in {ms} ms"
 msgstr ""
@@ -2716,7 +2716,7 @@ msgid "{ok}/{total} statements · {ms} ms"
 msgstr ""
 
 #: apps/linux/app/src/ui/editor/outcomes.rs:509
-#: apps/linux/app/src/ui/editor/streaming.rs:158
+#: apps/linux/app/src/ui/editor/streaming.rs:160
 msgid "error"
 msgstr ""
 
@@ -2852,11 +2852,11 @@ msgstr ""
 msgid "{n} pinned; they stay above the next run"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/run_lifecycle.rs:45
+#: apps/linux/app/src/ui/editor/run_lifecycle.rs:58
 msgid "Cannot ask for parameter values without a window"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/run_lifecycle.rs:63
+#: apps/linux/app/src/ui/editor/run_lifecycle.rs:76
 #, rust-format
 msgid "Run again with a {n}s timeout"
 msgstr ""
@@ -2922,28 +2922,28 @@ msgid ""
 "running."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/streaming.rs:78
+#: apps/linux/app/src/ui/editor/streaming.rs:80
 msgid "A streamed result page arrived out of order."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/streaming.rs:81
+#: apps/linux/app/src/ui/editor/streaming.rs:83
 msgid "The result columns changed between pages."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/streaming.rs:84
+#: apps/linux/app/src/ui/editor/streaming.rs:86
 msgid "A result page did not match its columns."
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/streaming.rs:105
+#: apps/linux/app/src/ui/editor/streaming.rs:107
 #, rust-format
 msgid "Received {n} rows"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/streaming.rs:139
+#: apps/linux/app/src/ui/editor/streaming.rs:141
 msgid "Stream ended before completion"
 msgstr ""
 
-#: apps/linux/app/src/ui/editor/streaming.rs:176
+#: apps/linux/app/src/ui/editor/streaming.rs:178
 msgid "Waiting for result pages"
 msgstr ""
 
@@ -3379,6 +3379,21 @@ msgstr ""
 msgid "(empty)"
 msgstr ""
 
+#: apps/linux/app/src/ui/grid/column.rs:362
+#: apps/linux/app/src/ui/grid/column.rs:505
+msgid "Pending deletion"
+msgstr ""
+
+#: apps/linux/app/src/ui/grid/column.rs:365
+#: apps/linux/app/src/ui/grid/column.rs:501
+msgid "New row"
+msgstr ""
+
+#: apps/linux/app/src/ui/grid/column.rs:369
+#: apps/linux/app/src/ui/grid/column.rs:497
+msgid "Modified"
+msgstr ""
+
 #: apps/linux/app/src/ui/grid/column_jump.rs:51
 msgid "Jump to Column"
 msgstr ""
@@ -3518,12 +3533,12 @@ msgstr ""
 
 #: apps/linux/app/src/ui/grid/display.rs:28
 #: apps/linux/app/src/ui/grid/display.rs:36
-#: apps/linux/app/src/ui/preferences.rs:99
+#: apps/linux/app/src/ui/preferences.rs:107
 msgid "(null)"
 msgstr ""
 
 #: apps/linux/app/src/ui/grid/display.rs:34
-#: apps/linux/app/src/ui/preferences.rs:97
+#: apps/linux/app/src/ui/preferences.rs:105
 msgid "NULL"
 msgstr ""
 
@@ -3751,17 +3766,17 @@ msgid ""
 msgstr ""
 
 #: apps/linux/app/src/ui/history_dialog.rs:548
-#: apps/linux/app/src/ui/preferences.rs:153
+#: apps/linux/app/src/ui/preferences.rs:162
 msgid "Clear all query history?"
 msgstr ""
 
 #: apps/linux/app/src/ui/history_dialog.rs:550
-#: apps/linux/app/src/ui/preferences.rs:155
+#: apps/linux/app/src/ui/preferences.rs:164
 msgid "This permanently deletes every saved query, including pinned ones."
 msgstr ""
 
 #: apps/linux/app/src/ui/history_dialog.rs:554
-#: apps/linux/app/src/ui/preferences.rs:159
+#: apps/linux/app/src/ui/preferences.rs:168
 msgid "Clear"
 msgstr ""
 
@@ -4052,90 +4067,100 @@ msgid "Show a confirmation dialog before each destructive action"
 msgstr ""
 
 #: apps/linux/app/src/ui/preferences.rs:72
+msgid "Reuse one tab when opening tables"
+msgstr ""
+
+#: apps/linux/app/src/ui/preferences.rs:74
+msgid ""
+"Opening a table replaces the temporary preview tab. Turn off to give every "
+"table its own tab."
+msgstr ""
+
+#: apps/linux/app/src/ui/preferences.rs:80
 msgid "Appearance"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:73
+#: apps/linux/app/src/ui/preferences.rs:81
 msgid "Follow the system, or always use the light or dark style"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:75
+#: apps/linux/app/src/ui/preferences.rs:83
 msgid "System"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:76
+#: apps/linux/app/src/ui/preferences.rs:84
 msgid "Light"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:77
+#: apps/linux/app/src/ui/preferences.rs:85
 msgid "Dark"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:92
+#: apps/linux/app/src/ui/preferences.rs:100
 msgid "NULL display"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:94
+#: apps/linux/app/src/ui/preferences.rs:102
 msgid "How a NULL cell is shown. Applies to cells drawn after the change."
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:98
+#: apps/linux/app/src/ui/preferences.rs:106
 msgid "∅ (empty set)"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:121
+#: apps/linux/app/src/ui/preferences.rs:130
 msgid "Persistent record of every SQL query you run."
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:125
+#: apps/linux/app/src/ui/preferences.rs:134
 msgid "Retention (days)"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:126
+#: apps/linux/app/src/ui/preferences.rs:135
 msgid "0 keeps history forever; pinned entries are never pruned."
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:140
+#: apps/linux/app/src/ui/preferences.rs:149
 msgid "Clear…"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:145
+#: apps/linux/app/src/ui/preferences.rs:154
 msgid "Clear query history"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:146
+#: apps/linux/app/src/ui/preferences.rs:155
 msgid "Removes every saved query, including pinned ones."
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:182
+#: apps/linux/app/src/ui/preferences.rs:191
 msgid "Show in Files"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:191
+#: apps/linux/app/src/ui/preferences.rs:200
 msgid "Storage location"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:218
+#: apps/linux/app/src/ui/preferences.rs:227
 msgid "Editor"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:225
+#: apps/linux/app/src/ui/preferences.rs:234
 msgid "Editor font size"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:230
+#: apps/linux/app/src/ui/preferences.rs:239
 msgid "Editor font family"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:236
+#: apps/linux/app/src/ui/preferences.rs:245
 msgid "Vim keys in the SQL editor"
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:237
+#: apps/linux/app/src/ui/preferences.rs:246
 msgid "Applies to editors opened after the change."
 msgstr ""
 
-#: apps/linux/app/src/ui/preferences.rs:248
+#: apps/linux/app/src/ui/preferences.rs:257
 msgid "Cancel long-running queries automatically. Set to 0 to disable."
 msgstr ""
 

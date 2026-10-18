@@ -2,7 +2,7 @@ use relm4::ComponentSender;
 use relm4::gtk::gio;
 use uuid::Uuid;
 
-use super::types::{PreviewReplacement, preview_replacement, read_workspace_tab_id};
+use super::types::{PreviewReplacement, opens_as_preview, preview_replacement, read_workspace_tab_id};
 use super::{App, OpenMode, WorkspaceTab};
 
 impl App {
@@ -13,8 +13,9 @@ impl App {
         open_mode: OpenMode,
         sender: ComponentSender<Self>,
     ) {
-        let is_preview = matches!(open_mode, OpenMode::SwitchOrAppend);
-        if is_preview {
+        let switch_or_append = matches!(open_mode, OpenMode::SwitchOrAppend);
+        let is_preview = opens_as_preview(switch_or_append, self.preferences.load().open_tables_in_preview_tab);
+        if switch_or_append {
             let existing = {
                 let tabs = self.workspace_tabs.borrow();
                 let selected_page = self.workspace_tab_view.as_ref().and_then(|tv| tv.selected_page());

@@ -106,6 +106,10 @@ pub(super) fn preview_replacement(is_preview: bool, has_pending_changes: bool) -
     }
 }
 
+pub(super) fn opens_as_preview(switch_or_append: bool, preview_tabs_enabled: bool) -> bool {
+    switch_or_append && preview_tabs_enabled
+}
+
 pub enum WorkspaceTab {
     Editor(EditorTabSlot),
     Structure(StructureTabSlot),
@@ -198,7 +202,7 @@ impl StatusKind {
 
 #[cfg(test)]
 mod tests {
-    use super::{PreviewReplacement, preview_replacement};
+    use super::{PreviewReplacement, opens_as_preview, preview_replacement};
 
     #[test]
     fn a_clean_preview_can_be_replaced() {
@@ -214,5 +218,13 @@ mod tests {
     fn a_regular_tab_is_never_replaced_or_promoted() {
         assert_eq!(preview_replacement(false, false), PreviewReplacement::None);
         assert_eq!(preview_replacement(false, true), PreviewReplacement::None);
+    }
+
+    #[test]
+    fn a_table_opens_in_the_preview_tab_only_when_the_preference_is_on() {
+        assert!(opens_as_preview(true, true));
+        assert!(!opens_as_preview(true, false), "off: every table keeps its own tab");
+        assert!(!opens_as_preview(false, true), "an explicit new tab is never a preview");
+        assert!(!opens_as_preview(false, false));
     }
 }

@@ -68,6 +68,14 @@ pub fn present(
         .build();
     confirm_row.set_active(current.confirm_destructive);
 
+    let preview_tab_row = adw::SwitchRow::builder()
+        .title(crate::tr!("Reuse one tab when opening tables"))
+        .subtitle(crate::tr!(
+            "Opening a table replaces the temporary preview tab. Turn off to give every table its own tab."
+        ))
+        .active(current.open_tables_in_preview_tab)
+        .build();
+
     let scheme_row = adw::ComboRow::new();
     scheme_row.set_title(&crate::tr!("Appearance"));
     scheme_row.set_subtitle(&crate::tr!("Follow the system, or always use the light or dark style"));
@@ -114,6 +122,7 @@ pub fn present(
     browse_group.add(&null_row);
     browse_group.add(&page_size_row);
     browse_group.add(&confirm_row);
+    browse_group.add(&preview_tab_row);
     general.add(&browse_group);
 
     let history_group = adw::PreferencesGroup::builder()
@@ -263,6 +272,7 @@ pub fn present(
     let save_all: std::rc::Rc<dyn Fn()> = {
         let page_size = page_size_row.clone();
         let confirm = confirm_row.clone();
+        let preview_tab = preview_tab_row.clone();
         let font = font_size_row.clone();
         let family = font_family_row.clone();
         let vim = vim_row.clone();
@@ -277,6 +287,7 @@ pub fn present(
             if let Err(error) = preferences.update(|prefs| {
                 prefs.default_page_size = default_page_size;
                 prefs.confirm_destructive = confirm.is_active();
+                prefs.open_tables_in_preview_tab = preview_tab.is_active();
                 prefs.editor_font_size = font.value() as u32;
                 prefs.editor_font_family = family.text().trim().to_string();
                 prefs.editor_vim_mode = vim.is_active();
@@ -312,6 +323,10 @@ pub fn present(
         move |_| s()
     });
     confirm_row.connect_active_notify({
+        let s = save_all.clone();
+        move |_| s()
+    });
+    preview_tab_row.connect_active_notify({
         let s = save_all.clone();
         move |_| s()
     });
