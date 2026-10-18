@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""Check a pull request title against the commit subject rules, because a squash merge uses it.
-
-The title must be a Conventional Commits subject, `<type>(<scope>)!: <description>`, with the scope
-and the `!` optional, and the title must fit in 72 characters. GitHub appends ` (#123)` when it
-squashes; that suffix is not counted.
-
-Usage:
-    python3 scripts/ci/check-pr-title.py TITLE
-"""
 
 import re
 import sys
@@ -15,6 +6,8 @@ import sys
 TYPES = ("feat", "fix", "refactor", "perf", "test", "docs", "build", "ci", "chore", "style", "revert")
 MAX_TITLE = 72
 SUBJECT = re.compile(rf"^(?:{'|'.join(TYPES)})(?:\([a-z0-9][a-z0-9-]*\))?!?: \S")
+# A pick into a release line keeps its subject from main, whose trailing (#N) names its origin.
+PROVENANCE = re.compile(r" \(#[0-9]+\)$")
 
 
 def problems(title):
@@ -26,8 +19,9 @@ def problems(title):
             + ", ".join(TYPES)
             + " and the scope is lowercase words joined by hyphens, for example `fix(editor): keep the caret`"
         )
-    if len(title) > MAX_TITLE:
-        found.append(f"the title is {len(title)} characters, over the {MAX_TITLE} limit")
+    length = len(PROVENANCE.sub("", title, count=1))
+    if length > MAX_TITLE:
+        found.append(f"the title is {length} characters, over the {MAX_TITLE} limit")
     return found
 
 
