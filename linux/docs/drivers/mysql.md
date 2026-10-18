@@ -64,7 +64,7 @@ A save or a schema change runs in the server's own zone, `@@GLOBAL.time_zone`, a
 
 ## TLS
 
-- `Disable` connects without TLS. A server with `require_secure_transport` answers with error 3159, reported as `ServerRequiresTls`.
+- `Disable` connects without TLS. A server with `require_secure_transport` answers with error 3159, reported as `ServerRequiresTls`. MariaDB before 11.2 answers 1045, Access denied, as it does for a wrong password ([MDEV-30178](https://jira.mariadb.org/browse/MDEV-30178)), so on 10.11 the refusal reads as an authentication failure.
 - `Require` encrypts without checking the certificate. A server that does not offer TLS is reported as `ServerRefusedTls`.
 - `VerifyFull` is sqlx's `VerifyIdentity`. It trusts the system's CA store and the connection's CA file, which sqlx takes only as PEM, so the driver hands it both as one bundle; sqlx adds the Mozilla roots compiled into it ([Trust](../../ARCHITECTURE.md#trust)). `Require` checks no certificate, so it loads neither.
 - The name checked is the host sqlx dials, so a server name override works only through an SSH forward, where the dial goes to a socket path (`ServerNameOverride::SshForwardOnly`).

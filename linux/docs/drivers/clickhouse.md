@@ -75,6 +75,8 @@ The grid names a ClickHouse row by its sorting key (`RowIdentity::SortingKey`), 
 
 A failed statement is sorted by whether it can have landed. A server error that refused it (a syntax error, an unknown column) did not apply. A cancel, a timeout, an unfinished mutation wait (341), a network error, or a body with no error code may have applied, so the outcome comes from the `WriteLedger`, with a `CommitToken::ClickHouseQuery` of every statement's query id.
 
+A column made non-nullable in the structure tab is written as `MODIFY COLUMN name T DEFAULT <default>`: from 25.12 the server refuses the change without a DEFAULT to put in the column's NULLs. The draft's default fills them; with none, `defaultValueOfTypeName` does, as older servers did on their own, and a `REMOVE DEFAULT` after it leaves the column with no default.
+
 ### Resolving an unknown outcome
 
 `CommitResolutionSupport::QueryLog`. `resolve_commit` asks about the first statement the save could not confirm:
