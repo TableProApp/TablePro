@@ -549,9 +549,12 @@ mod tests {
         ))));
         let test = parked("RejectionText", vec![refused], None);
 
-        let banner = wait_for_button(&test, "Retry");
-
-        assert!(banner.title().contains("no pg_hba.conf entry"), "{}", banner.title());
+        // The banner follows the session's health after it changes, and offers
+        // Retry while reconnecting too, so the button alone can come too early.
+        let banner = banner(&test);
+        wait_until(WAIT, || banner.title().contains("no pg_hba.conf entry"))
+            .unwrap_or_else(|_| panic!("the banner said {}", banner.title()));
+        assert_eq!(banner.button_label().as_deref(), Some("Retry"));
     }
 
     #[gtk4::test]

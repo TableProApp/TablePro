@@ -4,10 +4,7 @@
 mod editor_session_shutdown;
 mod object_list_snapshot;
 mod schema_catalog;
-#[expect(
-    clippy::module_inception,
-    reason = "the Session type is the module's subject"
-)]
+#[expect(clippy::module_inception, reason = "the Session type is the module's subject")]
 mod session;
 mod session_deps;
 
