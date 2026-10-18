@@ -9,7 +9,7 @@
 #   verify.sh [options] uitest [Test...]        # TestPlans/UI.xctestplan, all of it when no Test is named
 #   verify.sh [options] package <Package> [regex]    # swift test in Packages/<Package>
 #   verify.sh [options] ios <Suite> [Suite...]       # TableProMobileTests on a simulator
-#   verify.sh [options] abi   <merge-base>
+#   verify.sh [options] abi   [base]            # PluginKit ABI checker; default base: the newest v* tag
 #   verify.sh [options] lint  <path> [path...]
 #   verify.sh [options] docs [docs-checkout]    # TableProApp/docs checks against this tree (default ../tablepro-docs)
 #   verify.sh [options] l10n                    # plugin and package strings in the mac and ios catalogs
@@ -497,12 +497,13 @@ platform_step() {
             ;;
 
         abi)
-            [ $# -ge 1 ] || usage
-            STEP_DETAIL="merge-base $1"
+            [ $# -le 1 ] || usage
+            STEP_DETAIL="base ${1:-newest v* tag}"
             setup_toolchain
             require_tool xcodebuild
+            require_tool xcodegen
             log="$(new_log abi)"
-            run_logged "$log" "$REPO_ROOT/scripts/check-pluginkit-abi.sh" "$1"
+            run_logged "$log" "$REPO_ROOT/scripts/check-pluginkit-abi.sh" "$@"
             code=$?
             if [ $code -eq 0 ]; then
                 STATUS=PASS

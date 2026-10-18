@@ -120,9 +120,6 @@ jobs:
       - name: Check every test target is in its test plan
         run: python3 scripts/ci/check-test-plans.py
 
-      - name: Check currentPluginKitVersion moved at most once since the last release
-        run: python3 scripts/ci/check-pluginkit-bump-cadence.py --remote origin
-
       - name: Check the shared-contract drift gates
         run: scripts/audit-refactor-health.sh --check
 

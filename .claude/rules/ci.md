@@ -49,6 +49,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 - Setup, in order: checkout, setup-xcode, prepare-build (setup-xcodegen, `scripts/download-libs.sh`, `generate-project.sh macos`, SPM restore), resolve, SPM save.
 - One `build-for-testing` with no `-testPlan` builds both plans and writes one `.xctestrun` per plan, with signing, the index store and the compilation cache off.
 - `COMPILE_PLUGINS` is true when the `plugins` detector is not false, on a PR and a push alike; a dispatch has no base, so it always compiles. It adds Go, the Dameng and HANA bridge builds, `xcodebuild build -scheme AllPlugins`, then `scripts/ci/verify-plugin-loads.sh`.
+- With `COMPILE_PLUGINS`, `scripts/check-pluginkit-abi.sh` then checks PluginKit against the newest `v*` tag, `--frozen` on a PR into `release/*`; for that tag the job checks out with `fetch-depth: 0` and `filter: blob:none`.
 - `test-without-building -testPlan Unit`, then `-testPlan UI`. The UI plan runs after a Unit failure too, so one round trip reports both.
 - No shards, and no parallel, iteration or retry flags: the plans decide.
 - `scripts/ci/summarize-xcresult.sh` always runs. Evidence uploads only on failure (`.claude/skills/fix-issue/references/verification-apple.md`, Reading CI).
@@ -111,7 +112,6 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
   - `check-lib-sourcing.py`, `check-plugin-manifest.py`, `check-plugin-provides.py`, `check-deployment-target.sh`, `check-ios-shared-isolation.py`;
   - `localization.py plugins` and `plugins --target ios`;
   - `check-string-catalogs.py`, `check-license-inventory.py`, `check-entitlements.py`, `check-test-plans.py`;
-  - `check-pluginkit-bump-cadence.py`;
   - `scripts/audit-refactor-health.sh --check`, `check-hub-ratchet.py`;
   - the Go checks on the HANA helper, `govulncheck` among them, when the `hana` detector is true. New advisories between changes arrive as Dependabot alerts.
 - `audit-refactor-health.sh --check` fails a file defining a production `DatabaseType` outside `Packages/TableProCore/Sources/TableProCoreTypes/DatabaseType.swift`, unless `.github/duplicate-contract-baseline.txt` lists its path. Moving a listed file moves its baseline path in the same commit. Never add an entry to let a new copy pass.

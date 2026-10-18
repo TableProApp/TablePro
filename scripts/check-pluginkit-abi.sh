@@ -1,100 +1,111 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# PluginKit ABI gate (toolchain-independent).
-#
-# Builds TableProPluginKit at the current tree AND at a base ref with the SAME toolchain, then
-# diffs their public Swift interfaces. Comparing two builds from one compiler means Swift version
-# drift between a dev machine and CI cannot produce a false diff, so there is no committed baseline
-# to keep in sync. A reported diff is a real ABI change; the rules printed at the end say what to
-# raise in Configs/PluginKit.xcconfig.
-#
-# Both sides are generated from their project.yml first, so this regenerates
-# TablePro.xcodeproj in the working tree as well as in the base checkout.
-#
-# Usage: scripts/check-pluginkit-abi.sh [base-ref]   (default: origin/main)
+# Usage: scripts/check-pluginkit-abi.sh [--frozen] [base]
+# Rules: .claude/rules/plugin-system.md, ABI.
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BASE_REF="${1:-origin/main}"
-
-RESULT=""
-
-# Build TableProPluginKit in project dir $1, writing its normalized public interface to $2.
-# Sets RESULT to ok | none (no interface emitted, i.e. Library Evolution off) | failed.
-# The .swiftinterface lives under an arch-named subdir (arm64-apple-macos on Apple Silicon,
-# x86_64-apple-macos on Intel), so locate it by glob instead of hardcoding the host arch.
-build_interface() {
-    local dir="$1" out="$2" sym interface
-    sym="$(mktemp -d)"
-    if ! (cd "$dir" && xcodegen generate --quiet --spec project.yml) >"$sym/generate.log" 2>&1; then
-        RESULT="failed"
-        tail -20 "$sym/generate.log"
-        return
-    fi
-    if ! xcodebuild -project "$dir/TablePro.xcodeproj" -target TableProPluginKit -configuration Debug \
-            -skipPackagePluginValidation build SYMROOT="$sym" >"$sym/build.log" 2>&1; then
-        RESULT="failed"
-        tail -20 "$sym/build.log"
-        return
-    fi
-    interface="$(find "$sym/Debug/TableProPluginKit.framework" -name '*.swiftinterface' 2>/dev/null | head -1)"
-    if [ -n "$interface" ]; then
-        grep -v '^// swift-' "$interface" > "$out"
-        RESULT="ok"
-    else
-        RESULT="none"
-    fi
-}
-
-if ! git -C "$PROJECT_DIR" diff --quiet HEAD; then
-    echo "::error::Working tree has uncommitted changes; commit or stash before running the ABI gate."
-    exit 1
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+frozen=0
+if [ "${1:-}" = "--frozen" ]; then
+    frozen=1
+    shift
 fi
+if [ $# -gt 1 ]; then
+    echo "usage: scripts/check-pluginkit-abi.sh [--frozen] [base]" >&2
+    exit 2
+fi
+base="${1:-$(git -C "$root" describe --tags --abbrev=0 --match 'v[0-9]*')}"
 
-base_sha="$(git -C "$PROJECT_DIR" rev-parse --verify "$BASE_REF" 2>/dev/null)" || {
-    echo "::error::cannot resolve base ref '$BASE_REF'"; exit 1
+fail() {
+    echo "::error::$1"
+    exit 1
 }
+
+kits() {
+    awk -F' *= *' -v origin="$1" '
+        $1 == "TABLEPRO_PLUGINKIT_VERSION" { kit = $2 }
+        $1 == "TABLEPRO_PLUGINKIT_MINIMUM_VERSION" { minimum = $2 }
+        END {
+            if (kit !~ /^[0-9]+$/ || minimum !~ /^[0-9]+$/) {
+                print "::error::no PluginKit versions in " origin
+                exit 1
+            }
+            print kit, minimum
+        }'
+}
+
+base_kits="$(git -C "$root" show "$base:Configs/PluginKit.xcconfig" | kits "$base")"
+head_kits="$(kits HEAD < "$root/Configs/PluginKit.xcconfig")"
+read -r base_kit _ <<< "$base_kits"
+read -r head_kit head_minimum <<< "$head_kits"
 
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
+cleanup() {
+    git -C "$root" worktree remove --force "$work/src" > /dev/null 2>&1 || true
+    rm -rf "$work"
+}
+trap cleanup EXIT
 
-echo "Building current TableProPluginKit..."
-build_interface "$PROJECT_DIR" "$work/head.txt"
-[ "$RESULT" = "failed" ] && { echo "::error::current TableProPluginKit build failed"; exit 1; }
-head_result="$RESULT"
+# Without -error-on-abi-breakage, swift-api-digester reports a breakage as a warning.
+build_kit() {
+    local project="$1" side="$2"
+    shift 2
+    xcodebuild build -project "$project/TablePro.xcodeproj" -scheme TableProPluginKit -configuration Debug \
+        -destination platform=macOS -derivedDataPath "$work/$side/DerivedData" \
+        -clonedSourcePackagesDirPath "$work/packages" -skipPackagePluginValidation \
+        CODE_SIGNING_ALLOWED=NO OTHER_SWIFT_ABI_CHECKER_FLAGS=-error-on-abi-breakage \
+        RUN_SWIFT_ABI_GENERATION_TOOL=YES SWIFT_ABI_GENERATION_TOOL_OUTPUT_DIR="$work/$side/ABI" \
+        "$@" > "$work/$side.log" 2>&1
+}
 
-echo "Building base ($BASE_REF -> ${base_sha:0:8})..."
-git clone --quiet --local --no-hardlinks "$PROJECT_DIR" "$work/base"
-git -C "$work/base" checkout --quiet "$base_sha"
-build_interface "$work/base" "$work/base.txt"
-[ "$RESULT" = "failed" ] && { echo "::error::base TableProPluginKit build failed at $BASE_REF"; exit 1; }
-base_result="$RESULT"
+echo "Building TableProPluginKit at $base"
+git -C "$root" worktree add --quiet --detach "$work/src" "$base"
+(cd "$work/src" && xcodegen generate --quiet --spec project.yml)
+build_kit "$work/src" base || { tail -30 "$work/base.log"; fail "TableProPluginKit does not build at $base"; }
 
-if [ "$base_result" = "none" ]; then
-    echo "Base has no resilient interface (Library Evolution not enabled there). Bootstrap, nothing to compare. Pass."
-    exit 0
+echo "Building TableProPluginKit at HEAD"
+build_kit "$root" head || { tail -30 "$work/head.log"; fail "TableProPluginKit does not build at HEAD"; }
+for side in base head; do
+    ls "$work/$side/ABI"/*.json > /dev/null 2>&1 || fail "The $side build wrote no ABI baseline."
+done
+
+echo "Checking the ABI against $base"
+change=unchanged
+if ! build_kit "$root" head RUN_SWIFT_ABI_CHECKER_TOOL=YES SWIFT_ABI_CHECKER_BASELINE_DIR="$work/base"; then
+    breakages="$(grep ': error: ABI breakage: ' "$work/head.log" | sort -u)" \
+        || { tail -30 "$work/head.log"; fail "The ABI checker failed without reporting a breakage."; }
+    echo "$breakages"
+    change=breaking
+else
+    compared=0
+    diff -rq "$work/base/ABI" "$work/head/ABI" > /dev/null || compared=$?
+    case "$compared" in
+        0) ;;
+        1) change=changed ;;
+        *) fail "Could not compare the ABI baselines." ;;
+    esac
 fi
 
-if [ "$head_result" = "none" ]; then
-    echo "::error::current build produced no .swiftinterface but the base did. Was BUILD_LIBRARY_FOR_DISTRIBUTION turned off?"
-    exit 1
+next=$((base_kit + 1))
+config="Configs/PluginKit.xcconfig"
+if [ "$frozen" -eq 1 ] && [ "$change" != unchanged ]; then
+    fail "PluginKit's ABI differs from $base, and a release line never changes it."
 fi
-
-if diff -u "$work/base.txt" "$work/head.txt"; then
-    echo "PluginKit ABI unchanged vs $BASE_REF."
-    exit 0
-fi
-
-cat <<'EOF'
-
-TableProPluginKit public ABI changed vs base (diff above). Decide additive vs breaking:
-  Additive: a new requirement with a default, a reordering, or a field on a non-frozen transfer
-            struct. Raise TABLEPRO_PLUGINKIT_VERSION in Configs/PluginKit.xcconfig. Shipped plugins
-            keep loading; the bump makes an older app refuse a plugin rebuilt against this API
-            rather than failing its load.
-  Breaking: a changed or removed requirement, a requirement without a default, a case on a @frozen
-            enum, or a frozen type's layout. Raise TABLEPRO_PLUGINKIT_VERSION and
-            TABLEPRO_PLUGINKIT_MINIMUM_VERSION.
-  Registry plugins ship with the next app release, built against the new kit.
-EOF
-exit 1
+case "$change" in
+    breaking)
+        if [ "$head_kit" -ne "$next" ] || [ "$head_minimum" -ne "$next" ]; then
+            fail "Breaking change since $base: set TABLEPRO_PLUGINKIT_VERSION and TABLEPRO_PLUGINKIT_MINIMUM_VERSION to $next in $config."
+        fi
+        ;;
+    changed)
+        if [ "$head_kit" -ne "$next" ]; then
+            fail "PluginKit's ABI changed since $base: set TABLEPRO_PLUGINKIT_VERSION to $next in $config."
+        fi
+        ;;
+    unchanged)
+        if [ "$head_kit" -ne "$base_kit" ]; then
+            fail "PluginKit's ABI matches $base: TABLEPRO_PLUGINKIT_VERSION stays $base_kit in $config."
+        fi
+        ;;
+esac
+echo "PluginKit ABI against $base: $change; kit $head_kit, minimum $head_minimum."
