@@ -172,7 +172,10 @@ def pull_request_problems(number: int, title: str, base: str, files: List[Change
         if changed.status != "added" or owner is None or changed.filename[len(FRAGMENTS) + 1:] in IGNORED:
             continue
         if owner != str(number) and owner not in removed:
-            rest = changed.filename[len(FRAGMENTS) + 1:].partition(".")[2] or "<type>.md"
+            rest = changed.filename[len(FRAGMENTS) + 1:].partition(".")[2]
+            # A rest with no dot holds no type, so towncrier would refuse it as a suffix.
+            if "." not in rest:
+                rest = "<type>.md"
             problems.append(f"{changed.filename} is not named for this pull request. "
                             f"Name it {FRAGMENTS}/{number}.{rest}")
     return problems

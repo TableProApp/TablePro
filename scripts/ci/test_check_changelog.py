@@ -238,9 +238,12 @@ class PullRequestTests(unittest.TestCase):
         problems = self.problems([changed("changelog.d/+theme.fixed.md")])
         self.assertIn("Name it changelog.d/3600.fixed.md", problems[0])
 
-    def test_a_file_that_is_not_a_fragment_is_refused(self):
-        self.assertEqual(len(self.problems([changed("changelog.d/notes.txt")])), 1)
-        self.assertIn("Name it changelog.d/3600.<type>.md", self.problems([changed("changelog.d/notes")])[0])
+    def test_a_file_that_is_not_a_fragment_gets_the_type_placeholder(self):
+        for name in ("notes.txt", "README.md", "notes"):
+            with self.subTest(name=name):
+                problems = self.problems([changed(f"changelog.d/{name}")])
+                self.assertEqual(len(problems), 1)
+                self.assertIn("Name it changelog.d/3600.<type>.md", problems[0])
 
     def test_gitkeep_is_not_a_fragment(self):
         self.assertEqual(self.problems([changed("changelog.d/.gitkeep")]), [])
