@@ -70,7 +70,7 @@ TablePro는 네 번째 선택지입니다. 네이티브이고 여러 데이터�
 
 ## 지원 데이터베이스
 
-내장 드라이버는 앱에 포함되어 있습니다. 플러그인 드라이버는 [플러그인 레지스트리](https://github.com/TableProApp/plugins)에서 필요할 때 설치됩니다. 최신 목록과 엔진별 지원 기능은 [tablepro.app/databases](https://tablepro.app/databases)에서 확인할 수 있습니다.
+내장 드라이버는 앱에 포함되어 있습니다. 플러그인 드라이버는 [플러그인 레지스트리](https://docs.tablepro.app/features/plugins)에서 필요할 때 설치됩니다. 최신 목록과 엔진별 지원 기능은 [tablepro.app/databases](https://tablepro.app/databases)에서 확인할 수 있습니다.
 
 ## 주요 기능
 

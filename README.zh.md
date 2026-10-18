@@ -70,7 +70,7 @@ TablePro 补上缺失的第四类:原生、多数据库、开源。
 
 ## 支持的数据库
 
-内置驱动随应用一起发布。插件驱动按需从[插件仓库](https://github.com/TableProApp/plugins)安装。最新列表以及每个引擎支持的功能见 [tablepro.app/databases](https://tablepro.app/databases)。
+内置驱动随应用一起发布。插件驱动按需从[插件仓库](https://docs.tablepro.app/features/plugins)安装。最新列表以及每个引擎支持的功能见 [tablepro.app/databases](https://tablepro.app/databases)。
 
 ## 主要功能
 

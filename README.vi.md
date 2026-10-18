@@ -70,7 +70,7 @@ TablePro là mảnh thứ tư còn thiếu: native, đa database, và mã nguồ
 
 ## Database hỗ trợ
 
-Driver tích hợp sẵn đi kèm app. Driver dạng plugin cài thêm khi cần từ [plugin registry](https://github.com/TableProApp/plugins). Danh sách hiện tại và những gì từng engine hỗ trợ có tại [tablepro.app/databases](https://tablepro.app/databases).
+Driver tích hợp sẵn đi kèm app. Driver dạng plugin cài thêm khi cần từ [plugin registry](https://docs.tablepro.app/features/plugins). Danh sách hiện tại và những gì từng engine hỗ trợ có tại [tablepro.app/databases](https://tablepro.app/databases).
 
 ## Bên trong có gì
 

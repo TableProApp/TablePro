@@ -59,6 +59,8 @@ xcodebuild build -project TablePro.xcodeproj -scheme AllPlugins -destination 'pl
 
 `scripts/release/build.sh plugins --unsigned` builds the registry plugins the way a release does, universal, into `build/release/plugins`: [`RELEASING.md`](RELEASING.md#reproducing-a-release-build).
 
+`scripts/install-plugin-dev.sh <Target>` copies a registry plugin you built in Debug into the user plugins folder.
+
 ### Clean builds
 
 | Reach for | When |

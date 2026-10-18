@@ -10,7 +10,7 @@ This runbook covers the macOS app, its registry plugins and the static libraries
 - A stable rolls out in phases of 21600 s. A beta is not phased, and on GitHub it is a prerelease. Latest goes only to the highest stable, so a patch on an older line publishes with `--latest=false`.
 - Critical means a security fix or data loss, nothing else. It is ` [CRITICAL]` on the version's `CHANGELOG.md` heading, never on a beta. Every later stable item carries the highest critical build forward (`sparkle:criticalUpdate sparkle:version`).
 - CI writes the orphan `feeds` branch, which holds `appcast.xml` and the v3 plugin manifest (`https://updates.tablepro.app/plugins/v3.json`), and `pages.yml` deploys it to `updates.tablepro.app`. The appcast is EdDSA-signed, and the app requires that (`SURequireSignedFeed`, `SUVerifyUpdateBeforeExtraction`).
-- The legacy `appcast.xml` on `main` and `plugins.json` in TableProApp/plugins serve apps up to 0.81, and no tag writes them. v0.82.0 is the one bridge: once it publishes, a PR copies its feed item verbatim into the legacy `appcast.xml` and a PR in TableProApp/plugins points `plugins.json` at its plugin zips. Both files then freeze.
+- The legacy `appcast.xml` on `main` is the `SUFeedURL` of apps up to 0.81 (`https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml`), and `plugins.json` in TableProApp/plugins is their registry. No tag writes either. The tablepro.app download button and the Homebrew cask `tablepro` read the same appcast. v0.82.0 is the one bridge. Once it publishes, TableProApp/web moves to the new feed. Then a PR copies the v0.82.0 feed item verbatim into the legacy `appcast.xml`, a PR in TableProApp/plugins points `plugins.json` at its plugin zips, and a Homebrew/homebrew-cask PR moves `tablepro` to `TablePro-#{version}.dmg`, with livecheck on the new feed's items that have no channel. Both files then freeze.
 
 ## Versions
 
@@ -41,6 +41,7 @@ beta.1 cuts the line at the newest `main` commit whose push runs are all green; 
 ```bash
 git fetch origin
 git push origin <sha>:refs/heads/release/X.Y  # beta.1 only
+gh label create "backport release/X.Y"  # beta.1 only
 git tag -s vX.Y.0-beta.N -m vX.Y.0-beta.N origin/release/X.Y
 git push origin vX.Y.0-beta.N
 ```
@@ -131,7 +132,7 @@ gh workflow run withdraw.yml --ref v<newest tag> -f version=X.Y.Z
 
 ## Static libraries
 
-The `.a` files under `Libs/` and the xcframeworks under `Libs/ios/` live on the immutable `libs-<n>` GitHub release that `Libs/release` names, not in git; `scripts/download-libs.sh` fetches it and verifies every file against the checksums at `HEAD`. `scripts/publish-libs.sh` takes every library you rebuilt, added or removed, verifies the others against `HEAD`, creates the next `libs-<n>` and rewrites `Libs/release` and both checksum files (`--dry-run` only prints). A published `libs-<n>` never changes: a fix is the next `<n>`.
+The `.a` files under `Libs/` and the xcframeworks under `Libs/ios/` live on the immutable `libs-<n>` GitHub release that `Libs/release` names, not in git; `scripts/download-libs.sh` fetches it and verifies every file against the checksums at `HEAD`. `scripts/publish-libs.sh` takes every library you rebuilt, added or removed, verifies the others against `HEAD`, creates the next `libs-<n>` and rewrites `Libs/release` and both checksum files (`--dry-run` only prints). A published `libs-<n>` never changes: a fix is the next `<n>`. Each library is built by a `build-*.sh` in `scripts/` or `scripts/ios/`.
 
 ```bash
 scripts/publish-libs.sh libmongoc_arm64.a libmongoc_x86_64.a libmongoc_universal.a libmongoc.a
