@@ -30,8 +30,8 @@ This runbook covers the macOS app, its registry plugins and the static libraries
 ## Notes
 
 - Fragments in `changelog.d/` (`.claude/rules/changelog.md`) become a `CHANGELOG.md` section. The tooling needs towncrier: `python3 -m venv .venv && .venv/bin/pip install --require-hashes -r scripts/release/requirements.txt`.
-- `python3 scripts/release/notes.py assemble X.Y.Z [--lead FILE] [--critical] [--date YYYY-MM-DD]` runs on `prep/v<X.Y.Z>`. It refuses a beta, a branch with commits beyond `origin/release/<X.Y>` other than a revert, an empty `changelog.d/`, and a version `CHANGELOG.md` already has. It credits each fragment ` by @login` when its PR's author is not an OWNER or MEMBER (read with `gh`), runs `towncrier build`, which deletes the fragments, adds the lead and the critical marker, and stages `CHANGELOG.md`.
-- The lead: X.Y.0 only, at most 6 plain lines, naming what a reader would change their behavior over. The Sparkle notes, What's New and the Telegram post show only the lead.
+- `.venv/bin/python scripts/release/notes.py assemble X.Y.Z [--date YYYY-MM-DD]` runs on `prep/v<X.Y.Z>`. It refuses a beta, an empty `changelog.d/`, and a version `CHANGELOG.md` already has. It credits each fragment ` by @login` when its PR's author is not an OWNER or MEMBER (read with `gh`), then runs `towncrier build`, which deletes the fragments and stages `CHANGELOG.md`.
+- The lead: X.Y.0 only, at most 6 plain lines, typed under the heading in the release PR, naming what a reader would change their behavior over. With a lead, What's New, the Sparkle notes and the Telegram post show only the lead. Without one, the Sparkle notes carry the whole section and What's New points at the changelog.
 - A beta gets no section. Its GitHub release body and feed notes are a towncrier draft of the fragments at the tag.
 
 ## Cutting a beta
@@ -51,13 +51,15 @@ git push origin vX.Y.0-beta.N
 ```bash
 git fetch origin
 git switch -c prep/vX.Y.Z origin/release/X.Y
-python3 scripts/release/notes.py assemble X.Y.Z --lead lead.txt  # --lead on X.Y.0 only, --critical when it is
+.venv/bin/python scripts/release/notes.py assemble X.Y.Z
+# X.Y.0: type the lead under the heading; critical: append ' [CRITICAL]' to it
+git add CHANGELOG.md
 git commit -m "chore(release): vX.Y.Z"
 git push -u origin prep/vX.Y.Z
 gh pr create --base release/X.Y --title "chore(release): vX.Y.Z" --body "Release notes for vX.Y.Z."
 ```
 
-The PR changes only `CHANGELOG.md` and `changelog.d/`. Squash-merge it, then tag its merge commit:
+The PR changes only `CHANGELOG.md` and `changelog.d/`; PR title refuses anything else. Squash-merge it, then tag its merge commit:
 
 ```bash
 git fetch origin
@@ -83,7 +85,7 @@ python3 scripts/release/notes.py docs X.Y.Z --ref vX.Y.Z --mdx ../tablepro-docs/
 A `v*` tag runs `release.yml` and nothing else. A run is never cancelled, and every job reads the version, build and channel from `verify`.
 
 - `verify`: `version.py check` refuses a tag that breaks the grammar or the bounds; that `origin/release/<X.Y>` does not contain; whose previous tag on the line is not its ancestor; a stable X.Y.0 with no published beta, or a beta after its X.Y.0; a `CHANGELOG.md` missing the stable's heading, or a published stable of this or the previous line below it; a stable whose tag still holds fragments in `changelog.d/`. Then it needs macOS Tests, iOS and Package Tests and Release Build green on the tag commit or the nearest first-parent commit that ran them, waiting on a pending run. Last, it writes the notes.
-- `app` (`signing`): a GA Xcode for a stable (`setup-xcode` `require-release`), the CloudKit Production schema check, `build.sh app` (archive, export with `scripts/release/ExportOptions.plist`, universal, signature and plugin load checks), `notarize.sh` on the app, `package.sh app`, `notarize.sh` on the DMG.
+- `app` (`signing`): a GA Xcode for a stable (`setup-xcode` `require-release`), the CloudKit Production schema check, `build.sh app` (archive, export with `scripts/release/ExportOptions.plist`, universal and plugin load checks), `notarize.sh` on the app, `package.sh app`, `notarize.sh` on the DMG.
 - `plugins` (`signing`): the Dameng and HANA bridges, `build.sh plugins` (each target `registry.py targets` prints, universal, signed with Developer ID, the hardened runtime and a timestamp), one notary submission for all, `package.sh plugins` (the zips, described as the manifest will read them).
 - `github-release`: `actions/attest` attests `dist/*`; `gh release create` drafts, uploads and publishes; `gh release verify` and `verify-asset` check the published release.
 - `feed` (`release`): `feed.py add` checks the published appcast's signature, downloads the archive and the zips from the release, checks each with `gh release verify-asset`, runs `generate_appcast` and `registry.add`, checks the new item, and the job pushes `gh-pages`. The feed and withdraw jobs share the concurrency group `gh-pages` with `queue: max`.
@@ -115,7 +117,7 @@ gh workflow run withdraw.yml --ref v<newest tag> -f version=X.Y.Z
 | `github-pages` | tags `v*` | none |
 
 - No repo-level secret or deploy key is left, and no environment has required reviewers: admin-only, immutable tags are the gate. Rulesets: `.claude/rules/ci.md`, Rulesets.
-- Notarization uses the App Store Connect API key, which `.github/actions/apple-signing` stores as the `TablePro` notarytool profile. The action warns when the certificate or the provisioning profile expires within 60 days.
+- Notarization uses the App Store Connect API key, which `.github/actions/apple-signing` stores as the `TablePro` notarytool profile. The action warns when the certificate expires within 60 days.
 - An offline backup of the Sparkle EdDSA key exists and the maintainer holds it. The key never rotates without a signed transition, since every app from 0.82 verifies the feed with it.
 - `gh-pages` takes pushes from `github-actions[bot]` with `GITHUB_TOKEN` and has no required checks. `feed.py add` and `withdraw` refuse an `appcast.xml` whose signature does not verify, so a hand edit is re-signed with `sign_update` before it is pushed.
 - `updates.tablepro.app` enforces HTTPS (Settings > Pages).
@@ -143,10 +145,11 @@ git add Libs/release Libs/checksums.sha256 Libs/ios/checksums.sha256 && git comm
 ## Reproducing a Release build
 
 ```bash
-scripts/download-libs.sh && scripts/generate-project.sh macos && brew install create-dmg
-scripts/release/build.sh app --unsigned && scripts/release/package.sh app 0.0.0-dev --unsigned
+export VERSION=0.0.0-dev BUILD=9999999
+scripts/download-libs.sh && scripts/generate-project.sh macos
+scripts/release/build.sh app --unsigned && scripts/release/package.sh app --unsigned
 scripts/build-dameng.sh both && scripts/build-hana.sh both
-scripts/release/build.sh plugins --unsigned && scripts/release/package.sh plugins 0.0.0-dev --unsigned
+scripts/release/build.sh plugins --unsigned && scripts/release/package.sh plugins --unsigned
 ```
 
-- `build.sh` writes `build/release/` (xcodebuild logs in `build/release/logs/`), `package.sh` writes `dist/`. Release Build (`release-build.yml`) runs the same on every push to `main` and `release/**`. Signed: drop `--unsigned`, set `VERSION` and `BUILD`, and have the Developer ID identity and the provisioning profile `ExportOptions.plist` names. `notarize.sh <path>...` needs the profile `xcrun notarytool store-credentials TablePro --key <p8> --key-id <id> --issuer <issuer>` creates.
+- `build.sh` writes `build/release/` (xcodebuild logs in `build/release/logs/`), `package.sh` writes `dist/`. CI builds the same in Release Build (`.claude/rules/ci.md`, Release Build). Signed: drop `--unsigned`, export the tag's `VERSION` and `BUILD`, and have the Developer ID identity and the provisioning profile `ExportOptions.plist` names. `notarize.sh <path>...` needs the profile `xcrun notarytool store-credentials TablePro --key <p8> --key-id <id> --issuer <issuer>` creates.

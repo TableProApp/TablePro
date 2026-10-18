@@ -19,13 +19,14 @@ internal final class RegistryClient: ObservableObject {
     internal private(set) var isManifestCurrent = false
 
     internal let session: URLSession
+    internal let updatePassSession: URLSession
     internal let manifestURL: URL
 
     private var inFlight: InFlightFetch?
 
     private struct InFlightFetch {
         let policy: RegistryFetchPolicy
-        let task: Task<Void, Never>
+        let task: Task<RegistryManifest?, Never>
     }
 
     internal init(
@@ -34,6 +35,7 @@ internal final class RegistryClient: ObservableObject {
     ) {
         self.manifestURL = manifestURL
         self.session = session
+        updatePassSession = Self.makeUpdatePassSession(from: session)
         manifest = Self.cachedManifest(for: manifestURL, in: session.configuration.urlCache)
     }
 
@@ -52,6 +54,14 @@ internal final class RegistryClient: ObservableObject {
         return URLSession(configuration: config)
     }
 
+    // Shares the interactive session's cache; offline it waits for the network until the resource timeout.
+    nonisolated internal static func makeUpdatePassSession(from session: URLSession) -> URLSession {
+        let config = session.configuration
+        config.waitsForConnectivity = true
+        config.timeoutIntervalForResource = 7 * 24 * 60 * 60
+        return URLSession(configuration: config)
+    }
+
     nonisolated private static func cachedManifest(for url: URL, in cache: URLCache?) -> RegistryManifest? {
         guard let cached = cache?.cachedResponse(for: URLRequest(url: url)) else { return nil }
         do {
@@ -62,14 +72,24 @@ internal final class RegistryClient: ObservableObject {
         }
     }
 
-    internal func fetch(policy: RegistryFetchPolicy) async {
+    // The result is this fetch's own; isManifestCurrent also reflects the update pass's fetch.
+    @discardableResult
+    internal func fetch(policy: RegistryFetchPolicy) async -> RegistryManifest? {
         while let current = inFlight {
-            await current.task.value
-            if policy == .ifStale || current.policy == .mustBeCurrent { return }
+            let result = await current.task.value
+            if policy == .ifStale || current.policy == .mustBeCurrent { return result }
         }
-        let task = Task { await self.load(policy) }
+        let task = Task {
+            defer { self.inFlight = nil }
+            return await self.load(self.makeRequest(policy: policy), from: self.session)
+        }
         inFlight = InFlightFetch(policy: policy, task: task)
-        await task.value
+        return await task.value
+    }
+
+    // Never coalesced with fetch(policy:), so an interactive caller never waits for the network with the pass.
+    internal func fetchWaitingForConnectivity() async -> RegistryManifest? {
+        await load(makeRequest(policy: .mustBeCurrent), from: updatePassSession)
     }
 
     internal func makeRequest(policy: RegistryFetchPolicy) -> URLRequest {
@@ -83,23 +103,24 @@ internal final class RegistryClient: ObservableObject {
         return request
     }
 
-    private func load(_ policy: RegistryFetchPolicy) async {
-        defer { inFlight = nil }
+    private func load(_ request: URLRequest, from session: URLSession) async -> RegistryManifest? {
         do {
-            let (data, response) = try await session.data(for: makeRequest(policy: policy))
+            let (data, response) = try await session.data(for: request)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard (200...299).contains(status) else {
                 Self.logger.error("Plugin manifest fetch returned HTTP \(status)")
                 isManifestCurrent = false
-                return
+                return nil
             }
             let decoded = try JSONDecoder().decode(RegistryManifest.self, from: data)
             manifest = decoded
             isManifestCurrent = true
             Self.logger.info("Fetched the plugin manifest with \(decoded.plugins.count) plugin(s)")
+            return decoded
         } catch {
             isManifestCurrent = false
             Self.logger.error("Plugin manifest fetch failed: \(error.publicLogShape, privacy: .public)")
+            return nil
         }
     }
 }

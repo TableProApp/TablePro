@@ -30,9 +30,8 @@ extension RegistryManifest: Decodable {
 internal struct RegistryPlugin: Decodable, Sendable, Identifiable {
     internal let id: String
     internal let name: String
-    internal let iconName: String?
-    internal let databaseTypeIds: [String]?
-    internal let exportFormatIds: [String]?
+    internal let databaseTypeIds: [String]
+    internal let exportFormatIds: [String]
     internal let releases: [RegistryRelease]
 }
 

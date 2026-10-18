@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: package.sh app|plugins <version> [--unsigned]
-# Turns what scripts/release/build.sh wrote to build/release into the release assets in dist/.
-# BUILD is the build number build.sh got; unset, it is 1, the CURRENT_PROJECT_VERSION project.yml sets.
+# Usage: package.sh app|plugins [--unsigned]
+# Turns what scripts/release/build.sh wrote to build/release into the release assets in dist/, named by VERSION.
 
 usage() {
-    echo "Usage: package.sh app|plugins <version> [--unsigned]" >&2
+    echo "Usage: package.sh app|plugins [--unsigned]" >&2
     exit 2
 }
 
@@ -16,27 +15,18 @@ die() {
 }
 
 KIND=""
-VERSION=""
 SIGNED=true
 for arg in "$@"; do
     case "$arg" in
+        app | plugins) [ -z "$KIND" ] || usage; KIND="$arg" ;;
         --unsigned) SIGNED=false ;;
-        -*) usage ;;
-        *)
-            if [ -z "$KIND" ]; then
-                KIND="$arg"
-            elif [ -z "$VERSION" ]; then
-                VERSION="$arg"
-            else
-                usage
-            fi
-            ;;
+        *) usage ;;
     esac
 done
-case "$KIND" in app | plugins) ;; *) usage ;; esac
-case "$VERSION" in '' | *[!0-9A-Za-z.-]*) usage ;; esac
-BUILD="${BUILD:-1}"
-case "$BUILD" in '' | *[!0-9]*) echo "package.sh: BUILD must be an integer, got '$BUILD'" >&2; exit 2 ;; esac
+[ -n "$KIND" ] || usage
+case "${VERSION:-}" in
+    '' | *[!0-9A-Za-z.-]*) echo "package.sh: set VERSION, got '${VERSION:-}'" >&2; exit 2 ;;
+esac
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
@@ -51,22 +41,17 @@ package_app() {
     local symbols="$DIST/TablePro-$VERSION-dSYMs.zip" extracted="$WORK/extracted"
     [ -d "$app" ] || die "no $app; run scripts/release/build.sh app first"
     [ -d "$dsyms" ] || die "no $dsyms; run scripts/release/build.sh app first"
-    command -v create-dmg > /dev/null || die "create-dmg is not installed: brew install create-dmg"
     mkdir -p "$DIST"
     rm -f "$dmg" "$update" "$symbols"
 
     mkdir "$WORK/dmg"
     ditto "$app" "$WORK/dmg/TablePro.app"
-    create-dmg --volname "TablePro $VERSION" --volicon "$app/Contents/Resources/AppIcon.icns" \
-        --window-pos 200 120 --window-size 600 400 --icon-size 80 --icon TablePro.app 150 190 \
-        --hide-extension TablePro.app --app-drop-link 450 190 --format ULMO "$dmg" "$WORK/dmg"
-    if [ "$SIGNED" = true ]; then
-        codesign --sign "Developer ID Application" --timestamp "$dmg"
-        codesign --verify --strict "$dmg" || die "$dmg fails codesign --verify"
-    fi
+    ln -s /Applications "$WORK/dmg/Applications"
+    hdiutil create -volname "TablePro $VERSION" -srcfolder "$WORK/dmg" -ov -format ULFO "$dmg"
+    [ "$SIGNED" = false ] || codesign --sign "Developer ID Application" --timestamp "$dmg"
 
     # tar keeps the framework symlinks codesign seals; a signed bundle needs no extended attributes.
-    /usr/bin/tar --no-mac-metadata --no-xattrs --no-acls --uid 0 --gid 0 \
+    /usr/bin/tar --no-mac-metadata --no-xattrs --uid 0 --gid 0 \
         --options xz:compression-level=9 -cJf "$update" -C "$OUT" TablePro.app
 
     # Sparkle's SUPipedUnarchiver pipes a .tar.xz into this same command.
@@ -86,6 +71,7 @@ package_plugins() {
     local plugin target symbols="$DIST/TablePro-$VERSION-Plugins-dSYMs.zip" count=0
     [ -d "$OUT/plugins" ] || die "no $OUT/plugins; run scripts/release/build.sh plugins first"
     [ -d "$OUT/plugins-dSYMs" ] || die "no $OUT/plugins-dSYMs; run scripts/release/build.sh plugins first"
+    case "${BUILD:-}" in '' | *[!0-9]*) die "set BUILD to an integer, got '${BUILD:-}'" ;; esac
     mkdir -p "$DIST"
     rm -f "$DIST"/*-"$VERSION".zip "$symbols"
 

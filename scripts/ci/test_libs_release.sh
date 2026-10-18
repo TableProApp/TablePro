@@ -114,14 +114,17 @@ new_case() {
     printf 'device a\n' > "$TREE/Libs/ios/A.xcframework/ios-arm64/liba.a"
     printf 'plist b\n' > "$TREE/Libs/ios/B.xcframework/Info.plist"
     printf 'device b\n' > "$TREE/Libs/ios/B.xcframework/ios-arm64/libb.a"
-    echo libs-v1 > "$TREE/Libs/release"
+    echo libs-2 > "$TREE/Libs/release"
     (cd "$TREE" && shasum -a 256 Libs/*.a > Libs/checksums.sha256)
     (cd "$TREE/Libs/ios" && find ./*.xcframework -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 > checksums.sha256)
     git -C "$TREE" init -q
     commit
 
-    echo '[{"tag_name":"v0.81.0","draft":false,"immutable":true},{"tag_name":"libs-v1","draft":false,"immutable":false}]' > "$STATE/releases.json"
-    echo libs-v1 > "$STATE/tags"
+    mkdir -p "$STATE/assets/libs-2"
+    COPYFILE_DISABLE=1 tar -czf "$STATE/assets/libs-2/tablepro-libs-2.tar.gz" -C "$TREE/Libs" liba.a libb.a libc.a
+    COPYFILE_DISABLE=1 tar -czf "$STATE/assets/libs-2/tablepro-libs-ios-2.tar.gz" -C "$TREE/Libs/ios" A.xcframework B.xcframework
+    echo '[{"tag_name":"v0.81.0","draft":false,"immutable":true},{"tag_name":"libs-2","draft":false,"immutable":true}]' > "$STATE/releases.json"
+    echo libs-2 > "$STATE/tags"
     touch "$STATE/immutable-enabled"
     : > "$STATE/log"
 }
@@ -129,12 +132,6 @@ new_case() {
 commit() {
     git -C "$TREE" add Libs/release Libs/checksums.sha256 Libs/ios/checksums.sha256
     git -C "$TREE" commit -qm pin
-}
-
-serve_legacy_v1() {
-    mkdir -p "$STATE/assets/libs-v1"
-    tar -czf "$STATE/assets/libs-v1/tablepro-libs-v1.tar.gz" -C "$TREE/Libs" liba.a libb.a libc.a checksums.sha256
-    tar -czf "$STATE/assets/libs-v1/tablepro-libs-ios-v1.tar.gz" -C "$TREE/Libs/ios" .
 }
 
 clear_libs() {
@@ -193,28 +190,11 @@ expect_output usage "Usage:"
 run scripts/publish-libs.sh notes.txt
 expect_status usage-type 2
 
-new_case migrate
-run scripts/publish-libs.sh Libs/liba.a Libs/libb.a Libs/libc.a Libs/ios/A.xcframework Libs/ios/B.xcframework
-expect_status migrate 0
-expect_log migrate "release create libs-2 --repo TableProApp/TablePro --draft --latest=false"
-expect_log migrate "release edit libs-2 --repo TableProApp/TablePro --draft=false --latest=false"
-expect_file migrate Libs/release libs-2
-expect_file migrate Libs/.downloaded libs-2
-expect_file migrate Libs/ios/.downloaded libs-2
-git -C "$TREE" diff --quiet -- Libs/checksums.sha256 Libs/ios/checksums.sha256 || fail "migrate: a checksum file changed"
-[ "$(members "$STATE/assets/libs-2/tablepro-libs-2.tar.gz")" = "liba.a libb.a libc.a" ] \
-    || fail "migrate: macOS archive holds $(members "$STATE/assets/libs-2/tablepro-libs-2.tar.gz")"
-[ "$(members "$STATE/assets/libs-2/tablepro-libs-ios-2.tar.gz" | tr ' ' '\n' | grep -v / | paste -sd ' ' -)" = "A.xcframework B.xcframework" ] \
-    || fail "migrate: iOS archive holds $(members "$STATE/assets/libs-2/tablepro-libs-ios-2.tar.gz")"
-tar -tvzf "$STATE/assets/libs-2/tablepro-libs-2.tar.gz" | grep -q 'libc.a -> liba.a' \
-    || fail "migrate: libc.a is not archived as a link to liba.a"
-
-commit
-: > "$STATE/log"
-run scripts/publish-libs.sh liba.a
+new_case flow
+run scripts/publish-libs.sh Libs/liba.a Libs/ios/A.xcframework
 expect_status unchanged 1
 expect_output unchanged "nothing to publish: every named library matches libs-2"
-refute_log unchanged "release create"
+refute_log unchanged "api"
 
 clear_libs
 run scripts/download-libs.sh
@@ -232,7 +212,7 @@ expect_status present 0
 refute_log present "release download"
 
 : > "$STATE/log"
-echo libs-v1 > "$TREE/Libs/.downloaded"
+echo libs-1 > "$TREE/Libs/.downloaded"
 printf 'stale\n' > "$TREE/Libs/libstale.a"
 run scripts/download-libs.sh
 expect_status new-pin 0
@@ -263,7 +243,16 @@ run scripts/publish-libs.sh libb.a
 expect_status rebuilt 0
 expect_output rebuilt "Rebuilt since libs-2: libb.a."
 expect_log rebuilt "release create libs-3 --repo TableProApp/TablePro --draft --latest=false"
+expect_log rebuilt "release edit libs-3 --repo TableProApp/TablePro --draft=false --latest=false"
 expect_file rebuilt Libs/release libs-3
+expect_file rebuilt Libs/.downloaded libs-3
+expect_file rebuilt Libs/ios/.downloaded libs-3
+[ "$(members "$STATE/assets/libs-3/tablepro-libs-3.tar.gz")" = "liba.a libb.a libc.a" ] \
+    || fail "rebuilt: macOS archive holds $(members "$STATE/assets/libs-3/tablepro-libs-3.tar.gz")"
+[ "$(members "$STATE/assets/libs-3/tablepro-libs-ios-3.tar.gz" | tr ' ' '\n' | grep -v / | paste -sd ' ' -)" = "A.xcframework B.xcframework" ] \
+    || fail "rebuilt: iOS archive holds $(members "$STATE/assets/libs-3/tablepro-libs-ios-3.tar.gz")"
+tar -tvzf "$STATE/assets/libs-3/tablepro-libs-3.tar.gz" | grep -q 'libc.a -> liba.a' \
+    || fail "rebuilt: libc.a is not archived as a link to liba.a"
 [ "$(git -C "$TREE" diff --numstat -- Libs/checksums.sha256)" = "$(printf '1\t1\tLibs/checksums.sha256')" ] \
     || fail "rebuilt: Libs/checksums.sha256 moved more than the libb.a line"
 git -C "$TREE" diff --quiet -- Libs/ios/checksums.sha256 || fail "rebuilt: the iOS checksums moved"
@@ -303,19 +292,19 @@ expect_output link "Libs/liba.a links outside Libs."
 
 new_case draft
 printf 'rebuilt b\n' > "$TREE/Libs/libb.a"
-jq '. + [{tag_name: "libs-2", draft: true, immutable: false}]' "$STATE/releases.json" > "$STATE/r" && mv "$STATE/r" "$STATE/releases.json"
+jq '. + [{tag_name: "libs-3", draft: true, immutable: false}]' "$STATE/releases.json" > "$STATE/r" && mv "$STATE/r" "$STATE/releases.json"
 run scripts/publish-libs.sh libb.a
 expect_status draft 1
-expect_output draft "a libs release is still a draft: libs-2."
+expect_output draft "a libs release is still a draft: libs-3."
 refute_log draft "release create"
 
 new_case behind
 printf 'rebuilt b\n' > "$TREE/Libs/libb.a"
-jq '. + [{tag_name: "libs-2", draft: false, immutable: true}]' "$STATE/releases.json" > "$STATE/r" && mv "$STATE/r" "$STATE/releases.json"
-echo libs-2 >> "$STATE/tags"
+jq '. + [{tag_name: "libs-3", draft: false, immutable: true}]' "$STATE/releases.json" > "$STATE/r" && mv "$STATE/r" "$STATE/releases.json"
+echo libs-3 >> "$STATE/tags"
 run scripts/publish-libs.sh libb.a
 expect_status behind 1
-expect_output behind "HEAD pins libs-v1, but libs-2 is newer."
+expect_output behind "HEAD pins libs-2, but libs-3 is newer."
 refute_log behind "release create"
 
 new_case numbering
@@ -338,23 +327,13 @@ printf 'rebuilt b\n' > "$TREE/Libs/libb.a"
 touch "$STATE/publish-mutable"
 run scripts/publish-libs.sh libb.a
 expect_status published-mutable 1
-expect_output published-mutable "libs-2 was published, but GitHub does not report it immutable"
+expect_output published-mutable "libs-3 was published, but GitHub does not report it immutable"
 expect_unchanged_at_head published-mutable
 
-new_case legacy
-serve_legacy_v1
-clear_libs
-run scripts/download-libs.sh
-expect_status legacy 0
-expect_log legacy "release download libs-v1 --repo TableProApp/TablePro --pattern tablepro-libs-v1.tar.gz"
-expect_file legacy Libs/.downloaded libs-v1
-expect_unchanged_at_head legacy
-
 new_case tampered
-serve_legacy_v1
 clear_libs
 printf 'tampered\n' > "$SCRATCH/tampered/liba.a"
-tar -czf "$STATE/assets/libs-v1/tablepro-libs-v1.tar.gz" -C "$SCRATCH/tampered" liba.a
+tar -czf "$STATE/assets/libs-2/tablepro-libs-2.tar.gz" -C "$SCRATCH/tampered" liba.a
 run scripts/download-libs.sh
 expect_status tampered 1
 expect_output tampered "Libs does not match the checksums committed in git."

@@ -8,11 +8,6 @@ on:
     branches: [main, 'release/**']
   workflow_dispatch:
 
-# Each commit has a group of its own and is never cancelled, as in macos-tests.yml.
-concurrency:
-  group: release-build-${{ github.sha }}
-  cancel-in-progress: false
-
 permissions:
   contents: read
 
@@ -44,28 +39,16 @@ jobs:
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     runs-on: xcode-27
     timeout-minutes: 150
+    # The tag's version settings run here first; 9999999 is the largest build at MAJOR 0 (RELEASING.md, Versions).
+    env:
+      VERSION: 0.0.0-dev
+      BUILD: "9999999"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-xcode
 
-      - uses: ./.github/actions/setup-xcodegen
-
-      - name: Download static libraries
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: scripts/download-libs.sh
-
-      - name: Generate the Xcode project
-        run: scripts/generate-project.sh macos
-
-      # macos-tests.yml saves this cache.
-      - name: Restore Swift package checkouts
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.spm-cache
-          key: spm-${{ runner.os }}-${{ hashFiles('TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
+      - uses: ./.github/actions/prepare-build
 
       - name: Set up Go for the SAP HANA helper
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -79,9 +62,6 @@ jobs:
           scripts/build-dameng.sh both
           scripts/build-hana.sh both
 
-      - name: Install create-dmg
-        run: brew list create-dmg > /dev/null 2>&1 || brew install create-dmg
-
       - name: Build the app
         id: app
         run: scripts/release/build.sh app --unsigned
@@ -94,11 +74,11 @@ jobs:
 
       - name: Package the app
         if: ${{ !cancelled() && steps.app.outcome == 'success' }}
-        run: scripts/release/package.sh app 0.0.0-dev --unsigned
+        run: scripts/release/package.sh app --unsigned
 
       - name: Package the plugins
         if: ${{ !cancelled() && steps.plugins.outcome == 'success' }}
-        run: scripts/release/package.sh plugins 0.0.0-dev --unsigned
+        run: scripts/release/package.sh plugins --unsigned
 
       - name: Upload the build logs
         if: ${{ failure() }}

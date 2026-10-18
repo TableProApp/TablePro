@@ -102,33 +102,14 @@ jobs:
       - name: Check the Production CloudKit schema
         env:
           CLOUDKIT_MANAGEMENT_TOKEN: ${{ secrets.CLOUDKIT_MANAGEMENT_TOKEN }}
-        run: |
-          set -euo pipefail
-          xcrun cktool save-token --type management --method file --force "$CLOUDKIT_MANAGEMENT_TOKEN"
-          scripts/export-cloudkit-schema.sh --check
-
-      - uses: ./.github/actions/setup-xcodegen
-
-      - name: Download static libraries
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: scripts/download-libs.sh
+        run: scripts/export-cloudkit-schema.sh --check
 
       - name: Write Secrets.xcconfig
         env:
           ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
         run: printf 'ANALYTICS_HMAC_SECRET = %s\n' "$ANALYTICS_HMAC_SECRET" > Configs/Secrets.xcconfig
 
-      - name: Generate the Xcode project
-        run: scripts/generate-project.sh macos
-
-      # macos-tests.yml saves this cache; a save in tag scope would be unreadable from other refs.
-      - name: Restore Swift package checkouts
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.spm-cache
-          key: spm-${{ runner.os }}-${{ hashFiles('TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
+      - uses: ./.github/actions/prepare-build
 
       - uses: ./.github/actions/apple-signing
         with:
@@ -139,9 +120,6 @@ jobs:
           asc-issuer-id: ${{ secrets.ASC_ISSUER_ID }}
           asc-key-p8: ${{ secrets.ASC_KEY_P8 }}
 
-      - name: Install create-dmg
-        run: brew list create-dmg > /dev/null 2>&1 || brew install create-dmg
-
       - name: Build the app
         run: scripts/release/build.sh app
 
@@ -149,7 +127,7 @@ jobs:
         run: scripts/release/notarize.sh build/release/TablePro.app
 
       - name: Package the app
-        run: scripts/release/package.sh app "$VERSION"
+        run: scripts/release/package.sh app
 
       - name: Notarize the disk image
         run: scripts/release/notarize.sh "dist/TablePro-$VERSION.dmg"
@@ -179,22 +157,7 @@ jobs:
         with:
           require-release: ${{ needs.verify.outputs.channel == 'stable' }}
 
-      - uses: ./.github/actions/setup-xcodegen
-
-      - name: Download static libraries
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: scripts/download-libs.sh
-
-      - name: Generate the Xcode project
-        run: scripts/generate-project.sh macos
-
-      - name: Restore Swift package checkouts
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.spm-cache
-          key: spm-${{ runner.os }}-${{ hashFiles('TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
+      - uses: ./.github/actions/prepare-build
 
       - name: Set up Go for the SAP HANA helper
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -223,7 +186,7 @@ jobs:
         run: scripts/release/notarize.sh build/release/plugins/*.tableplugin
 
       - name: Package the plugins
-        run: scripts/release/package.sh plugins "$VERSION"
+        run: scripts/release/package.sh plugins
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

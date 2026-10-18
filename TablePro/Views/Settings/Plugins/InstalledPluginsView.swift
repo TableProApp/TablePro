@@ -150,7 +150,7 @@ struct InstalledPluginsView: View {
     @ViewBuilder
     private func rejectedPluginRow(_ plugin: RejectedPlugin, action: RejectedPluginAction) -> some View {
         HStack(spacing: 8) {
-            PluginIconView(name: rejectedIconName(for: plugin))
+            PluginIconView(name: PluginManager.iconName(forPrimaryTypeId: plugin.providedDatabaseTypeIds.first))
                 .font(.title3)
                 .frame(width: 24, height: 24)
                 .foregroundStyle(.tertiary)
@@ -196,14 +196,6 @@ struct InstalledPluginsView: View {
         case .awaitingCompatibleBuild, .notInRegistry:
             EmptyView()
         }
-    }
-
-    private func rejectedIconName(for plugin: RejectedPlugin) -> String {
-        registryEntry(for: plugin)?.iconName ?? "puzzlepiece"
-    }
-
-    private func registryEntry(for plugin: RejectedPlugin) -> RegistryPlugin? {
-        pluginManager.registryPlugin(for: plugin)
     }
 
     private func removeRejectedPlugin(_ plugin: RejectedPlugin) {

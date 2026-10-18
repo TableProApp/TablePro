@@ -4,8 +4,7 @@ set -euo pipefail
 # Refresh the checked-in snapshot of the Production CloudKit schema. When to run it:
 # .claude/rules/data-sync-storage.md.
 #
-# Requires a CloudKit management token:
-#   xcrun cktool save-token --type management
+# Reads the management token from CLOUDKIT_MANAGEMENT_TOKEN, or from `xcrun cktool save-token --type management`.
 #
 # Usage:
 #   scripts/export-cloudkit-schema.sh            # overwrite the snapshot

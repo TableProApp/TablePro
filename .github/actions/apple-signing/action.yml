@@ -79,17 +79,5 @@ runs:
       run: |
         set -euo pipefail
         profiles="$HOME/Library/MobileDevice/Provisioning Profiles"
-        decoded="$RUNNER_TEMP/profile.plist"
         mkdir -p "$profiles"
-        echo "$PROVISIONING_PROFILE" | base64 --decode > "$RUNNER_TEMP/tablepro.provisionprofile"
-        security cms -D -i "$RUNNER_TEMP/tablepro.provisionprofile" > "$decoded"
-        name="$(plutil -extract Name raw -o - "$decoded")"
-        uuid="$(plutil -extract UUID raw -o - "$decoded")"
-        expiry="$(plutil -extract ExpirationDate raw -o - "$decoded")"
-        mv "$RUNNER_TEMP/tablepro.provisionprofile" "$profiles/$uuid.provisionprofile"
-        rm -f "$decoded"
-        # Both are ISO 8601 in UTC, so they compare as strings.
-        if [[ "$expiry" < "$(date -u -v+60d +%Y-%m-%dT%H:%M:%SZ)" ]]; then
-          echo "::warning::The provisioning profile '$name' expires on $expiry"
-        fi
-        echo "Installed the provisioning profile '$name' ($uuid), valid until $expiry"
+        printf '%s' "$PROVISIONING_PROFILE" | base64 --decode > "$profiles/tablepro.provisionprofile"

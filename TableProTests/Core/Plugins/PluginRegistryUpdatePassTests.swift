@@ -8,9 +8,15 @@ private final class ManifestStubProtocol: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var bodies: [URL: Data] = [:]
     nonisolated(unsafe) private static var requests: [URL: Int] = [:]
+    nonisolated(unsafe) private static var unansweredRequests: [URL: Int] = [:]
 
     static func serve(_ body: Data, at url: URL) {
         lock.withLock { bodies[url] = body }
+    }
+
+    // An unanswered request stays open until its task is cancelled, like one waiting for the network.
+    static func leaveUnanswered(next count: Int, at url: URL) {
+        lock.withLock { unansweredRequests[url] = count }
     }
 
     static func requestCount(for url: URL) -> Int {
@@ -31,10 +37,15 @@ private final class ManifestStubProtocol: URLProtocol, @unchecked Sendable {
             client?.urlProtocol(self, didFailWithError: URLError(.badURL))
             return
         }
-        let body = Self.lock.withLock {
+        let body: Data? = Self.lock.withLock {
             Self.requests[url, default: 0] += 1
+            guard Self.unansweredRequests[url, default: 0] == 0 else {
+                Self.unansweredRequests[url, default: 0] -= 1
+                return nil
+            }
             return Self.bodies[url] ?? Data()
         }
+        guard let body else { return }
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: body)
         client?.urlProtocolDidFinishLoading(self)
@@ -204,9 +215,8 @@ struct PluginRegistryUpdatePassTests {
         RegistryPlugin(
             id: id,
             name: "Test Plugin",
-            iconName: nil,
-            databaseTypeIds: nil,
-            exportFormatIds: nil,
+            databaseTypeIds: [],
+            exportFormatIds: [],
             releases: releases
         )
     }
@@ -252,7 +262,7 @@ struct PluginRegistryUpdatePassTests {
         let manifestURL = try #require(URL(string: "https://registry.invalid/\(UUID().uuidString)/plugins/v3.json"))
         let plugins = pluginIds.map { id in
             """
-            {"id": "\(id)", "name": "Driver", "releases": [{
+            {"id": "\(id)", "name": "Driver", "databaseTypeIds": [], "exportFormatIds": [], "releases": [{
                 "version": "1.0", "build": \(build), "channel": "stable",
                 "pluginKit": \(PluginManager.currentPluginKitVersion),
                 "minimumSystemVersion": "13.0", "url": "https://x", "sha256": "deadbeef"
@@ -436,6 +446,42 @@ struct PluginRegistryUpdatePassTests {
         #expect(result == .retry)
         #expect(ManifestStubProtocol.requestCount(for: manifestURL) == 1)
         #expect(manager.stagedPluginIds.isEmpty)
+    }
+
+    @Test("The pass fetches on a session that waits for the network; interactive fetches keep the 30 s one")
+    func passSessionWaitsForConnectivity() throws {
+        let manifestURL = try #require(URL(string: "https://registry.invalid/\(UUID().uuidString)/plugins/v3.json"))
+        let client = RegistryClient(manifestURL: manifestURL, session: RegistryClient.makeDefaultSession())
+        let interactive = client.session.configuration
+        let pass = client.updatePassSession.configuration
+
+        #expect(pass.waitsForConnectivity)
+        #expect(pass.timeoutIntervalForResource == 7 * 24 * 60 * 60)
+        #expect(interactive.timeoutIntervalForResource == 30)
+        #expect(pass.urlCache === interactive.urlCache)
+    }
+
+    @Test("While the pass waits for the manifest, a connection neither waits for the pass nor joins its fetch")
+    func connectionSkipsThePassWaitingForTheNetwork() async throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let manager = fixture.manager
+        manager.rejectedPlugins = [makeRejected(bundleId: "com.example.driver")]
+        let (client, manifestURL) = try makeRegistryClient(servingBuild: 20)
+        ManifestStubProtocol.leaveUnanswered(next: 1, at: manifestURL)
+
+        let pass = Task { await manager.runRegistryUpdatePass(registryClient: client, appBuild: 20) }
+        try await waitUntil { ManifestStubProtocol.requestCount(for: manifestURL) == 1 }
+
+        #expect(!manager.isRepairingRejectedPlugins)
+        await manager.waitForRejectedPluginRepairs()
+        await client.fetch(policy: .mustBeCurrent)
+        #expect(client.isManifestCurrent)
+        #expect(ManifestStubProtocol.requestCount(for: manifestURL) == 2)
+
+        pass.cancel()
+        let result = await pass.value
+        #expect(result == .retry)
     }
 
     @Test("Retries wait 30 s, 300 s, then 600 s, and stop after the fifth attempt")

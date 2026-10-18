@@ -1,0 +1,34 @@
+name: Prepare build
+description: Installs XcodeGen, downloads the static libraries, generates TablePro.xcodeproj and restores the Swift package checkouts.
+
+outputs:
+  cache-hit:
+    description: The restore step's cache-hit output.
+    value: ${{ steps.spm.outputs.cache-hit }}
+  cache-primary-key:
+    description: The restore step's cache-primary-key output.
+    value: ${{ steps.spm.outputs.cache-primary-key }}
+
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/setup-xcodegen
+
+    - name: Download static libraries
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: scripts/download-libs.sh
+
+    - name: Generate the Xcode project
+      shell: bash
+      run: scripts/generate-project.sh macos
+
+    # macos-tests.yml saves this cache.
+    - name: Restore Swift package checkouts
+      id: spm
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.spm-cache
+        key: spm-${{ runner.os }}-${{ hashFiles('TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+        restore-keys: spm-${{ runner.os }}-
