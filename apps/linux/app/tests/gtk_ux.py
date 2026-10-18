@@ -8,7 +8,6 @@ import time
 from pathlib import Path
 
 import gtk_input
-import gtk_port_lock
 
 
 class XWindowAttributes(ctypes.Structure):
@@ -148,6 +147,10 @@ def scenarios(ui):
                         continue
             time.sleep(ui.POLL_SECONDS)
         raise AssertionError(f"no entry named {name!r}:\n{ui.accessible_snapshot()}")
+
+    def set_spin(name, value):
+        node = ui.wait_for_node(name=name, role=pyatspi.ROLE_SPIN_BUTTON)
+        node.queryValue().currentValue = value
 
     def saved_connections(base):
         files = list((base / "config").glob("*/connections.json"))
@@ -352,14 +355,18 @@ GLib.MainLoop().run()
         )
 
     def connect_dialog_cancel_stops_a_hanging_connection(database, base):
+        import socket
         import threading
 
-        with gtk_port_lock.listening_on(5432) as server:
+        with socket.socket() as server:
+            server.bind(("127.0.0.1", 0))
+            server.listen(4)
             held = []
             threading.Thread(target=lambda: [held.append(server.accept()) for _ in range(4)], daemon=True).start()
             ui.invoke(ui.wait_for_node(name="New connection", role=pyatspi.ROLE_PUSH_BUTTON))
             ui.wait_for_node(name="Connect to PostgreSQL")
             set_entry("Host", "127.0.0.1")
+            set_spin("Port", server.getsockname()[1])
             ui.invoke(ui.wait_for_node(name="Connect", role=pyatspi.ROLE_PUSH_BUTTON))
             ui.invoke(ui.wait_for_node(name="Cancel", role=pyatspi.ROLE_PUSH_BUTTON))
             ui.wait_for_node_containing("Connection cancelled")
