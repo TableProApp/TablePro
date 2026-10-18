@@ -52,8 +52,9 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 ## iOS and Package Tests (`ios-tests.yml`)
 
 - Triggers and concurrency as macOS Tests. `Changes (iOS)` outputs `run` (detector `ios`) and `oracle` (detector `oracle`).
-- 50 minutes on `xcode-27`, simulator `iPhone 18 Pro`. The iOS platform is downloaded only when that simulator is missing.
-- `TableProMobileTests` runs with `-parallel-testing-enabled NO`: a second booted simulator killed runs with "(ipc/mig) server died" on the 3-core runner. `TableProMobile/project.yml` says `parallelizable: true`, which every run overrides.
+- 50 minutes on `xcode-27`, simulator `iPhone 18 Pro` on the newest iOS runtime that has it. The iOS platform is downloaded only when that simulator is missing.
+- Right after setup-xcode the job boots that simulator by UDID, so its first boot overlaps the build. `xcodebuild test` names it with `-destination id=`.
+- `TableProMobileTests` runs with `-parallel-testing-enabled NO` on that one simulator: a second booted simulator killed runs with "(ipc/mig) server died" on the 3-core runner. `TableProMobile/project.yml` says `parallelizable: true`, which every run overrides.
 - `swift test --package-path Packages/TableProCore --parallel`, then TableProOracle with `--force-resolved-versions` when its detector is not false. Each step has `if: !cancelled()`, so one red step never hides the next.
 - The summary step always runs. Evidence uploads only on failure.
 
