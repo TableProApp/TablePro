@@ -80,6 +80,7 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 
 ## Client research (October 2026)
 
+- [Code and UI audit, October 18](archive/code-and-ui-audit-2026-10-18.md): source findings for pending-state cues, high contrast and responsiveness; refreshed dbx, TablePro and DBeaver fixes; proposed audit packets and their acceptance layers.
 - [Peer-review delivery tracker](https://github.com/cozyGarage/BookiE/issues/1026) and its lane-owned slices are the current work queue for the review below.
 - [Linux documentation update plan and peer review, October 16](archive/linux-peer-review-2026-10-16.md): current-source findings, completed-work reconciliation, dbx and other client lessons, and TablePro main/Linux port candidates.
 - [Linux peer review, October 17](archive/linux-peer-review-2026-10-17.md): refreshed source pins, recent dbx fixes, and their BookiE applicability.

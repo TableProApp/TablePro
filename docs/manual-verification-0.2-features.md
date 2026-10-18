@@ -10,6 +10,21 @@ Take light and dark screenshots for each section, per `AGENTS.md`. Record a resu
 
 Real values: before 0.2.0, also run the by-hand value check in [oracle review](oracle-review.md) (Part B), which compares each engine's own client with the grid, export and edit path.
 
+## Visual audit matrix
+
+Proposed follow-up for DOC-3/[#561](https://github.com/cozyGarage/BookiE/issues/561), based on the [October 18 source audit](archive/code-and-ui-audit-2026-10-18.md). These checks are **not run** at that report's source pin. They do not add 0.2.0 blockers. Use synthetic data and a separate test profile; retain the package and environment record described above with each result.
+
+Run the core grid/editor/connection screens in light, dark, high-contrast light and high-contrast dark. Start at scale 1 and the normal window size; repeat at the minimum supported width and with enlarged desktop text. Then inspect at 1.25 and 2 scale where supported, including a move between differently scaled monitors. Record logical window dimensions, monitor scale and text scale separately. Unavailable combinations remain blocked or not run.
+
+- [ ] Show ordinary, selected, focused, edited, inserted, deleted and failed cells, including Boolean, NULL, empty text and long values. Pending state remains distinguishable without hue and is announced by Orca; recycling a row clears its previous state. Keep the existing production badge and window-title marker readable.
+- [ ] Toggle light/dark and high contrast while both SQL panes are open. Check syntax text, selection, caret, gutter marks, statement band, completion and error highlights; compare with the native controls beside them.
+- [ ] Measure custom text against its actual composited background, including selected rows and translucent state tints. Record foreground/background colors, ratio and screenshot. Use the [audit's contrast targets](archive/code-and-ui-audit-2026-10-18.md#visual-acceptance-reference); class names and uncomposited palette values alone do not prove a pass.
+- [ ] Resize connection forms/popovers, editor toolbars, the browse pager, import mapping controls and result panes. Use long translated labels and large fonts. Run, Stop, transaction state, primary dialog actions and secondary menu actions remain reachable without overlap or clipped labels. Refresh row counts and change page size while narrow, then widen again.
+- [ ] Navigate with keyboard only through text, Boolean and editable cells, menus and dialogs. Focus stays visible on selected rows and returns to its origin after dismissal. With animations disabled, a failed edit retains an understandable error indication.
+- [ ] Scroll to the final grid row and rightmost column with wrapped/multiline values. Inspect text baselines, descenders, focus borders, bottom bars and popover edges at each tested scale. Copy and full-value editing preserve the underlying value; a display preview never becomes the saved value.
+
+For an observed failure, record the action, expected and actual behavior, theme/scale/size, screenshot, binary SHA and owning issue. Add an automated behavior regression where possible; keep rendered acceptance here. Coordinate checklist edits with open UX PRs before landing.
+
 ## Installed run on 2026-10-12
 
 Package `bookie 0.2.0-1`, built 2026-10-12 from the UX worktree at `d3202c17c` (BookiE `linux` `6cc8bd732` plus the [#618](https://github.com/cozyGarage/BookiE/pull/618) branch). `/usr/bin/bookie` SHA-256 `b2a8431bba1f4eddf4cc28a83110f789d38af75b16681152e2a5e837a35c3e87`. Arch Linux, Hyprland 0.56.2, native Wayland, GTK 4.22.4, libadwaita 1.9.3, GtkSourceView 5.20.0, scale 1, dark theme only. Databases: PostgreSQL 17 and MariaDB 11 in local containers. The UI was driven through AT-SPI, a virtual pointer and keyboard input; screenshots were kept locally and not committed.
