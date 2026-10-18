@@ -12,6 +12,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   title:
@@ -28,6 +29,12 @@ jobs:
         env:
           TITLE: ${{ github.event.pull_request.title }}
         run: python3 scripts/ci/check-pr-title.py "$TITLE"
+
+      - name: Check CHANGELOG.md and the changelog fragments the pull request changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: python3 scripts/ci/check-changelog.py --pr "$PR"
 
       # The checkout is the merge commit, so its first parent is the base the pull request lands on.
       - name: Check the added lines and the description against the banned words

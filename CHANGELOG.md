@@ -5,84 +5,9 @@ All notable changes to TablePro will be documented in this file.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+Unreleased changes are files in `changelog.d/`.
 
-### Added
-
-- Generate UUID and Generate UUIDv7 in Set Value, the row inspector and Fill Column, a new value for each cell. (#3443)
-- Edit > Set Value in the menu bar, with rows in Settings > Keyboard. (#3443)
-- New UUID in a UUID primary key the server does not fill, on Add Row, Duplicate Row and Paste. (#3443)
-- Solarized, GitHub, Catppuccin, Gruvbox and Tokyo Night themes in light and dark, plus One Dark and One Light.
-- VS Code color theme import in Settings > Appearance, from the theme's `.json` file.
-- Theme Editor window with a live preview, undo and Revert Changes. Open windows show each edit as you make it.
-- iCloud sync of custom themes and the chosen light and dark themes, with Settings on in Settings > Sync.
-- Theme import by dropping files on the Themes list, and export by dragging a theme to Finder.
-- Get beta updates in Settings > General, from a signed update feed at updates.tablepro.app.
-
-### Changed
-
-- Set Value applies to every selected cell, or to the clicked column across the selected rows. (#3443)
-- SQL functions in Set Value and the row inspector listed per database and only where they fit the column. (#3443)
-- UUID functions in SQL Functions replaced by Generate UUID, which writes the value itself. (#3443)
-- Text typed into a column that is not a date or time saved as typed, even when it reads like `now()`. (#3443)
-- Set NULL and Set DEFAULT in the row inspector shown only where the column takes them, as in the data grid. (#3443)
-- Default only on new rows on SQLite, libSQL, Turso, D1, ClickHouse, Databend, Snowflake, Trino, Cassandra. (#3443)
-- Pending SQL functions in the data grid drawn like a pending default. (#3443)
-- PluginKit ABI 39, additive: existing plugins keep loading. (#3443)
-- Appearance (System, Light or Dark) kept per Mac instead of syncing. Older versions that sync settings switch to System.
-- Data Files, Compare & Sync and Open in Window value windows show the theme in the titlebar on macOS 26 and later.
-- SQL aliases and parameters drawn in the editor text color instead of the NULL color.
-- SQL previews in history, filters, maintenance and review sheets highlighted as in the editor, in the editor font.
-- Server Dashboard sessions and slow queries shown as data grids, with Cancel Query and Terminate Session in the header.
-- Terminate Session and Cancel Query confirmations name the session's process ID and user.
-- Compare & Sync status bar shows the target connection's icon instead of a colored dot.
-- Themes move to the Trash instead of being deleted. Undo reverts a trash, rename, duplicate or import.
-- Editor tab strip over a themed window on macOS 26 and later drawn in a system fill instead of the theme color.
-- Plugin download progress shown as the bytes arrive instead of jumping to full at the end.
-- Welcome window and What's New show the build number after the version.
-
-### Fixed
-
-- Every ClickHouse query after connecting failing with `UNKNOWN_SETTING` on 23.8.0 to 23.8.8. (#3444)
-- ClickHouse users with a read-only profile unable to connect.
-- ClickHouse indexes, view definitions, functions, table comments and sizes failing to load on servers before 22.3.
-- A ClickHouse query that failed partway showing its partial rows and the error text as a row instead of the error.
-- A ClickHouse query with a `FORMAT` clause showing garbled rows in the grid and in an export.
-- ClickHouse SQL export writing the current database's table structure for a table in another database.
-- Opening a ClickHouse executable function's definition showing a syntax error.
-- SQL Server 2016 RTM offered a `CREATE OR ALTER VIEW` template it cannot run, and Azure SQL a drop-and-create one.
-- `gen_random_uuid()`, `UUID()`, `NEWID()` and `datetime('now')` from SQL Functions saved as quoted text. (#3443)
-- SQL functions saved as text on SQL Server, Teradata, Spanner and BigQuery. (#3443)
-- `NOW()` offered on SQLite, Oracle, Cassandra and MongoDB, where it fails or saves the text. (#3443)
-- SQLite's `datetime('now')` offered on DuckDB and `gen_random_uuid()` on Redshift. (#3443)
-- Stored text such as `CURRENT_DATE` turning into today's date on Duplicate Row or Restore Previous Values. (#3443)
-- Copy as INSERT and Copy as UPDATE quoting a staged SQL function. (#3443)
-- Default on a saved row failing on SQLite, and storing `__DEFAULT__` on Teradata and DynamoDB. (#3443)
-- Duplicate Row and Paste failing to save on a UUID primary key with no default. (#3443)
-- Date functions and a date picker offered on Cassandra and ScyllaDB `timeuuid` columns. (#3443)
-- MariaDB `uuid` columns read as `CHAR`. (#3443)
-- Empty field in the multi-row inspector after the selected rows were given different values. (#3443)
-- Inline cell editor, the array editor's Edit as Text, and the inspector's hex dump and map pane ignoring the theme.
-- No-match, invalid and NULL states in the JSON, PHP and array viewers drawn without the theme's background.
-- Agent result states and proposed SQL ignoring the theme.
-- Connecting and Not connected panes, and Agent mode, in the system window color under a theme before macOS 26.
-- Selected text in SQL previews, such as query history, ignoring the theme's selection color.
-- Server Dashboard lists and the Query Insights chart ignoring the theme.
-- Compare & Sync row states and Data Files loading and failure states drawn without the theme's grid background.
-- Structure and Create Table code placeholders, Startup SQL in a link and the tunnel command preview ignoring the theme.
-- Bars in query, history, filter, structure, plan, compare and other panes drawing a system band over a themed window.
-- System header band on the data grid and the Query Plan and Users & Roles trees under a theme with header colors.
-- System-colored alternate rows, header and booleans in a theme that sets only the grid background and text.
-- Selected row text in white over a theme's selection color, or in the theme's color over the system selection.
-- Translucent theme selection, as in Dracula and Nord, in a different shade on rows, row numbers and column headers.
-- No outline around a selected cell range in Dracula and Nord.
-- Shapes in the result Map view keeping the previous Accent color after it changes.
-- Edit as Text in the array editor turning straight quotes and dashes into curly quotes and long dashes.
-- Theme editor bringing back a theme file deleted in Finder on the next change.
-- Changes to a theme file made outside TablePro not shown until Settings > Appearance was opened.
-- Theme files with a JSON syntax error reported without the line and column.
-- Two themes with the same name impossible to tell apart in the theme pickers.
-- No warning on a connection in the Welcome window whose driver plugin failed to load or is out of date.
+<!-- towncrier release notes start -->
 
 ## [0.81.0] - 2026-10-16
 
@@ -5955,7 +5880,6 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.81.0...HEAD
 [0.81.0]: https://github.com/TableProApp/TablePro/compare/v0.80.0...v0.81.0
 [0.80.0]: https://github.com/TableProApp/TablePro/compare/v0.79.0...v0.80.0
 [0.79.0]: https://github.com/TableProApp/TablePro/compare/v0.78.0...v0.79.0

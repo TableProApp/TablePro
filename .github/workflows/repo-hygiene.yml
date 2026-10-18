@@ -71,6 +71,13 @@ jobs:
       - name: Test the release tooling
         run: '"$RUNNER_TEMP/release-venv/bin/python" -m unittest discover -s scripts/release -p "test_*.py"'
 
+      # towncrier refuses a fragment name it cannot parse once its config sets ignore.
+      - name: Check the changelog fragments and CHANGELOG.md
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/release-venv/bin/python" scripts/ci/check-changelog.py
+          "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --version 0.0.0
+
       # shellcheck cannot tell a library function from a command, so a missing source is exit 127
       # at release time (v0.67.1).
       - name: Check every script sources the libraries it calls into
