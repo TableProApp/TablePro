@@ -143,8 +143,10 @@ internal class UITestCase: XCTestCase {
 
     // A descendants search from the window reaches the data grid while the sidebar is still a spinner,
     // and walking a loaded grid costs seconds on the app's main thread. Direct children keep a miss cheap.
+    // The sidebar is a split group of its own, the connections strip beside the object browser.
     internal func objectBrowser(in window: XCUIElement) -> XCUIElement {
         window.children(matching: .splitGroup).firstMatch
+            .children(matching: .splitGroup).firstMatch
             .children(matching: .group).firstMatch
             .descendants(matching: .outline).firstMatch
     }
