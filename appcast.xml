@@ -1,12 +1,13 @@
-<?xml version="1.0" standalone="yes"?>
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>TablePro</title>
         <item>
             <title>0.81.0</title>
             <pubDate>Fri, 16 Oct 2026 06:12:08 +0000</pubDate>
             <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
-            <sparkle:criticalUpdate/>
+            <sparkle:criticalUpdate></sparkle:criticalUpdate>
             <sparkle:version>140</sparkle:version>
             <sparkle:shortVersionString>0.81.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
@@ -23,13 +24,13 @@ Plugins signed by other developers stop loading, and HTML and XML export are rem
 
 [View full changelog](https://docs.tablepro.app/changelog)
 ]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.81.0/TablePro-0.81.0-arm64.tar.xz" length="21031520" type="application/octet-stream" sparkle:edSignature="oX/vZ7mefH5HbArzgCwsLfRFYAfkzYsOVo2zSUlEOWry5dxYY0CTkp1+U+AKE82PHXii/SfRLDgxVu/MmwixBA=="/>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.81.0/TablePro-0.81.0-arm64.tar.xz" length="21031520" type="application/octet-stream" sparkle:edSignature="oX/vZ7mefH5HbArzgCwsLfRFYAfkzYsOVo2zSUlEOWry5dxYY0CTkp1+U+AKE82PHXii/SfRLDgxVu/MmwixBA=="></enclosure>
         </item>
         <item>
             <title>0.81.0</title>
             <pubDate>Fri, 16 Oct 2026 06:12:08 +0000</pubDate>
             <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
-            <sparkle:criticalUpdate/>
+            <sparkle:criticalUpdate></sparkle:criticalUpdate>
             <sparkle:version>140</sparkle:version>
             <sparkle:shortVersionString>0.81.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
@@ -45,7 +46,7 @@ Plugins signed by other developers stop loading, and HTML and XML export are rem
 
 [View full changelog](https://docs.tablepro.app/changelog)
 ]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.81.0/TablePro-0.81.0-x86_64.tar.xz" length="24299872" type="application/octet-stream" sparkle:edSignature="+AtQqogGVMWwCKR9DDLpKmUC4JMcp8Un6FiBuIefOMUtfNgNOlkNAzmyorLgQOhW6VXAF7QP/FL3FHNncfhRDg=="/>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.81.0/TablePro-0.81.0-x86_64.tar.xz" length="24299872" type="application/octet-stream" sparkle:edSignature="+AtQqogGVMWwCKR9DDLpKmUC4JMcp8Un6FiBuIefOMUtfNgNOlkNAzmyorLgQOhW6VXAF7QP/FL3FHNncfhRDg=="></enclosure>
         </item>
         <item>
             <title>0.80.0</title>
@@ -68,7 +69,7 @@ Connections and groups take custom icons. Connection exports carry saved queries
 
 [View full changelog](https://docs.tablepro.app/changelog)
 ]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.80.0/TablePro-0.80.0-arm64.zip" length="33851296" type="application/octet-stream" sparkle:edSignature="c46QoJ5wnQ3F9OIuG567KCsfKEH3U1uNzVIRuh3bUsWwUnnNFbFKMwJSmRtFv4YNnRHVg7DlmeZVCmvitu1kCQ=="/>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.80.0/TablePro-0.80.0-arm64.zip" length="33851296" type="application/octet-stream" sparkle:edSignature="c46QoJ5wnQ3F9OIuG567KCsfKEH3U1uNzVIRuh3bUsWwUnnNFbFKMwJSmRtFv4YNnRHVg7DlmeZVCmvitu1kCQ=="></enclosure>
         </item>
         <item>
             <title>0.80.0</title>
@@ -90,7 +91,7 @@ Connections and groups take custom icons. Connection exports carry saved queries
 
 [View full changelog](https://docs.tablepro.app/changelog)
 ]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.80.0/TablePro-0.80.0-x86_64.zip" length="36407868" type="application/octet-stream" sparkle:edSignature="9gpk/iKr1RpbdqCgnHGFFqbgBSAmvD5LpHbp4u/OODQfdAmeNlDE0zALXwuCdVd70Te+drgyhlOUC5mX9hdTDQ=="/>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.80.0/TablePro-0.80.0-x86_64.zip" length="36407868" type="application/octet-stream" sparkle:edSignature="9gpk/iKr1RpbdqCgnHGFFqbgBSAmvD5LpHbp4u/OODQfdAmeNlDE0zALXwuCdVd70Te+drgyhlOUC5mX9hdTDQ=="></enclosure>
         </item>
         <item>
             <title>0.79.0</title>
@@ -113,7 +114,7 @@ MongoDB, Redis, etcd and SAP HANA reads run at Read-Only and skip the Alert prom
 
 [View full changelog](https://docs.tablepro.app/changelog)
 ]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.79.0/TablePro-0.79.0-arm64.zip" length="32992969" type="application/octet-stream" sparkle:edSignature="FpSWn1u5JRoSvlbOUl6CvyI4M8/ORlg5xH6GDwZmR1GZgo095GS2izJB1vP/GSEIMRsAisvRuqorDbKKjuj+CA=="/>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.79.0/TablePro-0.79.0-arm64.zip" length="32992969" type="application/octet-stream" sparkle:edSignature="FpSWn1u5JRoSvlbOUl6CvyI4M8/ORlg5xH6GDwZmR1GZgo095GS2izJB1vP/GSEIMRsAisvRuqorDbKKjuj+CA=="></enclosure>
         </item>
         <item>
             <title>0.79.0</title>
@@ -135,7 +136,7 @@ MongoDB, Redis, etcd and SAP HANA reads run at Read-Only and skip the Alert prom
 
 [View full changelog](https://docs.tablepro.app/changelog)
 ]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.79.0/TablePro-0.79.0-x86_64.zip" length="35458133" type="application/octet-stream" sparkle:edSignature="p40Xzcfm9Bo/rvt+IK2mUsCjVmFa9Y7Dzb/G/dIgyyeQDPxFPF7NLUYHAWBF8bGoarhmTqfe7G3dFdDl0M42BQ=="/>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.79.0/TablePro-0.79.0-x86_64.zip" length="35458133" type="application/octet-stream" sparkle:edSignature="p40Xzcfm9Bo/rvt+IK2mUsCjVmFa9Y7Dzb/G/dIgyyeQDPxFPF7NLUYHAWBF8bGoarhmTqfe7G3dFdDl0M42BQ=="></enclosure>
         </item>
         <item>
             <title>0.78.0</title>
@@ -156,7 +157,7 @@ Oracle fixes for column types, dates, LOBs and saving edits.
 
 [View full changelog](https://docs.tablepro.app/changelog)
 ]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.78.0/TablePro-0.78.0-arm64.zip" length="32914475" type="application/octet-stream" sparkle:edSignature="FyoqgyP6GZ01EQlgV44SUEdXLW1qD7qtBINj+TW3Ty6rfj+mQbrc9ojSRl5UYMNZ2G07SSha+oaRr+S8AEM5DQ=="/>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.78.0/TablePro-0.78.0-arm64.zip" length="32914475" type="application/octet-stream" sparkle:edSignature="FyoqgyP6GZ01EQlgV44SUEdXLW1qD7qtBINj+TW3Ty6rfj+mQbrc9ojSRl5UYMNZ2G07SSha+oaRr+S8AEM5DQ=="></enclosure>
         </item>
         <item>
             <title>0.78.0</title>
@@ -176,7 +177,7 @@ Oracle fixes for column types, dates, LOBs and saving edits.
 
 [View full changelog](https://docs.tablepro.app/changelog)
 ]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.78.0/TablePro-0.78.0-x86_64.zip" length="35357723" type="application/octet-stream" sparkle:edSignature="azYx6/g8FqNeGKDPCF+t6lqE2M7k8gsLcP6MjyS3BcdRe6wt+ME07RW/uPe8bUorlDVpFqIkRr8v9kD7aj1mCQ=="/>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.78.0/TablePro-0.78.0-x86_64.zip" length="35357723" type="application/octet-stream" sparkle:edSignature="azYx6/g8FqNeGKDPCF+t6lqE2M7k8gsLcP6MjyS3BcdRe6wt+ME07RW/uPe8bUorlDVpFqIkRr8v9kD7aj1mCQ=="></enclosure>
         </item>
         <item>
             <title>0.77.2</title>
@@ -247,7 +248,7 @@ Oracle fixes for column types, dates, LOBs and saving edits.
 
 [View full changelog](https://docs.tablepro.app/changelog)
 ]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.77.2/TablePro-0.77.2-arm64.zip" length="32559106" type="application/octet-stream" sparkle:edSignature="dPTGNv1yeLzVJHUpbr4SMDzeXktV2gdT5/KJ5/C+oxbE2m3eWq/hAbPfJpypLp/pOCQCCYJQi8z5g5b7oaSNBw=="/>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.77.2/TablePro-0.77.2-arm64.zip" length="32559106" type="application/octet-stream" sparkle:edSignature="dPTGNv1yeLzVJHUpbr4SMDzeXktV2gdT5/KJ5/C+oxbE2m3eWq/hAbPfJpypLp/pOCQCCYJQi8z5g5b7oaSNBw=="></enclosure>
         </item>
         <item>
             <title>0.77.2</title>
@@ -317,7 +318,10 @@ Oracle fixes for column types, dates, LOBs and saving edits.
 
 [View full changelog](https://docs.tablepro.app/changelog)
 ]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.77.2/TablePro-0.77.2-x86_64.zip" length="34985487" type="application/octet-stream" sparkle:edSignature="vj3BirFlNhH1ger2f5E+7vquackzmuACRIzmquGeh1oE0VGkcL6clg0PP+L0xjBz1kW4cYQp8f6fps9iUftyDA=="/>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.77.2/TablePro-0.77.2-x86_64.zip" length="34985487" type="application/octet-stream" sparkle:edSignature="vj3BirFlNhH1ger2f5E+7vquackzmuACRIzmquGeh1oE0VGkcL6clg0PP+L0xjBz1kW4cYQp8f6fps9iUftyDA=="></enclosure>
         </item>
     </channel>
-</rss>
+</rss><!-- sparkle-signatures:
+edSignature: 9WXszTACB+bthVBvd8b55fX5xNSf/kVRef5BsOlrFkW3X+NYPYKJ/uYWz/EyCpWhl027G9GDq17qTBeQeizcCQ==
+length: 23763
+-->
