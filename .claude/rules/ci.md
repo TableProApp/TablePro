@@ -27,6 +27,8 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 - Every Xcode job in the test and release workflows runs on the `xcode-27` runner label, a GitHub preview image. actionlint learns the label from `.github/actionlint.yaml`. `build-plugin.yml` picks its runner from the ref it builds (`RELEASING.md`).
 - The Xcode version is written once, in `.github/actions/setup-xcode/action.yml`, which runs `xcode-select --switch` and prints `xcodebuild -version`. A workflow never selects Xcode another way.
 - XcodeGen comes from `.github/actions/setup-xcodegen`, pinned by version and SHA-256.
+- `scripts/release/feed.py` runs Sparkle's `generate_appcast` and `sign_update` from `SPARKLE_BIN`, which `.github/actions/setup-sparkle` sets. The action reads the version and revision from the app's `Package.resolved` (`project.yml` pins Sparkle with `exactVersion`) and checks the archive against the checksum in Sparkle's `Package.swift` at that revision.
+- The tag release (`build.yml`) signs the feed with the copy `scripts/ci/sign-and-appcast.sh` downloads, pinned by its own `SPARKLE_VERSION` and `SPARKLE_SHA256`. No check compares them with `project.yml`: a Sparkle bump changes all three.
 - The compilation cache is off on CI (`COMPILATION_CACHE_ENABLE_CACHING=NO`); `Configs/Base.xcconfig` turns it on locally.
 
 ## macOS Tests (`macos-tests.yml`)
@@ -88,7 +90,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
   - `check-lib-sourcing.py`, `check-plugin-manifest.py`, `check-deployment-target.sh`, `check-ios-shared-isolation.py`;
   - `localization.py plugins` and `plugins --target ios`;
   - `check-string-catalogs.py`, `check-license-inventory.py`, `check-entitlements.py`, `check-test-plans.py`;
-  - `check-pluginkit-bump-cadence.py`, `check-sparkle-version.py`;
+  - `check-pluginkit-bump-cadence.py`;
   - `scripts/audit-refactor-health.sh --check`, `check-hub-ratchet.py`;
   - the Go checks on the HANA helper, when the `hana` detector is true.
 - `audit-refactor-health.sh --check` fails a file defining a production `DatabaseType` outside `Packages/TableProCore/Sources/TableProCoreTypes/DatabaseType.swift`, unless `.github/duplicate-contract-baseline.txt` lists its path. Moving a listed file moves its baseline path in the same commit. Never add an entry to let a new copy pass.
