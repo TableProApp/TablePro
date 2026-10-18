@@ -158,8 +158,18 @@ async fn openssh_password_through_prompter() {
     let asked = prompter.asked();
     assert!(matches!(asked[0], AskpassPrompt::HostKeyConfirmation { .. }));
     assert!(matches!(asked[1], AskpassPrompt::Password { .. }));
-    let known = std::fs::read_to_string(&fixture.known_hosts).unwrap();
-    assert!(known.contains(&format!("]:{} ", fixture.port)));
+    // ssh-keygen -F finds the entry whether it is stored plain or hashed; the
+    // fixture inherits HashKnownHosts yes from the Debian /etc/ssh/ssh_config.
+    let learned = std::process::Command::new("ssh-keygen")
+        .args(["-F", &format!("[{}]:{}", fixture.host, fixture.port), "-f"])
+        .arg(&fixture.known_hosts)
+        .output()
+        .unwrap();
+    assert!(
+        learned.status.success() && !learned.stdout.is_empty(),
+        "the accepted host key is not recorded in {}",
+        fixture.known_hosts.display()
+    );
     session.shutdown().await;
     assert!(session.is_closed());
 }
