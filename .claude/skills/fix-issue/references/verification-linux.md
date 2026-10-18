@@ -12,7 +12,7 @@ Cargo prints one "test result:" line per test binary and never adds them up, thr
 - **The first build of a tree downloads every crate** into `linux/_build/cargo-home` and builds about 20 GB into `linux/_build/cargo-target`. No network means a failed build that is not the change; `--offline` sets `CARGO_NET_OFFLINE` once the tree has its crates.
 - **`cargo` not on PATH** in a shell that never read the user's profile: the wrapper sources `~/.cargo/env`, which is where rustup puts it. Run by hand, `meson devenv cargo ...` fails with "Command not found: cargo".
 - **A schema or desktop file edit needs `build`**, which recompiles the GSettings schema; a stale one aborts the app on its first settings read.
-- **`setup` again after a merge** from the base, or after `linux/meson.build`, `linux/meson_options.txt` or a template under `linux/data/` changed. A new `.rs` file needs nothing: Cargo finds modules itself.
+- **`setup` again after a merge** from the base, or after `linux/meson.build`, `linux/meson.options` or a template under `linux/data/` changed. A new `.rs` file needs nothing: Cargo finds modules itself.
 
 ## Tests
 

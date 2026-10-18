@@ -29,7 +29,7 @@ Pass `--platform linux`, which a Linux machine picks by default. Every step runs
 
 | Step | When |
 | --- | --- |
-| `setup` | a new tree; `linux/meson.build`, `linux/meson_options.txt` or a file under `linux/data/` changed |
+| `setup` | a new tree; `linux/meson.build`, `linux/meson.options` or a file under `linux/data/` changed |
 | `build` | always |
 | `test <package> [filter]` | always, for each crate you changed |
 | `test` | before the pull request: every suite, as the CI fast job runs them |

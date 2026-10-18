@@ -21,7 +21,7 @@ on:
       - "linux/Cargo.toml"
       - "linux/Cargo.lock"
       - "linux/meson.build"
-      - "linux/meson_options.txt"
+      - "linux/meson.options"
       - "linux/crates/**/meson.build"
       - "linux/data/**/meson.build"
       - "linux/po/meson.build"
