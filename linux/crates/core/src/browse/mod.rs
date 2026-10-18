@@ -6,6 +6,7 @@ mod browse_sql_error;
 mod build_count;
 mod build_export;
 mod build_page;
+mod declared_precision;
 mod export_request;
 mod page_layout;
 mod page_request;

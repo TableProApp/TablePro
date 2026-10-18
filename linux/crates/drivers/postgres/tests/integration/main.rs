@@ -22,4 +22,5 @@ mod read_only;
 mod slow_route;
 mod support;
 mod tls;
+mod value_corpus;
 mod write_batch;

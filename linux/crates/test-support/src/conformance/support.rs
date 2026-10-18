@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use tablepro_core::column::ResultColumn;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::statement::{GuardedStatement, Statement, StatementBuilder};
 use tablepro_core::value::Value;
@@ -156,6 +157,25 @@ impl Collected {
             })
             .flatten()
             .collect()
+    }
+
+    /// The columns of the first result set, as `ColumnsResolved` left
+    /// them.
+    pub(crate) fn columns(&self) -> Option<Arc<[ResultColumn]>> {
+        let mut columns = None;
+        for event in lock(&self.0).iter() {
+            match event {
+                ResultEvent::ResultSetStarted { columns: started } if columns.is_none() => {
+                    columns = Some(started.clone());
+                }
+                ResultEvent::ColumnsResolved {
+                    set_index: 0,
+                    columns: resolved,
+                } => columns = Some(resolved.clone()),
+                _ => {}
+            }
+        }
+        columns
     }
 
     pub(crate) fn truncations(&self) -> Vec<Truncation> {

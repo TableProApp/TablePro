@@ -1,7 +1,7 @@
 use chrono::{Datelike, Timelike};
 
 use crate::column::{ColumnKind, ColumnType};
-use crate::value::{SqlDecimal, Value};
+use crate::value::{BitString, SqlDecimal, Value};
 
 /// Full text of a value for export, at the precision the column
 /// declares.
@@ -42,8 +42,30 @@ pub(super) fn kind_text(value: &Value, kind: &ColumnKind) -> Option<String> {
             )
         }),
         Value::Decimal(decimal) => Some(decimal_text(decimal, kind.decimal_scale())),
+        Value::Bits(bits) => Some(bits_text(bits, kind)),
         Value::Array(values) => Some(array_text(values, Some(element_kind(kind)))),
         other => value_to_text(other),
+    }
+}
+
+/// A fixed bit string at the length its column declares. MySQL sends
+/// a BIT(10) in the two bytes that hold it, so the six bits ahead of the
+/// value are padding; bits that are set are never dropped.
+fn bits_text(bits: &BitString, kind: &ColumnKind) -> String {
+    let text = bits.to_string();
+    let ColumnKind::BitString {
+        length: Some(length),
+        varying: false,
+    } = kind
+    else {
+        return text;
+    };
+    let padding = text
+        .len()
+        .saturating_sub(usize::try_from(*length).unwrap_or(usize::MAX));
+    match text.get(..padding) {
+        Some(head) if head.bytes().all(|bit| bit == b'0') => text[padding..].to_owned(),
+        _ => text,
     }
 }
 
@@ -556,6 +578,29 @@ mod tests {
             value_to_text(&value).as_deref(),
             Some(r#"[["1"],["2.5"]]"#),
             "without a column, a row of the array was written as a string"
+        );
+    }
+
+    #[test]
+    fn a_fixed_bit_string_shows_the_length_its_column_declares() {
+        let bit = |length| typed("bit", ColumnKind::BitString { length, varying: false });
+        let sent_in_two_bytes = Value::Bits(BitString::from_u64(0b10_1010_1010, 16));
+        let flag = Value::Bits(BitString::from_u64(1, 8));
+
+        assert_eq!(
+            value_text(&sent_in_two_bytes, &bit(Some(10))).as_deref(),
+            Some("1010101010")
+        );
+        assert_eq!(value_text(&flag, &bit(Some(1))).as_deref(), Some("1"));
+        assert_eq!(
+            value_text(&flag, &bit(None)).as_deref(),
+            Some("00000001"),
+            "with no length declared, every bit the value holds shows"
+        );
+        assert_eq!(
+            value_text(&Value::Bits(BitString::from_u64(0b1000_0001, 8)), &bit(Some(1))).as_deref(),
+            Some("10000001"),
+            "a set bit past the declared length was dropped"
         );
     }
 }

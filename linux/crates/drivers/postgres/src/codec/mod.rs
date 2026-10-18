@@ -2,6 +2,7 @@
 
 mod array_decode;
 mod decode;
+mod far_temporal;
 mod interval_wire;
 mod network_text;
 mod numeric_wire;

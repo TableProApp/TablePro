@@ -1,8 +1,9 @@
 //! The suites every driver runs against a real server.
 //!
 //! A driver's integration target implements an engine adapter and
-//! invokes `connection_conformance_suite!`, `ddl_conformance_suite!` and
-//! `tls_conformance_suite!` with flags for what the engine supports. A
+//! invokes `connection_conformance_suite!`, `ddl_conformance_suite!`,
+//! `value_corpus_suite!` and `tls_conformance_suite!` with flags for
+//! what the engine supports. A
 //! flag that is off emits no test. The flags with a capability behind them (`endpoint`,
 //! `editor_transactions` and the TLS `client_identity`) are checked
 //! against the driver's capability table, so those cases cannot be
@@ -18,6 +19,7 @@ mod conformance_engine;
 mod conformance_failure;
 mod connection_suite_flags;
 mod connection_suite_macro;
+mod corpus_column;
 mod ddl_conformance_engine;
 mod ddl_suite_macro;
 mod editor_transaction_engine;
@@ -33,12 +35,15 @@ mod tls_conformance_engine;
 mod tls_suite_macro;
 mod typed_conformance_engine;
 mod unsupported_type_case;
+mod value_corpus_engine;
+mod value_corpus_suite_macro;
 
 pub use bounded_ddl_engine::BoundedDdlEngine;
 pub use client_identity_engine::ClientIdentityEngine;
 pub use conformance_engine::ConformanceEngine;
 pub use conformance_failure::ConformanceFailure;
 pub use connection_suite_flags::ConnectionSuiteFlags;
+pub use corpus_column::{CorpusColumn, CorpusValue};
 pub use ddl_conformance_engine::ConformanceDdlEngine;
 pub use editor_transaction_engine::EditorTransactionEngine;
 pub use network_conformance_engine::NetworkConformanceEngine;
@@ -49,3 +54,4 @@ pub use test_liveness::test_liveness;
 pub use tls_conformance_engine::TlsConformanceEngine;
 pub use typed_conformance_engine::TypedConformanceEngine;
 pub use unsupported_type_case::UnsupportedTypeCase;
+pub use value_corpus_engine::ValueCorpusEngine;

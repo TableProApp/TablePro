@@ -6,6 +6,7 @@ use crate::query_result::QueryResult;
 use crate::row_limit::RowLimit;
 use crate::value::Value;
 
+use super::declared_precision::with_declared_precision;
 use super::split_page::key_of;
 use super::{BrowseSqlError, PageLayout, PageRequest, PageSpec, PagingMode, RowKeyLayout, build_page, paging_mode};
 
@@ -164,7 +165,7 @@ where
         .query_bound(&spec.statement, row_limit, options.clone())
         .await?;
     check_shape(&result, &spec.layout)?;
-    Ok((result, spec))
+    Ok((with_declared_precision(result, request.columns), spec))
 }
 
 /// Fill a page from block windows, each read in ctid order, until it

@@ -11,6 +11,7 @@ use tablepro_core::value::{
 
 use super::WireError;
 use super::array_decode::decode_array;
+use super::far_temporal;
 use super::interval_wire::interval_from_sql;
 use super::network_text::{inet_text, macaddr_text, macaddr8_text};
 use super::numeric_wire::numeric_from_sql;
@@ -120,9 +121,9 @@ fn decode(ty: &Type, raw: &[u8]) -> Result<Value, Failure> {
             Some((&JSONB_VERSION, document)) => json(document)?,
             _ => return Err(WireError::Malformed.into()),
         },
-        oid::DATE => Value::Date(date(ty, raw)?),
-        oid::TIMESTAMP => Value::Timestamp(timestamp(ty, raw)?),
-        oid::TIMESTAMPTZ => Value::TimestampTz(timestamptz(ty, raw)?),
+        oid::DATE => date(ty, raw)?,
+        oid::TIMESTAMP => timestamp(ty, raw)?,
+        oid::TIMESTAMPTZ => timestamptz(ty, raw)?,
         oid::TIME => Value::Time(time_from_sql(raw)?),
         oid::TIMETZ => Value::TimeTz(timetz_from_sql(raw)?),
         oid::INTERVAL => Value::Interval(interval_from_sql(raw)?),
@@ -188,34 +189,48 @@ fn bits(raw: &[u8]) -> Result<BitString, WireError> {
 }
 
 /// postgres-types reads the infinities and refuses a date chrono cannot
-/// hold. A well-formed value it refuses is therefore out of range.
-fn date(ty: &Type, raw: &[u8]) -> Result<Temporal<NaiveDate>, WireError> {
+/// hold, one past 262143 AD. The server's run to 5874897 AD, so those
+/// keep the server's text.
+fn date(ty: &Type, raw: &[u8]) -> Result<Value, WireError> {
     expect_len(raw, 4)?;
-    match Date::<NaiveDate>::from_sql(ty, raw).map_err(|_| WireError::OutOfRange)? {
-        Date::Value(date) => Ok(Temporal::Finite(date)),
-        Date::PosInfinity => Ok(Temporal::Infinity),
-        Date::NegInfinity => Ok(Temporal::NegInfinity),
-    }
+    Ok(match Date::<NaiveDate>::from_sql(ty, raw) {
+        Ok(Date::Value(date)) => Value::Date(Temporal::Finite(date)),
+        Ok(Date::PosInfinity) => Value::Date(Temporal::Infinity),
+        Ok(Date::NegInfinity) => Value::Date(Temporal::NegInfinity),
+        Err(_) => other(
+            ty,
+            far_temporal::date_text(wire::date_from_sql(raw).map_err(malformed)?).ok_or(WireError::OutOfRange)?,
+        ),
+    })
 }
 
-fn timestamp(ty: &Type, raw: &[u8]) -> Result<Temporal<NaiveDateTime>, WireError> {
+/// A timestamp past chrono's last year, as `date` reads a date.
+fn timestamp(ty: &Type, raw: &[u8]) -> Result<Value, WireError> {
     expect_len(raw, 8)?;
-    match Timestamp::<NaiveDateTime>::from_sql(ty, raw).map_err(|_| WireError::OutOfRange)? {
-        Timestamp::Value(stamp) => Ok(Temporal::Finite(stamp)),
-        Timestamp::PosInfinity => Ok(Temporal::Infinity),
-        Timestamp::NegInfinity => Ok(Temporal::NegInfinity),
-    }
+    Ok(match Timestamp::<NaiveDateTime>::from_sql(ty, raw) {
+        Ok(Timestamp::Value(stamp)) => Value::Timestamp(Temporal::Finite(stamp)),
+        Ok(Timestamp::PosInfinity) => Value::Timestamp(Temporal::Infinity),
+        Ok(Timestamp::NegInfinity) => Value::Timestamp(Temporal::NegInfinity),
+        Err(_) => other(ty, far_timestamp(raw)?),
+    })
 }
 
 /// A TIMESTAMPTZ is an instant; the server sends it in UTC, so the offset
 /// it carries here is UTC's.
-fn timestamptz(ty: &Type, raw: &[u8]) -> Result<Temporal<OffsetTimestamp>, WireError> {
+fn timestamptz(ty: &Type, raw: &[u8]) -> Result<Value, WireError> {
     expect_len(raw, 8)?;
-    match Timestamp::<DateTime<Utc>>::from_sql(ty, raw).map_err(|_| WireError::OutOfRange)? {
-        Timestamp::Value(stamp) => Ok(Temporal::Finite(OffsetTimestamp::from_datetime(stamp.fixed_offset()))),
-        Timestamp::PosInfinity => Ok(Temporal::Infinity),
-        Timestamp::NegInfinity => Ok(Temporal::NegInfinity),
-    }
+    Ok(match Timestamp::<DateTime<Utc>>::from_sql(ty, raw) {
+        Ok(Timestamp::Value(stamp)) => {
+            Value::TimestampTz(Temporal::Finite(OffsetTimestamp::from_datetime(stamp.fixed_offset())))
+        }
+        Ok(Timestamp::PosInfinity) => Value::TimestampTz(Temporal::Infinity),
+        Ok(Timestamp::NegInfinity) => Value::TimestampTz(Temporal::NegInfinity),
+        Err(_) => other(ty, format!("{}+00:00", far_timestamp(raw)?)),
+    })
+}
+
+fn far_timestamp(raw: &[u8]) -> Result<String, WireError> {
+    far_temporal::timestamp_text(wire::timestamp_from_sql(raw).map_err(malformed)?).ok_or(WireError::OutOfRange)
 }
 
 fn expect_len(raw: &[u8], len: usize) -> Result<(), WireError> {
@@ -353,6 +368,32 @@ mod tests {
         assert_eq!(
             decode_binary(&Type::TIMESTAMPTZ, &encoded(i64::MIN, &Type::INT8)),
             Value::TimestampTz(Temporal::NegInfinity)
+        );
+    }
+
+    #[test]
+    fn dates_and_timestamps_past_chrono_keep_the_servers_text() {
+        let last_date = encoded(2_145_031_948i32, &Type::INT4);
+        let last_stamp = encoded(9_223_371_331_199_999_999i64, &Type::INT8);
+
+        let text = |value: Value| match value {
+            Value::Other(other) => (other.type_name, other.text),
+            other => panic!("not kept as text: {other:?}"),
+        };
+        assert_eq!(
+            text(decode_binary(&Type::DATE, &last_date)),
+            ("date".to_owned(), "5874897-12-31".to_owned())
+        );
+        assert_eq!(
+            text(decode_binary(&Type::TIMESTAMP, &last_stamp)),
+            ("timestamp".to_owned(), "294276-12-31 23:59:59.999999".to_owned())
+        );
+        assert_eq!(
+            text(decode_binary(&Type::TIMESTAMPTZ, &last_stamp)),
+            (
+                "timestamptz".to_owned(),
+                "294276-12-31 23:59:59.999999+00:00".to_owned()
+            )
         );
     }
 

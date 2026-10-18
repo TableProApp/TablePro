@@ -14,4 +14,5 @@ mod metadata;
 mod sessions;
 mod support;
 mod tls;
+mod value_corpus;
 mod writes;

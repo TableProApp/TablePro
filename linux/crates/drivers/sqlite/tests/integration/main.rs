@@ -24,5 +24,6 @@ mod open_semantics;
 mod sessions;
 #[cfg(test)]
 mod support;
+mod value_corpus;
 #[cfg(test)]
 mod write_batch_foreign_keys;

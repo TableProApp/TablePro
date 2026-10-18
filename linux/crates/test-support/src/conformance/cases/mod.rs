@@ -17,4 +17,5 @@ pub mod streaming;
 pub mod suite_flags;
 pub mod tls;
 pub mod type_fallback;
+pub mod value_corpus;
 pub mod writes;

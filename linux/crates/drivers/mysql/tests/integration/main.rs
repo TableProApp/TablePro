@@ -19,4 +19,5 @@ mod row_limit;
 mod server_time_zone;
 mod support;
 mod tls;
+mod value_corpus;
 mod write_batch;
