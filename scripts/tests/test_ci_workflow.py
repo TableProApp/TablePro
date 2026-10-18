@@ -133,6 +133,16 @@ class CiWorkflowTests(unittest.TestCase):
         full = script.split("run_full() {", 1)[1].split("run_integration()", 1)[0]
         self.assertIn("python3 scripts/check-function-size.py", full)
 
+    def test_full_gate_runs_the_unit_tier_under_nextest_like_forgejo(self):
+        script = (ROOT / "scripts/ci-local.sh").read_text()
+        full = script.split("run_full() {", 1)[1].split("run_integration()", 1)[0]
+        ci = (ROOT / ".forgejo/workflows/ci.yml").read_text()
+        selection = "--workspace --exclude tablepro-driver-duckdb --lib --bins"
+        self.assertIn(f"nextest run {selection}", ci)
+        self.assertIn('"$ROOT/scripts/ensure-nextest.sh"', full)
+        self.assertIn(f'nextest run {selection} --profile "${{TABLEPRO_NEXTEST_PROFILE:-default}}" --no-tests=pass', full)
+        self.assertNotIn("cargo test --workspace", full)
+
     def test_jobs_share_an_immutable_checkout(self):
         workflow = (ROOT / ".github/workflows/build-linux.yml").read_text()
         self.assertNotIn("continue-on-error:", workflow)

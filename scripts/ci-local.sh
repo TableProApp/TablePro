@@ -48,11 +48,12 @@ run_full() {
   echo "==> cargo clippy"
   cargo clippy --workspace --exclude tablepro-driver-duckdb --all-targets -- -D warnings
 
-  echo "==> cargo test --workspace --lib --bins"
+  echo "==> nextest --workspace --lib --bins"
   # Compiling tests already builds the crates; a separate `cargo build`
   # beforehand doubles wall time for little signal.
   # DuckDB is optional (--features duckdb) and expensive to compile.
-  cargo test --workspace --exclude tablepro-driver-duckdb --lib --bins
+  NEXTEST="$("$ROOT/scripts/ensure-nextest.sh")"
+  "$NEXTEST" nextest run --workspace --exclude tablepro-driver-duckdb --lib --bins --profile "${TABLEPRO_NEXTEST_PROFILE:-default}" --no-tests=pass
 
   echo "==> sandbox integration tier"
   "$ROOT/scripts/test-sandbox.sh"
