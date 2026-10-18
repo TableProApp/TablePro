@@ -32,8 +32,10 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 
 ## Runners and toolchain
 
-- Every Xcode job in the test and release workflows runs on the `xcode-27` runner label, a GitHub preview image. actionlint learns the label from `.github/actionlint.yaml`. A stable tag builds only on a GA Xcode: `setup-xcode` with `require-release` fails on a beta or Release Candidate.
-- The Xcode version is written once, in `.github/actions/setup-xcode/action.yml`, which runs `xcode-select --switch` and prints `xcodebuild -version`. A workflow never selects Xcode another way.
+- Every Xcode job in the test and release workflows runs on the `xcode-27` runner label, a GitHub preview image. actionlint learns the label from `.github/actionlint.yaml`.
+- The Xcode version and Apple's released build of it are written once, in `.github/actions/setup-xcode/action.yml`. It takes the one non-symlink `/Applications/Xcode*.app` whose `version.plist` has that version, fails on none or several, exports `DEVELOPER_DIR` to the job's later steps and prints `xcodebuild -version`.
+- A workflow never selects Xcode another way, and never runs an Xcode tool under `sudo`, which drops `DEVELOPER_DIR`.
+- A stable tag builds only on Apple's released Xcode: `setup-xcode` with `require-release` needs the pinned build and `licenseType` `GM` in the bundle's `LicenseInfo.plist`. The folder name is no signal: the image names the released 27A9275 `Xcode_27.1_Release_Candidate.app`.
 - XcodeGen comes from `.github/actions/setup-xcodegen`, pinned by version and SHA-256.
 - `scripts/release/feed.py` runs Sparkle's `generate_appcast` and `sign_update` from `SPARKLE_BIN`, which `.github/actions/setup-sparkle` sets. The action reads the version and revision from the app's `Package.resolved` (`project.yml` pins Sparkle with `exactVersion`) and checks the archive against the checksum in Sparkle's `Package.swift` at that revision.
 - The compilation cache is off on CI (`COMPILATION_CACHE_ENABLE_CACHING=NO`); `Configs/Base.xcconfig` turns it on locally.
