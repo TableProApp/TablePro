@@ -341,7 +341,7 @@ Currently at **Demo**. Beta is the right "production-ready ship-able" target; th
 
 - **Which features matter most** — that depends on target audience (Postgres-only devs vs polyglot DBAs vs analysts). The ROADMAP makes a defensible default ordering; product strategy can override.
 - **Solo vs team feasibility** — these timelines assume one focused full-time engineer. Solo + part-time = 3-4x calendar.
-- **When to ship** — shipping Beta on a smaller solid surface beats shipping GA on a feature-rich fragile surface. The ROADMAP's choice to do hardening before driver expansion reflects this.
-- **Cost** — engineering time is the dominant cost. Flathub publishing is free. Distribution adds no revenue without a business model.
+- **When to ship**: shipping Beta on a smaller solid surface beats shipping GA on a feature-rich fragile surface. The ROADMAP's choice to do hardening before driver expansion reflects this.
+- **Cost**: engineering time is the dominant cost. Flathub publishing is free. Distribution adds no revenue without a business model.
 
 This audit is a snapshot at 2026-04-26 and is not re-run.
