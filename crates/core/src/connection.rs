@@ -279,6 +279,29 @@ pub trait Connection: Send + Sync {
     ) -> Result<Vec<u64>, DriverError> {
         run_controlled(self.execute_in_transaction(statements), control).await
     }
+    async fn synchronize_auto_increment_sequences(
+        &self,
+        _schema: Option<&str>,
+        _table: &str,
+        _columns: &[String],
+    ) -> Result<(), DriverError> {
+        Err(DriverError::Unsupported(
+            "synchronizing auto-increment sequences".into(),
+        ))
+    }
+    async fn synchronize_auto_increment_sequences_controlled(
+        &self,
+        schema: Option<&str>,
+        table: &str,
+        columns: &[String],
+        control: &OperationControl,
+    ) -> Result<(), DriverError> {
+        run_controlled(
+            self.synchronize_auto_increment_sequences(schema, table, columns),
+            control,
+        )
+        .await
+    }
     async fn execute_in_transaction_checked_controlled(
         &self,
         statements: &[(String, Vec<Value>)],

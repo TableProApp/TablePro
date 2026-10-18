@@ -17,6 +17,7 @@ pub struct BulkInsertRequest {
     pub table: String,
     pub statement: String,
     pub row_budget: u64,
+    pub sequence_columns: Vec<String>,
 }
 
 /// One bounded batch offered against an open scope. Every field is
@@ -59,6 +60,7 @@ pub struct BulkInsertScope {
     approval_outcome: AuditApprovalOutcome,
     preview_state: AuditPreviewState,
     row_budget: u64,
+    sequence_columns: Vec<String>,
     committed: u64,
     open: bool,
     started: Instant,
@@ -152,6 +154,14 @@ fn qualified_target(schema: Option<&str>, table: &str) -> String {
     schema.map_or_else(|| table.to_owned(), |schema| format!("{schema}.{table}"))
 }
 
+fn valid_sequence_columns(driver_id: &str, columns: &[String]) -> bool {
+    columns.len() <= tablepro_core::import::MAX_COLUMNS
+        && (columns.is_empty() || driver_id.eq_ignore_ascii_case("postgres"))
+        && columns.iter().enumerate().all(|(index, column)| {
+            tablepro_core::sql_dialect::validate_ident(column).is_ok() && !columns[..index].contains(column)
+        })
+}
+
 fn approval_preview(target: &str, rows: u64, statement: &str) -> String {
     format!("Import {rows} rows into {target}\n\nEvery row runs this statement with its own bound values:\n{statement}")
 }
@@ -163,6 +173,17 @@ impl PolicyGuard {
     pub async fn begin_bulk_insert(&self, request: BulkInsertRequest) -> Result<BulkInsertScope, DriverError> {
         self.require_governed_write_available()?;
         let facts = bulk_facts(&request, &self.ctx.driver_id)?;
+        if !valid_sequence_columns(&self.ctx.driver_id, &request.sequence_columns) {
+            self.record_bulk_refusal(
+                &request,
+                &facts,
+                "invalid_import_sequence_columns",
+                AuditApprovalOutcome::NotRequired,
+                None,
+            )
+            .await?;
+            return Err(denied("the import sequence columns are invalid"));
+        }
         if !statement_target_matches_request(&request, &self.ctx.driver_id) {
             self.record_bulk_refusal(
                 &request,
@@ -226,6 +247,19 @@ impl PolicyGuard {
         }
         let rows = statements.len() as u64;
         scope.committed += rows;
+        if !scope.sequence_columns.is_empty() {
+            let repair_control = OperationControl::with_timeout(std::time::Duration::from_secs(5));
+            self.caught_write(
+                "IMPORT SEQUENCE SYNC",
+                self.inner.synchronize_auto_increment_sequences_controlled(
+                    scope.schema.as_deref(),
+                    &scope.table,
+                    &scope.sequence_columns,
+                    &repair_control,
+                ),
+            )
+            .await?;
+        }
         Ok(rows)
     }
 
@@ -358,6 +392,7 @@ impl PolicyGuard {
             approval_outcome: granted.approval_outcome,
             preview_state: granted.preview_state,
             row_budget: request.row_budget,
+            sequence_columns: request.sequence_columns,
             committed: 0,
             open: true,
             started: Instant::now(),

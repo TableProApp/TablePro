@@ -409,6 +409,16 @@ impl ImportRun {
             table: self.table.clone(),
             statement: self.plan.statement.clone(),
             row_budget: total,
+            sequence_columns: if self.guard.context().driver_id.eq_ignore_ascii_case("postgres") {
+                self.plan
+                    .columns
+                    .iter()
+                    .filter(|column| column.is_auto_increment)
+                    .map(|column| column.name.clone())
+                    .collect()
+            } else {
+                Vec::new()
+            },
         };
         let mut scope = match self.guard.begin_bulk_insert(request).await {
             Ok(scope) => scope,
@@ -727,6 +737,7 @@ mod tests {
                 table: choice.table.clone(),
                 statement: plan.statement.clone(),
                 row_budget: plan.row_count(),
+                sequence_columns: Vec::new(),
             })
             .await
             .expect("approve import");

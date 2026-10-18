@@ -96,6 +96,15 @@ impl Connection for Marker {
         Ok(vec![7, 9])
     }
 
+    async fn synchronize_auto_increment_sequences(
+        &self,
+        _: Option<&str>,
+        _: &str,
+        _: &[String],
+    ) -> Result<(), DriverError> {
+        Ok(())
+    }
+
     async fn server_version(&self) -> Result<Option<String>, DriverError> {
         Ok(Some("marker 1.0".into()))
     }
@@ -145,6 +154,14 @@ async fn the_session_returns_what_the_driver_returned_for_every_catalog_and_tran
             .unwrap(),
         vec![7, 9]
     );
+    session
+        .synchronize_auto_increment_sequences(None, "marker", &["id".into()])
+        .await
+        .unwrap();
+    session
+        .synchronize_auto_increment_sequences_controlled(None, "marker", &["id".into()], &control)
+        .await
+        .unwrap();
     assert_eq!(session.server_version().await.unwrap().as_deref(), Some("marker 1.0"));
     assert!(session.supports_server_cancellation());
     let quiet = SessionConnection {

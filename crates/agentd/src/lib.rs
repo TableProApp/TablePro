@@ -174,6 +174,29 @@ impl Connection for SessionConnection {
         self.inner.execute_in_transaction_controlled(statements, control).await
     }
 
+    async fn synchronize_auto_increment_sequences(
+        &self,
+        schema: Option<&str>,
+        table: &str,
+        columns: &[String],
+    ) -> Result<(), DriverError> {
+        self.inner
+            .synchronize_auto_increment_sequences(schema, table, columns)
+            .await
+    }
+
+    async fn synchronize_auto_increment_sequences_controlled(
+        &self,
+        schema: Option<&str>,
+        table: &str,
+        columns: &[String],
+        control: &OperationControl,
+    ) -> Result<(), DriverError> {
+        self.inner
+            .synchronize_auto_increment_sequences_controlled(schema, table, columns, control)
+            .await
+    }
+
     async fn fetch_indexes(&self, schema: Option<&str>, table: &str) -> Result<Vec<IndexInfo>, DriverError> {
         self.inner.fetch_indexes(schema, table).await
     }

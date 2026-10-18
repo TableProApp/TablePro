@@ -56,6 +56,15 @@ impl Connection for BulkConn {
         Ok(vec![1; statements.len()])
     }
 
+    async fn synchronize_auto_increment_sequences(
+        &self,
+        _: Option<&str>,
+        _: &str,
+        columns: &[String],
+    ) -> Result<(), DriverError> {
+        if columns.is_empty() { Ok(()) } else { Err(query_error()) }
+    }
+
     async fn begin(&self) -> Result<Box<dyn Transaction>, DriverError> {
         Err(DriverError::Unsupported("begin".into()))
     }
@@ -94,6 +103,7 @@ fn request(budget: u64) -> BulkInsertRequest {
         table: "people".into(),
         statement: INSERT.into(),
         row_budget: budget,
+        sequence_columns: Vec::new(),
     }
 }
 
@@ -165,6 +175,54 @@ async fn an_approved_scope_spends_exactly_its_row_budget() {
             .await
             .expect("finish"),
         6
+    );
+}
+
+#[tokio::test]
+async fn sequence_sync_failure_reports_rows_already_committed() {
+    let (connection, _batches) = BulkConn::open(usize::MAX);
+    let (guard, audit, _state) = approved_guard(connection, Uuid::new_v4());
+    let mut request = request(2);
+    request.sequence_columns = vec!["id".into()];
+    let mut scope = guard.begin_bulk_insert(request).await.expect("scope");
+    let rows = rows(2);
+
+    let error = guard
+        .execute_bulk_batch(&mut scope, batch(INSERT, "people", &rows), &control())
+        .await
+        .expect_err("sequence failure follows the committed insert");
+    assert_eq!(scope.committed_rows(), 2);
+    assert_eq!(
+        guard
+            .finish_bulk_insert(&mut scope, BulkInsertEnd::Failed(&error))
+            .await
+            .expect("audit finish"),
+        2
+    );
+    assert!(
+        events(&audit)
+            .iter()
+            .any(|event| event.phase == AuditRecordPhase::Outcome && event.rows_affected == Some(2))
+    );
+}
+
+#[tokio::test]
+async fn an_import_cannot_request_more_sequence_columns_than_the_csv_limit() {
+    let (connection, batches) = BulkConn::open(usize::MAX);
+    let (guard, audit, _state) = approved_guard(connection, Uuid::new_v4());
+    let mut request = request(1);
+    request.sequence_columns = vec!["id".into(); tablepro_core::import::MAX_COLUMNS + 1];
+
+    assert!(matches!(
+        guard.begin_bulk_insert(request).await,
+        Err(DriverError::PolicyDenied(_))
+    ));
+    assert!(batches.lock().expect("batch lock").is_empty());
+    assert!(
+        events(&audit)
+            .iter()
+            .any(|event| event.phase == AuditRecordPhase::Outcome
+                && event.error_category == Some(AuditErrorCategory::Policy))
     );
 }
 

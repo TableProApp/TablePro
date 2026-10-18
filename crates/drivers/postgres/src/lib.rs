@@ -487,6 +487,38 @@ impl Connection for PgConnection {
         result
     }
 
+    async fn synchronize_auto_increment_sequences(
+        &self,
+        schema: Option<&str>,
+        table: &str,
+        columns: &[String],
+    ) -> Result<(), DriverError> {
+        self.synchronize_auto_increment_sequences_controlled(
+            schema,
+            table,
+            columns,
+            &OperationControl::with_timeout(Duration::from_secs(5)),
+        )
+        .await
+    }
+
+    async fn synchronize_auto_increment_sequences_controlled(
+        &self,
+        schema: Option<&str>,
+        table: &str,
+        columns: &[String],
+        control: &OperationControl,
+    ) -> Result<(), DriverError> {
+        for column in columns {
+            let (sql, params) = sequence_sync_query(schema, table, column);
+            let result = self.query_params_controlled(&sql, &params, control).await?;
+            if let Some(reason) = sequence_sync_failure(&result) {
+                return Err(DriverError::Unsupported(reason.into()));
+            }
+        }
+        Ok(())
+    }
+
     async fn execute_in_transaction(&self, statements: &[(String, Vec<Value>)]) -> Result<Vec<u64>, DriverError> {
         self.execute_in_transaction_checked(statements, &[]).await
     }
@@ -904,6 +936,61 @@ fn confirms_cancellation(error: &DriverError) -> bool {
             ..
         } if sqlstate == "57014"
     )
+}
+
+fn sequence_sync_query(schema: Option<&str>, table: &str, column: &str) -> (String, Vec<Value>) {
+    let target = qualified(schema, table);
+    let column_ident = quote_ident(column);
+    let sql = format!(
+        "WITH seq AS (
+             SELECT pg_catalog.pg_get_serial_sequence($1, $2)::regclass AS name
+         ), sequence_state AS (
+             SELECT seq.name, s.seqincrement, s.seqstart, s.seqcycle,
+                    pg_catalog.pg_sequence_last_value(seq.name) AS last_value
+             FROM seq
+             LEFT JOIN pg_catalog.pg_sequence s ON s.seqrelid = seq.name
+         ), table_values AS (
+             SELECT (SELECT MAX({column_ident}) FROM {target}) AS high,
+                    (SELECT MIN({column_ident}) FROM {target}) AS low
+         )
+         SELECT sequence_state.name IS NULL,
+                sequence_state.seqcycle,
+                CASE WHEN sequence_state.name IS NULL THEN NULL::bigint
+                     WHEN sequence_state.seqincrement > 0
+                     THEN pg_catalog.setval(
+                         sequence_state.name,
+                         GREATEST(COALESCE(sequence_state.last_value, sequence_state.seqstart), table_values.high),
+                         true
+                     )
+                     ELSE pg_catalog.setval(
+                         sequence_state.name,
+                         LEAST(COALESCE(sequence_state.last_value, sequence_state.seqstart), table_values.low),
+                         true
+                     )
+                END
+         FROM sequence_state CROSS JOIN table_values
+         WHERE sequence_state.name IS NULL
+            OR CASE WHEN sequence_state.seqincrement > 0
+                    THEN table_values.high IS NOT NULL
+                    ELSE table_values.low IS NOT NULL
+               END"
+    );
+    (sql, vec![Value::Text(target), Value::Text(column.to_owned())])
+}
+
+fn sequence_sync_failure(result: &QueryResult) -> Option<&'static str> {
+    if result
+        .rows
+        .iter()
+        .any(|row| matches!(row.first(), Some(Value::Bool(true))))
+    {
+        return Some("the column has no owned sequence");
+    }
+    result
+        .rows
+        .iter()
+        .any(|row| matches!(row.get(1), Some(Value::Bool(true))))
+        .then_some("the sequence is cyclic")
 }
 
 async fn finish_connection<T>(

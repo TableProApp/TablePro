@@ -123,6 +123,7 @@ async fn begin(guard: &PolicyGuard, table: &str, plan: &InsertPlan) -> BulkInser
             table: table.to_owned(),
             statement: plan.statement.clone(),
             row_budget: plan.row_count(),
+            sequence_columns: Vec::new(),
         })
         .await
         .expect("an approved scope")
