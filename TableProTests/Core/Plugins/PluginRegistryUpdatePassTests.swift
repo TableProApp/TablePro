@@ -204,9 +204,8 @@ struct PluginRegistryUpdatePassTests {
         RegistryPlugin(
             id: id,
             name: "Test Plugin",
-            iconName: nil,
-            databaseTypeIds: nil,
-            exportFormatIds: nil,
+            databaseTypeIds: [],
+            exportFormatIds: [],
             releases: releases
         )
     }
@@ -252,7 +251,7 @@ struct PluginRegistryUpdatePassTests {
         let manifestURL = try #require(URL(string: "https://registry.invalid/\(UUID().uuidString)/plugins/v3.json"))
         let plugins = pluginIds.map { id in
             """
-            {"id": "\(id)", "name": "Driver", "releases": [{
+            {"id": "\(id)", "name": "Driver", "databaseTypeIds": [], "exportFormatIds": [], "releases": [{
                 "version": "1.0", "build": \(build), "channel": "stable",
                 "pluginKit": \(PluginManager.currentPluginKitVersion),
                 "minimumSystemVersion": "13.0", "url": "https://x", "sha256": "deadbeef"

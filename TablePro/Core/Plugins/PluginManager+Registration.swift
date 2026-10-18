@@ -793,6 +793,6 @@ extension PluginManager {
     }
 
     nonisolated static func registryPlugin(forTypeId pluginTypeId: String, in manifest: RegistryManifest?) -> RegistryPlugin? {
-        manifest?.plugins.first { $0.databaseTypeIds?.contains(pluginTypeId) == true }
+        manifest?.plugins.first { $0.databaseTypeIds.contains(pluginTypeId) }
     }
 }

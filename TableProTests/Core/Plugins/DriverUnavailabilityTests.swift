@@ -112,6 +112,7 @@ struct DriverUnavailabilityTests {
                 "id": "com.example.future",
                 "name": "Future Driver",
                 "databaseTypeIds": ["\(typeId)"],
+                "exportFormatIds": [],
                 "releases": []
             }]
         }
@@ -222,6 +223,7 @@ struct DriverUnavailabilityTests {
                 "id": "com.example.eager",
                 "name": "Eager Driver",
                 "databaseTypeIds": ["EagerDB"],
+                "exportFormatIds": [],
                 "releases": []
             }]
         }

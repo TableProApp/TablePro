@@ -60,6 +60,7 @@ struct RegistryClientFreshnessTests {
                 "id": "com.test.freshness-driver",
                 "name": "Freshness Test Driver",
                 "databaseTypeIds": ["\(Self.testTypeId)"],
+                "exportFormatIds": [],
                 "releases": [{
                     "version": "0.82.0", "build": 820099, "channel": "stable", "pluginKit": \(kit),
                     "minimumSystemVersion": "13.0", "url": "https://x", "sha256": "deadbeef"

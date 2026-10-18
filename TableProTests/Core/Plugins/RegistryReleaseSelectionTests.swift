@@ -26,9 +26,8 @@ struct RegistryReleaseSelectionTests {
         RegistryPlugin(
             id: "com.example.driver",
             name: "Example Driver",
-            iconName: nil,
             databaseTypeIds: ["Example"],
-            exportFormatIds: nil,
+            exportFormatIds: [],
             releases: releases
         )
     }
@@ -72,7 +71,7 @@ struct RegistryReleaseSelectionTests {
     func unknownChannelSkipped() throws {
         let json = """
         {"schemaVersion": 3, "retainFromPluginKit": 39, "plugins": [{
-            "id": "com.example.driver", "name": "Example Driver", "databaseTypeIds": ["Example"],
+            "id": "com.example.driver", "name": "Example Driver", "databaseTypeIds": ["Example"], "exportFormatIds": [],
             "releases": [
                 {"version": "0.83.0-nightly.1", "build": 830050, "channel": "nightly", "pluginKit": 39,
                  "minimumSystemVersion": "13.0", "url": "https://example.com/n.zip", "sha256": "\(String(repeating: "b", count: 64))"},

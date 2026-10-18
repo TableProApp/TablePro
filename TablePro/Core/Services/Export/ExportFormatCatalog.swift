@@ -12,29 +12,17 @@ internal enum ExportFormatCatalog {
         "csv", "json", "sql", "xlsx", "md", "parquet", "mql"
     ]
 
-    // scripts/release/registry.py writes no exportFormatIds yet, so Parquet stays offered by hand until it does.
-    private static let unlistedInstallable = [
-        InstallableExportFormat(
-            formatId: "parquet",
-            displayName: "Parquet",
-            registryPluginId: "com.TablePro.ParquetExportPlugin"
-        )
-    ]
-
     internal static func installable(in manifest: RegistryManifest?) -> [InstallableExportFormat] {
-        let listed = (manifest?.plugins ?? []).flatMap { plugin in
-            (plugin.exportFormatIds ?? []).map { formatId in
+        (manifest?.plugins ?? []).flatMap { plugin in
+            plugin.exportFormatIds.map { formatId in
                 InstallableExportFormat(formatId: formatId, displayName: plugin.name, registryPluginId: plugin.id)
             }
         }
-        let listedFormatIds = Set(listed.map(\.formatId))
-        return listed + unlistedInstallable.filter { !listedFormatIds.contains($0.formatId) }
     }
 
-    @MainActor
     internal static func notInstalled(
         installedFormatIds: Set<String>,
-        manifest: RegistryManifest? = RegistryClient.shared.manifest
+        manifest: RegistryManifest?
     ) -> [InstallableExportFormat] {
         installable(in: manifest).filter { !installedFormatIds.contains($0.formatId) }
     }

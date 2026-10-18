@@ -274,7 +274,7 @@ final class PluginManager: ObservableObject {
         let displayName = registrySnapshot?.displayName
             ?? bundleId.split(separator: ".").last.map(String.init)
             ?? bundleId
-        let pluginIconName = registrySnapshot?.iconName ?? "puzzlepiece"
+        let pluginIconName = Self.iconName(forPrimaryTypeId: primaryTypeId)
         let defaultPort = registrySnapshot?.defaultPort
         let pluginDescription = registrySnapshot?.connection.tagline ?? ""
 
@@ -307,6 +307,10 @@ final class PluginManager: ObservableObject {
             lazyImportURLs[formatId] = url
         }
         Self.logger.debug("Registered lazy plugin '\(bundleId)': drivers=\(manifest.providedDatabaseTypeIds), exports=\(manifest.providedExportFormatIds), imports=\(manifest.providedImportFormatIds)")
+    }
+
+    nonisolated static func iconName(forPrimaryTypeId typeId: String?) -> String {
+        typeId.flatMap { PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: $0)?.iconName } ?? "puzzlepiece"
     }
 
     /// Takes back everything `registerLazyManifest` published for this bundle, so a plugin the app

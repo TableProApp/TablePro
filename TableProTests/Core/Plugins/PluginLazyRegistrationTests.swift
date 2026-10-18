@@ -57,8 +57,17 @@ struct PluginLazyRegistrationTests {
         #expect(manager.lazyDriverURLs[DatabaseType.oracle.rawValue]?.lastPathComponent == url.lastPathComponent)
         #expect(manager.isDriverInstalled(for: .oracle))
         #expect(manager.driverPlugins[DatabaseType.oracle.rawValue] == nil)
-        #expect(manager.plugins.first { $0.id == "com.TablePro.OracleDriver" }?.databaseTypeId == DatabaseType.oracle.rawValue)
+        let entry = manager.plugins.first { $0.id == "com.TablePro.OracleDriver" }
+        #expect(entry?.databaseTypeId == DatabaseType.oracle.rawValue)
+        #expect(entry?.pluginIconName == "oracle-icon")
         #expect(manager.rejectedPlugins.isEmpty)
+    }
+
+    @Test("A plugin's icon is its primary type's snapshot icon, or the puzzle piece without one")
+    func iconComesFromThePrimaryTypeSnapshot() {
+        #expect(PluginManager.iconName(forPrimaryTypeId: DatabaseType.oracle.rawValue) == "oracle-icon")
+        #expect(PluginManager.iconName(forPrimaryTypeId: "NoSuchDB") == "puzzlepiece")
+        #expect(PluginManager.iconName(forPrimaryTypeId: nil) == "puzzlepiece")
     }
 
     @Test("A driver whose Info.plist declares no ids is loaded at launch")
