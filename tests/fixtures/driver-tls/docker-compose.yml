@@ -5,6 +5,7 @@ services:
     build:
       context: .
       dockerfile: mongo/Dockerfile
+    restart: on-failure:3
     environment:
       MONGO_INITDB_ROOT_USERNAME: tablepro
       MONGO_INITDB_ROOT_PASSWORD: tablepro
@@ -92,6 +93,7 @@ services:
 
   mongo-plain:
     image: mongo:7
+    restart: on-failure:3
     environment:
       MONGO_INITDB_ROOT_USERNAME: tablepro
       MONGO_INITDB_ROOT_PASSWORD: tablepro
