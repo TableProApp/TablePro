@@ -180,7 +180,11 @@ pub async fn system_openssh(prompter: Arc<dyn Prompter>) -> Result<OpenSshEnviro
 }
 
 fn beside_current_exe(name: &str) -> Option<std::path::PathBuf> {
-    let candidate = std::env::current_exe().ok()?.parent()?.join(name);
+    beside_executable(&std::env::current_exe().ok()?, name)
+}
+
+fn beside_executable(executable: &Path, name: &str) -> Option<std::path::PathBuf> {
+    let candidate = executable.parent()?.join(name);
     is_executable(&candidate).then_some(candidate)
 }
 
@@ -317,7 +321,14 @@ exec sleep 300
 }
 
 pub(crate) fn running_in_flatpak() -> bool {
-    std::env::var_os("FLATPAK_ID").is_some() || std::path::Path::new("/.flatpak-info").exists()
+    flatpak_marked(
+        std::env::var_os("FLATPAK_ID").is_some(),
+        std::path::Path::new("/.flatpak-info").exists(),
+    )
+}
+
+fn flatpak_marked(has_flatpak_id: bool, has_marker_file: bool) -> bool {
+    has_flatpak_id || has_marker_file
 }
 
 fn ensure_system_ssh_available(sandboxed: bool) -> Result<(), TransportError> {
@@ -360,5 +371,35 @@ mod sandbox_tests {
         let message = TransportError::SystemSshUnavailableInSandbox.to_string();
         assert!(message.contains("Flatpak"), "{message}");
         assert!(message.contains("built-in SSH client"), "{message}");
+    }
+}
+
+#[cfg(test)]
+mod location_tests {
+    use super::*;
+
+    #[test]
+    fn a_sibling_is_found_only_when_it_is_an_executable_beside_the_binary() {
+        let directory = tempfile::tempdir().unwrap();
+        let executable = directory.path().join("bookie");
+        let sibling = directory.path().join("bookie-askpass");
+        std::fs::write(&sibling, b"#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&sibling, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        assert_eq!(beside_executable(&executable, "bookie-askpass"), Some(sibling.clone()));
+        assert_eq!(beside_executable(&executable, "absent"), None);
+
+        std::fs::set_permissions(&sibling, std::os::unix::fs::PermissionsExt::from_mode(0o644)).unwrap();
+        assert_eq!(
+            beside_executable(&executable, "bookie-askpass"),
+            None,
+            "a non-executable sibling is refused"
+        );
+    }
+
+    #[test]
+    fn a_flatpak_is_recognised_by_either_marker() {
+        assert!(flatpak_marked(true, false));
+        assert!(flatpak_marked(false, true));
+        assert!(!flatpak_marked(false, false));
     }
 }

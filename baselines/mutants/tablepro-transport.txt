@@ -1,5 +1,5 @@
 # Missed mutants accepted for now (cargo mutants --package tablepro-transport, 2026-10-18).
-# session_material.rs and lib.rs are seeded; route.rs still needs tests (local_socket.rs is complete).
+# All tablepro-transport files are covered or seeded: session_material.rs, lib.rs, local_socket.rs and route.rs.
 # append_db_password: loads the database password from the Secret Service through load_password, which has no test double; the keyring tier (scripts/test-secret-service.sh) is where a stored password round-trips.
 # read_material_file (+ with *): equivalent. The metadata check already rejects files over the limit, so take(MAX) and take(MAX + 1) differ only if the file grows during the read.
 crates/transport/src/session_material.rs:42:5: replace append_db_password -> Result<(), TransportError> with Ok(())
@@ -7,3 +7,14 @@ crates/transport/src/session_material.rs:129:39: replace + with * in read_materi
 # saved_ssh_password: the only two lib.rs misses. Both branches (credential_revision 0 vs a revisioned hop) load the password from the Secret Service, which has no test double. The keyring tier covers the round-trip.
 crates/transport/src/lib.rs:482:5: replace saved_ssh_password -> Result<SecretString, TransportError> with Ok(Default::default())
 crates/transport/src/lib.rs:482:47: replace == with != in saved_ssh_password
+# Tunnel::socket_dir and Tunnel::is_closed: both delegate to a live OpenSSH master or builtin tunnel, which the unit tier cannot build. openssh_session covers the session's is_closed; the tunnel wrapper is exercised by the SSH integration tier.
+# set_builtin_prompter: stores the prompter used only when a builtin tunnel opens, which needs an SSH server.
+# beside_current_exe: resolves a sibling of the running test binary, which cargo controls. The helper it calls, beside_executable, is tested.
+# running_in_flatpak -> false: reads FLATPAK_ID and /.flatpak-info, which a unit test cannot control. flatpak_marked, the decision it makes, is tested.
+crates/transport/src/route.rs:28:9: replace Tunnel::socket_dir -> Option<&Path> with None
+crates/transport/src/route.rs:38:9: replace Tunnel::is_closed -> bool with true
+crates/transport/src/route.rs:38:9: replace Tunnel::is_closed -> bool with false
+crates/transport/src/route.rs:75:9: replace SshEnvironment::set_builtin_prompter with ()
+crates/transport/src/route.rs:183:5: replace beside_current_exe -> Option<std::path::PathBuf> with None
+crates/transport/src/route.rs:183:5: replace beside_current_exe -> Option<std::path::PathBuf> with Some(Default::default())
+crates/transport/src/route.rs:324:5: replace running_in_flatpak -> bool with false
