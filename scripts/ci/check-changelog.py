@@ -3,14 +3,11 @@
 import argparse
 import datetime
 import importlib.util
-import json
-import os
 import re
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
-from typing import Callable, Dict, List, NamedTuple, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 NOTES_SPEC = importlib.util.spec_from_file_location("notes", ROOT / "scripts" / "release" / "notes.py")
@@ -22,7 +19,7 @@ MARKER = "<!-- towncrier release notes start -->"
 FRAGMENTS = "changelog.d"
 IGNORED = {".gitkeep"}
 MAX_LINE = 120
-TYPE_DIRECTORY = re.compile(r'^\[\[tool\.towncrier\.type\]\]\ndirectory = "([a-z]+)"$', re.MULTILINE)
+MAX_LEAD_LINES = 6
 VERSION = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
 DATE = r"(?P<date>[0-9]{4}-[0-9]{2}-[0-9]{2})"
 OLD_HEADING = re.compile(rf"## \[(?P<version>{VERSION})\] - {DATE}")
@@ -32,40 +29,19 @@ NEW_HEADING = re.compile(
 )
 # The forward-port to main keeps the release commit's subject, which ends in its (#N).
 RELEASE_TITLE = re.compile(rf"chore\(release\): v{VERSION}(?: \(#[0-9]+\))?")
-NEW_STATUSES = {"added", "copied"}
-
-
-class Fragment(NamedTuple):
-    owner: str
-    kind: str
-    counter: Optional[str]
+GIT_STATUSES = {"A": "added", "D": "removed"}
 
 
 class ChangedFile(NamedTuple):
     filename: str
     status: str
-    previous_filename: Optional[str] = None
 
 
 class CheckError(Exception):
     pass
 
 
-def fragment_types(towncrier_toml: str) -> List[str]:
-    return TYPE_DIRECTORY.findall(towncrier_toml)
-
-
-def parse_fragment_name(name: str, types: List[str]) -> Optional[Fragment]:
-    match = re.fullmatch(
-        rf"(?P<owner>[0-9]+|\+[a-z0-9][a-z0-9-]*)\.(?P<kind>{'|'.join(types)})(?:\.(?P<counter>[1-9][0-9]*))?\.md",
-        name,
-    )
-    if not match:
-        return None
-    return Fragment(match.group("owner"), match.group("kind"), match.group("counter"))
-
-
-def fragment_problems(directory: Path, types: List[str]) -> List[str]:
+def fragment_problems(directory: Path) -> List[str]:
     if not directory.is_dir():
         return []
     problems = []
@@ -76,9 +52,6 @@ def fragment_problems(directory: Path, types: List[str]) -> List[str]:
         if not path.is_file():
             problems.append(f"{name} is not a file")
             continue
-        if parse_fragment_name(path.name, types) is None:
-            problems.append(f"{name} is not named <PR>.<type>.md or <PR>.<type>.<n>.md, with type one of "
-                            + ", ".join(types))
         try:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
@@ -152,102 +125,90 @@ def _new_section_problems(changelog: str, version: str, number: int) -> List[str
     section = notes.find_section(changelog, version)
     if section is None:
         return [f"CHANGELOG.md:{number}: notes.py cannot find ## [{version}]"]
+    if not section.lead:
+        return []
     problems = []
-    if len(section.lead) > notes.MAX_LEAD_LINES:
+    if not version.endswith(".0"):
+        problems.append(f"CHANGELOG.md:{number}: {version} has a lead block; only an X.Y.0 takes one")
+    if len(section.lead) > MAX_LEAD_LINES:
         problems.append(f"CHANGELOG.md:{number}: the {version} lead block has {len(section.lead)} lines, "
-                        f"over {notes.MAX_LEAD_LINES}")
-    with tempfile.TemporaryDirectory() as scratch:
-        source = Path(scratch, "CHANGELOG.md")
-        source.write_text(changelog, encoding="utf-8")
-        if not notes.whats_new(version, source, Path(scratch, "WhatsNew.md")):
-            problems.append(f"CHANGELOG.md:{number}: notes.py whats-new renders nothing for {version}")
+                        f"over {MAX_LEAD_LINES}")
+    for line in section.lead:
+        if line.startswith(("#", "- ")):
+            problems.append(f"CHANGELOG.md:{number}: the {version} lead line `{line}` is not plain text")
     return problems
 
 
 def repository_problems(root: Path) -> List[str]:
-    types = fragment_types((root / "towncrier.toml").read_text(encoding="utf-8"))
-    if not types:
-        return ["towncrier.toml defines no [[tool.towncrier.type]]"]
     return (changelog_problems((root / "CHANGELOG.md").read_text(encoding="utf-8"))
-            + fragment_problems(root / FRAGMENTS, types))
+            + fragment_problems(root / FRAGMENTS))
 
 
-def _fragment_in(path: Optional[str], types: List[str]) -> Optional[Fragment]:
-    if path is None or not path.startswith(f"{FRAGMENTS}/"):
+def _owner(path: str) -> Optional[str]:
+    if not path.startswith(f"{FRAGMENTS}/"):
         return None
-    return parse_fragment_name(path[len(FRAGMENTS) + 1:], types)
+    return path[len(FRAGMENTS) + 1:].partition(".")[0]
 
 
-def pull_request_problems(number: int, title: str, base: str, files: List[ChangedFile],
-                          types: List[str]) -> List[str]:
-    # The pull request that creates changelog.d/ is the one that moves the old entries into it.
-    if any(changed.filename == f"{FRAGMENTS}/.gitkeep" and changed.status in NEW_STATUSES for changed in files):
-        return []
+def pull_request_problems(number: int, title: str, base: str, files: List[ChangedFile]) -> List[str]:
     problems = []
-    expected = f"{FRAGMENTS}/{number}.<type>.md"
-    if any("CHANGELOG.md" in (changed.filename, changed.previous_filename) for changed in files) \
-            and not RELEASE_TITLE.fullmatch(title):
+    if RELEASE_TITLE.fullmatch(title):
+        others = [changed.filename for changed in files
+                  if changed.filename != "CHANGELOG.md" and _owner(changed.filename) is None]
+        if others:
+            more = f" and {len(others) - 1} more" if len(others) > 1 else ""
+            problems.append(f"a release pull request changes only CHANGELOG.md and {FRAGMENTS}/; "
+                            f"this one also changes {others[0]}{more}")
+    elif any(changed.filename == "CHANGELOG.md" for changed in files):
         problems.append(f"only a `chore(release): vX.Y.Z` pull request edits CHANGELOG.md. Put the entry in "
-                        f"{expected}, with type one of {', '.join(types)} (.claude/rules/changelog.md)")
+                        f"{FRAGMENTS}/{number}.<type>.md (.claude/rules/changelog.md)")
     if base != "main":
         return problems
 
     # A fragment deleted and added again under a new type keeps the pull request it is named for.
-    removed = {fragment.owner for fragment in
-               (_fragment_in(changed.filename, types) for changed in files if changed.status == "removed")
-               if fragment is not None}
+    removed = {_owner(changed.filename) for changed in files if changed.status == "removed"}
     for changed in files:
-        if changed.status not in NEW_STATUSES or not changed.filename.startswith(f"{FRAGMENTS}/"):
+        owner = _owner(changed.filename)
+        if changed.status != "added" or owner is None or changed.filename[len(FRAGMENTS) + 1:] in IGNORED:
             continue
-        if changed.filename[len(FRAGMENTS) + 1:] in IGNORED:
-            continue
-        fragment = _fragment_in(changed.filename, types)
-        if fragment is None:
-            problems.append(f"{changed.filename} is not a fragment name. Name it {expected}")
-        elif fragment.owner != str(number) and fragment.owner not in removed:
-            counter = f".{fragment.counter}" if fragment.counter else ""
-            problems.append(f"{changed.filename} is named for another pull request. "
-                            f"Name it {FRAGMENTS}/{number}.{fragment.kind}{counter}.md")
+        if owner != str(number) and owner not in removed:
+            rest = changed.filename[len(FRAGMENTS) + 1:].partition(".")[2] or "<type>.md"
+            problems.append(f"{changed.filename} is not named for this pull request. "
+                            f"Name it {FRAGMENTS}/{number}.{rest}")
     return problems
 
 
-def _gh(run: Callable, endpoint: str, jq: str, paginate: bool = False) -> List[str]:
-    command = ["gh", "api", *(["--paginate"] if paginate else []), endpoint, "--jq", jq]
-    result = run(command, capture_output=True, text=True)
+def changed_files(root: Path) -> List[ChangedFile]:
+    result = subprocess.run(["git", "diff", "--name-status", "--no-renames", "-z", "HEAD^1", "HEAD"],
+                            cwd=root, capture_output=True, text=True)
     if result.returncode != 0:
-        raise CheckError(f"gh api {endpoint}: {result.stderr.strip()}")
-    return [line for line in result.stdout.splitlines() if line.strip()]
-
-
-def fetch_pull_request(number: int, repository: str,
-                       run: Callable = subprocess.run) -> Tuple[str, str, List[ChangedFile]]:
-    endpoint = f"repos/{repository}/pulls/{number}"
-    details = json.loads(_gh(run, endpoint, "{title: .title, base: .base.ref} | @json")[0])
-    entries = _gh(run, f"{endpoint}/files", ".[] | {filename, status, previous_filename} | @json", paginate=True)
-    files = [ChangedFile(entry["filename"], entry["status"], entry.get("previous_filename"))
-             for entry in map(json.loads, entries)]
-    return details["title"], details["base"], files
+        raise CheckError(f"git diff HEAD^1 HEAD: {result.stderr.strip()}")
+    fields = result.stdout.split("\0")[:-1]
+    return [ChangedFile(path, GIT_STATUSES.get(status, "modified"))
+            for status, path in zip(fields[0::2], fields[1::2])]
 
 
 def workflow_command_data(text: str) -> str:
     return text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
 
 
-def main(argv: Optional[List[str]] = None, run: Callable = subprocess.run) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Check changelog.d/ and CHANGELOG.md.")
-    parser.add_argument("--pr", type=int, help="check the files this pull request changes instead")
+    parser.add_argument("--pr", type=int,
+                        help="check the files this pull request changes instead, from its merge commit at HEAD")
+    parser.add_argument("--title", help="the pull request's title, with --pr")
+    parser.add_argument("--base", help="the branch the pull request merges into, with --pr")
     parser.add_argument("--root", type=Path, default=ROOT)
     args = parser.parse_args(argv)
+    if args.pr is not None and (args.title is None or args.base is None):
+        parser.error("--pr needs --title and --base")
 
     try:
         if args.pr is None:
             problems = repository_problems(args.root)
         else:
-            types = fragment_types((args.root / "towncrier.toml").read_text(encoding="utf-8"))
-            repository = os.environ.get("GITHUB_REPOSITORY", REPOSITORY)
-            title, base, files = fetch_pull_request(args.pr, repository, run)
-            problems = pull_request_problems(args.pr, title, base, files, types)
-    except (CheckError, OSError, ValueError, KeyError, IndexError) as error:
+            problems = pull_request_problems(args.pr, args.title, args.base, changed_files(args.root))
+    except (CheckError, OSError, ValueError) as error:
         problems = [str(error)]
 
     for problem in problems:

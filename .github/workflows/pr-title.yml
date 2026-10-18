@@ -12,7 +12,6 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: read
 
 jobs:
   title:
@@ -20,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # The checkout is the merge commit, so its first parent is the base the pull request lands on.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
@@ -32,11 +32,10 @@ jobs:
 
       - name: Check CHANGELOG.md and the changelog fragments the pull request changes
         env:
-          GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
-        run: python3 scripts/ci/check-changelog.py --pr "$PR"
+          TITLE: ${{ github.event.pull_request.title }}
+        run: python3 scripts/ci/check-changelog.py --pr "$PR" --title "$TITLE" --base "$GITHUB_BASE_REF"
 
-      # The checkout is the merge commit, so its first parent is the base the pull request lands on.
       - name: Check the added lines and the description against the banned words
         env:
           BODY: ${{ github.event.pull_request.body }}

@@ -30,8 +30,8 @@ This runbook covers the macOS app, its registry plugins and the static libraries
 ## Notes
 
 - Fragments in `changelog.d/` (`.claude/rules/changelog.md`) become a `CHANGELOG.md` section. The tooling needs towncrier: `python3 -m venv .venv && .venv/bin/pip install --require-hashes -r scripts/release/requirements.txt`.
-- `python3 scripts/release/notes.py assemble X.Y.Z [--lead FILE] [--critical] [--date YYYY-MM-DD]` runs on `prep/v<X.Y.Z>`. It refuses a beta, a branch with commits beyond `origin/release/<X.Y>` other than a revert, an empty `changelog.d/`, and a version `CHANGELOG.md` already has. It credits each fragment ` by @login` when its PR's author is not an OWNER or MEMBER (read with `gh`), runs `towncrier build`, which deletes the fragments, adds the lead and the critical marker, and stages `CHANGELOG.md`.
-- The lead: X.Y.0 only, at most 6 plain lines, naming what a reader would change their behavior over. The Sparkle notes, What's New and the Telegram post show only the lead.
+- `.venv/bin/python scripts/release/notes.py assemble X.Y.Z [--date YYYY-MM-DD]` runs on `prep/v<X.Y.Z>`. It refuses a beta, an empty `changelog.d/`, and a version `CHANGELOG.md` already has. It credits each fragment ` by @login` when its PR's author is not an OWNER or MEMBER (read with `gh`), then runs `towncrier build`, which deletes the fragments and stages `CHANGELOG.md`.
+- The lead: X.Y.0 only, at most 6 plain lines, typed under the heading in the release PR, naming what a reader would change their behavior over. With a lead, What's New, the Sparkle notes and the Telegram post show only the lead. Without one, the Sparkle notes carry the whole section and What's New points at the changelog.
 - A beta gets no section. Its GitHub release body and feed notes are a towncrier draft of the fragments at the tag.
 
 ## Cutting a beta
@@ -51,13 +51,15 @@ git push origin vX.Y.0-beta.N
 ```bash
 git fetch origin
 git switch -c prep/vX.Y.Z origin/release/X.Y
-python3 scripts/release/notes.py assemble X.Y.Z --lead lead.txt  # --lead on X.Y.0 only, --critical when it is
+.venv/bin/python scripts/release/notes.py assemble X.Y.Z
+# X.Y.0: type the lead under the heading; critical: append ' [CRITICAL]' to it
+git add CHANGELOG.md
 git commit -m "chore(release): vX.Y.Z"
 git push -u origin prep/vX.Y.Z
 gh pr create --base release/X.Y --title "chore(release): vX.Y.Z" --body "Release notes for vX.Y.Z."
 ```
 
-The PR changes only `CHANGELOG.md` and `changelog.d/`. Squash-merge it, then tag its merge commit:
+The PR changes only `CHANGELOG.md` and `changelog.d/`; PR title refuses anything else. Squash-merge it, then tag its merge commit:
 
 ```bash
 git fetch origin

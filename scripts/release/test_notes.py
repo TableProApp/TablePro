@@ -48,11 +48,6 @@ Plugins update with the app.
 
 - Hang on connect.
 
-```
-## [9.9.9] inside a fence
-### Not a subsection
-```
-
 ## [0.81.0] - 2026-10-16
 
 Old lead line.
@@ -116,12 +111,6 @@ class SectionTests(unittest.TestCase):
         section = notes.find_section(CHANGELOG, "0.81.0")
         self.assertEqual((section.date, section.is_critical, section.lead), ("2026-10-16", False, ["Old lead line."]))
 
-    def test_a_fence_neither_ends_the_section_nor_starts_a_subsection(self):
-        section = notes.find_section(CHANGELOG, "0.81.1")
-        self.assertEqual(section.lead, [])
-        self.assertIn("## [9.9.9] inside a fence", section.entries)
-        self.assertIsNone(notes.find_section(CHANGELOG, "9.9.9"))
-
     def test_the_body_drops_only_the_heading(self):
         body = notes.find_section(CHANGELOG, "0.82.0").body
         self.assertTrue(body.startswith(
@@ -183,9 +172,9 @@ class WhatsNewTests(unittest.TestCase):
         self.assertEqual(self.out.read_text(encoding="utf-8"),
                          "# TablePro 0.82.0\n\nBeta updates from a signed feed.\n\nPlugins update with the app.\n")
 
-    def test_no_lead_writes_a_pointer(self):
+    def test_no_lead_writes_only_the_heading(self):
         notes.whats_new("0.81.1", self.changelog, self.out)
-        self.assertEqual(self.out.read_text(encoding="utf-8"), f"# TablePro 0.81.1\n\n{notes.NO_LEAD}\n")
+        self.assertEqual(self.out.read_text(encoding="utf-8"), "# TablePro 0.81.1\n")
 
     def test_no_section_writes_nothing_and_removes_a_stale_file(self):
         self.out.write_text("stale", encoding="utf-8")
@@ -251,26 +240,6 @@ class CreditTests(unittest.TestCase):
 
         with self.assertRaisesRegex(notes.NotesError, "#12: HTTP 404"):
             notes.PullRequestAuthors("Owner/Repo", run=run)(12)
-
-
-class LeadFileTests(unittest.TestCase):
-    def read(self, text):
-        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as handle:
-            handle.write(text)
-        self.addCleanup(os.unlink, handle.name)
-        return notes.read_lead(Path(handle.name))
-
-    def test_blank_lines_are_dropped(self):
-        self.assertEqual(self.read("One.\n\nTwo.\n"), ["One.", "Two."])
-
-    def test_more_than_six_lines_are_refused(self):
-        with self.assertRaisesRegex(notes.NotesError, "at most 6"):
-            self.read("".join(f"Line {n}.\n" for n in range(7)))
-
-    def test_headings_and_list_items_are_refused(self):
-        for text in ("### Added\n", "- An entry.\n"):
-            with self.subTest(text=text), self.assertRaises(notes.NotesError):
-                self.read(text)
 
 
 class DocsTests(unittest.TestCase):
@@ -372,44 +341,25 @@ class AssembleRefusalTests(unittest.TestCase):
         self.repo = FixtureRepository(Path(directory.name))
         self.repo.fragment("3500.added.md", "Beta channel.")
         self.repo.commit("feat: beta channel")
-        self.repo.git("update-ref", "refs/remotes/origin/release/0.82", "HEAD")
 
-    def assemble(self, version="0.82.0", lead_lines=(), date="2026-10-20"):
-        notes.assemble(self.repo.path, version, authors({}), list(lead_lines), False, date)
+    def assemble(self, version="0.82.0", date="2026-10-20"):
+        notes.assemble(self.repo.path, version, authors({}), date)
 
     def test_refusals(self):
         cases = [
             ({"version": "0.82.0-beta.1"}, "a beta is a tag"),
-            ({"version": "0.82.1", "lead_lines": ["A lead."]}, "X.Y.0 only"),
             ({"date": "20 Oct"}, "YYYY-MM-DD"),
-            ({"version": "0.83.0"}, "origin/release/0.83 does not exist"),
+            ({"version": "0.81.0"}, "already has ## \\[0.81.0\\]"),
         ]
         for arguments, message in cases:
             with self.subTest(arguments=arguments), self.assertRaisesRegex(notes.NotesError, message):
                 self.assemble(**arguments)
 
-    def test_a_commit_beyond_the_line_is_refused(self):
-        self.repo.commit("fix: not picked")
-        with self.assertRaisesRegex(notes.NotesError, "not on origin/release/0.82: fix: not picked"):
-            self.assemble()
-
-    def test_a_head_without_the_line_is_refused(self):
-        self.repo.git("checkout", "--quiet", "--orphan", "elsewhere")
-        self.repo.commit("unrelated")
-        with self.assertRaisesRegex(notes.NotesError, "HEAD does not contain origin/release/0.82"):
-            self.assemble()
-
     def test_no_fragments_is_refused(self):
         self.repo.git("rm", "--quiet", f"{notes.FRAGMENTS}/3500.added.md")
         self.repo.commit("chore: drop")
-        self.repo.git("update-ref", "refs/remotes/origin/release/0.82", "HEAD")
         with self.assertRaisesRegex(notes.NotesError, "no fragments"):
             self.assemble()
-
-    def test_an_assembled_version_is_refused(self):
-        self.repo.git("update-ref", "refs/remotes/origin/release/0.81", "HEAD")
-        with self.assertRaisesRegex(notes.NotesError, "already has ## \\[0.81.0\\]"):
-            notes.assemble(self.repo.path, "0.81.0", authors({}), [], False, "2026-10-20")
 
 
 @unittest.skipIf(towncrier_missing(), "towncrier is not installed")
@@ -423,7 +373,6 @@ class TowncrierTests(unittest.TestCase):
         self.repo.fragment("3501.fixed.1.md", "Hang on close.")
         self.repo.fragment("+tidy.changed.md", "Quieter logs.")
         self.repo.commit("feat: fragments")
-        self.repo.git("update-ref", "refs/remotes/origin/release/0.82", "HEAD")
         self.author_of = authors({3500: ("i87ce", "CONTRIBUTOR"), 3501: ("datlechin", "OWNER")})
 
     def test_a_beta_body_is_the_credited_draft_without_a_heading(self):
@@ -455,38 +404,32 @@ class TowncrierTests(unittest.TestCase):
             "\n\n[View release notes](https://github.com/TableProApp/TablePro/releases/tag/v0.82.0-beta.1)\n"))
 
     def test_a_bad_fragment_name_fails_the_draft(self):
-        self.repo.fragment("3502.feature.md", "Wrong type.")
         self.author_of = authors({3500: ("i87ce", "CONTRIBUTOR"), 3501: ("a", "OWNER"), 3502: ("a", "OWNER")})
-        with self.assertRaisesRegex(notes.NotesError, "3502.feature.md"):
-            notes.release_body(self.repo.path, "0.82.0-beta.1", self.author_of)
+        for name, message in (("3502.feature.md", "3502.feature.md"), ("abc.fixed.md", "'abc' does not match")):
+            with self.subTest(name=name):
+                self.repo.fragment(name, "Wrong name.")
+                with self.assertRaisesRegex(notes.NotesError, message):
+                    notes.release_body(self.repo.path, "0.82.0-beta.1", self.author_of)
+                (self.repo.path / notes.FRAGMENTS / name).unlink()
 
     def test_assemble_writes_the_section_and_consumes_the_fragments(self):
-        notes.assemble(self.repo.path, "0.82.0", self.author_of, ["Beta updates.", "Plugins follow the app."],
-                       True, "2026-10-20")
+        notes.assemble(self.repo.path, "0.82.0", self.author_of, "2026-10-20")
         changelog = (self.repo.path / "CHANGELOG.md").read_text(encoding="utf-8")
         self.assertIn(
             f"{MARKER}\n\n"
-            "## [0.82.0](https://github.com/TableProApp/TablePro/releases/tag/v0.82.0) - 2026-10-20 [CRITICAL]\n\n"
-            "Beta updates.\nPlugins follow the app.\n\n### Added\n\n"
+            "## [0.82.0](https://github.com/TableProApp/TablePro/releases/tag/v0.82.0) - 2026-10-20\n\n"
+            "### Added\n\n"
             "- Beta channel by @i87ce. ([#3500](https://github.com/TableProApp/TablePro/pull/3500))\n",
             changelog,
         )
         self.assertIn("\n## [0.81.0] - 2026-10-16\n", changelog)
         section = notes.find_section(changelog, "0.82.0")
-        self.assertTrue(section.is_critical)
-        self.assertEqual(section.lead, ["Beta updates.", "Plugins follow the app."])
+        self.assertEqual((section.date, section.is_critical, section.lead), ("2026-10-20", False, []))
         self.assertEqual(sorted(path.name for path in (self.repo.path / notes.FRAGMENTS).iterdir()), [".gitkeep"])
         staged = self.repo.git("diff", "--cached", "--name-status").splitlines()
         self.assertIn("M\tCHANGELOG.md", staged)
         self.assertIn(f"D\t{notes.FRAGMENTS}/3500.added.md", staged)
         self.assertEqual(self.repo.git("diff", "--name-only"), "")
-
-    def test_assemble_after_a_revert_of_an_unpublished_stable(self):
-        self.repo.commit('Revert "chore(release): v0.82.0"')
-        notes.assemble(self.repo.path, "0.82.1", self.author_of, [], False, "2026-10-21")
-        changelog = (self.repo.path / "CHANGELOG.md").read_text(encoding="utf-8")
-        section = notes.find_section(changelog, "0.82.1")
-        self.assertEqual((section.date, section.is_critical, section.lead), ("2026-10-21", False, []))
 
 
 if __name__ == "__main__":

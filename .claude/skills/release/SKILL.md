@@ -46,7 +46,7 @@ Before beta.1 and before a promotion, list the commits that touch user data sinc
 
 ## 5. Critical or not
 
-Critical is only a security fix or data loss, never a beta. Name the fix and the reason, and let the maintainer confirm. A critical stable takes `--critical` on `notes.py assemble`. Run: `RELEASING.md`, Notes.
+What counts as critical: `RELEASING.md`, Channels. Name the fix and the reason, and let the maintainer confirm. A critical stable gets ` [CRITICAL]` appended to its heading in the release PR. Run: `RELEASING.md`, Cutting a stable or patch.
 
 ## 6. Backport candidates
 
@@ -60,8 +60,8 @@ Run: `RELEASING.md`, Branches.
 ## 7. Curate
 
 - Compare what merged with the fragments: `gh pr list --state merged --base main --search "merged:>=<date of the last X.Y.0 cut>" --limit 1000 --json number,title,files`. A user-visible PR with no fragment needs one; a fragment that says more than its PR did needs rewording.
-- Add or reword fragments through a PR to `main`, then pick it to the line. Never edit `CHANGELOG.md` by hand.
-- For X.Y.0, write the lead per `.claude/rules/changelog.md`: at most 6 plain lines, what a reader would change their behavior over, in the reader's words. A release of fixes only can go without one.
+- Add or reword fragments through a PR to `main`, then pick it to the line. Entries change only through fragments; the lead and ` [CRITICAL]` are typed in the release PR.
+- For X.Y.0, write the lead per `RELEASING.md`, Notes, in the reader's words. A release of fixes only can go without one.
 - Check every fragment against `.claude/rules/changelog.md` and `scripts/check-banned-words.sh`.
 
 Run: `RELEASING.md`, Notes, then Cutting a stable or patch.
