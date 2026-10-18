@@ -70,11 +70,11 @@ GSK_RENDERER=cairo GTK_A11Y=test GDK_BACKEND=x11 meson devenv -C _build cargo te
 
 ## Integration tests
 
-Per-crate `tests/` directory. A driver has one target, `tests/integration/main.rs`, with one module per topic.
+Each crate keeps its integration tests in `crates/<crate>/tests/`. A driver has one target, `crates/drivers/<engine>/tests/integration/main.rs`, with one module per topic.
 
 For `storage`, integration tests build `StoragePaths::under(root, ..)` over a `tempfile::TempDir`, so every file lands under that root.
 
-For network drivers, integration tests use [`testcontainers`](https://docs.rs/testcontainers/latest/testcontainers/) through the fixtures in `tablepro-test-fixtures`. Each network driver's `tests/integration/support.rs` turns a fixture into `ConnectOptions` and a connected `Connection`; SQLite's opens a file endpoint instead:
+For network drivers, integration tests use [`testcontainers`](https://docs.rs/testcontainers/latest/testcontainers/) through the fixtures in `tablepro-test-fixtures`. Each network driver's `crates/drivers/<engine>/tests/integration/support.rs` turns a fixture into `ConnectOptions` and a connected `Connection`; SQLite's opens a file endpoint instead:
 
 ```rust
 use tablepro_core::meta::{ObjectKind, ObjectScope};
@@ -116,7 +116,7 @@ SQL Server has only the `sa` principal, because its TLS contract carries no clie
 
 ### Conformance
 
-Every driver runs the same contract tests against its real server. `tablepro_test_support::connection_conformance_suite!` emits them from an engine adapter the driver's `tests/integration/conformance_engine.rs` implements (`ConformanceEngine`: how to start the server, connect, and spell a scratch table, a statement that never ends and a row source):
+Every driver runs the same contract tests against its real server. `tablepro_test_support::connection_conformance_suite!` emits them from an engine adapter the driver's `crates/drivers/<engine>/tests/integration/conformance_engine.rs` implements (`ConformanceEngine`: how to start the server, connect, and spell a scratch table, a statement that never ends and a row source):
 
 ```rust
 tablepro_test_support::connection_conformance_suite! {
@@ -170,7 +170,7 @@ The PostgreSQL, MySQL, SQL Server, ClickHouse and SQLite targets run it, and the
 
 ### TLS conformance
 
-Every network driver's `tests/integration/tls.rs` also runs `tls_conformance_suite!` against a TLS-only server built from `TestPki`:
+Every network driver's `crates/drivers/<engine>/tests/integration/tls.rs` also runs `tls_conformance_suite!` against a TLS-only server built from `TestPki`:
 
 ```rust
 tablepro_test_support::tls_conformance_suite! {
