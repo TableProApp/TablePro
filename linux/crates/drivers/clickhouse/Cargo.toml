@@ -22,8 +22,8 @@ secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sqlparser.workspace = true
-tokio = { workspace = true, features = ["io-util", "macros", "rt", "sync", "time"] }
-tokio-util = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["io-util", "rt"] }
+tokio-util.workspace = true
 tower-service.workspace = true
 tracing.workspace = true
 uuid.workspace = true
@@ -32,7 +32,7 @@ uuid.workspace = true
 tablepro-test-fixtures.workspace = true
 tablepro-test-support.workspace = true
 rustls.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

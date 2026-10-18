@@ -15,15 +15,15 @@ futures-util.workspace = true
 secrecy.workspace = true
 sqlx = { workspace = true, features = ["mysql", "mysql-rsa", "tls-rustls-aws-lc-rs"] }
 thiserror.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
-tokio-util = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["rt"] }
+tokio-util.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
 tablepro-test-fixtures.workspace = true
 tablepro-test-support.workspace = true
 tempfile.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber.workspace = true
 
 [lints]

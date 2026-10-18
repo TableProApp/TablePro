@@ -19,8 +19,8 @@ tablepro-test-support = { workspace = true, optional = true }
 futures.workspace = true
 secrecy.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["rt", "sync", "time"] }
-tokio-util = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["rt"] }
+tokio-util.workspace = true
 tracing.workspace = true
 uuid.workspace = true
 
@@ -29,7 +29,7 @@ tablepro-driver-postgres.workspace = true
 tablepro-test-fixtures.workspace = true
 tablepro-test-support.workspace = true
 tempfile.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util", "sync"] }
+tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

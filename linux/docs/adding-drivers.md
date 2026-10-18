@@ -54,20 +54,20 @@ tablepro-core.workspace = true
 tablepro-net.workspace = true
 async-trait.workspace = true
 secrecy.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
-tokio-util = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["rt"] }
+tokio-util.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
 tablepro-test-fixtures.workspace = true
 tablepro-test-support.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true
 ```
 
-A driver depends on `tablepro-core`, and on `tablepro-net` when it speaks TLS or dials TCP. `secrecy` reads the password of a password login. It never depends on GTK, on `tablepro-session`, on `tablepro-ssh` or on another driver. Add the crate to `members` and to `[workspace.dependencies]` in `linux/Cargo.toml`.
+A driver depends on `tablepro-core`, and on `tablepro-net` when it speaks TLS or dials TCP. `secrecy` reads the password of a password login. It never depends on GTK, on `tablepro-session`, on `tablepro-ssh` or on another driver. Add the crate to `members` and to `[workspace.dependencies]` in `linux/Cargo.toml`. A member lists only the features its workspace entry does not already turn on.
 
 ## 3. `DatabaseDriver` and capabilities
 
@@ -316,7 +316,7 @@ A run streams `ResultEvent`s into a `ResultSink`:
 
 ### Structure changes
 
-`DdlDialect` lives in the driver's `src/ddl.rs`, implemented on the dialect type itself, so `ddl()` returns `Some(self)`. It plans every structure change the Structure tab makes, against the `TableDefinition` that `fetch_table_definition` returned:
+`DdlDialect` lives in the driver's `ddl` module, as `crates/drivers/postgres/src/ddl.rs` or, once it spans files, `crates/drivers/sqlite/src/ddl/`, implemented on the dialect type itself, so `ddl()` returns `Some(self)`. It plans every structure change the Structure tab makes, against the `TableDefinition` that `fetch_table_definition` returned:
 
 | Method | What it does |
 |---|---|
@@ -329,7 +329,7 @@ A run streams `ResultEvent`s into a `ResultSink`:
 | `plan_drop_table` | The default writes `DROP TABLE [IF EXISTS] <table> [CASCADE]`. |
 | `create_table_script` | The server's own CREATE statement where the engine keeps one, and `NoTableSource` when the definition carries none; the default writes it from the definition. |
 
-Plans quote every name through the dialect, splice a catalogue type unchanged and a typed one only after `parse_type` accepts it, and write a literal default through `SqlDialect::literal`. `tablepro_core::ddl::ddl_sql` has the pieces most engines share. The golden tests for each plan sit in `src/ddl.rs`, and the driver's integration target runs `ddl_conformance_suite!` (see [testing.md](testing.md#ddl-conformance)).
+Plans quote every name through the dialect, splice a catalogue type unchanged and a typed one only after `parse_type` accepts it, and write a literal default through `SqlDialect::literal`. `tablepro_core::ddl::ddl_sql` has the pieces most engines share. The golden tests for each plan sit in that module, and the driver's integration target runs `ddl_conformance_suite!` (see [testing.md](testing.md#ddl-conformance)).
 
 ## 8. Registration
 
@@ -354,7 +354,7 @@ Without this step the crate compiles and the app never offers it.
 The layout every driver follows:
 
 - Unit tests next to the code, for pure logic: the dialect, error mapping, decoders, statement classification.
-- `tests/integration/main.rs` with one module per topic: `support.rs` (start a fixture, connect, run), `conformance_engine.rs`, `tls.rs` for a network engine, and the engine's own behaviour (`metadata.rs`, `write_batch.rs`, `cancellation.rs` and so on). A network engine's test starts its own container and is `#[ignore = "requires docker"]`.
+- One integration target with one module per topic, as `crates/drivers/postgres/tests/integration/main.rs`: `support.rs` (start a fixture, connect, run), `conformance_engine.rs`, `tls.rs` for a network engine, and the engine's own behaviour (`metadata.rs`, `write_batch.rs`, `cancellation.rs` and so on). A network engine's test starts its own container and is `#[ignore = "requires docker"]`.
 - A container fixture in `crates/test-fixtures` for anything the default image cannot do: TLS from the generated PKI, a second principal that logs in with a client certificate.
 
 The conformance suites are the contract's own tests. The driver's `conformance_engine.rs` invokes the connection and DDL suites, and a network engine's `tls.rs` the TLS suite. [testing.md](testing.md#conformance) has the adapter traits, the flags and the cases, with the [DDL](testing.md#ddl-conformance) and [TLS](testing.md#tls-conformance) suites after them.
