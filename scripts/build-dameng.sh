@@ -12,7 +12,7 @@ ARCH="${1:-both}"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/deployment-target.sh"
 
 # rustup takes the toolchain, profile and targets from rust-toolchain.toml in the working directory.
-(cd "$BRIDGE_DIR" && rustup toolchain install)
+(cd "$BRIDGE_DIR" && rustup toolchain install --no-self-update)
 
 archive() {
     echo "$BRIDGE_DIR/target/$1/release/libtablepro_dameng_bridge.a"
