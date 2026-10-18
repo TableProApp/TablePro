@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: tablepro 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/TableProApp/TablePro/issues\n"
-"POT-Creation-Date: 2026-10-18 18:05+0000\n"
+"POT-Creation-Date: 2026-10-18 22:42+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1236,12 +1236,12 @@ msgstr ""
 
 #: crates/app/src/ui/error_text/ddl.rs
 #, rust-format
-msgid "Column {column} has a type this database doesn't accept: {error}"
+msgid "The type of column {column} can't be used. {reason}"
 msgstr ""
 
 #: crates/app/src/ui/error_text/ddl.rs
 #, rust-format
-msgid "The default of column {column} can't be written as SQL: {error}"
+msgid "The default of column {column} can't be written as SQL. {reason}"
 msgstr ""
 
 #: crates/app/src/ui/error_text/ddl.rs
@@ -1296,11 +1296,6 @@ msgstr ""
 #: crates/app/src/ui/error_text/driver.rs
 msgid ""
 "The server has no room for another connection right now. Try again shortly."
-msgstr ""
-
-#: crates/app/src/ui/error_text/driver.rs
-#, rust-format
-msgid "This database has no {feature}."
 msgstr ""
 
 #: crates/app/src/ui/error_text/driver.rs
@@ -1541,11 +1536,6 @@ msgid "{path} is not a database file."
 msgstr ""
 
 #: crates/app/src/ui/error_text/driver.rs
-#, rust-format
-msgid "Could not write {path}: {reason}"
-msgstr ""
-
-#: crates/app/src/ui/error_text/driver.rs
 msgid "The database file cannot be used."
 msgstr ""
 
@@ -1557,12 +1547,11 @@ msgstr ""
 
 #: crates/app/src/ui/error_text/driver.rs
 #, rust-format
-msgid "Could not read column {column}: {detail}"
+msgid "The driver could not read a value in column {column}."
 msgstr ""
 
 #: crates/app/src/ui/error_text/driver.rs
-#, rust-format
-msgid "The driver could not read the server's reply: {detail}"
+msgid "The driver could not read the server's reply."
 msgstr ""
 
 #: crates/app/src/ui/error_text/driver.rs
@@ -1613,8 +1602,12 @@ msgid "Enter a UUID"
 msgstr ""
 
 #: crates/app/src/ui/error_text/edit.rs
+msgid "Enter valid JSON: it ends too early"
+msgstr ""
+
+#: crates/app/src/ui/error_text/edit.rs
 #, rust-format
-msgid "Enter valid JSON: {detail}"
+msgid "Enter valid JSON: check line {line}, column {column}"
 msgstr ""
 
 #: crates/app/src/ui/error_text/edit.rs
@@ -1676,6 +1669,70 @@ msgstr ""
 msgid "Values whose type changes by row can't be edited here"
 msgstr ""
 
+#: crates/app/src/ui/error_text/files.rs
+#, rust-format
+msgid "Could not write {path}: the disk is full."
+msgstr ""
+
+#: crates/app/src/ui/error_text/files.rs
+#, rust-format
+msgid "Could not write {path}: the disk is read-only."
+msgstr ""
+
+#: crates/app/src/ui/error_text/files.rs
+#, rust-format
+msgid "Could not write {path}: the file is too large."
+msgstr ""
+
+#: crates/app/src/ui/error_text/files.rs
+#, rust-format
+msgid "Could not write {path}."
+msgstr ""
+
+#: crates/app/src/ui/error_text/files.rs
+msgid "the file does not exist"
+msgstr ""
+
+#: crates/app/src/ui/error_text/files.rs
+msgid "TablePro is not allowed to read it"
+msgstr ""
+
+#: crates/app/src/ui/error_text/files.rs
+msgid "the file could not be read"
+msgstr ""
+
+#: crates/app/src/ui/error_text/files.rs
+msgid "it is not a plain file"
+msgstr ""
+
+#: crates/app/src/ui/error_text/files.rs
+#, rust-format
+msgid "it is larger than {size} KiB"
+msgstr ""
+
+#: crates/app/src/ui/error_text/files.rs
+msgid "it holds no certificates"
+msgstr ""
+
+#: crates/app/src/ui/error_text/files.rs
+msgid "a certificate in it is not valid"
+msgstr ""
+
+#: crates/app/src/ui/error_text/files.rs
+#, rust-format
+msgid "it holds {count} certificate, and only one is allowed"
+msgid_plural "it holds {count} certificates, and only one is allowed"
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/error_text/files.rs
+msgid "it holds no private key"
+msgstr ""
+
+#: crates/app/src/ui/error_text/files.rs
+msgid "its private key is not valid"
+msgstr ""
+
 #: crates/app/src/ui/error_text/operation.rs
 #, rust-format
 msgid "TablePro hit an internal error: {detail}"
@@ -1706,13 +1763,9 @@ msgid "This change cannot be saved: {reason}"
 msgstr ""
 
 #: crates/app/src/ui/error_text/operation.rs
+#: crates/app/src/ui/error_text/statement.rs
 #, rust-format
 msgid "This filter cannot be applied: {reason}"
-msgstr ""
-
-#: crates/app/src/ui/error_text/operation.rs
-#, rust-format
-msgid "This structure change cannot be written: {reason}"
 msgstr ""
 
 #: crates/app/src/ui/error_text/operation.rs
@@ -1807,6 +1860,10 @@ msgstr ""
 #: crates/app/src/ui/error_text/secret.rs
 #, rust-format
 msgid "The keyring reported: {detail}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/secret.rs
+msgid "The keyring failed without giving a reason."
 msgstr ""
 
 #: crates/app/src/ui/error_text/ssh.rs
@@ -1918,6 +1975,142 @@ msgstr ""
 msgid "SSH failed: {detail}"
 msgstr ""
 
+#: crates/app/src/ui/error_text/statement.rs
+msgid "a value does not match its column's type"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+#, rust-format
+msgid "the database did not report the type of column {column}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "a value could not be read from the server, so it cannot be written back"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "this database cannot take one of the values"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+#, rust-format
+msgid "it names column {column}, which the table does not have"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "a rule has no value"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "a between rule needs both of its values"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "a one-of rule needs at least one value"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "a rule's value does not fit its operator"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+#, rust-format
+msgid "This filter cannot be applied. Value for {column}: {reason}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+#, rust-format
+msgid "column {column} does not allow one of its operators"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+#, rust-format
+msgid "This SQL filter cannot be applied. {reason}"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "the table has no columns to select"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "the sort names a column the table does not have"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "this position cannot be reached by this way of paging"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "the row to page from has an empty key"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "the row to page from has no address that can be read"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "the page came back with other columns than were asked for"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "the query could not be built"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+#, rust-format
+msgid "the row key names column {column}, which the table does not have"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "the row key does not have one value for each key column"
+msgstr ""
+
+#: crates/app/src/ui/error_text/statement.rs
+msgid "the change could not be written as SQL"
+msgstr ""
+
+#: crates/app/src/ui/error_text/syntax.rs
+msgid "Enter a type."
+msgstr ""
+
+#: crates/app/src/ui/error_text/syntax.rs
+msgid "Remove the comment. It would hide the rest of the statement."
+msgstr ""
+
+#: crates/app/src/ui/error_text/syntax.rs
+msgid "This database does not read this as one type."
+msgstr ""
+
+#: crates/app/src/ui/error_text/syntax.rs
+msgid "Enter an expression."
+msgstr ""
+
+#: crates/app/src/ui/error_text/syntax.rs
+msgid "This database does not read this as one expression."
+msgstr ""
+
+#: crates/app/src/ui/error_text/syntax.rs
+msgid "This database has no way to write this value in SQL."
+msgstr ""
+
+#: crates/app/src/ui/error_text/syntax.rs
+msgid ""
+"The value could not be read from the server, so it cannot be written back."
+msgstr ""
+
+#: crates/app/src/ui/error_text/syntax.rs
+#, rust-format
+msgid "Use at most {max} character."
+msgid_plural "Use at most {max} characters."
+msgstr[0] ""
+msgstr[1] ""
+
+#: crates/app/src/ui/error_text/syntax.rs
+msgid ""
+"Remove the backslash. This database reads it differently from one session to "
+"another."
+msgstr ""
+
 #: crates/app/src/ui/error_text/tls.rs
 msgid ""
 "The server's certificate was signed by an authority this machine does not "
@@ -1974,6 +2167,72 @@ msgstr ""
 
 #: crates/app/src/ui/error_text/tls_remedy.rs
 msgid "Set TLS Server Name"
+msgstr ""
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid ""
+"This database is reached over the network. It cannot open a database file."
+msgstr ""
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid ""
+"This database opens a file. It cannot connect to a server over the network."
+msgstr ""
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid "This database cannot turn foreign key checks off for a save."
+msgstr ""
+
+#: crates/app/src/ui/error_text/unsupported.rs
+#, rust-format
+msgid "This needs {version} or later."
+msgstr ""
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid "COPY FROM STDIN cannot run in the editor."
+msgstr ""
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid "COPY TO STDOUT cannot run in the editor."
+msgstr ""
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid ""
+"This time falls in the hour the session's time zone repeats, so the database "
+"cannot store it as one instant."
+msgstr ""
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid "This database has no times outside one day."
+msgstr ""
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid "This database has no times with an offset."
+msgstr ""
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid "This database has no intervals."
+msgstr ""
+
+#: crates/app/src/ui/error_text/unsupported.rs
+msgid "This database has no bit strings."
+msgstr ""
+
+#: crates/app/src/ui/error_text/unsupported.rs
+#, rust-format
+msgid "This database has no numbers wider than {digits} digits."
+msgstr ""
+
+#: crates/app/src/ui/error_text/unsupported.rs
+#, rust-format
+msgid ""
+"This database has no NaN, no infinity and no decimals wider than {digits} "
+"digits."
+msgstr ""
+
+#: crates/app/src/ui/error_text/unsupported.rs
+#, rust-format
+msgid "This database has no dates outside the years {first} to {last}."
 msgstr ""
 
 #: crates/app/src/ui/export/dialog.rs
@@ -2916,7 +3175,11 @@ msgstr ""
 
 #: crates/app/src/ui/import_dialog.rs
 #, rust-format
-msgid "The file couldn't be read as CSV: {error}"
+msgid "The file couldn't be read as CSV at line {line}."
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+msgid "The file couldn't be read as CSV."
 msgstr ""
 
 #: crates/app/src/ui/import_dialog.rs
@@ -2928,6 +3191,11 @@ msgstr ""
 msgid ""
 "Line {line} has more than {limit} fields, more than any table holds. Check "
 "the delimiter."
+msgstr ""
+
+#: crates/app/src/ui/import_dialog.rs
+#, rust-format
+msgid "Column {n}"
 msgstr ""
 
 #: crates/app/src/ui/import_dialog.rs
