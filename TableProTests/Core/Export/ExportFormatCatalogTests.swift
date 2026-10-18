@@ -128,22 +128,45 @@ struct ExportFormatCatalogTests {
         )
     }
 
-    @Test("The manifest's export-format ids are what the catalog offers to install")
+    private let handParquet = InstallableExportFormat(
+        formatId: "parquet",
+        displayName: "Parquet",
+        registryPluginId: "com.TablePro.ParquetExportPlugin"
+    )
+
+    @Test("Parquet is offered while the manifest names no export format")
     @MainActor
-    func installableComesFromTheManifest() {
-        let listed = manifest([
+    func parquetOfferedWithoutManifestFormats() {
+        let unlisted = manifest([
             registryPlugin(id: "com.TablePro.OracleDriver", name: "Oracle Driver", exportFormatIds: nil),
-            registryPlugin(id: "com.TablePro.ParquetExportPlugin", name: "Parquet Export", exportFormatIds: ["parquet"])
+            registryPlugin(id: "com.TablePro.ParquetExportPlugin", name: "Parquet Export", exportFormatIds: nil)
         ])
 
-        #expect(ExportFormatCatalog.installable(in: listed) == [
-            InstallableExportFormat(
-                formatId: "parquet",
-                displayName: "Parquet Export",
-                registryPluginId: "com.TablePro.ParquetExportPlugin"
-            )
+        #expect(ExportFormatCatalog.installable(in: nil) == [handParquet])
+        #expect(ExportFormatCatalog.installable(in: unlisted) == [handParquet])
+        #expect(ExportFormatCatalog.notInstalled(installedFormatIds: [], manifest: nil) == [handParquet])
+        #expect(ExportFormatCatalog.notInstalled(installedFormatIds: ["parquet"], manifest: nil).isEmpty)
+    }
+
+    @Test("A format the manifest lists is offered once, from the manifest")
+    @MainActor
+    func manifestFormatsReplaceTheHandEntry() {
+        let listed = manifest([
+            registryPlugin(id: "com.TablePro.ParquetExportPlugin", name: "Parquet Export", exportFormatIds: ["parquet"]),
+            registryPlugin(id: "com.example.AvroExport", name: "Avro Export", exportFormatIds: ["avro"])
         ])
-        #expect(ExportFormatCatalog.notInstalled(installedFormatIds: ["parquet"], manifest: listed).isEmpty)
-        #expect(ExportFormatCatalog.notInstalled(installedFormatIds: [], manifest: nil).isEmpty)
+        let parquet = InstallableExportFormat(
+            formatId: "parquet",
+            displayName: "Parquet Export",
+            registryPluginId: "com.TablePro.ParquetExportPlugin"
+        )
+        let avro = InstallableExportFormat(
+            formatId: "avro",
+            displayName: "Avro Export",
+            registryPluginId: "com.example.AvroExport"
+        )
+
+        #expect(ExportFormatCatalog.installable(in: listed) == [parquet, avro])
+        #expect(ExportFormatCatalog.notInstalled(installedFormatIds: ["parquet"], manifest: listed) == [avro])
     }
 }
