@@ -209,7 +209,7 @@ async fn transaction_id(client: &Client, legacy: bool) -> Result<CommitToken, Dr
 #[cfg(test)]
 mod tests {
     use tablepro_core::meta::TableRef;
-    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode};
+    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode, UnsupportedFeature};
 
     use super::*;
 
@@ -231,7 +231,7 @@ mod tests {
         assert!(matches!(
             precheck(&batch(suspended), false),
             Err(DriverError::Unsupported {
-                feature: "foreign key suspension"
+                feature: UnsupportedFeature::ForeignKeySuspension
             })
         ));
         assert!(precheck(&batch(ForeignKeyMode::Enforced), false).is_ok());

@@ -383,6 +383,11 @@ fn every_secret_error_has_its_own_message() {
         SecretError::InvalidEncoding,
         SecretError::Backend {
             detail: "boom".to_owned(),
+            service_message: Some("No such item".to_owned()),
+        },
+        SecretError::Backend {
+            detail: "boom".to_owned(),
+            service_message: None,
         },
     ];
 
@@ -401,12 +406,19 @@ fn the_portal_message_says_what_to_check() {
 }
 
 #[test]
-fn a_backend_error_keeps_its_detail() {
-    let message = secret_message(&SecretError::Backend {
-        detail: "org.freedesktop.Secret failed".to_owned(),
+fn a_backend_error_shows_the_services_words_and_never_oo7s() {
+    let answered = secret_message(&SecretError::Backend {
+        detail: "DBus error service error org.freedesktop.Secret.Error.NoSuchObject".to_owned(),
+        service_message: Some("No such item".to_owned()),
+    });
+    let silent = secret_message(&SecretError::Backend {
+        detail: "DBus error Item/Collection was deleted, can no longer be used".to_owned(),
+        service_message: None,
     });
 
-    assert!(message.contains("org.freedesktop.Secret failed"), "{message}");
+    assert_eq!(answered, "The keyring reported: No such item");
+    assert!(!answered.contains("DBus error"), "{answered}");
+    assert!(!silent.contains("DBus error"), "{silent}");
 }
 
 #[test]

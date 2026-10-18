@@ -1,6 +1,6 @@
 use std::fmt;
 
-use tablepro_core::DriverError;
+use tablepro_core::{DriverError, UnsupportedFeature};
 
 /// A SQLite library version, as `sqlite_version()` reports it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -45,7 +45,9 @@ impl fmt::Display for SqliteVersion {
 pub fn check_runtime_version(version: &SqliteVersion) -> Result<(), DriverError> {
     if *version < SQLITE_MIN_VERSION {
         return Err(DriverError::Unsupported {
-            feature: "SQLite 3.37.0 or later",
+            feature: UnsupportedFeature::MinimumVersion {
+                required: "SQLite 3.37.0",
+            },
         });
     }
     Ok(())
@@ -62,7 +64,9 @@ mod tests {
         assert_eq!(
             refused,
             Err(DriverError::Unsupported {
-                feature: "SQLite 3.37.0 or later"
+                feature: UnsupportedFeature::MinimumVersion {
+                    required: "SQLite 3.37.0"
+                }
             })
         );
         assert_eq!(check_runtime_version(&SqliteVersion::new(3, 37, 0)), Ok(()));

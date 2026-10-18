@@ -17,8 +17,10 @@ pub(super) fn secret_message(error: &tablepro_core::credentials::SecretError) ->
         SecretError::InvalidEncoding => {
             crate::i18n::gettext("The stored password is not readable text. Enter it again to replace it.")
         }
-        SecretError::Backend { detail } => {
-            crate::i18n::gettext_f("The keyring reported: {detail}", &[("detail", detail)])
-        }
+        SecretError::Backend {
+            service_message: Some(message),
+            ..
+        } => crate::i18n::gettext_f("The keyring reported: {detail}", &[("detail", message)]),
+        SecretError::Backend { .. } => crate::i18n::gettext("The keyring failed without giving a reason."),
     }
 }

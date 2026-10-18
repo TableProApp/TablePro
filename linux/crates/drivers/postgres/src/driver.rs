@@ -3,6 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tablepro_core::{
     ConnectOptions, ConnectTarget, Connection, DatabaseDriver, DriverCapabilities, DriverError, TlsCapabilities,
+    UnsupportedFeature,
 };
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -39,7 +40,7 @@ impl DatabaseDriver for PgDriver {
     ) -> Result<Arc<dyn Connection>, DriverError> {
         let ConnectTarget::Network(target) = &options.target else {
             return Err(DriverError::Unsupported {
-                feature: "a database file",
+                feature: UnsupportedFeature::DatabaseFile,
             });
         };
         let tls: Option<&TlsCapabilities> = CAPABILITIES.tls.as_ref();

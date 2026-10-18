@@ -40,14 +40,10 @@ pub fn parse_expression(
     let mut parser = Parser::new(grammar.parser_dialect())
         .with_recursion_limit(RECURSION_LIMIT)
         .try_with_sql(text)
-        .map_err(|error| ExpressionSyntaxError::Invalid(error.to_string()))?;
-    let parsed = parser
-        .parse_expr()
-        .map_err(|error| ExpressionSyntaxError::Invalid(error.to_string()))?;
+        .map_err(|_| ExpressionSyntaxError::Invalid)?;
+    let parsed = parser.parse_expr().map_err(|_| ExpressionSyntaxError::Invalid)?;
     if parser.peek_token_ref().token != Token::EOF {
-        return Err(ExpressionSyntaxError::Invalid(
-            "unexpected text after the expression".to_owned(),
-        ));
+        return Err(ExpressionSyntaxError::Invalid);
     }
     Ok(ValidatedExpression {
         text: text.to_owned(),
@@ -139,7 +135,7 @@ mod tests {
     fn parse_expression_rejects_trailing_tokens() {
         let error = parse("1; DROP TABLE x").expect_err("trailing statement");
 
-        assert!(matches!(error, ExpressionSyntaxError::Invalid(_)), "{error:?}");
+        assert_eq!(error, ExpressionSyntaxError::Invalid);
     }
 
     #[test]

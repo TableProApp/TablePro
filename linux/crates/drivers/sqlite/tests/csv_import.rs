@@ -310,7 +310,7 @@ async fn a_semicolon_file_without_a_header_imports_by_position() {
     // mapping is empty and every column keeps its default. That is the
     // honest outcome: the dialog is where the user maps by hand.
     let sheet = read_csv(b"one;two\n", &options, None).expect("the file");
-    assert_eq!(sheet.headers, vec!["Column 1", "Column 2"]);
+    assert_eq!(sheet.headers, vec![String::new(), String::new()]);
 
     let table = TableRef::unqualified("pairs");
     let definition = connection

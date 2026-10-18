@@ -36,15 +36,16 @@ Errors are typed enums, built with `thiserror` wherever they cross a crate bound
 | `Busy` | The server has no room for another connection, or the pool had no free slot in time. |
 | `EditorSessionBusy` | The tab's session is already running a statement. |
 | `Config(ConfigError)` | The settings cannot be used: a bad host, port, path, TLS option, auth mode or missing database name. |
-| `Decode { column, detail }` | The driver could not read a value. A bug on our side, not the server's. |
-| `Protocol(String)` | The server or the client library said something the driver did not expect. |
-| `Unsupported { feature }` | The engine has no such feature. |
+| `Decode { column, detail }` | The driver could not read a value. A bug on our side, not the server's. The detail is for the log. |
+| `Protocol(String)` | The server or the client library said something the driver did not expect. The text is for the log. |
+| `Unsupported { feature }` | The engine has no such feature. `UnsupportedFeature` names it, and the app writes the sentence. |
 
 Rules:
 
 - Add a variant only when the app has to act on it differently from every existing one. A new message is not a reason.
 - Never wrap a `Box<dyn Error>` or the client library's error. Keep what the app needs: a code, a phase, a path.
 - The `#[error]` text is for logs. The UI writes its own sentence from the variant.
+- A variant carries no English meant for the user. What the app needs to say goes in as a value it can render: an `UnsupportedFeature`, an `io::ErrorKind`, a line and column. A library message that is English only, such as sqlparser's or serde_json's, is not kept.
 
 ## `ErrorCategory`
 
@@ -125,7 +126,9 @@ The buttons are `TlsRemedy` in `crates/app/src/ui/error_text/tls_remedy.rs`: the
 
 ## User-facing text
 
-`crates/app/src/ui/error_text/` turns errors into sentences: `driver_message` for a `DriverError`, `connect_error_message` and `operation_error_message` for the session's errors, and an SSH module for `SshFailure`. Every string goes through `crate::i18n`. Never show `Debug` or the `#[error]` text of an error on its own.
+`crates/app/src/ui/error_text/` turns errors into sentences: `driver_message` for a `DriverError`, `connect_error_message` and `operation_error_message` for the session's errors, and an SSH module for `SshFailure`. Every string goes through `crate::i18n`. Never show `Debug` or the `#[error]` text of an error, on its own or inside a sentence.
+
+The only text shown as it came is what another party wrote, inside a sentence that says whose it is: a server's `ServerDiagnostics`, the Secret Service's reply (the `service_message` of `SecretError::Backend`), OpenSSH's stderr, and the Kerberos and TLS library reports. The detail of an `Internal` error is logged at `trace` when it is shown, since it can quote what the server sent.
 
 ## Logging
 
