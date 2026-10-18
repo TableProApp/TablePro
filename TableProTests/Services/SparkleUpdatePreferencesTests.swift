@@ -2,54 +2,48 @@ import Foundation
 @testable import TablePro
 import Testing
 
-/// The regression these exist for: every Sparkle update control read `false` on a fresh install,
-/// because `SUEnableAutomaticChecks` was declared nowhere. Sparkle resolves a key as user defaults
-/// first and Info.plist second, so an undeclared key is `NO`, `allowsAutomaticUpdates` is then `NO`
-/// too, and `setAutomaticallyDownloadsUpdates` returns without writing. `SUAutomaticallyUpdate` was
-/// `true` in Info.plist and `false` everywhere it mattered.
 struct SparkleUpdatePreferencesTests {
-    /// The unit-test bundle is hosted by the app, so the process's main bundle is the app bundle.
-    /// A runner that ever stopped hosting would fail `everyRequiredKeyIsDeclared` rather than pass
-    /// it quietly, which is the failure direction to want.
+    // The unit tests are hosted by the app, so the main bundle is TablePro.app and its built Info.plist.
     private var appBundle: Bundle { Bundle.main }
+
+    // An undeclared key resolves to NO in Sparkle (#2865). `SUScheduledImpatientCheckInterval` keeps Sparkle's default.
+    private static let requiredInfoPlistKeys = [
+        "SUFeedURL",
+        "SUPublicEDKey",
+        "SURequireSignedFeed",
+        "SUVerifyUpdateBeforeExtraction",
+        "SUEnableAutomaticChecks",
+        "SUScheduledCheckInterval",
+        "SUAutomaticallyUpdate",
+    ]
 
     @Test("Every Sparkle key the app depends on carries a default in Info.plist")
     func everyRequiredKeyIsDeclared() {
-        let missing = SparkleUpdatePreferences.keysMissingDefaults(in: appBundle)
+        let missing = Self.requiredInfoPlistKeys.filter { appBundle.object(forInfoDictionaryKey: $0) == nil }
         #expect(missing.isEmpty, "Info.plist declares no default for \(missing.joined(separator: ", "))")
     }
 
     @Test("A key the user can change has a default to go back to")
     func everySettableKeyHasADeclaredDefault() {
         for key in SparkleUpdatePreferences.userSettableKeys {
-            #expect(
-                SparkleUpdatePreferences.requiredInfoPlistKeys.contains(key),
-                "\(key) is resettable but has no declared default, so resetting it re-arms Sparkle's permission prompt"
-            )
+            #expect(appBundle.object(forInfoDictionaryKey: key) != nil, "\(key) is resettable but Info.plist declares no default")
         }
     }
 
     @Test("The shipped defaults are checks on, installs on, daily")
-    func shippedDefaults() throws {
+    func shippedDefaults() {
         #expect(appBundle.object(forInfoDictionaryKey: "SUEnableAutomaticChecks") as? Bool == true)
         #expect(appBundle.object(forInfoDictionaryKey: "SUAutomaticallyUpdate") as? Bool == true)
-
-        let interval = try #require(appBundle.object(forInfoDictionaryKey: "SUScheduledCheckInterval") as? Int)
-        #expect(interval == 86_400)
-        #expect(interval >= 3_600, "Sparkle clamps the scheduled check to a one-hour floor")
-        #expect(
-            interval < 604_800,
-            "an interval at or above Sparkle's 604800 impatient default leaves a downloaded fix waiting longer than the reminder that chases it"
-        )
+        #expect(appBundle.object(forInfoDictionaryKey: "SUScheduledCheckInterval") as? Int == 86_400)
     }
 
-    @Test("The feed is fetched over HTTPS and its signing key is declared")
+    @Test("The feed comes from updates.tablepro.app, signed, and every archive is verified before extraction")
     func feedIsSigned() throws {
-        let feed = try #require(appBundle.object(forInfoDictionaryKey: "SUFeedURL") as? String)
-        #expect(feed.hasPrefix("https://"))
+        #expect(appBundle.object(forInfoDictionaryKey: "SUFeedURL") as? String == "https://updates.tablepro.app/appcast.xml")
+        #expect(appBundle.object(forInfoDictionaryKey: "SURequireSignedFeed") as? Bool == true)
+        #expect(appBundle.object(forInfoDictionaryKey: "SUVerifyUpdateBeforeExtraction") as? Bool == true)
 
         let key = try #require(appBundle.object(forInfoDictionaryKey: "SUPublicEDKey") as? String)
-        #expect(!key.isEmpty)
         #expect(Data(base64Encoded: key)?.count == 32, "an EdDSA public key is 32 bytes")
     }
 
@@ -71,9 +65,6 @@ struct SparkleUpdatePreferencesTests {
         #expect(defaults.string(forKey: "SUFeedURL") == "keep me", "reset cleared a key Sparkle does not let the user set")
     }
 
-    /// The only signal a deferred update leaves. Sparkle's standard driver shows nothing when
-    /// `standardUserDriverShouldHandleShowingScheduledUpdate` returns false, so a title that did not
-    /// change would mean the update was never announced at all.
     @Test("A deferred update renames the control, and nothing else does")
     @MainActor
     func deferredUpdateRenamesTheControl() {
