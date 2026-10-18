@@ -11,9 +11,9 @@ use tablepro_core::WriteReport;
 use tablepro_core::ddl::{BuildDdlError, DraftColumn, DraftType, TableDraft};
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 
-use super::dialog_response::{answer, visible_alert};
-use super::test_workspace::{WAIT, Workspace, edited_table, window};
-use super::{PendingState, SaveOutcome, SaveRejection, SaveStart};
+use super::super::dialog_response::{answer, visible_alert};
+use super::super::test_workspace::{WAIT, Workspace, edited_table, window};
+use super::super::{PendingState, SaveOutcome, SaveRejection, SaveStart};
 use crate::services::pending_structure::PendingStructure;
 use crate::test_support::wait_until;
 

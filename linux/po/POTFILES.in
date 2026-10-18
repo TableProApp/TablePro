@@ -96,7 +96,6 @@ crates/app/src/services/tracker_delta.rs
 crates/app/src/services/tracker_edit.rs
 crates/app/src/services/undo_op.rs
 crates/app/src/storage.rs
-crates/app/src/test_support.rs
 crates/app/src/test_support/accessible_label.rs
 crates/app/src/test_support/alert_response.rs
 crates/app/src/test_support/application_end.rs
@@ -109,6 +108,7 @@ crates/app/src/test_support/key_injection_error.rs
 crates/app/src/test_support/key_injector.rs
 crates/app/src/test_support/main_loop.rs
 crates/app/src/test_support/memory_settings.rs
+crates/app/src/test_support/mod.rs
 crates/app/src/test_support/owned_window.rs
 crates/app/src/test_support/shortcut_keys.rs
 crates/app/src/test_support/signal_log.rs
@@ -238,13 +238,14 @@ crates/app/src/ui/error_text/ssh.rs
 crates/app/src/ui/error_text/tests.rs
 crates/app/src/ui/error_text/tls.rs
 crates/app/src/ui/error_text/tls_remedy.rs
+crates/app/src/ui/export/dialog.rs
 crates/app/src/ui/export/document_sink.rs
 crates/app/src/ui/export/encoding_sink.rs
 crates/app/src/ui/export/export_failure_text.rs
 crates/app/src/ui/export/export_format.rs
 crates/app/src/ui/export/export_job.rs
 crates/app/src/ui/export/export_job_item.rs
-crates/app/src/ui/export/export_ledger.rs
+crates/app/src/ui/export/export_ledger/mod.rs
 crates/app/src/ui/export/export_ledger/tests.rs
 crates/app/src/ui/export/export_message.rs
 crates/app/src/ui/export/export_operations_button.rs
@@ -255,9 +256,8 @@ crates/app/src/ui/export/export_scope.rs
 crates/app/src/ui/export/export_sink_parts.rs
 crates/app/src/ui/export/export_source.rs
 crates/app/src/ui/export/mod.rs
-crates/app/src/ui/export/replace_file_writer.rs
+crates/app/src/ui/export/replace_file_writer/mod.rs
 crates/app/src/ui/export/replace_file_writer/tests.rs
-crates/app/src/ui/export_dialog.rs
 crates/app/src/ui/file_read.rs
 crates/app/src/ui/file_reveal/file_launcher_revealer.rs
 crates/app/src/ui/file_reveal/file_revealer.rs
@@ -441,7 +441,6 @@ crates/app/src/ui/tab_load/stale_banner.rs
 crates/app/src/ui/welcome_view.rs
 crates/app/src/ui/window_geometry.rs
 crates/app/src/ui/workspace/close_flow.rs
-crates/app/src/ui/workspace/close_tab_tests.rs
 crates/app/src/ui/workspace/editor_label.rs
 crates/app/src/ui/workspace/finished_work.rs
 crates/app/src/ui/workspace/health_banner.rs
@@ -474,8 +473,10 @@ crates/app/src/ui/workspace/tab_identity.rs
 crates/app/src/ui/workspace/tab_index.rs
 crates/app/src/ui/workspace/tab_spec.rs
 crates/app/src/ui/workspace/tab_title.rs
-crates/app/src/ui/workspace/tab_title_tests.rs
 crates/app/src/ui/workspace/table_naming.rs
+crates/app/src/ui/workspace/tests/close_tab.rs
+crates/app/src/ui/workspace/tests/mod.rs
+crates/app/src/ui/workspace/tests/tab_title.rs
 crates/app/src/ui/workspace/unsaved_icon.rs
 crates/app/src/ui/workspace/window_tabs.rs
 crates/app/src/ui/workspace/window_title.rs
@@ -522,12 +523,13 @@ crates/app/src/workspace/save_ticket.rs
 crates/app/src/workspace/schema_write.rs
 crates/app/src/workspace/session_key_record.rs
 crates/app/src/workspace/sort_record.rs
-crates/app/src/workspace/structure_review_tests.rs
 crates/app/src/workspace/tab_directory.rs
 crates/app/src/workspace/tab_entry.rs
 crates/app/src/workspace/tab_record.rs
 crates/app/src/workspace/tab_snapshot.rs
 crates/app/src/workspace/test_workspace.rs
+crates/app/src/workspace/tests/mod.rs
+crates/app/src/workspace/tests/structure_review.rs
 crates/app/src/workspace/unknown_cause.rs
 crates/app/src/workspace/unknown_outcome_dialog.rs
 crates/app/src/workspace/waiting_dialog.rs

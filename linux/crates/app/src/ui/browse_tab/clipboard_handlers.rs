@@ -34,8 +34,8 @@ impl BrowseModel {
 
     /// The table a browse tab's rows came from, so an export can
     /// write them back as `INSERT` statements.
-    fn sql_target(&self) -> crate::ui::export_dialog::SqlTarget {
-        crate::ui::export_dialog::SqlTarget {
+    fn sql_target(&self) -> crate::ui::export::dialog::SqlTarget {
+        crate::ui::export::dialog::SqlTarget {
             table: self.table_ref(),
             generated: self
                 .current_columns

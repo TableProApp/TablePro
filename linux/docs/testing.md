@@ -352,7 +352,7 @@ The tests in `crates/app/src/ui/editor/script_runner.rs` drive `run_batches` und
 
 ### Structure review
 
-`crates/app/src/workspace/structure_review_tests.rs` saves a structure tab through `WorkspaceHandle::save` on the `workspace::test_workspace::Workspace` harness and answers the review with `workspace::answer`. A dropped column shows the review with its SQL, Cancel sends nothing, Apply runs one write batch, an additive save on an engine that applies DDL in one transaction starts without a review, a draft changed during the review is not saved, and a second save during the review opens no second one. The close guard's own tests check that its Save reviews too, and that a declined review keeps the window open with no alert and starts none of the saves after it.
+`crates/app/src/workspace/tests/structure_review.rs` saves a structure tab through `WorkspaceHandle::save` on the `workspace::test_workspace::Workspace` harness and answers the review with `workspace::answer`. A dropped column shows the review with its SQL, Cancel sends nothing, Apply runs one write batch, an additive save on an engine that applies DDL in one transaction starts without a review, a draft changed during the review is not saved, and a second save during the review opens no second one. The close guard's own tests check that its Save reviews too, and that a declined review keeps the window open with no alert and starts none of the saves after it.
 
 ## CI
 

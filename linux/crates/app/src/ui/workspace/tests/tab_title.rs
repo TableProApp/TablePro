@@ -10,9 +10,9 @@ use tablepro_storage::DraftId;
 use tablepro_test_support::{FakeEditorSession, FakeReply, FakeRun, Replies};
 use uuid::Uuid;
 
-use super::structure_target::StructureTarget;
-use super::tab_spec::TabSpec;
-use super::{Workspace, WorkspaceInput, WorkspaceTab};
+use super::super::structure_target::StructureTarget;
+use super::super::tab_spec::TabSpec;
+use super::super::{Workspace, WorkspaceInput, WorkspaceTab};
 use crate::runtime::DeliverInput;
 use crate::services::pending_structure::PendingStructure;
 use crate::test_support::{finish_on_main, wait_until};
@@ -243,7 +243,7 @@ fn tabs_name_the_schema_once_the_session_has_two() {
         .with_model(|model| {
             model.open_tab(TabSpec::Table {
                 table: TableRef::new(Some("public".to_owned()), "orders"),
-                page: super::tab_spec::TablePage::first(100),
+                page: super::super::tab_spec::TablePage::first(100),
             })
         })
         .flatten()

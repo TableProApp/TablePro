@@ -3,8 +3,6 @@
 //! disconnect drops it and the window shows the connection picker.
 
 mod close_flow;
-#[cfg(test)]
-mod close_tab_tests;
 mod editor_label;
 mod finished_work;
 mod health_banner;
@@ -24,9 +22,9 @@ mod tab_identity;
 mod tab_index;
 mod tab_spec;
 mod tab_title;
-#[cfg(test)]
-mod tab_title_tests;
 mod table_naming;
+#[cfg(test)]
+mod tests;
 mod unsaved_icon;
 mod window_tabs;
 mod window_title;
@@ -1039,7 +1037,7 @@ impl WorkspaceModel {
             WorkspaceInput::ExportResults { tab, offer } => {
                 if let Some(window) = self.window() {
                     let dialect = self.context.active.get().and_then(|session| session.current_dialect());
-                    super::export_dialog::present(super::export_dialog::ExportDialogInit {
+                    super::export::dialog::present(super::export::dialog::ExportDialogInit {
                         parent: &window,
                         exports: &self.exports,
                         offer: *offer,

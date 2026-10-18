@@ -12,7 +12,7 @@ use tablepro_core::meta::TableRef;
 use tablepro_session::Session;
 use uuid::Uuid;
 
-use super::export::{
+use super::{
     DocumentFormat, ExpectedRows, ExportFormat, ExportJob, ExportLedger, ExportOffer, ExportOrigin, ExportSource,
     InsertTarget, RowFormat, ScopeChoice, ScopeSource, scope_choices,
 };
@@ -281,7 +281,7 @@ fn combo_row(title: &str, choices: &[&str]) -> adw::ComboRow {
         .title(title)
         .model(&gtk::StringList::new(choices))
         .build();
-    super::combo_value::show_whole_value(&row);
+    crate::ui::combo_value::show_whole_value(&row);
     row
 }
 

@@ -11,7 +11,7 @@ mod key_injector;
 mod main_loop;
 mod memory_settings;
 mod owned_window;
-#[path = "../tests/support/settings_schema.rs"]
+#[path = "../../tests/support/settings_schema.rs"]
 pub(crate) mod settings_schema;
 pub(crate) mod shortcut_keys;
 mod signal_log;

@@ -5,6 +5,7 @@
 //! allows. The workspace's ledger tracks the running ones for the
 //! header bar, for logout and for the close prompts.
 
+pub(super) mod dialog;
 mod document_sink;
 mod encoding_sink;
 mod export_failure_text;

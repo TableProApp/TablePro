@@ -9,7 +9,7 @@ use tablepro_core::{ColumnInfo, QueryResult, Value};
 use tablepro_test_support::{ConnectionScript, FakeReply};
 use uuid::Uuid;
 
-use super::{OpenMode, WorkspaceInput};
+use super::super::{OpenMode, WorkspaceInput};
 use crate::runtime::DeliverInput;
 use crate::test_support::{after_next_frame, descendants, drain_main_context, wait_until};
 use crate::ui::browse_tab::BrowseTab;
@@ -179,7 +179,7 @@ fn a_tab_closed_with_the_focus_in_it_is_freed_when_the_next_takes_none() {
 fn editor_on_file(test: &TestWindow, path: &std::path::Path) -> (Uuid, crate::ui::editor::SqlEditor) {
     let workspace = test.workspace();
     workspace.with_model(|model| {
-        model.open_tab(super::tab_spec::TabSpec::Editor {
+        model.open_tab(super::super::tab_spec::TabSpec::Editor {
             initial_query: Some("SELECT 2;".to_owned()),
             draft: None,
             file: Some(crate::workspace::EditorFileRecord {

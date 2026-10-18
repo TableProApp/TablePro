@@ -5,7 +5,7 @@ use tablepro_session::Session;
 use super::{ExpectedRows, ExportQuery, ExportSource};
 use crate::i18n::{gettext, ngettext_f, pgettext};
 use crate::ui::browse_tab::RowTotal;
-use crate::ui::export_dialog::SqlTarget;
+use super::dialog::SqlTarget;
 use crate::ui::format::{format_thousands, plural_count};
 
 /// What a tab asks the window to export.

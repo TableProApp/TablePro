@@ -41,14 +41,14 @@ mod save_ticket;
 mod schema_write;
 mod session_key_record;
 mod sort_record;
-#[cfg(test)]
-mod structure_review_tests;
 mod tab_directory;
 mod tab_entry;
 mod tab_record;
 mod tab_snapshot;
 #[cfg(test)]
 pub(crate) mod test_workspace;
+#[cfg(test)]
+mod tests;
 mod unknown_cause;
 mod unknown_outcome_dialog;
 mod waiting_dialog;
