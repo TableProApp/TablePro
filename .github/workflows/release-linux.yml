@@ -109,6 +109,13 @@ jobs:
         with:
           name: linux-sources
           path: release
+      # A pre-release has no CHANGELOG.md section; its notes are a draft of the fragments at the tag.
+      - name: Install towncrier
+        if: needs.verify.outputs.prerelease == 'true'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/release-venv"
+          "$RUNNER_TEMP/release-venv/bin/pip" install --quiet --disable-pip-version-check --require-hashes \
+            -r scripts/release/requirements.txt
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -117,10 +124,15 @@ jobs:
         run: |
           version="${TAG#linux-v}"
           (cd release && sha256sum -- * > SHA256SUMS)
-          python3 linux/build-aux/packaging/check_packaging.py --source-root linux \
-            --version "$version" --tag "$TAG" --notes notes.md
           if [ "$PRERELEASE" = true ]; then
+            python3 linux/build-aux/packaging/check_packaging.py --source-root linux \
+              --version "$version" --tag "$TAG"
+            "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir linux --version "$version" > draft.md
+            sed 1d draft.md > notes.md
             set -- --prerelease
+          else
+            python3 linux/build-aux/packaging/check_packaging.py --source-root linux \
+              --version "$version" --tag "$TAG" --notes notes.md
           fi
           # The repository's latest release stays the macOS one.
           gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \

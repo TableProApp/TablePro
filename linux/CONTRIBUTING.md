@@ -127,13 +127,7 @@ docs(linux): clarify the TLS step for a new driver
 
 ## Changelog
 
-A user-visible change gets one entry under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md), which follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/). The repository-level `CHANGELOG.md` and its `changelog.d/` fragments are the macOS release notes; a Linux change never goes there.
-
-- Sections, each at most once per version and in this order: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`.
-- An entry is one line naming the change, under about 120 characters. Added and Changed name the new thing; Fixed names the bug, not the fix. No file paths or type names; an issue reference goes at the end, `(#1234)`.
-- One entry per thing a user would notice. Defects with the same visible symptom share an entry.
-- No entry for a fix to something still unreleased (fold it into its entry) or for a docs-only change.
-- A version may open with a lead block before its first `###`.
+A user-visible change adds one towncrier fragment, `changelog.d/<PR>.<type>.md` in this directory, which the release turns into a [CHANGELOG.md](CHANGELOG.md) section ([docs/releasing.md](docs/releasing.md)). The repository-level `CHANGELOG.md` and `changelog.d/` are the macOS release notes; a Linux change never goes there. [`.claude/rules/changelog.md`](../.claude/rules/changelog.md) has the rules for both.
 
 ## Pull requests
 

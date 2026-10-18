@@ -4,8 +4,8 @@
 # translations exactly when po/LINGUAS ships one, and that the Debian
 # package builds with the Rust the workspace names as its rust-version. The
 # release workflow adds the tag and its date, and then CHANGELOG.md must
-# carry that version's notes and the spec must be the version's first
-# package release.
+# carry that version's notes, unless it is a pre-release, and the spec must
+# be the version's first package release.
 #
 # Once CHANGELOG.md has a heading for the version, the release commit has
 # set its dates, and the heading, the spec's %changelog entry and the man
@@ -77,7 +77,10 @@ def release_notes(changelog, version):
 
 def release_heading_date(changelog, version):
     """The date on the version's heading: None without a heading, "" when it has no date."""
-    heading = re.compile(rf"^## \[{re.escape(version)}\](?: - (\d{{4}}-\d{{2}}-\d{{2}}))?\s*$")
+    # towncrier links the version to its GitHub release.
+    heading = re.compile(
+        rf"^## \[{re.escape(version)}\](?:\([^)\s]*\))?(?: - (\d{{4}}-\d{{2}}-\d{{2}}))?\s*$"
+    )
     for line in changelog.read_text(encoding="utf-8").splitlines():
         match = heading.match(line)
         if match:
@@ -163,7 +166,8 @@ def problems(root, version, tag=None, tag_date=None):
     if tag is not None:
         if tag != f"linux-v{version}":
             found.append(f"tag {tag} does not name version {version}; expected linux-v{version}")
-        if not release_notes(root / CHANGELOG, version):
+        # A pre-release keeps the fragments; its notes are a towncrier draft of them.
+        if "-" not in version and not release_notes(root / CHANGELOG, version):
             found.append(f"{CHANGELOG} has no notes under ## [{version}]")
 
     packaged = package_version(version)

@@ -76,6 +76,8 @@ NOTES = """# Changelog
 - Older notes.
 """
 
+LINKED = "## [1.2.0](https://github.com/TableProApp/TablePro/releases/tag/linux-v1.2.0) - 2026-10-14"
+
 
 class ProblemsTests(unittest.TestCase):
     def tree(
@@ -210,7 +212,6 @@ class ProblemsTests(unittest.TestCase):
             releases='<release version="1.2.0-rc.1" date="2026-10-14"/>',
             version="1.2.0~rc.1",
             changelog="1.2.0~rc.1",
-            notes=NOTES.replace("## [1.2.0]", "## [1.2.0-rc.1]"),
             man_version="1.2.0-rc.1",
         )
 
@@ -261,6 +262,21 @@ class ProblemsTests(unittest.TestCase):
 
                 self.assertEqual(len(found), 1)
                 self.assertIn("no notes under ## [1.2.0]", found[0])
+
+    def test_a_towncrier_heading_carries_the_release_date(self):
+        root = self.tree(notes=NOTES.replace("## [1.2.0] - 2026-10-14", LINKED))
+
+        self.assertEqual(check_packaging.problems(root, "1.2.0", "linux-v1.2.0", "2026-10-14"), [])
+        self.assertEqual(
+            check_packaging.release_notes(root / check_packaging.CHANGELOG, "1.2.0"),
+            "### Added\n\n- Packages for Ubuntu and Fedora.",
+        )
+
+        root = self.tree(notes=NOTES.replace("## [1.2.0] - 2026-10-14", LINKED.replace("10-14", "10-13")))
+
+        self.assertEqual(
+            check_packaging.problems(root, "1.2.0"), ["CHANGELOG.md dates 1.2.0 2026-10-13, the metainfo 2026-10-14"]
+        )
 
     def test_the_changelog_is_only_required_for_a_release(self):
         self.assertEqual(check_packaging.problems(self.tree(notes="# Changelog\n"), "1.2.0"), [])

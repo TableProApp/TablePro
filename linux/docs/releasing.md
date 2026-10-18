@@ -19,19 +19,19 @@ A repository admin does these once. The workflow's header names the same secrets
 
 ## A release
 
-1. **The release commit**, on `linux`, sets one version and one date (UTC) everywhere:
+1. **The release commit**, a pull request titled `chore(release): linux-vX.Y.Z`, sets one version and one date (UTC) everywhere:
    - `version` in `meson.build`.
    - A new first `<release>` in `data/app.tablepro.TablePro.metainfo.xml.in.in`, with the date and a short description.
    - `Version`, `Release: 1%{?dist}` and a new first `%changelog` entry in `build-aux/rpm/tablepro.spec`, with the same date.
-   - `## [Unreleased]` in `CHANGELOG.md` becomes `## [X.Y.Z] - YYYY-MM-DD`, and a new empty `## [Unreleased]` goes above it.
+   - The version's section in `CHANGELOG.md`, from the fragments in `changelog.d/`. From the repository root, with the towncrier venv of the root `RELEASING.md`, Notes: `.venv/bin/towncrier build --dir linux --version X.Y.Z --date YYYY-MM-DD --yes`. It deletes the fragments and stages `CHANGELOG.md`. An X.Y.0 types its lead under the heading, at most 6 plain lines naming what a reader would change their behavior over.
    - The `.TH` line of `data/tablepro.1`: the date and `TablePro X.Y.Z`.
 
-   The `release-metadata` Meson test checks that they agree once the changelog heading exists, so the pull request fails before the tag does.
+   The pull request changes only these files and `changelog.d/`; PR title refuses anything else. The `release-metadata` Meson test checks that they agree once the changelog heading exists, so the pull request fails before the tag does.
 2. **The tag**: `linux-vX.Y.Z` on the merged commit, pushed the same UTC day. The workflow compares the metainfo date with the commit date.
 3. **The workflow** checks the tag, builds and tests both packages on amd64 and arm64, publishes the GitHub release with the tarballs and the version's changelog section as notes, uploads the signed source package to the PPA, and posts the tag to COPR. A reviewer approves each step that uses the environment.
 4. **Afterwards**: watch the Launchpad build page of each series and the COPR build the workflow prints. A failed build there does not fail the workflow.
 
-A tag such as `linux-v0.2.0-rc.1` publishes a GitHub pre-release with the tarballs only, and skips the PPA and COPR.
+A tag such as `linux-v0.2.0-rc.1` publishes a GitHub pre-release with the tarballs only, and skips the PPA and COPR. Its commit sets the version and the dates but adds no `CHANGELOG.md` section and keeps the fragments, so the stable release lists them; the pre-release notes are a towncrier draft of the fragments at the tag.
 
 ## A packaging fix
 
@@ -57,7 +57,7 @@ The next version's release commit sets `Release` back to 1.
 
 ## A fix release
 
-0.1.1 is a release like any other, from `linux`. When `linux` already holds work that should wait for 0.2.0, branch `linux-0.1` from the `linux-v0.1.0` tag, cherry-pick the fixes and the release commit onto it, set `LINUX_BRANCH` to `linux-0.1` and allow that branch in the environment, push the tag, then set both back. Merge the release commit's version, dates and changelog section into `linux` afterwards.
+0.1.1 is a release like any other, from `linux`. When `linux` already holds work that should wait for 0.2.0, branch `linux-0.1` from the `linux-v0.1.0` tag, cherry-pick the fixes onto it with their fragments, and open the release pull request into `linux-0.1`, so towncrier builds the section from those fragments only. Set `LINUX_BRANCH` to `linux-0.1` and allow that branch in the environment, push the tag, then set both back. Afterwards cherry-pick the release commit onto `linux` in a pull request with the same title: it brings the version, the dates and the section, and deletes the fragments 0.1.1 shipped.
 
 ## Downgrades
 
