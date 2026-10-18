@@ -46,11 +46,37 @@ jobs:
     runs-on: xcode-27
     timeout-minutes: 50
     env:
-      DESTINATION: platform=iOS Simulator,name=iPhone 18 Pro
+      SIMULATOR: iPhone 18 Pro
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/setup-xcode
+
+      # Booted ahead of the build so the first boot overlaps the compile instead of following it.
+      # The image ships the iOS 27.0 runtime; downloading the one for Xcode's newer SDK costs minutes.
+      # A destination by name takes the newest runtime, so the lookup does too.
+      - name: Boot the simulator
+        id: simulator
+        run: |
+          set -euo pipefail
+          find_simulator() {
+            xcrun simctl list devices available -j | jq -r --arg name "$SIMULATOR" '
+              [.devices | to_entries[] | select(.key | test("\\.iOS-[0-9-]+$"))
+                | {version: (.key | capture("iOS-(?<v>[0-9-]+)$").v | split("-") | map(tonumber)),
+                   udid: (.value[] | select(.name == $name) | .udid)}]
+              | sort_by(.version) | last | .udid // empty'
+          }
+          udid="$(find_simulator)"
+          if [ -z "$udid" ]; then
+            xcodebuild -downloadPlatform iOS
+            udid="$(find_simulator)"
+          fi
+          if [ -z "$udid" ]; then
+            echo "No $SIMULATOR simulator, even after downloading the iOS platform." >&2
+            exit 1
+          fi
+          xcrun simctl boot "$udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/setup-xcodegen
 
@@ -62,24 +88,19 @@ jobs:
       - name: Generate the Xcode project
         run: scripts/generate-project.sh ios
 
-      # The image ships the iOS 27.0 runtime. Downloading the one for Xcode's newer SDK costs minutes.
-      - name: Make sure the simulator exists
-        run: |
-          if ! xcrun simctl list devices available | grep -F "iPhone 18 Pro (" > /dev/null; then
-            xcodebuild -downloadPlatform iOS
-          fi
-
       # One simulator, not clones: on a 3-core runner a second booted simulator killed runs with
       # "(ipc/mig) server died", and TableProMobileTests is one bundle that never split anyway.
       - name: Run the iOS tests
+        env:
+          SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
         run: |
           set -o pipefail
           xcodebuild test \
             -project TableProMobile/TableProMobile.xcodeproj -scheme TableProMobile \
-            -destination "$DESTINATION" -only-testing:TableProMobileTests \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -only-testing:TableProMobileTests \
             -parallel-testing-enabled NO \
             -skipPackagePluginValidation -resultBundlePath iOS.xcresult \
-            CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
+            CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO COMPILATION_CACHE_ENABLE_CACHING=NO \
             | xcbeautify --renderer github-actions
 
       # --parallel is what makes swift test write the XCTest xunit file. Without it only the Swift
