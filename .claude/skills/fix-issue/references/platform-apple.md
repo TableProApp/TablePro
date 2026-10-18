@@ -38,7 +38,7 @@ The macOS app and the iOS app, with everything they build from. Every profile ha
 | `package` | `<Package> [regex]` | `Packages/` changed and you want the whole package; `test <Suite>` already routes a package suite |
 | `ios` | `<Suite> [Suite...]`, at least one | `TableProMobile/` or a file it compiles changed |
 | `plugins` | none | anything under `Plugins/` changed. Builds `AllPlugins`, building the HANA helper first when it is missing and Go is installed |
-| `abi` | `<merge-base>` | PluginKit changed: after the commit, before the push (`.claude/rules/plugin-system.md`, ABI) |
+| `abi` | `[base]`, default the newest `v*` tag | PluginKit changed (`.claude/rules/plugin-system.md`, ABI) |
 | `lint` | AGENTS | every changed Swift file |
 | `l10n` | none | strings, or plugin or package messages, changed. Passes only when every plugin and package string is in both the macOS and iOS catalogs, and prints the `--add` command for each target that failed |
 | `docs` | `[docs-checkout]`, default `tablepro-docs` beside the main checkout | AGENTS Every change 4 applies, or a menu, shortcut, driver list or docs.tablepro.app link changed |
