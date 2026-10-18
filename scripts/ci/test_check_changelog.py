@@ -240,6 +240,12 @@ class PullRequestTests(unittest.TestCase):
     def test_gitkeep_is_not_a_fragment(self):
         self.assertEqual(self.problems([changed("changelog.d/.gitkeep")]), [])
 
+    def test_the_pull_request_that_creates_the_directory_moves_the_old_entries(self):
+        files = [changed("changelog.d/.gitkeep"), changed("changelog.d/3446.fixed.md"),
+                 changed("CHANGELOG.md", "modified")]
+        self.assertEqual(self.problems(files, "ci(release): release from tags through release.yml"), [])
+        self.assertEqual(len(self.problems(files[1:], "ci(release): release from tags through release.yml")), 2)
+
     def test_a_pick_into_a_release_line_keeps_the_original_name(self):
         self.assertEqual(self.problems([changed("changelog.d/3446.fixed.md")], "fix: keep it (#3446)",
                                        "release/0.82"), [])

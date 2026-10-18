@@ -180,6 +180,9 @@ def _fragment_in(path: Optional[str], types: List[str]) -> Optional[Fragment]:
 
 def pull_request_problems(number: int, title: str, base: str, files: List[ChangedFile],
                           types: List[str]) -> List[str]:
+    # The pull request that creates changelog.d/ is the one that moves the old entries into it.
+    if any(changed.filename == f"{FRAGMENTS}/.gitkeep" and changed.status in NEW_STATUSES for changed in files):
+        return []
     problems = []
     expected = f"{FRAGMENTS}/{number}.<type>.md"
     if any("CHANGELOG.md" in (changed.filename, changed.previous_filename) for changed in files) \
