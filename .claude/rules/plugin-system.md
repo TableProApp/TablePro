@@ -65,8 +65,10 @@ TableProPluginKit is built with Library Evolution, so an already-built plugin ke
 ## Structure
 
 - PluginKit-free logic a plugin shares with the iOS app lives in a TableProCore product, such as `TableProMySQLCore`, `TableProPostgreSQLCore` or `TableProRedisCore`.
-- A new driver needs: its `project.yml` target and a `RegistryPlugins` entry (`BundledPlugins` and the app's `copy: { destination: plugins }` dependency for a bundled one), a `DatabaseType` constant, an entry in `.github/plugin-registry.json` keyed by its target, with `name` and `iconName`, a curated snapshot in `PluginMetadataRegistry` (without it the type never appears in the New Connection picker), a row in `../tablepro-docs/databases/index.mdx` through a paired docs PR, and a changelog fragment.
+- A new driver needs: its `project.yml` target and a `RegistryPlugins` entry (`BundledPlugins` and the app's `copy: { destination: plugins }` dependency for a bundled one), a `DatabaseType` constant, an entry in `.github/plugin-registry.json` keyed by its target, with `name` and `iconName`, a curated snapshot in `PluginMetadataRegistry` (without it the type never appears in the New Connection picker), its `TableProProvides*` keys (below), a row in `../tablepro-docs/databases/index.mdx` through a paired docs PR, and a changelog fragment.
 - A new engine ships as a registry plugin (`AGENTS.md`, Scope).
+- `PluginManager` registers a plugin from the `TableProProvidesDatabaseTypeIds`, `TableProProvidesExportFormatIds` and `TableProProvidesImportFormatIds` arrays in its `Info.plist` and loads its code on first use. A plugin with none of them loads at launch. The first database type id is the primary one.
+- `scripts/ci/check-plugin-provides.py` checks those arrays against the class's `databaseTypeId`, `additionalDatabaseTypeIds` and `formatId` in Repo Hygiene; `--write` stamps them.
 - Where a plugin's tests go, and how a test target is added in `project.yml`: `.claude/rules/tests.md`, Where a test goes and Adding a test target.
 
 ## Releases

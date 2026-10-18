@@ -1,234 +1,77 @@
 import Foundation
 
-enum PluginArchitecture: String, Codable, Sendable {
-    case arm64
-    case x86_64
+internal struct RegistryManifest: Sendable {
+    internal static let supportedSchemaVersion = 3
 
-    static var current: PluginArchitecture {
-        #if arch(arm64)
-        .arm64
-        #else
-        .x86_64
-        #endif
-    }
+    internal let schemaVersion: Int
+    internal let plugins: [RegistryPlugin]
 }
 
-struct RegistryBinary: Codable, Sendable {
-    let architecture: PluginArchitecture
-    let downloadURL: String
-    let sha256: String
-    let pluginKitVersion: Int?
-}
-
-struct RegistryManifest: Codable, Sendable {
-    let schemaVersion: Int
-    let plugins: [RegistryPlugin]
-}
-
-struct RegistryPlugin: Codable, Sendable, Identifiable {
-    let id: String
-    let name: String
-    let version: String
-    let summary: String
-    let author: RegistryAuthor
-    let homepage: String?
-    let category: RegistryCategory
-    let databaseTypeIds: [String]?
-    let binaries: [RegistryBinary]
-    let minAppVersion: String?
-    let iconName: String?
-    let isVerified: Bool
-    let metadata: RegistryPluginMetadata?
-
-    private let legacyDownloadURL: String?
-    private let legacySha256: String?
-    private let legacyMinPluginKitVersion: Int?
-
+extension RegistryManifest: Decodable {
     private enum CodingKeys: String, CodingKey {
-        case id, name, version, summary, author, homepage, category
-        case databaseTypeIds, binaries, minAppVersion, iconName, isVerified, metadata
-        case legacyDownloadURL = "downloadURL"
-        case legacySha256 = "sha256"
-        case legacyMinPluginKitVersion = "minPluginKitVersion"
+        case schemaVersion
+        case plugins
     }
 
-    init(from decoder: Decoder) throws {
+    internal init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(String.self, forKey: .id)
-        name = try container.decode(String.self, forKey: .name)
-        version = try container.decode(String.self, forKey: .version)
-        summary = try container.decode(String.self, forKey: .summary)
-        author = try container.decode(RegistryAuthor.self, forKey: .author)
-        homepage = try container.decodeIfPresent(String.self, forKey: .homepage)
-        category = try container.decode(RegistryCategory.self, forKey: .category)
-        databaseTypeIds = try container.decodeIfPresent([String].self, forKey: .databaseTypeIds)
-        minAppVersion = try container.decodeIfPresent(String.self, forKey: .minAppVersion)
-        iconName = try container.decodeIfPresent(String.self, forKey: .iconName)
-        isVerified = try container.decodeIfPresent(Bool.self, forKey: .isVerified) ?? false
-        metadata = try container.decodeIfPresent(RegistryPluginMetadata.self, forKey: .metadata)
-        legacyDownloadURL = try container.decodeIfPresent(String.self, forKey: .legacyDownloadURL)
-        legacySha256 = try container.decodeIfPresent(String.self, forKey: .legacySha256)
-        legacyMinPluginKitVersion = try container.decodeIfPresent(Int.self, forKey: .legacyMinPluginKitVersion)
-
-        if let decodedBinaries = try container.decodeIfPresent([RegistryBinary].self, forKey: .binaries) {
-            binaries = decodedBinaries
-        } else if let url = legacyDownloadURL, let hash = legacySha256 {
-            // A v1 entry has one universal ZIP and no architecture.
-            binaries = [
-                RegistryBinary(
-                    architecture: .arm64,
-                    downloadURL: url,
-                    sha256: hash,
-                    pluginKitVersion: legacyMinPluginKitVersion
-                ),
-                RegistryBinary(
-                    architecture: .x86_64,
-                    downloadURL: url,
-                    sha256: hash,
-                    pluginKitVersion: legacyMinPluginKitVersion
-                )
-            ]
-        } else {
-            binaries = []
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        guard schemaVersion == Self.supportedSchemaVersion else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .schemaVersion,
+                in: container,
+                debugDescription: "Schema \(schemaVersion) is not \(Self.supportedSchemaVersion)"
+            )
         }
+        plugins = try container.decode([RegistryPlugin].self, forKey: .plugins)
     }
 }
 
-extension RegistryPlugin {
-    func resolvedBinary(for arch: PluginArchitecture = .current, kits: ClosedRange<Int>) throws -> RegistryBinary {
-        let forThisArchitecture = binaries.filter { $0.architecture == arch }
-        let highestInRange = forThisArchitecture
-            .compactMap { binary -> (binary: RegistryBinary, kit: Int)? in
-                guard let kit = binary.pluginKitVersion, kits.contains(kit) else {
-                    return nil
-                }
-                return (binary, kit)
-            }
-            .max { $0.kit < $1.kit }
+internal struct RegistryPlugin: Decodable, Sendable, Identifiable {
+    internal let id: String
+    internal let name: String
+    internal let iconName: String?
+    internal let databaseTypeIds: [String]?
+    internal let exportFormatIds: [String]?
+    internal let releases: [RegistryRelease]
+}
 
-        if let highestInRange {
-            return highestInRange.binary
+internal struct RegistryRelease: Decodable, Sendable, Equatable {
+    internal let version: String
+    internal let build: Int
+    internal let channel: String
+    internal let pluginKit: Int
+    internal let minimumSystemVersion: String
+    internal let url: String
+    internal let sha256: String
+}
+
+internal extension RegistryPlugin {
+    func newestRelease(
+        channel: UpdateChannel,
+        kits: ClosedRange<Int>,
+        systemVersion: OperatingSystemVersion
+    ) throws -> RegistryRelease {
+        let eligible = releases.filter { release in
+            channel.accepts(release.channel) && release.runs(on: systemVersion)
         }
-
-        let publishedKits = forThisArchitecture.compactMap(\.pluginKitVersion)
-        if let oldest = publishedKits.min(), oldest > kits.upperBound {
-            throw PluginError.appTooOldForPlugin(oldestPublishedKit: oldest, appKit: kits.upperBound)
+        if let newest = eligible.filter({ kits.contains($0.pluginKit) }).max(by: { $0.build < $1.build }) {
+            return newest
         }
-
-        throw PluginError.noCompatibleBinary
+        if let oldestNewerKit = eligible.map(\.pluginKit).filter({ $0 > kits.upperBound }).min() {
+            throw PluginError.appTooOldForPlugin(oldestPublishedKit: oldestNewerKit, appKit: kits.upperBound)
+        }
+        throw PluginError.noCompatibleRelease
     }
 }
 
-struct RegistryAuthor: Codable, Sendable {
-    let name: String
-    let url: String?
-}
-
-enum RegistryCategory: String, Codable, Sendable {
-    case databaseDriver = "database-driver"
-    case exportFormat = "export-format"
-    case importFormat = "import-format"
-    case other = "other"
-
-    // One entry with a category this app does not know must not fail the whole manifest.
-    init(from decoder: any Decoder) throws {
-        let rawValue = try decoder.singleValueContainer().decode(String.self)
-        self = RegistryCategory(rawValue: rawValue) ?? .other
+internal extension RegistryRelease {
+    func runs(on systemVersion: OperatingSystemVersion) -> Bool {
+        let parts = minimumSystemVersion.split(separator: ".", omittingEmptySubsequences: false)
+        let numbers = parts.compactMap { Int($0) }
+        guard (1...3).contains(parts.count), numbers.count == parts.count else { return false }
+        let minimum = numbers + Array(repeating: 0, count: 3 - numbers.count)
+        let running = [systemVersion.majorVersion, systemVersion.minorVersion, systemVersion.patchVersion]
+        return !running.lexicographicallyPrecedes(minimum)
     }
-}
-
-// MARK: - Plugin Metadata (self-describing registry plugins)
-
-struct RegistryPluginMetadata: Codable, Sendable {
-    let displayName: String?
-    let iconName: String?
-    let defaultPort: Int?
-    let brandColorHex: String?
-    let connectionMode: String?
-    let editorLanguage: String?
-    let queryLanguageName: String?
-    let primaryUrlScheme: String?
-    let parameterStyle: String?
-
-    let requiresAuthentication: Bool?
-    let supportsForeignKeys: Bool?
-    let supportsSchemaEditing: Bool?
-    let supportsDatabaseSwitching: Bool?
-    let supportsSchemaSwitching: Bool?
-    let supportsSSH: Bool?
-    let supportsSSL: Bool?
-    let supportsImport: Bool?
-    let supportsExport: Bool?
-    let supportsHealthMonitor: Bool?
-    let supportsCascadeDrop: Bool?
-    let supportsForeignKeyDisable: Bool?
-    let supportsReadOnlyMode: Bool?
-    let supportsQueryProgress: Bool?
-    let requiresReconnectForDatabaseSwitch: Bool?
-
-    let urlSchemes: [String]?
-    let fileExtensions: [String]?
-    let systemDatabaseNames: [String]?
-    let systemSchemaNames: [String]?
-    let defaultSchemaName: String?
-    let defaultGroupName: String?
-    let tableEntityName: String?
-    let containerEntityName: String?
-    let defaultPrimaryKeyColumn: String?
-    let immutableColumns: [String]?
-
-    let navigationModel: String?
-    let pathFieldRole: String?
-    let databaseGroupingStrategy: String?
-    let structureColumnFields: [String]?
-    let postConnectActions: [RegistryPostConnectAction]?
-    let additionalConnectionFields: [RegistryConnectionField]?
-    let explainVariants: [RegistryExplainVariant]?
-    let sqlDialect: RegistrySqlDialect?
-    let statementCompletions: [RegistryCompletionEntry]?
-    let columnTypesByCategory: [String: [String]]?
-}
-
-struct RegistryConnectionField: Codable, Sendable {
-    let id: String
-    let label: String
-    let placeholder: String?
-    let defaultValue: String?
-    let fieldType: String?
-    let section: String?
-    let options: [RegistryDropdownOption]?
-}
-
-struct RegistryDropdownOption: Codable, Sendable {
-    let value: String
-    let label: String
-}
-
-struct RegistryPostConnectAction: Codable, Sendable {
-    let type: String
-    let fieldId: String?
-}
-
-struct RegistryExplainVariant: Codable, Sendable {
-    let name: String
-    let prefix: String
-}
-
-struct RegistrySqlDialect: Codable, Sendable {
-    let identifierQuote: String?
-    let keywords: [String]?
-    let functions: [String]?
-    let dataTypes: [String]?
-    let tableOptions: [String]?
-    let regexSyntax: String?
-    let booleanLiteralStyle: String?
-    let likeEscapeStyle: String?
-    let paginationStyle: String?
-    let offsetFetchOrderBy: String?
-    let requiresBackslashEscaping: Bool?
-}
-
-struct RegistryCompletionEntry: Codable, Sendable {
-    let label: String
-    let insertText: String
 }

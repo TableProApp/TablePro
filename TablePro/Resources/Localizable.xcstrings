@@ -78322,6 +78322,7 @@
       }
     },
     "Failed to parse plugin registry" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -113033,6 +113034,9 @@
         }
       }
     },
+    "No build of this plugin works with this version of TablePro." : {
+
+    },
     "No cells changed." : {
       "localizations" : {
         "fr" : {
@@ -131482,6 +131486,7 @@
       }
     },
     "Plugin does not contain a compatible binary for this architecture" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -131802,6 +131807,7 @@
       }
     },
     "Plugin registry requires a newer app version" : {
+      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {

@@ -1,8 +1,3 @@
-//
-//  SettingsPluginsPaneRegistryTests.swift
-//  TableProTests
-//
-
 import AppKit
 @testable import TablePro
 import TableProTestSupport
@@ -32,7 +27,7 @@ extension GlobalStateSuites {
             }
 
             panes.select(.plugins)
-            try await waitUntil { registry.client.fetchState == .loaded }
+            try await waitUntil { registry.client.isManifestCurrent }
 
             #expect(registry.requestCount == 1)
         }

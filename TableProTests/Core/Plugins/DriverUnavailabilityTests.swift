@@ -1,12 +1,3 @@
-//
-//  DriverUnavailabilityTests.swift
-//  TableProTests
-//
-//  An imported connection whose database type nothing answers, a plugin the user turned off and a
-//  plugin that failed to load all used to surface as one message that blamed a missing plugin, so
-//  the reporter installed the plugin they already had and saw nothing change.
-//
-
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -47,11 +38,9 @@ private final class UnreachableRegistryProtocol: URLProtocol, @unchecked Sendabl
 @MainActor
 struct DriverUnavailabilityTests {
     private let managerSuite: EphemeralDefaults
-    private let registrySuite: EphemeralDefaults
 
     init() throws {
         managerSuite = try EphemeralDefaults()
-        registrySuite = try EphemeralDefaults()
     }
 
     private func makeManager() throws -> (manager: PluginManager, root: URL) {
@@ -98,15 +87,12 @@ struct DriverUnavailabilityTests {
         )
     }
 
-    private func makeUnreachableRegistry(root: URL) throws -> RegistryClient {
+    private func makeUnreachableRegistry() throws -> RegistryClient {
         UnreachableRegistryProtocol.reset()
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [UnreachableRegistryProtocol.self]
-        return RegistryClient(
-            userDefaults: registrySuite.defaults,
-            session: URLSession(configuration: config),
-            manifestCacheURL: root.appendingPathComponent("registry-manifest.json")
-        )
+        let manifestURL = try #require(URL(string: "https://registry.invalid/\(UUID().uuidString)/plugins/v3.json"))
+        return RegistryClient(manifestURL: manifestURL, session: URLSession(configuration: config))
     }
 
     @Test("A type no plugin, curated entry or registry entry answers is unrecognized")
@@ -127,16 +113,13 @@ struct DriverUnavailabilityTests {
         let typeId = "FutureDB-\(UUID().uuidString)"
         let json = """
         {
-            "schemaVersion": 2,
+            "schemaVersion": 3,
+            "retainFromPluginKit": 39,
             "plugins": [{
                 "id": "com.example.future",
                 "name": "Future Driver",
-                "version": "1.0.0",
-                "summary": "test",
-                "author": {"name": "Tester"},
-                "category": "database-driver",
                 "databaseTypeIds": ["\(typeId)"],
-                "binaries": []
+                "releases": []
             }]
         }
         """
@@ -227,7 +210,7 @@ struct DriverUnavailabilityTests {
         defer { try? FileManager.default.removeItem(at: root) }
         manager.plugins = [makeEntry(id: "com.example.mssql", name: "SQL Server Driver", typeId: "SQL Server")]
         manager.rejectedPlugins = [makeRejection(typeId: "SQL Server", isOutdated: false, reason: "bad signature")]
-        let registry = try makeUnreachableRegistry(root: root)
+        let registry = try makeUnreachableRegistry()
 
         try await manager.prepareForConnecting(to: .mssql, registryClient: registry)
 
@@ -240,16 +223,13 @@ struct DriverUnavailabilityTests {
     func rejectionIdentityComesFromTheRegistry() throws {
         let json = """
         {
-            "schemaVersion": 2,
+            "schemaVersion": 3,
+            "retainFromPluginKit": 39,
             "plugins": [{
                 "id": "com.example.eager",
                 "name": "Eager Driver",
-                "version": "1.0.0",
-                "summary": "test",
-                "author": {"name": "Tester"},
-                "category": "database-driver",
                 "databaseTypeIds": ["EagerDB"],
-                "binaries": []
+                "releases": []
             }]
         }
         """
@@ -264,7 +244,7 @@ struct DriverUnavailabilityTests {
     func failedInstallSurfacesItsReason() async throws {
         let (manager, root) = try makeManager()
         defer { try? FileManager.default.removeItem(at: root) }
-        let registry = try makeUnreachableRegistry(root: root)
+        let registry = try makeUnreachableRegistry()
 
         do {
             try await manager.prepareForConnecting(to: .mssql, registryClient: registry)

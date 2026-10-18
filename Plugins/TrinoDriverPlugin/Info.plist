@@ -4,5 +4,9 @@
 <dict>
 	<key>TableProPluginKitVersion</key>
 	<integer>TABLEPRO_PLUGINKIT_VERSION</integer>
+	<key>TableProProvidesDatabaseTypeIds</key>
+	<array>
+		<string>Trino</string>
+	</array>
 </dict>
 </plist>

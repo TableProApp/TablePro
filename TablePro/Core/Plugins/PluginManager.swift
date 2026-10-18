@@ -459,6 +459,9 @@ final class PluginManager: ObservableObject {
 
     nonisolated internal static let compatibleKits = minimumCompatiblePluginKitVersion...currentPluginKitVersion
 
+    // A plugin matches the build it ships with, so a beta app takes beta plugins whatever the update setting.
+    nonisolated internal static let registryChannel: UpdateChannel = Bundle.main.isPrerelease ? .beta : .stable
+
     nonisolated internal static func isCompatibleKit(_ kit: Int) -> Bool {
         compatibleKits.contains(kit)
     }

@@ -14,14 +14,14 @@ actor PluginInstaller {
 
     func install(
         _ registryPlugin: RegistryPlugin,
-        binary: RegistryBinary,
+        release: RegistryRelease,
         into userPluginsDir: URL,
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> URL {
         try await runCoalesced(pluginId: registryPlugin.id) {
             try await self.performDownloadAndCommit(
                 registryPlugin,
-                binary: binary,
+                release: release,
                 into: userPluginsDir,
                 progress: progress
             )
@@ -30,7 +30,7 @@ actor PluginInstaller {
 
     func update(
         _ registryPlugin: RegistryPlugin,
-        binary: RegistryBinary,
+        release: RegistryRelease,
         into userPluginsDir: URL,
         hasLiveConnections: Bool,
         progress: @escaping @Sendable (Double) async -> Void
@@ -39,7 +39,7 @@ actor PluginInstaller {
             let stagedURL = try await runCoalesced(pluginId: registryPlugin.id) {
                 try await self.performDownloadAndStage(
                     registryPlugin,
-                    binary: binary,
+                    release: release,
                     into: userPluginsDir,
                     progress: progress
                 )
@@ -51,7 +51,7 @@ actor PluginInstaller {
         let finalURL = try await runCoalesced(pluginId: registryPlugin.id) {
             try await self.performDownloadAndCommit(
                 registryPlugin,
-                binary: binary,
+                release: release,
                 into: userPluginsDir,
                 progress: progress
             )
@@ -113,13 +113,13 @@ actor PluginInstaller {
 
     private func performDownloadAndCommit(
         _ registryPlugin: RegistryPlugin,
-        binary: RegistryBinary,
+        release: RegistryRelease,
         into userPluginsDir: URL,
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> URL {
         let extracted = try await downloadExtractVerify(
             registryPlugin,
-            binary: binary,
+            release: release,
             into: userPluginsDir,
             progress: progress
         )
@@ -136,13 +136,13 @@ actor PluginInstaller {
 
     private func performDownloadAndStage(
         _ registryPlugin: RegistryPlugin,
-        binary: RegistryBinary,
+        release: RegistryRelease,
         into userPluginsDir: URL,
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> URL {
         let extracted = try await downloadExtractVerify(
             registryPlugin,
-            binary: binary,
+            release: release,
             into: userPluginsDir,
             progress: progress
         )
@@ -158,7 +158,7 @@ actor PluginInstaller {
 
     private func downloadExtractVerify(
         _ registryPlugin: RegistryPlugin,
-        binary: RegistryBinary,
+        release: RegistryRelease,
         into userPluginsDir: URL,
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> ExtractedBundle {
@@ -169,10 +169,8 @@ actor PluginInstaller {
 
         let session = await MainActor.run { RegistryClient.shared.session }
 
-        // The registry manifest is fetched over the network, so the URL it names is untrusted
-        // input. The code-signature check is the real gate, but nothing should be fetched over
-        // cleartext on the way to it.
-        guard let downloadURL = URL(string: binary.downloadURL),
+        // The manifest is network input: the signature check is the real gate, but nothing travels over cleartext.
+        guard let downloadURL = URL(string: release.url),
               downloadURL.scheme?.lowercased() == "https" else {
             throw PluginError.downloadFailed("Invalid download URL")
         }
@@ -183,7 +181,7 @@ actor PluginInstaller {
             throw PluginError.downloadFailed("HTTP \(code)")
         }
 
-        guard DownloadedBinary.sha256Hex(ofFileAt: tempDownloadURL.path) == binary.sha256.lowercased() else {
+        guard DownloadedBinary.sha256Hex(ofFileAt: tempDownloadURL.path) == release.sha256.lowercased() else {
             throw PluginError.checksumMismatch
         }
 

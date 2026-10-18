@@ -4,5 +4,10 @@
 <dict>
 	<key>TableProPluginKitVersion</key>
 	<integer>TABLEPRO_PLUGINKIT_VERSION</integer>
+	<key>TableProProvidesDatabaseTypeIds</key>
+	<array>
+		<string>libSQL</string>
+		<string>Turso</string>
+	</array>
 </dict>
 </plist>

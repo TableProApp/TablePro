@@ -34,7 +34,7 @@ extension PluginManager {
             return
         }
 
-        await RegistryClient.shared.fetchManifest(forceRefresh: true)
+        await RegistryClient.shared.fetch(policy: .mustBeCurrent)
         refreshRegistryUpdateSet()
         guard let manifest = RegistryClient.shared.manifest else {
             reconciliationManifestAttempts += 1
@@ -94,11 +94,7 @@ extension PluginManager {
         reconciliationAttempts[lookupId] = attempts + 1
 
         do {
-            let outcome = try await updateFromRegistry(
-                registryPlugin,
-                refreshManifest: false,
-                progress: { _ in }
-            )
+            let outcome = try await updateFromRegistry(registryPlugin, progress: { _ in })
             switch outcome {
             case .installed:
                 refreshRegistryUpdateSet()
@@ -111,8 +107,8 @@ extension PluginManager {
             return .resolved
         } catch let error as PluginError where error.isPermanentReconciliationFailure {
             let action = Self.rejectedAction(registryPlugin: registryPlugin, manifestLoaded: true, kits: Self.compatibleKits)
-            updateRejectedReason(url: rejected.url, reason: incompatibleBuildReason(for: registryPlugin))
-            if case .noCompatibleBinary = error, case .awaitingCompatibleBuild = action {
+            updateRejectedReason(url: rejected.url, reason: incompatibleBuildReason(for: action))
+            if case .noCompatibleRelease = error, case .awaitingCompatibleBuild = action {
                 Self.logger.warning("Reconciliation: no compatible build published yet for '\(rejected.name)', will retry")
                 return .transient(id: lookupId)
             }
@@ -161,11 +157,8 @@ extension PluginManager {
         )
     }
 
-    private func incompatibleBuildReason(for registryPlugin: RegistryPlugin) -> String {
-        let availableKits = registryPlugin.binaries
-            .filter { $0.architecture == .current }
-            .compactMap(\.pluginKitVersion)
-        if availableKits.contains(where: { $0 > Self.currentPluginKitVersion }) {
+    private func incompatibleBuildReason(for action: RejectedPluginAction) -> String {
+        if case .requiresAppUpdate = action {
             return String(localized: "A newer version of TablePro is required for this plugin. Update TablePro to keep using it.")
         }
         return String(localized: "No compatible build is available yet. This plugin will update automatically once one is published.")
@@ -202,13 +195,14 @@ extension PluginManager {
         rejectedPlugins.removeAll { $0.url == url }
     }
 
-    func registryUpdate(for pluginId: String) -> RegistryPlugin? {
+    func registryUpdate(for pluginId: String) -> (plugin: RegistryPlugin, release: RegistryRelease)? {
         guard let manifest = RegistryClient.shared.manifest else { return nil }
         guard let installed = plugins.first(where: { $0.id == pluginId }) else { return nil }
         guard installed.source == .userInstalled else { return nil }
-        guard let registryPlugin = manifest.plugins.first(where: { $0.id == pluginId }) else { return nil }
-        return registryPlugin.version.compare(installed.version, options: .numeric) == .orderedDescending
-            ? registryPlugin : nil
+        guard let registryPlugin = manifest.plugins.first(where: { $0.id == pluginId }),
+              let release = try? Self.newestRelease(of: registryPlugin),
+              release.build > installed.build else { return nil }
+        return (registryPlugin, release)
     }
 
     func refreshRegistryUpdateSet() {
@@ -242,16 +236,14 @@ extension PluginManager {
     ) -> RejectedPluginAction {
         guard manifestLoaded else { return .awaitingCompatibleBuild }
         guard let registryPlugin else { return .notInRegistry }
-        let availableKits = registryPlugin.binaries
-            .filter { $0.architecture == .current }
-            .compactMap(\.pluginKitVersion)
-        if availableKits.contains(where: { kits.contains($0) }) {
+        do {
+            _ = try newestRelease(of: registryPlugin, kits: kits)
             return .updateAvailable(registryPlugin)
-        }
-        if availableKits.contains(where: { $0 > kits.upperBound }) {
+        } catch PluginError.appTooOldForPlugin {
             return .requiresAppUpdate
+        } catch {
+            return .awaitingCompatibleBuild
         }
-        return .awaitingCompatibleBuild
     }
 
     func hasOutdatedRejectedPlugin(forTypeId typeId: String) -> Bool {
@@ -270,7 +262,7 @@ extension PluginManager {
         }
         guard driverPlugin(for: type) == nil else { return }
         if PluginMetadataRegistry.shared.snapshot(for: type) == nil {
-            await registryClient.ensureManifest(.ifStale)
+            await registryClient.fetch(policy: .ifStale)
         }
         let unavailability = driverUnavailability(for: type, registryManifest: registryClient.manifest)
         guard unavailability == .notInstalled else {
@@ -304,7 +296,7 @@ extension PluginManager {
         guard !targets.isEmpty else { return }
         reconciliationActive = true
         defer { reconciliationActive = false }
-        await RegistryClient.shared.fetchManifest(forceRefresh: true)
+        await RegistryClient.shared.fetch(policy: .mustBeCurrent)
         guard let manifest = RegistryClient.shared.manifest else { return }
         for target in targets {
             if let lookupId = resolveRegistryId(for: target, manifest: manifest) {

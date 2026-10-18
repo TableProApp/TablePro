@@ -86,6 +86,10 @@ jobs:
       - name: Check the plugin manifest against the plugin classes
         run: python3 scripts/ci/check-plugin-manifest.py
 
+      # The app registers a plugin from these keys without loading it, and loads one without them at launch.
+      - name: Check every plugin Info.plist declares the ids its class provides
+        run: python3 scripts/ci/check-plugin-provides.py
+
       - name: Check no build script hardcodes the deployment target
         run: bash scripts/ci/check-deployment-target.sh
 

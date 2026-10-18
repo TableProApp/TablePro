@@ -30,6 +30,9 @@ internal struct ThemeLibrarySection: View {
     }
 
     private static let minimumListHeight: CGFloat = 160
+    // A two-line theme row. The table sizes a row it has not measured at this estimate, and an
+    // accessibility read makes it drop and remeasure off-screen rows, so any other value moves the rows.
+    private static let rowHeight: CGFloat = 42
     /// A grouped Form centers its sections at most this wide (measured on macOS 27), so the list keeps
     /// the edges of the sections above it.
     private static let formContentWidth: CGFloat = 704
@@ -121,6 +124,7 @@ internal struct ThemeLibrarySection: View {
                 }
             }
             .listStyle(.bordered(alternatesRowBackgrounds: false))
+            .environment(\.defaultMinListRowHeight, Self.rowHeight)
             .frame(minHeight: Self.minimumListHeight, maxHeight: .infinity)
             .accessibilityIdentifier("appearance-themes-list")
             .contextMenu(forSelectionType: ThemeLibraryItem.self) { items in

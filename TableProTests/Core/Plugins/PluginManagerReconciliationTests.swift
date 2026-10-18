@@ -7,23 +7,29 @@ import Testing
 struct PluginManagerReconciliationTests {
 
     private func makeManifest(pluginIds: [String]) -> RegistryManifest {
-        let plugins = pluginIds.map { id -> RegistryPlugin in
-            let json = """
-            {
-                "id": "\(id)",
-                "name": "Test Plugin",
-                "version": "1.0.0",
-                "summary": "test",
-                "author": {"name": "Tester"},
-                "category": "database-driver",
-                "binaries": [
-                    {"architecture": "arm64", "downloadURL": "https://x", "sha256": "deadbeef", "pluginKitVersion": 13}
-                ]
-            }
-            """
-            return try! JSONDecoder().decode(RegistryPlugin.self, from: Data(json.utf8))
+        let plugins = pluginIds.map { id in
+            RegistryPlugin(
+                id: id,
+                name: "Test Plugin",
+                iconName: nil,
+                databaseTypeIds: nil,
+                exportFormatIds: nil,
+                releases: [makeRelease(kit: 13)]
+            )
         }
-        return RegistryManifest(schemaVersion: 2, plugins: plugins)
+        return RegistryManifest(schemaVersion: RegistryManifest.supportedSchemaVersion, plugins: plugins)
+    }
+
+    private func makeRelease(kit: Int) -> RegistryRelease {
+        RegistryRelease(
+            version: "0.82.0",
+            build: 820_000 + kit,
+            channel: "stable",
+            pluginKit: kit,
+            minimumSystemVersion: "13.0",
+            url: "https://x",
+            sha256: "deadbeef"
+        )
     }
 
     private func makeRejected(
@@ -45,22 +51,14 @@ struct PluginManagerReconciliationTests {
     }
 
     private func makeRegistryPlugin(id: String = "com.example.driver", kitVersions: [Int]) throws -> RegistryPlugin {
-        let arch = PluginArchitecture.current.rawValue
-        let binaries = kitVersions
-            .map { "{\"architecture\": \"\(arch)\", \"downloadURL\": \"https://x\", \"sha256\": \"deadbeef\", \"pluginKitVersion\": \($0)}" }
-            .joined(separator: ",")
-        let json = """
-        {
-            "id": "\(id)",
-            "name": "Test Plugin",
-            "version": "1.0.0",
-            "summary": "test",
-            "author": {"name": "Tester"},
-            "category": "database-driver",
-            "binaries": [\(binaries)]
-        }
-        """
-        return try JSONDecoder().decode(RegistryPlugin.self, from: Data(json.utf8))
+        RegistryPlugin(
+            id: id,
+            name: "Test Plugin",
+            iconName: nil,
+            databaseTypeIds: nil,
+            exportFormatIds: nil,
+            releases: kitVersions.map { makeRelease(kit: $0) }
+        )
     }
 
     private func kind(_ action: RejectedPluginAction) -> String {
@@ -213,7 +211,7 @@ struct PluginManagerReconciliationTests {
 
     @Test("incompatible-build errors are permanent reconciliation failures")
     func permanentFailuresClassified() {
-        #expect(PluginError.noCompatibleBinary.isPermanentReconciliationFailure)
+        #expect(PluginError.noCompatibleRelease.isPermanentReconciliationFailure)
         #expect(PluginError.incompatibleVersion(required: 15, current: 14).isPermanentReconciliationFailure)
         #expect(PluginError.appTooOldForPlugin(oldestPublishedKit: 15, appKit: 14).isPermanentReconciliationFailure)
     }
