@@ -139,7 +139,7 @@ jobs:
             xvfb \
             xauth \
             dbus-daemon
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.98"
           components: rustfmt, clippy
@@ -242,7 +242,7 @@ jobs:
       # out the names of the tests that failed.
       - name: Keep the Meson test log
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: meson-testlog
           path: linux/_build/meson-logs/testlog.txt
@@ -330,10 +330,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.98"
-      - uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: cargo-deny@${{ env.CARGO_DENY_VERSION }},cargo-shear@${{ env.CARGO_SHEAR_VERSION }},cargo-about@${{ env.CARGO_ABOUT_VERSION }},zizmor@${{ env.ZIZMOR_VERSION }}
       - name: Advisories, bans, licenses and sources
@@ -419,7 +419,7 @@ jobs:
           fi
       - name: Keep the regenerated template
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tablepro-pot
           path: linux/po/tablepro.pot
@@ -500,14 +500,14 @@ jobs:
           sudo apt-get update
           # shellcheck disable=SC2086 # the matrix names zero or more packages
           sudo apt-get install -y build-essential pkg-config $EXTRA_PACKAGES
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.98"
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: linux
           key: ${{ matrix.package }}
-      - uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
       - name: Verify docker is available
@@ -518,7 +518,7 @@ jobs:
         run: cargo nextest run --locked --profile ci -p "$PACKAGE" --run-ignored only
       - name: Upload JUnit report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: junit-${{ matrix.package }}
           path: linux/target/nextest/ci/junit.xml
@@ -565,14 +565,14 @@ jobs:
             clang \
             libclang-dev \
             openssh-client
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.98"
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: linux
           key: tablepro-session
-      - uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
       - name: Verify docker is available
@@ -582,7 +582,7 @@ jobs:
         run: cargo nextest run --locked --profile ci -p tablepro-session --run-ignored only
       - name: Upload JUnit report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: junit-tablepro-session
           path: linux/target/nextest/ci/junit.xml
@@ -629,14 +629,14 @@ jobs:
             libkrb5-dev \
             clang \
             libclang-dev
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.98"
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: linux
           key: tablepro-app
-      - uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
       - name: Verify docker is available
@@ -646,7 +646,7 @@ jobs:
         run: cargo nextest run --locked --profile ci -p tablepro --test tracker_save_postgres --run-ignored only
       - name: Upload JUnit report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: junit-tablepro
           path: linux/target/nextest/ci/junit.xml

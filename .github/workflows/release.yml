@@ -80,7 +80,7 @@ jobs:
           critical="$("$python" scripts/release/notes.py critical "$VERSION")"
           echo "critical=$critical" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: notes
           path: build/notes
@@ -138,7 +138,7 @@ jobs:
       - name: Notarize the disk image
         run: scripts/release/notarize.sh "dist/TablePro-$VERSION.dmg"
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: app
           path: dist/
@@ -166,7 +166,7 @@ jobs:
       - uses: ./.github/actions/prepare-build
 
       - name: Set up Go for the SAP HANA helper
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: Native/HanaBridge/go.mod
           cache: false
@@ -194,7 +194,7 @@ jobs:
       - name: Package the plugins
         run: scripts/release/package.sh plugins
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: plugins
           path: dist/
@@ -216,17 +216,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: app
           path: dist
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: plugins
           path: dist
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: notes
           path: notes
@@ -263,7 +263,7 @@ jobs:
 
       - uses: ./.github/actions/setup-sparkle
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: notes
           path: notes
@@ -302,7 +302,7 @@ jobs:
       TAG: ${{ needs.verify.outputs.tag }}
       VERSION: ${{ needs.verify.outputs.version }}
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: notes
           path: notes
