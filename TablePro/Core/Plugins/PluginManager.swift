@@ -1,6 +1,5 @@
 import Combine
 import Foundation
-import Network
 import os
 import Security
 import SwiftUI
@@ -8,7 +7,7 @@ import TableProPluginKit
 
 @MainActor
 final class PluginManager: ObservableObject {
-    static let shared = PluginManager(userDefaults: AppStorageEnvironment.shared.defaults)
+    static let shared = PluginManager()
     nonisolated static let currentPluginKitVersion = pluginKitVersion(infoKey: "TableProPluginKitVersion")
 
     nonisolated static let minimumCompatiblePluginKitVersion = pluginKitVersion(
@@ -28,15 +27,13 @@ final class PluginManager: ObservableObject {
 
     @Published internal(set) var plugins: [PluginEntry] = []
 
-    @Published internal(set) var stagedUpdates: [String: StagedPluginUpdate] = [:]
-
-    @Published internal(set) var pluginsWithRegistryUpdate: Set<String> = []
+    @Published internal(set) var stagedPluginIds: Set<String> = []
 
     var isInstalling: Bool {
         PluginInstallTracker.shared.activeInstalls.values.contains { progress in
             switch progress.phase {
             case .downloading, .installing: true
-            case .stagedPendingActivation, .completed, .failed: false
+            case .completed, .failed: false
             }
         }
     }
@@ -110,13 +107,9 @@ final class PluginManager: ObservableObject {
     private var lazyImportURLs: [String: URL] = [:]
     private var activatedBundleIds: Set<String> = []
 
-    internal var reconciliationTask: Task<Void, Never>?
-    internal var reconciliationActive = false
-    internal var reconciliationAttempts: [String: Int] = [:]
-    internal var reconciliationManifestAttempts = 0
-    private var connectionStatusSubscription: AnyCancellable?
-    internal var pluginNetworkMonitor: NWPathMonitor?
-    internal var lastNetworkSatisfied = false
+    internal var registryUpdateTask: Task<Void, Never>?
+    internal var isRegistryUpdatePassRunning = false
+    internal var registryUpdateAttempts = 0
     internal var installsInFlight: Set<String> = []
 
     internal var pendingSignatureChecks: [URL] = []
@@ -124,7 +117,6 @@ final class PluginManager: ObservableObject {
     @Published var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
 
     init(
-        userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
         builtInPluginsURL: URL? = Bundle.main.builtInPlugInsURL,
         userPluginsDir: URL = PluginManager.defaultUserPluginsDir(),
         initialLoadClock: any Clock<Duration> = ContinuousClock()
@@ -182,6 +174,7 @@ final class PluginManager: ObservableObject {
 
     func loadPlugins() {
         hasStartedInitialLoad = true
+        Self.applyStagedUpdates(in: userPluginsDir)
         cleanStaleStagingArtifacts()
         discoverAllPlugins()
 
@@ -215,16 +208,13 @@ final class PluginManager: ObservableObject {
             let eagerCount = validated.count
             Self.logger.info("Loaded \(self.plugins.count) plugin(s): \(lazyCount) lazy + \(eagerCount) eager (\(self.driverPlugins.count) driver(s) active, \(self.exportPlugins.count) export(s) active, \(self.importPlugins.count) import(s) active)")
 
-            self.refreshRegistryUpdateSet()
-            self.subscribeToConnectionStatusChanges()
-            guard SoftwareUpdater.isUpdatingEnabled else { return }
-            self.startNetworkReachabilityMonitor()
-            self.scheduleReconciliation()
+            self.scheduleRegistryUpdatePass()
         }
     }
 
     private func cleanStaleStagingArtifacts() {
         let stagingRoot = PluginInstaller.stagingRoot(for: userPluginsDir)
+        let stagedUpdatesRoot = PluginInstaller.stagedUpdatesRoot(for: userPluginsDir)
         let pluginsDir = userPluginsDir
         Task.detached(priority: .utility) {
             let fm = FileManager.default
@@ -233,7 +223,7 @@ final class PluginManager: ObservableObject {
                 includingPropertiesForKeys: nil,
                 options: [.skipsHiddenFiles]
             ) {
-                for item in stagingContents {
+                for item in stagingContents where item.lastPathComponent != stagedUpdatesRoot.lastPathComponent {
                     try? fm.removeItem(at: item)
                 }
             }
@@ -247,18 +237,6 @@ final class PluginManager: ObservableObject {
                 }
             }
         }
-    }
-
-    private func subscribeToConnectionStatusChanges() {
-        guard connectionStatusSubscription == nil else { return }
-        connectionStatusSubscription = AppEvents.shared.connectionStatusChanged
-            .receive(on: RunLoop.main)
-            .sink { [weak self] change in
-                guard let self else { return }
-                if case .disconnected = change.status {
-                    self.reattemptStagedUpdates()
-                }
-            }
     }
 
     // MARK: - Lazy Plugin Activation
@@ -466,8 +444,9 @@ final class PluginManager: ObservableObject {
         compatibleKits.contains(kit)
     }
 
+    // Bundle caches Info.plist per path, so a rejected plugin repaired in place still reports its old kit.
     nonisolated internal static func validateBundleVersions(_ bundle: Bundle) throws {
-        guard let version = bundle.infoDictionary?["TableProPluginKitVersion"] as? Int else {
+        guard let version = infoPlist(at: bundle.bundleURL)["TableProPluginKitVersion"] as? Int else {
             throw PluginError.pluginOutdated(
                 pluginVersion: 0,
                 requiredVersion: currentPluginKitVersion
@@ -505,24 +484,18 @@ final class PluginManager: ObservableObject {
         return bundle
     }
 
-    nonisolated static func bundleShortVersion(at url: URL) -> String? {
+    nonisolated static func infoPlist(at url: URL) -> [String: Any] {
         let infoPlistURL = url.appendingPathComponent("Contents/Info.plist")
         guard let data = try? Data(contentsOf: infoPlistURL),
               let plist = try? PropertyListSerialization.propertyList(from: data, format: nil),
               let dictionary = plist as? [String: Any] else {
-            return nil
+            return [:]
         }
-        return dictionary["CFBundleShortVersionString"] as? String
+        return dictionary
     }
 
     nonisolated static func bundleBuild(at url: URL) -> Int {
-        let infoPlistURL = url.appendingPathComponent("Contents/Info.plist")
-        guard let data = try? Data(contentsOf: infoPlistURL),
-              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil),
-              let dictionary = plist as? [String: Any] else {
-            return 0
-        }
-        return (dictionary["CFBundleVersion"] as? String).flatMap { Int($0) } ?? 0
+        (infoPlist(at: url)["CFBundleVersion"] as? String).flatMap { Int($0) } ?? 0
     }
 
     private struct EagerLoadFailure {
@@ -586,7 +559,7 @@ final class PluginManager: ObservableObject {
         let importType = principalClass as? any ImportFormatPlugin.Type
 
         let version: String
-        if let declared = Self.bundleShortVersion(at: url) {
+        if let declared = Self.infoPlist(at: url)["CFBundleShortVersionString"] as? String {
             version = declared
         } else {
             Self.logger.warning("Plugin '\(bundleId)' missing CFBundleShortVersionString; defaulting to 0.0.0")
@@ -770,16 +743,8 @@ final class PluginManager: ObservableObject {
     }
 
     @discardableResult
-    func loadPluginAsync(
-        at url: URL,
-        source: PluginSource,
-        replacingBundleId: String? = nil
-    ) async throws -> PluginEntry {
+    func loadPluginAsync(at url: URL, source: PluginSource) async throws -> PluginEntry {
         let loaded = try await Self.validateAndLoadBundleAsync(at: url, source: source)
-
-        if let replacingBundleId {
-            replaceExistingPlugin(bundleId: replacingBundleId)
-        }
 
         guard let entry = registerBundle(loaded, url: url, source: source) else {
             throw PluginError.invalidBundle("Principal class does not conform to TableProPlugin")
@@ -813,13 +778,6 @@ final class PluginManager: ObservableObject {
         guard let driver = driverPlugins[type.pluginTypeId] else { return nil }
         guard let provider = driver as? PluginBrowseFilterProvider else { return nil }
         return provider.browseFilterDescriptor
-    }
-
-    func replaceExistingPlugin(bundleId: String) {
-        guard let existingIndex = plugins.firstIndex(where: { $0.id == bundleId }) else { return }
-        unregisterCapabilities(pluginId: bundleId)
-        plugins[existingIndex].bundle.unload()
-        plugins.remove(at: existingIndex)
     }
 
     func unregisterCapabilities(pluginId: String) {

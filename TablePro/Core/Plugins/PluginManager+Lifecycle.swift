@@ -1,8 +1,3 @@
-//
-//  PluginManager+Lifecycle.swift
-//  TablePro
-//
-
 import Foundation
 import os
 import Security
@@ -33,13 +28,9 @@ extension PluginManager {
         }
 
         PluginSettingsStorage(pluginId: id).removeAll()
-
-        if stagedUpdates[id] != nil {
-            await discardStagedUpdate(pluginId: id)
-        }
+        removeStagedUpdate(pluginId: id)
 
         queryBuildingDriverCache.removeAll()
-        refreshRegistryUpdateSet()
 
         Self.logger.info("Uninstalled plugin '\(id)'")
         needsRestart = true

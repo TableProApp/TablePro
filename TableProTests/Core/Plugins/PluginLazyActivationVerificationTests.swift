@@ -1,8 +1,3 @@
-//
-//  PluginLazyActivationVerificationTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -32,10 +27,7 @@ struct PluginLazyActivationVerificationTests {
         let infoData = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
         try infoData.write(to: contentsURL.appendingPathComponent("Info.plist"))
 
-        let suite = try EphemeralDefaults()
-        let defaults = suite.defaults
-
-        let manager = PluginManager(userDefaults: defaults, builtInPluginsURL: nil, userPluginsDir: userPluginsDir)
+        let manager = PluginManager(builtInPluginsURL: nil, userPluginsDir: userPluginsDir)
         let bundle = try #require(Bundle(url: bundleURL))
         manager.plugins = [
             PluginEntry(
@@ -91,10 +83,7 @@ struct PluginLazyActivationVerificationTests {
         try infoData.write(to: contentsURL.appendingPathComponent("Info.plist"))
         try Data("not a mach-o binary".utf8).write(to: macosURL.appendingPathComponent("Broken"))
 
-        let suite = try EphemeralDefaults()
-        let defaults = suite.defaults
-
-        let manager = PluginManager(userDefaults: defaults, builtInPluginsURL: nil, userPluginsDir: userPluginsDir)
+        let manager = PluginManager(builtInPluginsURL: nil, userPluginsDir: userPluginsDir)
         let bundle = try #require(Bundle(url: bundleURL))
         manager.plugins = [
             PluginEntry(

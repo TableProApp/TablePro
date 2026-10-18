@@ -91,13 +91,4 @@ enum PluginError: LocalizedError {
         if case .pluginOutdated = self { return true }
         return false
     }
-
-    var isPermanentReconciliationFailure: Bool {
-        switch self {
-        case .noCompatibleRelease, .appTooOldForPlugin, .incompatibleVersion:
-            return true
-        default:
-            return false
-        }
-    }
 }

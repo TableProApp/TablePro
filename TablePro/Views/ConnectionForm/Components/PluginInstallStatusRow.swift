@@ -47,9 +47,6 @@ struct PluginInstallStatusRow: View {
             labelledSpinner(String(localized: "Downloading…"))
         case .installing:
             labelledSpinner(String(localized: "Installing…"))
-        case .stagedPendingActivation:
-            Text("Ready after restart")
-                .foregroundStyle(.secondary)
         case .completed:
             Text("Installed")
                 .foregroundStyle(.secondary)

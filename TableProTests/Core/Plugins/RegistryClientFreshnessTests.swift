@@ -45,12 +45,6 @@ private final class MockRegistryProtocol: URLProtocol, @unchecked Sendable {
 @Suite("RegistryClient freshness", .serialized)
 @MainActor
 struct RegistryClientFreshnessTests {
-    private let suite: EphemeralDefaults
-
-    init() throws {
-        suite = try EphemeralDefaults()
-    }
-
     private static let testTypeId = "TestFreshnessDB"
 
     private func manifestURL() throws -> URL {
@@ -78,7 +72,7 @@ struct RegistryClientFreshnessTests {
 
     private func makeEnvironment(
         cachedManifest: Data? = nil
-    ) throws -> (client: RegistryClient, defaults: UserDefaults, tempDir: URL) {
+    ) throws -> (client: RegistryClient, tempDir: URL) {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("registry-freshness-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
@@ -97,12 +91,12 @@ struct RegistryClientFreshnessTests {
         config.protocolClasses = [MockRegistryProtocol.self]
         config.urlCache = cache
         let client = RegistryClient(manifestURL: url, session: URLSession(configuration: config))
-        return (client, suite.defaults, tempDir)
+        return (client, tempDir)
     }
 
     @Test("The client asks for the manifest at the URL it was given")
     func requestsTheInjectedURL() throws {
-        let (client, _, _) = try makeEnvironment()
+        let (client, _) = try makeEnvironment()
 
         #expect(client.makeRequest(policy: .ifStale).url == client.manifestURL)
         #expect(client.manifestURL.host() == "registry.invalid")
@@ -119,7 +113,7 @@ struct RegistryClientFreshnessTests {
 
     @Test("ifStale lets the HTTP cache answer, mustBeCurrent revalidates with the origin")
     func cachePolicies() throws {
-        let (client, _, _) = try makeEnvironment()
+        let (client, _) = try makeEnvironment()
 
         #expect(client.makeRequest(policy: .ifStale).cachePolicy == .useProtocolCachePolicy)
         #expect(client.makeRequest(policy: .mustBeCurrent).cachePolicy == .reloadRevalidatingCacheData)
@@ -127,7 +121,7 @@ struct RegistryClientFreshnessTests {
 
     @Test("A cached v3 response is decoded when the client starts")
     func cachedManifestDecodedAtInit() throws {
-        let (client, _, _) = try makeEnvironment(cachedManifest: manifestData(includingTestPlugin: true))
+        let (client, _) = try makeEnvironment(cachedManifest: manifestData(includingTestPlugin: true))
 
         #expect(client.manifest?.plugins.map(\.id) == ["com.test.freshness-driver"])
         #expect(!client.isManifestCurrent)
@@ -135,7 +129,7 @@ struct RegistryClientFreshnessTests {
 
     @Test("A cached v2 response is ignored")
     func cachedSchemaTwoIgnored() throws {
-        let (client, _, _) = try makeEnvironment(
+        let (client, _) = try makeEnvironment(
             cachedManifest: manifestData(includingTestPlugin: false, schemaVersion: 2)
         )
 
@@ -148,7 +142,7 @@ struct RegistryClientFreshnessTests {
             (200, manifestData(includingTestPlugin: false)),
             (200, manifestData(includingTestPlugin: false))
         ])
-        let (client, _, _) = try makeEnvironment()
+        let (client, _) = try makeEnvironment()
 
         async let first: Void = client.fetch(policy: .ifStale)
         async let second: Void = client.fetch(policy: .ifStale)
@@ -164,7 +158,7 @@ struct RegistryClientFreshnessTests {
             (200, manifestData(includingTestPlugin: false)),
             (200, manifestData(includingTestPlugin: true))
         ])
-        let (client, _, _) = try makeEnvironment()
+        let (client, _) = try makeEnvironment()
 
         await client.fetch(policy: .ifStale)
         #expect(client.manifest?.plugins.isEmpty == true)
@@ -177,7 +171,7 @@ struct RegistryClientFreshnessTests {
     @Test("A failed refresh keeps the cached manifest and is not current")
     func failedRefreshKeepsCachedManifest() async throws {
         MockRegistryProtocol.reset(responses: [(500, Data())])
-        let (client, _, _) = try makeEnvironment(cachedManifest: manifestData(includingTestPlugin: true))
+        let (client, _) = try makeEnvironment(cachedManifest: manifestData(includingTestPlugin: true))
 
         await client.fetch(policy: .mustBeCurrent)
 
@@ -188,7 +182,7 @@ struct RegistryClientFreshnessTests {
     @Test("A v2 document from the server is refused and the cached manifest stays")
     func fetchedSchemaTwoRefused() async throws {
         MockRegistryProtocol.reset(responses: [(200, manifestData(includingTestPlugin: false, schemaVersion: 2))])
-        let (client, _, _) = try makeEnvironment(cachedManifest: manifestData(includingTestPlugin: true))
+        let (client, _) = try makeEnvironment(cachedManifest: manifestData(includingTestPlugin: true))
 
         await client.fetch(policy: .mustBeCurrent)
 
@@ -201,10 +195,9 @@ struct RegistryClientFreshnessTests {
         let stale = manifestData(includingTestPlugin: false)
         let fresh = manifestData(includingTestPlugin: true)
         MockRegistryProtocol.reset(responses: [(200, stale), (200, fresh)])
-        let (client, defaults, tempDir) = try makeEnvironment(cachedManifest: stale)
+        let (client, tempDir) = try makeEnvironment(cachedManifest: stale)
 
         let manager = PluginManager(
-            userDefaults: defaults,
             builtInPluginsURL: nil,
             userPluginsDir: tempDir.appendingPathComponent("Plugins", isDirectory: true)
         )
@@ -230,10 +223,9 @@ struct RegistryClientFreshnessTests {
     @Test("unreachable registry reports a connection problem, not a missing plugin")
     func unreachableRegistryReportsConnectionProblem() async throws {
         MockRegistryProtocol.reset(responses: [(500, Data()), (500, Data())])
-        let (client, defaults, tempDir) = try makeEnvironment()
+        let (client, tempDir) = try makeEnvironment()
 
         let manager = PluginManager(
-            userDefaults: defaults,
             builtInPluginsURL: nil,
             userPluginsDir: tempDir.appendingPathComponent("Plugins", isDirectory: true)
         )
@@ -256,9 +248,8 @@ struct RegistryClientFreshnessTests {
     func exportFormatResolvesByRegistryId() async throws {
         let fresh = manifestData(includingTestPlugin: true)
         MockRegistryProtocol.reset(responses: [(200, fresh)])
-        let (client, defaults, tempDir) = try makeEnvironment()
+        let (client, tempDir) = try makeEnvironment()
         let manager = PluginManager(
-            userDefaults: defaults,
             builtInPluginsURL: nil,
             userPluginsDir: tempDir.appendingPathComponent("Plugins", isDirectory: true)
         )
@@ -283,9 +274,8 @@ struct RegistryClientFreshnessTests {
     func exportFormatMissingFromRegistry() async throws {
         let empty = manifestData(includingTestPlugin: false)
         MockRegistryProtocol.reset(responses: [(200, empty), (200, empty)])
-        let (client, defaults, tempDir) = try makeEnvironment()
+        let (client, tempDir) = try makeEnvironment()
         let manager = PluginManager(
-            userDefaults: defaults,
             builtInPluginsURL: nil,
             userPluginsDir: tempDir.appendingPathComponent("Plugins", isDirectory: true)
         )

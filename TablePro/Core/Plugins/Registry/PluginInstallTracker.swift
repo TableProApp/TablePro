@@ -1,8 +1,3 @@
-//
-//  PluginInstallTracker.swift
-//  TablePro
-//
-
 import Combine
 import Foundation
 
@@ -46,18 +41,6 @@ final class PluginInstallTracker: ObservableObject {
         }
     }
 
-    func markStaged(pluginId: String, newVersion: String) {
-        if activeInstalls[pluginId] == nil {
-            activeInstalls[pluginId] = InstallProgress(phase: .stagedPendingActivation(newVersion: newVersion))
-        } else {
-            activeInstalls[pluginId]?.phase = .stagedPendingActivation(newVersion: newVersion)
-        }
-    }
-
-    func clearInstall(pluginId: String) {
-        activeInstalls.removeValue(forKey: pluginId)
-    }
-
     /// A connection knows its `DatabaseType`, not the registry plugin id, so without this the
     /// form has no way to reach the progress the installer is already publishing.
     func state(forDatabaseType type: DatabaseType) -> InstallProgress? {
@@ -80,7 +63,6 @@ struct InstallProgress: Equatable {
     enum Phase: Equatable {
         case downloading(fraction: Double)
         case installing
-        case stagedPendingActivation(newVersion: String)
         case completed
         case failed(String)
     }

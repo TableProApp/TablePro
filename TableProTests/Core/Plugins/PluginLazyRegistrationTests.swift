@@ -9,7 +9,6 @@ struct PluginLazyRegistrationTests {
         let manager: PluginManager
         let pluginsDir: URL
         let root: URL
-        let defaults: EphemeralDefaults
     }
 
     private func makeFixture() throws -> Fixture {
@@ -17,9 +16,8 @@ struct PluginLazyRegistrationTests {
             .appendingPathComponent("PluginLazyRegistrationTests-\(UUID().uuidString)", isDirectory: true)
         let pluginsDir = root.appendingPathComponent("Plugins", isDirectory: true)
         try FileManager.default.createDirectory(at: pluginsDir, withIntermediateDirectories: true)
-        let defaults = try EphemeralDefaults()
-        let manager = PluginManager(userDefaults: defaults.defaults, builtInPluginsURL: nil, userPluginsDir: pluginsDir)
-        return Fixture(manager: manager, pluginsDir: pluginsDir, root: root, defaults: defaults)
+        let manager = PluginManager(builtInPluginsURL: nil, userPluginsDir: pluginsDir)
+        return Fixture(manager: manager, pluginsDir: pluginsDir, root: root)
     }
 
     // The executable is not Mach-O, so any attempt to load the bundle fails and is recorded.

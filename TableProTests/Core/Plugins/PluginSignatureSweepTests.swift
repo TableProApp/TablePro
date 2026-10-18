@@ -1,8 +1,3 @@
-//
-//  PluginSignatureSweepTests.swift
-//  TableProTests
-//
-
 @testable import TablePro
 import TableProPluginKit
 import XCTest
@@ -10,7 +5,6 @@ import XCTest
 @MainActor
 final class PluginSignatureSweepTests: XCTestCase {
     private var root: URL!
-    private var suite: EphemeralDefaults!
     private var manager: PluginManager!
 
     override func setUp() async throws {
@@ -18,9 +12,7 @@ final class PluginSignatureSweepTests: XCTestCase {
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent("PluginSignatureSweepTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        suite = try EphemeralDefaults()
         manager = PluginManager(
-            userDefaults: suite.defaults,
             builtInPluginsURL: nil,
             userPluginsDir: root.appendingPathComponent("Plugins", isDirectory: true)
         )
@@ -28,7 +20,6 @@ final class PluginSignatureSweepTests: XCTestCase {
 
     override func tearDown() async throws {
         manager = nil
-        suite = nil
         if let root { try? FileManager.default.removeItem(at: root) }
         root = nil
         try await super.tearDown()

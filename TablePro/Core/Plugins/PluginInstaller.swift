@@ -7,9 +7,6 @@ actor PluginInstaller {
 
     static let logger = Logger(subsystem: "com.TablePro", category: "PluginInstaller")
 
-    private var activeTasks: [String: Task<URL, Error>] = [:]
-    private var stagedUpdates: [String: URL] = [:]
-
     private init() {}
 
     func install(
@@ -18,125 +15,23 @@ actor PluginInstaller {
         into userPluginsDir: URL,
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> URL {
-        try await runCoalesced(pluginId: registryPlugin.id) {
-            try await self.performDownloadAndCommit(
-                registryPlugin,
-                release: release,
-                into: userPluginsDir,
-                progress: progress
-            )
-        }
-    }
-
-    func update(
-        _ registryPlugin: RegistryPlugin,
-        release: RegistryRelease,
-        into userPluginsDir: URL,
-        hasLiveConnections: Bool,
-        progress: @escaping @Sendable (Double) async -> Void
-    ) async throws -> PluginUpdateResult {
-        if hasLiveConnections {
-            let stagedURL = try await runCoalesced(pluginId: registryPlugin.id) {
-                try await self.performDownloadAndStage(
-                    registryPlugin,
-                    release: release,
-                    into: userPluginsDir,
-                    progress: progress
-                )
-            }
-            stagedUpdates[registryPlugin.id] = stagedURL
-            return .staged(at: stagedURL)
-        }
-
-        let finalURL = try await runCoalesced(pluginId: registryPlugin.id) {
-            try await self.performDownloadAndCommit(
-                registryPlugin,
-                release: release,
-                into: userPluginsDir,
-                progress: progress
-            )
-        }
-        return .installed(pluginURL: finalURL)
-    }
-
-    func commitStagedUpdate(pluginId: String, into userPluginsDir: URL) async throws -> URL {
-        guard let stagedURL = stagedUpdates[pluginId] else {
-            throw PluginError.notFound
-        }
-        guard let stagedBundle = Bundle(url: stagedURL) else {
-            throw PluginError.invalidBundle("Cannot create bundle from \(stagedURL.lastPathComponent)")
-        }
-        try PluginCodeSignatureVerifier.verify(bundle: stagedBundle)
-        let bundleName = stagedURL.deletingPathExtension().lastPathComponent
-        let destURL = userPluginsDir.appendingPathComponent("\(bundleName).tableplugin", isDirectory: true)
-        let finalURL = try Self.atomicReplace(stagedBundleURL: stagedURL, destURL: destURL)
-        stagedUpdates.removeValue(forKey: pluginId)
-        try? FileManager.default.removeItem(at: stagedURL.deletingLastPathComponent())
-        return finalURL
-    }
-
-    func discardStagedUpdate(pluginId: String) {
-        guard let stagedURL = stagedUpdates.removeValue(forKey: pluginId) else { return }
-        try? FileManager.default.removeItem(at: stagedURL.deletingLastPathComponent())
-    }
-
-    func hasStagedUpdate(pluginId: String) -> Bool {
-        stagedUpdates[pluginId] != nil
-    }
-
-    func stagedURL(for pluginId: String) -> URL? {
-        stagedUpdates[pluginId]
-    }
-
-    func cancelInstall(pluginId: String) {
-        activeTasks[pluginId]?.cancel()
-    }
-
-    // MARK: - Coalescing
-
-    private func runCoalesced(
-        pluginId: String,
-        body: @Sendable @escaping () async throws -> URL
-    ) async throws -> URL {
-        if let existing = activeTasks[pluginId] {
-            return try await existing.value
-        }
-        let task = Task<URL, Error> {
-            try await body()
-        }
-        activeTasks[pluginId] = task
-        defer { activeTasks.removeValue(forKey: pluginId) }
-        return try await task.value
-    }
-
-    // MARK: - Download + commit (no live connections)
-
-    private func performDownloadAndCommit(
-        _ registryPlugin: RegistryPlugin,
-        release: RegistryRelease,
-        into userPluginsDir: URL,
-        progress: @escaping @Sendable (Double) async -> Void
-    ) async throws -> URL {
         let extracted = try await downloadExtractVerify(
             registryPlugin,
             release: release,
             into: userPluginsDir,
             progress: progress
         )
-
-        defer {
-            try? FileManager.default.removeItem(at: extracted.workingDir)
-        }
+        defer { try? FileManager.default.removeItem(at: extracted.workingDir) }
 
         let destURL = userPluginsDir.appendingPathComponent(extracted.bundleURL.lastPathComponent, isDirectory: true)
         return try Self.atomicReplace(stagedBundleURL: extracted.bundleURL, destURL: destURL)
     }
 
-    // MARK: - Download + stage (live connections)
-
-    private func performDownloadAndStage(
+    func stage(
         _ registryPlugin: RegistryPlugin,
         release: RegistryRelease,
+        pluginId: String,
+        bundleName: String,
         into userPluginsDir: URL,
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> URL {
@@ -146,7 +41,14 @@ actor PluginInstaller {
             into: userPluginsDir,
             progress: progress
         )
-        return extracted.bundleURL
+        defer { try? FileManager.default.removeItem(at: extracted.workingDir) }
+
+        return try Self.stage(
+            bundleAt: extracted.bundleURL,
+            pluginId: pluginId,
+            bundleName: bundleName,
+            userPluginsDir: userPluginsDir
+        )
     }
 
     // MARK: - Download / extract / verify / quarantine-strip
@@ -230,6 +132,32 @@ actor PluginInstaller {
     nonisolated static func stagingRoot(for userPluginsDir: URL) -> URL {
         userPluginsDir.deletingLastPathComponent()
             .appendingPathComponent("PluginStaging", isDirectory: true)
+    }
+
+    nonisolated static func stagedUpdatesRoot(for userPluginsDir: URL) -> URL {
+        stagingRoot(for: userPluginsDir).appendingPathComponent("Updates", isDirectory: true)
+    }
+
+    nonisolated static func stagedUpdateDirectory(for pluginId: String, in userPluginsDir: URL) -> URL {
+        stagedUpdatesRoot(for: userPluginsDir).appendingPathComponent(pluginId, isDirectory: true)
+    }
+
+    @discardableResult
+    nonisolated static func stage(
+        bundleAt bundleURL: URL,
+        pluginId: String,
+        bundleName: String,
+        userPluginsDir: URL
+    ) throws -> URL {
+        let fm = FileManager.default
+        let stagedDir = stagedUpdateDirectory(for: pluginId, in: userPluginsDir)
+        if fm.fileExists(atPath: stagedDir.path) {
+            try fm.removeItem(at: stagedDir)
+        }
+        try fm.createDirectory(at: stagedDir, withIntermediateDirectories: true)
+        let stagedURL = stagedDir.appendingPathComponent(bundleName, isDirectory: true)
+        try fm.moveItem(at: bundleURL, to: stagedURL)
+        return stagedURL
     }
 
     nonisolated static func extractZip(at zipURL: URL, into destDir: URL) throws {
@@ -316,9 +244,4 @@ private final class DownloadProgressObserver: NSObject, URLSessionTaskDelegate, 
         }
         continuation.finish()
     }
-}
-
-enum PluginUpdateResult: Sendable {
-    case installed(pluginURL: URL)
-    case staged(at: URL)
 }

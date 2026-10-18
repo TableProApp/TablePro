@@ -781,7 +781,6 @@ final class WelcomeViewModelTests {
 
     @Test func testARejectedPluginFlagsEveryConnectionOfTheTypesItProvides() {
         let pluginManager = PluginManager(
-            userDefaults: defaults,
             builtInPluginsURL: nil,
             userPluginsDir: connectionFileURL.deletingLastPathComponent().appendingPathComponent("Plugins")
         )

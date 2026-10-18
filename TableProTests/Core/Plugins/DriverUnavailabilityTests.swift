@@ -37,18 +37,11 @@ private final class UnreachableRegistryProtocol: URLProtocol, @unchecked Sendabl
 @Suite("Driver unavailability", .serialized)
 @MainActor
 struct DriverUnavailabilityTests {
-    private let managerSuite: EphemeralDefaults
-
-    init() throws {
-        managerSuite = try EphemeralDefaults()
-    }
-
     private func makeManager() throws -> (manager: PluginManager, root: URL) {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("DriverUnavailability-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let manager = PluginManager(
-            userDefaults: managerSuite.defaults,
             builtInPluginsURL: nil,
             userPluginsDir: root.appendingPathComponent("Plugins", isDirectory: true)
         )

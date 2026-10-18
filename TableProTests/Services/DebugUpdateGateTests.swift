@@ -19,14 +19,12 @@ struct DebugUpdateGateTests {
         #expect(!AppDelegate().validateMenuItem(item))
     }
 
-    @Test("A Debug plugin load starts neither the plugin update pass nor its network monitor")
+    @Test("A Debug plugin load does not start the plugin update pass")
     func pluginLoadSkipsTheUpdatePass() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("DebugUpdateGateTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let defaults = try EphemeralDefaults()
         let manager = PluginManager(
-            userDefaults: defaults.defaults,
             builtInPluginsURL: nil,
             userPluginsDir: root.appendingPathComponent("Plugins", isDirectory: true)
         )
@@ -35,7 +33,6 @@ struct DebugUpdateGateTests {
         await manager.waitForInitialLoad()
 
         #expect(manager.hasFinishedInitialLoad)
-        #expect(manager.reconciliationTask == nil)
-        #expect(manager.pluginNetworkMonitor == nil)
+        #expect(manager.registryUpdateTask == nil)
     }
 }

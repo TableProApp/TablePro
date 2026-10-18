@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct InstalledPluginsView: View {
     @ObservedObject private var pluginManager = PluginManager.shared
     @ObservedObject private var registryClient: RegistryClient
+    // isInstalling reads the tracker, which the plugin manager does not republish.
     @ObservedObject private var installTracker = PluginInstallTracker.shared
     @ObservedObject private var navigation = PluginsSettingsNavigation.shared
 
@@ -336,15 +337,15 @@ struct InstalledPluginsView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+                if pluginManager.stagedPluginIds.contains(plugin.id) {
+                    Text("Updates when TablePro restarts")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Spacer()
-
-            if pluginManager.registryUpdate(for: plugin.id) != nil {
-                Image(systemName: "arrow.up.circle.fill")
-                    .foregroundStyle(.blue)
-                    .font(.caption)
-            }
 
             Text(plugin.source == .builtIn ? String(localized: "Built-in") : String(localized: "User"))
                 .font(.caption2)
@@ -371,10 +372,6 @@ struct InstalledPluginsView: View {
                     Text("v\(selected.version), \(selected.source == .builtIn ? String(localized: "Built-in") : String(localized: "User-installed"))")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-
-                    if let update = pluginManager.registryUpdate(for: selected.id) {
-                        updateActionView(for: selected, registryPlugin: update.plugin, version: update.release.version)
-                    }
 
                     if !selected.pluginDescription.isEmpty {
                         Text(selected.pluginDescription)
@@ -457,93 +454,11 @@ struct InstalledPluginsView: View {
         }
     }
 
-    // MARK: - Update
-
-    @ViewBuilder
-    private func updateActionView(for plugin: PluginEntry, registryPlugin: RegistryPlugin, version: String) -> some View {
-        if let progress = installTracker.state(for: plugin.id) {
-            switch progress.phase {
-            case .downloading(let fraction):
-                HStack(spacing: 8) {
-                    ProgressView(value: fraction)
-                    Text("\(Int(fraction * 100))%")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-            case .installing:
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Updating…")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-            case .stagedPendingActivation(let newVersion):
-                HStack(spacing: 8) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .foregroundStyle(.orange)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(format: String(localized: "v%@ ready to activate"), newVersion))
-                            .font(.callout)
-                        Text(String(localized: "Close active connections to apply."))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button(String(localized: "Activate Now")) {
-                        activateStagedPlugin(plugin)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    Button(String(localized: "On Quit")) {
-                        installTracker.clearInstall(pluginId: plugin.id)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .help(String(localized: "Activate next time you launch TablePro"))
-                }
-            case .completed:
-                Label(
-                    String(format: String(localized: "Updated to v%@"), version),
-                    systemImage: "checkmark.circle.fill"
-                )
-                .foregroundStyle(.green)
-                .font(.callout)
-            case .failed:
-                Button(String(localized: "Retry Update")) { updatePlugin(registryPlugin) }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-            }
-        } else {
-            HStack(spacing: 8) {
-                Text(String(format: String(localized: "v%@ available"), version))
-                    .font(.callout)
-                    .foregroundStyle(.blue)
-                Button(String(localized: "Update")) { updatePlugin(registryPlugin) }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-            }
-        }
-    }
-
     private func updatePlugin(_ registryPlugin: RegistryPlugin) {
         Task {
             let result = await pluginManager.performRegistryUpdate(registryPlugin)
             if case .failed(let error) = result {
                 errorAlertTitle = String(localized: "Plugin Update Failed")
-                errorAlertMessage = error.localizedDescription
-                showErrorAlert = true
-            }
-        }
-    }
-
-    private func activateStagedPlugin(_ plugin: PluginEntry) {
-        Task {
-            do {
-                _ = try await pluginManager.commitStagedUpdate(pluginId: plugin.id)
-            } catch {
-                errorAlertTitle = String(localized: "Activation Failed")
                 errorAlertMessage = error.localizedDescription
                 showErrorAlert = true
             }

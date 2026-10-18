@@ -1,8 +1,3 @@
-//
-//  MacImportLibraryStoreTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import TableProImport
@@ -275,9 +270,7 @@ struct MacImportLibraryStoreTests {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MacImportEnvironment-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let suite = try EphemeralDefaults()
         let manager = PluginManager(
-            userDefaults: suite.defaults,
             builtInPluginsURL: nil,
             userPluginsDir: root.appendingPathComponent("Plugins", isDirectory: true)
         )

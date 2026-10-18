@@ -1,8 +1,3 @@
-//
-//  PluginManagerInitialLoadTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import TableProTestSupport
@@ -19,21 +14,18 @@ struct PluginManagerInitialLoadTests {
         let manager: PluginManager
         let clock: ManualClock
         let root: URL
-        let defaults: EphemeralDefaults
     }
 
     private func makeFixture() throws -> Fixture {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("PluginManagerInitialLoadTests-\(UUID().uuidString)", isDirectory: true)
-        let defaults = try EphemeralDefaults()
         let clock = ManualClock()
         let manager = PluginManager(
-            userDefaults: defaults.defaults,
             builtInPluginsURL: nil,
             userPluginsDir: root.appendingPathComponent("Plugins", isDirectory: true),
             initialLoadClock: clock
         )
-        return Fixture(manager: manager, clock: clock, root: root, defaults: defaults)
+        return Fixture(manager: manager, clock: clock, root: root)
     }
 
     @Test("A wait before any load has started returns at once instead of sitting out its timeout")
