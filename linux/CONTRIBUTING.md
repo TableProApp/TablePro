@@ -137,7 +137,7 @@ A user-visible change gets one entry under `[Unreleased]` in [CHANGELOG.md](CHAN
 
 ## Pull requests
 
-1. Branch from `linux`, where this subproject lives until the first Linux release, and open the PR against `linux`. Branch name format: `feat/short-slug`, `fix/short-slug`, `refactor/short-slug`.
+1. Branch off `main` and open the PR against `main`, as the root [CONTRIBUTING.md](../CONTRIBUTING.md#branch-naming) says.
 2. PR title is the conventional commit message you intend to land.
 3. The PR description follows the repository's `.github/pull_request_template.md`.
 4. Run the [fast-job commands](#fast-job-commands) locally before pushing.

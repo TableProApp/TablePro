@@ -65,7 +65,7 @@ TablePro는 네 번째 선택지입니다. 네이티브이고 여러 데이터�
 |----------|--------|
 | macOS 13+ | 안정 버전 |
 | iOS / iPadOS 18+ | 안정 버전 |
-| Linux | 프로토타입, 아직 설치할 수 없음 |
+| Linux (GNOME 50+) | [`linux/`](linux/README.md)에서 개발 중, 아직 출시 전 |
 | Windows | 지원하지 않음 |
 
 ## 지원 데이터베이스
@@ -103,6 +103,8 @@ brew install --cask tablepro
 또는 [GitHub Releases](https://github.com/TableProApp/TablePro/releases/latest)에서 다운로드하세요.
 
 ## 빌드 방법
+
+아래 단계는 macOS와 iOS 앱을 빌드합니다. Linux 앱은 Meson과 Cargo로 빌드합니다([`linux/README.md`](linux/README.md)).
 
 TablePro를 빌드하려면 Xcode 26 이상과 [XcodeGen](https://github.com/yonaskolb/XcodeGen)이 필요합니다.
 

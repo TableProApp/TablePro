@@ -6,12 +6,10 @@ The native Linux app. Every profile has these seven sections in this order, so a
 
 A report from Linux. The code is `linux/`: a Cargo workspace of crates under `linux/crates/` (the GTK app, the UI-free core, storage, sessions, networking, SSH and one crate per driver), built by Meson. Drivers are linked in at compile time; there are no plugins. A fix lands in one or more crates; name them.
 
-`linux/` exists only on the `linux` branch until the first Linux release, so a checkout of `main` cannot fix it.
-
 ## Base
 
-- Worktree base: `origin/linux`.
-- Pull request base: `linux`.
+- Worktree base: `origin/main`.
+- Pull request base: `main`.
 
 ## Done
 

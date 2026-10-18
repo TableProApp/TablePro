@@ -4,10 +4,6 @@ The native Linux app: Rust, GTK 4 and libadwaita through gtk-rs, built with Meso
 
 This is the guide for work under `linux/`. The root `AGENTS.md` describes the macOS and iOS apps; of it, only the principles named below, "Writing style" and the commit rules apply here. Claude Code loads this file through `linux/CLAUDE.md` once a file under `linux/` is read; Codex reads it when started in `linux/`, so otherwise read it yourself.
 
-## Branch
-
-`linux/` lives on the `linux` branch until the first Linux release, and `main` does not have it. Start work from `origin/linux` and open the pull request against `linux`.
-
 ## Principles
 
 1. **Security first, fix the cause, tests define behavior**, as in the root `AGENTS.md`.

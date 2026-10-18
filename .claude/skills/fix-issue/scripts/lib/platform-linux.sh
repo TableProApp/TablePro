@@ -41,7 +41,7 @@ load_rust_environment() {
 require_linux_tree() {
     [ -f "$LINUX_DIR/meson.build" ] && return 0
     STATUS=INCONCLUSIVE
-    note "cause: $REPO_ROOT has no linux/. The Linux app is on the linux branch: make the tree from origin/linux."
+    note "cause: $REPO_ROOT has no linux/. Make the tree from origin/main."
     emit "" 2
 }
 
