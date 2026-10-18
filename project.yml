@@ -48,9 +48,10 @@ packages:
     path: Packages/TableProMacCore
   TableProOracle:
     path: Packages/TableProOracle
+  # Exact, because .github/actions/setup-sparkle installs the feed signing tools from this pin.
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
-    majorVersion: 2.10.0
+    exactVersion: 2.10.0
   Yams:
     url: https://github.com/jpsim/Yams
     majorVersion: 5.1.0

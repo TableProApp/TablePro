@@ -115,9 +115,6 @@ jobs:
       - name: Check currentPluginKitVersion moved at most once since the last release
         run: python3 scripts/ci/check-pluginkit-bump-cadence.py --remote origin
 
-      - name: Check the Sparkle version agrees everywhere
-        run: python3 scripts/ci/check-sparkle-version.py
-
       - name: Check the shared-contract drift gates
         run: scripts/audit-refactor-health.sh --check
 
