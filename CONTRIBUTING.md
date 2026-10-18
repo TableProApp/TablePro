@@ -39,7 +39,7 @@ TABLEPRO_DEVELOPMENT_TEAM = <your team id>
 TABLEPRO_APP_BUNDLE_IDENTIFIER = com.<yourhandle>.TablePro
 ```
 
-A free personal team works. Debug builds sign against `TablePro/TablePro.Debug.entitlements`, which drops iCloud, so sync turns itself off. Plugin bundles and the MCP helper sign ad hoc. The file is gitignored, so these settings never reach a commit and survive regenerating the project. Signing changed in the Xcode UI does not: the next `scripts/generate-project.sh` discards it. To check it, save a connection password, relaunch, and reopen the connection: the password is still there.
+A free personal team works. Debug builds sign against `TablePro/TablePro.Debug.entitlements`, which drops iCloud, so sync turns itself off. Plugin bundles sign with the same team, and the MCP helper signs ad hoc. The file is gitignored, so these settings never reach a commit and survive regenerating the project. Signing changed in the Xcode UI does not: the next `scripts/generate-project.sh` discards it. To check it, save a connection password, relaunch, and reopen the connection: the password is still there.
 
 ## Building
 
@@ -57,7 +57,7 @@ The app scheme compiles only the plugins the app embeds. The `AllPlugins` aggreg
 xcodebuild build -project TablePro.xcodeproj -scheme AllPlugins -destination 'platform=macOS' -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO
 ```
 
-`scripts/build-plugin.sh <PluginTarget>` builds one signed, packaged bundle. Target names are the keys under `targets:` in `project.yml`, such as `OracleDriver`.
+`scripts/release/build.sh plugins --unsigned` builds the registry plugins the way a release does, universal, into `build/release/plugins`: [`RELEASING.md`](RELEASING.md#reproducing-a-release-build).
 
 ### Clean builds
 
@@ -113,14 +113,14 @@ The architecture and its invariants: [`AGENTS.md`](AGENTS.md), Architecture and 
 
 ## Branch naming
 
-Branch off `main`: `feat/add-cassandra-support`, `fix/query-editor-crash`.
+Branch off `main`: `feat/add-cassandra-support`, `fix/query-editor-crash`. PRs target `main`; a `release/<X.Y>` line takes only cherry-picks of fixes already on `main` ([`RELEASING.md`](RELEASING.md#branches)).
 
 ## Pull requests
 
 One logical change per PR, described with the template the PR form opens with. Before you open it:
 
 - Tests added or updated.
-- `CHANGELOG.md` updated under `[Unreleased]`, with the credit left off: the release adds it (`.claude/rules/changelog.md`).
+- A changelog fragment in `changelog.d/` for a user-visible change (`.claude/rules/changelog.md`).
 - User-facing behavior documented in a paired pull request in [TableProApp/docs](https://github.com/TableProApp/docs) that links this one.
 - User-facing strings localized.
 - SwiftLint clean.
@@ -154,7 +154,7 @@ The export builds the app first, so run `scripts/download-libs.sh` and `scripts/
 | A new source file does not compile | Run `scripts/generate-project.sh` |
 | `Undefined symbols for architecture arm64` | `Libs/` is empty or stale: `scripts/download-libs.sh`, or `--force` to overwrite |
 | `Libs does not match the checksums committed in git.` | Re-run `scripts/download-libs.sh --force`. A library rebuilt on purpose is published as [`RELEASING.md`](RELEASING.md#static-libraries) describes |
-| `Build input file cannot be found: '…/tablepro-hana-helper'`, or the helper has no slice for your architecture | Run `scripts/build-hana.sh` with no argument, which builds both architectures |
+| `error: …/tablepro-hana-helper is missing or has no <arch> slice` | Run `scripts/build-hana.sh` with no argument, which builds both architectures |
 | Signing errors after a fresh clone | `Configs/Base.xcconfig` defaults to the maintainer's team and includes `Secrets.xcconfig` optionally, so a build without it still runs and fails to sign. Create the file with your team |
 | Package resolution fails | `Cmd+Shift+K` and reopen Xcode; then `rm -rf ~/Library/Developer/Xcode/DerivedData` |
 | `Timed out while enabling automation mode`, and UI tests run nothing | Answer the Enable UI Automation prompt with an admin password, or run `sudo automationmodetool enable-automationmode-without-authentication` once |

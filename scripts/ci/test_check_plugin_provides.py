@@ -37,6 +37,8 @@ EXPORTER = """final class ExampleExportPlugin: ObservableObject, ExportFormatPlu
 }
 """
 
+ODD_DRIVER = "final class Odd: NSObject, DriverPlugin {\n    static var databaseTypeId: String { name }\n}\n"
+
 IMPORTER = """final class ExampleImportPlugin: ObservableObject, ImportFormatPlugin {
     static let formatId = "ex"
 }
@@ -110,17 +112,24 @@ class CheckPluginProvidesTests(unittest.TestCase):
     def test_a_format_id_without_a_format_conformance_is_unreadable(self):
         swift = 'final class Odd: NSObject {\n    static let formatId = "ex"\n}\n'
         directory = self.plugin("OddPlugin", swift, HEADER + FOOTER)
-        self.assertIn("conforms to", check.problems_in(directory)[0])
+        with self.assertRaisesRegex(check.Unreadable, "conforms to"):
+            check.problems_in(directory)
 
     def test_a_class_with_no_literal_ids_is_unreadable(self):
-        swift = "final class Odd: NSObject, DriverPlugin {\n    static var databaseTypeId: String { name }\n}\n"
-        directory = self.plugin("OddDriverPlugin", swift, HEADER + FOOTER)
-        self.assertIn("neither databaseTypeId nor formatId", check.problems_in(directory)[0])
+        directory = self.plugin("OddDriverPlugin", ODD_DRIVER, HEADER + FOOTER)
+        with self.assertRaisesRegex(check.Unreadable, "neither databaseTypeId nor formatId"):
+            check.problems_in(directory)
 
     def test_two_primary_ids_are_unreadable(self):
         directory = self.plugin("ExampleDriverPlugin", DRIVER, DRIVER_PLIST)
         (directory / "Other.swift").write_text('enum Other {\n    static let databaseTypeId = "Other"\n}\n', encoding="utf-8")
-        self.assertIn("declares databaseTypeId 2 times", check.problems_in(directory)[0])
+        with self.assertRaisesRegex(check.Unreadable, "declares databaseTypeId 2 times"):
+            check.problems_in(directory)
+
+    def test_a_plist_that_does_not_parse_is_unreadable(self):
+        directory = self.plugin("ExampleDriverPlugin", DRIVER, HEADER)
+        with self.assertRaisesRegex(check.Unreadable, "does not parse"):
+            check.problems_in(directory)
 
     def test_folders_without_an_info_plist_are_not_plugins(self):
         self.plugin("ExampleDriverPlugin", DRIVER, DRIVER_PLIST)
@@ -137,11 +146,28 @@ class CheckPluginProvidesTests(unittest.TestCase):
         self.assertIn("::error::ExampleDriverPlugin", err)
         self.assertIn("--write", err)
 
+    def test_main_fails_on_an_unreadable_plugin_without_offering_write(self):
+        self.plugin("OddDriverPlugin", ODD_DRIVER, HEADER + FOOTER)
+        code, _, err = self.run_main()
+        self.assertEqual(code, 1)
+        self.assertIn("::error::OddDriverPlugin: declares neither", err)
+        self.assertNotIn("--write", err)
+
     def test_write_stamps_the_keys_in_the_source_format_and_keeps_the_macro(self):
         driver = self.plugin("ExampleDriverPlugin", DRIVER, HEADER + provides(check.EXPORT_KEY, ["stale"]) + FOOTER)
         self.assertEqual(self.run_main("--write")[0], 0)
         self.assertEqual((driver / "Info.plist").read_text(encoding="utf-8"), DRIVER_PLIST)
         self.assertEqual(self.run_main()[0], 0)
+
+    def test_write_fails_on_an_unreadable_plugin_and_leaves_its_plist(self):
+        odd = self.plugin("OddDriverPlugin", ODD_DRIVER, HEADER + FOOTER)
+        driver = self.plugin("ExampleDriverPlugin", DRIVER, HEADER + FOOTER)
+        code, out, err = self.run_main("--write")
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "stamped ExampleDriverPlugin/Info.plist\n")
+        self.assertIn("::error::OddDriverPlugin: declares neither", err)
+        self.assertEqual((odd / "Info.plist").read_text(encoding="utf-8"), HEADER + FOOTER)
+        self.assertEqual((driver / "Info.plist").read_text(encoding="utf-8"), DRIVER_PLIST)
 
     def test_write_leaves_a_correct_plist_untouched(self):
         exporter = self.plugin("ExampleExportPlugin", EXPORTER, HEADER + provides(check.EXPORT_KEY, ["ex"]) + "\n" + FOOTER)

@@ -68,10 +68,7 @@ CODE_SIGN_STYLE = Automatic
 TABLEPRO_DEVELOPMENT_TEAM = D7HJ5TFYCU
 TABLEPRO_APP_BUNDLE_IDENTIFIER = com.TablePro
 
-// Empty by default. scripts/build-release.sh passes a profile UUID on the xcodebuild
-// command line; because only the app target reads this variable, the profile cannot
-// leak into plugin or Swift package targets the way a bare
-// PROVISIONING_PROFILE_SPECIFIER override would.
+// Only the app target reads this, so a profile passed here never reaches a plugin or package target.
 TABLEPRO_PROVISIONING_PROFILE =
 
 #include? "Secrets.xcconfig"

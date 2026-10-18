@@ -31,6 +31,9 @@ settings:
   base:
     CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED: YES
     DEAD_CODE_STRIPPING: YES
+    # Local placeholders. A release passes the tag's version and build: RELEASING.md, Versions.
+    MARKETING_VERSION: 0.0.0-dev
+    CURRENT_PROJECT_VERSION: 1
 
 fileGroups:
   - Configs
@@ -96,7 +99,6 @@ targetTemplates:
     settings:
       base:
         COMBINE_HIDPI_IMAGES: YES
-        CURRENT_PROJECT_VERSION: 1
         DEVELOPMENT_TEAM: $(TABLEPRO_DEVELOPMENT_TEAM)
         ENABLE_HARDENED_RUNTIME: YES
         GENERATE_INFOPLIST_FILE: YES
@@ -108,7 +110,6 @@ targetTemplates:
         LD_RUNPATH_SEARCH_PATHS:
           - $(inherited)
           - "@executable_path/../Frameworks"
-        MARKETING_VERSION: "1.0"
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.${target_name}
         PRODUCT_NAME: $(TARGET_NAME)
         SKIP_INSTALL: YES
@@ -251,36 +252,29 @@ targetTemplates:
       - package: TableProCore
         products: [TableProNumberFormatting, TableProTLSClientIdentity]
 
-  # The SAP HANA driver runs go-hdb in tablepro-hana-helper, which scripts/build-hana.sh builds
-  # and this phase copies into Contents/MacOS, where the plugin looks it up. A missing helper
-  # stops the build with "Build input file cannot be found" naming its path. The copy is signed
-  # in a directory from mktemp: the user-script sandbox lets the phase write its declared output
-  # and nothing beside it, codesign writes a temporary file next to whatever it signs, and it
-  # reads every parent of that file, which the sandbox refuses inside the build folders.
-  # scripts/release/build.sh passes OTHER_CODE_SIGN_FLAGS=--timestamp; other builds skip the timestamp server.
+  # The SAP HANA driver runs go-hdb in tablepro-hana-helper, which scripts/build-hana.sh builds.
+  # The plugin looks it up in Contents/MacOS, and the copy there signs it with the plugin's identity.
   HanaHelperEmbedding:
-    postBuildScripts:
-      - name: Embed tablepro-hana-helper
+    sources:
+      # A file type and optional, so a project generated before scripts/build-hana.sh runs still copies it.
+      - path: Native/HanaBridge/bin/tablepro-hana-helper
+        type: file
+        optional: true
+        buildPhase:
+          copyFiles:
+            destination: executables
+        attributes: [CodeSignOnCopy]
+    preBuildScripts:
+      - name: Check tablepro-hana-helper architectures
         inputFiles:
           - $(SRCROOT)/Native/HanaBridge/bin/tablepro-hana-helper
-        outputFiles:
-          - $(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/tablepro-hana-helper
+        basedOnDependencyAnalysis: false
         script: |
-          set -eu
-          helper="$SCRIPT_INPUT_FILE_0"
           for arch in $ARCHS; do
-              if ! /usr/bin/lipo "$helper" -verify_arch "$arch"; then
-                  echo "error: $helper has no $arch slice. Run scripts/build-hana.sh $arch, or both." >&2
-                  exit 1
-              fi
+              /usr/bin/lipo "$SCRIPT_INPUT_FILE_0" -verify_arch "$arch" && continue
+              echo "error: $SCRIPT_INPUT_FILE_0 is missing or has no $arch slice. Run scripts/build-hana.sh $arch, or both." >&2
+              exit 1
           done
-          staging="$(mktemp -d)"
-          trap 'rm -rf "$staging"' EXIT
-          cp "$helper" "$staging/tablepro-hana-helper"
-          if [ "${CODE_SIGNING_ALLOWED:-NO}" = "YES" ]; then
-              /usr/bin/codesign --force --options runtime ${OTHER_CODE_SIGN_FLAGS:---timestamp=none} --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" "$staging/tablepro-hana-helper"
-          fi
-          cp -f "$staging/tablepro-hana-helper" "$SCRIPT_OUTPUT_FILE_0"
 
 targets:
 
@@ -317,31 +311,13 @@ targets:
       # The MySQL plugin's socket key and path rules, so the app writes and checks the socket path
       # exactly as the driver reads it.
       - Plugins/MySQLDriverPlugin/MySQLLocalSocket.swift
-    configFiles:
-      Debug: Configs/Version.xcconfig
-      Release: Configs/Version.xcconfig
     dependencies:
       - target: TableProPluginKit
         embed: true
         codeSign: true
         removeHeaders: true
-      # Embedded rather than reached through an absolute rpath into the source tree.
-      # TablePro.debug.dylib and the MySQL, PostgreSQL and Redis plugins all link
-      # @rpath/libssl.3.dylib and @rpath/libcrypto.3.dylib, and both dylibs already carry an
-      # @rpath install name, so @executable_path/../Frameworks resolves them once they are here.
-      # Without this the app only launched from a checkout that had Libs/dylibs on disk, which is
-      # what made the sharded test jobs abort with SIGABRT before XCTest could connect (#2334).
-      # A release build was already self-contained: build-release.sh copies them in.
-      #
-      # codeSign matters as much as embed. create-openssl-dylibs.sh leaves them ad-hoc signed, and
-      # codesign refuses a bundle whose nested code carries a different identity from the app:
-      # "code object is not signed at all, in subcomponent libcrypto.3.dylib". A plain copy-files
-      # phase does not re-sign, so this built only until download-libs.sh next regenerated the
-      # dylibs. CI never saw it, because every CI build passes CODE_SIGNING_ALLOWED=NO.
-      #
-      # link: false keeps this to embedding and signing. A framework dependency links by default,
-      # which would put both into Link Binary With Libraries and change what the app links against;
-      # the app reaches them through @rpath from TablePro.debug.dylib and the plugins, as before.
+      # The app and the MySQL, PostgreSQL and Redis plugins load these through @rpath. Re-signed because
+      # create-openssl-dylibs.sh signs them ad hoc; link: false keeps them off the app's link line.
       - framework: Libs/dylibs/libssl.3.dylib
         embed: true
         codeSign: true
@@ -417,6 +393,16 @@ targets:
         products: [TableProAnalytics, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProRedisCore, TableProSQLGrammar, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme]
       - package: TableProMacCore
         products: [TableProAutocomplete, TableProMCP, TableProSSHConfig, TableProUtilities]
+    # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.
+    postCompileScripts:
+      - name: Write WhatsNew.md
+        inputFiles:
+          - $(SRCROOT)/CHANGELOG.md
+          - $(SRCROOT)/scripts/release/notes.py
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WhatsNew.md
+        script: |
+          /usr/bin/python3 "$SCRIPT_INPUT_FILE_1" whats-new "$MARKETING_VERSION" --changelog "$SCRIPT_INPUT_FILE_0" --out "$SCRIPT_OUTPUT_FILE_0"
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -466,7 +452,6 @@ targets:
         Release:
           CODE_SIGN_ENTITLEMENTS: TablePro/TablePro.entitlements
           COPY_PHASE_STRIP: YES
-          DEPLOYMENT_POSTPROCESSING: YES
 
   # ─── Plugin ABI ───────────────────────────────────────────────────────────────
 
@@ -480,7 +465,6 @@ targets:
       base:
         # Swift Library Evolution. Removing this breaks every already-built plugin.
         BUILD_LIBRARY_FOR_DISTRIBUTION: YES
-        CURRENT_PROJECT_VERSION: 1
         DEFINES_MODULE: YES
         DYLIB_COMPATIBILITY_VERSION: 1
         DYLIB_CURRENT_VERSION: 1
@@ -490,7 +474,6 @@ targets:
         LD_RUNPATH_SEARCH_PATHS:
           - $(inherited)
           - "@executable_path/../Frameworks"
-        MARKETING_VERSION: "1.0"
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.TableProPluginKit
         PRODUCT_NAME: $(TARGET_NAME:c99extidentifier)
         SKIP_INSTALL: YES
@@ -564,12 +547,10 @@ targets:
         products: [TableProMCPTestSupport]
     settings:
       base:
-        CURRENT_PROJECT_VERSION: 1
         GENERATE_INFOPLIST_FILE: YES
         HEADER_SEARCH_PATHS:
           - $(inherited)
           - $(SRCROOT)/TablePro/Core/SSH/CLibSSH2/include
-        MARKETING_VERSION: "1.0"
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.TableProTests
         PRODUCT_NAME: $(TARGET_NAME)
         STRING_CATALOG_GENERATE_SYMBOLS: NO
@@ -587,9 +568,7 @@ targets:
       - target: TablePro
     settings:
       base:
-        CURRENT_PROJECT_VERSION: 1
         GENERATE_INFOPLIST_FILE: YES
-        MARKETING_VERSION: "1.0"
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.TableProUITests
         PRODUCT_NAME: $(TARGET_NAME)
         STRING_CATALOG_GENERATE_SYMBOLS: NO
@@ -616,33 +595,18 @@ targets:
     templateAttributes:
       folder: SQLiteDriverPlugin
       principalClass: SQLitePlugin
-    settings:
-      base:
-        # Above plugin-sqlite-v1.0.1, the newest copy published to the registry. `selectWinners`
-        # compares versions numerically, so the fixed built-in must replace a retained user copy.
-        MARKETING_VERSION: "1.0.2"
 
   ClickHouseDriver:
     templates: [DriverPlugin, ClickHouseLinkage]
     templateAttributes:
       folder: ClickHouseDriverPlugin
       principalClass: ClickHousePlugin
-    settings:
-      base:
-        # Above plugin-clickhouse-v1.0.19, the newest copy published to the registry. `selectWinners`
-        # compares versions numerically, so the fixed built-in must replace a retained user copy.
-        MARKETING_VERSION: "1.0.20"
 
   RedisDriver:
     templates: [DriverPlugin, RedisLinkage]
     templateAttributes:
       folder: RedisDriverPlugin
       principalClass: RedisPlugin
-    settings:
-      base:
-        # Above plugin-redis-v1.0.19, the newest copy published to the registry. `selectWinners`
-        # compares versions numerically, so the fixed built-in must replace a retained user copy.
-        MARKETING_VERSION: "1.0.20"
 
   CSVExport:
     templates: [DriverPlugin]
@@ -738,10 +702,6 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.MQLExportPlugin
-        # Above plugin-mql-v1.0.7, the newest copy published to the registry. `selectWinners`
-        # compares versions numerically, so at the template's 1.0 a retained user copy would keep
-        # writing server-provided names into exports unescaped.
-        MARKETING_VERSION: "1.0.8"
 
   SQLImport:
     templates: [DriverPlugin]
@@ -751,10 +711,6 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.SQLImportPlugin
-        # Above plugin-sqlimport-v1.0.5, the newest copy published to the registry. `selectWinners`
-        # compares versions numerically, so at the template's 1.0 a retained user copy would keep
-        # offering SQL on MongoDB.
-        MARKETING_VERSION: "1.0.6"
 
   JSONImport:
     templates: [DriverPlugin]

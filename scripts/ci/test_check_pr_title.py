@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""Tests for check-pr-title.py.
-
-Run: python3 scripts/ci/test_check_pr_title.py
-"""
 
 import importlib.util
 import io
@@ -52,6 +48,24 @@ class LengthTests(unittest.TestCase):
 
     def test_a_long_title_in_the_wrong_shape_reports_both(self):
         self.assertEqual(len(check.problems("Fix " + "x" * 100)), 2)
+
+    def test_a_picks_trailing_pull_request_number_is_not_counted(self):
+        title = "fix: " + "x" * (check.MAX_TITLE - len("fix: "))
+        self.assertEqual(check.problems(title + " (#3443)"), [])
+        self.assertEqual(check.problems("chore(release): v0.82.0 (#3601)"), [])
+        problems = check.problems(title + "x (#3443)")
+        self.assertEqual(len(problems), 1)
+        self.assertIn("73 characters", problems[0])
+
+    def test_only_one_trailing_pull_request_number_is_skipped(self):
+        title = "fix: " + "x" * (check.MAX_TITLE - len("fix: "))
+        self.assertIn("77 characters", check.problems(title + " (#1) (#2)")[0])
+
+    def test_a_number_that_is_not_at_the_end_is_counted(self):
+        title = "fix: " + "x" * (check.MAX_TITLE - len("fix: ") - len(" (#3443)"))
+        self.assertEqual(check.problems(title + " (#3443)"), [])
+        self.assertEqual(len(check.problems(title + " (#3443)x")), 1)
+        self.assertEqual(len(check.problems(title + "x (#3443) ")), 1)
 
 
 class OutputTests(unittest.TestCase):

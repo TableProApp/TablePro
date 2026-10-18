@@ -1,0 +1,49 @@
+name: Withdraw
+
+# Removes a version from the feed and the plugin manifest, marks the highest stable left as Latest,
+# and redeploys. Dispatch it at the newest v* tag, which the release environment requires.
+# The GitHub release stays.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The version to withdraw, such as 0.82.1 or 0.83.0-beta.2.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  withdraw:
+    name: Withdraw
+    runs-on: macos-latest
+    environment: release
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-sparkle
+
+      - name: Remove the version from the feed and the plugin manifest
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: python3 scripts/release/feed.py withdraw "$VERSION"
+
+      - name: Mark the highest stable as Latest
+        run: python3 scripts/release/publish.py latest
+
+  pages:
+    name: Pages
+    needs: withdraw
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml

@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """Fails when .github/plugin-registry.json, the plugin classes and the project.yml plugin aggregates disagree."""
 
-import json
 import pathlib
 import re
 import sys
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "release"))
+
+import registry  # noqa: E402
+
 MANIFEST = REPO_ROOT / ".github" / "plugin-registry.json"
 PROJECT = REPO_ROOT / "project.yml"
 PLUGINS_DIR = REPO_ROOT / "Plugins"
 
 ICON = re.compile(r"^\s*(?:public |internal |private )?static (?:let|var) iconName(?:\s*:\s*String)?\s*=\s*\"([^\"]+)\"", re.M)
-PRIMARY_ID = re.compile(r"^\s*(?:public |internal |private )?static (?:let|var) databaseTypeId(?:\s*:\s*String)?\s*=\s*\"([^\"]+)\"", re.M)
-EXTRA_IDS = re.compile(r"^\s*(?:public |internal |private )?static (?:let|var) additionalDatabaseTypeIds\s*(?::\s*\[String\]\s*)?=\s*\[([^\]]*)\]", re.M)
 
 TOP_LEVEL_KEY = re.compile(r"^([A-Za-z_][\w-]*):")
 ENTRY = re.compile(r"^  ([A-Za-z_][\w-]*):\s*$")
@@ -72,7 +73,7 @@ def embedded_plugins(app):
 
 
 def publish_set(plugins):
-    return {entry["target"] for entry in plugins.values() if not entry.get("bundled")}
+    return set(plugins)
 
 
 def aggregate_problems(project, plugins):
@@ -122,57 +123,35 @@ def plugin_directory(target):
     return None
 
 
-def declared(directory):
-    icon = ids = None
-    extra = []
+def declared_icon(directory):
     for source in sorted(directory.rglob("*.swift")):
-        text = source.read_text(encoding="utf-8")
-        if icon is None:
-            found = ICON.search(text)
-            icon = found.group(1) if found else None
-        if ids is None:
-            found = PRIMARY_ID.search(text)
-            ids = found.group(1) if found else None
-        found = EXTRA_IDS.search(text)
-        if found and not extra:
-            extra = [part.strip().strip('"') for part in found.group(1).split(",") if part.strip()]
-    return icon, ids, extra
+        found = ICON.search(source.read_text(encoding="utf-8"))
+        if found:
+            return found.group(1)
+    return None
 
 
 def declaration_problems(plugins):
     problems = []
-    for slug, entry in sorted(plugins.items()):
-        directory = plugin_directory(entry["target"])
+    for target, entry in sorted(plugins.items()):
+        directory = plugin_directory(target)
         if directory is None:
-            problems.append(f"{slug}: no plugin directory matches target {entry['target']}")
+            problems.append(f"{target}: no plugin directory matches it")
             continue
-
-        icon, primary, extra = declared(directory)
+        icon = declared_icon(directory)
         if icon is None:
-            problems.append(f"{slug}: could not read iconName from {directory.name}")
-        elif icon != entry["icon"]:
-            problems.append(f"{slug}: manifest icon {entry['icon']!r} but the plugin declares {icon!r}")
-
-        # An export or import plugin drives no database type and declares none.
-        if entry["databaseTypeIds"] is None:
-            if primary is not None:
-                problems.append(f"{slug}: manifest says no database types but the plugin declares {primary!r}")
-            continue
-
-        if primary is None:
-            problems.append(f"{slug}: could not read databaseTypeId from {directory.name}")
-            continue
-        if [primary, *extra] != entry["databaseTypeIds"]:
-            problems.append(
-                f"{slug}: manifest databaseTypeIds {entry['databaseTypeIds']} "
-                f"but the plugin declares {[primary, *extra]}"
-            )
+            problems.append(f"{target}: could not read iconName from {directory.name}")
+        elif icon != entry["iconName"]:
+            problems.append(f"{target}: {MANIFEST.name} says iconName {entry['iconName']!r} "
+                            f"but the plugin declares {icon!r}")
     return problems
 
 
 def main():
-    with open(MANIFEST, encoding="utf-8") as handle:
-        plugins = json.load(handle)["plugins"]
+    try:
+        plugins = registry.load_metadata(MANIFEST)["plugins"]
+    except registry.RegistryError as error:
+        sys.exit(f"::error::{error}")
     project = parse_project(PROJECT.read_text(encoding="utf-8"))
 
     problems = declaration_problems(plugins) + aggregate_problems(project, plugins)

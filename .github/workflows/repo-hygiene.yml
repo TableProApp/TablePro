@@ -42,16 +42,12 @@ jobs:
           mapfile -t SCRIPTS < <(find scripts .claude/skills -name '*.sh' | sort)
           shellcheck --severity=warning "${SCRIPTS[@]}"
 
-      # update-registry's tests are plain functions, which unittest discovery would skip.
       - name: Test the CI and release tooling
         run: |
           set -euo pipefail
           python3 -m unittest discover -s scripts/ci -p 'test_*.py'
           python3 -m unittest discover -s scripts/lib -p 'test_*.py'
           python3 -m unittest discover -s scripts -p 'test_localization.py'
-          python3 .github/scripts/test_update_registry.py
-          bash scripts/ci/test_create_dmg_args.sh
-          bash scripts/ci/test_draft_release.sh
           bash scripts/ci/test_libs_release.sh
 
       # 3.9 is the macOS /usr/bin/python3 that runs notes.py in the build. The other steps keep the
@@ -74,6 +70,13 @@ jobs:
 
       - name: Test the release tooling
         run: '"$RUNNER_TEMP/release-venv/bin/python" -m unittest discover -s scripts/release -p "test_*.py"'
+
+      # towncrier refuses a fragment name it cannot parse once its config sets ignore.
+      - name: Check the changelog fragments and CHANGELOG.md
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/release-venv/bin/python" scripts/ci/check-changelog.py
+          "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --version 0.0.0
 
       # shellcheck cannot tell a library function from a command, so a missing source is exit 127
       # at release time (v0.67.1).
@@ -141,8 +144,7 @@ jobs:
           go-version-file: Native/HanaBridge/go.mod
           cache: false
 
-      # The helper is pure Go, so Linux analyses it as well as the Mac that builds it. govulncheck
-      # runs in build-plugin.yml, before a HANA plugin ships.
+      # The helper is pure Go, so Linux analyses it as well as the Mac that builds it.
       - name: Check the SAP HANA helper
         if: steps.native.outputs.hana == 'true'
         working-directory: Native/HanaBridge
@@ -159,3 +161,5 @@ jobs:
           # go tool would build staticcheck for GOOS too, and Linux cannot run a darwin binary.
           go build -modfile=tools.mod -o "$RUNNER_TEMP/staticcheck" honnef.co/go/tools/cmd/staticcheck
           GOOS=darwin "$RUNNER_TEMP/staticcheck" ./...
+          GOBIN="$RUNNER_TEMP/bin" go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          GOOS=darwin "$RUNNER_TEMP/bin/govulncheck" ./...

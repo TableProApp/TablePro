@@ -41,7 +41,7 @@ Pick the platform from the report: the issue's Platform field, a `platform-*` la
 
 Invoking the skill authorizes the whole run: investigate, branch, implement, verify, commit, push, open the PR and keep it green. There is no approval gate. Ask only when the expected behavior has two reasonable readings or a finding needs a product decision: once, recommendation first, and keep working on what does not depend on the answer. Never ask about the environment (a peer's build, a wedged test runner, a full disk): handle it and mention it in the report.
 
-Never, even in an authorized run: force-push, rewrite published history, touch release tags, publish plugins or libraries, deploy a CloudKit schema, or discard changes you did not make. When the fix needs one of these, build everything else and name what is left for the user.
+Never, even in an authorized run: force-push, rewrite published history, touch release tags or `release/*` branches, publish plugins or libraries, deploy a CloudKit schema, or discard changes you did not make. When the fix needs one of these, build everything else and name what is left for the user.
 
 ## Phase 0: Intake
 
@@ -79,7 +79,7 @@ Write `<tree>/.analysis/<slug>/plan.md`, under 80 lines, opening with a progress
 - the design: the API or pattern, its ownership boundary, the design guideline;
 - the scope as a checklist: files in order, blast-radius cases, each verified related defect with `file:line`;
 - the tests that fail before the fix, in the targets the profile's Done section says to check first;
-- the CHANGELOG, docs, localization and screenshots the change needs.
+- the changelog fragment, docs, localization and screenshots the change needs.
 
 **Rules read.** List the files `plan.md` touches. Read `<tree>/AGENTS.md`, then every `<tree>/.claude/rules/*.md` whose row in its Area rules table matches one of them, and name them on a `Rules read:` line in `plan.md`. A file added later gets the same check before you edit it. The tree's copies are the ones that apply; a harness may have loaded another checkout's.
 
@@ -90,7 +90,7 @@ In Full mode the `critic` lane attacks the plan; fold in what survives an eviden
 - When the change is visible on screen, build the fresh tree and capture the "before" shots first.
 - Follow the plan's order and do the refactor it calls for. Apply the guide's per-change checklist while you write, not afterwards.
 - **A large change may be split across implementers**: when the plan spans areas that share no files, give up to six subagents a disjoint file list each in `plan.md`. Each prompt names the tree, `plan.md` and the exact files the implementer owns, and says to edit nothing else, build nothing, and finish with the files it changed. You read every diff, integrate and verify. The harness file says which agent runs them.
-- Competitors are research only: never name another client in code, commits, the PR, CHANGELOG or docs.
+- Competitors are research only: never name another client in code, commits, the PR, a changelog fragment or docs.
 
 ## Phase 4: Verify
 
