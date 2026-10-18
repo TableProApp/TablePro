@@ -1,5 +1,5 @@
 use super::stream_pages::StreamTerminal;
-use super::{SqlEditor, StatementOutcome, StatementOutcomeKind, clear_box, render_outcomes};
+use super::{SqlEditor, StatementOutcome, StatementOutcomeKind, clear_results_box, render_outcomes};
 use relm4::gtk;
 use relm4::gtk::prelude::*;
 
@@ -74,7 +74,7 @@ impl SqlEditor {
     }
 
     pub(super) fn show_pins_above(&mut self, page: &impl IsA<gtk::Widget>) {
-        clear_box(&self.results_holder);
+        clear_results_box(&self.results_holder);
         let pins = self.pinned.show(Vec::new());
         if !pins.is_empty() {
             render_outcomes(
@@ -94,7 +94,7 @@ impl SqlEditor {
         if self.pinned.is_pinned() {
             let remaining = self.pinned.unpin_all();
             self.refresh_pin_button();
-            clear_box(&self.results_holder);
+            clear_results_box(&self.results_holder);
             render_outcomes(
                 &self.results_holder,
                 &remaining,

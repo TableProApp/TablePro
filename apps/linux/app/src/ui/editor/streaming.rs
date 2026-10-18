@@ -51,8 +51,10 @@ impl SqlEditor {
             cache: StreamPageCache::default(),
             error: None,
         });
-        let loading = waiting_for_stream_page();
-        self.show_pins_above(&loading);
+        if self.results_holder.first_child().is_none() {
+            let loading = waiting_for_stream_page();
+            self.show_pins_above(&loading);
+        }
         let _ = accepted.send(true);
     }
 
@@ -92,7 +94,7 @@ impl SqlEditor {
         };
         let shown = self.pinned.show(vec![outcome]);
         self.refresh_pin_button();
-        clear_box(&self.results_holder);
+        clear_results_box(&self.results_holder);
         render_outcomes(
             &self.results_holder,
             &shown,
@@ -159,7 +161,7 @@ impl SqlEditor {
         }
         let shown = self.pinned.show(outcomes);
         self.refresh_pin_button();
-        clear_box(&self.results_holder);
+        clear_results_box(&self.results_holder);
         render_outcomes(
             &self.results_holder,
             &shown,

@@ -39,6 +39,8 @@ Supported single-statement PostgreSQL `SELECT`s load progressively. The grid kee
 
 SQL completion offers keywords and scoped table and column names. Choosing an identifier inserts its complete quoted SQL name. Table names keep their schema; column suggestions after an alias keep that alias. Arbitrary words elsewhere in the editor are not suggestions.
 
+While a query runs again, the previous result stays on screen, dimmed, until the new result, an error, or a cancel or timeout message replaces it.
+
 Click a sortable result column header to order the rows already loaded in that result. This is a local view change and does not run the SQL again, including for write statements that return rows. SQL NULL values stay last; columns with mixed or undecodable values cannot be sorted. Text uses local value ordering, which can differ from the database collation.
 
 Right-click a result cell and choose **Filter by This Value** to filter the loaded rows in that result. This also works on pinned results, shows visible and loaded row counts, and does not run the SQL again.

@@ -1,6 +1,19 @@
 use super::*;
 use relm4::ComponentSender;
 
+const STALE_RESULTS_CLASS: &str = "tp-stale-results";
+
+pub(super) fn dim_previous_results(holder: &gtk::Box) {
+    if holder.first_child().is_some() {
+        holder.add_css_class(STALE_RESULTS_CLASS);
+    }
+}
+
+pub(super) fn clear_results_box(holder: &gtk::Box) {
+    holder.remove_css_class(STALE_RESULTS_CLASS);
+    clear_box(holder);
+}
+
 impl SqlEditor {
     pub(super) fn export_name(&self) -> String {
         let buffer = self.source_view.buffer();
@@ -120,5 +133,33 @@ impl SqlEditor {
                 tracing::warn!(error = %e, "history record failed");
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use relm4::gtk::prelude::*;
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn previous_results_are_dimmed_while_a_run_is_in_flight_and_cleared_with_their_replacement() {
+        gtk::init().unwrap();
+        let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
+
+        dim_previous_results(&holder);
+        assert!(
+            !holder.has_css_class(STALE_RESULTS_CLASS),
+            "nothing to dim on a first run"
+        );
+
+        holder.append(&gtk::Label::new(Some("previous result")));
+        dim_previous_results(&holder);
+        assert!(holder.has_css_class(STALE_RESULTS_CLASS));
+        assert!(holder.first_child().is_some(), "the previous result stays on screen");
+
+        clear_results_box(&holder);
+        assert!(!holder.has_css_class(STALE_RESULTS_CLASS));
+        assert!(holder.first_child().is_none());
     }
 }

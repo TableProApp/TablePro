@@ -9,6 +9,7 @@ mod finish_notice;
 mod folding;
 pub(crate) mod open_file;
 mod run_lifecycle;
+use run_lifecycle::{clear_results_box, dim_previous_results};
 use tablepro_core::sql_format as format_plan;
 mod outcomes;
 mod pinned;
@@ -827,7 +828,7 @@ impl SimpleComponent for SqlEditor {
                 self.status.set_label(&totals.summary());
                 let shown = self.pinned.show(outcomes);
                 self.refresh_pin_button();
-                clear_box(&self.results_holder);
+                clear_results_box(&self.results_holder);
                 render_outcomes(
                     &self.results_holder,
                     &shown,
@@ -997,7 +998,7 @@ impl SqlEditor {
 
         self.set_running(true, conn.supports_server_cancellation(), &sender);
         self.status.set_label(&crate::tr!("Running…"));
-        clear_box(&self.results_holder);
+        dim_previous_results(&self.results_holder);
         self.streaming = None;
         self.clear_run_marks();
 

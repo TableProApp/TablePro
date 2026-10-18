@@ -550,6 +550,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::editor::run_lifecycle::tests::previous_results_are_dimmed_while_a_run_is_in_flight_and_cleared_with_their_replacement"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::app::environment_marker::tests::the_badge_and_header_tint_follow_the_connection_environment"
     ]
   ],
