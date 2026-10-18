@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "active_tab": 2,
+  "tabs": [
+    {
+      "kind": "table",
+      "schema": "public",
+      "table": "orders",
+      "offset": 5000,
+      "page_size": 5000,
+      "sort": {
+        "column": 2,
+        "ascending": false
+      }
+    },
+    {
+      "kind": "table",
+      "schema": null,
+      "table": "events",
+      "offset": 0,
+      "page_size": 1000,
+      "sort": null
+    },
+    {
+      "kind": "editor",
+      "draft": "7d0c5b1e-9a3f-4e2d-8b6c-1f0e9d8c7b6a"
+    },
+    {
+      "kind": "structure",
+      "schema": "sales",
+      "table": "customers"
+    },
+    {
+      "kind": "structure",
+      "schema": null,
+      "table": "users"
+    }
+  ]
+}

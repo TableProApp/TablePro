@@ -1,0 +1,34 @@
+[package]
+name = "tablepro-driver-postgres"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tablepro-core.workspace = true
+tablepro-net.workspace = true
+async-trait.workspace = true
+bytes.workspace = true
+chrono.workspace = true
+deadpool-postgres.workspace = true
+fallible-iterator.workspace = true
+futures-util.workspace = true
+postgres-protocol.workspace = true
+postgres-types.workspace = true
+secrecy.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+tokio-postgres.workspace = true
+tokio-postgres-rustls.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tablepro-test-fixtures.workspace = true
+tablepro-test-support.workspace = true
+rustls.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "test-util"] }
+
+[lints]
+workspace = true

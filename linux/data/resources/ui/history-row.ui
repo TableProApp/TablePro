@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <template class="TableProHistoryRow" parent="GtkBox">
+    <property name="spacing">12</property>
+    <property name="margin-top">6</property>
+    <property name="margin-bottom">6</property>
+    <property name="margin-start">6</property>
+    <property name="margin-end">6</property>
+    <child>
+      <object class="GtkCheckButton" id="check">
+        <property name="valign">center</property>
+        <property name="visible">false</property>
+        <accessibility>
+          <property name="label" translatable="yes">Select Query</property>
+          <relation name="described-by">title_label</relation>
+        </accessibility>
+      </object>
+    </child>
+    <child>
+      <object class="GtkImage" id="status_icon">
+        <property name="valign">center</property>
+        <style>
+          <class name="dim-label"/>
+        </style>
+      </object>
+    </child>
+    <child>
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <property name="spacing">2</property>
+        <property name="hexpand">true</property>
+        <property name="valign">center</property>
+        <child>
+          <object class="GtkLabel" id="title_label">
+            <property name="xalign">0</property>
+            <property name="ellipsize">end</property>
+            <property name="single-line-mode">true</property>
+            <style>
+              <class name="monospace"/>
+            </style>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel" id="subtitle_label">
+            <property name="xalign">0</property>
+            <property name="ellipsize">end</property>
+            <property name="single-line-mode">true</property>
+            <style>
+              <class name="dim-label"/>
+              <class name="caption"/>
+            </style>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="GtkButton" id="pin_button">
+        <property name="icon-name">view-pin-symbolic</property>
+        <property name="valign">center</property>
+        <accessibility>
+          <relation name="described-by">title_label</relation>
+        </accessibility>
+        <style>
+          <class name="flat"/>
+        </style>
+      </object>
+    </child>
+    <child>
+      <object class="GtkButton" id="delete_button">
+        <property name="icon-name">user-trash-symbolic</property>
+        <property name="valign">center</property>
+        <property name="tooltip-text" translatable="yes">Delete</property>
+        <accessibility>
+          <property name="label" translatable="yes">Delete</property>
+          <relation name="described-by">title_label</relation>
+        </accessibility>
+        <style>
+          <class name="flat"/>
+        </style>
+      </object>
+    </child>
+  </template>
+</interface>

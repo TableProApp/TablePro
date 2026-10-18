@@ -65,7 +65,27 @@ class DetectChangedPathsTests(unittest.TestCase):
         return out
 
     def test_unknown_suite_exits_2(self):
-        self.assertEqual(self.detect("linux")[0], 2)
+        self.assertEqual(self.detect("windows")[0], 2)
+
+    def test_linux_runs_on_the_linux_tree_and_what_its_jobs_read(self):
+        for path in [
+            "linux/crates/app/src/main.rs",
+            "linux/meson.build",
+            "scripts/check-doc-symbols.sh",
+            "scripts/check-banned-words.sh",
+            "scripts/banned-words.txt",
+            ".github/workflows/build-linux.yml",
+            ".github/workflows/linux-packages.yml",
+            ".github/workflows/release-linux.yml",
+        ]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("linux", path), "true")
+
+    def test_linux_skips_the_apple_apps(self):
+        for path in ["TablePro/App.swift", "TableProMobile/App.swift", "Plugins/Shared/Timeout.swift",
+                     "project.yml", "CHANGELOG.md", ".github/workflows/macos-tests.yml"]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("linux", path), "false")
 
     def test_unknown_flag_exits_2(self):
         self.assertEqual(self.detect("--head")[0], 2)

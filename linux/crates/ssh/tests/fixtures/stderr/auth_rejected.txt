@@ -1,0 +1,2 @@
+Warning: Permanently added '[127.0.0.1]:32768' (ED25519) to the list of known hosts.
+deploy@127.0.0.1: Permission denied (publickey,password,keyboard-interactive).

@@ -1,6 +1,6 @@
 # Contributing to TablePro
 
-[`AGENTS.md`](AGENTS.md) holds the invariants and the rules every change meets; where this file and it disagree, it wins. The docs site lives in [TableProApp/docs](https://github.com/TableProApp/docs), and releasing is in [`RELEASING.md`](RELEASING.md).
+[`AGENTS.md`](AGENTS.md) holds the invariants and the rules every change meets; where this file and it disagree, it wins. The docs site lives in [TableProApp/docs](https://github.com/TableProApp/docs), and releasing is in [`RELEASING.md`](RELEASING.md). The Linux app has its own setup and rules in [`linux/CONTRIBUTING.md`](linux/CONTRIBUTING.md).
 
 ## Setup
 

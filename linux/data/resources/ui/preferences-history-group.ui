@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProHistoryGroup" parent="AdwPreferencesGroup">
+    <property name="title" translatable="yes">Query History</property>
+    <child>
+      <object class="AdwSwitchRow" id="save_history_row">
+        <property name="title" translatable="yes">Save Query History</property>
+        <property name="subtitle" translatable="yes">Keep a searchable record of the SQL you run. Statements that contain passwords or connection secrets are never saved.</property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwSpinRow" id="retention_row">
+        <property name="title" translatable="yes">Retention (days)</property>
+        <property name="subtitle" translatable="yes">0 keeps history forever; pinned entries are never pruned.</property>
+        <property name="adjustment">
+          <object class="GtkAdjustment">
+            <property name="lower">0</property>
+            <property name="upper">365</property>
+            <property name="step-increment">1</property>
+            <property name="page-increment">30</property>
+          </object>
+        </property>
+      </object>
+    </child>
+    <child>
+      <object class="AdwActionRow" id="clear_row">
+        <property name="title" translatable="yes">Clear query history</property>
+        <property name="subtitle" translatable="yes">Removes every history entry, including pinned ones. Saved queries are kept.</property>
+        <child type="suffix">
+          <!-- Flat, not destructive: GNOME colours the confirmation,
+               not the trigger that opens it. The ellipsis says more
+               input is coming. -->
+          <object class="GtkButton" id="clear_button">
+            <property name="label" translatable="yes">Clear…</property>
+            <property name="valign">center</property>
+            <style>
+              <class name="flat"/>
+            </style>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwActionRow" id="storage_row">
+        <property name="title" translatable="yes">Storage location</property>
+        <child type="suffix">
+          <object class="GtkButton" id="storage_button">
+            <property name="label" translatable="yes">Show in Files</property>
+            <property name="valign">center</property>
+            <style>
+              <class name="flat"/>
+            </style>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

@@ -1,0 +1,17 @@
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-dbg-in-tests = true
+allow-print-in-tests = true
+
+# A serde_json map sorts its keys, which would reorder a document the
+# server sent. JSON a row holds stays as JsonText, and JSON the app
+# writes goes out in the order it is written.
+disallowed-types = [
+    { path = "serde_json::Map", reason = "key order is not preserved; keep JSON as JsonText" },
+]
+
+disallowed-methods = [
+    { path = "serde_json::Value::as_object", reason = "key order is not preserved; keep JSON as JsonText" },
+    { path = "serde_json::Value::as_object_mut", reason = "key order is not preserved; keep JSON as JsonText" },
+]

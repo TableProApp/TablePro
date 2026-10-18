@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Prints "true" when a suite has to run for the changes since <base>, "false" when it can skip.
-# Usage: detect-changed-paths.sh [--base <sha>] macos|plugins|ios|oracle|hana|release
+# Usage: detect-changed-paths.sh [--base <sha>] macos|plugins|ios|oracle|hana|release|linux
 
 BASE=""
 SUITE=""
@@ -62,8 +62,13 @@ case "$SUITE" in
             'scripts/ci/(detect-changed-paths|verify-plugin-loads)\.sh$'
             '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/release-build\.yml$')
         SKIP='Plugins/[^/]+Tests/|Packages/[^/]+/Tests/' ;;
+    linux)
+        # The fast job checks the Linux docs with the repo's docs and word scripts.
+        PATTERNS=('linux/' 'scripts/(check-doc-symbols|check-banned-words)\.sh$' 'scripts/banned-words\.txt$'
+            'scripts/ci/detect-changed-paths\.sh$'
+            '\.github/workflows/(build-linux|linux-packages|release-linux)\.yml$') ;;
     *)
-        echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana or release, got '$SUITE'" >&2
+        echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana, release or linux, got '$SUITE'" >&2
         exit 2 ;;
 esac
 

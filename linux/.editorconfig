@@ -1,0 +1,25 @@
+# No root = true: the repository's .editorconfig sets the defaults, and this file overrides them.
+
+[{meson.build,meson.options,meson_options.txt}]
+indent_size = 2
+
+[*.{ui,xml,xml.in,xml.in.in,svg}]
+indent_size = 2
+
+[*.css]
+indent_size = 2
+
+[*.hbs]
+indent_size = 2
+
+[build-aux/flatpak/*.json]
+indent_size = 4
+
+[*.rs]
+max_line_length = 120
+
+[build-aux/debian/rules]
+indent_style = tab
+
+[build-aux/debian/{control,copyright}]
+indent_size = 1

@@ -1,19 +1,9 @@
 name: Build Linux
 
 on:
-  push:
-    branches: [main, linux, "linux/**", "feat/linux-**"]
-    paths:
-      - "linux/**"
-      - ".github/workflows/build-linux.yml"
-      - ".github/workflows/linux-packages.yml"
-      - ".github/workflows/release-linux.yml"
   pull_request:
-    paths:
-      - "linux/**"
-      - ".github/workflows/build-linux.yml"
-      - ".github/workflows/linux-packages.yml"
-      - ".github/workflows/release-linux.yml"
+  push:
+    branches: [main]
   schedule:
     - cron: "13 14 * * 1"
   workflow_dispatch:
@@ -35,51 +25,27 @@ env:
   LYCHEE_SHA256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
 
 jobs:
-  # The same file runs on main, where linux/ does not exist until the
-  # first Linux release. Every build job waits for this one and is skipped
-  # there.
-  detect:
-    name: Linux tree
+  changes:
+    name: Changes (Linux)
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      linux: ${{ steps.tree.outputs.linux }}
+      run: ${{ steps.decide.outputs.run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
-          sparse-checkout: linux/meson.build
-          sparse-checkout-cone-mode: false
-      - name: Look for linux/meson.build
-        id: tree
-        run: |
-          if [ -f linux/meson.build ]; then
-            echo "linux=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "linux=false" >> "$GITHUB_OUTPUT"
-          fi
-
-  # GitHub runs a schedule only from the default branch. Until linux/ is
-  # on main, the weekly run starts this workflow on the Linux branch.
-  weekly-dispatch:
-    name: Start the weekly run on the Linux branch
-    needs: detect
-    if: github.event_name == 'schedule' && needs.detect.outputs.linux == 'false'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      actions: write
-    steps:
-      - name: Dispatch this workflow
+      - name: Decide whether the Linux jobs run
+        id: decide
         env:
-          GH_TOKEN: ${{ github.token }}
-          LINUX_BRANCH: ${{ vars.LINUX_BRANCH || 'linux' }}
-        run: gh workflow run build-linux.yml --repo "$GITHUB_REPOSITORY" --ref "$LINUX_BRANCH"
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: echo "run=$(scripts/ci/detect-changed-paths.sh --base "$BASE" linux)" >> "$GITHUB_OUTPUT"
 
   fast:
     name: Fast checks
-    needs: detect
-    if: needs.detect.outputs.linux == 'true'
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     # The host runner ships GLib 2.80, below the GNOME 50 floor.
@@ -174,7 +140,7 @@ jobs:
         run: |
           # The $0 in the awk program is awk's record, not a shell variable.
           # shellcheck disable=SC2016
-          found=$(find crates/app/src/ui -name '*.rs' ! -name tests.rs -print0 \
+          found=$(find crates/app/src/ui -name '*.rs' ! -name tests.rs ! -path '*/tests/*' -print0 \
             | xargs -0 awk '/^mod tests \{/ { nextfile } /std::fs::/ || /\.(exists|try_exists|is_dir|is_file|is_symlink|canonicalize|read_dir|read_link|symlink_metadata)\(/ || (/_blocking\(/ && !/spawn_blocking_task\(/) { print FILENAME ":" FNR ": " $0 }')
           if [ -n "$found" ]; then
             echo "$found"
@@ -260,8 +226,8 @@ jobs:
   # compiler and not with rustup's.
   msrv:
     name: Minimum Rust version
-    needs: detect
-    if: needs.detect.outputs.linux == 'true'
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     container:
@@ -295,8 +261,8 @@ jobs:
 
   docs:
     name: Documentation links
-    needs: detect
-    if: needs.detect.outputs.linux == 'true'
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -319,8 +285,8 @@ jobs:
 
   supply-chain:
     name: Supply chain
-    needs: detect
-    if: needs.detect.outputs.linux == 'true'
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
@@ -365,8 +331,8 @@ jobs:
 
   i18n:
     name: Translations
-    needs: detect
-    if: needs.detect.outputs.linux == 'true'
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     # ubuntu:26.10 ships gettext 1.0, the first release whose xgettext
@@ -428,8 +394,8 @@ jobs:
 
   flatpak-devel:
     name: Flatpak Devel (${{ matrix.arch }})
-    needs: detect
-    if: needs.detect.outputs.linux == 'true'
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     strategy:
       fail-fast: false
       matrix:
@@ -467,8 +433,8 @@ jobs:
 
   integration:
     name: Docker tests (${{ matrix.package }})
-    needs: [detect, fast]
-    if: needs.detect.outputs.linux == 'true'
+    needs: [changes, fast]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && needs.fast.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -530,8 +496,8 @@ jobs:
     # is mounted; testcontainers sees /.dockerenv and reaches the
     # containers it starts through the bridge gateway.
     name: Docker tests (tablepro-session)
-    needs: [detect, fast]
-    if: needs.detect.outputs.linux == 'true'
+    needs: [changes, fast]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && needs.fast.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     container:
@@ -593,8 +559,8 @@ jobs:
     # session job. Only the named test targets run: the app's startup
     # test needs Meson and the fast job already covers it.
     name: Docker tests (tablepro)
-    needs: [detect, fast]
-    if: needs.detect.outputs.linux == 'true'
+    needs: [changes, fast]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && needs.fast.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     container:
@@ -650,3 +616,21 @@ jobs:
         with:
           name: junit-tablepro
           path: linux/target/nextest/ci/junit.xml
+
+  # The one check a branch rule requires: a job skipped by a path decision
+  # reports success, and this fails when any Linux job failed or was cancelled.
+  linux:
+    name: Linux
+    needs: [changes, fast, msrv, docs, supply-chain, i18n, flatpak-devel, integration, integration-session, integration-app]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every Linux job passed or was skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          case " $RESULTS " in
+            *" failure "* | *" cancelled "*) exit 1 ;;
+          esac

@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <menu id="options_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Match Case</attribute>
+        <attribute name="action">find.case-sensitive</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Match Whole Word</attribute>
+        <attribute name="action">find.at-word-boundaries</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Regular Expressions</attribute>
+        <attribute name="action">find.regex-enabled</attribute>
+      </item>
+    </section>
+  </menu>
+  <template class="TableProFindBar" parent="AdwBin">
+    <property name="child">
+      <object class="GtkSearchBar" id="search_bar">
+        <property name="child">
+          <object class="GtkBox">
+            <property name="orientation">vertical</property>
+            <property name="spacing">6</property>
+            <child>
+              <object class="GtkBox">
+                <property name="spacing">6</property>
+                <child>
+                  <object class="GtkSearchEntry" id="search_entry">
+                    <property name="hexpand">true</property>
+                    <property name="search-delay">150</property>
+                    <property name="placeholder-text" translatable="yes">Find</property>
+                    <accessibility>
+                      <property name="label" translatable="yes">Find</property>
+                    </accessibility>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="count_label">
+                    <style>
+                      <class name="dim-label"/>
+                      <class name="numeric"/>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="previous_button">
+                    <property name="action-name">find.previous</property>
+                    <style>
+                      <class name="flat"/>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="next_button">
+                    <property name="action-name">find.next</property>
+                    <style>
+                      <class name="flat"/>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkMenuButton" id="options_button">
+                    <property name="menu-model">options_menu</property>
+                    <style>
+                      <class name="flat"/>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkToggleButton" id="replace_toggle">
+                    <style>
+                      <class name="flat"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkRevealer" id="replace_revealer">
+                <property name="reveal-child" bind-source="replace_toggle" bind-property="active" bind-flags="sync-create"/>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="GtkEntry" id="replace_entry">
+                        <property name="hexpand">true</property>
+                        <property name="placeholder-text" translatable="yes">Replace</property>
+                        <accessibility>
+                          <property name="label" translatable="yes">Replace with</property>
+                        </accessibility>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="replace_button">
+                        <property name="label" translatable="yes">Replace</property>
+                        <property name="action-name">find.replace</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="replace_all_button">
+                        <property name="label" translatable="yes">Replace All</property>
+                        <property name="action-name">find.replace-all</property>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

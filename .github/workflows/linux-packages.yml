@@ -1,0 +1,245 @@
+name: Linux packages
+
+# Builds the Ubuntu and Fedora packages from the release source tarballs.
+# The Debian source package is built once for each Ubuntu series the PPA
+# builds for, and its binaries are built from it the way Launchpad builds
+# them: offline, in a fresh container with only the declared build
+# dependencies, then checked with lintian. The .rpm is built in a fresh
+# fedora:44 with only its BuildRequires. Each package is then installed in
+# another fresh container with only its runtime dependencies and started.
+# release-linux.yml calls this workflow and uploads the source packages.
+# A run by hand can add arm64, which pushes and pull requests leave out.
+# Given a release tag, it packages that release's tarballs instead, with
+# the packaging from this checkout, for a PPA upload with a new revision.
+
+on:
+  pull_request:
+    paths:
+      - "linux/build-aux/debian/**"
+      - "linux/build-aux/rpm/**"
+      - "linux/build-aux/packaging/**"
+      - "linux/Cargo.toml"
+      - "linux/Cargo.lock"
+      - "linux/meson.build"
+      - "linux/meson.options"
+      - "linux/crates/**/meson.build"
+      - "linux/data/**/meson.build"
+      - "linux/po/meson.build"
+      - ".github/workflows/linux-packages.yml"
+  # After a merge every change runs, so a failure only one distribution's
+  # build shows turns up then and not at tag time.
+  push:
+    branches: [main]
+    paths:
+      - "linux/**"
+      - ".github/workflows/linux-packages.yml"
+  workflow_dispatch:
+    inputs:
+      arm64:
+        description: Also build, test and install the arm64 .deb and .rpm
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      deb-runners:
+        description: JSON list of runners; each series' .deb is built once per runner architecture.
+        type: string
+        default: '["ubuntu-24.04"]'
+      rpm-runners:
+        description: JSON list of runners; the .rpm is built once per runner architecture.
+        type: string
+        default: '["ubuntu-24.04"]'
+      release-tag:
+        description: A published linux-vX.Y.Z whose tarballs are packaged, with the .deb packaging from this checkout. No .rpm is built.
+        type: string
+        default: ""
+      revision:
+        description: The PPA upload number, the N in X.Y.Z-0ppaN.
+        type: string
+        default: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  sources:
+    name: Source tarballs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: ubuntu:26.04
+    steps:
+      # Before the checkout: without git, actions/checkout downloads a
+      # tarball, which leaves no .git for meson dist to archive.
+      - name: Install git
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Make the source and vendor tarballs
+        if: inputs.release-tag == ''
+        run: linux/build-aux/packaging/make-sources.sh --install-deps _packages/sources
+      - name: Download the released source and vendor tarballs
+        if: inputs.release-tag != ''
+        env:
+          TAG: ${{ inputs.release-tag }}
+        run: linux/build-aux/packaging/fetch-release-sources.sh --install-deps "$GITHUB_REPOSITORY" "$TAG" _packages/sources
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-sources
+          path: _packages/sources
+          if-no-files-found: error
+
+  source-package:
+    name: Debian source packages
+    needs: sources
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: ubuntu:26.04
+    env:
+      # Every Ubuntu series the PPA builds for.
+      UBUNTU_SERIES: resolute stonking
+    outputs:
+      series: ${{ steps.build.outputs.series }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-sources
+          path: _packages/sources
+      - name: Build an unsigned source package for each series
+        id: build
+        env:
+          RELEASE_TAG: ${{ inputs.release-tag }}
+          REVISION: ${{ inputs.revision || '1' }}
+        run: |
+          dist="$(find _packages/sources -name 'tablepro-*.tar.xz' ! -name '*-vendor.tar.xz')"
+          vendor="$(find _packages/sources -name 'tablepro-*-vendor.tar.xz')"
+          set -- --revision "$REVISION"
+          if [ -n "$RELEASE_TAG" ]; then
+            set -- "$@" --debian linux/build-aux/debian
+          fi
+          # shellcheck disable=SC2086 # one word per series
+          linux/build-aux/packaging/build-source.sh --install-deps "$@" "$dist" "$vendor" _packages/source $UBUNTU_SERIES
+          series=""
+          for name in $UBUNTU_SERIES; do
+            series="$series${series:+, }\"$name\""
+          done
+          echo "series=[$series]" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-source-package
+          path: _packages/source
+          if-no-files-found: error
+
+  # On the runner itself rather than in a job container, so build-deb.sh
+  # can start the containers it builds in, the build one with no network.
+  deb:
+    name: Debian package (${{ matrix.series }}, ${{ matrix.runner }})
+    needs: source-package
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.deb-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
+        series: ${{ fromJSON(needs.source-package.outputs.series) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-source-package
+          path: _packages/source
+      - name: Build offline, test and lint the package
+        env:
+          SERIES: ${{ matrix.series }}
+        run: |
+          changes="$(grep -l -x "Distribution: $SERIES" _packages/source/*_source.changes)"
+          linux/build-aux/packaging/build-deb.sh "${changes%_source.changes}.dsc" _packages/deb
+      - name: Keep the Meson test log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-deb-testlog-${{ matrix.series }}-${{ runner.arch }}
+          path: _packages/deb/testlog.txt
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Install, start and validate in a fresh container
+        env:
+          SERIES: ${{ matrix.series }}
+        run: |
+          docker run --rm -v "$PWD:$PWD" -w "$PWD" "ubuntu:$SERIES" \
+            linux/build-aux/packaging/smoke-test.sh "$(find _packages/deb -name 'tablepro_*.deb')"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-deb-${{ matrix.series }}-${{ runner.arch }}
+          path: _packages/deb
+          if-no-files-found: error
+
+  rpm:
+    name: RPM package (${{ matrix.runner }})
+    needs: sources
+    if: inputs.release-tag == ''
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 300
+    container:
+      image: fedora:44
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-sources
+          path: _packages/sources
+      - name: Build, test and lint the package
+        run: |
+          dist="$(find _packages/sources -name 'tablepro-*.tar.xz' ! -name '*-vendor.tar.xz')"
+          vendor="$(find _packages/sources -name 'tablepro-*-vendor.tar.xz')"
+          linux/build-aux/packaging/build-rpm.sh "$dist" "$vendor" _packages/rpm
+      - name: Keep the Meson test log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-rpm-testlog-${{ runner.arch }}
+          path: _packages/rpm/testlog.txt
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-rpm-${{ runner.arch }}
+          path: _packages/rpm
+          if-no-files-found: error
+
+  rpm-install:
+    name: Install the RPM package (${{ matrix.runner }})
+    needs: rpm
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    container:
+      image: fedora:44
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-rpm-${{ runner.arch }}
+          path: _packages/rpm
+      - name: Install, start and validate
+        run: linux/build-aux/packaging/smoke-test.sh "$(find _packages/rpm -name 'tablepro-[0-9]*.rpm' ! -name '*.src.rpm')"

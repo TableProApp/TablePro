@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProFilterRuleRow" parent="AdwActionRow">
+    <child type="prefix">
+      <object class="GtkDropDown" id="column_dropdown">
+        <property name="valign">center</property>
+        <accessibility>
+          <property name="label" translatable="yes">Column</property>
+        </accessibility>
+      </object>
+    </child>
+    <child type="suffix">
+      <object class="GtkDropDown" id="operator_dropdown">
+        <property name="valign">center</property>
+        <accessibility>
+          <property name="label" translatable="yes">Operator</property>
+        </accessibility>
+      </object>
+    </child>
+    <child type="suffix">
+      <!-- The null tests take no value, and an empty slot would still
+           take a share of the suffix spacing. -->
+      <object class="AdwBin" id="value_slot">
+        <property name="visible">false</property>
+      </object>
+    </child>
+    <child type="suffix">
+      <object class="GtkButton" id="remove_button">
+        <property name="valign">center</property>
+        <property name="action-name">rule.remove</property>
+        <style>
+          <class name="flat"/>
+        </style>
+      </object>
+    </child>
+  </template>
+</interface>

@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <!-- The tab's own width decides its bottom bar, since the sidebar
+       takes part of the window: below the breakpoint, Export, Filter and
+       the page size move into the More menu. -->
+  <template class="TableProBrowseTab" parent="AdwBreakpointBin">
+    <property name="width-request">300</property>
+    <property name="height-request">160</property>
+    <child>
+      <object class="AdwBreakpoint" id="narrow_breakpoint">
+        <condition>max-width: 680sp</condition>
+        <setter object="export_button" property="visible">false</setter>
+        <setter object="filter_button" property="visible">false</setter>
+        <setter object="page_size_box" property="visible">false</setter>
+        <setter object="more_button" property="visible">true</setter>
+        <setter object="pager_bar" property="compact">true</setter>
+      </object>
+    </child>
+    <property name="child">
+      <object class="AdwToolbarView" id="toolbar">
+        <!-- The tab sits right under the tab bar, so a raised top bar
+             would draw a separator above the grid even with every
+             banner collapsed. -->
+        <property name="top-bar-style">flat</property>
+        <child type="top">
+          <object class="AdwBanner" id="stale_banner">
+            <property name="title" translatable="yes">Couldn't refresh rows. Showing the last loaded page.</property>
+            <property name="use-markup">false</property>
+          </object>
+        </child>
+        <child type="top">
+          <object class="AdwBanner" id="read_only_banner">
+            <property name="title" translatable="yes">Read-only connection. Editing disabled.</property>
+          </object>
+        </child>
+        <child type="top">
+          <object class="AdwBanner" id="no_pk_banner">
+            <property name="title" translatable="yes">This table has no primary key. Use the SQL editor to modify rows.</property>
+          </object>
+        </child>
+        <property name="content">
+          <object class="GtkStack" id="inner_stack">
+            <property name="transition-type">crossfade</property>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">loading</property>
+                <property name="child">
+                  <object class="AdwStatusPage" id="loading_page">
+                    <property name="title" translatable="yes">Loading…</property>
+                    <property name="child">
+                      <object class="AdwSpinner">
+                        <property name="width-request">32</property>
+                        <property name="height-request">32</property>
+                        <property name="halign">center</property>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">grid</property>
+                <property name="child">
+                  <object class="GtkBox" id="grid_holder">
+                    <property name="orientation">vertical</property>
+                    <property name="vexpand">true</property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">error</property>
+                <property name="child">
+                  <object class="AdwStatusPage" id="error_page">
+                    <property name="icon-name">dialog-error-symbolic</property>
+                    <property name="title" translatable="yes">Couldn't Load Rows</property>
+                    <property name="child">
+                      <object class="GtkButton" id="retry_button">
+                        <property name="label" translatable="yes">Try Again</property>
+                        <property name="halign">center</property>
+                        <style>
+                          <class name="pill"/>
+                          <class name="suggested-action"/>
+                        </style>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </child>
+          </object>
+        </property>
+        <child type="bottom">
+          <object class="GtkActionBar">
+            <child type="start">
+              <object class="GtkButton" id="insert_button">
+                <property name="icon-name">list-add-symbolic</property>
+                <property name="action-name">browse.insert-row</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+            <child type="start">
+              <object class="GtkButton" id="delete_button">
+                <property name="icon-name">list-remove-symbolic</property>
+                <property name="action-name">browse.delete-rows</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+            <child type="start">
+              <object class="TableProPagerBar" id="pager_bar"/>
+            </child>
+            <child type="start">
+              <object class="GtkLabel" id="selection_label">
+                <property name="visible">false</property>
+                <property name="ellipsize">end</property>
+                <property name="margin-start">12</property>
+                <property name="accessible-role">status</property>
+                <style>
+                  <class name="accent"/>
+                  <class name="caption-heading"/>
+                </style>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkMenuButton" id="more_button">
+                <property name="icon-name">view-more-symbolic</property>
+                <property name="visible">false</property>
+                <property name="tooltip-text" translatable="yes">More Actions</property>
+                <accessibility>
+                  <property name="label" translatable="yes">More Actions</property>
+                </accessibility>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkButton" id="export_button">
+                <property name="icon-name">document-save-symbolic</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+            <child type="end">
+              <!-- Text, not an icon: the theme has no symbolic icon for
+                   filtering rows, and the search icons mean Ctrl+F's
+                   other use. -->
+              <object class="GtkButton" id="filter_button">
+                <property name="tooltip-text" translatable="yes">Filter Rows</property>
+                <property name="action-name">browse.toggle-filter</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="label" translatable="yes">Filter</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="filter_badge">
+                        <property name="visible">false</property>
+                        <style>
+                          <class name="numeric"/>
+                          <class name="caption-heading"/>
+                          <class name="dimmed"/>
+                        </style>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkBox" id="page_size_box">
+                <property name="spacing">6</property>
+                <child>
+                  <object class="GtkLabel">
+                    <property name="label" translatable="yes">Rows:</property>
+                    <property name="mnemonic-widget">page_size_dropdown</property>
+                    <style>
+                      <class name="dimmed"/>
+                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkDropDown" id="page_size_dropdown"/>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child type="bottom">
+          <object class="TableProPendingChangesBar" id="pending_bar"/>
+        </child>
+      </object>
+    </property>
+  </template>
+</interface>

@@ -1,0 +1,2 @@
+Host key ED25519 SHA256:sVh9VBvIe446P8RLFS4dYKfpSyzRVLEDHKX95h2d7VY revoked by file /tmp/claude-1000/-home-ngoquocdat-Workspaces-TablePro-linux/f564f546-0075-4f9a-9d3e-20b24faa3f40/scratchpad/fixture-capture/revoked
+Host key verification failed.

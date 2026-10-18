@@ -1,0 +1,21 @@
+option(
+  'profile',
+  type: 'combo',
+  choices: ['default', 'development'],
+  value: 'default',
+  description: 'The build profile. "development" builds a debug binary under a .Devel application ID.',
+)
+
+option(
+  'kerberos',
+  type: 'boolean',
+  value: true,
+  description: 'Build SQL Server Windows integrated auth, which links MIT Kerberos.',
+)
+
+option(
+  'flatpak',
+  type: 'boolean',
+  value: false,
+  description: 'Install the files a Flatpak build needs, such as the Kerberos configuration.',
+)

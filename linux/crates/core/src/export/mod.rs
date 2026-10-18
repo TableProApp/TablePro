@@ -1,0 +1,129 @@
+mod csv;
+mod csv_options;
+mod encoder;
+mod html;
+mod in_clause;
+mod json;
+mod json_field_names;
+mod markdown;
+mod render_insert_error;
+mod sql;
+mod tsv;
+mod value_text;
+mod xlsx;
+mod xml;
+
+use thiserror::Error;
+
+use crate::column::{ColumnType, ResultColumn};
+use crate::value::Value;
+
+pub use csv::{FORMULA_LEADS, csv_writer_builder, neutralise_formula, render_csv, render_text_csv};
+pub use csv_options::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
+pub use encoder::{
+    CsvEncoder, EncodeError, HtmlEncoder, JsonArrayEncoder, MarkdownEncoder, RowEncoder, SqlInsertEncoder, TsvEncoder,
+    XmlEncoder,
+};
+pub use html::render_html;
+pub use in_clause::{InClause, render_in_clause};
+pub use json::{render_json, row_to_json};
+pub use json_field_names::json_field_names;
+pub use markdown::render_markdown;
+pub use render_insert_error::RenderInsertError;
+pub use sql::{literal, render_insert, render_sql_insert};
+pub use tsv::{render_tsv, tsv_writer_builder};
+pub use value_text::{value_text, value_to_text};
+pub use xlsx::{XLSX_MAX_DATA_ROWS, XlsxSheetWriter, render_xlsx};
+pub use xml::render_xml;
+
+/// Why a whole document could not be rendered: a workbook past what a
+/// sheet holds, or free-text CSV the writer refused.
+#[derive(Debug, Error)]
+pub enum RenderError {
+    #[error("CSV encoding failed: {0}")]
+    Csv(#[from] ::csv::Error),
+
+    #[error("CSV output could not be flushed: {0}")]
+    Flush(#[from] std::io::Error),
+
+    #[error("CSV output is not valid UTF-8: {0}")]
+    Utf8(#[from] std::string::FromUtf8Error),
+
+    #[error("XLSX encoding failed: {0}")]
+    Xlsx(String),
+
+    #[error("a sheet holds {limit} rows, and this result has {got}")]
+    TooManyRows { got: usize, limit: usize },
+
+    #[error("a sheet holds {limit} columns, and this result has {got}")]
+    TooManyColumns { got: usize, limit: usize },
+
+    #[error("column {column} holds a value longer than the {limit} characters a sheet cell holds")]
+    TextTooLong { column: String, limit: usize },
+
+    /// A value the file cannot carry, refused as every row encoder
+    /// refuses it.
+    #[error(transparent)]
+    Encode(#[from] EncodeError),
+}
+
+/// The text of one cell, at the precision its column declares.
+pub fn cell_text(columns: &[ResultColumn], index: usize, value: &Value) -> Option<String> {
+    value_text(value, column_type(columns, index))
+}
+
+/// The column a cell belongs to, or an untyped one for a row longer
+/// than its header, which is a driver fault rather than a reason to
+/// drop the value.
+fn column_type(columns: &[ResultColumn], index: usize) -> &ColumnType {
+    static UNTYPED: std::sync::LazyLock<ColumnType> = std::sync::LazyLock::new(ColumnType::unknown);
+    columns
+        .get(index)
+        .map(|column| &column.column_type)
+        .unwrap_or_else(|| &UNTYPED)
+}
+
+fn finish(writer: ::csv::Writer<Vec<u8>>) -> Result<String, RenderError> {
+    let bytes = writer
+        .into_inner()
+        .map_err(|error| RenderError::Flush(error.into_error()))?;
+    Ok(String::from_utf8(bytes)?)
+}
+
+#[cfg(test)]
+mod test_columns {
+    use crate::column::{ColumnKind, ColumnType, ReadForm, ResultColumn, TextLength};
+
+    pub fn text_type() -> ColumnType {
+        ColumnType {
+            name: "text".to_owned(),
+            kind: ColumnKind::Text {
+                length: TextLength::Unbounded,
+            },
+            catalog: None,
+            dynamic_storage: true,
+            read_form: ReadForm::Native,
+        }
+    }
+
+    pub fn typed(name: &str, type_name: &str, kind: ColumnKind) -> ResultColumn {
+        ResultColumn::new(
+            name,
+            ColumnType {
+                name: type_name.to_owned(),
+                kind,
+                catalog: None,
+                dynamic_storage: false,
+                read_form: ReadForm::Native,
+            },
+        )
+    }
+
+    pub fn col(name: &str) -> ResultColumn {
+        ResultColumn::new(name, text_type())
+    }
+
+    pub fn cols(names: &[&str]) -> Vec<ResultColumn> {
+        names.iter().map(|name| col(name)).collect()
+    }
+}

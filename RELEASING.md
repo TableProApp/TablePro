@@ -1,6 +1,6 @@
 # Releasing
 
-This runbook covers the macOS app, its registry plugins and the static libraries; the iOS app ships by hand. The `release` skill (`.claude/skills/release/SKILL.md`) decides what ships and points at the sections here. Every command below is the maintainer's to run.
+This runbook covers the macOS app, its registry plugins and the static libraries; the iOS app ships by hand, and the Linux app's runbook is `linux/docs/releasing.md`. The `release` skill (`.claude/skills/release/SKILL.md`) decides what ships and points at the sections here. Every command below is the maintainer's to run.
 
 ## Channels
 

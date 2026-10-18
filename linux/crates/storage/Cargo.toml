@@ -1,0 +1,27 @@
+[package]
+name = "tablepro-storage"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tablepro-core.workspace = true
+async-trait.workspace = true
+oo7.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["fs", "sync"] }
+uuid.workspace = true
+sqlx = { workspace = true, features = ["sqlite-unbundled", "migrate", "macros"] }
+chrono.workspace = true
+gio.workspace = true
+glib.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

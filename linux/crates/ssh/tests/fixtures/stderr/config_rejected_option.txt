@@ -1,0 +1,1 @@
+command-line: line 0: Bad configuration option: nosuchoption

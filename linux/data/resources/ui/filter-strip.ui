@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProFilterStrip" parent="AdwBin">
+    <property name="child">
+      <!-- Slides down the way GtkSearchBar does, so the strip reads as a
+           transient editor coming from the toolbar rather than a dialog
+           over the rows the user is filtering. -->
+      <object class="GtkRevealer" id="revealer">
+        <property name="transition-type">slide-down</property>
+        <property name="reveal-child" bind-source="TableProFilterStrip" bind-property="revealed" bind-flags="sync-create"/>
+        <property name="child">
+          <object class="GtkBox">
+            <property name="orientation">vertical</property>
+            <style>
+              <class name="toolbar"/>
+              <class name="inline-toolbar"/>
+            </style>
+            <child>
+              <!-- The buttons wrap under the Match line in a tab too
+                   narrow for both. -->
+              <object class="AdwWrapBox">
+                <property name="child-spacing">6</property>
+                <property name="line-spacing">6</property>
+                <property name="justify">spread</property>
+                <property name="justify-last-line">true</property>
+                <property name="margin-top">8</property>
+                <property name="margin-start">12</property>
+                <property name="margin-end">12</property>
+                <child>
+                  <object class="GtkRevealer" id="match_revealer">
+                    <property name="transition-type">none</property>
+                    <property name="child">
+                      <object class="GtkBox">
+                        <property name="spacing">6</property>
+                        <child>
+                          <object class="GtkLabel">
+                            <property name="label" translatable="yes">Match</property>
+                            <property name="mnemonic-widget">combinator_dropdown</property>
+                            <style>
+                              <class name="dimmed"/>
+                            </style>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkDropDown" id="combinator_dropdown">
+                            <property name="valign">center</property>
+                            <property name="model">
+                              <object class="GtkStringList">
+                                <items>
+                                  <item translatable="yes" context="filter operator">all</item>
+                                  <item translatable="yes" context="filter operator">any</item>
+                                </items>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkLabel">
+                            <property name="label" translatable="yes">of these rules</property>
+                            <style>
+                              <class name="dimmed"/>
+                            </style>
+                          </object>
+                        </child>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkBox">
+                    <property name="spacing">6</property>
+                    <child>
+                      <object class="GtkButton" id="clear_button">
+                        <property name="label" translatable="yes">Clear All</property>
+                        <property name="action-name">filter.clear</property>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="apply_button">
+                        <property name="label" translatable="yes">Apply</property>
+                        <property name="action-name">filter.apply</property>
+                        <style>
+                          <class name="suggested-action"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="close_button">
+                        <property name="action-name">filter.close</property>
+                        <style>
+                          <class name="flat"/>
+                        </style>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkScrolledWindow">
+                <property name="hscrollbar-policy">never</property>
+                <property name="vexpand">false</property>
+                <property name="hexpand">true</property>
+                <property name="max-content-height">420</property>
+                <property name="propagate-natural-height">true</property>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <property name="spacing">8</property>
+                    <property name="margin-top">6</property>
+                    <property name="margin-bottom">8</property>
+                    <property name="margin-start">12</property>
+                    <property name="margin-end">12</property>
+                    <child>
+                      <!-- Raw SQL comes first: the strip is for people who
+                           already think in WHERE clauses, and the rule
+                           editor is one click further for the rest. -->
+                      <object class="GtkBox">
+                        <property name="spacing">8</property>
+                        <child>
+                          <object class="GtkLabel">
+                            <property name="label">WHERE</property>
+                            <property name="mnemonic-widget">raw_entry</property>
+                            <style>
+                              <class name="monospace"/>
+                              <class name="dimmed"/>
+                            </style>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkEntry" id="raw_entry">
+                            <property name="placeholder-text" translatable="yes">e.g. created_at &gt; now() - interval '1 day'</property>
+                            <property name="hexpand">true</property>
+                            <style>
+                              <class name="monospace"/>
+                            </style>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkExpander" id="rules_expander">
+                        <property name="label" translatable="yes">Or use the rule editor</property>
+                        <property name="child">
+                          <object class="GtkBox">
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">8</property>
+                            <property name="margin-top">8</property>
+                            <child>
+                              <object class="GtkListBox" id="rule_list">
+                                <property name="selection-mode">none</property>
+                                <style>
+                                  <class name="boxed-list"/>
+                                </style>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkButton" id="add_rule_button">
+                                <property name="label" translatable="yes">Add Rule</property>
+                                <property name="halign">start</property>
+                                <property name="action-name">filter.add-rule</property>
+                                <style>
+                                  <class name="flat"/>
+                                </style>
+                              </object>
+                            </child>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

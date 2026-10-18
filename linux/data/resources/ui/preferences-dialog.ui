@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProPreferencesDialog" parent="AdwPreferencesDialog">
+    <property name="title" translatable="yes">Preferences</property>
+    <property name="search-enabled">true</property>
+    <child>
+      <object class="TableProGeneralPage" id="general_page"/>
+    </child>
+    <child>
+      <object class="TableProEditorPage" id="editor_page"/>
+    </child>
+  </template>
+</interface>
