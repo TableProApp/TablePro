@@ -32,5 +32,6 @@ To change protocol behaviour, commit to the fork's `tablepro` branch, then bump 
 scripts/build-dameng.sh [arm64|x86_64|both]
 ```
 
+`rust-toolchain.toml` pins the Rust release and both targets; the script has rustup install them.
 Fetching a git dependency needs network access. Xcode does not build this; the plugin target
 links the archive `build-dameng.sh` produces, so build it before building `DamengDriver`.

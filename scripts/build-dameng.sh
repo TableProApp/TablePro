@@ -7,54 +7,40 @@ BRIDGE_DIR="$ROOT_DIR/Native/DamengBridge"
 # download-libs.sh, and publish-libs.sh treats anything unrecognised there as an error.
 # The bridge is compiled from in-tree Rust instead, so its output stays beside its source.
 LIBS_DIR="${LIBS_DIR:-$BRIDGE_DIR/lib}"
+OUTPUT="$LIBS_DIR/libdameng_bridge.a"
 ARCH="${1:-both}"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/deployment-target.sh"
-MACOS_TARGET="$DEPLOY_TARGET"
-RUST_TOOLCHAIN="1.91.1"
 
-if ! rustup toolchain list | grep -q "^${RUST_TOOLCHAIN}"; then
-    rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
-fi
+# rustup takes the toolchain, profile and targets from rust-toolchain.toml in the working directory.
+(cd "$BRIDGE_DIR" && rustup toolchain install)
+
+archive() {
+    echo "$BRIDGE_DIR/target/$1/release/libtablepro_dameng_bridge.a"
+}
 
 build_slice() {
-    local arch="$1"
-    local target="$2"
-    local output="$LIBS_DIR/libdameng_bridge_${arch}.a"
-
-    if ! rustup target list --installed --toolchain "$RUST_TOOLCHAIN" | grep -qx "$target"; then
-        rustup target add "$target" --toolchain "$RUST_TOOLCHAIN"
-    fi
-
-    env RUSTUP_TOOLCHAIN="$RUST_TOOLCHAIN" MACOSX_DEPLOYMENT_TARGET="$MACOS_TARGET" \
-        cargo build \
-        --manifest-path "$BRIDGE_DIR/Cargo.toml" \
-        --locked \
-        --release \
-        --target "$target"
-
-    cp "$BRIDGE_DIR/target/$target/release/libtablepro_dameng_bridge.a" "$output"
-    nm -gU "$output" | grep 'T _tp_dm_connect' > /dev/null
+    (
+        cd "$BRIDGE_DIR"
+        env MACOSX_DEPLOYMENT_TARGET="$DEPLOY_TARGET" cargo build --locked --release --target "$1"
+    )
+    nm -gU "$(archive "$1")" | grep 'T _tp_dm_connect' > /dev/null
 }
 
 mkdir -p "$LIBS_DIR"
 
 case "$ARCH" in
     arm64)
-        build_slice arm64 aarch64-apple-darwin
-        cp "$LIBS_DIR/libdameng_bridge_arm64.a" "$LIBS_DIR/libdameng_bridge.a"
+        build_slice aarch64-apple-darwin
+        cp "$(archive aarch64-apple-darwin)" "$OUTPUT"
         ;;
     x86_64)
-        build_slice x86_64 x86_64-apple-darwin
-        cp "$LIBS_DIR/libdameng_bridge_x86_64.a" "$LIBS_DIR/libdameng_bridge.a"
+        build_slice x86_64-apple-darwin
+        cp "$(archive x86_64-apple-darwin)" "$OUTPUT"
         ;;
-    both|universal)
-        build_slice arm64 aarch64-apple-darwin
-        build_slice x86_64 x86_64-apple-darwin
-        lipo -create \
-            "$LIBS_DIR/libdameng_bridge_arm64.a" \
-            "$LIBS_DIR/libdameng_bridge_x86_64.a" \
-            -output "$LIBS_DIR/libdameng_bridge_universal.a"
-        cp "$LIBS_DIR/libdameng_bridge_universal.a" "$LIBS_DIR/libdameng_bridge.a"
+    both)
+        build_slice aarch64-apple-darwin
+        build_slice x86_64-apple-darwin
+        lipo -create "$(archive aarch64-apple-darwin)" "$(archive x86_64-apple-darwin)" -output "$OUTPUT"
         ;;
     *)
         echo "Usage: $0 [arm64|x86_64|both]" >&2
@@ -62,4 +48,5 @@ case "$ARCH" in
         ;;
 esac
 
-file "$LIBS_DIR"/libdameng_bridge*.a
+lipo -info "$OUTPUT"
+verify_deployment_target "$OUTPUT"

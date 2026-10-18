@@ -32,43 +32,6 @@ make_universal() {
     done
 }
 
-# Reads the macOS version a Mach-O was built for. Prefers LC_BUILD_VERSION and falls back to the
-# older LC_VERSION_MIN_MACOSX. `tail -1` takes the highest across the archive's members, which is
-# the one that decides whether the whole library can run on the app's floor.
-macho_min_version() {
-    local lib="$1" version
-    version=$(otool -l "$lib" 2>/dev/null |
-        awk '/LC_BUILD_VERSION/{found=1} found && /minos/{print $2; found=0}' | sort -V | tail -1)
-    if [ -z "$version" ]; then
-        version=$(otool -l "$lib" 2>/dev/null |
-            awk '/LC_VERSION_MIN_MACOSX/{found=1} found && /version/{print $2; found=0}' | sort -V | tail -1)
-    fi
-    printf '%s' "$version"
-}
-
-# Fails on a library built for a newer macOS than DEPLOY_TARGET; an older one runs fine.
-verify_deployment_target() {
-    local lib name version failed=0
-    echo ""
-    echo "🔍 Verifying deployment targets..."
-    for lib in "$@"; do
-        [ -f "$lib" ] || continue
-        name=$(basename "$lib")
-        version=$(macho_min_version "$lib")
-        [ -n "$version" ] || continue
-        if [ "$(printf '%s\n' "$DEPLOY_TARGET" "$version" | sort -V | tail -1)" != "$DEPLOY_TARGET" ]; then
-            echo "   ❌ $name targets macOS $version (expected $DEPLOY_TARGET)"
-            failed=1
-        else
-            echo "   ✅ $name targets macOS $version"
-        fi
-    done
-    if [ "$failed" -eq 1 ]; then
-        echo "❌ FATAL: some libraries have incorrect deployment targets" >&2
-        return 1
-    fi
-}
-
 fetch_openssl() {
     local tarball="$BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz"
     if [ ! -f "$tarball" ]; then

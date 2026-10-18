@@ -10,8 +10,8 @@
 | XcodeGen | 2.46.0 exactly | The generated project differs between versions, so `scripts/generate-project.sh` warns on any other |
 | SwiftLint | 0.65.1 | The version CI runs |
 | GitHub CLI | any | Optional: `scripts/download-libs.sh` falls back to `curl` |
-| Go | 1.27.1 | SAP HANA plugin only: run `scripts/build-hana.sh` with no argument before building `HanaDriver` or `AllPlugins`. The script fetches 1.27.1 when the installed `go` is another release |
-| Rust | 1.91.1 | Dameng plugin only, through [rustup](https://rustup.rs): run `scripts/build-dameng.sh arm64` before building `DamengDriver` or `AllPlugins` |
+| Go | `toolchain` in `Native/HanaBridge/go.mod` | SAP HANA plugin only: run `scripts/build-hana.sh` with no argument before building `HanaDriver` or `AllPlugins`. When the installed `go` is another release, `go` switches to that toolchain itself |
+| Rust | `Native/DamengBridge/rust-toolchain.toml` | Dameng plugin only, through [rustup](https://rustup.rs), which installs it: run `scripts/build-dameng.sh arm64` before building `DamengDriver` or `AllPlugins` |
 
 Fork the repo on GitHub, then:
 
