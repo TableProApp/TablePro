@@ -27,6 +27,8 @@ REQUIRED_RUNS = (
 DETECTOR = "scripts/ci/detect-changed-paths.sh"
 FRAGMENTS = "changelog.d/"
 POLL_SECONDS = 60
+# A pull_request run builds a merge commit, not its head_sha; these events build the commit itself.
+COMMIT_EVENTS = ("push", "schedule", "workflow_dispatch")
 PENDING_STATUSES = {"queued", "in_progress", "waiting", "requested", "pending"}
 
 
@@ -151,12 +153,13 @@ class GitHub:
                           ".[] | [.tag_name, .draft] | @tsv", paginate=True)
         return [(tag, draft == "true") for tag, draft in (line.split("\t") for line in lines if line)]
 
-    def push_runs(self, workflow: str, sha: str) -> List[Tuple[str, str, str]]:
+    def commit_runs(self, workflow: str, sha: str) -> List[Tuple[str, str, str]]:
         lines = self._api(f"repos/{self.repository}/actions/workflows/{workflow}/runs"
-                          f"?head_sha={sha}&event=push&per_page=100",
-                          ".workflow_runs[] | [.id, .status, .conclusion // \"\"] | @tsv")
+                          f"?head_sha={sha}&per_page=100",
+                          ".workflow_runs[] | [.id, .status, .conclusion // \"\", .event] | @tsv")
         return [(run_id, status, conclusion)
-                for run_id, status, conclusion in (line.split("\t") for line in lines if line)]
+                for run_id, status, conclusion, event in (line.split("\t") for line in lines if line)
+                if event in COMMIT_EVENTS]
 
     def job_conclusions(self, run_id: str, job: str) -> List[str]:
         return self._api(f"repos/{self.repository}/actions/runs/{run_id}/jobs?filter=latest&per_page=100",
@@ -253,7 +256,7 @@ def fragment_errors(paths: List[str], version: Version) -> List[str]:
 def is_green(github: GitHub, workflow: str, job: str, sha: str,
              sleep: Callable[[float], None], log: Callable[[str], None]) -> bool:
     while True:
-        runs = github.push_runs(workflow, sha)
+        runs = github.commit_runs(workflow, sha)
         pending = [run_id for run_id, status, _ in runs if status in PENDING_STATUSES]
         if not pending:
             break

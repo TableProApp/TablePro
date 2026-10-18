@@ -81,7 +81,7 @@ class FakeGitHub:
     def releases(self):
         return self._releases
 
-    def push_runs(self, workflow, sha):
+    def commit_runs(self, workflow, sha):
         self.run_queries.append((workflow, sha))
         snapshots = self._runs.get((workflow, sha), [[]])
         return snapshots.pop(0) if len(snapshots) > 1 else snapshots[0]
@@ -390,7 +390,8 @@ class GitHubTests(unittest.TestCase):
             path = command[command.index("--jq") - 1]
             outputs = {
                 "/releases": "v0.82.0\tfalse\nplugin-oracle-v1.0.0\ttrue\n",
-                "/runs?": "11\tcompleted\tsuccess\n12\tin_progress\t\n",
+                "/runs?": ("11\tcompleted\tsuccess\tpush\n12\tin_progress\t\tschedule\n"
+                           "13\tcompleted\tsuccess\tworkflow_dispatch\n14\tcompleted\tfailure\tpull_request\n"),
                 "/jobs?": "success\n\n",
             }
             output = next(text for key, text in outputs.items() if key in path)
@@ -398,11 +399,11 @@ class GitHubTests(unittest.TestCase):
 
         github = version.GitHub("Owner/Repo", run=run)
         self.assertEqual(github.releases(), [("v0.82.0", False), ("plugin-oracle-v1.0.0", True)])
-        self.assertEqual(github.push_runs("macos-tests.yml", "abc"),
-                         [("11", "completed", "success"), ("12", "in_progress", "")])
+        self.assertEqual(github.commit_runs("macos-tests.yml", "abc"),
+                         [("11", "completed", "success"), ("12", "in_progress", ""), ("13", "completed", "success")])
         self.assertEqual(github.job_conclusions("11", "macOS Tests"), ["success", ""])
         self.assertIn("--paginate", calls[0])
-        self.assertIn("repos/Owner/Repo/actions/workflows/macos-tests.yml/runs?head_sha=abc&event=push&per_page=100",
+        self.assertIn("repos/Owner/Repo/actions/workflows/macos-tests.yml/runs?head_sha=abc&per_page=100",
                       calls[1])
 
     def test_a_gh_failure_is_raised(self):
