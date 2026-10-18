@@ -94,6 +94,35 @@ def scenarios(ui):
         ui.wait_for_node(name="1 unsaved change")
         assert ui.find_node(name="Discard pending changes?") is None, "the failed import prompted to discard an unrelated edit"
 
+    def import_refreshes_every_open_tab_of_the_imported_table(database, base):
+        ui.run_sql("CREATE TABLE other_items(id INTEGER PRIMARY KEY, note TEXT)")
+        ui.wait_for_node(name="other_items", role=ui.pyatspi.ROLE_LIST_ITEM)
+        with sqlite3.connect(database) as connection:
+            connection.executemany(
+                "INSERT INTO safety_items(id, note) VALUES (?, ?)", [(1, "alpha"), (2, "beta")]
+            )
+        ui.invoke_named_action_within("safety_items", "Open safety_items")
+        ui.wait_for_node(name="alpha", role=ui.pyatspi.ROLE_LABEL)
+        ui.open_table_in_new_tab("safety_items")
+        ui.wait_for_node(name="alpha", role=ui.pyatspi.ROLE_LABEL)
+
+        csv_path = base / "home" / "more.csv"
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        csv_path.write_text("id,note\n3,gamma\n4,delta\n", encoding="utf-8")
+        import_csv_into("safety_items", csv_path)
+
+        ui.wait_for_node(name="gamma", role=ui.pyatspi.ROLE_LABEL)
+        first_tab = [
+            node
+            for application in ui.desktop_applications()
+            for node in ui.descendants(application)
+            if ui.node_role(node) == ui.pyatspi.ROLE_PAGE_TAB and "safety_items" in ui.node_name(node)
+        ][0]
+        bounds = first_tab.queryComponent().getExtents(ui.pyatspi.WINDOW_COORDS)
+        gtk_ux.x11_click(bounds.x + bounds.width // 2, bounds.y + bounds.height // 2, button=1)
+        ui.wait_for_node(name="gamma", role=ui.pyatspi.ROLE_LABEL)
+
+    import_refreshes_every_open_tab_of_the_imported_table.environment = "local"
     import_refreshes_only_the_imported_table.environment = "local"
     failed_import_keeps_unrelated_edits.environment = "local"
-    return [import_refreshes_only_the_imported_table, failed_import_keeps_unrelated_edits]
+    return [import_refreshes_only_the_imported_table, failed_import_keeps_unrelated_edits, import_refreshes_every_open_tab_of_the_imported_table]
