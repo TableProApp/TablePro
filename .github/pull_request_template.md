@@ -1,6 +1,6 @@
 <!--
 Title: <type>(<scope>): <description>, with ! before the colon for a breaking change. At most 72 characters, GitHub's " (#123)" not counted. It becomes the squash commit subject.
-Types: feat, fix, refactor, perf, test, docs, build, ci, chore, style, revert. Only the release skill writes "release: v<version>".
+Types: feat, fix, refactor, perf, test, docs, build, ci, chore, style, revert.
 Scopes, when one fits: ai-chat, ai-providers, mcp, copilot, inline-suggest, editor, datagrid, tabs, coordinator, sidebar, connections, connection-form, welcome, settings, toolbar, hig, ssh, ios, windowing, perf, launch, plugins, plugin-<name>, changelog, claude-md, docs, ci, release.
 Platform scopes: ios for the iOS app, linux or linux-<area> for the Linux app. windows is kept for a Windows app, so window management is windowing.
 Body: 80 to 150 words, 250 at most, screenshots aside. Delete these comments and any optional heading you do not use.
@@ -26,7 +26,7 @@ The PR title check also scans this body against scripts/banned-words.txt.
 
 ## Not in this PR
 
-<!-- Optional. A known gap, a follow-up, a plugin release the change needs, or a risk the reviewer should weigh. One line each. -->
+<!-- Optional. A known gap, a follow-up, or a risk the reviewer should weigh. One line each. -->
 
 Fixes #
 <!-- One keyword per issue ("Fixes #1, fixes #2"), "Refs #N" for one this does not close. Delete the line when there is no issue. -->

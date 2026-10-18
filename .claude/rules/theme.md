@@ -17,7 +17,7 @@ paths:
   - The editor tab strip track draws `secondarySystemFill` over a themed backdrop on macOS 26 and later, where the track sits on the theme's window color, and its unthemed fill otherwise. Never a palette color.
 - **A code field takes the editor theme wherever it appears.** Startup Commands, Pre-Connect Script, a favorite's query, Rewind, Agent SQL, the deep-link Startup SQL and the tunnel command preview wear `editor.*`; the form or sheet around them stays system.
 - **The slot family follows what the surface shows.** Code, values, value trees and wells: `editor.*`, with tree tones from `editor.syntax.*`. Records, schema objects, diagram nodes, chart plots and states that stand in for a grid: `dataGrid.*`. Diff rows: `dataGrid.inserted`, `modified` and `deleted` over the editor background and text. A region behind panes: `window.background`. Identity, severity and status hues stay system.
-- **Every site passes what it draws natively.** A themed call site names a slot and, as its fallback, the exact system color or style it drew before, so while the active theme leaves the slot out the pixels are an unthemed app's. A default changes only on purpose, named in the PR and the CHANGELOG.
+- **Every site passes what it draws natively.** A themed call site names a slot and, as its fallback, the exact system color or style it drew before, so while the active theme leaves the slot out the pixels are an unthemed app's. A default changes only on purpose, named in the PR and in a changelog fragment.
 
 ## The model: `TableProTheme`
 

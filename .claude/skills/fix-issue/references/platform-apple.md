@@ -57,4 +57,5 @@ The macOS app and the iOS app, with everything they build from. Every profile ha
 ## Ship
 
 - Stage a string catalog only for the keys you added.
+- A fix for a bug on the current beta or stable gets the label `backport release/<X.Y>`.
 - A probe worth keeping goes under `scripts/probes/`.

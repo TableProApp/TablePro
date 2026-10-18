@@ -8,7 +8,7 @@ paths:
   - "Packages/*/Package.swift"
   - "project.yml"
   - "TableProMobile/project.yml"
-  - ".github/workflows/build-plugin.yml"
+  - "Configs/PluginKit.xcconfig"
   - ".github/plugin-registry.json"
   - "scripts/*plugin*"
 ---
@@ -24,10 +24,10 @@ TableProPluginKit is built with Library Evolution, so an already-built plugin ke
 - Add a requirement only with a default implementation, then bridge it in `PluginDriverAdapter`.
 - Additive: a new requirement with a default, a new field on a non-`@frozen` struct, a new case on a non-`@frozen` enum, a reordering.
 - Breaking: a changed, removed or renamed requirement or signature, a requirement without a default, a new case on a `@frozen` enum, a change to a frozen type's layout.
-- Every ABI change bumps `TABLEPRO_PLUGINKIT_VERSION` in `Configs/PluginKit.xcconfig`, at most once per release cycle: later changes in the cycle reuse the pending number. `scripts/ci/check-pluginkit-bump-cadence.py` checks it in Repo Hygiene.
+- Every ABI change bumps `TABLEPRO_PLUGINKIT_VERSION` in `Configs/PluginKit.xcconfig`, at most one past the newest `vX.Y.Z` tag: later changes reuse the pending number. `scripts/ci/check-pluginkit-bump-cadence.py` checks it in Repo Hygiene. A `release/*` line never bumps it.
 - The build stamps that value into `TableProPluginKitVersion` of the app and of every plugin. A plugin's `Info.plist` holds `<integer>TABLEPRO_PLUGINKIT_VERSION</integer>` and is preprocessed, because every shipped app reads the key with `as? Int`; the source file therefore fails `plutil -lint`.
-- An additive change re-publishes nothing. Built plugins keep loading, and the bump makes an older app refuse a plugin rebuilt against the new API instead of failing its load.
-- A breaking change also raises `TABLEPRO_PLUGINKIT_MINIMUM_VERSION`, and every registry plugin is re-released with `scripts/release-all-plugins.sh <version>` before the app tag, because the release's `Registry Readiness` job fails while a registry driver has no binary in the app's kit range (`RELEASING.md`, The release pipeline).
+- After an additive change, built plugins keep loading, and the bump makes an older app refuse a plugin rebuilt against the new API instead of failing its load.
+- A breaking change also raises `TABLEPRO_PLUGINKIT_MINIMUM_VERSION`. Every tag ships every registry plugin built against its own kit, so the release that carries the change carries plugins in its range.
 - Check with `verify.sh abi <merge-base>` (`scripts/check-pluginkit-abi.sh`). It builds PluginKit at HEAD and at the base with the same toolchain and diffs the public `.swiftinterface`. A base with no interface passes; a diff prints the additive and breaking rules and exits 1.
 - It refuses uncommitted changes, so run it after the commit and before the push. No workflow runs it.
 - The diff is textual, so a `-` line can be a declaration that moved. Only a removed line with no matching added line, or a requirement added without a default, is breaking. This lists the removed lines that do not come back:
@@ -65,12 +65,11 @@ TableProPluginKit is built with Library Evolution, so an already-built plugin ke
 ## Structure
 
 - PluginKit-free logic a plugin shares with the iOS app lives in a TableProCore product, such as `TableProMySQLCore`, `TableProPostgreSQLCore` or `TableProRedisCore`.
-- A new driver needs: its `project.yml` target and a `RegistryPlugins` entry (`BundledPlugins` and the app's `copy: { destination: plugins }` dependency for a bundled one), a `DatabaseType` constant, an entry in `.github/plugin-registry.json` keyed by its tag slug, a curated snapshot in `PluginMetadataRegistry` (without it the type never appears in the New Connection picker), a row in `../tablepro-docs/databases/index.mdx` through a paired docs PR, and a CHANGELOG entry.
+- A new driver needs: its `project.yml` target and a `RegistryPlugins` entry (`BundledPlugins` and the app's `copy: { destination: plugins }` dependency for a bundled one), a `DatabaseType` constant, an entry in `.github/plugin-registry.json` keyed by its target, with `name` and `iconName`, a curated snapshot in `PluginMetadataRegistry` (without it the type never appears in the New Connection picker), a row in `../tablepro-docs/databases/index.mdx` through a paired docs PR, and a changelog fragment.
 - A new engine ships as a registry plugin (`AGENTS.md`, Scope).
 - Where a plugin's tests go, and how a test target is added in `project.yml`: `.claude/rules/tests.md`, Where a test goes and Adding a test target.
 
-## Tags and shipped apps
+## Releases
 
-- Plugin tags are `plugin-<slug>-v<version>`, the slug a key in `.github/plugin-registry.json`. Check `git tag -l "plugin-*"` before creating one.
-- A driver fix reaches users of a shipped app through `scripts/release-plugin-for-shipped-app.sh <pluginTag> [appTag]`. Never relabel a binary built from `main` with an older kit version.
-- How a plugin tag builds and publishes: `RELEASING.md`, Plugins.
+- Registry plugins have no tags of their own: each app tag builds and publishes all of them at the app's version (`RELEASING.md`, Plugins).
+- A driver fix reaches stable users through a patch on `release/<X.Y>`.
