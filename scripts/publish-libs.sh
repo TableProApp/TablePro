@@ -114,12 +114,13 @@ fi
 REBUILT="$(LC_ALL=C comm -12 "$WORK/changed" "$WORK/named")"
 identical="$(LC_ALL=C comm -23 "$WORK/named" "$WORK/changed" | paste -sd ' ' -)"
 [ -z "$identical" ] || echo "note: identical to HEAD: $identical"
+[ -n "$REBUILT" ] || fail "nothing to publish: every named library matches $PINNED."
 
 [ "$(gh api "repos/$REPO/immutable-releases" --jq .enabled)" = "true" ] \
     || fail "immutable releases are off for $REPO." "Turn them on in the repository settings, then retry."
 
 gh api "repos/$REPO/releases?per_page=100" --paginate \
-    --jq '.[] | select(.tag_name | startswith("libs-")) | [.tag_name, .draft, .immutable] | @tsv' > "$WORK/releases"
+    --jq '.[] | select(.tag_name | startswith("libs-")) | [.tag_name, .draft] | @tsv' > "$WORK/releases"
 gh api "repos/$REPO/git/matching-refs/tags/libs-" --paginate --jq '.[].ref | ltrimstr("refs/tags/")' > "$WORK/tags"
 
 draft="$(awk -F'\t' '$2 == "true" { print $1 }' "$WORK/releases" | paste -sd ' ' -)"
@@ -127,17 +128,11 @@ draft="$(awk -F'\t' '$2 == "true" { print $1 }' "$WORK/releases" | paste -sd ' '
     "Delete each with: gh release delete <tag> --repo $REPO --yes"
 
 number_of() {
-    sed -n 's/^libs-v\{0,1\}\([0-9][0-9]*\)$/\1/p' | sort -n | tail -1
+    sed -n 's/^libs-\([0-9][0-9]*\)$/\1/p' | sort -n | tail -1
 }
 newest_release="$(awk -F'\t' '$2 == "false" { print $1 }' "$WORK/releases" | number_of)"
 [ "$(echo "$PINNED" | number_of)" = "$newest_release" ] \
     || fail "HEAD pins $PINNED, but libs-$newest_release is newer." "Merge origin/main first, so this release builds on it."
-
-if [ -z "$REBUILT" ]; then
-    # Moving identical libraries is only worth a release number when it leaves a mutable release.
-    pinned_immutable="$(awk -F'\t' -v tag="$PINNED" '$1 == tag { print $3 }' "$WORK/releases")"
-    [ "$pinned_immutable" = "false" ] || fail "nothing to publish: every named library matches $PINNED."
-fi
 
 last="$( (cut -f1 "$WORK/releases"; cat "$WORK/tags") | number_of)"
 TAG="libs-$((${last:-0} + 1))"
@@ -148,11 +143,7 @@ IOS_ARCHIVE="tablepro-libs-ios-${TAG#libs-}.tar.gz"
 COPYFILE_DISABLE=1 tar --no-xattrs -czf "$WORK/$MAC_ARCHIVE" -C "$MAC_DIR" "${MAC_MEMBERS[@]}"
 COPYFILE_DISABLE=1 tar --no-xattrs -czf "$WORK/$IOS_ARCHIVE" -C "$IOS_DIR" "${IOS_MEMBERS[@]}"
 
-if [ -z "$REBUILT" ]; then
-    NOTES="The libraries of $PINNED, unchanged."
-else
-    NOTES="Rebuilt since $PINNED: $(echo "$REBUILT" | paste -sd ' ' -)."
-fi
+NOTES="Rebuilt since $PINNED: $(echo "$REBUILT" | paste -sd ' ' -)."
 
 echo "$TAG: ${#MAC_MEMBERS[@]} macOS libraries, ${#IOS_MEMBERS[@]} iOS xcframeworks. $NOTES"
 for archive in "$MAC_ARCHIVE" "$IOS_ARCHIVE"; do

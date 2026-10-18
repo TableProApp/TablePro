@@ -19,8 +19,8 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# The pin and the baselines come from git, read before anything is extracted: a libs-v1 archive
-# carries its own checksums file, and checking against that would pass a tampered archive.
+# The pin and the baselines come from git, read before anything is extracted, so an archive cannot
+# replace the checksums it is checked against.
 tracked() {
     if git rev-parse --is-inside-work-tree &> /dev/null; then
         git show "HEAD:$1"
@@ -30,7 +30,7 @@ tracked() {
 }
 
 LIBS_TAG="$(tracked "$LIBS_DIR/release")"
-if [[ ! "$LIBS_TAG" =~ ^libs-v?[0-9]+$ ]]; then
+if [[ ! "$LIBS_TAG" =~ ^libs-[0-9]+$ ]]; then
     echo "ERROR: $LIBS_DIR/release holds '$LIBS_TAG', not a libs-<n> tag." >&2
     exit 1
 fi
