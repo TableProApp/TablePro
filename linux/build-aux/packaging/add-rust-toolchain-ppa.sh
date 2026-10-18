@@ -20,6 +20,7 @@ fi
 # The key is committed, so no run trusts a key it fetched. apt checks
 # InRelease against it, which makes plain HTTP as safe as the archive's
 # own sources, and the base image has no CA bundle for HTTPS.
+# shellcheck source=/dev/null
 . /etc/os-release
 mkdir -p /etc/apt/keyrings
 cp "$here/rust-toolchain-staging.asc" /etc/apt/keyrings/rust-toolchain-staging.asc

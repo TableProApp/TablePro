@@ -1,6 +1,5 @@
 target/
+_build/
 _packages/
-*.swp
-.DS_Store
-
-docs/audit-*.md
+_flatpak/
+.flatpak-builder/

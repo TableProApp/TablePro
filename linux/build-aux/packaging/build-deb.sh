@@ -34,6 +34,7 @@ build() {
     # login that is not root, 1024 open files among them. Launchpad passes
     # the builder's CPU count the same way as here.
     status=0
+    # shellcheck disable=SC2016 # the inner sh expands $1
     runuser -u builder -- env HOME=/home/builder DEB_BUILD_OPTIONS="parallel=$(nproc)" \
         sh -euc 'cd /build/work && dpkg-source -x "$1" src && cd src && dpkg-buildpackage -b -us -uc' sh "$1" ||
         status=$?
