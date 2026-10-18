@@ -515,3 +515,84 @@ async fn connection_errors_never_carry_the_password() {
     }
     assert!(failures >= 4, "the hostile hosts must actually fail, got {failures}");
 }
+
+#[test]
+fn every_scalar_reply_maps_to_its_own_value_kind() {
+    assert_eq!(redis_scalar(RedisValue::Nil), Value::Null);
+    assert_eq!(redis_scalar(RedisValue::Int(-7)), Value::Int(-7));
+    assert_eq!(redis_scalar(RedisValue::Double(1.5)), Value::Float(1.5));
+    assert_eq!(redis_scalar(RedisValue::Boolean(true)), Value::Bool(true));
+    assert_eq!(
+        redis_scalar(RedisValue::SimpleString("PONG".into())),
+        Value::Text("PONG".into())
+    );
+    assert_eq!(redis_scalar(RedisValue::Okay), Value::Text("OK".into()));
+    assert_eq!(
+        redis_scalar(RedisValue::BulkString(b"abc".to_vec())),
+        Value::Text("abc".into())
+    );
+    assert_eq!(
+        redis_scalar(RedisValue::BulkString(vec![0xff, 0x00])),
+        Value::Bytes(vec![0xff, 0x00])
+    );
+    assert_eq!(
+        redis_scalar(RedisValue::VerbatimString {
+            format: redis::VerbatimFormat::Text,
+            text: "plain".into(),
+        }),
+        Value::Text("plain".into())
+    );
+    assert!(matches!(
+        redis_scalar(RedisValue::Array(vec![RedisValue::Int(1)])),
+        Value::Json(_)
+    ));
+}
+
+#[test]
+fn every_reply_kind_has_its_own_json_form() {
+    use serde_json::json;
+    assert_eq!(redis_value_to_json(RedisValue::Nil), json!(null));
+    assert_eq!(redis_value_to_json(RedisValue::Int(9)), json!(9));
+    assert_eq!(redis_value_to_json(RedisValue::Double(2.5)), json!(2.5));
+    assert_eq!(
+        redis_value_to_json(RedisValue::Double(f64::NAN)),
+        json!({"$redisDouble": "NaN"})
+    );
+    assert_eq!(redis_value_to_json(RedisValue::Boolean(false)), json!(false));
+    assert_eq!(redis_value_to_json(RedisValue::SimpleString("s".into())), json!("s"));
+    assert_eq!(redis_value_to_json(RedisValue::Okay), json!("OK"));
+    assert_eq!(redis_value_to_json(RedisValue::BulkString(b"t".to_vec())), json!("t"));
+    assert_eq!(
+        redis_value_to_json(RedisValue::BulkString(vec![0xff, 0x01])),
+        json!({"$redisBytes": "ff01"})
+    );
+    assert_eq!(
+        redis_value_to_json(RedisValue::Array(vec![RedisValue::Int(1), RedisValue::Nil])),
+        json!([1, null])
+    );
+    assert_eq!(
+        redis_value_to_json(RedisValue::Set(vec![RedisValue::Int(1)])),
+        json!({"$redisSet": [1]})
+    );
+    assert_eq!(
+        redis_value_to_json(RedisValue::Map(vec![(RedisValue::Int(1), RedisValue::Boolean(true))])),
+        json!({"$redisMap": [[1, true]]})
+    );
+    assert_eq!(
+        redis_value_to_json(RedisValue::VerbatimString {
+            format: redis::VerbatimFormat::Markdown,
+            text: "m".into(),
+        }),
+        json!({"$redisVerbatim": {"format": "Markdown", "text": "m"}})
+    );
+}
+
+#[test]
+fn only_connection_level_failures_can_hide_a_tls_problem() {
+    let io = RedisError::from(std::io::Error::new(std::io::ErrorKind::ConnectionReset, "reset"));
+    assert!(redis_error_can_hide_tls(&io));
+    let timeout = RedisError::from(std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out"));
+    assert!(redis_error_can_hide_tls(&timeout));
+    let wrong_type = RedisError::from((redis::ErrorKind::UnexpectedReturnType, "wrong type"));
+    assert!(!redis_error_can_hide_tls(&wrong_type));
+}
