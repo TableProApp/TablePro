@@ -1,12 +1,3 @@
-//
-//  SnowflakeConnection.swift
-//  SnowflakeDriverPlugin
-//
-//  Implements the Snowflake connector REST protocol (session login + query
-//  execution) used by the official Snowflake drivers. Supports password,
-//  key-pair JWT, OAuth token, and external-browser SSO authentication.
-//
-
 import AppKit
 import Compression
 import Foundation
@@ -73,7 +64,8 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SnowflakeConnection")
     private static let appName = "TablePro"
-    private static let appVersion = "1.0.0"
+    private static let appVersion = Bundle(for: SnowflakeConnection.self)
+        .object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
     static let defaultConnectTimeoutMilliseconds = 120_000
     private static let requestTimeout: TimeInterval = 120
 

@@ -451,6 +451,7 @@ actor KafkaConnection {
 }
 
 enum KafkaClientInfo {
-    static let version = "1.0.0"
+    static let version = Bundle(for: KafkaPlugin.self)
+        .object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
     static let clientId = "tablepro"
 }

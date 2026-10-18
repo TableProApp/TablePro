@@ -1,8 +1,3 @@
-//
-//  CopilotLifecycleTests.swift
-//  TableProTests
-//
-
 import Foundation
 @testable import TablePro
 import Testing
@@ -11,6 +6,11 @@ import Testing
 struct CopilotLifecycleTests {
     private let copilot = AIProviderConfig(name: "Copilot", type: .copilot)
     private let claude = AIProviderConfig(name: "Claude", type: .claude)
+
+    @Test("The language server is told the running TablePro version")
+    func pluginInfoCarriesTheAppVersion() {
+        #expect(CopilotService.editorPluginInfo == LSPClientInfo(name: "tablepro-copilot", version: Bundle.main.appVersion))
+    }
 
     @Test("Runs only while AI is on and a Copilot provider exists")
     func allowsRunning() {
