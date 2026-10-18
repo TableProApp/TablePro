@@ -30472,6 +30472,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Betas get new features first. Turning this off keeps the beta you have until a newer release ships." : {
+
+    },
     "between" : {
       "localizations" : {
         "fr" : {
@@ -84183,6 +84186,9 @@
       }
     },
     "Geometry: %@" : {
+
+    },
+    "Get beta updates" : {
 
     },
     "Get by key" : {

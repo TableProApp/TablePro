@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Theme Editor window with a live preview, undo and Revert Changes. Open windows show each edit as you make it.
 - iCloud sync of custom themes and the chosen light and dark themes, with Settings on in Settings > Sync.
 - Theme import by dropping files on the Themes list, and export by dragging a theme to Finder.
+- Get beta updates in Settings > General, from a signed update feed at updates.tablepro.app.
 
 ### Changed
 
