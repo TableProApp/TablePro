@@ -322,8 +322,44 @@ class CheckTests(unittest.TestCase):
         github = FakeGitHub(releases=releases)
         self.assertEqual(self.check("v0.82.0", github),
                          ["v0.82.0 differs from v0.82.0-beta.2, the newest published beta, in "
-                          "Plugins/Third.swift, TablePro/Second.swift: ship that in a beta first"])
+                          "Plugins/Third.swift, TablePro/Second.swift: revert them on release/0.82, "
+                          "then tag the next number"])
         self.assertEqual(github.run_queries, [])
+
+    def test_the_next_number_after_a_refused_stable_is_held_to_the_beta(self):
+        self.repo.git("tag", "v0.82.0-beta.1", self.cut)
+        pick = self.repo.commit("fix: late pick", source="TablePro/Late.swift")
+        refused = self.repo.commit("chore(release): v0.82.0", MAIN_CHANGELOG.replace(
+            "## [0.81.0]", "## [0.82.0] - 2026-10-26\n\n## [0.81.0]"))
+        self.repo.git("tag", "v0.82.0", refused)
+        patch = self.repo.commit("chore(release): v0.82.1", MAIN_CHANGELOG.replace(
+            "## [0.81.0]", "## [0.82.1] - 2026-10-27\n\n## [0.81.0]"))
+        self.repo.git("tag", "v0.82.1", patch)
+        self.repo.git("revert", "--no-edit", pick)
+        reverted = self.repo.commit("chore(release): v0.82.2", MAIN_CHANGELOG.replace(
+            "## [0.81.0]", "## [0.82.2] - 2026-10-28\n\n## [0.81.0]"))
+        self.repo.git("tag", "v0.82.2", reverted)
+        self.repo.line("0.82", reverted)
+        releases = [("v0.81.0", False), ("v0.82.0-beta.1", False)]
+        runs, jobs = green_on(reverted)
+        self.assertEqual(self.check("v0.82.1", FakeGitHub(releases=releases)),
+                         ["v0.82.1 differs from v0.82.0-beta.1, the newest published beta, in "
+                          "TablePro/Late.swift: revert them on release/0.82, then tag the next number"])
+        self.assertEqual(self.check("v0.82.2", FakeGitHub(releases=releases, runs=runs, jobs=jobs)), [])
+
+    def test_a_fix_after_a_stable_tag_that_matched_the_beta_is_a_patch(self):
+        self.repo.git("tag", "v0.82.0-beta.1", self.cut)
+        stable = self.repo.commit("chore(release): v0.82.0", MAIN_CHANGELOG.replace(
+            "## [0.81.0]", "## [0.82.0] - 2026-10-26\n\n## [0.81.0]"))
+        self.repo.git("tag", "v0.82.0", stable)
+        self.repo.commit("ci: select a GA Xcode", source=".github/actions/setup-xcode/action.yml")
+        release_commit = self.repo.commit("chore(release): v0.82.1", MAIN_CHANGELOG.replace(
+            "## [0.81.0]", "## [0.82.1] - 2026-10-27\n\n## [0.81.0]"))
+        self.repo.line("0.82", release_commit)
+        self.repo.git("tag", "v0.82.1", release_commit)
+        runs, jobs = green_on(release_commit)
+        releases = [("v0.81.0", False), ("v0.82.0-beta.1", False), ("v0.82.0", True)]
+        self.assertEqual(self.check("v0.82.1", FakeGitHub(releases=releases, runs=runs, jobs=jobs)), [])
 
     def test_a_stable_may_differ_from_its_newest_beta_in_the_changelog_only(self):
         beta = self.repo.commit("fix: a fix", fragment="3610.fixed.md")
