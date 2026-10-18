@@ -1,6 +1,9 @@
 # Missed mutants accepted for now (cargo mutants --package tablepro-transport, 2026-10-18).
-# Only session_material.rs is seeded so far; lib.rs, route.rs and local_socket.rs still need tests.
+# session_material.rs and lib.rs are seeded; route.rs still needs tests (local_socket.rs is complete).
 # append_db_password: loads the database password from the Secret Service through load_password, which has no test double; the keyring tier (scripts/test-secret-service.sh) is where a stored password round-trips.
 # read_material_file (+ with *): equivalent. The metadata check already rejects files over the limit, so take(MAX) and take(MAX + 1) differ only if the file grows during the read.
 crates/transport/src/session_material.rs:42:5: replace append_db_password -> Result<(), TransportError> with Ok(())
 crates/transport/src/session_material.rs:129:39: replace + with * in read_material_file
+# saved_ssh_password: the only two lib.rs misses. Both branches (credential_revision 0 vs a revisioned hop) load the password from the Secret Service, which has no test double. The keyring tier covers the round-trip.
+crates/transport/src/lib.rs:482:5: replace saved_ssh_password -> Result<SecretString, TransportError> with Ok(Default::default())
+crates/transport/src/lib.rs:482:47: replace == with != in saved_ssh_password

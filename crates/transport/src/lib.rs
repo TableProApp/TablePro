@@ -518,6 +518,7 @@ async fn saved_ssh_passphrase(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::credential_tests::key_hop;
     use tablepro_policy::{AuditEvent, AuditTerminalStatus, AuditTransportClient};
 
     #[path = "../tool_endpoint_tests.rs"]
@@ -1028,23 +1029,6 @@ mod tests {
         assert!(check_auth_mode(AuthMode::Password, false, "PostgreSQL").is_ok());
     }
 
-    fn key_hop(host: &str) -> SavedSshConfig {
-        SavedSshConfig {
-            hop_id: Uuid::new_v4(),
-            credential_revision: 0,
-            host: host.into(),
-            port: 22,
-            username: "svc".into(),
-            auth: SavedSshAuth::PrivateKey {
-                path: "/home/svc/.ssh/id_ed25519".into(),
-                has_passphrase: false,
-            },
-            jump: None,
-            client: Default::default(),
-            agent: false,
-        }
-    }
-
     #[tokio::test]
     async fn a_jump_hop_cannot_use_password_auth() {
         let bastion = SavedSshConfig {
@@ -1188,3 +1172,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod credential_tests;
