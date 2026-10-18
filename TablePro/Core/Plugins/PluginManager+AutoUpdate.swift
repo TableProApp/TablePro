@@ -41,8 +41,6 @@ extension PluginManager {
     func scheduleRegistryUpdatePass(after delay: Duration = .zero) {
         guard SoftwareUpdater.isUpdatingEnabled else { return }
         registryUpdateTask?.cancel()
-        // A connection the initial load releases runs before this task starts, and must wait for its repairs.
-        isRepairingRejectedPlugins = delay == .zero
         registryUpdateTask = Task { [weak self] in
             if delay > .zero {
                 try? await Task.sleep(for: delay)
@@ -74,9 +72,15 @@ extension PluginManager {
         registryClient: RegistryClient = .shared,
         appBuild: Int = Bundle.main.buildNumber
     ) async -> RegistryUpdatePassResult {
+        let targets = registryUpdateTargets(appBuild: appBuild)
+        guard !targets.isEmpty else { return .finished }
+        guard let manifest = await registryClient.fetchWaitingForConnectivity() else {
+            Self.logger.warning("Plugin update pass deferred: the plugin manifest is unavailable")
+            return .retry
+        }
         isRepairingRejectedPlugins = true
         defer { isRepairingRejectedPlugins = false }
-        return await applyRegistryUpdates(to: registryUpdateTargets(appBuild: appBuild), registryClient: registryClient)
+        return await applyRegistryUpdates(to: targets, manifest: manifest)
     }
 
     func waitForRejectedPluginRepairs() async {
@@ -86,16 +90,8 @@ extension PluginManager {
 
     private func applyRegistryUpdates(
         to targets: [RegistryUpdateTarget],
-        registryClient: RegistryClient
+        manifest: RegistryManifest
     ) async -> RegistryUpdatePassResult {
-        guard !targets.isEmpty else { return .finished }
-
-        await registryClient.fetch(policy: .mustBeCurrent)
-        guard registryClient.isManifestCurrent, let manifest = registryClient.manifest else {
-            Self.logger.warning("Plugin update pass deferred: the plugin manifest is unavailable")
-            return .retry
-        }
-
         let pending = Self.pendingRegistryUpdates(
             installed: targets,
             manifest: manifest,
@@ -320,7 +316,7 @@ extension PluginManager {
         }
         if driverPlugin(for: type) == nil, hasOutdatedRejectedPlugin(forTypeId: typeId) {
             Self.logger.info("Plugin '\(typeId)' is installed but outdated, updating it before connect")
-            await ensurePluginReady(forTypeId: typeId)
+            await ensurePluginReady(forTypeId: typeId, registryClient: registryClient)
         }
         guard driverPlugin(for: type) == nil else { return }
         if PluginMetadataRegistry.shared.snapshot(for: type) == nil {
@@ -345,12 +341,19 @@ extension PluginManager {
         }
     }
 
-    func ensurePluginReady(forTypeId typeId: String) async {
-        guard SoftwareUpdater.isUpdatingEnabled, hasOutdatedRejectedPlugin(forTypeId: typeId) else { return }
+    func ensurePluginReady(forTypeId typeId: String, registryClient: RegistryClient = .shared) async {
+        guard SoftwareUpdater.isUpdatingEnabled else { return }
         await waitForRejectedPluginRepairs()
+        guard !registryUpdateTargets(forTypeId: typeId, appBuild: Bundle.main.buildNumber).isEmpty else { return }
+        let fetched = await registryClient.fetch(policy: .mustBeCurrent)
+        // The update pass may have got its manifest meanwhile and be installing this plugin.
+        await waitForRejectedPluginRepairs()
+        guard let manifest = fetched else {
+            Self.logger.warning("Plugin '\(typeId)' not updated before connect: the plugin manifest is unavailable")
+            return
+        }
         let targets = registryUpdateTargets(forTypeId: typeId, appBuild: Bundle.main.buildNumber)
-        guard !targets.isEmpty else { return }
-        _ = await applyRegistryUpdates(to: targets, registryClient: .shared)
+        _ = await applyRegistryUpdates(to: targets, manifest: manifest)
         AppEvents.shared.pluginsRejected.send(rejectedPlugins)
     }
 

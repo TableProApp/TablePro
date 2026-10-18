@@ -112,7 +112,7 @@ final class PluginManager: ObservableObject {
     internal var registryUpdateAttempts = 0
     internal var installsInFlight: Set<String> = []
 
-    // Set from a pass's start until its rejected plugins are done, so a connection never waits on a staging download.
+    // Set while a pass installs rejected plugins, so a connection waits for those but not for the network or a staging download.
     internal var isRepairingRejectedPlugins = false {
         didSet {
             guard !isRepairingRejectedPlugins else { return }

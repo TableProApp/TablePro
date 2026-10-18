@@ -144,12 +144,13 @@ struct RegistryClientFreshnessTests {
         ])
         let (client, _) = try makeEnvironment()
 
-        async let first: Void = client.fetch(policy: .ifStale)
-        async let second: Void = client.fetch(policy: .ifStale)
-        _ = await (first, second)
+        async let first = client.fetch(policy: .ifStale)
+        async let second = client.fetch(policy: .ifStale)
+        let (firstResult, secondResult) = await (first, second)
 
         #expect(MockRegistryProtocol.requestCount == 1)
         #expect(client.isManifestCurrent)
+        #expect(firstResult != nil && secondResult != nil)
     }
 
     @Test("mustBeCurrent fetches again after an ifStale fetch and replaces the manifest")
@@ -173,8 +174,9 @@ struct RegistryClientFreshnessTests {
         MockRegistryProtocol.reset(responses: [(500, Data())])
         let (client, _) = try makeEnvironment(cachedManifest: manifestData(includingTestPlugin: true))
 
-        await client.fetch(policy: .mustBeCurrent)
+        let result = await client.fetch(policy: .mustBeCurrent)
 
+        #expect(result == nil)
         #expect(client.manifest?.plugins.count == 1)
         #expect(!client.isManifestCurrent)
     }
