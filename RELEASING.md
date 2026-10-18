@@ -10,7 +10,7 @@ This runbook covers the macOS app, its registry plugins and the static libraries
 - A stable rolls out in phases of 21600 s. A beta is not phased, and on GitHub it is a prerelease. Latest goes only to the highest stable, so a patch on an older line publishes with `--latest=false`.
 - Critical means a security fix or data loss, nothing else. It is ` [CRITICAL]` on the version's `CHANGELOG.md` heading, never on a beta. Every later stable item carries the highest critical build forward (`sparkle:criticalUpdate sparkle:version`).
 - CI writes the orphan `feeds` branch, which holds `appcast.xml` and the v3 plugin manifest (`https://updates.tablepro.app/plugins/v3.json`), and `pages.yml` deploys it to `updates.tablepro.app`. The appcast is EdDSA-signed, and the app requires that (`SURequireSignedFeed`, `SUVerifyUpdateBeforeExtraction`).
-- The legacy `appcast.xml` on `main` and `plugins.json` in TableProApp/plugins serve apps up to 0.81. Both freeze at v0.82.0, the one bridge release.
+- The legacy `appcast.xml` on `main` and `plugins.json` in TableProApp/plugins serve apps up to 0.81, and no tag writes them. v0.82.0 is the one bridge: once it publishes, a PR copies its feed item verbatim into the legacy `appcast.xml` and a PR in TableProApp/plugins points `plugins.json` at its plugin zips. Both files then freeze.
 
 ## Versions
 
