@@ -1,11 +1,29 @@
 # Backlog after 0.2.0
 
-Rows here are selected work that does not block 0.2.0. The ledger keeps the evidence; this page keeps the order. Reviewed 2026-10-15.
+The maintainer confirmed 0.2.0 delivery work complete on 2026-10-18; publication is pending. Rows here select subsequent development. Project #3 and the owning issues keep status and acceptance; this page keeps the order. The [completion handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md) preserves the former release checklist.
 
 The [feature comparison](0.2-feature-comparison.md) holds the wider parity
 candidate inventory. An item becomes backlog work only after selection; add an
 owner, acceptance layer and GitHub issue when promoting it. Do not treat the
 candidate inventory as a release commitment.
+
+## Upstream Linux adoption after 0.2.0
+
+Tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149) owns the selected packets from the [development-process review](archive/upstream-linux-adoption-2026-10-18.md). TablePro remains the upstream for compatible Rust/Linux code, tests and tooling. Preserve provenance and BookiE's accepted contracts. These tasks do not reopen 0.2.0 or authorize publishing it.
+
+Start with the two native driver investigations and common conformance. Tooling can proceed independently in its lane; reverse paging follows the accepted backend contract. Existing server output #550/#1033/#1034, stream retention #554/#1032, active edits #1029, workspace identity #1054, diagnostics #666 and CI capacity #573 retain their owners. Full export stays behind ADR 0014; framework replacement and broad vendor removal are separate decisions.
+
+| ID / issue | Selected work | Lane | Acceptance focus |
+|---|---|---|---|
+| UP-2 / [#1140](https://github.com/cozyGarage/BookiE/issues/1140) | PgBouncer cancellation, backend identity and cross-client isolation | B3 | Native concurrent-client oracle before any client-library decision |
+| UP-3 / [#1141](https://github.com/cozyGarage/BookiE/issues/1141) | MySQL server-zone defaults, DST keys and save modes | B3 | Native mysql-client oracle; B4 review before session mutation |
+| UP-4 / [#1142](https://github.com/cozyGarage/BookiE/issues/1142) | Cancellation and write-outcome conformance | B4 | Map existing tests, then common fault/real-engine and governed cases |
+| UP-5 / [#1143](https://github.com/cozyGarage/BookiE/issues/1143) | Reverse keyset paging and query-plan evidence | B3 | Extend existing primary-key seeking; UX handoff after accepted contract |
+| UP-6 / [#1144](https://github.com/cozyGarage/BookiE/issues/1144) | Mechanical GTK task and lifecycle boundaries | UX | Targeted compatible checks; retain Relm4 and current code conventions |
+| UP-7 / [#1145](https://github.com/cozyGarage/BookiE/issues/1145) | Third-party notices from shipped dependency graphs | UX | Inventory first, deterministic provenance and package-content coverage |
+| UP-8 / [#1146](https://github.com/cozyGarage/BookiE/issues/1146) | Offline release inputs and metadata consistency | UX | Extend pinned candidates; keep publication a separate action |
+| UP-9 / [#1147](https://github.com/cozyGarage/BookiE/issues/1147) | Changelog fragment evaluation | UX | Measured conflict benefit and unpublished draft before a convention change |
+| UP-10 / [#1148](https://github.com/cozyGarage/BookiE/issues/1148) | Stale documentation symbols and generated catalogues | UX | Bounded active-doc checks and deterministic gettext drift checks |
 
 ## 0.2.x features
 

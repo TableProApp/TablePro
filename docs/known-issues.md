@@ -8,6 +8,16 @@ This page is an index of ledger IDs to issues. Do not track evidence, owners or 
 
 | ID | Issue | Lane |
 | --- | --- | --- |
+| UP-1 | [#1149](https://github.com/cozyGarage/BookiE/issues/1149) | UX |
+| UP-2 | [#1140](https://github.com/cozyGarage/BookiE/issues/1140) | B3 |
+| UP-3 | [#1141](https://github.com/cozyGarage/BookiE/issues/1141) | B3 |
+| UP-4 | [#1142](https://github.com/cozyGarage/BookiE/issues/1142) | B4 |
+| UP-5 | [#1143](https://github.com/cozyGarage/BookiE/issues/1143) | B3 |
+| UP-6 | [#1144](https://github.com/cozyGarage/BookiE/issues/1144) | UX |
+| UP-7 | [#1145](https://github.com/cozyGarage/BookiE/issues/1145) | UX |
+| UP-8 | [#1146](https://github.com/cozyGarage/BookiE/issues/1146) | UX |
+| UP-9 | [#1147](https://github.com/cozyGarage/BookiE/issues/1147) | UX |
+| UP-10 | [#1148](https://github.com/cozyGarage/BookiE/issues/1148) | UX |
 | PEER-4 | [#1026](https://github.com/cozyGarage/BookiE/issues/1026) | UX |
 | PEER-7 | [#1029](https://github.com/cozyGarage/BookiE/issues/1029) | UX |
 | PEER-8 | [#1030](https://github.com/cozyGarage/BookiE/issues/1030) | B3 |

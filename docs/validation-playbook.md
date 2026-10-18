@@ -4,7 +4,7 @@ Use this page to select checks, hand off work, and review evidence. The executab
 
 ## Current desktop target
 
-The [current continuation](bookie-0.2-sprint.md#current-continuation) orders B3, B4, then Arch/Omarchy/Hyprland native Wayland UI acceptance. Debian/GNOME installed-package acceptance follows Arch; current B3/B4 implementation work can proceed before that platform phase. GNOME 50 in the layer catalog names GTK/libadwaita development-library requirements, not a required desktop shell. Keep existing automated Linux checks and record unavailable environments as pending.
+The [current continuation](bookie-0.2-sprint.md#current-continuation) records 0.2.0 delivery complete with publication pending. The [backlog](backlog.md) orders subsequent work; each selected issue names its acceptance layers. Debian/GNOME installed-package expansion remains later work. GNOME 50 in the layer catalog names GTK/libadwaita development-library requirements, not a required desktop shell. Keep existing automated Linux checks and record unavailable environments as pending.
 
 ## Start here
 

@@ -1,0 +1,173 @@
+{
+  "review_date": "2026-10-18",
+  "api_capture_utc": "2026-10-18T20:28:01Z",
+  "upstream_sha": "0ab322ea1d7576cfd858ab5946edb9e84cba9e5b",
+  "bookie_sha": "8626129e60c8f62661cf6d64a70067a6cbfbe654",
+  "method": "source and public GitHub evidence; no runtime or database tests",
+  "reviewed_upstream_sources": {
+    "linux/Cargo.toml": "c51820631cd5781052de311efa664f488b3e8183006d2bb14859ce9237bc56f5",
+    "linux/README.md": "b29a34c5a20b3ac55995ead7880bb39ebdece7c8b1367c53253117793e2d1017",
+    "linux/ROADMAP.md": "c754f9d0b1d6e9a87ce3bd69a44ad1d530f252d5824b189f8f963069adad9236",
+    "linux/ARCHITECTURE.md": "5ef49d31701b9b9ddfa1352eb4c916de8683640e56c646a8fb42a722f8b3d3eb",
+    "linux/docs/decisions/0012-window-per-session.md": "029c04cf2d4b041e35510105e3d868cc6b6bf413e273f8b0c00ceeb76cfaa6ab",
+    "linux/docs/decisions/0013-openssh-client-transport.md": "ce6e11485f7c171bc04646637c2f059643f025b26720f3bb784b8f335b520028",
+    "linux/docs/decisions/0014-lossless-values-and-dialects.md": "a6bdd3db48110a31d46c36f41f203a20ac8071e217a64d7e9b647620da36aa1b",
+    "linux/docs/decisions/0016-driver-contract-v2.md": "9ec383f194c4b93fe48bc6ff74f89a89c49313289936d1b36a327fd7e0bb9ea0",
+    "linux/crates/core/src/owned_calls.rs": "dbfca55a262a83a763466f14cdd01310d2c0d035332e5913d45b2b059a72f3c4",
+    "linux/crates/core/src/write_ledger.rs": "71ce53971627dc649e6a943842ddce6e90145d6fca483c22d159d36f901267d7",
+    "linux/crates/core/src/export/sql.rs": "dc9ddcb770a9cb3a51bc039dc2b7bc4712a74bd75dade62abb2ffcec014f95ff",
+    "linux/crates/core/src/browse/read_page.rs": "cbd5f60cf57ebc8d5f2aa013e6d63cc9d973a20a7c99ad831bcdc3c98ca18a92",
+    "linux/crates/drivers/postgres/src/cancel.rs": "19e2d9ccab68ddd3c6cdee185967c8f7bc4caee823361242791966c919f1b429",
+    "linux/crates/drivers/postgres/src/editor/run.rs": "409bc8531c2f60cf1ece8b077c5ba306c504e4966ee26026f0cd54f722a6cc36",
+    "linux/crates/drivers/postgres/tests/integration/pgbouncer.rs": "21f0aee0a89afcc5596f614e8bd4b102a9c8fc69f06e94b0fa94a46744d14a31",
+    "linux/crates/drivers/postgres/tests/integration/paging.rs": "ed9c3bc7a95f8196f8973ddb8ea88ebab282e7cf7e4063be81404a1bbf1ed431",
+    "linux/crates/drivers/mysql/src/server_zone.rs": "aafbcb0be2d99f1fc04cf8c1999025e017971420c10feeae3e2fc2be35acf864",
+    "linux/crates/drivers/mysql/src/write_batch.rs": "30d9f3ed31e6948b63ff0a8aec96aa67fab6f32ffe5e06f8e32070df56b70352",
+    "linux/crates/app/src/crash_report.rs": "5114b678e024bebe38faab949af5db6a0bea32577754153c67bb07b3cba1d226",
+    "linux/crates/app/src/ui/tab_load/first_load.rs": "b678b8a67e973118e10b5385d7ea2799852b30cf40d02646ffed4436c8eff7a8",
+    "linux/crates/app/src/ui/export/replace_file_writer/mod.rs": "4f23a28ccb72b42e3785369e8a29b88c8dfc0b9908828f01d40d712a4a21b047",
+    ".github/workflows/build-linux.yml": "bddfae141c682624b6ff5189b571c52ee65c671fb9f25dbaedf9585c1bdfbdc5",
+    ".github/workflows/release-linux.yml": "9f2209a5edc8ea1c7058a6fe6f9f3924956a5ab00da8822356ca3c3a92b81cc9",
+    ".github/workflows/linux-packages.yml": "9364a7ad71708a5e3bbd3fed09eeeca27a88a7927017b4c170211f810e07949c",
+    "linux/.config/nextest.toml": "b36288db4314280eb03590b35fcbfebf28bc0d45656ced54e4dcabe522b7af47"
+  },
+  "kind": "source-review",
+  "runtime_tests_run": false,
+  "issue_tracker": "https://github.com/cozyGarage/BookiE/issues/1149",
+  "public_observations": {
+    "merge_pr": 3541,
+    "merged_at_utc": "2026-10-18T20:12:11Z",
+    "merged_linux_head": "8a06bc0559012ae7181c5f8450ec54536003a5a7",
+    "linux_branch_deleted": true,
+    "linux_required_check": true,
+    "linux_release_tags_in_admin_and_immutable_rules": true,
+    "linux_branch_run": {
+      "id": 39153770057,
+      "conclusion": "success",
+      "successful_jobs": 17
+    },
+    "linux_main_run": {
+      "id": 39162230649,
+      "status_at_capture": "in_progress"
+    },
+    "latest_published_bookie_release_checked": "linux-v0.1.5",
+    "upstream_excluded_mssql_cancellation_cases": 3
+  },
+  "issues": {
+    "UP-2": {
+      "url": "https://github.com/cozyGarage/BookiE/issues/1140",
+      "number": 1140,
+      "lane": "B3"
+    },
+    "UP-3": {
+      "url": "https://github.com/cozyGarage/BookiE/issues/1141",
+      "number": 1141,
+      "lane": "B3"
+    },
+    "UP-4": {
+      "url": "https://github.com/cozyGarage/BookiE/issues/1142",
+      "number": 1142,
+      "lane": "B4"
+    },
+    "UP-5": {
+      "url": "https://github.com/cozyGarage/BookiE/issues/1143",
+      "number": 1143,
+      "lane": "B3"
+    },
+    "UP-6": {
+      "url": "https://github.com/cozyGarage/BookiE/issues/1144",
+      "number": 1144,
+      "lane": "UX"
+    },
+    "UP-7": {
+      "url": "https://github.com/cozyGarage/BookiE/issues/1145",
+      "number": 1145,
+      "lane": "UX"
+    },
+    "UP-8": {
+      "url": "https://github.com/cozyGarage/BookiE/issues/1146",
+      "number": 1146,
+      "lane": "UX"
+    },
+    "UP-9": {
+      "url": "https://github.com/cozyGarage/BookiE/issues/1147",
+      "number": 1147,
+      "lane": "UX"
+    },
+    "UP-10": {
+      "url": "https://github.com/cozyGarage/BookiE/issues/1148",
+      "number": 1148,
+      "lane": "UX"
+    },
+    "UP-1": {
+      "url": "https://github.com/cozyGarage/BookiE/issues/1149",
+      "number": 1149,
+      "lane": "UX"
+    }
+  },
+  "issue_project_readback": {
+    "captured_at_utc": "2026-10-18T20:42:17.679720+00:00",
+    "issues": [
+      {
+        "issue": 1140,
+        "lane": "B3",
+        "status": "Backlog",
+        "priority": "P1"
+      },
+      {
+        "issue": 1141,
+        "lane": "B3",
+        "status": "Backlog",
+        "priority": "P1"
+      },
+      {
+        "issue": 1142,
+        "lane": "B4",
+        "status": "Backlog",
+        "priority": "P1"
+      },
+      {
+        "issue": 1143,
+        "lane": "B3",
+        "status": "Backlog",
+        "priority": "P2"
+      },
+      {
+        "issue": 1144,
+        "lane": "UX",
+        "status": "Backlog",
+        "priority": "P2"
+      },
+      {
+        "issue": 1145,
+        "lane": "UX",
+        "status": "Backlog",
+        "priority": "P2"
+      },
+      {
+        "issue": 1146,
+        "lane": "UX",
+        "status": "Backlog",
+        "priority": "P2"
+      },
+      {
+        "issue": 1147,
+        "lane": "UX",
+        "status": "Backlog",
+        "priority": "P2"
+      },
+      {
+        "issue": 1148,
+        "lane": "UX",
+        "status": "Backlog",
+        "priority": "P2"
+      },
+      {
+        "issue": 1149,
+        "lane": "UX",
+        "status": "Backlog",
+        "priority": "P2"
+      }
+    ]
+  }
+}

@@ -29,7 +29,7 @@ Test install, upgrade, downgrade, and removal. Package operations must leave the
 
 For native-library and toolchain requirements, see [platforms](../../../docs/platforms.md). Use `apps/linux/flatpak/com.tablepro.linux.Devel.json` for an isolated development Flatpak. Flatpak/Flathub are left out of 0.2.0.
 
-The Debian builder and validator are pinned to the released `0.1.5-1` package. This command reproduces that package path; it does not build or qualify a 0.2.0 Debian candidate. Debian desktop acceptance is later work under [PKG-2](../../../docs/0.2.0-scope.md#blockers).
+The Debian builder and validator are pinned to the released `0.1.5-1` package. This command reproduces that package path; it does not build or qualify a 0.2.0 Debian candidate. Debian desktop acceptance is later work under [PKG-2](../../../docs/0.2.0-scope.md#delivery-boundary).
 
 ```bash
 DEB_VERSION=0.1.5-1 ./scripts/build-deb.sh

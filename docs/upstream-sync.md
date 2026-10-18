@@ -2,6 +2,14 @@
 
 The approved [BookiE convergence sprint](bookie-0.2-sprint.md) now includes shared Rust/Linux foundations as well as behavior review. Apple source trees remain excluded.
 
+## Current upstream reference and adoption
+
+Since 2026-10-18, TablePro Linux lives under `linux/` on `TableProApp/TablePro` **main**; the old Linux branch was deleted after [#3541](https://github.com/TableProApp/TablePro/pull/3541). Use a pinned main SHA for new reviews. Earlier sections below remain dated evidence of their old refs.
+
+BookiE 0.2.0 delivery is complete per the maintainer; publication is pending. Selected adoption work is post-0.2.0 under [#1149](https://github.com/cozyGarage/BookiE/issues/1149) and the [backlog](backlog.md). The [development-process review](archive/upstream-linux-adoption-2026-10-18.md) and [movement audit](archive/upstream-linux-movement-2026-10-18.md) distinguish existing coverage, code reuse, investigations and rejected tradeoffs.
+
+For each adopted Rust/Linux change, record the source commit/path, user case, existing BookiE coverage, license/attribution, owner and acceptance tier. Adapt shared code and fixtures to PolicyGuard, native-value and session contracts, stable durable identities and the registered drivers. Reuse existing issues before adding a packet. A wholesale merge, a UI/client-library replacement or removal of a local dependency patch needs its own decision and equivalence evidence.
+
 ## 2026-10-17 07:19 UTC: dbx MySQL routine completion
 
 Current GitHub refs checked: BookiE `linux` `bc0a0c3f2418483e93b288a46f5879eefd6e0815`, TablePro `linux` `6fd0d19326c2aa7404215972e9b0bb53948f9542`, TablePro `main` `2be4682f3faf924237225f7662174b8a26e36216`, dbx `main` `44905e021b94b32b6061f2c2c87e72d3f714f5cd`, DBeaver `devel` `61c9529849c9fa500c303d1a385897a4088d6656`, and Beekeeper Studio `master` `f7ff968f39699c22d4f9a4674f38a5ecfbfbe586`.

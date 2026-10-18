@@ -14,11 +14,11 @@ These rules apply to every coding agent and every contributor. `CLAUDE.md` point
 ## Where to start
 
 1. [docs/README.md](docs/README.md): the documentation map and where each fact belongs.
-2. [The active sprint](docs/bookie-0.2-sprint.md): milestone order, 0.2.0 readiness and acceptance. The [0.2.0 scope](docs/0.2.0-scope.md) lists the blockers; everything else is in the [backlog](docs/backlog.md), and [known limitations](docs/known-limitations.md) says what the application cannot do. 0.2.0 ships as a development release for the Arch and Hyprland target, with hotfixes to follow.
+2. [Completion and continuation](docs/bookie-0.2-sprint.md): 0.2.0 delivery work is complete per the maintainer; publication is pending. The [0.2.0 scope](docs/0.2.0-scope.md) records the delivery boundary, the [backlog](docs/backlog.md) owns post-0.2.0 order, and [known limitations](docs/known-limitations.md) says what the application cannot do. 0.2.0 is the development release for the Arch and Hyprland target, with hotfixes to follow.
 3. [Bookie Project #3](https://github.com/users/cozyGarage/projects/3): open work, status and lane. The [ledger index](docs/known-issues.md) maps ledger IDs to issues. Filter the project by **Lane** (B3, B4, UX, Maintainer).
 4. The ADR that governs your change ([index](docs/decisions/README.md)). Every type or value change follows [ADR 0007](docs/decisions/0007-type-and-value-preservation.md).
 
-Accepted ADRs constrain architecture. The sprint owns sequencing and acceptance; ROADMAP and PLAN only point to it. Dated reviews and archives prove their recorded source only; they do not override current decisions.
+Accepted ADRs constrain architecture. The completion page records milestone status, the backlog owns subsequent sequencing and each issue owns its acceptance; ROADMAP and PLAN point to those owners. Dated reviews and archives prove their recorded source only; they do not override current decisions.
 
 ## Product context and specs
 

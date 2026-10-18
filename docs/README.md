@@ -1,11 +1,11 @@
 # Documentation map
 
-Read this page before loading long plans or evidence. Rules for agents and contributors are in the repository [AGENTS.md](../AGENTS.md). The active sprint sets work order; accepted ADRs set technical rules. A dated result proves only its recorded source, environment and consumer.
+Read this page before loading long plans or evidence. Rules for agents and contributors are in the repository [AGENTS.md](../AGENTS.md). The completion page records milestone status and the backlog sets subsequent work order; accepted ADRs set technical rules. A dated result proves only its recorded source, environment and consumer.
 
 ## Minimum context for a task
 
 1. [AGENTS.md](../AGENTS.md).
-2. The [active sprint](bookie-0.2-sprint.md), including 0.2.0 readiness.
+2. [Completion and continuation](bookie-0.2-sprint.md), then the selected [post-0.2.0 backlog](backlog.md) issue.
 3. Your lane's issues on [Bookie Project #3](https://github.com/users/cozyGarage/projects/3) (filter by **Lane**). The [ledger index](known-issues.md) maps ledger IDs to issues.
 4. The governing [ADR](decisions/README.md); for every type or value change, [ADR 0007](decisions/0007-type-and-value-preservation.md).
 5. The affected checks in the [validation playbook](validation-playbook.md).
@@ -36,7 +36,7 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 | Which forks already have an answer | The [decision checklist](decisions/checklist.md) | Link, N/A, or open item; do not invent a decision to fill a cell |
 | A design not yet decided | [proposals/](proposals/) | Becomes an ADR or is deleted |
 | An open issue, its status and lane | [Project #3](https://github.com/users/cozyGarage/projects/3); ID map in the [ledger index](known-issues.md) | Status and Lane on the project; keep the index ID→issue→Lane table in sync; `scripts/check-known-issues.py` checks format offline, while `scripts/check-github-issue-status.py` reports live issue state |
-| Milestones, order, acceptance, 0.2.0 readiness | The [sprint](bookie-0.2-sprint.md) | Compact current instructions; move dated progress to the archive |
+| Milestone completion and subsequent order | [Completion](bookie-0.2-sprint.md), [scope](0.2.0-scope.md), [backlog](backlog.md) | Record maintainer completion separately from publication; keep issue acceptance on Project #3 and dated proof in the archive |
 | B3 remaining work | Project #3 Lane B3; [B3 board pointer](type-contract-strategy.md) | Issues on the project; pointer keeps accepted refusals and the case record |
 | B4 implementation and acceptance | Project #3 Lane B4; [B4 board pointer](b4-task-board.md) | Issues on the project; acceptance checklists stay in the archived board |
 | Type and consumer proof lookup | The [value evidence index](value-contracts.md) | Link to the case; detailed logs belong in evidence or history |
@@ -79,6 +79,9 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 Record a rule once in an ADR and a task once on Project #3. Do not copy old test counts into a current claim. Keep ignored `target/quality` paths as plain text, and when output is unavailable, say so instead of leaving a dead link.
 
 ## Client research (October 2026)
+
+- [Upstream Linux adoption and development workflow](archive/upstream-linux-adoption-2026-10-18.md), with the [movement/source audit](archive/upstream-linux-movement-2026-10-18.md): code, CI, infrastructure, conventions and post-0.2.0 tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149).
+- [0.2.0 completion handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md): maintainer completion statement, publication boundary and previous scope/sprint snapshots.
 
 - [Code and UI audit, October 18](archive/code-and-ui-audit-2026-10-18.md): source findings for pending-state cues, high contrast and responsiveness; refreshed dbx, TablePro and DBeaver fixes; proposed audit packets and their acceptance layers.
 - [Peer-review delivery tracker](https://github.com/cozyGarage/BookiE/issues/1026) and its lane-owned slices are the current work queue for the review below.

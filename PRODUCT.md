@@ -12,12 +12,12 @@ Alternatives include other desktop database clients, vendor consoles, and comman
 
 ## Vision
 
-Stay a Linux-only native client. Finish BookiE 0.2.0 as a development release for the Arch and Hyprland target, with hotfixes to follow. Keep drivers compiled in. Store persistent database and SSH credentials in Secret Service. Issue GUI MCP tokens once with best-effort keyring storage; headless MCP token plaintext goes once to stdout or an explicitly selected owner-only file. Keep MCP, the GUI and the headless daemon on one governed SQL path.
+Stay a Linux-only native client. Publish the completed BookiE 0.2.0 development release for the Arch and Hyprland target, then deliver hotfixes and selected post-0.2.0 work. Keep drivers compiled in. Store persistent database and SSH credentials in Secret Service. Issue GUI MCP tokens once with best-effort keyring storage; headless MCP token plaintext goes once to stdout or an explicitly selected owner-only file. Keep MCP, the GUI and the headless daemon on one governed SQL path.
 
 ## Current state (as of 2026-10)
 
 - **Live:** saved connections, SSH tunnels, browse and SQL tabs, structure editing, inline row changes, query history, policy checks, audit records, MCP access, `bookie-agentd`. Installable 0.1.5 packages on Debian (GNOME 50 libraries) and Arch. PostgreSQL is the furthest-along engine.
-- **In progress:** B3 type/value consumer coverage, B4 transport and session acceptance, installed desktop qualification, and progressive server-cursor paging. Core, PostgreSQL and PolicyGuard cursor support exists; SQL editor integration remains ([ADR 0011](docs/decisions/0011-paged-query-results.md)).
+- **Delivery status:** the maintainer confirmed 0.2.0 work complete on 2026-10-18; publication is pending. Broader type/consumer and platform acceptance continues as post-0.2.0 work. Supported PostgreSQL editor SELECTs already use cursor paging ([ADR 0011](docs/decisions/0011-paged-query-results.md)).
 - **Left out of 0.2.0:** Flatpak and Flathub, a web UI, runtime driver plugins, accounts or paid tiers.
 
 ## Users / personas
