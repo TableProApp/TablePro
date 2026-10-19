@@ -1,6 +1,6 @@
 # Verification on Apple
 
-Read this when a verdict, a test name or a red CI check needs explaining. The commands, the verdict words and the verdict rules are in `apple/AGENTS.md`, Commands; when each step runs is in `references/platform-apple.md`, Verify.
+Read this when a verdict, a test name or a red CI check needs explaining. The commands are in `apple/AGENTS.md`, Commands; when each step runs is in `references/platform-apple.md`, Verify.
 
 ## Usage
 
@@ -89,7 +89,7 @@ Read this when a verdict, a test name or a red CI check needs explaining. The co
 
 ## Lint
 
-- `lint` is SwiftLint only. `agent-docs` is its own step, so a stale doc reference never turns a code lint red; `AGENTS.md`, Writing style and docs, says what it checks.
+- `lint` is SwiftLint only.
 - `apple/.swiftlint.yml` `included:` holds six roots: `TablePro`, `Packages`, `Plugins`, `TableProMobile`, `TableProTests`, `TableProUITests`.
 - Some folders lint with fewer rules through a nested `only_rules` config: `.claude/rules/ci.md`, Writing workflow and lint code.
 - A directory outside `included:` lints nothing and reports 0 violations; the step names it under "NOT LINTED". Pass files.

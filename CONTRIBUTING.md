@@ -17,7 +17,7 @@ Branch off `main`: `feat/add-cassandra-support`, `fix/query-editor-crash`. PRs t
 
 ## Pull requests
 
-One logical change per PR, described with the template the PR form opens with. The title format, types and scopes are in the top comment of `.github/pull_request_template.md`. A PR merges when the required checks in [`AGENTS.md`](AGENTS.md), CI, pass; what each workflow runs is in `.claude/rules/ci.md`. What a PR for each app carries: its `CONTRIBUTING.md`, Pull requests.
+One logical change per PR, described with the template the PR form opens with. The title format and types are in the top comment of `.github/pull_request_template.md`. A PR merges when the required checks in [`AGENTS.md`](AGENTS.md), CI, pass; what each workflow runs is in `.claude/rules/ci.md`. What a PR for each app carries: its `AGENTS.md`, Every change.
 
 ## Reporting bugs
 

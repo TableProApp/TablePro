@@ -73,7 +73,7 @@ xcodebuild build -project TablePro.xcodeproj -scheme AllPlugins -destination 'pl
 
 From the repository root, prefer `.claude/skills/fix-issue/scripts/verify.sh test <Suite>` ([`AGENTS.md`](AGENTS.md), Commands): it finds the target that declares the suite and fails a run that executed nothing. Where a test goes and how to write one: `.claude/rules/tests.md`; UI flows: `.claude/rules/ui-tests.md`.
 
-The raw equivalents, in order: a suite in the Unit plan, a UI flow (needs Automation Mode, see Troubleshooting), a TableProCore or TableProOracle suite (no Xcode plan lists those two packages), and the iOS app:
+The raw equivalents, in order: a suite in the Unit plan, a UI flow (needs Automation Mode: `.claude/skills/fix-issue/references/verification-apple.md`, INCONCLUSIVE), a TableProCore or TableProOracle suite (no Xcode plan lists those two packages), and the iOS app:
 
 ```bash
 xcodebuild -project TablePro.xcodeproj -scheme TablePro test -testPlan Unit -skipPackagePluginValidation -only-testing:<Target>/<Suite>
@@ -96,11 +96,11 @@ xcodebuild -project TableProMobile/TableProMobile.xcodeproj -scheme TableProMobi
 | Trailing commas | None |
 | `self.` | Only where the compiler needs it |
 
-Naming, imports, access control, force unwrapping, logging, comments, storage, file size and localization: [`AGENTS.md`](AGENTS.md), Code style, Invariants that apply everywhere, and Every change.
+Logging, storage and localization: [`AGENTS.md`](AGENTS.md), Invariants that apply everywhere and Every change.
 
 ## Architecture
 
-The architecture and its invariants: [`AGENTS.md`](AGENTS.md), Architecture and Invariants that apply everywhere.
+The architecture is in the area rules under `.claude/rules/`, and its invariants in [`AGENTS.md`](AGENTS.md), Invariants that apply everywhere.
 
 | Dependency | Source | Purpose |
 |---|---|---|
@@ -112,16 +112,6 @@ The architecture and its invariants: [`AGENTS.md`](AGENTS.md), Architecture and 
 | Sparkle | SPM | Updates, EdDSA-signed |
 | Yams | SPM | YAML for project folder import |
 | swift-nio, swift-nio-ssl, zstd | SPM | The Kafka plugin's transport, TLS and zstd codec |
-
-## Pull requests
-
-Branch naming and the pull request rules are in the root [`CONTRIBUTING.md`](../CONTRIBUTING.md). Before you open one for the Apple apps:
-
-- Tests added or updated.
-- A changelog fragment in `changelog.d/` for a user-visible change (`.claude/rules/changelog.md`).
-- User-facing behavior documented in a paired pull request in [TableProApp/docs](https://github.com/TableProApp/docs) that links this one.
-- User-facing strings localized.
-- SwiftLint clean.
 
 ## Adding a database driver
 
@@ -153,5 +143,4 @@ The export builds the app first, so run `scripts/download-libs.sh` and `scripts/
 | `error: …/tablepro-hana-helper is missing or has no <arch> slice` | Run `scripts/build-hana.sh` with no argument, which builds both architectures |
 | Signing errors after a fresh clone | `Configs/Base.xcconfig` defaults to the maintainer's team and includes `Secrets.xcconfig` optionally, so a build without it still runs and fails to sign. Create the file with your team |
 | Package resolution fails | `Cmd+Shift+K` and reopen Xcode; then `rm -rf ~/Library/Developer/Xcode/DerivedData` |
-| `Timed out while enabling automation mode`, and UI tests run nothing | Answer the Enable UI Automation prompt with an admin password, or run `sudo automationmodetool enable-automationmode-without-authentication` once |
 | Test runs left defaults domains (`com.TablePro.tests.*`, `com.TablePro.uitest.*`) or temp folders behind | Quit TablePro, then run `scripts/clean-test-residue.sh`. It only reports until you pass `--apply` |

@@ -1,6 +1,6 @@
 # Contributing to TablePro Linux
 
-This file governs the Linux subproject only. [AGENTS.md](AGENTS.md) is the short guide to it, and the repository-level [AGENTS.md](../AGENTS.md) holds the rules every app shares: security first, root-cause fixes, tests define behavior and the writing style.
+This file governs the Linux subproject only. [AGENTS.md](AGENTS.md) is the short guide to it, and the repository-level [AGENTS.md](../AGENTS.md) holds the rules both apps share.
 
 ## Dev environment
 
@@ -72,8 +72,6 @@ object per line.
 RUST_LOG=debug meson devenv -C _build ./crates/app/tablepro
 ```
 
-The gtk Meson suite sets `GTK_A11Y=test`, and `meson devenv` does not. With `GTK_A11Y=none` GTK records no accessible properties, and the accessibility helpers report that the test backend is missing.
-
 ### Dependencies
 
 `data/licenses` holds the license notices of every crate the app ships, written from `Cargo.lock` by cargo-about. The About dialog embeds `third-party.json`. The packages ship the notices as their license files: `%license` in the RPM, `debian/copyright` in the .deb, and `share/licenses` in the Flatpak. After a change to `Cargo.lock`, regenerate them and commit the result; the Supply chain CI job fails until they match:
@@ -96,15 +94,13 @@ The script stops and names each crate it read no license file for, since the not
 | Edition | 2024 | Set per workspace. Do not override per crate. |
 | MSRV | 1.97 | `rust-version` in `Cargo.toml`: the `rustc-1.97` the PPA builds with, checked by CI. `rust-toolchain.toml` pins 1.98, the Flatpak rust-stable extension's. |
 
-The workspace denies `unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`, `dbg_macro`, `print_stdout`, `print_stderr`, `allow_attributes`, `allow_attributes_without_reason`, `ignore_without_reason` and `too_many_lines`, plus `unsafe_op_in_unsafe_fn`. `clippy.toml` lets tests unwrap, expect, panic, print and use `dbg!`, and bans `serde_json::Map` and `Value::as_object`, whose maps reorder a server's JSON. Clippy reads only the `clippy.toml` nearest a crate, so `crates/app/clippy.toml` and `crates/session/clippy.toml` replace the root file for their crate. Both keep its test allowances and its JSON bans, and ban reaching for the ambient tokio runtime: background work goes through `Tasks`. The app's also bans the Relm4 spawns, `MainContext::block_on` and `ApplicationExt::quit`.
+The denied lints are `[workspace.lints]` in `Cargo.toml`; the test allowances and the banned types and methods, each with its reason, are in the `clippy.toml` files. Clippy reads only the `clippy.toml` nearest a crate, so `crates/app/clippy.toml` and `crates/session/clippy.toml` replace the root one for their crate.
 
 Conventions, beyond what `rustfmt` decides:
 
 - **Comments say why, never what.** A short comment belongs where the code would surprise a careful reader: a hidden constraint, an invariant, a platform quirk. Code is otherwise self-documenting through naming.
-- **No `unwrap()` or `expect()` in production paths.** Tests are the only callers; the workspace lints deny the rest.
-- **No `panic!`, `todo!`, `unimplemented!` in merged code.** Stub a real `Err` variant instead.
 - **One public type per module file** when the type's surface is non-trivial. Internal helpers stay private.
-- **A function holds at most 100 lines of code**, tests included. The workspace denies `clippy::too_many_lines` at its default threshold, so split a long function by what each part does instead of allowing the lint.
+- **Split a long function** by what each part does; never silence `clippy::too_many_lines`.
 - **User-facing strings go through `crate::i18n`.** `gettext` for a plain
   string, `gettext_f` with named `{placeholders}` when values are
   interpolated, `ngettext_f` for counts, `pgettext` when a word's sense

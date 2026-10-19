@@ -85,7 +85,7 @@ Write `<tree>/.analysis/<slug>/plan.md`, under 80 lines, opening with a progress
 - the tests that fail before the fix, in the targets the profile's Done section says to check first;
 - the changelog fragment, docs, localization and screenshots the change needs.
 
-**Rules read.** List the files `plan.md` touches. Read `<tree>/AGENTS.md` and the platform guide the profile's Done section names, then every `<tree>/.claude/rules/*.md` whose row in the root Area rules table matches one of them, and name them on a `Rules read:` line in `plan.md`. A file added later gets the same check before you edit it. The tree's copies are the ones that apply; a harness may have loaded another checkout's.
+**Rules read.** List the files `plan.md` touches. Read `<tree>/AGENTS.md` and the platform guide the profile's Done section names, then every `<tree>/.claude/rules/*.md` whose `paths:` header matches one of them, and name them on a `Rules read:` line in `plan.md`. A file added later gets the same check before you edit it. The tree's copies are the ones that apply; a harness may have loaded another checkout's.
 
 In Full mode the `critic` lane attacks the plan; fold in what survives an evidence check. Then implement.
 
@@ -123,7 +123,7 @@ Fix what is real and inside the scope boundary without asking. A real finding ab
 
 1. **Stage explicit paths**, never `git add -A`, `.` or a directory, and compare `git -C <tree> diff --cached --stat` with what you changed.
 2. **Run `scripts/check-banned-words.sh --staged`**, and the same script over the PR body file.
-3. **Commit, then push, in separate calls**, after `git -C <tree> branch --show-current` in a call of its own. The PR title becomes the squash commit subject; its format, types and scopes are in the top comment of `.github/pull_request_template.md`. Never override the git identity. If SSH fails: `git -c credential.helper='!gh auth git-credential' push https://github.com/TableProApp/TablePro.git <branch>`.
+3. **Commit, then push, in separate calls**, after `git -C <tree> branch --show-current` in a call of its own. The PR title becomes the squash commit subject; its format and types are in the top comment of `.github/pull_request_template.md`. Never override the git identity. If SSH fails: `git -c credential.helper='!gh auth git-credential' push https://github.com/TableProApp/TablePro.git <branch>`.
 4. **Open the PR, ready for review**: `gh pr create --repo TableProApp/TablePro --base <base> --head <branch> --title "<subject>" --body-file <file>`, where `<base>` is the profile's pull request base. The body follows `.github/pull_request_template.md` and reads in under a minute. It is not a log: no investigation story, no review history, no list of every test run.
 5. **Screenshots**, only when the change is visible: before and after, light and dark, from an isolated build captured the way the profile's Screen section says. Look at each one before using it. Attach with `gh pr create --attach './after.png#After'` and reference it as `![After](./after.png)`.
 

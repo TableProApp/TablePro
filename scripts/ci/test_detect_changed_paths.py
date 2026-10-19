@@ -89,7 +89,7 @@ class DetectChangedPathsTests(unittest.TestCase):
                 self.assertEqual(self.verdict_after("linux", path), "false")
 
     def test_linux_skips_the_shared_doc_scripts(self):
-        for path in ["scripts/check-doc-symbols.sh", "scripts/check-banned-words.sh", "scripts/banned-words.txt"]:
+        for path in ["scripts/check-banned-words.sh", "scripts/banned-words.txt"]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("linux", path), "false")
 

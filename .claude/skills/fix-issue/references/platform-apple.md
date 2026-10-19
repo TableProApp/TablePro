@@ -16,7 +16,7 @@ The macOS app and the iOS app, with everything they build from. Every profile ha
 
 ## Done
 
-- The tree's `apple/AGENTS.md`, the root `AGENTS.md` it points to, and every `.claude/rules/` file the root Area rules table matches to what you edit (`SKILL.md`, Phase 2, Rules read). The per-change checklist is the Every change section of `apple/AGENTS.md`. Under Claude Code, `apple/CLAUDE.md` loads it once a file under `apple/` is read; read it by path anyway in Phase 0.
+- The tree's `apple/AGENTS.md`, the root `AGENTS.md` it points to, and every `.claude/rules/` file whose `paths:` header matches what you edit (`SKILL.md`, Phase 2, Rules read). The per-change checklist is the Every change section of `apple/AGENTS.md`. Under Claude Code, `apple/CLAUDE.md` loads it once a file under `apple/` is read; read it by path anyway in Phase 0.
 - Before naming a test in `plan.md`, read `.claude/rules/tests.md` (Where a test goes): a path rule loads only once a matching file is open. Add a UI flow only when `.claude/rules/ui-tests.md` (What earns a UI flow) says so.
 
 ## Native standard
@@ -43,7 +43,6 @@ The macOS app and the iOS app, with everything they build from. Every profile ha
 | `l10n` | none | strings, or plugin or package messages, changed. Passes only when every plugin and package string is in both the macOS and iOS catalogs, and prints the `--add` command for each target that failed |
 | `docs` | `[docs-checkout]`, default `tablepro-docs` beside the main checkout | AGENTS Every change 4 applies, or a menu, shortcut, driver list or docs.tablepro.app link changed |
 
-- `agent-docs` runs on every platform; AGENTS Every change 5 says when.
 - Pick tests by the types you changed, not the test files you edited: `verify.sh` finds a type name in every test target of the tree.
 - Extra review pass: the ABI pass when PluginKit changed.
 - Test names, verdicts, the remedies `verify.sh` does not print, and red CI checks: `references/verification-apple.md`.
