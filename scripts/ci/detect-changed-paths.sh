@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Prints "true" when a suite has to run for the changes from <base> to <head>, "false" when it can skip.
 # Usage: detect-changed-paths.sh [--base <sha>] [--head <rev>] [--ref <git ref>] <suite>
-# Suites: macos, plugins, ios, oracle, hana, release, shipped, linux.
+# Suites: macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs.
 
 BASE=""
 HEAD_REV="HEAD"
@@ -22,6 +22,7 @@ done
 cd "$(git rev-parse --show-toplevel)"
 
 SKIP=""
+KEEP=""
 case "$SUITE" in
     macos)
         PATTERNS=('apple/TablePro/' 'apple/TableProTests/' 'apple/TableProUITests/' 'apple/TestPlans/'
@@ -31,7 +32,7 @@ case "$SUITE" in
             'apple/scripts/lib/' 'apple/scripts/ci/(summarize-xcresult|verify-plugin-loads)\.sh$'
             'scripts/ci/detect-changed-paths\.sh$'
             'apple/scripts/check-pluginkit-abi\.sh$' 'apple/scripts/release/notes\.py$'
-            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/macos-tests\.yml$') ;;
+            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|macos-tests)\.yml$') ;;
     plugins)
         # Registry plugins link the TableProCore and TableProOracle products.
         PATTERNS=('apple/Plugins/' 'apple/Packages/TableProCore/' 'apple/Packages/TableProOracle/' 'apple/Native/'
@@ -39,13 +40,13 @@ case "$SUITE" in
             'apple/TablePro\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/Package\.resolved$'
             'apple/scripts/(generate-project|download-libs|create-openssl-dylibs|build-dameng|build-hana)\.sh$'
             'apple/scripts/lib/' 'apple/scripts/ci/verify-plugin-loads\.sh$' 'apple/scripts/check-pluginkit-abi\.sh$'
-            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/macos-tests\.yml$') ;;
+            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|macos-tests)\.yml$') ;;
     ios)
         # The package's TableProPluginKit target is a symlink, so git reports its changes here.
         PATTERNS=('apple/TableProMobile/' 'apple/Libs/' 'apple/Plugins/TableProPluginKit/'
             'apple/scripts/(generate-project|download-libs|create-openssl-dylibs)\.sh$' 'apple/scripts/lib/'
             'apple/scripts/ci/summarize-xcresult\.sh$' 'scripts/ci/detect-changed-paths\.sh$'
-            '\.github/actions/setup-xcode(gen)?/' '\.github/workflows/ios-tests\.yml$')
+            '\.github/actions/setup-xcode(gen)?/' '\.github/workflows/(ci|ios-tests)\.yml$')
         # The iOS project compiles files from Plugins/, Packages/ and TablePro/, so every path its
         # spec reaches outside TableProMobile/ is read from the spec instead of copied here.
         SHARED="$(grep -oE '\.\./(Configs|Packages|Plugins|TablePro)/[^"[:space:]]*' apple/TableProMobile/project.yml \
@@ -55,9 +56,9 @@ case "$SUITE" in
         done <<< "$SHARED" ;;
     oracle)
         PATTERNS=('apple/Packages/TableProOracle/' 'apple/scripts/ci/summarize-xcresult\.sh$'
-            '\.github/actions/setup-xcode/' '\.github/workflows/ios-tests\.yml$') ;;
+            '\.github/actions/setup-xcode/' '\.github/workflows/(ci|ios-tests)\.yml$') ;;
     hana)
-        PATTERNS=('apple/Native/HanaBridge/' '\.github/workflows/repo-hygiene\.yml$') ;;
+        PATTERNS=('apple/Native/HanaBridge/' '\.github/workflows/(ci|repo-hygiene)\.yml$') ;;
     release|shipped)
         # A Release build compiles no test target, so the test folders under Plugins/ and
         # Packages/ are skipped too.
@@ -69,7 +70,7 @@ case "$SUITE" in
             'apple/scripts/lib/' 'apple/scripts/release/(build|package)\.sh$'
             'apple/scripts/release/(notes|registry|version)\.py$'
             'apple/scripts/ci/verify-plugin-loads\.sh$' 'scripts/ci/detect-changed-paths\.sh$'
-            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/release-build\.yml$')
+            '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|release-build)\.yml$')
         SKIP='apple/Plugins/[^/]+Tests/|apple/Packages/[^/]+/Tests/'
         # shipped is what an X.Y.0 may not change after its newest beta: the release build minus its CI.
         if [ "$SUITE" = shipped ]; then
@@ -82,11 +83,20 @@ case "$SUITE" in
             done
             PATTERNS=("${KEPT[@]}")
         fi ;;
-    linux)
+    swiftlint)
+        PATTERNS=('.*\.swift$' '(.*/)?\.swiftlint\.yml$' 'scripts/ci/detect-changed-paths\.sh$'
+            '\.github/workflows/(ci|swiftlint)\.yml$') ;;
+    linux|linux-docs)
         PATTERNS=('linux/' 'scripts/ci/detect-changed-paths\.sh$'
-            '\.github/workflows/(build-linux|linux-packages|release-linux)\.yml$') ;;
+            '\.github/workflows/(ci|build-linux|linux-packages|release-linux)\.yml$')
+        # linux-docs decides the docs links job, which reads every path. The other Linux jobs skip
+        # Markdown, except the files a Meson test reads and the notices the build installs.
+        if [ "$SUITE" = linux ]; then
+            SKIP='linux/.*\.md$'
+            KEEP='linux/CHANGELOG\.md$|linux/docs/regression-tests\.md$|linux/data/'
+        fi ;;
     *)
-        echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana, release, shipped or linux, got '$SUITE'" >&2
+        echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux or linux-docs, got '$SUITE'" >&2
         exit 2 ;;
 esac
 
@@ -116,6 +126,9 @@ trap 'rm -f "$CHANGED" "$RELEVANT"' EXIT
 git -c core.quotePath=false diff --no-renames --name-only -z "$BASE" "$HEAD_REV" > "$CHANGED"
 if [ -n "$SKIP" ]; then
     LC_ALL=C grep -zvE "^($SKIP)" "$CHANGED" > "$RELEVANT" || [ $? -eq 1 ]
+    if [ -n "$KEEP" ]; then
+        LC_ALL=C grep -zE "^($KEEP)" "$CHANGED" >> "$RELEVANT" || [ $? -eq 1 ]
+    fi
 else
     cp "$CHANGED" "$RELEVANT"
 fi

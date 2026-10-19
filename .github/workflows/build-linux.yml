@@ -1,19 +1,19 @@
 name: Build Linux
 
+# CI calls it for a pull request or a push; the schedule and a manual run take every job.
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_call:
+    inputs:
+      docs-only:
+        description: Run only the docs links job.
+        type: boolean
+        required: true
   schedule:
     - cron: "13 14 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: build-linux-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_ABOUT_VERSION: 0.9.2
@@ -25,27 +25,31 @@ env:
   LYCHEE_SHA256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
 
 jobs:
-  changes:
-    name: Changes (Linux)
+  docs:
+    name: Documentation links
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      run: ${{ steps.decide.outputs.run }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
-      - name: Decide whether the Linux jobs run
-        id: decide
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: echo "run=$(scripts/ci/detect-changed-paths.sh --base "$BASE" linux)" >> "$GITHUB_OUTPUT"
+      - name: Install lychee
+        run: |
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/lychee.tar.gz" \
+            "https://github.com/lycheeverse/lychee/releases/download/lychee-v$LYCHEE_VERSION/lychee-x86_64-unknown-linux-gnu.tar.gz"
+          echo "$LYCHEE_SHA256  $RUNNER_TEMP/lychee.tar.gz" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/lychee"
+          tar -xzf "$RUNNER_TEMP/lychee.tar.gz" -C "$RUNNER_TEMP/lychee" --strip-components=1 \
+            lychee-x86_64-unknown-linux-gnu/lychee
+          echo "$RUNNER_TEMP/lychee" >> "$GITHUB_PATH"
+      - name: Links and anchors in the Linux docs resolve
+        # Offline, so only links to files and headings in the tree are
+        # checked: the ones a rename or a move breaks.
+        run: lychee --offline --include-fragments --no-progress 'linux/**/*.md'
 
   fast:
     name: Fast checks
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
+    if: ${{ !inputs.docs-only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     # The host runner ships GLib 2.80, below the GNOME 50 floor.
@@ -105,22 +109,6 @@ jobs:
             xvfb \
             xauth \
             dbus-daemon
-      # On the bare checkout: the glob ignores .gitignore, so once Cargo
-      # fills _build it would read every crate's Markdown too.
-      - name: Install lychee
-        run: |
-          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/lychee.tar.gz" \
-            "https://github.com/lycheeverse/lychee/releases/download/lychee-v$LYCHEE_VERSION/lychee-x86_64-unknown-linux-gnu.tar.gz"
-          echo "$LYCHEE_SHA256  $RUNNER_TEMP/lychee.tar.gz" | sha256sum --check --strict
-          mkdir "$RUNNER_TEMP/lychee"
-          tar -xzf "$RUNNER_TEMP/lychee.tar.gz" -C "$RUNNER_TEMP/lychee" --strip-components=1 \
-            lychee-x86_64-unknown-linux-gnu/lychee
-          echo "$RUNNER_TEMP/lychee" >> "$GITHUB_PATH"
-      - name: Links and anchors in the Linux docs resolve
-        # Offline, so only links to files and headings in the tree are
-        # checked: the ones a rename or a move breaks.
-        working-directory: .
-        run: lychee --offline --include-fragments --no-progress 'linux/**/*.md'
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.98"
@@ -266,8 +254,7 @@ jobs:
 
   supply-chain:
     name: Supply chain
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
+    if: ${{ !inputs.docs-only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
@@ -306,14 +293,14 @@ jobs:
         working-directory: .
         run: |
           zizmor --offline --format=github --min-severity=medium \
+            .github/workflows/ci.yml \
             .github/workflows/build-linux.yml \
             .github/workflows/linux-packages.yml \
             .github/workflows/release-linux.yml
 
   i18n:
     name: Translations
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
+    if: ${{ !inputs.docs-only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     # ubuntu:26.10 ships gettext 1.0, the first release whose xgettext
@@ -397,8 +384,8 @@ jobs:
 
   integration:
     name: Docker tests (${{ matrix.package }}${{ matrix.release != 'default' && format(', {0}', matrix.release) || '' }})
-    needs: [changes, fast]
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && needs.fast.result == 'success' }}
+    needs: fast
+    if: ${{ !cancelled() && needs.fast.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -497,8 +484,8 @@ jobs:
     # is mounted; testcontainers sees /.dockerenv and reaches the
     # containers it starts through the bridge gateway.
     name: Docker tests (tablepro-session)
-    needs: [changes, fast]
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && needs.fast.result == 'success' }}
+    needs: fast
+    if: ${{ !cancelled() && needs.fast.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     container:
@@ -560,8 +547,8 @@ jobs:
     # session job. Only the named test targets run: the app's startup
     # test needs Meson and the fast job already covers it.
     name: Docker tests (tablepro)
-    needs: [changes, fast]
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && needs.fast.result == 'success' }}
+    needs: fast
+    if: ${{ !cancelled() && needs.fast.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     container:
@@ -617,22 +604,3 @@ jobs:
         with:
           name: junit-tablepro
           path: linux/target/nextest/ci/junit.xml
-
-  # The one check a branch rule requires: a job skipped by a path or event
-  # decision reports success, and this fails when any Linux job failed or was
-  # cancelled.
-  linux:
-    name: Linux
-    needs: [changes, fast, msrv, supply-chain, i18n, flatpak-devel, integration, integration-session, integration-app]
-    if: always()
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Every Linux job passed or was skipped
-        env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
-        run: |
-          echo "$RESULTS"
-          case " $RESULTS " in
-            *" failure "* | *" cancelled "*) exit 1 ;;
-          esac
