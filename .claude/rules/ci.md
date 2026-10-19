@@ -99,7 +99,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 ## PR title (`pr-title.yml`)
 
 - Runs on opened, edited, reopened and synchronize, so every head commit gets the check.
-- Runs `scripts/ci/check-pr-title.py`, then `scripts/ci/check-changelog.py --pr` on the merge commit's diff to its first parent, which also refuses a release PR that changes more than `apple/CHANGELOG.md` and `apple/changelog.d/`.
+- Runs `scripts/ci/check-pr-title.py`, then refuses an edit to `apple/CHANGELOG.md` or `linux/CHANGELOG.md` in the merge commit's diff to its first parent unless the title starts with `chore(release)`.
 
 ## Repo Hygiene (`repo-hygiene.yml`)
 
@@ -109,7 +109,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
   - `shellcheck --severity=warning` on every `*.sh` under `scripts`, `apple/scripts` and `.claude/skills`;
   - the tooling tests: `scripts/ci/test_*.py`, `apple/scripts/ci/test_*.py`, `apple/scripts/lib/test_*.py`, `apple/scripts/test_localization.py` and `apple/scripts/ci/test_libs_release.sh`;
   - `apple/scripts/release/test_*.py` on Python 3.9 from `actions/setup-python`, in a venv that installs `scripts/release/requirements.txt` with `pip --require-hashes`;
-  - in the same venv, `check-changelog.py` and `towncrier build --draft --version 0.0.0` with `--dir apple` and `--dir linux`, which fails on a fragment name it cannot parse;
+  - in the same venv, `towncrier build --draft --version 0.0.0` with `--dir apple` and `--dir linux`, which fails on a fragment name it cannot parse;
   - `check-lib-sourcing.py`, `check-plugin-manifest.py`, `check-plugin-provides.py`, `check-deployment-target.sh`;
   - `localization.py plugins` and `plugins --target ios`;
   - `check-string-catalogs.py`, `check-license-inventory.py`, `check-entitlements.py`, `check-test-plans.py`;
@@ -128,7 +128,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 - `shipped` is `release` without its `.github/workflows/` and `.github/actions/` entries. `version.py check` reads it for a stable's diff from its newest beta (`apple/RELEASING.md`, What a tag runs).
 - `linux` watches `linux/`, the detector itself and the three Linux workflows.
 - A path a suite newly reads joins that suite's pattern in the same change, or the suite skips on it.
-- `apple/CHANGELOG.md` and `apple/changelog.d/` are on no suite's pattern: the What's New phase writes nothing at `0.0.0-dev`, and Repo Hygiene renders every fragment and section instead.
+- `apple/CHANGELOG.md` and `apple/changelog.d/` are on no suite's pattern: the What's New phase writes nothing at `0.0.0-dev`, Repo Hygiene renders every fragment instead, and `version.py check` reads the section at the tag.
 
 ## What runs where
 
