@@ -4,9 +4,10 @@ use tablepro_core::credentials::{SecretError, SecretKind};
 use tablepro_core::sql_syntax::script::{OpenConstruct, ScriptDiagnostic};
 use tablepro_core::{
     ConfigError, DriverError, ErrorCategory, LossPhase, NetworkEndpoint, ReadOnlyRefusal, ServerCode,
-    ServerDiagnostics, SshFailure, StatementOutcome, TimeoutPhase, TlsFailure, TransportError,
+    ServerDiagnostics, SshDestinationPart, SshDestinationProblem, SshFailure, StatementOutcome, TimeoutPhase,
+    TlsFailure, TransportError,
 };
-use tablepro_session::runtime::TaskPanic;
+use tablepro_session::runtime::{TaskFailure, TaskPanic};
 use tablepro_session::{ConnectError, OperationError};
 use tablepro_storage::KeyringError;
 
@@ -337,6 +338,84 @@ fn an_unknown_key_says_what_the_configuration_allows() {
     assert!(unseen.contains("review"), "{unseen}");
     assert!(reviewable.contains("(key SHA256:abc)"), "{reviewable}");
     assert!(reviewable.contains("review"), "{reviewable}");
+}
+
+#[test]
+fn an_invalid_ssh_destination_is_worded_by_the_app() {
+    let message = ssh_failure_message(&SshFailure::InvalidDestination {
+        problem: SshDestinationProblem::Character {
+            part: SshDestinationPart::Host,
+            character: '$',
+        },
+    });
+
+    assert_eq!(
+        message,
+        "The SSH host or jump host is not valid: the host name contains “$”"
+    );
+}
+
+#[test]
+fn every_ssh_destination_problem_has_its_own_words() {
+    let problems = [
+        SshDestinationProblem::Empty {
+            part: SshDestinationPart::Host,
+        },
+        SshDestinationProblem::Empty {
+            part: SshDestinationPart::User,
+        },
+        SshDestinationProblem::LeadingDash {
+            part: SshDestinationPart::Host,
+        },
+        SshDestinationProblem::LeadingDash {
+            part: SshDestinationPart::User,
+        },
+        SshDestinationProblem::Whitespace {
+            part: SshDestinationPart::Host,
+        },
+        SshDestinationProblem::Whitespace {
+            part: SshDestinationPart::User,
+        },
+        SshDestinationProblem::Character {
+            part: SshDestinationPart::Host,
+            character: ';',
+        },
+        SshDestinationProblem::Character {
+            part: SshDestinationPart::User,
+            character: ';',
+        },
+        SshDestinationProblem::PortZero,
+        SshDestinationProblem::NotAPort { text: "ssh".to_owned() },
+        SshDestinationProblem::UnclosedBracket,
+    ];
+
+    let texts: Vec<String> = problems.iter().map(ssh_destination_problem_text).collect();
+
+    for (problem, text) in problems.iter().zip(&texts) {
+        assert_ne!(text, &problem.to_string(), "{problem:?} shows its log text");
+    }
+    assert_eq!(
+        texts.iter().collect::<std::collections::HashSet<_>>().len(),
+        problems.len(),
+        "{texts:?}"
+    );
+    assert_eq!(texts[7], "the username contains “;”");
+    assert_eq!(texts[9], "“ssh” is not a port number");
+}
+
+#[test]
+fn a_panic_shows_the_apps_sentence_and_never_the_panic_text() {
+    let panic = TaskPanic::from_payload(Box::new("index out of bounds: the len is 0".to_owned()));
+
+    let messages = [
+        operation_error_message(&OperationError::Panicked(panic.clone())),
+        connect_error_message(&ConnectError::Panicked(panic.clone())),
+        task_failure_message(&TaskFailure::Panicked(panic)),
+    ];
+
+    for message in messages {
+        assert_eq!(message, "TablePro hit an internal error.");
+    }
 }
 
 #[test]

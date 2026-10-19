@@ -1,5 +1,6 @@
 use tablepro_storage::StorageError;
 
+use super::files::storage_io_message;
 use super::operation::task_failure_message;
 use super::secret::secret_message;
 use crate::services::saved_connection_error::SavedConnectionError;
@@ -14,10 +15,8 @@ pub fn saved_connection_error_message(error: &SavedConnectionError) -> String {
         SavedConnectionError::Storage(StorageError::DocumentUnavailable(_)) => {
             crate::i18n::gettext("The saved connections could not be read, so nothing was changed.")
         }
-        SavedConnectionError::Storage(error) => crate::i18n::gettext_f(
-            "The saved connections could not be written: {reason}",
-            &[("reason", &error.to_string())],
-        ),
+        SavedConnectionError::Storage(error) => storage_io_message(error)
+            .unwrap_or_else(|| crate::i18n::gettext("The saved connections could not be written.")),
         SavedConnectionError::Task(failure) => task_failure_message(failure),
     }
 }
@@ -39,9 +38,18 @@ mod tests {
             saved_connection_error_message(&SavedConnectionError::NotFound(Uuid::nil())),
             "The connection was deleted."
         );
-        let written = saved_connection_error_message(&SavedConnectionError::Storage(StorageError::Schema(
-            "the disk is full".to_owned(),
-        )));
-        assert!(written.contains("the disk is full"), "{written}");
+        assert_eq!(
+            saved_connection_error_message(&SavedConnectionError::Storage(StorageError::Io {
+                path: "/home/ada/.local/share/tablepro/connections.json".into(),
+                source: std::io::Error::from(std::io::ErrorKind::StorageFull),
+            })),
+            "Could not write /home/ada/.local/share/tablepro/connections.json: the disk is full."
+        );
+        assert_eq!(
+            saved_connection_error_message(&SavedConnectionError::Storage(StorageError::Schema(
+                "the connections write task failed".to_owned(),
+            ))),
+            "The saved connections could not be written."
+        );
     }
 }

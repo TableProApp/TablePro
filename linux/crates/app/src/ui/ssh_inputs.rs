@@ -1,10 +1,12 @@
 use std::path::{Path, PathBuf};
 
 use secrecy::{ExposeSecret, SecretString};
+use tablepro_core::SshDestinationProblem;
 use tablepro_ssh::{SshAuth, SshConfig, SshDestination};
 use tablepro_storage::{SavedSshAuth, SavedSshConfig};
 
 pub use crate::services::ssh_environment::SshEnvironment;
+use crate::ui::error_text::ssh_destination_problem_text;
 
 /// How the SSH server is logged in to, in the order the combo shows
 /// them. OpenSSH does the work for each; the app only picks which one
@@ -137,18 +139,17 @@ impl SshFormState {
         };
         let user = Some(self.user.trim().to_owned()).filter(|user| !user.is_empty());
         if let Some(user) = &user
-            && let Err(failure) = SshDestination::new("host", None, Some(user.clone()))
+            && let Err(problem) = SshDestination::new("host", None, Some(user.clone()))
         {
-            return Err(SshInputError::UserInvalid(failure.to_string()));
+            return Err(SshInputError::UserInvalid(problem));
         }
-        if let Err(failure) = SshDestination::new(host, port, None) {
-            return Err(SshInputError::HostInvalid(failure.to_string()));
+        if let Err(problem) = SshDestination::new(host, port, None) {
+            return Err(SshInputError::HostInvalid(problem));
         }
         let jump_hosts = match self.jump_hosts.trim() {
             "" => Vec::new(),
             list => {
-                SshDestination::parse_jump_list(list)
-                    .map_err(|failure| SshInputError::JumpHostsInvalid(failure.to_string()))?;
+                SshDestination::parse_jump_list(list).map_err(SshInputError::JumpHostsInvalid)?;
                 vec![list.to_owned()]
             }
         };
@@ -180,8 +181,7 @@ impl SshFormState {
     /// which secret the keyring should keep.
     pub fn inputs(&self) -> Result<SshInputs, SshInputError> {
         let saved = self.saved()?;
-        let mut cfg = tablepro_session::connect::ssh_config(&saved)
-            .map_err(|failure| SshInputError::HostInvalid(failure.to_string()))?;
+        let mut cfg = tablepro_session::connect::ssh_config(&saved).map_err(SshInputError::HostInvalid)?;
         let secret_to_store = fill_secret(&mut cfg, self.password.clone(), self.passphrase.clone());
         Ok(SshInputs {
             cfg,
@@ -208,10 +208,10 @@ pub enum SshSecretToStore {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SshInputError {
     HostRequired,
-    HostInvalid(String),
+    HostInvalid(SshDestinationProblem),
     PortOutOfRange,
-    UserInvalid(String),
-    JumpHostsInvalid(String),
+    UserInvalid(SshDestinationProblem),
+    JumpHostsInvalid(SshDestinationProblem),
     KeyPathRequired,
 }
 
@@ -219,16 +219,19 @@ impl SshInputError {
     pub fn message(&self) -> String {
         match self {
             Self::HostRequired => crate::i18n::gettext("Enter the SSH server's host name or its alias."),
-            Self::HostInvalid(detail) => {
-                crate::i18n::gettext_f("The SSH host cannot be used: {detail}", &[("detail", detail)])
-            }
+            Self::HostInvalid(problem) => crate::i18n::gettext_f(
+                "The SSH host cannot be used: {detail}",
+                &[("detail", &ssh_destination_problem_text(problem))],
+            ),
             Self::PortOutOfRange => crate::i18n::gettext("The SSH port must be a number from 1 to 65535."),
-            Self::UserInvalid(detail) => {
-                crate::i18n::gettext_f("The SSH username cannot be used: {detail}", &[("detail", detail)])
-            }
-            Self::JumpHostsInvalid(detail) => {
-                crate::i18n::gettext_f("The jump hosts cannot be used: {detail}", &[("detail", detail)])
-            }
+            Self::UserInvalid(problem) => crate::i18n::gettext_f(
+                "The SSH username cannot be used: {detail}",
+                &[("detail", &ssh_destination_problem_text(problem))],
+            ),
+            Self::JumpHostsInvalid(problem) => crate::i18n::gettext_f(
+                "The jump hosts cannot be used: {detail}",
+                &[("detail", &ssh_destination_problem_text(problem))],
+            ),
             Self::KeyPathRequired => crate::i18n::gettext("Choose the private key file."),
         }
     }
@@ -262,6 +265,8 @@ fn fill_secret(cfg: &mut SshConfig, password: SecretString, passphrase: SecretSt
 
 #[cfg(test)]
 mod tests {
+    use tablepro_core::SshDestinationPart;
+
     use super::*;
 
     fn rows(auth: SshAuthChoice) -> SshFormState {
@@ -344,46 +349,87 @@ mod tests {
                     host: String::new(),
                     ..rows(SshAuthChoice::Agent)
                 },
-                "host required",
+                SshInputError::HostRequired,
+            ),
+            (
+                SshFormState {
+                    host: "bastion;id".to_owned(),
+                    ..rows(SshAuthChoice::Agent)
+                },
+                SshInputError::HostInvalid(SshDestinationProblem::Character {
+                    part: SshDestinationPart::Host,
+                    character: ';',
+                }),
             ),
             (
                 SshFormState {
                     port: "70000".to_owned(),
                     ..rows(SshAuthChoice::Agent)
                 },
-                "port",
+                SshInputError::PortOutOfRange,
             ),
             (
                 SshFormState {
                     port: "0".to_owned(),
                     ..rows(SshAuthChoice::Agent)
                 },
-                "port",
+                SshInputError::PortOutOfRange,
             ),
             (
                 SshFormState {
                     user: "-oProxyCommand=x".to_owned(),
                     ..rows(SshAuthChoice::Agent)
                 },
-                "user",
+                SshInputError::UserInvalid(SshDestinationProblem::LeadingDash {
+                    part: SshDestinationPart::User,
+                }),
             ),
             (
                 SshFormState {
                     jump_hosts: "jump1,,jump2".to_owned(),
                     ..rows(SshAuthChoice::Agent)
                 },
-                "jump",
+                SshInputError::JumpHostsInvalid(SshDestinationProblem::Empty {
+                    part: SshDestinationPart::Host,
+                }),
             ),
         ];
-        for (state, row) in cases {
-            let error = state.saved().expect_err(row);
-            let matches = match row {
-                "host required" => error == SshInputError::HostRequired,
-                "port" => error == SshInputError::PortOutOfRange,
-                "user" => matches!(error, SshInputError::UserInvalid(_)),
-                _ => matches!(error, SshInputError::JumpHostsInvalid(_)),
-            };
-            assert!(matches, "{row}: {error:?}");
+        for (state, expected) in cases {
+            assert_eq!(state.saved(), Err(expected));
+        }
+    }
+
+    #[test]
+    fn a_bad_row_says_what_is_wrong_in_the_apps_words() {
+        let host = SshDestinationProblem::Whitespace {
+            part: SshDestinationPart::Host,
+        };
+        let user = SshDestinationProblem::Character {
+            part: SshDestinationPart::User,
+            character: '#',
+        };
+        let jump = SshDestinationProblem::NotAPort { text: "ssh".to_owned() };
+        let log_texts = [host.to_string(), user.to_string(), jump.to_string()];
+        let cases = [
+            (
+                SshInputError::HostInvalid(host),
+                "The SSH host cannot be used: the host name contains a space or a control character",
+            ),
+            (
+                SshInputError::UserInvalid(user),
+                "The SSH username cannot be used: the username contains “#”",
+            ),
+            (
+                SshInputError::JumpHostsInvalid(jump),
+                "The jump hosts cannot be used: “ssh” is not a port number",
+            ),
+        ];
+
+        for ((error, expected), log_text) in cases.into_iter().zip(log_texts) {
+            let message = error.message();
+
+            assert_eq!(message, expected);
+            assert!(!message.contains(&log_text), "{message}");
         }
     }
 
