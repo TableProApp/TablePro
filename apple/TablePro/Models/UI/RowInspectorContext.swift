@@ -28,10 +28,10 @@ internal struct RowInspectorContext: Equatable {
     internal let isEditable: Bool
     internal let isRowDeleted: Bool
 
-    /// Present only on a tab that actually has a table. The old context handed over
-    /// `coordinator.tableMetadata` unconditionally, and that slot is latest-wins and cleared only
-    /// on teardown, so a query tab, a dashboard or an ER diagram showed the statistics of whichever
-    /// table had been opened last, including after its tab was closed.
+    /// Present only on a tab that actually has a table. The old context handed over the
+    /// coordinator's one metadata slot unconditionally, latest-wins and cleared only on teardown, so
+    /// a query tab, a dashboard or an ER diagram showed the statistics of whichever table had been
+    /// opened last, including after its tab was closed.
     internal let tableMetadata: TableMetadata?
 
     /// The same row the fields mode shows, as raw cell values, because the JSON mode decides from

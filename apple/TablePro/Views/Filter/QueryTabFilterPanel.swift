@@ -42,12 +42,24 @@ internal struct QueryTabFilterPanel: View {
         .onChange(of: columns) { _ in
             refreshRawSQLCompletionProvider()
         }
-        .onChange(of: coordinator.currentTableName) { _ in
+        .onChange(of: suggestionSource) { _ in
             refreshRawSQLCompletionProvider()
         }
-        .task(id: coordinator.currentTableName) {
+        .task(id: suggestionSource) {
             await loadFieldPaths()
         }
+    }
+
+    /// What both kinds of suggestion are read from: the table and the tab's scope. The name alone
+    /// stayed equal across two tabs on `users` in two databases, so the second kept the first one's
+    /// field paths and completions.
+    private struct SuggestionSource: Hashable {
+        let tableName: String?
+        let scope: DatabaseScope?
+    }
+
+    private var suggestionSource: SuggestionSource {
+        SuggestionSource(tableName: coordinator.currentTableName, scope: coordinator.selectedTabScope)
     }
 
     private var configuration: FilterPanelConfiguration {

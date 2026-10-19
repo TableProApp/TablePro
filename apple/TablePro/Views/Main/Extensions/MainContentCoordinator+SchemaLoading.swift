@@ -7,11 +7,17 @@ import Combine
 import Foundation
 import os
 
-/// One tab's Table Info numbers, stamped with what they were read against.
+/// One tab's Table Info numbers, stamped with the table and the execution they were read against.
 struct TableMetadataCacheEntry {
-    let tableName: String
+    var table: TableTabIdentity
     let lastExecutedAt: Date?
+    /// The coordinator's `tableMetadataGeneration` when the read started.
+    let generation: Int
     let metadata: TableMetadata
+    /// Set when the object changed without the tab running again, as a comment edit does. The
+    /// numbers stay on screen until a refetch replaces them, rather than the panel going empty while
+    /// it runs and staying empty if it fails.
+    var isStale = false
 }
 
 extension MainContentCoordinator {
@@ -162,57 +168,93 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Whether the Table Info panel already holds this tab's numbers.
+    /// The table a tab's Table Info describes, or nil on a tab with no table of its own, such as a
+    /// query. The load's task key, the load and the read all ask this one question, so they agree on
+    /// which tabs have Table Info and on when a retarget makes the cached numbers another table's.
+    func tableInfoIdentity(of tab: QueryTab) -> TableTabIdentity? {
+        tab.tableIdentity(browsing: browseDatabaseName)
+    }
+
+    /// Whether the cache already holds this tab's numbers.
     ///
     /// The panel used to be backed by one latest-wins slot, so alternating between two tabs missed
     /// it on every switch and ran a statistics command (`collStats` on MongoDB) each time. The entry
-    /// is keyed by tab and stamped with the tab's last execution, so a reload, a page or a filter
-    /// refetches while a plain switch does not. (#2424)
-    func hasCurrentTableMetadata(for tab: QueryTab, tableName: String) -> Bool {
-        guard let entry = tableMetadataCache[tab.id] else { return false }
-        return entry.tableName == tableName && entry.lastExecutedAt == tab.execution.lastExecutedAt
+    /// is keyed by tab and stamped with the tab's last execution, so the next load after a reload, a
+    /// page or a filter reads the numbers again, while a plain switch does not. (#2424)
+    func hasCurrentTableMetadata(for tab: QueryTab) -> Bool {
+        guard let entry = tableMetadataCache[tab.id], !entry.isStale else { return false }
+        return entry.table == tableInfoIdentity(of: tab) && entry.lastExecutedAt == tab.execution.lastExecutedAt
     }
 
-    /// The numbers loaded for this tab, or nil. Read per tab, never from the latest-wins slot, so a
-    /// table of the same name in another database cannot show them; a retarget drops the entry.
-    /// A refresh keeps showing them until new ones arrive.
+    /// The numbers loaded for this tab's table, or nil. Matched on the whole identity, so a table of
+    /// the same name in another database or schema never shows them. A refresh keeps showing them
+    /// until new ones arrive.
     func currentTableMetadata(for tab: QueryTab) -> TableMetadata? {
-        guard let tableName = tab.tableContext.tableName,
-              let entry = tableMetadataCache[tab.id],
-              entry.tableName == tableName
-        else { return nil }
+        guard let entry = tableMetadataCache[tab.id], entry.table == tableInfoIdentity(of: tab) else { return nil }
         return entry.metadata
     }
 
-    func loadTableMetadata(tableName: String, for tab: QueryTab) async {
-        if let entry = tableMetadataCache[tab.id],
-           entry.tableName == tableName,
-           entry.lastExecutedAt == tab.execution.lastExecutedAt {
-            tableMetadata = entry.metadata
+    /// Reads the tab's numbers once its rows have arrived, and only while the inspector, the one
+    /// view that draws them, is on screen. A read before the rows would be stamped with no execution
+    /// and read again the moment they land.
+    func loadTableMetadata(for tab: QueryTab) async {
+        guard let table = tableInfoIdentity(of: tab),
+              let executedAt = tab.execution.lastExecutedAt,
+              trailingPaneState?.inspector.isOnScreen == true,
+              !hasCurrentTableMetadata(for: tab)
+        else { return }
+        guard let scope = scope(for: tab) else {
+            Self.logger.error("Skipped table metadata load: no database bound to the tab")
             return
         }
-        // Only the inspector draws these numbers; it reads them when it comes on screen.
-        guard trailingPaneState?.inspector.isOnScreen == true else { return }
-        guard let scope = selectedTabScope else {
-            Self.logger.error("Skipped table metadata load: no database bound to the selected tab")
-            return
-        }
+        let generation = tableMetadataGeneration
         do {
             let metadata = try await services.databaseManager.withMetadataDriver(scope: scope) { driver in
-                try await driver.fetchTableMetadata(tableName: tableName)
+                try await driver.fetchTableMetadata(tableName: table.table)
+            }
+            /// The fetch cannot be cancelled, so it can land after its tab moved onto another table on
+            /// the same id, or closed, and stored then it would show the numbers of what the tab used
+            /// to show. A tab that only ran again keeps them, stamped with the run they were read for,
+            /// so they show and the next load reads again; the load key does not move on a page, and
+            /// dropping them would leave the panel empty. A read that started later and landed first,
+            /// after another run or after an invalidation, is kept.
+            guard let live = tabManager.tabs.first(where: { $0.id == tab.id }),
+                  tableInfoIdentity(of: live) == table
+            else { return }
+            if let existing = tableMetadataCache[tab.id], existing.table == table,
+               let existingStamp = existing.lastExecutedAt,
+               (existingStamp, existing.generation) > (executedAt, generation) {
+                return
             }
             tableMetadataCache[tab.id] = TableMetadataCacheEntry(
-                tableName: tableName,
-                lastExecutedAt: tab.execution.lastExecutedAt,
-                metadata: metadata
+                table: table,
+                lastExecutedAt: executedAt,
+                generation: generation,
+                metadata: metadata,
+                isStale: generation != tableMetadataGeneration
             )
-            /// The fetch is not cancellable, so a `.task` the user has already navigated away from
-            /// still completes. Without this the numbers of the collection they left land in the
-            /// panel of the one they are looking at, under its name, and stay there.
-            guard tabManager.selectedTabId == tab.id else { return }
-            tableMetadata = metadata
+        } catch is CancellationError {
+            return
         } catch {
             Self.logger.error("Failed to load table metadata: \(error.publicLogShape, privacy: .public)")
         }
+    }
+
+    /// The object changed under the numbers without the tab running again, so the next load reads
+    /// them afresh while the panel goes on showing the ones it has.
+    func markTableMetadataStale(forTabs tabIds: some Sequence<UUID>) {
+        tableMetadataGeneration &+= 1
+        for tabId in tabIds {
+            tableMetadataCache[tabId]?.isStale = true
+        }
+    }
+
+    /// A rename leaves the tab on the same table under another name, so its numbers still describe
+    /// it, and the panel draws none of them from the name. Moved onto the tab's new identity, they
+    /// stay on screen with no read at all.
+    func followRename(ofTableMetadataFor tab: QueryTab) {
+        guard var entry = tableMetadataCache[tab.id], let table = tableInfoIdentity(of: tab) else { return }
+        entry.table = table
+        tableMetadataCache[tab.id] = entry
     }
 }

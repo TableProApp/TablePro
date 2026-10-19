@@ -295,7 +295,6 @@ final class MainContentCoordinator: ObservableObject {
     // MARK: - Published State
 
     @Published var cursorPositions: [CursorPosition] = []
-    @Published var tableMetadata: TableMetadata?
     @Published var activeSheet: ActiveSheet? {
         didSet { releaseImportFileUnlessImporting() }
     }
@@ -316,7 +315,13 @@ final class MainContentCoordinator: ObservableObject {
     var displayFormatsCache: [UUID: DisplayFormatsCacheEntry] = [:]
     var displayOrderCache: [UUID: DisplayOrderCacheEntry] = [:]
     var displayStateCache: [UUID: DisplayStateCacheEntry] = [:]
-    var tableMetadataCache: [UUID: TableMetadataCacheEntry] = [:]
+    /// Published because the inspector draws from it: a load that lands, a comment refetch and a
+    /// rename each reach the panel because the view rebuilds its snapshot when this changes.
+    @Published var tableMetadataCache: [UUID: TableMetadataCacheEntry] = [:]
+    /// Moves on every Table Info invalidation, so a read in flight across one cannot mark the cache
+    /// current: its numbers may predate the change. One counter for the window rather than one per
+    /// tab, because an invalidation can arrive before a tab's first read has made an entry to mark.
+    var tableMetadataGeneration = 0
     var displayStateClock = 0
 
     let schemaColumns = SchemaColumnStore()
@@ -1022,8 +1027,6 @@ final class MainContentCoordinator: ObservableObject {
         // to the entire database driver which prevents deallocation
         changeManager.clearChanges()
         changeManager.pluginDriver = nil
-
-        tableMetadata = nil
 
         services.schemaProviderRegistry.release(for: connection.id)
         services.schemaProviderRegistry.purgeUnused()

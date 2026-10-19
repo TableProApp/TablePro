@@ -12,29 +12,26 @@ import TableProPluginKit
 extension MainContentView {
     // MARK: - Helper Methods
 
-    /// Keyed on the tab and the table's whole identity. A name alone stayed equal across
-    /// `tenant_a.orders` and `tenant_b.orders`, so the second never loaded its own numbers.
+    /// What the Table Info load waits for, so it runs again once each of them moves.
+    ///
+    /// The load waits for the tab's rows. Without `hasRows`, a table tab that had just opened ran the
+    /// load before they arrived and never again, so the panel showed no numbers until the inspector
+    /// left the screen and came back. Whether rows arrived, not when: a page, a sort or a filter
+    /// runs the query again without changing the size or the row count, and a read per page would
+    /// count up to 100,001 rows on SQLite and run `collStats` on MongoDB each time. The whole
+    /// identity, not the name, because `tenant_a.orders` and `tenant_b.orders` are two tables.
     struct TableInfoTaskKey: Hashable {
         let tabId: UUID
         let table: TableTabIdentity?
-    }
+        let hasRows: Bool
+        let isInspectorOnScreen: Bool
 
-    var tableInfoTaskKey: TableInfoTaskKey? {
-        currentTab.map { TableInfoTaskKey(tabId: $0.id, table: $0.tableIdentity(browsing: "")) }
-    }
-
-    func loadTableMetadataIfNeeded() async {
-        guard let tab = currentTab,
-            let tableName = tab.tableContext.tableName,
-            !coordinator.hasCurrentTableMetadata(for: tab, tableName: tableName)
-        else { return }
-        await coordinator.loadTableMetadata(tableName: tableName, for: tab)
-    }
-
-    func loadTableInfo() async {
-        guard currentTab?.execution.lastExecutedAt != nil else { return }
-        await loadTableMetadataIfNeeded()
-        scheduleInspectorUpdate()
+        init(tab: QueryTab, table: TableTabIdentity?, isInspectorOnScreen: Bool) {
+            tabId = tab.id
+            self.table = table
+            hasRows = tab.execution.lastExecutedAt != nil
+            self.isInspectorOnScreen = isInspectorOnScreen
+        }
     }
 
     func handleConnectionStatusChange() {
@@ -125,12 +122,10 @@ extension MainContentView {
         )
     }
 
-    /// Nil on a tab that has no table of its own.
-    ///
-    /// Read from the entry cached for this tab, never from `coordinator.tableMetadata`, the single
-    /// latest-wins slot. Gated on the name, the slot showed a query tab, a dashboard, or a table of
-    /// the same name in another database the numbers of whichever table had loaded last.
-    private var tableMetadataForCurrentTab: TableMetadata? {
+    /// Nil on a tab that has no table of its own. Read from the entry cached for this tab: a single
+    /// latest-wins slot showed a query tab, a dashboard, or a table of the same name in another
+    /// database the numbers of whichever table had loaded last.
+    var tableMetadataForCurrentTab: TableMetadata? {
         currentTab.flatMap { coordinator.currentTableMetadata(for: $0) }
     }
 
@@ -193,5 +188,27 @@ extension MainContentView {
         }
 
         return lines.joined(separator: "\n")
+    }
+}
+
+/// Runs the Table Info load where the inspector's on-screen state is observed.
+///
+/// `MainContentView` does not observe the inspector, whose context changes on every selection, so a
+/// key built in its body never saw `isOnScreen` move. Observed here, only this modifier redraws.
+internal struct TableInfoLoadModifier: ViewModifier {
+    @ObservedObject var inspector: RowInspectorState
+    let tab: QueryTab?
+    let table: TableTabIdentity?
+    let load: (QueryTab) async -> Void
+
+    func body(content: Content) -> some View {
+        content.task(id: key) {
+            guard let tab else { return }
+            await load(tab)
+        }
+    }
+
+    private var key: MainContentView.TableInfoTaskKey? {
+        tab.map { MainContentView.TableInfoTaskKey(tab: $0, table: table, isInspectorOnScreen: inspector.isOnScreen) }
     }
 }

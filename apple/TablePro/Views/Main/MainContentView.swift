@@ -329,9 +329,13 @@ struct MainContentView: View {
                     configureWindow(window)
                 }
             }
-            .task(id: tableInfoTaskKey) {
-                await loadTableInfo()
-            }
+            .modifier(TableInfoLoadModifier(
+                inspector: trailingPaneState.inspector,
+                tab: currentTab,
+                table: currentTab.flatMap { coordinator.tableInfoIdentity(of: $0) }
+            ) { [coordinator] tab in
+                await coordinator.loadTableMetadata(for: tab)
+            })
             /// Keyed on the connection alone. The only driver that answers `fetchSessionContexts`
             /// is Snowflake, which pays two round trips for it, so this must not reload per query.
             /// It lives with the connection's content rather than with the toolbar control it used
@@ -343,16 +347,18 @@ struct MainContentView: View {
             .onChange(of: inspectorTrigger) { _ in
                 scheduleInspectorUpdate()
             }
+            /// The numbers land after the rows that moved the trigger above, and a comment refetch
+            /// moves nothing else, so the snapshot follows the cache on its own. Only the snapshot:
+            /// the edit state does not depend on them, and rebuilding it would end a typed undo run.
+            .onChange(of: tableMetadataForCurrentTab) { _ in
+                updateInspectorContext()
+            }
             /// The JSON rendering draws the snapshot the context carries, and an edit made in the
             /// fields rendering changes the row under it without moving anything `InspectorTrigger`
             /// watches. Rebuilding on the switch is enough: the two renderings are never on screen
             /// together, so the stale snapshot is only ever reached by switching to it.
             .onValueChange(of: \.viewMode, in: trailingPaneState.inspector) { _, _ in
                 updateInspectorContext()
-            }
-            .onValueChange(of: \.isOnScreen, in: trailingPaneState.inspector) { _, isOnScreen in
-                guard isOnScreen else { return }
-                Task { await loadTableInfo() }
             }
             /// A value window detached from a field goes on writing while the JSON rendering is the
             /// one on screen, and it moves nothing the trigger above watches. Debounced, because it

@@ -139,11 +139,9 @@ extension MainContentCoordinator {
             let definition = TableFreshness.Change(extent: .definition, at: change.changedAt)
             refreshTableTabs(for: definition, excluding: change.originTabId) { showingIds.contains($0.id) }
         case .comment:
-            for tab in showing {
-                tableMetadataCache.removeValue(forKey: tab.id)
-            }
-            if let selected, let tableName = selected.tableContext.tableName {
-                Task { await loadTableMetadata(tableName: tableName, for: selected) }
+            markTableMetadataStale(forTabs: showingIds)
+            if let selected {
+                Task { await loadTableMetadata(for: selected) }
             }
             refreshStructure(ofTabs: showing)
         case .dropped:

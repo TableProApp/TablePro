@@ -171,6 +171,8 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     var onUserQueryPaused: (@Sendable () -> Void)?
     private var userQueryGate: CheckedContinuation<Void, Never>?
 
+    var isHoldingUserQuery: Bool { userQueryGate != nil }
+
     func resumeUserQuery() {
         userQueryGate?.resume()
         userQueryGate = nil
@@ -320,14 +322,31 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     var fetchTableMetadataError: Error?
     private(set) var fetchTableMetadataCalls: [String] = []
 
+    /// Holds the next `fetchTableMetadata` after it has read `tableCommentToReturn`, the way a
+    /// statistics read is still on the wire when the tab it was started for moves on.
+    var pausesNextFetchTableMetadata = false
+    private var fetchTableMetadataGate: CheckedContinuation<Void, Never>?
+
+    func resumeFetchTableMetadata() {
+        fetchTableMetadataGate?.resume()
+        fetchTableMetadataGate = nil
+    }
+
     func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
         fetchTableMetadataCalls.append(tableName)
         if let fetchTableMetadataError {
             throw fetchTableMetadataError
         }
+        let comment = tableCommentToReturn
+        if pausesNextFetchTableMetadata {
+            pausesNextFetchTableMetadata = false
+            await withCheckedContinuation { continuation in
+                fetchTableMetadataGate = continuation
+            }
+        }
         return TableMetadata(
             tableName: tableName, dataSize: nil, indexSize: nil, totalSize: nil,
-            avgRowLength: nil, rowCount: nil, comment: tableCommentToReturn, engine: nil,
+            avgRowLength: nil, rowCount: nil, comment: comment, engine: nil,
             collation: nil, createTime: nil, updateTime: nil
         )
     }

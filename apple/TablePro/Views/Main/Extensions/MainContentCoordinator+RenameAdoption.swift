@@ -22,6 +22,7 @@ extension MainContentCoordinator {
                 tab.title = newName
             }
             tabManager.markTabRenamed(tabManager.tabs[index].id)
+            followRename(ofTableMetadataFor: tabManager.tabs[index])
             /// The browse query still names the old table, so the next page, sort or filter would
             /// run against a name the server no longer has.
             rebuildTableQuery(at: index)
@@ -45,6 +46,7 @@ extension MainContentCoordinator {
                 tab.tableContext.databaseName = toDatabase
                 if schema != nil { tab.tableContext.schemaName = toSchema }
             }
+            followRename(ofTableMetadataFor: tabManager.tabs[index])
             rebuildTableQuery(at: index)
         }
     }

@@ -12,6 +12,7 @@
 import AppKit
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -272,6 +273,55 @@ struct TrailingPaneRevealTests {
         #expect(!harness.paneState.inspector.isOnScreen)
     }
 
+    // MARK: - Table Info
+
+    /// The reported bug: a table tab opens before its rows arrive, the load ran at that moment and
+    /// never again, and Table Info appeared only once the pane was switched to the assistant and back.
+    /// PGlite, because a pooled metadata connection cannot open here and PGlite reads on the session.
+    @Test("Table Info shows once a table tab's rows arrive, with no pane switch")
+    func tableInfoShowsOnceTheRowsArrive() async throws {
+        let harness = try Harness(type: .pglite)
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        harness.controller.showInspector()
+        _ = try await harness.openTableTabBeforeItsRows("orders")
+
+        harness.driver.resumeUserQuery()
+
+        try await waitUntil { harness.paneState.inspector.context.tableMetadata != nil }
+        #expect(harness.paneState.inspector.context.tableMetadata?.tableName == "orders")
+        #expect(harness.driver.fetchTableMetadataCalls == ["orders"])
+    }
+
+    /// The comment arm refetched, and the result reached the cache and never the panel.
+    @Test("An edited comment reaches Table Info")
+    func editedCommentReachesTableInfo() async throws {
+        let harness = try Harness(type: .pglite)
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        harness.controller.showInspector()
+        harness.driver.tableCommentToReturn = "old"
+        let tab = try await harness.openTableTabBeforeItsRows("orders")
+        harness.driver.resumeUserQuery()
+        try await waitUntil { harness.paneState.inspector.context.tableMetadata?.comment == "old" }
+        let coordinator = try #require(harness.selected.sessionState?.coordinator)
+        let shown = try #require(coordinator.tabManager.tabs.first { $0.id == tab.id })
+
+        harness.driver.tableCommentToReturn = "new"
+        coordinator.applyObjectChange(DatabaseObjectChange(
+            connectionId: coordinator.connectionId,
+            scope: DatabaseScope(
+                connectionId: coordinator.connectionId,
+                database: shown.tableContext.resolvedDatabaseName(browsing: coordinator.browseDatabaseName),
+                schema: shown.tableContext.schemaName
+            ),
+            name: "orders",
+            kind: .comment
+        ))
+
+        try await waitUntil { harness.paneState.inspector.context.tableMetadata?.comment == "new" }
+    }
+
     // MARK: - Helpers
 
     private static func context(
@@ -321,13 +371,14 @@ struct TrailingPaneRevealTests {
         let selected: ConnectionWorkspace
         let paneState: TrailingPaneState
         let window: NSWindow
+        let driver: MockDatabaseDriver
         private let connection: DatabaseConnection
         private let suite: EphemeralDefaults
 
         /// `contentMode` is set before the window is built, which is how the welcome window's Open in
         /// Agent Mode lands: the mode is on before the connect, so the browse content never mounts.
-        init(contentMode: ConnectionWorkspaceContentMode = .browse) throws {
-            connection = TestFixtures.makeConnection(name: "Trailing", type: .mysql)
+        init(type: DatabaseType = .mysql, contentMode: ConnectionWorkspaceContentMode = .browse) throws {
+            connection = TestFixtures.makeConnection(name: "Trailing", type: type)
             suite = try EphemeralDefaults()
             let defaults = suite.defaults
             let registryDirectory = FileManager.default.temporaryDirectory
@@ -360,7 +411,8 @@ struct TrailingPaneRevealTests {
             window.contentViewController = controller
             window.orderFront(nil)
 
-            var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
+            driver = MockDatabaseDriver(connection: connection)
+            var session = ConnectionSession(connection: connection, driver: driver)
             session.status = .connected
             DatabaseManager.shared.injectSession(session, for: connection.id)
             controller.refreshFromActiveSessions()
@@ -372,6 +424,25 @@ struct TrailingPaneRevealTests {
         func requireContent() throws {
             try #require(selected.trailingPaneState === paneState, "The window replaced the connection's pane state")
             try #require(controller.currentPane == .content, "The connection has no content behind it")
+        }
+
+        /// A table tab the way the sidebar opens one: selected and drawn by the window, its row
+        /// query held on the wire. Returns once the query is held and the inspector names the tab,
+        /// by which point every task keyed on the tab has started. `resumeUserQuery()` lets the
+        /// rows land through the real execution path.
+        func openTableTabBeforeItsRows(_ tableName: String) async throws -> QueryTab {
+            let tabManager = try #require(selected.sessionState?.tabManager)
+            driver.pausesNextUserQuery = true
+            let tab = QueryTab(
+                title: tableName,
+                query: "SELECT * FROM \(tableName)",
+                tabType: .table,
+                tableName: tableName
+            )
+            tabManager.adoptTab(tab)
+            try await waitUntil { driver.isHoldingUserQuery }
+            try await waitUntil { paneState.inspector.context.subject.title?.hasSuffix(tableName) == true }
+            return tab
         }
 
         static func menuItem(_ action: Selector) -> NSMenuItem {
