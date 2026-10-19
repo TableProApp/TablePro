@@ -139,12 +139,12 @@ pub(crate) async fn count(connection: &dyn Connection, table: &TableRef) -> Resu
     Ok(connection.count_rows(&statement(&sql), within(CALL_DEADLINE)).await?)
 }
 
-/// The events one editor run sent, kept after the sink is gone.
+/// The events one run sent, kept after the sink is gone.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Collected(Arc<Mutex<Vec<ResultEvent>>>);
 
 impl Collected {
-    fn sink(&self) -> Box<dyn ResultSink> {
+    pub(crate) fn sink(&self) -> Box<dyn ResultSink> {
         Box::new(CollectingSink(self.clone()))
     }
 

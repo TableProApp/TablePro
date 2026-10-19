@@ -1,7 +1,13 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
 use crate::column::{ColumnInfo, ColumnKind, ResultColumn};
 use crate::query_result::QueryResult;
+use crate::result_event::ResultEvent;
+use crate::result_sink::{ResultSink, SinkFlow};
 
-/// The page's columns, with the fractional digits and bit lengths their
+/// The page, with the fractional digits and bit lengths its columns'
 /// catalogue entries declare where the result's own metadata names
 /// none.
 ///
@@ -10,8 +16,45 @@ use crate::query_result::QueryResult;
 /// value at what its column declares. Only a column of the same kind is
 /// refined: one the page projected as another type keeps the result's.
 pub(super) fn with_declared_precision(result: QueryResult, catalog: &[ColumnInfo]) -> QueryResult {
-    let refined: Vec<(usize, ColumnKind)> = result
-        .columns
+    match declared_columns(&result.columns, catalog) {
+        Some(columns) => QueryResult { columns, ..result },
+        None => result,
+    }
+}
+
+/// A table export's sink. Its columns take what the catalogue declares,
+/// as a page's do, so the file holds what the grid showed.
+pub struct DeclaredPrecisionSink {
+    inner: Box<dyn ResultSink>,
+    catalog: Arc<[ColumnInfo]>,
+}
+
+impl DeclaredPrecisionSink {
+    pub fn new(inner: Box<dyn ResultSink>, catalog: Arc<[ColumnInfo]>) -> Self {
+        Self { inner, catalog }
+    }
+}
+
+#[async_trait]
+impl ResultSink for DeclaredPrecisionSink {
+    async fn accept(&mut self, event: ResultEvent) -> SinkFlow {
+        let event = match event {
+            ResultEvent::ResultSetStarted { columns } => ResultEvent::ResultSetStarted {
+                columns: declared_columns(&columns, &self.catalog).unwrap_or(columns),
+            },
+            ResultEvent::ColumnsResolved { set_index, columns } => ResultEvent::ColumnsResolved {
+                set_index,
+                columns: declared_columns(&columns, &self.catalog).unwrap_or(columns),
+            },
+            other => other,
+        };
+        self.inner.accept(event).await
+    }
+}
+
+/// `None` when no column takes anything from the catalogue.
+fn declared_columns(columns: &[ResultColumn], catalog: &[ColumnInfo]) -> Option<Arc<[ResultColumn]>> {
+    let refined: Vec<(usize, ColumnKind)> = columns
         .iter()
         .zip(catalog)
         .enumerate()
@@ -21,18 +64,15 @@ pub(super) fn with_declared_precision(result: QueryResult, catalog: &[ColumnInfo
         })
         .collect();
     if refined.is_empty() {
-        return result;
+        return None;
     }
-    let mut columns: Vec<ResultColumn> = result.columns.to_vec();
+    let mut columns = columns.to_vec();
     for (index, kind) in refined {
         if let Some(column) = columns.get_mut(index) {
             column.column_type.kind = kind;
         }
     }
-    QueryResult {
-        columns: columns.into(),
-        ..result
-    }
+    Some(columns.into())
 }
 
 fn refined(result: &ColumnKind, declared: &ColumnKind) -> Option<ColumnKind> {
@@ -80,6 +120,8 @@ fn refined(result: &ColumnKind, declared: &ColumnKind) -> Option<ColumnKind> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
     use crate::column::{ColumnDefault, ColumnType, ReadForm, TemporalZone, TextLength, TimeRange};
     use crate::value::Value;
@@ -188,5 +230,45 @@ mod tests {
         let refined = with_declared_precision(read, &[info("flag", bits(Some(1)))]);
 
         assert_eq!(kinds(&refined), [bits(None)]);
+    }
+
+    #[derive(Clone, Default)]
+    struct Seen(Arc<Mutex<Vec<ResultEvent>>>);
+
+    #[async_trait]
+    impl ResultSink for Seen {
+        async fn accept(&mut self, event: ResultEvent) -> SinkFlow {
+            self.0.lock().expect("the events").push(event);
+            SinkFlow::Continue
+        }
+    }
+
+    #[tokio::test]
+    async fn an_export_takes_the_catalogues_digits_for_every_result_set() {
+        let seen = Seen::default();
+        let mut sink = DeclaredPrecisionSink::new(Box::new(seen.clone()), vec![info("flag", bits(Some(1)))].into());
+        let read: Arc<[ResultColumn]> = vec![ResultColumn::new("flag", typed(bits(None)))].into();
+
+        sink.accept(ResultEvent::ResultSetStarted { columns: read.clone() })
+            .await;
+        sink.accept(ResultEvent::ColumnsResolved {
+            set_index: 0,
+            columns: read,
+        })
+        .await;
+        sink.accept(ResultEvent::Rows(vec![vec![Value::Null]])).await;
+
+        let events = seen.0.lock().expect("the events");
+        let columns: Vec<ColumnKind> = events
+            .iter()
+            .filter_map(|event| match event {
+                ResultEvent::ResultSetStarted { columns } | ResultEvent::ColumnsResolved { columns, .. } => {
+                    Some(columns[0].column_type.kind.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(columns, [bits(Some(1)), bits(Some(1))]);
+        assert!(matches!(events.last(), Some(ResultEvent::Rows(_))));
     }
 }

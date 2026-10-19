@@ -3,8 +3,8 @@
 /// `#[ignore = "requires docker"]`.
 ///
 /// The case writes each corpus value as SQL, reads it back through a
-/// browse page and through an editor run, and checks the text the grid
-/// shows for it on both paths.
+/// browse page, a table export and an editor run, and checks the text
+/// the grid shows for it on each path.
 #[macro_export]
 macro_rules! value_corpus_suite {
     (engine: $engine:ty, docker: $docker:tt $(,)?) => {

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use tablepro_core::browse::build_export;
+use tablepro_core::browse::{DeclaredPrecisionSink, build_export};
 use tablepro_core::column::ResultColumn;
-use tablepro_core::{ReadStatement, ResultEvent, SinkFlow, StreamSummary, Truncation};
+use tablepro_core::{ReadStatement, ResultEvent, ResultSink, SinkFlow, StreamSummary, Truncation};
 use tablepro_session::runtime::{TaskResult, Tasks};
 use tablepro_session::{OperationError, OperationKind, Session};
 use tokio_util::sync::CancellationToken;
@@ -67,13 +67,14 @@ pub(crate) fn start_query_producer(
                 let parts = parts.clone();
                 let query = Arc::clone(&query);
                 async move {
-                    let read = match &*query {
-                        ExportQuery::Table(export) => {
-                            ReadStatement::Generated(build_export(&*lease.dialect(), &export.request())?)
-                        }
-                        ExportQuery::Editor { sql } => ReadStatement::User(sql.clone()),
+                    let (read, sink): (_, Box<dyn ResultSink>) = match &*query {
+                        ExportQuery::Table(export) => (
+                            ReadStatement::Generated(build_export(&*lease.dialect(), &export.request())?),
+                            Box::new(DeclaredPrecisionSink::new(parts.sink(), Arc::clone(&export.columns))),
+                        ),
+                        ExportQuery::Editor { sql } => (ReadStatement::User(sql.clone()), parts.sink()),
                     };
-                    Ok(lease.stream_read(&read, parts.sink(), options).await?)
+                    Ok(lease.stream_read(&read, sink, options).await?)
                 }
             })
             .await

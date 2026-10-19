@@ -1,16 +1,20 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
-use tablepro_core::browse::{BrowseSqlError, PageRequest, read_page};
-use tablepro_core::column::{ColumnType, ResultColumn};
+use tablepro_core::browse::{
+    BrowseSqlError, DeclaredPrecisionSink, ExportRequest, PageRequest, build_export, read_page,
+};
+use tablepro_core::column::{ColumnInfo, ColumnType, ResultColumn};
 use tablepro_core::export::value_text;
 use tablepro_core::filter::FilterSet;
 use tablepro_core::meta::PagePosition;
 use tablepro_core::value::Value;
-use tablepro_core::{Connection, DriverError, EditorSession, EditorSessionOptions, TableRef, WriteKind};
+use tablepro_core::{Connection, DriverError, EditorSession, EditorSessionOptions, ReadStatement, TableRef, WriteKind};
 use tokio_util::sync::CancellationToken;
 
 use crate::conformance::support::{
-    CALL_DEADLINE, apply, connect, create_scratch_table, expect, run_completed, run_options, within, writable,
+    CALL_DEADLINE, Collected, apply, connect, create_scratch_table, expect, run_completed, run_options, within,
+    writable,
 };
 use crate::conformance::{ConformanceEngine, ConformanceFailure, CorpusColumn, ValueCorpusEngine};
 
@@ -19,6 +23,7 @@ const CASE: &str = "value_corpus_reads_as_the_grid_shows";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Path {
     Browse,
+    Export,
     Editor,
 }
 
@@ -29,8 +34,8 @@ struct Read {
 }
 
 /// Case 17: every value of the engine's corpus reads back, in a table
-/// tab's page and in an editor run, as the text its entry names. A wrong
-/// text is a decoder bug, and every one is listed at once.
+/// tab's page, a table export and an editor run, as the text its entry
+/// names. A wrong text is a decoder bug, and every one is listed at once.
 pub async fn value_corpus_reads_as_the_grid_shows<E: ValueCorpusEngine>(engine: E) -> Result<(), ConformanceFailure> {
     let corpus = engine.value_corpus();
     expect(CASE, !corpus.is_empty(), || "the engine lists no corpus".to_owned())?;
@@ -51,6 +56,8 @@ pub async fn value_corpus_reads_as_the_grid_shows<E: ValueCorpusEngine>(engine: 
         };
         let browsed = browse(connection.as_ref(), &table).await?;
         compare(Path::Browse, column, &browsed, &mut wrong);
+        let exported = export(connection.as_ref(), &table).await?;
+        compare(Path::Export, column, &exported, &mut wrong);
         let edited = edit(session.as_ref(), connection.as_ref(), &table).await?;
         compare(Path::Editor, column, &edited, &mut wrong);
     }
@@ -136,6 +143,36 @@ async fn browse(connection: &dyn Connection, table: &TableRef) -> Result<Read, C
     by_id(page.result.columns.get(visible).unwrap_or_default(), rows)
 }
 
+/// Every row of the table, read as Export All reads a table tab.
+async fn export(connection: &dyn Connection, table: &TableRef) -> Result<Read, ConformanceFailure> {
+    let columns: Arc<[ColumnInfo]> = connection.fetch_columns(table, within(CALL_DEADLINE)).await?.into();
+    let identity = connection.row_identity(table, within(CALL_DEADLINE)).await?;
+    let statement = build_export(
+        &*connection.dialect(),
+        &ExportRequest {
+            table,
+            columns: &columns,
+            filter: &FilterSet::default(),
+            sort: &[],
+            identity: &identity,
+        },
+    )
+    .map_err(ConformanceFailure::setup)?;
+    let collected = Collected::default();
+    let sink = DeclaredPrecisionSink::new(collected.sink(), Arc::clone(&columns));
+    connection
+        .stream_read(
+            &ReadStatement::Generated(statement),
+            Box::new(sink),
+            within(CALL_DEADLINE),
+        )
+        .await?;
+    let columns = collected
+        .columns()
+        .ok_or_else(|| ConformanceFailure::setup("the export started no result set"))?;
+    by_id(&columns, collected.rows())
+}
+
 enum PageFailure {
     Sql(BrowseSqlError),
     Driver(DriverError),
@@ -205,6 +242,7 @@ fn by_id(columns: &[ResultColumn], rows: Vec<Vec<Value>>) -> Result<Read, Confor
 fn compare(path: Path, column: &CorpusColumn, read: &Read, wrong: &mut Vec<String>) {
     let path_name = match path {
         Path::Browse => "browse",
+        Path::Export => "export",
         Path::Editor => "editor",
     };
     for (row, value) in column.values.iter().enumerate() {

@@ -104,4 +104,4 @@ SQL Server has no session statement timeout. A workspace call's deadline is the 
 - Rows past the row limit are counted and dropped, never decoded.
 - When the grid stops reading, the driver sends an attention instead of reading millions of unwanted rows.
 - The transaction state comes from `@@TRANCOUNT` and `XACT_STATE()`, so a transaction an error has doomed reads as `Failed`.
-- tiberius describes a result column by its wire type, with no scale, so a `datetime2(7)` value shows the fraction it has rather than seven digits; a table tab takes the scale from the catalogue. tiberius also reads MONEY into a float, exact up to about 5.5 * 10^11, and a larger amount shows as unreadable in a run. A table tab reads MONEY cast to a decimal, which holds every value.
+- tiberius describes a result column by its wire type, with no scale, so a `datetime2(7)` value shows the fraction it has rather than seven digits; a table tab and its export take the scale from the catalogue. tiberius also reads MONEY into a float, exact up to about 5.5 * 10^11, and a larger amount shows as unreadable in a run. A table tab reads MONEY cast to a decimal, which holds every value.
