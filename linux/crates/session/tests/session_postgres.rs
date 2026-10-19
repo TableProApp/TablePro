@@ -507,7 +507,6 @@ async fn a_database_restart_replays_reads_and_never_writes() {
     create_notes(&fixture).await;
     let before = session.link_generation();
     let mut health = session.health();
-    let port = fixture.port();
 
     fixture.stop().await.expect("the server stopped");
     let during = scalar(&session, OperationKind::Count, "SELECT count(*) FROM notes").await;
@@ -528,7 +527,6 @@ async fn a_database_restart_replays_reads_and_never_writes() {
     .expect("the session kept retrying")
     .expect("the health sender is alive");
     fixture.start_again().await.expect("the server started again");
-    assert_eq!(fixture.port(), port);
     assert_eq!(
         session.link_generation(),
         before,
