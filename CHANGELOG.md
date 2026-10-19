@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Cheaper Inference in Add Provider, an OpenAI-compatible gateway with its Base URL filled in.
+
 ## [0.81.0] - 2026-10-16
 
 Cloud Firestore, Firebase Realtime Database and Google Cloud Bigtable connect through new registry plugins.

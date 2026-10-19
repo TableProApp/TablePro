@@ -20,6 +20,15 @@ struct AIProviderPreset: Identifiable, Equatable, Sendable {
     /// as a server error, which the chat offers to retry.
     let rejectsBadKeyWithForbidden: Bool
 
+    static let cheaperInference = AIProviderPreset(
+        id: "cheaperinference",
+        displayName: "Cheaper Inference",
+        endpoint: "https://api.cheaperinference.com",
+        symbolName: "network",
+        authStyle: .apiKey,
+        rejectsBadKeyWithForbidden: false
+    )
+
     static let requesty = AIProviderPreset(
         id: "requesty",
         displayName: "Requesty",
@@ -29,7 +38,7 @@ struct AIProviderPreset: Identifiable, Equatable, Sendable {
         rejectsBadKeyWithForbidden: true
     )
 
-    static let all: [AIProviderPreset] = [.requesty]
+    static let all: [AIProviderPreset] = [.cheaperInference, .requesty]
 
     static func preset(withID id: String?) -> AIProviderPreset? {
         guard let id else { return nil }

@@ -31,6 +31,27 @@ struct AIProviderPresetTests {
         )
     }
 
+    @Test("Cheaper Inference needs a key, and its default Base URL resolves to its chat completions route")
+    func cheaperInferencePreset() throws {
+        let preset = AIProviderPreset.cheaperInference
+        #expect(preset.authStyle == .apiKey)
+        #expect(!preset.rejectsBadKeyWithForbidden)
+
+        let config = AIProviderConfig(preset: preset)
+        #expect(config.type == .custom)
+        #expect(config.name == "Cheaper Inference")
+        let style = config.type.endpointStyle
+        #expect(style == .chatCompletions)
+        #expect(
+            AIEndpoint(config.endpoint, style: style)?.chatURL(model: "gpt-5.4-mini", style: style)?.absoluteString
+                == "https://api.cheaperinference.com/v1/chat/completions"
+        )
+        #expect(
+            AIEndpoint(config.endpoint, style: style)?.url(appending: style.modelsResource)?.absoluteString
+                == "https://api.cheaperinference.com/v1/models"
+        )
+    }
+
     @Test("Every preset has a unique id and an https endpoint the transport can resolve")
     func presetsAreWellFormed() {
         #expect(Set(AIProviderPreset.all.map(\.id)).count == AIProviderPreset.all.count)
