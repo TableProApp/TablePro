@@ -24,7 +24,7 @@ use crate::services::change_tracker::{RowKey, StatementSource};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_delta::TrackerDelta;
 use crate::services::tracker_edit::TrackerEdit;
-use crate::test_support::{FakeSession, MemorySettings, after_next_frame, drain_main_context, wait_until};
+use crate::test_support::{FakeSession, LogLines, MemorySettings, after_next_frame, drain_main_context, wait_until};
 use crate::ui::clipboard::InsertRow;
 use crate::ui::grid::{GridCell, GridRowIndex, RowObject};
 
@@ -2842,43 +2842,10 @@ fn a_bulk_delete_waiting_while_a_column_is_added_marks_its_rows_under_the_new_co
     );
 }
 
-/// What this thread logs, as text.
-#[derive(Clone, Default)]
-pub(super) struct LogLines(Arc<std::sync::Mutex<Vec<u8>>>);
-
-impl LogLines {
-    pub(super) fn text(&self) -> String {
-        let bytes = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        String::from_utf8_lossy(&bytes).into_owned()
-    }
-}
-
-impl std::io::Write for LogLines {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
 #[gtk4::test]
 fn a_failed_row_count_logs_its_category_and_not_the_server_message() {
     let lines = LogLines::default();
-    let subscriber = tracing_subscriber::fmt()
-        .with_ansi(false)
-        .with_max_level(tracing::Level::DEBUG)
-        .with_writer({
-            let lines = lines.clone();
-            move || lines.clone()
-        })
-        .finish();
-    let _logging = tracing::subscriber::set_default(subscriber);
+    let _logging = tracing::subscriber::set_default(lines.subscriber(tracing::Level::DEBUG));
     let mut script = serving_table();
     script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
     script.count_rows.always(FakeReply::err(DriverError::reported(

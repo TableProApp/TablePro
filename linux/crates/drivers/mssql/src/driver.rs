@@ -3,6 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tablepro_core::{
     ConfigError, ConnectOptions, ConnectTarget, Connection, DatabaseDriver, DriverCapabilities, DriverError,
+    UnsupportedFeature,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -39,7 +40,7 @@ impl DatabaseDriver for MssqlDriver {
     ) -> Result<Arc<dyn Connection>, DriverError> {
         let ConnectTarget::Network(target) = &options.target else {
             return Err(DriverError::Unsupported {
-                feature: "a database file",
+                feature: UnsupportedFeature::DatabaseFile,
             });
         };
         if let Some(tls) = CAPABILITIES.tls.as_ref() {

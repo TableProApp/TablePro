@@ -518,6 +518,7 @@ mod tests {
         let prompter = Prompter::answering([typed("typed", true)]);
         let backend = SecretError::Backend {
             detail: "broken".to_owned(),
+            service_message: None,
         };
         let (credentials, _) = credentials(Vault::failing(SecretKind::DatabasePassword, backend.clone()), None);
 

@@ -143,6 +143,7 @@ impl StructureContext {
         let column_type = self
             .default_column_type(column)
             .unwrap_or_else(|| ColumnType::untyped_text(column.column_type.text()));
-        parse_default(dialect, text, &column_type).map_err(|error| error.to_string())
+        parse_default(dialect, text, &column_type)
+            .map_err(|error| crate::ui::error_text::expression_syntax_message(&error))
     }
 }

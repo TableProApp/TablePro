@@ -8,15 +8,19 @@
 mod ddl;
 mod driver;
 mod edit;
+mod files;
 mod operation;
 mod saved_connection;
 mod script;
 mod secret;
 mod ssh;
+mod statement;
+mod syntax;
 #[cfg(test)]
 mod tests;
 mod tls;
 mod tls_remedy;
+mod unsupported;
 
 pub use ddl::{build_error_text, refusal_text, save_blocker_text};
 pub use driver::{config_message, driver_message};
@@ -24,4 +28,5 @@ pub use edit::edit_parse_message;
 pub use operation::{connect_error_message, operation_error_message, task_failure_message};
 pub use saved_connection::saved_connection_error_message;
 pub use script::script_diagnostic_message;
+pub use syntax::{expression_syntax_message, type_syntax_message};
 pub use tls_remedy::{TlsRemedy, connect_remedy};

@@ -24,20 +24,13 @@ TableProPluginKit is built with Library Evolution, so an already-built plugin ke
 - Add a requirement only with a default implementation, then bridge it in `PluginDriverAdapter`.
 - Additive: a new requirement with a default, a new field on a non-`@frozen` struct, a new case on a non-`@frozen` enum, a reordering.
 - Breaking: a changed, removed or renamed requirement or signature, a requirement without a default, a new case on a `@frozen` enum, a change to a frozen type's layout.
-- Every ABI change bumps `TABLEPRO_PLUGINKIT_VERSION` in `Configs/PluginKit.xcconfig`, at most one past the newest `vX.Y.Z` tag: later changes reuse the pending number. `scripts/ci/check-pluginkit-bump-cadence.py` checks it in Repo Hygiene. A `release/*` line never bumps it.
+- Every ABI change sets `TABLEPRO_PLUGINKIT_VERSION` in `Configs/PluginKit.xcconfig` to one past the kit of the newest `v*` tag reachable from HEAD; later changes before the next tag reuse it. A `release/*` line never bumps it.
 - The build stamps that value into `TableProPluginKitVersion` of the app and of every plugin. A plugin's `Info.plist` holds `<integer>TABLEPRO_PLUGINKIT_VERSION</integer>` and is preprocessed, because every shipped app reads the key with `as? Int`; the source file therefore fails `plutil -lint`.
 - After an additive change, built plugins keep loading, and the bump makes an older app refuse a plugin rebuilt against the new API instead of failing its load.
 - A breaking change also raises `TABLEPRO_PLUGINKIT_MINIMUM_VERSION`. Every tag ships every registry plugin built against its own kit, so the release that carries the change carries plugins in its range.
-- Check with `verify.sh abi <merge-base>` (`scripts/check-pluginkit-abi.sh`). It builds PluginKit at HEAD and at the base with the same toolchain and diffs the public `.swiftinterface`. A base with no interface passes; a diff prints the additive and breaking rules and exits 1.
-- It refuses uncommitted changes, so run it after the commit and before the push. No workflow runs it.
-- The diff is textual, so a `-` line can be a declaration that moved. Only a removed line with no matching added line, or a requirement added without a default, is breaking. This lists the removed lines that do not come back:
-
-  ```bash
-  L=<the log verify.sh abi printed>
-  comm -23 <(grep -E '^-[^-]' "$L" | sed 's/^-[[:space:]]*//' | sort -u) \
-           <(grep -E '^\+[^+]' "$L" | sed 's/^+[[:space:]]*//' | sort -u)
-  ```
-
+- `scripts/check-pluginkit-abi.sh [--frozen] [base]` (`verify.sh abi [base]`) builds PluginKit at the base, by default the newest `v*` tag reachable from HEAD, and at HEAD with Xcode's ABI checker (`RUN_SWIFT_ABI_CHECKER_TOOL`). macOS Tests runs it whenever it compiles the plugins, with `--frozen` on a PR into `release/*`.
+- A checker error is a breaking change: the kit and the minimum must both be one past the base's kit, so the host refuses every plugin built before it. A baseline that changed with no error needs the kit one past the base's; an identical one needs the base's kit. `--frozen` fails on any change.
+- The checker reports breakage only; an additive change shows as a changed baseline. Its errors are in the log `verify.sh abi` prints.
 - Mark a public enum `@frozen` only when its case set is closed. `PluginCapability` and the transfer structs stay non-frozen so they can grow.
 - PluginKit code with no callers stays: removing it is an ABI change.
 

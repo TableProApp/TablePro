@@ -9,10 +9,10 @@ use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 
 use super::super::{PagingInput, SaveInput};
 use super::{
-    Harness, LogLines, WAIT, estimate, full_page, not_null, not_null_name, paging, rows, rows_from, serving_table, text,
+    Harness, WAIT, estimate, full_page, not_null, not_null_name, paging, rows, rows_from, serving_table, text,
 };
 use crate::services::change_origins::ChangeOrigins;
-use crate::test_support::{drain_main_context, wait_until};
+use crate::test_support::{LogLines, drain_main_context, wait_until};
 
 fn paginator(harness: &Harness) -> String {
     harness.tab().imp().pager_bar.imp().paginator_label.label().to_string()
@@ -75,14 +75,7 @@ fn unknown_estimate_offers_count_without_counting() {
 #[gtk4::test]
 fn estimate_error_offers_count_and_logs() {
     let lines = LogLines::default();
-    let subscriber = tracing_subscriber::fmt()
-        .with_ansi(false)
-        .with_writer({
-            let lines = lines.clone();
-            move || lines.clone()
-        })
-        .finish();
-    let _logging = tracing::subscriber::set_default(subscriber);
+    let _logging = tracing::subscriber::set_default(lines.subscriber(tracing::Level::INFO));
     let mut script = estimated(RowCountEstimate::Unknown);
     script.table_estimate = Default::default();
     script

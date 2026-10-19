@@ -52,9 +52,10 @@ pub(crate) fn read_identity(identity: &ClientIdentity) -> Result<IdentityFiles, 
     let key = PrivateKeyDer::from_pem_slice(&key_pem).map_err(|error| {
         let problem = match error {
             pem::Error::NoItemsFound => CertificateFileProblem::NoPrivateKey,
-            other => CertificateFileProblem::InvalidPrivateKey {
-                detail: other.to_string(),
-            },
+            other => {
+                tracing::debug!(error = %other, "the private key file is not valid");
+                CertificateFileProblem::InvalidPrivateKey
+            }
         };
         identity_problem(&identity.key, problem)
     })?;
@@ -71,9 +72,7 @@ pub(crate) fn read_identity(identity: &ClientIdentity) -> Result<IdentityFiles, 
 /// never come, and a device such as `/dev/zero` has no end, so either
 /// would hold the connect forever or fill memory.
 fn read_pem_file(path: &Path) -> Result<Vec<u8>, CertificateFileProblem> {
-    let unreadable = |error: std::io::Error| CertificateFileProblem::Unreadable {
-        detail: error.to_string(),
-    };
+    let unreadable = |error: std::io::Error| CertificateFileProblem::Unreadable { kind: error.kind() };
     if !std::fs::metadata(path).map_err(unreadable)?.is_file() {
         return Err(CertificateFileProblem::NotRegularFile);
     }
@@ -103,11 +102,10 @@ fn parse_certificates(bytes: &[u8]) -> Result<Vec<CertificateDer<'static>>, Cert
     }
     let mut scratch = RootCertStore::empty();
     for certificate in &certificates {
-        scratch
-            .add(certificate.clone())
-            .map_err(|error| CertificateFileProblem::InvalidCertificate {
-                detail: error.to_string(),
-            })?;
+        scratch.add(certificate.clone()).map_err(|error| {
+            tracing::debug!(%error, "a certificate in the file is not valid");
+            CertificateFileProblem::InvalidCertificate
+        })?;
     }
     Ok(certificates)
 }
@@ -115,8 +113,9 @@ fn parse_certificates(bytes: &[u8]) -> Result<Vec<CertificateDer<'static>>, Cert
 fn certificate_problem(error: pem::Error) -> CertificateFileProblem {
     match error {
         pem::Error::NoItemsFound => CertificateFileProblem::NoCertificates,
-        other => CertificateFileProblem::InvalidCertificate {
-            detail: other.to_string(),
-        },
+        other => {
+            tracing::debug!(error = %other, "the certificate file is not valid PEM");
+            CertificateFileProblem::InvalidCertificate
+        }
     }
 }

@@ -28,9 +28,35 @@ pub(super) fn map_error(error: oo7::Error, stage: Stage) -> SecretError {
             detail: error.to_string(),
         },
         other => SecretError::Backend {
+            service_message: service_message(&other),
             detail: other.to_string(),
         },
     }
+}
+
+/// The Secret Service's own words, for a failure that is its reply
+/// rather than oo7's or the bus connection's.
+fn service_message(error: &oo7::Error) -> Option<String> {
+    use oo7::dbus::{Error, ServiceError};
+    use oo7::zbus::DBusError as _;
+
+    let oo7::Error::DBus(error) = error else {
+        return None;
+    };
+    let message = match error {
+        Error::Service(
+            ServiceError::IsLocked(message) | ServiceError::NoSession(message) | ServiceError::NoSuchObject(message),
+        ) => Some(message.clone()),
+        Error::Service(ServiceError::ZBus(error)) | Error::ZBus(error) => match error {
+            oo7::zbus::Error::MethodError(name, description, _) => {
+                Some(description.clone().unwrap_or_else(|| name.to_string()))
+            }
+            oo7::zbus::Error::FDO(error) => error.description().map(str::to_owned),
+            _ => None,
+        },
+        _ => None,
+    };
+    message.filter(|message| !message.trim().is_empty())
 }
 
 /// Whether the cached handle is worth keeping. A wire error means the
@@ -81,7 +107,51 @@ mod tests {
     fn map_not_found_while_using_is_a_backend_error() {
         let mapped = map_error(oo7::dbus::Error::NotFound("collection".to_owned()).into(), Stage::Use);
 
-        assert!(matches!(mapped, SecretError::Backend { .. }), "{mapped:?}");
+        assert!(
+            matches!(
+                mapped,
+                SecretError::Backend {
+                    service_message: None,
+                    ..
+                }
+            ),
+            "{mapped:?}"
+        );
+    }
+
+    #[test]
+    fn a_reply_from_the_service_keeps_its_own_words() {
+        let mapped = map_error(
+            oo7::dbus::Error::Service(oo7::dbus::ServiceError::NoSuchObject(
+                "No such item at /org/freedesktop/secrets/collection/login/7".to_owned(),
+            ))
+            .into(),
+            Stage::Use,
+        );
+
+        let SecretError::Backend { service_message, .. } = mapped else {
+            panic!("expected a backend error, got {mapped:?}");
+        };
+        assert_eq!(
+            service_message.as_deref(),
+            Some("No such item at /org/freedesktop/secrets/collection/login/7")
+        );
+    }
+
+    #[test]
+    fn oo7s_own_text_is_not_taken_for_the_services() {
+        let mapped = map_error(oo7::dbus::Error::Deleted.into(), Stage::Use);
+
+        assert!(
+            matches!(
+                mapped,
+                SecretError::Backend {
+                    service_message: None,
+                    ..
+                }
+            ),
+            "{mapped:?}"
+        );
     }
 
     #[test]

@@ -27,6 +27,8 @@ REQUIRED_RUNS = (
 DETECTOR = "scripts/ci/detect-changed-paths.sh"
 FRAGMENTS = "changelog.d/"
 POLL_SECONDS = 60
+# A pull_request run builds a merge commit, not its head_sha; these events build the commit itself.
+COMMIT_EVENTS = ("push", "schedule", "workflow_dispatch")
 PENDING_STATUSES = {"queued", "in_progress", "waiting", "requested", "pending"}
 
 
@@ -130,6 +132,10 @@ class Git:
     def list_tree(self, ref: str, path: str) -> List[str]:
         return self._git("ls-tree", "--name-only", ref, "--", path).stdout.splitlines()
 
+    def changed_paths(self, base: str, head: str) -> List[str]:
+        output = self._git("diff-tree", "-r", "--name-only", "-z", base, head).stdout
+        return [path for path in output.split("\0") if path]
+
     def first_parents(self, ref: str) -> List[str]:
         return self._git("rev-list", "--first-parent", f"{ref}^{{commit}}").stdout.split()
 
@@ -151,12 +157,13 @@ class GitHub:
                           ".[] | [.tag_name, .draft] | @tsv", paginate=True)
         return [(tag, draft == "true") for tag, draft in (line.split("\t") for line in lines if line)]
 
-    def push_runs(self, workflow: str, sha: str) -> List[Tuple[str, str, str]]:
+    def commit_runs(self, workflow: str, sha: str) -> List[Tuple[str, str, str]]:
         lines = self._api(f"repos/{self.repository}/actions/workflows/{workflow}/runs"
-                          f"?head_sha={sha}&event=push&per_page=100",
-                          ".workflow_runs[] | [.id, .status, .conclusion // \"\"] | @tsv")
+                          f"?head_sha={sha}&per_page=100",
+                          ".workflow_runs[] | [.id, .status, .conclusion // \"\", .event] | @tsv")
         return [(run_id, status, conclusion)
-                for run_id, status, conclusion in (line.split("\t") for line in lines if line)]
+                for run_id, status, conclusion, event in (line.split("\t") for line in lines if line)
+                if event in COMMIT_EVENTS]
 
     def job_conclusions(self, run_id: str, job: str) -> List[str]:
         return self._api(f"repos/{self.repository}/actions/runs/{run_id}/jobs?filter=latest&per_page=100",
@@ -180,6 +187,11 @@ def detector(root: Path, run: Callable = subprocess.run) -> Callable[[str, str],
 def published_stables(releases: List[Tuple[str, bool]]) -> List[Version]:
     versions = [try_parse_tag(tag) for tag, draft in releases if not draft]
     return [version for version in versions if version is not None and not version.is_beta]
+
+
+def published_betas(releases: List[Tuple[str, bool]], line: str) -> List[Version]:
+    versions = [try_parse_tag(tag) for tag, draft in releases if not draft]
+    return [version for version in versions if version is not None and version.is_beta and version.line == line]
 
 
 def previous_on_line(git: Git, version: Version) -> Optional[Version]:
@@ -210,13 +222,35 @@ def beta_errors(git: Git, version: Version, releases: List[Tuple[str, bool]]) ->
         if git.exists(f"refs/tags/{stable_zero.tag}"):
             return [f"{stable_zero.tag} is already tagged, so no beta of it can follow"]
         return []
-    if version.patch != 0:
+    if version.patch != 0 or published_betas(releases, version.line):
         return []
-    for tag, draft in releases:
-        candidate = try_parse_tag(tag)
-        if not draft and candidate is not None and candidate.is_beta and candidate.line == version.line:
-            return []
     return [f"{version.tag} needs a published {version.tag}-beta.N release first"]
+
+
+def untested_paths(git: Git, beta: Version, tag: str) -> List[str]:
+    return [path for path in git.changed_paths(beta.tag, tag)
+            if path != "CHANGELOG.md" and not path.startswith(FRAGMENTS)]
+
+
+def earlier_stables(git: Git, version: Version) -> List[Version]:
+    tags = (try_parse_tag(tag) for tag in git.tags(f"v{version.line}.*"))
+    return [tag for tag in tags
+            if tag is not None and not tag.is_beta and tag.line == version.line and tag.build < version.build]
+
+
+def stable_tree_errors(git: Git, version: Version, releases: List[Tuple[str, bool]]) -> List[str]:
+    betas = published_betas(releases, version.line)
+    if version.is_beta or not betas:
+        return []
+    newest = max(betas, key=lambda beta: beta.build)
+    # No beta can follow a stable tag, so a fix after one that matched the beta ships as a patch.
+    if any(not untested_paths(git, newest, stable.tag) for stable in earlier_stables(git, version)):
+        return []
+    untested = untested_paths(git, newest, version.tag)
+    if not untested:
+        return []
+    return [f"{version.tag} differs from {newest.tag}, the newest published beta, in {', '.join(untested)}: "
+            f"revert them on release/{version.line}, then tag the next number"]
 
 
 def changelog_errors(changelog: Optional[str], version: Version, stables: List[Version]) -> List[str]:
@@ -253,7 +287,7 @@ def fragment_errors(paths: List[str], version: Version) -> List[str]:
 def is_green(github: GitHub, workflow: str, job: str, sha: str,
              sleep: Callable[[float], None], log: Callable[[str], None]) -> bool:
     while True:
-        runs = github.push_runs(workflow, sha)
+        runs = github.commit_runs(workflow, sha)
         pending = [run_id for run_id, status, _ in runs if status in PENDING_STATUSES]
         if not pending:
             break
@@ -319,6 +353,7 @@ def check(tag: str, git: Git, github: GitHub, changed: Optional[Callable[[str, s
     releases = github.releases()
     errors = branch_errors(git, version)
     errors += beta_errors(git, version, releases)
+    errors += stable_tree_errors(git, version, releases)
     errors += changelog_errors(git.show(tag, "CHANGELOG.md"), version, published_stables(releases))
     errors += fragment_errors(git.list_tree(tag, FRAGMENTS), version)
     if errors:

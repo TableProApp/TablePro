@@ -6,13 +6,12 @@
 
 A repository admin does these once. The workflow's header names the same secrets and variables.
 
-1. **Environment** `linux-release`: a required reviewer, and deployments from `linux-v*` tags and the `main` branch only. The branch is for a [packaging fix](#a-packaging-fix). Two secrets in it:
+1. **Secrets** in the `linux-release` environment, which takes a required reviewer and deploys from `linux-v*` tags and the `main` branch only. The branch is for a [packaging fix](#a-packaging-fix).
    - `LINUX_PPA_SIGNING_KEY`: the ASCII-armored OpenPGP secret key, with no passphrase, that signs the uploads.
    - `LINUX_COPR_WEBHOOK`: the custom webhook URL from the COPR project's Integrations page, ending in `/tablepro/`.
 2. **Variables**: `LINUX_PPA`, the PPA as `owner/name`. `LINUX_BRANCH` stays unset unless a release comes from a [maintenance branch](#a-fix-release).
-3. **Tag ruleset**: add `refs/tags/linux-v*` to the ruleset that lets only admins create release tags. Today it covers `refs/tags/v*` alone, so anyone with write access could start a release.
-4. **Launchpad**: a team that owns the PPA, and the PPA with a dependency on `~rust-toolchain/staging`, amd64 and arm64 turned on under its processors, and debug symbol publishing on (Launchpad's admins turn it on when the PPA's settings do not offer it). Register the signing key's public half on an account in the team. Launchpad mails a failed build to the owner of the key that signed the upload, so that account's mail has to reach someone.
-5. **COPR**: a project with the Fedora 44 x86_64 and aarch64 chroots, following Fedora branching, with AppStream metadata generation on, and a package named `tablepro` with the custom source method from `build-aux/rpm/copr-sources.sh` (the command is in its header). Turn on build failure emails for the project's admins.
+3. **Launchpad**: a team that owns the PPA, and the PPA with a dependency on `~rust-toolchain/staging`, amd64 and arm64 turned on under its processors, and debug symbol publishing on (Launchpad's admins turn it on when the PPA's settings do not offer it). Register the signing key's public half on an account in the team. Launchpad mails a failed build to the owner of the key that signed the upload, so that account's mail has to reach someone.
+4. **COPR**: a project with the Fedora 44 x86_64 and aarch64 chroots, following Fedora branching, with AppStream metadata generation on, and a package named `tablepro` with the custom source method from `build-aux/rpm/copr-sources.sh` (the command is in its header). Turn on build failure emails for the project's admins.
 
 [README.md](../README.md#install) gives users `ppa:tablepro/tablepro` and `@tablepro/tablepro`; change it if the PPA or the COPR project gets another name.
 

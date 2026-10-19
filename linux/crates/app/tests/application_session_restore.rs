@@ -6,20 +6,18 @@
     reason = "a harness-free test binary reports its own failures on stderr"
 )]
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitCode, ExitStatus, Stdio};
-use std::time::{Duration, Instant};
+use std::process::{Command, ExitCode, Stdio};
+use std::time::Duration;
 
-use gio::prelude::*;
-
+#[path = "support/app_bus.rs"]
+mod app_bus;
 #[path = "support/settings_schema.rs"]
 mod settings_schema;
 
+use app_bus::{activate, object_path, wait_for_exit, wait_until, wait_until_owned, window_ids};
+
 const APP_ID: &str = tablepro_app::config::APP_ID;
-/// Long enough for a cold start under a loaded CI runner.
-const WAIT: Duration = Duration::from_secs(30);
-const CALL_TIMEOUT_MS: i32 = 5_000;
 
 fn main() -> ExitCode {
     match run() {
@@ -49,13 +47,7 @@ fn run() -> Result<(), String> {
 }
 
 fn launches(sandbox: &Sandbox, address: &str) -> Result<(), String> {
-    let connection = gio::DBusConnection::for_address_sync(
-        address,
-        gio::DBusConnectionFlags::AUTHENTICATION_CLIENT | gio::DBusConnectionFlags::MESSAGE_BUS_CONNECTION,
-        None,
-        gio::Cancellable::NONE,
-    )
-    .map_err(|error| format!("could not connect to the test bus: {error}"))?;
+    let connection = app_bus::connect(address)?;
     let first = sandbox.database("first.db")?;
     let second = sandbox.database("second.db")?;
     sandbox.record(&[first.as_str(), second.as_str()])?;
@@ -110,104 +102,6 @@ fn close_one_window(connection: &gio::DBusConnection) -> Result<(), String> {
 /// Ask the primary to quit the way the Quit menu item does.
 fn quit(connection: &gio::DBusConnection) -> Result<(), String> {
     activate(connection, &object_path(), "quit")
-}
-
-fn activate(connection: &gio::DBusConnection, path: &str, action: &str) -> Result<(), String> {
-    let no_parameter: Vec<glib::Variant> = Vec::new();
-    let platform_data: HashMap<String, glib::Variant> = HashMap::new();
-    let arguments = (action, no_parameter, platform_data).to_variant();
-    connection
-        .call_sync(
-            Some(APP_ID),
-            path,
-            "org.gtk.Actions",
-            "Activate",
-            Some(&arguments),
-            None,
-            gio::DBusCallFlags::NONE,
-            CALL_TIMEOUT_MS,
-            gio::Cancellable::NONE,
-        )
-        .map(drop)
-        .map_err(|error| format!("{action} at {path} over D-Bus failed: {error}"))
-}
-
-fn name_has_owner(connection: &gio::DBusConnection) -> bool {
-    connection
-        .call_sync(
-            Some("org.freedesktop.DBus"),
-            "/org/freedesktop/DBus",
-            "org.freedesktop.DBus",
-            "NameHasOwner",
-            Some(&(APP_ID,).to_variant()),
-            None,
-            gio::DBusCallFlags::NONE,
-            CALL_TIMEOUT_MS,
-            gio::Cancellable::NONE,
-        )
-        .ok()
-        .and_then(|reply| reply.get::<(bool,)>())
-        .is_some_and(|(owned,)| owned)
-}
-
-/// GtkApplication exports each window's actions at
-/// `<object path>/window/<id>`, so the children of that node are the
-/// open windows.
-fn window_ids(connection: &gio::DBusConnection) -> Vec<String> {
-    let Some((xml,)) = connection
-        .call_sync(
-            Some(APP_ID),
-            &format!("{}/window", object_path()),
-            "org.freedesktop.DBus.Introspectable",
-            "Introspect",
-            None,
-            None,
-            gio::DBusCallFlags::NONE,
-            CALL_TIMEOUT_MS,
-            gio::Cancellable::NONE,
-        )
-        .ok()
-        .and_then(|reply| reply.get::<(String,)>())
-    else {
-        return Vec::new();
-    };
-    xml.split("<node name=\"")
-        .skip(1)
-        .filter_map(|rest| rest.split('"').next())
-        .map(str::to_owned)
-        .collect()
-}
-
-/// GApplication's object path: the id with dots as slashes.
-fn object_path() -> String {
-    format!("/{}", APP_ID.replace('.', "/").replace('-', "_"))
-}
-
-fn wait_for_exit(child: &mut Child) -> Result<ExitStatus, String> {
-    let deadline = Instant::now() + WAIT;
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => return Ok(status),
-            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
-            Ok(None) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(format!("tablepro did not exit within {WAIT:?}"));
-            }
-            Err(error) => return Err(format!("could not wait for tablepro: {error}")),
-        }
-    }
-}
-
-fn wait_until(what: &str, mut ready: impl FnMut() -> bool) -> Result<(), String> {
-    let deadline = Instant::now() + WAIT;
-    while !ready() {
-        if Instant::now() >= deadline {
-            return Err(format!("timed out waiting for {what}"));
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    Ok(())
 }
 
 /// Directories of the test's own, so every launch reads and writes
@@ -346,17 +240,6 @@ impl Sandbox {
             .stdin(Stdio::null());
         command
     }
-}
-
-fn wait_until_owned(address: &str) -> Result<(), String> {
-    let connection = gio::DBusConnection::for_address_sync(
-        address,
-        gio::DBusConnectionFlags::AUTHENTICATION_CLIENT | gio::DBusConnectionFlags::MESSAGE_BUS_CONNECTION,
-        None,
-        gio::Cancellable::NONE,
-    )
-    .map_err(|error| format!("could not connect to the test bus: {error}"))?;
-    wait_until("the application to own its name", || name_has_owner(&connection))
 }
 
 /// GLib and the XDG base directory specification expect the runtime

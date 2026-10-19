@@ -3,6 +3,7 @@
 
 use tablepro_core::ddl::{BuildDdlError, DdlOperation, DraftProblem, RefusalReason};
 
+use super::syntax::{literal_message, type_syntax_message};
 use crate::services::pending_structure::SaveBlocker;
 
 /// Why a control is off, for its tooltip.
@@ -101,12 +102,12 @@ pub fn build_error_text(error: &BuildDdlError) -> String {
         ),
         BuildDdlError::Unsupported(_) => crate::i18n::gettext("This database can't make this change."),
         BuildDdlError::InvalidType { column, error } => crate::i18n::gettext_f(
-            "Column {column} has a type this database doesn't accept: {error}",
-            &[("column", column), ("error", &error.to_string())],
+            "The type of column {column} can't be used. {reason}",
+            &[("column", column), ("reason", &type_syntax_message(error))],
         ),
         BuildDdlError::Literal { column, error } => crate::i18n::gettext_f(
-            "The default of column {column} can't be written as SQL: {error}",
-            &[("column", column), ("error", &error.to_string())],
+            "The default of column {column} can't be written as SQL. {reason}",
+            &[("column", column), ("reason", &literal_message(error))],
         ),
         BuildDdlError::MissingCatalogDeclaration(column) => crate::i18n::gettext_f(
             "The database didn't report the type of column {column}.",

@@ -1,16 +1,3 @@
-//
-//  PluginKitABIResilienceTests.swift
-//  TableProTests
-//
-//  Guards the additive-safety promise of the resilient PluginKit ABI: a driver
-//  that implements only the required surface and omits every defaulted
-//  requirement must still satisfy the protocol, and each default must return its
-//  documented value. If a requirement is ever added without a default, this file
-//  (and FakeMSSQLPluginDriver) stops compiling, flagging a breaking change that
-//  needs a currentPluginKitVersion bump. Cross-binary load compatibility itself
-//  is checked by scripts/check-pluginkit-abi.sh, run manually before merging.
-//
-
 import Foundation
 @testable import TablePro
 import TableProPluginKit

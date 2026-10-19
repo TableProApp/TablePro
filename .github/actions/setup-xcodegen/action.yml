@@ -10,18 +10,24 @@ runs:
       # generated pbxproj output differs between XcodeGen versions. install.sh copies
       # both bin/xcodegen and share/xcodegen/SettingPresets; without the presets,
       # generation silently drops build settings and still exits 0.
+      # It goes to the runner's tool cache, not /usr/local: the self-hosted Mac has no
+      # passwordless sudo, and the xcodegen already on its PATH is Homebrew's, unverified.
       env:
         XCODEGEN_VERSION: "2.46.0"
         XCODEGEN_SHA256: "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806"
       run: |
         set -euo pipefail
-        if command -v xcodegen > /dev/null && [ "$(xcodegen --version | awk '{print $2}')" = "$XCODEGEN_VERSION" ]; then
-          echo "XcodeGen $XCODEGEN_VERSION already installed"
-          exit 0
+        prefix="${RUNNER_TOOL_CACHE:?}/xcodegen/$XCODEGEN_VERSION"
+        if [ "$("$prefix/bin/xcodegen" --version 2> /dev/null | awk '{print $2}')" = "$XCODEGEN_VERSION" ]; then
+          echo "XcodeGen $XCODEGEN_VERSION already in $prefix"
+        else
+          curl -fsSLo "$RUNNER_TEMP/xcodegen.zip" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          echo "${XCODEGEN_SHA256}  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          rm -rf "$RUNNER_TEMP/xcodegen-dist" "$prefix"
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP/xcodegen-dist"
+          mkdir -p "$prefix"
+          "$RUNNER_TEMP/xcodegen-dist/xcodegen/install.sh" "$prefix"
         fi
-        curl -fsSLo "$RUNNER_TEMP/xcodegen.zip" \
-          "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
-        echo "${XCODEGEN_SHA256}  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
-        unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP/xcodegen-dist"
-        sudo "$RUNNER_TEMP/xcodegen-dist/xcodegen/install.sh" /usr/local
-        xcodegen --version
+        echo "$prefix/bin" >> "$GITHUB_PATH"
+        "$prefix/bin/xcodegen" --version

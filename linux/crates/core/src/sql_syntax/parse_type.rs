@@ -56,14 +56,12 @@ pub fn parse_type(grammar: SqlGrammar, text: &str, max_len: usize) -> Result<Val
     let mut parser = Parser::new(grammar.parser_dialect())
         .with_recursion_limit(RECURSION_LIMIT)
         .try_with_sql(text)
-        .map_err(|error| TypeSyntaxError::Invalid(error.to_string()))?;
-    let parsed = parser
-        .parse_data_type()
-        .map_err(|error| TypeSyntaxError::Invalid(error.to_string()))?;
+        .map_err(|_| TypeSyntaxError::Invalid)?;
+    let parsed = parser.parse_data_type().map_err(|_| TypeSyntaxError::Invalid)?;
     // Without this, `INT; DROP TABLE x` parses as INT and the rest is
     // spliced into whatever DDL the caller builds.
     if parser.peek_token_ref().token != Token::EOF {
-        return Err(TypeSyntaxError::Invalid("unexpected text after the type".to_owned()));
+        return Err(TypeSyntaxError::Invalid);
     }
     Ok(ValidatedType {
         text: text.to_owned(),
@@ -221,7 +219,7 @@ mod tests {
     fn parse_type_rejects_trailing_tokens() {
         for text in ["INT; DROP TABLE x", "int)"] {
             let error = parse(SqlGrammar::PostgreSql, text).expect_err(text);
-            assert!(matches!(error, TypeSyntaxError::Invalid(_)), "{text}: {error:?}");
+            assert_eq!(error, TypeSyntaxError::Invalid, "{text}");
         }
     }
 

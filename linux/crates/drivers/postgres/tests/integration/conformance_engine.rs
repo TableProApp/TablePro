@@ -12,7 +12,7 @@ use tablepro_test_fixtures::{HbaMode, PostgresFixture};
 use tablepro_test_support::FaultTransport;
 use tablepro_test_support::conformance::{
     BoundedDdlEngine, ConformanceDdlEngine, ConformanceEngine, ConformanceFailure, EditorTransactionEngine,
-    NetworkConformanceEngine, PooledConformanceEngine, TypedConformanceEngine, UnsupportedTypeCase,
+    LargeTableEngine, NetworkConformanceEngine, PooledConformanceEngine, TypedConformanceEngine, UnsupportedTypeCase,
 };
 
 use crate::support::{direct, options_over, password};
@@ -156,6 +156,19 @@ impl BoundedDdlEngine for PgEngine {
     }
 }
 
+impl LargeTableEngine for PgEngine {
+    fn fill_scratch_table_sql(&self, table: &TableRef, rows: u64, label_width: usize) -> Vec<String> {
+        let table = format!("public.{}", quoted(&table.name));
+        vec![
+            format!(
+                "INSERT INTO {table} (id, label) \
+                 SELECT n, lpad(n::text, {label_width}, '0') FROM generate_series(1, {rows}) AS n"
+            ),
+            format!("ANALYZE {table}"),
+        ]
+    }
+}
+
 impl ConformanceDdlEngine for PgEngine {
     fn integer_type(&self) -> &'static str {
         "integer"
@@ -190,5 +203,9 @@ mod suite {
     tablepro_test_support::ddl_conformance_suite! {
         engine: PgEngine,
         docker: true,
+    }
+
+    tablepro_test_support::large_table_conformance_suite! {
+        engine: PgEngine,
     }
 }

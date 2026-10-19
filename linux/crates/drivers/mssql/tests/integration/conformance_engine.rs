@@ -14,7 +14,7 @@ use tablepro_test_fixtures::MssqlFixture;
 use tablepro_test_support::FaultTransport;
 use tablepro_test_support::conformance::{
     BoundedDdlEngine, ConformanceDdlEngine, ConformanceEngine, ConformanceFailure, EditorTransactionEngine,
-    NetworkConformanceEngine, PooledConformanceEngine, TypedConformanceEngine, UnsupportedTypeCase,
+    LargeTableEngine, NetworkConformanceEngine, PooledConformanceEngine, TypedConformanceEngine, UnsupportedTypeCase,
 };
 
 use crate::support::{dbo, delay, direct, options_over, password, quoted, require};
@@ -160,6 +160,18 @@ impl ConformanceDdlEngine for MssqlEngine {
     }
 }
 
+impl LargeTableEngine for MssqlEngine {
+    fn fill_scratch_table_sql(&self, table: &TableRef, rows: u64, label_width: usize) -> Vec<String> {
+        vec![format!(
+            "INSERT INTO [dbo].{} (id, label) \
+             SELECT n, RIGHT(REPLICATE('0', {label_width}) + CAST(n AS varchar(20)), {label_width}) \
+             FROM (SELECT TOP ({rows}) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS n \
+             FROM sys.all_objects a CROSS JOIN sys.all_objects b) AS numbers",
+            quoted(&table.name)
+        )]
+    }
+}
+
 mod suite {
     use super::MssqlEngine;
 
@@ -176,5 +188,9 @@ mod suite {
     tablepro_test_support::ddl_conformance_suite! {
         engine: MssqlEngine,
         docker: true,
+    }
+
+    tablepro_test_support::large_table_conformance_suite! {
+        engine: MssqlEngine,
     }
 }

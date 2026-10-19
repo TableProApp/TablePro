@@ -185,7 +185,7 @@ fn malformed_ca_file_is_invalid_certificate() {
     assert!(matches!(
         check_pem_files(&verify_full(Some(&ca_file))),
         Err(ConfigError::CaFile {
-            problem: CertificateFileProblem::InvalidCertificate { .. },
+            problem: CertificateFileProblem::InvalidCertificate,
             ..
         })
     ));

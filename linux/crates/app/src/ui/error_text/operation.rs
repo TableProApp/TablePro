@@ -5,8 +5,10 @@ use tablepro_session::runtime::TaskFailure;
 use tablepro_session::{ConnectError, OperationError};
 use tablepro_storage::KeyringError;
 
+use super::ddl::build_error_text;
 use super::driver::driver_message;
 use super::secret::secret_message;
+use super::statement::{bind_reason, browse_reason, build_reason, filter_message};
 
 /// What to tell the user about an operation that produced no value.
 pub fn operation_error_message(error: &OperationError) -> String {
@@ -58,29 +60,23 @@ fn sql_build_message(error: &SqlBuildError) -> String {
     match error {
         SqlBuildError::Dml(bind) => crate::i18n::gettext_f(
             "This change cannot be saved: {reason}",
-            &[("reason", &bind.to_string())],
+            &[("reason", &bind_reason(bind))],
         ),
         SqlBuildError::Browse(bind) => crate::i18n::gettext_f(
             "This filter cannot be applied: {reason}",
-            &[("reason", &bind.to_string())],
+            &[("reason", &bind_reason(bind))],
         ),
-        SqlBuildError::Ddl(reason) => crate::i18n::gettext_f(
-            "This structure change cannot be written: {reason}",
-            &[("reason", reason)],
-        ),
+        SqlBuildError::Ddl(error) => build_error_text(error),
     }
 }
 
 fn browse_message(error: &BrowseSqlError) -> String {
     match error {
-        BrowseSqlError::Filter(filter) => crate::i18n::gettext_f(
-            "This filter cannot be applied: {reason}",
-            &[("reason", &filter.to_string())],
-        ),
+        BrowseSqlError::Filter(filter) => filter_message(filter),
         BrowseSqlError::Build(build) => build_message(build),
         other => crate::i18n::gettext_f(
             "This page of the table cannot be read: {reason}",
-            &[("reason", &other.to_string())],
+            &[("reason", &browse_reason(other))],
         ),
     }
 }
@@ -96,7 +92,7 @@ fn build_message(error: &BuildSqlError) -> String {
         ),
         other => crate::i18n::gettext_f(
             "This change cannot be saved: {reason}",
-            &[("reason", &other.to_string())],
+            &[("reason", &build_reason(other))],
         ),
     }
 }

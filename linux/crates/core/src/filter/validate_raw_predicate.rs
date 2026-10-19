@@ -27,20 +27,20 @@ mod tests {
 
     #[test]
     fn a_predicate_that_closes_the_where_is_refused() {
-        assert!(matches!(
+        assert_eq!(
             validate("1=1); DELETE FROM t; SELECT (1"),
-            Err(ExpressionSyntaxError::Invalid(_))
-        ));
+            Err(ExpressionSyntaxError::Invalid)
+        );
     }
 
     #[test]
     fn a_trailing_semicolon_is_refused() {
-        assert!(matches!(validate("a = 1;"), Err(ExpressionSyntaxError::Invalid(_))));
+        assert_eq!(validate("a = 1;"), Err(ExpressionSyntaxError::Invalid));
     }
 
     #[test]
     fn a_batch_separator_is_refused() {
-        assert!(matches!(validate("1=1 GO"), Err(ExpressionSyntaxError::Invalid(_))));
+        assert_eq!(validate("1=1 GO"), Err(ExpressionSyntaxError::Invalid));
     }
 
     #[test]

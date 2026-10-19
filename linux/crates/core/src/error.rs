@@ -11,6 +11,7 @@ use crate::server_diagnostics::ServerDiagnostics;
 use crate::timeout_phase::TimeoutPhase;
 use crate::tls_failure::TlsFailure;
 use crate::transport_error::TransportError;
+use crate::unsupported_feature::UnsupportedFeature;
 use crate::write_report::StatementOutcome;
 
 /// What a driver could not do, in enough detail for the app to say
@@ -134,7 +135,7 @@ pub enum DriverError {
     Protocol(String),
 
     #[error("this engine has no {feature}")]
-    Unsupported { feature: &'static str },
+    Unsupported { feature: UnsupportedFeature },
 }
 
 impl DriverError {
