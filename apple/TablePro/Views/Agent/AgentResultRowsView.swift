@@ -33,7 +33,7 @@ internal struct AgentResultRowsView: View {
     @State private var columnLayout = ColumnLayoutState()
     @State private var selectedRunId: String?
     @State private var sortState = SortState()
-    @StateObject private var gridDelegate = AgentResultGridDelegate()
+    @StateObject private var gridDelegate = HeldRowsGridDelegate()
 
     var body: some View {
         if runs.isEmpty {

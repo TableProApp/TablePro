@@ -41,7 +41,8 @@ internal enum GridSelectionOwner: Equatable {
             /// indices it writes are the data grid's display positions, resolved through
             /// `DisplayRowMapping`.
             return .dataGrid
-        case .createTable, .erDiagram, .serverDashboard, .usersRoles, .insights, .objectSource, .versionHistory:
+        case .createTable, .erDiagram, .serverDashboard, .usersRoles, .insights, .objectSource, .versionHistory,
+             .tableListing:
             return .none
         }
     }

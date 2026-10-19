@@ -69,6 +69,31 @@ struct EditorThemeNativeColorTests {
         #expect(textView.backgroundFillColor == nil)
     }
 
+    /// The content insets sit between the text view and the editor's edge, outside every view that paints itself.
+    /// Left to the scroll view, a system background came out as the window's color there, a lighter band above and
+    /// beside the text in Dark.
+    @Test("The editor paints the theme background behind its whole frame, the margins included")
+    func editorPaintsTheBackgroundBehindItsMargins() throws {
+        let controller = Mock.loadedTextViewController()
+        let background = controller.backgroundView
+
+        #expect(controller.scrollView.drawsBackground == false)
+        #expect(background.superview === controller.view)
+        #expect(background.frame == controller.view.bounds)
+        let findView = try #require(controller.findViewController?.view)
+        let order = controller.view.subviews
+        #expect(order.firstIndex { $0 === background } ?? .max < order.firstIndex { $0 === findView } ?? .min)
+
+        #expect(background.fillColor == controller.theme.background)
+        var theme = controller.theme
+        theme.background = .systemTeal
+        controller.configuration.appearance.theme = theme
+        #expect(background.fillColor == .systemTeal)
+
+        controller.configuration.appearance.useThemeBackground = false
+        #expect(background.fillColor == nil)
+    }
+
     @Test("A theme without a cursor color leaves the caret to the system")
     func caretIsNativeUnlessOverridden() {
         let controller = Mock.loadedTextViewController()

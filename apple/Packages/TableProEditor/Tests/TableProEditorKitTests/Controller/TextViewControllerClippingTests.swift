@@ -100,26 +100,23 @@ struct TextViewControllerClippingTests {
         inner.isEmpty || outer.insetBy(dx: -0.5, dy: -0.5).contains(inner)
     }
 
-    @Test("The gutter's line numbers paint nothing over the view above the editor")
-    func gutterPaintsNothingAboveTheEditor() throws {
+    /// Every column of the band, the gutter's and the text's: from macOS 14 a view that does not clip is handed dirty
+    /// rects reaching past its bounds, so a background filled from the dirty rect painted the whole band too.
+    @Test("The editor paints nothing over the view above it")
+    func editorPaintsNothingAboveItself() throws {
         controller.gutterView.needsDisplay = true
         let rep = try #require(root.bitmapImageRepForCachingDisplay(in: root.bounds))
         root.cacheDisplay(in: root.bounds, to: rep)
         let scale = CGFloat(rep.pixelsWide) / root.bounds.width
 
-        /// The band measured where the gutter cannot reach, rather than the color it fills with: the cached drawing
-        /// lands in a color space that shifts the fill.
-        let untouched = try #require(rep.colorAt(x: Int((root.bounds.maxX - 20) * scale), y: Int(10 * scale)))
-        let gutterWidth = controller.gutterView.frame.maxX
-        #expect(gutterWidth > 0)
+        #expect(controller.gutterView.frame.maxX > 0)
         var inked = 0
-        for x in stride(from: CGFloat(1), to: gutterWidth, by: 1) {
-            for y in stride(from: CGFloat(1), to: Self.bandHeight - 1, by: 1) {
-                let color = rep.colorAt(x: Int(x * scale), y: Int(y * scale))
-                if !Self.isSame(color, untouched) { inked += 1 }
+        for x in stride(from: CGFloat(1), to: root.bounds.width - 1, by: 1) {
+            for y in stride(from: CGFloat(1), to: Self.bandHeight - 1, by: 2) {
+                if !Self.isBand(rep.colorAt(x: Int(x * scale), y: Int(y * scale))) { inked += 1 }
             }
         }
-        #expect(inked == 0, "the gutter painted \(inked) points above the editor")
+        #expect(inked == 0, "the editor painted \(inked) points above itself")
     }
 
     @Test("The gutter and its ribbons are asked to draw only inside the editor")
@@ -143,11 +140,9 @@ struct TextViewControllerClippingTests {
         #expect(contains(editorInWindow, visibleRectInWindow(find.findPanel)))
     }
 
-    private static func isSame(_ lhs: NSColor?, _ rhs: NSColor) -> Bool {
-        guard let lhs = lhs?.usingColorSpace(.sRGB), let rhs = rhs.usingColorSpace(.sRGB) else { return false }
-        let tolerance: CGFloat = 0.02
-        return abs(lhs.redComponent - rhs.redComponent) <= tolerance
-            && abs(lhs.greenComponent - rhs.greenComponent) <= tolerance
-            && abs(lhs.blueComponent - rhs.blueComponent) <= tolerance
+    /// The band's red, loosely: the cached drawing lands in a color space that shifts the fill.
+    private static func isBand(_ color: NSColor?) -> Bool {
+        guard let color = color?.usingColorSpace(.sRGB) else { return false }
+        return color.redComponent > 0.8 && color.greenComponent < 0.4 && color.blueComponent < 0.4
     }
 }

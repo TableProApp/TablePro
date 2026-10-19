@@ -124,6 +124,9 @@ final class AppEvents {
 
     let versionHistoryRefreshRequested = PassthroughSubject<UUID, Never>()
 
+    /// Refresh on a table listing tab, which loads its own rows rather than through the coordinator.
+    let tableListingRefreshRequested = PassthroughSubject<UUID, Never>()
+
     // MARK: - License & Sync
 
     let licenseStatusDidChange = PassthroughSubject<Void, Never>()

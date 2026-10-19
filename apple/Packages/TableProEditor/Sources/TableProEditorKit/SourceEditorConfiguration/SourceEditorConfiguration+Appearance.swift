@@ -155,11 +155,7 @@ public extension SourceEditorConfiguration {
             controller.textView.selectionManager.selectionBackgroundColor = theme.selection
             controller.textView.selectionManager.selectedLineBackgroundColor = currentLineColor
             controller.textView.selectionManager.insertionPointColor = theme.insertionPoint
-            controller.textView.enclosingScrollView?.backgroundColor = if useThemeBackground {
-                theme.background
-            } else {
-                .clear
-            }
+            controller.backgroundView.fillColor = useThemeBackground ? theme.background : nil
 
             (controller.textView as? SourceEditorTextView)?.statementHighlightColor = theme.statementHighlight
             (controller.textView as? SourceEditorTextView)?.backgroundFillColor = useThemeBackground ? theme.background : nil

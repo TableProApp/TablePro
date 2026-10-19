@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 import os
 import TableProPluginKit
@@ -423,23 +424,39 @@ extension MainContentCoordinator {
     }
 
     func showAllTablesMetadata() {
-        switch allTablesListing() {
-        case .shellCommand(let command):
-            tabManager.addTab(initialQuery: command, databaseName: browseDatabaseName)
-            runQuery(viewport: .firstRow)
-        case .statement(let sql):
-            openTabInNewWindow(EditorTabPayload(connectionId: connection.id, tabType: .query, initialQuery: sql))
-        case nil:
-            return
-        }
+        guard allTablesListing() != nil else { return }
+        openTableListing()
+    }
+
+    /// A read-only grid of the browsed container's tables, never an editor holding the statement that
+    /// lists them: the tab builds its statement from the plugin each time it loads.
+    func openTableListing() {
+        let schemaName = EngineNamespaceSlot(databaseType: connection.type) == .schema ? browseSchemaName : nil
+        let kindTitle = SidebarObjectKind.table.title(
+            tableEntityName: PluginManager.shared.tableEntityName(for: connection.type)
+        )
+        let tabId = tabManager.addTableListingTab(
+            title: QueryTabManager.tableListingTitle(kindTitle: kindTitle, schemaName: schemaName),
+            databaseName: browseDatabaseName,
+            schemaName: schemaName
+        )
+        /// Asking again for a listing already open brings it up to date, the way Refresh would. A tab
+        /// opened just now loads when its view first appears, and nothing is listening for this yet.
+        AppEvents.shared.tableListingRefreshRequested.send(tabId)
+    }
+
+    /// The schema the sidebar lists, which a cross-database tab can leave the shared driver off.
+    private var browseSchemaName: String? {
+        DatabaseManager.shared.session(for: connectionId)?.browseSchema
+            ?? (DatabaseManager.shared.driver(for: connectionId) as? SchemaSwitchable)?.currentSchema
     }
 
     /// Nil when the engine has no listing, which is when the sidebar leaves the command out.
-    func allTablesListing() -> AllTablesListing? {
+    func allTablesListing() -> String? {
         let pluginListing = DatabaseManager.shared.driver(for: connectionId).flatMap { driver in
             (driver as? PluginDriverAdapter)?.allTablesMetadataSQL(schema: allTablesContainer(driver))
         }
-        return AllTablesListing.resolve(databaseType: connection.type, pluginListing: pluginListing)
+        return AllTablesListing.statement(databaseType: connection.type, pluginListing: pluginListing)
     }
 
     /// The container this listing is about, named rather than left to the driver.

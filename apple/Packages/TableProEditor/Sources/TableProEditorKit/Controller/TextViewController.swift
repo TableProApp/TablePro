@@ -27,6 +27,7 @@ public class TextViewController: NSViewController {
     public internal(set) var scrollView: SourceEditorScrollView!
     public internal(set) var textView: TextView!
     var gutterView: GutterView!
+    let backgroundView = SourceEditorBackgroundView()
 
     /// Middleman between the text view to our invisible characters config, with knowledge of things like the
     ///  /// user's theme and indent option to help correctly draw invisible character placeholders.

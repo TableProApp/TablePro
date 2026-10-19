@@ -200,6 +200,8 @@ internal extension MainSplitViewController {
             return "curlybraces.square"
         case .versionHistory:
             return "clock.arrow.circlepath"
+        case .tableListing:
+            return "list.bullet.rectangle"
         }
     }
 }

@@ -10,33 +10,43 @@ import Testing
 @testable import TablePro
 
 struct AllTablesListingTests {
-    @Test("A plugin's own listing opens as a statement")
+    @Test("A plugin's own listing is the statement")
     func pluginListingWins() {
         let etcdListing = #"get "/" --prefix --keys-only"#
 
-        #expect(
-            AllTablesListing.resolve(databaseType: .etcd, pluginListing: etcdListing) == .statement(etcdListing)
-        )
-        #expect(
-            AllTablesListing.resolve(databaseType: .postgresql, pluginListing: "SELECT 1") == .statement("SELECT 1")
-        )
+        #expect(AllTablesListing.statement(databaseType: .etcd, pluginListing: etcdListing) == etcdListing)
+        #expect(AllTablesListing.statement(databaseType: .postgresql, pluginListing: "SELECT 1") == "SELECT 1")
     }
 
     @Test("MongoDB and Redis fall back to their shell's own listing")
     func shellFallbacks() {
         #expect(
-            AllTablesListing.resolve(databaseType: .mongodb, pluginListing: nil)
-                == .shellCommand(#"db.runCommand({"listCollections": 1, "nameOnly": false})"#)
+            AllTablesListing.statement(databaseType: .mongodb, pluginListing: nil)
+                == #"db.runCommand({"listCollections": 1, "nameOnly": false})"#
         )
-        #expect(
-            AllTablesListing.resolve(databaseType: .redis, pluginListing: nil) == .shellCommand("SCAN 0 MATCH * COUNT 100")
-        )
+        #expect(AllTablesListing.statement(databaseType: .redis, pluginListing: nil) == "SCAN 0 MATCH * COUNT 100")
     }
 
     @Test("An engine that only highlights like MongoDB or Redis gets no shell command", arguments: [
         DatabaseType.elasticsearch, .typesense, .weaviate, .etcd, .cassandra
     ])
     func noListingForOtherEngines(databaseType: DatabaseType) {
-        #expect(AllTablesListing.resolve(databaseType: databaseType, pluginListing: nil) == nil)
+        #expect(AllTablesListing.statement(databaseType: databaseType, pluginListing: nil) == nil)
+    }
+
+    /// The scope is the tab's own, so a listing of `sales` lists `sales` whatever schema the shared
+    /// driver was last moved to.
+    @Test("The container comes from the listing's scope, escaped only when it is a schema")
+    func containerFromTheScope() {
+        let scope = DatabaseScope(connectionId: UUID(), database: "shop", schema: "o'neil")
+        let escape: (String) -> String = { $0.replacingOccurrences(of: "'", with: "''") }
+
+        #expect(AllTablesListing.container(slot: .schema, scope: scope, escapeLiteral: escape) == "o''neil")
+        #expect(AllTablesListing.container(slot: .database, scope: scope, escapeLiteral: escape) == "shop")
+        #expect(AllTablesListing.container(slot: .unqualified, scope: scope, escapeLiteral: escape) == nil)
+
+        let serverScope = DatabaseScope(connectionId: UUID(), database: "", schema: nil)
+        #expect(AllTablesListing.container(slot: .schema, scope: serverScope, escapeLiteral: escape) == nil)
+        #expect(AllTablesListing.container(slot: .database, scope: serverScope, escapeLiteral: escape) == nil)
     }
 }

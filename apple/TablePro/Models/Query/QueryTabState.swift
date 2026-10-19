@@ -24,6 +24,9 @@ enum TabType: Equatable, Codable, Hashable {
     case insights
     case objectSource
     case versionHistory
+    /// The tables of one database or schema, as a read-only grid. Built from the catalog each time it
+    /// loads, never from SQL saved with the tab.
+    case tableListing
 }
 
 /// Minimal representation of a tab for persistence

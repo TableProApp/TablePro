@@ -35,6 +35,10 @@ extension TextViewController {
             view = PlainControllerView.make()
         }
 
+        backgroundView.frame = view.bounds
+        backgroundView.autoresizingMask = [.width, .height]
+        view.addSubview(backgroundView)
+
         scrollView = SourceEditorScrollView()
         scrollView.documentView = textView
 

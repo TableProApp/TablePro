@@ -46,6 +46,10 @@ extension MainContentCoordinator {
             AppEvents.shared.versionHistoryRefreshRequested.send(tab.id)
             return
         }
+        if tab.tabType == .tableListing {
+            AppEvents.shared.tableListingRefreshRequested.send(tab.id)
+            return
+        }
         if tab.display.resultsViewMode == .structure {
             structureActions?.refresh?()
             return

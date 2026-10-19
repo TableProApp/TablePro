@@ -351,7 +351,7 @@ struct ScriptingDictionaryTests {
         }
         for kind in [
             TabType.query, .table, .createTable, .erDiagram,
-            .serverDashboard, .usersRoles, .insights, .objectSource, .versionHistory
+            .serverDashboard, .usersRoles, .insights, .objectSource, .versionHistory, .tableListing
         ] {
             #expect(declared.contains(ScriptEnumerations.code(for: kind)), "no enumerator for \(kind)")
         }
