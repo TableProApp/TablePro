@@ -3,6 +3,33 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.82.0</title>
+            <pubDate>Mon, 19 Oct 2026 08:15:16 +0000</pubDate>
+            <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
+            <sparkle:phasedRolloutInterval>21600</sparkle:phasedRolloutInterval>
+            <sparkle:criticalUpdate sparkle:version="140"/>
+            <sparkle:version>820099</sparkle:version>
+            <sparkle:shortVersionString>0.82.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[# What's New in TablePro 0.82.0
+
+Solarized, GitHub, Catppuccin, Gruvbox, Tokyo Night and One Dark themes, VS Code theme import, and a Theme Editor with live preview.
+
+Custom themes sync over iCloud. Appearance is set per Mac, and a Mac on an older version that syncs settings switches to System.
+
+Set Value generates UUIDs and applies to every selected cell. Add Row, Duplicate Row and Paste fill a UUID primary key with no default.
+
+Queries run on ClickHouse 23.8.0 to 23.8.8, read-only profiles connect, and servers before 22.3 load indexes, views and functions.
+
+Get beta updates in Settings > General. Registry plugins update after a TablePro update instead of from an Update button.
+
+SAP HANA plugin 1.0.0 to 1.0.3 shipped a helper without the Go crypto/tls fix for GO-2026-6607. It updates with TablePro.
+
+[View full changelog](https://docs.tablepro.app/changelog)
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.82.0/TablePro-0.82.0.tar.xz" length="41754460" type="application/octet-stream" sparkle:edSignature="BOkA6NEX8jsB90EP+kKHfwXGLIA8Pr291HEG40OzS608nhqpyS65Z4tDGI8kLSAsutijD8tHitwqS+U6wyM/AA=="/>
+        </item>
+        <item>
             <title>0.81.0</title>
             <pubDate>Fri, 16 Oct 2026 06:12:08 +0000</pubDate>
             <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
