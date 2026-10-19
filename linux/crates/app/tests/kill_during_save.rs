@@ -474,8 +474,8 @@ fn keeps_items_tab(workspaces: &[serde_json::Value]) -> bool {
         .any(|workspace| workspace.to_string().contains("\"items\""))
 }
 
-/// GSettings' keyfile backend writes from inside the process, unlike
-/// dconf, so a kill could tear it.
+/// The keyfile backend writes from inside the app, unlike dconf's
+/// service, so the killed process wrote this file itself.
 fn check_settings(sandbox: &Sandbox) -> Result<(), String> {
     let path = sandbox.root.join("config/glib-2.0/settings/keyfile");
     let keyfile = glib::KeyFile::new();
