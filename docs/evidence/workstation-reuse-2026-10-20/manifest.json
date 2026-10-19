@@ -1,0 +1,46 @@
+{
+  "exit_code": 0,
+  "elapsed_seconds": 2.406,
+  "artifact_unchanged": true,
+  "binary": {
+    "sha256": "c44ae18084aa5a3c15abd4fdd4e3801f96674be63dd7f1762277c5c1b2fb3187",
+    "bytes": 24607040,
+    "mtime_ns": 1792453322127060619
+  },
+  "path_commands_blocked": [
+    "cargo",
+    "rustc",
+    "cc",
+    "gcc",
+    "clang",
+    "ld",
+    "lld",
+    "mold"
+  ],
+  "schema_version": 1,
+  "source_commit": "adc2bfe1bd653220f033ab48df291b1e2dafbe4c",
+  "core_tree": "2a54fef6ea62bb2b65eeabd3114caf2b7948fb19",
+  "cargo_lock_sha256": "b6f78afea412f9203a3d108ca6719f6066d4d1ca4a51b9a91bce9657a560ef72",
+  "rustc": "1.98.1",
+  "nextest": "0.9.148",
+  "cargo_build_jobs": 6,
+  "nextest_test_threads": 4,
+  "build_seconds": 7.48,
+  "first_run": {
+    "tests": 640,
+    "passed": 640,
+    "skipped": 0,
+    "summary_seconds": 2.371
+  },
+  "second_run": {
+    "tests": 640,
+    "passed": 640,
+    "skipped": 0,
+    "summary_seconds": 2.36
+  },
+  "limits": [
+    "Core unit tests only; no driver, GTK or Forgejo acceptance",
+    "Compiler/linker blockers apply to PATH commands; existing binaries were used through nextest metadata",
+    "NVMe physical write delta and sccache hit rate were not measured"
+  ]
+}

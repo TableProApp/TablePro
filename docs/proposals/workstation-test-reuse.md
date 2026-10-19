@@ -22,7 +22,7 @@ Read-only inspection found:
 | Docker | Host user belongs to Docker group; daemon responds; two images occupy about 445 MB; no containers or volumes present | Docker prerequisites work outside the agent sandbox; prepare only selected fixture images |
 | GTK stack | GTK 4.24.1, libadwaita 1.10.0, GtkSourceView 5.22.0 | Useful native Arch desktop evidence; does not establish the supported distro floor |
 
-No SMART/endurance conclusion is possible: device access was denied and noninteractive sudo requires a password. A maintainer can read `sudo nvme smart-log /dev/nvme0n1` locally. Retain health counters privately; record only a sanitized interpretation in public evidence. Useful counters are critical warnings, percentage used, spare capacity, temperature, media errors and data units written. Compare deltas across a measured workload instead of assuming compile time measures drive wear.
+The maintainer supplied a SMART reading on 2026-10-20: critical warning 0, temperature 31°C, available spare 100%, endurance used 3%, approximately 5.72 TB host data written, 930 power-on hours, zero media errors and zero error-log entries. These counters show no current SMART warning; they do not guarantee future reliability or a remaining service life. There are 17 historical unsafe shutdowns, whose cause is not established by this reading. Use these counters as a baseline and compare write deltas across measured workloads. The installed nvme-cli recommends `sudo nvme log smart /dev/nvme0n1`; the older `smart-log` spelling is deprecated. No drive serial or private host identity is retained here.
 
 ## GTK prerequisites for the inspected desktop
 
@@ -32,7 +32,7 @@ The follow-up prerequisite check found `xvfb-run` and the Python `pyatspi` modul
 omarchy pkg add xorg-server-xvfb python-atspi
 ```
 
-Installation has not been observed. Recheck the commands/module before starting a GTK test. Rust, nextest, sccache, Docker/buildx, mold and Clang are already present; installing another copy does not improve artifact reuse. Configure and measure the cache strategy below instead.
+The maintainer installed both packages, and the follow-up check confirmed `xvfb-run` resolves and `import pyatspi` succeeds. This verifies prerequisites, not GTK runtime acceptance. Rust, nextest, sccache, Docker/buildx, mold and Clang are already present; installing another copy does not improve artifact reuse. Configure and measure the cache strategy below instead.
 
 ## Cache and artifact policy
 
@@ -48,7 +48,7 @@ Cargo's [build-cache documentation](https://doc.rust-lang.org/cargo/reference/bu
 
 ## Build once, run selected tests repeatedly
 
-Prefer normal Cargo freshness for a single narrow run. For repeated cases at one unchanged source/configuration, nextest supports execution from stored build metadata without rebuilding. The installed 0.9.148 help exposes the commands below. This is a command plan; no product test has been run for this hardware review.
+Prefer normal Cargo freshness for a single narrow run. For repeated cases at one unchanged source/configuration, nextest supports execution from stored build metadata without rebuilding. The installed 0.9.148 help exposes the commands below. The command pattern was exercised by the local Core pilot recorded below.
 
 Example for the Core unit-test binary only, from the checkout that owns its existing target:
 
@@ -101,12 +101,18 @@ Existing PostgreSQL coverage must be reused before selecting new cases:
 
 The inspected source lives in [PostgreSQL disconnection tests](../../crates/drivers/postgres/tests/support/disconnection.rs), [release reconnect tests](../../tests/release/tests/reconnect.rs), [policy transaction tests](../../tests/release/tests/policy_transactions.rs) and [GTK UX scenarios](../../apps/linux/app/tests/gtk_ux.py). This is a source inventory, not a new test run. An automatic replay feature requires an explicit safe-read contract; the upstream behavior is not an instruction to change BookiE's current refusal semantics. Issue #593 already records local frozen-candidate results and asks for exact-source Forgejo acceptance before closure.
 
-After the nightly settles:
+The maintainer subsequently directed local implementation and tests to proceed while the hours-long nightly continues. Local targeted work is independent of the lab gate; do not wait for nightly completion to build or reproduce locally. Keep one local compile owner and the existing serialized Forgejo merge gate.
+
+Next work:
 
 1. Record final job outcomes and identify real test gaps versus infrastructure failures. Reuse existing mutation and CI issues; rerun only a justified failed job after diagnosis. Check the night's source against the current Linux source before assigning a regression to a branch.
 2. Refresh the analysis branch against latest GitHub Linux, preserving the separate documentation-cleanup worktree. Finalize the documentation contribution using the docs-only checks and current repository merge rules; it needs no heavy gate.
-3. Pilot the Core build/metadata reuse above. Measure first build, unchanged rerun, one-file change, compiler-cache behavior, target size and memory. Keep the existing warm tree until the measurements support a switch. No benchmark is claimed yet.
+3. Run the Core build/metadata reuse pilot locally while the nightly proceeds. Measure first build, unchanged rerun, one-file change, compiler-cache behavior, target size and memory. Keep the existing warm tree until the measurements support a switch. No benchmark is claimed yet.
 4. Start the first PostgreSQL restart/lost-ack investigation under existing #593/#590, with recorded B3/B4/UX handoffs as required. Use #594 for the cross-consumer corpus, then #1029/#593 for the crash-save scenario and #1032/#554 for retained memory. Keep #947's reconciliation design separate from automatic write replay.
 5. Use the existing tier for each case and the serialized Forgejo gate for code changes. Run a full tier once when required by the change; avoid repeating an unchanged heavy run simply to reproduce evidence already available from its owning gate.
 
 Acceptance for the reuse pilot: unchanged repeated tests use the exact compiled binaries without recompilation; selected fixtures keep their isolation and durability requirements; memory remains within desktop headroom; no swap or low-space incident occurs; artifact identity and all unrun layers are recorded. Hardware capacity and endurance remain measured observations, never inferred from a green unit suite.
+
+## Local reuse pilot result
+
+The [October 20 manifest](../evidence/workstation-reuse-2026-10-20/manifest.json) records one Core unit-test build using the existing target tree: 7.48 seconds with six Cargo jobs. Both metadata-driven runs passed all 640 tests with four test processes; their nextest summaries were 2.371 and 2.360 seconds. The second run blocked Cargo, rustc and common compiler/linker command names on PATH and retained the exact binary hash and modification time. This proves local reuse for those binaries and source inputs. It does not measure physical NVMe write reduction, prove compiler-cache hits, or qualify other test tiers.
