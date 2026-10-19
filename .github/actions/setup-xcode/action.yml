@@ -7,15 +7,17 @@ inputs:
     required: false
     default: "false"
 
-# The only place the version is written. The bundle name differs by machine
-# (Xcode_27.1_Release_Candidate.app on xcode-27, Xcode.app on a Mac), so it is found by its version.
+# The only place the version and build are written. The bundle name differs by machine
+# (Xcode_27.1_Release_Candidate.app on xcode-27, Xcode.app on a Mac), so it is found by its version.plist.
 runs:
   using: composite
   steps:
     - shell: bash
       env:
         XCODE_VERSION: "27.1"
-        # Apple's released 27.1 (developer.apple.com/news/releases). The 27.1 beta, 27A9269, also says GM.
+        # The 27.1 beta, 27A9269, has the same version, so every job also checks the build.
+        XCODE_BUILD: 27A9275
+        # Apple's released 27.1 (developer.apple.com/news/releases). The 27.1 beta also says GM.
         XCODE_RELEASE_BUILD: 27A9275
         REQUIRE_RELEASE: ${{ inputs.require-release }}
       run: |
@@ -27,13 +29,14 @@ runs:
             continue
           fi
           version="$(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/version.plist" 2> /dev/null || true)"
-          installed="$installed $app ($version)"
-          if [ "$version" = "$XCODE_VERSION" ]; then
+          build="$(plutil -extract ProductBuildVersion raw -o - "$app/Contents/version.plist" 2> /dev/null || true)"
+          installed="$installed $app ($version $build)"
+          if [ "$version" = "$XCODE_VERSION" ] && [ "$build" = "$XCODE_BUILD" ]; then
             matches+=("$app")
           fi
         done
         if [ "${#matches[@]}" -ne 1 ]; then
-          echo "::error::Expected one Xcode $XCODE_VERSION in /Applications, found ${#matches[@]}:${installed:- no Xcode}"
+          echo "::error::Expected one Xcode $XCODE_VERSION ($XCODE_BUILD) in /Applications, found ${#matches[@]}:${installed:- no Xcode}"
           exit 1
         fi
 

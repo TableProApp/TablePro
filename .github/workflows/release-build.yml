@@ -71,7 +71,8 @@ jobs:
     name: Release Build
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
-    runs-on: ${{ inputs.runner == 'github' && 'xcode-27' || fromJSON('["self-hosted", "macOS", "ARM64", "tablepro-release"]') }}
+    # A push or nightly has no input, so it reads the RELEASE_BUILD_RUNNER repository variable; unset is the Mac.
+    runs-on: ${{ (inputs.runner || vars.RELEASE_BUILD_RUNNER) == 'github' && 'xcode-27' || fromJSON('["self-hosted", "macOS", "ARM64", "tablepro-release"]') }}
     timeout-minutes: 150
     # The tag's version settings run here first; 9999999 is the largest build at MAJOR 0 (RELEASING.md, Versions).
     env:

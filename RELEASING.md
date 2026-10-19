@@ -110,6 +110,7 @@ A `v*` tag runs `release.yml` and nothing else. A run is never cancelled, and ev
 - After it publishes: **Re-run failed jobs**. Every later step skips what is done: a published release, a feed item with the same version and build, or a manifest release with the same build and sha256.
 - A stable that never published: the next release PR runs `git revert <its release commit>` before `notes.py assemble`, and the leftover draft goes (`gh release delete vX.Y.Z`).
 - No GA Xcode on the runner image fails a stable in `app`. The fix is a PR pointing `.github/actions/setup-xcode` at a GA Xcode on an image that has one. Betas still ship.
+- Release Build runs on the maintainer's Mac, and a tag's `verify` waits for it. While the Mac is offline, `gh variable set RELEASE_BUILD_RUNNER --body github` sends pushes and nightlies to `xcode-27`; a run already waiting needs a cancel and a re-run. `gh variable delete RELEASE_BUILD_RUNNER` once the Mac is back.
 
 ## Withdrawing a release
 
