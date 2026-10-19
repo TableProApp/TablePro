@@ -18,7 +18,7 @@ use tablepro_test_support::conformance::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::conformance_engine::{Mariadb114, Mysql84, Server};
+use crate::conformance_engine::{MariadbServer, MysqlServer, Server};
 use crate::support::{FLAVOURS, direct, options_over, password, run_ok, session, start_with, text};
 
 /// The name to dial so the certificate's `localhost` matches: the
@@ -89,7 +89,7 @@ impl<S: Server> TlsConformanceEngine for MySqlTlsEngine<S> {
     }
 
     /// The password user is created REQUIRE SSL. MySQL checks that with
-    /// the credentials and answers 1045; MariaDB checks
+    /// the credentials and answers 1045; MariaDB from 11.2 checks
     /// `require_secure_transport` first and answers 3159.
     fn plaintext_rejection_category(&self) -> ErrorCategory {
         match S::FLAVOUR {
@@ -120,19 +120,19 @@ impl<S: Server> ClientIdentityEngine for MySqlTlsEngine<S> {
 }
 
 mod mysql_suite {
-    use super::{MySqlTlsEngine, Mysql84};
+    use super::{MySqlTlsEngine, MysqlServer};
 
     tablepro_test_support::tls_conformance_suite! {
-        engine: MySqlTlsEngine<Mysql84>,
+        engine: MySqlTlsEngine<MysqlServer>,
         client_identity: true,
     }
 }
 
 mod mariadb_suite {
-    use super::{Mariadb114, MySqlTlsEngine};
+    use super::{MariadbServer, MySqlTlsEngine};
 
     tablepro_test_support::tls_conformance_suite! {
-        engine: MySqlTlsEngine<Mariadb114>,
+        engine: MySqlTlsEngine<MariadbServer>,
         client_identity: true,
     }
 }

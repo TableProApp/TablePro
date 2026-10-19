@@ -353,11 +353,15 @@ const CATALOG_TABLE: &[&str] = &[
     )",
 ];
 
-async fn catalog_matches_information_schema(version: PostgresVersion) {
-    let fixture = PostgresFixture::start_version(version, HbaMode::Password)
-        .await
-        .expect("a PostgreSQL container");
+async fn catalog_matches_information_schema(fixture: PostgresFixture) {
+    let version = fixture.version();
     let connection = connect(&fixture, false).await;
+    assert_eq!(
+        connection.server_info().major,
+        version.major(),
+        "{}",
+        connection.server_info().version
+    );
     setup(connection.as_ref(), CATALOG_TABLE).await;
 
     let columns = connection
@@ -485,13 +489,16 @@ fn typed_kinds() -> Vec<(&'static str, ColumnKind, ReadForm)> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn catalog_matches_information_schema_on_13() {
-    catalog_matches_information_schema(PostgresVersion::V13).await;
+    let fixture = PostgresFixture::start_version(PostgresVersion::V13, HbaMode::Password)
+        .await
+        .expect("a PostgreSQL container");
+    catalog_matches_information_schema(fixture).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
-async fn catalog_matches_information_schema_on_18() {
-    catalog_matches_information_schema(PostgresVersion::V18).await;
+async fn catalog_matches_information_schema_on_the_selected_release() {
+    catalog_matches_information_schema(start().await).await;
 }
 
 /// No statement is cached under a name, so a column added after the pool
