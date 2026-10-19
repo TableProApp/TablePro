@@ -17,6 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Fail on purpose
+        run: exit 1
+
       # The image's entrypoint is swiftlint itself, so a second "swiftlint" would lint everything
       # twice. SwiftLint drops a custom rule whose regex does not compile with only a warning and
       # still exits 0, so the warning fails the step here. No --quiet: "Done linting" carries the
