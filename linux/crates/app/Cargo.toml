@@ -46,6 +46,10 @@ name = "application_session_restore"
 harness = false
 
 [[test]]
+name = "kill_during_save"
+harness = false
+
+[[test]]
 name = "accessibility"
 harness = false
 

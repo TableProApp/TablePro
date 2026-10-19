@@ -304,6 +304,7 @@ The tests in `crates/app/tests` that start TablePro run without the test harness
 | `application_uniqueness` | a second plain launch activates the running instance and exits without opening a window, and `--new-window` opens one there |
 | `application_lifecycle` | Quit waits for a session's close within the close timeout and gives up on a close that hangs, a cancelled close keeps the app running, and an editor session's close holds the process |
 | `application_session_restore` | the windows open at quit open again at the next launch, and a window closed first does not |
+| `kill_during_save` | TablePro killed with SIGKILL halfway through a grid save to a SQLite file leaves none of that save in the file and no lock on it. The next launch restores the session, and its history, settings and saved tabs read back with nothing moved aside |
 | `open_files` | a file handed over D-Bus opens a window on it, the same file brings that window forward, and another file opens a second window |
 | `accessibility` | every control a screen reader reaches has a name, on the picker, connecting, connect failed and workspace pages and in the connect and preferences dialogs |
 | `startup`, `i18n_catalog`, `logging` | the command-line options, a missing schema, the translation catalogue and the log setup |
