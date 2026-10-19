@@ -12,9 +12,9 @@ import Foundation
 /// database that genuinely has no objects, and telling the two apart is the whole reason
 /// this lives outside the view.
 ///
-/// A loaded database is always a list, whatever it holds. The outline says per section what is
-/// missing, so a database with no tables keeps its Procedures, Functions and Triggers, and its
-/// Tables section.
+/// A loaded database is always a list, whatever it holds. The outline lists a section for each
+/// kind with objects, so a database with no tables keeps its Procedures, Functions and Triggers,
+/// and one holding nothing at all says so in a row of its own.
 internal enum SidebarObjectListPresentation: Equatable {
     /// Loading, and not yet for long enough to say so. An empty column is the placeholder the HIG
     /// asks for, and a local database answers in about 110ms, so a spinner there is a flash rather

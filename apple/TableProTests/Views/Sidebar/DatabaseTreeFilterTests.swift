@@ -96,10 +96,22 @@ struct DatabaseTreeFilterTests {
         #expect(filtered.isEmpty)
     }
 
-    @Test("A declared Types kind is listed even before any type has loaded")
-    func declaredTypesKindIsVisible() {
-        let visible = SidebarObjectKind.visible(itemCounts: [:], declaredKinds: [.type], includingEmptyTables: false)
-        #expect(visible == [.type])
+    /// A search that matches nothing in a kind leaves that kind with no section, rather than a bare
+    /// Procedures, Triggers or Types header under the matching tables.
+    @Test("A search lists only the kinds it matched")
+    func searchListsOnlyMatchedKinds() {
+        let buckets = DatabaseTreeFilter.objectBuckets(
+            tables: [table("users")],
+            routines: [],
+            triggers: [],
+            userTypes: [userType("mood")],
+            searchText: "users"
+        )
+        #expect(SidebarObjectKind.visible(itemCounts: buckets.itemCounts) == [.table])
+    }
+
+    @Test("Types is the last kind listed")
+    func typesIsTheLastKind() {
         #expect(SidebarObjectKind.allCases.last == .type)
     }
 

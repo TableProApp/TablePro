@@ -6,36 +6,23 @@
 import Foundation
 
 /// Which groups a container shows. A group stands for objects the container holds, and a container
-/// with nothing in it answers with its own status row instead, so it lists no empty group at all.
+/// with nothing to list answers with its own status row instead.
 internal enum DatabaseTreeObjectGroupResolver {
     internal static func groups(
         database: String,
         schema: String?,
         itemCounts: [SidebarObjectKind: Int],
-        declaredKinds: Set<SidebarObjectKind> = []
+        keeping: Set<SidebarObjectKind> = []
     ) -> [DatabaseTreeObjectGroup] {
-        SidebarObjectKind.visible(
-            itemCounts: itemCounts,
-            declaredKinds: declaredKinds,
-            includingEmptyTables: false
-        )
-        .map { DatabaseTreeObjectGroup(database: database, schema: schema, kind: $0) }
+        SidebarObjectKind.visible(itemCounts: itemCounts, keeping: keeping)
+            .map { DatabaseTreeObjectGroup(database: database, schema: schema, kind: $0) }
     }
 }
 
 internal extension DatabaseTreeNode.Status {
-    /// What a section with no rows says, from the fetch that fills it. A section still waiting and
-    /// a section whose fetch failed are not a section with nothing in it.
-    static func emptySection(_ phase: MetadataLoadPhase) -> DatabaseTreeNode.Status {
-        switch phase {
-        case .idle, .loading: return .loading
-        case .failed(let message): return .error(message)
-        case .loaded: return .empty
-        }
-    }
-
-    /// What a container with nothing to list says. Only the kinds the engine declares take part,
-    /// because a fetch the engine never runs stays idle and would hold the row on a spinner.
+    /// What a container with nothing to list says, the flat root included. Only the kinds the engine
+    /// declares take part, because a fetch the engine never runs stays idle and would hold the row on a
+    /// spinner.
     static func emptyContainer(sideStates: [MetadataLoadPhase]) -> DatabaseTreeNode.Status {
         if let failure = sideStates.compactMap(\.failureMessage).first {
             return .error(failure)
@@ -64,16 +51,16 @@ internal struct DatabaseTreeSidePhases: Equatable {
         }
     }
 
-    /// A failure shows on its own group's placeholder. Only a kind the container lists no group for
-    /// has nowhere to say so, and its failure goes on the container instead.
-    func unplacedFailure(listing categories: Set<SidebarObjectCategory>) -> String? {
-        let phases: [(SidebarObjectCategory, MetadataLoadPhase?)] = [
-            (.routine, routines), (.trigger, triggers), (.type, types)
-        ]
-        for (category, phase) in phases where !categories.contains(category) {
-            if let message = phase?.failureMessage { return message }
-        }
-        return nil
+    /// The declared kinds whose fetch failed. Each keeps its group, empty of rows, so the failure shows
+    /// where the rows would be: hiding the group would make a list the server refused read as empty.
+    func failedKinds(among declared: Set<SidebarObjectKind>) -> Set<SidebarObjectKind> {
+        declared.filter { phase(for: $0.category).failureMessage != nil }
+    }
+
+    /// The row a group with no rows shows: the failure, or nothing, since a group without rows is
+    /// listed only to show a failure or to take filed objects back out of their folders.
+    func placeholder(for kind: SidebarObjectKind) -> DatabaseTreeNode.Status? {
+        phase(for: kind.category).failureMessage.map(DatabaseTreeNode.Status.error)
     }
 }
 
@@ -206,6 +193,8 @@ final class DatabaseTreeNode: SidebarOutlineNode {
     }
 
     static let recentSectionId = "recent-section"
+    /// The flat shape's root, which has no row of its own; its status row hangs off this id.
+    static let flatRootId = "flat-root"
     static let foldersSectionId = "folders-section"
     static func tableFolderId(_ folderId: UUID) -> String { "tablefolder\u{1}\(folderId.uuidString)" }
     static func databaseId(_ database: String) -> String { "db\u{1}\(database)" }

@@ -107,26 +107,23 @@ enum SidebarObjectKind: String, CaseIterable, Sendable, Hashable {
         self == .table
     }
 
-    /// Which kinds a container lists, in declaration order. A kind that returned objects is always
-    /// listed: a plugin's capability flag says what it declared, not what its driver returned, so
-    /// gating on one hides objects that came back with no section, no status row and no error.
+    /// Which kinds a container lists, in declaration order: the kinds holding objects, and the kinds in
+    /// `keeping`. Both sidebar layouts ask the same question, so toggling the layout never changes which
+    /// kinds are on screen.
     ///
-    /// `declaredKinds` only ever adds. It lets an engine that has procedures but currently holds
-    /// none say so with an empty section, instead of being indistinguishable from an engine whose
-    /// driver never implemented the fetch.
+    /// A kind is listed for what its driver returned, never for what the plugin declares. Gating on a
+    /// capability flag hid objects that came back, and listing every declared kind filled the sidebar
+    /// with Procedures, Triggers and Types sections that held nothing.
     ///
-    /// `includingEmptyTables` is the only thing the two sidebar layouts disagree on. The flat root's
-    /// sections are chrome that exists before their contents do, so it keeps Tables whatever the
-    /// count. A tree container answers for itself with its own status row instead.
+    /// `keeping` is for a section with something to say and no rows to say it with: a table kind whose
+    /// objects all sit in folders, which is where a drag takes one back out, and a kind whose fetch
+    /// failed, which shows the error where its rows would be.
     static func visible(
         itemCounts: [SidebarObjectKind: Int],
-        declaredKinds: Set<SidebarObjectKind> = [],
-        includingEmptyTables: Bool
+        keeping: Set<SidebarObjectKind> = []
     ) -> [SidebarObjectKind] {
         allCases.filter { kind in
-            if includingEmptyTables, kind == .table { return true }
-            if itemCounts[kind, default: 0] > 0 { return true }
-            return declaredKinds.contains(kind)
+            itemCounts[kind, default: 0] > 0 || keeping.contains(kind)
         }
     }
 }

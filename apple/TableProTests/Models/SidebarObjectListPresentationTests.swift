@@ -59,8 +59,8 @@ struct SidebarObjectListPresentationTests {
     }
 
     /// The full-pane empty state took the whole outline with it: the Procedures, Functions and
-    /// Triggers of a database with no tables, and the Tables section whose menu creates the first
-    /// table. The outline says per section what is missing instead.
+    /// Triggers of a database with no tables. The outline lists what the database holds instead, and
+    /// says so in a row of its own when that is nothing.
     @Test("A loaded database with no tables still renders the list")
     func loadedWithoutTablesRendersList() {
         #expect(resolve(.loaded([])) == .list)

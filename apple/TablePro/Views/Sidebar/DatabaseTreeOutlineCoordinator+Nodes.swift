@@ -158,9 +158,14 @@ extension DatabaseTreeOutlineCoordinator {
         if !recentTableRefs().isEmpty {
             nodes.append(node(id: DatabaseTreeNode.recentSectionId, kind: .recentSection))
         }
-        nodes += flatFoldersSectionNodes()
-        nodes += visibleObjectKinds().map {
+        let folders = flatFoldersSectionNodes()
+        let kinds = visibleObjectKinds()
+        nodes += folders
+        nodes += kinds.map {
             node(id: DatabaseTreeNode.objectKindSectionId($0), kind: .objectKindSection($0))
+        }
+        if folders.isEmpty, kinds.isEmpty, let status = flatEmptyRootStatus() {
+            nodes.append(statusNode(parentId: DatabaseTreeNode.flatRootId, status: status))
         }
         if let database = browsingDatabase {
             nodes += flatOtherSchemaMatches(database: database).map {
@@ -173,12 +178,8 @@ extension DatabaseTreeOutlineCoordinator {
         return nodes
     }
 
-    /// The same rule a tree container uses, so toggling the layout never changes which object kinds
-    /// are on screen. Tables is the one section that survives an empty count, because the flat root
-    /// has no container status row to say so instead.
-    ///
-    /// A torn-down sidebar has no view model and lists nothing at all, Tables included. Counting its
-    /// way to an empty root would put a lone Tables section in a pane that is on its way out.
+    /// A torn-down sidebar has no view model and lists nothing at all. Counting its way to a root of
+    /// failed sections would fill a pane that is on its way out.
     private func visibleObjectKinds() -> [SidebarObjectKind] {
         guard viewModel != nil else { return [] }
         let itemCounts = SidebarObjectKind.allCases.reduce(into: [SidebarObjectKind: Int]()) {
@@ -186,14 +187,19 @@ extension DatabaseTreeOutlineCoordinator {
         }
         return SidebarObjectKind.visible(
             itemCounts: itemCounts,
-            declaredKinds: declaredObjectKinds.union(flatPlan().filedKinds),
-            includingEmptyTables: true
+            keeping: flatPlan().filedKinds.union(flatSidePhases.failedKinds(among: declaredObjectKinds))
         )
     }
 
-    /// What the engine says it has, so a database that genuinely holds no procedures still shows a
-    /// Procedures section saying so, instead of looking like an engine that never implemented the
-    /// fetch. It only ever adds a section; a kind with rows is listed whatever this returns.
+    /// The browsed schema answers for itself the way a tree container does once it lists no section:
+    /// still loading, or holding nothing. A search that matches nothing has its own pane-wide state.
+    private func flatEmptyRootStatus() -> DatabaseTreeNode.Status? {
+        guard viewModel != nil, searchText.isEmpty else { return nil }
+        return .emptyContainer(sideStates: flatSidePhases.all)
+    }
+
+    /// What the engine says it fetches. It decides which fetches a container waits on before saying
+    /// it is empty, and which failures keep a section; it never lists a section on its own.
     internal var declaredObjectKinds: Set<SidebarObjectKind> {
         databaseType.declaredObjectKinds
     }
@@ -212,29 +218,25 @@ extension DatabaseTreeOutlineCoordinator {
         }
     }
 
-    /// A section with no rows says why, the way a tree container does: still loading, failed, or
-    /// genuinely empty. Left bare, an empty Procedures section read the same as one whose fetch never
-    /// came back. A search that matches nothing in a section is not a reason, so it stays bare.
+    /// A section listed without rows says why: its fetch failed. The other sections without rows,
+    /// a table kind whose objects are all in folders, have nothing to add.
     private func flatObjectNodes(for kind: SidebarObjectKind) -> [DatabaseTreeNode] {
         let rows = flatObjectRows(for: kind)
-        guard rows.isEmpty, searchText.isEmpty, viewModel != nil, !flatPlan().hasFiledObjects(of: kind) else {
+        guard rows.isEmpty, viewModel != nil, let placeholder = flatSidePhases.placeholder(for: kind) else {
             return rows
         }
-        return [
-            statusNode(
-                parentId: DatabaseTreeNode.objectKindSectionId(kind),
-                status: .emptySection(flatLoadPhase(for: kind))
-            )
-        ]
+        return [statusNode(parentId: DatabaseTreeNode.objectKindSectionId(kind), status: placeholder)]
     }
 
-    private func flatLoadPhase(for kind: SidebarObjectKind) -> MetadataLoadPhase {
-        switch kind.category {
-        case .table: return .loaded
-        case .routine: return schemaService.routinesLoadState(for: connectionId).erased
-        case .trigger: return schemaService.triggersLoadState(for: connectionId).erased
-        case .type: return schemaService.userDefinedTypesLoadState(for: connectionId).erased
-        }
+    /// Only the kinds the engine declares take part, the rule `sideLoadStates` follows for a tree
+    /// container, so a fetch the engine never runs cannot hold the root on a spinner.
+    private var flatSidePhases: DatabaseTreeSidePhases {
+        let declared = declaredObjectKinds
+        return DatabaseTreeSidePhases(
+            routines: schemaService.routinesLoadState(for: connectionId).erased,
+            triggers: declared.contains(.trigger) ? schemaService.triggersLoadState(for: connectionId).erased : nil,
+            types: declared.contains(.type) ? schemaService.userDefinedTypesLoadState(for: connectionId).erased : nil
+        )
     }
 
     private func flatObjectRows(for kind: SidebarObjectKind) -> [DatabaseTreeNode] {
@@ -469,8 +471,7 @@ extension DatabaseTreeOutlineCoordinator {
                 sidePhases: DatabaseTreeSidePhases(routines: .loaded, triggers: nil, types: nil),
                 database: database,
                 schema: schema,
-                parentId: parentId,
-                listsDeclaredKinds: false
+                parentId: parentId
             )
         }
     }
@@ -586,38 +587,30 @@ extension DatabaseTreeOutlineCoordinator {
         )
     }
 
-    /// `listsDeclaredKinds` is false for a schema drawn from the listing, which holds tables and
-    /// views only: a declared kind it has no rows for is unread, not empty.
     private func groupedObjectNodes(
         buckets: DatabaseTreeObjectBuckets,
         sidePhases: DatabaseTreeSidePhases,
         database: String,
         schema: String?,
-        parentId: String,
-        listsDeclaredKinds: Bool = true
+        parentId: String
     ) -> [DatabaseTreeNode] {
         let plan = containerPlan(database: database, schema: schema, buckets: buckets)
         let folders = containerFolderNodes(plan, database: database, schema: schema)
-        guard !buckets.isEmpty || !folders.isEmpty else {
-            return [statusNode(parentId: parentId, status: .emptyContainer(sideStates: sidePhases.all))]
-        }
-
         let groups = DatabaseTreeObjectGroupResolver.groups(
             database: database,
             schema: schema,
             itemCounts: looseItemCounts(buckets.itemCounts, plan: plan),
-            declaredKinds: listsDeclaredKinds ? declaredObjectKinds.union(plan.filedKinds) : plan.filedKinds
+            keeping: plan.filedKinds.union(sidePhases.failedKinds(among: declaredObjectKinds))
         )
-        var nodes = folders + groups.map { group in
+        guard !groups.isEmpty || !folders.isEmpty else {
+            return [statusNode(parentId: parentId, status: .emptyContainer(sideStates: sidePhases.all))]
+        }
+        return folders + groups.map { group in
             node(
                 id: DatabaseTreeNode.containerObjectKindSectionId(group),
                 kind: .containerObjectKindSection(group)
             )
         }
-        if let failure = sidePhases.unplacedFailure(listing: Set(groups.map(\.kind.category))) {
-            nodes.append(statusNode(parentId: parentId, status: .error(failure)))
-        }
-        return nodes
     }
 
     private func containerObjectNodes(for group: DatabaseTreeObjectGroup) -> [DatabaseTreeNode] {
@@ -626,37 +619,30 @@ extension DatabaseTreeOutlineCoordinator {
         /// A schema-grouped group carries no database, and a reference naming an empty one would
         /// switch the session to a database called "" the moment the row opened.
         let database: String? = group.database.isEmpty ? nil : group.database
-        let placeholder = DatabaseTreeNode.Status.emptySection(sidePhases(for: group).phase(for: group.kind.category))
+        let placeholder = sidePhases(for: group).placeholder(for: group.kind).map {
+            [statusNode(parentId: emptyId, status: $0)]
+        } ?? []
         switch group.kind.category {
         case .table:
             let plan = containerPlan(database: group.database, schema: group.schema, buckets: buckets)
             let tables = plan.looseObjects(of: group.kind)
-            guard !tables.isEmpty else {
-                guard !plan.hasFiledObjects(of: group.kind) else { return [] }
-                return [statusNode(parentId: emptyId, status: placeholder)]
-            }
+            guard !tables.isEmpty else { return placeholder }
             return tables.map { table in
                 let ref = DatabaseTreeTableRef(database: database, schema: group.schema, table: table)
                 return node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
             }
         case .routine:
             let routines = buckets.routines[group.kind] ?? []
-            guard !routines.isEmpty else {
-                return [statusNode(parentId: emptyId, status: placeholder)]
-            }
+            guard !routines.isEmpty else { return placeholder }
             return routineNodes(routines, database: database, schema: { _ in group.schema })
         case .trigger:
-            guard !buckets.triggers.isEmpty else {
-                return [statusNode(parentId: emptyId, status: placeholder)]
-            }
+            guard !buckets.triggers.isEmpty else { return placeholder }
             return buckets.triggers.map { trigger in
                 let ref = DatabaseTreeTriggerRef(database: database, schema: group.schema, trigger: trigger)
                 return node(id: DatabaseTreeNode.triggerId(ref), kind: .trigger(ref))
             }
         case .type:
-            guard !buckets.userTypes.isEmpty else {
-                return [statusNode(parentId: emptyId, status: placeholder)]
-            }
+            guard !buckets.userTypes.isEmpty else { return placeholder }
             return buckets.userTypes.map { type in
                 let ref = DatabaseTreeUserTypeRef(database: database, schema: group.schema, type: type)
                 return node(id: DatabaseTreeNode.userTypeId(ref), kind: .userType(ref))

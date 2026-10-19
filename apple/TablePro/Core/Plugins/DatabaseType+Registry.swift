@@ -246,8 +246,8 @@ extension DatabaseType {
             .capabilities.supportsUserDefinedTypeBrowse ?? false
     }
 
-    /// The object kinds the sidebar should offer a section for even before any have been fetched.
-    /// It never subtracts: a kind whose driver returned rows is listed whatever this says.
+    /// The object kinds this engine fetches. The sidebar waits on these fetches before calling a
+    /// container empty, and keeps a section for one that failed; it lists a section only for rows.
     var declaredObjectKinds: Set<SidebarObjectKind> {
         var kinds: Set<SidebarObjectKind> = []
         if supportsRoutines {

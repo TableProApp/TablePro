@@ -9,7 +9,7 @@ import Testing
 
 @testable import TablePro
 
-private final class SideObjectsMockDriver: DatabaseDriver, @unchecked Sendable {
+final class SideObjectsMockDriver: DatabaseDriver, @unchecked Sendable {
     let connection: DatabaseConnection
     var status: ConnectionStatus = .connected
     var serverVersion: String? { nil }
