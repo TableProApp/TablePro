@@ -158,6 +158,13 @@ jobs:
         with:
           toolchain: 1.98
           components: rustfmt, clippy
+      - name: Install pinned cargo-about
+        run: cargo install cargo-about --locked --version 0.9.2 --features cli
+      - name: Fetch locked dependency manifests for notice generation
+        run: |
+          cargo fetch --locked --manifest-path apps/linux/app/Cargo.toml
+          cargo fetch --locked --manifest-path crates/agentd/Cargo.toml
+          cargo fetch --locked --manifest-path crates/ssh/Cargo.toml
       - name: Shared sccache
         if: github.event_name != 'workflow_dispatch' || inputs.ref == ''
         uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad
@@ -224,6 +231,13 @@ jobs:
         with:
           toolchain: 1.98
           components: rustfmt, clippy
+      - name: Install pinned cargo-about
+        run: cargo install cargo-about --locked --version 0.9.2 --features cli
+      - name: Fetch locked dependency manifests for notice generation
+        run: |
+          cargo fetch --locked --manifest-path apps/linux/app/Cargo.toml
+          cargo fetch --locked --manifest-path crates/agentd/Cargo.toml
+          cargo fetch --locked --manifest-path crates/ssh/Cargo.toml
       - name: Shared sccache
         if: github.event_name != 'workflow_dispatch' || inputs.ref == ''
         uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad

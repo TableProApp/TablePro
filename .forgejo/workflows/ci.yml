@@ -38,6 +38,8 @@ jobs:
       - name: Script harness and guards
         run: |
           cd src
+          cargo install cargo-about --locked --version 0.9.2 --features=cli
+          cargo fetch --locked --manifest-path apps/linux/app/Cargo.toml
           bash scripts/test-harness.sh
           bash scripts/check-file-size.sh
           bash scripts/check-bounded-operations.sh

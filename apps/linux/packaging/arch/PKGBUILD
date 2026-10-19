@@ -60,6 +60,8 @@ package() {
   install -Dm644 apps/linux/data/com.tablepro.linux.gschema.xml \
     "$pkgdir/usr/share/glib-2.0/schemas/com.tablepro.linux.gschema.xml"
   install -Dm644 LICENSE.md "$pkgdir/usr/share/licenses/$pkgname/LICENSE.md"
+  install -Dm644 apps/linux/packaging/THIRD_PARTY_NOTICES.md \
+    "$pkgdir/usr/share/licenses/$pkgname/THIRD_PARTY_NOTICES.md"
   install -Dm644 apps/linux/packaging/policy.example.toml \
     "$pkgdir/usr/share/doc/$pkgname/policy.example.toml"
 

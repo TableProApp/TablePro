@@ -1,0 +1,191 @@
+accepted = [
+    "AGPL-3.0-or-later",
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "MPL-2.0",
+    "OpenSSL",
+    "CDLA-Permissive-2.0",
+    "CC0-1.0",
+    "0BSD",
+    "BSL-1.0",
+    "Unlicense",
+]
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+targets = ["x86_64-unknown-linux-gnu"]
+workarounds = ["ring", "rustls"]
+
+[tablepro-app.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-app.clarify.files]]
+path = "../../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-agentd.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-agentd.clarify.files]]
+path = "../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-app-services.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-app-services.clarify.files]]
+path = "../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-core.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-core.clarify.files]]
+path = "../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-driver-clickhouse.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-driver-clickhouse.clarify.files]]
+path = "../../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-driver-duckdb.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-driver-duckdb.clarify.files]]
+path = "../../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-driver-mongodb.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-driver-mongodb.clarify.files]]
+path = "../../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-driver-mssql.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-driver-mssql.clarify.files]]
+path = "../../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-driver-mysql.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-driver-mysql.clarify.files]]
+path = "../../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-driver-postgres.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-driver-postgres.clarify.files]]
+path = "../../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-driver-redis.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-driver-redis.clarify.files]]
+path = "../../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-driver-sqlite.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-driver-sqlite.clarify.files]]
+path = "../../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-dump.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-dump.clarify.files]]
+path = "../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-mcp.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-mcp.clarify.files]]
+path = "../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-policy.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-policy.clarify.files]]
+path = "../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-ssh.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-ssh.clarify.files]]
+path = "../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-storage.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-storage.clarify.files]]
+path = "../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-transport.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-transport.clarify.files]]
+path = "../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-driver-tls-tests.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-driver-tls-tests.clarify.files]]
+path = "../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[tablepro-release-tests.clarify]
+license = "AGPL-3.0-or-later"
+
+[[tablepro-release-tests.clarify.files]]
+path = "../../LICENSE.md"
+license = "AGPL-3.0-or-later"
+checksum = "dde00fdc3d6e36e71f9a80ec44895e216e37fe0c4fe1b15792f027efccaed223"
+
+[sqlx-mysql.clarify]
+license = "MIT"
+
+[[sqlx-mysql.clarify.files]]
+path = "LICENSE-MIT"
+license = "MIT"
+checksum = "72af89a828df52a9dcc42512ed64663b3b8d7961dd7a5586d44478eede82bc7a"
