@@ -6,23 +6,24 @@
 )]
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use secrecy::SecretString;
 use tablepro_core::credentials::CredentialInteraction;
-use tablepro_core::statement::{Statement, StatementBuilder};
+use tablepro_core::statement::{GuardedStatement, Statement, StatementBuilder};
 use tablepro_core::{
     CallOptions, ConnectEnvironment, ConnectOptions, ConnectTarget, Connection, Credentials, DatabaseDriver,
-    DriverError, LivenessPolicy, NetworkEndpoint, NetworkTarget, RowLimit, TlsConfig, Value, WorkspaceSettings,
+    DriverError, ErrorCategory, ForeignKeyMode, LivenessPolicy, NetworkEndpoint, NetworkTarget, RowLimit, TableRef,
+    TlsConfig, Value, WorkspaceSettings, WriteBatch, WriteKind,
 };
 use tablepro_driver_postgres::{PgDriver, WORKSPACE_POOL_MAX_SIZE};
 use tablepro_net::DirectTcpTransport;
 use tablepro_session::runtime::Tasks;
 use tablepro_session::{
     ConnectRequest, ConnectServices, ConnectionLease, ConnectionMetadata, Connector, DefaultDeadlines, DriverConnector,
-    MonitorSignal, NoStoredCredentials, OperationError, OperationKind, PendingSession, RequestTarget, Session,
-    SessionDeps, SessionHealth,
+    LinkGeneration, MonitorSignal, NoStoredCredentials, OperationError, OperationKind, PendingSession, RequestTarget,
+    Session, SessionDeps, SessionHealth,
 };
 use tablepro_ssh::{SshAuth, SshConfig, SshDestination, SshRuntimeCell, SshServices};
 use tablepro_test_fixtures::{
@@ -412,6 +413,178 @@ async fn session_through_openssh_reconnects_after_the_master_dies() {
     assert_eq!(
         scalar(&session, OperationKind::Metadata, "SELECT 5").await,
         Ok(Value::Int(5))
+    );
+    assert_eq!(*session.health().borrow(), SessionHealth::Online);
+    let report = session.begin_shutdown().await.expect("the close task");
+    assert_eq!(report, tablepro_session::CloseReport::Closed);
+}
+
+/// The table the restart test reads and writes.
+fn notes() -> TableRef {
+    TableRef::new(Some("public".to_owned()), "notes")
+}
+
+/// The notes table with one row, written outside the session.
+async fn create_notes(fixture: &PostgresFixture) {
+    let setup = admin(fixture).await;
+    for sql in [
+        "CREATE TABLE notes (id integer PRIMARY KEY, body text NOT NULL)",
+        "INSERT INTO notes VALUES (1, 'before the restart')",
+    ] {
+        let batch = WriteBatch::new(
+            WriteKind::SchemaChanges,
+            notes(),
+            vec![GuardedStatement::unguarded(statement(sql))],
+            ForeignKeyMode::Enforced,
+        );
+        setup.write_batch(&batch, within(WAIT)).await.expect("the setup");
+    }
+    setup.close().await.expect("the setup connection closed");
+}
+
+/// Count the notes. On the connection the session had before the
+/// restart the count waits 30 seconds first, as a read still running
+/// when the reconnect lands.
+async fn count_notes(
+    lease: ConnectionLease,
+    options: CallOptions,
+    before: LinkGeneration,
+    leases: &Mutex<Vec<LinkGeneration>>,
+) -> Result<Value, OperationError> {
+    leases.lock().expect("the lease log").push(lease.generation());
+    let sql = match lease.generation() == before {
+        true => "SELECT count(*) FROM notes, pg_sleep(30)",
+        false => "SELECT count(*) FROM notes",
+    };
+    let result = lease
+        .query_bound(&statement(sql), RowLimit::EDITOR_DEFAULT, options)
+        .await?;
+    Ok(result
+        .rows
+        .into_iter()
+        .next()
+        .and_then(|row| row.into_iter().next())
+        .unwrap_or(Value::Null))
+}
+
+/// Add a note. On the connection from before the restart the save
+/// holds its transaction open for 30 seconds before it commits.
+async fn add_note(
+    lease: ConnectionLease,
+    options: CallOptions,
+    before: LinkGeneration,
+    leases: &Mutex<Vec<LinkGeneration>>,
+) -> Result<(), OperationError> {
+    leases.lock().expect("the lease log").push(lease.generation());
+    let mut steps = vec![GuardedStatement::unguarded(statement(
+        "INSERT INTO notes (id, body) VALUES (2, 'saved across the restart')",
+    ))];
+    if lease.generation() == before {
+        steps.push(GuardedStatement::unguarded(statement("SELECT pg_sleep(30)")));
+    }
+    let batch = WriteBatch::new(WriteKind::RowChanges, notes(), steps, ForeignKeyMode::Enforced);
+    lease.write_batch(&batch, options).await?;
+    Ok(())
+}
+
+/// The database restarts under a session. A read made while it is down
+/// fails, since no other connection exists yet to run it on. A read
+/// still running on the old connection when the reconnect lands runs
+/// once more on the new one; a save does not, so its row is never
+/// written. The server comes back on the same host port with its data,
+/// and the session is online on the new connection.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_database_restart_replays_reads_and_never_writes() {
+    let fixture = PostgresFixture::start_restartable(HbaMode::Password)
+        .await
+        .expect("PostgreSQL");
+    let connector = connector(isolated_ssh().services);
+    let session = start(
+        connector.clone(),
+        establish(&connector, request(direct_target(&fixture))).await,
+    );
+    create_notes(&fixture).await;
+    let before = session.link_generation();
+    let mut health = session.health();
+    let port = fixture.port();
+
+    fixture.stop().await.expect("the server stopped");
+    let during = scalar(&session, OperationKind::Count, "SELECT count(*) FROM notes").await;
+    assert!(
+        matches!(
+            during.as_ref().map_err(OperationError::category),
+            Err(Some(ErrorCategory::ConnectionLost | ErrorCategory::Network))
+        ),
+        "a read while the server was down gave {during:?}"
+    );
+    // Two failed attempts put the next one ten seconds out, which
+    // leaves the server time to come back before the reconnect does.
+    tokio::time::timeout(
+        WAIT,
+        health.wait_for(|health| matches!(health, SessionHealth::Reconnecting { attempt } if *attempt >= 3)),
+    )
+    .await
+    .expect("the session kept retrying")
+    .expect("the health sender is alive");
+    fixture.start_again().await.expect("the server started again");
+    assert_eq!(fixture.port(), port);
+    assert_eq!(
+        session.link_generation(),
+        before,
+        "the reconnect landed before the reads were made"
+    );
+
+    let reads = Arc::new(Mutex::new(Vec::new()));
+    let reading = {
+        let session = session.clone();
+        let reads = reads.clone();
+        tasks().spawn_task(async move {
+            session
+                .run(OperationKind::Count, |lease, options| {
+                    count_notes(lease, options, before, &reads)
+                })
+                .await
+        })
+    };
+    let saves = Arc::new(Mutex::new(Vec::new()));
+    let saving = {
+        let session = session.clone();
+        let saves = saves.clone();
+        tasks().spawn_task(async move {
+            session
+                .run(OperationKind::Save(WriteKind::RowChanges), |lease, options| {
+                    add_note(lease, options, before, &saves)
+                })
+                .await
+        })
+    };
+    let read = reading.await.expect("the read task");
+    let saved = saving.await.expect("the save task");
+
+    let after = session.link_generation();
+    assert!(after > before, "the session never reconnected");
+    assert_eq!(read, Ok(Value::Int(1)), "the read was not answered");
+    assert_eq!(
+        *reads.lock().expect("the lease log"),
+        [before, after],
+        "the read did not run once more on the new connection"
+    );
+    assert!(saved.is_err(), "a save stopped by the reconnect reported {saved:?}");
+    assert_eq!(*saves.lock().expect("the lease log"), [before], "the save ran again");
+    assert_eq!(
+        scalar(
+            &session,
+            OperationKind::Count,
+            "SELECT count(*) FROM notes WHERE id = 2"
+        )
+        .await,
+        Ok(Value::Int(0)),
+        "the save's row was written"
+    );
+    assert_eq!(
+        scalar(&session, OperationKind::Metadata, "SELECT body FROM notes WHERE id = 1").await,
+        Ok(Value::Text("before the restart".to_owned()))
     );
     assert_eq!(*session.health().borrow(), SessionHealth::Online);
     let report = session.begin_shutdown().await.expect("the close task");
