@@ -47,12 +47,18 @@ export CARGO_BUILD_JOBS=6
 export CARGO_TARGET_DIR="$PWD/target"
 mkdir -p "$CARGO_TARGET_DIR/reuse/core-unit"
 NEXTEST="$(bash scripts/ensure-nextest.sh)"
-"$NEXTEST" nextest list --locked -p tablepro-core --lib   --list-type binaries-only --message-format json   > "$CARGO_TARGET_DIR/reuse/core-unit/binaries.json"
-cargo metadata --locked --format-version 1   > "$CARGO_TARGET_DIR/reuse/core-unit/cargo.json"
-"$NEXTEST" nextest run   --cargo-metadata "$CARGO_TARGET_DIR/reuse/core-unit/cargo.json"   --binaries-metadata "$CARGO_TARGET_DIR/reuse/core-unit/binaries.json"   --test-threads 4
+"$NEXTEST" nextest list --locked -p tablepro-core --lib \
+  --list-type binaries-only --message-format json \
+  > "$CARGO_TARGET_DIR/reuse/core-unit/binaries.json"
+cargo metadata --locked --format-version 1 \
+  > "$CARGO_TARGET_DIR/reuse/core-unit/cargo.json"
+"$NEXTEST" nextest run \
+  --cargo-metadata "$CARGO_TARGET_DIR/reuse/core-unit/cargo.json" \
+  --binaries-metadata "$CARGO_TARGET_DIR/reuse/core-unit/binaries.json" \
+  --test-threads 4
 ```
 
-Use nextest filters to repeat the relevant cases from those same binaries. Refresh the build metadata after any source, generated input, dependency, toolchain, profile, feature or compile-environment change. Record source SHA plus dirty-diff identity, Cargo.lock hash, compiler version, target, flags, features, selected binaries and nextest version beside it. Refuse stale metadata as current-source evidence. This example covers Core unit tests only; it does not replace preflight or another tier.
+Use nextest filters to repeat the relevant cases from those same binaries. Refresh the build metadata after any source, generated input, dependency, toolchain, profile, feature or compile-environment change. Record source SHA plus dirty-diff identity and relevant untracked/generated input hashes, Cargo.lock hash, compiler version, target, flags, features, selected binaries and nextest version beside it. Refuse stale metadata as current-source evidence. This example covers Core unit tests only; it does not replace preflight or another tier.
 
 Use [nextest archives](https://nexte.st/docs/ci-features/archiving/) when distributing the same built test binaries across machines. Build in the pinned oldest-compatible CI environment, retain the archive/checksum and exact source revision, and verify runtime libraries and CPU compatibility on the executor. Arch-built dynamic binaries are not automatically runnable on Debian. Do not compile distributed artifacts with `target-cpu=native` on this workstation. Source fixtures and external services still need provisioning.
 
