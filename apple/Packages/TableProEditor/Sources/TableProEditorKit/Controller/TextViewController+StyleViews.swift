@@ -32,6 +32,7 @@ extension TextViewController {
     /// Style the scroll view.
     package func styleScrollView() {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.drawsBackground = false
         scrollView.contentView.postsFrameChangedNotifications = true
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = !wrapLines
