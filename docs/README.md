@@ -96,3 +96,5 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 - [Linux peer review, October 17](archive/linux-peer-review-2026-10-17.md): refreshed source pins, recent dbx fixes, and their BookiE applicability.
 - [dbx architecture, boundaries and reuse review](archive/2026-10-15-dbx-review.md).
 - [PostgreSQL client review](archive/2026-10-15-postgresql-client-research/review.md), with [46 regression candidates](archive/2026-10-15-postgresql-client-research/cases.csv), [machine-readable cases](archive/2026-10-15-postgresql-client-research/cases.json) and [source pins and probe evidence](archive/2026-10-15-postgresql-client-research/manifest.json). These dated observations do not override current ADRs or sprint priorities.
+
+- [Workstation test reuse proposal](proposals/workstation-test-reuse.md): bounded local execution, build metadata reuse, cache ownership and post-nightly adoption order.

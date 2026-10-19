@@ -121,3 +121,5 @@ Use existing issues rather than reopening completed UP-2–UP-10. Each implement
 ## Verification and limits
 
 Remote tips, first-parent history and relevant source/test files were inspected. GitHub PR bodies and current BookiE issue states were read directly. Public issue status can change after this date. No upstream green-CI claim is made, and no test-author statement is substituted for an independent run. No application tests, database tests, builds, performance measurements or Forgejo runs were started for this documentation analysis.
+
+Follow-up execution planning: [workstation test reuse](../proposals/workstation-test-reuse.md) records the dated hardware inspection, cache strategy and nightly-dependent next steps.
