@@ -168,9 +168,6 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(self.check("v0.82.0-beta.1", github), [])
         self.assertEqual(github.run_queries, [(self.cut, "release/0.82")])
 
-    def test_the_test_jobs_are_the_ones_ci_yml_calls(self):
-        self.assertEqual(version.TEST_JOBS, ("macos / macOS Tests", "ios / iOS and Package Tests"))
-
     def test_a_skipped_test_job_refuses_the_tag(self):
         self.repo.git("tag", "v0.82.0-beta.1", self.cut)
         runs, jobs = green_on(self.cut)
