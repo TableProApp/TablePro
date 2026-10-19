@@ -44,7 +44,7 @@ impl ProbeOutcome {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::{LossPhase, NetworkEndpoint, SshFailure, TimeoutPhase, TransportError};
+    use tablepro_core::{BusyReason, LossPhase, NetworkEndpoint, SshFailure, TimeoutPhase, TransportError};
 
     use super::*;
 
@@ -63,7 +63,10 @@ mod tests {
         }));
 
         assert_eq!(ProbeOutcome::classify(Ok(())), ProbeOutcome::Healthy);
-        assert_eq!(ProbeOutcome::classify(Err(DriverError::Busy)), ProbeOutcome::Busy);
+        assert_eq!(
+            ProbeOutcome::classify(Err(DriverError::Busy(BusyReason::NoFreeConnection))),
+            ProbeOutcome::Busy
+        );
         assert_eq!(
             ProbeOutcome::classify(Err(DriverError::Timeout {
                 phase: TimeoutPhase::Probe,

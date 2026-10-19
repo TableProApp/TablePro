@@ -4,8 +4,8 @@ use std::io;
 use deadpool::managed::{PoolError, TimeoutType};
 use sqlx::mysql::MySqlDatabaseError;
 use tablepro_core::{
-    DriverError, LossPhase, NetworkEndpoint, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TimeoutPhase, TlsFailure,
-    TransportError,
+    BusyReason, DriverError, LossPhase, NetworkEndpoint, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TimeoutPhase,
+    TlsFailure, TransportError,
 };
 
 use crate::flavour::MySqlFlavour;
@@ -92,7 +92,7 @@ fn map_with(error: &sqlx::Error, flavour: Option<MySqlFlavour>) -> DriverError {
             },
         },
         sqlx::Error::Tls(tls) => tls_error(tls.as_ref()),
-        sqlx::Error::PoolTimedOut => DriverError::Busy,
+        sqlx::Error::PoolTimedOut => DriverError::Busy(BusyReason::NoFreeConnection),
         sqlx::Error::PoolClosed | sqlx::Error::WorkerCrashed => DriverError::ConnectionLost {
             during: LossPhase::Idle,
         },
@@ -166,7 +166,7 @@ pub(crate) fn classify_number(diagnostics: ServerDiagnostics, flavour: Option<My
             phase: TimeoutPhase::LockWait,
             server_cancelled: true,
         },
-        TOO_MANY_CONNECTIONS => DriverError::Busy,
+        TOO_MANY_CONNECTIONS => DriverError::Busy(BusyReason::NoFreeConnection),
         MYSQL_QUERY_TIMEOUT if mysql => statement_timeout(),
         MARIADB_STATEMENT_TIMEOUT if mariadb => statement_timeout(),
         SECURE_TRANSPORT_REQUIRED => requires_tls(diagnostics),
@@ -215,7 +215,7 @@ pub(crate) fn server_number(error: &DriverError) -> Option<u16> {
 /// is the server having no room rather than a dead link.
 pub(crate) fn map_pool_error(error: &PoolError<DriverError>) -> DriverError {
     match error {
-        PoolError::Timeout(TimeoutType::Wait) => DriverError::Busy,
+        PoolError::Timeout(TimeoutType::Wait) => DriverError::Busy(BusyReason::NoFreeConnection),
         PoolError::Timeout(TimeoutType::Create) => DriverError::Timeout {
             phase: TimeoutPhase::Login,
             server_cancelled: false,
@@ -273,7 +273,10 @@ mod tests {
                     ..
                 }
             ));
-            assert_eq!(classify(TOO_MANY_CONNECTIONS), DriverError::Busy);
+            assert_eq!(
+                classify(TOO_MANY_CONNECTIONS),
+                DriverError::Busy(BusyReason::NoFreeConnection)
+            );
             assert!(matches!(classify(1146), DriverError::Server(_)), "{flavour:?}");
         }
 

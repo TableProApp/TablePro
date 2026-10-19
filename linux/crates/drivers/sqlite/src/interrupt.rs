@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use sqlx::sqlite::SqliteConnection as SqlxConnection;
-use tablepro_core::{DriverError, EngineStop, StopDelivery, StopScope};
+use tablepro_core::{BusyReason, DriverError, EngineStop, StopDelivery, StopScope};
 
 use crate::errors::{is_interrupt, map_error};
 use crate::lock_wait::LockWait;
@@ -53,7 +53,7 @@ impl InterruptFlag {
     /// statement is interrupted, and one waiting for a lock gives up
     /// as busy.
     pub(crate) fn stopped(&self, error: &DriverError) -> bool {
-        is_interrupt(error) || (self.is_raised() && *error == DriverError::Busy)
+        is_interrupt(error) || (self.is_raised() && *error == DriverError::Busy(BusyReason::FileLocked))
     }
 
     /// Make this flag the one the connection's statements answer to,

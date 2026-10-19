@@ -7,11 +7,10 @@ use std::path::Path;
 
 use sqlx::error::DatabaseError;
 use sqlx::sqlite::SqliteError;
-use tablepro_core::{DriverError, LossPhase, ReadOnlyRefusal, ServerCode, ServerDiagnostics};
+use tablepro_core::{BusyReason, DriverError, LossPhase, ReadOnlyRefusal, ServerCode, ServerDiagnostics};
 
 pub(crate) const SQLITE_ERROR: i32 = 1;
 pub(crate) const SQLITE_BUSY: i32 = 5;
-pub(crate) const SQLITE_LOCKED: i32 = 6;
 pub(crate) const SQLITE_READONLY: i32 = 8;
 pub(crate) const SQLITE_INTERRUPT: i32 = 9;
 pub(crate) const SQLITE_IOERR: i32 = 10;
@@ -36,7 +35,7 @@ pub(crate) fn map_error(error: sqlx::Error) -> DriverError {
         },
         // The one workspace connection is held by a longer call, so the
         // file is busy rather than gone.
-        sqlx::Error::PoolTimedOut => DriverError::Busy,
+        sqlx::Error::PoolTimedOut => DriverError::Busy(BusyReason::NoFreeConnection),
         sqlx::Error::PoolClosed => DriverError::ConnectionLost {
             during: LossPhase::Idle,
         },
@@ -79,9 +78,14 @@ pub(crate) fn cannot_open(path: &Path) -> DriverError {
 }
 
 fn server_error(sqlite: &SqliteError) -> DriverError {
-    let diagnostics = diagnostics_of(sqlite);
-    match primary_code(sqlite) {
-        SQLITE_BUSY | SQLITE_LOCKED => DriverError::Busy,
+    classify(primary_code(sqlite), diagnostics_of(sqlite))
+}
+
+/// `SQLITE_LOCKED` stays the server's error: without a shared cache it
+/// is a conflict inside one connection, which no other program causes.
+fn classify(primary: i32, diagnostics: ServerDiagnostics) -> DriverError {
+    match primary {
+        SQLITE_BUSY => DriverError::Busy(BusyReason::FileLocked),
         SQLITE_READONLY => DriverError::ReadOnly(ReadOnlyRefusal::server(diagnostics)),
         _ => DriverError::reported(diagnostics),
     }
@@ -140,6 +144,36 @@ mod tests {
 
         assert_eq!(cannot_open(&missing), DriverError::FileNotFound { path: missing });
         assert_eq!(cannot_open(&present), DriverError::FileAccessDenied { path: present });
+    }
+
+    fn sqlite(extended: i32, message: &str) -> ServerDiagnostics {
+        ServerDiagnostics::new(
+            Some(ServerCode::Sqlite {
+                primary: extended & 0xff,
+                extended,
+            }),
+            message,
+        )
+    }
+
+    #[test]
+    fn busy_is_a_locked_file_and_a_table_lock_is_the_servers_own_error() {
+        const SQLITE_BUSY_SNAPSHOT: i32 = 517;
+        const SQLITE_LOCKED: i32 = 6;
+        let table_locked = sqlite(SQLITE_LOCKED, "database table is locked");
+
+        assert_eq!(
+            classify(SQLITE_BUSY, sqlite(SQLITE_BUSY, "database is locked")),
+            DriverError::Busy(BusyReason::FileLocked)
+        );
+        assert_eq!(
+            classify(SQLITE_BUSY, sqlite(SQLITE_BUSY_SNAPSHOT, "database is locked")),
+            DriverError::Busy(BusyReason::FileLocked)
+        );
+        assert_eq!(
+            classify(SQLITE_LOCKED, table_locked.clone()),
+            DriverError::reported(table_locked)
+        );
     }
 
     #[test]

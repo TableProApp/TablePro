@@ -59,7 +59,7 @@ A stop is `KILL QUERY WHERE query_id = ? ASYNC` on the control client. Each quer
 | 159 | `Timeout { phase: Statement, server_cancelled: true }` |
 | 164, 392 | `ReadOnly(ServerRejected)` |
 | 192, 193, 194, 516; 497 on the first request | `Auth` |
-| 202, 203 | `Busy` |
+| 202, 203 | `Busy(NoFreeConnection)` |
 | 373 on an editor run | `EditorSessionBusy` |
 | 372 on an editor run | `ConnectionLost`: the server let the session expire |
 

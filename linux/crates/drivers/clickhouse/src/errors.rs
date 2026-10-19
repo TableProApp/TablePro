@@ -3,7 +3,8 @@ use std::io;
 
 use clickhouse::error::Error as ClickHouseError;
 use tablepro_core::{
-    DriverError, LossPhase, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TimeoutPhase, TlsFailure, TransportError,
+    BusyReason, DriverError, LossPhase, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TimeoutPhase, TlsFailure,
+    TransportError,
 };
 
 /// Codes the app acts on. Everything else is the server's own answer,
@@ -106,7 +107,9 @@ fn server_error(message: &str, context: ErrorContext) -> DriverError {
             phase: TimeoutPhase::Statement,
             server_cancelled: true,
         },
-        Some(code::TOO_MANY_SIMULTANEOUS_QUERIES | code::NO_FREE_CONNECTION) => DriverError::Busy,
+        Some(code::TOO_MANY_SIMULTANEOUS_QUERIES | code::NO_FREE_CONNECTION) => {
+            DriverError::Busy(BusyReason::NoFreeConnection)
+        }
         _ => DriverError::reported(diagnostics),
     }
 }

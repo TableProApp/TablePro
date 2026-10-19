@@ -3,7 +3,8 @@ use std::io;
 
 use deadpool_postgres::{PoolError, TimeoutType};
 use tablepro_core::{
-    DriverError, LossPhase, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TimeoutPhase, TlsFailure, TransportError,
+    BusyReason, DriverError, LossPhase, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TimeoutPhase, TlsFailure,
+    TransportError,
 };
 use tokio_postgres::error::{DbError, ErrorPosition};
 
@@ -82,7 +83,7 @@ pub(crate) fn map_diagnostics(diagnostics: ServerDiagnostics) -> DriverError {
             phase: TimeoutPhase::LockWait,
             server_cancelled: true,
         },
-        "53300" => DriverError::Busy,
+        "53300" => DriverError::Busy(BusyReason::NoFreeConnection),
         // The server ended the session: an administrator terminated the
         // backend, or the server is shutting down.
         "57P01" | "57P02" | "57P03" => DriverError::ConnectionLost {
@@ -147,7 +148,7 @@ pub(crate) fn read_only_refusal(error: DriverError) -> DriverError {
 /// busy, which is the server having no room rather than a dead link.
 pub(crate) fn map_pool_error(error: &PoolError) -> DriverError {
     match error {
-        PoolError::Timeout(TimeoutType::Wait) => DriverError::Busy,
+        PoolError::Timeout(TimeoutType::Wait) => DriverError::Busy(BusyReason::NoFreeConnection),
         PoolError::Timeout(TimeoutType::Create) => DriverError::Timeout {
             phase: TimeoutPhase::Login,
             server_cancelled: false,
@@ -233,7 +234,7 @@ mod tests {
                 )
             }),
             ("53300", "sorry, too many clients already", |e| {
-                matches!(e, DriverError::Busy)
+                matches!(e, DriverError::Busy(BusyReason::NoFreeConnection))
             }),
             ("57P01", "terminating connection due to administrator command", |e| {
                 matches!(e, DriverError::ConnectionLost { .. })
@@ -255,7 +256,7 @@ mod tests {
             }),
             Some("57014")
         );
-        assert_eq!(sqlstate(&DriverError::Busy), None);
+        assert_eq!(sqlstate(&DriverError::Busy(BusyReason::NoFreeConnection)), None);
     }
 
     #[test]
@@ -281,7 +282,7 @@ mod tests {
     fn a_pool_wait_that_runs_out_is_busy() {
         assert_eq!(
             map_pool_error(&PoolError::Timeout(TimeoutType::Wait)),
-            DriverError::Busy
+            DriverError::Busy(BusyReason::NoFreeConnection)
         );
         assert!(matches!(
             map_pool_error(&PoolError::Closed),

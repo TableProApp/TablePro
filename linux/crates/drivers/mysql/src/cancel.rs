@@ -189,7 +189,10 @@ mod tests {
         assert!(acknowledges_stop(&DriverError::Cancelled, StopProgress::Delivered));
         assert!(acknowledges_stop(&timed_out, StopProgress::Delivered));
         assert!(!acknowledges_stop(&timed_out, StopProgress::NotSent));
-        assert!(!acknowledges_stop(&DriverError::Busy, StopProgress::Delivered));
+        assert!(!acknowledges_stop(
+            &DriverError::Busy(tablepro_core::BusyReason::NoFreeConnection),
+            StopProgress::Delivered
+        ));
     }
 
     #[test]

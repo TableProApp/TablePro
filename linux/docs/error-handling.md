@@ -33,7 +33,7 @@ Errors are typed enums, built with `thiserror` wherever they cross a crate bound
 | `RolledBack`, `RowGuardFailed`, `CommitOutcomeUnknown`, `PartiallyApplied` | What a failed save left in the database ([adding-drivers.md](adding-drivers.md#5-writes-and-the-writeledger)). |
 | `GuardUnsupported` | The engine reports no row count, so a guarded write cannot run. |
 | `FileNotFound`, `FileAccessDenied`, `NotADatabase`, `FileIo` | A file engine's file. |
-| `Busy` | The server has no room for another connection, or the pool had no free slot in time. |
+| `Busy(BusyReason)` | Something was busy: `NoFreeConnection` (the server has no room for another connection, or the pool had no free slot in time) or `FileLocked` (another connection held the database file's lock past the lock timeout). |
 | `EditorSessionBusy` | The tab's session is already running a statement. |
 | `Config(ConfigError)` | The settings cannot be used: a bad host, port, path, TLS option, auth mode or missing database name. |
 | `Decode { column, detail }` | The driver could not read a value. A bug on our side, not the server's. The detail is for the log. |
@@ -64,7 +64,7 @@ Rules:
 | `ConnectionLost` | `ConnectionLost` | Says the connection closed. The session reconnects on a backoff. |
 | `WriteOutcome` | `RolledBack`, `RowGuardFailed`, `CommitOutcomeUnknown`, `PartiallyApplied` | Says what is in the database now. Only `RolledBack` and `RowGuardFailed` may say nothing changed. |
 | `File` | the four file variants | Names the path. A connect that failed on the file is not retried. |
-| `Busy` | `Busy`, `EditorSessionBusy` | Says to try again shortly, or to wait for the tab's statement. |
+| `Busy` | `Busy`, `EditorSessionBusy` | Says to try again shortly, that another program or tab holds the file's lock, or to wait for the tab's statement. |
 | `Internal` | `GuardUnsupported`, `Decode`, `Protocol`; `SshFailure::Protocol` | Says what the driver could not do: check a save, read a value, read the reply. |
 
 ## `ServerDiagnostics`

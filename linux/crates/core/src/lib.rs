@@ -1,5 +1,6 @@
 mod auth_mode;
 pub mod browse;
+mod busy_reason;
 mod call_options;
 mod capabilities;
 mod certificate_file_problem;
@@ -75,6 +76,7 @@ mod write_ledger;
 mod write_report;
 
 pub use auth_mode::AuthMode;
+pub use busy_reason::BusyReason;
 pub use call_options::CallOptions;
 pub use capabilities::{
     CommitResolutionSupport, DriverCapabilities, EndpointKind, EstimateQuality, ReadOnlyEnforcement, ScriptExecution,

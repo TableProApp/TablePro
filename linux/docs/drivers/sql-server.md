@@ -86,7 +86,7 @@ SQL Server has no session statement timeout. A workspace call's deadline is the 
 | 1222 | `Timeout { phase: LockWait }` |
 | 3906 | `ReadOnly(ServerRejected)` |
 | 18456, 18452, 18486, 18487, 18488 | `Auth` |
-| 17809 | `Busy` |
+| 17809 | `Busy(NoFreeConnection)` |
 | A GSSAPI failure | `IntegratedAuth` |
 
 ## Writes

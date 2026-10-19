@@ -126,7 +126,7 @@ async fn prove_saturated(connection: &dyn Connection, size: usize) -> Result<(),
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::{DriverError, QueryResult};
+    use tablepro_core::{BusyReason, DriverError, QueryResult};
 
     use super::*;
     use crate::conformance::fake_engine::{FakeEngine, FakeScenario};
@@ -162,7 +162,7 @@ mod tests {
                 .when_sql_contains("BLOCK", holding())
                 .always(FakeReply::Bounded {
                     after: test_liveness().pool_wait,
-                    outcome: Err(DriverError::Busy),
+                    outcome: Err(DriverError::Busy(BusyReason::NoFreeConnection)),
                 });
             script
         }

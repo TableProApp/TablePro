@@ -48,7 +48,7 @@ impl FailureCause {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::{ConfigError, LossPhase};
+    use tablepro_core::{BusyReason, ConfigError, LossPhase};
 
     use super::*;
 
@@ -95,6 +95,6 @@ mod tests {
             }),
             None
         );
-        assert_eq!(FailureCause::of(&DriverError::Busy), None);
+        assert_eq!(FailureCause::of(&DriverError::Busy(BusyReason::NoFreeConnection)), None);
     }
 }

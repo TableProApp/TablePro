@@ -8,8 +8,8 @@ use sqlx::{Connection as _, Executor as _};
 use tablepro_core::meta::TableRef;
 use tablepro_core::statement::GuardedStatement;
 use tablepro_core::{
-    Connection, DriverError, ForeignKeyCheck, ForeignKeyMode, ServerCode, Value, WorkspaceSettings, WriteBatch,
-    WriteKind,
+    BusyReason, Connection, DriverError, ForeignKeyCheck, ForeignKeyMode, ServerCode, Value, WorkspaceSettings,
+    WriteBatch, WriteKind,
 };
 use tokio::time::Instant;
 
@@ -180,7 +180,7 @@ async fn write_batch_takes_write_lock_before_probe() {
     holder.execute("ROLLBACK").await.unwrap();
     holder.close().await.unwrap();
 
-    assert!(matches!(outcome, Err(DriverError::Busy)), "{outcome:?}");
+    assert_eq!(outcome.err(), Some(DriverError::Busy(BusyReason::FileLocked)));
     assert!(waited >= Duration::from_millis(250), "busy after only {waited:?}");
     let rows = query(connection.as_ref(), "SELECT a FROM t ORDER BY id").await;
     assert_eq!(

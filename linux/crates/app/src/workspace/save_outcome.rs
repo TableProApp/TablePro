@@ -57,7 +57,9 @@ impl SaveOutcome {
 mod tests {
     use tablepro_core::ddl::BuildDdlError;
     use tablepro_core::dml::BuildSqlError;
-    use tablepro_core::{CommitToken, LossPhase, ReadOnlyRefusal, StatementOutcome, TimeoutPhase, TransportError};
+    use tablepro_core::{
+        BusyReason, CommitToken, LossPhase, ReadOnlyRefusal, StatementOutcome, TimeoutPhase, TransportError,
+    };
     use tablepro_session::runtime::TaskPanic;
 
     use super::*;
@@ -145,7 +147,8 @@ mod tests {
             SaveOutcome::Unknown(UnknownCause::Interrupted)
         );
         for refused in [
-            DriverError::Busy,
+            DriverError::Busy(BusyReason::NoFreeConnection),
+            DriverError::Busy(BusyReason::FileLocked),
             DriverError::server("syntax error"),
             DriverError::auth(None),
             DriverError::Transport(TransportError::NameResolution {

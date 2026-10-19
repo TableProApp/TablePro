@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use tablepro_core::credentials::{SecretError, SecretKind};
 use tablepro_core::sql_syntax::script::{OpenConstruct, ScriptDiagnostic};
 use tablepro_core::{
-    ConfigError, DriverError, ErrorCategory, LossPhase, NetworkEndpoint, ReadOnlyRefusal, ServerCode,
+    BusyReason, ConfigError, DriverError, ErrorCategory, LossPhase, NetworkEndpoint, ReadOnlyRefusal, ServerCode,
     ServerDiagnostics, SshFailure, StatementOutcome, TimeoutPhase, TlsFailure, TransportError,
 };
 use tablepro_session::runtime::TaskPanic;
@@ -68,7 +68,7 @@ fn one_per_category() -> Vec<(ErrorCategory, DriverError)> {
                 path: PathBuf::from("/srv/app.db"),
             },
         ),
-        (ErrorCategory::Busy, DriverError::Busy),
+        (ErrorCategory::Busy, DriverError::Busy(BusyReason::NoFreeConnection)),
         (ErrorCategory::Internal, DriverError::Protocol("bad frame".to_owned())),
     ]
 }
@@ -194,9 +194,35 @@ fn a_refused_login_is_not_called_a_wrong_password() {
 #[test]
 fn busy_and_editor_busy_messages_differ() {
     assert_ne!(
-        driver_message(&DriverError::Busy),
+        driver_message(&DriverError::Busy(BusyReason::NoFreeConnection)),
         driver_message(&DriverError::EditorSessionBusy)
     );
+}
+
+#[test]
+fn a_locked_file_names_the_lock_not_a_full_server() {
+    let locked = driver_message(&DriverError::Busy(BusyReason::FileLocked));
+    let full = driver_message(&DriverError::Busy(BusyReason::NoFreeConnection));
+
+    assert_eq!(
+        full,
+        "The server has no room for another connection right now. Try again shortly."
+    );
+    assert!(locked.contains("lock on this database file"), "{locked}");
+    assert!(!locked.contains("server"), "{locked}");
+    assert_ne!(locked, driver_message(&DriverError::EditorSessionBusy));
+}
+
+#[test]
+fn a_save_whose_commit_met_a_lock_says_why_and_that_nothing_changed() {
+    let locked = DriverError::Busy(BusyReason::FileLocked);
+    let message = driver_message(&DriverError::RolledBack {
+        statement_index: 1,
+        source: Box::new(locked.clone()),
+    });
+
+    assert!(message.contains(&driver_message(&locked)), "{message}");
+    assert!(message.contains("no rows were changed"), "{message}");
 }
 
 #[test]
@@ -368,8 +394,8 @@ fn operation_errors_cancelled_and_closed_differ() {
         operation_error_message(&OperationError::Closed)
     );
     assert_eq!(
-        operation_error_message(&OperationError::Driver(DriverError::Busy)),
-        driver_message(&DriverError::Busy)
+        operation_error_message(&OperationError::Driver(DriverError::Busy(BusyReason::NoFreeConnection))),
+        driver_message(&DriverError::Busy(BusyReason::NoFreeConnection))
     );
 }
 

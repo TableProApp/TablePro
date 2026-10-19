@@ -13,9 +13,9 @@ use secrecy::SecretString;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::statement::{GuardedStatement, Statement, StatementBuilder};
 use tablepro_core::{
-    CallOptions, ConnectEnvironment, ConnectOptions, ConnectTarget, Connection, Credentials, DatabaseDriver,
-    DriverError, ErrorCategory, ForeignKeyMode, LivenessPolicy, NetworkEndpoint, NetworkTarget, RowLimit, TableRef,
-    TlsConfig, Value, WorkspaceSettings, WriteBatch, WriteKind,
+    BusyReason, CallOptions, ConnectEnvironment, ConnectOptions, ConnectTarget, Connection, Credentials,
+    DatabaseDriver, DriverError, ErrorCategory, ForeignKeyMode, LivenessPolicy, NetworkEndpoint, NetworkTarget,
+    RowLimit, TableRef, TlsConfig, Value, WorkspaceSettings, WriteBatch, WriteKind,
 };
 use tablepro_driver_postgres::{PgDriver, WORKSPACE_POOL_MAX_SIZE};
 use tablepro_net::DirectTcpTransport;
@@ -265,7 +265,10 @@ async fn saturated_pool_operation_busy_probe_ok_stays_online() {
     session.signal(MonitorSignal::ProbeRequested { generation });
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    assert_eq!(crowded, Err(OperationError::Driver(DriverError::Busy)));
+    assert_eq!(
+        crowded,
+        Err(OperationError::Driver(DriverError::Busy(BusyReason::NoFreeConnection)))
+    );
     assert_eq!(*session.health().borrow(), SessionHealth::Online);
     assert_eq!(
         *session.link_changes().borrow(),

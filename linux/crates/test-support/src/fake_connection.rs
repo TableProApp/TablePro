@@ -465,10 +465,10 @@ mod tests {
     use std::time::Duration;
 
     use futures::future::BoxFuture;
-    use tablepro_core::LossPhase;
     use tablepro_core::meta::ObjectKind;
     use tablepro_core::statement::{Statement, StatementBuilder};
     use tablepro_core::value::Value;
+    use tablepro_core::{BusyReason, LossPhase};
     use tokio::time::Instant;
 
     use super::*;
@@ -494,7 +494,7 @@ mod tests {
                 name: "items".to_owned(),
                 kind: ObjectKind::Table,
             }]))
-            .once(FakeReply::err(DriverError::Busy));
+            .once(FakeReply::err(DriverError::Busy(BusyReason::NoFreeConnection)));
         script.probe.always(FakeReply::ok(()));
         let connection = FakeConnection::new(script);
         let counters = connection.counters();
@@ -506,7 +506,7 @@ mod tests {
         assert_eq!(listed.len(), 1);
         assert!(matches!(
             connection.list_objects(&ObjectScope::DefaultSchema, unbounded()).await,
-            Err(DriverError::Busy)
+            Err(DriverError::Busy(BusyReason::NoFreeConnection))
         ));
         assert!(matches!(
             connection.list_objects(&ObjectScope::DefaultSchema, unbounded()).await,
@@ -655,9 +655,9 @@ mod tests {
     #[tokio::test]
     async fn a_stopped_with_reply_answers_its_outcome_only_once_cancelled() {
         let mut script = ConnectionScript::default();
-        script
-            .query_bound
-            .always(FakeReply::StoppedWith(Err(DriverError::Busy)));
+        script.query_bound.always(FakeReply::StoppedWith(Err(DriverError::Busy(
+            BusyReason::NoFreeConnection,
+        ))));
         let connection = Arc::new(FakeConnection::new(script));
         let cancel = CancellationToken::new();
 
@@ -678,7 +678,10 @@ mod tests {
 
         cancel.cancel();
 
-        assert!(matches!(waiting.await.unwrap(), Err(DriverError::Busy)));
+        assert!(matches!(
+            waiting.await.unwrap(),
+            Err(DriverError::Busy(BusyReason::NoFreeConnection))
+        ));
         assert!(observed[0].is_cancelled(), "the call was handed another token");
         assert!(connection.observed_cancels("write_batch").is_empty());
     }

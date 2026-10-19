@@ -1,5 +1,5 @@
 use tablepro_core::{
-    ConfigError, DriverError, ErrorCategory, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TimeoutPhase,
+    BusyReason, ConfigError, DriverError, ErrorCategory, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TimeoutPhase,
     TransportError,
 };
 
@@ -35,6 +35,9 @@ pub fn driver_message(error: &DriverError) -> String {
             DriverError::EditorSessionBusy => {
                 crate::i18n::gettext("This tab is still running a statement. Stop it or wait for it to finish.")
             }
+            DriverError::Busy(BusyReason::FileLocked) => crate::i18n::gettext(
+                "Another program, or an editor tab with an open transaction, holds a lock on this database file. Try again when it has finished.",
+            ),
             _ => crate::i18n::gettext("The server has no room for another connection right now. Try again shortly."),
         },
         ErrorCategory::Internal => internal_message(error),

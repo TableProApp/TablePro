@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
+use crate::busy_reason::BusyReason;
 use crate::commit::CommitToken;
 use crate::config_error::ConfigError;
 use crate::error_category::ErrorCategory;
@@ -119,8 +120,8 @@ pub enum DriverError {
     #[error("could not write {}: {kind}", .path.display())]
     FileIo { path: PathBuf, kind: std::io::ErrorKind },
 
-    #[error("the server has no room for another connection")]
-    Busy,
+    #[error("{0}")]
+    Busy(BusyReason),
 
     #[error("the editor session is already running a statement")]
     EditorSessionBusy,
@@ -160,7 +161,7 @@ impl DriverError {
             | Self::FileAccessDenied { .. }
             | Self::NotADatabase { .. }
             | Self::FileIo { .. } => ErrorCategory::File,
-            Self::Busy | Self::EditorSessionBusy => ErrorCategory::Busy,
+            Self::Busy(_) | Self::EditorSessionBusy => ErrorCategory::Busy,
             Self::Config(_) | Self::Unsupported { .. } => ErrorCategory::Configuration,
             Self::GuardUnsupported { .. } | Self::Decode { .. } | Self::Protocol(_) => ErrorCategory::Internal,
         }
@@ -264,6 +265,17 @@ mod tests {
 
         assert_eq!(refused.category(), ErrorCategory::Authentication);
         assert_ne!(refused, DriverError::auth(None));
+    }
+
+    #[test]
+    fn a_locked_file_is_busy_but_not_a_full_server() {
+        let locked = DriverError::Busy(BusyReason::FileLocked);
+        let full = DriverError::Busy(BusyReason::NoFreeConnection);
+
+        assert_eq!(locked.category(), ErrorCategory::Busy);
+        assert_eq!(full.category(), ErrorCategory::Busy);
+        assert!(!locked.to_string().contains("server"), "{locked}");
+        assert_ne!(locked.to_string(), full.to_string());
     }
 
     #[test]

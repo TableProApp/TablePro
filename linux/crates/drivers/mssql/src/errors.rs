@@ -1,5 +1,5 @@
 use deadpool::managed::{PoolError, TimeoutType};
-use tablepro_core::{DriverError, LossPhase, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TimeoutPhase};
+use tablepro_core::{BusyReason, DriverError, LossPhase, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TimeoutPhase};
 use tiberius::error::Error;
 
 use crate::tds_message::TdsMessage;
@@ -47,7 +47,7 @@ pub(crate) fn server_error(message: &TdsMessage) -> DriverError {
             server_cancelled: true,
         },
         // The server's user connection limit.
-        17809 => DriverError::Busy,
+        17809 => DriverError::Busy(BusyReason::NoFreeConnection),
         _ => DriverError::reported(diagnostics),
     }
 }
@@ -81,7 +81,7 @@ pub(crate) fn ends_connection(error: &DriverError) -> bool {
 /// busy, which is the server having no room rather than a dead link.
 pub(crate) fn map_pool_error(error: PoolError<DriverError>) -> DriverError {
     match error {
-        PoolError::Timeout(TimeoutType::Wait) => DriverError::Busy,
+        PoolError::Timeout(TimeoutType::Wait) => DriverError::Busy(BusyReason::NoFreeConnection),
         PoolError::Timeout(TimeoutType::Create) => DriverError::Timeout {
             phase: TimeoutPhase::Login,
             server_cancelled: false,
@@ -142,7 +142,7 @@ mod tests {
             (
                 17809,
                 "Could not connect because the maximum number of user connections",
-                |e| matches!(e, DriverError::Busy),
+                |e| matches!(e, DriverError::Busy(BusyReason::NoFreeConnection)),
             ),
             (208, "Invalid object name 't'.", |e| matches!(e, DriverError::Server(_))),
             (1205, "Transaction was deadlocked", |e| {
@@ -157,7 +157,10 @@ mod tests {
         for (number, text, expected) in cases {
             let mapped = server_error(&message(number, text));
             assert!(expected(&mapped), "{number}: {mapped:?}");
-            if !matches!(mapped, DriverError::Timeout { .. } | DriverError::Busy) {
+            if !matches!(
+                mapped,
+                DriverError::Timeout { .. } | DriverError::Busy(BusyReason::NoFreeConnection)
+            ) {
                 assert_eq!(tds_number(&mapped), Some(number), "{number} kept its number");
             }
         }
@@ -225,7 +228,10 @@ mod tests {
 
     #[test]
     fn a_pool_wait_that_runs_out_is_busy() {
-        assert_eq!(map_pool_error(PoolError::Timeout(TimeoutType::Wait)), DriverError::Busy);
+        assert_eq!(
+            map_pool_error(PoolError::Timeout(TimeoutType::Wait)),
+            DriverError::Busy(BusyReason::NoFreeConnection)
+        );
         assert!(matches!(
             map_pool_error(PoolError::Closed),
             DriverError::ConnectionLost { .. }

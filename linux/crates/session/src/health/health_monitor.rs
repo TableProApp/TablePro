@@ -282,7 +282,7 @@ async fn discard_late(pending: PendingSession) {
 mod tests {
     use std::sync::Arc;
 
-    use tablepro_core::{DriverError, LivenessPolicy, LossPhase, NetworkEndpoint, TransportError};
+    use tablepro_core::{BusyReason, DriverError, LivenessPolicy, LossPhase, NetworkEndpoint, TransportError};
     use tablepro_test_support::{CallCounters, ConnectionScript, FakeConnection, FakePrompter, FakeReply};
 
     use super::*;
@@ -686,7 +686,9 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn busy_probe_keeps_online() {
         let mut script = ConnectionScript::default();
-        script.probe.always(FakeReply::err(DriverError::Busy));
+        script
+            .probe
+            .always(FakeReply::err(DriverError::Busy(BusyReason::NoFreeConnection)));
         let started = start(script, FakeConnector::new([]));
 
         tokio::time::sleep(HealthPolicy::PROBE_INTERVAL * 5).await;

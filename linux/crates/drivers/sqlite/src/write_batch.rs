@@ -3,8 +3,10 @@
 //! Every batch starts with BEGIN IMMEDIATE, which takes the write lock
 //! before the first probe reads anything. A deferred BEGIN would take
 //! it at the first write instead, and a probe that read first could
-//! then fail to upgrade its lock. Contention therefore shows up once,
-//! as Busy after the lock timeout, before anything has run.
+//! then fail to upgrade its lock. Another writer therefore shows up at
+//! BEGIN, before anything has run. In a rollback-journal file a reader
+//! elsewhere still holds up the COMMIT, which needs the file to itself,
+//! and the batch then rolls back.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -14,8 +16,8 @@ use sqlx::{AssertSqlSafe, Connection as _, Row};
 use tablepro_core::meta::TableRef;
 use tablepro_core::statement::{GuardedStatement, RowGuard};
 use tablepro_core::{
-    DriverError, ForeignKeyCheck, ForeignKeyMode, LossPhase, SessionFate, StopReason, StopRequest, TimeoutPhase,
-    WriteBatch, WriteLedger, WriteReport,
+    BusyReason, DriverError, ForeignKeyCheck, ForeignKeyMode, LossPhase, SessionFate, StopReason, StopRequest,
+    TimeoutPhase, WriteBatch, WriteLedger, WriteReport,
 };
 
 use crate::autocommit::is_autocommit;
@@ -253,7 +255,7 @@ impl Write<'_> {
     /// lowered for the rollback by then, so the request says whether a
     /// stop came.
     fn stopped(&self, error: &DriverError) -> Option<DriverError> {
-        match is_interrupt(error) || *error == DriverError::Busy {
+        match is_interrupt(error) || *error == DriverError::Busy(BusyReason::FileLocked) {
             true => self.request.reason().map(stop_cause),
             false => None,
         }

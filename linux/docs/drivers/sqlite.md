@@ -11,7 +11,7 @@ Every connection to the file opens with the same options:
 - The path is a file name, never a URI, so `?` and `%41` in it are part of the name.
 - A missing file is `FileNotFound`; the driver never creates one by accident (`create_if_missing` is off).
 - A read-only connection opens the file with `SQLITE_OPEN_READONLY`.
-- `busy_timeout` is the workspace's lock timeout, 10 s: how long SQLite waits for another connection's lock before it reports `Busy`. A call replaces it with a busy handler that waits as long and also ends at a stop ([Stops and timeouts](#stops-and-timeouts)).
+- `busy_timeout` is the workspace's lock timeout, 10 s: how long SQLite waits for another connection's lock before it reports `Busy(FileLocked)`. A call replaces it with a busy handler that waits as long and also ends at a stop ([Stops and timeouts](#stops-and-timeouts)).
 - `foreign_keys = ON`, and `trusted_schema = OFF`, so a view or trigger in a file from elsewhere cannot run SQL functions with side effects.
 - The statement cache is off, because sqlx keeps a statement's columns from its first prepare and SQLite prepares it again with more columns after an `ALTER TABLE`.
 - sqlx's statement logging is off.
@@ -46,18 +46,19 @@ The health probe runs `SELECT 1` on the workspace connection when it is free. Wh
 
 SQLite has no statement timeout and no out-of-band cancel. Each call installs a fresh flag, and a progress handler checks it every 1,000 virtual-machine instructions; when the flag is up the statement ends with `SQLITE_INTERRUPT`. The flag names the call, not the connection, so a stop that arrives late cannot reach the next call: `StopDelivery::OutOfBand(StopScope::Statement)`. `sqlite3_interrupt` is not used, because sqlx's handle to the connection waits for the worker thread to finish its current command, which is the statement the stop was meant for.
 
-A statement waiting for another connection's lock runs no instructions, so each call also installs a busy handler in place of `busy_timeout`. It sleeps the steps SQLite's own would, up to the lock timeout, and gives up as `Busy` once the flag is up, which reads as the stop.
+A statement waiting for another connection's lock runs no instructions, so each call also installs a busy handler in place of `busy_timeout`. It sleeps the steps SQLite's own would, up to the lock timeout, and gives up as `Busy(FileLocked)` once the flag is up, which reads as the stop.
 
 The workspace statement timeout (60 s) becomes a deadline the flag enforces. The flag is lowered before a rollback runs, so the rollback is never interrupted by the stop that caused it.
 
 | SQLite answer | Reported as |
 |---|---|
 | 9 (`SQLITE_INTERRUPT`) after our stop | `Cancelled`, or `Timeout { server_cancelled: true }` when the deadline asked for it |
-| 5, 6 (`SQLITE_BUSY`, `SQLITE_LOCKED`) | `Busy` |
+| 5 (`SQLITE_BUSY`) | `Busy(FileLocked)`: another connection held the lock past the lock timeout |
+| 6 (`SQLITE_LOCKED`) | `Server`: without a shared cache it is a conflict inside one connection, which no other program causes |
 | 8 (`SQLITE_READONLY`) | `ReadOnly(ServerRejected)` |
 | 14 (`SQLITE_CANTOPEN`) at open | `FileNotFound`, or `FileAccessDenied` when the file is there |
 | 26 (`SQLITE_NOTADB`) at open | `NotADatabase` |
-| The workspace connection not free within the pool wait | `Busy` |
+| The workspace connection not free within the pool wait | `Busy(NoFreeConnection)` |
 
 ## Read-only
 
@@ -65,7 +66,12 @@ The workspace statement timeout (60 s) becomes a deadline the flag enforces. The
 
 ## Writes
 
-`WriteAtomicity::Transactional` for row and schema changes. A save is one transaction that starts with `BEGIN IMMEDIATE`, which takes the write lock before the first probe reads anything: contention shows up once, as `Busy` after the lock timeout, before anything has run.
+`WriteAtomicity::Transactional` for row and schema changes. A save is one transaction that starts with `BEGIN IMMEDIATE`, which takes the write lock before the first probe reads anything. Grid saves, structure changes and imports all go through it. Another connection holding the lock shows up in one of two places, each as `Busy(FileLocked)` after the lock timeout, and the file keeps none of the save:
+
+- At `BEGIN IMMEDIATE`, when another connection is writing: the save fails as `Busy(FileLocked)` before anything has run.
+- At `COMMIT`, in a file in rollback-journal mode (the default; not WAL), when another connection has a read transaction open: the COMMIT needs the file to itself, so the save fails as `RolledBack` with `Busy(FileLocked)` as its cause. In WAL mode a reader does not hold up a save.
+
+An editor run that writes, a read while another connection holds the file exclusively (in rollback-journal mode, while it commits), and opening such a file wait the same way and fail as `Busy(FileLocked)`. `tests/integration/file_locked.rs` covers each path.
 
 SQLite is the one engine that can suspend foreign keys for a batch (`ForeignKeyMode::SuspendedThenVerified`), which a table rebuild needs for its copy:
 

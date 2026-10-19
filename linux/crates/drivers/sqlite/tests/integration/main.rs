@@ -15,6 +15,8 @@ mod decode;
 #[cfg(test)]
 mod dialect;
 #[cfg(test)]
+mod file_locked;
+#[cfg(test)]
 mod lock_wait;
 #[cfg(test)]
 mod metadata;

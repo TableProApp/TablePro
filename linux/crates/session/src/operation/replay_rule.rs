@@ -30,7 +30,7 @@ impl ReplayRule {
 #[cfg(test)]
 mod tests {
     use tablepro_core::{
-        ConfigError, DriverError, LossPhase, NetworkEndpoint, TimeoutPhase, TransportError, WriteKind,
+        BusyReason, ConfigError, DriverError, LossPhase, NetworkEndpoint, TimeoutPhase, TransportError, WriteKind,
     };
 
     use super::*;
@@ -47,7 +47,7 @@ mod tests {
                 server_cancelled: true,
             },
             ErrorCategory::Server => DriverError::server("relation does not exist"),
-            ErrorCategory::Busy => DriverError::Busy,
+            ErrorCategory::Busy => DriverError::Busy(BusyReason::NoFreeConnection),
             ErrorCategory::Authentication => DriverError::auth(None),
             ErrorCategory::Configuration => DriverError::Config(ConfigError::DatabaseRequired),
             _ => DriverError::Protocol("other".to_owned()),

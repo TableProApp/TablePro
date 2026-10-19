@@ -629,7 +629,7 @@ fn failing_source(plan: &SavePlan, changes: &TrackedChanges, error: &DriverError
 mod tests {
     use tablepro_core::edit::CellInput;
     use tablepro_core::meta::TableRef;
-    use tablepro_core::{CommitToken, LossPhase, Value};
+    use tablepro_core::{BusyReason, CommitToken, LossPhase, Value};
     use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 
     use super::*;
@@ -850,7 +850,7 @@ mod tests {
     fn an_error_that_names_no_statement_flashes_nothing() {
         let (plan, changes, _) = planned();
 
-        assert!(failing_source(&plan, &changes, &DriverError::Busy).is_none());
+        assert!(failing_source(&plan, &changes, &DriverError::Busy(BusyReason::NoFreeConnection)).is_none());
         let past_the_end = DriverError::RowGuardFailed {
             statement_index: 7,
             expected: 1,

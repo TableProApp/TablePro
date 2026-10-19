@@ -82,7 +82,7 @@ A stop is `KILL QUERY <connection id>` on the control connection, which reaches 
 | 1205 | `Timeout { phase: LockWait }` |
 | 1792 | `ReadOnly(ServerRejected)` |
 | 1045 | `Auth` |
-| 1040 | `Busy` |
+| 1040 | `Busy(NoFreeConnection)` |
 | 3159 | `Tls { failure: ServerRequiresTls }` |
 | 1053, 1927 (MariaDB), 4031 (MySQL) | `ConnectionLost` |
 

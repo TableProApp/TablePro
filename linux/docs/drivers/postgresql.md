@@ -54,7 +54,7 @@ A stop is PostgreSQL's cancel request (`CancelToken::cancel_query_raw`) over a n
 | 25006 | `ReadOnly(ServerRejected)` |
 | 28P01 | `Auth` |
 | 28000, as when pg_hba.conf has no entry for the login | `LoginRefused` |
-| 53300 | `Busy` |
+| 53300 | `Busy(NoFreeConnection)` |
 | 57P01, 57P02, 57P03 | `ConnectionLost` |
 
 The server translates its message through `lc_messages`, so the driver tells its own statement timeout from another session's cancel by the time that passed, not by the text.

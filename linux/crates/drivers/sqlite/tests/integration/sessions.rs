@@ -3,8 +3,9 @@
 use std::time::Duration;
 
 use tablepro_core::{
-    CallOptions, DriverError, EditorSessionOptions, EditorSessionState, ErrorCategory, ReadStatement, ResultEvent,
-    RowLimit, RunEnd, RunOptions, TransactionState, Truncation, UserSql, Value, WorkspaceSettings, WriteKind,
+    BusyReason, CallOptions, DriverError, EditorSessionOptions, EditorSessionState, ErrorCategory, ReadStatement,
+    ResultEvent, RowLimit, RunEnd, RunOptions, TransactionState, Truncation, UserSql, Value, WorkspaceSettings,
+    WriteKind,
 };
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -228,8 +229,8 @@ async fn session_read_concurrent_with_workspace_write_busy_or_commit_never_hangs
 
     let acceptable = match &written {
         Ok(_) => true,
-        Err(DriverError::RolledBack { source, .. }) => matches!(**source, DriverError::Busy),
-        Err(DriverError::Busy) => true,
+        Err(DriverError::RolledBack { source, .. }) => matches!(**source, DriverError::Busy(BusyReason::FileLocked)),
+        Err(DriverError::Busy(BusyReason::FileLocked)) => true,
         Err(_) => false,
     };
     assert!(acceptable, "{written:?}");
