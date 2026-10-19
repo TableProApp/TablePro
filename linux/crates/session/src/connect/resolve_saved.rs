@@ -41,7 +41,7 @@ fn saved_request(saved: &SavedConnection, drivers: &DriverRegistry) -> Result<Co
             .as_ref()
             .map(ssh_config)
             .transpose()
-            .map_err(|failure| DriverError::from(tablepro_core::TransportError::Ssh(failure)))?;
+            .map_err(|problem| DriverError::from(tablepro_core::TransportError::Ssh(problem.into())))?;
         let credentials = match saved.auth_mode {
             AuthMode::Password => Credentials::Password {
                 username: saved.username.clone(),
@@ -71,7 +71,7 @@ fn saved_request(saved: &SavedConnection, drivers: &DriverRegistry) -> Result<Co
 
 /// The OpenSSH configuration a saved SSH section describes, with no
 /// secrets yet.
-pub fn ssh_config(saved: &SavedSshConfig) -> Result<SshConfig, tablepro_core::SshFailure> {
+pub fn ssh_config(saved: &SavedSshConfig) -> Result<SshConfig, tablepro_core::SshDestinationProblem> {
     let destination = SshDestination::new(&saved.host, saved.port, saved.username.clone())?;
     let mut jump_hosts = Vec::new();
     for entry in &saved.jump_hosts {
@@ -101,7 +101,9 @@ mod tests {
 
     use secrecy::ExposeSecret;
     use tablepro_core::credentials::{SecretKind, SecretVault};
-    use tablepro_core::{ConfigError, SshFailure, TlsConfig, TransportError};
+    use tablepro_core::{
+        ConfigError, SshDestinationPart, SshDestinationProblem, SshFailure, TlsConfig, TransportError,
+    };
     use tablepro_storage::{KeyringCredentials, KeyringError};
     use tablepro_test_support::{ConnectionScript, FakeDriver, FakeSecretVault};
     use uuid::Uuid;
@@ -291,12 +293,16 @@ mod tests {
             resolve(blank).await.unwrap_err(),
             ConnectError::Driver(DriverError::Config(ConfigError::EmptyHost))
         );
-        assert!(matches!(
+        assert_eq!(
             resolve(bad_ssh).await.unwrap_err(),
             ConnectError::Driver(DriverError::Transport(TransportError::Ssh(
-                SshFailure::InvalidDestination { .. }
+                SshFailure::InvalidDestination {
+                    problem: SshDestinationProblem::LeadingDash {
+                        part: SshDestinationPart::Host
+                    }
+                }
             )))
-        ));
+        );
     }
 
     #[tokio::test]

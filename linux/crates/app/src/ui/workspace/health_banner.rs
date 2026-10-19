@@ -185,7 +185,7 @@ impl WorkspaceModel {
                 let forgotten = match forgotten {
                     Ok(Ok(())) => Ok(()),
                     Ok(Err(error)) => Err(forget_failure_detail(&error)),
-                    Err(error) => Err(error.to_string()),
+                    Err(failure) => Err(crate::ui::error_text::task_failure_message(&failure)),
                 };
                 input.deliver(WorkspaceInput::OldHostKeyForgotten { failure, forgotten });
             },

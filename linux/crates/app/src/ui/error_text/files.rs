@@ -1,12 +1,14 @@
 use std::io::ErrorKind;
 use std::path::Path;
 
+use gtk4::glib;
 use tablepro_core::CertificateFileProblem;
+use tablepro_storage::StorageError;
 
 use crate::i18n::{gettext, gettext_f, ngettext_f};
 
-/// A database file the file system refused, for a reason other than
-/// permission or a missing file, which have their own variants.
+/// A file the file system refused to write. The error's own text is
+/// std's or GLib's, so only its kind is used.
 pub(super) fn file_io_message(path: &Path, kind: ErrorKind) -> String {
     let path = path.display().to_string();
     let args = [("path", path.as_str())];
@@ -16,7 +18,29 @@ pub(super) fn file_io_message(path: &Path, kind: ErrorKind) -> String {
         }
         ErrorKind::ReadOnlyFilesystem => gettext_f("Could not write {path}: the disk is read-only.", &args),
         ErrorKind::FileTooLarge => gettext_f("Could not write {path}: the file is too large.", &args),
+        ErrorKind::PermissionDenied => gettext_f("TablePro is not allowed to write {path}.", &args),
         _ => gettext_f("Could not write {path}.", &args),
+    }
+}
+
+/// Why one of the app's own files could not be written, or `None` when
+/// the failure was not the file system's.
+pub fn storage_io_message(error: &StorageError) -> Option<String> {
+    match error {
+        StorageError::Io { path, source } | StorageError::Permissions { path, source } => {
+            Some(file_io_message(path, source.kind()))
+        }
+        StorageError::Write { path, source } => Some(file_io_message(path, glib_file_error_kind(source))),
+        _ => None,
+    }
+}
+
+fn glib_file_error_kind(error: &glib::Error) -> ErrorKind {
+    match error.kind::<glib::FileError>() {
+        Some(glib::FileError::Nospc) => ErrorKind::StorageFull,
+        Some(glib::FileError::Rofs) => ErrorKind::ReadOnlyFilesystem,
+        Some(glib::FileError::Acces | glib::FileError::Perm) => ErrorKind::PermissionDenied,
+        _ => ErrorKind::Other,
     }
 }
 
@@ -55,6 +79,7 @@ fn size_text(bytes: usize) -> String {
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
+    use std::path::PathBuf;
 
     use super::*;
 
@@ -70,6 +95,53 @@ mod tests {
         assert_eq!(read_only, "Could not write /srv/app.db: the disk is read-only.");
         assert_eq!(other, "Could not write /srv/app.db.");
         assert!(!full.contains(&ErrorKind::StorageFull.to_string()), "{full}");
+    }
+
+    #[test]
+    fn a_refused_write_of_the_apps_own_file_is_worded_by_its_kind() {
+        let path = PathBuf::from("/home/ada/.local/share/tablepro/connections.json");
+        let io = |kind: ErrorKind| StorageError::Io {
+            path: path.clone(),
+            source: std::io::Error::from(kind),
+        };
+        let glib_write = |code: glib::FileError| StorageError::Write {
+            path: path.clone(),
+            source: glib::Error::new(code, "Failed to create file: No space left on device"),
+        };
+        let cases = [
+            (io(ErrorKind::StorageFull), "Could not write {path}: the disk is full."),
+            (
+                io(ErrorKind::PermissionDenied),
+                "TablePro is not allowed to write {path}.",
+            ),
+            (io(ErrorKind::Interrupted), "Could not write {path}."),
+            (
+                glib_write(glib::FileError::Nospc),
+                "Could not write {path}: the disk is full.",
+            ),
+            (
+                glib_write(glib::FileError::Rofs),
+                "Could not write {path}: the disk is read-only.",
+            ),
+            (
+                glib_write(glib::FileError::Acces),
+                "TablePro is not allowed to write {path}.",
+            ),
+            (glib_write(glib::FileError::Io), "Could not write {path}."),
+        ];
+
+        for (error, expected) in cases {
+            let expected = expected.replace("{path}", &path.display().to_string());
+            assert_eq!(
+                storage_io_message(&error).as_deref(),
+                Some(expected.as_str()),
+                "{error:?}"
+            );
+        }
+        assert_eq!(
+            storage_io_message(&StorageError::Schema("the disk is full".to_owned())),
+            None
+        );
     }
 
     #[test]

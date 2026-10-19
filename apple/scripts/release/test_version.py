@@ -408,6 +408,56 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(self.check("v0.82.1-beta.1", github), ["0.82.1-beta.1: a beta exists only on PATCH 0"])
         self.assertEqual(github.run_queries, [])
 
+    def test_a_lead_on_a_patch_refuses_the_tag_before_the_query(self):
+        release_commit = self.repo.commit("chore(release): v0.82.1", with_section("0.82.1", "A lead."))
+        self.repo.line("0.82", release_commit)
+        self.repo.git("tag", "v0.82.1", release_commit)
+        github = FakeGitHub(releases=[("v0.81.0", False)])
+        self.assertEqual(self.check("v0.82.1", github),
+                         ["CHANGELOG.md at v0.82.1: ## [0.82.1] has a lead, and only an X.Y.0 takes one"])
+        self.assertEqual(github.run_queries, [])
+
+
+def with_section(heading, lead=None):
+    body = f"{lead}\n\n### Fixed\n\n- A fix.\n\n" if lead is not None else "### Fixed\n\n- A fix.\n\n"
+    return MAIN_CHANGELOG.replace("## [0.81.0]", f"## [{heading}] - 2026-10-26\n\n{body}## [0.81.0]")
+
+
+class LeadTests(unittest.TestCase):
+    def errors(self, changelog, tag):
+        return version.lead_errors(changelog, version.parse_tag(tag))
+
+    def test_an_x_y_0_lead_of_six_plain_lines_passes(self):
+        lead = "\n".join(f"Line {index}." for index in range(6))
+        self.assertEqual(self.errors(with_section("0.82.0", lead), "v0.82.0"), [])
+
+    def test_a_section_without_a_lead_passes(self):
+        self.assertEqual(self.errors(with_section("0.82.1"), "v0.82.1"), [])
+
+    def test_a_patch_takes_no_lead(self):
+        self.assertEqual(self.errors(with_section("0.82.1", "A lead."), "v0.82.1"),
+                         ["CHANGELOG.md at v0.82.1: ## [0.82.1] has a lead, and only an X.Y.0 takes one"])
+
+    def test_a_lead_takes_at_most_six_lines(self):
+        lead = "\n".join(f"Line {index}." for index in range(7))
+        self.assertEqual(self.errors(with_section("0.82.0", lead), "v0.82.0"),
+                         ["CHANGELOG.md at v0.82.0: the 0.82.0 lead has 7 lines, over 6"])
+
+    def test_a_lead_line_is_plain_text(self):
+        for line in ("# Highlights", "## Highlights", "#### Highlights", "- A bullet."):
+            with self.subTest(line=line):
+                self.assertEqual(self.errors(with_section("0.82.0", f"A lead.\n{line}"), "v0.82.0"),
+                                 [f"CHANGELOG.md at v0.82.0: the 0.82.0 lead line `{line}` is not plain text"])
+
+    def test_only_the_tags_own_section_is_read(self):
+        old_lead = "\n".join(f"- Line {index}." for index in range(9))
+        changelog = with_section("0.82.0", old_lead).replace(
+            "## [0.82.0]", "## [0.82.1] - 2026-10-27\n\n### Fixed\n\n- A fix.\n\n## [0.82.0]")
+        self.assertEqual(self.errors(changelog, "v0.82.1"), [])
+
+    def test_a_beta_reads_no_section(self):
+        self.assertEqual(self.errors(with_section("0.82.0", "- A bullet."), "v0.82.0-beta.1"), [])
+
 
 class AppleTreeTests(unittest.TestCase):
     def test_the_changelog_and_fragments_come_from_the_tree_git_runs_in(self):
