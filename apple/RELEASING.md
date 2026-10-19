@@ -26,14 +26,14 @@ This runbook covers the macOS app, its registry plugins and the static libraries
 - Every fix lands on `main` first, then reaches the line through a cherry-pick PR from `backport/<PR>-<X.Y>`: one fix per PR, titled with the original subject and its ` (#N)`, which is the provenance. A release PR comes from `prep/v<X.Y.Z>`. No PR head branch lives under `release/*`.
 - A line closes when `X.(Y+1).0` ships. A later security or data-loss fix for its users ships as a critical patch on the current stable line. At most two lines are live.
 - After a stable or patch publishes, a PR with the same title cherry-picks its release commit to `main`, and to a newer open line when one exists. The next tag refuses to build until it has.
-- The 0.82 line was cut before the Apple apps moved into `apple/`: on it every path here sits at the repository root, and a pick across the move relies on git's rename detection.
+- The 0.82 line was cut before the Apple apps moved into `apple/`: on it every path here sits at the repository root, and a pick across the move relies on git's rename detection. Its tags run its own `release.yml` and `version.py`, which walk its CI and wait for Release Build.
 
 ## Schedule
 
 Tags go out between 13:00 and 15:00 ICT (UTC+7).
 
 - Monday, the train: promote the open line's newest beta to `vX.Y.0` when the gate passes, forward-port it, then cut `release/X.(Y+1)` from the newest green `main` commit and tag its beta.1. The forward-port merges first: `version.py` refuses beta.1 of X.(Y+1) until `main` has `## [X.Y.0]`.
-- The gate: the line is 7 days old; its newest beta is at least 72 h old and nothing outside `CHANGELOG.md` and `changelog.d/` landed on the line after it; no open issue is labeled `regression`; the storage check passes (`.claude/skills/release/SKILL.md`, section 4).
+- The gate: the line is 7 days old; its newest beta is at least 72 h old and no shipped source landed on the line after it (What a tag runs, `verify`); no open issue is labeled `regression`; the storage check passes (`.claude/skills/release/SKILL.md`, section 4).
 - When the gate fails, nothing is promoted or cut. Fix on `main`, pick it, and ship beta.N+1. Promote it on the first Tuesday to Thursday when it is 48 h old with no open `regression` issue, and cut the next beta.1 the same day. That line's train is the first Monday it is 7 days old.
 - Tuesday to Thursday: a beta.N when the line has picks, at most one a day. A patch `X.Y.Z` goes straight to stable, only for a regression from the previous stable, a crash, a plugin that fails to load, a security fix or data loss.
 - Friday to Sunday: no tags, except a critical release or the fix for a build that fails to launch, update or connect.
@@ -49,12 +49,13 @@ Tags go out between 13:00 and 15:00 ICT (UTC+7).
 
 ## Cutting a beta
 
-beta.1 cuts the line at the newest `main` commit a green nightly or dispatched Release Build ran on, once its push runs are green too. The push that creates the branch builds it again, and the tag's `verify` waits for that build. beta.N tags the line's head once the picks are on it.
+beta.1 cuts the line at the newest `main` commit a green nightly or dispatched Release Build ran on, once its push runs are green too. beta.N tags the line's head once the picks are on it. Either tag goes on once the line head's own push runs are green (What a tag runs, `verify`).
 
 ```bash
 git fetch origin
 git push origin <sha>:refs/heads/release/X.Y  # beta.1 only
 gh label create "backport release/X.Y"  # beta.1 only
+gh run list --branch release/X.Y --event push --commit "$(git rev-parse origin/release/X.Y)"
 git tag -s vX.Y.0-beta.N -m vX.Y.0-beta.N origin/release/X.Y
 git push origin vX.Y.0-beta.N
 ```
@@ -72,11 +73,13 @@ git push -u origin prep/vX.Y.Z
 gh pr create --base release/X.Y --title "chore(release): vX.Y.Z" --body "Release notes for vX.Y.Z."
 ```
 
-The PR changes only `CHANGELOG.md` and `changelog.d/`; PR title refuses anything else. Squash-merge it, then tag its merge commit:
+The PR changes only `CHANGELOG.md` and `changelog.d/`; PR title refuses anything else. Squash-merge it, then tag its merge commit once that commit's push runs are green (What a tag runs, `verify`):
 
 ```bash
 git fetch origin
-git tag -s vX.Y.Z -m vX.Y.Z "$(gh pr view <PR> --json mergeCommit -q .mergeCommit.oid)"
+release_commit="$(gh pr view <PR> --json mergeCommit -q .mergeCommit.oid)"
+gh run list --branch release/X.Y --event push --commit "$release_commit"
+git tag -s vX.Y.Z -m vX.Y.Z "$release_commit"
 git push origin vX.Y.Z
 ```
 
@@ -97,7 +100,7 @@ python3 apple/scripts/release/notes.py docs X.Y.Z --ref vX.Y.Z --mdx ../tablepro
 
 A `v*` tag runs `release.yml` and nothing else. A run is never cancelled, and every job reads the version, build and channel from `verify`.
 
-- `verify`: `version.py check` refuses a tag that breaks the grammar or the bounds; that `origin/release/<X.Y>` does not contain; whose previous tag on the line is not its ancestor; a stable X.Y.0 with no published beta, or a beta after its X.Y.0; a stable whose tree differs from its line's newest published beta outside `CHANGELOG.md` and `changelog.d/`, until a stable tag on the line has matched that beta; a `CHANGELOG.md` missing the stable's heading, or a published stable of this or the previous line below it; a stable whose tag still holds fragments in `changelog.d/`. Then it needs macOS Tests, iOS and Package Tests and Release Build green on the tag commit or the nearest first-parent commit that ran them, with no change to the files they read after it, waiting on a pending run. A push, nightly or dispatched run counts; a PR run builds a merge commit, so it does not. Last, it writes the notes.
+- `verify`: `version.py check` refuses a tag that breaks the grammar or the bounds; that `origin/release/<X.Y>` does not contain; whose previous tag on the line is not its ancestor; on a commit that already carries another `v*` tag; a stable X.Y.0 with no published beta, or a beta after its X.Y.0; a stable that changes shipped source (the `shipped` suite of `scripts/ci/detect-changed-paths.sh`) since its line's newest published beta, until a stable tag on the line has matched that beta, so a patch after a matching X.Y.0 passes; a `CHANGELOG.md` missing the stable's heading, or a published stable of this or the previous line below it; a stable whose tag still holds fragments in `changelog.d/`. Then it reads the tag commit's push runs on `release/<X.Y>` once: macOS Tests and iOS and Package Tests must each have completed with success, their test job run and not skipped. A `release/**` push runs every suite, so the line head always gets both (`.claude/rules/ci.md`, Change detector). It never waits: a run still queued or in progress fails it. Release Build is no gate. Last, it writes the notes.
 - `app` (`signing`): a GA Xcode for a stable (`setup-xcode` `require-release`), the CloudKit Production schema check, `build.sh app` (archive, export with `scripts/release/ExportOptions.plist`, universal and plugin load checks), `notarize.sh` on the app, `package.sh app`, `notarize.sh` on the DMG.
 - `plugins` (`signing`): the Dameng and HANA bridges, `build.sh plugins` (each target `registry.py targets` prints, universal, signed with Developer ID, the hardened runtime and a timestamp), one notary submission for all, `package.sh plugins` (the zips, described as the manifest will read them).
 - `github-release`: `actions/attest` attests `dist/*`; `gh release create` drafts, uploads and publishes; `gh release verify` and `verify-asset` check the published release.
@@ -111,7 +114,7 @@ A `v*` tag runs `release.yml` and nothing else. A run is never cancelled, and ev
 - After it publishes: **Re-run failed jobs**. Every later step skips what is done: a published release, a feed item with the same version and build, or a manifest release with the same build and sha256.
 - A stable that never published: the next release PR runs `git revert <its release commit>` before `notes.py assemble`, and the leftover draft goes (`gh release delete vX.Y.Z`).
 - No GA Xcode on the runner image fails a stable in `app`. The fix is a PR pointing `.github/actions/setup-xcode` at a GA Xcode on an image that has one. Betas still ship.
-- Release Build runs on the maintainer's Mac, and a tag's `verify` waits for it. While the Mac is offline, `gh variable set RELEASE_BUILD_RUNNER --body github` sends pushes and nightlies to `xcode-27`; a run already waiting needs a cancel and a re-run. `gh variable delete RELEASE_BUILD_RUNNER` once the Mac is back.
+- `verify` names the macOS Tests or iOS and Package Tests run that is still going, red, skipped its tests or missing. Re-run `verify` once that run is green (`gh run rerun <release run> --failed`), after re-running a run that failed on infrastructure. A code failure ships as the next number, as above.
 
 ## Withdrawing a release
 

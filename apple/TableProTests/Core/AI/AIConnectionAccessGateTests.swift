@@ -346,7 +346,6 @@ internal struct AIConnectionAccessGateSavedPolicyTests {
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
             syncTracker: live.syncTracker,
-            themeEngine: live.themeEngine,
             welcomeRouter: live.welcomeRouter
         )
     }

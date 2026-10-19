@@ -1,8 +1,3 @@
-//
-//  ResultChartToolbar.swift
-//  TablePro
-//
-
 import SwiftUI
 
 struct ResultChartToolbar: View {
@@ -69,7 +64,7 @@ struct ResultChartToolbar: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .paneBarBackground(.bar, ignoresSafeAreaEdges: .all)
+        .paneBarBackground()
     }
 
     @ViewBuilder

@@ -25,6 +25,8 @@ mod open_semantics;
 #[cfg(test)]
 mod sessions;
 #[cfg(test)]
+mod sqlite_engine;
+#[cfg(test)]
 mod support;
 mod value_corpus;
 #[cfg(test)]

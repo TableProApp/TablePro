@@ -7,7 +7,8 @@ use std::path::PathBuf;
 use tablepro_core::{DriverError, ErrorCategory, FileEndpoint, Value, WorkspaceSettings};
 use tokio_util::sync::CancellationToken;
 
-use crate::support::{TestFile, apply, connect, create_database, query, writable};
+use crate::sqlite_engine::create_database;
+use crate::support::{TestFile, apply, connect, query, writable};
 
 #[tokio::test]
 async fn open_existing_missing_path_file_not_found_no_file_created() {

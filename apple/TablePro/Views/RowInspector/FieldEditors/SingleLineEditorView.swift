@@ -1,21 +1,16 @@
-//
-//  SingleLineEditorView.swift
-//  TablePro
-//
-
 import SwiftUI
 import TableProTheme
 
 internal struct SingleLineEditorView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let context: FieldEditorContext
 
     var body: some View {
         if context.isReadOnly {
             readOnlyValue
         } else {
-            TextField(context.placeholderText, text: context.value)
-                .textFieldStyle(.roundedBorder)
-                .autocorrectionDisabled(true)
+            ValueTextField(text: context.value, placeholder: context.placeholderText, font: themeEngine.valueFont)
+                .valueWell()
         }
     }
 
@@ -35,8 +30,7 @@ internal struct SingleLineEditorView: View {
         }
         .textSelection(.enabled)
         .frame(maxWidth: .infinity, minHeight: 16, alignment: .leading)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
+        .valueWellPadding()
         .valueWell()
     }
 }

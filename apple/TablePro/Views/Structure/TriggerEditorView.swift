@@ -135,7 +135,7 @@ struct TriggerEditorView: View {
     private static func makeConfiguration(fontSize: Double) -> SourceEditorConfiguration {
         SourceEditorConfiguration(
             appearance: .init(
-                theme: TableProEditorTheme.make(),
+                theme: ThemeEngine.shared.makeEditorTheme(),
                 font: NSFont.monospacedSystemFont(ofSize: CGFloat(fontSize), weight: .regular),
                 wrapLines: false
             ),

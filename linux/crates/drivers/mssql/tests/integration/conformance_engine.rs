@@ -192,5 +192,6 @@ mod suite {
 
     tablepro_test_support::large_table_conformance_suite! {
         engine: MssqlEngine,
+        docker: true,
     }
 }

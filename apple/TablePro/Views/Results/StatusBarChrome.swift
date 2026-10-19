@@ -1,8 +1,3 @@
-//
-//  StatusBarChrome.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
 
@@ -33,16 +28,14 @@ private struct StatusBarMaterial: NSViewRepresentable {
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
-extension EnvironmentValues {
-    /// False where the host paints a custom backdrop under the bar: the material does not follow a custom window color.
-    @Entry var statusBarDrawsMaterial = true
-}
-
+/// The material does not follow a custom window color, so over a themed backdrop the bar draws none.
 private struct StatusBarChromeModifier: ViewModifier {
-    @Environment(\.statusBarDrawsMaterial) private var drawsMaterial
+    @ObservedObject private var themeEngine = ThemeEngine.shared
+    @Environment(\.colorSchemeContrast) private var contrast
 
     func body(content: Content) -> some View {
-        VStack(spacing: 0) {
+        let isThemed = ThemeBackdropState.isThemed(highContrast: contrast == .increased)
+        return VStack(spacing: 0) {
             Divider()
             content
                 .padding(.horizontal, StatusBarChrome.horizontalPadding)
@@ -50,7 +43,7 @@ private struct StatusBarChromeModifier: ViewModifier {
                 .frame(height: StatusBarChrome.height)
         }
         .background {
-            if drawsMaterial {
+            if !isThemed {
                 StatusBarMaterial()
             }
         }
@@ -58,13 +51,8 @@ private struct StatusBarChromeModifier: ViewModifier {
 }
 
 extension View {
-    /// Fixed height, one material, one separator. Applied by every bottom bar in the app.
     func statusBarChrome() -> some View {
         modifier(StatusBarChromeModifier())
-    }
-
-    func statusBarDrawsMaterial(_ drawsMaterial: Bool) -> some View {
-        environment(\.statusBarDrawsMaterial, drawsMaterial)
     }
 
     /// Height only: the glyph keeps its size and its width, so no control gets wider or narrower.

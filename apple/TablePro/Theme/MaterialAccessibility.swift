@@ -2,7 +2,6 @@ import SwiftUI
 
 internal enum MaterialRole {
     case banner
-    case sidebar
     case toolbar
     case inlineControl
     case scrim
@@ -11,13 +10,13 @@ internal enum MaterialRole {
         switch self {
         case .banner, .toolbar, .inlineControl:
             Color(nsColor: .controlBackgroundColor)
-        case .sidebar, .scrim:
+        case .scrim:
             Color(nsColor: .windowBackgroundColor)
         }
     }
 }
 
-/// The one rule for both settings, so a view that answers them by hand cannot drift from the six
+/// The one rule for both settings, so a view that answers them by hand cannot drift from the views
 /// that answer them through `themeMaterial`. The editor tab strip is that view: glass has no
 /// `Material` to swap, so it leaves glass behind for its own opaque surfaces instead.
 internal enum SolidSurfacePreference {

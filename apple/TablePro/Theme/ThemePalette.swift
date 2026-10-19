@@ -1,6 +1,5 @@
 import AppKit
 import os
-import SwiftUI
 import TableProTheme
 
 /// The live pair every dynamic slot colour reads through. A colour object an AppKit view is
@@ -67,10 +66,6 @@ internal struct ThemePalette {
         colors[slot] ?? slot.nativeColor
     }
 
-    internal func color(_ slot: ThemeSlot) -> Color {
-        Color(nsColor: self[slot])
-    }
-
     /// For a surface that has its own system color today: the theme's color in each appearance whose
     /// theme sets the slot, and `native` itself, still dynamic, in the other.
     /// Unnamed, because two dynamic colors with one name compare equal whatever they draw.
@@ -119,10 +114,6 @@ internal struct ResolvedTheme: Equatable {
 
     internal func isOverridden(_ slot: ThemeSlot) -> Bool {
         definition.isOverridden(slot)
-    }
-
-    internal func color(_ slot: ThemeSlot) -> Color {
-        Color(nsColor: self[slot])
     }
 
     /// The theme's color when the active theme colors the slot, else `native` itself.

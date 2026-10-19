@@ -1,8 +1,3 @@
-//
-//  TextValueEditor.swift
-//  TablePro
-//
-
 import AppKit
 import SwiftUI
 
@@ -59,9 +54,17 @@ internal struct TextValueEditor: NSViewRepresentable {
         Coordinator(text: $text, movesFocusOnTab: movesFocusOnTab)
     }
 
-    /// AppKit substitutes typed quotes, dashes and text by default. A stored value has to reach
-    /// the database as the user typed it, so every substitution is off.
     static func applyPlainTextDefaults(to textView: NSTextView) {
+        disableSubstitutions(in: textView)
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
+        textView.allowsUndo = true
+    }
+
+    /// AppKit substitutes typed quotes, dashes and text by default, the window's shared field editor
+    /// included. A stored value has to reach the database as the user typed it, so every
+    /// substitution is off.
+    static func disableSubstitutions(in textView: NSTextView) {
         textView.isRichText = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
@@ -69,9 +72,6 @@ internal struct TextValueEditor: NSViewRepresentable {
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.isAutomaticLinkDetectionEnabled = false
         textView.isAutomaticDataDetectionEnabled = false
-        textView.usesFindBar = true
-        textView.isIncrementalSearchingEnabled = true
-        textView.allowsUndo = true
     }
 
     private func applyConfiguration(to scrollView: NSScrollView, textView: NSTextView, coordinator: Coordinator) {

@@ -70,6 +70,9 @@ public class CEUndoManager: UndoManager {
         guard !isDisabled, let textView else {
             return
         }
+        // An open composition is in the text but not in the history; accepting it first, as `NSTextView` does, keeps
+        // every inverse range pointing at the text it was recorded against.
+        textView.acceptComposition()
 
         guard let item = undoStack.popLast() else {
             NSSound.beep()
@@ -101,6 +104,7 @@ public class CEUndoManager: UndoManager {
         guard !isDisabled, let textView else {
             return
         }
+        textView.acceptComposition()
 
         guard let item = redoStack.popLast() else {
             NSSound.beep()
@@ -200,17 +204,43 @@ public class CEUndoManager: UndoManager {
 
     /// Registers a mutation into the undo stack.
     ///
-    /// Calling this method while the manager is in an undo/redo operation will result in a no-op.
+    /// Calling this method while the manager is disabled or in an undo/redo operation will result in a no-op.
     /// - Parameter mutation: The mutation to register for undo/redo
     public func registerMutation(_ mutation: TextMutation) {
         removeAllActions()
-        guard let textView,
-              let textStorage = textView.textStorage,
-              !isUndoing,
-              !isRedoing else {
+        guard let textStorage = textView?.textStorage, isRecording else {
             return
         }
-        let newMutation = Mutation(mutation: mutation, inverse: textStorage.inverseMutation(for: mutation))
+        push(Mutation(mutation: mutation, inverse: textStorage.inverseMutation(for: mutation)))
+    }
+
+    /// Records text already in the document as if it had just been typed there.
+    ///
+    /// An input method's composition stays out of the history while it is marked, since every keystroke rewrites it.
+    /// When it ends without a commit its text stays, and this makes that text an undoable insertion.
+    /// - Parameter ranges: Where the text sits now. They must not overlap.
+    public func registerInsertions(in ranges: [NSRange]) {
+        removeAllActions()
+        guard let textStorage = textView?.textStorage, isRecording else {
+            return
+        }
+        var length = textStorage.length - ranges.reduce(0) { $0 + $1.length }
+        for range in ranges.sorted(by: { $0.location < $1.location }) where !range.isEmpty {
+            let mutation = TextMutation(
+                insert: textStorage.substring(from: range) ?? "",
+                at: range.location,
+                limit: length
+            )
+            length += range.length
+            push(Mutation(mutation: mutation, inverse: TextMutation(delete: range, limit: length)))
+        }
+    }
+
+    private var isRecording: Bool {
+        !isDisabled && !isUndoing && !isRedoing
+    }
+
+    private func push(_ newMutation: Mutation) {
         // We can continue a group if:
         // - A group exists
         // - We're not direct to break the current group

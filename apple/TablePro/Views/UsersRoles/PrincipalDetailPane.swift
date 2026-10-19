@@ -50,7 +50,7 @@ struct PrincipalDetailPane: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .paneBarBackground(Color(nsColor: .controlBackgroundColor))
     }
 
     @ViewBuilder
@@ -97,6 +97,6 @@ struct PendingChangesBar: View {
         .font(.subheadline)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .paneBarBackground(Color(nsColor: .controlBackgroundColor))
     }
 }

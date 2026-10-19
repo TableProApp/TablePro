@@ -11,7 +11,6 @@ import Combine
 import os
 import SwiftUI
 import TableProPluginKit
-import TableProTheme
 
 private enum CreateTableTab: CaseIterable {
     case columns
@@ -608,7 +607,6 @@ struct CreateTableView: View {
     }
 }
 
-// Stands in for the statement text view, so under a theme it keeps the editor's background.
 internal struct CreateTableSQLPreviewStandIn: View {
     internal enum Content: Equatable {
         case message(String?)
@@ -619,7 +617,7 @@ internal struct CreateTableSQLPreviewStandIn: View {
 
     internal var body: some View {
         stateView
-            .themeBackground(.editorBackground, native: Color.clear, ignoresSafeAreaEdges: [])
+            .valueStandInBackground()
     }
 
     @ViewBuilder

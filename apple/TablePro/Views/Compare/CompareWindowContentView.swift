@@ -41,7 +41,6 @@ internal struct CompareWindowContentView: View {
         /// total number of items in a window, the number of selected items".
         .safeAreaInset(edge: .bottom, spacing: 0) {
             CompareStatusBar(session: session)
-                .modifier(DetailPaneStatusBarMaterial())
         }
         // Behind the panes on every macOS version, as the main window's detail pane is: before
         // macOS 26 the window color does not take the theme.

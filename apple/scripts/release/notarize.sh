@@ -18,6 +18,26 @@ die() {
     exit 1
 }
 
+# CloudKit, where stapler looks the ticket up, can lag notarytool's Accepted; 65 and 68 are failed lookups.
+staple() {
+    local path="$1" name attempt status delay
+    name="$(basename "$path")"
+    for attempt in 1 2 3; do
+        status=0
+        xcrun stapler staple "$path" || status=$?
+        case "$status" in
+            0) return 0 ;;
+            65 | 68) ;;
+            *) die "stapling $name failed (stapler exit $status)" ;;
+        esac
+        [ "$attempt" -lt 3 ] || break
+        delay=$((attempt * 30))
+        echo "Stapling $name: no ticket yet (stapler exit $status, attempt $attempt of 3), retrying in ${delay}s"
+        sleep "$delay"
+    done
+    die "stapling $name failed after 3 attempts (stapler exit $status)"
+}
+
 [ $# -gt 0 ] || usage
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -63,7 +83,7 @@ fi
 
 for path in "${PATHS[@]}"; do
     name="$(basename "$path")"
-    xcrun stapler staple "$path" || die "stapling $name failed"
+    staple "$path"
     case "$path" in
         *.app) assessment=(-t exec) ;;
         *) assessment=(-t open --context context:primary-signature) ;;

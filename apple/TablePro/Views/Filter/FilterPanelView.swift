@@ -1,8 +1,3 @@
-//
-//  FilterPanelView.swift
-//  TablePro
-//
-
 import SwiftUI
 import TableProPluginKit
 
@@ -31,7 +26,7 @@ struct FilterPanelView: View {
                 filterList
             }
         }
-        .paneBarBackground(Color(nsColor: .windowBackgroundColor), ignoresSafeAreaEdges: .all)
+        .paneBarBackground(Color(nsColor: .windowBackgroundColor))
         .focusSection()
         .onExitCommand {
             closePanelAndFocusGrid()
@@ -104,7 +99,7 @@ struct FilterPanelView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .paneBarBackground(Color(nsColor: .controlBackgroundColor), ignoresSafeAreaEdges: .all)
+        .paneBarBackground(Color(nsColor: .controlBackgroundColor))
         .contentShape(Rectangle())
         .alert(String(localized: "Save Filter Preset"), isPresented: $showSavePresetAlert) {
             TextField(String(localized: "Preset Name"), text: $newPresetName)

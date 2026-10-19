@@ -1,12 +1,9 @@
 name: Release Build
 
 # The Release configuration of the app and every registry plugin, universal and unsigned, packaged
-# the way a tag packages it, so a packaging failure shows before the tag: nightly on main, on every
-# release branch push, and on demand.
+# the way a tag packages it, so a packaging failure shows before the tag: nightly on main and on demand.
 
 on:
-  push:
-    branches: ['release/**']
   schedule:
     - cron: '0 19 * * *'
   workflow_dispatch:
@@ -36,34 +33,21 @@ jobs:
           fetch-depth: 0
 
       # A nightly diffs against the last nightly that ended green, built or skipped: main up to
-      # that commit is covered. A push that creates a release branch builds the cut commit, which
-      # the merge-base rule would skip.
+      # that commit is covered.
       - name: Decide whether the Release build runs
         id: decide
         env:
           EVENT: ${{ github.event_name }}
-          CREATED: ${{ github.event.created }}
-          BEFORE: ${{ github.event.before }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          case "$EVENT" in
-            workflow_dispatch)
-              run=true
-              ;;
-            schedule)
-              base=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release-build.yml/runs?event=schedule&status=success&per_page=1" \
-                --jq '.workflow_runs[0].head_sha // ""')
-              run=$(scripts/ci/detect-changed-paths.sh --base "$base" release)
-              ;;
-            *)
-              if [ "$CREATED" = true ]; then
-                run=true
-              else
-                run=$(scripts/ci/detect-changed-paths.sh --base "$BEFORE" release)
-              fi
-              ;;
-          esac
+          if [ "$EVENT" = workflow_dispatch ]; then
+            run=true
+          else
+            base=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release-build.yml/runs?event=schedule&status=success&per_page=1" \
+              --jq '.workflow_runs[0].head_sha // ""')
+            run=$(scripts/ci/detect-changed-paths.sh --base "$base" release)
+          fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
   # Reads "not false" so a failed changes job builds instead of passing.
@@ -71,7 +55,7 @@ jobs:
     name: Release Build
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
-    # A push or nightly has no input, so it reads the RELEASE_BUILD_RUNNER repository variable; unset is the Mac.
+    # A nightly has no input, so it reads the RELEASE_BUILD_RUNNER repository variable; unset is the Mac.
     runs-on: ${{ (inputs.runner || vars.RELEASE_BUILD_RUNNER) == 'github' && 'xcode-27' || fromJSON('["self-hosted", "macOS", "ARM64", "tablepro-release"]') }}
     timeout-minutes: 150
     # The tag's version settings run here first; 9999999 is the largest build at MAJOR 0 (apple/RELEASING.md, Versions).

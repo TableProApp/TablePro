@@ -82,7 +82,6 @@ internal final class ThemeEngine: ObservableObject {
     /// the grid cell, its inline editor, the row inspector, a cell popover and a pop-out window.
     internal var valueFont: NSFont { dataGridFonts.regular }
     internal var valueFontSwiftUI: Font { Font(valueFont) }
-    internal var valueFontEmphasizedSwiftUI: Font { Font(dataGridFonts.medium) }
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEngine")
 

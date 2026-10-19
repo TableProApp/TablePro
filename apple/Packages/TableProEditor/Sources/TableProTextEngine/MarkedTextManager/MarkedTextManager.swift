@@ -46,33 +46,17 @@ class MarkedTextManager {
         markedRanges = resolved
     }
 
-    /// Updates the stored marked ranges.
-    ///
-    /// Two cases here:
-    /// - No marked ranges yet:
-    ///     - Create new marked ranges from the text selection, with the length of the text being inserted
-    /// - Marked ranges exist:
-    ///     - Update the existing marked ranges, using the original ranges as a reference. The marked ranges don't
-    ///       change position, so we update each one with the new length and then move it to reflect each cursor's
-    ///       added text.
-    ///
+    /// Marks the composition's text after it replaced `replacedRanges`, which are in the coordinates of the text
+    /// before that replacement: each mark moves by what the ones before it added.
     /// - Parameters:
-    ///   - insertLength: The length of the string being inserted.
-    ///   - textSelections: The current text selections.
-    func updateMarkedRanges(insertLength: Int, textSelections: [NSRange]) {
-        var cumulativeExistingDiff = 0
-        var newRanges = [NSRange]()
-        let ranges: [NSRange] = if markedRanges.isEmpty {
-            textSelections.sorted(by: { $0.location < $1.location })
-        } else {
-            markedRanges.sorted(by: { $0.location < $1.location })
+    ///   - insertLength: The length of the composition's text.
+    ///   - replacedRanges: The ranges the composition's text replaced.
+    func updateMarkedRanges(insertLength: Int, replacedRanges: [NSRange]) {
+        var shift = 0
+        markedRanges = replacedRanges.sorted(by: { $0.location < $1.location }).map { range in
+            defer { shift += insertLength - range.length }
+            return NSRange(location: range.location + shift, length: insertLength)
         }
-
-        for range in ranges {
-            newRanges.append(NSRange(location: range.location + cumulativeExistingDiff, length: insertLength))
-            cumulativeExistingDiff += insertLength - range.length
-        }
-        markedRanges = newRanges
     }
 
     /// Finds any marked ranges for a line and returns them.

@@ -5,8 +5,7 @@ import TableProTheme
 @MainActor
 internal enum DetailPaneBackdrop {
     internal static var extendsUnderToolbar: Bool {
-        if #available(macOS 26.0, *) { return true }
-        return false
+        ThemeWindowBackdrop.canReachChrome
     }
 
     internal static func isThemed(contrast: ColorSchemeContrast) -> Bool {
@@ -29,15 +28,5 @@ internal struct DetailPaneBackdropFill: ViewModifier {
             ThemeShapeStyle.style(.windowBackdrop, native: .background, engine: themeEngine, contrast: contrast),
             ignoresSafeAreaEdges: DetailPaneBackdrop.safeAreaEdges(isThemed: isThemed, extendsUnderToolbar: extendsUnderToolbar)
         )
-    }
-}
-
-/// The bar's material does not follow a custom window color, so over a themed backdrop it draws none.
-internal struct DetailPaneStatusBarMaterial: ViewModifier {
-    @ObservedObject private var themeEngine = ThemeEngine.shared
-    @Environment(\.colorSchemeContrast) private var contrast
-
-    internal func body(content: Content) -> some View {
-        content.statusBarDrawsMaterial(!DetailPaneBackdrop.isThemed(contrast: contrast))
     }
 }

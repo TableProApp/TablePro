@@ -6,7 +6,8 @@ use tablepro_core::meta::{
 };
 use tablepro_core::{Connection, RowLimit, Value};
 
-use crate::support::{TestFile, apply, call, create_database, query, statement};
+use crate::sqlite_engine::create_database;
+use crate::support::{TestFile, apply, call, query, statement};
 
 fn table(name: &str) -> TableRef {
     TableRef::unqualified(name)

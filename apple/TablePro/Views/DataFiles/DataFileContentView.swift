@@ -28,7 +28,6 @@ struct DataFileContentView: View {
             }
             Divider()
             DataFileStatusBar(controller: controller)
-                .modifier(DetailPaneStatusBarMaterial())
         }
         .themeBackground(.windowBackdrop, native: Color(nsColor: .windowBackgroundColor))
     }
