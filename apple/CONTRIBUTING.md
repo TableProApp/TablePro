@@ -57,9 +57,20 @@ The app scheme compiles only the plugins the app embeds. The `AllPlugins` aggreg
 xcodebuild build -project TablePro.xcodeproj -scheme AllPlugins -destination 'platform=macOS' -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO
 ```
 
-`scripts/release/build.sh plugins --unsigned` builds the registry plugins the way a release does, universal, into `build/release/plugins`, after `scripts/build-dameng.sh both` and `scripts/build-hana.sh both`. `VERSION=0.0.0-dev scripts/release/package.sh plugins --unsigned` then writes the zips to `dist/`.
-
 `scripts/install-plugin-dev.sh <Target>` copies a registry plugin you built in Debug into the user plugins folder.
+
+### A Release build
+
+`scripts/release/build.sh` builds the app and the registry plugins the way a tag does, universal, into `build/release/`; `package.sh` writes the assets to `dist/`. Release Build runs the same:
+
+```bash
+export VERSION=0.0.0-dev BUILD=9999999
+scripts/release/build.sh app --unsigned && scripts/release/package.sh app --unsigned
+scripts/build-dameng.sh both && scripts/build-hana.sh both
+scripts/release/build.sh plugins --unsigned && scripts/release/package.sh plugins --unsigned
+```
+
+Signed: drop `--unsigned`, with the Developer ID identity and the provisioning profile `scripts/release/ExportOptions.plist` names. `scripts/release/notarize.sh <path>...` needs the profile `xcrun notarytool store-credentials TablePro --key <p8> --key-id <id> --issuer <issuer>` creates.
 
 ### Clean builds
 

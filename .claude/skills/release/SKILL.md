@@ -24,11 +24,13 @@ git -c versionsort.suffix=-beta tag -l 'v*' --sort=-v:refname | head
 git ls-remote --heads origin 'release/*'
 gh issue list --label regression --state open
 gh release view vX.Y.0-beta.N --json publishedAt -q .publishedAt
+scripts/ci/detect-changed-paths.sh --base vX.Y.0-beta.N --head origin/release/X.Y shipped
 gh run list --workflow ci.yml --branch main --event push --limit 5
 gh run list --workflow release-build.yml --branch main --limit 3
 gh api --paginate 'repos/TableProApp/TablePro/dependabot/alerts?state=open&per_page=100' -q '.[].security_advisory.summary'
 ```
 
+- The detector prints `true` when shipped source landed after the newest beta: promote only after beta.N+1.
 - `git grep -c '^## \[X.Y.Z\]' origin/main -- apple/CHANGELOG.md` finds the last stable's heading. Without it, the forward-port goes first.
 - A red Release Build is no gate, but the tag's `app` or `plugins` job likely fails the same way.
 
@@ -42,7 +44,7 @@ Apply `apple/RELEASING.md`, Train: a promotion, a beta.1, a beta.N for a line wi
 
 ## 3. Storage check
 
-Before beta.1 and X.Y.0, run `apple/RELEASING.md`, Storage check, and read each commit it lists. A format the previous stable cannot read blocks the release.
+Before beta.1, before every stable, and for a pick on its paths, run `apple/RELEASING.md`, Storage check, and read each commit it lists. A format the previous stable cannot read blocks the release.
 
 ## 4. Critical
 
@@ -51,7 +53,7 @@ For a stable or patch, name the fix and the reason, and ask. Only a security fix
 ## 5. Curate in the release PR
 
 - Every user-visible PR in the release has a fragment, and no fragment says more than its PR did (`.claude/rules/changelog.md`).
-- On `prep/vX.Y.Z`, add or reword fragments before `notes.py assemble`. For an X.Y.0, write the lead in the reader's words; a release of fixes only can go without one.
+- On `prep/vX.Y.Z`, add or reword fragments before `notes.py assemble`. For an X.Y.0, write the lead in the reader's words (`apple/RELEASING.md`, Notes); a release of fixes only can go without one.
 - A beta's notes are the fragments as they stand: `.venv/bin/python apple/scripts/release/notes.py body X.Y.0-beta.N` on the line head previews them.
 
 ## 6. Follow RELEASING
@@ -59,4 +61,5 @@ For a stable or patch, name the fix and the reason, and ask. Only a security fix
 Run `apple/RELEASING.md`: Cutting a beta, or Cutting a stable or patch, then Forward-port. On a failure, When a run fails or Withdrawing a release.
 
 - Watch the tag's run: `gh run list --workflow release.yml --limit 3`, then `gh run watch <id> --exit-status`.
+- Then check the source: `gh api -H 'Accept: application/vnd.github.raw' 'repos/TableProApp/TablePro/contents/appcast.xml?ref=gh-pages' | grep -c '<sparkle:shortVersionString>X.Y.Z<'` prints 1; `gh release view vX.Y.Z --json assets -q '.assets | length'` is 4 plus `python3 apple/scripts/release/registry.py targets | wc -l`.
 - After an X.Y.0, the `announce` skill in TableProApp/web is next.

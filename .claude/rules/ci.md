@@ -43,7 +43,7 @@ paths:
 ## Runners
 
 - Xcode jobs run on `xcode-27`, a GitHub preview image. `setup-xcode` pins the Xcode build.
-- Release Build runs on `mac-mini-m4pro` (`self-hosted`, `macOS`, `ARM64`, `tablepro-release`), the maintainer's Mac, as the maintainer's user. `MAC_RUNNER=github` moves it to `xcode-27`.
+- Release Build runs on `mac-mini-m4pro` (`self-hosted`, `macOS`, `ARM64`, `tablepro-release`), the maintainer's Mac, as the maintainer's user. `gh variable set MAC_RUNNER --body github` moves it to `xcode-27`; `gh variable delete MAC_RUNNER` moves it back.
 - Signing, notarization and the feed stay on hosted runners.
 - Any workflow on a pushed ref can target that label: never approve a fork PR run that changes `.github/` unread.
 - At most 5 hosted macOS jobs and 20 jobs in all run at once.
