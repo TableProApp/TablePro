@@ -256,6 +256,7 @@ mod mysql_suite {
 
     tablepro_test_support::large_table_conformance_suite! {
         engine: MySqlEngine<MysqlServer>,
+        docker: true,
     }
 }
 
@@ -279,5 +280,6 @@ mod mariadb_suite {
 
     tablepro_test_support::large_table_conformance_suite! {
         engine: MySqlEngine<MariadbServer>,
+        docker: true,
     }
 }

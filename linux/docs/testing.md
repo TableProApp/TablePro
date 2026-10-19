@@ -176,7 +176,9 @@ The PostgreSQL, MySQL, SQL Server, ClickHouse and SQLite targets run it, and the
 - It exports the table through the statement `build_export` writes, streamed by `stream_read` with no deadline into a CSV file in 64 KiB chunks, as the export dialog's Entire Table does. Every line of the file is checked.
 - The walk, each page and the export have time bounds, and where pages seek, the last pages may not take much longer than the first. Neither the walk nor the export may raise the process's resident peak (`VmHWM`, reset through `/proc/self/clear_refs`) past a memory bound. The bounds are constants in `crates/test-support/src/conformance/cases/large_table.rs`.
 
-The PostgreSQL, MySQL, MariaDB, SQL Server and ClickHouse targets run it. The `ci` nextest profile prints its times and memory for a passing run, so the job log keeps what the bounds are set from. SQLite has no case: its suites run in the unit suite, where tests share one process, so the peak would count theirs too.
+The peak is the whole process's, so the case needs a process to itself. The PostgreSQL, MySQL, MariaDB, SQL Server and ClickHouse targets pass `docker: true` and run under cargo-nextest, which gives each test a process of its own. The `ci` nextest profile prints its times and memory for a passing run, so the job log keeps what the bounds are set from.
+
+SQLite passes `docker: false`, so the case runs in the unit suite, where `cargo test` runs the tests of one binary in one process. It is a test target of its own, `crates/drivers/sqlite/tests/large_table.rs`, which holds nothing else and includes the adapter from `tests/integration/sqlite_engine.rs`. A passing run there prints nothing; `cargo test -p tablepro-driver-sqlite --test large_table -- --nocapture` shows the numbers.
 
 ### Value corpus
 
