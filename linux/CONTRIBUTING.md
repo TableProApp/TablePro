@@ -54,7 +54,7 @@ meson dist -C _build --no-tests --formats xztar
 
 Inside a desktop session, `dbus-run-session -- meson test -C _build` runs the same suites without xvfb.
 
-The fast job also runs a few source greps, `scripts/check-doc-symbols.sh` and the lychee line below, from the repository root. The supply-chain and Docker jobs run the rest, among others; [docs/testing.md](docs/testing.md#ci) describes every job, and the Docker job runs the last line once per package that has Docker tests:
+The fast job also runs a few source greps and the lychee line below, from the repository root. The supply-chain and Docker jobs run the rest, among others; [docs/testing.md](docs/testing.md#ci) describes every job, and the Docker job runs the last line once per package that has Docker tests:
 
 ```bash
 cargo deny --locked check advisories bans licenses sources
@@ -136,7 +136,7 @@ A user-visible change adds one towncrier fragment, `changelog.d/<PR>.<type>.md` 
 3. The PR description follows the repository's `.github/pull_request_template.md`.
 4. Run the [fast-job commands](#fast-job-commands) locally before pushing.
 5. A change to `Cargo.lock` commits what `build-aux/update-third-party-licenses.sh` rewrites: `data/licenses`, `build-aux/debian/copyright` and the spec's `License` tag ([Dependencies](#dependencies)).
-6. A new or removed file under `crates/app/src` regenerates `po/POTFILES.in`, and a changed user-facing string regenerates `po/tablepro.pot` ([po/README.md](po/README.md)).
+6. A new or removed file under `crates/app/src` regenerates `po/POTFILES.in` ([po/README.md](po/README.md)).
 7. A user-visible change has its [changelog](#changelog) fragment.
 8. UI changes include before and after screenshots in the PR description, light and dark when color is involved. A change to a window shown in the metainfo retakes its screenshot in `data/screenshots` ([README.md](README.md#screenshots)).
 

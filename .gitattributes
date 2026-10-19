@@ -56,8 +56,7 @@ apple/TablePro/Resources/ThirdPartyLicenses/texts/** linguist-vendored
 # Joins the SQLite copyright page and the source blessing with a sentence of its own.
 apple/TablePro/Resources/ThirdPartyLicenses/texts/sqlite.txt -linguist-vendored
 
-# Generated Linux files (Cargo, xgettext, cargo-about, license_metadata.py)
+# Generated Linux files (Cargo, cargo-about, license_metadata.py)
 linux/Cargo.lock linguist-generated
-linux/po/tablepro.pot linguist-generated
 linux/data/licenses/** linguist-generated
 linux/build-aux/debian/copyright linguist-generated

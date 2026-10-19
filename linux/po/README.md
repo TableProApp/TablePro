@@ -27,9 +27,11 @@ Do not translate symbols, SQL keywords, or the word TablePro.
 
 1. Pick a locale code (e.g. `vi`, `de`, `pt_BR`).
 2. Add it on its own line to [`LINGUAS`](LINGUAS).
-3. Copy `tablepro.pot` to `xx.po` and translate the entries:
+3. Generate the template ([Generating tablepro.pot](#generating-tablepropot)),
+   start `xx.po` from it and translate the entries:
 
    ```sh
+   meson compile -C _build tablepro-pot
    msginit --locale=xx --input=po/tablepro.pot --output=po/xx.po
    ```
 
@@ -61,32 +63,28 @@ git ls-files 'crates/app/src/*.rs' 'data/resources/*.ui' 'data/*.desktop.in.in' 
 CI runs the same command and fails on a diff, so a new source file cannot
 silently drop out of translation.
 
-## Regenerating tablepro.pot
+## Generating tablepro.pot
 
-`tablepro.pot` is the master template. A change that adds, edits or
-removes a user-facing string regenerates it in the same commit:
+`tablepro.pot` is not committed, as in other GNOME apps. Generate it from
+the code before running `msginit` or `msgmerge`:
 
 ```sh
 meson compile -C _build tablepro-pot
 ```
-
-The template names the file each string is in but not the line, so moving
-code leaves it alone. The Translations CI job regenerates it and fails when
-the committed file differs in anything but its creation date. It then
-uploads the template it wrote as the `tablepro-pot` artifact, which can be
-committed as it is.
 
 This needs **gettext 1.0 or newer**, the first release whose xgettext
 reads a call through a path such as `crate::i18n::gettext(...)`, the way
 most of the app calls it. Ubuntu 26.10 ships 1.0; Fedora 44 ships 0.26 and
 Ubuntu 26.04 0.23.2. gettext 0.24 to 0.26 read Rust but skip every
 path-qualified call, and anything older falls back to its C lexer, which
-misreads lifetimes such as `'static` as character constants. Neither
-template should be committed. `meson setup` warns when the xgettext it
-found is too old.
+misreads lifetimes such as `'static` as character constants. `meson setup`
+warns when the xgettext it found is too old.
 
-Use `msgmerge` to fold new strings into existing translations:
+Then fold new strings into existing translations:
 
 ```sh
 for f in po/*.po; do msgmerge --update "$f" po/tablepro.pot; done
 ```
+
+`meson compile -C _build tablepro-update-po` does both steps for every
+locale in `LINGUAS`.

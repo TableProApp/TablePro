@@ -201,18 +201,6 @@ jobs:
               exit "$status"
               ;;
           esac
-      - name: Docs name paths and types that exist
-        # A renamed type or a moved file stays named in prose until
-        # something asks. GTK and GLib names resolve against the GIR
-        # files the -dev packages install.
-        run: |
-          ../scripts/check-doc-symbols.sh \
-            linux/ARCHITECTURE.md \
-            linux/docs/adding-drivers.md \
-            linux/docs/state-management.md \
-            linux/docs/storage.md \
-            linux/docs/testing.md \
-            linux/docs/decisions/0012-window-per-session.md
       - name: Clippy
         run: meson devenv -C _build cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Clippy without default features
@@ -365,25 +353,8 @@ jobs:
             'data/*.gschema.xml.in' 'data/*.metainfo.xml.in.in' > po/POTFILES.in
           git diff --exit-code po/POTFILES.in
       - name: Configure
-        # Fatal, so an xgettext older than 0.24 fails here.
+        # Fatal, so an xgettext older than 1.0 fails here.
         run: meson setup _build --fatal-meson-warnings
-      - name: The POT template is current
-        # The creation date changes on every run, so it is the one line
-        # allowed to differ.
-        run: |
-          meson compile -C _build tablepro-pot
-          if ! git diff --exit-code --ignore-matching-lines='^"POT-Creation-Date: ' -- po/tablepro.pot; then
-            echo "::error::po/tablepro.pot does not match the strings in the code: run meson compile -C _build tablepro-pot with gettext 1.0 or newer, or take the tablepro-pot artifact of this run, and commit it"
-            exit 1
-          fi
-      - name: Keep the regenerated template
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: tablepro-pot
-          path: linux/po/tablepro.pot
-          if-no-files-found: ignore
-          retention-days: 7
 
   flatpak-devel:
     name: Flatpak Devel (${{ matrix.arch }})

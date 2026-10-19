@@ -33,7 +33,7 @@ Cargo prints one "test result:" line per test binary and never adds them up, thr
 
 ## Translations and data
 
-- **`l10n` checks the file list and the catalog**, not the template. Extracting the template needs gettext 1.0 or later: 0.24 to 0.26 read Rust but skip path-qualified calls such as `crate::i18n::gettext(...)`, and an older `xgettext` reads it with the C lexer. Neither template may be committed. CI's Translations job is the gate for it.
+- **`l10n` checks the file list and the catalog**, not the template. The template is not committed: `meson compile -C _build tablepro-pot` writes it, and needs gettext 1.0 or later: 0.24 to 0.26 read Rust but skip path-qualified calls such as `crate::i18n::gettext(...)`, and an older `xgettext` reads it with the C lexer.
 - **`i18n_catalog` needs the `en_US.UTF-8` locale and `msgfmt`**: `localedef -i en_US -f UTF-8 en_US.UTF-8` when the locale is missing.
 - **`data` skips a validator whose tool is not installed** (`desktop-file-validate`, `appstreamcli`, `glib-compile-schemas`) and reports it.
 

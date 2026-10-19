@@ -390,7 +390,6 @@ platform_step() {
                 grep -qE '^[<>] ' "$log" && note "  POTFILES.in is stale: list the files above in linux/po/POTFILES.in"
                 diagnose_environment "$log" && STATUS=INCONCLUSIVE
             fi
-            note "the POT template itself is checked by CI's Translations job, which needs gettext 0.24 or later"
             emit "$log" $code
             ;;
 

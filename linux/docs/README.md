@@ -14,7 +14,7 @@ The reference for working on the Linux app. Start with [ARCHITECTURE.md](../ARCH
 | [troubleshooting.md](troubleshooting.md) | For users: saved passwords, SSH, Kerberos, logs, crash reports, bug reports and downgrades |
 | [regression-tests.md](regression-tests.md) | The tests that guard each critical audit finding |
 | [releasing.md](releasing.md) | The setup before the first release, a release, a packaging fix and a fix release |
-| [po/README.md](../po/README.md) | Marking strings for translation and keeping the template current |
+| [po/README.md](../po/README.md) | Marking strings for translation and generating the template |
 
 ## Drivers
 

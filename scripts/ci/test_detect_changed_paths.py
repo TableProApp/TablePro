@@ -71,9 +71,6 @@ class DetectChangedPathsTests(unittest.TestCase):
         for path in [
             "linux/crates/app/src/main.rs",
             "linux/meson.build",
-            "scripts/check-doc-symbols.sh",
-            "scripts/check-banned-words.sh",
-            "scripts/banned-words.txt",
             ".github/workflows/build-linux.yml",
             ".github/workflows/linux-packages.yml",
             ".github/workflows/release-linux.yml",
@@ -84,6 +81,11 @@ class DetectChangedPathsTests(unittest.TestCase):
     def test_linux_skips_the_apple_apps(self):
         for path in ["apple/TablePro/App.swift", "apple/TableProMobile/App.swift", "apple/Plugins/Shared/Timeout.swift",
                      "apple/project.yml", "apple/CHANGELOG.md", ".github/workflows/macos-tests.yml"]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("linux", path), "false")
+
+    def test_linux_skips_the_shared_doc_scripts(self):
+        for path in ["scripts/check-doc-symbols.sh", "scripts/check-banned-words.sh", "scripts/banned-words.txt"]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("linux", path), "false")
 

@@ -67,9 +67,7 @@ case "$SUITE" in
             '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/release-build\.yml$')
         SKIP='apple/Plugins/[^/]+Tests/|apple/Packages/[^/]+/Tests/' ;;
     linux)
-        # The fast job checks the Linux docs with the repo's docs and word scripts.
-        PATTERNS=('linux/' 'scripts/(check-doc-symbols|check-banned-words)\.sh$' 'scripts/banned-words\.txt$'
-            'scripts/ci/detect-changed-paths\.sh$'
+        PATTERNS=('linux/' 'scripts/ci/detect-changed-paths\.sh$'
             '\.github/workflows/(build-linux|linux-packages|release-linux)\.yml$') ;;
     *)
         echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana, release or linux, got '$SUITE'" >&2

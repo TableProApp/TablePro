@@ -4,7 +4,7 @@ if xgettext.found()
   xgettext_version = run_command(xgettext, '--version', check: false).stdout().split('\n')[0].split(' ')[-1]
   if xgettext_version.version_compare('< 1.0')
     warning(
-      'xgettext @0@ predates 1.0, the first that reads a call through a path such as crate::i18n::gettext. Regenerating the POT needs 1.0 or newer.'.format(
+      'xgettext @0@ predates 1.0, the first that reads a call through a path such as crate::i18n::gettext. Generating the POT needs 1.0 or newer.'.format(
         xgettext_version,
       ),
     )
@@ -24,7 +24,7 @@ i18n.gettext(
     '--keyword=ngettext_f:1,2',
     '--keyword=pgettext_f:1c,2',
     '--from-code=UTF-8',
-    # CI fails when the committed template differs from a fresh one, and
+    # msgmerge copies these references into the committed .po files, where
     # line numbers would make every edit above a string count as a change.
     '--add-location=file',
     '--add-comments=Translators:',

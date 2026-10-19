@@ -3,3 +3,4 @@ _build/
 _packages/
 _flatpak/
 .flatpak-builder/
+/po/tablepro.pot

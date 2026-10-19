@@ -128,7 +128,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 - `ios` watches `apple/TableProMobile/`, `apple/Libs/`, `apple/Plugins/TableProPluginKit/` (the package target is a symlink to it), and every `../` path it reads out of `apple/TableProMobile/project.yml`.
 - `oracle` watches `apple/Packages/TableProOracle/`; `hana` watches `apple/Native/HanaBridge/`. Each suite also watches its own workflow.
 - `release` watches what the Release build reads: the app, plugin, package, native, config and libs folders, `apple/project.yml`, the app's `Package.resolved`, `.github/plugin-registry.json`, the release scripts it runs (`build.sh`, `package.sh`, `registry.py`, `version.py`, `notes.py`), the build and CI scripts it runs and the setup actions. It skips `apple/Plugins/*Tests/` and `apple/Packages/*/Tests/`.
-- `linux` watches `linux/`, the docs and banned-words scripts the Linux fast job runs, the detector itself and the three Linux workflows.
+- `linux` watches `linux/`, the detector itself and the three Linux workflows.
 - A path a suite newly reads joins that suite's pattern in the same change, or the suite skips on it.
 - `apple/CHANGELOG.md` and `apple/changelog.d/` are on no suite's pattern: the What's New phase writes nothing at `0.0.0-dev`, and Repo Hygiene renders every fragment and section instead.
 
