@@ -71,7 +71,9 @@ mod tests {
         drop(held);
 
         // A reset that did not take leaves the 96 MiB peak above the
-        // 24 MiB, which then reads as no growth at all.
-        assert!(growth >= (24 * MIB) as u64, "{growth} bytes for 24 MiB held");
+        // 24 MiB, which then reads as no growth at all. Half is the bar
+        // because the other tests in this process can free pages while
+        // it runs.
+        assert!(growth >= (12 * MIB) as u64, "{growth} bytes for 24 MiB held");
     }
 }
