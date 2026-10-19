@@ -5,7 +5,6 @@ use super::GridCell;
 use super::column_figures::digits_width;
 use super::grid_menus::shown_column;
 
-/// Which way a key or a menu item changes a column's width.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ColumnResize {
     Wider,
@@ -33,11 +32,12 @@ pub(super) fn resize_column(view: &gtk::ColumnView, cell: &GridCell, change: Col
         return;
     };
     let step = digits_width(cell, STEP_DIGITS);
-    // Never narrower than a step: a fixed width goes below what the cells
-    // need, and the column the focus is in stays on screen to widen again.
+    // Narrow stops at one step and never widens a column already below
+    // it: a fixed width goes below what the cells need, and the column the
+    // focus is in stays on screen to widen again.
     let width = match change {
         ColumnResize::Wider => width.saturating_add(step),
-        ColumnResize::Narrower => width.saturating_sub(step).max(step),
+        ColumnResize::Narrower => width.saturating_sub(step).max(step.min(width)),
     };
     column.set_expand(false);
     column.set_fixed_width(width);
@@ -75,7 +75,6 @@ pub(super) mod tests {
     use crate::ui::grid::column_figures::digits_width;
     use crate::ui::grid::test_grid::{Grid, WAIT, two_text_columns, two_text_rows, two_text_values, type_into};
 
-    /// The width the column has on screen, read from the first row's cell.
     pub(in crate::ui::grid) fn shown_width(grid: &Grid, column: usize) -> i32 {
         column_width(&grid.cell_of(1, column)).expect("a drawn cell")
     }
@@ -139,6 +138,18 @@ pub(super) mod tests {
         resize_column(&grid.view, &grid.cell_of(1, 1), ColumnResize::Narrower);
 
         assert_eq!(grid.column(1).fixed_width(), step(&grid));
+    }
+
+    #[gtk4::test]
+    fn narrow_leaves_a_column_already_narrower_than_a_step() {
+        let grid = two_text_rows();
+        let narrow = step(&grid) - 1;
+        grid.column(1).set_expand(false);
+        grid.column(1).set_fixed_width(narrow);
+
+        resize_column(&grid.view, &grid.cell_of(1, 1), ColumnResize::Narrower);
+
+        assert_eq!(grid.column(1).fixed_width(), narrow, "Narrow made the column wider");
     }
 
     #[gtk4::test]
