@@ -1,6 +1,6 @@
 # TablePro
 
-Native database clients that share no code: `apple/` holds the macOS and iOS apps (Swift), `linux/` the Linux app (Rust, GTK 4). Read `apple/AGENTS.md` or `linux/AGENTS.md` before working in that folder. Claude Code loads it through the folder's `CLAUDE.md`; Codex does not.
+Native database clients that share no code: `apple/` holds the macOS and iOS apps (Swift), `linux/` the Linux app (Rust, GTK 4). Read `apple/AGENTS.md` or `linux/AGENTS.md` before working in that folder. Claude Code loads it through the folder's `CLAUDE.md`, Codex only when started there.
 
 ## Repository map
 
