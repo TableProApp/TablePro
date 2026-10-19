@@ -1,4 +1,4 @@
-use tablepro_core::SshFailure;
+use tablepro_core::{SshDestinationPart, SshDestinationProblem, SshFailure};
 
 /// One sentence per way OpenSSH can fail, each naming what to change.
 pub fn ssh_failure_message(failure: &SshFailure) -> String {
@@ -11,9 +11,9 @@ pub fn ssh_failure_message(failure: &SshFailure) -> String {
             "TablePro's SSH helper is missing at {program}. Reinstall TablePro to connect over SSH.",
             &[("program", &program.display().to_string())],
         ),
-        SshFailure::InvalidDestination { detail } => crate::i18n::gettext_f(
+        SshFailure::InvalidDestination { problem } => crate::i18n::gettext_f(
             "The SSH host or jump host is not valid: {detail}",
-            &[("detail", detail)],
+            &[("detail", &ssh_destination_problem_text(problem))],
         ),
         SshFailure::ConfigRejected { detail } => crate::i18n::gettext_f(
             "ssh refused the configuration. Check ~/.ssh/config for this host: {detail}",
@@ -92,6 +92,41 @@ pub fn ssh_failure_message(failure: &SshFailure) -> String {
         SshFailure::Protocol { detail } => {
             crate::i18n::gettext_f("ssh printed something unexpected: {detail}", &[("detail", detail)])
         }
-        other => crate::i18n::gettext_f("SSH failed: {detail}", &[("detail", &other.to_string())]),
+        other => {
+            tracing::warn!(%other, "shown as an SSH failure with no sentence of its own");
+            crate::i18n::gettext("The SSH connection failed.")
+        }
+    }
+}
+
+/// What is wrong with a host, username or jump host as typed, as the
+/// part after "is not valid:" or "cannot be used:".
+pub fn ssh_destination_problem_text(problem: &SshDestinationProblem) -> String {
+    use SshDestinationPart::{Host, User};
+
+    match problem {
+        SshDestinationProblem::Empty { part: Host } => crate::i18n::gettext("the host name is empty"),
+        SshDestinationProblem::Empty { part: User } => crate::i18n::gettext("the username is empty"),
+        SshDestinationProblem::LeadingDash { part: Host } => crate::i18n::gettext("the host name starts with “-”"),
+        SshDestinationProblem::LeadingDash { part: User } => crate::i18n::gettext("the username starts with “-”"),
+        SshDestinationProblem::Whitespace { part: Host } => {
+            crate::i18n::gettext("the host name contains a space or a control character")
+        }
+        SshDestinationProblem::Whitespace { part: User } => {
+            crate::i18n::gettext("the username contains a space or a control character")
+        }
+        SshDestinationProblem::Character { part: Host, character } => crate::i18n::gettext_f(
+            "the host name contains “{character}”",
+            &[("character", &character.to_string())],
+        ),
+        SshDestinationProblem::Character { part: User, character } => crate::i18n::gettext_f(
+            "the username contains “{character}”",
+            &[("character", &character.to_string())],
+        ),
+        SshDestinationProblem::PortZero => crate::i18n::gettext("the port cannot be 0"),
+        SshDestinationProblem::NotAPort { text } => {
+            crate::i18n::gettext_f("“{text}” is not a port number", &[("text", text)])
+        }
+        SshDestinationProblem::UnclosedBracket => crate::i18n::gettext("an IPv6 address is missing its closing “]”"),
     }
 }

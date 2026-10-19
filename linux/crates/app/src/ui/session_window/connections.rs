@@ -148,8 +148,13 @@ impl SessionWindow {
                 Err(error) => {
                     tracing::warn!(%error, "could not save the edited connection");
                     input.deliver(SessionWindowInput::ShowToast(crate::i18n::gettext_f(
-                        "The connection could not be saved: {error}",
-                        &[("error", &error.to_string())],
+                        "The connection could not be saved. {reason}",
+                        &[(
+                            "reason",
+                            &crate::ui::error_text::saved_connection_error_message(&SavedConnectionError::Storage(
+                                error,
+                            )),
+                        )],
                     )));
                 }
             }
@@ -592,7 +597,7 @@ impl SessionWindow {
         glib::spawn_future_local(async move {
             let reset = resetting.await;
             drop(held);
-            let error = match reset {
+            let reason = match reset {
                 Ok(Ok(moved)) => {
                     banner.set_revealed(false);
                     toasts.add_toast(crate::ui::plain_toast(
@@ -600,14 +605,16 @@ impl SessionWindow {
                     ));
                     return;
                 }
-                Ok(Err(error)) => error.to_string(),
-                Err(error) => error.to_string(),
+                Ok(Err(error)) => {
+                    tracing::warn!(%error, "could not reset the saved connections");
+                    crate::ui::error_text::storage_io_message(&error)
+                }
+                Err(failure) => {
+                    tracing::warn!(%failure, "the saved connections reset task failed");
+                    Some(crate::ui::error_text::task_failure_message(&failure))
+                }
             };
-            tracing::warn!(%error, "could not reset the saved connections");
-            toasts.add_toast(crate::ui::plain_toast(&crate::i18n::gettext_f(
-                "Could not reset the saved connections: {error}",
-                &[("error", &error)],
-            )));
+            toasts.add_toast(crate::ui::plain_toast(&reset_failure_text(reason.as_deref())));
         });
     }
 }
@@ -674,6 +681,16 @@ async fn read_connections_file(file: &gio::File) -> Result<Vec<u8>, String> {
                 crate::i18n::gettext("That file could not be read.")
             }
         })
+}
+
+fn reset_failure_text(reason: Option<&str>) -> String {
+    match reason {
+        Some(reason) => crate::i18n::gettext_f(
+            "The saved connections could not be reset. {reason}",
+            &[("reason", reason)],
+        ),
+        None => crate::i18n::gettext("The saved connections could not be reset."),
+    }
 }
 
 /// The filter both file dialogs open with. Built fresh each time
@@ -755,8 +772,36 @@ mod tests {
         );
         let list_unreadable = import_failure_message(problem("/home/u/.local/share/connections.json"), chosen);
         assert!(!list_unreadable.contains("That file"), "{list_unreadable}");
-        let disk_full = import_failure_message(StorageError::Schema("the disk is full".to_owned()), chosen);
-        assert!(disk_full.contains("the disk is full"), "{disk_full}");
+        let disk_full = import_failure_message(
+            StorageError::Io {
+                path: "/home/u/.local/share/tablepro/connections.json".into(),
+                source: std::io::Error::from(std::io::ErrorKind::StorageFull),
+            },
+            chosen,
+        );
+        assert_eq!(
+            disk_full,
+            "Could not write /home/u/.local/share/tablepro/connections.json: the disk is full."
+        );
+    }
+
+    #[test]
+    fn a_failed_reset_says_why_in_the_apps_words() {
+        use tablepro_storage::StorageError;
+
+        let read_only = StorageError::Io {
+            path: "/home/u/.local/share/tablepro/connections.json".into(),
+            source: std::io::Error::from(std::io::ErrorKind::ReadOnlyFilesystem),
+        };
+        let readable = StorageError::Schema("the saved connections are readable; there is nothing to reset".to_owned());
+        let text =
+            |error: &StorageError| reset_failure_text(crate::ui::error_text::storage_io_message(error).as_deref());
+
+        assert_eq!(
+            text(&read_only),
+            "The saved connections could not be reset. Could not write /home/u/.local/share/tablepro/connections.json: the disk is read-only."
+        );
+        assert_eq!(text(&readable), "The saved connections could not be reset.");
     }
 
     #[gtk4::test]

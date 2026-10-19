@@ -9,11 +9,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
+import notes
+
 REPOSITORY = "TableProApp/TablePro"
 MAX_MINOR = 999
 MAX_PATCH = 99
 MAX_BETA = 98
 STABLE_RANK = 99
+MAX_LEAD_LINES = 6
 
 # [0-9], not \d: \d also matches non-ASCII digits.
 GRAMMAR = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-beta\.(0|[1-9][0-9]*))?")
@@ -273,6 +276,24 @@ def changelog_errors(changelog: Optional[str], version: Version, stables: List[V
     return errors
 
 
+# With a lead, the Sparkle notes, What's New and the Telegram post show only the lead.
+def lead_errors(changelog: Optional[str], version: Version) -> List[str]:
+    if changelog is None or version.is_beta:
+        return []
+    section = notes.find_section(changelog, str(version))
+    if section is None or not section.lead:
+        return []
+    where = f"CHANGELOG.md at {version.tag}"
+    errors = []
+    if version.patch != 0:
+        errors.append(f"{where}: ## [{version}] has a lead, and only an X.Y.0 takes one")
+    if len(section.lead) > MAX_LEAD_LINES:
+        errors.append(f"{where}: the {version} lead has {len(section.lead)} lines, over {MAX_LEAD_LINES}")
+    errors += [f"{where}: the {version} lead line `{line}` is not plain text"
+               for line in section.lead if line.startswith(("#", "- "))]
+    return errors
+
+
 def fragment_errors(paths: List[str], version: Version) -> List[str]:
     if version.is_beta:
         return []
@@ -317,7 +338,9 @@ def check(tag: str, git: Git, github: GitHub, changed: Callable[[str, str, str],
     errors += shared_commit_errors(git, version)
     errors += beta_errors(git, version, releases)
     errors += stable_tree_errors(git, version, releases, changed)
-    errors += changelog_errors(git.show(tag, "./CHANGELOG.md"), version, published_stables(releases))
+    changelog = git.show(tag, "./CHANGELOG.md")
+    errors += changelog_errors(changelog, version, published_stables(releases))
+    errors += lead_errors(changelog, version)
     errors += fragment_errors(git.list_tree(tag, FRAGMENTS), version)
     if errors:
         return errors

@@ -24,7 +24,7 @@ A repository admin does these once. The workflow's header names the same secrets
    - The version's section in `CHANGELOG.md`, from the fragments in `changelog.d/`. From the repository root, with the towncrier venv of the root `RELEASING.md`, Notes: `.venv/bin/towncrier build --dir linux --version X.Y.Z --date YYYY-MM-DD --yes`. It deletes the fragments and stages `CHANGELOG.md`. An X.Y.0 types its lead under the heading, at most 6 plain lines naming what a reader would change their behavior over.
    - The `.TH` line of `data/tablepro.1`: the date and `TablePro X.Y.Z`.
 
-   The pull request changes only these files and `changelog.d/`; PR title refuses anything else. The `release-metadata` Meson test checks that they agree once the changelog heading exists, so the pull request fails before the tag does.
+   The pull request changes only these files and `changelog.d/`. The `release-metadata` Meson test checks that they agree once the changelog heading exists, so the pull request fails before the tag does.
 2. **The tag**: `linux-vX.Y.Z` on the merged commit, pushed the same UTC day. The workflow compares the metainfo date with the commit date.
 3. **The workflow** checks the tag, builds and tests both packages on amd64 and arm64, publishes the GitHub release with the tarballs and the version's changelog section as notes, uploads the signed source package to the PPA, and posts the tag to COPR. A reviewer approves each step that uses the environment.
 4. **Afterwards**: watch the Launchpad build page of each series and the COPR build the workflow prints. A failed build there does not fail the workflow.

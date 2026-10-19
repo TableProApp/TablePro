@@ -23,18 +23,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
-          # check-changelog.py imports apple/scripts/release/notes.py.
-          sparse-checkout: |
-            scripts
-            apple/scripts/release
+          sparse-checkout: scripts
 
       - name: Check the title is a Conventional Commits subject
         env:
           TITLE: ${{ github.event.pull_request.title }}
         run: python3 scripts/ci/check-pr-title.py "$TITLE"
 
-      - name: Check CHANGELOG.md and the changelog fragments the pull request changes
+      # A version heading added outside a release PR makes version.py refuse its betas and notes.py assemble refuse it.
+      - name: Check only a release pull request edits a CHANGELOG.md
         env:
-          PR: ${{ github.event.pull_request.number }}
           TITLE: ${{ github.event.pull_request.title }}
-        run: python3 scripts/ci/check-changelog.py --pr "$PR" --title "$TITLE" --base "$GITHUB_BASE_REF"
+        run: |
+          set -euo pipefail
+          case "$TITLE" in 'chore(release)'*) exit 0 ;; esac
+          edited="$(git diff --no-renames --name-only HEAD^1 HEAD -- apple/CHANGELOG.md linux/CHANGELOG.md)"
+          if [ -n "$edited" ]; then
+            echo "::error title=Changelog::Only a chore(release) pull request edits ${edited//$'\n'/ or }. Add a changelog.d/<PR>.<type>.md fragment instead."
+            exit 1
+          fi

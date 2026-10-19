@@ -143,8 +143,9 @@ fn document_text(error: &RenderError) -> String {
                 ("got", &format_thousands(*got as u64)),
             ],
         ),
+        // The encoder libraries' text is English only; the reporter logs it.
         RenderError::Xlsx(_) | RenderError::Csv(_) | RenderError::Flush(_) | RenderError::Utf8(_) => {
-            gettext_f("The file couldn't be built: {error}", &[("error", &error.to_string())])
+            gettext("The file couldn't be built.")
         }
     }
 }
@@ -362,6 +363,18 @@ mod tests {
                 format_thousands(32_767)
             )
         );
+    }
+
+    #[test]
+    fn an_encoder_failure_shows_the_apps_sentence_and_not_the_librarys() {
+        let errors = [
+            RenderError::Xlsx("Worksheet name 'x' already in use".to_owned()),
+            RenderError::Flush(std::io::Error::other("failed to write whole buffer")),
+        ];
+
+        for error in errors {
+            assert_eq!(document(error), "The file couldn't be built.");
+        }
     }
 
     #[test]
