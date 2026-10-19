@@ -32,6 +32,7 @@ internal struct AgentProposedStatementsView: View {
                     }
             }
             .listStyle(.inset)
+            .splitItemGlassBackground()
         }
     }
 }

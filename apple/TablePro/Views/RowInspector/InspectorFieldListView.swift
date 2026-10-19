@@ -136,6 +136,7 @@ internal struct InspectorFieldListView: View {
         /// `listRowInsets` is consulted, so the pane's content sat at 24pt while its own header sat
         /// at 10. `.plain` lands at half of `intercellSpacing` and can be corrected onto the edge.
         .listStyle(.plain)
+        .splitItemGlassBackground()
         .modifier(InspectorFieldKeyShortcuts(
             moveFocus: { forward in moveFocus(within: fields, forward: forward) },
             applyStateShortcut: applyStateShortcut

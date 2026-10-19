@@ -397,9 +397,9 @@ custom_rules:
   pane_hidden_background:
     name: "Pane Keeps Its Background"
     regex: '\.scrollContentBackground\(\s*\.hidden\s*\)|\b[Tt]hemedContent|\.listRowBackground\('
-    excluded: ['.*/(Packages|Plugins)/']
+    excluded: ['.*/(Packages|Plugins)/', '.*/TablePro/Theme/SplitItemGlassBackground\.swift$']
     excluded_match_kinds: [comment, doccomment]
-    message: "Let the List, Form or ScrollView draw its own background and rows."
+    message: "Let the List, Form or ScrollView draw its own background and rows. Inside a glass sidebar or inspector, use .splitItemGlassBackground()."
     severity: error
   window_background_outside_backdrop:
     name: "Window Background Outside The Backdrop"
