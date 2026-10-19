@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: BookiE 0.1.6-dev\n"
 "Report-Msgid-Bugs-To: https://github.com/cozyGarage/BookiE/issues\n"
-"POT-Creation-Date: 2026-10-18 22:08+0200\n"
+"POT-Creation-Date: 1970-01-01 00:00+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -335,9 +335,7 @@ msgid "Discard pending changes?"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/browse.rs:660
-msgid ""
-"Refreshing reloads the table from the database and drops every unsaved edit "
-"on this tab."
+msgid "Refreshing reloads the table from the database and drops every unsaved edit on this tab."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/browse.rs:663
@@ -439,9 +437,7 @@ msgid "The connections could not be saved."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/connection.rs:43
-msgid ""
-"This connection uses an SSH jump chain, which the form cannot edit yet. Edit "
-"ssh.jump in the saved connection file."
+msgid "This connection uses an SSH jump chain, which the form cannot edit yet. Edit ssh.jump in the saved connection file."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/connection.rs:65
@@ -458,9 +454,7 @@ msgid "Finish or cancel the connection change before disconnecting."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/connection.rs:171
-msgid ""
-"Disconnecting will close every tab and drop every unsaved row edit and DDL "
-"change."
+msgid "Disconnecting will close every tab and drop every unsaved row edit and DDL change."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/connection.rs:175
@@ -493,9 +487,7 @@ msgid "Delete {name}?"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/connection.rs:345
-msgid ""
-"The saved entry and any stored passwords will be removed from your keyring. "
-"This cannot be undone."
+msgid "The saved entry and any stored passwords will be removed from your keyring. This cannot be undone."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/connection.rs:349
@@ -550,8 +542,7 @@ msgid "Try Again"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/connection.rs:529
-msgid ""
-"Connection switch stopped because a running operation has an unknown outcome."
+msgid "Connection switch stopped because a running operation has an unknown outcome."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/connection.rs:538
@@ -559,9 +550,7 @@ msgid "Cancel running queries and switch?"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/connection.rs:540
-msgid ""
-"BookiE will wait for every running query to report cancellation before "
-"changing connections."
+msgid "BookiE will wait for every running query to report cancellation before changing connections."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/connection.rs:543
@@ -621,9 +610,7 @@ msgstr ""
 
 #: apps/linux/app/src/ui/app/connection.rs:750
 #, rust-format
-msgid ""
-"Connection lost and cannot be restored: {reason}. Reopen the connection to "
-"retry."
+msgid "Connection lost and cannot be restored: {reason}. Reopen the connection to retry."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/connection.rs:821
@@ -640,8 +627,7 @@ msgid "The connection could not be deleted."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/connection.rs:890
-msgid ""
-"The connection was deleted, but some stored credentials could not be removed."
+msgid "The connection was deleted, but some stored credentials could not be removed."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/database_switcher.rs:113
@@ -679,9 +665,7 @@ msgid "The file changed on disk"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/editor_files.rs:102
-msgid ""
-"Another program changed or removed this file after it was opened. "
-"Overwriting replaces its changes with yours."
+msgid "Another program changed or removed this file after it was opened. Overwriting replaces its changes with yours."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/editor_files.rs:106
@@ -757,9 +741,7 @@ msgid "Can't create a table"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/import.rs:66
-msgid ""
-"This connection type cannot create a table from a file. Import into an "
-"existing table instead."
+msgid "This connection type cannot create a table from a file. Import into an existing table instead."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/import.rs:76
@@ -786,9 +768,7 @@ msgid "The policy rules could not be loaded, so writes are not permitted."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/import.rs:123
-msgid ""
-"A previous operation's audit record could not be written, so writes are not "
-"permitted."
+msgid "A previous operation's audit record could not be written, so writes are not permitted."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/import.rs:301
@@ -802,9 +782,7 @@ msgstr ""
 
 #: apps/linux/app/src/ui/app/import.rs:309
 #, rust-format
-msgid ""
-"{done} of {total} rows were written to {table} before the import stopped. "
-"{error}"
+msgid "{done} of {total} rows were written to {table} before the import stopped. {error}"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/import.rs:507
@@ -842,8 +820,7 @@ msgid "No tables"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/init_sidebar.rs:139
-msgid ""
-"Nothing matches the current search, or this connection has no tables yet."
+msgid "Nothing matches the current search, or this connection has no tables yet."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/init_window.rs:85
@@ -859,9 +836,7 @@ msgid "Save changes before closing?"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/init_window.rs:129
-msgid ""
-"One or more tabs have unsaved changes. They will be permanently lost if you "
-"discard them."
+msgid "One or more tabs have unsaved changes. They will be permanently lost if you discard them."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/init_window.rs:132
@@ -876,8 +851,7 @@ msgid "Could not save workspace"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/init_window.rs:243
-msgid ""
-"The window will remain open so you can retry without losing your workspace."
+msgid "The window will remain open so you can retry without losing your workspace."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/init_workspace.rs:75
@@ -981,10 +955,7 @@ msgid "Import from URL"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/organization.rs:139
-msgid ""
-"Paste a connection URL such as postgres://user@host:5432/database. A "
-"password in the URL is stored in the system keyring, never in the connection "
-"file."
+msgid "Paste a connection URL such as postgres://user@host:5432/database. A password in the URL is stored in the system keyring, never in the connection file."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/organization.rs:142
@@ -998,9 +969,7 @@ msgid "Import"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/organization.rs:175
-msgid ""
-"That is not a connection URL BookiE can read. Use a form like postgres://"
-"user@host:5432/database."
+msgid "That is not a connection URL BookiE can read. Use a form like postgres://user@host:5432/database."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/organization.rs:215
@@ -1076,9 +1045,7 @@ msgstr ""
 #: apps/linux/app/src/ui/app/row_ops.rs:142
 #: apps/linux/app/src/ui/browse_tab/mod.rs:962
 #: apps/linux/app/src/ui/browse_tab/row_ops.rs:509
-msgid ""
-"Some row values were not fetched. Show hidden columns and reload before "
-"copying or exporting."
+msgid "Some row values were not fetched. Show hidden columns and reload before copying or exporting."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/row_ops.rs:160
@@ -1091,9 +1058,7 @@ msgstr ""
 
 #: apps/linux/app/src/ui/app/row_ops.rs:200
 #, rust-format
-msgid ""
-"{n} rows could not be located. They may have been changed by another "
-"session. Refresh and review."
+msgid "{n} rows could not be located. They may have been changed by another session. Refresh and review."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/session_teardown.rs:105
@@ -1444,9 +1409,7 @@ msgid "© 2025–2026 TablePro Authors"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/status_pages.rs:136
-msgid ""
-"A native Linux database client built with GTK4 + libadwaita. Based on the "
-"open-source TablePro project."
+msgid "A native Linux database client built with GTK4 + libadwaita. Based on the open-source TablePro project."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/status_pages.rs:140
@@ -1469,9 +1432,7 @@ msgid "Drop {table}?"
 msgstr ""
 
 #: apps/linux/app/src/ui/app/structure.rs:82
-msgid ""
-"All rows and the table definition will be removed. This can't be undone from "
-"inside BookiE."
+msgid "All rows and the table definition will be removed. This can't be undone from inside BookiE."
 msgstr ""
 
 #: apps/linux/app/src/ui/app/structure.rs:85
@@ -1736,9 +1697,7 @@ msgid "Read-only connection. Editing disabled."
 msgstr ""
 
 #: apps/linux/app/src/ui/browse_tab/mod.rs:345
-msgid ""
-"This table has no primary key. Row order is not stable; use the SQL editor "
-"to modify rows."
+msgid "This table has no primary key. Row order is not stable; use the SQL editor to modify rows."
 msgstr ""
 
 #: apps/linux/app/src/ui/browse_tab/paste.rs:140
@@ -1805,9 +1764,7 @@ msgstr ""
 
 #: apps/linux/app/src/ui/browse_tab/row_ops.rs:48
 #, rust-format
-msgid ""
-"Cannot duplicate this row because it has {actual} values for {expected} "
-"columns."
+msgid "Cannot duplicate this row because it has {actual} values for {expected} columns."
 msgstr ""
 
 #: apps/linux/app/src/ui/browse_tab/row_ops.rs:176
@@ -1817,10 +1774,7 @@ msgid "Cannot delete"
 msgstr ""
 
 #: apps/linux/app/src/ui/browse_tab/row_ops.rs:178
-msgid ""
-"Some selected rows have a key value this driver could not read, so they "
-"cannot be identified. Reload the table, or delete those rows from a SQL "
-"editor."
+msgid "Some selected rows have a key value this driver could not read, so they cannot be identified. Reload the table, or delete those rows from a SQL editor."
 msgstr ""
 
 #: apps/linux/app/src/ui/browse_tab/row_ops.rs:195
@@ -1833,21 +1787,15 @@ msgid "Delete {n} rows?"
 msgstr ""
 
 #: apps/linux/app/src/ui/browse_tab/row_ops.rs:233
-msgid ""
-"These rows will be marked for deletion. They aren't removed until you click "
-"Save."
+msgid "These rows will be marked for deletion. They aren't removed until you click Save."
 msgstr ""
 
 #: apps/linux/app/src/ui/browse_tab/row_ops.rs:399
-msgid ""
-"This row's key could not be read from the database, so the row cannot be "
-"changed."
+msgid "This row's key could not be read from the database, so the row cannot be changed."
 msgstr ""
 
 #: apps/linux/app/src/ui/browse_tab/row_ops.rs:449
-msgid ""
-"This cell can't be set to NULL because it is read-only or does not accept "
-"NULL."
+msgid "This cell can't be set to NULL because it is read-only or does not accept NULL."
 msgstr ""
 
 #: apps/linux/app/src/ui/browse_tab/row_ops.rs:524
@@ -1871,9 +1819,7 @@ msgstr ""
 
 #: apps/linux/app/src/ui/browse_tab/selection/stats.rs:156
 #, rust-format
-msgid ""
-"{column}: count {count}, min {minimum}, max {maximum}, sum {sum}, average "
-"{average}"
+msgid "{column}: count {count}, min {minimum}, max {maximum}, sum {sum}, average {average}"
 msgstr ""
 
 #: apps/linux/app/src/ui/browse_tab/selection.rs:183
@@ -1916,8 +1862,7 @@ msgid "Invalid SQL Server datetimeoffset"
 msgstr ""
 
 #: apps/linux/app/src/ui/browse_tab/value_parse.rs:249
-msgid ""
-"SQL Server datetimeoffset value exceeds the column precision or offset range"
+msgid "SQL Server datetimeoffset value exceeds the column precision or offset range"
 msgstr ""
 
 #: apps/linux/app/src/ui/browse_tab/value_parse.rs:347
@@ -2290,9 +2235,7 @@ msgid "Password (optional)"
 msgstr ""
 
 #: apps/linux/app/src/ui/connect_dialog/mod.rs:894
-msgid ""
-"Experimental: connect and browse work; some writes and transactions are "
-"limited"
+msgid "Experimental: connect and browse work; some writes and transactions are limited"
 msgstr ""
 
 #: apps/linux/app/src/ui/connect_dialog/mod.rs:927
@@ -2310,9 +2253,7 @@ msgid "Edit {name}"
 msgstr ""
 
 #: apps/linux/app/src/ui/connect_dialog/prefill.rs:147
-msgid ""
-"The saved password could not be read from the keyring. Enter it again to "
-"keep password sign-in."
+msgid "The saved password could not be read from the keyring. Enter it again to keep password sign-in."
 msgstr ""
 
 #: apps/linux/app/src/ui/connect_dialog/socket_endpoint.rs:16
@@ -2325,10 +2266,7 @@ msgid "Export connections"
 msgstr ""
 
 #: apps/linux/app/src/ui/connection_bundle/export.rs:38
-msgid ""
-"Choose the connections to put in the file. Without a passphrase the file "
-"carries no passwords. With one, saved database and SSH passwords are "
-"encrypted into it. MCP tokens are never exported."
+msgid "Choose the connections to put in the file. Without a passphrase the file carries no passwords. With one, saved database and SSH passwords are encrypted into it. MCP tokens are never exported."
 msgstr ""
 
 #: apps/linux/app/src/ui/connection_bundle/export.rs:51
@@ -2366,9 +2304,7 @@ msgid "Off keeps the passwords already on this device."
 msgstr ""
 
 #: apps/linux/app/src/ui/connection_bundle/import.rs:89
-msgid ""
-"These changes have not been made yet. Connections already on this device "
-"that the file does not mention are left alone."
+msgid "These changes have not been made yet. Connections already on this device that the file does not mention are left alone."
 msgstr ""
 
 #: apps/linux/app/src/ui/connection_bundle/mod.rs:24
@@ -2394,15 +2330,11 @@ msgid "Not on this device yet."
 msgstr ""
 
 #: apps/linux/app/src/ui/connection_bundle/mod.rs:58
-msgid ""
-"Updates the matching connection. Read-only, environment and TLS are never "
-"relaxed."
+msgid "Updates the matching connection. Read-only, environment and TLS are never relaxed."
 msgstr ""
 
 #: apps/linux/app/src/ui/connection_bundle/mod.rs:61
-msgid ""
-"A different server already uses this entry's identifier here, so the import "
-"keeps both."
+msgid "A different server already uses this entry's identifier here, so the import keeps both."
 msgstr ""
 
 #: apps/linux/app/src/ui/connection_bundle/mod.rs:70
@@ -2445,9 +2377,7 @@ msgid "Remove “{name}”?"
 msgstr ""
 
 #: apps/linux/app/src/ui/connection_row.rs:202
-msgid ""
-"The saved credentials and SSH settings will be deleted from this device. The "
-"database itself is unaffected."
+msgid "The saved credentials and SSH settings will be deleted from this device. The database itself is unaffected."
 msgstr ""
 
 #: apps/linux/app/src/ui/connection_row.rs:205
@@ -2574,9 +2504,7 @@ msgid "Session"
 msgstr ""
 
 #: apps/linux/app/src/ui/editor/mod.rs:385
-msgid ""
-"Run this tab on its own connection, so settings, temporary tables and "
-"transactions carry over between runs"
+msgid "Run this tab on its own connection, so settings, temporary tables and transactions carry over between runs"
 msgstr ""
 
 #: apps/linux/app/src/ui/editor/mod.rs:394
@@ -2697,8 +2625,7 @@ msgid "Save SQL file"
 msgstr ""
 
 #: apps/linux/app/src/ui/editor/outcomes.rs:441
-msgid ""
-"A result page exceeded the query result limit. The result is incomplete."
+msgid "A result page exceeded the query result limit. The result is incomplete."
 msgstr ""
 
 #: apps/linux/app/src/ui/editor/outcomes.rs:496
@@ -2893,9 +2820,7 @@ msgid "Closing session…"
 msgstr ""
 
 #: apps/linux/app/src/ui/editor/session_mode.rs:509
-msgid ""
-"This editor session was retired after a connection failure. Reopen Session "
-"before running more SQL."
+msgid "This editor session was retired after a connection failure. Reopen Session before running more SQL."
 msgstr ""
 
 #: apps/linux/app/src/ui/editor/session_mode.rs:582
@@ -2919,9 +2844,7 @@ msgid "The script contains an unterminated quote or comment."
 msgstr ""
 
 #: apps/linux/app/src/ui/editor/statement_cursor.rs:43
-msgid ""
-"GO repetition is not supported. Expand repeated batches explicitly before "
-"running."
+msgid "GO repetition is not supported. Expand repeated batches explicitly before running."
 msgstr ""
 
 #: apps/linux/app/src/ui/editor/streaming.rs:80
@@ -2964,8 +2887,7 @@ msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:14
 #, rust-format
-msgid ""
-"Column {column} contains a value that cannot be copied into a SQL statement."
+msgid "Column {column} contains a value that cannot be copied into a SQL statement."
 msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:18
@@ -2974,9 +2896,7 @@ msgid "Optimistic grid updates are not supported for {driver}."
 msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:21
-msgid ""
-"This table's columns changed after you started editing (for example, in a "
-"Structure tab). Reload the page and reapply your changes."
+msgid "This table's columns changed after you started editing (for example, in a Structure tab). Reload the page and reapply your changes."
 msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:29
@@ -2989,9 +2909,7 @@ msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:32
 #, rust-format
-msgid ""
-"TLS handshake failed: {detail}. If this server does not use TLS, such as a "
-"local container, set TLS to Disabled."
+msgid "TLS handshake failed: {detail}. If this server does not use TLS, such as a local container, set TLS to Disabled."
 msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:39
@@ -3005,21 +2923,15 @@ msgid "Query failed: {message}"
 msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:43
-msgid ""
-"The connection was closed, or all connections are busy with other queries. "
-"Try reconnecting."
+msgid "The connection was closed, or all connections are busy with other queries. Try reconnecting."
 msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:45
-msgid ""
-"This row changed in the database after you loaded it. Your edits are still "
-"available; reload the row and reapply them."
+msgid "This row changed in the database after you loaded it. Your edits are still available; reload the row and reapply them."
 msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:48
-msgid ""
-"This connection is read-only. Reopen it without read-only mode to make "
-"changes."
+msgid "This connection is read-only. Reopen it without read-only mode to make changes."
 msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:50
@@ -3047,58 +2959,39 @@ msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:58
 #, rust-format
-msgid ""
-"The operation was interrupted, but the database outcome could not be "
-"confirmed: {detail}"
+msgid "The operation was interrupted, but the database outcome could not be confirmed: {detail}"
 msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:62
 #, rust-format
-msgid ""
-"Kerberos login failed: {detail}. Check that klist shows a valid ticket, run "
-"kinit if it does not, and make sure the server's SPN matches the host you "
-"typed."
+msgid "Kerberos login failed: {detail}. Check that klist shows a valid ticket, run kinit if it does not, and make sure the server's SPN matches the host you typed."
 msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:77
 #, rust-format
-msgid ""
-"Save failed at statement {n}: {error}. The rollback request succeeded; "
-"session state and other non-transactional side effects may remain."
+msgid "Save failed at statement {n}: {error}. The rollback request succeeded; session state and other non-transactional side effects may remain."
 msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:85
 #, rust-format
-msgid ""
-"Save failed at statement {n}: {error}. This database cannot roll a save "
-"back, so the statements before it were applied. Refresh the table before "
-"saving again."
+msgid "Save failed at statement {n}: {error}. This database cannot roll a save back, so the statements before it were applied. Refresh the table before saving again."
 msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:94
 #, rust-format
-msgid ""
-"Save failed at statement {n}: {error}. Rollback also failed: "
-"{rollback_error}. Database changes may have been applied."
+msgid "Save failed at statement {n}: {error}. Rollback also failed: {rollback_error}. Database changes may have been applied."
 msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:107
-msgid ""
-"No keyring is running, so saved passwords can't be read. Start GNOME "
-"Keyring, KeePassXC with Secret Service, or another Secret Service provider, "
-"then try again."
+msgid "No keyring is running, so saved passwords can't be read. Start GNOME Keyring, KeePassXC with Secret Service, or another Secret Service provider, then try again."
 msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:110
-msgid ""
-"The keyring is locked. Unlock it, for example by signing in again or opening "
-"Passwords and Keys, then try again."
+msgid "The keyring is locked. Unlock it, for example by signing in again or opening Passwords and Keys, then try again."
 msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:114
-msgid ""
-"Unlocking the keyring was cancelled, so the saved password was not read. Try "
-"again and unlock it when asked."
+msgid "Unlocking the keyring was cancelled, so the saved password was not read. Try again and unlock it when asked."
 msgstr ""
 
 #: apps/linux/app/src/ui/error_text.rs:118
@@ -3135,9 +3028,7 @@ msgid "Estimated cost"
 msgstr ""
 
 #: apps/linux/app/src/ui/export_dialog/file.rs:92
-msgid ""
-"Full-table export requires a consistent snapshot. Export the current page or "
-"a query result instead."
+msgid "Full-table export requires a consistent snapshot. Export the current page or a query result instead."
 msgstr ""
 
 #: apps/linux/app/src/ui/export_dialog/file.rs:116
@@ -3226,9 +3117,7 @@ msgid "Spreadsheet-safe text"
 msgstr ""
 
 #: apps/linux/app/src/ui/export_dialog.rs:327
-msgid ""
-"Prefix formula-like text with an apostrophe for spreadsheet safety. Turn off "
-"for lossless re-import."
+msgid "Prefix formula-like text with an apostrophe for spreadsheet safety. Turn off for lossless re-import."
 msgstr ""
 
 #: apps/linux/app/src/ui/export_dialog.rs:333
@@ -3295,9 +3184,7 @@ msgid "That saved filter is no longer available"
 msgstr ""
 
 #: apps/linux/app/src/ui/filter_presets.rs:127
-msgid ""
-"This saved filter no longer matches the table columns or types. Edit and "
-"save it again."
+msgid "This saved filter no longer matches the table columns or types. Edit and save it again."
 msgstr ""
 
 #: apps/linux/app/src/ui/filter_presets.rs:162
@@ -3580,9 +3467,7 @@ msgid "Clear filter"
 msgstr ""
 
 #: apps/linux/app/src/ui/grid/local_filter.rs:242
-msgid ""
-"Sorted the loaded rows only; the result is truncated. Use ORDER BY for the "
-"full result."
+msgid "Sorted the loaded rows only; the result is truncated. Use ORDER BY for the full result."
 msgstr ""
 
 #: apps/linux/app/src/ui/grid/local_filter.rs:251
@@ -3624,9 +3509,7 @@ msgstr ""
 
 #: apps/linux/app/src/ui/grid/value_viewer.rs:81
 #, rust-format
-msgid ""
-"Showing the first {shown} of {total} bytes. Copy value copies the whole "
-"value."
+msgid "Showing the first {shown} of {total} bytes. Copy value copies the whole value."
 msgstr ""
 
 #: apps/linux/app/src/ui/history_dialog.rs:109
@@ -3762,9 +3645,7 @@ msgid "Delete {n} queries?"
 msgstr ""
 
 #: apps/linux/app/src/ui/history_dialog.rs:513
-msgid ""
-"Selected entries will be permanently removed from history, including any "
-"pinned ones."
+msgid "Selected entries will be permanently removed from history, including any pinned ones."
 msgstr ""
 
 #: apps/linux/app/src/ui/history_dialog.rs:548
@@ -3857,9 +3738,7 @@ msgid "First row names the columns"
 msgstr ""
 
 #: apps/linux/app/src/ui/import_dialog.rs:250
-msgid ""
-"Generated columns stay on Skip and are filled by the database. Other columns "
-"left on Skip are not written, so their database defaults apply."
+msgid "Generated columns stay on Skip and are filled by the database. Other columns left on Skip are not written, so their database defaults apply."
 msgstr ""
 
 #: apps/linux/app/src/ui/import_dialog.rs:344
@@ -3908,9 +3787,7 @@ msgid "New table"
 msgstr ""
 
 #: apps/linux/app/src/ui/import_dialog.rs:538
-msgid ""
-"The type of each column is a guess from the first rows of the file. Change "
-"any that is wrong before the table is created."
+msgid "The type of each column is a guess from the first rows of the file. Change any that is wrong before the table is created."
 msgstr ""
 
 #: apps/linux/app/src/ui/import_dialog.rs:559
@@ -3940,9 +3817,7 @@ msgid "Agent access"
 msgstr ""
 
 #: apps/linux/app/src/ui/mcp_preferences.rs:27
-msgid ""
-"Loopback MCP server on 127.0.0.1:17432. Tokens gate which connections agents "
-"may use."
+msgid "Loopback MCP server on 127.0.0.1:17432. Tokens gate which connections agents may use."
 msgstr ""
 
 #: apps/linux/app/src/ui/mcp_preferences.rs:34
@@ -3950,9 +3825,7 @@ msgid "Policy file could not be reloaded"
 msgstr ""
 
 #: apps/linux/app/src/ui/mcp_preferences.rs:36
-msgid ""
-"The previous policy is still in use. Fix the policy file and reopen "
-"Preferences."
+msgid "The previous policy is still in use. Fix the policy file and reopen Preferences."
 msgstr ""
 
 #: apps/linux/app/src/ui/mcp_preferences.rs:49
@@ -3961,9 +3834,7 @@ msgid "Issue token"
 msgstr ""
 
 #: apps/linux/app/src/ui/mcp_preferences.rs:51
-msgid ""
-"Plaintext is shown once. Keyring storage is best-effort; the confirmation "
-"states whether it was saved."
+msgid "Plaintext is shown once. Keyring storage is best-effort; the confirmation states whether it was saved."
 msgstr ""
 
 #: apps/linux/app/src/ui/mcp_preferences.rs:55
@@ -3989,9 +3860,7 @@ msgid "Could not issue token"
 msgstr ""
 
 #: apps/linux/app/src/ui/mcp_preferences.rs:114
-msgid ""
-"Save at least one connection before issuing an MCP token. Tokens are scoped "
-"to the connections that exist at issue time."
+msgid "Save at least one connection before issuing an MCP token. Tokens are scoped to the connections that exist at issue time."
 msgstr ""
 
 #: apps/linux/app/src/ui/mcp_preferences.rs:158
@@ -4015,9 +3884,7 @@ msgid "This token is saved in the system keyring."
 msgstr ""
 
 #: apps/linux/app/src/ui/mcp_preferences.rs:218
-msgid ""
-"This token was not saved in the system keyring. Copy it now and add it to "
-"your MCP client configuration; closing this dialog loses it."
+msgid "This token was not saved in the system keyring. Copy it now and add it to your MCP client configuration; closing this dialog loses it."
 msgstr ""
 
 #: apps/linux/app/src/ui/mcp_preferences.rs:223
@@ -4059,8 +3926,7 @@ msgid "Data browser"
 msgstr ""
 
 #: apps/linux/app/src/ui/preferences.rs:57
-msgid ""
-"Choose how table data is displayed and how destructive actions are confirmed."
+msgid "Choose how table data is displayed and how destructive actions are confirmed."
 msgstr ""
 
 #: apps/linux/app/src/ui/preferences.rs:64
@@ -4084,9 +3950,7 @@ msgid "Reuse one tab when opening tables"
 msgstr ""
 
 #: apps/linux/app/src/ui/preferences.rs:84
-msgid ""
-"Opening a table replaces the temporary preview tab. Turn off to give every "
-"table its own tab."
+msgid "Opening a table replaces the temporary preview tab. Turn off to give every table its own tab."
 msgstr ""
 
 #: apps/linux/app/src/ui/preferences.rs:91
@@ -4294,10 +4158,7 @@ msgstr ""
 
 #: apps/linux/app/src/ui/ssh_prompt.rs:58
 #, rust-format
-msgid ""
-"This computer has not connected to {host} before. Its {algorithm} key "
-"fingerprint is {fingerprint}. Compare it with the fingerprint your server "
-"administrator gave you before trusting it."
+msgid "This computer has not connected to {host} before. Its {algorithm} key fingerprint is {fingerprint}. Compare it with the fingerprint your server administrator gave you before trusting it."
 msgstr ""
 
 #: apps/linux/app/src/ui/ssh_prompt.rs:63
@@ -4347,9 +4208,7 @@ msgid "Use SSH tunnel"
 msgstr ""
 
 #: apps/linux/app/src/ui/ssh_section.rs:53
-msgid ""
-"Reach the database through a bastion host. Jump chains can be set in the "
-"saved connection JSON (ssh.jump)."
+msgid "Reach the database through a bastion host. Jump chains can be set in the saved connection JSON (ssh.jump)."
 msgstr ""
 
 #: apps/linux/app/src/ui/ssh_section.rs:67
@@ -4381,9 +4240,7 @@ msgid "Use system OpenSSH"
 msgstr ""
 
 #: apps/linux/app/src/ui/ssh_section.rs:253
-msgid ""
-"Run the ssh program so ~/.ssh/config, ProxyJump, ssh-agent and host "
-"certificates apply"
+msgid "Run the ssh program so ~/.ssh/config, ProxyJump, ssh-agent and host certificates apply"
 msgstr ""
 
 #: apps/linux/app/src/ui/ssh_section.rs:275

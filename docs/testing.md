@@ -6,6 +6,8 @@ The [active sprint](bookie-0.2-sprint.md) owns current acceptance. Start with th
 
 `scripts/ci-local.sh` remains the shared local/CI entry for full, widgets and integration modes. Registrations for isolated GTK and keyring tests live in `scripts/isolated-tests.json`; zero selected tests is a failure. Every `ci-local.sh` run saves exact-tree evidence under `target/quality/`. Release mode does not certify package installation, Wayland, upgrade/rollback or retry-free candidate soak. See the [packaging guide](../apps/linux/packaging/README.md) and [manual checklist](manual-verification-0.2-features.md).
 
+The script harness checks selected documented Rust declarations against source and regenerates the gettext template in memory. It compares both `apps/linux/po/tablepro.pot` and `POTFILES.in` without writing; run `python3 scripts/update-translations.py` to refresh them. The catalog check needs GNU `xgettext` and does not load GTK GIR bindings or a desktop session.
+
 ## What a container run proves
 
 Database fixtures, the GTK scenarios and the distro-floor jobs run in containers or virtual displays. A pass there shows the code behaves as designed against a disposable database; it is not acceptance of a connection path. Unix sockets, IPv6 loopback, desktop portals and the Secret Service behave differently across containers and desktop sessions; a container run has already hidden one such difference (Docker does not publish `::1`). Acceptance for those paths is the installed package connecting to a real database in the target native desktop session, on the host or a supported VM, as recorded under PKG-1 and in the [manual checklist](manual-verification-0.2-features.md).

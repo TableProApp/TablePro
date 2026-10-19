@@ -51,6 +51,10 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ github.sha }}
+      - name: Install gettext tools for generated catalog checks
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y gettext
       - name: Test runner failures and workflow contracts
         run: python3 scripts/run-test-layer.py harness packaging-contracts
       - name: Retain evidence even after failure

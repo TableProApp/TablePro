@@ -1,4 +1,3 @@
-apps/linux/app/src/config.rs
 apps/linux/app/src/services/connection_service.rs
 apps/linux/app/src/services/query_parameters.rs
 apps/linux/app/src/services/quick_switcher.rs
