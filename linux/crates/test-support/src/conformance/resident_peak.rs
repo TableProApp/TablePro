@@ -6,8 +6,8 @@ use crate::conformance::ConformanceFailure;
 /// the peak the kernel keeps for the process (`VmHWM`).
 ///
 /// The peak is the whole process's, so it means something only while no
-/// other test runs in the process: nextest gives each test a process of
-/// its own.
+/// other test runs in the process: under nextest, which gives each test a
+/// process of its own, or in a test binary that holds only the case.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ResidentPeak {
     baseline: u64,

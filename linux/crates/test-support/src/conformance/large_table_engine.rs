@@ -2,8 +2,8 @@ use tablepro_core::TableRef;
 
 use crate::conformance::ConformanceEngine;
 
-/// An engine whose server can fill a table with a million rows in
-/// seconds, for the case that pages through one and exports it.
+/// An engine that can fill a table with a million rows in seconds, for
+/// the case that pages through one and exports it.
 pub trait LargeTableEngine: ConformanceEngine {
     /// Statements that fill the empty scratch `table` with `rows` rows:
     /// `id` from 1 to `rows`, and `label` the id left-padded with zeros
