@@ -85,6 +85,7 @@ Dependencies point toward `core`. Domain and driver crates never import GTK or R
 
 - GTK widgets belong to the glib main context. Database and blocking work never run on the GTK thread.
 - Relm4 messages drive state transitions; component-scoped commands own work whose lifetime belongs to a component. Async outcomes return to the update loop before touching widgets. Keep logic out of widget construction so it can be unit-tested.
+- Production GTK UI code does not wait synchronously with `std::thread::sleep` or `block_on`; `scripts/check-gtk-blocking.py` checks this boundary and excludes `#[cfg(test)]` code.
 - Cancellation and timeouts reach the database operation (ADR 0005). A dropped future is not proof that a driver stopped.
 - Late results never replace state from a newer connection, query or request: use a generation or request id.
 
