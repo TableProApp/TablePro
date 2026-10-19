@@ -89,6 +89,18 @@ The private infrastructure design already describes an image registry/pull cache
 
 The inspected nightly is Forgejo #778 at `84f03a0385562d97554c47a06e6cebab189c3004`. Its run-level status says failure, but its jobs endpoint still reports active work: 8 successful, 1 failed, 6 running, 4 waiting and 8 blocked at the recorded observation. The failed job is agentd mutation. Core/policy mutation shards are still running. This is not a finished-nightly result. The agentd mutation log reports 115 mutants tested: 8 missed, 65 caught and 42 unviable. Six missed mutants match the baseline; the two new survivors replace the sequence-synchronization forwarding methods with `Ok(())`. This establishes a coverage gap in that run, not a reproduced production bug or an infrastructure failure. Triage the forwarding behavior under existing #559 before considering a rerun; rerunning unchanged tests does not address the missing assertion. Poll the same run's jobs endpoint until no job remains active; blocked jobs need a final disposition rather than being counted as passed. Do not dispatch another nightly or full gate while waiting.
 
+Existing PostgreSQL coverage must be reused before selecting new cases:
+
+| Existing evidence | What it establishes | Follow-up boundary |
+|---|---|---|
+| `disconnection::a_restarted_postgres_server_restores_the_existing_pool` | Real server stop/start with durability enabled; existing pool becomes usable through explicit read retries | Application operation identity and generation handling are a separate path |
+| `disconnection::a_committed_write_with_a_lost_ack_is_not_replayed_after_reconnect` | Durable stored-state/request evidence for an acknowledged-result loss; historical frozen-candidate result under #593 | Confirm exact-source acceptance instead of recreating the same fixture |
+| Release `direct_reconnect_restores_a_verified_session` and `ssh_reconnect_replaces_the_tunnel_and_the_session` | Explicit replacement after proxy path loss | Neither is proof of automatic in-flight operation replay |
+| Release `guarded_application_error_does_not_replay_sequence_effects` | Governed SQL errors do not duplicate sequence effects | Keep this refusal if changing any read-retry rule |
+| GTK `postgres_ssh_tunnel_loss_retires_session_and_reconnects` | Existing application/session recovery scenario | Extend request-generation and final rendered-state assertions here where applicable |
+
+The inspected source lives in [PostgreSQL disconnection tests](../../crates/drivers/postgres/tests/support/disconnection.rs), [release reconnect tests](../../tests/release/tests/reconnect.rs), [policy transaction tests](../../tests/release/tests/policy_transactions.rs) and [GTK UX scenarios](../../apps/linux/app/tests/gtk_ux.py). This is a source inventory, not a new test run. An automatic replay feature requires an explicit safe-read contract; the upstream behavior is not an instruction to change BookiE's current refusal semantics. Issue #593 already records local frozen-candidate results and asks for exact-source Forgejo acceptance before closure.
+
 After the nightly settles:
 
 1. Record final job outcomes and identify real test gaps versus infrastructure failures. Reuse existing mutation and CI issues; rerun only a justified failed job after diagnosis. Check the night's source against the current Linux source before assigning a regression to a branch.
