@@ -8,8 +8,8 @@ This file records the license expressions declared by package authors and the co
 
 Packages:
 
-- `tablepro-agentd 0.1.6-dev`
-- `tablepro-app 0.1.6-dev`
+- `tablepro-agentd 0.2.0`
+- `tablepro-app 0.2.0`
 - `tablepro-app-services 0.1.0`
 - `tablepro-core 0.1.0`
 - `tablepro-driver-clickhouse 0.1.0`

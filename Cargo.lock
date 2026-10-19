@@ -6193,7 +6193,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-agentd"
-version = "0.1.6-dev"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6222,7 +6222,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-app"
-version = "0.1.6-dev"
+version = "0.2.0"
 dependencies = [
  "async-channel",
  "async-trait",

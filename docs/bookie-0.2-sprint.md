@@ -2,7 +2,7 @@
 
 ## Delivery status
 
-The maintainer confirmed on 2026-10-18 that **0.2.0 delivery work is complete; release publication is pending**. Delivery branch: `linux`. The source still identifies itself as `0.1.6-dev`; version preparation and publishing remain separate actions. No 0.2.0 tag or release is created by this update.
+The maintainer confirmed on 2026-10-18 that **0.2.0 delivery work is complete; release publication is pending**. Delivery branch: `linux`. The app and agentd manifests identify source version `0.2.0`; tag creation and release publication remain separate actions.
 
 The [0.2.0 scope](0.2.0-scope.md) records the completed delivery boundary. The previous scope and sprint checklists are preserved in the [completion handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md). Their historical open rows do not reopen 0.2.0. This status records the maintainer's decision, not a new run of the package, driver or desktop checks.
 

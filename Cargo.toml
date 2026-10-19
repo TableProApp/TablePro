@@ -106,6 +106,7 @@ exclusions = [
     "scripts/tests/test_update_translations.py",
     "scripts/tests/test_deb_package.py",
     "scripts/tests/test_panic_sites.py",
+    "scripts/tests/test_arch_candidate.py",
     "scripts/tests/test_update_third_party_notices.py",
     "apps/linux/app/tests/**",
     "**/pinned_tests.rs",
