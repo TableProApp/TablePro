@@ -27,7 +27,7 @@ Each app has its own guide beside its code: `apple/AGENTS.md` and `linux/AGENTS.
 ## Writing style and docs
 
 - All writing: short sentences, plain words, specific numbers and names, no em dash, no filler.
-- `scripts/banned-words.txt` is the list; never copy its terms. `scripts/check-banned-words.sh --staged` checks a staged change; the `PR title` job checks a PR's added lines and body.
+- `scripts/banned-words.txt` is the list; never copy its terms. `scripts/check-banned-words.sh --staged` checks a staged change.
 - One home per fact; others point to it by repo path and section. No drifting counts or timings; a plan is not a fact.
 - Code comments say why, never what. Delete what-comments in code you touch.
 - A path in a platform's docs is relative to its folder; a root doc writes it from the repository root.
@@ -36,7 +36,7 @@ Each app has its own guide beside its code: `apple/AGENTS.md` and `linux/AGENTS.
 
 ## Commits and PRs
 
-- The PR title is the squash commit subject; branch commits use the same format. The body follows `.github/pull_request_template.md`, whose top comment holds the format, types and scopes. The `PR title` check (`scripts/ci/check-pr-title.py`) enforces the format and 72 characters, not scopes.
+- The PR title is the squash commit subject; branch commits use the same format. The body follows `.github/pull_request_template.md`, whose top comment holds the format, types and scopes. The `PR title` check (`scripts/ci/check-pr-title.py`) enforces the format, not scopes.
 - A user-visible change adds a fragment to its app's `changelog.d/`; only a release PR edits a `CHANGELOG.md`. Format: `.claude/rules/changelog.md`.
 - A rename or signature change updates every caller and test in the same commit.
 

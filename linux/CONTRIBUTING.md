@@ -117,7 +117,7 @@ This is the most common substantive change. Follow [docs/adding-drivers.md](docs
 
 ## Commits
 
-Conventional Commits, single line, at most 72 characters, same rule as the macOS app. The scope is `linux`, or `linux-<area>` for one area of the app: `linux-grid`, `linux-browse`, `linux-structure`, `linux-editor`, `linux-history`, `linux-export`, `linux-sidebar`, `linux-picker`, `linux-session`, `linux-storage`, `linux-ssh`, `linux-core`, `linux-flatpak`, or a driver as `linux-postgres`, `linux-mysql`, `linux-sqlite`, `linux-mssql`, `linux-clickhouse`.
+Conventional Commits, single line, same rule as the macOS app. The scope is `linux`, or `linux-<area>` for one area of the app: `linux-grid`, `linux-browse`, `linux-structure`, `linux-editor`, `linux-history`, `linux-export`, `linux-sidebar`, `linux-picker`, `linux-session`, `linux-storage`, `linux-ssh`, `linux-core`, `linux-flatpak`, or a driver as `linux-postgres`, `linux-mysql`, `linux-sqlite`, `linux-mssql`, `linux-clickhouse`.
 
 ```
 fix(linux-sidebar): keep the filter text when the catalog refreshes

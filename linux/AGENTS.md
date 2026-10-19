@@ -47,7 +47,7 @@ From the repository root, through the verification wrapper, which keeps the full
 2. **Changelog.** A user-visible change adds `linux/changelog.d/<PR>.<type>.md`, never `apple/changelog.d/`; only a release PR edits `linux/CHANGELOG.md`. Format: the root `.claude/rules/changelog.md`.
 3. **Translations.** User-facing strings go through `crate::i18n` (`gettext`, `gettext_f` with named placeholders, `ngettext_f`, `pgettext`). A new or removed file under `crates/app/src` or `data/resources` regenerates `po/POTFILES.in`. See `po/README.md`.
 4. **Lint** the workspace: rustfmt, then clippy with and without default features.
-5. **Commits and pull requests** follow the root rules: Conventional Commits, at most 72 characters, scope `linux` or `linux-<area>` (for example `linux-grid`, `linux-storage`), and the root `.github/pull_request_template.md`.
+5. **Commits and pull requests** follow the root rules: Conventional Commits, scope `linux` or `linux-<area>` (for example `linux-grid`, `linux-storage`), and the root `.github/pull_request_template.md`.
 
 ## CI
 

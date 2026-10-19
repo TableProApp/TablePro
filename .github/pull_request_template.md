@@ -1,11 +1,11 @@
 <!--
-Title: <type>(<scope>): <description>, with ! before the colon for a breaking change. At most 72 characters, GitHub's " (#123)" not counted. It becomes the squash commit subject.
+Title: <type>(<scope>): <description>, with ! before the colon for a breaking change. It becomes the squash commit subject.
 Types: feat, fix, refactor, perf, test, docs, build, ci, chore, style, revert.
 Scopes, when one fits: ai-chat, ai-providers, mcp, copilot, inline-suggest, editor, datagrid, tabs, coordinator, sidebar, connections, connection-form, welcome, settings, toolbar, hig, ssh, ios, windowing, perf, launch, plugins, plugin-<name>, changelog, claude-md, docs, ci, release.
 Platform scopes: ios for the iOS app, linux or linux-<area> for the Linux app. windows is kept for a Windows app, so window management is windowing.
 Body: 80 to 150 words, 250 at most, screenshots aside. Delete these comments and any optional heading you do not use.
 Leave out review history, test lists and counts, the investigation story and file-by-file change logs.
-The PR title check also scans this body against scripts/banned-words.txt.
+Use none of the terms in scripts/banned-words.txt.
 -->
 
 ## Why

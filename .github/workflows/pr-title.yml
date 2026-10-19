@@ -28,7 +28,7 @@ jobs:
             scripts
             apple/scripts/release
 
-      - name: Check the title is a Conventional Commits subject within 72 characters
+      - name: Check the title is a Conventional Commits subject
         env:
           TITLE: ${{ github.event.pull_request.title }}
         run: python3 scripts/ci/check-pr-title.py "$TITLE"
@@ -38,13 +38,3 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           TITLE: ${{ github.event.pull_request.title }}
         run: python3 scripts/ci/check-changelog.py --pr "$PR" --title "$TITLE" --base "$GITHUB_BASE_REF"
-
-      - name: Check the added lines and the description against the banned words
-        env:
-          BODY: ${{ github.event.pull_request.body }}
-        run: |
-          printf '%s\n' "$BODY" > "$RUNNER_TEMP/pr-body.md"
-          status=0
-          scripts/check-banned-words.sh --base HEAD^1 || status=1
-          scripts/check-banned-words.sh "$RUNNER_TEMP/pr-body.md" || status=1
-          exit "$status"

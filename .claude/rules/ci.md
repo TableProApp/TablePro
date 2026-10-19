@@ -100,7 +100,7 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 ## PR title (`pr-title.yml`)
 
 - Runs on opened, edited, reopened and synchronize, so every head commit gets the check.
-- Runs `scripts/ci/check-pr-title.py`, then `scripts/ci/check-changelog.py --pr` on the merge commit's diff to its first parent, which also refuses a release PR that changes more than `apple/CHANGELOG.md` and `apple/changelog.d/`, then `scripts/check-banned-words.sh` on the PR's added lines and on its body. The banned-words step runs both and exits with the worse result.
+- Runs `scripts/ci/check-pr-title.py`, then `scripts/ci/check-changelog.py --pr` on the merge commit's diff to its first parent, which also refuses a release PR that changes more than `apple/CHANGELOG.md` and `apple/changelog.d/`.
 
 ## Repo Hygiene (`repo-hygiene.yml`)
 
