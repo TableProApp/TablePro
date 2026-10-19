@@ -112,7 +112,7 @@ Every TLS fixture has two principals:
 
 SQL Server has only the `sa` principal, because its TLS contract carries no client identity.
 
-`HbaMode` picks what the PostgreSQL fixture accepts: `Password` (the image defaults, no TLS), `HostSslOnly`, or `ClientCertificate`. `OpenSshFixture` takes an `SshAuthVariant`: `Password`, `PublicKey`, `KeyboardInteractive` or `HostCertificate`. `HostKeyRevocation` builds a KRL from the running server's host key, and `ScriptedAskpass` writes a 0700 script for `SSH_ASKPASS`.
+`HbaMode` picks what the PostgreSQL fixture accepts: `Password` (the image defaults, no TLS), `HostSslOnly`, or `ClientCertificate`. Docker maps a published port anew each time a container starts, so a test that restarts the server starts it with `PostgresFixture::start_restartable`, which picks the host port itself; `stop` and `start_again` then bring it back where the session's connection points, with its data. `OpenSshFixture` takes an `SshAuthVariant`: `Password`, `PublicKey`, `KeyboardInteractive` or `HostCertificate`. `HostKeyRevocation` builds a KRL from the running server's host key, and `ScriptedAskpass` writes a 0700 script for `SSH_ASKPASS`.
 
 ### Conformance
 
@@ -146,7 +146,7 @@ Each flag adds cases and needs its engine trait:
 
 A flag that is off emits no test. `suite_flags_match_driver_capabilities` is always emitted and never ignored: it fails when `endpoint` or `editor_transactions` disagrees with the driver's `DriverCapabilities`, so those cases cannot be skipped by declaring less. `pool`, `unsupported_types` and `bounded_ddl` have no capability behind them: they describe the server, and MySQL and MariaDB differ on `bounded_ddl` under one driver, so the adapter states them and review checks them. `docker: true` marks every other case `#[ignore = "requires docker"]`; SQLite passes `docker: false` and `endpoint: file`, so its suite runs in the unit suite.
 
-Each case starts its own engine, then has two minutes (`CASE_LIMIT`) to finish. A driver that ignores a deadline or a cancel fails the case with its name instead of holding the test run.
+Each case starts its own engine, then has two minutes (`CASE_LIMIT`) to finish, four for the large-table case (`LARGE_TABLE_CASE_LIMIT`). A driver that ignores a deadline or a cancel fails the case with its name instead of holding the test run.
 
 ### DDL conformance
 
@@ -167,6 +167,16 @@ Every case plans through `connection.dialect().ddl()` and runs the plan with `wr
 - `structure_changes_keep_rows_and_indexes` fills an indexed table, then changes a default and a nullability. The rows and the index have to come through, which on SQLite means through the table rebuild.
 
 The PostgreSQL, MySQL, SQL Server, ClickHouse and SQLite targets run it, and the MySQL target runs it on MariaDB as well. SQLite passes `docker: false`, so its cases run in the unit suite.
+
+### Large-table conformance
+
+`large_table_conformance_suite!` runs `a_million_row_table_pages_to_its_end_and_exports` through `LargeTableEngine`, whose statements fill the scratch table with 1,000,000 rows, about 100 MB:
+
+- It counts the table, then pages from the first page to the end by the browse tab's default page size, each page read past the edge row's key, or by offset where the engine pages that way, as `BrowsePager` moves on. The last page is then read from the end. Every row is checked.
+- It exports the table through the statement `build_export` writes, streamed by `stream_read` with no deadline into a CSV file in 64 KiB chunks, as the export dialog's Entire Table does. Every line of the file is checked.
+- The walk, each page and the export have time bounds, and where pages seek, the last pages may not take much longer than the first. Neither the walk nor the export may raise the process's resident peak (`VmHWM`, reset through `/proc/self/clear_refs`) past a memory bound. The bounds are constants in `crates/test-support/src/conformance/cases/large_table.rs`.
+
+The PostgreSQL, MySQL, MariaDB, SQL Server and ClickHouse targets run it. The `ci` nextest profile prints its times and memory for a passing run, so the job log keeps what the bounds are set from. SQLite has no case: its suites run in the unit suite, where tests share one process, so the peak would count theirs too.
 
 ### TLS conformance
 
@@ -304,6 +314,7 @@ The tests in `crates/app/tests` that start TablePro run without the test harness
 | `application_uniqueness` | a second plain launch activates the running instance and exits without opening a window, and `--new-window` opens one there |
 | `application_lifecycle` | Quit waits for a session's close within the close timeout and gives up on a close that hangs, a cancelled close keeps the app running, and an editor session's close holds the process |
 | `application_session_restore` | the windows open at quit open again at the next launch, and a window closed first does not |
+| `kill_during_save` | TablePro killed with SIGKILL halfway through a grid save to a SQLite file leaves none of that save in the file and no lock on it. The next launch restores the session, and its history, settings and saved tabs read back with nothing moved aside |
 | `open_files` | a file handed over D-Bus opens a window on it, the same file brings that window forward, and another file opens a second window |
 | `accessibility` | every control a screen reader reaches has a name, on the picker, connecting, connect failed and workspace pages and in the connect and preferences dialogs |
 | `startup`, `i18n_catalog`, `logging` | the command-line options, a missing schema, the translation catalogue and the log setup |

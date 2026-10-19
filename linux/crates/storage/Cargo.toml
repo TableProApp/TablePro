@@ -13,7 +13,7 @@ secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["fs", "sync"] }
+tokio = { workspace = true, features = ["fs"] }
 uuid.workspace = true
 sqlx = { workspace = true, features = ["sqlite-unbundled", "migrate", "macros"] }
 chrono.workspace = true

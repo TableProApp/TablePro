@@ -14,8 +14,8 @@ use tablepro_driver_clickhouse::ClickhouseDriver;
 use tablepro_test_fixtures::ClickHouseFixture;
 use tablepro_test_support::FaultTransport;
 use tablepro_test_support::conformance::{
-    ConformanceDdlEngine, ConformanceEngine, ConformanceFailure, NetworkConformanceEngine, TypedConformanceEngine,
-    UnsupportedTypeCase,
+    ConformanceDdlEngine, ConformanceEngine, ConformanceFailure, LargeTableEngine, NetworkConformanceEngine,
+    TypedConformanceEngine, UnsupportedTypeCase,
 };
 
 use crate::support::{DATABASE, direct, options_over, password, quoted};
@@ -164,6 +164,17 @@ impl ConformanceDdlEngine for ClickHouseEngine {
     }
 }
 
+impl LargeTableEngine for ClickHouseEngine {
+    fn fill_scratch_table_sql(&self, table: &TableRef, rows: u64, label_width: usize) -> Vec<String> {
+        vec![format!(
+            "INSERT INTO {}.{} (id, label) \
+             SELECT toInt32(number + 1), leftPad(toString(number + 1), {label_width}, '0') FROM numbers({rows})",
+            quoted(DATABASE),
+            quoted(&table.name)
+        )]
+    }
+}
+
 mod suite {
     use super::ClickHouseEngine;
 
@@ -180,5 +191,9 @@ mod suite {
     tablepro_test_support::ddl_conformance_suite! {
         engine: ClickHouseEngine,
         docker: true,
+    }
+
+    tablepro_test_support::large_table_conformance_suite! {
+        engine: ClickHouseEngine,
     }
 }

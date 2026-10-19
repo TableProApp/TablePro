@@ -235,7 +235,7 @@ impl Write<'_> {
 #[cfg(test)]
 mod tests {
     use tablepro_core::meta::TableRef;
-    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode, WriteKind};
+    use tablepro_core::{ForeignKeyCheck, ForeignKeyMode, UnsupportedFeature, WriteKind};
 
     use super::*;
 
@@ -257,7 +257,7 @@ mod tests {
         assert!(matches!(
             precheck(&batch(suspended), false),
             Err(DriverError::Unsupported {
-                feature: "foreign key suspension"
+                feature: UnsupportedFeature::ForeignKeySuspension
             })
         ));
         assert!(precheck(&batch(ForeignKeyMode::Enforced), false).is_ok());

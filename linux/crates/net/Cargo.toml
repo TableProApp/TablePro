@@ -15,7 +15,7 @@ rustls-pki-types.workspace = true
 rustls-platform-verifier.workspace = true
 socket2.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["net", "rt", "time"] }
+tokio = { workspace = true, features = ["rt"] }
 tracing.workspace = true
 
 [dev-dependencies]
@@ -24,7 +24,7 @@ hyper-rustls.workspace = true
 hyper-util.workspace = true
 rcgen.workspace = true
 tempfile.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "io-util"] }
+tokio = { workspace = true, features = ["io-util"] }
 tokio-rustls.workspace = true
 tower-service.workspace = true
 

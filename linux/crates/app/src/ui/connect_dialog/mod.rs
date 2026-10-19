@@ -506,10 +506,11 @@ impl ConnectDialog {
         let weak = self.downgrade();
         glib::spawn_future_local(async move {
             let result = check.await.unwrap_or_else(|failure| {
+                tracing::warn!(%failure, "the certificate check did not finish");
                 Err(ConfigError::CaFile {
                     path: fallback_path,
                     problem: tablepro_core::CertificateFileProblem::Unreadable {
-                        detail: failure.to_string(),
+                        kind: std::io::ErrorKind::Other,
                     },
                 })
             });

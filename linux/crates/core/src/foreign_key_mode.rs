@@ -1,5 +1,6 @@
 use crate::error::DriverError;
 use crate::foreign_key_check::ForeignKeyCheck;
+use crate::unsupported_feature::UnsupportedFeature;
 
 /// Whether foreign keys stay on while a batch runs.
 ///
@@ -30,7 +31,7 @@ impl ForeignKeyMode {
         match self {
             Self::Enforced => Ok(()),
             Self::SuspendedThenVerified { .. } => Err(DriverError::Unsupported {
-                feature: "foreign key suspension",
+                feature: UnsupportedFeature::ForeignKeySuspension,
             }),
         }
     }
@@ -53,7 +54,7 @@ mod tests {
             matches!(
                 refusal,
                 Err(DriverError::Unsupported {
-                    feature: "foreign key suspension"
+                    feature: UnsupportedFeature::ForeignKeySuspension
                 })
             ),
             "got {refusal:?}"

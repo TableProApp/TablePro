@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use crate::column::IntegerKind;
-use crate::value::DecimalParseError;
+use crate::value::{DecimalParseError, JsonTextError};
 
 /// Why the text in a cell could not become a value of the column's
 /// type.
@@ -30,7 +30,7 @@ pub enum EditParseError {
     #[error("enter a UUID")]
     InvalidUuid,
     #[error("enter valid JSON: {0}")]
-    InvalidJson(String),
+    InvalidJson(#[source] JsonTextError),
     #[error("enter a date as YYYY-MM-DD")]
     InvalidDate,
     #[error("enter a time as HH:MM:SS")]

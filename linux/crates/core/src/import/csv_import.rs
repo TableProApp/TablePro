@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use crate::column::ColumnInfo;
-use crate::edit::{CellInput, parse_literal_text};
+use crate::edit::{CellInput, EditParseError, parse_literal_text};
 use crate::export::CsvDelimiter;
 
 use super::ImportColumn;
@@ -22,8 +22,10 @@ pub enum ImportError {
     #[error("the file is not valid UTF-8 at byte {offset}")]
     NotUtf8 { offset: usize },
 
-    #[error("the file could not be read as CSV: {0}")]
-    Malformed(String),
+    /// The csv crate's message is English only, so only where it
+    /// stopped is kept.
+    #[error("the file could not be read as CSV")]
+    Malformed { line: Option<u64> },
 
     #[error("the file has no columns in it")]
     NoColumns,
@@ -41,7 +43,7 @@ pub struct CsvRowError {
     pub line: usize,
     pub column: String,
     pub text: String,
-    pub reason: String,
+    pub reason: EditParseError,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,8 +70,8 @@ impl Default for CsvImportOptions {
 /// A CSV file as the import reads it.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CsvSheet {
-    /// One name per field, from the header record or made up from the
-    /// position when there is none.
+    /// One name per field, from the header record. Empty when the file
+    /// has no header, for the app to name the field by its position.
     pub headers: Vec<String>,
     pub rows: Vec<Vec<String>>,
     /// Rows past `MAX_PREVIEW_ROWS` when the read was a preview, so the
@@ -98,9 +100,7 @@ pub fn read_csv(bytes: &[u8], options: &CsvImportOptions, limit: Option<usize>) 
 
     let headers: Vec<String> = match options.has_header {
         true => {
-            let header = reader
-                .headers()
-                .map_err(|error| ImportError::Malformed(error.to_string()))?;
+            let header = reader.headers().map_err(malformed)?;
             within_width(header)?;
             header.iter().map(str::to_owned).collect()
         }
@@ -110,7 +110,7 @@ pub fn read_csv(bytes: &[u8], options: &CsvImportOptions, limit: Option<usize>) 
     let mut rows: Vec<Vec<String>> = Vec::new();
     let mut truncated = false;
     for record in reader.records() {
-        let record = record.map_err(|error| ImportError::Malformed(error.to_string()))?;
+        let record = record.map_err(malformed)?;
         if let Some(limit) = limit
             && rows.len() >= limit
         {
@@ -126,7 +126,7 @@ pub fn read_csv(bytes: &[u8], options: &CsvImportOptions, limit: Option<usize>) 
         return Err(ImportError::NoColumns);
     }
     let headers = match headers.is_empty() {
-        true => (1..=width).map(|index| format!("Column {index}")).collect(),
+        true => vec![String::new(); width],
         false => headers,
     };
     // A short row is padded so every row can be indexed by field
@@ -140,6 +140,12 @@ pub fn read_csv(bytes: &[u8], options: &CsvImportOptions, limit: Option<usize>) 
         rows,
         truncated,
     })
+}
+
+fn malformed(error: csv::Error) -> ImportError {
+    ImportError::Malformed {
+        line: error.position().map(csv::Position::line),
+    }
 }
 
 /// Refuse a record wider than `MAX_FIELDS` before its fields are copied.
@@ -203,7 +209,7 @@ pub fn row_to_cells(
         .collect()
 }
 
-fn cell_for(text: &str, column: &ColumnInfo, options: &CsvImportOptions) -> Result<CellInput, String> {
+fn cell_for(text: &str, column: &ColumnInfo, options: &CsvImportOptions) -> Result<CellInput, EditParseError> {
     if text == options.null_marker {
         // An empty string is a value in its own right for a text
         // column, and the marker being empty is the common case. The
@@ -218,9 +224,7 @@ fn cell_for(text: &str, column: &ColumnInfo, options: &CsvImportOptions) -> Resu
         }
         return Ok(CellInput::Value(crate::value::Value::Null));
     }
-    parse_literal_text(text, &column.column_type)
-        .map(CellInput::Value)
-        .map_err(|error| error.to_string())
+    parse_literal_text(text, &column.column_type).map(CellInput::Value)
 }
 
 fn delimiter_byte(delimiter: CsvDelimiter) -> u8 {
@@ -301,13 +305,13 @@ mod tests {
     }
 
     #[test]
-    fn a_file_with_no_header_gets_names_from_the_positions() {
+    fn a_file_with_no_header_leaves_its_field_names_empty() {
         let mut options = options();
         options.has_header = false;
 
         let sheet = read_csv(b"1,ada\n2,grace\n", &options, None).expect("read");
 
-        assert_eq!(sheet.headers, vec!["Column 1", "Column 2"]);
+        assert_eq!(sheet.headers, vec![String::new(), String::new()]);
         assert_eq!(sheet.rows.len(), 2);
     }
 
@@ -533,6 +537,6 @@ mod tests {
         assert_eq!(error.line, 4);
         assert_eq!(error.column, "id");
         assert_eq!(error.text, "not a number");
-        assert!(!error.reason.is_empty());
+        assert_eq!(error.reason, EditParseError::InvalidInteger);
     }
 }

@@ -1,4 +1,4 @@
-use tablepro_core::{DriverError, ReadOnlyRefusal};
+use tablepro_core::{DriverError, ReadOnlyRefusal, UnsupportedFeature};
 
 use super::statement_class::StatementClass;
 use super::transaction_tracker::KnownState;
@@ -44,12 +44,12 @@ pub(crate) fn plan(class: StatementClass, state: KnownState, read_only: bool) ->
     match class {
         StatementClass::CopyFromStdin => {
             return Flight::Refuse(DriverError::Unsupported {
-                feature: "COPY FROM STDIN in the editor",
+                feature: UnsupportedFeature::CopyFromStdinInEditor,
             });
         }
         StatementClass::CopyToStdout => {
             return Flight::Refuse(DriverError::Unsupported {
-                feature: "COPY TO STDOUT in the editor",
+                feature: UnsupportedFeature::CopyToStdoutInEditor,
             });
         }
         StatementClass::TwoPhase if read_only => {

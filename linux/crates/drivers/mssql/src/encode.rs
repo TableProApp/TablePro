@@ -1,9 +1,9 @@
 use std::borrow::Cow;
 
 use chrono::{Datelike, NaiveDate};
-use tablepro_core::DriverError;
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
+use tablepro_core::{DriverError, UnsupportedFeature};
 use tiberius::numeric::Numeric;
 use tiberius::{ColumnData, IntoSql, ToSql};
 
@@ -87,7 +87,7 @@ pub(crate) fn encode(param: &BoundParam) -> Result<ColumnData<'static>, DriverEr
                 .to_time_of_day()
                 .map(IntoSql::into_sql)
                 .ok_or(DriverError::Unsupported {
-                    feature: "a time outside one day",
+                    feature: UnsupportedFeature::TimeOutsideOneDay,
                 }),
             other => Err(refused(param_type, other)),
         },
@@ -106,11 +106,13 @@ pub(crate) fn encode(param: &BoundParam) -> Result<ColumnData<'static>, DriverEr
             other => Err(refused(param_type, other)),
         },
         ParamType::TimeTz => Err(DriverError::Unsupported {
-            feature: "a time with an offset",
+            feature: UnsupportedFeature::TimeWithOffset,
         }),
-        ParamType::Interval => Err(DriverError::Unsupported { feature: "an interval" }),
+        ParamType::Interval => Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::Interval,
+        }),
         ParamType::Bits => Err(DriverError::Unsupported {
-            feature: "a bit string",
+            feature: UnsupportedFeature::BitString,
         }),
     }
 }
@@ -161,12 +163,16 @@ fn numeric(param_type: &ParamType, value: &Value) -> Result<Numeric, DriverError
         Value::UInt(integer) => (i128::from(*integer), 0),
         Value::WideInt(integer) => (
             integer.to_i128().ok_or(DriverError::Unsupported {
-                feature: "an integer wider than 38 digits",
+                feature: UnsupportedFeature::NumberWiderThan {
+                    digits: MAX_NUMERIC_DIGITS,
+                },
             })?,
             0,
         ),
         Value::Decimal(decimal) => decimal.to_scaled_i128().ok_or(DriverError::Unsupported {
-            feature: "a decimal NaN, infinity or wider than 38 digits",
+            feature: UnsupportedFeature::DecimalOutOfRange {
+                digits: MAX_NUMERIC_DIGITS,
+            },
         })?,
         other => return Err(refused(param_type, other)),
     };
@@ -179,7 +185,9 @@ fn numeric(param_type: &ParamType, value: &Value) -> Result<Numeric, DriverError
     match (fits, scale) {
         (true, Some(scale)) => Ok(Numeric::new_with_scale(mantissa, scale)),
         _ => Err(DriverError::Unsupported {
-            feature: "a decimal wider than 38 digits",
+            feature: UnsupportedFeature::NumberWiderThan {
+                digits: MAX_NUMERIC_DIGITS,
+            },
         }),
     }
 }
@@ -189,7 +197,7 @@ fn in_range(date: NaiveDate) -> Result<NaiveDate, DriverError> {
     match (1..=9999).contains(&date.year()) {
         true => Ok(date),
         false => Err(DriverError::Unsupported {
-            feature: "a date outside years 1 to 9999",
+            feature: UnsupportedFeature::DateOutsideYears { first: 1, last: 9999 },
         }),
     }
 }

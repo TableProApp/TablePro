@@ -5,7 +5,8 @@ use futures::future::BoxFuture;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::meta::{ObjectInfo, ObjectScope, SchemaInfo};
 use tablepro_core::{
-    CallOptions, ConfigError, ConnectOptions, ConnectTarget, Connection, DriverError, NetworkTarget, TlsMode, Transport,
+    CallOptions, ConfigError, ConnectOptions, ConnectTarget, Connection, DriverError, NetworkTarget, TlsMode,
+    Transport, UnsupportedFeature,
 };
 use tablepro_net::DirectTcpTransport;
 use tablepro_ssh::SshSession;
@@ -159,11 +160,11 @@ fn validate(request: &ConnectRequest) -> Result<(), ConnectError> {
     let refuse = |error: DriverError| Err(ConnectError::Driver(error));
     match &request.target {
         RequestTarget::File(_) if !capabilities.is_file_based() => refuse(DriverError::Unsupported {
-            feature: "database files",
+            feature: UnsupportedFeature::DatabaseFile,
         }),
         RequestTarget::File(_) => Ok(()),
         RequestTarget::Network { .. } if capabilities.is_file_based() => refuse(DriverError::Unsupported {
-            feature: "network connections",
+            feature: UnsupportedFeature::NetworkConnection,
         }),
         RequestTarget::Network {
             credentials,

@@ -86,7 +86,10 @@ fn type_error(dialect: Option<&dyn SqlDialect>, column: &DraftColumn, text: &str
         return None;
     }
     let dialect = dialect?;
-    dialect.parse_type(text).err().map(|error| error.to_string())
+    dialect
+        .parse_type(text)
+        .err()
+        .map(|error| crate::ui::error_text::type_syntax_message(&error))
 }
 
 /// Mark the Default field with the error the column holds, now and each
