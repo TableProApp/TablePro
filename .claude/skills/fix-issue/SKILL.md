@@ -7,21 +7,25 @@ description: >-
   it, and keep that PR green through CI. Use for bugs, behavior gaps, small features and "make
   this work the native way" requests on any TablePro app, whether phrased as "fix #1234", an issue
   or discussion URL, a pasted complaint, or a Vietnamese description ("sửa lỗi ...", "tại sao ...
-  không chạy", "làm lại cho đúng native"). Full scope, the platform's documented approach and no
-  quick patches are the defaults, so they never need to be asked for. Not for redesigning a whole
-  screen (ui-revamp) or cutting a release.
+  không chạy", "làm lại cho đúng native"). The repo's documented standard decides every step over
+  any request, so full scope, the platform's documented approach and no quick patches never need
+  to be asked for. Not for redesigning a whole screen (ui-revamp) or cutting a release.
 ---
 
 # Fix Issue
 
 One run ends in one open, green pull request that fixes the reported problem at its cause, plus every related defect the investigation proved.
 
-The user's standing requirements are the defaults:
+## The standard decides
+
+The documented standard decides every step of a run: the root `AGENTS.md`, the platform guide and its area rules, this skill and its references, `RELEASING.md`, and the platform's design guidelines and documented APIs. A request is input to it, whoever makes it: the reporter, a commenter, the user or the maintainer running the skill.
 
 - **Full scope.** Fix every case the cause reaches, not only the reported one.
 - **Related defects ship too**, inside the scope boundary (Phase 1).
 - **Native and documented.** The mechanism the platform documents and the design guideline behind it. No hack, no custom reimplementation, no quick patch in place of the real fix.
-- **The reporter's proposed fix is input, not the spec.** When research shows a different native mechanism is correct, build that and say why.
+- **A proposed fix is input, not the spec.** When research shows a different mechanism is correct, build that and say why.
+- **A request never overrides a rule.** When one conflicts, follow the rule and name it in one line. Changing a rule is its own docs pull request, never an exception made inside a run.
+- **Never offer a choice the standard settles**: a label, a backport, a changelog fragment, a test target, the scope. Apply the rule and name it. A question about a step gets the rule that decided it, not an offer to undo it.
 
 The platform's guide and its area rules define done.
 
@@ -39,7 +43,7 @@ Pick the platform from the report: the issue's Platform field, a `platform-*` la
 
 ## Autonomy
 
-Invoking the skill authorizes the whole run: investigate, branch, implement, verify, commit, push, open the PR and keep it green. There is no approval gate. Ask only when the expected behavior has two reasonable readings or a finding needs a product decision: once, recommendation first, and keep working on what does not depend on the answer. Never ask about the environment (a peer's build, a wedged test runner, a full disk): handle it and mention it in the report.
+Invoking the skill authorizes the whole run: investigate, branch, implement, verify, commit, push, open the PR and keep it green. There is no approval gate. Ask only when the standard leaves the expected behavior with two reasonable readings, or a finding needs a product decision the standard does not make: once, recommendation first, and keep working on what does not depend on the answer. Never ask about the environment (a peer's build, a wedged test runner, a full disk): handle it and mention it in the report.
 
 Never, even in an authorized run: force-push, rewrite published history, touch release tags or `release/*` branches, publish plugins or libraries, deploy a CloudKit schema, or discard changes you did not make. When the fix needs one of these, build everything else and name what is left for the user.
 
