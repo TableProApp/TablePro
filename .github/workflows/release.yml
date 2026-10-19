@@ -2,7 +2,7 @@ name: Release
 
 # A v* tag builds, signs and notarizes the app and every registry plugin, publishes the GitHub
 # release, then adds it to the gh-pages branch and deploys that to updates.tablepro.app.
-# App, Plugins and Feed run on the self-hosted Mac, or on hosted runners when MAC_RUNNER is github.
+# App and Plugins run on the self-hosted Mac, or on xcode-27 when MAC_RUNNER is github.
 
 on:
   push:
@@ -293,7 +293,9 @@ jobs:
   feed:
     name: Feed
     needs: [verify, github-release]
-    runs-on: ${{ vars.MAC_RUNNER == 'github' && 'macos-latest' || fromJSON('["self-hosted", "macOS", "ARM64", "tablepro-release"]') }}
+    # Hosted whatever MAC_RUNNER says: the Sparkle key cannot rotate, and a process on the Mac can
+    # read a job's environment. Feed needs neither Xcode nor the signing keychain.
+    runs-on: macos-latest
     environment: release
     timeout-minutes: 20
     concurrency:
@@ -333,11 +335,8 @@ jobs:
           python3 apple/scripts/release/feed.py add "$TAG" --site build/gh-pages --notes notes/feed.md \
             ${flags[@]+"${flags[@]}"}
 
-      # The Mac runs as the maintainer, whose global git config signs commits with their key.
       - name: Push gh-pages
         working-directory: build/gh-pages
-        env:
-          GIT_CONFIG_GLOBAL: /dev/null
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
