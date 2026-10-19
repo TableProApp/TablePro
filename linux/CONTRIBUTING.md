@@ -54,7 +54,7 @@ meson dist -C _build --no-tests --formats xztar
 
 Inside a desktop session, `dbus-run-session -- meson test -C _build` runs the same suites without xvfb.
 
-The fast job also runs a few source greps and the lychee line below, from the repository root. The supply-chain and Docker jobs run the rest, among others; [docs/testing.md](docs/testing.md#ci) describes every job, and the Docker job runs the last line once per package that has Docker tests:
+The fast job also runs a few source greps and the lychee line below, from the repository root. The supply-chain and Docker jobs run the rest, among others; `.github/workflows/build-linux.yml` has every job, and the Docker job runs the last line once per package that has Docker tests:
 
 ```bash
 cargo deny --locked check advisories bans licenses sources

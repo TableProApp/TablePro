@@ -13,7 +13,7 @@ paths:
 
 # CI
 
-The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/skills/fix-issue/references/verification-apple.md`, Reading CI. Release tags: `apple/RELEASING.md`.
+The required checks are in rulesets 23957966 and 25367692 below; `gh api repos/TableProApp/TablePro/rules/branches/main` lists them live. Reading a red check: `.claude/skills/fix-issue/references/verification-apple.md`, Reading CI. Release tags: `apple/RELEASING.md`.
 
 ## Rulesets
 
@@ -22,7 +22,8 @@ The required check names are in `AGENTS.md` (CI). Reading a red check: `.claude/
 | 25308039 "tags never move" | tags `v*`, `linux-v*`, `libs-*` | update, deletion | none |
 | 23959123 "release tags are created by admins" | tags `v*`, `linux-v*`, `libs-*`, `plugin-*` | creation | admins |
 | 25308049 "release branches are created by admins" | `release/*` | creation | admins |
-| 23957966 "main and release branches require green gates" | default branch, `release/*` | the required checks, `do_not_enforce_on_create` | none |
+| 23957966 "main and release branches require green gates" | default branch, `release/*` | required checks `macOS Tests`, `iOS and Package Tests`, `SwiftLint`, `Repo Hygiene`, `PR title`; `do_not_enforce_on_create` | admins, `pull_request` mode |
+| 25367692 "main requires Linux" | default branch | required check `Linux`; `do_not_enforce_on_create` | admins, `pull_request` mode |
 | 25129799 "branches keep their history" | default branch, `release/*`, `gh-pages` | deletion, non-fast-forward | none |
 
 - `gh-pages` takes no required checks (`apple/RELEASING.md`, Keys and environments).

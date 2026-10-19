@@ -1,6 +1,6 @@
 # 0017: Distribution channels
 
-- **Status**: Superseded by 0018
+- **Status**: Superseded by 0018. The `LINUX_BRANCH` default below is no longer `linux`; `release-linux.yml` has the current one.
 - **Date**: 2026-10-14
 
 ## Context

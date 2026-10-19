@@ -316,7 +316,7 @@ A restore deletes the drafts no saved or open tab names, except while a moved-as
 
 Meson is the build system and Cargo is the Rust compiler; see [ADR 0006](docs/decisions/0006-meson-cargo-build.md). `meson setup _build && meson compile -C _build` produces `tablepro` and `tablepro-askpass`, and `meson test -C _build` runs the `unit`, `gtk`, `data` and `packaging` suites.
 
-The platform floor is GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)), and `meson.build` refuses to configure below it. [docs/testing.md](docs/testing.md#ci) lists every CI job, what starts it and where it runs.
+The platform floor is GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)), and `meson.build` refuses to configure below it. [docs/testing.md](docs/testing.md#ci) names the CI workflows.
 
 ## Out of scope
 

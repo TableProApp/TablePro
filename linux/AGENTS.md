@@ -10,7 +10,7 @@ This is the guide for work under `linux/`. The root `AGENTS.md` holds the rules 
 2. **Native only.** GTK 4 and libadwaita, used the way the GNOME Human Interface Guidelines describe, with the widget the toolkit provides before anything drawn by hand. No web views, no cross-platform toolkit.
 3. **One-directional crates.** The domain crate (`tablepro-core`) never imports the GUI or a driver, and a new database engine is one crate. `ARCHITECTURE.md` has the graph.
 4. **Drivers are linked in at compile time.** There is no plugin system and no plugin ABI (`docs/decisions/0001-no-plugin-system.md`).
-5. **Decisions are recorded.** A change that reverses a decision in `docs/decisions/` says so and updates the record.
+5. **Decisions are recorded.** A change that reverses a decision in `docs/decisions/` adds an ADR that supersedes it; the old one changes only its Status line (`docs/decisions/README.md`).
 
 ## Map
 
@@ -51,4 +51,4 @@ From the repository root, through the verification wrapper, which keeps the full
 
 ## CI
 
-The Linux workflows are `.github/workflows/build-linux.yml`, `.github/workflows/linux-packages.yml` and `.github/workflows/release-linux.yml`. `docs/testing.md`, CI, lists every job, what starts it and what it runs; read it before changing a workflow or reading a red check. Every action is pinned by commit SHA; a new one is too.
+The Linux workflows are `.github/workflows/build-linux.yml`, `.github/workflows/linux-packages.yml` and `.github/workflows/release-linux.yml`. Each one's `on:`, job `if:` and steps are the record of what runs and when; read the workflow before changing it or reading a red check. Every action is pinned by commit SHA; a new one is too.

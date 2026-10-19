@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-These are short documents recording the **reasoning** behind major technical choices. Once an ADR is accepted, its decision stays as recorded. When a later ADR or change replaces part of it, the Status line says which part, and names the ADR or the date that replaced it. Any part that describes the current system is kept true.
+These are short documents recording the **reasoning** behind major technical choices. An ADR records the decision as it stood on its date, and is not kept current. The code, the workflows and the rest of `docs/` describe the system as it is now.
 
 Every load-bearing decision in the Linux subproject has an ADR. If a contributor asks "why did we pick X", the answer should already be in this folder. If it is not, we missed an ADR.
 
@@ -35,9 +35,15 @@ Brief note on each alternative and why it lost.
 
 Context, Decision and Consequences are always there. Rationale and Alternatives considered are there when other options were weighed. A section an ADR needs beyond these, such as a matrix or a dated note, comes after them.
 
-The Status is `Accepted`, `Superseded by 000M` or `Deprecated`. An accepted ADR that a later one changed in part reads `Accepted; <part> superseded by 000M` (replaced) or `amended by 000M` (extended), or `amended <date>` when the change came without an ADR.
+The Status is `Accepted`, `Superseded by 000M` or `Deprecated`. An accepted ADR that a later one changed in part reads `Accepted; <part> superseded by 000M` (replaced) or `amended by 000M` (extended). The `amended <date>` statuses below predate this rule.
 
 ADRs are short on purpose. If yours is more than a page, you are probably arguing instead of recording.
+
+## Changing a decision
+
+A new ADR supersedes the old one, as in Michael Nygard's [Documenting Architecture Decisions](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions). The new ADR says what it replaces and why. The old ADR's only edit is its Status line, naming the new one, plus the same change to its row in the index. Do not rewrite an old ADR's body to match the current system.
+
+A fact the repository keeps elsewhere, such as a workflow trigger, a branch, a variable's default or a ruleset, is pointed to from an ADR, not copied into it, so the ADR stays true without edits.
 
 ## Index
 
@@ -67,5 +73,6 @@ ADRs are short on purpose. If yours is more than a page, you are probably arguin
 
 1. Take the number after the highest one. Never reuse a number, even a deprecated ADR's.
 2. Copy the format above into a new file. Use a dash-separated lowercase title slug.
-3. Open a PR. ADRs go through the same review as code.
-4. After merge, link from the index above.
+3. If it replaces an earlier decision, set the earlier ADR's Status to `Superseded by 000N`, or `Accepted; <part> superseded by 000N`, in the same PR.
+4. Open a PR. ADRs go through the same review as code.
+5. After merge, link from the index above.
