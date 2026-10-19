@@ -410,7 +410,7 @@ The tests in `crates/app/src/ui/editor/script_runner.rs` drive `run_batches` und
 
 `.github/workflows/build-linux.yml` builds and tests the app, `.github/workflows/linux-packages.yml` builds, installs and starts the .deb and .rpm, and `.github/workflows/release-linux.yml` publishes a `linux-v*` tag. Each workflow's `on:` and each job's `if:` say when it runs; its steps say what it runs. To run the same checks locally: the [fast-job commands](../CONTRIBUTING.md#fast-job-commands) and `build-aux/packaging/build-packages.sh`.
 
-`.github/workflows/ci.yml` calls `build-linux.yml` for a pull request or a push. A change to Markdown alone, other than `CHANGELOG.md` and `docs/regression-tests.md`, runs only its Documentation links job. The required check is `CI` (`.claude/rules/ci.md`).
+`.github/workflows/ci.yml` calls `build-linux.yml` for a pull request, a push to `main` and a manual run, never for a `release/**` push. A change to Markdown alone, other than `CHANGELOG.md` and `docs/regression-tests.md`, runs only its Documentation links job. The required check is `CI` (`.claude/rules/ci.md`).
 
 ## Coverage
 

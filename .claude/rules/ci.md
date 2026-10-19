@@ -28,9 +28,9 @@ paths:
 
 ## What runs where
 
-- `ci.yml` runs on every PR and on pushes to main and `release/**`. `Plan` runs the detector per suite, then calls each workflow when its suite is true: `macos-tests.yml` (`macos`), `ios-tests.yml` (`ios`), `swiftlint.yml` (`swiftlint`), `build-linux.yml` (`linux-docs`, docs job only unless `linux`) and `repo-hygiene.yml` (always). `plugins`, `oracle` and `hana` go in as inputs.
-- The base is a PR's base SHA, or on main the head SHA of the last green CI push run on main. No such run runs everything.
-- Concurrency is only in `ci.yml`: a PR keeps its newest run, main runs one at a time and a newer pending run replaces the older, and each `release/**` commit has its own group.
+- `ci.yml` runs on every PR, on pushes to main and `release/**`, and by dispatch. `Plan` runs the detector per suite, then calls each workflow when its suite is true: `macos-tests.yml` (`macos`), `ios-tests.yml` (`ios`), `swiftlint.yml` (`swiftlint`), `build-linux.yml` (`linux-docs`, docs job only unless `linux`; never on `release/**`, since Linux ships from main or `linux-X.Y`) and `repo-hygiene.yml` (always). `plugins`, `oracle` and `hana` go in as inputs.
+- The base is a PR's base SHA, or on a main push the head SHA of the last green CI push run on main. No such run, or a dispatch, runs everything. A dispatch never counts as main's last green run or for a tag.
+- Concurrency is only in `ci.yml`: a PR keeps its newest run, main pushes run one at a time and a newer pending run replaces the older, and each `release/**` commit and each dispatch has its own group.
 - macOS Tests runs the Unit and UI plans in full, with no shard, parallel, iteration or retry flag.
 - A `v*` tag runs only `release.yml`, a `linux-v*` tag only `release-linux.yml`.
 

@@ -1,6 +1,6 @@
 name: Build Linux
 
-# CI calls it for a pull request or a push; the schedule and a manual run take every job.
+# CI calls it. Its own schedule and a manual run of it also take the nightly jobs.
 on:
   workflow_call:
     inputs:
@@ -219,8 +219,9 @@ jobs:
   # compiler and not with rustup's.
   msrv:
     name: Minimum Rust version
-    # Nightly and by hand only, to keep a pull request under GitHub Free's 20 concurrent jobs.
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    # Only in this workflow's own nightly or manual run, to keep a CI run under GitHub Free's 20
+    # concurrent jobs. A called workflow sees the caller's github context, so from CI this is "CI".
+    if: ${{ github.workflow == 'Build Linux' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     container:
@@ -345,8 +346,9 @@ jobs:
 
   flatpak-devel:
     name: Flatpak Devel (${{ matrix.arch }})
-    # Nightly and by hand only, to keep a pull request under GitHub Free's 20 concurrent jobs.
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    # Only in this workflow's own nightly or manual run, to keep a CI run under GitHub Free's 20
+    # concurrent jobs. A called workflow sees the caller's github context, so from CI this is "CI".
+    if: ${{ github.workflow == 'Build Linux' }}
     strategy:
       fail-fast: false
       matrix:

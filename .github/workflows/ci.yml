@@ -6,11 +6,13 @@ on:
   pull_request:
   push:
     branches: [main, 'release/**']
+  workflow_dispatch:
 
 # A pull request keeps only its newest run. main runs one at a time, and a newer pending run
-# replaces the older one. Each release/** commit gets its own group, so none is replaced.
+# replaces the older one. Each release/** commit and each dispatch gets its own group, so none is
+# replaced.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref == 'refs/heads/main' && github.ref || format('{0}-{1}', github.ref, github.sha) }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref == 'refs/heads/main' && github.ref || format('{0}-{1}', github.ref, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -40,7 +42,8 @@ jobs:
           persist-credentials: false
 
       # A main push compares with the last commit a CI push run passed on, so a commit whose run was
-      # replaced or failed is tested again. No such run, or one on HEAD itself, runs everything.
+      # replaced or failed is tested again. No such run, one on HEAD itself, or a dispatch runs
+      # everything.
       - name: Find the base
         id: base
         env:
@@ -54,7 +57,7 @@ jobs:
           base=""
           if [ "$EVENT" = pull_request ]; then
             base="$PR_BASE"
-          elif [ "$REF" = refs/heads/main ]; then
+          elif [ "$EVENT" = push ] && [ "$REF" = refs/heads/main ]; then
             passed="$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=1" \
               --jq '.workflow_runs[0].head_sha // ""')"
             head="$(git rev-parse HEAD)"
@@ -65,7 +68,7 @@ jobs:
           echo "Base: ${base:-none, so every suite runs}"
           echo "base=$base" >> "$GITHUB_OUTPUT"
 
-      # --ref makes a release/** push run every suite.
+      # --ref makes a release/** push run every suite. The linux job below still skips there.
       - name: Decide which suites run
         id: decide
         env:
@@ -104,9 +107,11 @@ jobs:
     with:
       hana: ${{ needs.plan.outputs.hana == 'true' }}
 
+  # Linux ships from main or linux-X.Y, so a release/** line skips it and an advisory that cargo deny
+  # learns later cannot fail the run an Apple tag's verify reads.
   linux:
     needs: plan
-    if: needs.plan.outputs.linux-docs == 'true'
+    if: needs.plan.outputs.linux-docs == 'true' && !startsWith(github.ref, 'refs/heads/release/')
     uses: ./.github/workflows/build-linux.yml
     with:
       docs-only: ${{ needs.plan.outputs.linux != 'true' }}
