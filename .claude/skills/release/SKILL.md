@@ -28,7 +28,8 @@ Before any decision, gather:
 - open regressions: `gh issue list --label regression --state open`;
 - the newest beta's age, `gh release view v<X.Y>.0-beta.<N> --json publishedAt -q .publishedAt`, and the code on the line after it, `git log --oneline v<X.Y>.0-beta.<N>..origin/release/<X.Y> -- . ':!changelog.d' ':!CHANGELOG.md'`;
 - open Dependabot alerts: `gh api --paginate 'repos/TableProApp/TablePro/dependabot/alerts?state=open&per_page=100' -q '.[].security_advisory.summary'`;
-- main's push runs: `gh run list --branch main --event push --limit 10`, with macOS Tests, iOS and Package Tests and Release Build green on the commit you would cut;
+- main's push runs: `gh run list --branch main --event push --limit 10`, with macOS Tests and iOS and Package Tests green on the commit you would cut;
+- main's Release Builds: `gh run list --workflow release-build.yml --branch main --status success --limit 5`. The commit you would cut needs one, nightly or dispatched (`gh workflow run release-build.yml --ref main`);
 - whether `main` has the last stable's `## [X.Y.Z]` heading. If not, the forward-port is missing and the next tag will refuse to build: do that first (section 9).
 
 ## 3. Decide what ships

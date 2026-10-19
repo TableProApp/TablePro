@@ -48,7 +48,7 @@ Tags go out between 13:00 and 15:00 ICT (UTC+7).
 
 ## Cutting a beta
 
-beta.1 cuts the line at the newest `main` commit whose push runs are all green; beta.N tags the line's head once the picks are on it.
+beta.1 cuts the line at the newest `main` commit a green nightly or dispatched Release Build ran on, once its push runs are green too. The push that creates the branch builds it again, and the tag's `verify` waits for that build. beta.N tags the line's head once the picks are on it.
 
 ```bash
 git fetch origin
@@ -96,7 +96,7 @@ python3 scripts/release/notes.py docs X.Y.Z --ref vX.Y.Z --mdx ../tablepro-docs/
 
 A `v*` tag runs `release.yml` and nothing else. A run is never cancelled, and every job reads the version, build and channel from `verify`.
 
-- `verify`: `version.py check` refuses a tag that breaks the grammar or the bounds; that `origin/release/<X.Y>` does not contain; whose previous tag on the line is not its ancestor; a stable X.Y.0 with no published beta, or a beta after its X.Y.0; a stable whose tree differs from its line's newest published beta outside `CHANGELOG.md` and `changelog.d/`, until a stable tag on the line has matched that beta; a `CHANGELOG.md` missing the stable's heading, or a published stable of this or the previous line below it; a stable whose tag still holds fragments in `changelog.d/`. Then it needs macOS Tests, iOS and Package Tests and Release Build green on the tag commit or the nearest first-parent commit that ran them, with no change to the files they read after it, waiting on a pending run. Last, it writes the notes.
+- `verify`: `version.py check` refuses a tag that breaks the grammar or the bounds; that `origin/release/<X.Y>` does not contain; whose previous tag on the line is not its ancestor; a stable X.Y.0 with no published beta, or a beta after its X.Y.0; a stable whose tree differs from its line's newest published beta outside `CHANGELOG.md` and `changelog.d/`, until a stable tag on the line has matched that beta; a `CHANGELOG.md` missing the stable's heading, or a published stable of this or the previous line below it; a stable whose tag still holds fragments in `changelog.d/`. Then it needs macOS Tests, iOS and Package Tests and Release Build green on the tag commit or the nearest first-parent commit that ran them, with no change to the files they read after it, waiting on a pending run. A push, nightly or dispatched run counts; a PR run builds a merge commit, so it does not. Last, it writes the notes.
 - `app` (`signing`): a GA Xcode for a stable (`setup-xcode` `require-release`), the CloudKit Production schema check, `build.sh app` (archive, export with `scripts/release/ExportOptions.plist`, universal and plugin load checks), `notarize.sh` on the app, `package.sh app`, `notarize.sh` on the DMG.
 - `plugins` (`signing`): the Dameng and HANA bridges, `build.sh plugins` (each target `registry.py targets` prints, universal, signed with Developer ID, the hardened runtime and a timestamp), one notary submission for all, `package.sh plugins` (the zips, described as the manifest will read them).
 - `github-release`: `actions/attest` attests `dist/*`; `gh release create` drafts, uploads and publishes; `gh release verify` and `verify-asset` check the published release.

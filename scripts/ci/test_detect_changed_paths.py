@@ -151,6 +151,9 @@ class DetectChangedPathsTests(unittest.TestCase):
     def test_macos_runs_on_the_build_setup_action(self):
         self.assertEqual(self.verdict_after("macos", ".github/actions/prepare-build/action.yml"), "true")
 
+    def test_macos_runs_on_the_pluginkit_abi_checker(self):
+        self.assertEqual(self.verdict_after("macos", "scripts/check-pluginkit-abi.sh"), "true")
+
     def test_macos_runs_on_the_notes_script_its_build_phase_reads(self):
         self.assertEqual(self.verdict_after("macos", "scripts/release/notes.py"), "true")
         self.assertEqual(self.verdict_after("macos", "scripts/release/feed.py"), "false")
@@ -174,6 +177,7 @@ class DetectChangedPathsTests(unittest.TestCase):
             "scripts/build-hana.sh",
             "scripts/lib/deployment-target.sh",
             "scripts/ci/verify-plugin-loads.sh",
+            "scripts/check-pluginkit-abi.sh",
             ".github/actions/setup-xcode/action.yml",
             ".github/actions/setup-xcodegen/action.yml",
             ".github/actions/prepare-build/action.yml",
